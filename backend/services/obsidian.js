@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
 
 function getVaultPath() {
   return process.env.OBSIDIAN_VAULT_PATH || '';
@@ -17,13 +19,13 @@ function todayDateString() {
 
 // Daily notes
 function readTodayDailyNote() {
-  const notePath = path.join(getVaultPath(), 'Daily notes', `${todayDateString()}.md`);
+  const notePath = path.join(getVaultPath(), 'Daily', `${todayDateString()}.md`);
   if (!fs.existsSync(notePath)) return null;
   return fs.readFileSync(notePath, 'utf-8');
 }
 
 function writeTodayDailyNote(content) {
-  const dir = path.join(getVaultPath(), 'Daily notes');
+  const dir = path.join(getVaultPath(), 'Daily');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const notePath = path.join(dir, `${todayDateString()}.md`);
   fs.writeFileSync(notePath, content, 'utf-8');
@@ -31,7 +33,7 @@ function writeTodayDailyNote(content) {
 }
 
 function appendToDailyNote(content) {
-  const dir = path.join(getVaultPath(), 'Daily notes');
+  const dir = path.join(getVaultPath(), 'Daily');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const notePath = path.join(dir, `${todayDateString()}.md`);
   const existing = fs.existsSync(notePath) ? fs.readFileSync(notePath, 'utf-8') : '';
@@ -131,6 +133,392 @@ function extractTags(content) {
   return tags;
 }
 
+// Vault todo parser — reads tasks from Master Todo, Microsoft Tasks, and daily notes
+function parseVaultTodos() {
+  if (!isConfigured()) return { active: [], done: [] };
+
+  const vaultPath = getVaultPath();
+  const allTasks = [];
+
+  // 1. Parse Master Todo
+  const masterPath = path.join(vaultPath, 'Tasks', 'Master Todo.md');
+  if (fs.existsSync(masterPath)) {
+    const content = fs.readFileSync(masterPath, 'utf-8');
+    const lines = content.split('\n');
+    let currentPriority = 'normal';
+    let currentSection = '';
+
+    for (const line of lines) {
+      // Detect section headers for priority mapping
+      if (line.startsWith('## ')) {
+        if (line.includes('🔴') || line.includes('Now')) { currentPriority = 'high'; currentSection = 'Now'; }
+        else if (line.includes('🟡') || line.includes('Soon')) { currentPriority = 'normal'; currentSection = 'Soon'; }
+        else if (line.includes('🟢') || line.includes('Later')) { currentPriority = 'low'; currentSection = 'Later'; }
+        else if (line.includes('⏸') || line.includes('Waiting')) { currentPriority = 'low'; currentSection = 'Waiting'; }
+        else if (line.includes('📥') || line.includes('Inbox')) { currentPriority = 'normal'; currentSection = 'Inbox'; }
+        continue;
+      }
+
+      const task = parseTaskLine(line);
+      if (task) {
+        task.priority = task.priority || currentPriority;
+        task.source = `Master (${currentSection})`;
+        allTasks.push(task);
+      }
+    }
+  }
+
+  // 2. Parse Microsoft Tasks
+  const msPath = path.join(vaultPath, 'Tasks', 'Microsoft Tasks.md');
+  if (fs.existsSync(msPath)) {
+    const content = fs.readFileSync(msPath, 'utf-8');
+    const lines = content.split('\n');
+    let msSection = 'Planner';
+
+    for (const line of lines) {
+      if (line.startsWith('## ')) {
+        if (line.includes('Planner')) msSection = 'MS Planner';
+        else if (line.includes('ToDo')) msSection = 'MS ToDo';
+        continue;
+      }
+
+      const task = parseTaskLine(line);
+      if (task) {
+        task.source = msSection;
+        task.priority = task.priority || 'normal';
+        allTasks.push(task);
+      }
+    }
+  }
+
+  // 3. Parse daily notes — today and recent days for carry-overs/follow-ups
+  const dailyDir = path.join(vaultPath, 'Daily');
+  const dailyFiles = [];
+  if (fs.existsSync(dailyDir)) {
+    // Get last 3 daily notes (today + 2 previous)
+    const files = fs.readdirSync(dailyDir)
+      .filter(f => f.match(/^\d{4}-\d{2}-\d{2}\.md$/))
+      .sort()
+      .reverse()
+      .slice(0, 3);
+    dailyFiles.push(...files);
+  }
+
+  const seenDailyTexts = new Set(); // deduplicate across days
+  for (const file of dailyFiles) {
+    const filePath = path.join(dailyDir, file);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const dateStr = file.replace('.md', '');
+    const isToday = dateStr === todayDateString();
+    const lines = content.split('\n');
+    let dailySection = '';
+
+    for (const line of lines) {
+      if (line.startsWith('## ')) {
+        dailySection = line.replace(/^##\s*/, '').trim();
+        continue;
+      }
+
+      // Only parse task lines from relevant sections
+      const taskSections = ['Focus Today', 'Carry-Overs', 'Follow Ups For Tomorrow', '90-Day Plan'];
+      const inTaskSection = taskSections.some(s => dailySection.includes(s));
+      if (!inTaskSection) continue;
+
+      const task = parseTaskLine(line);
+      if (!task) continue;
+
+      // Deduplicate by text (same task may appear across multiple days)
+      const dedupeKey = task.text.substring(0, 60).toLowerCase();
+      if (seenDailyTexts.has(dedupeKey)) continue;
+      seenDailyTexts.add(dedupeKey);
+
+      task.source = isToday ? `Daily (${dailySection})` : `Daily ${dateStr}`;
+      if (dailySection.includes('Focus Today')) task.priority = task.priority || 'high';
+      else if (dailySection.includes('Follow Ups')) task.priority = task.priority || 'normal';
+      else task.priority = task.priority || 'normal';
+      allTasks.push(task);
+    }
+  }
+
+  // Split into active and done
+  const active = allTasks.filter(t => t.status === 'open' || t.status === 'in-progress');
+  const done = allTasks.filter(t => t.status === 'done');
+
+  // Sort active: overdue first, then by priority, then by due date
+  const priorityOrder = { high: 0, normal: 1, low: 2 };
+  const today = new Date(new Date().toDateString());
+
+  active.sort((a, b) => {
+    // Overdue first
+    const aOverdue = a.due_date && new Date(a.due_date) < today ? 1 : 0;
+    const bOverdue = b.due_date && new Date(b.due_date) < today ? 1 : 0;
+    if (bOverdue !== aOverdue) return bOverdue - aOverdue;
+    // Then by priority
+    const pa = priorityOrder[a.priority] ?? 1;
+    const pb = priorityOrder[b.priority] ?? 1;
+    if (pa !== pb) return pa - pb;
+    // Then by due date (nulls last)
+    if (a.due_date && !b.due_date) return -1;
+    if (!a.due_date && b.due_date) return 1;
+    if (a.due_date && b.due_date) return new Date(a.due_date) - new Date(b.due_date);
+    return 0;
+  });
+
+  return { active, done };
+}
+
+function parseTaskLine(line) {
+  // Match markdown checkboxes: - [ ], - [x], - [>], - [/]
+  const match = line.match(/^[\s]*-\s+\[([ x>\/])\]\s+(.+)$/);
+  if (!match) return null;
+
+  const statusChar = match[1];
+  let rawText = match[2].trim();
+
+  // Map status character
+  let status;
+  if (statusChar === ' ') status = 'open';
+  else if (statusChar === 'x') status = 'done';
+  else if (statusChar === '>') status = 'open'; // carried over = still open
+  else if (statusChar === '/') status = 'in-progress';
+  else status = 'open';
+
+  // Extract due date from due::YYYY-MM-DD or 📅 YYYY-MM-DD
+  let due_date = null;
+  const dueMatch = rawText.match(/(?:due::(\d{4}-\d{2}-\d{2})|📅\s*(\d{4}-\d{2}-\d{2}))/);
+  if (dueMatch) {
+    due_date = dueMatch[1] || dueMatch[2];
+  }
+
+  // Extract MS ID from HTML comments
+  let ms_id = null;
+  const msIdMatch = rawText.match(/<!--id:(.*?)-->/);
+  if (msIdMatch) ms_id = msIdMatch[1];
+
+  // Clean up display text
+  let text = rawText
+    .replace(/<!--.*?-->/g, '')                     // Remove HTML comments
+    .replace(/\[\[([^|]*?\|)?([^\]]*?)\]\]/g, '$2') // Wiki links: [[path|Name]] → Name
+    .replace(/due::\d{4}-\d{2}-\d{2}/g, '')         // Remove due:: tags
+    .replace(/📅\s*\d{4}-\d{2}-\d{2}/g, '')         // Remove 📅 dates
+    .replace(/🕑\s*\d{2}:\d{2}/g, '')               // Remove time tags
+    .replace(/#\w+/g, '')                            // Remove hashtags
+    .replace(/\*\(.*?\)\*/g, '')                     // Remove italic parenthetical refs like *(Outcome 1)*
+    .replace(/\s{2,}/g, ' ')                         // Collapse whitespace
+    .replace(/\s*—\s*$/, '')                         // Trailing dashes
+    .trim();
+
+  // Strip surrounding bold markers for cleaner display
+  if (text.startsWith('**') && text.endsWith('**')) {
+    text = text.slice(2, -2);
+  }
+
+  if (!text) return null;
+
+  return { text, status, priority: null, due_date, ms_id, source: null };
+}
+
+// Vault calendar parser — reads "## Calendar Today" from daily notes
+function parseVaultCalendar(startDate, endDate) {
+  if (!isConfigured()) return [];
+
+  const vaultPath = getVaultPath();
+  const dailyDir = path.join(vaultPath, 'Daily');
+  if (!fs.existsSync(dailyDir)) return [];
+
+  const events = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  // Iterate through each day in the range
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().split('T')[0];
+    const filePath = path.join(dailyDir, `${dateStr}.md`);
+    if (!fs.existsSync(filePath)) continue;
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+    let inCalendarSection = false;
+
+    for (const line of lines) {
+      if (line.startsWith('## ')) {
+        inCalendarSection = line.includes('Calendar Today') || line.includes('Calendar');
+        // Stop if we hit another section after calendar
+        if (!inCalendarSection && events.length > 0) continue;
+        continue;
+      }
+
+      if (!inCalendarSection) continue;
+
+      // Skip placeholder text
+      if (line.includes('[Pull from calendar') || line.includes('[No meetings')) continue;
+
+      // Parse: - HH:MM-HH:MM **Subject** — Location
+      const eventMatch = line.match(/^-\s+(\d{2}:\d{2})-(\d{2}:\d{2})\s+\*\*(.+?)\*\*(?:\s*—\s*(.+))?$/);
+      if (eventMatch) {
+        const [, startTime, endTime, subject, location] = eventMatch;
+        const isCancelled = subject.toLowerCase().startsWith('canceled:') || subject.toLowerCase().startsWith('cancelled:');
+        events.push({
+          id: `${dateStr}-${startTime}-${subject.substring(0, 20)}`,
+          date: dateStr,
+          start: `${dateStr}T${startTime}:00`,
+          end: `${dateStr}T${endTime}:00`,
+          subject: subject,
+          location: location ? location.trim() : null,
+          isAllDay: false,
+          showAs: isCancelled ? 'cancelled' : 'busy'
+        });
+        continue;
+      }
+
+      // Parse all-day: - **Subject** (all day)
+      const allDayMatch = line.match(/^-\s+\*\*(.+?)\*\*.*(?:all\s*day)/i);
+      if (allDayMatch) {
+        events.push({
+          id: `${dateStr}-allday-${allDayMatch[1].substring(0, 20)}`,
+          date: dateStr,
+          start: `${dateStr}T00:00:00`,
+          end: `${dateStr}T23:59:59`,
+          subject: allDayMatch[1],
+          location: null,
+          isAllDay: true,
+          showAs: 'busy'
+        });
+      }
+    }
+  }
+
+  return events;
+}
+
+// ICS calendar feed — reads URL from vault's ICS plugin config and fetches live events
+let icsCache = { data: null, fetchedAt: 0 };
+const ICS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getIcsUrl() {
+  if (!isConfigured()) return null;
+  const configPath = path.join(getVaultPath(), '.obsidian', 'plugins', 'ics', 'data.json');
+  if (!fs.existsSync(configPath)) return null;
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const cals = config.calendars || {};
+    const first = Object.values(cals)[0];
+    return first?.icsUrl || null;
+  } catch { return null; }
+}
+
+function fetchUrl(url) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https') ? https : http;
+    client.get(url, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => resolve(data));
+    }).on('error', reject);
+  });
+}
+
+function parseIcsDate(val) {
+  // Handle: 20260317T090000, 20260317T090000Z, TZID=...:20260317T090000
+  const clean = val.replace(/^.*:/, ''); // strip TZID prefix
+  const m = clean.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
+  if (!m) {
+    // Date only: 20260317
+    const dm = clean.match(/^(\d{4})(\d{2})(\d{2})/);
+    if (dm) return { date: `${dm[1]}-${dm[2]}-${dm[3]}`, time: null, isDate: true };
+    return null;
+  }
+  return {
+    date: `${m[1]}-${m[2]}-${m[3]}`,
+    time: `${m[4]}:${m[5]}`,
+    iso: `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`,
+    isDate: false
+  };
+}
+
+function parseIcsEvents(icsText, startDate, endDate) {
+  const events = [];
+  const blocks = icsText.split('BEGIN:VEVENT');
+
+  for (let i = 1; i < blocks.length; i++) {
+    const block = blocks[i].split('END:VEVENT')[0];
+    const lines = block.split(/\r?\n/);
+
+    // Unfold continuation lines (lines starting with space/tab)
+    const unfolded = [];
+    for (const line of lines) {
+      if (line.startsWith(' ') || line.startsWith('\t')) {
+        if (unfolded.length > 0) unfolded[unfolded.length - 1] += line.substring(1);
+      } else {
+        unfolded.push(line);
+      }
+    }
+
+    let summary = '', location = '', dtstart = '', dtend = '', status = '';
+    for (const line of unfolded) {
+      if (line.startsWith('SUMMARY:')) summary = line.substring(8);
+      else if (line.startsWith('LOCATION:')) location = line.substring(9);
+      else if (line.startsWith('DTSTART')) dtstart = line.split(':').slice(-1)[0] || line.substring(line.indexOf(':') + 1);
+      else if (line.startsWith('DTEND')) dtend = line.split(':').slice(-1)[0] || line.substring(line.indexOf(':') + 1);
+      else if (line.startsWith('STATUS:')) status = line.substring(7);
+    }
+
+    // Find raw DTSTART line for TZID parsing
+    const dtstartLine = unfolded.find(l => l.startsWith('DTSTART'));
+    const dtendLine = unfolded.find(l => l.startsWith('DTEND'));
+    const startParsed = parseIcsDate(dtstartLine || dtstart);
+    const endParsed = parseIcsDate(dtendLine || dtend);
+
+    if (!startParsed) continue;
+
+    // Filter to date range
+    if (startParsed.date < startDate || startParsed.date > endDate) continue;
+
+    const isAllDay = startParsed.isDate;
+    const isCancelled = status.toUpperCase() === 'CANCELLED' ||
+      summary.toLowerCase().startsWith('canceled:') ||
+      summary.toLowerCase().startsWith('cancelled:');
+
+    events.push({
+      id: `ics-${startParsed.date}-${startParsed.time || '00:00'}-${summary.substring(0, 20)}`,
+      date: startParsed.date,
+      start: isAllDay ? `${startParsed.date}T00:00:00` : (startParsed.iso || `${startParsed.date}T00:00:00`),
+      end: endParsed ? (isAllDay ? `${endParsed.date}T23:59:59` : (endParsed.iso || `${endParsed.date}T23:59:59`)) : `${startParsed.date}T23:59:59`,
+      subject: summary.replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\n/g, ' '),
+      location: location ? location.replace(/\\,/g, ',').replace(/\\n/g, ' ') : null,
+      isAllDay,
+      showAs: isCancelled ? 'cancelled' : 'busy'
+    });
+  }
+
+  return events.sort((a, b) => a.start.localeCompare(b.start));
+}
+
+async function fetchCalendarEvents(startDate, endDate) {
+  const icsUrl = getIcsUrl();
+
+  // If no ICS URL, fall back to vault daily note parsing
+  if (!icsUrl) {
+    return parseVaultCalendar(startDate, endDate);
+  }
+
+  try {
+    // Use cache if fresh
+    const now = Date.now();
+    if (icsCache.data && (now - icsCache.fetchedAt) < ICS_CACHE_TTL) {
+      return parseIcsEvents(icsCache.data, startDate, endDate);
+    }
+
+    const icsText = await fetchUrl(icsUrl);
+    icsCache = { data: icsText, fetchedAt: now };
+    console.log('[Calendar] Fetched ICS feed, length:', icsText.length);
+    return parseIcsEvents(icsText, startDate, endDate);
+  } catch (e) {
+    console.error('[Calendar] ICS fetch failed, falling back to vault:', e.message);
+    return parseVaultCalendar(startDate, endDate);
+  }
+}
+
 module.exports = {
   isConfigured,
   readTodayDailyNote,
@@ -143,5 +531,8 @@ module.exports = {
   appendDecision,
   parseFrontmatter,
   extractTags,
-  todayDateString
+  todayDateString,
+  parseVaultTodos,
+  parseVaultCalendar,
+  fetchCalendarEvents
 };

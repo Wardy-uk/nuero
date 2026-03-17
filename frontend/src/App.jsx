@@ -7,6 +7,7 @@ import QueueTable from './components/QueueTable';
 import StandupEditor from './components/StandupEditor';
 import NinetyDayPlan from './components/NinetyDayPlan';
 import TodoPanel from './components/TodoPanel';
+import CalendarView from './components/CalendarView';
 import NudgeBanner from './components/NudgeBanner';
 import ChatPanel from './components/ChatPanel';
 import './App.css';
@@ -48,6 +49,7 @@ export default function App() {
       case 'queue': return <QueueTable queueData={queueData} onRefresh={fetchQueue} />;
       case 'plan': return <NinetyDayPlan />;
       case 'todos': return <TodoPanel />;
+      case 'calendar': return <CalendarView />;
       default: return <Dashboard queueData={queueData} />;
     }
   };

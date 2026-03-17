@@ -46,4 +46,17 @@ router.get('/people/:name', (req, res) => {
   res.json({ name: req.params.name, exists: true, content, frontmatter, tags });
 });
 
+// GET /api/obsidian/calendar — calendar events from ICS feed (falls back to vault daily notes)
+router.get('/calendar', async (req, res) => {
+  const { start, end } = req.query;
+  if (!start || !end) return res.status(400).json({ error: 'start and end query params required' });
+  try {
+    const events = await obsidianService.fetchCalendarEvents(start, end);
+    res.json({ events });
+  } catch (e) {
+    console.error('[Calendar] Error:', e);
+    res.status(500).json({ error: 'Failed to fetch calendar events' });
+  }
+});
+
 module.exports = router;

@@ -6,6 +6,9 @@ function start() {
   // Fetch Jira tickets on startup
   jira.fetchAndCacheTickets();
 
+  // Fire nudges immediately if server starts after 9am on a weekday
+  nudges.startupCheck();
+
   // Poll Jira every 5 minutes
   cron.schedule('*/5 * * * *', () => {
     console.log('[Scheduler] Running Jira poll...');

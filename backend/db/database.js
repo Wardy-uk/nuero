@@ -206,17 +206,22 @@ function incrementNagCount(id) {
 }
 
 // Todo helpers
-function createTodo(text, priority, dueDate, source) {
+function createTodo(text, priority, dueDate, source, msId) {
   getDb().run(
-    'INSERT INTO todos (text, priority, due_date, source) VALUES (?, ?, ?, ?)',
-    [text, priority || 'normal', dueDate || null, source || null]
+    'INSERT INTO todos (text, priority, due_date, source, ms_id) VALUES (?, ?, ?, ?, ?)',
+    [text, priority || 'normal', dueDate || null, source || null, msId || null]
   );
+  save();
+}
+
+function clearMsTodos() {
+  getDb().run("DELETE FROM todos WHERE source LIKE 'MS %'");
   save();
 }
 
 function getActiveTodos() {
   const stmt = getDb().prepare(
-    "SELECT * FROM todos WHERE done = 0 ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END, created_at ASC"
+    "SELECT * FROM todos WHERE done = 0 ORDER BY due_date ASC NULLS LAST, CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END, created_at ASC"
   );
   const rows = [];
   while (stmt.step()) rows.push(stmt.getAsObject());
@@ -247,6 +252,35 @@ function deleteTodo(id) {
   save();
 }
 
+// Calendar cache helpers
+function upsertCalendarEvent(event) {
+  getDb().run(`
+    INSERT OR REPLACE INTO calendar_cache
+      (event_id, subject, start_time, end_time, is_all_day, location, organizer, show_as, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `, [
+    event.id, event.subject, event.start, event.end,
+    event.isAllDay ? 1 : 0, event.location, event.organizer, event.showAs
+  ]);
+  save();
+}
+
+function clearCalendarCache() {
+  getDb().run('DELETE FROM calendar_cache');
+  save();
+}
+
+function getCalendarEvents(startDate, endDate) {
+  const stmt = getDb().prepare(
+    'SELECT * FROM calendar_cache WHERE start_time >= ? AND start_time <= ? ORDER BY start_time ASC'
+  );
+  stmt.bind([startDate, endDate]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
 module.exports = {
   init,
   getDb,
@@ -267,8 +301,12 @@ module.exports = {
   completeNudgeByType,
   incrementNagCount,
   createTodo,
+  clearMsTodos,
   getActiveTodos,
   getAllTodos,
   completeTodo,
-  deleteTodo
+  deleteTodo,
+  upsertCalendarEvent,
+  clearCalendarCache,
+  getCalendarEvents
 };

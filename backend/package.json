@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@azure/msal-node": "^2.16.2",
     "sql.js": "^1.11.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

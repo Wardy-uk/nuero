@@ -12,6 +12,7 @@ const obsidianRoutes = require('./routes/obsidian');
 const standupRoutes = require('./routes/standup');
 const nudgeRoutes = require('./routes/nudges');
 const todoRoutes = require('./routes/todos');
+const microsoftRoutes = require('./routes/microsoft');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -27,6 +28,7 @@ app.use('/api/obsidian', obsidianRoutes);
 app.use('/api/standup', standupRoutes);
 app.use('/api/nudges', nudgeRoutes);
 app.use('/api/todos', todoRoutes);
+app.use('/api/microsoft', microsoftRoutes);
 
 // Health / status endpoint
 app.get('/api/status', (req, res) => {
@@ -49,6 +51,10 @@ app.get('/api/status', (req, res) => {
     },
     obsidian: {
       configured: obsidianService.isConfigured()
+    },
+    microsoft: {
+      configured: require('./services/microsoft').isConfigured(),
+      authenticated: require('./services/microsoft').isAuthenticated()
     }
   });
 });

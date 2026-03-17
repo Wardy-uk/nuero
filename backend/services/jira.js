@@ -10,14 +10,16 @@ function getAuthHeader() {
   return `Basic ${token}`;
 }
 
-async function jiraFetch(path) {
+async function jiraFetch(path, options = {}) {
   const url = `${process.env.JIRA_BASE_URL.replace(/\/$/, '')}${path}`;
   const res = await fetch(url, {
+    method: options.method || 'GET',
     headers: {
       'Authorization': getAuthHeader(),
       'Accept': 'application/json',
       'Content-Type': 'application/json'
-    }
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
   });
   if (!res.ok) {
     const body = await res.text();
@@ -27,31 +29,36 @@ async function jiraFetch(path) {
 }
 
 function extractSlaInfo(issue) {
-  // Jira SLA fields are typically in a custom field
-  // Common field patterns for JSM SLA
   const fields = issue.fields || {};
   let slaRemaining = null;
   let slaName = null;
 
-  // Search for SLA fields — they vary by instance
   for (const [key, value] of Object.entries(fields)) {
-    if (key.startsWith('customfield_') && value && typeof value === 'object') {
-      // JSM SLA structure: { ongoingCycle: { remainingTime: { millis } }, name }
-      if (value.ongoingCycle && value.ongoingCycle.remainingTime) {
-        slaRemaining = value.ongoingCycle.remainingTime.millis / 60000; // to minutes
-        slaName = value.name || key;
-        break;
-      }
-      // Alternative: completedCycles array
-      if (value.completedCycles || value.ongoingCycle) {
-        const cycle = value.ongoingCycle;
-        if (cycle && cycle.remainingTime) {
-          slaRemaining = cycle.remainingTime.millis / 60000;
-          slaName = value.name || key;
-          break;
-        }
+    if (!key.startsWith('customfield_') || !value || typeof value !== 'object') continue;
+    if (!value.name || (!value.ongoingCycle && !value.completedCycles)) continue;
+
+    // Prefer "Resolution" SLA, fall back to any SLA
+    const isResolution = (value.name || '').toLowerCase().includes('resolution');
+
+    // Check ongoingCycle first (active SLA)
+    if (value.ongoingCycle && value.ongoingCycle.remainingTime) {
+      slaRemaining = value.ongoingCycle.remainingTime.millis / 60000;
+      slaName = value.name;
+      if (isResolution) break; // prefer resolution, stop looking
+    }
+
+    // If no ongoing cycle, check if there's a breach time we can calculate from
+    if (value.ongoingCycle && value.ongoingCycle.breachTime) {
+      const breachMs = value.ongoingCycle.breachTime.epochMillis;
+      const remaining = (breachMs - Date.now()) / 60000;
+      if (slaRemaining === null || isResolution) {
+        slaRemaining = remaining;
+        slaName = value.name;
+        if (isResolution) break;
       }
     }
+
+    // Fall back: if no ongoing but has completed cycles, SLA is met — skip
   }
 
   return { slaRemaining, slaName };
@@ -68,34 +75,53 @@ async function fetchAndCacheTickets() {
     console.log('[Jira] Fetching open tickets...');
     const projectKey = process.env.JIRA_PROJECT_KEY;
 
-    // Fetch open issues for the project
-    const jql = encodeURIComponent(`project = "${projectKey}" AND statusCategory != Done ORDER BY priority DESC, created ASC`);
-    const data = await jiraFetch(`/rest/api/3/search?jql=${jql}&maxResults=100&expand=names`);
+    // Fetch open issues via the new /search/jql endpoint (POST)
+    const jql = `project = ${projectKey} AND statusCategory != Done ORDER BY priority DESC, created ASC`;
 
     db.clearStaleTickets();
 
-    const issues = data.issues || [];
-    for (const issue of issues) {
-      const { slaRemaining, slaName } = extractSlaInfo(issue);
-      const atRisk = slaRemaining !== null && slaRemaining < 120; // < 2 hours
+    let allIssues = [];
+    let nextPageToken = null;
 
-      db.upsertTicket({
-        ticket_key: issue.key,
-        summary: issue.fields.summary,
-        status: issue.fields.status ? issue.fields.status.name : null,
-        priority: issue.fields.priority ? issue.fields.priority.name : null,
-        assignee: issue.fields.assignee ? issue.fields.assignee.displayName : 'Unassigned',
-        sla_remaining_minutes: slaRemaining,
-        sla_name: slaName,
-        at_risk: atRisk,
-        raw_json: JSON.stringify(issue)
+    do {
+      const body = {
+        jql,
+        maxResults: 100,
+        fields: ['summary', 'status', 'priority', 'assignee', '*all']
+      };
+      if (nextPageToken) body.nextPageToken = nextPageToken;
+
+      const data = await jiraFetch('/rest/api/3/search/jql', {
+        method: 'POST',
+        body
       });
-    }
+
+      const issues = data.issues || [];
+      allIssues = allIssues.concat(issues);
+      nextPageToken = data.nextPageToken || null;
+
+      for (const issue of issues) {
+        const { slaRemaining, slaName } = extractSlaInfo(issue);
+        const atRisk = slaRemaining !== null && slaRemaining < 120; // < 2 hours
+
+        db.upsertTicket({
+          ticket_key: issue.key,
+          summary: issue.fields.summary,
+          status: issue.fields.status ? issue.fields.status.name : null,
+          priority: issue.fields.priority ? issue.fields.priority.name : null,
+          assignee: issue.fields.assignee ? issue.fields.assignee.displayName : 'Unassigned',
+          sla_remaining_minutes: slaRemaining,
+          sla_name: slaName,
+          at_risk: atRisk,
+          raw_json: JSON.stringify(issue)
+        });
+      }
+    } while (nextPageToken);
 
     db.setState('jira_status', 'ok');
     db.setState('jira_last_sync', new Date().toISOString());
-    db.setState('jira_ticket_count', String(issues.length));
-    console.log(`[Jira] Cached ${issues.length} tickets`);
+    db.setState('jira_ticket_count', String(allIssues.length));
+    console.log(`[Jira] Cached ${allIssues.length} tickets`);
   } catch (err) {
     console.error('[Jira] Fetch error:', err.message);
     db.setState('jira_status', 'error');

@@ -30,7 +30,7 @@ const STANDUP_MESSAGES = [
 ];
 
 const TODO_MESSAGES = [
-  "You have open todos that need attention. Check your todo list and knock something off.",
+  "You have overdue todos that need attention. Check your todo list and knock something off.",
   "Todos are still sitting there. Pick one, do it, tick it off.",
   "Your todo list isn't getting shorter by itself. What's the actual blocker on the top item?",
   "Still have outstanding todos. This is the avoidance pattern — you know what to do.",
@@ -47,16 +47,20 @@ function getNagMessage(type, nagCount) {
 function isStandupDone() {
   const dailyNote = obsidian.readTodayDailyNote();
   if (dailyNote && dailyNote.includes('## Standup')) return true;
-
-  // Also check if nudge was manually completed
-  const nudge = db.getActiveNudgeByTypeAndDate('standup', todayKey());
-  return !nudge; // no active nudge means it was completed (or never created, handled elsewhere)
+  // No daily note or no standup section — standup is NOT done
+  return false;
 }
 
-// Check if there are overdue/pending todos
+// Check if there are overdue/pending todos (from vault)
 function hasPendingTodos() {
-  const todos = db.getActiveTodos();
-  return todos.length > 0;
+  try {
+    const { active } = obsidian.parseVaultTodos();
+    const today = new Date(new Date().toDateString());
+    const overdue = active.filter(t => t.due_date && new Date(t.due_date) <= today);
+    return overdue.length > 0;
+  } catch (e) {
+    return false;
+  }
 }
 
 // Called by cron — creates the initial nudge at 9am
@@ -105,11 +109,11 @@ function nagCheck() {
       continue;
     }
 
-    // Check if all todos are done
+    // Check if all overdue todos are done
     if (nudge.type === 'todo' && !hasPendingTodos()) {
       db.completeNudge(nudge.id);
       broadcast({ type: 'nudge_cleared', nudge_type: 'todo' });
-      console.log('[Nudge] All todos done — nudge cleared');
+      console.log('[Nudge] No overdue todos — nudge cleared');
       continue;
     }
 
@@ -119,6 +123,20 @@ function nagCheck() {
     const msg = getNagMessage(nudge.type, newCount);
     console.log(`[Nudge] Nag #${newCount} for ${nudge.type}: ${msg}`);
     broadcast({ type: 'nudge', nudge_type: nudge.type, message: msg, nag_count: newCount });
+  }
+}
+
+// Called on startup — fires nudges if server starts after 9am on a weekday
+function startupCheck() {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 6=Sat
+  const hour = now.getHours();
+
+  // Only on weekdays, after 9am, before 5pm
+  if (day >= 1 && day <= 5 && hour >= 9 && hour < 17) {
+    console.log('[Nudge] Startup check — after 9am on weekday, triggering nudges');
+    triggerStandupNudge();
+    triggerTodoNudge();
   }
 }
 
@@ -134,5 +152,6 @@ module.exports = {
   triggerStandupNudge,
   triggerTodoNudge,
   nagCheck,
-  markStandupDone
+  markStandupDone,
+  startupCheck
 };

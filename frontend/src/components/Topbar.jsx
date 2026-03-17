@@ -29,6 +29,10 @@ export default function Topbar({ status, queueData }) {
           {statusDot(status?.obsidian?.configured)}
           <span className="topbar-label">Vault</span>
         </div>
+        <div className="topbar-indicator">
+          {statusDot(status?.microsoft?.authenticated)}
+          <span className="topbar-label">Microsoft{status?.microsoft?.configured && !status?.microsoft?.authenticated ? ' (not signed in)' : !status?.microsoft?.configured ? ' (not configured)' : ''}</span>
+        </div>
       </div>
       <div className="topbar-right">
         {atRisk > 0 && (

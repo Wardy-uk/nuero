@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { id: 'people', label: 'Team / People', icon: '>' },
   { id: 'queue', label: 'KPI / Queue', icon: '>' },
   { id: 'todos', label: 'Todos', icon: '>' },
+  { id: 'calendar', label: 'Calendar', icon: '>' },
   { id: 'plan', label: '90-Day Plan', icon: '>' },
 ];
 

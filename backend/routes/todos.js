@@ -1,32 +1,32 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db/database');
+const obsidian = require('../services/obsidian');
 
-// GET /api/todos
+// GET /api/todos — reads tasks from Obsidian vault
 router.get('/', (req, res) => {
-  const all = req.query.all === 'true';
-  const todos = all ? db.getAllTodos() : db.getActiveTodos();
-  res.json({ todos });
-});
+  try {
+    const showDone = req.query.all === 'true';
+    const { active, done } = obsidian.parseVaultTodos();
 
-// POST /api/todos
-router.post('/', (req, res) => {
-  const { text, priority, due_date, source } = req.body;
-  if (!text) return res.status(400).json({ error: 'text is required' });
-  db.createTodo(text, priority, due_date, source);
-  res.json({ success: true, todos: db.getActiveTodos() });
-});
+    const todos = showDone ? [...active, ...done] : active;
 
-// POST /api/todos/:id/complete
-router.post('/:id/complete', (req, res) => {
-  db.completeTodo(Number(req.params.id));
-  res.json({ success: true, todos: db.getActiveTodos() });
-});
+    // Map to shape the frontend expects
+    const mapped = todos.map((t, i) => ({
+      id: i + 1,
+      text: t.text,
+      priority: t.priority || 'normal',
+      due_date: t.due_date || null,
+      source: t.source || null,
+      done: t.status === 'done' ? 1 : 0,
+      ms_id: t.ms_id || null,
+      vault_task: true // flag so frontend knows these are read-only vault tasks
+    }));
 
-// DELETE /api/todos/:id
-router.delete('/:id', (req, res) => {
-  db.deleteTodo(Number(req.params.id));
-  res.json({ success: true, todos: db.getActiveTodos() });
+    res.json({ todos: mapped });
+  } catch (e) {
+    console.error('[Todos] Error parsing vault todos:', e);
+    res.status(500).json({ error: 'Failed to parse vault todos' });
+  }
 });
 
 module.exports = router;

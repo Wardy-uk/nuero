@@ -57,9 +57,25 @@ CREATE TABLE IF NOT EXISTS todos (
   priority TEXT DEFAULT 'normal',
   due_date TEXT,
   source TEXT,
+  ms_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   completed_at DATETIME
 );
 
+CREATE TABLE IF NOT EXISTS calendar_cache (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT UNIQUE,
+  subject TEXT,
+  start_time TEXT,
+  end_time TEXT,
+  is_all_day INTEGER DEFAULT 0,
+  location TEXT,
+  organizer TEXT,
+  show_as TEXT,
+  fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_nudges_active ON nudges(active, date_key);
 CREATE INDEX IF NOT EXISTS idx_todos_done ON todos(done);
+CREATE INDEX IF NOT EXISTS idx_todos_ms_id ON todos(ms_id);
+CREATE INDEX IF NOT EXISTS idx_calendar_start ON calendar_cache(start_time);
