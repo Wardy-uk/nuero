@@ -1,0 +1,89 @@
+.standup-editor {
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px);
+}
+
+.standup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.standup-header h2 {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.standup-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.standup-message {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--success);
+}
+
+.standup-textarea {
+  flex: 1;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.standup-textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.standup-loading {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  padding: 20px;
+}
+
+.btn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-dim);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-card);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

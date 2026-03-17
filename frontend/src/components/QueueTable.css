@@ -1,0 +1,130 @@
+.queue-container {
+  max-width: 900px;
+}
+
+.queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.queue-title {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.queue-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.queue-sync {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.queue-unconfigured, .queue-empty {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 24px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.queue-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.queue-table th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.queue-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.queue-table tr:hover {
+  background: var(--bg-tertiary);
+}
+
+.queue-table tr.sla-danger {
+  background: rgba(224, 85, 85, 0.08);
+}
+
+.queue-table tr.sla-danger td {
+  border-bottom-color: rgba(224, 85, 85, 0.2);
+}
+
+.queue-table tr.sla-warning {
+  background: rgba(240, 160, 64, 0.06);
+}
+
+.queue-table tr.sla-ok {
+  /* default */
+}
+
+.ticket-key {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.ticket-summary {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-priority {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.ticket-status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ticket-assignee {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ticket-sla {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+tr.sla-danger .ticket-sla {
+  color: var(--danger);
+}
+
+tr.sla-warning .ticket-sla {
+  color: var(--warning);
+}
+
+tr.sla-ok .ticket-sla {
+  color: var(--success);
+}

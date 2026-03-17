@@ -1,0 +1,116 @@
+.plan-container {
+  max-width: 800px;
+}
+
+.plan-title {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.plan-meta {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.plan-progress-bar {
+  position: relative;
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  margin-bottom: 32px;
+}
+
+.plan-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.plan-phase-marker {
+  position: absolute;
+  top: -4px;
+  transform: translateX(-50%);
+}
+
+.phase-marker-label {
+  position: absolute;
+  top: 16px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.plan-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.plan-phase {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 16px 20px;
+}
+
+.plan-phase.active {
+  border-color: var(--accent);
+  background: rgba(79, 156, 249, 0.06);
+}
+
+.plan-phase.complete {
+  opacity: 0.6;
+}
+
+.phase-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.phase-label {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.phase-status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.plan-phase.active .phase-status {
+  color: var(--accent);
+}
+
+.phase-goals {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.phase-goals li {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding-left: 16px;
+  position: relative;
+}
+
+.phase-goals li::before {
+  content: '-';
+  position: absolute;
+  left: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}

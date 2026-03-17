@@ -1,0 +1,20 @@
+.dashboard {
+  max-width: 900px;
+}
+
+.dashboard-greeting {
+  margin-bottom: 24px;
+}
+
+.greeting-text {
+  font-family: var(--font-sans);
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.greeting-meta {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
