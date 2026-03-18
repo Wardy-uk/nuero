@@ -4,6 +4,20 @@ const obsidian = require('./obsidian');
 // SSE clients listening for nudges
 const clients = new Set();
 
+// Snooze tracking — in-memory, resets on restart
+const snoozedUntil = {}; // { 'standup': timestamp, 'todo': timestamp }
+const SNOOZE_DURATION = 30 * 60 * 1000; // 30 minutes
+
+function snoozeNudge(type) {
+  snoozedUntil[type] = Date.now() + SNOOZE_DURATION;
+  console.log(`[Nudge] ${type} snoozed for 30 minutes`);
+  broadcast({ type: 'nudge_snoozed', nudge_type: type, until: snoozedUntil[type] });
+}
+
+function isSnoozed(type) {
+  return snoozedUntil[type] && Date.now() < snoozedUntil[type];
+}
+
 function addClient(res) {
   clients.add(res);
   res.on('close', () => clients.delete(res));
@@ -43,11 +57,27 @@ function getNagMessage(type, nagCount) {
   return messages[idx];
 }
 
-// Check if standup has been done today
+// Check if standup/daily ritual has been done today
+// The ritual may happen in Obsidian directly — check if today's note exists and has real content
 function isStandupDone() {
   const dailyNote = obsidian.readTodayDailyNote();
-  if (dailyNote && dailyNote.includes('## Standup')) return true;
-  // No daily note or no standup section — standup is NOT done
+  if (!dailyNote) return false;
+
+  // Check for a populated Focus Today section (has actual task items, not just the heading)
+  if (dailyNote.includes('## Focus Today')) {
+    const lines = dailyNote.split('\n');
+    let inFocus = false;
+    for (const line of lines) {
+      if (line.startsWith('## Focus Today')) { inFocus = true; continue; }
+      if (line.startsWith('## ') && inFocus) break;
+      // If there's at least one checkbox item, the ritual is done
+      if (inFocus && line.match(/^\s*-\s+\[.\]/)) return true;
+    }
+  }
+
+  // Also accept explicit ## Standup section (added by the app)
+  if (dailyNote.includes('## Standup')) return true;
+
   return false;
 }
 
@@ -117,6 +147,11 @@ function nagCheck() {
       continue;
     }
 
+    // Skip escalation if snoozed
+    if (isSnoozed(nudge.type)) {
+      continue;
+    }
+
     // Escalate
     const newCount = (nudge.nag_count || 0) + 1;
     db.incrementNagCount(nudge.id);
@@ -153,5 +188,6 @@ module.exports = {
   triggerTodoNudge,
   nagCheck,
   markStandupDone,
-  startupCheck
+  startupCheck,
+  snoozeNudge
 };

@@ -407,14 +407,24 @@ function getIcsUrl() {
   } catch { return null; }
 }
 
-function fetchUrl(url) {
+function fetchUrl(url, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
-    client.get(url, res => {
+    const req = client.get(url, res => {
+      if (res.statusCode >= 400) {
+        reject(new Error(`HTTP ${res.statusCode}`));
+        res.resume();
+        return;
+      }
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => resolve(data));
-    }).on('error', reject);
+    });
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error('Request timed out'));
+    });
   });
 }
 
@@ -495,6 +505,25 @@ function parseIcsEvents(icsText, startDate, endDate) {
 }
 
 async function fetchCalendarEvents(startDate, endDate) {
+  // Priority 1: Microsoft Graph API (most reliable, if authenticated)
+  try {
+    const microsoft = require('./microsoft');
+    if (microsoft.isConfigured() && await microsoft.isAuthenticated()) {
+      const graphEvents = await microsoft.fetchCalendarEvents(startDate, endDate);
+      if (graphEvents && graphEvents.length > 0) {
+        console.log(`[Calendar] Graph API returned ${graphEvents.length} events`);
+        return graphEvents;
+      }
+      // graphEvents === null means auth failed, fall through
+      if (graphEvents === null) {
+        console.warn('[Calendar] Graph API auth failed, falling back to ICS');
+      }
+    }
+  } catch (e) {
+    console.warn('[Calendar] Graph API unavailable:', e.message);
+  }
+
+  // Priority 2: ICS feed
   const icsUrl = getIcsUrl();
 
   // If no ICS URL, fall back to vault daily note parsing
@@ -509,14 +538,189 @@ async function fetchCalendarEvents(startDate, endDate) {
       return parseIcsEvents(icsCache.data, startDate, endDate);
     }
 
-    const icsText = await fetchUrl(icsUrl);
-    icsCache = { data: icsText, fetchedAt: now };
-    console.log('[Calendar] Fetched ICS feed, length:', icsText.length);
-    return parseIcsEvents(icsText, startDate, endDate);
+    // Try up to 2 times with a short pause between
+    let icsText = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        icsText = await fetchUrl(icsUrl, 15000);
+        break;
+      } catch (retryErr) {
+        console.warn(`[Calendar] ICS fetch attempt ${attempt + 1} failed:`, retryErr.message);
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (icsText) {
+      icsCache = { data: icsText, fetchedAt: now };
+      console.log('[Calendar] Fetched ICS feed, length:', icsText.length);
+      return parseIcsEvents(icsText, startDate, endDate);
+    }
+
+    // All retries failed — serve stale cache if available
+    if (icsCache.data) {
+      console.warn('[Calendar] Serving stale cache');
+      return parseIcsEvents(icsCache.data, startDate, endDate);
+    }
+
+    throw new Error('ICS fetch failed and no cache available');
   } catch (e) {
     console.error('[Calendar] ICS fetch failed, falling back to vault:', e.message);
     return parseVaultCalendar(startDate, endDate);
   }
+}
+
+// 90-day plan parser
+function parseNinetyDayPlan() {
+  const planPath = path.join(getVaultPath(), 'Areas', '90 Day Plan - Daily Tasks.md');
+  if (!fs.existsSync(planPath)) return null;
+  const content = fs.readFileSync(planPath, 'utf-8');
+
+  const START_DATE = new Date('2026-03-16');
+  const BANK_HOLIDAYS = ['2026-04-03', '2026-04-06', '2026-05-04'];
+
+  // Calculate current working day
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let workingDay = 0;
+  const cursor = new Date(START_DATE);
+  while (cursor <= today) {
+    const dow = cursor.getDay();
+    const iso = cursor.toISOString().split('T')[0];
+    if (dow >= 1 && dow <= 5 && !BANK_HOLIDAYS.includes(iso)) {
+      workingDay++;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  // Working day to calendar date mapping
+  function workingDayToDate(targetDay) {
+    let count = 0;
+    const d = new Date(START_DATE);
+    while (count < targetDay) {
+      const dow = d.getDay();
+      const iso = d.toISOString().split('T')[0];
+      if (dow >= 1 && dow <= 5 && !BANK_HOLIDAYS.includes(iso)) {
+        count++;
+      }
+      if (count < targetDay) d.setDate(d.getDate() + 1);
+    }
+    return d.toISOString().split('T')[0];
+  }
+
+  const CHECKPOINTS = [
+    { day: 15, label: 'Day 15', date: '2026-03-31' },
+    { day: 30, label: 'Day 30', date: '2026-04-15' },
+    { day: 45, label: 'Day 45', date: '2026-04-30' },
+    { day: 60, label: 'Day 60', date: '2026-05-15' },
+    { day: 90, label: 'Day 90', date: '2026-06-12' }
+  ];
+
+  const OUTCOMES = {
+    1: { name: 'Visibility & BI', color: '#4fc3f7' },
+    2: { name: 'Tiered Model', color: '#ab47bc' },
+    3: { name: 'Quality & CX', color: '#66bb6a' },
+    4: { name: 'People & Culture', color: '#ffa726' },
+    5: { name: 'Cross-functional', color: '#ef5350' },
+    6: { name: 'Production', color: '#78909c' }
+  };
+
+  // Parse all tasks from the file
+  const tasks = [];
+  const taskRegex = /^- \[([ x>\/])\] \*\*Day (\d+) \(([^)]+)\)\*\* — (.+)/;
+  const outcomeRegex = /\*\(Outcome (\d+)/;
+
+  const lines = content.split('\n');
+  for (const line of lines) {
+    const m = line.match(taskRegex);
+    if (m) {
+      const status = m[1]; // ' ', 'x', '>', '/'
+      const day = parseInt(m[2], 10);
+      const dateLabel = m[3];
+      let text = m[4];
+
+      // Extract outcome
+      const om = text.match(outcomeRegex);
+      const outcome = om ? parseInt(om[1], 10) : null;
+
+      // Clean text — remove outcome ref and trailing *
+      text = text.replace(/\s*\*\(Outcome.*$/, '').replace(/\s*\*\(.*?\)\*$/, '').trim();
+
+      tasks.push({ day, dateLabel, text, status, outcome });
+    }
+
+    // Also parse pre-day-1 tasks and checkpoint items
+    const preMatch = line.match(/^- \[([ x>\/])\] (.+)/);
+    if (preMatch && !line.match(taskRegex)) {
+      const status = preMatch[1];
+      let text = preMatch[2];
+      const om = text.match(outcomeRegex);
+      const outcome = om ? parseInt(om[1], 10) : null;
+
+      // Checkpoint sub-items (indented) — skip
+      if (line.startsWith('  ')) continue;
+
+      // Pre-day-1 tasks
+      if (text.includes('CHECKPOINT DAY')) {
+        const cpMatch = text.match(/CHECKPOINT DAY (\d+)/);
+        if (cpMatch) {
+          tasks.push({ day: parseInt(cpMatch[1], 10), dateLabel: '', text: 'Checkpoint presentation', status, outcome: null, isCheckpoint: true });
+        }
+        continue;
+      }
+
+      // Only include pre-day-1 items (they appear before Week 1)
+      if (text.includes('Outcome') || text.includes('technical') || text.includes('urgent')) {
+        text = text.replace(/\s*\*\(.*?\)\*$/, '').replace(/\*\*/g, '').trim();
+        tasks.push({ day: 0, dateLabel: 'Pre-Day 1', text, status, outcome });
+      }
+    }
+  }
+
+  // Build outcome stats
+  const outcomeStats = {};
+  for (const [id, info] of Object.entries(OUTCOMES)) {
+    const outcomeTasks = tasks.filter(t => t.outcome === parseInt(id));
+    const done = outcomeTasks.filter(t => t.status === 'x').length;
+    const total = outcomeTasks.length;
+    outcomeStats[id] = { ...info, done, total, tasks: outcomeTasks };
+  }
+
+  // This week's tasks
+  const thisWeekStart = workingDay;
+  const thisWeekEnd = Math.min(workingDay + (5 - new Date().getDay()), 90); // rest of this work week
+  const weekStart = workingDay - (new Date().getDay() - 1); // Monday of this week
+  const weekEnd = weekStart + 4; // Friday
+  const thisWeekTasks = tasks.filter(t => t.day >= weekStart && t.day <= weekEnd && t.status !== 'x');
+
+  // Overdue tasks
+  const overdueTasks = tasks.filter(t => t.day < workingDay && t.day > 0 && (t.status === ' ' || t.status === '>'));
+
+  // Today's tasks
+  const todayTasks = tasks.filter(t => t.day === workingDay);
+
+  // Next checkpoint
+  const nextCheckpoint = CHECKPOINTS.find(cp => cp.day > workingDay) || CHECKPOINTS[CHECKPOINTS.length - 1];
+  const daysToCheckpoint = nextCheckpoint.day - workingDay;
+
+  // Total stats
+  const totalDone = tasks.filter(t => t.status === 'x').length;
+  const totalTasks = tasks.filter(t => !t.isCheckpoint).length;
+
+  return {
+    currentDay: workingDay,
+    totalDays: 90,
+    startDate: '2026-03-16',
+    checkpoints: CHECKPOINTS,
+    nextCheckpoint,
+    daysToCheckpoint,
+    outcomes: outcomeStats,
+    thisWeekTasks,
+    overdueTasks,
+    todayTasks,
+    totalDone,
+    totalTasks,
+    allTasks: tasks
+  };
 }
 
 module.exports = {
@@ -534,5 +738,6 @@ module.exports = {
   todayDateString,
   parseVaultTodos,
   parseVaultCalendar,
-  fetchCalendarEvents
+  fetchCalendarEvents,
+  parseNinetyDayPlan
 };

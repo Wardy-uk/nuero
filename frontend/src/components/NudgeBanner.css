@@ -57,6 +57,30 @@
   font-family: var(--font-sans);
 }
 
+.nudge-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.nudge-snooze {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nudge-snooze:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
 .nudge-action {
   font-family: var(--font-mono);
   font-size: 12px;

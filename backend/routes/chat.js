@@ -3,7 +3,7 @@ const router = express.Router();
 const claude = require('../services/claude');
 const db = require('../db/database');
 
-// POST /api/chat — SSE streaming response
+// POST /api/chat — SSE streaming response via Ollama
 router.post('/', (req, res) => {
   const { message, conversationId } = req.body;
 

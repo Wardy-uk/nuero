@@ -8,8 +8,11 @@ import StandupEditor from './components/StandupEditor';
 import NinetyDayPlan from './components/NinetyDayPlan';
 import TodoPanel from './components/TodoPanel';
 import CalendarView from './components/CalendarView';
+import InboxPanel from './components/InboxPanel';
+import AdminPanel from './components/AdminPanel';
 import NudgeBanner from './components/NudgeBanner';
 import ChatPanel from './components/ChatPanel';
+import QATab from './components/QATab';
 import './App.css';
 
 export default function App() {
@@ -50,6 +53,9 @@ export default function App() {
       case 'plan': return <NinetyDayPlan />;
       case 'todos': return <TodoPanel />;
       case 'calendar': return <CalendarView />;
+      case 'inbox': return <InboxPanel />;
+      case 'qa': return <QATab />;
+      case 'admin': return <AdminPanel />;
       default: return <Dashboard queueData={queueData} />;
     }
   };

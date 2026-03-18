@@ -8,7 +8,10 @@ const NAV_ITEMS = [
   { id: 'queue', label: 'KPI / Queue', icon: '>' },
   { id: 'todos', label: 'Todos', icon: '>' },
   { id: 'calendar', label: 'Calendar', icon: '>' },
+  { id: 'inbox', label: 'Inbox Triage', icon: '>' },
   { id: 'plan', label: '90-Day Plan', icon: '>' },
+  { id: 'qa', label: 'QA Dashboard', icon: '>' },
+  { id: 'admin', label: 'Settings', icon: '>' },
 ];
 
 export default function Sidebar({ activeView, onNavigate }) {

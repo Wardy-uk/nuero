@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const jira = require('./jira');
 const nudges = require('./nudges');
+const inboxScanner = require('./inbox-scanner');
 
 function start() {
   // Fetch Jira tickets on startup
@@ -8,6 +9,9 @@ function start() {
 
   // Fire nudges immediately if server starts after 9am on a weekday
   nudges.startupCheck();
+
+  // Start inbox scanner (30s delay then every 10 min)
+  inboxScanner.start();
 
   // Poll Jira every 5 minutes
   cron.schedule('*/5 * * * *', () => {

@@ -28,15 +28,37 @@ export default function CalendarView() {
   const [events, setEvents] = useState([]);
   const [dayOffset, setDayOffset] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const currentDate = dateStr(dayOffset);
 
-  useEffect(() => {
+  const fetchEvents = (date, retries = 2) => {
     setLoading(true);
-    fetch(`/api/obsidian/calendar?start=${currentDate}&end=${currentDate}`)
-      .then(r => r.json())
+    setError(null);
+    fetch(`/api/obsidian/calendar?start=${date}&end=${date}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => { setEvents(data.events || []); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch(err => {
+        if (retries > 0) {
+          setTimeout(() => fetchEvents(date, retries - 1), 1500);
+        } else {
+          setError('Calendar unavailable — tap retry');
+          setLoading(false);
+        }
+      });
+  };
+
+  useEffect(() => {
+    fetchEvents(currentDate);
+  }, [dayOffset]);
+
+  // Auto-refresh every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(() => fetchEvents(dateStr(dayOffset), 1), 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [dayOffset]);
 
   // Quick-nav dates (show 5-day strip centered on current day)
@@ -87,11 +109,18 @@ export default function CalendarView() {
 
       {loading && <div className="calendar-loading">Loading...</div>}
 
+      {error && (
+        <div className="calendar-error">
+          <span>{error}</span>
+          <button className="cal-retry-btn" onClick={() => fetchEvents(currentDate)}>Retry</button>
+        </div>
+      )}
+
       <div className="calendar-day-list">
-        {!loading && events.length === 0 && (
+        {!loading && !error && events.length === 0 && (
           <div className="calendar-empty">
             No calendar entries for this day.
-            <span className="calendar-empty-hint">Events are read from your daily note's "## Calendar Today" section.</span>
+            <span className="calendar-empty-hint">Events are fetched from your Outlook ICS feed.</span>
           </div>
         )}
         {events.map((event, i) => {

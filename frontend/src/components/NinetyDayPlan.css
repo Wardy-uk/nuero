@@ -1,116 +1,397 @@
 .plan-container {
-  max-width: 800px;
+  max-width: 900px;
+  padding-bottom: 40px;
+}
+
+.plan-loading {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* Header */
+.plan-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
 }
 
 .plan-title {
   font-family: var(--font-mono);
   font-size: 18px;
   font-weight: 600;
-  margin-bottom: 8px;
 }
 
-.plan-meta {
-  display: flex;
-  justify-content: space-between;
+.plan-day-badge {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 16px;
-}
-
-.plan-progress-bar {
-  position: relative;
-  height: 8px;
   background: var(--bg-tertiary);
-  border-radius: 4px;
-  margin-bottom: 32px;
+  padding: 4px 12px;
+  border-radius: 12px;
 }
 
-.plan-progress-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.plan-phase-marker {
-  position: absolute;
-  top: -4px;
-  transform: translateX(-50%);
-}
-
-.phase-marker-label {
-  position: absolute;
-  top: 16px;
-  transform: translateX(-50%);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-.plan-phases {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.plan-phase {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 16px 20px;
-}
-
-.plan-phase.active {
-  border-color: var(--accent);
-  background: rgba(79, 156, 249, 0.06);
-}
-
-.plan-phase.complete {
-  opacity: 0.6;
-}
-
-.phase-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.phase-label {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.phase-status {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.plan-phase.active .phase-status {
+.plan-day-num {
+  font-size: 18px;
+  font-weight: 700;
   color: var(--accent);
 }
 
-.phase-goals {
+/* Timeline */
+.plan-timeline {
+  margin-bottom: 24px;
+  padding: 20px 0 30px;
+}
+
+.plan-track {
+  position: relative;
+  height: 10px;
+  background: var(--bg-tertiary);
+  border-radius: 5px;
+}
+
+.plan-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #66bb6a);
+  border-radius: 5px;
+  transition: width 0.5s ease;
+}
+
+.plan-you-marker {
+  position: absolute;
+  top: -8px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 3;
+}
+
+.plan-you-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg-card);
+  box-shadow: 0 0 0 2px var(--accent);
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 2px var(--accent); }
+  50% { box-shadow: 0 0 0 6px rgba(79, 156, 249, 0.2); }
+  100% { box-shadow: 0 0 0 2px var(--accent); }
+}
+
+.plan-you-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 6px;
+  letter-spacing: 1px;
+}
+
+.plan-cp-marker {
+  position: absolute;
+  top: -5px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 2;
+}
+
+.plan-cp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  border: 2px solid var(--bg-card);
+}
+
+.plan-cp-marker.past .plan-cp-dot {
+  background: #66bb6a;
+}
+
+.plan-cp-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  white-space: nowrap;
+}
+
+/* Checkpoint countdown */
+.plan-checkpoint-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.plan-cp-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+
+.plan-cp-num {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.plan-cp-unit {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.plan-cp-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.plan-cp-next-label {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.plan-cp-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.plan-cp-progress {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Alerts */
+.plan-alert {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.plan-alert-overdue {
+  background: rgba(239, 83, 80, 0.08);
+  border: 1px solid rgba(239, 83, 80, 0.3);
+}
+
+.plan-alert-today {
+  background: rgba(79, 156, 249, 0.08);
+  border: 1px solid rgba(79, 156, 249, 0.3);
+}
+
+.plan-alert-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.plan-alert-body {
+  flex: 1;
+}
+
+.plan-alert-body strong {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.plan-alert-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
-.phase-goals li {
-  font-size: 13px;
+.plan-alert-list li {
+  font-size: 12px;
   color: var(--text-secondary);
-  padding-left: 16px;
-  position: relative;
+  line-height: 1.4;
 }
 
-.phase-goals li::before {
-  content: '-';
-  position: absolute;
-  left: 4px;
-  color: var(--text-muted);
+.plan-alert-list li.done {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.plan-task-day {
   font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 6px;
+}
+
+/* This week */
+.plan-week-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.plan-week-title {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.plan-week-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-week-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.plan-week-item.slipped {
+  color: #ef5350;
+}
+
+.plan-outcome-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.plan-task-text {
+  flex: 1;
+}
+
+/* Outcome cards */
+.plan-outcomes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.plan-outcome-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 4px solid;
+  border-radius: 8px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.plan-outcome-card:hover {
+  background: var(--bg-tertiary);
+}
+
+.plan-outcome-card.expanded {
+  grid-column: 1 / -1;
+}
+
+.plan-outcome-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.plan-outcome-icon {
+  font-size: 16px;
+}
+
+.plan-outcome-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.plan-outcome-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.plan-outcome-bar-bg {
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.plan-outcome-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Expanded task list */
+.plan-outcome-tasks {
+  list-style: none;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.plan-ot {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.plan-ot.done {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.plan-ot.overdue {
+  color: #ef5350;
+}
+
+.plan-ot-status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.plan-ot-text {
+  flex: 1;
 }

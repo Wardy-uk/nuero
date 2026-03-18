@@ -59,4 +59,11 @@ router.get('/calendar', async (req, res) => {
   }
 });
 
+// GET /api/obsidian/ninety-day-plan — parsed 90-day plan data from vault
+router.get('/ninety-day-plan', (req, res) => {
+  const plan = obsidianService.parseNinetyDayPlan();
+  if (!plan) return res.status(404).json({ error: '90 Day Plan file not found in vault' });
+  res.json(plan);
+});
+
 module.exports = router;

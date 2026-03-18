@@ -27,6 +27,16 @@ router.post('/:id/complete', (req, res) => {
   res.json({ success: true });
 });
 
+// POST /api/nudges/:type/snooze — snooze a nudge for 30 minutes
+router.post('/:type/snooze', (req, res) => {
+  const { type } = req.params;
+  if (type !== 'standup' && type !== 'todo') {
+    return res.status(400).json({ error: 'Invalid nudge type' });
+  }
+  nudges.snoozeNudge(type);
+  res.json({ success: true, snoozed_for: '30 minutes' });
+});
+
 // POST /api/nudges/trigger-standup — manual trigger for testing
 router.post('/trigger-standup', (req, res) => {
   nudges.triggerStandupNudge();

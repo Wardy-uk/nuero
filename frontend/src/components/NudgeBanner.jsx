@@ -3,6 +3,18 @@ import './NudgeBanner.css';
 
 export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
   const [nudges, setNudges] = useState([]);
+  const [snoozed, setSnoozed] = useState({}); // { standup: true, todo: true }
+
+  const handleSnooze = (type) => {
+    fetch(`/api/nudges/${type}/snooze`, { method: 'POST' })
+      .then(r => r.json())
+      .then(() => {
+        setSnoozed(prev => ({ ...prev, [type]: true }));
+        // Un-snooze in UI after 30 min
+        setTimeout(() => setSnoozed(prev => ({ ...prev, [type]: false })), 30 * 60 * 1000);
+      })
+      .catch(console.error);
+  };
 
   // Poll active nudges
   useEffect(() => {
@@ -41,6 +53,9 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
           });
         } else if (data.type === 'nudge_cleared') {
           setNudges(prev => prev.filter(n => n.type !== data.nudge_type));
+        } else if (data.type === 'nudge_snoozed') {
+          setSnoozed(prev => ({ ...prev, [data.nudge_type]: true }));
+          setTimeout(() => setSnoozed(prev => ({ ...prev, [data.nudge_type]: false })), 30 * 60 * 1000);
         }
       };
     } catch (e) { /* SSE not supported or connection failed */ }
@@ -48,11 +63,13 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
     return () => { if (es) es.close(); };
   }, []);
 
-  if (nudges.length === 0) return null;
+  const visibleNudges = nudges.filter(n => !snoozed[n.type]);
+
+  if (visibleNudges.length === 0) return null;
 
   return (
     <div className="nudge-container">
-      {nudges.map((nudge, i) => {
+      {visibleNudges.map((nudge, i) => {
         const isEscalated = (nudge.nag_count || 0) >= 2;
         return (
           <div key={i} className={`nudge-banner ${isEscalated ? 'escalated' : ''} ${nudge.type}`}>
@@ -60,12 +77,21 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
               <span className="nudge-type">{nudge.type === 'standup' ? 'STANDUP' : 'TODOS'}</span>
               <span className="nudge-message">{nudge.message}</span>
             </div>
-            <button
-              className="nudge-action"
-              onClick={() => nudge.type === 'standup' ? onGoToStandup() : onGoToTodos()}
-            >
-              {nudge.type === 'standup' ? 'Open Standup' : 'Open Todos'}
-            </button>
+            <div className="nudge-actions">
+              <button
+                className="nudge-snooze"
+                onClick={() => handleSnooze(nudge.type)}
+                title="Snooze for 30 minutes"
+              >
+                Snooze
+              </button>
+              <button
+                className="nudge-action"
+                onClick={() => nudge.type === 'standup' ? onGoToStandup() : onGoToTodos()}
+              >
+                {nudge.type === 'standup' ? 'Open Standup' : 'Open Todos'}
+              </button>
+            </div>
           </div>
         );
       })}

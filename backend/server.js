@@ -13,6 +13,10 @@ const standupRoutes = require('./routes/standup');
 const nudgeRoutes = require('./routes/nudges');
 const todoRoutes = require('./routes/todos');
 const microsoftRoutes = require('./routes/microsoft');
+const n8nRoutes = require('./routes/n8n');
+const vaultRoutes = require('./routes/vault');
+const contextRoutes = require('./routes/context');
+const qaRoutes = require('./routes/qa');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -29,12 +33,21 @@ app.use('/api/standup', standupRoutes);
 app.use('/api/nudges', nudgeRoutes);
 app.use('/api/todos', todoRoutes);
 app.use('/api/microsoft', microsoftRoutes);
+app.use('/api/n8n', n8nRoutes);
+app.use('/api/vault', vaultRoutes);
+app.use('/api/context', contextRoutes);
+app.use('/api/qa', qaRoutes);
 
 // Health / status endpoint
-app.get('/api/status', (req, res) => {
+app.get('/api/status', async (req, res) => {
   const jiraService = require('./services/jira');
   const claudeService = require('./services/claude');
   const obsidianService = require('./services/obsidian');
+  const microsoftService = require('./services/microsoft');
+
+  const n8nService = require('./services/n8n');
+  const msConfigured = microsoftService.isConfigured();
+  const msAuthenticated = msConfigured ? await microsoftService.isAuthenticated() : false;
 
   res.json({
     agent: 'NICK-AGENT',
@@ -53,8 +66,11 @@ app.get('/api/status', (req, res) => {
       configured: obsidianService.isConfigured()
     },
     microsoft: {
-      configured: require('./services/microsoft').isConfigured(),
-      authenticated: require('./services/microsoft').isAuthenticated()
+      configured: msConfigured,
+      authenticated: msAuthenticated
+    },
+    n8n: {
+      configured: n8nService.isConfigured()
     }
   });
 });

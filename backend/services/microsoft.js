@@ -1,269 +1,250 @@
 const msal = require('@azure/msal-node');
-const fetch = require('node-fetch');
-const db = require('../db/database');
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
 
-const SCOPES = ['Tasks.Read', 'Tasks.Read.Shared', 'Calendars.Read', 'User.Read'];
+// Use the same client ID as @softeria/ms-365-mcp-server (NOVA's Graph integration)
+// This is a public multi-tenant app with Graph permissions pre-consented
+// Token cache shared with NOVA so auth carries across both tools
+const NOVA_DATA_DIR = path.join('C:', 'Users', 'NickW', 'Claude', 'windows automation', 'daypilot', 'data');
+const CACHE_PATH = process.env.MS_TOKEN_CACHE_PATH ||
+  path.join(NOVA_DATA_DIR, '.ms365-token-cache.json');
+
+// @softeria/ms-365-mcp-server's built-in public client ID (Graph permissions pre-granted)
+const CLIENT_ID = process.env.MS_CLIENT_ID || '084a3e9f-a9f4-43f7-89f9-d229cf97853e';
+const TENANT_ID = process.env.MS_TENANT_ID || 'db0f7383-5d7f-4a39-9841-02fbcd1444bd';
+
+const GRAPH_SCOPES = ['Calendars.Read', 'Mail.Read', 'Tasks.Read', 'User.Read'];
 
 let msalClient = null;
-let tokenCache = null; // { accessToken, expiresOn, refreshToken, account }
+let graphTokenCache = { accessToken: null, expiresOn: 0 };
 
 function isConfigured() {
-  return !!(process.env.MS_CLIENT_ID && process.env.MS_TENANT_ID);
-}
-
-function getClient() {
-  if (!msalClient && isConfigured()) {
-    msalClient = new msal.PublicClientApplication({
-      auth: {
-        clientId: process.env.MS_CLIENT_ID,
-        authority: `https://login.microsoftonline.com/${process.env.MS_TENANT_ID}`
-      }
-    });
-  }
-  return msalClient;
-}
-
-function isAuthenticated() {
-  const token = db.getState('ms_access_token');
-  const expiresOn = db.getState('ms_token_expires');
-  if (!token || !expiresOn) return false;
-  // Consider authenticated if token exists (we'll refresh as needed)
+  // Always configured — we use the MCP server's public client ID
+  // Token cache may or may not exist yet (created on first auth)
   return true;
 }
 
-// Start device code flow — returns { userCode, verificationUri, message }
+function getClient() {
+  if (msalClient) return msalClient;
+
+  const cachePlugin = {
+    beforeCacheAccess: async (ctx) => {
+      try {
+        if (fs.existsSync(CACHE_PATH)) {
+          ctx.tokenCache.deserialize(fs.readFileSync(CACHE_PATH, 'utf-8'));
+        }
+      } catch (e) {
+        console.error('[Microsoft] Cache read error:', e.message);
+      }
+    },
+    afterCacheAccess: async (ctx) => {
+      if (ctx.cacheHasChanged) {
+        try {
+          const dir = path.dirname(CACHE_PATH);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(CACHE_PATH, ctx.tokenCache.serialize());
+        } catch (e) {
+          console.error('[Microsoft] Cache write error:', e.message);
+        }
+      }
+    }
+  };
+
+  msalClient = new msal.PublicClientApplication({
+    auth: {
+      clientId: CLIENT_ID,
+      authority: `https://login.microsoftonline.com/${TENANT_ID}`
+    },
+    cache: { cachePlugin }
+  });
+
+  return msalClient;
+}
+
+async function isAuthenticated() {
+  try {
+    const client = getClient();
+    const accounts = await client.getTokenCache().getAllAccounts();
+    return accounts.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+// Try silent token acquisition using NOVA's cached refresh token
+async function getAccessToken() {
+  // Return cached token if still valid (5 min buffer)
+  if (graphTokenCache.accessToken && Date.now() < graphTokenCache.expiresOn - 5 * 60 * 1000) {
+    return graphTokenCache.accessToken;
+  }
+
+  try {
+    const client = getClient();
+    const accounts = await client.getTokenCache().getAllAccounts();
+    if (accounts.length === 0) {
+      console.warn('[Microsoft] No cached accounts found in NOVA token cache');
+      return null;
+    }
+
+    const result = await client.acquireTokenSilent({
+      scopes: GRAPH_SCOPES,
+      account: accounts[0]
+    });
+
+    graphTokenCache = {
+      accessToken: result.accessToken,
+      expiresOn: result.expiresOn.getTime()
+    };
+
+    console.log('[Microsoft] Graph token acquired silently for', accounts[0].username);
+    return result.accessToken;
+  } catch (err) {
+    // If silent fails, the app registration may lack Graph permissions
+    // or the refresh token has expired — need device code flow
+    console.warn('[Microsoft] Silent token acquisition failed:', err.message);
+    return null;
+  }
+}
+
+// Fallback: device code flow for Graph permissions (one-time)
+let deviceCodePending = false;
+let deviceCodeInfo = null;
+
 async function startDeviceCodeFlow() {
+  if (deviceCodePending) return deviceCodeInfo;
+
   const client = getClient();
-  if (!client) throw new Error('Microsoft not configured');
+  deviceCodePending = true;
 
   return new Promise((resolve, reject) => {
     client.acquireTokenByDeviceCode({
-      scopes: SCOPES,
+      scopes: GRAPH_SCOPES,
       deviceCodeCallback: (response) => {
-        // Store the device code info so the frontend can show it
-        db.setState('ms_auth_status', 'pending');
-        db.setState('ms_device_code_message', response.message);
-        db.setState('ms_device_code_uri', response.verificationUri);
-        db.setState('ms_device_code_usercode', response.userCode);
-        resolve({
+        deviceCodeInfo = {
           userCode: response.userCode,
           verificationUri: response.verificationUri,
           message: response.message
-        });
+        };
+        console.log('[Microsoft] Device code:', response.message);
+        resolve(deviceCodeInfo);
       }
     }).then(result => {
-      // Token acquired
-      db.setState('ms_access_token', result.accessToken);
-      db.setState('ms_token_expires', result.expiresOn.toISOString());
-      db.setState('ms_account', JSON.stringify(result.account));
-      db.setState('ms_auth_status', 'authenticated');
-      db.setState('ms_device_code_message', '');
-      tokenCache = {
+      graphTokenCache = {
         accessToken: result.accessToken,
-        expiresOn: result.expiresOn,
-        account: result.account
+        expiresOn: result.expiresOn.getTime()
       };
-      console.log('[Microsoft] Authenticated as', result.account.username);
+      deviceCodePending = false;
+      deviceCodeInfo = null;
+      console.log('[Microsoft] Device code auth complete for', result.account.username);
     }).catch(err => {
-      db.setState('ms_auth_status', 'error');
-      db.setState('ms_auth_error', err.message);
-      console.error('[Microsoft] Auth error:', err.message);
+      deviceCodePending = false;
+      deviceCodeInfo = null;
+      console.error('[Microsoft] Device code auth failed:', err.message);
     });
   });
 }
 
-async function getAccessToken() {
-  if (!isConfigured()) return null;
-
-  const client = getClient();
-  const accountStr = db.getState('ms_account');
-  if (!accountStr) return null;
-
-  const account = JSON.parse(accountStr);
-  const cachedToken = db.getState('ms_access_token');
-  const expiresStr = db.getState('ms_token_expires');
-
-  // If token is still valid (with 5 min buffer), use it
-  if (cachedToken && expiresStr) {
-    const expiresOn = new Date(expiresStr);
-    if (expiresOn > new Date(Date.now() + 5 * 60 * 1000)) {
-      return cachedToken;
-    }
-  }
-
-  // Try silent refresh
-  try {
-    const result = await client.acquireTokenSilent({
-      scopes: SCOPES,
-      account: account
+// Graph API fetch helper
+function graphFetch(urlPath, token) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`https://graph.microsoft.com/v1.0${urlPath}`);
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      headers: { 'Authorization': `Bearer ${token}` }
+    };
+    const req = https.get(options, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        if (res.statusCode === 401) { resolve(null); return; }
+        if (res.statusCode >= 400) { reject(new Error(`Graph API ${res.statusCode}: ${data.substring(0, 200)}`)); return; }
+        try { resolve(JSON.parse(data)); } catch { resolve(null); }
+      });
     });
-    db.setState('ms_access_token', result.accessToken);
-    db.setState('ms_token_expires', result.expiresOn.toISOString());
-    return result.accessToken;
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Graph API timeout')); });
+  });
+}
+
+// Fetch calendar events for a date range (YYYY-MM-DD strings)
+async function fetchCalendarEvents(startDate, endDate) {
+  const token = await getAccessToken();
+  if (!token) return null; // null = not authenticated, caller should fall back
+
+  try {
+    const start = `${startDate}T00:00:00`;
+    const end = `${endDate}T23:59:59`;
+    const data = await graphFetch(
+      `/me/calendarView?startDateTime=${start}&endDateTime=${end}&$top=50&$orderby=start/dateTime&$select=subject,start,end,location,isAllDay,showAs,isCancelled`,
+      token
+    );
+    if (!data || !data.value) return [];
+
+    return data.value.map(event => {
+      const startDt = event.start.dateTime;
+      const endDt = event.end.dateTime;
+      const date = startDt.split('T')[0];
+      const startTime = startDt.split('T')[1]?.substring(0, 5);
+      const endTime = endDt.split('T')[1]?.substring(0, 5);
+
+      return {
+        id: `graph-${date}-${startTime}-${(event.subject || '').substring(0, 20)}`,
+        date,
+        start: startDt,
+        end: endDt,
+        subject: event.subject || '(No subject)',
+        location: event.location?.displayName || null,
+        isAllDay: event.isAllDay,
+        showAs: event.isCancelled ? 'cancelled' : (event.showAs || 'busy')
+      };
+    });
   } catch (err) {
-    console.error('[Microsoft] Silent refresh failed:', err.message);
-    db.setState('ms_auth_status', 'expired');
+    console.error('[Microsoft] Calendar fetch error:', err.message);
     return null;
   }
 }
 
-async function graphFetch(path) {
+// Fetch recent emails — unread + recent (last N hours)
+async function fetchRecentEmails(hoursBack = 24, maxResults = 50) {
   const token = await getAccessToken();
   if (!token) return null;
 
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-  });
-
-  if (res.status === 401) {
-    db.setState('ms_auth_status', 'expired');
-    return null;
-  }
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Graph API ${res.status}: ${body}`);
-  }
-
-  return res.json();
-}
-
-// Fetch all To Do tasks across all lists
-async function fetchTodoTasks() {
-  if (!isAuthenticated()) return [];
-
   try {
-    // Get all task lists
-    const listsData = await graphFetch('/me/todo/lists');
-    if (!listsData) return [];
-
-    const allTasks = [];
-    for (const list of (listsData.value || [])) {
-      const tasksData = await graphFetch(`/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=100`);
-      if (!tasksData) continue;
-
-      for (const task of (tasksData.value || [])) {
-        allTasks.push({
-          id: task.id,
-          text: task.title,
-          done: task.status === 'completed',
-          priority: task.importance === 'high' ? 'high' : task.importance === 'low' ? 'low' : 'normal',
-          due_date: task.dueDateTime ? task.dueDateTime.dateTime.split('T')[0] : null,
-          source: `MS To Do: ${list.displayName}`,
-          list_name: list.displayName,
-          ms_id: task.id,
-          ms_list_id: list.id,
-          created_at: task.createdDateTime,
-          is_overdue: task.dueDateTime ? new Date(task.dueDateTime.dateTime) < new Date() : false
-        });
-      }
-    }
-    return allTasks;
-  } catch (err) {
-    console.error('[Microsoft] Todo fetch error:', err.message);
-    return [];
-  }
-}
-
-// Fetch Planner tasks assigned to user
-async function fetchPlannerTasks() {
-  if (!isAuthenticated()) return [];
-
-  try {
-    const data = await graphFetch('/me/planner/tasks?$top=100');
-    if (!data) return [];
-
-    const tasks = [];
-    for (const task of (data.value || [])) {
-      if (task.percentComplete === 100) continue; // skip completed
-
-      tasks.push({
-        id: task.id,
-        text: task.title,
-        done: task.percentComplete === 100,
-        priority: task.priority <= 3 ? 'high' : task.priority <= 5 ? 'normal' : 'low',
-        due_date: task.dueDateTime ? task.dueDateTime.split('T')[0] : null,
-        source: 'MS Planner',
-        ms_id: task.id,
-        created_at: task.createdDateTime,
-        is_overdue: task.dueDateTime ? new Date(task.dueDateTime) < new Date() : false
-      });
-    }
-    return tasks;
-  } catch (err) {
-    console.error('[Microsoft] Planner fetch error:', err.message);
-    return [];
-  }
-}
-
-// Fetch calendar events for a date range
-async function fetchCalendarEvents(startDate, endDate) {
-  if (!isAuthenticated()) return [];
-
-  try {
-    const start = startDate || new Date().toISOString();
-    const end = endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
+    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
+    const filter = `receivedDateTime ge ${since}`;
+    const select = 'id,subject,from,receivedDateTime,isRead,importance,flag,bodyPreview,hasAttachments';
     const data = await graphFetch(
-      `/me/calendarView?startDateTime=${start}&endDateTime=${end}&$top=50&$orderby=start/dateTime&$select=subject,start,end,location,isAllDay,organizer,showAs`
+      `/me/messages?$filter=${encodeURIComponent(filter)}&$top=${maxResults}&$orderby=receivedDateTime desc&$select=${select}`,
+      token
     );
-    if (!data) return [];
+    if (!data || !data.value) return [];
 
-    return (data.value || []).map(event => ({
-      id: event.id,
-      subject: event.subject,
-      start: event.start.dateTime,
-      end: event.end.dateTime,
-      timezone: event.start.timeZone,
-      isAllDay: event.isAllDay,
-      location: event.location ? event.location.displayName : null,
-      organizer: event.organizer ? event.organizer.emailAddress.name : null,
-      showAs: event.showAs
+    return data.value.map(msg => ({
+      id: msg.id,
+      subject: msg.subject || '(No subject)',
+      from: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',
+      fromEmail: msg.from?.emailAddress?.address || '',
+      received: msg.receivedDateTime,
+      isRead: msg.isRead,
+      importance: msg.importance,
+      isFlagged: msg.flag?.flagStatus === 'flagged',
+      preview: (msg.bodyPreview || '').substring(0, 300),
+      hasAttachments: msg.hasAttachments
     }));
   } catch (err) {
-    console.error('[Microsoft] Calendar fetch error:', err.message);
-    return [];
-  }
-}
-
-// Sync MS tasks into local todos table
-async function syncTasksToLocal() {
-  if (!isAuthenticated()) {
-    console.log('[Microsoft] Not authenticated — skipping task sync');
-    return;
-  }
-
-  try {
-    console.log('[Microsoft] Syncing tasks...');
-    const todoTasks = await fetchTodoTasks();
-    const plannerTasks = await fetchPlannerTasks();
-    const allTasks = [...todoTasks, ...plannerTasks];
-
-    // Clear old MS-sourced todos and re-insert
-    db.clearMsTodos();
-
-    for (const task of allTasks) {
-      db.createTodo(task.text, task.priority, task.due_date, task.source, task.ms_id);
-    }
-
-    db.setState('ms_last_sync', new Date().toISOString());
-    db.setState('ms_task_count', String(allTasks.length));
-    console.log(`[Microsoft] Synced ${allTasks.length} tasks (${todoTasks.length} To Do, ${plannerTasks.length} Planner)`);
-  } catch (err) {
-    console.error('[Microsoft] Sync error:', err.message);
+    console.error('[Microsoft] Email fetch error:', err.message);
+    return null;
   }
 }
 
 module.exports = {
   isConfigured,
   isAuthenticated,
-  startDeviceCodeFlow,
   getAccessToken,
-  fetchTodoTasks,
-  fetchPlannerTasks,
+  startDeviceCodeFlow,
   fetchCalendarEvents,
-  syncTasksToLocal
+  fetchRecentEmails,
+  graphFetch
 };

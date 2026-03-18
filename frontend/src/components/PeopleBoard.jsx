@@ -27,6 +27,9 @@ const TEAMS = {
 
 export default function PeopleBoard() {
   const [peopleData, setPeopleData] = useState({});
+  const [n8nConfigured, setN8nConfigured] = useState(false);
+  const [running121, setRunning121] = useState(null); // person name currently running
+  const [snapshotResult, setSnapshotResult] = useState(null); // { name, data }
 
   useEffect(() => {
     // Fetch vault notes for each person
@@ -39,11 +42,51 @@ export default function PeopleBoard() {
         })
         .catch(() => {});
     });
+
+    // Check n8n status
+    fetch('/api/n8n/status')
+      .then(r => r.json())
+      .then(d => setN8nConfigured(d.configured))
+      .catch(() => {});
   }, []);
+
+  const run121 = async (personName) => {
+    setRunning121(personName);
+    setSnapshotResult(null);
+    try {
+      const res = await fetch('/api/n8n/121', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nameHint: personName })
+      });
+      const data = await res.json();
+      setSnapshotResult({ name: personName, data });
+    } catch (e) {
+      setSnapshotResult({ name: personName, data: { success: false, error: e.message } });
+    }
+    setRunning121(null);
+  };
 
   return (
     <div className="people-board">
       <h2 className="people-title">Team / People</h2>
+
+      {snapshotResult && (
+        <div className={`snapshot-result ${snapshotResult.data.success ? 'success' : 'error'}`}>
+          <div className="snapshot-header">
+            <span className="snapshot-title">1-2-1 Snapshot: {snapshotResult.name}</span>
+            <button className="snapshot-close" onClick={() => setSnapshotResult(null)}>x</button>
+          </div>
+          <div className="snapshot-body">
+            {snapshotResult.data.success ? (
+              <div className="snapshot-message">{snapshotResult.data.message}</div>
+            ) : (
+              <div className="snapshot-error">{snapshotResult.data.error || 'Workflow failed'}</div>
+            )}
+          </div>
+        </div>
+      )}
+
       {Object.entries(TEAMS).map(([teamName, members]) => (
         <div key={teamName} className="team-group">
           <h3 className="team-name">{teamName}</h3>
@@ -53,6 +96,7 @@ export default function PeopleBoard() {
               const tags = vaultData?.tags || [];
               const fm = vaultData?.frontmatter || {};
               const status = fm.status || (person.note ? 'flag' : 'ok');
+              const isRunning = running121 === person.name;
 
               return (
                 <div key={person.id} className={`person-card status-${status}`}>
@@ -72,6 +116,15 @@ export default function PeopleBoard() {
                   {!vaultData?.exists && (
                     <span className="person-no-note">No vault note</span>
                   )}
+                  {n8nConfigured && (
+                    <button
+                      className={`person-121-btn ${isRunning ? 'running' : ''}`}
+                      onClick={() => run121(person.name)}
+                      disabled={isRunning || running121 !== null}
+                    >
+                      {isRunning ? 'Running...' : '1-2-1 Snapshot'}
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -81,3 +134,4 @@ export default function PeopleBoard() {
     </div>
   );
 }
+
