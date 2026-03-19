@@ -1,3 +1,3 @@
 [build]
-  command = "rm -rf node_modules package-lock.json && cd frontend && npm install && npm run build"
+  command = "rm -rf node_modules package-lock.json && cd frontend && npm install && VITE_API_URL=https://pi-dev.tailecb90f.ts.net npm run build"
   publish = "frontend/dist"
