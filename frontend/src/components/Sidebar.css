@@ -45,3 +45,22 @@
 .sidebar-item.active .sidebar-icon {
   color: var(--accent);
 }
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 48px;
+    left: 0;
+    bottom: 0;
+    width: 240px;
+    min-width: 240px;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    overflow-y: auto;
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+}

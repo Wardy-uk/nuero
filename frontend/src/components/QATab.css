@@ -307,3 +307,34 @@
   color: #64748b;
   font-size: 0.875rem;
 }
+
+@media (max-width: 768px) {
+  .qa-tab {
+    padding: 0.75rem;
+  }
+
+  .qa-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .qa-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .qa-results-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .qa-table {
+    min-width: 600px;
+  }
+
+  .qa-detail-scores {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+}

@@ -395,3 +395,21 @@
 .plan-ot-text {
   flex: 1;
 }
+
+@media (max-width: 768px) {
+  .plan-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .plan-checkpoint-card {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .plan-outcomes {
+    grid-template-columns: 1fr;
+  }
+}

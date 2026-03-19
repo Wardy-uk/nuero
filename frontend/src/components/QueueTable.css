@@ -128,3 +128,24 @@ tr.sla-warning .ticket-sla {
 tr.sla-ok .ticket-sla {
   color: var(--success);
 }
+
+@media (max-width: 768px) {
+  .queue-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .queue-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .queue-table {
+    min-width: 650px;
+  }
+
+  .ticket-summary {
+    max-width: 180px;
+  }
+}

@@ -1,7 +1,7 @@
 import React from 'react';
 import './Topbar.css';
 
-export default function Topbar({ status, queueData }) {
+export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, chatOpen }) {
   const jiraStatus = status?.jira?.status || 'unknown';
   const claudeOk = status?.claude?.configured;
   const atRisk = queueData?.at_risk_count || 0;
@@ -13,6 +13,9 @@ export default function Topbar({ status, queueData }) {
   return (
     <header className="topbar">
       <div className="topbar-left">
+        <button className="topbar-menu-btn" onClick={onMenuToggle} aria-label="Menu">
+          <span /><span /><span />
+        </button>
         <span className="topbar-logo">NUERO</span>
         <span className="topbar-version">v1.0</span>
       </div>
@@ -41,6 +44,9 @@ export default function Topbar({ status, queueData }) {
             <span className="alert-label">SLA at risk</span>
           </div>
         )}
+        <button className="topbar-chat-btn" onClick={onChatToggle} aria-label="Toggle chat">
+          {chatOpen ? 'x' : '?'}
+        </button>
       </div>
     </header>
   );

@@ -87,3 +87,25 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+@media (max-width: 768px) {
+  .standup-editor {
+    height: auto;
+    min-height: calc(100vh - 120px);
+  }
+
+  .standup-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .standup-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .standup-textarea {
+    min-height: 300px;
+  }
+}

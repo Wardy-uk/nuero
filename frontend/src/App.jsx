@@ -20,6 +20,8 @@ export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [status, setStatus] = useState(null);
   const [queueData, setQueueData] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -45,6 +47,11 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleNavigate = (view) => {
+    setActiveView(view);
+    setSidebarOpen(false);
+  };
+
   const renderView = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard queueData={queueData} />;
@@ -63,14 +70,15 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <Topbar status={status} queueData={queueData} />
-      <NudgeBanner onGoToStandup={() => setActiveView('standup')} onGoToTodos={() => setActiveView('todos')} />
+      <Topbar status={status} queueData={queueData} onMenuToggle={() => setSidebarOpen(o => !o)} onChatToggle={() => setChatOpen(o => !o)} chatOpen={chatOpen} />
+      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} />
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <div className="app-body">
-        <Sidebar activeView={activeView} onNavigate={setActiveView} />
+        <Sidebar activeView={activeView} onNavigate={handleNavigate} open={sidebarOpen} />
         <main className="main-panel">
           {renderView()}
         </main>
-        <aside className="chat-panel">
+        <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
           <ChatPanel />
         </aside>
       </div>

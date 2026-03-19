@@ -252,3 +252,13 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+@media (max-width: 768px) {
+  .team-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .person-card {
+    padding: 12px;
+  }
+}

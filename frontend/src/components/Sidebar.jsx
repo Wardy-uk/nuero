@@ -14,9 +14,9 @@ const NAV_ITEMS = [
   { id: 'admin', label: 'Settings', icon: '>' },
 ];
 
-export default function Sidebar({ activeView, onNavigate }) {
+export default function Sidebar({ activeView, onNavigate, open }) {
   return (
-    <nav className="sidebar">
+    <nav className={`sidebar ${open ? 'sidebar-open' : ''}`}>
       <div className="sidebar-nav">
         {NAV_ITEMS.map(item => (
           <button

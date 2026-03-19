@@ -235,3 +235,31 @@
   letter-spacing: 0.5px;
   flex-shrink: 0;
 }
+
+@media (max-width: 768px) {
+  .calendar-day-strip {
+    overflow-x: auto;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .strip-day {
+    padding: 6px 10px;
+    flex-shrink: 0;
+  }
+
+  .cal-event {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .cal-event-time {
+    min-width: 0;
+  }
+
+  .calendar-nav {
+    flex-wrap: wrap;
+  }
+}

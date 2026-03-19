@@ -256,3 +256,29 @@
   flex-direction: column;
   gap: 4px;
 }
+
+@media (max-width: 768px) {
+  .todo-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .todo-filters {
+    flex-wrap: wrap;
+  }
+
+  .todo-filter-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  .todo-priority-badge {
+    display: none;
+  }
+
+  .todo-source-summary {
+    gap: 8px;
+    font-size: 10px;
+  }
+}

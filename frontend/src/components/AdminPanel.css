@@ -223,3 +223,9 @@
   color: #ef5350;
   margin-top: 8px;
 }
+
+@media (max-width: 768px) {
+  .admin-cards {
+    grid-template-columns: 1fr;
+  }
+}

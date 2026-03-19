@@ -8,12 +8,31 @@
   border-bottom: 1px solid var(--border);
   font-family: var(--font-mono);
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .topbar-left {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.topbar-menu-btn {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+}
+
+.topbar-menu-btn span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text-secondary);
+  border-radius: 1px;
 }
 
 .topbar-logo {
@@ -60,6 +79,7 @@
 .topbar-right {
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .topbar-alert {
@@ -80,4 +100,46 @@
 
 .alert-label {
   color: var(--danger);
+}
+
+.topbar-chat-btn {
+  display: none;
+  background: var(--bg-tertiary);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .topbar {
+    padding: 0 12px;
+  }
+
+  .topbar-menu-btn {
+    display: flex;
+  }
+
+  .topbar-center {
+    display: none;
+  }
+
+  .topbar-alert .alert-label {
+    display: none;
+  }
+
+  .topbar-chat-btn {
+    display: flex;
+  }
+
+  .topbar-version {
+    display: none;
+  }
 }

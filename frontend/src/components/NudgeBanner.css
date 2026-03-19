@@ -97,3 +97,16 @@
 .nudge-action:hover {
   opacity: 0.9;
 }
+
+@media (max-width: 768px) {
+  .nudge-banner {
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .nudge-actions {
+    align-self: flex-end;
+  }
+}
