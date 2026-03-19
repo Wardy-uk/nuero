@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 
@@ -73,6 +74,15 @@ app.get('/api/status', async (req, res) => {
       configured: n8nService.isConfigured()
     }
   });
+});
+
+// Serve frontend static files (production — built frontend alongside backend)
+const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
+app.use(express.static(frontendDist));
+// SPA fallback — any non-API route serves index.html
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
 // Initialize database then start
