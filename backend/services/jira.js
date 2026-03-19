@@ -1,4 +1,5 @@
 const fetch = require('node-fetch');
+const AbortController = globalThis.AbortController || require('abort-controller');
 const db = require('../db/database');
 
 function isConfigured() {
@@ -12,6 +13,8 @@ function getAuthHeader() {
 
 async function jiraFetch(path, options = {}) {
   const url = `${process.env.JIRA_BASE_URL.replace(/\/$/, '')}${path}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
   const res = await fetch(url, {
     method: options.method || 'GET',
     headers: {
@@ -19,8 +22,10 @@ async function jiraFetch(path, options = {}) {
       'Accept': 'application/json',
       'Content-Type': 'application/json'
     },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: controller.signal
   });
+  clearTimeout(timeout);
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Jira API error ${res.status}: ${body}`);
