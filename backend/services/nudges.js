@@ -1,5 +1,6 @@
 const db = require('../db/database');
 const obsidian = require('./obsidian');
+const webpush = require('./webpush');
 
 // SSE clients listening for nudges
 const clients = new Set();
@@ -111,6 +112,7 @@ function triggerStandupNudge() {
   db.createNudge('standup', msg, dateKey);
   console.log('[Nudge] Standup nudge created for', dateKey);
   broadcast({ type: 'nudge', nudge_type: 'standup', message: msg, nag_count: 0 });
+  webpush.sendToAll('NEURO — Standup', msg, { type: 'standup', url: '/standup' }).catch(() => {});
 }
 
 function triggerTodoNudge() {
@@ -124,6 +126,7 @@ function triggerTodoNudge() {
   db.createNudge('todo', msg, dateKey);
   console.log('[Nudge] Todo nudge created for', dateKey);
   broadcast({ type: 'nudge', nudge_type: 'todo', message: msg, nag_count: 0 });
+  webpush.sendToAll('NEURO — Todos', msg, { type: 'todo', url: '/todos' }).catch(() => {});
 }
 
 // Called every 15 min — escalates existing nudges
@@ -158,6 +161,9 @@ function nagCheck() {
     const msg = getNagMessage(nudge.type, newCount);
     console.log(`[Nudge] Nag #${newCount} for ${nudge.type}: ${msg}`);
     broadcast({ type: 'nudge', nudge_type: nudge.type, message: msg, nag_count: newCount });
+    const title = nudge.type === 'standup' ? 'NEURO — Standup' : 'NEURO — Todos';
+    const url = nudge.type === 'standup' ? '/standup' : '/todos';
+    webpush.sendToAll(title, msg, { type: nudge.type, url }).catch(() => {});
   }
 }
 

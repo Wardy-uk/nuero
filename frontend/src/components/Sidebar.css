@@ -46,6 +46,19 @@
   color: var(--accent);
 }
 
+.sidebar-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #000;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  min-width: 16px;
+  text-align: center;
+}
+
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;

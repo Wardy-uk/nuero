@@ -88,6 +88,41 @@
   cursor: not-allowed;
 }
 
+.backup-standup {
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.backup-standup h3 {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0 0 4px;
+}
+
+.backup-input {
+  display: block;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.backup-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
 @media (max-width: 768px) {
   .standup-editor {
     height: auto;

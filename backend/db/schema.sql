@@ -75,6 +75,14 @@ CREATE TABLE IF NOT EXISTS calendar_cache (
   fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint TEXT NOT NULL UNIQUE,
+  keys_p256dh TEXT NOT NULL,
+  keys_auth TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_nudges_active ON nudges(active, date_key);
 CREATE INDEX IF NOT EXISTS idx_todos_done ON todos(done);
 CREATE INDEX IF NOT EXISTS idx_todos_ms_id ON todos(ms_id);

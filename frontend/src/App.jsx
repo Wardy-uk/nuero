@@ -13,6 +13,9 @@ import AdminPanel from './components/AdminPanel';
 import NudgeBanner from './components/NudgeBanner';
 import ChatPanel from './components/ChatPanel';
 import QATab from './components/QATab';
+import ImportsPanel from './components/ImportsPanel';
+import InstallBanner from './components/InstallBanner';
+import usePushNotifications from './usePushNotifications';
 import { apiUrl } from './api';
 import './App.css';
 
@@ -22,6 +25,7 @@ export default function App() {
   const [queueData, setQueueData] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  usePushNotifications();
 
   const fetchStatus = async () => {
     try {
@@ -61,6 +65,7 @@ export default function App() {
       case 'plan': return <NinetyDayPlan />;
       case 'todos': return <TodoPanel />;
       case 'calendar': return <CalendarView />;
+      case 'imports': return <ImportsPanel />;
       case 'inbox': return <InboxPanel />;
       case 'qa': return <QATab />;
       case 'admin': return <AdminPanel />;
@@ -82,6 +87,7 @@ export default function App() {
           <ChatPanel />
         </aside>
       </div>
+      <InstallBanner />
     </div>
   );
 }

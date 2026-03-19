@@ -281,6 +281,28 @@ function getCalendarEvents(startDate, endDate) {
   return rows;
 }
 
+// Push subscription helpers
+function savePushSubscription(subscription) {
+  getDb().run(`
+    INSERT OR REPLACE INTO push_subscriptions (endpoint, keys_p256dh, keys_auth)
+    VALUES (?, ?, ?)
+  `, [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth]);
+  save();
+}
+
+function getAllPushSubscriptions() {
+  const stmt = getDb().prepare('SELECT * FROM push_subscriptions');
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function removePushSubscription(endpoint) {
+  getDb().run('DELETE FROM push_subscriptions WHERE endpoint = ?', [endpoint]);
+  save();
+}
+
 module.exports = {
   init,
   getDb,
@@ -308,5 +330,8 @@ module.exports = {
   deleteTodo,
   upsertCalendarEvent,
   clearCalendarCache,
-  getCalendarEvents
+  getCalendarEvents,
+  savePushSubscription,
+  getAllPushSubscriptions,
+  removePushSubscription
 };

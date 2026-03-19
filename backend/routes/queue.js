@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
-const jira = require('../services/jira');
 
 // GET /api/queue?assignee=nick
 router.get('/', (req, res) => {
@@ -20,7 +19,7 @@ router.get('/', (req, res) => {
 
   res.json({
     status: jiraStatus,
-    configured: jira.isConfigured(),
+    configured: !!(db.getState('jira_last_sync')),
     last_sync: lastSync,
     total: tickets.length,
     at_risk_count: tickets.filter(t => t.at_risk).length,
@@ -31,6 +30,50 @@ router.get('/', (req, res) => {
     at_risk_tickets: tickets.filter(t => t.at_risk),
     tickets
   });
+});
+
+// POST /api/queue/ingest — accepts pre-fetched ticket JSON from n8n
+// Protected by X-Ingest-Secret header matched against INGEST_SECRET env var
+router.post('/ingest', (req, res) => {
+  const secret = process.env.INGEST_SECRET;
+  if (!secret) {
+    return res.status(500).json({ error: 'INGEST_SECRET not configured on server' });
+  }
+
+  const provided = req.headers['x-ingest-secret'];
+  if (provided !== secret) {
+    return res.status(401).json({ error: 'Invalid or missing X-Ingest-Secret' });
+  }
+
+  const { tickets } = req.body;
+  if (!Array.isArray(tickets)) {
+    return res.status(400).json({ error: 'tickets must be an array' });
+  }
+
+  try {
+    db.clearStaleTickets();
+    for (const ticket of tickets) {
+      db.upsertTicket({
+        ticket_key: ticket.ticket_key,
+        summary: ticket.summary,
+        status: ticket.status,
+        priority: ticket.priority,
+        assignee: ticket.assignee || 'Unassigned',
+        sla_remaining_minutes: ticket.sla_remaining_minutes,
+        sla_name: ticket.sla_name,
+        at_risk: ticket.at_risk,
+        raw_json: ticket.raw_json || null
+      });
+    }
+    db.setState('jira_status', 'ok');
+    db.setState('jira_last_sync', new Date().toISOString());
+    db.setState('jira_ticket_count', String(tickets.length));
+    console.log(`[Queue] Ingested ${tickets.length} tickets from n8n`);
+    res.json({ ok: true, count: tickets.length });
+  } catch (e) {
+    console.error('[Queue] Ingest error:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

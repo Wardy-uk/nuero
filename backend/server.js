@@ -28,6 +28,8 @@ const n8nRoutes = require('./routes/n8n');
 const vaultRoutes = require('./routes/vault');
 const contextRoutes = require('./routes/context');
 const qaRoutes = require('./routes/qa');
+const pushRoutes = require('./routes/push');
+const importsRoutes = require('./routes/imports');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -48,6 +50,8 @@ app.use('/api/n8n', n8nRoutes);
 app.use('/api/vault', vaultRoutes);
 app.use('/api/context', contextRoutes);
 app.use('/api/qa', qaRoutes);
+app.use('/api/push', pushRoutes);
+app.use('/api/imports', importsRoutes);
 
 // Health / status endpoint
 app.get('/api/status', async (req, res) => {
@@ -82,6 +86,9 @@ app.get('/api/status', async (req, res) => {
     },
     n8n: {
       configured: n8nService.isConfigured()
+    },
+    push: {
+      configured: require('./services/webpush').isConfigured()
     }
   });
 });
@@ -98,6 +105,9 @@ app.get('*', (req, res, next) => {
 // Initialize database then start
 async function start() {
   await db.init();
+
+  const webpushService = require('./services/webpush');
+  webpushService.init();
 
   scheduler.start();
 

@@ -754,6 +754,31 @@ function toggleTask(filePath, lineNumber) {
   return newStatus === 'x' ? 'done' : 'open';
 }
 
+// Ritual state — reads Scripts/ritual-state.json from vault
+function readRitualState() {
+  const statePath = path.join(getVaultPath(), 'Scripts', 'ritual-state.json');
+  if (!fs.existsSync(statePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+  } catch (e) {
+    console.error('[Obsidian] Error reading ritual-state.json:', e.message);
+    return null;
+  }
+}
+
+// Read yesterday's (or Friday's if Monday) daily note
+function readPreviousDailyNote() {
+  const today = new Date();
+  const prev = new Date(today);
+  // Go back 1 day, or 2 days on Monday (to get Friday)
+  const daysBack = today.getDay() === 1 ? 3 : 1;
+  prev.setDate(prev.getDate() - daysBack);
+  const dateStr = prev.toISOString().split('T')[0];
+  const notePath = path.join(getVaultPath(), 'Daily', `${dateStr}.md`);
+  if (!fs.existsSync(notePath)) return null;
+  return { date: dateStr, content: fs.readFileSync(notePath, 'utf-8') };
+}
+
 module.exports = {
   isConfigured,
   readTodayDailyNote,
@@ -771,5 +796,7 @@ module.exports = {
   parseVaultCalendar,
   fetchCalendarEvents,
   parseNinetyDayPlan,
-  toggleTask
+  toggleTask,
+  readRitualState,
+  readPreviousDailyNote
 };

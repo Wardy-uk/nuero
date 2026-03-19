@@ -1,0 +1,145 @@
+.imports-panel {
+  max-width: 800px;
+}
+
+.imports-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.imports-header h2 {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.imports-loading,
+.imports-empty {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  padding: 20px;
+}
+
+.imports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.import-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+}
+
+.import-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.import-filename {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.import-subdir {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.import-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.import-preview {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 8px;
+  max-height: 60px;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.import-classification {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+
+.import-classification.high {
+  border-color: var(--success);
+  background: rgba(0, 255, 136, 0.05);
+}
+
+.import-classification.medium {
+  border-color: #f0ad4e;
+  background: rgba(240, 173, 78, 0.05);
+}
+
+.import-classification.low {
+  border-color: #d9534f;
+  background: rgba(217, 83, 79, 0.05);
+}
+
+.cls-type {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.cls-dest {
+  color: var(--text-secondary);
+}
+
+.cls-confidence {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.import-classification.high .cls-confidence {
+  background: var(--success);
+  color: #000;
+}
+
+.import-classification.medium .cls-confidence {
+  background: #f0ad4e;
+  color: #000;
+}
+
+.import-classification.low .cls-confidence {
+  background: #d9534f;
+  color: #fff;
+}
+
+.cls-reason {
+  width: 100%;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.import-actions {
+  display: flex;
+  gap: 8px;
+}
