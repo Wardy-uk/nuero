@@ -91,7 +91,7 @@ export default function ChatPanel() {
   return (
     <div className="chat-container">
       <div className="chat-header">
-        <span className="chat-title">NICK-AGENT</span>
+        <span className="chat-title">NUERO</span>
         <span className="chat-status">{streaming ? 'thinking...' : 'ready'}</span>
       </div>
 
@@ -120,7 +120,7 @@ export default function ChatPanel() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Message NICK-AGENT..."
+          placeholder="Message NUERO..."
           rows={1}
           disabled={streaming}
         />

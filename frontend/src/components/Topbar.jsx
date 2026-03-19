@@ -13,7 +13,7 @@ export default function Topbar({ status, queueData }) {
   return (
     <header className="topbar">
       <div className="topbar-left">
-        <span className="topbar-logo">NICK-AGENT</span>
+        <span className="topbar-logo">NUERO</span>
         <span className="topbar-version">v1.0</span>
       </div>
       <div className="topbar-center">

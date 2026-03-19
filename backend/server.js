@@ -50,7 +50,7 @@ app.get('/api/status', async (req, res) => {
   const msAuthenticated = msConfigured ? await microsoftService.isAuthenticated() : false;
 
   res.json({
-    agent: 'NICK-AGENT',
+    agent: 'NUERO',
     version: '1.0.0',
     uptime: process.uptime(),
     jira: {
@@ -82,7 +82,7 @@ async function start() {
   scheduler.start();
 
   app.listen(PORT, () => {
-    console.log(`[Server] NICK-AGENT running on http://localhost:${PORT}`);
+    console.log(`[Server] NUERO running on http://localhost:${PORT}`);
   });
 }
 

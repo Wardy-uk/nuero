@@ -1,5 +1,5 @@
 {
-  "name": "nick-agent-backend",
+  "name": "neuro-backend",
   "version": "1.0.0",
   "private": true,
   "main": "server.js",

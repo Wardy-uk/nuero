@@ -54,9 +54,9 @@ function apiCall(path, body) {
 async function run121Snapshot(nameHint) {
   await apiCall(`/api/v1/workflows/${WORKFLOW_121_ID}/run`, {
     runData: {
-      'NICK-AGENT Webhook': [{ json: { nameHint } }]
+      'NUERO Webhook': [{ json: { nameHint } }]
     },
-    startNodes: ['NICK-AGENT Webhook']
+    startNodes: ['NUERO Webhook']
   });
   return { success: true, message: `1-2-1 snapshot triggered for ${nameHint}. Check your email for the draft preview.` };
 }

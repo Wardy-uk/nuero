@@ -157,7 +157,7 @@ export default function AdminPanel() {
         <div className="admin-section-title">System</div>
         <div className="admin-card">
           <div className="admin-card-header">
-            <span className="admin-card-name">NICK-AGENT</span>
+            <span className="admin-card-name">NUERO</span>
             <span className="admin-status-badge connected">v{status.version}</span>
           </div>
           <div className="admin-card-detail">
