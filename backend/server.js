@@ -1,5 +1,15 @@
 require('dotenv').config();
 
+// Prevent EPIPE errors from crashing the process
+process.on('uncaughtException', (err) => {
+  if (err.code === 'EPIPE' || err.code === 'ECONNRESET') {
+    console.error(`[Server] Ignored ${err.code}:`, err.message);
+    return;
+  }
+  console.error('[Server] Uncaught exception:', err);
+  process.exit(1);
+});
+
 const path = require('path');
 const express = require('express');
 const cors = require('cors');

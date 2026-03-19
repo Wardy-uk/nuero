@@ -4,8 +4,8 @@ const nudges = require('./nudges');
 const inboxScanner = require('./inbox-scanner');
 
 function start() {
-  // Fetch Jira tickets on startup
-  jira.fetchAndCacheTickets();
+  // Fetch Jira tickets on startup (deferred so server can start accepting requests)
+  setTimeout(() => jira.fetchAndCacheTickets(), 5000);
 
   // Fire nudges immediately if server starts after 9am on a weekday
   nudges.startupCheck();
