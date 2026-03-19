@@ -1,6 +1,12 @@
 const fetch = require('node-fetch');
+const http = require('http');
+const https = require('https');
 const AbortController = globalThis.AbortController || require('abort-controller');
 const db = require('../db/database');
+
+// Disable keep-alive to prevent EPIPE on reused sockets
+const httpAgent = new http.Agent({ keepAlive: false });
+const httpsAgent = new https.Agent({ keepAlive: false });
 
 function isConfigured() {
   return !!(process.env.JIRA_BASE_URL && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN && process.env.JIRA_PROJECT_KEY);
@@ -23,7 +29,8 @@ async function jiraFetch(path, options = {}) {
       'Content-Type': 'application/json'
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
-    signal: controller.signal
+    signal: controller.signal,
+    agent: url.startsWith('https') ? httpsAgent : httpAgent
   });
   clearTimeout(timeout);
   if (!res.ok) {

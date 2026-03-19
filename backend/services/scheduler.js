@@ -5,7 +5,11 @@ const inboxScanner = require('./inbox-scanner');
 
 function start() {
   // Fetch Jira tickets on startup (deferred so server can start accepting requests)
-  setTimeout(() => jira.fetchAndCacheTickets(), 5000);
+  setTimeout(() => {
+    jira.fetchAndCacheTickets().catch(err => {
+      console.error('[Scheduler] Initial Jira fetch failed (non-fatal):', err.message);
+    });
+  }, 10000);
 
   // Fire nudges immediately if server starts after 9am on a weekday
   nudges.startupCheck();
@@ -16,7 +20,9 @@ function start() {
   // Poll Jira every 5 minutes
   cron.schedule('*/5 * * * *', () => {
     console.log('[Scheduler] Running Jira poll...');
-    jira.fetchAndCacheTickets();
+    jira.fetchAndCacheTickets().catch(err => {
+      console.error('[Scheduler] Jira poll failed (non-fatal):', err.message);
+    });
   });
 
   // 9am weekdays — trigger standup and todo nudges
