@@ -102,7 +102,7 @@ async function run() {
       sla_remaining_minutes: slaRemaining,
       sla_name: slaName,
       at_risk: slaRemaining !== null && slaRemaining < 120,
-      raw_json: JSON.stringify(issue)
+      raw_json: '{}'
     };
   });
 
