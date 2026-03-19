@@ -81,8 +81,8 @@ async function start() {
 
   scheduler.start();
 
-  app.listen(PORT, () => {
-    console.log(`[Server] NUERO running on http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Server] NUERO running on 0.0.0.0:${PORT}`);
   });
 }
 
