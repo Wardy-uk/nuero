@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl, API_BASE } from '../api';
 import './NudgeBanner.css';
 
 export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
@@ -6,7 +7,7 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
   const [snoozed, setSnoozed] = useState({}); // { standup: true, todo: true }
 
   const handleSnooze = (type) => {
-    fetch(`/api/nudges/${type}/snooze`, { method: 'POST' })
+    fetch(apiUrl(`/api/nudges/${type}/snooze`), { method: 'POST' })
       .then(r => r.json())
       .then(() => {
         setSnoozed(prev => ({ ...prev, [type]: true }));
@@ -20,7 +21,7 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
   useEffect(() => {
     const fetchNudges = async () => {
       try {
-        const res = await fetch('/api/nudges');
+        const res = await fetch(apiUrl('/api/nudges'));
         const data = await res.json();
         setNudges(data.nudges || []);
       } catch (e) { /* ignore */ }
@@ -35,7 +36,7 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
   useEffect(() => {
     let es;
     try {
-      es = new EventSource('/api/nudges/stream');
+      es = new EventSource(apiUrl('/api/nudges/stream'));
       es.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'nudge') {

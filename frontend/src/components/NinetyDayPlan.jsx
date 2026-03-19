@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../api';
 import './NinetyDayPlan.css';
 
 const OUTCOME_ICONS = {
@@ -10,7 +11,7 @@ export default function NinetyDayPlan() {
   const [expandedOutcome, setExpandedOutcome] = useState(null);
 
   useEffect(() => {
-    fetch('/api/obsidian/ninety-day-plan')
+    fetch(apiUrl('/api/obsidian/ninety-day-plan'))
       .then(r => r.json())
       .then(setPlan)
       .catch(console.error);

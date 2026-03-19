@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../api';
 import './InboxPanel.css';
 
 const URGENCY_ORDER = { high: 0, medium: 1, low: 2 };
@@ -25,7 +26,7 @@ export default function InboxPanel() {
   const [filter, setFilter] = useState('all');
 
   const fetchData = () => {
-    fetch('/api/microsoft/inbox')
+    fetch(apiUrl('/api/microsoft/inbox'))
       .then(r => r.json())
       .then(setData)
       .catch(console.error);
@@ -38,7 +39,7 @@ export default function InboxPanel() {
   }, []);
 
   const triggerScan = () => {
-    fetch('/api/microsoft/inbox/scan', { method: 'POST' })
+    fetch(apiUrl('/api/microsoft/inbox/scan'), { method: 'POST' })
       .then(() => setData(d => ({ ...d, scanning: true })))
       .catch(console.error);
   };

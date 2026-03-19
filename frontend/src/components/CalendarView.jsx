@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../api';
 import './CalendarView.css';
 
 function formatDateLabel(date) {
@@ -35,7 +36,7 @@ export default function CalendarView() {
   const fetchEvents = (date, retries = 2) => {
     setLoading(true);
     setError(null);
-    fetch(`/api/obsidian/calendar?start=${date}&end=${date}`)
+    fetch(apiUrl(`/api/obsidian/calendar?start=${date}&end=${date}`))
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();

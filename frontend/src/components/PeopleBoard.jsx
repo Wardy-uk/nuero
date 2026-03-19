@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../api';
 import './PeopleBoard.css';
 
 const TEAMS = {
@@ -35,7 +36,7 @@ export default function PeopleBoard() {
     // Fetch vault notes for each person
     const allPeople = Object.values(TEAMS).flat();
     allPeople.forEach(person => {
-      fetch(`/api/obsidian/people/${encodeURIComponent(person.name)}`)
+      fetch(apiUrl(`/api/obsidian/people/${encodeURIComponent(person.name)}`))
         .then(res => res.json())
         .then(data => {
           setPeopleData(prev => ({ ...prev, [person.name]: data }));
@@ -44,7 +45,7 @@ export default function PeopleBoard() {
     });
 
     // Check n8n status
-    fetch('/api/n8n/status')
+    fetch(apiUrl('/api/n8n/status'))
       .then(r => r.json())
       .then(d => setN8nConfigured(d.configured))
       .catch(() => {});
@@ -54,7 +55,7 @@ export default function PeopleBoard() {
     setRunning121(personName);
     setSnapshotResult(null);
     try {
-      const res = await fetch('/api/n8n/121', {
+      const res = await fetch(apiUrl('/api/n8n/121'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nameHint: personName })

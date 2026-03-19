@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../api';
 import './StandupEditor.css';
 
 export default function StandupEditor() {
@@ -8,7 +9,7 @@ export default function StandupEditor() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    fetch('/api/standup')
+    fetch(apiUrl('/api/standup'))
       .then(res => res.json())
       .then(data => {
         setContent(data.content || '# Standup\n\n## Yesterday\n- \n\n## Today\n- \n\n## Blockers\n- ');
@@ -23,7 +24,7 @@ export default function StandupEditor() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch('/api/standup', {
+      await fetch(apiUrl('/api/standup'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content })
@@ -39,7 +40,7 @@ export default function StandupEditor() {
   const handleSaveToDaily = async () => {
     setSaving(true);
     try {
-      await fetch('/api/standup/save-to-daily', {
+      await fetch(apiUrl('/api/standup/save-to-daily'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content })

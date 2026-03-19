@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../api';
 import './TodoPanel.css';
 
 function sourceClass(source) {
@@ -53,7 +54,7 @@ export default function TodoPanel() {
 
   const fetchTodos = async () => {
     try {
-      const res = await fetch(`/api/todos${showDone ? '?all=true' : ''}`);
+      const res = await fetch(apiUrl(`/api/todos${showDone ? '?all=true' : ''}`));
       const data = await res.json();
       setTodos(data.todos || []);
     } catch (e) { /* ignore */ }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiUrl } from '../api';
 import './QATab.css';
 
 const GRADE_COLOURS = { GREEN: '#22c55e', AMBER: '#f59e0b', RED: '#ef4444' };
@@ -128,14 +129,14 @@ export default function QATab() {
 
   const fetchSummary = useCallback(async () => {
     try {
-      const r = await fetch(`/api/qa/summary?days=${days}`);
+      const r = await fetch(apiUrl(`/api/qa/summary?days=${days}`));
       if (r.ok) setSummary(await r.json());
     } catch (e) { console.error('QA summary error', e); }
   }, [days]);
 
   const fetchAgents = useCallback(async () => {
     try {
-      const r = await fetch(`/api/qa/agents?days=${days}`);
+      const r = await fetch(apiUrl(`/api/qa/agents?days=${days}`));
       if (r.ok) {
         const d = await r.json();
         setAgents(d.agents || []);
@@ -150,7 +151,7 @@ export default function QATab() {
       if (filters.grade) params.set('grade', filters.grade);
       if (filters.agent) params.set('agent', filters.agent);
       if (filters.concerning) params.set('concerning', 'true');
-      const r = await fetch(`/api/qa/results?${params}`);
+      const r = await fetch(apiUrl(`/api/qa/results?${params}`));
       if (r.ok) {
         const d = await r.json();
         setResults(d);

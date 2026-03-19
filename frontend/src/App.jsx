@@ -13,6 +13,7 @@ import AdminPanel from './components/AdminPanel';
 import NudgeBanner from './components/NudgeBanner';
 import ChatPanel from './components/ChatPanel';
 import QATab from './components/QATab';
+import { apiUrl } from './api';
 import './App.css';
 
 export default function App() {
@@ -22,14 +23,14 @@ export default function App() {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/status');
+      const res = await fetch(apiUrl('/api/status'));
       setStatus(await res.json());
     } catch (e) { console.error('Status fetch failed:', e); }
   };
 
   const fetchQueue = async () => {
     try {
-      const res = await fetch('/api/queue');
+      const res = await fetch(apiUrl('/api/queue'));
       setQueueData(await res.json());
     } catch (e) { console.error('Queue fetch failed:', e); }
   };

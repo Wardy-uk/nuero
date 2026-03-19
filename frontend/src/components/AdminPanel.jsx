@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiUrl } from '../api';
 import './AdminPanel.css';
 
 export default function AdminPanel() {
@@ -9,7 +10,7 @@ export default function AdminPanel() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/status');
+      const res = await fetch(apiUrl('/api/status'));
       setStatus(await res.json());
     } catch (e) {
       console.error('Status fetch failed:', e);
@@ -25,7 +26,7 @@ export default function AdminPanel() {
     if (!deviceCode) return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('/api/microsoft/status');
+        const res = await fetch(apiUrl('/api/microsoft/status'));
         const data = await res.json();
         if (data.authenticated) {
           setDeviceCode(null);
@@ -41,7 +42,7 @@ export default function AdminPanel() {
     setConnecting(true);
     setAuthError(null);
     try {
-      const res = await fetch('/api/microsoft/auth', { method: 'POST' });
+      const res = await fetch(apiUrl('/api/microsoft/auth'), { method: 'POST' });
       const data = await res.json();
       if (data.error) {
         setAuthError(data.error);
