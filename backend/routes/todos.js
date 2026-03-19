@@ -19,13 +19,30 @@ router.get('/', (req, res) => {
       source: t.source || null,
       done: t.status === 'done' ? 1 : 0,
       ms_id: t.ms_id || null,
-      vault_task: true // flag so frontend knows these are read-only vault tasks
+      vault_task: true,
+      filePath: t.filePath || null,
+      lineNumber: t.lineNumber != null ? t.lineNumber : null
     }));
 
     res.json({ todos: mapped });
   } catch (e) {
     console.error('[Todos] Error parsing vault todos:', e);
     res.status(500).json({ error: 'Failed to parse vault todos' });
+  }
+});
+
+// POST /api/todos/toggle — toggle a task's done status in the vault
+router.post('/toggle', (req, res) => {
+  try {
+    const { filePath, lineNumber } = req.body;
+    if (!filePath || lineNumber == null) {
+      return res.status(400).json({ error: 'filePath and lineNumber required' });
+    }
+    const newStatus = obsidian.toggleTask(filePath, lineNumber);
+    res.json({ status: newStatus });
+  } catch (e) {
+    console.error('[Todos] Toggle error:', e);
+    res.status(500).json({ error: e.message });
   }
 });
 

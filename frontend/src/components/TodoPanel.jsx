@@ -52,6 +52,8 @@ export default function TodoPanel() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, overdue, today, high, master, ms, daily
 
+  const [toggling, setToggling] = useState({});
+
   const fetchTodos = async () => {
     try {
       const res = await fetch(apiUrl(`/api/todos${showDone ? '?all=true' : ''}`));
@@ -59,6 +61,21 @@ export default function TodoPanel() {
       setTodos(data.todos || []);
     } catch (e) { /* ignore */ }
     setLoading(false);
+  };
+
+  const toggleTodo = async (todo) => {
+    if (!todo.filePath || todo.lineNumber == null) return;
+    const key = `${todo.filePath}:${todo.lineNumber}`;
+    setToggling(prev => ({ ...prev, [key]: true }));
+    try {
+      await fetch(apiUrl('/api/todos/toggle'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath: todo.filePath, lineNumber: todo.lineNumber })
+      });
+      await fetchTodos();
+    } catch (e) { /* ignore */ }
+    setToggling(prev => ({ ...prev, [key]: false }));
   };
 
   useEffect(() => { fetchTodos(); }, [showDone]);
@@ -144,9 +161,16 @@ export default function TodoPanel() {
           {filtered.map(todo => {
             const overdue = isOverdue(todo.due_date);
             const dueLabel = formatDue(todo.due_date);
+            const toggleKey = `${todo.filePath}:${todo.lineNumber}`;
+            const isToggling = toggling[toggleKey];
             return (
               <div key={`${todo.source}-${todo.id}`} className={`todo-item priority-${todo.priority} ${overdue ? 'overdue' : ''}`}>
-                <div className="todo-status-indicator" />
+                <button
+                  className={`todo-checkbox ${isToggling ? 'toggling' : ''}`}
+                  onClick={() => toggleTodo(todo)}
+                  disabled={isToggling || !todo.filePath}
+                  title="Mark done"
+                />
                 <div className="todo-text-col">
                   <span className="todo-text">{todo.text}</span>
                   <div className="todo-meta-row">
@@ -171,17 +195,26 @@ export default function TodoPanel() {
 
       {showDone && doneTodos.length > 0 && (
         <div className="todo-done-list">
-          {doneTodos.map(todo => (
-            <div key={`done-${todo.id}`} className="todo-item done">
-              <span className="todo-check-done" />
-              <div className="todo-text-col">
-                <span className="todo-text">{todo.text}</span>
-                <div className="todo-meta-row">
-                  {todo.source && <span className={`todo-source ${sourceClass(todo.source)}`}>{todo.source}</span>}
+          {doneTodos.map(todo => {
+            const toggleKey = `${todo.filePath}:${todo.lineNumber}`;
+            const isToggling = toggling[toggleKey];
+            return (
+              <div key={`done-${todo.id}`} className="todo-item done">
+                <button
+                  className={`todo-checkbox checked ${isToggling ? 'toggling' : ''}`}
+                  onClick={() => toggleTodo(todo)}
+                  disabled={isToggling || !todo.filePath}
+                  title="Mark not done"
+                />
+                <div className="todo-text-col">
+                  <span className="todo-text">{todo.text}</span>
+                  <div className="todo-meta-row">
+                    {todo.source && <span className={`todo-source ${sourceClass(todo.source)}`}>{todo.source}</span>}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

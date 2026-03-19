@@ -148,7 +148,8 @@ function parseVaultTodos() {
     let currentPriority = 'normal';
     let currentSection = '';
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       // Detect section headers for priority mapping
       if (line.startsWith('## ')) {
         if (line.includes('🔴') || line.includes('Now')) { currentPriority = 'high'; currentSection = 'Now'; }
@@ -163,6 +164,8 @@ function parseVaultTodos() {
       if (task) {
         task.priority = task.priority || currentPriority;
         task.source = `Master (${currentSection})`;
+        task.filePath = masterPath;
+        task.lineNumber = i;
         allTasks.push(task);
       }
     }
@@ -175,7 +178,8 @@ function parseVaultTodos() {
     const lines = content.split('\n');
     let msSection = 'Planner';
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (line.startsWith('## ')) {
         if (line.includes('Planner')) msSection = 'MS Planner';
         else if (line.includes('ToDo')) msSection = 'MS ToDo';
@@ -186,6 +190,8 @@ function parseVaultTodos() {
       if (task) {
         task.source = msSection;
         task.priority = task.priority || 'normal';
+        task.filePath = msPath;
+        task.lineNumber = i;
         allTasks.push(task);
       }
     }
@@ -213,7 +219,8 @@ function parseVaultTodos() {
     const lines = content.split('\n');
     let dailySection = '';
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (line.startsWith('## ')) {
         dailySection = line.replace(/^##\s*/, '').trim();
         continue;
@@ -236,6 +243,8 @@ function parseVaultTodos() {
       if (dailySection.includes('Focus Today')) task.priority = task.priority || 'high';
       else if (dailySection.includes('Follow Ups')) task.priority = task.priority || 'normal';
       else task.priority = task.priority || 'normal';
+      task.filePath = filePath;
+      task.lineNumber = i;
       allTasks.push(task);
     }
   }
@@ -723,6 +732,28 @@ function parseNinetyDayPlan() {
   };
 }
 
+// Toggle a task's checkbox in the vault file
+function toggleTask(filePath, lineNumber) {
+  if (!fs.existsSync(filePath)) throw new Error('File not found');
+
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const lines = content.split('\n');
+
+  if (lineNumber < 0 || lineNumber >= lines.length) throw new Error('Line number out of range');
+
+  const line = lines[lineNumber];
+  const match = line.match(/^([\s]*-\s+\[)([ x>\/])(\]\s+.+)$/);
+  if (!match) throw new Error('Not a task line');
+
+  const statusChar = match[2];
+  // Toggle: open/carried/in-progress → done, done → open
+  const newStatus = statusChar === 'x' ? ' ' : 'x';
+  lines[lineNumber] = match[1] + newStatus + match[3];
+
+  fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
+  return newStatus === 'x' ? 'done' : 'open';
+}
+
 module.exports = {
   isConfigured,
   readTodayDailyNote,
@@ -739,5 +770,6 @@ module.exports = {
   parseVaultTodos,
   parseVaultCalendar,
   fetchCalendarEvents,
-  parseNinetyDayPlan
+  parseNinetyDayPlan,
+  toggleTask
 };
