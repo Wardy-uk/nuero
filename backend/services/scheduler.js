@@ -4,13 +4,12 @@ const nudges = require('./nudges');
 const inboxScanner = require('./inbox-scanner');
 
 function start() {
-  // Jira polling disabled — EPIPE errors on Pi crash the event loop
-  // TODO: re-enable once root cause is fixed (likely Pi network/TLS issue)
-  // setTimeout(() => {
-  //   jira.fetchAndCacheTickets().catch(err => {
-  //     console.error('[Scheduler] Initial Jira fetch failed (non-fatal):', err.message);
-  //   });
-  // }, 10000);
+  // Fetch Jira tickets on startup (deferred so server can start accepting requests)
+  setTimeout(() => {
+    jira.fetchAndCacheTickets().catch(err => {
+      console.error('[Scheduler] Initial Jira fetch failed (non-fatal):', err.message);
+    });
+  }, 10000);
 
   // Fire nudges immediately if server starts after 9am on a weekday
   nudges.startupCheck();
@@ -18,13 +17,13 @@ function start() {
   // Inbox scanner disabled until Microsoft auth is configured
   // inboxScanner.start();
 
-  // Jira polling disabled — EPIPE errors on Pi crash the event loop
-  // cron.schedule('*/5 * * * *', () => {
-  //   console.log('[Scheduler] Running Jira poll...');
-  //   jira.fetchAndCacheTickets().catch(err => {
-  //     console.error('[Scheduler] Jira poll failed (non-fatal):', err.message);
-  //   });
-  // });
+  // Poll Jira every 5 minutes
+  cron.schedule('*/5 * * * *', () => {
+    console.log('[Scheduler] Running Jira poll...');
+    jira.fetchAndCacheTickets().catch(err => {
+      console.error('[Scheduler] Jira poll failed (non-fatal):', err.message);
+    });
+  });
 
   // 9am weekdays — trigger standup and todo nudges
   cron.schedule('0 9 * * 1-5', () => {

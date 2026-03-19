@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../api';
 import './QueueTable.css';
 
 function slaClass(minutes) {
@@ -17,17 +18,44 @@ function formatSla(minutes) {
 }
 
 export default function QueueTable({ queueData, onRefresh }) {
-  const tickets = queueData?.tickets || [];
-  const configured = queueData?.configured;
-  const lastSync = queueData?.last_sync;
+  const [showMine, setShowMine] = useState(true);
+  const [filteredData, setFilteredData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchFiltered = async () => {
+    setLoading(true);
+    try {
+      const url = showMine ? '/api/queue?assignee=nick' : '/api/queue';
+      const res = await fetch(apiUrl(url));
+      setFilteredData(await res.json());
+    } catch (e) { /* ignore */ }
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchFiltered(); }, [showMine]);
+
+  const data = filteredData || queueData;
+  const tickets = data?.tickets || [];
+  const configured = data?.configured;
+  const lastSync = data?.last_sync;
 
   return (
     <div className="queue-container">
       <div className="queue-header">
         <h2 className="queue-title">Queue</h2>
         <div className="queue-meta">
+          <div className="queue-filter-toggle">
+            <button
+              className={`todo-filter-btn ${showMine ? 'active' : ''}`}
+              onClick={() => setShowMine(true)}
+            >My tickets</button>
+            <button
+              className={`todo-filter-btn ${!showMine ? 'active' : ''}`}
+              onClick={() => setShowMine(false)}
+            >All tickets</button>
+          </div>
           {lastSync && <span className="queue-sync">Last sync: {new Date(lastSync).toLocaleTimeString()}</span>}
-          <button className="btn btn-secondary" onClick={onRefresh}>Refresh</button>
+          <button className="btn btn-secondary" onClick={() => { onRefresh(); fetchFiltered(); }}>Refresh</button>
         </div>
       </div>
 
@@ -35,8 +63,10 @@ export default function QueueTable({ queueData, onRefresh }) {
         <div className="queue-unconfigured">
           Jira is not configured. Set JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, and JIRA_PROJECT_KEY in .env
         </div>
+      ) : loading ? (
+        <div className="queue-empty">Loading tickets...</div>
       ) : tickets.length === 0 ? (
-        <div className="queue-empty">No open tickets in queue.</div>
+        <div className="queue-empty">{showMine ? 'No tickets assigned to you.' : 'No open tickets in queue.'}</div>
       ) : (
         <table className="queue-table">
           <thead>
