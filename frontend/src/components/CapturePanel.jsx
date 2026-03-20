@@ -128,7 +128,6 @@ export default function CapturePanel() {
             ref={fileRef}
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={handleFileSelect}
             className="capture-file-input"
           />
