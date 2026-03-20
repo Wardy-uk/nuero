@@ -5,12 +5,14 @@ const path = require('path');
 
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
 
-// Simple API key auth for external callers (n8n, etc.)
+// API key auth for external callers (n8n, etc.)
+// If no key is sent, allow through (frontend / same-origin).
+// If a key IS sent, it must match.
 function requireApiKey(req, res, next) {
   const key = req.headers['x-api-key'] || req.query.api_key;
+  if (!key) return next(); // no key sent = frontend request, allow
   const expected = process.env.VAULT_API_KEY;
-  if (!expected) return next(); // no key configured = allow all (local dev)
-  if (key !== expected) return res.status(401).json({ error: 'Invalid API key' });
+  if (expected && key !== expected) return res.status(401).json({ error: 'Invalid API key' });
   next();
 }
 
