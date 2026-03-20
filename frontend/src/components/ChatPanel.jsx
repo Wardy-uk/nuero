@@ -7,7 +7,7 @@ export default function ChatPanel() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [conversationId] = useState(() => `conv_${Date.now()}`);
+  const [conversationId, setConversationId] = useState(() => `conv_${Date.now()}`);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -94,6 +94,11 @@ export default function ChatPanel() {
       <div className="chat-header">
         <span className="chat-title">NUERO</span>
         <span className="chat-status">{streaming ? 'thinking...' : 'ready'}</span>
+        {messages.length > 0 && !streaming && (
+          <button className="chat-new-btn" onClick={() => { setMessages([]); setConversationId(`conv_${Date.now()}`); }}>
+            New
+          </button>
+        )}
       </div>
 
       <div className="chat-messages">
