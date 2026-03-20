@@ -1,8 +1,8 @@
+const Anthropic = require('@anthropic-ai/sdk');
 const db = require('../db/database');
 const obsidian = require('./obsidian');
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 
 const SYSTEM_PROMPT = `You are NUERO (Nick's Unified Executive Resource Orchestrator) — Nick's personal AI chief of staff. Nick is Head of Technical Support at Nurtur Limited (formerly BriefYourMarket), having just started this SMT-level role on 16 March 2026. He knows the organisation deeply but is navigating a transition to senior leadership.
 
@@ -23,7 +23,7 @@ Nick's direct reports:
 Digital Design: Isabel Busk, Kayleigh Russell`;
 
 function isConfigured() {
-  return true; // Ollama is always local
+  return !!process.env.ANTHROPIC_API_KEY;
 }
 
 function buildContextBlock(queueSummary, dailyNote, standupContent) {
@@ -76,7 +76,7 @@ async function streamChat(conversationId, userMessage, res) {
   // Save user message
   db.saveMessage(conversationId, 'user', userMessage);
 
-  // Gather context (keep small for fast inference)
+  // Gather context
   const history = db.getConversationHistory(conversationId, 10);
   const queueSummary = db.getQueueSummary();
 
@@ -101,13 +101,10 @@ Today is ${today.toISOString().split('T')[0]}. Day ${dayCount} of Nick's new rol
 
 ${contextBlock}`;
 
-  // Build Ollama messages array
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...history.map(msg => ({ role: msg.role, content: msg.content }))
-  ];
+  // Build messages array (Anthropic format: no system in messages array)
+  const messages = history.map(msg => ({ role: msg.role, content: msg.content }));
 
-  console.log(`[Ollama] Prompt size: ${systemPrompt.length} chars, ${messages.length} messages`);
+  console.log(`[Claude] Model: ${CLAUDE_MODEL}, system prompt: ${systemPrompt.length} chars, ${messages.length} messages`);
 
   // Set SSE headers
   res.writeHead(200, {
@@ -118,70 +115,55 @@ ${contextBlock}`;
   });
 
   try {
-    const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL,
-        messages: messages,
-        stream: true,
-        options: {
-          temperature: 0.7,
-          num_ctx: 4096,
-          num_predict: 1024
-        }
-      })
+    const client = new Anthropic();
+
+    const stream = client.messages.stream({
+      model: CLAUDE_MODEL,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: messages
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('[Ollama] Error:', errText);
-      res.write(`data: ${JSON.stringify({ type: 'error', content: `Ollama error: ${response.status}` })}\n\n`);
-      res.end();
-      return;
-    }
-
     let fullResponse = '';
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    stream.on('text', (text) => {
+      fullResponse += text;
+      res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
+    });
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n').filter(l => l.trim());
+    stream.on('error', (err) => {
+      console.error('[Claude] Stream error:', err.message);
+      res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+      res.end();
+    });
 
-      for (const line of lines) {
+    stream.on('end', () => {
+      // Save assistant response
+      db.saveMessage(conversationId, 'assistant', fullResponse);
+
+      // Check for decisions
+      const decisionRegex = /\[DECISION\]\s*(.*?)(?:\n|$)/g;
+      let match;
+      while ((match = decisionRegex.exec(fullResponse)) !== null) {
+        db.saveDecision(conversationId, match[1].trim());
         try {
-          const data = JSON.parse(line);
-          if (data.message && data.message.content) {
-            fullResponse += data.message.content;
-            res.write(`data: ${JSON.stringify({ type: 'text', content: data.message.content })}\n\n`);
-          }
-        } catch (e) { /* ignore parse errors on partial chunks */ }
+          obsidian.appendDecision(match[1].trim());
+        } catch (e) {
+          console.error('[Claude] Failed to write decision to vault:', e.message);
+        }
       }
-    }
 
-    // Save assistant response
-    db.saveMessage(conversationId, 'assistant', fullResponse);
+      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      res.end();
+    });
 
-    // Check for decisions
-    const decisionRegex = /\[DECISION\]\s*(.*?)(?:\n|$)/g;
-    let match;
-    while ((match = decisionRegex.exec(fullResponse)) !== null) {
-      db.saveDecision(conversationId, match[1].trim());
-      try {
-        obsidian.appendDecision(match[1].trim());
-      } catch (e) {
-        console.error('[Ollama] Failed to write decision to vault:', e.message);
-      }
-    }
+    // Handle client disconnect
+    res.on('close', () => {
+      stream.abort();
+    });
 
-    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
-    res.end();
   } catch (err) {
-    console.error('[Ollama] Error:', err.message);
+    console.error('[Claude] Error:', err.message);
     res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
     res.end();
   }
