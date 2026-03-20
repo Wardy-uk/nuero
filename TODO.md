@@ -26,7 +26,7 @@
 
 ### Deploy & verify
 - [x] Deploy backend to Pi (capture.js, server.js, multer installed)
-- [ ] Deploy frontend (push to main → Netlify) — NEEDS GIT PUSH
+- [x] Deploy frontend (pushed to main → Netlify auto-deploying)
 - [ ] Test note capture end-to-end from UI
 - [ ] Test photo capture from iPhone PWA
 - [ ] Test file upload from UI

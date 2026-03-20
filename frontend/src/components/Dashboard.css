@@ -1,20 +1,298 @@
-.dashboard {
+/* ── Dashboard — fits one screen on both iPhone 15 and desktop ── */
+
+.dash {
   max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.dashboard-greeting {
-  margin-bottom: 24px;
+/* Greeting */
+.dash-greeting {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.greeting-text {
+.dash-hello {
   font-family: var(--font-sans);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 600;
-  margin-bottom: 4px;
+  margin: 0;
 }
 
-.greeting-meta {
+.dash-date {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Stat cards */
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.dash-stat {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.dash-stat:hover {
+  border-color: var(--accent);
+}
+
+.stat-danger {
+  border-color: var(--danger);
+  background: rgba(224, 85, 85, 0.06);
+}
+
+.stat-warn {
+  border-color: var(--warning);
+  background: rgba(240, 160, 64, 0.06);
+}
+
+.stat-val {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.stat-danger .stat-val { color: var(--danger); }
+.stat-warn .stat-val { color: var(--warning); }
+
+.stat-lbl {
+  font-family: var(--font-mono);
+  font-size: 10px;
   color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.stat-danger .stat-sub { color: var(--danger); }
+.stat-warn .stat-sub { color: var(--warning); }
+
+/* Progress bar */
+.dash-progress {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.progress-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.progress-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.progress-track {
+  position: relative;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: visible;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s;
+  min-width: 2px;
+}
+
+.progress-marker {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  background: var(--text-primary);
+  border-radius: 1px;
+  transform: translateX(-1px);
+}
+
+/* Tasks / focus */
+.dash-tasks,
+.dash-queue-peek {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+}
+
+.tasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tasks-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tasks-more {
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tasks-more:hover {
+  text-decoration: underline;
+}
+
+.dash-task {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dash-task:last-child {
+  border-bottom: none;
+}
+
+.task-high {
+  border-left: 2px solid var(--danger);
+  padding-left: 8px;
+  margin-left: -2px;
+}
+
+.task-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.task-due {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Quick actions (mobile) */
+.dash-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.dash-action {
+  flex: 1;
+  padding: 12px 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: center;
+}
+
+.dash-action:first-child {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+
+.dash-action:hover {
+  border-color: var(--accent);
+}
+
+/* Responsive visibility */
+.dash-desktop-only { display: block; }
+.dash-mobile-only { display: none; }
+
+/* ── iPhone 15 / mobile ── */
+@media (max-width: 768px) {
+  .dash {
+    gap: 10px;
+  }
+
+  .dash-hello {
+    font-size: 18px;
+  }
+
+  .dash-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .dash-stat {
+    padding: 10px;
+  }
+
+  .stat-val {
+    font-size: 22px;
+  }
+
+  .dash-task {
+    padding: 5px 0;
+  }
+
+  .task-text {
+    font-size: 11px;
+  }
+
+  .dash-desktop-only { display: none; }
+  .dash-mobile-only { display: flex; }
 }

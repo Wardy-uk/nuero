@@ -49,7 +49,7 @@ export default function App() {
 
   const renderView = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard queueData={queueData} />;
+      case 'dashboard': return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
       case 'standup': return <StandupEditor />;
       case 'people': return <PeopleBoard />;
       case 'queue': return <QueueTable queueData={queueData} onRefresh={queueFetch.refresh} />;
@@ -61,7 +61,7 @@ export default function App() {
       case 'inbox': return <InboxPanel />;
       case 'qa': return <QATab />;
       case 'admin': return <AdminPanel pushState={pushState} />;
-      default: return <Dashboard queueData={queueData} />;
+      default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
     }
   };
 
