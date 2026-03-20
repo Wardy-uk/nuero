@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { id: 'queue', label: 'KPI / Queue', icon: '>' },
   { id: 'todos', label: 'Todos', icon: '>' },
   { id: 'calendar', label: 'Calendar', icon: '>' },
+  { id: 'vault', label: 'Vault', icon: '>' },
   { id: 'imports', label: 'Imports', icon: '>' },
   { id: 'inbox', label: 'Inbox Triage', icon: '>' },
   { id: 'plan', label: '90-Day Plan', icon: '>' },

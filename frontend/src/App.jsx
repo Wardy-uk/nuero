@@ -15,6 +15,7 @@ import ChatPanel from './components/ChatPanel';
 import QATab from './components/QATab';
 import ImportsPanel from './components/ImportsPanel';
 import CapturePanel from './components/CapturePanel';
+import VaultBrowser from './components/VaultBrowser';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
 import useCachedFetch from './useCachedFetch';
@@ -59,6 +60,7 @@ export default function App() {
       case 'capture': return <CapturePanel />;
       case 'imports': return <ImportsPanel />;
       case 'inbox': return <InboxPanel />;
+      case 'vault': return <VaultBrowser />;
       case 'qa': return <QATab />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
