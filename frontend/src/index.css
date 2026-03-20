@@ -8,16 +8,20 @@
   --bg-primary: #0d0f14;
   --bg-secondary: #141720;
   --bg-tertiary: #1a1e2a;
-  --bg-card: #1e2235;
-  --border: #2a2e3d;
-  --text-primary: #e0e4ef;
+  --bg-card: #1a1e2e;
+  --border: #252a3a;
+  --text-primary: #dfe3ed;
   --text-secondary: #8890a4;
   --text-muted: #5c6478;
-  --accent: #4f9cf9;
+  --accent: #5aa3f9;
   --accent-dim: #3a7ad4;
   --warning: #f0a040;
   --danger: #e05555;
   --success: #40c97a;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.25);
   --font-mono: 'IBM Plex Mono', monospace;
   --font-sans: 'IBM Plex Sans', sans-serif;
 }
@@ -46,10 +50,11 @@ input, textarea {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 14px;
   outline: none;
+  transition: border-color 0.2s ease;
 }
 
 input:focus, textarea:focus {
@@ -67,4 +72,61 @@ input:focus, textarea:focus {
 ::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 3px;
+}
+
+/* ── Global softening ── */
+
+/* Cards, panels, table containers */
+.import-card,
+.todo-card,
+.todo-section,
+.calendar-day,
+.calendar-event,
+.queue-table-wrap,
+.inbox-item,
+.inbox-card,
+.people-card,
+.standup-section,
+.standup-actions button,
+.metrics-card,
+.nudge-btn,
+.plan-checkpoint-card,
+.plan-section-card,
+.plan-week-card,
+.plan-task-row,
+.qa-section,
+.qa-card,
+.admin-card,
+.admin-ms-section,
+.chat-message {
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-card);
+}
+
+/* Buttons */
+button {
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+/* Softer border colours on cards */
+.import-card,
+.todo-card,
+.calendar-event,
+.inbox-item,
+.inbox-card,
+.people-card,
+.metrics-card,
+.plan-checkpoint-card,
+.plan-section-card,
+.plan-week-card,
+.qa-card,
+.admin-card {
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Sidebar nav items */
+.sidebar-nav a {
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
 }
