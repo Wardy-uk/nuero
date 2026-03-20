@@ -25,7 +25,7 @@ export default function App() {
   const [queueData, setQueueData] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  usePushNotifications();
+  const pushState = usePushNotifications();
 
   const fetchStatus = async () => {
     try {
@@ -68,7 +68,7 @@ export default function App() {
       case 'imports': return <ImportsPanel />;
       case 'inbox': return <InboxPanel />;
       case 'qa': return <QATab />;
-      case 'admin': return <AdminPanel />;
+      case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} />;
     }
   };

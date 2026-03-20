@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { apiUrl } from './api';
 
 export default function usePushNotifications() {
@@ -7,34 +7,40 @@ export default function usePushNotifications() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Check if push is supported
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       return;
     }
     setSupported(true);
-    registerServiceWorker();
+    // Register SW but don't auto-subscribe — iOS needs a user gesture
+    checkExistingSubscription();
   }, []);
 
-  async function registerServiceWorker() {
+  async function checkExistingSubscription() {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js');
       const existing = await registration.pushManager.getSubscription();
       if (existing) {
         setSubscribed(true);
-        return;
+        // Re-send to server in case DB was reset
+        await fetch(apiUrl('/api/push/subscribe'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(existing)
+        });
       }
-      // Auto-subscribe
-      await subscribe(registration);
     } catch (e) {
       console.error('[Push] SW registration failed:', e);
       setError(e.message);
     }
   }
 
-  async function subscribe(registration) {
+  const manualSubscribe = useCallback(async () => {
     try {
+      setError(null);
+      const registration = await navigator.serviceWorker.ready;
+
       const res = await fetch(apiUrl('/api/push/vapid-public-key'));
-      if (!res.ok) return;
+      if (!res.ok) { setError('Failed to get VAPID key'); return; }
       const { publicKey } = await res.json();
 
       const subscription = await registration.pushManager.subscribe({
@@ -51,14 +57,16 @@ export default function usePushNotifications() {
       if (subRes.ok) {
         setSubscribed(true);
         console.log('[Push] Subscribed successfully');
+      } else {
+        setError('Server rejected subscription');
       }
     } catch (e) {
       console.error('[Push] Subscribe failed:', e);
       setError(e.message);
     }
-  }
+  }, []);
 
-  return { supported, subscribed, error };
+  return { supported, subscribed, error, manualSubscribe };
 }
 
 function urlBase64ToUint8Array(base64String) {

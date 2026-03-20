@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import './AdminPanel.css';
 
-export default function AdminPanel() {
+export default function AdminPanel({ pushState = {} }) {
+  const { supported: pushSupported, subscribed: pushSubscribed, error: pushError, manualSubscribe } = pushState;
   const [status, setStatus] = useState(null);
   const [deviceCode, setDeviceCode] = useState(null);
   const [authError, setAuthError] = useState(null);
@@ -151,6 +152,34 @@ export default function AdminPanel() {
             </>
           )}
           {authError && <div className="admin-error">{authError}</div>}
+        </div>
+      </div>
+
+      <div className="admin-section">
+        <div className="admin-section-title">Push Notifications</div>
+        <div className="admin-ms-section">
+          {!pushSupported ? (
+            <div className="admin-ms-desc">Push notifications are not supported on this device/browser.</div>
+          ) : pushSubscribed ? (
+            <div className="admin-ms-connected">
+              <span className="admin-ms-connected-dot" />
+              Push notifications enabled
+            </div>
+          ) : (
+            <>
+              <div className="admin-ms-desc">
+                Enable push notifications to get standup reminders and todo nudges on this device.
+                On iOS, you must first install NEURO as a PWA (Add to Home Screen from Safari).
+              </div>
+              <button
+                className="admin-ms-connect-btn"
+                onClick={manualSubscribe}
+              >
+                Enable Notifications
+              </button>
+            </>
+          )}
+          {pushError && <div className="admin-error">{pushError}</div>}
         </div>
       </div>
 
