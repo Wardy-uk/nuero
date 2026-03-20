@@ -20,7 +20,7 @@ router.use(requireApiKey);
 
 // Resolve and validate path stays within vault
 function safePath(relativePath) {
-  if (!relativePath) return null;
+  if (relativePath === undefined || relativePath === null) return null;
   const resolved = path.resolve(VAULT_PATH, relativePath);
   if (!resolved.startsWith(path.resolve(VAULT_PATH))) return null; // path traversal guard
   return resolved;
