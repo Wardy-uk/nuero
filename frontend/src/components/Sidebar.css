@@ -2,7 +2,7 @@
   width: 200px;
   min-width: 200px;
   background: var(--bg-secondary);
-  border-right: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
   padding: 16px 0;
 }
 
