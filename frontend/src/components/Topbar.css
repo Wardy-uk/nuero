@@ -5,7 +5,8 @@
   height: 48px;
   padding: 0 20px;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   font-family: var(--font-mono);
   font-size: 12px;
   flex-shrink: 0;
