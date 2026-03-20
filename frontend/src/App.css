@@ -16,6 +16,13 @@
   overflow-y: auto;
   padding: 24px;
   background: var(--bg-primary);
+  display: flex;
+  justify-content: center;
+}
+
+.main-panel > * {
+  width: 100%;
+  max-width: 960px;
 }
 
 .chat-panel {
