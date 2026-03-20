@@ -65,9 +65,9 @@ export default function Dashboard({ queueData, onNavigate }) {
         </div>
       </div>
 
-      {/* 90-Day progress bar — desktop only */}
+      {/* 90-Day progress bar */}
       {plan && (
-        <div className="dash-progress dash-desktop-only">
+        <div className="dash-progress">
           <div className="progress-header">
             <span className="progress-title">90-Day Plan</span>
             <span className="progress-meta">{plan.totalDone}/{plan.totalTasks} done — {plan.nextCheckpoint.label} in {plan.daysToCheckpoint}d</span>
@@ -102,14 +102,14 @@ export default function Dashboard({ queueData, onNavigate }) {
         <button className="dash-action" onClick={() => onNavigate?.('queue')}>Queue</button>
       </div>
 
-      {/* Queue peek — desktop only */}
+      {/* Queue peek — at-risk tickets */}
       {queueData?.at_risk_tickets?.length > 0 && (
-        <div className="dash-queue-peek dash-desktop-only">
+        <div className="dash-queue-peek">
           <div className="tasks-header">
             <span className="tasks-title">At Risk</span>
             <button className="tasks-more" onClick={() => onNavigate?.('queue')}>Full queue</button>
           </div>
-          {queueData.at_risk_tickets.slice(0, 4).map(t => (
+          {queueData.at_risk_tickets.slice(0, window.innerWidth <= 768 ? 3 : 4).map(t => (
             <div key={t.ticket_key} className="dash-task task-high">
               <span className="task-key">{t.ticket_key}</span>
               <span className="task-text">{t.summary}</span>

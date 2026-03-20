@@ -293,6 +293,14 @@
     font-size: 11px;
   }
 
+  .dash-progress {
+    padding: 10px 12px;
+  }
+
+  .progress-meta {
+    font-size: 10px;
+  }
+
   .dash-desktop-only { display: none; }
   .dash-mobile-only { display: flex; }
 }
