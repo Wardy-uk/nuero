@@ -1,84 +1,60 @@
-# NEURO Build Plan
+# NEURO Snag List — Implementation Plan
 
-**Created:** 2026-03-19
-**Status:** All 4 priorities built — pending deployment + testing
-
----
-
-## Priority 1 — Jira fix via n8n ingest
-
-**Problem:** Pi cannot make HTTPS calls to Atlassian (EPIPE crashes Node.js). All direct Jira API code must be removed.
-
-**Solution:** n8n polls Jira on a schedule, POSTs pre-fetched ticket JSON to NEURO's new ingest endpoint.
-
-### Steps:
-1. **Backend: Add POST /api/queue/ingest endpoint** (`routes/queue.js`)
-   - Accepts `{ tickets: [...] }` JSON body
-   - Validates `X-Ingest-Secret` header against `INGEST_SECRET` env var
-   - Calls `db.clearStaleTickets()` then `db.upsertTicket()` for each ticket
-   - Updates jira_status, jira_last_sync, jira_ticket_count in agent_state
-
-2. **Backend: Remove dead Jira code**
-   - Delete `backend/services/jira-worker.js`
-   - Gut `backend/services/jira.js` — keep `isConfigured()` (returns false now), remove `fetchAndCacheTickets()`
-   - Remove Jira cron from `scheduler.js` (already commented out, clean up fully)
-   - Remove `node-fetch` from backend/package.json (unused after jira-worker removal)
-
-3. **Update .env.example** — add `INGEST_SECRET=`
-
-4. **Build n8n workflow** (via n8n MCP):
-   - Schedule trigger: every 5 minutes
-   - HTTP Request node: POST to Jira REST API `/rest/api/3/search/jql`
-   - Code node: map Jira fields to NEURO schema (ticket_key, summary, status, priority, assignee, sla fields)
-   - HTTP Request node: POST to `https://pi-dev.tailecb90f.ts.net/api/queue/ingest` with `X-Ingest-Secret` header
-
-5. **Test:** Queue data appears in NEURO UI without any Pi→Atlassian calls
-
-### Files changed:
-- `backend/routes/queue.js` — add POST /ingest
-- `backend/services/jira.js` — strip to stub
-- `backend/services/jira-worker.js` — DELETE
-- `backend/services/scheduler.js` — remove dead Jira references
-- `backend/.env.example` — add INGEST_SECRET
+**Source:** `Documents\Nicks knowledge base\Projects\Second Brain\NEURO - Snag List.md`
+**Date:** 2026-03-20
 
 ---
 
-## Priority 2 — Web Push notifications (iOS PWA) DONE
+## SNAG 001 — Vault sync is stale (Critical)
 
-### Built:
-- `npm install web-push` in backend
-- `services/webpush.js` — VAPID-based push, auto-cleanup of expired subscriptions
-- `routes/push.js` — POST /subscribe, GET /vapid-public-key, POST /test
-- Wired into `nudges.js` — standup nudge, todo nudge, and nag escalation all send push
-- `frontend/public/sw.js` — service worker handles push events, click navigates to relevant view
-- `frontend/src/usePushNotifications.js` — auto-registers SW and subscribes on app load
-- `frontend/src/components/InstallBanner.jsx` — iOS Safari "Add to Home Screen" prompt
-- `frontend/public/manifest.json` + apple meta tags in index.html for PWA
-- DB: `push_subscriptions` table added to schema.sql
-- .env.example: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY added
+**Problem:** Pi vault at `/home/nickw/nuero-vault` last updated 2026-03-15. No active sync.
 
-### VAPID keys generated:
-- Public: `BFOhLQLIeROCj4PRvlUBUUV56uSRXgkBh1um2d9U8tOxBE-3vn5K-wmVGt90LG_-MD3Qy6ViPk3LWBEAQ_Zd7gU`
-- Private: `Bs_0zGEr5F-NHlfDx-4Z888L9iOewhxXGrCsZCakSJI`
+**Fix:** Reinstate cron job on Pi to `git pull --rebase origin main` every 60 seconds.
+
+**Steps:**
+1. SSH into Pi
+2. Add cron entry: `* * * * * cd /home/nickw/nuero-vault && git pull --rebase origin main >> /home/nickw/vault-pull.log 2>&1`
+3. Wait ~2 minutes, check `vault-pull.log` for successful pulls
+4. Confirm NEURO context picks up fresh vault data
+
+**No code changes required** — backend already reads from `OBSIDIAN_VAULT_PATH`.
 
 ---
 
-## Priority 3 — Weekend / backup standup button DONE
+## SNAG 002 — No capture feature (High)
 
-### Built:
-- `obsidian.js` — `readRitualState()` reads `Scripts/ritual-state.json`, `readPreviousDailyNote()`
-- `routes/standup.js` — GET /ritual-state, POST /backup (Ritual 5 format, max 3 items, carry-overs)
-- `StandupEditor.jsx` — BackupStandup component with auto-show (weekends + weekdays after 09:30)
-- "Quick backup" button always available in standup header
+**Problem:** No way to capture notes/photos/files from NEURO. Everything scattered.
 
----
+**Solution:** New Capture tab with three modes: Note / Photo / File. All land in `Imports/` for standup sorter.
 
-## Priority 4 — Imports sweep DONE
+### Backend (new route file: `routes/capture.js`)
+- `POST /api/capture/note` — `{ title, content }` → `Imports/YYYY-MM-DD-HH-MM-SS-note.md` with frontmatter
+- `POST /api/capture/photo` — multipart upload → `Imports/Files/YYYY-MM-DD-HH-MM-SS-[filename]`
+- `POST /api/capture/file` — multipart upload → `Imports/Files/`
+- Frontmatter on all: `date`, `source: neuro-capture`, `status: unprocessed`
+- Return `{ success: true, path, filename }`
+- SSE broadcast to increment Imports badge
+- 10MB file size limit (multer config)
+- New dep: `multer` for multipart uploads
 
-### Built:
-- `services/imports.js` — recursive file scan of Imports/, skips `status: processed`, returns preview
-- `routes/imports.js` — GET /pending, POST /classify (Ollama classification with bouncer rule)
-- `ImportsPanel.jsx` + CSS — card-based UI with classify buttons, classification display
-- `Sidebar.jsx` — "Imports" nav item with badge showing unprocessed count (polls every 60s)
-- Bouncer rule: low-confidence items forced to `needs-review`
-- Does NOT auto-move files — surfaces for Nick's confirmation only
+### Frontend (new component: `CapturePanel.jsx`)
+- Three mode tabs: Note / Photo / File
+- Note: optional title + textarea, clears on success, shows "Captured ✓"
+- Photo: `<input accept="image/*" capture="environment">` with preview thumbnail
+- File: standard file picker, shows name + size
+- 10MB frontend check before submit
+
+### Sidebar integration
+- New nav item: `{ id: 'capture', label: 'Capture', icon: '+' }`
+- Second in list (after Dashboard)
+- Mobile default landing view
+
+### Constraints
+- No auto-classification — files sorted at standup
+- Images saved as-is, not compressed
+- CommonJS, `multer` is only new dep
+- Must work from iPhone Safari PWA with camera
+
+### Key paths
+- Vault Imports dir on Pi: `/home/nickw/nuero-vault/Imports/`
+- Vault Imports/Files on Pi: `/home/nickw/nuero-vault/Imports/Files/`

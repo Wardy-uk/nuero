@@ -14,6 +14,7 @@ import NudgeBanner from './components/NudgeBanner';
 import ChatPanel from './components/ChatPanel';
 import QATab from './components/QATab';
 import ImportsPanel from './components/ImportsPanel';
+import CapturePanel from './components/CapturePanel';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
 import useCachedFetch from './useCachedFetch';
@@ -21,7 +22,8 @@ import CacheIndicator from './components/CacheIndicator';
 import './App.css';
 
 export default function App() {
-  const [activeView, setActiveView] = useState('dashboard');
+  const isMobile = window.innerWidth <= 768;
+  const [activeView, setActiveView] = useState(isMobile ? 'capture' : 'dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const pushState = usePushNotifications();
@@ -54,6 +56,7 @@ export default function App() {
       case 'plan': return <NinetyDayPlan />;
       case 'todos': return <TodoPanel />;
       case 'calendar': return <CalendarView />;
+      case 'capture': return <CapturePanel />;
       case 'imports': return <ImportsPanel />;
       case 'inbox': return <InboxPanel />;
       case 'qa': return <QATab />;

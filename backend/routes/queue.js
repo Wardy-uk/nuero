@@ -76,4 +76,19 @@ router.post('/ingest', (req, res) => {
   }
 });
 
+// POST /api/queue/sync — trigger immediate Jira sync
+router.post('/sync', async (req, res) => {
+  try {
+    const jira = require('../services/jira');
+    if (!jira.isConfigured()) {
+      return res.status(400).json({ error: 'Jira not configured — check JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN' });
+    }
+    const result = await jira.syncTickets();
+    res.json(result);
+  } catch (e) {
+    console.error('[Queue] Sync error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

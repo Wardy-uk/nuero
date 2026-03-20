@@ -4,6 +4,7 @@ import './Sidebar.css';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: '>' },
+  { id: 'capture', label: 'Capture', icon: '+' },
   { id: 'standup', label: 'Standup', icon: '>' },
   { id: 'people', label: 'Team / People', icon: '>' },
   { id: 'queue', label: 'KPI / Queue', icon: '>' },

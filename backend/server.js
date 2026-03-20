@@ -30,6 +30,7 @@ const contextRoutes = require('./routes/context');
 const qaRoutes = require('./routes/qa');
 const pushRoutes = require('./routes/push');
 const importsRoutes = require('./routes/imports');
+const captureRoutes = require('./routes/capture');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -52,6 +53,7 @@ app.use('/api/context', contextRoutes);
 app.use('/api/qa', qaRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/imports', importsRoutes);
+app.use('/api/capture', captureRoutes);
 
 // Health / status endpoint
 app.get('/api/status', async (req, res) => {

@@ -1,11 +1,13 @@
 const cron = require('node-cron');
 const nudges = require('./nudges');
+const jira = require('./jira');
 
 function start() {
   // Fire nudges immediately if server starts after 9am on a weekday
   nudges.startupCheck();
 
-  // Jira tickets now ingested externally via POST /api/queue/ingest from n8n
+  // Start Jira polling (fetches on startup + every 5 min)
+  jira.startPolling();
 
   // 9am weekdays — trigger standup and todo nudges
   cron.schedule('0 9 * * 1-5', () => {
@@ -19,7 +21,7 @@ function start() {
     nudges.nagCheck();
   });
 
-  console.log('[Scheduler] Started — standup nudge at 9am, nag every 15m');
+  console.log('[Scheduler] Started — standup nudge at 9am, nag every 15m, Jira poll every 5m');
 }
 
 module.exports = { start };

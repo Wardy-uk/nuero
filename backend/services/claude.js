@@ -17,6 +17,13 @@ Nick is neurodivergent. His brain tends toward avoidance and distraction when fa
 
 Key systems: Jira Service Management (primary queue), SQL Server (reporting), Grafana (metrics), Obsidian vault (knowledge base/second brain).
 
+Task priority hierarchy (top to bottom):
+1. 90-day plan tasks — these are the strategic commitments tied to Nick's new role. Always highest priority.
+2. Vault tasks — tasks added within the Obsidian vault from decisions, meetings, or manually. These are Nick's own commitments.
+3. MS Planner & MS ToDo — organisational/team tasks. Important but lower priority than Nick's own vault tasks.
+
+When discussing priorities, respect this hierarchy. 90-day plan tasks should never be buried under Planner items.
+
 When Nick makes a decision in conversation, flag it with [DECISION] so it can be logged.
 
 Nick's direct reports:
@@ -33,9 +40,11 @@ function anthropicAvailable() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-function buildContextBlock(queueSummary, dailyNote, standupContent) {
+function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan) {
   const parts = [];
+  const diagnostics = [];
 
+  // Queue
   if (queueSummary && queueSummary.total > 0) {
     parts.push(`## Current Queue Status
 - Total open tickets: ${queueSummary.total}
@@ -45,18 +54,87 @@ function buildContextBlock(queueSummary, dailyNote, standupContent) {
 ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSummary.at_risk_tickets.slice(0, 5).map(t =>
   `- ${t.ticket_key}: ${t.summary} (${t.sla_remaining_minutes ? Math.round(t.sla_remaining_minutes) + ' min remaining' : 'SLA unknown'}, assigned: ${t.assignee})`
 ).join('\n') : ''}`);
+    diagnostics.push('queue: yes');
   } else {
-    parts.push('## Queue Status\nNo Jira data available.');
+    parts.push('## Queue Status\nNo Jira data available yet.');
+    diagnostics.push('queue: empty');
   }
 
+  // Daily note (today or previous as fallback)
   if (dailyNote) {
     parts.push(`## Today's Daily Note\n${dailyNote}`);
+    diagnostics.push('daily: today');
+  } else if (previousNote) {
+    parts.push(`## Previous Daily Note (${previousNote.date})\n${previousNote.content}`);
+    diagnostics.push(`daily: fallback ${previousNote.date}`);
+  } else {
+    diagnostics.push('daily: none');
   }
 
   if (standupContent) {
     parts.push(`## Standup Template\n${standupContent}`);
+    diagnostics.push('standup: yes');
+  } else {
+    diagnostics.push('standup: none');
   }
 
+  // Todos from vault — grouped by hierarchy: 90-day plan > vault tasks > MS Planner/ToDo
+  if (todos && todos.active && todos.active.length > 0) {
+    const formatTask = t => `- ${t.text}${t.due_date ? ` (due: ${t.due_date})` : ''}`;
+
+    // Split by source hierarchy
+    const planTasks = todos.active.filter(t => (t.source || '').includes('Daily') && t.priority === 'high');
+    const vaultTasks = todos.active.filter(t => {
+      const src = (t.source || '').toLowerCase();
+      return src.includes('master') || (src.includes('daily') && t.priority !== 'high');
+    });
+    const msTasks = todos.active.filter(t => {
+      const src = (t.source || '').toLowerCase();
+      return src.includes('ms ') || src.includes('planner') || src.includes('todo');
+    });
+
+    let todoBlock = `## Active Tasks (${todos.active.length} total — hierarchy: 90-day plan → vault → MS Planner/ToDo)`;
+
+    if (planTasks.length > 0) {
+      todoBlock += `\n### Focus Today (from daily note)\n` + planTasks.slice(0, 8).map(formatTask).join('\n');
+    }
+    if (vaultTasks.length > 0) {
+      todoBlock += `\n### Vault Tasks\n` + vaultTasks.slice(0, 10).map(formatTask).join('\n');
+    }
+    if (msTasks.length > 0) {
+      todoBlock += `\n### MS Planner / ToDo\n` + msTasks.slice(0, 8).map(formatTask).join('\n');
+    }
+
+    parts.push(todoBlock);
+    diagnostics.push(`todos: ${todos.active.length} (plan:${planTasks.length} vault:${vaultTasks.length} ms:${msTasks.length})`);
+  } else {
+    diagnostics.push('todos: none');
+  }
+
+  // 90-day plan summary
+  if (ninetyDayPlan) {
+    let planBlock = `## 90-Day Plan — Day ${ninetyDayPlan.currentDay} of 90`;
+    planBlock += `\n- Progress: ${ninetyDayPlan.totalDone}/${ninetyDayPlan.totalTasks} tasks complete`;
+    planBlock += `\n- Next checkpoint: ${ninetyDayPlan.nextCheckpoint.label} (${ninetyDayPlan.daysToCheckpoint} working days away)`;
+    if (ninetyDayPlan.overdueTasks.length > 0) {
+      planBlock += `\n- Overdue: ${ninetyDayPlan.overdueTasks.length} tasks`;
+      planBlock += '\n' + ninetyDayPlan.overdueTasks.slice(0, 5).map(t =>
+        `  - Day ${t.day}: ${t.text}`
+      ).join('\n');
+    }
+    if (ninetyDayPlan.todayTasks.length > 0) {
+      planBlock += `\n### Today's 90-Day Tasks`;
+      planBlock += '\n' + ninetyDayPlan.todayTasks.map(t =>
+        `- [${t.status === 'x' ? 'x' : ' '}] ${t.text}`
+      ).join('\n');
+    }
+    parts.push(planBlock);
+    diagnostics.push(`90day: day ${ninetyDayPlan.currentDay}`);
+  } else {
+    diagnostics.push('90day: none');
+  }
+
+  // Inbox
   try {
     const scanner = require('./inbox-scanner');
     const inbox = scanner.getFlaggedItems();
@@ -73,9 +151,15 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
           medItems.map(i => `- **${i.from}**: ${i.subject} — ${i.summary}`).join('\n');
       }
       parts.push(inboxBlock);
+      diagnostics.push(`inbox: ${inbox.items.length}`);
+    } else {
+      diagnostics.push('inbox: empty');
     }
-  } catch (e) { /* scanner not loaded yet */ }
+  } catch (e) {
+    diagnostics.push('inbox: unavailable');
+  }
 
+  console.log('[Context] Sources:', diagnostics.join(', '));
   return parts.join('\n\n---\n\n');
 }
 
@@ -188,11 +272,20 @@ async function streamChat(conversationId, userMessage, res) {
   const queueSummary = db.getQueueSummary();
 
   let dailyNote = null;
+  let previousNote = null;
   let standupContent = null;
-  try { dailyNote = obsidian.readTodayDailyNote(); } catch (e) {}
-  try { standupContent = obsidian.readStandup(); } catch (e) {}
+  let todos = null;
+  let ninetyDayPlan = null;
 
-  const contextBlock = buildContextBlock(queueSummary, dailyNote, standupContent);
+  try { dailyNote = obsidian.readTodayDailyNote(); } catch (e) { console.warn('[Context] Daily note error:', e.message); }
+  if (!dailyNote) {
+    try { previousNote = obsidian.readPreviousDailyNote(); } catch (e) { console.warn('[Context] Previous note error:', e.message); }
+  }
+  try { standupContent = obsidian.readStandup(); } catch (e) { console.warn('[Context] Standup error:', e.message); }
+  try { todos = obsidian.parseVaultTodos(); } catch (e) { console.warn('[Context] Todos error:', e.message); }
+  try { ninetyDayPlan = obsidian.parseNinetyDayPlan(); } catch (e) { console.warn('[Context] 90-day plan error:', e.message); }
+
+  const contextBlock = buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan);
 
   const startDate = new Date('2026-03-16');
   const today = new Date();
