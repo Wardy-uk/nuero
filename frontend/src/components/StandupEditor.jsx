@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
+import useCachedFetch from '../useCachedFetch';
 import './StandupEditor.css';
 
 function BackupStandup({ onDone }) {
@@ -69,38 +70,36 @@ function BackupStandup({ onDone }) {
 
 export default function StandupEditor() {
   const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [contentSet, setContentSet] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [showBackup, setShowBackup] = useState(false);
-  const [ritualState, setRitualState] = useState(null);
 
+  const { data: standupData, status: standupStatus } = useCachedFetch('/api/standup');
+  const { data: ritualData } = useCachedFetch('/api/standup/ritual-state');
+  const loading = standupData === null && standupStatus !== 'unavailable';
+
+  // Set content from fetched data once
   useEffect(() => {
-    fetch(apiUrl('/api/standup'))
-      .then(res => res.json())
-      .then(data => {
-        setContent(data.content || '# Standup\n\n## Yesterday\n- \n\n## Today\n- \n\n## Blockers\n- ');
-        setLoading(false);
-      })
-      .catch(() => {
-        setContent('# Standup\n\n## Yesterday\n- \n\n## Today\n- \n\n## Blockers\n- ');
-        setLoading(false);
-      });
+    if (standupData && !contentSet) {
+      setContent(standupData.content || '# Standup\n\n## Yesterday\n- \n\n## Today\n- \n\n## Blockers\n- ');
+      setContentSet(true);
+    } else if (standupStatus === 'unavailable' && !contentSet) {
+      setContent('# Standup\n\n## Yesterday\n- \n\n## Today\n- \n\n## Blockers\n- ');
+      setContentSet(true);
+    }
+  }, [standupData, standupStatus, contentSet]);
 
-    // Check ritual state to auto-show backup button
-    fetch(apiUrl('/api/standup/ritual-state'))
-      .then(res => res.json())
-      .then(data => {
-        setRitualState(data);
-        const now = new Date();
-        const isWeekend = now.getDay() === 0 || now.getDay() === 6;
-        const isLate = now.getHours() >= 9 && now.getMinutes() >= 30;
-        if (isWeekend || (isLate && !data.standupDoneToday)) {
-          setShowBackup(true);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  // Auto-show backup button based on ritual state
+  useEffect(() => {
+    if (!ritualData) return;
+    const now = new Date();
+    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+    const isLate = now.getHours() >= 9 && now.getMinutes() >= 30;
+    if (isWeekend || (isLate && !ritualData.standupDoneToday)) {
+      setShowBackup(true);
+    }
+  }, [ritualData]);
 
   const handleSave = async () => {
     setSaving(true);

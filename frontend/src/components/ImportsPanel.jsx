@@ -1,25 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { apiUrl } from '../api';
+import useCachedFetch from '../useCachedFetch';
 import './ImportsPanel.css';
 
 export default function ImportsPanel() {
-  const [files, setFiles] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [classifying, setClassifying] = useState(null);
   const [classifications, setClassifications] = useState({});
 
-  const fetchPending = () => {
-    setLoading(true);
-    fetch(apiUrl('/api/imports/pending'))
-      .then(res => res.json())
-      .then(data => {
-        setFiles(data.files || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  };
-
-  useEffect(() => { fetchPending(); }, []);
+  const transform = useMemo(() => (json) => json.files || [], []);
+  const { data: files, refresh: fetchPending } = useCachedFetch('/api/imports/pending', { transform });
+  const loading = files === null;
 
   const classify = async (filePath) => {
     setClassifying(filePath);
@@ -46,11 +36,11 @@ export default function ImportsPanel() {
         <button className="btn btn-secondary" onClick={fetchPending}>Refresh</button>
       </div>
 
-      {files.length === 0 ? (
+      {(files || []).length === 0 ? (
         <div className="imports-empty">No unprocessed files in Imports/</div>
       ) : (
         <div className="imports-list">
-          {files.map(file => {
+          {(files || []).map(file => {
             const cls = classifications[file.filePath];
             return (
               <div key={file.filePath} className="import-card">

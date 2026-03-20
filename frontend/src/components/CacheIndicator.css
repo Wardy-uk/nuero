@@ -1,0 +1,34 @@
+.cache-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+
+.cache-indicator.cached {
+  background: rgba(240, 160, 64, 0.12);
+  color: var(--warning);
+}
+
+.cache-indicator.offline {
+  background: rgba(224, 85, 85, 0.12);
+  color: var(--danger);
+}
+
+.cache-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.cache-dot.warn {
+  background: var(--warning);
+}
+
+.cache-dot.danger {
+  background: var(--danger);
+}

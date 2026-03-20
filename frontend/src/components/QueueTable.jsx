@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { apiUrl } from '../api';
+import React, { useState } from 'react';
+import useCachedFetch from '../useCachedFetch';
 import './QueueTable.css';
 
 function slaClass(minutes) {
@@ -19,20 +19,10 @@ function formatSla(minutes) {
 
 export default function QueueTable({ queueData, onRefresh }) {
   const [showMine, setShowMine] = useState(true);
-  const [filteredData, setFilteredData] = useState(null);
-  const [loading, setLoading] = useState(false);
 
-  const fetchFiltered = async () => {
-    setLoading(true);
-    try {
-      const url = showMine ? '/api/queue?assignee=nick' : '/api/queue';
-      const res = await fetch(apiUrl(url));
-      setFilteredData(await res.json());
-    } catch (e) { /* ignore */ }
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchFiltered(); }, [showMine]);
+  const path = showMine ? '/api/queue?assignee=nick' : '/api/queue';
+  const { data: filteredData, refresh: fetchFiltered } = useCachedFetch(path);
+  const loading = filteredData === null;
 
   const data = filteredData || queueData;
   const tickets = data?.tickets || [];

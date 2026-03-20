@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { apiUrl } from '../api';
+import React, { useState } from 'react';
+import useCachedFetch from '../useCachedFetch';
 import './NinetyDayPlan.css';
 
 const OUTCOME_ICONS = {
@@ -7,15 +7,8 @@ const OUTCOME_ICONS = {
 };
 
 export default function NinetyDayPlan() {
-  const [plan, setPlan] = useState(null);
+  const { data: plan } = useCachedFetch('/api/obsidian/ninety-day-plan');
   const [expandedOutcome, setExpandedOutcome] = useState(null);
-
-  useEffect(() => {
-    fetch(apiUrl('/api/obsidian/ninety-day-plan'))
-      .then(r => r.json())
-      .then(setPlan)
-      .catch(console.error);
-  }, []);
 
   if (!plan) return <div className="plan-container"><p className="plan-loading">Loading plan…</p></div>;
 

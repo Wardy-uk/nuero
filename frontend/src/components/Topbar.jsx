@@ -1,7 +1,7 @@
 import React from 'react';
 import './Topbar.css';
 
-export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, chatOpen }) {
+export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, chatOpen, children }) {
   const jiraStatus = status?.jira?.status || 'unknown';
   const claudeOk = status?.claude?.configured;
   const atRisk = queueData?.at_risk_count || 0;
@@ -38,6 +38,7 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
         </div>
       </div>
       <div className="topbar-right">
+        {children}
         {atRisk > 0 && (
           <div className="topbar-alert">
             <span className="alert-count">{atRisk}</span>

@@ -1,26 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
+import useCachedFetch from '../useCachedFetch';
 import './AdminPanel.css';
 
 export default function AdminPanel({ pushState = {} }) {
   const { supported: pushSupported, subscribed: pushSubscribed, error: pushError, manualSubscribe } = pushState;
-  const [status, setStatus] = useState(null);
+  const { data: status, refresh: fetchStatus } = useCachedFetch('/api/status');
   const [deviceCode, setDeviceCode] = useState(null);
   const [authError, setAuthError] = useState(null);
   const [connecting, setConnecting] = useState(false);
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch(apiUrl('/api/status'));
-      setStatus(await res.json());
-    } catch (e) {
-      console.error('Status fetch failed:', e);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
 
   // Poll for auth completion when device code is active
   useEffect(() => {

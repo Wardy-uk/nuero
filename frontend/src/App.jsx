@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -16,40 +16,29 @@ import QATab from './components/QATab';
 import ImportsPanel from './components/ImportsPanel';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
-import { apiUrl } from './api';
+import useCachedFetch from './useCachedFetch';
+import CacheIndicator from './components/CacheIndicator';
 import './App.css';
 
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
-  const [status, setStatus] = useState(null);
-  const [queueData, setQueueData] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const pushState = usePushNotifications();
 
-  const fetchStatus = async () => {
-    try {
-      const res = await fetch(apiUrl('/api/status'));
-      setStatus(await res.json());
-    } catch (e) { console.error('Status fetch failed:', e); }
-  };
+  const statusFetch = useCachedFetch('/api/status', { interval: 30000 });
+  const queueFetch = useCachedFetch('/api/queue', { interval: 30000 });
 
-  const fetchQueue = async () => {
-    try {
-      const res = await fetch(apiUrl('/api/queue'));
-      setQueueData(await res.json());
-    } catch (e) { console.error('Queue fetch failed:', e); }
-  };
+  const status = statusFetch.data;
+  const queueData = queueFetch.data;
 
-  useEffect(() => {
-    fetchStatus();
-    fetchQueue();
-    const interval = setInterval(() => {
-      fetchStatus();
-      fetchQueue();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  // Worst status across core fetches for the indicator
+  const worstStatus = statusFetch.status === 'unavailable' || queueFetch.status === 'unavailable'
+    ? 'unavailable'
+    : statusFetch.status === 'cached' || queueFetch.status === 'cached'
+      ? 'cached'
+      : 'live';
+  const worstCacheAge = Math.max(statusFetch.cacheAge || 0, queueFetch.cacheAge || 0) || null;
 
   const handleNavigate = (view) => {
     setActiveView(view);
@@ -61,7 +50,7 @@ export default function App() {
       case 'dashboard': return <Dashboard queueData={queueData} />;
       case 'standup': return <StandupEditor />;
       case 'people': return <PeopleBoard />;
-      case 'queue': return <QueueTable queueData={queueData} onRefresh={fetchQueue} />;
+      case 'queue': return <QueueTable queueData={queueData} onRefresh={queueFetch.refresh} />;
       case 'plan': return <NinetyDayPlan />;
       case 'todos': return <TodoPanel />;
       case 'calendar': return <CalendarView />;
@@ -75,7 +64,9 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <Topbar status={status} queueData={queueData} onMenuToggle={() => setSidebarOpen(o => !o)} onChatToggle={() => setChatOpen(o => !o)} chatOpen={chatOpen} />
+      <Topbar status={status} queueData={queueData} onMenuToggle={() => setSidebarOpen(o => !o)} onChatToggle={() => setChatOpen(o => !o)} chatOpen={chatOpen}>
+        <CacheIndicator status={worstStatus} cacheAge={worstCacheAge} />
+      </Topbar>
       <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} />
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <div className="app-body">

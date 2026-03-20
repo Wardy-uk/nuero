@@ -1,10 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { apiUrl, API_BASE } from '../api';
+import useCachedFetch from '../useCachedFetch';
 import './NudgeBanner.css';
 
 export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
+  const transform = useMemo(() => (json) => json.nudges || [], []);
+  const { data: fetchedNudges } = useCachedFetch('/api/nudges', { interval: 30000, transform });
   const [nudges, setNudges] = useState([]);
   const [snoozed, setSnoozed] = useState({}); // { standup: true, todo: true }
+
+  // Sync fetched nudges into local state (SSE may also update it)
+  useEffect(() => {
+    if (fetchedNudges) setNudges(fetchedNudges);
+  }, [fetchedNudges]);
 
   const handleSnooze = (type) => {
     fetch(apiUrl(`/api/nudges/${type}/snooze`), { method: 'POST' })
@@ -16,21 +24,6 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
       })
       .catch(console.error);
   };
-
-  // Poll active nudges
-  useEffect(() => {
-    const fetchNudges = async () => {
-      try {
-        const res = await fetch(apiUrl('/api/nudges'));
-        const data = await res.json();
-        setNudges(data.nudges || []);
-      } catch (e) { /* ignore */ }
-    };
-
-    fetchNudges();
-    const interval = setInterval(fetchNudges, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   // SSE stream for real-time nudge updates
   useEffect(() => {

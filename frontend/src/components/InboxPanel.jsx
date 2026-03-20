@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { apiUrl } from '../api';
+import useCachedFetch from '../useCachedFetch';
 import './InboxPanel.css';
 
 const URGENCY_ORDER = { high: 0, medium: 1, low: 2 };
@@ -22,73 +23,65 @@ function timeAgo(dateStr) {
 }
 
 export default function InboxPanel() {
-  const [data, setData] = useState({ items: [], lastScan: null, scanning: false });
+  const { data, refresh: fetchData } = useCachedFetch('/api/microsoft/inbox', { interval: 60000 });
   const [filter, setFilter] = useState('all');
 
-  const fetchData = () => {
-    fetch(apiUrl('/api/microsoft/inbox'))
-      .then(r => r.json())
-      .then(setData)
-      .catch(console.error);
-  };
+  const inboxData = data || { items: [], lastScan: null, scanning: false };
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000); // poll every minute
-    return () => clearInterval(interval);
-  }, []);
+  const [scanning, setScanning] = useState(false);
 
   const triggerScan = () => {
+    setScanning(true);
     fetch(apiUrl('/api/microsoft/inbox/scan'), { method: 'POST' })
-      .then(() => setData(d => ({ ...d, scanning: true })))
-      .catch(console.error);
+      .then(() => { setTimeout(() => { fetchData(); setScanning(false); }, 2000); })
+      .catch(() => setScanning(false));
   };
 
-  const sorted = [...data.items].sort((a, b) =>
+  const sorted = [...(inboxData.items || [])].sort((a, b) =>
     (URGENCY_ORDER[a.urgency] ?? 9) - (URGENCY_ORDER[b.urgency] ?? 9)
   );
 
   const filtered = filter === 'all' ? sorted : sorted.filter(i => i.urgency === filter);
 
   const counts = { high: 0, medium: 0, low: 0 };
-  data.items.forEach(i => { counts[i.urgency] = (counts[i.urgency] || 0) + 1; });
+  (inboxData.items || []).forEach(i => { counts[i.urgency] = (counts[i.urgency] || 0) + 1; });
 
   return (
     <div className="inbox-container">
       <div className="inbox-header">
         <h2 className="inbox-title">Inbox Triage</h2>
         <div className="inbox-actions">
-          {data.lastScan && (
+          {inboxData.lastScan && (
             <span className="inbox-last-scan">
-              Scanned {timeAgo(data.lastScan)}
+              Scanned {timeAgo(inboxData.lastScan)}
             </span>
           )}
           <button
             className="inbox-scan-btn"
             onClick={triggerScan}
-            disabled={data.scanning}
+            disabled={scanning}
           >
-            {data.scanning ? 'Scanning...' : 'Scan Now'}
+            {scanning ? 'Scanning...' : 'Scan Now'}
           </button>
         </div>
       </div>
 
-      {data.items.length === 0 && !data.scanning && (
+      {(inboxData.items || []).length === 0 && !scanning && (
         <div className="inbox-empty">
-          {data.lastScan
+          {inboxData.lastScan
             ? 'Inbox clear — nothing needs your attention right now.'
             : 'No scan yet. Waiting for first scan or click Scan Now.'}
         </div>
       )}
 
-      {data.items.length > 0 && (
+      {(inboxData.items || []).length > 0 && (
         <>
           <div className="inbox-filters">
             <button
               className={`inbox-filter ${filter === 'all' ? 'active' : ''}`}
               onClick={() => setFilter('all')}
             >
-              All ({data.items.length})
+              All ({(inboxData.items || []).length})
             </button>
             {counts.high > 0 && (
               <button

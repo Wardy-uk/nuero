@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { apiUrl } from '../api';
+import useCachedFetch from '../useCachedFetch';
 import './TodoPanel.css';
 
 function sourceClass(source) {
@@ -47,21 +48,14 @@ function groupBySource(todos) {
 }
 
 export default function TodoPanel() {
-  const [todos, setTodos] = useState([]);
   const [showDone, setShowDone] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, overdue, today, high, master, ms, daily
-
   const [toggling, setToggling] = useState({});
 
-  const fetchTodos = async () => {
-    try {
-      const res = await fetch(apiUrl(`/api/todos${showDone ? '?all=true' : ''}`));
-      const data = await res.json();
-      setTodos(data.todos || []);
-    } catch (e) { /* ignore */ }
-    setLoading(false);
-  };
+  const path = `/api/todos${showDone ? '?all=true' : ''}`;
+  const transform = useMemo(() => (json) => json.todos || [], []);
+  const { data: todos, refresh: fetchTodos } = useCachedFetch(path, { transform });
+  const loading = todos === null;
 
   const toggleTodo = async (todo) => {
     if (!todo.filePath || todo.lineNumber == null) return;
@@ -78,10 +72,8 @@ export default function TodoPanel() {
     setToggling(prev => ({ ...prev, [key]: false }));
   };
 
-  useEffect(() => { fetchTodos(); }, [showDone]);
-
-  const activeTodos = todos.filter(t => !t.done);
-  const doneTodos = todos.filter(t => t.done);
+  const activeTodos = (todos || []).filter(t => !t.done);
+  const doneTodos = (todos || []).filter(t => t.done);
   const overdueTodos = activeTodos.filter(t => isOverdue(t.due_date));
 
   // Apply filter
