@@ -3,6 +3,29 @@ const db = require('../db/database');
 const obsidian = require('./obsidian');
 
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+
+// Reverse geocode lat/lng to a human-readable place name
+// Uses OSM Nominatim — free, no key required
+async function reverseGeocode(lat, lng) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=14&addressdetails=0`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'NEURO-personal-agent/1.0 (nick.ward@nurtur.tech)' },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Return neighbourhood + town, or just town, or display_name truncated
+    const addr = data.address || {};
+    const parts = [
+      addr.suburb || addr.neighbourhood || addr.hamlet,
+      addr.town || addr.city || addr.village || addr.county
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : (data.display_name || '').split(',').slice(0, 2).join(',').trim();
+  } catch {
+    return null;
+  }
+}
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
 
@@ -86,7 +109,10 @@ function anthropicAvailable() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend = false, vaultResults = []) {
+function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend = false, vaultResults = [], locationContext = null) {
+  // Location context — injected regardless of weekend mode
+  const locationLine = locationContext ? `\n\n**${locationContext}**` : '';
+
   if (weekend) {
     // Weekend mode — skip queue and 90-day plan, keep daily note and todos only
     const parts = [];
@@ -106,7 +132,7 @@ function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent
         vaultResults.map(r => `### ${r.name}\n${r.excerpts.join('\n...\n')}`).join('\n\n')
       );
     }
-    return parts.join('\n\n---\n\n') || '(Weekend — no work context loaded)';
+    return (parts.join('\n\n---\n\n') || '(Weekend — no work context loaded)') + locationLine;
   }
 
   const parts = [];
@@ -227,6 +253,12 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     diagnostics.push('inbox: unavailable');
   }
 
+  // Location
+  if (locationContext) {
+    parts.push(`## Location\n${locationContext}`);
+    diagnostics.push('location: yes');
+  }
+
   // Vault search results
   if (vaultResults && vaultResults.length > 0) {
     const vaultBlock = `## Relevant Vault Notes\n` +
@@ -343,7 +375,7 @@ async function streamOllama(systemPrompt, messages, res) {
 
 // ── Main entry point ──
 
-async function streamChat(conversationId, userMessage, res) {
+async function streamChat(conversationId, userMessage, res, location = null) {
   db.saveMessage(conversationId, 'user', userMessage);
 
   const history = db.getConversationHistory(conversationId, 10);
@@ -387,8 +419,21 @@ async function streamChat(conversationId, userMessage, res) {
     console.warn('[Context] Vault search error:', e.message);
   }
 
+  // Reverse geocode location if provided
+  let locationContext = null;
+  if (location && location.lat && location.lng) {
+    try {
+      const place = await reverseGeocode(location.lat, location.lng);
+      locationContext = place
+        ? `Nick's current location: ${place} (±${location.accuracy || '?'}m)`
+        : `Nick's current location: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`;
+    } catch (e) {
+      console.warn('[Context] Geocode failed:', e.message);
+    }
+  }
+
   const weekend = isWeekend();
-  const contextBlock = buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, vaultSearchResults);
+  const contextBlock = buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, vaultSearchResults, locationContext);
 
   const startDate = new Date('2026-03-16');
   const today = new Date();

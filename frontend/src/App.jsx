@@ -27,6 +27,37 @@ function isWeekend() {
   return day === 0 || day === 6;
 }
 
+// GPS location — requested once on load, refreshed every 30 minutes
+function useLocation() {
+  const [location, setLocation] = React.useState(null);
+  // location shape: { lat, lng, place, accuracy, timestamp }
+
+  const requestLocation = React.useCallback(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy),
+          timestamp: Date.now(),
+          place: null // populated by reverse geocode below
+        });
+      },
+      () => {}, // silently ignore denied/unavailable
+      { timeout: 10000, maximumAge: 5 * 60 * 1000 }
+    );
+  }, []);
+
+  React.useEffect(() => {
+    requestLocation();
+    const interval = setInterval(requestLocation, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [requestLocation]);
+
+  return location;
+}
+
 export default function App() {
   const isMobile = window.innerWidth <= 768;
   const [activeView, setActiveView] = useState('dashboard');
@@ -34,6 +65,7 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [weekendOverride, setWeekendOverride] = useState(false);
   const weekend = isWeekend() && !weekendOverride;
+  const location = useLocation();
   const pushState = usePushNotifications();
 
   const statusFetch = useCachedFetch('/api/status', { interval: 30000 });
@@ -86,7 +118,7 @@ export default function App() {
           {renderView()}
         </main>
         <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
-          <ChatPanel />
+          <ChatPanel location={location} />
         </aside>
       </div>
       <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} />

@@ -351,6 +351,45 @@ function markStandupDone() {
   broadcast({ type: 'nudge_cleared', nudge_type: 'standup' });
 }
 
+// Fire a nudge at 75% of plan duration reminding Nick to plan the next plan
+// Only fires once per plan — tracked in agent_state
+function checkPlanMilestoneNudge() {
+  try {
+    const startDate = new Date(process.env.PLAN_START_DATE || '2026-03-16');
+    const planDays = parseInt(process.env.PLAN_DURATION_DAYS || '90', 10);
+    const milestoneDay = Math.floor(planDays * 0.75); // 75% mark
+
+    // Calculate current working day (simplified — calendar days for this check)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const calendarDaysElapsed = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+
+    // Only fire between 75% and 85% of plan duration
+    if (calendarDaysElapsed < milestoneDay || calendarDaysElapsed > Math.floor(planDays * 0.85)) return;
+
+    // Check if already sent this plan cycle
+    const stateKey = `plan_milestone_sent_${startDate.toISOString().split('T')[0]}`;
+    const alreadySent = db.getState(stateKey);
+    if (alreadySent) return;
+
+    // Mark as sent
+    db.setState(stateKey, new Date().toISOString());
+
+    const daysRemaining = planDays - calendarDaysElapsed;
+    const msg = `You're ${Math.round(calendarDaysElapsed / planDays * 100)}% through your ${planDays}-day plan — ${daysRemaining} days left. Time to start thinking about what comes next. What did you set out to achieve? What's landed? What needs a new plan?`;
+
+    console.log('[Nudge] Plan milestone nudge firing');
+    broadcast({ type: 'nudge', nudge_type: 'plan_milestone', message: msg, nag_count: 0 });
+    webpush.sendToAll(
+      `NEURO — Plan Check-In`,
+      msg,
+      { type: 'plan_milestone', url: '/plan' }
+    ).catch(() => {});
+  } catch (e) {
+    console.error('[Nudge] Plan milestone check failed:', e.message);
+  }
+}
+
 module.exports = {
   addClient,
   broadcast,
@@ -359,5 +398,6 @@ module.exports = {
   nagCheck,
   markStandupDone,
   startupCheck,
-  snoozeNudge
+  snoozeNudge,
+  checkPlanMilestoneNudge
 };

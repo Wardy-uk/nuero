@@ -5,14 +5,10 @@ const db = require('../db/database');
 
 // POST /api/chat — SSE streaming response via Claude API
 router.post('/', (req, res) => {
-  const { message, conversationId } = req.body;
-
-  if (!message) {
-    return res.status(400).json({ error: 'message is required' });
-  }
-
+  const { message, conversationId, location } = req.body;
+  if (!message) return res.status(400).json({ error: 'message is required' });
   const convId = conversationId || `conv_${Date.now()}`;
-  claude.streamChat(convId, message, res);
+  claude.streamChat(convId, message, res, location || null);
 });
 
 // GET /api/chat/history/:conversationId

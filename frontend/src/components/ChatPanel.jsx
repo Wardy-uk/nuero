@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { apiUrl } from '../api';
 import './ChatPanel.css';
 
-export default function ChatPanel() {
+export default function ChatPanel({ location }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -32,7 +32,11 @@ export default function ChatPanel() {
       const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, conversationId })
+        body: JSON.stringify({
+          message: text,
+          conversationId,
+          location: location ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy } : null
+        })
       });
 
       const reader = response.body.getReader();

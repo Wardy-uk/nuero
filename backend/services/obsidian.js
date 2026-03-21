@@ -584,7 +584,8 @@ function parseNinetyDayPlan() {
   if (!fs.existsSync(planPath)) return null;
   const content = fs.readFileSync(planPath, 'utf-8');
 
-  const START_DATE = new Date('2026-03-16');
+  const PLAN_DAYS = parseInt(process.env.PLAN_DURATION_DAYS || '90', 10);
+  const START_DATE = new Date(process.env.PLAN_START_DATE || '2026-03-16');
   const BANK_HOLIDAYS = ['2026-04-03', '2026-04-06', '2026-05-04'];
 
   // Calculate current working day
@@ -621,7 +622,7 @@ function parseNinetyDayPlan() {
     { day: 30, label: 'Day 30', date: '2026-04-15' },
     { day: 45, label: 'Day 45', date: '2026-04-30' },
     { day: 60, label: 'Day 60', date: '2026-05-15' },
-    { day: 90, label: 'Day 90', date: '2026-06-12' }
+    { day: PLAN_DAYS, label: `Day ${PLAN_DAYS}`, date: '2026-06-12' }
   ];
 
   const OUTCOMES = {
@@ -696,7 +697,7 @@ function parseNinetyDayPlan() {
 
   // This week's tasks
   const thisWeekStart = workingDay;
-  const thisWeekEnd = Math.min(workingDay + (5 - new Date().getDay()), 90); // rest of this work week
+  const thisWeekEnd = Math.min(workingDay + (5 - new Date().getDay()), PLAN_DAYS); // rest of this work week
   const weekStart = workingDay - (new Date().getDay() - 1); // Monday of this week
   const weekEnd = weekStart + 4; // Friday
   const thisWeekTasks = tasks.filter(t => t.day >= weekStart && t.day <= weekEnd && t.status !== 'x');
@@ -717,7 +718,7 @@ function parseNinetyDayPlan() {
 
   return {
     currentDay: workingDay,
-    totalDays: 90,
+    totalDays: PLAN_DAYS,
     startDate: '2026-03-16',
     checkpoints: CHECKPOINTS,
     nextCheckpoint,

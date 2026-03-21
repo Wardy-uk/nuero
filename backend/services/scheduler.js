@@ -7,6 +7,9 @@ function start() {
   // Fire nudges immediately if server starts after 9am on a weekday
   nudges.startupCheck();
 
+  // Check plan milestone on startup too (in case server was restarted on the milestone day)
+  nudges.checkPlanMilestoneNudge();
+
   // Start Jira polling (fetches on startup + every 5 min)
   jira.startPolling();
 
@@ -20,6 +23,11 @@ function start() {
   // Every 15 minutes between 9am-5pm weekdays — nag if not done
   cron.schedule('*/15 9-17 * * 1-5', () => {
     nudges.nagCheck();
+  });
+
+  // Daily at 9:05am — check plan milestone (75% reminder)
+  cron.schedule('5 9 * * 1-5', () => {
+    nudges.checkPlanMilestoneNudge();
   });
 
   // Every night at 23:30 — classify all pending imports
@@ -41,7 +49,7 @@ function start() {
     }
   }, 60 * 1000);
 
-  console.log('[Scheduler] Started — standup nudge at 9am, nag every 15m, Jira poll every 5m, imports sweep at 23:30');
+  console.log('[Scheduler] Started — standup nudge at 9am, nag every 15m, plan milestone at 9:05am, Jira poll every 5m, imports sweep at 23:30');
 }
 
 module.exports = { start };
