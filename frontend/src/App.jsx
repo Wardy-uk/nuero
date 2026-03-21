@@ -64,6 +64,7 @@ export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [vaultOpenPath, setVaultOpenPath] = useState(null);
   const [weekendOverride, setWeekendOverride] = useState(false);
   const weekend = isWeekend() && !weekendOverride;
   const location = useLocation();
@@ -98,10 +99,10 @@ export default function App() {
       case 'todos': return <TodoPanel />;
       case 'calendar': return <CalendarView />;
       case 'capture': return <CapturePanel />;
-      case 'recent': return <RecentPanel />;
+      case 'recent': return <RecentPanel onOpenFile={(path) => { setVaultOpenPath(path); setActiveView('vault'); }} />;
       case 'imports': return <ImportsPanel />;
       case 'inbox': return <InboxPanel />;
-      case 'vault': return <VaultBrowser />;
+      case 'vault': return <VaultBrowser initialOpenPath={vaultOpenPath} onClearInitialPath={() => setVaultOpenPath(null)} />;
       case 'qa': return <QATab />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;

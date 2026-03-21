@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import './VaultBrowser.css';
 
-export default function VaultBrowser() {
+export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
   const [currentDir, setCurrentDir] = useState('');
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -36,6 +36,13 @@ export default function VaultBrowser() {
   }, []);
 
   useEffect(() => { loadDir(''); }, [loadDir]);
+
+  useEffect(() => {
+    if (initialOpenPath) {
+      openFileHandler(initialOpenPath);
+      if (onClearInitialPath) onClearInitialPath();
+    }
+  }, [initialOpenPath]);
 
   const openFileHandler = async (relativePath) => {
     try {
@@ -125,7 +132,7 @@ export default function VaultBrowser() {
           className="vault-editor"
           value={edited}
           onChange={e => setEdited(e.target.value)}
-          spellCheck={false}
+          spellCheck={true}
         />
       </div>
     );

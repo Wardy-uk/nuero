@@ -182,3 +182,107 @@
     display: none;
   }
 }
+
+/* Quick Add */
+.quickadd-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.quickadd-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-tertiary);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 20px;
+  font-weight: 400;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s;
+}
+
+.quickadd-btn:hover {
+  background: rgba(79, 156, 249, 0.1);
+  border-color: var(--accent);
+}
+
+.quickadd-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.quickadd-input {
+  width: 220px;
+  height: 32px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 0 10px;
+  outline: none;
+}
+
+.quickadd-input::placeholder {
+  color: var(--text-muted);
+}
+
+.quickadd-save {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: background 0.15s;
+}
+
+.quickadd-save:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.quickadd-save.ok {
+  background: var(--success, #22c55e);
+}
+
+.quickadd-save.err {
+  background: var(--danger, #e05555);
+}
+
+.quickadd-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 32px;
+  background: none;
+  color: var(--text-muted);
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quickadd-close:hover {
+  color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .quickadd-input {
+    width: 150px;
+  }
+}

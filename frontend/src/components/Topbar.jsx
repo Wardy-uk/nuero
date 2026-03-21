@@ -1,5 +1,102 @@
 import React from 'react';
+import { apiUrl } from '../api';
 import './Topbar.css';
+
+function QuickAdd({ apiUrl: apiUrlFn }) {
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [flash, setFlash] = React.useState(null); // 'ok' | 'err'
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (open && inputRef.current) inputRef.current.focus();
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); setText(''); } };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const submit = async () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    try {
+      const res = await fetch(apiUrlFn('/api/capture/note'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: trimmed })
+      });
+      if (res.ok) {
+        setText('');
+        setFlash('ok');
+        setTimeout(() => { setFlash(null); setOpen(false); }, 800);
+      } else {
+        setFlash('err');
+        setTimeout(() => setFlash(null), 2000);
+      }
+    } catch {
+      // Offline — store in localStorage queue
+      try {
+        const QUEUE_KEY = 'neuro_offline_queue';
+        const q = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+        q.push({
+          url: apiUrlFn('/api/capture/note'),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: trimmed }),
+          queuedAt: Date.now()
+        });
+        localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+        setText('');
+        setFlash('ok');
+        setTimeout(() => { setFlash(null); setOpen(false); }, 800);
+      } catch {
+        setFlash('err');
+        setTimeout(() => setFlash(null), 2000);
+      }
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="quickadd-wrapper">
+      {open ? (
+        <div className="quickadd-form">
+          <input
+            ref={inputRef}
+            className="quickadd-input"
+            type="text"
+            placeholder="Quick note... (Enter to save)"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && text.trim()) submit();
+              if (e.key === 'Escape') { setOpen(false); setText(''); }
+            }}
+            disabled={saving}
+          />
+          <button
+            className={`quickadd-save ${flash === 'ok' ? 'ok' : flash === 'err' ? 'err' : ''}`}
+            onClick={submit}
+            disabled={saving || !text.trim()}
+          >
+            {flash === 'ok' ? '✓' : flash === 'err' ? '!' : saving ? '…' : '↵'}
+          </button>
+          <button className="quickadd-close" onClick={() => { setOpen(false); setText(''); }}>
+            ✕
+          </button>
+        </div>
+      ) : (
+        <button className="quickadd-btn" onClick={() => setOpen(true)} title="Quick capture (note)">
+          +
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, chatOpen, weekend, onWeekendOverride, weekendOverride, children }) {
   const jiraStatus = status?.jira?.status || 'unknown';
@@ -50,6 +147,7 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
       </div>
       <div className="topbar-right">
         {children}
+        <QuickAdd apiUrl={apiUrl} />
         {atRisk > 0 && (
           <div className="topbar-alert">
             <span className="alert-count">{atRisk}</span>

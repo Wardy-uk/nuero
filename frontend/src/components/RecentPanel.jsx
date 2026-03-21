@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import './RecentPanel.css';
 
-export default function RecentPanel() {
+export default function RecentPanel({ onOpenFile }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -56,7 +56,12 @@ export default function RecentPanel() {
       ) : (
         <div className="recent-list">
           {items.map((item, i) => (
-            <div key={i} className="recent-item">
+            <div
+              key={i}
+              className="recent-item"
+              onClick={() => item.relativePath && onOpenFile && onOpenFile(item.relativePath)}
+              style={{ cursor: item.relativePath ? 'pointer' : 'default' }}
+            >
               <div className="recent-item-header">
                 <span className="recent-item-name">{cleanName(item)}</span>
                 <span className="recent-item-time">{formatTime(item.modified)}</span>

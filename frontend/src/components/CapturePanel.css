@@ -292,3 +292,26 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.capture-queue-notice {
+  font-size: 11px;
+  color: var(--accent-warn, #f59e0b);
+  font-family: var(--font-mono);
+  margin-top: 8px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.capture-spellcheck-row {
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+.capture-spellcheck-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}

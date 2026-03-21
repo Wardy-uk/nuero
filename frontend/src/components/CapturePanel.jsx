@@ -5,6 +5,43 @@ import './CapturePanel.css';
 const MODES = ['Note', 'Todo', 'Photo', 'File'];
 const MAX_SIZE = 10 * 1024 * 1024;
 
+const QUEUE_KEY = 'neuro_offline_queue';
+
+function getQueue() {
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function addToQueue(item) {
+  const q = getQueue();
+  q.push({ ...item, queuedAt: Date.now() });
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+}
+
+function clearQueue() {
+  localStorage.removeItem(QUEUE_KEY);
+}
+
+async function drainQueue(onDrained) {
+  const q = getQueue();
+  if (q.length === 0) return;
+  const remaining = [];
+  for (const item of q) {
+    try {
+      const res = await fetch(item.url, {
+        method: 'POST',
+        headers: item.headers || { 'Content-Type': 'application/json' },
+        body: item.body
+      });
+      if (!res.ok) remaining.push(item);
+    } catch {
+      remaining.push(item); // still offline
+    }
+  }
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(remaining));
+  if (remaining.length < q.length && onDrained) onDrained(q.length - remaining.length);
+}
+
 export default function CapturePanel() {
   const [mode, setMode] = useState('Note');
   const [title, setTitle] = useState('');
@@ -17,6 +54,8 @@ export default function CapturePanel() {
   const [result, setResult] = useState(null);
   const [recent, setRecent] = useState([]);
   const [showRecent, setShowRecent] = useState(false);
+  const [spellcheck, setSpellcheck] = useState(true);
+  const [queueCount, setQueueCount] = useState(getQueue().length);
   const fileRef = useRef(null);
 
   const resetForm = () => {
@@ -39,6 +78,19 @@ export default function CapturePanel() {
   }, []);
 
   useEffect(() => { fetchRecent(); }, [fetchRecent]);
+
+  useEffect(() => {
+    const drain = () => drainQueue((count) => {
+      setQueueCount(getQueue().length);
+      if (count > 0) fetchRecent();
+    });
+
+    drain(); // drain on mount
+
+    const onVisible = () => { if (!document.hidden) drain(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchRecent]);
 
   const handleFileSelect = (e) => {
     const f = e.target.files[0];
@@ -95,7 +147,28 @@ export default function CapturePanel() {
         setTimeout(resetForm, 2000);
       }
     } catch (err) {
-      setResult({ error: err.message });
+      // Network error — queue for later if text-based
+      if (mode === 'Note' && content.trim()) {
+        addToQueue({
+          url: apiUrl('/api/capture/note'),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title.trim() || null, content })
+        });
+        setQueueCount(getQueue().length);
+        setResult({ success: true, queued: true });
+        setTimeout(resetForm, 2000);
+      } else if (mode === 'Todo' && todoText.trim()) {
+        addToQueue({
+          url: apiUrl('/api/capture/todo'),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: todoText.trim(), priority: todoPriority })
+        });
+        setQueueCount(getQueue().length);
+        setResult({ success: true, queued: true });
+        setTimeout(resetForm, 2000);
+      } else {
+        setResult({ error: 'Offline — files cannot be queued' });
+      }
     }
 
     setSubmitting(false);
@@ -125,7 +198,7 @@ export default function CapturePanel() {
 
       {result && (
         <div className={`capture-result ${result.error ? 'error' : 'success'}`}>
-          {result.error || `Captured \u2713`}
+          {result.error || (result.queued ? `Queued — will sync when online ⏳` : `Captured ✓`)}
         </div>
       )}
 
@@ -138,7 +211,6 @@ export default function CapturePanel() {
             value={title}
             onChange={e => setTitle(e.target.value)}
             inputMode="text"
-            autoCorrect="off"
           />
           <textarea
             className="capture-textarea"
@@ -149,10 +221,20 @@ export default function CapturePanel() {
             autoFocus
             inputMode="text"
             autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
+            autoCorrect={spellcheck ? 'on' : 'off'}
+            spellCheck={spellcheck}
           />
           <p className="capture-pencil-hint">✎ Apple Pencil: write directly in the box above</p>
+          <div className="capture-spellcheck-row">
+            <label className="capture-spellcheck-label">
+              <input
+                type="checkbox"
+                checked={spellcheck}
+                onChange={e => setSpellcheck(e.target.checked)}
+              />
+              Spellcheck
+            </label>
+          </div>
         </div>
       )}
 
@@ -166,7 +248,6 @@ export default function CapturePanel() {
             onChange={e => setTodoText(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && canSubmit && !submitting && submit()}
             inputMode="text"
-            autoCorrect="off"
             autoFocus
           />
           <div className="capture-priority-row">
@@ -225,6 +306,12 @@ export default function CapturePanel() {
       >
         {submitting ? 'Saving...' : 'Capture'}
       </button>
+
+      {queueCount > 0 && (
+        <div className="capture-queue-notice">
+          {queueCount} item{queueCount !== 1 ? 's' : ''} queued — will sync when online
+        </div>
+      )}
 
       {recent.length > 0 && (
         <div className="capture-recent">

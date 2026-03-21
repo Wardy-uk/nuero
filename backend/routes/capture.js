@@ -166,29 +166,46 @@ router.post('/file', upload.single('file'), (req, res) => {
   }
 });
 
-// GET /api/capture/recent — last 10 items captured (from Imports/ md files, newest first)
+function listMdFilesRecursive(dir, maxDepth = 2, depth = 0) {
+  if (depth > maxDepth) return [];
+  if (!fs.existsSync(dir)) return [];
+  const results = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory() && depth < maxDepth) {
+      results.push(...listMdFilesRecursive(fullPath, maxDepth, depth + 1));
+    } else if (entry.name.endsWith('.md')) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+// GET /api/capture/recent — last 20 items captured (from Imports/ md files, newest first)
 router.get('/recent', (req, res) => {
   try {
     const importsDir = getImportsDir();
+    const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
     if (!fs.existsSync(importsDir)) return res.json({ items: [] });
 
-    const files = fs.readdirSync(importsDir)
-      .filter(f => f.endsWith('.md'))
-      .map(f => {
-        const fullPath = path.join(importsDir, f);
+    const files = listMdFilesRecursive(importsDir, 2)
+      .map(fullPath => {
         const stats = fs.statSync(fullPath);
         const content = fs.readFileSync(fullPath, 'utf-8');
         const preview = content.replace(/^---[\s\S]*?---\n*/, '').slice(0, 120).trim();
         const titleMatch = content.match(/^title:\s*"?(.+?)"?\s*$/m);
+        const relativePath = path.relative(vaultPath, fullPath).replace(/\\/g, '/');
         return {
-          filename: f,
+          filename: path.basename(fullPath),
+          relativePath,
           title: titleMatch ? titleMatch[1] : null,
           preview,
           modified: stats.mtime.toISOString()
         };
       })
       .sort((a, b) => new Date(b.modified) - new Date(a.modified))
-      .slice(0, 10);
+      .slice(0, 20);
 
     res.json({ items: files });
   } catch (e) {
