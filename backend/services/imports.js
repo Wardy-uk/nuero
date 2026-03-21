@@ -5,9 +5,15 @@ const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 
-function getBroadcast() {
-  try { return require('./nudges').broadcast; }
-  catch { return () => {}; }
+function broadcast(event) {
+  try {
+    const nudges = require('./nudges');
+    if (typeof nudges.broadcast === 'function') {
+      nudges.broadcast(event);
+    }
+  } catch (e) {
+    // nudges not yet initialised or circular dep — ignore
+  }
 }
 
 function getVaultPath() {
@@ -258,14 +264,12 @@ async function classifyFile(filePath) {
     console.warn('[Imports] Failed to persist classification:', e.message);
   }
 
-  try {
-    getBroadcast()({
-      type: 'classification_ready',
-      filePath: filePath,
-      relativePath: relativePath,
-      classification
-    });
-  } catch {}
+  broadcast({
+    type: 'classification_ready',
+    filePath: filePath,
+    relativePath: relativePath,
+    classification
+  });
 
   return classification;
 }
@@ -298,13 +302,11 @@ function routeFile(filePath, destination, type) {
 
   fs.renameSync(filePath, finalPath);
 
-  try {
-    getBroadcast()({
-      type: 'file_actioned',
-      filePath: filePath,
-      action: 'routed'
-    });
-  } catch {}
+  broadcast({
+    type: 'file_actioned',
+    filePath: filePath,
+    action: 'routed'
+  });
 
   // Remove classification from DB — file has been actioned
   try {
@@ -319,7 +321,6 @@ function routeFile(filePath, destination, type) {
 // Batch classify and route all pending imports
 async function autoClassify() {
   const db = require('../db/database');
-  const broadcast = getBroadcast();
 
   // Prevent concurrent sweeps
   const sweepRunning = db.getState('imports_sweep_running');
