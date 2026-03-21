@@ -56,6 +56,9 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
             <span className="alert-label">SLA at risk</span>
           </div>
         )}
+        <button className="topbar-reload-btn" onClick={() => window.location.reload()} aria-label="Reload" title="Reload app">
+          ↻
+        </button>
         <button className="topbar-chat-btn" onClick={onChatToggle} aria-label="Toggle chat">
           {chatOpen ? '✕' : 'Chat'}
         </button>
