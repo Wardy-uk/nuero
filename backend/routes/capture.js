@@ -66,6 +66,46 @@ router.post('/note', (req, res) => {
   }
 });
 
+// POST /api/capture/todo — quick todo capture, appends to Master Todo.md inbox section
+router.post('/todo', (req, res) => {
+  const { text, priority } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: 'text is required' });
+  }
+
+  try {
+    const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+    const masterPath = path.join(vaultPath, 'Tasks', 'Master Todo.md');
+
+    if (!fs.existsSync(masterPath)) {
+      return res.status(404).json({ error: 'Master Todo.md not found in Tasks/' });
+    }
+
+    const priorityEmoji = priority === 'high' ? '🔴 ' : priority === 'low' ? '🟢 ' : '';
+    const todoLine = `- [ ] ${priorityEmoji}${text.trim()}`;
+
+    // Append to the ## 📥 Inbox section if it exists, otherwise append to end of file
+    let content = fs.readFileSync(masterPath, 'utf-8');
+    const inboxMatch = content.match(/^## .*📥.*Inbox.*/m);
+
+    if (inboxMatch) {
+      // Find the line after the inbox heading and insert there
+      const insertIdx = content.indexOf('\n', content.indexOf(inboxMatch[0])) + 1;
+      content = content.slice(0, insertIdx) + todoLine + '\n' + content.slice(insertIdx);
+    } else {
+      // No inbox section — append to end
+      content = content.trimEnd() + '\n' + todoLine + '\n';
+    }
+
+    fs.writeFileSync(masterPath, content, 'utf-8');
+    console.log(`[Capture] Todo saved: ${text.trim()}`);
+    res.json({ success: true, text: text.trim() });
+  } catch (e) {
+    console.error('[Capture] Todo error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/capture/photo — image upload (camera or gallery)
 router.post('/photo', upload.single('file'), (req, res) => {
   if (!req.file) {
@@ -122,6 +162,37 @@ router.post('/file', upload.single('file'), (req, res) => {
     res.json({ success: true, path: filePath, filename });
   } catch (e) {
     console.error('[Capture] File error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/capture/recent — last 10 items captured (from Imports/ md files, newest first)
+router.get('/recent', (req, res) => {
+  try {
+    const importsDir = getImportsDir();
+    if (!fs.existsSync(importsDir)) return res.json({ items: [] });
+
+    const files = fs.readdirSync(importsDir)
+      .filter(f => f.endsWith('.md'))
+      .map(f => {
+        const fullPath = path.join(importsDir, f);
+        const stats = fs.statSync(fullPath);
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const preview = content.replace(/^---[\s\S]*?---\n*/, '').slice(0, 120).trim();
+        const titleMatch = content.match(/^title:\s*"?(.+?)"?\s*$/m);
+        return {
+          filename: f,
+          title: titleMatch ? titleMatch[1] : null,
+          preview,
+          modified: stats.mtime.toISOString()
+        };
+      })
+      .sort((a, b) => new Date(b.modified) - new Date(a.modified))
+      .slice(0, 10);
+
+    res.json({ items: files });
+  } catch (e) {
+    console.error('[Capture] Recent error:', e);
     res.status(500).json({ error: e.message });
   }
 });
