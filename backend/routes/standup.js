@@ -27,20 +27,30 @@ router.post('/save-to-daily', (req, res) => {
   res.json({ success: true, path: filePath });
 });
 
-// GET /api/standup/ritual-state — reads ritual-state.json from vault
+// GET /api/standup/ritual-state — checks if standup is done today from vault
 router.get('/ritual-state', (req, res) => {
-  const state = obsidianService.readRitualState();
-  if (!state) {
-    return res.json({ lastRun: null, lastRitual: null, standupDoneToday: false });
+  const dailyNote = obsidianService.readTodayDailyNote();
+
+  let standupDoneToday = false;
+
+  if (dailyNote) {
+    // Check for populated Focus Today section
+    if (dailyNote.includes('## Focus Today')) {
+      const lines = dailyNote.split('\n');
+      let inFocus = false;
+      for (const line of lines) {
+        if (line.startsWith('## Focus Today')) { inFocus = true; continue; }
+        if (line.startsWith('## ') && inFocus) break;
+        if (inFocus && line.match(/^\s*-\s+\[.\]/)) { standupDoneToday = true; break; }
+      }
+    }
+    // Also accept explicit Standup section
+    if (dailyNote.includes('## Standup')) standupDoneToday = true;
   }
 
-  const today = obsidianService.todayDateString();
-  const lastRunDate = state.lastRun ? state.lastRun.split(' ')[0] : null;
-  const standupDoneToday = lastRunDate === today && state.lastRitual === 'S';
-
   res.json({
-    lastRun: state.lastRun,
-    lastRitual: state.lastRitual,
+    lastRun: null,
+    lastRitual: null,
     standupDoneToday
   });
 });

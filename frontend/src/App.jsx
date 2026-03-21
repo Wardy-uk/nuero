@@ -29,7 +29,7 @@ function isWeekend() {
 
 export default function App() {
   const isMobile = window.innerWidth <= 768;
-  const [activeView, setActiveView] = useState(isMobile ? 'capture' : 'dashboard');
+  const [activeView, setActiveView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [weekendOverride, setWeekendOverride] = useState(false);
@@ -79,7 +79,6 @@ export default function App() {
       <Topbar status={status} queueData={queueData} onMenuToggle={() => setSidebarOpen(o => !o)} onChatToggle={() => setChatOpen(o => !o)} chatOpen={chatOpen} weekend={weekend} onWeekendOverride={() => setWeekendOverride(o => !o)} weekendOverride={weekendOverride}>
         <CacheIndicator status={worstStatus} cacheAge={worstCacheAge} />
       </Topbar>
-      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} />
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <div className="app-body">
         <Sidebar activeView={activeView} onNavigate={handleNavigate} open={sidebarOpen} />
@@ -90,6 +89,7 @@ export default function App() {
           <ChatPanel />
         </aside>
       </div>
+      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} />
       <InstallBanner />
     </div>
   );

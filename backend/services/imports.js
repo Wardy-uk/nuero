@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:0.5b';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 
 function getVaultPath() {
   return process.env.OBSIDIAN_VAULT_PATH || '';
@@ -106,42 +107,67 @@ function getPending() {
   return pending.sort((a, b) => new Date(b.modified) - new Date(a.modified));
 }
 
-// Classify a single file using Ollama
-async function classifyFile(filePath) {
-  const content = fs.readFileSync(filePath, 'utf-8');
-  const fileName = path.basename(filePath);
+function buildClassifyPrompt(fileName, content) {
+  const body = content.replace(/^---[\s\S]*?---\n*/, '').slice(0, 400);
+  return `You are a filing assistant for an Obsidian vault. Classify the note below and suggest which vault folder it belongs in.
 
-  const prompt = `Classify this note for filing into an Obsidian vault. Based on the filename and content, choose ONE type from this list:
+VAULT FOLDERS (choose destination from this list only):
+- Meetings/         → meeting notes, call notes, discussion summaries
+- Calls/            → call notes (use when explicitly a phone or video call)
+- People/           → notes about a specific person (1-2-1s, feedback, personal updates)
+- Ideas/            → ideas, concepts, brainstorms, things to explore
+- Projects/         → notes tied to a specific named project
+- Areas/            → ongoing responsibilities (health, finance, leadership, team management)
+- Decision Log/     → a decision that was made
+- Reflections/      → personal reflections, journal entries, retrospectives
+- Imports/PLAUD/    → voice recording transcripts from PLAUD device
+- Archive/          → anything that doesn't fit elsewhere or is low value
 
-- meeting-note: Meeting notes, call notes, discussion summaries
-- action: A task, to-do, or action item
-- decision: A decision that was made
-- idea: An idea, concept, or brainstorm
-- reference: Reference material, documentation, how-to
-- person-update: Notes about a specific person (1-2-1, feedback, etc.)
-- plaud-transcript: Voice recording transcript
-- needs-review: Cannot classify with confidence
+TYPES (choose one):
+meeting-note, call-note, action, decision, idea, reference, person-update, plaud-transcript, reflection, needs-review
 
-Also suggest the best destination folder.
+RULES:
+- If content is fewer than 10 meaningful words with no clear category, type MUST be needs-review
+- destination MUST be exactly one folder name from the list above — nothing else
+- confidence is high only if the type and destination are completely obvious
+- If genuinely unsure, use needs-review with low confidence
 
 Filename: ${fileName}
-Content (first 500 chars):
-${content.slice(0, 500)}
+Content:
+${body}
 
-Respond in exactly this format (no other text):
+Respond in EXACTLY this format with no other text:
 type: <type>
-destination: <folder path>
+destination: <folder name>
 confidence: <high|medium|low>
 reason: <one sentence>`;
+}
 
+async function classifyWithClaude(fileName, content) {
+  const Anthropic = require('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const response = await client.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 256,
+    messages: [{
+      role: 'user',
+      content: buildClassifyPrompt(fileName, content)
+    }]
+  });
+
+  return response.content[0]?.text || '';
+}
+
+async function classifyWithOllama(fileName, content) {
   const ollamaRes = await fetch(`${OLLAMA_URL}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: OLLAMA_MODEL,
-      prompt,
+      prompt: buildClassifyPrompt(fileName, content),
       stream: false,
-      options: { temperature: 0.1 }
+      options: { temperature: 0.1, num_predict: 256 }
     })
   });
 
@@ -150,23 +176,61 @@ reason: <one sentence>`;
   }
 
   const data = await ollamaRes.json();
-  const response = data.response || '';
+  return data.response || '';
+}
 
-  const typeMatch = response.match(/type:\s*(\S+)/i);
-  const destMatch = response.match(/destination:\s*(.+)/i);
-  const confMatch = response.match(/confidence:\s*(\S+)/i);
-  const reasonMatch = response.match(/reason:\s*(.+)/i);
+async function classifyFile(filePath) {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const fileName = path.basename(filePath);
+
+  let responseText = '';
+  let backend = 'claude';
+
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      responseText = await classifyWithClaude(fileName, content);
+      console.log(`[Imports] Classified ${fileName} via Claude`);
+    } catch (claudeErr) {
+      console.warn(`[Imports] Claude classification failed, falling back to Ollama: ${claudeErr.message}`);
+      backend = 'ollama';
+      responseText = await classifyWithOllama(fileName, content);
+      console.log(`[Imports] Classified ${fileName} via Ollama`);
+    }
+  } else {
+    backend = 'ollama';
+    console.log(`[Imports] No ANTHROPIC_API_KEY — using Ollama for ${fileName}`);
+    responseText = await classifyWithOllama(fileName, content);
+  }
+
+  const typeMatch = responseText.match(/type:\s*(\S+)/i);
+  const destMatch = responseText.match(/destination:\s*(.+)/i);
+  const confMatch = responseText.match(/confidence:\s*(\S+)/i);
+  const reasonMatch = responseText.match(/reason:\s*(.+)/i);
 
   const classification = {
     type: typeMatch ? typeMatch[1].replace(/[^a-z-]/g, '') : 'needs-review',
     destination: destMatch ? destMatch[1].trim() : null,
     confidence: confMatch ? confMatch[1].toLowerCase() : 'low',
     reason: reasonMatch ? reasonMatch[1].trim() : 'Could not parse classification',
-    rawResponse: response
+    backend,
+    rawResponse: responseText
   };
 
-  if (classification.confidence === 'low') {
+  // Force needs-review for low confidence or missing destination
+  if (classification.confidence === 'low' || !classification.destination) {
     classification.type = 'needs-review';
+  }
+
+  // Validate destination is a real vault folder — reject invented paths
+  const VALID_DESTINATIONS = [
+    'Meetings/', 'Calls/', 'People/', 'Ideas/', 'Projects/',
+    'Areas/', 'Decision Log/', 'Reflections/', 'Imports/PLAUD/', 'Archive/'
+  ];
+  if (classification.destination && !VALID_DESTINATIONS.some(d => classification.destination.startsWith(d.replace('/', '')))) {
+    console.warn(`[Imports] Invalid destination "${classification.destination}" — forcing needs-review`);
+    classification.type = 'needs-review';
+    classification.confidence = 'low';
+    classification.destination = null;
   }
 
   return classification;

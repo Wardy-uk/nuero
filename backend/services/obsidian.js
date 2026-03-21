@@ -779,6 +779,69 @@ function readPreviousDailyNote() {
   return { date: dateStr, content: fs.readFileSync(notePath, 'utf-8') };
 }
 
+// Search vault for a query string — returns up to maxResults matching files with excerpts
+function searchVault(query, maxResults = 5) {
+  if (!isConfigured() || !query || query.trim().length < 3) return [];
+
+  const vaultPath = getVaultPath();
+  const results = [];
+
+  // Directories to skip — too noisy or not useful for chat context
+  const SKIP_DIRS = new Set([
+    'Daily', 'Scripts', 'Templates', '.obsidian', '.git', '.trash', 'Imports'
+  ]);
+
+  function searchDir(dirPath, depth) {
+    if (depth > 4 || results.length >= maxResults) return;
+    if (!fs.existsSync(dirPath)) return;
+
+    let entries;
+    try { entries = fs.readdirSync(dirPath, { withFileTypes: true }); }
+    catch { return; }
+
+    for (const entry of entries) {
+      if (results.length >= maxResults) break;
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name)) continue;
+        searchDir(path.join(dirPath, entry.name), depth + 1);
+      } else if (entry.name.endsWith('.md')) {
+        const fullPath = path.join(dirPath, entry.name);
+        let content;
+        try { content = fs.readFileSync(fullPath, 'utf-8'); }
+        catch { continue; }
+
+        if (!content.toLowerCase().includes(query.toLowerCase())) continue;
+
+        // Strip frontmatter
+        const body = content.replace(/^---[\s\S]*?---\n*/, '');
+        const lines = body.split('\n');
+
+        // Find matching lines and grab context around them
+        const excerpts = [];
+        for (let i = 0; i < lines.length && excerpts.length < 3; i++) {
+          if (lines[i].toLowerCase().includes(query.toLowerCase())) {
+            const start = Math.max(0, i - 1);
+            const end = Math.min(lines.length - 1, i + 2);
+            const excerpt = lines.slice(start, end + 1).join('\n').trim();
+            if (excerpt) excerpts.push(excerpt);
+          }
+        }
+
+        const relPath = path.relative(vaultPath, fullPath).replace(/\\/g, '/');
+        results.push({
+          path: relPath,
+          name: entry.name.replace('.md', ''),
+          excerpts
+        });
+      }
+    }
+  }
+
+  searchDir(vaultPath, 0);
+  return results;
+}
+
 module.exports = {
   isConfigured,
   readTodayDailyNote,
@@ -798,5 +861,6 @@ module.exports = {
   parseNinetyDayPlan,
   toggleTask,
   readRitualState,
-  readPreviousDailyNote
+  readPreviousDailyNote,
+  searchVault
 };

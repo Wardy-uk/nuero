@@ -6,6 +6,30 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
 
+// Extract meaningful search keywords from a user message
+// Strips common stop words and short tokens, returns the best 1-2 terms to search
+function extractSearchTerms(message) {
+  const STOP_WORDS = new Set([
+    'what', 'when', 'where', 'who', 'why', 'how', 'is', 'are', 'was', 'were',
+    'did', 'do', 'does', 'can', 'could', 'would', 'should', 'have', 'has',
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+    'of', 'with', 'my', 'me', 'i', 'you', 'we', 'it', 'this', 'that', 'about',
+    'tell', 'show', 'find', 'get', 'give', 'help', 'please', 'need', 'want',
+    'know', 'think', 'look', 'see', 'any', 'some', 'all', 'from', 'into'
+  ]);
+
+  const words = message
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 4 && !STOP_WORDS.has(w));
+
+  // Return up to 2 most meaningful terms (longer words tend to be more specific)
+  return words
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 2);
+}
+
 const SYSTEM_PROMPT = `You are NUERO (Nick's Unified Executive Resource Orchestrator) — Nick's personal AI chief of staff. Nick is Head of Technical Support at Nurtur Limited (formerly BriefYourMarket), having just started this SMT-level role on 16 March 2026. He knows the organisation deeply but is navigating a transition to senior leadership.
 
 Nick's 90-day plan:
@@ -62,7 +86,7 @@ function anthropicAvailable() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend = false) {
+function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend = false, vaultResults = []) {
   if (weekend) {
     // Weekend mode — skip queue and 90-day plan, keep daily note and todos only
     const parts = [];
@@ -76,6 +100,11 @@ function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent
       if (personal.length > 0) {
         parts.push(`## Personal Todos\n` + personal.slice(0, 8).map(t => `- ${t.text}`).join('\n'));
       }
+    }
+    if (vaultResults && vaultResults.length > 0) {
+      parts.push(`## Relevant Vault Notes\n` +
+        vaultResults.map(r => `### ${r.name}\n${r.excerpts.join('\n...\n')}`).join('\n\n')
+      );
     }
     return parts.join('\n\n---\n\n') || '(Weekend — no work context loaded)';
   }
@@ -196,6 +225,16 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     }
   } catch (e) {
     diagnostics.push('inbox: unavailable');
+  }
+
+  // Vault search results
+  if (vaultResults && vaultResults.length > 0) {
+    const vaultBlock = `## Relevant Vault Notes\n` +
+      vaultResults.map(r =>
+        `### ${r.name} (${r.path})\n${r.excerpts.join('\n...\n')}`
+      ).join('\n\n');
+    parts.push(vaultBlock);
+    diagnostics.push(`vault: ${vaultResults.length} notes`);
   }
 
   console.log('[Context] Sources:', diagnostics.join(', '));
@@ -324,8 +363,32 @@ async function streamChat(conversationId, userMessage, res) {
   try { todos = obsidian.parseVaultTodos(); } catch (e) { console.warn('[Context] Todos error:', e.message); }
   try { ninetyDayPlan = obsidian.parseNinetyDayPlan(); } catch (e) { console.warn('[Context] 90-day plan error:', e.message); }
 
+  // Vault search — find relevant notes based on user's message
+  let vaultSearchResults = [];
+  try {
+    const terms = extractSearchTerms(userMessage);
+    if (terms.length > 0) {
+      // Search for each term, merge results, deduplicate by path
+      const seen = new Set();
+      for (const term of terms) {
+        const hits = obsidian.searchVault(term, 4);
+        for (const hit of hits) {
+          if (!seen.has(hit.path)) {
+            seen.add(hit.path);
+            vaultSearchResults.push(hit);
+          }
+        }
+      }
+      if (vaultSearchResults.length > 0) {
+        console.log(`[Context] Vault search for "${terms.join(', ')}" → ${vaultSearchResults.length} hits`);
+      }
+    }
+  } catch (e) {
+    console.warn('[Context] Vault search error:', e.message);
+  }
+
   const weekend = isWeekend();
-  const contextBlock = buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend);
+  const contextBlock = buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, vaultSearchResults);
 
   const startDate = new Date('2026-03-16');
   const today = new Date();

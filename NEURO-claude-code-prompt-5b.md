@@ -1,41 +1,30 @@
-const db = require('../db/database');
-const obsidian = require('./obsidian');
-const webpush = require('./webpush');
+# NEURO — Claude Code Handoff Prompt #5b
 
-// SSE clients listening for nudges
-const clients = new Set();
+## Context
 
-// Snooze tracking — in-memory, resets on restart
-const snoozedUntil = {}; // { 'standup': timestamp, 'todo': timestamp }
-const SNOOZE_DURATION = 30 * 60 * 1000; // 30 minutes
+NEURO codebase at `C:\Users\NickW\nick-agent`. Constraints: Node.js CommonJS, no new packages,
+do not commit to git, read files before editing.
 
-function snoozeNudge(type) {
-  snoozedUntil[type] = Date.now() + SNOOZE_DURATION;
-  console.log(`[Nudge] ${type} snoozed for 30 minutes`);
-  broadcast({ type: 'nudge_snoozed', nudge_type: type, until: snoozedUntil[type] });
-}
+One file, three targeted replacements. The rest of the file is already correct — do not touch anything else.
 
-function isSnoozed(type) {
-  return snoozedUntil[type] && Date.now() < snoozedUntil[type];
-}
+---
 
-function addClient(res) {
-  clients.add(res);
-  res.on('close', () => clients.delete(res));
-}
+## Task — Expand nag messages and add weekly shuffle in `backend/services/nudges.js`
 
-function broadcast(event) {
-  const data = `data: ${JSON.stringify(event)}\n\n`;
-  for (const client of clients) {
-    client.write(data);
-  }
-}
+Read the file first. You will find:
+- `STANDUP_MESSAGES` array with 7 entries
+- `TODO_MESSAGES` array with 7 entries
+- `getNagMessage(type, nagCount)` function using sequential index
 
-function todayKey() {
-  return new Date().toISOString().split('T')[0];
-}
+Make exactly three replacements:
 
-// Nudge messages escalate with nag count
+---
+
+### Replacement 1 — Replace `STANDUP_MESSAGES`
+
+Find the entire `const STANDUP_MESSAGES = [...]` array and replace it with:
+
+```js
 const STANDUP_MESSAGES = [
   // Tier 1 — Breezy opener
   "Good morning. Standup time. Don't make this weird.",
@@ -127,7 +116,15 @@ const STANDUP_MESSAGES = [
   "End of day is coming. Future Nick will be annoyed at Past Nick for skipping this. Don't do that to him.",
   "The standup is a small thing that makes everything else smaller. Three minutes. Then everything gets clearer.",
 ];
+```
 
+---
+
+### Replacement 2 — Replace `TODO_MESSAGES`
+
+Find the entire `const TODO_MESSAGES = [...]` array and replace it with:
+
+```js
 const TODO_MESSAGES = [
   // Tier 1 — Gentle nudge
   "You've got overdue todos. Just so you know. No pressure. (Pressure.)",
@@ -186,7 +183,15 @@ const TODO_MESSAGES = [
   "The avoidance pattern has a name. Its name is 'overdue todos'. Break the pattern. Open the list.",
   "I will keep sending these. That is not a threat. It is simply what I am. I am the todo reminder. I persist.",
 ];
+```
 
+---
+
+### Replacement 3 — Replace `getNagMessage` with weekly shuffle version
+
+Find the entire `getNagMessage` function and replace it with:
+
+```js
 // Seeded pseudo-random number generator (Mulberry32)
 function seededRandom(seed) {
   let t = seed + 0x6D2B79F5;
@@ -221,143 +226,16 @@ function getNagMessage(type, nagCount) {
   const shuffledOrder = getWeeklyShuffledOrder(messages.length, weekSeed);
   return messages[shuffledOrder[nagCount % messages.length]];
 }
+```
 
-// Check if standup/daily ritual has been done today
-// The ritual may happen in Obsidian directly — check if today's note exists and has real content
-function isStandupDone() {
-  const dailyNote = obsidian.readTodayDailyNote();
-  if (!dailyNote) return false;
+---
 
-  // Check for a populated Focus Today section (has actual task items, not just the heading)
-  if (dailyNote.includes('## Focus Today')) {
-    const lines = dailyNote.split('\n');
-    let inFocus = false;
-    for (const line of lines) {
-      if (line.startsWith('## Focus Today')) { inFocus = true; continue; }
-      if (line.startsWith('## ') && inFocus) break;
-      // If there's at least one checkbox item, the ritual is done
-      if (inFocus && line.match(/^\s*-\s+\[.\]/)) return true;
-    }
-  }
+## After the changes
 
-  // Also accept explicit ## Standup section (added by the app)
-  if (dailyNote.includes('## Standup')) return true;
-
-  return false;
-}
-
-// Check if there are overdue/pending todos (from vault)
-function hasPendingTodos() {
-  try {
-    const { active } = obsidian.parseVaultTodos();
-    const today = new Date(new Date().toDateString());
-    const overdue = active.filter(t => t.due_date && new Date(t.due_date) <= today);
-    return overdue.length > 0;
-  } catch (e) {
-    return false;
-  }
-}
-
-// Called by cron — creates the initial nudge at 9am
-function triggerStandupNudge() {
-  const dateKey = todayKey();
-  const existing = db.getActiveNudgeByTypeAndDate('standup', dateKey);
-
-  if (existing) {
-    // Already nudging — don't create a new one
-    return;
-  }
-
-  if (isStandupDone()) {
-    return; // Already done today
-  }
-
-  const msg = STANDUP_MESSAGES[0];
-  db.createNudge('standup', msg, dateKey);
-  console.log('[Nudge] Standup nudge created for', dateKey);
-  broadcast({ type: 'nudge', nudge_type: 'standup', message: msg, nag_count: 0 });
-  webpush.sendToAll('NEURO — Standup', msg, { type: 'standup', url: '/standup' }).catch(() => {});
-}
-
-function triggerTodoNudge() {
-  const dateKey = todayKey();
-  const existing = db.getActiveNudgeByTypeAndDate('todo', dateKey);
-
-  if (existing) return;
-  if (!hasPendingTodos()) return;
-
-  const msg = TODO_MESSAGES[0];
-  db.createNudge('todo', msg, dateKey);
-  console.log('[Nudge] Todo nudge created for', dateKey);
-  broadcast({ type: 'nudge', nudge_type: 'todo', message: msg, nag_count: 0 });
-  webpush.sendToAll('NEURO — Todos', msg, { type: 'todo', url: '/todos' }).catch(() => {});
-}
-
-// Called every 15 min — escalates existing nudges
-function nagCheck() {
-  const nudges = db.getActiveNudges();
-
-  for (const nudge of nudges) {
-    // Check if standup was completed since last check
-    if (nudge.type === 'standup' && isStandupDone()) {
-      db.completeNudge(nudge.id);
-      broadcast({ type: 'nudge_cleared', nudge_type: 'standup' });
-      console.log('[Nudge] Standup completed — nudge cleared');
-      continue;
-    }
-
-    // Check if all overdue todos are done
-    if (nudge.type === 'todo' && !hasPendingTodos()) {
-      db.completeNudge(nudge.id);
-      broadcast({ type: 'nudge_cleared', nudge_type: 'todo' });
-      console.log('[Nudge] No overdue todos — nudge cleared');
-      continue;
-    }
-
-    // Skip escalation if snoozed
-    if (isSnoozed(nudge.type)) {
-      continue;
-    }
-
-    // Escalate
-    const newCount = (nudge.nag_count || 0) + 1;
-    db.incrementNagCount(nudge.id);
-    const msg = getNagMessage(nudge.type, newCount);
-    console.log(`[Nudge] Nag #${newCount} for ${nudge.type}: ${msg}`);
-    broadcast({ type: 'nudge', nudge_type: nudge.type, message: msg, nag_count: newCount });
-    const title = nudge.type === 'standup' ? 'NEURO — Standup' : 'NEURO — Todos';
-    const url = nudge.type === 'standup' ? '/standup' : '/todos';
-    webpush.sendToAll(title, msg, { type: nudge.type, url }).catch(() => {});
-  }
-}
-
-// Called on startup — fires nudges if server starts after 9am on a weekday
-function startupCheck() {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun, 6=Sat
-  const hour = now.getHours();
-
-  // Only on weekdays, after 9am, before 5pm
-  if (day >= 1 && day <= 5 && hour >= 9 && hour < 17) {
-    console.log('[Nudge] Startup check — after 9am on weekday, triggering nudges');
-    triggerStandupNudge();
-    triggerTodoNudge();
-  }
-}
-
-// Mark standup as done (called when user saves standup to daily note)
-function markStandupDone() {
-  db.completeNudgeByType('standup', todayKey());
-  broadcast({ type: 'nudge_cleared', nudge_type: 'standup' });
-}
-
-module.exports = {
-  addClient,
-  broadcast,
-  triggerStandupNudge,
-  triggerTodoNudge,
-  nagCheck,
-  markStandupDone,
-  startupCheck,
-  snoozeNudge
-};
+1. `node --check backend/services/nudges.js` — no errors
+2. Confirm `STANDUP_MESSAGES` has 80 entries, `TODO_MESSAGES` has 50 entries
+3. Confirm `getNagMessage` uses `getWeeklyShuffledOrder` not a direct index
+4. Do not touch anything else in the file
+5. Do not touch any other files
+6. Do not commit to git
+7. One-line summary of what changed

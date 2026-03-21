@@ -95,7 +95,7 @@ export default function StandupEditor() {
     if (!ritualData) return;
     const now = new Date();
     const isWeekend = now.getDay() === 0 || now.getDay() === 6;
-    const isLate = now.getHours() >= 9 && now.getMinutes() >= 30;
+    const isLate = now.getHours() >= 10;
     if (isWeekend || (isLate && !ritualData.standupDoneToday)) {
       setShowBackup(true);
     }
