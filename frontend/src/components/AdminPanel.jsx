@@ -146,25 +146,61 @@ export default function AdminPanel({ pushState = {} }) {
       <div className="admin-section">
         <div className="admin-section-title">Push Notifications</div>
         <div className="admin-ms-section">
-          {!pushSupported ? (
-            <div className="admin-ms-desc">Push notifications are not supported on this device/browser.</div>
-          ) : pushSubscribed ? (
-            <div className="admin-ms-connected">
-              <span className="admin-ms-connected-dot" />
-              Push notifications enabled
+          <div className="admin-card" style={{ marginBottom: '12px' }}>
+            <div className="admin-card-header">
+              <span className="admin-card-name">Server VAPID keys</span>
+              <span className={`admin-status-badge ${status.push?.configured ? 'connected' : 'unconfigured'}`}>
+                {status.push?.configured ? 'configured' : 'not configured'}
+              </span>
             </div>
+            {!status.push?.configured && (
+              <div className="admin-card-detail" style={{ color: 'var(--accent-warn, #f59e0b)' }}>
+                SSH into Pi and run: <code>npx web-push generate-vapid-keys</code> — paste output into Pi .env and restart NEURO
+              </div>
+            )}
+          </div>
+          {!pushSupported ? (
+            <div className="admin-ms-desc">
+              Push not supported on this browser. On iOS: Safari → Share → Add to Home Screen → reopen from icon.
+            </div>
+          ) : pushSubscribed ? (
+            <>
+              <div className="admin-ms-connected" style={{ marginBottom: '12px' }}>
+                <span className="admin-ms-connected-dot" />
+                This device is subscribed · {status.push?.subscriptions || 1} device{(status.push?.subscriptions || 1) !== 1 ? 's' : ''} total
+              </div>
+              <button className="admin-ms-connect-btn" onClick={async () => {
+                try {
+                  const res = await fetch(apiUrl('/api/push/test'), { method: 'POST' });
+                  const data = await res.json();
+                  if (data.ok) alert('Test notification sent — you should receive it shortly');
+                  else alert('Test failed: ' + (data.error || 'unknown error'));
+                } catch (e) { alert('Test failed: ' + e.message); }
+              }}>
+                Send Test Notification
+              </button>
+            </>
           ) : (
             <>
-              <div className="admin-ms-desc">
-                Enable push notifications to get standup reminders and todo nudges on this device.
-                On iOS, you must first install NEURO as a PWA (Add to Home Screen from Safari).
+              <div className="admin-ms-desc" style={{ marginBottom: '8px' }}>
+                <strong>iOS users:</strong> Install NEURO as a PWA first — Safari → Share → Add to Home Screen → reopen from icon.
+              </div>
+              <div className="admin-ms-desc" style={{ marginBottom: '12px' }}>
+                Then tap Enable Notifications and accept the permission prompt.
               </div>
               <button
                 className="admin-ms-connect-btn"
                 onClick={manualSubscribe}
+                disabled={!status.push?.configured}
+                title={!status.push?.configured ? 'VAPID keys not configured on server' : ''}
               >
                 Enable Notifications
               </button>
+              {!status.push?.configured && (
+                <div className="admin-ms-desc" style={{ marginTop: '8px', opacity: 0.6 }}>
+                  Button disabled — server VAPID keys not configured yet
+                </div>
+              )}
             </>
           )}
           {pushError && <div className="admin-error">{pushError}</div>}

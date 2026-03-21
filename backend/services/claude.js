@@ -172,6 +172,35 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     diagnostics.push('standup: none');
   }
 
+  // Meeting prep — upcoming meetings in the next 3 hours
+  try {
+    const meetingPrep = obsidian.getMeetingPrepContext(3);
+    if (meetingPrep.length > 0) {
+      let prepBlock = `## Upcoming Meetings (next 3 hours)`;
+      for (const meeting of meetingPrep) {
+        prepBlock += `\n### ${meeting.time} — ${meeting.subject}`;
+        for (const person of meeting.people) {
+          prepBlock += `\n**${person.name}** (${person.role})`;
+          if (person.lastMeeting) prepBlock += ` — last 1-2-1: ${person.lastMeeting}`;
+          if (person.notes) prepBlock += `\n${person.notes}`;
+        }
+      }
+      parts.push(prepBlock);
+      diagnostics.push(`meetingPrep: ${meetingPrep.length}`);
+    }
+  } catch (e) {
+    diagnostics.push('meetingPrep: error');
+  }
+
+  // Recent decisions from decision log
+  try {
+    const recentDecisions = obsidian.getRecentDecisions(14);
+    if (recentDecisions.length > 0) {
+      parts.push(`## Recent Decisions (last 14 days)\n` + recentDecisions.map(d => `- ${d.date}: ${d.text}`).join('\n'));
+      diagnostics.push(`decisions: ${recentDecisions.length}`);
+    }
+  } catch (e) { diagnostics.push('decisions: error'); }
+
   // Todos from vault — grouped by hierarchy: 90-day plan > vault tasks > MS Planner/ToDo
   if (todos && todos.active && todos.active.length > 0) {
     const formatTask = t => `- ${t.text}${t.due_date ? ` (due: ${t.due_date})` : ''}`;
@@ -252,6 +281,18 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
   } catch (e) {
     diagnostics.push('inbox: unavailable');
   }
+
+  // Upcoming 1-2-1s
+  try {
+    const upcoming121s = obsidian.getUpcoming121s(3);
+    if (upcoming121s.length > 0) {
+      const lines = upcoming121s.map(u =>
+        `- ${u.name}: ${u.overdue ? '⚠️ OVERDUE (was ' + u.dueDate + ')' : 'due ' + u.dueDate + ' (' + u.daysUntil + ' day' + (u.daysUntil !== 1 ? 's' : '') + ')'}`
+      );
+      parts.push(`## Upcoming 1-2-1s\n${lines.join('\n')}`);
+      diagnostics.push(`121s: ${upcoming121s.length}`);
+    }
+  } catch (e) { diagnostics.push('121s: error'); }
 
   // Location
   if (locationContext) {

@@ -90,7 +90,8 @@ app.get('/api/status', async (req, res) => {
       configured: n8nService.isConfigured()
     },
     push: {
-      configured: require('./services/webpush').isConfigured()
+      configured: require('./services/webpush').isConfigured(),
+      subscriptions: db.getAllPushSubscriptions().length
     }
   });
 });

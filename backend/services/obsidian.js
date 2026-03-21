@@ -843,6 +843,219 @@ function searchVault(query, maxResults = 5) {
   return results;
 }
 
+// Get meeting prep context for upcoming meetings (next N hours)
+// Returns array of { subject, start, people, prepNotes }
+function getMeetingPrepContext(hoursAhead = 3) {
+  if (!isConfigured()) return [];
+
+  const vaultPath = getVaultPath();
+  const now = new Date();
+  const cutoff = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
+
+  // Get today's calendar events
+  const todayStr = todayDateString();
+  const dailyNote = readTodayDailyNote();
+  if (!dailyNote) return [];
+
+  // Parse calendar entries from daily note
+  const lines = dailyNote.split('\n');
+  let inCalendar = false;
+  const upcomingMeetings = [];
+
+  for (const line of lines) {
+    if (line.startsWith('## Calendar') || line.startsWith('## Meetings')) {
+      inCalendar = true; continue;
+    }
+    if (line.startsWith('## ') && inCalendar) { inCalendar = false; continue; }
+    if (!inCalendar) continue;
+
+    // Parse: - HH:MM-HH:MM **Subject**
+    const m = line.match(/^-\s+(\d{2}):(\d{2})-\d{2}:\d{2}\s+\*\*(.+?)\*\*/);
+    if (!m) continue;
+
+    const meetingTime = new Date(now);
+    meetingTime.setHours(parseInt(m[1], 10), parseInt(m[2], 10), 0, 0);
+
+    if (meetingTime > now && meetingTime <= cutoff) {
+      upcomingMeetings.push({ time: `${m[1]}:${m[2]}`, subject: m[3] });
+    }
+  }
+
+  if (upcomingMeetings.length === 0) return [];
+
+  // For each meeting, find relevant People notes by matching names
+  const peopleDir = path.join(vaultPath, 'People');
+  const peopleFiles = fs.existsSync(peopleDir)
+    ? fs.readdirSync(peopleDir).filter(f => f.endsWith('.md'))
+    : [];
+
+  const prepContexts = [];
+
+  for (const meeting of upcomingMeetings) {
+    const matchedPeople = [];
+
+    for (const file of peopleFiles) {
+      const name = file.replace('.md', '');
+      // Check if name appears in meeting subject
+      const nameParts = name.split(' ');
+      const firstOrLast = nameParts.some(part =>
+        part.length > 2 && meeting.subject.toLowerCase().includes(part.toLowerCase())
+      );
+      if (firstOrLast) {
+        const content = fs.readFileSync(path.join(peopleDir, file), 'utf-8');
+        const fm = parseFrontmatter(content);
+        const body = content.replace(/^---[\s\S]*?---\n*/, '')
+          .replace(/```dataview[\s\S]*?```/g, '') // strip dataview blocks
+          .split('\n')
+          .filter(l => l.trim() && !l.startsWith('#'))
+          .slice(0, 5)
+          .join('\n');
+
+        matchedPeople.push({
+          name,
+          role: fm.role || '',
+          lastMeeting: fm['last-1-2-1'] || fm['last-contact'] || null,
+          notes: body || null
+        });
+      }
+    }
+
+    if (matchedPeople.length > 0 || meeting.subject.toLowerCase().includes('1-2-1') || meeting.subject.toLowerCase().includes('standup')) {
+      prepContexts.push({
+        time: meeting.time,
+        subject: meeting.subject,
+        people: matchedPeople
+      });
+    }
+  }
+
+  return prepContexts;
+}
+
+// Get upcoming 1-2-1s from People notes — checks direct-report frontmatter and next-1-2-1-due date
+function getUpcoming121s(daysAhead = 2) {
+  if (!isConfigured()) return [];
+  const vaultPath = getVaultPath();
+  const peopleDir = path.join(vaultPath, 'People');
+  if (!fs.existsSync(peopleDir)) return [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcoming = [];
+  const files = fs.readdirSync(peopleDir).filter(f => f.endsWith('.md'));
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(peopleDir, file), 'utf-8');
+    const fm = parseFrontmatter(content);
+    if (fm['direct-report'] !== 'true') continue;
+    const dueStr = fm['next-1-2-1-due'];
+    if (!dueStr) continue;
+    const due = new Date(dueStr);
+    due.setHours(0, 0, 0, 0);
+    const daysUntil = Math.round((due - today) / (1000 * 60 * 60 * 24));
+    if (daysUntil <= daysAhead) {
+      upcoming.push({
+        name: file.replace('.md', ''),
+        dueDate: dueStr,
+        daysUntil,
+        overdue: daysUntil < 0,
+        lastMeeting: fm['last-1-2-1'] || null
+      });
+    }
+  }
+  return upcoming.sort((a, b) => a.daysUntil - b.daysUntil);
+}
+
+// Get recent decisions from the Decision Log
+function getRecentDecisions(daysBack = 14) {
+  if (!isConfigured()) return [];
+  const filePath = path.join(getVaultPath(), 'Decision Log', 'decisions.md');
+  if (!fs.existsSync(filePath)) return [];
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysBack);
+  cutoff.setHours(0, 0, 0, 0);
+  const decisions = [];
+  let currentDate = null;
+  for (const line of content.split('\n')) {
+    const dm = line.match(/^## (\d{4}-\d{2}-\d{2})/);
+    if (dm) { currentDate = dm[1]; continue; }
+    if (currentDate && line.startsWith('- ') && new Date(currentDate) >= cutoff) {
+      decisions.push({ date: currentDate, text: line.substring(2).trim() });
+    }
+  }
+  return decisions.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
+}
+
+// Generate a weekly review note in Reflections/
+function generateWeeklyReview() {
+  if (!isConfigured()) return null;
+  const vaultPath = getVaultPath();
+  const now = new Date();
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+  const weekStr = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+  const dayOfWeek = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+  monday.setHours(0, 0, 0, 0);
+  const friday = new Date(monday);
+  friday.setDate(monday.getDate() + 4);
+  const monStr = monday.toISOString().split('T')[0];
+  const friStr = friday.toISOString().split('T')[0];
+
+  const meetingsDir = path.join(vaultPath, 'Meetings');
+  const meetings = [];
+  if (fs.existsSync(meetingsDir)) {
+    const files = fs.readdirSync(meetingsDir).filter(f => f.endsWith('.md'));
+    for (const file of files.slice(0, 10)) {
+      const datePrefix = file.substring(0, 5);
+      const fullDate = `${now.getFullYear()}-${datePrefix}`;
+      if (fullDate >= monStr && fullDate <= friStr) meetings.push('- ' + file.replace('.md', ''));
+    }
+  }
+
+  const decisionDir = path.join(vaultPath, 'Decision Log');
+  const decisionsList = [];
+  if (fs.existsSync(decisionDir)) {
+    const decisionsFile = path.join(decisionDir, 'decisions.md');
+    if (fs.existsSync(decisionsFile)) {
+      const content = fs.readFileSync(decisionsFile, 'utf-8');
+      let inThisWeek = false;
+      for (const line of content.split('\n')) {
+        const dm = line.match(/^## (\d{4}-\d{2}-\d{2})/);
+        if (dm) { inThisWeek = dm[1] >= monStr && dm[1] <= friStr; continue; }
+        if (inThisWeek && line.startsWith('- ')) decisionsList.push(line);
+      }
+    }
+  }
+
+  let planSummary = '';
+  try {
+    const plan = parseNinetyDayPlan();
+    if (plan) {
+      const weekTasks = plan.allTasks.filter(t => t.status === 'x' && plan.currentDay - 5 <= t.day && t.day <= plan.currentDay);
+      planSummary = `Day ${plan.currentDay} of ${plan.totalDays} — ${plan.totalDone}/${plan.totalTasks} tasks complete.`;
+      if (weekTasks.length > 0) planSummary += '\nCompleted this week:\n' + weekTasks.map(t => `- ${t.text}`).join('\n');
+    }
+  } catch {}
+
+  const reviewContent = `---\ntype: reflection\ndate: ${now.toISOString().split('T')[0]}\nweek: ${weekStr}\n---\n# Weekly Review — ${weekStr}\n\n${monStr} to ${friStr}\n\n---\n\n## 90-Day Plan Progress\n\n${planSummary || '(No plan data available)'}\n\n---\n\n## Meetings This Week\n\n${meetings.length > 0 ? meetings.join('\n') : '- None recorded'}\n\n---\n\n## Decisions Made\n\n${decisionsList.length > 0 ? decisionsList.join('\n') : '- None recorded'}\n\n---\n\n## Wins This Week\n\n- \n\n---\n\n## Challenges\n\n- \n\n---\n\n## What I Learned\n\n- \n\n---\n\n## Priorities Next Week\n\n- [ ] \n\n---\n\n## How I'm Feeling\n\n`;
+
+  const reflectionsDir = path.join(vaultPath, 'Reflections');
+  if (!fs.existsSync(reflectionsDir)) fs.mkdirSync(reflectionsDir, { recursive: true });
+  const filePath = path.join(reflectionsDir, `${weekStr}.md`);
+  if (fs.existsSync(filePath)) {
+    const existing = fs.readFileSync(filePath, 'utf-8');
+    if (!existing.includes('## Wins This Week\n\n-')) {
+      return { filePath, weekStr, skipped: true };
+    }
+  }
+  fs.writeFileSync(filePath, reviewContent, 'utf-8');
+  return { filePath, weekStr, skipped: false };
+}
+
 module.exports = {
   isConfigured,
   readTodayDailyNote,
@@ -863,5 +1076,9 @@ module.exports = {
   toggleTask,
   readRitualState,
   readPreviousDailyNote,
-  searchVault
+  searchVault,
+  getMeetingPrepContext,
+  getUpcoming121s,
+  getRecentDecisions,
+  generateWeeklyReview
 };

@@ -3,6 +3,41 @@ import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import './StandupEditor.css';
 
+function EodCapture({ onDone }) {
+  const [win, setWin] = React.useState('');
+  const [didntGo, setDidntGo] = React.useState('');
+  const [feeling, setFeeling] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [message, setMessage] = React.useState('');
+  const handleSave = async () => {
+    if (!win.trim() && !didntGo.trim() && !feeling.trim()) { setMessage('Fill in at least one field'); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(apiUrl('/api/standup/eod'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ win: win.trim() || null, didntGo: didntGo.trim() || null, feeling: feeling.trim() || null })
+      });
+      if (res.ok) { setMessage('Saved to daily note ✓'); setTimeout(() => { if (onDone) onDone(); }, 1500); }
+      else setMessage('Save failed');
+    } catch { setMessage('Save failed'); }
+    setSaving(false);
+  };
+  return (
+    <div className="backup-standup">
+      <h3>End of Day</h3>
+      <p style={{ color: '#888', fontSize: '13px', margin: '0 0 16px' }}>2 minutes. Then close the laptop.</p>
+      <input className="backup-input" type="text" placeholder="One win today..." value={win} onChange={e => setWin(e.target.value)} inputMode="text" autoFocus />
+      <input className="backup-input" type="text" placeholder="One thing that didn't go to plan..." value={didntGo} onChange={e => setDidntGo(e.target.value)} inputMode="text" />
+      <input className="backup-input" type="text" placeholder="How are you feeling?" value={feeling} onChange={e => setFeeling(e.target.value)} inputMode="text" />
+      <div className="standup-actions" style={{ marginTop: '12px' }}>
+        {message && <span className="standup-message">{message}</span>}
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save EOD'}</button>
+      </div>
+    </div>
+  );
+}
+
 function BackupStandup({ onDone }) {
   const [items, setItems] = useState(['', '', '']);
   const [saving, setSaving] = useState(false);
@@ -74,6 +109,7 @@ export default function StandupEditor() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [showBackup, setShowBackup] = useState(false);
+  const [showEod, setShowEod] = useState(false);
 
   const { data: standupData, status: standupStatus } = useCachedFetch('/api/standup');
   const { data: ritualData } = useCachedFetch('/api/standup/ritual-state');
@@ -100,6 +136,12 @@ export default function StandupEditor() {
       setShowBackup(true);
     }
   }, [ritualData]);
+
+  // Auto-show EOD after 5pm on weekdays
+  useEffect(() => {
+    const now = new Date();
+    if (now.getDay() >= 1 && now.getDay() <= 5 && now.getHours() >= 17) setShowEod(true);
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -137,6 +179,7 @@ export default function StandupEditor() {
 
   return (
     <div className="standup-editor">
+      {showEod && <EodCapture onDone={() => setShowEod(false)} />}
       {showBackup && (
         <BackupStandup onDone={() => setShowBackup(false)} />
       )}
@@ -144,6 +187,11 @@ export default function StandupEditor() {
         <h2>Standup Draft</h2>
         <div className="standup-actions">
           {message && <span className="standup-message">{message}</span>}
+          {!showEod && (
+            <button className="btn btn-secondary" onClick={() => setShowEod(true)} style={{ marginRight: '8px' }}>
+              EOD
+            </button>
+          )}
           {!showBackup && (
             <button className="btn btn-secondary" onClick={() => setShowBackup(true)} style={{ marginRight: '8px' }}>
               Quick backup

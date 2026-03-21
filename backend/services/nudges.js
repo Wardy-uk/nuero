@@ -5,18 +5,19 @@ const webpush = require('./webpush');
 // SSE clients listening for nudges
 const clients = new Set();
 
-// Snooze tracking — in-memory, resets on restart
-const snoozedUntil = {}; // { 'standup': timestamp, 'todo': timestamp }
 const SNOOZE_DURATION = 30 * 60 * 1000; // 30 minutes
 
 function snoozeNudge(type) {
-  snoozedUntil[type] = Date.now() + SNOOZE_DURATION;
-  console.log(`[Nudge] ${type} snoozed for 30 minutes`);
-  broadcast({ type: 'nudge_snoozed', nudge_type: type, until: snoozedUntil[type] });
+  const until = Date.now() + SNOOZE_DURATION;
+  db.setState(`snooze_${type}`, String(until));
+  console.log(`[Nudge] ${type} snoozed until ${new Date(until).toLocaleTimeString()}`);
+  broadcast({ type: 'nudge_snoozed', nudge_type: type, until });
 }
 
 function isSnoozed(type) {
-  return snoozedUntil[type] && Date.now() < snoozedUntil[type];
+  const val = db.getState(`snooze_${type}`);
+  if (!val) return false;
+  return Date.now() < parseInt(val, 10);
 }
 
 function addClient(res) {
@@ -390,6 +391,61 @@ function checkPlanMilestoneNudge() {
   }
 }
 
+function getSnoozeState() {
+  const types = ['standup', 'todo', 'eod', '121', 'plan_milestone'];
+  const state = {};
+  for (const type of types) {
+    const val = db.getState(`snooze_${type}`);
+    state[type] = val && Date.now() < parseInt(val, 10) ? parseInt(val, 10) : null;
+  }
+  return state;
+}
+
+// Check for upcoming/overdue 1-2-1s and nudge once per day
+function check121Nudges() {
+  try {
+    const upcoming = obsidian.getUpcoming121s(2);
+    if (upcoming.length === 0) return;
+    const dateKey = todayKey();
+    const stateKey = `121_nudge_${dateKey}`;
+    if (db.getState(stateKey)) return;
+    const overdue = upcoming.filter(u => u.overdue);
+    const soon = upcoming.filter(u => !u.overdue);
+    let msg = '';
+    if (overdue.length > 0) {
+      const names = overdue.map(u => `${u.name} (was ${u.dueDate})`).join(', ');
+      msg = `Overdue 1-2-1${overdue.length > 1 ? 's' : ''}: ${names}. These need booking now.`;
+    } else {
+      const names = soon.map(u => `${u.name} (due ${u.dueDate})`).join(', ');
+      msg = `1-2-1 reminder: ${names} ${soon.length === 1 ? 'is' : 'are'} due within 2 days. Get them in the diary.`;
+    }
+    db.setState(stateKey, new Date().toISOString());
+    console.log('[Nudge] 1-2-1 nudge:', msg);
+    broadcast({ type: 'nudge', nudge_type: '121', message: msg, nag_count: 0 });
+    webpush.sendToAll('NEURO — 1-2-1 Due', msg, { type: '121', url: '/people' }).catch(() => {});
+  } catch (e) {
+    console.error('[Nudge] 1-2-1 check failed:', e.message);
+  }
+}
+
+// EOD ritual nudge — fires at 5pm weekdays
+function triggerEodNudge() {
+  const dailyNote = obsidian.readTodayDailyNote();
+  if (dailyNote && (dailyNote.includes('## EOD') ||
+      (dailyNote.includes('## Wins Today') && !dailyNote.match(/## Wins Today\s*\n-\s*\n/)))) return;
+  const dateKey = todayKey();
+  const stateKey = `eod_nudge_${dateKey}`;
+  if (db.getState(stateKey)) return;
+  db.setState(stateKey, new Date().toISOString());
+  const msg = "End of day. Before you close the laptop: one win, one thing that didn't go to plan, how you're feeling. 2 minutes. Standup tab → EOD.";
+  broadcast({ type: 'nudge', nudge_type: 'eod', message: msg, nag_count: 0 });
+  webpush.sendToAll('NEURO — End of Day', msg, { type: 'eod', url: '/standup' }).catch(() => {});
+}
+
+function markEodDone() {
+  broadcast({ type: 'nudge_cleared', nudge_type: 'eod' });
+}
+
 module.exports = {
   addClient,
   broadcast,
@@ -399,5 +455,9 @@ module.exports = {
   markStandupDone,
   startupCheck,
   snoozeNudge,
-  checkPlanMilestoneNudge
+  checkPlanMilestoneNudge,
+  getSnoozeState,
+  check121Nudges,
+  triggerEodNudge,
+  markEodDone
 };

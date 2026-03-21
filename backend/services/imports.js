@@ -288,6 +288,15 @@ async function autoClassify() {
         const newPath = routeFile(file.filePath, cls.destination, cls.type);
         console.log(`[Imports] Routed → ${newPath}`);
         routed++;
+        // Notify for PLAUD transcripts — they're time-sensitive
+        if (cls.type === 'plaud-transcript') {
+          const webpush = require('./webpush');
+          webpush.sendToAll(
+            'NEURO — PLAUD Transcript Ready',
+            `Transcript filed to ${cls.destination}. Ready to review.`,
+            { type: 'plaud', url: '/vault' }
+          ).catch(() => {});
+        }
       } else {
         updateFrontmatter(file.filePath, {
           status: 'needs-review',

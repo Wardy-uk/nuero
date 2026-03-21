@@ -135,4 +135,29 @@ ${carrySection || '- None'}
   }
 });
 
+// POST /api/standup/eod — save end-of-day reflection to daily note
+router.post('/eod', (req, res) => {
+  const { win, didntGo, feeling } = req.body;
+  if (!win && !didntGo && !feeling) return res.status(400).json({ error: 'At least one field required' });
+  const lines = [
+    `\n## EOD — ${obsidianService.todayDateString()}`,
+    win ? `\n**Win:** ${win}` : '',
+    didntGo ? `\n**Didn't go to plan:** ${didntGo}` : '',
+    feeling ? `\n**Feeling:** ${feeling}` : '',
+    ''
+  ].filter(l => l !== '');
+  const filePath = obsidianService.appendToDailyNote(lines.join('\n'));
+  nudges.markEodDone();
+  res.json({ success: true, path: filePath });
+});
+
+// POST /api/standup/weekly-review — manually trigger weekly review generation
+router.post('/weekly-review', (req, res) => {
+  try {
+    const result = obsidianService.generateWeeklyReview();
+    if (!result) return res.status(500).json({ error: 'Vault not configured' });
+    res.json({ success: true, ...result });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

@@ -39,4 +39,13 @@ router.post('/test', async (req, res) => {
   }
 });
 
+// GET /api/push/subscriptions — diagnostic endpoint
+router.get('/subscriptions', (req, res) => {
+  const subs = db.getAllPushSubscriptions();
+  res.json({
+    count: subs.length,
+    endpoints: subs.map(s => ({ prefix: s.endpoint.substring(0, 50) + '...', created: s.created_at }))
+  });
+});
+
 module.exports = router;

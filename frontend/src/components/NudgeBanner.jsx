@@ -4,15 +4,32 @@ import useCachedFetch from '../useCachedFetch';
 import './NudgeBanner.css';
 
 export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
-  const transform = useMemo(() => (json) => json.nudges || [], []);
-  const { data: fetchedNudges } = useCachedFetch('/api/nudges', { interval: 30000, transform });
+  const transform = useMemo(() => (json) => ({
+    nudges: json.nudges || [],
+    snoozeState: json.snoozeState || {}
+  }), []);
+  const { data: nudgeData } = useCachedFetch('/api/nudges', { interval: 30000, transform });
   const [nudges, setNudges] = useState([]);
   const [snoozed, setSnoozed] = useState({}); // { standup: true, todo: true }
 
-  // Sync fetched nudges into local state (SSE may also update it)
+  // Sync fetched nudges + snooze state into local state
   useEffect(() => {
-    if (fetchedNudges) setNudges(fetchedNudges);
-  }, [fetchedNudges]);
+    if (!nudgeData) return;
+    setNudges(nudgeData.nudges);
+    // Seed snooze state from server — makes all devices consistent
+    const serverSnooze = nudgeData.snoozeState || {};
+    const now = Date.now();
+    const newSnoozed = {};
+    for (const [type, until] of Object.entries(serverSnooze)) {
+      if (until && now < until) {
+        newSnoozed[type] = true;
+        // Set a timeout to clear it when it expires
+        const remaining = until - now;
+        setTimeout(() => setSnoozed(prev => ({ ...prev, [type]: false })), remaining);
+      }
+    }
+    setSnoozed(newSnoozed);
+  }, [nudgeData]);
 
   const handleSnooze = (type) => {
     fetch(apiUrl(`/api/nudges/${type}/snooze`), { method: 'POST' })
@@ -68,7 +85,14 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
         return (
           <div key={i} className={`nudge-banner ${isEscalated ? 'escalated' : ''} ${nudge.type}`}>
             <div className="nudge-content">
-              <span className="nudge-type">{nudge.type === 'standup' ? 'STANDUP' : 'TODOS'}</span>
+              <span className="nudge-type">
+                {nudge.type === 'standup' ? 'STANDUP'
+                  : nudge.type === 'todo' ? 'TODOS'
+                  : nudge.type === 'eod' ? 'END OF DAY'
+                  : nudge.type === '121' ? '1-2-1 DUE'
+                  : nudge.type === 'plan_milestone' ? 'PLAN'
+                  : nudge.type.toUpperCase()}
+              </span>
               <span className="nudge-message">{nudge.message}</span>
             </div>
             <div className="nudge-actions">
@@ -81,9 +105,17 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
               </button>
               <button
                 className="nudge-action"
-                onClick={() => nudge.type === 'standup' ? onGoToStandup() : onGoToTodos()}
+                onClick={() => {
+                  if (nudge.type === 'standup' || nudge.type === 'eod') onGoToStandup();
+                  else if (nudge.type === 'todo') onGoToTodos();
+                  else if (nudge.type === '121') onGoToStandup(); // people panel TBD
+                  // plan_milestone has no specific nav action — just snooze or dismiss
+                }}
               >
-                {nudge.type === 'standup' ? 'Open Standup' : 'Open Todos'}
+                {nudge.type === 'standup' ? 'Open Standup'
+                  : nudge.type === 'todo' ? 'Open Todos'
+                  : nudge.type === 'eod' ? 'Do EOD'
+                  : 'View'}
               </button>
             </div>
           </div>

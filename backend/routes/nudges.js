@@ -3,10 +3,11 @@ const router = express.Router();
 const db = require('../db/database');
 const nudges = require('../services/nudges');
 
-// GET /api/nudges — active nudges
+// GET /api/nudges — active nudges + snooze state
 router.get('/', (req, res) => {
   const active = db.getActiveNudges();
-  res.json({ nudges: active });
+  const snoozeState = nudges.getSnoozeState();
+  res.json({ nudges: active, snoozeState });
 });
 
 // SSE stream for real-time nudges
@@ -30,7 +31,8 @@ router.post('/:id/complete', (req, res) => {
 // POST /api/nudges/:type/snooze — snooze a nudge for 30 minutes
 router.post('/:type/snooze', (req, res) => {
   const { type } = req.params;
-  if (type !== 'standup' && type !== 'todo') {
+  const validTypes = ['standup', 'todo', 'eod', '121', 'plan_milestone'];
+  if (!validTypes.includes(type)) {
     return res.status(400).json({ error: 'Invalid nudge type' });
   }
   nudges.snoozeNudge(type);
