@@ -18,6 +18,7 @@ export default function useCachedFetch(path, opts = {}) {
   const [error, setError] = useState(null);
   const [cacheAge, setCacheAge] = useState(null); // ms since cache was written
   const mountedRef = useRef(true);
+  const liveRef = useRef(false); // true once a live fetch has resolved
 
   const doFetch = useCallback(async () => {
     try {
@@ -27,6 +28,7 @@ export default function useCachedFetch(path, opts = {}) {
       const value = transform ? transform(json) : json;
 
       if (mountedRef.current) {
+        liveRef.current = true;
         setData(value);
         setStatus('live');
         setError(null);
@@ -36,7 +38,7 @@ export default function useCachedFetch(path, opts = {}) {
       // Write to cache in background
       cachePut(path, json);
     } catch (e) {
-      // Fetch failed — try cache
+      // Fetch failed — try cache (only if we haven't already seeded)
       const cached = await cacheGet(path, maxAgeMs);
       if (mountedRef.current) {
         if (cached) {
@@ -53,9 +55,22 @@ export default function useCachedFetch(path, opts = {}) {
     }
   }, [path, transform]);
 
-  // Initial fetch + polling
+  // Seed from cache immediately, then fetch live data
   useEffect(() => {
     mountedRef.current = true;
+    liveRef.current = false;
+
+    // Load cached data first so UI renders instantly
+    cacheGet(path, maxAgeMs).then(cached => {
+      if (cached && mountedRef.current && !liveRef.current) {
+        const value = transform ? transform(cached.data) : cached.data;
+        setData(value);
+        setStatus('cached');
+        setCacheAge(Date.now() - cached.ts);
+      }
+    }).catch(() => {});
+
+    // Then fetch live data (will overwrite cached)
     doFetch();
 
     let timer;
