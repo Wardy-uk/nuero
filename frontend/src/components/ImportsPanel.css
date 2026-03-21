@@ -236,3 +236,14 @@
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
+
+.import-needs-review {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--accent-warn, #f59e0b);
+  border: 1px solid var(--accent-warn, #f59e0b);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  opacity: 0.8;
+}

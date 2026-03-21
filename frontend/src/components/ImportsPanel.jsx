@@ -128,11 +128,14 @@ export default function ImportsPanel() {
       if (data.started) {
         setSweeping(true);
         // SSE sweep_started event will arrive shortly and set sweepProgress
+      } else {
+        // Nothing to classify — show a brief toast and stay idle
+        setToast(data.reason || 'Nothing to classify');
+        setTimeout(() => setToast(null), 3000);
+        setSweeping(false);
       }
-      // If not started (already running), SSE is already broadcasting progress
-      // so this device will catch up automatically
     } catch {
-      // Network error — ignore, sweep may still be running
+      setSweeping(false);
     }
   };
 
@@ -241,6 +244,9 @@ export default function ImportsPanel() {
                   <div>
                     <span className="import-filename">{file.fileName}</span>
                     {file.subdir && <span className="import-subdir">{file.subdir}/</span>}
+                    {file.status === 'needs-review' && (
+                      <span className="import-needs-review">needs review</span>
+                    )}
                   </div>
                   <span className="import-date">{new Date(file.modified).toLocaleDateString()}</span>
                 </div>
@@ -279,7 +285,7 @@ export default function ImportsPanel() {
                     onClick={() => classify(file.filePath)}
                     disabled={classifying === file.filePath || isActing}
                   >
-                    {classifying === file.filePath ? 'Classifying...' : cls || file.status === 'needs-review' ? 'Re-classify' : 'Classify'}
+                    {classifying === file.filePath ? 'Classifying...' : cls ? 'Re-classify' : 'Classify'}
                   </button>
 
                   {showRoute && (
@@ -292,26 +298,25 @@ export default function ImportsPanel() {
                     </button>
                   )}
 
-                  {(cls && !cls.error) || file.status === 'needs-review' ? (
-                    <>
-                      {cls && !cls.error && (
-                        <button
-                          className="btn btn-flag"
-                          onClick={() => flagFile(file.filePath)}
-                          disabled={isActing}
-                        >
-                          Flag for review
-                        </button>
-                      )}
-                      <button
-                        className="btn btn-dismiss"
-                        onClick={() => dismissFile(file.filePath)}
-                        disabled={isActing}
-                      >
-                        Dismiss
-                      </button>
-                    </>
-                  ) : null}
+                  {cls && !cls.error && (
+                    <button
+                      className="btn btn-flag"
+                      onClick={() => flagFile(file.filePath)}
+                      disabled={isActing}
+                    >
+                      Flag for review
+                    </button>
+                  )}
+
+                  {(cls || file.status === 'needs-review') && (
+                    <button
+                      className="btn btn-dismiss"
+                      onClick={() => dismissFile(file.filePath)}
+                      disabled={isActing}
+                    >
+                      Dismiss
+                    </button>
+                  )}
                 </div>
               </div>
             );

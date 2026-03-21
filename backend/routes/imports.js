@@ -52,16 +52,23 @@ router.post('/classify', async (req, res) => {
 });
 
 // POST /api/imports/classify-all — trigger batch sweep
-router.post('/classify-all', (req, res) => {
+router.post('/classify-all', async (req, res) => {
   const sweepRunning = db.getState('imports_sweep_running') === 'true';
   if (sweepRunning) {
     return res.json({ started: false, reason: 'Sweep already running' });
   }
+
+  // Check if there are any classifiable files before starting
+  const classifiable = importsService.getPending().filter(f => f.status !== 'needs-review');
+  if (classifiable.length === 0) {
+    return res.json({ started: false, reason: 'No classifiable files — all pending files need manual review' });
+  }
+
   // Fire and forget
   importsService.autoClassify().catch(e => {
     console.error('[Imports] Batch classify error:', e);
   });
-  res.json({ started: true });
+  res.json({ started: true, count: classifiable.length });
 });
 
 // POST /api/imports/route — move file to classified destination
