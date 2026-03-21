@@ -119,6 +119,7 @@ function getPending() {
       fileName: path.basename(filePath),
       subdir: subdir === '.' ? '' : subdir,
       status: fm.status || null,
+      reviewReason: fm['review-reason'] || null,
       size: stats.size,
       modified: stats.mtime.toISOString(),
       preview: content.replace(/^---[\s\S]*?---\n*/, '').slice(0, 200),

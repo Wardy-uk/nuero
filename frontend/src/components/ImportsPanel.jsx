@@ -266,13 +266,20 @@ export default function ImportsPanel() {
                   </div>
                 )}
 
+                {!cls && file.status === 'needs-review' && (
+                  <div className="import-classification low">
+                    <span className="cls-type">needs review</span>
+                    <span className="cls-reason">{file.reviewReason || 'Flagged by classifier — needs manual action'}</span>
+                  </div>
+                )}
+
                 <div className="import-actions">
                   <button
                     className="btn btn-secondary"
                     onClick={() => classify(file.filePath)}
                     disabled={classifying === file.filePath || isActing}
                   >
-                    {classifying === file.filePath ? 'Classifying...' : cls ? 'Re-classify' : 'Classify'}
+                    {classifying === file.filePath ? 'Classifying...' : cls || file.status === 'needs-review' ? 'Re-classify' : 'Classify'}
                   </button>
 
                   {showRoute && (
@@ -285,15 +292,17 @@ export default function ImportsPanel() {
                     </button>
                   )}
 
-                  {cls && !cls.error && (
+                  {(cls && !cls.error) || file.status === 'needs-review' ? (
                     <>
-                      <button
-                        className="btn btn-flag"
-                        onClick={() => flagFile(file.filePath)}
-                        disabled={isActing}
-                      >
-                        Flag for review
-                      </button>
+                      {cls && !cls.error && (
+                        <button
+                          className="btn btn-flag"
+                          onClick={() => flagFile(file.filePath)}
+                          disabled={isActing}
+                        >
+                          Flag for review
+                        </button>
+                      )}
                       <button
                         className="btn btn-dismiss"
                         onClick={() => dismissFile(file.filePath)}
@@ -302,7 +311,7 @@ export default function ImportsPanel() {
                         Dismiss
                       </button>
                     </>
-                  )}
+                  ) : null}
                 </div>
               </div>
             );
