@@ -31,6 +31,28 @@ Nick's direct reports:
 1st Line: Adele Norman-Swift, Heidi Power, Hope Goodall, Maria Pappa, Naomi Wentworth, Sebastian Broome, Zoe Rees
 Digital Design: Isabel Busk, Kayleigh Russell`;
 
+function isWeekend() {
+  const day = new Date().getDay();
+  return day === 0 || day === 6;
+}
+
+const WEEKEND_SYSTEM_PROMPT = `You are NUERO — Nick's personal AI assistant. It's the weekend.
+
+Nick is Head of Technical Support at Nurtur Limited. He's been navigating a big career step and works hard during the week. Weekends are for recharging.
+
+Weekend mode — your priorities shift:
+- De-prioritise Jira queue, SLA timers, and 90-day plan urgency. Don't surface these unless Nick explicitly asks.
+- Lead with personal energy: rest, hobbies (D&D, OU study, home tinkering), family, or anything non-work.
+- If Nick asks about work topics, help him — but don't initiate work framing.
+- Keep a lighter tone. Less chief-of-staff, more thinking partner.
+- If Nick mentions feeling like he should be working: gently remind him that rest is part of the strategy.
+
+Nick's interests: D&D, Raspberry Pi / home automation, Open University (MU123, TM254, TT284), cooking, reading.
+
+Still available: vault notes, capture, calendar, todos — but frame them lightly. A weekend todo is different from a work sprint.
+
+When Nick makes a decision in conversation, flag it with [DECISION] so it can be logged.`;
+
 function isConfigured() {
   // At least one backend is available
   return !!process.env.ANTHROPIC_API_KEY || true; // Ollama is always local
@@ -40,7 +62,24 @@ function anthropicAvailable() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan) {
+function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend = false) {
+  if (weekend) {
+    // Weekend mode — skip queue and 90-day plan, keep daily note and todos only
+    const parts = [];
+    if (dailyNote) parts.push(`## Today's Note\n${dailyNote}`);
+    else if (previousNote) parts.push(`## Previous Note (${previousNote.date})\n${previousNote.content}`);
+    if (todos && todos.active && todos.active.length > 0) {
+      const personal = todos.active.filter(t => {
+        const src = (t.source || '').toLowerCase();
+        return !src.includes('ms ') && !src.includes('planner');
+      });
+      if (personal.length > 0) {
+        parts.push(`## Personal Todos\n` + personal.slice(0, 8).map(t => `- ${t.text}`).join('\n'));
+      }
+    }
+    return parts.join('\n\n---\n\n') || '(Weekend — no work context loaded)';
+  }
+
   const parts = [];
   const diagnostics = [];
 
@@ -285,13 +324,16 @@ async function streamChat(conversationId, userMessage, res) {
   try { todos = obsidian.parseVaultTodos(); } catch (e) { console.warn('[Context] Todos error:', e.message); }
   try { ninetyDayPlan = obsidian.parseNinetyDayPlan(); } catch (e) { console.warn('[Context] 90-day plan error:', e.message); }
 
-  const contextBlock = buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan);
+  const weekend = isWeekend();
+  const contextBlock = buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend);
 
   const startDate = new Date('2026-03-16');
   const today = new Date();
   const dayCount = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
 
-  const systemPrompt = `${SYSTEM_PROMPT}
+  const basePrompt = weekend ? WEEKEND_SYSTEM_PROMPT : SYSTEM_PROMPT;
+
+  const systemPrompt = `${basePrompt}
 
 ---
 

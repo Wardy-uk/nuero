@@ -110,6 +110,8 @@ export default function CapturePanel() {
             placeholder="Title (optional)"
             value={title}
             onChange={e => setTitle(e.target.value)}
+            inputMode="text"
+            autoCorrect="off"
           />
           <textarea
             className="capture-textarea"
@@ -118,7 +120,12 @@ export default function CapturePanel() {
             onChange={e => setContent(e.target.value)}
             rows={6}
             autoFocus
+            inputMode="text"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
           />
+          <p className="capture-pencil-hint">✎ Apple Pencil: write directly in the box above</p>
         </div>
       )}
 

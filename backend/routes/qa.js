@@ -25,5 +25,7 @@ async function proxy(path, query, res) {
 router.get('/summary', (req, res) => proxy('/qa-summary', req.query, res));
 router.get('/results', (req, res) => proxy('/qa-results', req.query, res));
 router.get('/agents',  (req, res) => proxy('/qa-agents',  req.query, res));
+router.get('/health',  (req, res) => proxy('/qa-health',  req.query, res));
+router.get('/drift',   (req, res) => proxy('/qa-drift',   req.query, res));
 
 module.exports = router;

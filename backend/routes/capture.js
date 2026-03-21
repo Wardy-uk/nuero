@@ -74,14 +74,15 @@ router.post('/photo', upload.single('file'), (req, res) => {
 
   try {
     ensureDirs();
+    const ts = timestamp();
     const ext = path.extname(req.file.originalname) || '.jpg';
-    const filename = `${timestamp()}-photo${ext}`;
+    const filename = `${ts}-photo${ext}`;
     const filePath = path.join(getFilesDir(), filename);
 
     fs.writeFileSync(filePath, req.file.buffer);
 
     // Also create a markdown note linking the image
-    const mdFilename = `${timestamp()}-photo-capture.md`;
+    const mdFilename = `${ts}-photo-capture.md`;
     const mdPath = path.join(getImportsDir(), mdFilename);
     const mdContent = `${frontmatter('Photo capture')}![[Files/${filename}]]\n`;
     fs.writeFileSync(mdPath, mdContent, 'utf-8');
@@ -102,16 +103,17 @@ router.post('/file', upload.single('file'), (req, res) => {
 
   try {
     ensureDirs();
+    const ts = timestamp();
     const ext = path.extname(req.file.originalname);
     const baseName = path.basename(req.file.originalname, ext)
       .replace(/[^a-zA-Z0-9-_ ]/g, '').substring(0, 40).trim().replace(/\s+/g, '-');
-    const filename = `${timestamp()}-${baseName}${ext}`;
+    const filename = `${ts}-${baseName}${ext}`;
     const filePath = path.join(getFilesDir(), filename);
 
     fs.writeFileSync(filePath, req.file.buffer);
 
     // Create a markdown note linking the file
-    const mdFilename = `${timestamp()}-file-capture.md`;
+    const mdFilename = `${ts}-file-capture.md`;
     const mdPath = path.join(getImportsDir(), mdFilename);
     const mdContent = `${frontmatter(req.file.originalname)}Attached file: [[Files/${filename}]]\n\nOriginal name: ${req.file.originalname}\nSize: ${(req.file.size / 1024).toFixed(1)} KB\n`;
     fs.writeFileSync(mdPath, mdContent, 'utf-8');

@@ -1,10 +1,11 @@
 import React from 'react';
 import './Topbar.css';
 
-export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, chatOpen, children }) {
+export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, chatOpen, weekend, onWeekendOverride, weekendOverride, children }) {
   const jiraStatus = status?.jira?.status || 'unknown';
   const claudeOk = status?.claude?.configured;
   const atRisk = queueData?.at_risk_count || 0;
+  const itIsWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
 
   const statusDot = (ok) => (
     <span className={`status-dot ${ok ? 'ok' : 'warn'}`} />
@@ -20,6 +21,16 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
         <span className="topbar-version">v1.0</span>
       </div>
       <div className="topbar-center">
+        {weekend && (
+          <button className="topbar-weekend-badge" onClick={onWeekendOverride} title="Weekend mode active — click to switch to work mode">
+            🌿 Weekend
+          </button>
+        )}
+        {!weekend && itIsWeekend && weekendOverride && (
+          <button className="topbar-weekend-badge work-override" onClick={onWeekendOverride} title="Work mode override active — click to return to weekend mode">
+            💼 Work mode
+          </button>
+        )}
         <div className="topbar-indicator">
           {statusDot(claudeOk)}
           <span className="topbar-label">Claude</span>
@@ -46,7 +57,7 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
           </div>
         )}
         <button className="topbar-chat-btn" onClick={onChatToggle} aria-label="Toggle chat">
-          {chatOpen ? 'x' : '?'}
+          {chatOpen ? '✕' : 'Chat'}
         </button>
       </div>
     </header>

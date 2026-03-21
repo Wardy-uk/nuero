@@ -38,11 +38,13 @@ export async function cachePut(key, data) {
  * @param {string} key
  * @returns {{ data: *, ts: number } | null}
  */
-export async function cacheGet(key) {
+export async function cacheGet(key, maxAgeMs = null) {
   try {
     const db = await getDb();
     const entry = await db.get(STORE_NAME, key);
-    return entry || null;
+    if (!entry) return null;
+    if (maxAgeMs !== null && Date.now() - entry.ts > maxAgeMs) return null;
+    return entry;
   } catch (_) {
     return null;
   }

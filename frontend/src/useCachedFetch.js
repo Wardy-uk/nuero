@@ -12,7 +12,7 @@ import { cachePut, cacheGet } from './cacheStore';
  * @returns {{ data: *, status: "live"|"cached"|"unavailable", error: string|null, refresh: () => void, cacheAge: number|null }}
  */
 export default function useCachedFetch(path, opts = {}) {
-  const { interval = null, transform = null } = opts;
+  const { interval = null, transform = null, maxAgeMs = 24 * 60 * 60 * 1000 } = opts;
   const [data, setData] = useState(null);
   const [status, setStatus] = useState('unavailable'); // live | cached | unavailable
   const [error, setError] = useState(null);
@@ -37,7 +37,7 @@ export default function useCachedFetch(path, opts = {}) {
       cachePut(path, json);
     } catch (e) {
       // Fetch failed — try cache
-      const cached = await cacheGet(path);
+      const cached = await cacheGet(path, maxAgeMs);
       if (mountedRef.current) {
         if (cached) {
           const value = transform ? transform(cached.data) : cached.data;

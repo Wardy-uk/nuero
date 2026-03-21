@@ -111,6 +111,9 @@ async function start() {
   const webpushService = require('./services/webpush');
   webpushService.init();
 
+  const inboxScanner = require('./services/inbox-scanner');
+  inboxScanner.start();
+
   scheduler.start();
 
   app.listen(PORT, '0.0.0.0', () => {

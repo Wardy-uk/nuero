@@ -22,11 +22,18 @@ import useCachedFetch from './useCachedFetch';
 import CacheIndicator from './components/CacheIndicator';
 import './App.css';
 
+function isWeekend() {
+  const day = new Date().getDay();
+  return day === 0 || day === 6;
+}
+
 export default function App() {
   const isMobile = window.innerWidth <= 768;
   const [activeView, setActiveView] = useState(isMobile ? 'capture' : 'dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [weekendOverride, setWeekendOverride] = useState(false);
+  const weekend = isWeekend() && !weekendOverride;
   const pushState = usePushNotifications();
 
   const statusFetch = useCachedFetch('/api/status', { interval: 30000 });
@@ -69,7 +76,7 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <Topbar status={status} queueData={queueData} onMenuToggle={() => setSidebarOpen(o => !o)} onChatToggle={() => setChatOpen(o => !o)} chatOpen={chatOpen}>
+      <Topbar status={status} queueData={queueData} onMenuToggle={() => setSidebarOpen(o => !o)} onChatToggle={() => setChatOpen(o => !o)} chatOpen={chatOpen} weekend={weekend} onWeekendOverride={() => setWeekendOverride(o => !o)} weekendOverride={weekendOverride}>
         <CacheIndicator status={worstStatus} cacheAge={worstCacheAge} />
       </Topbar>
       <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} />

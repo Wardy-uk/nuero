@@ -30,8 +30,12 @@
   min-width: 380px;
   border-left: 1px solid rgba(255, 255, 255, 0.04);
   background: var(--bg-secondary);
-  display: flex;
+  display: none;
   flex-direction: column;
+}
+
+.chat-panel.chat-open {
+  display: flex;
 }
 
 .sidebar-overlay {

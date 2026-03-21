@@ -1,32 +1,23 @@
-# NEURO Snag List — Task Tracker
+# NEURO — Snag List Task Tracker
 
-## SNAG 001 — Vault sync is stale
+**Updated:** 2026-03-21
 
-- [x] SSH into Pi, add cron job for vault pull every 60s
-- [x] Verify vault-pull.log shows successful pulls after ~2 minutes
-- [x] Fixed: cron also auto-commits Pi-side writes (decision log, task toggles) + pushes back
-- [ ] Confirm NEURO context picks up fresh vault data (needs a fresh daily note pushed from laptop)
+---
 
-## SNAG 002 — No capture feature
+## Completed
 
-### Backend
-- [x] Install multer dependency
-- [x] Create routes/capture.js with POST /note, /photo, /file
-- [x] Wire capture routes into server.js
-- [x] Ensure Imports/ and Imports/Files/ directories exist on Pi vault
-- [x] Test note capture endpoint on Pi — working, creates file with frontmatter
-- [x] Imports/pending endpoint picks up captured files
+- [x] SNAG-007 — Apple Pencil / Scribble support in CapturePanel
+- [x] SNAG-003 — Wire inbox-scanner.start() in server.js
+- [x] SNAG-004 — Add /health and /drift route aliases to QA routes
+- [x] SNAG-005 — Fix photo + file capture timestamp collision
+- [x] SNAG-006 — Add apple-touch-icon and PNG icons for iOS PWA
+- [x] SNAG-008 — Update .env.example with all env vars
+- [x] SNAG-009 — Add cache TTL to cacheStore and useCachedFetch
+- [x] SNAG-010 — Add decisions GET endpoint to chat routes
 
-### Frontend
-- [x] Create CapturePanel.jsx component with Note/Photo/File tabs
-- [x] Create CapturePanel.css (matches existing design system)
-- [x] Add Capture to sidebar nav (second item, after Dashboard)
-- [x] Set Capture as mobile default landing view
-- [x] Frontend builds clean (npm run build)
+---
 
-### Deploy & verify
-- [x] Deploy backend to Pi (capture.js, server.js, multer installed)
-- [x] Deploy frontend (pushed to main → Netlify auto-deploying)
-- [ ] Test note capture end-to-end from UI
-- [ ] Test photo capture from iPhone PWA
-- [ ] Test file upload from UI
+## Post-Implementation
+
+- [x] Run `cd frontend && npm run build` — clean (231 modules, 1.94s)
+- [x] All `require()` calls in server.js resolve (inbox-scanner added)

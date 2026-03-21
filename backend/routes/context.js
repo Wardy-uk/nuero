@@ -6,14 +6,18 @@ const obsidian = require('../services/obsidian');
 // GET /api/context — returns all live context in one call (for n8n agent)
 router.get('/', (req, res) => {
   const result = {};
+  const weekend = new Date().getDay() === 0 || new Date().getDay() === 6;
+  result.weekend = weekend;
 
   // Queue
-  try {
-    result.queue = db.getQueueSummary();
-    result.queue.jira_status = db.getState('jira_status') || 'unknown';
-    result.queue.last_sync = db.getState('jira_last_sync');
-  } catch (e) {
-    result.queue = { error: e.message };
+  if (!weekend) {
+    try {
+      result.queue = db.getQueueSummary();
+      result.queue.jira_status = db.getState('jira_status') || 'unknown';
+      result.queue.last_sync = db.getState('jira_last_sync');
+    } catch (e) {
+      result.queue = { error: e.message };
+    }
   }
 
   // Daily note
@@ -49,21 +53,23 @@ router.get('/', (req, res) => {
   }
 
   // 90-day plan summary
-  try {
-    const plan = obsidian.parseNinetyDayPlan();
-    if (plan) {
-      result.ninetyDayPlan = {
-        currentDay: plan.currentDay,
-        totalDone: plan.totalDone,
-        totalTasks: plan.totalTasks,
-        nextCheckpoint: plan.nextCheckpoint,
-        daysToCheckpoint: plan.daysToCheckpoint,
-        overdueTasks: plan.overdueTasks.slice(0, 5),
-        todayTasks: plan.todayTasks
-      };
+  if (!weekend) {
+    try {
+      const plan = obsidian.parseNinetyDayPlan();
+      if (plan) {
+        result.ninetyDayPlan = {
+          currentDay: plan.currentDay,
+          totalDone: plan.totalDone,
+          totalTasks: plan.totalTasks,
+          nextCheckpoint: plan.nextCheckpoint,
+          daysToCheckpoint: plan.daysToCheckpoint,
+          overdueTasks: plan.overdueTasks.slice(0, 5),
+          todayTasks: plan.todayTasks
+        };
+      }
+    } catch (e) {
+      result.ninetyDayPlan = null;
     }
-  } catch (e) {
-    result.ninetyDayPlan = null;
   }
 
   // Day count
