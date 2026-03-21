@@ -32,6 +32,10 @@ function trackEodDone() {
   db.logActivity('eod_done', {});
 }
 
+function trackNudgeDismiss(nudgeType) {
+  db.logActivity('nudge_dismissed', { type: nudgeType });
+}
+
 // Extract meaningful topic keywords from a chat message
 // Mirrors extractSearchTerms in claude.js — same stop word list
 function extractTopics(message) {
@@ -66,6 +70,7 @@ function buildDailySummary(dateKey) {
     standup_hour: null,
     standup_snooze_count: 0,
     todo_snooze_count: 0,
+    nudge_dismiss_count: 0,
     eod_done: false,
     captures_count: 0,
     chat_count: 0,
@@ -87,6 +92,9 @@ function buildDailySummary(dateKey) {
       case 'nudge_snoozed':
         if (data.type === 'standup') summary.standup_snooze_count++;
         else if (data.type === 'todo') summary.todo_snooze_count++;
+        break;
+      case 'nudge_dismissed':
+        summary.nudge_dismiss_count++;
         break;
       case 'capture':
         summary.captures_count++;
@@ -150,6 +158,7 @@ function getPatternsContextBlock(daysBack = 7) {
   }
   if (todayLive.standup_snooze_count > 0) todayParts.push(`standup snoozed ${todayLive.standup_snooze_count}x`);
   if (todayLive.todo_snooze_count > 0) todayParts.push(`todo snoozed ${todayLive.todo_snooze_count}x`);
+  if (todayLive.nudge_dismiss_count > 0) todayParts.push(`${todayLive.nudge_dismiss_count} dismissed`);
   if (todayLive.captures_count > 0) todayParts.push(`${todayLive.captures_count} capture${todayLive.captures_count !== 1 ? 's' : ''}`);
   if (todayLive.chat_count > 0) todayParts.push(`${todayLive.chat_count} chat messages`);
   if (todayLive.eod_done) todayParts.push('EOD done');
@@ -193,6 +202,7 @@ module.exports = {
   trackTabOpen,
   trackStandupDone,
   trackNudgeSnooze,
+  trackNudgeDismiss,
   trackCapture,
   trackChatMessage,
   trackEodDone,

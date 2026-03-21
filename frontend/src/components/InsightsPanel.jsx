@@ -70,6 +70,7 @@ export default function InsightsPanel() {
             <span className="insights-stat-label">Snoozed</span>
             <span className="insights-stat-value">
               standup {today.standup_snooze_count || 0}× · todo {today.todo_snooze_count || 0}×
+              {(today.nudge_dismiss_count || 0) > 0 && ` · ${today.nudge_dismiss_count} dismissed`}
             </span>
           </div>
           <div className="insights-stat">
@@ -122,9 +123,14 @@ export default function InsightsPanel() {
                     {row.standup_done ? `✓ ${formatHour(row.standup_hour)}` : '✗'}
                   </td>
                   <td>
-                    {(row.standup_snooze_count || 0) + (row.todo_snooze_count || 0) > 0
-                      ? `s${row.standup_snooze_count || 0} t${row.todo_snooze_count || 0}`
-                      : '—'}
+                    {(() => {
+                      const s = row.standup_snooze_count || 0;
+                      const t = row.todo_snooze_count || 0;
+                      let d = 0;
+                      try { d = JSON.parse(row.summary_json || '{}').nudge_dismiss_count || 0; } catch {}
+                      if (s + t + d === 0) return '—';
+                      return `s${s} t${t}${d > 0 ? ` d${d}` : ''}`;
+                    })()}
                   </td>
                   <td>{row.captures_count || 0}</td>
                   <td>{row.chat_count || 0}</td>

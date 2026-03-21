@@ -24,7 +24,15 @@ router.get('/stream', (req, res) => {
 
 // POST /api/nudges/:id/complete
 router.post('/:id/complete', (req, res) => {
-  db.completeNudge(Number(req.params.id));
+  const id = Number(req.params.id);
+  // Look up nudge type before completing so we can log it
+  const active = db.getActiveNudges();
+  const nudge = active.find(n => n.id === id);
+  db.completeNudge(id);
+  if (nudge) {
+    const activity = require('../services/activity');
+    activity.trackNudgeDismiss(nudge.type);
+  }
   res.json({ success: true });
 });
 
