@@ -8,6 +8,7 @@ export default function ImportsPanel() {
   const [classifications, setClassifications] = useState({});
   const [acting, setActing] = useState(null);
   const [sweeping, setSweeping] = useState(false);
+  const [sweepProgress, setSweepProgress] = useState(null);
   const [toast, setToast] = useState(null);
 
   const transform = useMemo(() => (json) => json.files || [], []);
@@ -18,26 +19,89 @@ export default function ImportsPanel() {
   const { data: status, refresh: fetchStatus } = useCachedFetch('/api/imports/status', { interval: 30000 });
   const loading = files === null;
 
-  // Poll for sweep completion when sweeping
+  // Seed sweeping state from server (so all devices show correct state on load)
   useEffect(() => {
-    if (!sweeping) return;
-    const sweepStart = Date.now();
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(apiUrl('/api/imports/status'));
-        const data = await res.json();
-        const sweep = data.lastSweep;
-        if (sweep && new Date(sweep.timestamp).getTime() > sweepStart) {
+    if (status?.sweepRunning !== undefined) {
+      setSweeping(status.sweepRunning);
+    }
+  }, [status?.sweepRunning]);
+
+  // SSE — real-time sync across devices
+  useEffect(() => {
+    let es;
+    try {
+      es = new EventSource(apiUrl('/api/nudges/stream'));
+      es.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'sweep_started') {
+          setSweeping(true);
+          setSweepProgress({ current: 0, total: data.total, currentFile: null });
+        }
+
+        else if (data.type === 'sweep_progress') {
+          setSweepProgress({
+            current: data.index + 1,
+            total: data.total,
+            currentFile: data.file,
+            currentCls: data.classification
+          });
+          // Update stored classification in file list immediately
+          if (data.classification && data.relativePath) {
+            setClassifications(prev => ({
+              ...prev,
+              [data.relativePath]: data.classification
+            }));
+          }
+        }
+
+        else if (data.type === 'sweep_complete') {
           setSweeping(false);
-          setToast(`Sweep done — ${sweep.routed} routed, ${sweep.flagged} flagged`);
+          setSweepProgress(null);
+          setToast(`Sweep done — ${data.routed} routed, ${data.flagged} flagged`);
           setTimeout(() => setToast(null), 5000);
           fetchPending();
           fetchStatus();
+
+          // Push notification if user is not looking at the app
+          const appVisible = document.visibilityState === 'visible' && document.hasFocus();
+          if (!appVisible) {
+            fetch(apiUrl('/api/imports/notify-complete'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                routed: data.routed,
+                flagged: data.flagged,
+                errors: data.errors
+              })
+            }).catch(() => {});
+          }
         }
-      } catch {}
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [sweeping, fetchPending, fetchStatus]);
+
+        else if (data.type === 'classification_ready') {
+          // Single file classified on any device — update this device immediately
+          if (data.classification && (data.filePath || data.relativePath)) {
+            const key = data.filePath || data.relativePath;
+            setClassifications(prev => ({ ...prev, [key]: data.classification }));
+          }
+          fetchPending();
+        }
+
+        else if (data.type === 'file_actioned') {
+          // File was routed/flagged/dismissed — refresh the list
+          if (data.filePath) {
+            setClassifications(prev => {
+              const next = { ...prev };
+              delete next[data.filePath];
+              return next;
+            });
+          }
+          fetchPending();
+        }
+      };
+    } catch {}
+    return () => { if (es) es.close(); };
+  }, [fetchPending, fetchStatus]);
 
   const classify = async (filePath) => {
     setClassifying(filePath);
@@ -58,11 +122,17 @@ export default function ImportsPanel() {
   };
 
   const classifyAll = async () => {
-    setSweeping(true);
     try {
-      await fetch(apiUrl('/api/imports/classify-all'), { method: 'POST' });
+      const res = await fetch(apiUrl('/api/imports/classify-all'), { method: 'POST' });
+      const data = await res.json();
+      if (data.started) {
+        setSweeping(true);
+        // SSE sweep_started event will arrive shortly and set sweepProgress
+      }
+      // If not started (already running), SSE is already broadcasting progress
+      // so this device will catch up automatically
     } catch {
-      setSweeping(false);
+      // Network error — ignore, sweep may still be running
     }
   };
 
@@ -124,13 +194,38 @@ export default function ImportsPanel() {
             onClick={classifyAll}
             disabled={sweeping || (files || []).length === 0}
           >
-            {sweeping ? 'Sweeping...' : 'Classify All'}
+            {sweeping
+              ? sweepProgress
+                ? `${sweepProgress.current}/${sweepProgress.total}`
+                : 'Starting...'
+              : 'Classify All'}
           </button>
           <button className="btn btn-secondary" onClick={fetchPending}>Refresh</button>
         </div>
       </div>
 
       {toast && <div className="imports-toast">{toast}</div>}
+
+      {sweeping && sweepProgress && (
+        <div className="imports-progress">
+          <div className="imports-progress-bar">
+            <div
+              className="imports-progress-fill"
+              style={{ width: `${Math.round((sweepProgress.current / sweepProgress.total) * 100)}%` }}
+            />
+          </div>
+          <div className="imports-progress-label">
+            {sweepProgress.current}/{sweepProgress.total}
+            {sweepProgress.currentFile && ` — ${sweepProgress.currentFile}`}
+          </div>
+        </div>
+      )}
+
+      {sweeping && !sweepProgress && (
+        <div className="imports-progress">
+          <div className="imports-progress-label">Starting sweep...</div>
+        </div>
+      )}
 
       {(files || []).length === 0 ? (
         <div className="imports-empty">No unprocessed files in Imports/</div>

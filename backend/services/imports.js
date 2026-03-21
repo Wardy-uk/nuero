@@ -5,6 +5,11 @@ const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 
+function getBroadcast() {
+  try { return require('./nudges').broadcast; }
+  catch { return () => {}; }
+}
+
 function getVaultPath() {
   return process.env.OBSIDIAN_VAULT_PATH || '';
 }
@@ -253,6 +258,15 @@ async function classifyFile(filePath) {
     console.warn('[Imports] Failed to persist classification:', e.message);
   }
 
+  try {
+    getBroadcast()({
+      type: 'classification_ready',
+      filePath: filePath,
+      relativePath: relativePath,
+      classification
+    });
+  } catch {}
+
   return classification;
 }
 
@@ -284,6 +298,14 @@ function routeFile(filePath, destination, type) {
 
   fs.renameSync(filePath, finalPath);
 
+  try {
+    getBroadcast()({
+      type: 'file_actioned',
+      filePath: filePath,
+      action: 'routed'
+    });
+  } catch {}
+
   // Remove classification from DB — file has been actioned
   try {
     const db = require('../db/database');
@@ -297,70 +319,98 @@ function routeFile(filePath, destination, type) {
 // Batch classify and route all pending imports
 async function autoClassify() {
   const db = require('../db/database');
-  const pending = getPending().filter(f => f.status !== 'needs-review');
+  const broadcast = getBroadcast();
 
-  if (pending.length === 0) {
-    console.log('[Imports] No pending files to classify');
-    return { routed: 0, flagged: 0, errors: 0 };
+  // Prevent concurrent sweeps
+  const sweepRunning = db.getState('imports_sweep_running');
+  if (sweepRunning === 'true') {
+    console.log('[Imports] Sweep already running — skipping');
+    return { routed: 0, flagged: 0, errors: 0, skipped: true };
   }
+  db.setState('imports_sweep_running', 'true');
 
-  console.log(`[Imports] Auto-classifying ${pending.length} files...`);
-  let routed = 0, flagged = 0, errors = 0;
+  try {
+    const pending = getPending().filter(f => f.status !== 'needs-review');
 
-  // Process in batches of 3 concurrently (Claude API handles parallel requests well)
-  // Ollama fallback still needs sequential — detect which backend we're using
-  const useConcurrent = !!process.env.ANTHROPIC_API_KEY;
-  const BATCH_SIZE = useConcurrent ? 3 : 1;
-
-  for (let i = 0; i < pending.length; i += BATCH_SIZE) {
-    const batch = pending.slice(i, i + BATCH_SIZE);
-
-    await Promise.allSettled(batch.map(async (file) => {
-      try {
-        const cls = await classifyFile(file.filePath);
-        console.log(`[Imports] ${file.fileName}: ${cls.type} (${cls.confidence}) → ${cls.destination}`);
-
-        if ((cls.confidence === 'high' || cls.confidence === 'medium') && cls.destination) {
-          const newPath = routeFile(file.filePath, cls.destination, cls.type);
-          console.log(`[Imports] Routed → ${newPath}`);
-          routed++;
-          if (cls.type === 'plaud-transcript') {
-            const webpush = require('./webpush');
-            webpush.sendToAll(
-              'NEURO — PLAUD Transcript Ready',
-              `Transcript filed to ${cls.destination}. Ready to review.`,
-              { type: 'plaud', url: '/vault' }
-            ).catch(() => {});
-          }
-        } else {
-          updateFrontmatter(file.filePath, {
-            status: 'needs-review',
-            'review-reason': cls.reason || 'Low confidence classification'
-          });
-          // Remove any stored classification — file is flagged, will show as needs-review
-          try {
-            const db = require('../db/database');
-            db.deleteImportClassification(file.relativePath);
-          } catch (e) { /* non-fatal */ }
-          flagged++;
-        }
-      } catch (e) {
-        console.error(`[Imports] Error classifying ${file.fileName}:`, e.message);
-        errors++;
-      }
-    }));
-
-    // Brief pause between batches — respect rate limits
-    if (i + BATCH_SIZE < pending.length) {
-      await new Promise(r => setTimeout(r, useConcurrent ? 200 : 500));
+    if (pending.length === 0) {
+      console.log('[Imports] No pending files to classify');
+      db.setState('imports_sweep_running', 'false');
+      return { routed: 0, flagged: 0, errors: 0 };
     }
+
+    console.log(`[Imports] Auto-classifying ${pending.length} files...`);
+    broadcast({ type: 'sweep_started', total: pending.length });
+    let routed = 0, flagged = 0, errors = 0;
+    let fileIndex = 0;
+
+    // Process in batches of 3 concurrently (Claude API handles parallel requests well)
+    // Ollama fallback still needs sequential — detect which backend we're using
+    const useConcurrent = !!process.env.ANTHROPIC_API_KEY;
+    const BATCH_SIZE = useConcurrent ? 3 : 1;
+
+    for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+      const batch = pending.slice(i, i + BATCH_SIZE);
+
+      await Promise.allSettled(batch.map(async (file) => {
+        try {
+          const cls = await classifyFile(file.filePath);
+          console.log(`[Imports] ${file.fileName}: ${cls.type} (${cls.confidence}) → ${cls.destination}`);
+
+          broadcast({
+            type: 'sweep_progress',
+            file: file.fileName,
+            relativePath: file.relativePath,
+            index: fileIndex++,
+            total: pending.length,
+            classification: cls
+          });
+
+          if ((cls.confidence === 'high' || cls.confidence === 'medium') && cls.destination) {
+            const newPath = routeFile(file.filePath, cls.destination, cls.type);
+            console.log(`[Imports] Routed → ${newPath}`);
+            routed++;
+            if (cls.type === 'plaud-transcript') {
+              const webpush = require('./webpush');
+              webpush.sendToAll(
+                'NEURO — PLAUD Transcript Ready',
+                `Transcript filed to ${cls.destination}. Ready to review.`,
+                { type: 'plaud', url: '/vault' }
+              ).catch(() => {});
+            }
+          } else {
+            updateFrontmatter(file.filePath, {
+              status: 'needs-review',
+              'review-reason': cls.reason || 'Low confidence classification'
+            });
+            // Remove any stored classification — file is flagged, will show as needs-review
+            try {
+              const db = require('../db/database');
+              db.deleteImportClassification(file.relativePath);
+            } catch (e) { /* non-fatal */ }
+            flagged++;
+          }
+        } catch (e) {
+          console.error(`[Imports] Error classifying ${file.fileName}:`, e.message);
+          errors++;
+        }
+      }));
+
+      // Brief pause between batches — respect rate limits
+      if (i + BATCH_SIZE < pending.length) {
+        await new Promise(r => setTimeout(r, useConcurrent ? 200 : 500));
+      }
+    }
+
+    const summary = { routed, flagged, errors, timestamp: new Date().toISOString() };
+    console.log(`[Imports] Sweep complete: ${routed} routed, ${flagged} flagged, ${errors} errors`);
+    db.setState('imports_last_sweep', JSON.stringify(summary));
+    db.setState('imports_sweep_running', 'false');
+    broadcast({ type: 'sweep_complete', ...summary });
+
+    return summary;
+  } finally {
+    db.setState('imports_sweep_running', 'false');
   }
-
-  const summary = { routed, flagged, errors, timestamp: new Date().toISOString() };
-  console.log(`[Imports] Sweep complete: ${routed} routed, ${flagged} flagged, ${errors} errors`);
-  db.setState('imports_last_sweep', JSON.stringify(summary));
-
-  return summary;
 }
 
 module.exports = { getPending, getImportsPath, classifyFile, routeFile, updateFrontmatter, autoClassify };

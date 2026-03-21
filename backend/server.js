@@ -109,6 +109,7 @@ app.get('*', (req, res, next) => {
 // Initialize database then start
 async function start() {
   await db.init();
+  db.setState('imports_sweep_running', 'false');
 
   const webpushService = require('./services/webpush');
   webpushService.init();

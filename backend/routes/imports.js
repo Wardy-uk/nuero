@@ -28,7 +28,8 @@ router.get('/status', (req, res) => {
     const pending = importsService.getPending();
     const lastSweepRaw = db.getState('imports_last_sweep');
     const lastSweep = lastSweepRaw ? JSON.parse(lastSweepRaw) : null;
-    res.json({ pendingCount: pending.length, lastSweep });
+    const sweepRunning = db.getState('imports_sweep_running') === 'true';
+    res.json({ pendingCount: pending.length, lastSweep, sweepRunning });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -52,7 +53,11 @@ router.post('/classify', async (req, res) => {
 
 // POST /api/imports/classify-all — trigger batch sweep
 router.post('/classify-all', (req, res) => {
-  // Fire and forget — don't wait for completion
+  const sweepRunning = db.getState('imports_sweep_running') === 'true';
+  if (sweepRunning) {
+    return res.json({ started: false, reason: 'Sweep already running' });
+  }
+  // Fire and forget
   importsService.autoClassify().catch(e => {
     console.error('[Imports] Batch classify error:', e);
   });
@@ -93,6 +98,13 @@ router.post('/flag', (req, res) => {
     dbFlag.deleteImportClassification(relativePathFlag);
     console.log(`[Imports] Flagged ${path.basename(filePath)} for review`);
     res.json({ success: true });
+    try {
+      require('../services/nudges').broadcast({
+        type: 'file_actioned',
+        filePath,
+        action: 'flagged'
+      });
+    } catch {}
   } catch (e) {
     console.error('[Imports] Flag error:', e);
     res.status(500).json({ error: e.message });
@@ -113,8 +125,40 @@ router.post('/dismiss', (req, res) => {
     dbDismiss.deleteImportClassification(relativePathDismiss);
     console.log(`[Imports] Dismissed ${path.basename(filePath)}`);
     res.json({ success: true });
+    try {
+      require('../services/nudges').broadcast({
+        type: 'file_actioned',
+        filePath,
+        action: 'dismissed'
+      });
+    } catch {}
   } catch (e) {
     console.error('[Imports] Dismiss error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/imports/notify-complete — send push notification for sweep completion
+// Called by frontend only when the app is not in focus
+router.post('/notify-complete', async (req, res) => {
+  const { routed = 0, flagged = 0, errors = 0 } = req.body;
+
+  const parts = [];
+  if (routed > 0) parts.push(`${routed} routed`);
+  if (flagged > 0) parts.push(`${flagged} need review`);
+  if (errors > 0) parts.push(`${errors} failed`);
+  const body = parts.length > 0 ? parts.join(', ') : 'No files processed';
+
+  try {
+    const webpush = require('../services/webpush');
+    await webpush.sendToAll(
+      'NEURO — Classify complete',
+      body,
+      { type: 'sweep_complete', url: '/imports' }
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[Imports] Notify error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
