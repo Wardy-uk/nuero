@@ -16,14 +16,14 @@
   padding: 10px 20px;
   font-family: var(--font-mono);
   font-size: 13px;
-  background: rgba(240, 160, 64, 0.12);
+  background: #1a1508;
   border-top: 1px solid rgba(240, 160, 64, 0.25);
   color: var(--warning);
   animation: nudge-pulse 2s ease-in-out;
 }
 
 .nudge-banner.escalated {
-  background: rgba(224, 85, 85, 0.15);
+  background: #1a0a0a;
   border-top-color: rgba(224, 85, 85, 0.3);
   color: var(--danger);
 }
