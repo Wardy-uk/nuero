@@ -342,6 +342,85 @@ function deleteAllImportClassifications() {
   save();
 }
 
+// Activity log helpers
+function logActivity(eventType, eventData, dateKey) {
+  const now = new Date();
+  const hour = now.getHours();
+  const dayOfWeek = now.getDay();
+  const dk = dateKey || now.toISOString().split('T')[0];
+  getDb().run(
+    `INSERT INTO activity_log (event_type, event_data, hour, day_of_week, date_key)
+     VALUES (?, ?, ?, ?, ?)`,
+    [eventType, eventData ? JSON.stringify(eventData) : null, hour, dayOfWeek, dk]
+  );
+  save();
+}
+
+function getActivityForDate(dateKey) {
+  const stmt = getDb().prepare(
+    'SELECT * FROM activity_log WHERE date_key = ? ORDER BY created_at ASC'
+  );
+  stmt.bind([dateKey]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getActivityForRange(startDate, endDate) {
+  const stmt = getDb().prepare(
+    'SELECT * FROM activity_log WHERE date_key >= ? AND date_key <= ? ORDER BY created_at ASC'
+  );
+  stmt.bind([startDate, endDate]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+// Daily summary helpers
+function saveDailySummary(dateKey, summary) {
+  getDb().run(`
+    INSERT OR REPLACE INTO daily_summary
+      (date_key, standup_done, standup_hour, standup_snooze_count,
+       todo_snooze_count, eod_done, captures_count, chat_count,
+       chat_topics, tabs_opened, summary_json, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `, [
+    dateKey,
+    summary.standup_done ? 1 : 0,
+    summary.standup_hour || null,
+    summary.standup_snooze_count || 0,
+    summary.todo_snooze_count || 0,
+    summary.eod_done ? 1 : 0,
+    summary.captures_count || 0,
+    summary.chat_count || 0,
+    summary.chat_topics ? JSON.stringify(summary.chat_topics) : null,
+    summary.tabs_opened ? JSON.stringify(summary.tabs_opened) : null,
+    JSON.stringify(summary)
+  ]);
+  save();
+}
+
+function getDailySummaries(daysBack = 14) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysBack);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const stmt = getDb().prepare(
+    'SELECT * FROM daily_summary WHERE date_key >= ? ORDER BY date_key DESC'
+  );
+  stmt.bind([cutoffStr]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getTodayActivity() {
+  const today = new Date().toISOString().split('T')[0];
+  return getActivityForDate(today);
+}
+
 module.exports = {
   init,
   getDb,
@@ -377,5 +456,11 @@ module.exports = {
   getImportClassification,
   getAllImportClassifications,
   deleteImportClassification,
-  deleteAllImportClassifications
+  deleteAllImportClassifications,
+  logActivity,
+  getActivityForDate,
+  getActivityForRange,
+  saveDailySummary,
+  getDailySummaries,
+  getTodayActivity
 };

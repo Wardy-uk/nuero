@@ -17,9 +17,11 @@ import ImportsPanel from './components/ImportsPanel';
 import CapturePanel from './components/CapturePanel';
 import RecentPanel from './components/RecentPanel';
 import VaultBrowser from './components/VaultBrowser';
+import InsightsPanel from './components/InsightsPanel';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
 import useCachedFetch from './useCachedFetch';
+import { apiUrl } from './api';
 import CacheIndicator from './components/CacheIndicator';
 import './App.css';
 
@@ -84,6 +86,16 @@ export default function App() {
       : 'live';
   const worstCacheAge = Math.max(statusFetch.cacheAge || 0, queueFetch.cacheAge || 0) || null;
 
+  // Track tab opens
+  React.useEffect(() => {
+    if (!activeView) return;
+    fetch(apiUrl('/api/activity/tab'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tab: activeView })
+    }).catch(() => {}); // fire and forget — never block UI
+  }, [activeView]);
+
   const handleNavigate = (view) => {
     setActiveView(view);
     setSidebarOpen(false);
@@ -104,6 +116,7 @@ export default function App() {
       case 'inbox': return <InboxPanel />;
       case 'vault': return <VaultBrowser initialOpenPath={vaultOpenPath} onClearInitialPath={() => setVaultOpenPath(null)} />;
       case 'qa': return <QATab />;
+      case 'insights': return <InsightsPanel />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
     }

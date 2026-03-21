@@ -100,3 +100,31 @@ CREATE TABLE IF NOT EXISTS import_classifications (
 );
 
 CREATE INDEX IF NOT EXISTS idx_import_cls_path ON import_classifications(relative_path);
+
+CREATE TABLE IF NOT EXISTS activity_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,
+  event_data TEXT,
+  hour INTEGER,
+  day_of_week INTEGER,
+  date_key TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_date ON activity_log(date_key, event_type);
+
+CREATE TABLE IF NOT EXISTS daily_summary (
+  date_key TEXT PRIMARY KEY,
+  standup_done INTEGER DEFAULT 0,
+  standup_hour INTEGER,
+  standup_snooze_count INTEGER DEFAULT 0,
+  todo_snooze_count INTEGER DEFAULT 0,
+  eod_done INTEGER DEFAULT 0,
+  captures_count INTEGER DEFAULT 0,
+  chat_count INTEGER DEFAULT 0,
+  chat_topics TEXT,
+  tabs_opened TEXT,
+  summary_json TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

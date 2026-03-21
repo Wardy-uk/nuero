@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { id: 'inbox', label: 'Inbox Triage', icon: '>' },
   { id: 'plan', label: '90-Day Plan', icon: '>' },
   { id: 'qa', label: 'QA Dashboard', icon: '>' },
+  { id: 'insights', label: 'Insights', icon: '◈' },
   { id: 'admin', label: 'Settings', icon: '>' },
 ];
 

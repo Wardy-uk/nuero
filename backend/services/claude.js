@@ -154,6 +154,18 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     diagnostics.push('queue: empty');
   }
 
+  // Behavioural patterns from activity log
+  try {
+    const activity = require('./activity');
+    const patternsBlock = activity.getPatternsContextBlock(7);
+    if (patternsBlock) {
+      parts.push(patternsBlock);
+      diagnostics.push('patterns: ok');
+    }
+  } catch (e) {
+    diagnostics.push('patterns: error');
+  }
+
   // Daily note (today or previous as fallback)
   if (dailyNote) {
     parts.push(`## Today's Daily Note\n${dailyNote}`);
@@ -418,6 +430,7 @@ async function streamOllama(systemPrompt, messages, res) {
 
 async function streamChat(conversationId, userMessage, res, location = null) {
   db.saveMessage(conversationId, 'user', userMessage);
+  try { require('./activity').trackChatMessage(userMessage); } catch {}
 
   const history = db.getConversationHistory(conversationId, 10);
   const queueSummary = db.getQueueSummary();

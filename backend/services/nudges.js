@@ -10,6 +10,7 @@ const SNOOZE_DURATION = 30 * 60 * 1000; // 30 minutes
 function snoozeNudge(type) {
   const until = Date.now() + SNOOZE_DURATION;
   db.setState(`snooze_${type}`, String(until));
+  try { require('./activity').trackNudgeSnooze(type); } catch {}
   console.log(`[Nudge] ${type} snoozed until ${new Date(until).toLocaleTimeString()}`);
   broadcast({ type: 'nudge_snoozed', nudge_type: type, until });
 }
@@ -350,6 +351,10 @@ function startupCheck() {
 function markStandupDone() {
   db.completeNudgeByType('standup', todayKey());
   broadcast({ type: 'nudge_cleared', nudge_type: 'standup' });
+  try {
+    const hour = new Date().getHours();
+    require('./activity').trackStandupDone(hour);
+  } catch {}
 }
 
 // Fire a nudge at 75% of plan duration reminding Nick to plan the next plan
@@ -444,6 +449,7 @@ function triggerEodNudge() {
 
 function markEodDone() {
   broadcast({ type: 'nudge_cleared', nudge_type: 'eod' });
+  try { require('./activity').trackEodDone(); } catch {}
 }
 
 module.exports = {

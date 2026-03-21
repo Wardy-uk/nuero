@@ -55,6 +55,16 @@ function start() {
     } catch (e) { console.error('[Scheduler] Weekly review failed:', e.message); }
   });
 
+  // 10pm nightly — build daily activity summary
+  cron.schedule('0 22 * * *', () => {
+    console.log('[Scheduler] Running nightly activity rollup...');
+    try {
+      require('./activity').runNightlyRollup();
+    } catch (e) {
+      console.error('[Scheduler] Activity rollup failed:', e.message);
+    }
+  });
+
   // Every night at 23:30 — classify all pending imports
   cron.schedule('30 23 * * *', () => {
     console.log('[Scheduler] Running nightly imports sweep...');

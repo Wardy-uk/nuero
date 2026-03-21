@@ -60,6 +60,7 @@ router.post('/note', (req, res) => {
     fs.writeFileSync(filePath, body, 'utf-8');
     console.log(`[Capture] Note saved: ${filename}`);
     res.json({ success: true, path: filePath, filename });
+    try { require('../services/activity').trackCapture('note'); } catch {}
   } catch (e) {
     console.error('[Capture] Note error:', e);
     res.status(500).json({ error: e.message });
@@ -100,6 +101,7 @@ router.post('/todo', (req, res) => {
     fs.writeFileSync(masterPath, content, 'utf-8');
     console.log(`[Capture] Todo saved: ${text.trim()}`);
     res.json({ success: true, text: text.trim() });
+    try { require('../services/activity').trackCapture('todo'); } catch {}
   } catch (e) {
     console.error('[Capture] Todo error:', e);
     res.status(500).json({ error: e.message });

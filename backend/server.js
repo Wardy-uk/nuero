@@ -54,6 +54,7 @@ app.use('/api/qa', qaRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/imports', importsRoutes);
 app.use('/api/capture', captureRoutes);
+app.use('/api/activity', require('./routes/activity'));
 
 // Health / status endpoint
 app.get('/api/status', async (req, res) => {
