@@ -87,3 +87,16 @@ CREATE INDEX IF NOT EXISTS idx_nudges_active ON nudges(active, date_key);
 CREATE INDEX IF NOT EXISTS idx_todos_done ON todos(done);
 CREATE INDEX IF NOT EXISTS idx_todos_ms_id ON todos(ms_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_start ON calendar_cache(start_time);
+
+CREATE TABLE IF NOT EXISTS import_classifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  relative_path TEXT NOT NULL UNIQUE,
+  type TEXT,
+  destination TEXT,
+  confidence TEXT,
+  reason TEXT,
+  backend TEXT,
+  classified_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_cls_path ON import_classifications(relative_path);

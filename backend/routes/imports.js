@@ -88,6 +88,9 @@ router.post('/flag', (req, res) => {
       status: 'needs-review',
       'review-reason': reason || 'Flagged manually'
     });
+    const dbFlag = require('../db/database');
+    const relativePathFlag = require('path').relative(VAULT_PATH, filePath).replace(/\\/g, '/');
+    dbFlag.deleteImportClassification(relativePathFlag);
     console.log(`[Imports] Flagged ${path.basename(filePath)} for review`);
     res.json({ success: true });
   } catch (e) {
@@ -105,6 +108,9 @@ router.post('/dismiss', (req, res) => {
 
   try {
     importsService.updateFrontmatter(filePath, { status: 'processed' });
+    const dbDismiss = require('../db/database');
+    const relativePathDismiss = require('path').relative(VAULT_PATH, filePath).replace(/\\/g, '/');
+    dbDismiss.deleteImportClassification(relativePathDismiss);
     console.log(`[Imports] Dismissed ${path.basename(filePath)}`);
     res.json({ success: true });
   } catch (e) {

@@ -303,6 +303,45 @@ function removePushSubscription(endpoint) {
   save();
 }
 
+// Import classification helpers
+function saveImportClassification(relativePath, cls) {
+  getDb().run(`
+    INSERT OR REPLACE INTO import_classifications
+      (relative_path, type, destination, confidence, reason, backend, classified_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+  `, [relativePath, cls.type, cls.destination, cls.confidence, cls.reason, cls.backend || null]);
+  save();
+}
+
+function getImportClassification(relativePath) {
+  const stmt = getDb().prepare(
+    'SELECT * FROM import_classifications WHERE relative_path = ?'
+  );
+  stmt.bind([relativePath]);
+  let result = null;
+  if (stmt.step()) result = stmt.getAsObject();
+  stmt.free();
+  return result;
+}
+
+function getAllImportClassifications() {
+  const stmt = getDb().prepare('SELECT * FROM import_classifications');
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function deleteImportClassification(relativePath) {
+  getDb().run('DELETE FROM import_classifications WHERE relative_path = ?', [relativePath]);
+  save();
+}
+
+function deleteAllImportClassifications() {
+  getDb().run('DELETE FROM import_classifications');
+  save();
+}
+
 module.exports = {
   init,
   getDb,
@@ -333,5 +372,10 @@ module.exports = {
   getCalendarEvents,
   savePushSubscription,
   getAllPushSubscriptions,
-  removePushSubscription
+  removePushSubscription,
+  saveImportClassification,
+  getImportClassification,
+  getAllImportClassifications,
+  deleteImportClassification,
+  deleteAllImportClassifications
 };

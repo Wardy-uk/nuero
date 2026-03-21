@@ -81,6 +81,16 @@ function getPending() {
   const allFiles = listAllFiles(importsDir);
   const pending = [];
 
+  // Load stored classifications for cross-device display
+  let storedClassifications = {};
+  try {
+    const db = require('../db/database');
+    const allCls = db.getAllImportClassifications();
+    for (const cls of allCls) {
+      storedClassifications[cls.relative_path] = cls;
+    }
+  } catch (e) { /* non-fatal — classifications just won't show */ }
+
   for (const filePath of allFiles) {
     const content = fs.readFileSync(filePath, 'utf-8');
     const fm = parseFrontmatter(content);
@@ -100,7 +110,8 @@ function getPending() {
       status: fm.status || null,
       size: stats.size,
       modified: stats.mtime.toISOString(),
-      preview: content.replace(/^---[\s\S]*?---\n*/, '').slice(0, 200)
+      preview: content.replace(/^---[\s\S]*?---\n*/, '').slice(0, 200),
+      storedClassification: storedClassifications[relativePath] || null
     });
   }
 
@@ -182,6 +193,7 @@ async function classifyWithOllama(fileName, content) {
 async function classifyFile(filePath) {
   const content = fs.readFileSync(filePath, 'utf-8');
   const fileName = path.basename(filePath);
+  const relativePath = path.relative(getVaultPath(), filePath).replace(/\\/g, '/');
 
   let responseText = '';
   let backend = 'claude';
@@ -233,6 +245,14 @@ async function classifyFile(filePath) {
     classification.destination = null;
   }
 
+  // Persist classification to DB for cross-device access
+  try {
+    const db = require('../db/database');
+    db.saveImportClassification(relativePath, classification);
+  } catch (e) {
+    console.warn('[Imports] Failed to persist classification:', e.message);
+  }
+
   return classification;
 }
 
@@ -263,6 +283,14 @@ function routeFile(filePath, destination, type) {
   }
 
   fs.renameSync(filePath, finalPath);
+
+  // Remove classification from DB — file has been actioned
+  try {
+    const db = require('../db/database');
+    const relativePath = path.relative(vaultPath, filePath).replace(/\\/g, '/');
+    db.deleteImportClassification(relativePath);
+  } catch (e) { /* non-fatal */ }
+
   return path.relative(vaultPath, finalPath).replace(/\\/g, '/');
 }
 
@@ -279,38 +307,53 @@ async function autoClassify() {
   console.log(`[Imports] Auto-classifying ${pending.length} files...`);
   let routed = 0, flagged = 0, errors = 0;
 
-  for (const file of pending) {
-    try {
-      const cls = await classifyFile(file.filePath);
-      console.log(`[Imports] ${file.fileName}: ${cls.type} (${cls.confidence}) → ${cls.destination}`);
+  // Process in batches of 3 concurrently (Claude API handles parallel requests well)
+  // Ollama fallback still needs sequential — detect which backend we're using
+  const useConcurrent = !!process.env.ANTHROPIC_API_KEY;
+  const BATCH_SIZE = useConcurrent ? 3 : 1;
 
-      if ((cls.confidence === 'high' || cls.confidence === 'medium') && cls.destination) {
-        const newPath = routeFile(file.filePath, cls.destination, cls.type);
-        console.log(`[Imports] Routed → ${newPath}`);
-        routed++;
-        // Notify for PLAUD transcripts — they're time-sensitive
-        if (cls.type === 'plaud-transcript') {
-          const webpush = require('./webpush');
-          webpush.sendToAll(
-            'NEURO — PLAUD Transcript Ready',
-            `Transcript filed to ${cls.destination}. Ready to review.`,
-            { type: 'plaud', url: '/vault' }
-          ).catch(() => {});
+  for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+    const batch = pending.slice(i, i + BATCH_SIZE);
+
+    await Promise.allSettled(batch.map(async (file) => {
+      try {
+        const cls = await classifyFile(file.filePath);
+        console.log(`[Imports] ${file.fileName}: ${cls.type} (${cls.confidence}) → ${cls.destination}`);
+
+        if ((cls.confidence === 'high' || cls.confidence === 'medium') && cls.destination) {
+          const newPath = routeFile(file.filePath, cls.destination, cls.type);
+          console.log(`[Imports] Routed → ${newPath}`);
+          routed++;
+          if (cls.type === 'plaud-transcript') {
+            const webpush = require('./webpush');
+            webpush.sendToAll(
+              'NEURO — PLAUD Transcript Ready',
+              `Transcript filed to ${cls.destination}. Ready to review.`,
+              { type: 'plaud', url: '/vault' }
+            ).catch(() => {});
+          }
+        } else {
+          updateFrontmatter(file.filePath, {
+            status: 'needs-review',
+            'review-reason': cls.reason || 'Low confidence classification'
+          });
+          // Remove any stored classification — file is flagged, will show as needs-review
+          try {
+            const db = require('../db/database');
+            db.deleteImportClassification(file.relativePath);
+          } catch (e) { /* non-fatal */ }
+          flagged++;
         }
-      } else {
-        updateFrontmatter(file.filePath, {
-          status: 'needs-review',
-          'review-reason': cls.reason || 'Low confidence classification'
-        });
-        flagged++;
+      } catch (e) {
+        console.error(`[Imports] Error classifying ${file.fileName}:`, e.message);
+        errors++;
       }
-    } catch (e) {
-      console.error(`[Imports] Error classifying ${file.fileName}:`, e.message);
-      errors++;
-    }
+    }));
 
-    // 500ms between files — Ollama needs breathing room on Pi
-    await new Promise(r => setTimeout(r, 500));
+    // Brief pause between batches — respect rate limits
+    if (i + BATCH_SIZE < pending.length) {
+      await new Promise(r => setTimeout(r, useConcurrent ? 200 : 500));
+    }
   }
 
   const summary = { routed, flagged, errors, timestamp: new Date().toISOString() };

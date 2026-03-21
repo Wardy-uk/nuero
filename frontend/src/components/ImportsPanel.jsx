@@ -11,7 +11,10 @@ export default function ImportsPanel() {
   const [toast, setToast] = useState(null);
 
   const transform = useMemo(() => (json) => json.files || [], []);
-  const { data: files, refresh: fetchPending } = useCachedFetch('/api/imports/pending', { transform });
+  const { data: files, refresh: fetchPending } = useCachedFetch('/api/imports/pending', {
+    interval: 15000,
+    transform
+  });
   const { data: status, refresh: fetchStatus } = useCachedFetch('/api/imports/status', { interval: 30000 });
   const loading = files === null;
 
@@ -46,6 +49,8 @@ export default function ImportsPanel() {
       });
       const data = await res.json();
       setClassifications(prev => ({ ...prev, [filePath]: data }));
+      // Refresh list so other devices see the classification too
+      fetchPending();
     } catch (e) {
       setClassifications(prev => ({ ...prev, [filePath]: { type: 'error', reason: e.message } }));
     }
@@ -132,7 +137,7 @@ export default function ImportsPanel() {
       ) : (
         <div className="imports-list">
           {(files || []).map(file => {
-            const cls = classifications[file.filePath];
+            const cls = classifications[file.filePath] || file.storedClassification;
             const isActing = acting === file.filePath;
             const showRoute = cls && !cls.error && (cls.confidence === 'high' || cls.confidence === 'medium') && cls.destination;
             return (
@@ -154,6 +159,7 @@ export default function ImportsPanel() {
                     <span className="cls-type">{cls.type}</span>
                     {cls.destination && <span className="cls-dest">{cls.destination}</span>}
                     <span className="cls-confidence">{cls.confidence}</span>
+                    {cls.backend && <span className="cls-backend">{cls.backend}</span>}
                     {cls.reason && <span className="cls-reason">{cls.reason}</span>}
                   </div>
                 )}

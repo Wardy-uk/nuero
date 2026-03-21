@@ -133,6 +133,13 @@
   color: #fff;
 }
 
+.cls-backend {
+  font-size: 10px;
+  opacity: 0.5;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
 .cls-reason {
   width: 100%;
   color: var(--text-secondary);
