@@ -336,7 +336,9 @@ async function autoClassify() {
     if (pending.length === 0) {
       console.log('[Imports] No pending files to classify');
       db.setState('imports_sweep_running', 'false');
-      return { routed: 0, flagged: 0, errors: 0 };
+      const empty = { routed: 0, flagged: 0, errors: 0, timestamp: new Date().toISOString() };
+      broadcast({ type: 'sweep_complete', ...empty });
+      return empty;
     }
 
     console.log(`[Imports] Auto-classifying ${pending.length} files...`);
