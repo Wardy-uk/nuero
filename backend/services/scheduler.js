@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const nudges = require('./nudges');
 const jira = require('./jira');
+const imports = require('./imports');
 
 function start() {
   // Fire nudges immediately if server starts after 9am on a weekday
@@ -21,7 +22,26 @@ function start() {
     nudges.nagCheck();
   });
 
-  console.log('[Scheduler] Started — standup nudge at 9am, nag every 15m, Jira poll every 5m');
+  // Every night at 23:30 — classify all pending imports
+  cron.schedule('30 23 * * *', () => {
+    console.log('[Scheduler] Running nightly imports sweep...');
+    imports.autoClassify().catch(e => {
+      console.error('[Scheduler] Imports sweep failed:', e.message);
+    });
+  });
+
+  // Startup sweep — classify pending imports after 60s delay
+  setTimeout(() => {
+    const pending = imports.getPending().filter(f => f.status !== 'needs-review');
+    if (pending.length > 0) {
+      console.log(`[Scheduler] ${pending.length} pending imports — running startup sweep...`);
+      imports.autoClassify().catch(e => {
+        console.error('[Scheduler] Startup imports sweep failed:', e.message);
+      });
+    }
+  }, 60 * 1000);
+
+  console.log('[Scheduler] Started — standup nudge at 9am, nag every 15m, Jira poll every 5m, imports sweep at 23:30');
 }
 
 module.exports = { start };

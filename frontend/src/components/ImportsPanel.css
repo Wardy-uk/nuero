@@ -177,3 +177,26 @@
 .btn-dismiss {
   color: var(--text-muted) !important;
 }
+
+.imports-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.imports-sweep-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.imports-toast {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: rgba(0, 255, 136, 0.1);
+  color: var(--success);
+  border: 1px solid var(--success);
+}

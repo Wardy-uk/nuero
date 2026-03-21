@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import './ImportsPanel.css';
@@ -7,10 +7,34 @@ export default function ImportsPanel() {
   const [classifying, setClassifying] = useState(null);
   const [classifications, setClassifications] = useState({});
   const [acting, setActing] = useState(null);
+  const [sweeping, setSweeping] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const transform = useMemo(() => (json) => json.files || [], []);
   const { data: files, refresh: fetchPending } = useCachedFetch('/api/imports/pending', { transform });
+  const { data: status, refresh: fetchStatus } = useCachedFetch('/api/imports/status', { interval: 30000 });
   const loading = files === null;
+
+  // Poll for sweep completion when sweeping
+  useEffect(() => {
+    if (!sweeping) return;
+    const sweepStart = Date.now();
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(apiUrl('/api/imports/status'));
+        const data = await res.json();
+        const sweep = data.lastSweep;
+        if (sweep && new Date(sweep.timestamp).getTime() > sweepStart) {
+          setSweeping(false);
+          setToast(`Sweep done — ${sweep.routed} routed, ${sweep.flagged} flagged`);
+          setTimeout(() => setToast(null), 5000);
+          fetchPending();
+          fetchStatus();
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [sweeping, fetchPending, fetchStatus]);
 
   const classify = async (filePath) => {
     setClassifying(filePath);
@@ -26,6 +50,15 @@ export default function ImportsPanel() {
       setClassifications(prev => ({ ...prev, [filePath]: { type: 'error', reason: e.message } }));
     }
     setClassifying(null);
+  };
+
+  const classifyAll = async () => {
+    setSweeping(true);
+    try {
+      await fetch(apiUrl('/api/imports/classify-all'), { method: 'POST' });
+    } catch {
+      setSweeping(false);
+    }
   };
 
   const doAction = async (endpoint, body, filePath) => {
@@ -66,14 +99,33 @@ export default function ImportsPanel() {
     doAction('/api/imports/dismiss', { filePath }, filePath);
   };
 
+  const lastSweep = status?.lastSweep;
+  const lastSweepTime = lastSweep?.timestamp
+    ? new Date(lastSweep.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : null;
+
   if (loading) return <div className="imports-loading">Loading imports...</div>;
 
   return (
     <div className="imports-panel">
       <div className="imports-header">
         <h2>Imports</h2>
-        <button className="btn btn-secondary" onClick={fetchPending}>Refresh</button>
+        <div className="imports-header-actions">
+          {lastSweepTime && (
+            <span className="imports-sweep-time">Last sweep: {lastSweepTime}</span>
+          )}
+          <button
+            className="btn btn-secondary"
+            onClick={classifyAll}
+            disabled={sweeping || (files || []).length === 0}
+          >
+            {sweeping ? 'Sweeping...' : 'Classify All'}
+          </button>
+          <button className="btn btn-secondary" onClick={fetchPending}>Refresh</button>
+        </div>
       </div>
+
+      {toast && <div className="imports-toast">{toast}</div>}
 
       {(files || []).length === 0 ? (
         <div className="imports-empty">No unprocessed files in Imports/</div>
