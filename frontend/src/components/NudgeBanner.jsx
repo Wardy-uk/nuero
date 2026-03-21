@@ -74,6 +74,15 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
     return () => { if (es) es.close(); };
   }, []);
 
+  const handleDismiss = (nudge) => {
+    if (nudge.id) {
+      fetch(apiUrl(`/api/nudges/${nudge.id}/complete`), { method: 'POST' }).catch(console.error);
+    }
+    setNudges(prev => prev.filter(n => n !== nudge));
+  };
+
+  const isWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
+
   const visibleNudges = nudges.filter(n => !snoozed[n.type]);
 
   if (visibleNudges.length === 0) return null;
@@ -96,6 +105,15 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
               <span className="nudge-message">{nudge.message}</span>
             </div>
             <div className="nudge-actions">
+              {isWeekend && (
+                <button
+                  className="nudge-dismiss"
+                  onClick={() => handleDismiss(nudge)}
+                  title="Dismiss this nudge"
+                >
+                  Dismiss
+                </button>
+              )}
               <button
                 className="nudge-snooze"
                 onClick={() => handleSnooze(nudge.type)}

@@ -86,6 +86,26 @@
   color: var(--text-secondary);
 }
 
+.nudge-dismiss {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.nudge-dismiss:hover {
+  background: rgba(217, 83, 79, 0.12);
+  border-color: #d9534f;
+  color: #d9534f;
+  opacity: 1;
+}
+
 .nudge-action {
   font-family: var(--font-mono);
   font-size: 12px;
