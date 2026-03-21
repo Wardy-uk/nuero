@@ -3,6 +3,19 @@ import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import './ImportsPanel.css';
 
+const VAULT_FOLDERS = [
+  { label: 'Meetings', destination: 'Meetings/' },
+  { label: 'Calls', destination: 'Calls/' },
+  { label: 'People', destination: 'People/' },
+  { label: 'Ideas', destination: 'Ideas/' },
+  { label: 'Projects', destination: 'Projects/' },
+  { label: 'Areas', destination: 'Areas/' },
+  { label: 'Decisions', destination: 'Decision Log/' },
+  { label: 'Reflections', destination: 'Reflections/' },
+  { label: 'PLAUD', destination: 'Imports/PLAUD/' },
+  { label: 'Archive', destination: 'Archive/' },
+];
+
 export default function ImportsPanel() {
   const [classifying, setClassifying] = useState(null);
   const [classifications, setClassifications] = useState({});
@@ -10,6 +23,7 @@ export default function ImportsPanel() {
   const [sweeping, setSweeping] = useState(false);
   const [sweepProgress, setSweepProgress] = useState(null);
   const [toast, setToast] = useState(null);
+  const [manualRouting, setManualRouting] = useState(null); // filePath being manually routed
 
   const transform = useMemo(() => (json) => json.files || [], []);
   const { data: files, refresh: fetchPending } = useCachedFetch('/api/imports/pending', {
@@ -177,10 +191,50 @@ export default function ImportsPanel() {
     doAction('/api/imports/dismiss', { filePath }, filePath);
   };
 
+  const manualRoute = (filePath, destination) => {
+    const typeMap = {
+      'Meetings/': 'meeting-note',
+      'Calls/': 'call-note',
+      'People/': 'person-update',
+      'Ideas/': 'idea',
+      'Projects/': 'reference',
+      'Areas/': 'reference',
+      'Decision Log/': 'decision',
+      'Reflections/': 'reflection',
+      'Imports/PLAUD/': 'plaud-transcript',
+      'Archive/': 'reference',
+    };
+    const type = typeMap[destination] || 'reference';
+    doAction('/api/imports/route', { filePath, destination, type }, filePath);
+    setManualRouting(null);
+  };
+
   const lastSweep = status?.lastSweep;
   const lastSweepTime = lastSweep?.timestamp
     ? new Date(lastSweep.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : null;
+
+  const ManualRoutePicker = ({ file, suggestedDestination }) => (
+    <div className="manual-route-picker">
+      <div className="manual-route-label">
+        {suggestedDestination
+          ? `Suggested: ${suggestedDestination} — or pick another:`
+          : 'Where does this belong?'}
+      </div>
+      <div className="manual-route-folders">
+        {VAULT_FOLDERS.map(folder => (
+          <button
+            key={folder.destination}
+            className={`manual-route-btn ${suggestedDestination === folder.destination ? 'suggested' : ''}`}
+            onClick={() => manualRoute(file.filePath, folder.destination)}
+            disabled={acting === file.filePath}
+          >
+            {folder.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   if (loading) return <div className="imports-loading">Loading imports...</div>;
 
@@ -275,8 +329,16 @@ export default function ImportsPanel() {
                 {!cls && file.status === 'needs-review' && (
                   <div className="import-classification low">
                     <span className="cls-type">needs review</span>
-                    <span className="cls-reason">{file.reviewReason || 'Flagged by classifier — needs manual action'}</span>
+                    <span className="cls-reason">{file.reviewReason || 'Low confidence — needs manual filing'}</span>
                   </div>
+                )}
+
+                {/* Manual route picker — show for needs-review or low-confidence */}
+                {(file.status === 'needs-review' || (cls && !cls.error && cls.confidence === 'low')) && (
+                  <ManualRoutePicker
+                    file={file}
+                    suggestedDestination={cls?.destination || null}
+                  />
                 )}
 
                 <div className="import-actions">
@@ -298,7 +360,7 @@ export default function ImportsPanel() {
                     </button>
                   )}
 
-                  {cls && !cls.error && (
+                  {cls && !cls.error && cls.confidence !== 'low' && (
                     <button
                       className="btn btn-flag"
                       onClick={() => flagFile(file.filePath)}

@@ -247,3 +247,66 @@
   margin-left: 6px;
   opacity: 0.8;
 }
+
+/* Manual route picker */
+.manual-route-picker {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.manual-route-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.manual-route-folders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.manual-route-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.manual-route-btn:hover {
+  background: rgba(79, 156, 249, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.manual-route-btn.suggested {
+  border-color: #f0ad4e;
+  color: #f0ad4e;
+  background: rgba(240, 173, 78, 0.08);
+}
+
+.manual-route-btn.suggested:hover {
+  background: rgba(240, 173, 78, 0.18);
+}
+
+.manual-route-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .manual-route-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
