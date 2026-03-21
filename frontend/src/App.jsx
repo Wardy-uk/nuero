@@ -15,6 +15,7 @@ import ChatPanel from './components/ChatPanel';
 import QATab from './components/QATab';
 import ImportsPanel from './components/ImportsPanel';
 import CapturePanel from './components/CapturePanel';
+import RecentPanel from './components/RecentPanel';
 import VaultBrowser from './components/VaultBrowser';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
@@ -97,6 +98,7 @@ export default function App() {
       case 'todos': return <TodoPanel />;
       case 'calendar': return <CalendarView />;
       case 'capture': return <CapturePanel />;
+      case 'recent': return <RecentPanel />;
       case 'imports': return <ImportsPanel />;
       case 'inbox': return <InboxPanel />;
       case 'vault': return <VaultBrowser />;
