@@ -187,4 +187,197 @@ router.post('/weekly-review', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/standup/interactive — Claude-guided standup session
+router.post('/interactive', async (req, res) => {
+  const { messages = [], phase = 'start' } = req.body;
+
+  // Set SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    // Build context block
+    const today = new Date();
+    const todayStr = obsidianService.todayDateString();
+    const dow = today.toLocaleDateString('en-GB', { weekday: 'long' });
+    const isMonday = today.getDay() === 1;
+
+    // Gather context
+    let carryOvers = [];
+    try {
+      const prev = obsidianService.readPreviousDailyNote();
+      if (prev) {
+        const lines = prev.content.split('\n');
+        let inFocus = false;
+        for (const line of lines) {
+          if (line.startsWith('## Focus Today') || line.startsWith('## Carry')) { inFocus = true; continue; }
+          if (line.startsWith('## ') && inFocus) break;
+          if (inFocus && (line.match(/^\s*-\s+\[\s\]/) || line.match(/^\s*-\s+\[>\]/))) {
+            const text = line.replace(/^\s*-\s+\[.\]\s*/, '').replace(/#\w+/g, '').trim();
+            if (text) carryOvers.push(text);
+          }
+        }
+      }
+    } catch {}
+
+    let queueContext = '';
+    try {
+      const db = require('../db/database');
+      const queue = db.getQueueSummary();
+      if (queue.total > 0) {
+        queueContext = `Queue: ${queue.total} open tickets, ${queue.at_risk_count} at risk, ${queue.open_p1s} P1s.`;
+        if (queue.at_risk_tickets.length > 0) {
+          queueContext += ` At risk: ${queue.at_risk_tickets.slice(0, 3).map(t => t.ticket_key + ' ' + t.summary).join('; ')}.`;
+        }
+      }
+    } catch {}
+
+    let planContext = '';
+    try {
+      const plan = obsidianService.parseNinetyDayPlan();
+      if (plan) {
+        planContext = `90-day plan: Day ${plan.currentDay} of ${plan.totalDays}. ${plan.totalDone}/${plan.totalTasks} tasks done.`;
+        if (plan.todayTasks.length > 0) {
+          planContext += ` Today's tasks: ${plan.todayTasks.map(t => t.text).join('; ')}.`;
+        }
+        if (plan.overdueTasks.length > 0) {
+          planContext += ` ${plan.overdueTasks.length} overdue tasks.`;
+        }
+      }
+    } catch {}
+
+    let calendarContext = '';
+    try {
+      const events = await obsidianService.fetchCalendarEvents(todayStr, todayStr);
+      if (events && events.length > 0) {
+        const upcoming = events.filter(e => e.showAs !== 'cancelled');
+        if (upcoming.length > 0) {
+          calendarContext = `Today's calendar: ${upcoming.map(e => {
+            const time = e.start ? e.start.substring(11, 16) : '';
+            return time ? `${time} ${e.subject}` : e.subject;
+          }).join(', ')}.`;
+        }
+      }
+    } catch {}
+
+    // System prompt for the guided standup
+    const systemPrompt = `You are NEURO running Nick's morning standup ritual. Nick is Head of Technical Support at Nurtur Limited.
+
+Your job: guide Nick through a focused standup in 3-4 short exchanges, then write his daily note.
+
+TODAY: ${dow} ${todayStr}${isMonday ? ' (Monday — ask about the week ahead, not just today)' : ''}
+
+CONTEXT:
+${queueContext || 'Queue data unavailable.'}
+${planContext || ''}
+${calendarContext || ''}
+${carryOvers.length > 0 ? `Carry-overs from yesterday: ${carryOvers.join('; ')}` : 'No carry-overs.'}
+
+STANDUP FLOW — follow this exactly:
+
+Phase 1 (start): Give a brief, sharp morning brief (2-3 lines max — queue status, any at-risk, one key thing from the plan). Then ask ONE question: "What's your main focus today?"
+
+Phase 2 (after focus answer): Ask: "Any blockers or things that need escalating?"
+
+Phase 3 (after blockers answer): ${isMonday ? 'Ask: "How are you going into the week — anything to flag energy or capacity-wise?"' : 'Ask: "Anything else before I write this up?"'}
+
+Phase 4 (finalise): Say "Writing your daily note now..." then output the daily note in this EXACT format between the markers:
+
+===DAILY_NOTE_START===
+---
+type: daily
+date: ${todayStr}
+---
+# Daily Note — ${dow} ${todayStr}
+
+## Focus Today
+[checkbox list of focus items Nick mentioned, each as: - [ ] item text]
+
+## Carry-Overs
+${carryOvers.length > 0 ? carryOvers.map(c => `- [ ] ${c}`).join('\n') : '- None'}
+
+## Blockers
+[blockers Nick mentioned, or: - None]
+
+## Queue Watch
+${queueContext || '- No queue data'}
+
+## Notes
+[any other notes from the conversation]
+===DAILY_NOTE_END===
+
+Then end with one short line — something brief and human. No fluff.
+
+RULES:
+- One question at a time. Never ask two things in one message.
+- Keep your messages short — 3 lines max except the daily note.
+- Don't repeat what Nick just said back to him.
+- Don't add unnecessary affirmations ("Great!", "Perfect!").
+- The daily note markers must appear EXACTLY as shown — the app parses them.
+- After writing the daily note, do not ask any more questions.`;
+
+    // Build message history
+    const claudeMessages = messages.map(m => ({ role: m.role, content: m.content }));
+
+    // If starting, add the trigger
+    if (phase === 'start' || claudeMessages.length === 0) {
+      claudeMessages.push({ role: 'user', content: 'Start my standup.' });
+    }
+
+    // Stream response
+    const stream = client.messages.stream({
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: claudeMessages
+    });
+
+    let fullResponse = '';
+
+    stream.on('text', (text) => {
+      fullResponse += text;
+      res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
+    });
+
+    stream.on('error', (err) => {
+      res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+      res.end();
+    });
+
+    res.on('close', () => stream.abort());
+
+    await new Promise((resolve) => stream.on('end', resolve));
+
+    // Check if daily note is present in the response
+    const noteMatch = fullResponse.match(/===DAILY_NOTE_START===\n([\s\S]*?)\n===DAILY_NOTE_END===/);
+    if (noteMatch) {
+      try {
+        const noteContent = noteMatch[1].trim();
+        obsidianService.writeTodayDailyNote(noteContent);
+        nudges.markStandupDone();
+        console.log('[Standup] Interactive standup complete — daily note written');
+        res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: true })}\n\n`);
+      } catch (e) {
+        console.error('[Standup] Failed to write daily note:', e.message);
+        res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: false, noteError: e.message })}\n\n`);
+      }
+    } else {
+      res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: false })}\n\n`);
+    }
+
+    res.end();
+  } catch (err) {
+    console.error('[Standup] Interactive error:', err.message);
+    res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+    res.end();
+  }
+});
+
 module.exports = router;

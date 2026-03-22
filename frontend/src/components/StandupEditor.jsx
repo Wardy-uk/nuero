@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
+import ReactMarkdown from 'react-markdown';
 import './StandupEditor.css';
 
 function EodCapture({ onDone }) {
@@ -103,30 +104,246 @@ function BackupStandup({ onDone }) {
   );
 }
 
+// ── Guided standup ────────────────────────────────────────────────────────
+
+function GuidedStandup({ onDone }) {
+  const [messages, setMessages] = useState([]); // { role: 'user'|'assistant', content: string }
+  const [input, setInput] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [phase, setPhase] = useState('start');
+  const [noteSaved, setNoteSaved] = useState(false);
+  const [noteError, setNoteError] = useState(null);
+  const [started, setStarted] = useState(false);
+  const [guidedError, setGuidedError] = useState(false);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendToNeuro = useCallback(async (userMessage, isStart = false) => {
+    const newMessages = isStart
+      ? []
+      : [...messages, { role: 'user', content: userMessage }];
+
+    if (!isStart) {
+      setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    }
+
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+    setStreaming(true);
+    setInput('');
+
+    try {
+      const res = await fetch(apiUrl('/api/standup/interactive'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          phase: isStart ? 'start' : phase
+        })
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullText = '';
+      let hadError = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'text') {
+              fullText += data.content;
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: 'assistant', content: fullText };
+                return updated;
+              });
+            } else if (data.type === 'done') {
+              if (data.noteSaved) {
+                setNoteSaved(true);
+                setPhase('done');
+              }
+            } else if (data.type === 'error') {
+              hadError = true;
+              if (isStart) {
+                setGuidedError(true);
+              }
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: 'assistant', content: `Error: ${data.content}` };
+                return updated;
+              });
+            }
+          } catch {}
+        }
+      }
+
+      // If first message errored, flag guided mode as unavailable
+      if (isStart && (hadError || !fullText)) {
+        setGuidedError(true);
+      }
+
+      // Update messages with the full assistant response for next round
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: 'assistant', content: fullText };
+        return updated;
+      });
+
+      setPhase(prev => {
+        if (prev === 'start') return 'answering';
+        return prev;
+      });
+
+    } catch (err) {
+      if (isStart) setGuidedError(true);
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: 'assistant', content: `Connection error: ${err.message}` };
+        return updated;
+      });
+    }
+
+    setStreaming(false);
+    inputRef.current?.focus();
+  }, [messages, phase]);
+
+  // Auto-start on mount
+  useEffect(() => {
+    if (!started) {
+      setStarted(true);
+      sendToNeuro('', true);
+    }
+  }, [started, sendToNeuro]);
+
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text || streaming || phase === 'done') return;
+    sendToNeuro(text, false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  // Filter out the daily note markers from display
+  const cleanContent = (content) => {
+    return content
+      .replace(/===DAILY_NOTE_START===[\s\S]*?===DAILY_NOTE_END===/g, '')
+      .trim();
+  };
+
+  if (guidedError) {
+    return (
+      <div className="standup-done-banner" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
+        <span>Guided mode unavailable — Claude API may be down.</span>
+        <button className="btn btn-secondary" onClick={onDone}>Switch to Manual</button>
+      </div>
+    );
+  }
+
+  if (noteSaved) {
+    return (
+      <div className="guided-done">
+        <div className="guided-done-icon">✓</div>
+        <div className="guided-done-title">Daily note written</div>
+        <div className="guided-done-sub">Standup complete. Have a good one.</div>
+        {onDone && (
+          <button className="btn btn-secondary" style={{ marginTop: '16px' }} onClick={onDone}>
+            Close
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="guided-standup">
+      <div className="guided-messages">
+        {messages.length === 0 && (
+          <div className="guided-loading">Starting your standup...</div>
+        )}
+        {messages.map((msg, i) => {
+          const content = msg.role === 'assistant' ? cleanContent(msg.content) : msg.content;
+          if (!content && msg.role === 'assistant' && i === messages.length - 1 && streaming) {
+            return (
+              <div key={i} className="guided-bubble assistant">
+                <span className="guided-thinking">thinking...</span>
+              </div>
+            );
+          }
+          if (!content) return null;
+          return (
+            <div key={i} className={`guided-bubble ${msg.role}`}>
+              {msg.role === 'assistant'
+                ? <ReactMarkdown>{content}</ReactMarkdown>
+                : <span>{content}</span>
+              }
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      {phase !== 'done' && (
+        <div className="guided-input-row">
+          <textarea
+            ref={inputRef}
+            className="guided-input"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={streaming ? '' : 'Your answer...'}
+            rows={2}
+            disabled={streaming}
+            autoFocus
+            spellCheck={true}
+            autoCorrect="on"
+          />
+          <button
+            className="guided-send"
+            onClick={handleSend}
+            disabled={streaming || !input.trim()}
+          >
+            →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main StandupEditor ────────────────────────────────────────────────────
+
 export default function StandupEditor() {
+  const [mode, setMode] = useState('guided'); // 'guided' | 'manual'
   const [content, setContent] = useState('');
   const [contentSet, setContentSet] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [showBackup, setShowBackup] = useState(false);
   const [showEod, setShowEod] = useState(false);
-  const [carryOvers, setCarryOvers] = useState([]);
-  const [carryDate, setCarryDate] = useState(null);
+  const [guidedDone, setGuidedDone] = useState(false);
 
   const { data: standupData, status: standupStatus } = useCachedFetch('/api/standup');
   const { data: ritualData } = useCachedFetch('/api/standup/ritual-state');
-  const { data: carryData } = useCachedFetch('/api/standup/carry-forward');
 
-  // Load carry-forwards once
-  useEffect(() => {
-    if (carryData && carryData.items?.length > 0 && carryOvers.length === 0) {
-      setCarryOvers(carryData.items);
-      setCarryDate(carryData.date);
-    }
-  }, [carryData]);
-  const loading = standupData === null && standupStatus !== 'unavailable';
+  // Check if standup already done today
+  const standupDone = ritualData?.standupDoneToday || guidedDone;
 
-  // Set content from fetched data once
   useEffect(() => {
     if (standupData && !contentSet) {
       setContent(standupData.content || '# Standup\n\n## Yesterday\n- \n\n## Today\n- \n\n## Blockers\n- ');
@@ -137,38 +354,11 @@ export default function StandupEditor() {
     }
   }, [standupData, standupStatus, contentSet]);
 
-  // Auto-show backup button based on ritual state
-  useEffect(() => {
-    if (!ritualData) return;
-    const now = new Date();
-    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
-    const isLate = now.getHours() >= 10;
-    if (isWeekend || (isLate && !ritualData.standupDoneToday)) {
-      setShowBackup(true);
-    }
-  }, [ritualData]);
-
-  // Auto-show EOD after 5pm on weekdays
+  // Auto-show EOD after 5pm
   useEffect(() => {
     const now = new Date();
     if (now.getDay() >= 1 && now.getDay() <= 5 && now.getHours() >= 17) setShowEod(true);
   }, []);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await fetch(apiUrl('/api/standup'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      });
-      setMessage('Saved to vault');
-      setTimeout(() => setMessage(''), 2000);
-    } catch (e) {
-      setMessage('Save failed');
-    }
-    setSaving(false);
-  };
 
   const handleSaveToDaily = async () => {
     setSaving(true);
@@ -180,70 +370,85 @@ export default function StandupEditor() {
       });
       setMessage('Saved to daily note');
       setTimeout(() => setMessage(''), 2000);
-    } catch (e) {
+    } catch {
       setMessage('Save failed');
     }
     setSaving(false);
   };
 
-  if (loading) return <div className="standup-loading">Loading standup...</div>;
-
   return (
     <div className="standup-editor">
+
+      {/* EOD always available */}
       {showEod && <EodCapture onDone={() => setShowEod(false)} />}
-      {carryOvers.length > 0 && (
-        <div className="carry-overs">
-          <h3>Carry-overs{carryDate ? ` from ${carryDate}` : ''}</h3>
-          <p style={{ color: '#888', fontSize: '13px', margin: '0 0 10px' }}>Incomplete items from yesterday. Remove any you don't need.</p>
-          {carryOvers.map((item, i) => (
-            <div key={i} className="carry-item">
-              <span className="carry-text">{item}</span>
-              <button className="carry-remove" onClick={() => setCarryOvers(prev => prev.filter((_, j) => j !== i))} title="Remove">×</button>
-            </div>
-          ))}
-          <button className="btn btn-secondary" style={{ marginTop: '8px', fontSize: '12px' }}
-            onClick={() => {
-              const carryLines = carryOvers.map(c => `- [ ] ${c}`).join('\n');
-              setContent(prev => prev.replace(/(## Today\n)/, `$1${carryLines}\n`));
-              setCarryOvers([]);
-              setMessage('Carry-overs added to Today section');
-              setTimeout(() => setMessage(''), 2000);
-            }}>
-            Add all to Today
+
+      {/* Mode toggle + EOD button */}
+      <div className="standup-header">
+        <div className="standup-mode-toggle">
+          <button
+            className={`mode-btn ${mode === 'guided' ? 'active' : ''}`}
+            onClick={() => setMode('guided')}
+          >
+            Guided
+          </button>
+          <button
+            className={`mode-btn ${mode === 'manual' ? 'active' : ''}`}
+            onClick={() => setMode('manual')}
+          >
+            Manual
           </button>
         </div>
-      )}
-      {showBackup && (
-        <BackupStandup onDone={() => setShowBackup(false)} />
-      )}
-      <div className="standup-header">
-        <h2>Standup Draft</h2>
-        <div className="standup-actions">
+        <div className="standup-header-actions">
           {message && <span className="standup-message">{message}</span>}
           {!showEod && (
-            <button className="btn btn-secondary" onClick={() => setShowEod(true)} style={{ marginRight: '8px' }}>
+            <button className="btn btn-secondary" onClick={() => setShowEod(true)}>
               EOD
             </button>
           )}
-          {!showBackup && (
-            <button className="btn btn-secondary" onClick={() => setShowBackup(true)} style={{ marginRight: '8px' }}>
-              Quick backup
-            </button>
-          )}
-          <button className="btn btn-secondary" onClick={handleSave} disabled={saving}>
-            Save to vault
-          </button>
-          <button className="btn btn-primary" onClick={handleSaveToDaily} disabled={saving}>
-            Save to daily note
-          </button>
         </div>
       </div>
-      <textarea
-        className="standup-textarea"
-        value={content}
-        onChange={e => setContent(e.target.value)}
-        spellCheck={false}
-      />
+
+      {/* Already done banner */}
+      {standupDone && mode === 'guided' && !guidedDone && (
+        <div className="standup-done-banner">
+          ✓ Standup already done today.
+          <button className="standup-redo-btn" onClick={() => setGuidedDone(false)}>
+            Redo
+          </button>
+        </div>
+      )}
+
+      {/* Guided mode */}
+      {mode === 'guided' && !standupDone && (
+        <GuidedStandup onDone={() => { setGuidedDone(true); setMode('manual'); }} />
+      )}
+
+      {/* Guided done */}
+      {mode === 'guided' && (standupDone || guidedDone) && !showEod && (
+        <div className="guided-done">
+          <div className="guided-done-icon">✓</div>
+          <div className="guided-done-title">Standup complete</div>
+          <div className="guided-done-sub">Daily note written to vault.</div>
+        </div>
+      )}
+
+      {/* Manual mode */}
+      {mode === 'manual' && (
+        <>
+          <textarea
+            className="standup-textarea"
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            spellCheck={false}
+          />
+          <div className="standup-actions" style={{ marginTop: '8px' }}>
+            <button className="btn btn-primary" onClick={handleSaveToDaily} disabled={saving}>
+              {saving ? 'Saving...' : 'Save to daily note'}
+            </button>
+          </div>
+        </>
+      )}
+
     </div>
   );
 }
