@@ -31,6 +31,9 @@ const qaRoutes = require('./routes/qa');
 const pushRoutes = require('./routes/push');
 const importsRoutes = require('./routes/imports');
 const captureRoutes = require('./routes/capture');
+const journalRoutes = require('./routes/journal');
+const stravaRoutes = require('./routes/strava');
+const healthRoutes = require('./routes/health');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -55,6 +58,9 @@ app.use('/api/qa', qaRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/imports', importsRoutes);
 app.use('/api/capture', captureRoutes);
+app.use('/api/journal', journalRoutes);
+app.use('/api/strava', stravaRoutes);
+app.use('/api/health', healthRoutes);
 app.use('/api/activity', require('./routes/activity'));
 
 // Health / status endpoint
@@ -94,6 +100,23 @@ app.get('/api/status', async (req, res) => {
     push: {
       configured: require('./services/webpush').isConfigured(),
       subscriptions: db.getAllPushSubscriptions().length
+    },
+    strava: {
+      configured: require('./services/strava').isConfigured(),
+      authenticated: require('./services/strava').isAuthenticated()
+    },
+    health: {
+      hasToday: (() => {
+        try {
+          return require('./services/health').getTodayData() !== null;
+        } catch { return false; }
+      })(),
+      latestDate: (() => {
+        try {
+          const raw = require('./db/database').getState('health_latest');
+          return raw ? JSON.parse(raw).date : null;
+        } catch { return null; }
+      })()
     }
   });
 });

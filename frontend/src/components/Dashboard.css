@@ -90,6 +90,64 @@
 .stat-danger .stat-sub { color: var(--danger); }
 .stat-warn .stat-sub { color: var(--warning); }
 
+/* Calendar strip */
+.dash-calendar {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.dash-calendar:hover {
+  border-color: var(--accent);
+}
+
+.dash-cal-event {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dash-cal-event:last-child {
+  border-bottom: none;
+}
+
+.dash-cal-event.cal-now {
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  margin-left: -2px;
+}
+
+.cal-ev-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 42px;
+  white-space: nowrap;
+}
+
+.cal-ev-subject {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-ev-now {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+
 /* Progress bar */
 .dash-progress {
   background: var(--bg-card);
@@ -291,6 +349,10 @@
 
   .task-text {
     font-size: 11px;
+  }
+
+  .dash-calendar {
+    padding: 10px 12px;
   }
 
   .dash-progress {

@@ -374,12 +374,48 @@ async function autoClassify() {
             console.log(`[Imports] Routed → ${newPath}`);
             routed++;
             if (cls.type === 'plaud-transcript') {
-              const webpush = require('./webpush');
-              webpush.sendToAll(
-                'NEURO — PLAUD Transcript Ready',
-                `Transcript filed to ${cls.destination}. Ready to review.`,
-                { type: 'plaud', url: '/vault' }
-              ).catch(() => {});
+              // Post-route: extract entities from PLAUD transcript
+              try {
+                const tp = require('./transcript-processor');
+                const vaultPath = getVaultPath();
+                const routedFullPath = path.resolve(vaultPath, newPath);
+                const result = await tp.processTranscript(routedFullPath);
+                if (result) {
+                  const parts = [];
+                  if (result.summary) parts.push(result.summary);
+                  if (result.actionItems.length > 0) parts.push(`${result.actionItems.length} action item(s) extracted.`);
+                  if (result.people.some(p => p.updated121)) {
+                    const updated = result.people.filter(p => p.updated121).map(p => p.vaultMatch);
+                    parts.push(`Updated 1-2-1 date for: ${updated.join(', ')}`);
+                  }
+                  broadcast({
+                    type: 'transcript_processed',
+                    sourceFile: result.sourceFile,
+                    result
+                  });
+                  const webpush = require('./webpush');
+                  webpush.sendToAll(
+                    'NEURO — Transcript Processed',
+                    parts.join(' ') || `Transcript filed to ${cls.destination}.`,
+                    { type: 'plaud', url: '/imports' }
+                  ).catch(() => {});
+                } else {
+                  const webpush = require('./webpush');
+                  webpush.sendToAll(
+                    'NEURO — PLAUD Transcript Ready',
+                    `Transcript filed to ${cls.destination}. Ready to review.`,
+                    { type: 'plaud', url: '/vault' }
+                  ).catch(() => {});
+                }
+              } catch (tpErr) {
+                console.error('[Imports] Transcript processing error:', tpErr.message);
+                const webpush = require('./webpush');
+                webpush.sendToAll(
+                  'NEURO — PLAUD Transcript Ready',
+                  `Transcript filed to ${cls.destination}. Ready to review.`,
+                  { type: 'plaud', url: '/vault' }
+                ).catch(() => {});
+              }
             }
           } else {
             updateFrontmatter(file.filePath, {

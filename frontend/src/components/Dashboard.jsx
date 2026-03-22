@@ -4,6 +4,14 @@ import './Dashboard.css';
 
 const START_DATE = new Date('2026-03-16');
 
+function todayStr() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function formatEventTime(isoStr) {
+  return isoStr.split('T')[1]?.substring(0, 5) || '';
+}
+
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return 'Morning';
@@ -18,6 +26,9 @@ export default function Dashboard({ queueData, onNavigate }) {
 
   const planFetch = useCachedFetch('/api/obsidian/ninety-day-plan', { interval: 60000 });
   const todoFetch = useCachedFetch('/api/todos', { interval: 30000 });
+  const td = todayStr();
+  const calFetch = useCachedFetch(`/api/obsidian/calendar?start=${td}&end=${td}`, { interval: 120000 });
+  const calEvents = (calFetch.data?.events || []).filter(e => e.showAs !== 'cancelled');
 
   const plan = planFetch.data;
   const todos = (todoFetch.data?.todos || []).filter(t => !t.done);
@@ -64,6 +75,29 @@ export default function Dashboard({ queueData, onNavigate }) {
           {overdue > 0 && <span className="stat-sub">{overdue} overdue</span>}
         </div>
       </div>
+
+      {/* Today's calendar */}
+      {calEvents.length > 0 && (
+        <div className="dash-calendar" onClick={() => onNavigate?.('calendar')}>
+          <div className="tasks-header">
+            <span className="tasks-title">Today</span>
+            <button className="tasks-more" onClick={e => { e.stopPropagation(); onNavigate?.('calendar'); }}>Full calendar</button>
+          </div>
+          {calEvents.slice(0, 5).map((ev, i) => {
+            const now = new Date();
+            const isCurrent = !ev.isAllDay && now >= new Date(ev.start) && now < new Date(ev.end);
+            return (
+              <div key={i} className={`dash-cal-event ${isCurrent ? 'cal-now' : ''}`}>
+                <span className="cal-ev-time">
+                  {ev.isAllDay ? 'All day' : formatEventTime(ev.start)}
+                </span>
+                <span className="cal-ev-subject">{ev.subject}</span>
+                {isCurrent && <span className="cal-ev-now">NOW</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* 90-Day progress bar */}
       {plan && (

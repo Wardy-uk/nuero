@@ -39,12 +39,35 @@ router.post('/:id/complete', (req, res) => {
 // POST /api/nudges/:type/snooze — snooze a nudge for 30 minutes
 router.post('/:type/snooze', (req, res) => {
   const { type } = req.params;
-  const validTypes = ['standup', 'todo', 'eod', '121', 'plan_milestone'];
+  const validTypes = ['standup', 'todo', 'eod', '121', 'plan_milestone', 'journal'];
   if (!validTypes.includes(type)) {
     return res.status(400).json({ error: 'Invalid nudge type' });
   }
   nudges.snoozeNudge(type);
   res.json({ success: true, snoozed_for: '30 minutes' });
+});
+
+// GET /api/nudges/diagnostic — check nudge system state
+router.get('/diagnostic', (req, res) => {
+  const obsidian = require('../services/obsidian');
+  const nudgesService = require('../services/nudges');
+
+  const today = new Date().toISOString().split('T')[0];
+  const dailyNote = obsidian.readTodayDailyNote();
+
+  res.json({
+    now: new Date().toISOString(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    today,
+    standupDone: nudgesService.isStandupDone ? nudgesService.isStandupDone() : 'method not exported',
+    dailyNoteExists: !!dailyNote,
+    dailyNoteHasFocusToday: dailyNote ? dailyNote.includes('## Focus Today') : false,
+    dailyNoteHasStandup: dailyNote ? dailyNote.includes('## Standup') : false,
+    activeNudges: db.getActiveNudges(),
+    snoozeState: nudgesService.getSnoozeState(),
+    pushConfigured: require('../services/webpush').isConfigured(),
+    sseClients: 'see server logs'
+  });
 });
 
 // POST /api/nudges/trigger-standup — manual trigger for testing

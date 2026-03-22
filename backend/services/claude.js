@@ -73,6 +73,16 @@ When discussing priorities, respect this hierarchy. 90-day plan tasks should nev
 
 When Nick makes a decision in conversation, flag it with [DECISION] so it can be logged.
 
+Chat commands — use these proactively when appropriate:
+- [ADD TODO: text] — adds an action item directly to Nick's Master Todo inbox
+- [MEETING NOTE: Title] — saves this conversation as a meeting note in the vault
+- [DECISION: text] — already in use, logs decisions to vault
+- [UPDATE PERSON: Name] — signals Nick to update a person note (shows UI prompt)
+
+Use [ADD TODO] when you identify a clear action Nick should take. Use [MEETING NOTE]
+when a conversation has substantive content worth archiving. Always prefer explicit
+markers over just mentioning things — if it's worth doing, capture it.
+
 Nick's direct reports:
 2nd Line: Abdi Mohamed, Arman Shazad, Luke Scaife, Stephen Mitchell, Willem Kruger, Nathan Rutland
 1st Line: Adele Norman-Swift, Heidi Power, Hope Goodall, Maria Pappa, Naomi Wentworth, Sebastian Broome, Zoe Rees
@@ -109,7 +119,7 @@ function anthropicAvailable() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend = false, vaultResults = [], locationContext = null) {
+async function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend = false, vaultResults = [], locationContext = null) {
   // Location context — injected regardless of weekend mode
   const locationLine = locationContext ? `\n\n**${locationContext}**` : '';
 
@@ -312,6 +322,34 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     diagnostics.push('location: yes');
   }
 
+  // Strava activity context
+  try {
+    const stravaService = require('./strava');
+    if (stravaService.isConfigured() && stravaService.isAuthenticated()) {
+      const activityCtx = await stravaService.getActivityContext();
+      if (activityCtx) {
+        parts.push(`## Today's Activity\n${activityCtx}`);
+        diagnostics.push('strava: yes');
+      } else {
+        diagnostics.push('strava: no activity today');
+      }
+    }
+  } catch (e) {
+    diagnostics.push('strava: error');
+  }
+
+  // Apple Health context (from iOS Shortcut webhook)
+  try {
+    const healthService = require('./health');
+    const healthBlock = healthService.getHealthContextBlock();
+    if (healthBlock) {
+      parts.push(healthBlock);
+      diagnostics.push('health: yes');
+    }
+  } catch (e) {
+    diagnostics.push('health: error');
+  }
+
   // Vault search results
   if (vaultResults && vaultResults.length > 0) {
     const vaultBlock = `## Relevant Vault Notes\n` +
@@ -340,6 +378,44 @@ function handleResponse(conversationId, fullResponse) {
     } catch (e) {
       console.error('[AI] Failed to write decision to vault:', e.message);
     }
+  }
+
+  // [ADD TODO: text] — add to Master Todo inbox
+  const todoRegex = /\[ADD TODO:\s*(.+?)\]/g;
+  while ((match = todoRegex.exec(fullResponse)) !== null) {
+    try {
+      obsidian.addTodoFromChat(match[1].trim());
+      console.log('[Chat] Auto-added todo:', match[1].trim());
+    } catch (e) {
+      console.error('[Chat] Failed to add todo:', e.message);
+    }
+  }
+
+  // [MEETING NOTE: title] — save meeting note
+  const meetingRegex = /\[MEETING NOTE:\s*(.+?)\]/g;
+  while ((match = meetingRegex.exec(fullResponse)) !== null) {
+    try {
+      const title = match[1].trim();
+      // Get last few messages as summary
+      const history = db.getConversationHistory(conversationId, 6);
+      const summary = history
+        .filter(m => m.role === 'user')
+        .map(m => `- ${m.content.substring(0, 120)}`)
+        .join('\n');
+      obsidian.saveMeetingNoteFromChat(title, summary);
+      console.log('[Chat] Meeting note saved:', title);
+    } catch (e) {
+      console.error('[Chat] Failed to save meeting note:', e.message);
+    }
+  }
+
+  // [UPDATE PERSON: Name] — trigger person note update via IMP-04's endpoint
+  // This is handled client-side — the marker is detected in ChatPanel and a
+  // confirmation dialog is shown. Backend just logs it.
+  const personRegex = /\[UPDATE PERSON:\s*(.+?)\]/g;
+  while ((match = personRegex.exec(fullResponse)) !== null) {
+    console.log('[Chat] Person update requested for:', match[1].trim());
+    // Client-side handler in ChatPanel.jsx will detect this and show UI
   }
 }
 
@@ -457,7 +533,7 @@ async function streamChat(conversationId, userMessage, res, location = null) {
       // Search for each term, merge results, deduplicate by path
       const seen = new Set();
       for (const term of terms) {
-        const hits = obsidian.searchVault(term, 4);
+        const hits = await obsidian.searchVaultSemantic(term, 4);
         for (const hit of hits) {
           if (!seen.has(hit.path)) {
             seen.add(hit.path);
@@ -487,7 +563,7 @@ async function streamChat(conversationId, userMessage, res, location = null) {
   }
 
   const weekend = isWeekend();
-  const contextBlock = buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, vaultSearchResults, locationContext);
+  const contextBlock = await buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, vaultSearchResults, locationContext);
 
   const startDate = new Date('2026-03-16');
   const today = new Date();

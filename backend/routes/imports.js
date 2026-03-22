@@ -145,6 +145,18 @@ router.post('/dismiss', (req, res) => {
   }
 });
 
+// GET /api/imports/transcript/:fileName — get transcript processing result
+router.get('/transcript/:fileName', (req, res) => {
+  try {
+    const tp = require('../services/transcript-processor');
+    const result = tp.getLastResult(req.params.fileName);
+    if (!result) return res.json({ found: false });
+    res.json({ found: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/imports/notify-complete — send push notification for sweep completion
 // Called by frontend only when the app is not in focus
 router.post('/notify-complete', async (req, res) => {

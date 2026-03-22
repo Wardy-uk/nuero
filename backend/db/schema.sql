@@ -113,6 +113,40 @@ CREATE TABLE IF NOT EXISTS activity_log (
 
 CREATE INDEX IF NOT EXISTS idx_activity_date ON activity_log(date_key, event_type);
 
+CREATE TABLE IF NOT EXISTS inbox_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email_id TEXT NOT NULL UNIQUE,
+  subject TEXT,
+  from_name TEXT,
+  from_email TEXT,
+  urgency TEXT,
+  category TEXT,
+  summary TEXT,
+  reason TEXT,
+  received TEXT,
+  is_read INTEGER DEFAULT 0,
+  has_attachments INTEGER DEFAULT 0,
+  dismissed INTEGER DEFAULT 0,
+  dismissed_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_inbox_dismissed ON inbox_items(dismissed);
+CREATE INDEX IF NOT EXISTS idx_inbox_email_id ON inbox_items(email_id);
+
+CREATE TABLE IF NOT EXISTS vault_embeddings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  relative_path TEXT NOT NULL UNIQUE,
+  content_hash TEXT NOT NULL,
+  embedding TEXT NOT NULL,
+  chunk_text TEXT,
+  file_modified TEXT,
+  embedded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_path ON vault_embeddings(relative_path);
+CREATE INDEX IF NOT EXISTS idx_embeddings_hash ON vault_embeddings(content_hash);
+
 CREATE TABLE IF NOT EXISTS daily_summary (
   date_key TEXT PRIMARY KEY,
   standup_done INTEGER DEFAULT 0,

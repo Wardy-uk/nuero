@@ -46,6 +46,19 @@ router.get('/people/:name', (req, res) => {
   res.json({ name: req.params.name, exists: true, content, frontmatter, tags });
 });
 
+// POST /api/obsidian/people/:name/update — update person note frontmatter and append notes
+router.post('/people/:name/update', (req, res) => {
+  const { last121, next121Due, notes } = req.body;
+  if (!last121 && !next121Due && !notes) {
+    return res.status(400).json({ error: 'At least one field required (last121, next121Due, notes)' });
+  }
+  const result = obsidianService.updatePersonNote(req.params.name, { last121, next121Due, notes });
+  if (result === null) {
+    return res.status(404).json({ error: `Person note not found: ${req.params.name}` });
+  }
+  res.json({ success: true, path: result });
+});
+
 // GET /api/obsidian/calendar — calendar events from ICS feed (falls back to vault daily notes)
 router.get('/calendar', async (req, res) => {
   const { start, end } = req.query;

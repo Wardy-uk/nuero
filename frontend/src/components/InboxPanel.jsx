@@ -29,12 +29,24 @@ export default function InboxPanel() {
   const inboxData = data || { items: [], lastScan: null, scanning: false };
 
   const [scanning, setScanning] = useState(false);
+  const [dismissing, setDismissing] = useState(null);
 
   const triggerScan = () => {
     setScanning(true);
     fetch(apiUrl('/api/microsoft/inbox/scan'), { method: 'POST' })
       .then(() => { setTimeout(() => { fetchData(); setScanning(false); }, 2000); })
       .catch(() => setScanning(false));
+  };
+
+  const dismissItem = (emailId) => {
+    setDismissing(emailId);
+    fetch(apiUrl('/api/microsoft/inbox/dismiss'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailId })
+    })
+      .then(() => { fetchData(); setDismissing(null); })
+      .catch(() => setDismissing(null));
   };
 
   const sorted = [...(inboxData.items || [])].sort((a, b) =>
@@ -111,12 +123,20 @@ export default function InboxPanel() {
 
           <div className="inbox-list">
             {filtered.map((item, i) => (
-              <div key={i} className={`inbox-item urgency-${item.urgency}`}>
+              <div key={item.emailId || i} className={`inbox-item urgency-${item.urgency}`}>
                 <div className="inbox-item-header">
                   <span className={`inbox-urgency-dot ${item.urgency}`} />
                   <span className="inbox-item-from">{item.from}</span>
                   <span className="inbox-item-cat">{CATEGORY_LABELS[item.category] || item.category}</span>
                   {item.received && <span className="inbox-item-time">{timeAgo(item.received)}</span>}
+                  <button
+                    className="inbox-dismiss-btn"
+                    onClick={() => dismissItem(item.emailId)}
+                    disabled={dismissing === item.emailId}
+                    title="Dismiss"
+                  >
+                    {dismissing === item.emailId ? '...' : '\u00d7'}
+                  </button>
                 </div>
                 <div className="inbox-item-subject">{item.subject}</div>
                 <div className="inbox-item-summary">{item.summary}</div>

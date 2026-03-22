@@ -41,4 +41,42 @@ router.get('/today', (req, res) => {
   }
 });
 
+// GET /api/activity/suggestions — pattern-based actionable suggestions
+router.get('/suggestions', (req, res) => {
+  try {
+    const suggestions = activity.detectPatterns();
+    res.json({ suggestions });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/activity/suggestions/apply — apply a one-click suggestion
+router.post('/suggestions/apply', (req, res) => {
+  const { id, ...params } = req.body;
+  if (!id) return res.status(400).json({ error: 'id required' });
+  try {
+    const result = activity.applySuggestion(id, params);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/activity/rebuild-embeddings — manually trigger embedding rebuild
+router.post('/rebuild-embeddings', async (req, res) => {
+  try {
+    const embeddings = require('../services/embeddings');
+    res.json({ started: true });
+    // Run in background
+    embeddings.rebuildEmbeddings().then(result => {
+      console.log('[Embeddings] Manual rebuild complete:', result);
+    }).catch(e => {
+      console.error('[Embeddings] Manual rebuild error:', e.message);
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

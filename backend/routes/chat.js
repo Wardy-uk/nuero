@@ -11,6 +11,12 @@ router.post('/', (req, res) => {
   claude.streamChat(convId, message, res, location || null);
 });
 
+// GET /api/chat/conversations — list recent conversations
+router.get('/conversations', (req, res) => {
+  const conversations = db.getRecentConversations(5);
+  res.json({ conversations });
+});
+
 // GET /api/chat/history/:conversationId
 router.get('/history/:conversationId', (req, res) => {
   const history = db.getConversationHistory(req.params.conversationId, 50);

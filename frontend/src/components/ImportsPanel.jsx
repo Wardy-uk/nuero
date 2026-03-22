@@ -24,6 +24,7 @@ export default function ImportsPanel() {
   const [sweepProgress, setSweepProgress] = useState(null);
   const [toast, setToast] = useState(null);
   const [manualRouting, setManualRouting] = useState(null); // filePath being manually routed
+  const [transcriptResults, setTranscriptResults] = useState([]); // processed transcript entities
 
   const transform = useMemo(() => (json) => json.files || [], []);
   const { data: files, refresh: fetchPending } = useCachedFetch('/api/imports/pending', {
@@ -99,6 +100,13 @@ export default function ImportsPanel() {
             setClassifications(prev => ({ ...prev, [key]: data.classification }));
           }
           fetchPending();
+        }
+
+        else if (data.type === 'transcript_processed') {
+          // PLAUD transcript was processed — show extracted entities
+          if (data.result) {
+            setTranscriptResults(prev => [data.result, ...prev.slice(0, 4)]);
+          }
         }
 
         else if (data.type === 'file_actioned') {
@@ -281,6 +289,47 @@ export default function ImportsPanel() {
       {sweeping && !sweepProgress && (
         <div className="imports-progress">
           <div className="imports-progress-label">Starting sweep...</div>
+        </div>
+      )}
+
+      {transcriptResults.length > 0 && (
+        <div className="transcript-results">
+          <div className="transcript-results-title">Recent Transcript Extractions</div>
+          {transcriptResults.map((tr, i) => (
+            <div key={`${tr.sourceFile}-${i}`} className="transcript-result-card">
+              <div className="transcript-result-header">
+                <span className="transcript-source">{tr.sourceFile}</span>
+                {tr.is121 && <span className="transcript-badge">1-2-1</span>}
+                {tr.meetingDate && <span className="transcript-date">{tr.meetingDate}</span>}
+              </div>
+              {tr.summary && <div className="transcript-summary">{tr.summary}</div>}
+              {tr.people.length > 0 && (
+                <div className="transcript-people">
+                  <span className="transcript-label">People:</span>
+                  {tr.people.map((p, j) => (
+                    <span key={j} className={`transcript-person ${p.vaultMatch ? 'matched' : ''}`}>
+                      {p.mentioned}{p.updated121 ? ' (1-2-1 updated)' : p.vaultMatch ? ' (linked)' : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {tr.actionItems.length > 0 && (
+                <div className="transcript-actions-list">
+                  <span className="transcript-label">Actions:</span>
+                  <ul>
+                    {tr.actionItems.map((a, j) => <li key={j}>{a}</li>)}
+                  </ul>
+                </div>
+              )}
+              {tr.keyTopics.length > 0 && (
+                <div className="transcript-topics">
+                  {tr.keyTopics.map((t, j) => (
+                    <span key={j} className="transcript-topic">{t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

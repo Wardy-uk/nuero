@@ -55,6 +55,33 @@ router.get('/ritual-state', (req, res) => {
   });
 });
 
+// GET /api/standup/carry-forward — incomplete items from yesterday's Focus Today
+router.get('/carry-forward', (req, res) => {
+  try {
+    const prev = obsidianService.readPreviousDailyNote();
+    if (!prev) return res.json({ date: null, items: [] });
+
+    const lines = prev.content.split('\n');
+    let inFocus = false;
+    const items = [];
+    for (const line of lines) {
+      if (line.startsWith('## Focus Today') || line.startsWith('## Carry')) {
+        inFocus = true;
+        continue;
+      }
+      if (line.startsWith('## ') && inFocus) { inFocus = false; continue; }
+      if (inFocus && line.match(/^\s*-\s+\[\s\]/) || inFocus && line.match(/^\s*-\s+\[>\]/)) {
+        const text = line.replace(/^\s*-\s+\[.\]\s*/, '').replace(/#\w+/g, '').trim();
+        if (text) items.push(text);
+      }
+    }
+    res.json({ date: prev.date, items });
+  } catch (e) {
+    console.error('[Standup] Carry-forward error:', e);
+    res.json({ date: null, items: [] });
+  }
+});
+
 // POST /api/standup/backup — creates a lightweight Ritual 5 daily note
 router.post('/backup', (req, res) => {
   try {

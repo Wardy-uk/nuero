@@ -3,6 +3,15 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 
+let embeddingsService = null;
+function getEmbeddingsService() {
+  if (!embeddingsService) {
+    try { embeddingsService = require('./embeddings'); }
+    catch { embeddingsService = null; }
+  }
+  return embeddingsService;
+}
+
 function getVaultPath() {
   return process.env.OBSIDIAN_VAULT_PATH || '';
 }
@@ -82,6 +91,49 @@ function readPersonNote(name) {
   const notePath = path.join(getVaultPath(), 'People', `${name}.md`);
   if (!fs.existsSync(notePath)) return null;
   return fs.readFileSync(notePath, 'utf-8');
+}
+
+// Update a person note: set frontmatter fields and optionally append a dated notes block
+function updatePersonNote(name, updates) {
+  const notePath = path.join(getVaultPath(), 'People', `${name}.md`);
+  if (!fs.existsSync(notePath)) return null;
+
+  let content = fs.readFileSync(notePath, 'utf-8');
+
+  // Update frontmatter fields
+  if (updates.last121 || updates.next121Due) {
+    if (content.startsWith('---')) {
+      const endIdx = content.indexOf('---', 3);
+      if (endIdx !== -1) {
+        let fm = content.substring(0, endIdx + 3);
+        const rest = content.substring(endIdx + 3);
+        if (updates.last121) {
+          if (fm.includes('last-1-2-1:')) {
+            fm = fm.replace(/last-1-2-1:.*/, `last-1-2-1: ${updates.last121}`);
+          } else {
+            fm = fm.replace(/---\s*$/, `last-1-2-1: ${updates.last121}\n---`);
+          }
+        }
+        if (updates.next121Due) {
+          if (fm.includes('next-1-2-1-due:')) {
+            fm = fm.replace(/next-1-2-1-due:.*/, `next-1-2-1-due: ${updates.next121Due}`);
+          } else {
+            fm = fm.replace(/---\s*$/, `next-1-2-1-due: ${updates.next121Due}\n---`);
+          }
+        }
+        content = fm + rest;
+      }
+    }
+  }
+
+  // Append a dated notes block
+  if (updates.notes && updates.notes.trim()) {
+    const dateStr = todayDateString();
+    content += `\n\n## 1-2-1 Notes — ${dateStr}\n${updates.notes.trim()}\n`;
+  }
+
+  fs.writeFileSync(notePath, content, 'utf-8');
+  return notePath;
 }
 
 function listPeopleNotes() {
@@ -843,6 +895,24 @@ function searchVault(query, maxResults = 5) {
   return results;
 }
 
+async function searchVaultSemantic(query, maxResults = 5) {
+  // Try semantic search first
+  try {
+    const emb = getEmbeddingsService();
+    if (emb) {
+      const results = await emb.semanticSearch(query, maxResults);
+      if (results && results.length > 0) {
+        console.log(`[Search] Semantic: ${results.length} results for "${query}"`);
+        return results;
+      }
+    }
+  } catch (e) {
+    console.warn('[Search] Semantic search failed, falling back:', e.message);
+  }
+  // Fall back to keyword search
+  return searchVault(query, maxResults);
+}
+
 // Get meeting prep context for upcoming meetings (next N hours)
 // Returns array of { subject, start, people, prepNotes }
 function getMeetingPrepContext(hoursAhead = 3) {
@@ -1056,6 +1126,44 @@ function generateWeeklyReview() {
   return { filePath, weekStr, skipped: false };
 }
 
+// Add a todo to Master Todo inbox via chat command
+function addTodoFromChat(text) {
+  const vaultPath = getVaultPath();
+  const masterPath = path.join(vaultPath, 'Tasks', 'Master Todo.md');
+  if (!fs.existsSync(masterPath)) throw new Error('Master Todo.md not found');
+
+  const todoLine = `- [ ] ${text.trim()}`;
+  let content = fs.readFileSync(masterPath, 'utf-8');
+  const inboxMatch = content.match(/^## .*📥.*Inbox.*/m);
+
+  if (inboxMatch) {
+    const insertIdx = content.indexOf('\n', content.indexOf(inboxMatch[0])) + 1;
+    content = content.slice(0, insertIdx) + todoLine + '\n' + content.slice(insertIdx);
+  } else {
+    content = content.trimEnd() + '\n' + todoLine + '\n';
+  }
+  fs.writeFileSync(masterPath, content, 'utf-8');
+  console.log(`[Chat] Added todo: ${text.trim()}`);
+  return true;
+}
+
+// Save a meeting note from chat
+function saveMeetingNoteFromChat(title, conversationSummary) {
+  const vaultPath = getVaultPath();
+  const meetingsDir = path.join(vaultPath, 'Meetings');
+  if (!fs.existsSync(meetingsDir)) fs.mkdirSync(meetingsDir, { recursive: true });
+
+  const today = todayDateString();
+  const safeTitle = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+  const filename = `${today}-${safeTitle}.md`;
+  const filePath = path.join(meetingsDir, filename);
+
+  const content = `---\ntype: meeting\ndate: ${today}\ntitle: "${title}"\nsource: neuro-chat\n---\n# ${title}\n\n*${today} — captured via NEURO chat*\n\n${conversationSummary}\n`;
+  fs.writeFileSync(filePath, content, 'utf-8');
+  console.log(`[Chat] Meeting note saved: ${filename}`);
+  return `Meetings/${filename}`;
+}
+
 module.exports = {
   isConfigured,
   readTodayDailyNote,
@@ -1065,6 +1173,7 @@ module.exports = {
   writeStandup,
   readPersonNote,
   listPeopleNotes,
+  updatePersonNote,
   appendDecision,
   parseFrontmatter,
   extractTags,
@@ -1077,6 +1186,9 @@ module.exports = {
   readRitualState,
   readPreviousDailyNote,
   searchVault,
+  searchVaultSemantic,
+  addTodoFromChat,
+  saveMeetingNoteFromChat,
   getMeetingPrepContext,
   getUpcoming121s,
   getRecentDecisions,

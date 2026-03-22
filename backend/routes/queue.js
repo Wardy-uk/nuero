@@ -55,13 +55,13 @@ router.post('/ingest', (req, res) => {
     for (const ticket of tickets) {
       db.upsertTicket({
         ticket_key: ticket.ticket_key,
-        summary: ticket.summary,
-        status: ticket.status,
-        priority: ticket.priority,
+        summary: ticket.summary || '(no summary)',
+        status: ticket.status || 'Unknown',
+        priority: ticket.priority || 'Medium',
         assignee: ticket.assignee || 'Unassigned',
-        sla_remaining_minutes: ticket.sla_remaining_minutes,
-        sla_name: ticket.sla_name,
-        at_risk: ticket.at_risk,
+        sla_remaining_minutes: ticket.sla_remaining_minutes != null ? ticket.sla_remaining_minutes : null,
+        sla_name: ticket.sla_name || null,
+        at_risk: ticket.at_risk || false,
         raw_json: ticket.raw_json || null
       });
     }

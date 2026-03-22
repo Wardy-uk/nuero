@@ -110,9 +110,20 @@ export default function StandupEditor() {
   const [message, setMessage] = useState('');
   const [showBackup, setShowBackup] = useState(false);
   const [showEod, setShowEod] = useState(false);
+  const [carryOvers, setCarryOvers] = useState([]);
+  const [carryDate, setCarryDate] = useState(null);
 
   const { data: standupData, status: standupStatus } = useCachedFetch('/api/standup');
   const { data: ritualData } = useCachedFetch('/api/standup/ritual-state');
+  const { data: carryData } = useCachedFetch('/api/standup/carry-forward');
+
+  // Load carry-forwards once
+  useEffect(() => {
+    if (carryData && carryData.items?.length > 0 && carryOvers.length === 0) {
+      setCarryOvers(carryData.items);
+      setCarryDate(carryData.date);
+    }
+  }, [carryData]);
   const loading = standupData === null && standupStatus !== 'unavailable';
 
   // Set content from fetched data once
@@ -180,6 +191,28 @@ export default function StandupEditor() {
   return (
     <div className="standup-editor">
       {showEod && <EodCapture onDone={() => setShowEod(false)} />}
+      {carryOvers.length > 0 && (
+        <div className="carry-overs">
+          <h3>Carry-overs{carryDate ? ` from ${carryDate}` : ''}</h3>
+          <p style={{ color: '#888', fontSize: '13px', margin: '0 0 10px' }}>Incomplete items from yesterday. Remove any you don't need.</p>
+          {carryOvers.map((item, i) => (
+            <div key={i} className="carry-item">
+              <span className="carry-text">{item}</span>
+              <button className="carry-remove" onClick={() => setCarryOvers(prev => prev.filter((_, j) => j !== i))} title="Remove">×</button>
+            </div>
+          ))}
+          <button className="btn btn-secondary" style={{ marginTop: '8px', fontSize: '12px' }}
+            onClick={() => {
+              const carryLines = carryOvers.map(c => `- [ ] ${c}`).join('\n');
+              setContent(prev => prev.replace(/(## Today\n)/, `$1${carryLines}\n`));
+              setCarryOvers([]);
+              setMessage('Carry-overs added to Today section');
+              setTimeout(() => setMessage(''), 2000);
+            }}>
+            Add all to Today
+          </button>
+        </div>
+      )}
       {showBackup && (
         <BackupStandup onDone={() => setShowBackup(false)} />
       )}

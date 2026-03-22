@@ -1,0 +1,183 @@
+.journal-panel {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 24px 20px;
+  font-family: var(--font-sans, 'IBM Plex Sans', sans-serif);
+}
+
+.journal-loading {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 40px 0;
+  text-align: center;
+}
+
+.journal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 16px;
+}
+
+.journal-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  font-family: var(--font-mono);
+}
+
+.journal-meta {
+  display: flex;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.journal-progress-track {
+  height: 2px;
+  background: var(--bg-tertiary);
+  border-radius: 1px;
+  margin-bottom: 28px;
+  overflow: hidden;
+}
+
+.journal-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 1px;
+  transition: width 0.4s ease;
+}
+
+.journal-prompt-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.journal-prompt-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.journal-response {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  padding: 12px 0 0;
+  color: var(--text-primary);
+  font-family: var(--font-sans, 'IBM Plex Sans', sans-serif);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.journal-response::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.journal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.journal-skip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 8px;
+  margin-left: auto;
+}
+
+.journal-skip:hover { color: var(--text-secondary); }
+
+.journal-actions .btn-primary {
+  margin-left: 0;
+}
+
+/* Settings */
+.journal-settings {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 8px;
+}
+
+.journal-settings-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.journal-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.journal-time-input {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.journal-time-msg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--success, #22c55e);
+}
+
+/* Done state */
+.journal-done {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.journal-done-icon {
+  font-size: 40px;
+  color: var(--success, #22c55e);
+  margin-bottom: 16px;
+}
+
+.journal-done h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+}
+
+.journal-done p {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0 0 24px;
+}
+
+@media (max-width: 768px) {
+  .journal-panel { padding: 16px 12px; }
+  .journal-prompt-text { font-size: 15px; }
+}

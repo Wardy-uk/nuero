@@ -179,6 +179,32 @@
   color: var(--text-muted);
 }
 
+.inbox-dismiss-btn {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1;
+  background: none;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.inbox-dismiss-btn:hover {
+  opacity: 1;
+  color: #ef5350;
+  border-color: rgba(239, 83, 80, 0.3);
+}
+
+.inbox-dismiss-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 .inbox-item-subject {
   font-size: 13px;
   font-weight: 500;

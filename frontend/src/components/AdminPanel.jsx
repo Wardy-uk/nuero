@@ -76,6 +76,26 @@ export default function AdminPanel({ pushState = {} }) {
       name: 'n8n',
       status: status.n8n?.configured ? 'connected' : 'unconfigured',
       detail: status.n8n?.configured ? 'API key set — workflows available' : 'N8N_API_KEY not set'
+    },
+    {
+      name: 'Strava',
+      status: status.strava?.authenticated ? 'connected'
+        : status.strava?.configured ? 'disconnected'
+        : 'unconfigured',
+      detail: status.strava?.authenticated ? 'Activity data available'
+        : status.strava?.configured ? 'Not authenticated — connect below'
+        : 'STRAVA_CLIENT_ID not set'
+    },
+    {
+      name: 'Apple Health (Shortcut)',
+      status: status.health?.hasToday ? 'connected'
+        : status.health?.latestDate ? 'disconnected'
+        : 'unconfigured',
+      detail: status.health?.hasToday
+        ? 'Data received today'
+        : status.health?.latestDate
+        ? `Last data: ${status.health.latestDate} — Shortcut may not have run today`
+        : 'No data received — set up the iOS Shortcut (see below)'
     }
   ];
 
@@ -204,6 +224,91 @@ export default function AdminPanel({ pushState = {} }) {
             </>
           )}
           {pushError && <div className="admin-error">{pushError}</div>}
+        </div>
+      </div>
+
+      {/* Strava */}
+      <div className="admin-section">
+        <div className="admin-section-title">Strava</div>
+        <div className="admin-ms-section">
+          {status.strava?.authenticated ? (
+            <>
+              <div className="admin-ms-connected">
+                <span className="admin-ms-connected-dot" />
+                Connected — activity data available for journal prompts
+              </div>
+              <button
+                className="admin-ms-connect-btn"
+                style={{ marginTop: '8px', background: 'rgba(252,76,2,0.1)', borderColor: '#fc4c02', color: '#fc4c02' }}
+                onClick={async () => {
+                  await fetch(apiUrl('/api/strava/disconnect'), { method: 'POST' });
+                  fetchStatus();
+                }}
+              >
+                Disconnect Strava
+              </button>
+            </>
+          ) : status.strava?.configured ? (
+            <>
+              <div className="admin-ms-desc">
+                Connect Strava to include today's activity in your journal prompts and
+                NEURO chat context. Opens a Strava authorisation page — you'll need to
+                be on your Tailscale network.
+              </div>
+              <button
+                className="admin-ms-connect-btn"
+                style={{ background: 'rgba(252,76,2,0.1)', borderColor: '#fc4c02', color: '#fc4c02' }}
+                onClick={() => window.open(apiUrl('/api/strava/auth'), '_blank')}
+              >
+                Connect Strava
+              </button>
+            </>
+          ) : (
+            <div className="admin-ms-desc">
+              Add STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, and STRAVA_REDIRECT_URI to
+              the Pi's .env file to enable Strava integration.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Apple Health */}
+      <div className="admin-section">
+        <div className="admin-section-title">Apple Health</div>
+        <div className="admin-ms-section">
+          {status.health?.hasToday ? (
+            <div className="admin-ms-connected">
+              <span className="admin-ms-connected-dot" />
+              Health data received today — active in journal prompts and chat
+            </div>
+          ) : (
+            <>
+              <div className="admin-ms-desc" style={{ marginBottom: '12px' }}>
+                Set up an iOS Shortcut to send Apple Health data (HRV, sleep, RHR)
+                to NEURO each morning. The Shortcut runs automatically and posts to
+                the Pi via Tailscale.
+              </div>
+              <div className="admin-ms-desc" style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: '1.8', background: 'var(--bg-tertiary)', padding: '12px', borderRadius: '4px', marginBottom: '8px' }}>
+                <strong>Shortcut setup (one-time):</strong><br />
+                1. Open Shortcuts app on iPhone<br />
+                2. Create new Shortcut with these actions:<br />
+                &nbsp;&nbsp;- Get Health Sample: Heart Rate Variability (last 24h, average)<br />
+                &nbsp;&nbsp;- Get Health Sample: Resting Heart Rate (last 24h, latest)<br />
+                &nbsp;&nbsp;- Get Health Sample: Sleep Analysis (last 24h)<br />
+                &nbsp;&nbsp;- Get Health Sample: Step Count (today, sum)<br />
+                &nbsp;&nbsp;- Get Health Sample: Active Energy (today, sum)<br />
+                &nbsp;&nbsp;- Get Contents of URL: POST to /api/health/ingest<br />
+                &nbsp;&nbsp;- Headers: Authorization: Bearer [INGEST_SECRET]<br />
+                &nbsp;&nbsp;- Body: JSON with keys: hrv, rhr, sleepDuration, steps, activeEnergy<br />
+                3. Add automation: run at 07:30 daily
+              </div>
+              {status.health?.latestDate && (
+                <div className="admin-ms-desc" style={{ color: 'var(--accent-warn, #f59e0b)' }}>
+                  Last data received: {status.health.latestDate} — Shortcut hasn't run today yet
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 

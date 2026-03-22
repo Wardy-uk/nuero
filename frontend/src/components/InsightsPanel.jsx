@@ -2,26 +2,57 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import './InsightsPanel.css';
 
-export default function InsightsPanel() {
+export default function InsightsPanel({ onNavigate }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [suggestions, setSuggestions] = useState([]);
+  const [applying, setApplying] = useState(null);
+  const [dismissed, setDismissed] = useState(new Set());
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl('/api/activity/summaries?days=14'));
-      const json = await res.json();
+      const [summariesRes, suggestionsRes] = await Promise.all([
+        fetch(apiUrl('/api/activity/summaries?days=14')),
+        fetch(apiUrl('/api/activity/suggestions'))
+      ]);
+      const json = await summariesRes.json();
       setData(json);
+      const sugJson = await suggestionsRes.json();
+      setSuggestions(sugJson.suggestions || []);
     } catch {}
     setLoading(false);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const applySuggestion = async (suggestion) => {
+    if (suggestion.action.navigate) {
+      if (onNavigate) onNavigate(suggestion.action.navigate);
+      setDismissed(prev => new Set([...prev, suggestion.id]));
+      return;
+    }
+    if (!suggestion.action.endpoint) return;
+    setApplying(suggestion.id);
+    try {
+      const res = await fetch(apiUrl(suggestion.action.endpoint), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(suggestion.action.body)
+      });
+      const result = await res.json();
+      if (result.success) {
+        setDismissed(prev => new Set([...prev, suggestion.id]));
+      }
+    } catch {}
+    setApplying(null);
+  };
+
   if (loading) return <div className="insights-panel"><div className="insights-loading">Loading insights...</div></div>;
 
   if (!data) return <div className="insights-panel"><div className="insights-empty">No activity data yet.</div></div>;
 
   const { today, summaries } = data;
+  const visibleSuggestions = suggestions.filter(s => !dismissed.has(s.id));
 
   const formatHour = (h) => {
     if (h === null || h === undefined) return '—';
@@ -55,6 +86,35 @@ export default function InsightsPanel() {
         <h2 className="insights-title">Insights</h2>
         <button className="insights-refresh" onClick={fetchData}>Refresh</button>
       </div>
+
+      {/* Suggestions section */}
+      {visibleSuggestions.length > 0 && (
+        <div className="insights-suggestions">
+          <div className="insights-suggestions-title">Suggestions</div>
+          {visibleSuggestions.map(s => (
+            <div key={s.id} className={`insights-suggestion severity-${s.severity}`}>
+              <div className="suggestion-header">
+                <span className="suggestion-title">{s.title}</span>
+                <button
+                  className="suggestion-dismiss"
+                  onClick={() => setDismissed(prev => new Set([...prev, s.id]))}
+                  title="Dismiss"
+                >{'\u00d7'}</button>
+              </div>
+              <div className="suggestion-description">{s.description}</div>
+              {s.action && (
+                <button
+                  className="suggestion-action-btn"
+                  onClick={() => applySuggestion(s)}
+                  disabled={applying === s.id}
+                >
+                  {applying === s.id ? 'Applying...' : s.action.label}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Today card */}
       <div className="insights-today">

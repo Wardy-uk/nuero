@@ -18,6 +18,7 @@ import CapturePanel from './components/CapturePanel';
 import RecentPanel from './components/RecentPanel';
 import VaultBrowser from './components/VaultBrowser';
 import InsightsPanel from './components/InsightsPanel';
+import JournalPanel from './components/JournalPanel';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
 import useCachedFetch from './useCachedFetch';
@@ -116,7 +117,8 @@ export default function App() {
       case 'inbox': return <InboxPanel />;
       case 'vault': return <VaultBrowser initialOpenPath={vaultOpenPath} onClearInitialPath={() => setVaultOpenPath(null)} />;
       case 'qa': return <QATab />;
-      case 'insights': return <InsightsPanel />;
+      case 'journal': return <JournalPanel />;
+      case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
     }
@@ -137,7 +139,7 @@ export default function App() {
           <ChatPanel location={location} />
         </aside>
       </div>
-      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} />
+      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('journal'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} />
       <InstallBanner />
     </div>
   );

@@ -23,6 +23,18 @@ function start() {
     nudges.triggerTodoNudge();
   });
 
+  // 8:45am weekdays — early standup nudge if configured via insights suggestion
+  cron.schedule('45 8 * * 1-5', () => {
+    try {
+      const db = require('../db/database');
+      const customHour = db.getState('standup_nudge_hour');
+      if (customHour && parseInt(customHour, 10) < 9) {
+        console.log('[Scheduler] Early standup nudge (custom time)');
+        nudges.triggerStandupNudge();
+      }
+    } catch {}
+  });
+
   // 9:10am weekdays — check 1-2-1 due dates
   cron.schedule('10 9 * * 1-5', () => { nudges.check121Nudges(); });
 
@@ -65,6 +77,33 @@ function start() {
     }
   });
 
+  // Evening journal nudge — time configurable via agent_state 'journal_nudge_time' (default '21:00')
+  cron.schedule('* 20-22 * * *', () => {
+    try {
+      const db = require('../db/database');
+      const configuredTime = db.getState('journal_nudge_time') || '21:00';
+      const [targetHour, targetMin] = configuredTime.split(':').map(Number);
+      const now = new Date();
+      if (now.getHours() === targetHour && now.getMinutes() === targetMin) {
+        nudges.triggerJournalNudge();
+      }
+    } catch (e) {
+      console.error('[Scheduler] Journal nudge check failed:', e.message);
+    }
+  });
+
+  // 2am nightly — rebuild vault embeddings for changed files
+  cron.schedule('0 2 * * *', () => {
+    console.log('[Scheduler] Rebuilding vault embeddings...');
+    try {
+      require('./embeddings').rebuildEmbeddings().catch(e => {
+        console.error('[Scheduler] Embedding rebuild failed:', e.message);
+      });
+    } catch (e) {
+      console.error('[Scheduler] Failed to start embedding rebuild:', e.message);
+    }
+  });
+
   // Every night at 23:30 — classify all pending imports
   cron.schedule('30 23 * * *', () => {
     console.log('[Scheduler] Running nightly imports sweep...');
@@ -72,6 +111,14 @@ function start() {
       console.error('[Scheduler] Imports sweep failed:', e.message);
     });
   });
+
+  // Startup embedding check — rebuild 2 min after start
+  setTimeout(() => {
+    console.log('[Scheduler] Startup embedding check...');
+    require('./embeddings').rebuildEmbeddings().catch(e => {
+      console.error('[Scheduler] Startup embedding failed:', e.message);
+    });
+  }, 2 * 60 * 1000);
 
   // Startup sweep — classify pending imports after 60s delay
   setTimeout(() => {

@@ -163,3 +163,155 @@
   color: var(--text-primary);
   border-color: var(--accent);
 }
+
+/* Conversation toggle */
+.chat-conv-toggle {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+/* Conversation list */
+.chat-conv-list {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.chat-conv-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.chat-conv-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.chat-conv-item.active {
+  border-left: 2px solid var(--accent);
+  background: rgba(79, 156, 249, 0.06);
+}
+
+.chat-conv-preview {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.chat-conv-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.chat-todo-wrapper {
+  margin-top: 6px;
+}
+
+.chat-todo-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.chat-todo-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.chat-todo-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.chat-todo-picker-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.chat-todo-item-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.chat-todo-item-btn:hover {
+  background: rgba(79, 156, 249, 0.1);
+  border-color: var(--accent);
+}
+
+.chat-todo-cancel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.chat-todo-saved {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--success, #22c55e);
+  margin-top: 4px;
+}
+
+.chat-vault-confirmation {
+  margin: 0 12px 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border: 1px solid;
+}
+.chat-vault-confirmation.todo {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: var(--success, #22c55e);
+  color: var(--success, #22c55e);
+}
+.chat-vault-confirmation.meeting {
+  background: rgba(79, 156, 249, 0.08);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chat-vault-confirmation.person {
+  background: rgba(240, 173, 78, 0.08);
+  border-color: #f0ad4e;
+  color: #f0ad4e;
+}

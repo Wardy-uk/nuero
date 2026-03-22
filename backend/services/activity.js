@@ -198,6 +198,142 @@ function getPatternsContextBlock(daysBack = 7) {
   return `## Your Recent Patterns (last ${daysBack} days)\n${lines.join('\n')}`;
 }
 
+// ── Pattern detection & suggestions ───────────────────────────────────────
+
+function detectPatterns() {
+  const summaries = db.getDailySummaries(14);
+  if (summaries.length < 3) return [];
+
+  const suggestions = [];
+
+  // Include today's live data
+  const todayKey = new Date().toISOString().split('T')[0];
+  const todayLive = buildDailySummary(todayKey);
+  const allDays = [{ ...todayLive, date_key: todayKey }, ...summaries.filter(s => s.date_key !== todayKey)];
+
+  // Pattern 1: 3+ consecutive late standups (after 10am) → suggest earlier nudge
+  const recentWithStandup = allDays.filter(d => d.standup_done).slice(0, 7);
+  let consecutiveLate = 0;
+  let totalLateHour = 0;
+  for (const day of recentWithStandup) {
+    const hour = day.standup_hour;
+    if (hour !== null && hour >= 10) {
+      consecutiveLate++;
+      totalLateHour += hour;
+    } else {
+      break;
+    }
+  }
+  if (consecutiveLate >= 3) {
+    const avgHour = Math.round(totalLateHour / consecutiveLate);
+    const currentNudgeHour = parseInt(db.getState('standup_nudge_hour') || '9', 10);
+    // Only suggest if not already adjusted
+    if (currentNudgeHour >= 9) {
+      suggestions.push({
+        id: 'late_standup',
+        type: 'standup_time',
+        severity: 'medium',
+        title: 'Standup running late',
+        description: `Your standup has been after ${avgHour}:00 for ${consecutiveLate} days in a row. Consider an earlier nudge to build momentum.`,
+        action: {
+          label: 'Move nudge to 08:45',
+          endpoint: '/api/activity/suggestions/apply',
+          body: { id: 'late_standup', newHour: 8, newMinute: 45 }
+        }
+      });
+    }
+  }
+
+  // Pattern 2: High todo snooze count (avg > 2 over last 5 days) → flag avoidance
+  const recentDays = allDays.slice(0, 5);
+  const totalTodoSnoozes = recentDays.reduce((sum, d) => sum + (d.todo_snooze_count || 0), 0);
+  const avgTodoSnoozes = totalTodoSnoozes / Math.max(recentDays.length, 1);
+  if (avgTodoSnoozes > 2) {
+    suggestions.push({
+      id: 'high_todo_snooze',
+      type: 'todo_avoidance',
+      severity: 'medium',
+      title: 'Todo avoidance pattern',
+      description: `You've snoozed todo nudges ${totalTodoSnoozes} times in the last ${recentDays.length} days (avg ${avgTodoSnoozes.toFixed(1)}/day). This pattern often means a task feels too big — try breaking the top item into smaller steps.`,
+      action: {
+        label: 'Open Todos',
+        navigate: '/todos'
+      }
+    });
+  }
+
+  // Pattern 3: Standup snooze streak (snoozed 3+ times today)
+  if (todayLive.standup_snooze_count >= 3 && !todayLive.standup_done) {
+    suggestions.push({
+      id: 'standup_snooze_streak',
+      type: 'standup_avoidance',
+      severity: 'high',
+      title: 'Standup snoozed ' + todayLive.standup_snooze_count + ' times today',
+      description: "You know the pattern. Three bullet points. Yesterday, today, blockers. It takes less time than reading this suggestion.",
+      action: {
+        label: 'Do standup now',
+        navigate: '/standup'
+      }
+    });
+  }
+
+  // Pattern 4: EOD skipped 3+ days in a row
+  const recentEod = allDays.slice(0, 7);
+  let consecutiveNoEod = 0;
+  for (const day of recentEod) {
+    if (!day.eod_done) consecutiveNoEod++;
+    else break;
+  }
+  if (consecutiveNoEod >= 3) {
+    suggestions.push({
+      id: 'eod_skipped',
+      type: 'eod_habit',
+      severity: 'low',
+      title: 'EOD ritual dropped off',
+      description: `No end-of-day reflection for ${consecutiveNoEod} days. The EOD ritual helps Future Nick know what Past Nick was thinking. Two minutes at 5pm.`,
+      action: {
+        label: 'Do EOD now',
+        navigate: '/standup'
+      }
+    });
+  }
+
+  // Pattern 5: Low engagement (no chat messages for 3+ days)
+  let consecutiveNoChat = 0;
+  for (const day of allDays.slice(0, 7)) {
+    if ((day.chat_count || 0) === 0) consecutiveNoChat++;
+    else break;
+  }
+  if (consecutiveNoChat >= 3) {
+    suggestions.push({
+      id: 'low_engagement',
+      type: 'engagement',
+      severity: 'low',
+      title: 'NEURO underused',
+      description: `No chat messages for ${consecutiveNoChat} days. I'm here to help think through problems, prep for meetings, and track decisions. Try asking me something.`,
+      action: {
+        label: 'Open chat',
+        navigate: '/chat'
+      }
+    });
+  }
+
+  return suggestions;
+}
+
+// Apply a suggestion action (server-side changes)
+function applySuggestion(id, params) {
+  if (id === 'late_standup') {
+    const hour = params.newHour || 8;
+    const minute = params.newMinute || 45;
+    db.setState('standup_nudge_hour', String(hour));
+    db.setState('standup_nudge_minute', String(minute));
+    console.log(`[Activity] Standup nudge time changed to ${hour}:${String(minute).padStart(2, '0')}`);
+    return { success: true, message: `Standup nudge moved to ${hour}:${String(minute).padStart(2, '0')}` };
+  }
+  return { success: false, message: 'Unknown suggestion' };
+}
+
 module.exports = {
   trackTabOpen,
   trackStandupDone,
@@ -208,5 +344,7 @@ module.exports = {
   trackEodDone,
   buildDailySummary,
   runNightlyRollup,
-  getPatternsContextBlock
+  getPatternsContextBlock,
+  detectPatterns,
+  applySuggestion
 };

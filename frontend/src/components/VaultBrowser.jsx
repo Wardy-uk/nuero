@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { apiUrl } from '../api';
 import './VaultBrowser.css';
 
@@ -12,6 +13,9 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
   const [edited, setEdited] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
+
+  // Preview mode
+  const [previewMode, setPreviewMode] = useState(false);
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -112,28 +116,48 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
   const breadcrumbs = currentDir ? currentDir.split('/') : [];
   const isDirty = openFile && edited !== openFile.content;
 
+  // Preprocess markdown for preview: handle wiki-links and dataview blocks
+  const preprocessMarkdown = (md) => {
+    return md
+      .replace(/\[\[([^\]]+)\]\]/g, '**$1**')
+      .replace(/```dataview[\s\S]*?```/g, (m) => m.replace('```dataview', '```'))
+      .replace(/^```dataviewjs[\s\S]*?```/gm, (m) => m.replace('```dataviewjs', '```js'));
+  };
+
   // Editor view
   if (openFile) {
     return (
       <div className="vault-browser">
         <div className="vault-editor-header">
-          <button className="vault-back" onClick={() => setOpenFile(null)}>
+          <button className="vault-back" onClick={() => { setOpenFile(null); setPreviewMode(false); }}>
             ← Back
           </button>
           <span className="vault-filepath">{openFile.path}</span>
           <div className="vault-editor-actions">
+            <button
+              className={`vault-toggle-btn ${previewMode ? 'active' : ''}`}
+              onClick={() => setPreviewMode(!previewMode)}
+            >
+              {previewMode ? 'Edit' : 'Preview'}
+            </button>
             {saveMsg && <span className={`vault-save-msg ${saveMsg === 'Saved' ? 'ok' : 'err'}`}>{saveMsg}</span>}
             <button className="vault-save-btn" onClick={saveFile} disabled={saving || !isDirty}>
               {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
-        <textarea
-          className="vault-editor"
-          value={edited}
-          onChange={e => setEdited(e.target.value)}
-          spellCheck={true}
-        />
+        {previewMode ? (
+          <div className="vault-preview">
+            <ReactMarkdown>{preprocessMarkdown(edited)}</ReactMarkdown>
+          </div>
+        ) : (
+          <textarea
+            className="vault-editor"
+            value={edited}
+            onChange={e => setEdited(e.target.value)}
+            spellCheck={true}
+          />
+        )}
       </div>
     );
   }

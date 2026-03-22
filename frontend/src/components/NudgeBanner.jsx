@@ -3,7 +3,7 @@ import { apiUrl, API_BASE } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import './NudgeBanner.css';
 
-export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
+export default function NudgeBanner({ onGoToStandup, onGoToTodos, onGoToJournal, onGoToPeople }) {
   const transform = useMemo(() => (json) => ({
     nudges: json.nudges || [],
     snoozeState: json.snoozeState || {}
@@ -100,6 +100,7 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
                   : nudge.type === 'eod' ? 'END OF DAY'
                   : nudge.type === '121' ? '1-2-1 DUE'
                   : nudge.type === 'plan_milestone' ? 'PLAN'
+                  : nudge.type === 'journal' ? 'JOURNAL'
                   : nudge.type.toUpperCase()}
               </span>
               <span className="nudge-message">{nudge.message}</span>
@@ -126,13 +127,16 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos }) {
                 onClick={() => {
                   if (nudge.type === 'standup' || nudge.type === 'eod') onGoToStandup();
                   else if (nudge.type === 'todo') onGoToTodos();
-                  else if (nudge.type === '121') onGoToStandup(); // people panel TBD
+                  else if (nudge.type === 'journal') { if (onGoToJournal) onGoToJournal(); }
+                  else if (nudge.type === '121') { if (onGoToPeople) onGoToPeople(); }
                   // plan_milestone has no specific nav action — just snooze or dismiss
                 }}
               >
                 {nudge.type === 'standup' ? 'Open Standup'
                   : nudge.type === 'todo' ? 'Open Todos'
                   : nudge.type === 'eod' ? 'Do EOD'
+                  : nudge.type === 'journal' ? 'Open Journal'
+                  : nudge.type === '121' ? 'Open People'
                   : 'View'}
               </button>
             </div>

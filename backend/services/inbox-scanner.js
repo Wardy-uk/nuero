@@ -2,8 +2,6 @@ const Anthropic = require('@anthropic-ai/sdk');
 const microsoft = require('./microsoft');
 const db = require('../db/database');
 
-// In-memory store for flagged items — survives between scans, resets on restart
-let flaggedItems = [];
 let lastScanTime = null;
 let scanInProgress = false;
 
@@ -50,7 +48,6 @@ async function scanInbox() {
     const emails = await microsoft.fetchRecentEmails(12, 40);
     if (!emails || emails.length === 0) {
       console.log('[InboxScanner] No recent emails');
-      flaggedItems = [];
       lastScanTime = new Date().toISOString();
       return;
     }
@@ -62,7 +59,6 @@ async function scanInbox() {
 
     if (candidates.length === 0) {
       console.log('[InboxScanner] No unread/flagged/important emails');
-      flaggedItems = [];
       lastScanTime = new Date().toISOString();
       return;
     }
@@ -96,25 +92,29 @@ async function scanInbox() {
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
 
-      // Enrich with email metadata
-      flaggedItems = parsed.map(item => {
+      // Enrich with email metadata and persist to DB
+      for (const item of parsed) {
         const email = candidates.find(e => e.id === item.emailId);
-        return {
+        const enriched = {
           ...item,
           received: email?.received || null,
           isRead: email?.isRead || false,
           fromEmail: email?.fromEmail || '',
           hasAttachments: email?.hasAttachments || false
         };
-      });
+        db.upsertInboxItem(enriched);
+      }
 
-      console.log(`[InboxScanner] Flagged ${flaggedItems.length} items from ${candidates.length} candidates`);
+      console.log(`[InboxScanner] Flagged ${parsed.length} items from ${candidates.length} candidates`);
     } catch (parseErr) {
       console.error('[InboxScanner] Failed to parse Claude response:', parseErr.message);
       console.error('[InboxScanner] Raw response:', text.substring(0, 200));
     }
 
     lastScanTime = new Date().toISOString();
+
+    // Cleanup dismissed items older than 7 days
+    db.cleanupOldDismissed(7);
   } catch (err) {
     console.error('[InboxScanner] Scan error:', err.message);
   } finally {
@@ -123,11 +123,29 @@ async function scanInbox() {
 }
 
 function getFlaggedItems() {
+  const items = db.getActiveInboxItems().map(row => ({
+    emailId: row.email_id,
+    subject: row.subject,
+    from: row.from_name,
+    fromEmail: row.from_email,
+    urgency: row.urgency,
+    category: row.category,
+    summary: row.summary,
+    reason: row.reason,
+    received: row.received,
+    isRead: !!row.is_read,
+    hasAttachments: !!row.has_attachments
+  }));
   return {
-    items: flaggedItems,
+    items,
     lastScan: lastScanTime,
     scanning: scanInProgress
   };
+}
+
+function dismissItem(emailId) {
+  db.dismissInboxItem(emailId);
+  console.log(`[InboxScanner] Dismissed item: ${emailId}`);
 }
 
 function start() {
@@ -141,5 +159,6 @@ function start() {
 module.exports = {
   scanInbox,
   getFlaggedItems,
+  dismissItem,
   start
 };

@@ -68,12 +68,12 @@ function upsertTicket(ticket) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `, [
     ticket.ticket_key,
-    ticket.summary,
-    ticket.status,
-    ticket.priority,
-    ticket.assignee,
-    ticket.sla_remaining_minutes,
-    ticket.sla_name,
+    ticket.summary || null,
+    ticket.status || null,
+    ticket.priority || null,
+    ticket.assignee || null,
+    ticket.sla_remaining_minutes != null ? ticket.sla_remaining_minutes : null,
+    ticket.sla_name || null,
     ticket.at_risk ? 1 : 0,
     ticket.raw_json || null
   ]);
@@ -421,11 +421,118 @@ function getTodayActivity() {
   return getActivityForDate(today);
 }
 
+function getRecentConversations(limit = 5) {
+  const stmt = getDb().prepare(
+    `SELECT conversation_id, MIN(created_at) as started_at, MAX(created_at) as last_at,
+            COUNT(*) as message_count
+     FROM conversations
+     GROUP BY conversation_id
+     ORDER BY MAX(created_at) DESC
+     LIMIT ?`
+  );
+  stmt.bind([limit]);
+  const rows = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    // Get first user message as preview
+    const previewStmt = getDb().prepare(
+      `SELECT content FROM conversations WHERE conversation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`
+    );
+    previewStmt.bind([row.conversation_id]);
+    row.preview = previewStmt.step() ? previewStmt.getAsObject().content.substring(0, 80) : '';
+    previewStmt.free();
+    rows.push(row);
+  }
+  stmt.free();
+  return rows;
+}
+
+// Inbox item helpers
+function upsertInboxItem(item) {
+  getDb().run(`
+    INSERT OR REPLACE INTO inbox_items
+      (email_id, subject, from_name, from_email, urgency, category, summary, reason, received, is_read, has_attachments, dismissed, dismissed_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT dismissed FROM inbox_items WHERE email_id = ?), 0), (SELECT dismissed_at FROM inbox_items WHERE email_id = ?), COALESCE((SELECT created_at FROM inbox_items WHERE email_id = ?), CURRENT_TIMESTAMP))
+  `, [
+    item.emailId, item.subject, item.from, item.fromEmail,
+    item.urgency, item.category, item.summary, item.reason,
+    item.received, item.isRead ? 1 : 0, item.hasAttachments ? 1 : 0,
+    item.emailId, item.emailId, item.emailId
+  ]);
+  save();
+}
+
+function getActiveInboxItems() {
+  const stmt = getDb().prepare(
+    'SELECT * FROM inbox_items WHERE dismissed = 0 ORDER BY CASE urgency WHEN \'high\' THEN 0 WHEN \'medium\' THEN 1 WHEN \'low\' THEN 2 END, created_at DESC'
+  );
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function dismissInboxItem(emailId) {
+  getDb().run(
+    "UPDATE inbox_items SET dismissed = 1, dismissed_at = datetime('now') WHERE email_id = ?",
+    [emailId]
+  );
+  save();
+}
+
+function cleanupOldDismissed(daysOld = 7) {
+  getDb().run(
+    `DELETE FROM inbox_items WHERE dismissed = 1 AND dismissed_at < datetime('now', '-${daysOld} days')`
+  );
+  save();
+}
+
+function clearStaleInboxItems() {
+  // Remove non-dismissed items older than 24 hours (they'll be re-scanned if still relevant)
+  getDb().run(
+    "DELETE FROM inbox_items WHERE dismissed = 0 AND created_at < datetime('now', '-1 day')"
+  );
+  save();
+}
+
+// Embedding helpers
+function saveEmbedding(relativePath, contentHash, embedding, chunkText, fileModified) {
+  getDb().run(`
+    INSERT OR REPLACE INTO vault_embeddings
+      (relative_path, content_hash, embedding, chunk_text, file_modified, embedded_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+  `, [relativePath, contentHash, JSON.stringify(embedding), chunkText, fileModified]);
+  save();
+}
+
+function getEmbedding(relativePath) {
+  const stmt = getDb().prepare('SELECT * FROM vault_embeddings WHERE relative_path = ?');
+  stmt.bind([relativePath]);
+  let result = null;
+  if (stmt.step()) result = stmt.getAsObject();
+  stmt.free();
+  return result;
+}
+
+function getAllEmbeddings() {
+  const stmt = getDb().prepare('SELECT * FROM vault_embeddings');
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function deleteEmbedding(relativePath) {
+  getDb().run('DELETE FROM vault_embeddings WHERE relative_path = ?', [relativePath]);
+  save();
+}
+
 module.exports = {
   init,
   getDb,
   saveMessage,
   getConversationHistory,
+  getRecentConversations,
   upsertTicket,
   clearStaleTickets,
   getAllTickets,
@@ -462,5 +569,14 @@ module.exports = {
   getActivityForRange,
   saveDailySummary,
   getDailySummaries,
-  getTodayActivity
+  getTodayActivity,
+  upsertInboxItem,
+  getActiveInboxItems,
+  dismissInboxItem,
+  cleanupOldDismissed,
+  clearStaleInboxItems,
+  saveEmbedding,
+  getEmbedding,
+  getAllEmbeddings,
+  deleteEmbedding
 };

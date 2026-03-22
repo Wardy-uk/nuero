@@ -237,8 +237,9 @@ function isStandupDone() {
     for (const line of lines) {
       if (line.startsWith('## Focus Today')) { inFocus = true; continue; }
       if (line.startsWith('## ') && inFocus) break;
-      // If there's at least one checkbox item, the ritual is done
-      if (inFocus && line.match(/^\s*-\s+\[.\]/)) return true;
+      // Require actual text after the checkbox — not just an empty item
+      const match = line.match(/^\s*-\s+\[.\]\s+(.+)$/);
+      if (inFocus && match && match[1].trim().length > 2) return true;
     }
   }
 
@@ -397,7 +398,7 @@ function checkPlanMilestoneNudge() {
 }
 
 function getSnoozeState() {
-  const types = ['standup', 'todo', 'eod', '121', 'plan_milestone'];
+  const types = ['standup', 'todo', 'eod', '121', 'plan_milestone', 'journal'];
   const state = {};
   for (const type of types) {
     const val = db.getState(`snooze_${type}`);
@@ -452,6 +453,41 @@ function markEodDone() {
   try { require('./activity').trackEodDone(); } catch {}
 }
 
+// Journal nudge — fires at configured time (default 21:00)
+function triggerJournalNudge() {
+  // Skip if journal already done today
+  const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+  const path = require('path');
+  const fs = require('fs');
+  const todayStr = todayKey();
+  const journalPath = path.join(vaultPath, 'Reflections', `${todayStr}-journal.md`);
+  if (fs.existsSync(journalPath)) return;
+
+  const dateKey = todayKey();
+  const stateKey = `journal_nudge_${dateKey}`;
+  if (db.getState(stateKey)) return;
+
+  db.setState(stateKey, new Date().toISOString());
+
+  const hour = new Date().getHours();
+  const msgs = [
+    "Evening. Your journal is waiting. Three questions, five minutes, then you're done.",
+    "Time to close the loop on today. Journal tab — it takes less time than you think.",
+    "Before the day fully escapes: what happened, what mattered, how are you. Journal tab.",
+    "End of day reflection time. The good stuff fades fast — capture it while it's fresh.",
+    "Five minutes of reflection now saves hours of wondering later. Journal tab.",
+  ];
+  const msg = msgs[Math.floor(Math.random() * msgs.length)];
+
+  console.log('[Nudge] Journal nudge triggered');
+  broadcast({ type: 'nudge', nudge_type: 'journal', message: msg, nag_count: 0 });
+  webpush.sendToAll('NEURO — Evening Reflection', msg, { type: 'journal', url: '/journal' }).catch(() => {});
+}
+
+function markJournalDone() {
+  broadcast({ type: 'nudge_cleared', nudge_type: 'journal' });
+}
+
 module.exports = {
   addClient,
   broadcast,
@@ -465,5 +501,8 @@ module.exports = {
   getSnoozeState,
   check121Nudges,
   triggerEodNudge,
-  markEodDone
+  markEodDone,
+  triggerJournalNudge,
+  markJournalDone,
+  isStandupDone
 };

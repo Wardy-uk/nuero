@@ -47,4 +47,14 @@ router.post('/inbox/scan', async (req, res) => {
   res.json({ success: true, message: 'Scan started' });
 });
 
+// POST /api/microsoft/inbox/dismiss — dismiss a single inbox item
+router.post('/inbox/dismiss', (req, res) => {
+  const { emailId } = req.body;
+  if (!emailId) return res.status(400).json({ error: 'emailId required' });
+  const scanner = require('../services/inbox-scanner');
+  scanner.dismissItem(emailId);
+  try { require('../services/activity').trackNudgeDismiss('inbox'); } catch {}
+  res.json({ success: true });
+});
+
 module.exports = router;
