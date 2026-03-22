@@ -17,6 +17,7 @@ import ImportsPanel from './components/ImportsPanel';
 import CapturePanel from './components/CapturePanel';
 import RecentPanel from './components/RecentPanel';
 import VaultBrowser from './components/VaultBrowser';
+import StravaPanel from './components/StravaPanel';
 import InsightsPanel from './components/InsightsPanel';
 import JournalPanel from './components/JournalPanel';
 import InstallBanner from './components/InstallBanner';
@@ -114,6 +115,7 @@ export default function App() {
       case 'capture': return <CapturePanel />;
       case 'recent': return <RecentPanel onOpenFile={(path) => { setVaultOpenPath(path); setActiveView('vault'); }} />;
       case 'imports': return <ImportsPanel />;
+      case 'strava': return <StravaPanel />;
       case 'inbox': return <InboxPanel />;
       case 'vault': return <VaultBrowser initialOpenPath={vaultOpenPath} onClearInitialPath={() => setVaultOpenPath(null)} />;
       case 'qa': return <QATab />;

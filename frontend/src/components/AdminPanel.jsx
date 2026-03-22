@@ -3,6 +3,82 @@ import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import './AdminPanel.css';
 
+function StravaActivities({ onDisconnect }) {
+  const [activities, setActivities] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const pull = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(apiUrl('/api/strava/activities/today'));
+      const data = await res.json();
+      setActivities(data.activities || []);
+    } catch {
+      setActivities([]);
+    }
+    setLoading(false);
+  };
+
+  const formatDuration = (secs) => {
+    if (!secs) return '';
+    const m = Math.round(secs / 60);
+    return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+  };
+
+  return (
+    <>
+      <div className="admin-ms-connected">
+        <span className="admin-ms-connected-dot" />
+        Connected
+      </div>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+        <button
+          className="admin-ms-connect-btn"
+          style={{ background: 'rgba(252,76,2,0.1)', borderColor: '#fc4c02', color: '#fc4c02' }}
+          onClick={pull}
+          disabled={loading}
+        >
+          {loading ? 'Pulling...' : 'Pull Today\'s Activities'}
+        </button>
+        <button
+          className="admin-ms-connect-btn"
+          style={{ background: 'rgba(252,76,2,0.05)', borderColor: 'var(--border)', color: 'var(--text-muted)', fontSize: '11px' }}
+          onClick={onDisconnect}
+        >
+          Disconnect
+        </button>
+      </div>
+      {activities !== null && (
+        <div style={{ marginTop: '12px' }}>
+          {activities.length === 0 ? (
+            <div className="admin-card-detail">No activities recorded today.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {activities.map((a, i) => (
+                <div key={i} className="admin-card" style={{ borderLeft: '3px solid #fc4c02' }}>
+                  <div className="admin-card-header">
+                    <span className="admin-card-name">{a.name}</span>
+                    <span className="admin-status-badge connected" style={{ background: 'rgba(252,76,2,0.1)', color: '#fc4c02' }}>
+                      {a.type}
+                    </span>
+                  </div>
+                  <div className="admin-card-detail">
+                    {a.distance ? `${(a.distance / 1000).toFixed(1)}km` : ''}
+                    {a.moving_time ? ` · ${formatDuration(a.moving_time)}` : ''}
+                    {a.total_elevation_gain > 10 ? ` · ${Math.round(a.total_elevation_gain)}m elev` : ''}
+                    {a.average_heartrate ? ` · avg HR ${Math.round(a.average_heartrate)}bpm` : ''}
+                    {a.suffer_score ? ` · suffer ${a.suffer_score}` : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 function VaultSyncCard({ vaultSync }) {
   const [triggering, setTriggering] = useState(false);
   const [result, setResult] = useState(null);
@@ -311,22 +387,7 @@ export default function AdminPanel({ pushState = {} }) {
         <div className="admin-section-title">Strava</div>
         <div className="admin-ms-section">
           {status.strava?.authenticated ? (
-            <>
-              <div className="admin-ms-connected">
-                <span className="admin-ms-connected-dot" />
-                Connected — activity data available for journal prompts
-              </div>
-              <button
-                className="admin-ms-connect-btn"
-                style={{ marginTop: '8px', background: 'rgba(252,76,2,0.1)', borderColor: '#fc4c02', color: '#fc4c02' }}
-                onClick={async () => {
-                  await fetch(apiUrl('/api/strava/disconnect'), { method: 'POST' });
-                  fetchStatus();
-                }}
-              >
-                Disconnect Strava
-              </button>
-            </>
+            <StravaActivities onDisconnect={() => { fetch(apiUrl('/api/strava/disconnect'), { method: 'POST' }).then(fetchStatus); }} />
           ) : status.strava?.configured ? (
             <>
               <div className="admin-ms-desc">

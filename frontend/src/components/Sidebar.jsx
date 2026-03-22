@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { id: 'calendar', label: 'Calendar', icon: '>' },
   { id: 'vault', label: 'Vault', icon: '>' },
   { id: 'imports', label: 'Imports', icon: '>' },
+  { id: 'strava', label: 'Strava', icon: '>' },
   { id: 'inbox', label: 'Inbox Triage', icon: '>' },
   { id: 'plan', label: '90-Day Plan', icon: '>' },
   { id: 'qa', label: 'QA Dashboard', icon: '>' },
