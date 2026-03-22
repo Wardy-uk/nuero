@@ -33,6 +33,18 @@ function decodePolyline(encoded) {
   return points;
 }
 
+const OS_API_KEY = import.meta.env.VITE_OS_API_KEY || '';
+const OS_TILE_URL = OS_API_KEY
+  ? `https://api.os.uk/maps/raster/v1/zxy/Outdoor_3857/{z}/{x}/{y}.png?key=${OS_API_KEY}`
+  : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+// Web Mercator helpers
+function lat2y(lat) { return Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI / 180) / 2)); }
+function lngToTileX(lng, z) { return Math.floor((lng + 180) / 360 * (1 << z)); }
+function latToTileY(lat, z) { return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * (1 << z)); }
+function tileXToLng(x, z) { return x / (1 << z) * 360 - 180; }
+function tileYToLat(y, z) { const n = Math.PI - 2 * Math.PI * y / (1 << z); return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); }
+
 function RouteMap({ polyline }) {
   const canvasRef = React.useRef(null);
 
@@ -59,49 +71,125 @@ function RouteMap({ polyline }) {
       if (lng > maxLng) maxLng = lng;
     }
 
-    const padding = 12;
-    const drawW = w - padding * 2;
-    const drawH = h - padding * 2;
-    const latRange = maxLat - minLat || 0.001;
-    const lngRange = maxLng - minLng || 0.001;
-    // Maintain aspect ratio using Mercator-ish correction
-    const latMid = (minLat + maxLat) / 2;
-    const lngScale = Math.cos(latMid * Math.PI / 180);
-    const scaleX = drawW / (lngRange * lngScale);
-    const scaleY = drawH / latRange;
-    const scale = Math.min(scaleX, scaleY);
+    // Determine zoom level that fits the bounding box with padding
+    const padding = 20;
+    let zoom = 18;
+    for (let z = 18; z >= 1; z--) {
+      const x1 = lngToTileX(minLng, z);
+      const x2 = lngToTileX(maxLng, z);
+      const y1 = latToTileY(maxLat, z);
+      const y2 = latToTileY(minLat, z);
+      const tilesX = x2 - x1 + 1;
+      const tilesY = y2 - y1 + 1;
+      if (tilesX * 256 <= (w + 256) && tilesY * 256 <= (h + 256)) {
+        zoom = z;
+        break;
+      }
+    }
 
-    const toX = (lng) => padding + ((lng - minLng) * lngScale * scale) + (drawW - lngRange * lngScale * scale) / 2;
-    const toY = (lat) => padding + drawH - ((lat - minLat) * scale) - (drawH - latRange * scale) / 2;
+    // Centre of the route in Mercator pixel space
+    const n = 1 << zoom;
+    const centLng = (minLng + maxLng) / 2;
+    const centLat = (minLat + maxLat) / 2;
+    const centPxX = ((centLng + 180) / 360) * n * 256;
+    const centPxY = ((1 - Math.log(Math.tan(centLat * Math.PI / 180) + 1 / Math.cos(centLat * Math.PI / 180)) / Math.PI) / 2) * n * 256;
 
-    // Background
-    ctx.fillStyle = 'rgba(252, 76, 2, 0.05)';
+    // Pixel origin (top-left of canvas in world pixel coords)
+    const originX = centPxX - w / 2;
+    const originY = centPxY - h / 2;
+
+    // Determine which tiles we need
+    const tileMinX = Math.floor(originX / 256);
+    const tileMaxX = Math.floor((originX + w) / 256);
+    const tileMinY = Math.floor(originY / 256);
+    const tileMaxY = Math.floor((originY + h) / 256);
+
+    // Convert lat/lng to canvas pixel coordinates
+    const toCanvasX = (lng) => {
+      const px = ((lng + 180) / 360) * n * 256;
+      return px - originX;
+    };
+    const toCanvasY = (lat) => {
+      const py = ((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2) * n * 256;
+      return py - originY;
+    };
+
+    // Grey background while tiles load
+    ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, w, h);
 
-    // Route line
-    ctx.beginPath();
-    ctx.moveTo(toX(points[0][1]), toY(points[0][0]));
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(toX(points[i][1]), toY(points[i][0]));
+    // Draw route immediately (before tiles load)
+    function drawRoute() {
+      ctx.beginPath();
+      ctx.moveTo(toCanvasX(points[0][1]), toCanvasY(points[0][0]));
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(toCanvasX(points[i][1]), toCanvasY(points[i][0]));
+      }
+      ctx.strokeStyle = '#fc4c02';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Start dot (green)
+      ctx.beginPath();
+      ctx.arc(toCanvasX(points[0][1]), toCanvasY(points[0][0]), 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#22c55e';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // End dot (red)
+      const last = points[points.length - 1];
+      ctx.beginPath();
+      ctx.arc(toCanvasX(last[1]), toCanvasY(last[0]), 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
-    ctx.strokeStyle = '#fc4c02';
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.stroke();
 
-    // Start dot (green)
-    ctx.beginPath();
-    ctx.arc(toX(points[0][1]), toY(points[0][0]), 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#22c55e';
-    ctx.fill();
+    drawRoute();
 
-    // End dot (red)
-    const last = points[points.length - 1];
-    ctx.beginPath();
-    ctx.arc(toX(last[1]), toY(last[0]), 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#ef4444';
-    ctx.fill();
+    // Load tiles and redraw with map background
+    let loadedCount = 0;
+    const totalTiles = (tileMaxX - tileMinX + 1) * (tileMaxY - tileMinY + 1);
+    const tiles = [];
+
+    for (let tx = tileMinX; tx <= tileMaxX; tx++) {
+      for (let ty = tileMinY; ty <= tileMaxY; ty++) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const drawX = tx * 256 - originX;
+        const drawY = ty * 256 - originY;
+        tiles.push({ img, drawX, drawY });
+
+        img.onload = () => {
+          loadedCount++;
+          // Redraw everything once all tiles are loaded
+          if (loadedCount === totalTiles) {
+            ctx.clearRect(0, 0, w, h);
+            for (const t of tiles) {
+              try { ctx.drawImage(t.img, t.drawX, t.drawY, 256, 256); } catch {}
+            }
+            drawRoute();
+          }
+        };
+        img.onerror = () => {
+          loadedCount++;
+          if (loadedCount === totalTiles) {
+            ctx.clearRect(0, 0, w, h);
+            for (const t of tiles) {
+              try { ctx.drawImage(t.img, t.drawX, t.drawY, 256, 256); } catch {}
+            }
+            drawRoute();
+          }
+        };
+        img.src = OS_TILE_URL.replace('{z}', zoom).replace('{x}', tx).replace('{y}', ty);
+      }
+    }
   }, [polyline]);
 
   if (!polyline) return null;

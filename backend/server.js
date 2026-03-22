@@ -34,6 +34,7 @@ const captureRoutes = require('./routes/capture');
 const journalRoutes = require('./routes/journal');
 const stravaRoutes = require('./routes/strava');
 const healthRoutes = require('./routes/health');
+const locationRoutes = require('./routes/location');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -61,6 +62,7 @@ app.use('/api/capture', captureRoutes);
 app.use('/api/journal', journalRoutes);
 app.use('/api/strava', stravaRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api/location', locationRoutes);
 app.use('/api/activity', require('./routes/activity'));
 
 // Health / status endpoint
@@ -117,6 +119,10 @@ app.get('/api/status', async (req, res) => {
           return raw ? JSON.parse(raw).date : null;
         } catch { return null; }
       })()
+    },
+    location: {
+      configured: require('./services/location').isConfigured(),
+      recorderUrl: process.env.OWNTRACKS_RECORDER_URL || null
     },
     vaultSync: (() => {
       try { return require('./services/vault-sync').getStatus(); }

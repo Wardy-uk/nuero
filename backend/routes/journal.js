@@ -75,6 +75,22 @@ router.get('/prompts', async (req, res) => {
       console.warn('[Journal] Health context failed:', e.message);
     }
 
+    // Add OwnTracks location context
+    try {
+      const locationService = require('../services/location');
+      if (locationService.isConfigured()) {
+        const locationSummary = await locationService.getLocationSummaryForJournal();
+        if (locationSummary) {
+          contextSummary = contextSummary === 'No daily note found for today.'
+            ? locationSummary
+            : contextSummary + '\n\n' + locationSummary;
+          console.log('[Journal] Location context added:', locationSummary);
+        }
+      }
+    } catch (e) {
+      console.warn('[Journal] Location context failed:', e.message);
+    }
+
     // Generate prompts with Claude
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await client.messages.create({
@@ -93,6 +109,9 @@ Rules:
 - Low HRV or poor sleep = ask about energy and recovery specifically
 - Good metrics = affirm and ask what contributed to that
 - If no health data at all, ask about physical energy/wellbeing in general terms
+- If location data is present showing somewhere other than usual, ask about it — "you spent time at X, what was that about?"
+- If location shows Nick was out and about, factor that into energy/recovery questions
+- Do not reference specific coordinates — only named places
 - Vary the focus: one about work/achievement, one about feelings/energy, one about learning/tomorrow
 - Tone: warm, direct, non-judgemental — like a trusted friend asking
 - Do not use bullet points or numbers — just the questions, one per line

@@ -251,6 +251,13 @@ export default function AdminPanel({ pushState = {} }) {
         : status.health?.latestDate
         ? `Last data: ${status.health.latestDate} — Shortcut may not have run today`
         : 'No data received — set up the iOS Shortcut (see below)'
+    },
+    {
+      name: 'OwnTracks (Location)',
+      status: status.location?.configured ? 'connected' : 'unconfigured',
+      detail: status.location?.configured
+        ? `Recorder at ${status.location.recorderUrl}`
+        : 'OWNTRACKS_RECORDER_URL not set — see setup guide'
     }
   ];
 

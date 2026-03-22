@@ -350,6 +350,20 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     diagnostics.push('health: error');
   }
 
+  // OwnTracks location context
+  try {
+    const locationService = require('./location');
+    if (locationService.isConfigured()) {
+      const locationBlock = await locationService.getLocationContextBlock();
+      if (locationBlock) {
+        parts.push(locationBlock);
+        diagnostics.push('location: yes');
+      }
+    }
+  } catch (e) {
+    diagnostics.push('location: error');
+  }
+
   // Vault search results
   if (vaultResults && vaultResults.length > 0) {
     const vaultBlock = `## Relevant Vault Notes\n` +
