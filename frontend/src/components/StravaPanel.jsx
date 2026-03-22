@@ -17,6 +17,97 @@ function formatPace(distMeters, timeSecs) {
   return `${mins}:${secs.toString().padStart(2, '0')}/km`;
 }
 
+// Decode Google encoded polyline into [lat, lng] pairs
+function decodePolyline(encoded) {
+  const points = [];
+  let i = 0, lat = 0, lng = 0;
+  while (i < encoded.length) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+    points.push([lat / 1e5, lng / 1e5]);
+  }
+  return points;
+}
+
+function RouteMap({ polyline }) {
+  const canvasRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!polyline || !canvasRef.current) return;
+    const points = decodePolyline(polyline);
+    if (points.length < 2) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+
+    // Bounding box
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const [lat, lng] of points) {
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    }
+
+    const padding = 12;
+    const drawW = w - padding * 2;
+    const drawH = h - padding * 2;
+    const latRange = maxLat - minLat || 0.001;
+    const lngRange = maxLng - minLng || 0.001;
+    // Maintain aspect ratio using Mercator-ish correction
+    const latMid = (minLat + maxLat) / 2;
+    const lngScale = Math.cos(latMid * Math.PI / 180);
+    const scaleX = drawW / (lngRange * lngScale);
+    const scaleY = drawH / latRange;
+    const scale = Math.min(scaleX, scaleY);
+
+    const toX = (lng) => padding + ((lng - minLng) * lngScale * scale) + (drawW - lngRange * lngScale * scale) / 2;
+    const toY = (lat) => padding + drawH - ((lat - minLat) * scale) - (drawH - latRange * scale) / 2;
+
+    // Background
+    ctx.fillStyle = 'rgba(252, 76, 2, 0.05)';
+    ctx.fillRect(0, 0, w, h);
+
+    // Route line
+    ctx.beginPath();
+    ctx.moveTo(toX(points[0][1]), toY(points[0][0]));
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(toX(points[i][1]), toY(points[i][0]));
+    }
+    ctx.strokeStyle = '#fc4c02';
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Start dot (green)
+    ctx.beginPath();
+    ctx.arc(toX(points[0][1]), toY(points[0][0]), 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#22c55e';
+    ctx.fill();
+
+    // End dot (red)
+    const last = points[points.length - 1];
+    ctx.beginPath();
+    ctx.arc(toX(last[1]), toY(last[0]), 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#ef4444';
+    ctx.fill();
+  }, [polyline]);
+
+  if (!polyline) return null;
+  return <canvas ref={canvasRef} className="strava-map" />;
+}
+
 function formatDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -118,6 +209,7 @@ export default function StravaPanel() {
                   {a.suffer_score && <div className="strava-stat"><span className="strava-stat-val">{a.suffer_score}</span><span className="strava-stat-lbl">suffer</span></div>}
                   {a.kilojoules && <div className="strava-stat"><span className="strava-stat-val">{Math.round(a.kilojoules)}</span><span className="strava-stat-lbl">kJ</span></div>}
                 </div>
+                <RouteMap polyline={a.map?.summary_polyline} />
               </div>
             );
           })}
