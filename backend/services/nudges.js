@@ -39,15 +39,15 @@ function todayKey() {
 
 // Nudge messages escalate with nag count
 const STANDUP_MESSAGES = [
-  // Tier 1 — Breezy opener
-  "Good morning. Standup time. Don't make this weird.",
+  // Tier 1 — Breezy opener (time-neutral)
+  "Standup time. Don't make this weird.",
   "Right then. Standup. You know what to do.",
-  "Morning. The queue isn't going to narrate itself. Standup tab. Go.",
+  "The queue isn't going to narrate itself. Standup tab. Go.",
   "It's that time. Three bullet points. Yesterday, today, blockers. Off you go.",
   "Standup o'clock. The ritual awaits. Don't overthink it.",
-  "Hello. It's 9am. You have a standup to write. This is not a drill.",
-  "Rise and reflect. Standup time. It takes less time than this notification.",
-  "Good morning! Just kidding, do your standup.",
+  "You have a standup to write. This is not a drill.",
+  "Standup time. It takes less time than reading this notification.",
+  "The standup awaits. Three questions. You've done this before.",
   "The day has begun. The standup has not. One of these is a problem.",
   "Standup. It's literally three questions. You answer them every day. Today is a day.",
   // Tier 2 — Mild exasperation
@@ -69,7 +69,7 @@ const STANDUP_MESSAGES = [
   "I want you to know I have sent you multiple reminders and I am starting to take this personally.",
   "The standup takes 3 minutes. You have now spent longer avoiding it than doing it would take.",
   "I'm not angry. I'm just... disappointed. Actually no, I'm a bit angry. Do the standup.",
-  "Fun fact: the time you've spent not doing the standup is now longer than your entire morning ritual.",
+  "Fun fact: the time you've spent not doing the standup is now longer than the standup itself. By a lot.",
   "Checking in on the standup. No reason. Just every 15 minutes. Forever. Until it's done.",
   "Your 90-day plan literally starts with visibility. The standup IS the visibility. The irony is not lost on me.",
   "At what point does this become impressive? Because I think we might be there.",
@@ -105,7 +105,7 @@ const STANDUP_MESSAGES = [
   "You know this pattern. I know this pattern. The pattern knows itself. Break it. Standup.",
   "Fine. Let's try this. What IS the actual blocker? Talk to me. Or just do the standup. Either works.",
   // Tier 6 — Nuclear
-  "I have now been asking for the standup for longer than some people's entire morning shifts. Remarkable.",
+  "I have now been asking for the standup for longer than some people's entire shifts. Remarkable.",
   "The standup has achieved legendary status. Songs will be written about the day it almost happened.",
   "At this point I'm not sure if you've forgotten or if this is a philosophical statement. Either way: standup.",
   "Somewhere a Jira ticket is ageing ungraciously. Its assignee is one of your 15 reports. Standup would have helped.",
@@ -197,21 +197,18 @@ function seededRandom(seed) {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
-// Get ISO week number for seeding — changes every Monday
-function getWeekNumber() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+// Get day-of-year for daily seeding
+function getDayOfYear() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  return Math.floor((now - start) / (1000 * 60 * 60 * 24));
 }
 
-// Shuffle message indices using week number as seed
-// Same order all week, different order every week — no repeats within a week
-function getWeeklyShuffledOrder(arrayLength, weekSeed) {
+// Shuffle message indices using seed — deterministic but different each day
+function getShuffledOrder(arrayLength, seed) {
   const indices = Array.from({ length: arrayLength }, (_, i) => i);
   for (let i = indices.length - 1; i > 0; i--) {
-    const j = Math.floor(seededRandom(weekSeed * 1000 + i) * (i + 1));
+    const j = Math.floor(seededRandom(seed * 1000 + i) * (i + 1));
     [indices[i], indices[j]] = [indices[j], indices[i]];
   }
   return indices;
@@ -219,8 +216,10 @@ function getWeeklyShuffledOrder(arrayLength, weekSeed) {
 
 function getNagMessage(type, nagCount) {
   const messages = type === 'standup' ? STANDUP_MESSAGES : TODO_MESSAGES;
-  const weekSeed = getWeekNumber() * 100 + (type === 'standup' ? 1 : 2);
-  const shuffledOrder = getWeeklyShuffledOrder(messages.length, weekSeed);
+  // Seed with day-of-year + type so each day gets a different shuffle,
+  // and standup vs todo pick different messages on the same day
+  const daySeed = getDayOfYear() * 100 + (type === 'standup' ? 1 : 2);
+  const shuffledOrder = getShuffledOrder(messages.length, daySeed);
   return messages[shuffledOrder[nagCount % messages.length]];
 }
 
@@ -275,7 +274,8 @@ function triggerStandupNudge() {
     return; // Already done today
   }
 
-  const msg = STANDUP_MESSAGES[0];
+  // Pick from tier 1 messages (first 10) — different each day
+  const msg = getNagMessage('standup', 0);
   db.createNudge('standup', msg, dateKey);
   console.log('[Nudge] Standup nudge created for', dateKey);
   broadcast({ type: 'nudge', nudge_type: 'standup', message: msg, nag_count: 0 });
@@ -289,7 +289,8 @@ function triggerTodoNudge() {
   if (existing) return;
   if (!hasPendingTodos()) return;
 
-  const msg = TODO_MESSAGES[0];
+  // Pick from tier 1 messages — different each day
+  const msg = getNagMessage('todo', 0);
   db.createNudge('todo', msg, dateKey);
   console.log('[Nudge] Todo nudge created for', dateKey);
   broadcast({ type: 'nudge', nudge_type: 'todo', message: msg, nag_count: 0 });
