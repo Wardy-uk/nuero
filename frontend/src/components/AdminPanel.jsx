@@ -3,6 +3,85 @@ import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import './AdminPanel.css';
 
+function VaultSyncCard({ vaultSync }) {
+  const [triggering, setTriggering] = useState(false);
+  const [result, setResult] = useState(null);
+
+  if (!vaultSync) return null;
+
+  const triggerSync = async () => {
+    setTriggering(true);
+    setResult(null);
+    try {
+      const res = await fetch(apiUrl('/api/activity/vault-sync'), { method: 'POST' });
+      const data = await res.json();
+      setResult(data);
+    } catch (e) {
+      setResult({ ok: false, error: e.message });
+    }
+    setTriggering(false);
+  };
+
+  const badge = vaultSync.enabled ? 'connected' : !vaultSync.vaultPath ? 'unconfigured' : 'disconnected';
+  const badgeLabel = vaultSync.enabled ? 'watching' : !vaultSync.vaultPath ? 'no vault path' : 'disabled';
+
+  const timeAgo = (iso) => {
+    if (!iso) return 'never';
+    const secs = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+    if (secs < 60) return `${secs}s ago`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+    return `${Math.floor(secs / 3600)}h ago`;
+  };
+
+  return (
+    <div className="admin-section">
+      <div className="admin-section-title">Vault Git Sync</div>
+      <div className="admin-ms-section">
+        <div className="admin-card" style={{ marginBottom: '12px' }}>
+          <div className="admin-card-header">
+            <span className="admin-card-name">File Watcher</span>
+            <span className={`admin-status-badge ${badge}`}>{badgeLabel}</span>
+          </div>
+          <div className="admin-card-detail">
+            {vaultSync.vaultPath || 'OBSIDIAN_VAULT_PATH not set'}
+          </div>
+        </div>
+        {vaultSync.enabled && (
+          <>
+            <div className="admin-card-detail" style={{ marginBottom: '4px' }}>
+              Last sync: <strong>{timeAgo(vaultSync.lastSync)}</strong> ·
+              Last commit: <strong>{timeAgo(vaultSync.lastCommit)}</strong> ·
+              Total syncs: <strong>{vaultSync.totalSyncs}</strong>
+            </div>
+            {vaultSync.lastError && (
+              <div className="admin-error" style={{ marginBottom: '8px' }}>
+                Last error ({timeAgo(vaultSync.lastError.time)}): {vaultSync.lastError.message}
+              </div>
+            )}
+            <button
+              className="admin-ms-connect-btn"
+              onClick={triggerSync}
+              disabled={triggering || vaultSync.syncing}
+            >
+              {triggering || vaultSync.syncing ? 'Syncing...' : 'Sync Now'}
+            </button>
+            {result && (
+              <div className="admin-card-detail" style={{ marginTop: '6px', color: result.ok ? 'var(--success, #22c55e)' : 'var(--danger, #ef4444)' }}>
+                {result.ok ? `Synced${result.changed ? ' — new commit pushed' : ' — no changes'}` : result.error || 'Failed'}
+              </div>
+            )}
+          </>
+        )}
+        {!vaultSync.enabled && vaultSync.vaultPath && (
+          <div className="admin-card-detail" style={{ color: 'var(--accent-warn, #f59e0b)' }}>
+            Vault path set but watcher not running — check that the path exists and is a git repo
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPanel({ pushState = {} }) {
   const { supported: pushSupported, subscribed: pushSubscribed, error: pushError, manualSubscribe } = pushState;
   const { data: status, refresh: fetchStatus } = useCachedFetch('/api/status');
@@ -311,6 +390,8 @@ export default function AdminPanel({ pushState = {} }) {
           )}
         </div>
       </div>
+
+      <VaultSyncCard vaultSync={status.vaultSync} />
 
       <div className="admin-section">
         <div className="admin-section-title">System</div>

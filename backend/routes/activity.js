@@ -79,4 +79,25 @@ router.post('/rebuild-embeddings', async (req, res) => {
   }
 });
 
+// GET /api/activity/vault-sync — vault sync status
+router.get('/vault-sync', (req, res) => {
+  try {
+    const vaultSync = require('../services/vault-sync');
+    res.json(vaultSync.getStatus());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/activity/vault-sync — trigger manual vault sync
+router.post('/vault-sync', async (req, res) => {
+  try {
+    const vaultSync = require('../services/vault-sync');
+    const result = await vaultSync.syncVault('manual');
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
