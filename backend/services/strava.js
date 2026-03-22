@@ -142,6 +142,27 @@ function disconnect() {
   console.log('[Strava] Disconnected');
 }
 
+// Seed tokens from env into DB if DB is empty (first-time setup)
+function seedTokensFromEnv() {
+  try {
+    const existing = db.getState('strava_access_token');
+    if (existing) return; // already have tokens in DB
+
+    const accessToken = process.env.STRAVA_ACCESS_TOKEN;
+    const refreshToken = process.env.STRAVA_REFRESH_TOKEN;
+    if (!accessToken || !refreshToken) return;
+
+    db.setState('strava_access_token', accessToken);
+    db.setState('strava_refresh_token', refreshToken);
+    // Set expiry to 1 hour from now — will trigger a refresh on first use
+    const expiry = Math.floor(Date.now() / 1000) + 3600;
+    db.setState('strava_token_expiry', String(expiry));
+    console.log('[Strava] Seeded tokens from environment variables');
+  } catch (e) {
+    console.error('[Strava] Failed to seed tokens:', e.message);
+  }
+}
+
 module.exports = {
   isConfigured,
   isAuthenticated,
@@ -150,5 +171,6 @@ module.exports = {
   getTodayActivities,
   getActivityContext,
   formatActivity,
-  disconnect
+  disconnect,
+  seedTokensFromEnv
 };

@@ -139,6 +139,9 @@ async function start() {
   await db.init();
   db.setState('imports_sweep_running', 'false');
 
+  // Seed Strava tokens from env if not already in DB
+  require('./services/strava').seedTokensFromEnv();
+
   const webpushService = require('./services/webpush');
   webpushService.init();
 
