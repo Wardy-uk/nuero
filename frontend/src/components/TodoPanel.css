@@ -238,6 +238,11 @@
   color: var(--warning);
 }
 
+.todo-source-plan {
+  background: rgba(239, 83, 80, 0.1);
+  color: #ef5350;
+}
+
 .todo-due {
   font-family: var(--font-mono);
   font-size: 10px;

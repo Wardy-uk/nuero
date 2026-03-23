@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const obsidian = require('../services/obsidian');
 
-// GET /api/todos — reads tasks from Obsidian vault
+// GET /api/todos — reads tasks from Obsidian vault + 90-day plan
 router.get('/', (req, res) => {
   try {
     const showDone = req.query.all === 'true';
@@ -23,6 +23,41 @@ router.get('/', (req, res) => {
       filePath: t.filePath || null,
       lineNumber: t.lineNumber != null ? t.lineNumber : null
     }));
+
+    // Inject 90-day plan tasks
+    try {
+      const plan = obsidian.parseNinetyDayPlan();
+      if (plan) {
+        const planTasks = plan.allTasks || [];
+        const OUTCOMES = {
+          1: 'Visibility & BI', 2: 'Tiered Model', 3: 'Quality & CX',
+          4: 'People & Culture', 5: 'Cross-functional', 6: 'Production'
+        };
+        let planId = mapped.length + 1;
+        for (const t of planTasks) {
+          if (t.isCheckpoint) continue;
+          const isDone = t.status === 'x';
+          if (!showDone && isDone) continue;
+          const isOverdue = t.day > 0 && t.day < plan.currentDay && !isDone;
+          const outcomeLabel = t.outcome ? OUTCOMES[t.outcome] || '' : '';
+          mapped.push({
+            id: planId++,
+            text: t.text,
+            priority: isOverdue ? 'high' : (t.day === plan.currentDay ? 'normal' : 'low'),
+            due_date: t.dateLabel || null,
+            source: `90-Day Plan${outcomeLabel ? ` (${outcomeLabel})` : ''}`,
+            done: isDone ? 1 : 0,
+            ms_id: null,
+            vault_task: true,
+            filePath: null,
+            lineNumber: null,
+            planDay: t.day
+          });
+        }
+      }
+    } catch (e) {
+      console.error('[Todos] 90-day plan parse error:', e.message);
+    }
 
     res.json({ todos: mapped });
   } catch (e) {

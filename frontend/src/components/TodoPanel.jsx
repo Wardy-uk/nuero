@@ -9,6 +9,7 @@ function sourceClass(source) {
   if (source.startsWith('MS Planner')) return 'todo-source-planner';
   if (source.startsWith('MS ToDo')) return 'todo-source-todo';
   if (source.startsWith('Daily')) return 'todo-source-daily';
+  if (source.startsWith('90-Day')) return 'todo-source-plan';
   return '';
 }
 
@@ -39,6 +40,7 @@ function groupBySource(todos) {
     else if (src.startsWith('MS Planner')) groupKey = 'MS Planner';
     else if (src.startsWith('MS ToDo')) groupKey = 'MS ToDo';
     else if (src.startsWith('Daily')) groupKey = 'Today\'s Daily Note';
+    else if (src.startsWith('90-Day')) groupKey = '90-Day Plan';
     else groupKey = src;
 
     if (!groups[groupKey]) groups[groupKey] = [];
@@ -104,6 +106,7 @@ export default function TodoPanel() {
   else if (filter === 'master') filtered = activeTodos.filter(t => t.source && t.source.startsWith('Master'));
   else if (filter === 'ms') filtered = activeTodos.filter(t => t.source && t.source.startsWith('MS'));
   else if (filter === 'daily') filtered = activeTodos.filter(t => t.source && t.source.startsWith('Daily'));
+  else if (filter === 'plan') filtered = activeTodos.filter(t => t.source && t.source.startsWith('90-Day'));
 
   // Source summary counts
   const sourceCounts = {};
@@ -113,6 +116,7 @@ export default function TodoPanel() {
     if (src.startsWith('Master')) key = 'Master Todo';
     else if (src.startsWith('MS')) key = 'MS Tasks';
     else if (src.startsWith('Daily')) key = 'Daily Note';
+    else if (src.startsWith('90-Day')) key = '90-Day Plan';
     else key = src;
     sourceCounts[key] = (sourceCounts[key] || 0) + 1;
   }
@@ -151,6 +155,7 @@ export default function TodoPanel() {
           { key: 'today', label: 'Due today' },
           { key: 'high', label: 'High priority' },
           { key: 'master', label: 'Master Todo' },
+          { key: 'plan', label: '90-Day Plan' },
           { key: 'ms', label: 'MS Tasks' },
           { key: 'daily', label: 'Daily Note' },
         ].map(f => (
