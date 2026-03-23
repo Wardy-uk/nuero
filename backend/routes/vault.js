@@ -248,6 +248,33 @@ router.get('/related', async (req, res) => {
   }
 });
 
+// DELETE /api/vault/delete — delete a vault note
+router.delete('/delete', (req, res) => {
+  const { path: relPath } = req.query;
+  if (!relPath) return res.status(400).json({ error: 'path required' });
+
+  const filePath = safePath(relPath);
+  if (!filePath) return res.status(400).json({ error: 'Invalid path' });
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+
+  if (fs.statSync(filePath).isDirectory()) {
+    return res.status(400).json({ error: 'Cannot delete directories' });
+  }
+
+  try {
+    fs.unlinkSync(filePath);
+
+    try { require('../db/database').deleteEmbedding(relPath); } catch {}
+    try { require('../db/database').deleteEntitiesForPath(relPath); } catch {}
+    try { require('../db/database').deleteLinksForPath(relPath); } catch {}
+
+    console.log(`[Vault] Deleted: ${relPath}`);
+    res.json({ ok: true, path: relPath });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/vault/backlinks?path=relative/path
 router.get('/backlinks', async (req, res) => {
   try {

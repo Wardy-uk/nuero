@@ -145,6 +145,47 @@ router.post('/dismiss', (req, res) => {
   }
 });
 
+// POST /api/imports/delete — permanently delete a file from Imports/
+router.post('/delete', (req, res) => {
+  const { filePath } = req.body;
+  if (!filePath) return res.status(400).json({ error: 'filePath required' });
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  if (!isWithinVault(filePath)) return res.status(403).json({ error: 'File must be within the vault' });
+
+  // Extra safety — only allow deleting from Imports/ directory
+  const importsDir = path.join(VAULT_PATH, 'Imports');
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(importsDir))) {
+    return res.status(403).json({ error: 'Can only delete files from Imports/' });
+  }
+
+  try {
+    fs.unlinkSync(filePath);
+
+    // Remove from DB
+    const relPath = path.relative(VAULT_PATH, filePath).replace(/\\/g, '/');
+    try { db.deleteImportClassification(relPath); } catch {}
+    try { db.deleteEmbedding(relPath); } catch {}
+    try { db.deleteEntitiesForPath(relPath); } catch {}
+    try { db.deleteLinksForPath(relPath); } catch {}
+
+    console.log(`[Imports] Deleted: ${path.basename(filePath)}`);
+
+    try {
+      require('../services/nudges').broadcast({
+        type: 'file_actioned',
+        filePath,
+        action: 'deleted'
+      });
+    } catch {}
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Imports] Delete error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/imports/transcript/:fileName — get transcript processing result
 router.get('/transcript/:fileName', (req, res) => {
   try {

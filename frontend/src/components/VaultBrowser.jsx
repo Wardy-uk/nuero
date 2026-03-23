@@ -199,6 +199,23 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
           <span className="vault-filepath">{openFile.path}</span>
           <div className="vault-editor-actions">
             <button
+              className="vault-delete-btn"
+              onClick={async () => {
+                if (!window.confirm(`Delete "${openFile.path}"? This cannot be undone.`)) return;
+                try {
+                  const res = await apiFetch(`/api/vault/delete?path=${encodeURIComponent(openFile.path)}`, { method: 'DELETE' });
+                  if ((await res.json()).ok) {
+                    setOpenFile(null);
+                    setPreviewMode(false);
+                    loadDir(currentDir);
+                  }
+                } catch {}
+              }}
+              title="Delete this note permanently"
+            >
+              Delete
+            </button>
+            <button
               className={`vault-toggle-btn ${previewMode ? 'active' : ''}`}
               onClick={() => setPreviewMode(!previewMode)}
             >

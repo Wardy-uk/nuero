@@ -424,3 +424,43 @@
     font-size: 12px;
   }
 }
+
+/* Delete button */
+.btn-delete {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-delete:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+}
+
+/* Escalate button */
+.btn-escalate {
+  background: transparent;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #f59e0b;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-escalate:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: #f59e0b;
+}
+.btn-escalate-done {
+  font-size: 11px;
+  color: #f59e0b;
+  font-family: var(--font-mono);
+  padding: 4px 10px;
+}
