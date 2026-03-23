@@ -28,7 +28,9 @@ export default function Dashboard({ queueData, onNavigate }) {
   const todoFetch = useCachedFetch('/api/todos', { interval: 30000 });
   const td = todayStr();
   const calFetch = useCachedFetch(`/api/obsidian/calendar?start=${td}&end=${td}`, { interval: 120000 });
-  const calEvents = (calFetch.data?.events || []).filter(e => e.showAs !== 'cancelled');
+  const calEvents = (calFetch.data?.events || [])
+    .filter(e => e.showAs !== 'cancelled')
+    .sort((a, b) => new Date(a.start) - new Date(b.start));
 
   const plan = planFetch.data;
   const todos = (todoFetch.data?.todos || []).filter(t => !t.done);
@@ -86,8 +88,9 @@ export default function Dashboard({ queueData, onNavigate }) {
           {calEvents.slice(0, 5).map((ev, i) => {
             const now = new Date();
             const isCurrent = !ev.isAllDay && now >= new Date(ev.start) && now < new Date(ev.end);
+            const isPast = !ev.isAllDay && now > new Date(ev.end);
             return (
-              <div key={i} className={`dash-cal-event ${isCurrent ? 'cal-now' : ''}`}>
+              <div key={i} className={`dash-cal-event ${isCurrent ? 'cal-now' : ''} ${isPast ? 'cal-past' : ''}`}>
                 <span className="cal-ev-time">
                   {ev.isAllDay ? 'All day' : formatEventTime(ev.start)}
                 </span>

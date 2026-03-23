@@ -140,6 +140,10 @@
   white-space: nowrap;
 }
 
+.dash-cal-event.cal-past {
+  opacity: 0.4;
+}
+
 .cal-ev-now {
   font-family: var(--font-mono);
   font-size: 9px;
