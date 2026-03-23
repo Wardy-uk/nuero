@@ -248,4 +248,43 @@ router.get('/related', async (req, res) => {
   }
 });
 
+// GET /api/vault/backlinks?path=relative/path
+router.get('/backlinks', (req, res) => {
+  const { path: notePath } = req.query;
+  if (!notePath) return res.status(400).json({ error: 'path required' });
+  try {
+    const entities = require('../services/entities');
+    const db = require('../db/database');
+    const backlinks = db.getBacklinks(notePath);
+    const entityLinks = db.getEntitiesForPath(notePath);
+    res.json({ backlinks, entities: entityLinks });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/vault/mentions?person=Name
+router.get('/mentions', (req, res) => {
+  const { person } = req.query;
+  if (!person) return res.status(400).json({ error: 'person required' });
+  try {
+    const entities = require('../services/entities');
+    const paths = entities.getMentionsOf(person);
+    res.json({ person, mentions: paths });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/vault/orphans?days=7
+router.get('/orphans', (req, res) => {
+  try {
+    const entities = require('../services/entities');
+    const orphans = entities.getOrphans(parseInt(req.query.days) || 7);
+    res.json({ orphans, count: orphans.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

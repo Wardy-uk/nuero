@@ -566,6 +566,90 @@ function deleteEmbedding(relativePath) {
   save();
 }
 
+// Entity extraction helpers
+function saveEntity(sourcePath, entityType, entityValue, context) {
+  getDb().run(
+    `INSERT INTO extracted_entities (source_path, entity_type, entity_value, context) VALUES (?, ?, ?, ?)`,
+    [sourcePath, entityType, entityValue, context || null]
+  );
+  save();
+}
+
+function getEntitiesForPath(sourcePath) {
+  const stmt = getDb().prepare('SELECT * FROM extracted_entities WHERE source_path = ? ORDER BY entity_type');
+  stmt.bind([sourcePath]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getEntitiesByType(entityType, limit = 50) {
+  const stmt = getDb().prepare('SELECT * FROM extracted_entities WHERE entity_type = ? ORDER BY extracted_at DESC LIMIT ?');
+  stmt.bind([entityType, limit]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getEntitiesByValue(entityValue) {
+  const stmt = getDb().prepare('SELECT * FROM extracted_entities WHERE entity_value = ? ORDER BY extracted_at DESC');
+  stmt.bind([entityValue]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function deleteEntitiesForPath(sourcePath) {
+  getDb().run('DELETE FROM extracted_entities WHERE source_path = ?', [sourcePath]);
+  save();
+}
+
+// Note link / backlink helpers
+function saveLink(sourcePath, targetPath, targetEntity, linkType) {
+  getDb().run(
+    `INSERT OR IGNORE INTO note_links (source_path, target_path, target_entity, link_type) VALUES (?, ?, ?, ?)`,
+    [sourcePath, targetPath || null, targetEntity || null, linkType]
+  );
+  save();
+}
+
+function getLinksFrom(sourcePath) {
+  const stmt = getDb().prepare('SELECT * FROM note_links WHERE source_path = ?');
+  stmt.bind([sourcePath]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getLinksTo(targetPath) {
+  const stmt = getDb().prepare('SELECT * FROM note_links WHERE target_path = ?');
+  stmt.bind([targetPath]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getBacklinks(entityOrPath) {
+  const stmt = getDb().prepare(
+    'SELECT * FROM note_links WHERE target_path = ? OR target_entity = ? ORDER BY created_at DESC'
+  );
+  stmt.bind([entityOrPath, entityOrPath]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function deleteLinksForPath(sourcePath) {
+  getDb().run('DELETE FROM note_links WHERE source_path = ?', [sourcePath]);
+  save();
+}
+
 module.exports = {
   init,
   getDb,
@@ -618,5 +702,17 @@ module.exports = {
   getEmbedding,
   getEmbeddingChunkCount,
   getAllEmbeddings,
-  deleteEmbedding
+  deleteEmbedding,
+  // Entity extraction
+  saveEntity,
+  getEntitiesForPath,
+  getEntitiesByType,
+  getEntitiesByValue,
+  deleteEntitiesForPath,
+  // Note links / backlinks
+  saveLink,
+  getLinksFrom,
+  getLinksTo,
+  getBacklinks,
+  deleteLinksForPath
 };

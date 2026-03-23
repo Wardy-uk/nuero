@@ -149,6 +149,34 @@ CREATE TABLE IF NOT EXISTS vault_embeddings (
 CREATE INDEX IF NOT EXISTS idx_embeddings_path ON vault_embeddings(relative_path);
 CREATE INDEX IF NOT EXISTS idx_embeddings_hash ON vault_embeddings(content_hash);
 
+-- Entity extraction — people, tasks, decisions extracted from notes
+CREATE TABLE IF NOT EXISTS extracted_entities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_path TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_value TEXT NOT NULL,
+  context TEXT,
+  extracted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_entities_path ON extracted_entities(source_path);
+CREATE INDEX IF NOT EXISTS idx_entities_type ON extracted_entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_value ON extracted_entities(entity_value);
+
+-- Backlinks — tracks which notes mention which entities/notes
+CREATE TABLE IF NOT EXISTS note_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_path TEXT NOT NULL,
+  target_path TEXT,
+  target_entity TEXT,
+  link_type TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_links_source ON note_links(source_path);
+CREATE INDEX IF NOT EXISTS idx_links_target ON note_links(target_path);
+CREATE INDEX IF NOT EXISTS idx_links_entity ON note_links(target_entity);
+
 CREATE TABLE IF NOT EXISTS daily_summary (
   date_key TEXT PRIMARY KEY,
   standup_done INTEGER DEFAULT 0,

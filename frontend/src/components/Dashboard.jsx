@@ -253,6 +253,32 @@ function InlineEod() {
   );
 }
 
+// ── Orphan Alert ──────────────────────────────────────────────────────────
+
+function OrphanAlert({ onNavigate }) {
+  const orphanFetch = useCachedFetch('/api/vault/orphans?days=7', { interval: 300000 });
+  const orphans = orphanFetch.data?.orphans || [];
+
+  if (orphans.length === 0) return null;
+
+  return (
+    <div className="review-section">
+      <div className="review-section-header">
+        <span className="review-section-title">
+          Unreviewed <span className="review-badge-warn">{orphans.length}</span>
+        </span>
+        <button className="review-link" onClick={() => onNavigate?.('imports')}>Review all</button>
+      </div>
+      {orphans.slice(0, 3).map((o, i) => (
+        <div key={i} className="review-orphan">
+          <span className="review-orphan-name">{o.name}</span>
+          <span className="review-orphan-preview">{o.preview}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Main Review Surface ───────────────────────────────────────────────────
 
 export default function Dashboard({ queueData, onNavigate }) {
@@ -357,6 +383,9 @@ export default function Dashboard({ queueData, onNavigate }) {
           ))}
         </div>
       )}
+
+      {/* Orphan captures — unreviewed notes */}
+      <OrphanAlert onNavigate={onNavigate} />
 
       {/* Evening: EOD */}
       {timeOfDay === 'evening' && <InlineEod />}

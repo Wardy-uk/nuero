@@ -568,3 +568,30 @@
 }
 
 .review-eod-input::placeholder { color: var(--text-muted); }
+
+/* Orphan alerts */
+.review-orphan {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.review-orphan:last-child { border-bottom: none; }
+
+.review-orphan-name {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.review-orphan-preview {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

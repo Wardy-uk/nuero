@@ -37,6 +37,63 @@ function RelatedNotes({ notePath, onNavigate }) {
   );
 }
 
+function BacklinksPanel({ notePath }) {
+  const [data, setData] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!notePath) return;
+    apiFetch(`/api/vault/backlinks?path=${encodeURIComponent(notePath)}`)
+      .then(r => r.json())
+      .then(d => setData(d))
+      .catch(() => {});
+  }, [notePath]);
+
+  if (!data) return null;
+  const { backlinks = [], entities = [] } = data;
+  if (backlinks.length === 0 && entities.length === 0) return null;
+
+  const people = entities.filter(e => e.entity_type === 'person');
+  const tasks = entities.filter(e => e.entity_type === 'task');
+  const decisions = entities.filter(e => e.entity_type === 'decision');
+
+  return (
+    <div className="vault-related">
+      {people.length > 0 && (
+        <>
+          <div className="vault-related-label">People mentioned</div>
+          {people.map((e, i) => (
+            <div key={i} className="vault-backlink-tag">{e.entity_value}</div>
+          ))}
+        </>
+      )}
+      {tasks.length > 0 && (
+        <>
+          <div className="vault-related-label">Tasks</div>
+          {tasks.map((e, i) => (
+            <div key={i} className="vault-backlink-item">{e.entity_value}</div>
+          ))}
+        </>
+      )}
+      {decisions.length > 0 && (
+        <>
+          <div className="vault-related-label">Decisions</div>
+          {decisions.map((e, i) => (
+            <div key={i} className="vault-backlink-item">{e.entity_value}</div>
+          ))}
+        </>
+      )}
+      {backlinks.length > 0 && (
+        <>
+          <div className="vault-related-label">Linked from</div>
+          {backlinks.slice(0, 5).map((l, i) => (
+            <div key={i} className="vault-backlink-item">{l.source_path}</div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
   const [currentDir, setCurrentDir] = useState('');
   const [entries, setEntries] = useState([]);
@@ -192,6 +249,7 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
             spellCheck={true}
           />
         )}
+        <BacklinksPanel notePath={openFile.path} />
         <RelatedNotes notePath={openFile.path} onNavigate={openFileHandler} />
       </div>
     );
