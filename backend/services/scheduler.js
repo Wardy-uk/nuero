@@ -67,13 +67,19 @@ function start() {
     } catch (e) { console.error('[Scheduler] Weekly review failed:', e.message); }
   });
 
-  // 10pm nightly — build daily activity summary
+  // 10pm nightly — build daily activity summary + entity extraction
   cron.schedule('0 22 * * *', () => {
     console.log('[Scheduler] Running nightly activity rollup...');
     try {
       require('./activity').runNightlyRollup();
     } catch (e) {
       console.error('[Scheduler] Activity rollup failed:', e.message);
+    }
+    try {
+      const result = require('./entities').processRecentNotes(7);
+      console.log(`[Scheduler] Entity extraction: ${result.processed} notes processed`);
+    } catch (e) {
+      console.error('[Scheduler] Entity extraction failed:', e.message);
     }
   });
 

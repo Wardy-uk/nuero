@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -73,6 +73,24 @@ export default function App() {
   const weekend = isWeekend() && !weekendOverride;
   const location = useLocation();
   const pushState = usePushNotifications();
+  const [toast, setToast] = useState(null);
+  const [online, setOnline] = useState(navigator.onLine);
+
+  // Online/offline detection
+  useEffect(() => {
+    const onOnline = () => { setOnline(true); setToast({ type: 'success', text: 'Back online' }); };
+    const onOffline = () => { setOnline(false); setToast({ type: 'warn', text: 'Offline — captures will queue' }); };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); };
+  }, []);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), toast.type === 'warn' ? 5000 : 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const statusFetch = useCachedFetch('/api/status', { interval: 30000 });
   const queueFetch = useCachedFetch('/api/queue', { interval: 30000 });
@@ -100,8 +118,9 @@ export default function App() {
 
   const handleNavigate = (view) => {
     if (view === 'chat') {
-      // Open the aside chat panel instead of mounting a second ChatPanel
-      setChatOpen(true);
+      // On mobile or sidebar click: open full-screen chat as main view
+      setChatOpen(false); // close aside if open
+      setActiveView('chat');
       setSidebarOpen(false);
       return;
     }
@@ -127,6 +146,7 @@ export default function App() {
       case 'qa': return <QATab />;
       case 'journal': return <JournalPanel />;
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
+      case 'chat': return <ChatPanel location={location} />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
     }
@@ -143,12 +163,39 @@ export default function App() {
         <main className="main-panel">
           {renderView()}
         </main>
-        <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
-          <ChatPanel location={location} />
-        </aside>
+        {activeView !== 'chat' && (
+          <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
+            <ChatPanel location={location} />
+          </aside>
+        )}
       </div>
-      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('journal'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} />
+      <NudgeBanner onGoToStandup={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} />
       <InstallBanner />
+      {/* Mobile bottom nav */}
+      <nav className="mobile-bottom-nav">
+        <button className={activeView === 'dashboard' ? 'active' : ''} onClick={() => handleNavigate('dashboard')}>
+          <span className="bottom-nav-icon">&#x2B21;</span>
+          <span>Review</span>
+        </button>
+        <button className={activeView === 'chat' ? 'active' : ''} onClick={() => handleNavigate('chat')}>
+          <span className="bottom-nav-icon">&#x203A;</span>
+          <span>Ask</span>
+        </button>
+        <button className={activeView === 'capture' ? 'active' : ''} onClick={() => handleNavigate('capture')}>
+          <span className="bottom-nav-icon">+</span>
+          <span>Capture</span>
+        </button>
+      </nav>
+      {/* Toast notifications */}
+      {toast && (
+        <div className={`app-toast app-toast-${toast.type}`} onClick={() => setToast(null)}>
+          {toast.text}
+        </div>
+      )}
+      {/* Offline indicator */}
+      {!online && (
+        <div className="app-offline-bar">Offline</div>
+      )}
     </div>
   );
 }

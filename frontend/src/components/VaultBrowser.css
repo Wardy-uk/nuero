@@ -438,3 +438,25 @@
 .vault-related-item:hover { background: rgba(90,163,249,0.08); }
 .vault-related-name { display: block; font-size: 12px; color: var(--accent); font-family: var(--font-mono); margin-bottom: 2px; }
 .vault-related-excerpt { display: block; font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+
+/* Backlinks panel */
+.vault-backlink-tag {
+  display: inline-block;
+  background: rgba(90, 163, 249, 0.1);
+  color: var(--accent);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin: 2px 4px 2px 0;
+}
+
+.vault-backlink-item {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  padding: 3px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -370,3 +370,228 @@
   .dash-desktop-only { display: none; }
   .dash-mobile-only { display: flex; }
 }
+
+/* ── Review surface additions ── */
+
+.review-section {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.review-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.review-section-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.review-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  padding: 0;
+}
+
+.review-link:hover { text-decoration: underline; }
+
+.review-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.review-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  padding: 10px 16px;
+}
+
+.review-done-check {
+  color: #22c55e;
+  font-size: 14px;
+}
+
+.review-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.review-action-btn {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.review-action-btn:hover { opacity: 0.9; }
+.review-action-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Inline standup */
+.review-standup-msgs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.review-standup-msg {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.review-standup-msg.assistant {
+  background: rgba(90, 163, 249, 0.06);
+  color: var(--text-primary);
+}
+
+.review-standup-msg.user {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+}
+
+.review-standup-input {
+  display: flex;
+  gap: 8px;
+}
+
+.review-standup-input input {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+.review-standup-input button {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Inline todos */
+.review-todo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.review-todo:last-child { border-bottom: none; }
+
+.review-todo-check {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.review-todo-check:hover { color: var(--accent); }
+
+.review-todo-text {
+  flex: 1;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.review-todo-high .review-todo-text { color: #ef4444; }
+
+.review-todo-due {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.review-badge-warn {
+  font-size: 10px;
+  background: #ef4444;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  font-weight: 600;
+}
+
+/* Inline EOD */
+.review-eod-input {
+  display: block;
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+
+.review-eod-input::placeholder { color: var(--text-muted); }
+
+/* Orphan alerts */
+.review-orphan {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.review-orphan:last-child { border-bottom: none; }
+
+.review-orphan-name {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.review-orphan-preview {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

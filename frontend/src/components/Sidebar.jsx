@@ -2,45 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
 import './Sidebar.css';
 
-const NAV_GROUPS = [
-  {
-    id: 'now',
-    label: 'NOW',
-    items: [
-      { id: 'dashboard',  label: 'Dashboard',   icon: '⬡' },
-      { id: 'standup',    label: 'Standup',      icon: '◎' },
-      { id: 'chat',       label: 'Chat',         icon: '›' },
-      { id: 'capture',    label: 'Capture',      icon: '+' },
-      { id: 'todos',      label: 'Todos',        icon: '◻' },
-    ]
-  },
-  {
-    id: 'work',
-    label: 'WORK',
-    items: [
-      { id: 'people',     label: 'People',       icon: '>' },
-      { id: 'queue',      label: 'Queue',        icon: '>' },
-      { id: 'calendar',   label: 'Calendar',     icon: '>' },
-      { id: 'inbox',      label: 'Inbox',        icon: '>' },
-      { id: 'plan',       label: '90-Day Plan',  icon: '>' },
-    ]
-  },
-  {
-    id: 'reference',
-    label: 'REFERENCE',
-    collapsible: true,
-    items: [
-      { id: 'journal',    label: 'Journal',      icon: '>' },
-      { id: 'vault',      label: 'Vault',        icon: '>' },
-      { id: 'strava',     label: 'Strava',       icon: '>' },
-      { id: 'imports',    label: 'Imports',      icon: '>' },
-      { id: 'insights',   label: 'Insights',     icon: '◈' },
-      { id: 'qa',         label: 'QA',           icon: '>' },
-      { id: 'recent',     label: 'Recent',       icon: '>' },
-      { id: 'admin',      label: 'Settings',     icon: '>' },
-    ]
-  }
+const PRIMARY_ITEMS = [
+  { id: 'dashboard',  label: 'Review',    icon: '⬡' },
+  { id: 'chat',       label: 'Ask',       icon: '›' },
+  { id: 'capture',    label: 'Capture',   icon: '+' },
 ];
+
+const SECONDARY_ITEMS = [
+  { id: 'people',     label: 'People',    icon: '>' },
+  { id: 'queue',      label: 'Queue',     icon: '>' },
+  { id: 'calendar',   label: 'Calendar',  icon: '>' },
+  { id: 'inbox',      label: 'Inbox',     icon: '>' },
+  { id: 'plan',       label: '90-Day Plan', icon: '>' },
+  { id: 'vault',      label: 'Vault',     icon: '>' },
+  { id: 'recent',     label: 'Recent',    icon: '>' },
+  { id: 'imports',    label: 'Imports',   icon: '>' },
+  { id: 'insights',   label: 'Insights',  icon: '◈' },
+  { id: 'admin',      label: 'Settings',  icon: '>' },
+];
+
+const SECONDARY_IDS = new Set(SECONDARY_ITEMS.map(i => i.id));
 
 function useTimeHighlight() {
   const [highlight, setHighlight] = React.useState(null);
@@ -51,8 +32,8 @@ function useTimeHighlight() {
       const day = now.getDay();
       const isWeekday = day >= 1 && day <= 5;
       if (!isWeekday) { setHighlight(null); return; }
-      if (h >= 8 && h < 10) { setHighlight('standup'); return; }
-      if (h >= 21 && h < 23) { setHighlight('journal'); return; }
+      if (h >= 8 && h < 10) { setHighlight('dashboard'); return; }
+      if (h >= 21 && h < 23) { setHighlight('dashboard'); return; }
       setHighlight(null);
     }
     check();
@@ -66,23 +47,22 @@ export default function Sidebar({ activeView, onNavigate, open }) {
   const [importsCount, setImportsCount] = useState(0);
   const [escalationCount, setEscalationCount] = useState(0);
 
-  const [refOpen, setRefOpen] = useState(() => {
-    try { return localStorage.getItem('sidebar_ref_open') === 'true'; }
+  const [moreOpen, setMoreOpen] = useState(() => {
+    try { return localStorage.getItem('sidebar_more_open') === 'true'; }
     catch { return false; }
   });
 
-  const toggleRef = () => {
-    setRefOpen(prev => {
+  const toggleMore = () => {
+    setMoreOpen(prev => {
       const next = !prev;
-      try { localStorage.setItem('sidebar_ref_open', String(next)); } catch {}
+      try { localStorage.setItem('sidebar_more_open', String(next)); } catch {}
       return next;
     });
   };
 
-  // Auto-expand Reference if active view is inside it
+  // Auto-expand secondary if active view is inside it
   useEffect(() => {
-    const refIds = NAV_GROUPS.find(g => g.id === 'reference')?.items.map(i => i.id) || [];
-    if (refIds.includes(activeView)) setRefOpen(true);
+    if (SECONDARY_IDS.has(activeView)) setMoreOpen(true);
   }, [activeView]);
 
   useEffect(() => {
@@ -105,49 +85,50 @@ export default function Sidebar({ activeView, onNavigate, open }) {
 
   const timeHighlight = useTimeHighlight();
 
+  const renderItem = (item) => (
+    <button
+      key={item.id}
+      className={[
+        'sidebar-item',
+        item.primary ? 'sidebar-item-primary' : '',
+        activeView === item.id ? 'active' : '',
+        timeHighlight === item.id ? 'time-highlight' : ''
+      ].filter(Boolean).join(' ')}
+      onClick={() => onNavigate(item.id)}
+    >
+      <span className="sidebar-icon">{item.icon}</span>
+      <span className="sidebar-label">
+        {item.label}
+        {item.id === 'imports' && importsCount > 0 && (
+          <span className="sidebar-badge">{importsCount}</span>
+        )}
+        {item.id === 'queue' && escalationCount > 0 && (
+          <span className="sidebar-badge sidebar-badge-red">{escalationCount}</span>
+        )}
+      </span>
+    </button>
+  );
+
   return (
     <nav className={`sidebar ${open ? 'sidebar-open' : ''}`}>
       <div className="sidebar-nav">
-        {NAV_GROUPS.map(group => (
-          <div key={group.id} className="sidebar-group">
-            {group.collapsible ? (
-              <button
-                className="sidebar-group-header sidebar-group-toggle"
-                onClick={toggleRef}
-              >
-                <span className="sidebar-group-label">{group.label}</span>
-                <span className="sidebar-group-chevron">{refOpen ? '▾' : '▸'}</span>
-              </button>
-            ) : (
-              <div className="sidebar-group-header">
-                <span className="sidebar-group-label">{group.label}</span>
-              </div>
-            )}
+        {/* Primary: Review / Ask / Capture */}
+        <div className="sidebar-group sidebar-group-primary">
+          {PRIMARY_ITEMS.map(item => renderItem({ ...item, primary: true }))}
+        </div>
 
-            {(!group.collapsible || refOpen) && group.items.map(item => (
-              <button
-                key={item.id}
-                className={[
-                  'sidebar-item',
-                  activeView === item.id ? 'active' : '',
-                  timeHighlight === item.id ? 'time-highlight' : ''
-                ].filter(Boolean).join(' ')}
-                onClick={() => onNavigate(item.id)}
-              >
-                <span className="sidebar-icon">{item.icon}</span>
-                <span className="sidebar-label">
-                  {item.label}
-                  {item.id === 'imports' && importsCount > 0 && (
-                    <span className="sidebar-badge">{importsCount}</span>
-                  )}
-                  {item.id === 'queue' && escalationCount > 0 && (
-                    <span className="sidebar-badge sidebar-badge-red">{escalationCount}</span>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
-        ))}
+        {/* Secondary: collapsible */}
+        <div className="sidebar-group">
+          <button
+            className="sidebar-group-header sidebar-group-toggle"
+            onClick={toggleMore}
+          >
+            <span className="sidebar-group-label">MORE</span>
+            <span className="sidebar-group-chevron">{moreOpen ? '▾' : '▸'}</span>
+          </button>
+
+          {moreOpen && SECONDARY_ITEMS.map(item => renderItem(item))}
+        </div>
       </div>
     </nav>
   );

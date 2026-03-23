@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import useCachedFetch from '../useCachedFetch';
+import { apiUrl } from '../api';
 import './Dashboard.css';
 
 const START_DATE = new Date('2026-03-16');
@@ -19,13 +20,274 @@ function getGreeting() {
   return 'Evening';
 }
 
+function getTimeOfDay() {
+  const h = new Date().getHours();
+  if (h < 12) return 'morning';
+  if (h < 17) return 'afternoon';
+  return 'evening';
+}
+
+// ── Inline Standup (morning section) ──────────────────────────────────────
+
+function InlineStandup() {
+  const [ritualData, setRitualData] = useState(null);
+  const [phase, setPhase] = useState('idle'); // idle, running, done
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+
+  useEffect(() => {
+    fetch(apiUrl('/api/standup/ritual-state'))
+      .then(r => r.json())
+      .then(d => {
+        setRitualData(d);
+        if (d.standupDoneToday) setPhase('done');
+      })
+      .catch(() => {});
+  }, []);
+
+  const startGuided = async () => {
+    setPhase('running');
+    setMessages([]);
+    try {
+      const res = await fetch(apiUrl('/api/standup/interactive'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phase: 'start', messages: [] })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let assistantMsg = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'text') assistantMsg += data.content;
+            if (data.type === 'done') {
+              setMessages([{ role: 'assistant', content: assistantMsg }]);
+              if (data.noteSaved) setPhase('done');
+            }
+          } catch {}
+        }
+      }
+    } catch {
+      setMessages([{ role: 'assistant', content: 'Guided standup unavailable — try manual mode in the Standup panel.' }]);
+    }
+  };
+
+  const respond = async () => {
+    if (!input.trim()) return;
+    const newMsgs = [...messages, { role: 'user', content: input.trim() }];
+    setMessages(newMsgs);
+    setInput('');
+    let assistantMsg = '';
+
+    try {
+      const res = await fetch(apiUrl('/api/standup/interactive'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phase: 'answering', messages: newMsgs })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'text') {
+              assistantMsg += data.content;
+              setMessages([...newMsgs, { role: 'assistant', content: assistantMsg }]);
+            }
+            if (data.type === 'done') {
+              if (data.noteSaved) setPhase('done');
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+  };
+
+  if (phase === 'done') {
+    return (
+      <div className="review-section review-done">
+        <span className="review-done-check">&#10003;</span> Standup done
+      </div>
+    );
+  }
+
+  if (phase === 'idle') {
+    return (
+      <div className="review-section">
+        <div className="review-section-header">
+          <span className="review-section-title">Standup</span>
+        </div>
+        <button className="review-action-btn" onClick={startGuided}>Start guided standup</button>
+      </div>
+    );
+  }
+
+  // Running
+  return (
+    <div className="review-section">
+      <div className="review-section-header">
+        <span className="review-section-title">Standup</span>
+      </div>
+      <div className="review-standup-msgs">
+        {messages.map((m, i) => (
+          <div key={i} className={`review-standup-msg ${m.role}`}>{m.content}</div>
+        ))}
+      </div>
+      <div className="review-standup-input">
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && respond()}
+          placeholder="Reply..."
+          autoFocus
+        />
+        <button onClick={respond}>Send</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Inline Todos (completeable) ───────────────────────────────────────────
+
+function InlineTodos({ onNavigate }) {
+  const todoFetch = useCachedFetch('/api/todos', { interval: 30000 });
+  const todos = (todoFetch.data?.todos || []).filter(t => !t.done);
+  const overdue = todos.filter(t => t.due_date && t.due_date < todayStr());
+  const highPri = todos.filter(t => t.priority === 'high');
+  const shown = highPri.length > 0 ? highPri.slice(0, 5) : todos.slice(0, 5);
+
+  const toggle = async (id) => {
+    await fetch(apiUrl('/api/todos/toggle'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    }).catch(() => {});
+    todoFetch.refresh();
+  };
+
+  return (
+    <div className="review-section">
+      <div className="review-section-header">
+        <span className="review-section-title">
+          Tasks {overdue.length > 0 && <span className="review-badge-warn">{overdue.length} overdue</span>}
+        </span>
+        <button className="review-link" onClick={() => onNavigate?.('todos')}>All tasks</button>
+      </div>
+      {shown.length === 0 && <div className="review-empty">No active tasks</div>}
+      {shown.map(t => (
+        <div key={t.id} className={`review-todo ${t.priority === 'high' ? 'review-todo-high' : ''}`}>
+          <button className="review-todo-check" onClick={() => toggle(t.id)}>&#9744;</button>
+          <span className="review-todo-text">{t.text}</span>
+          {t.due_date && <span className="review-todo-due">{t.due_date}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Inline EOD / Journal (evening section) ────────────────────────────────
+
+function InlineEod() {
+  const [win, setWin] = useState('');
+  const [didntGo, setDidntGo] = useState('');
+  const [feeling, setFeeling] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!win.trim() && !didntGo.trim() && !feeling.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(apiUrl('/api/standup/eod'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ win: win.trim(), didntGo: didntGo.trim(), feeling: feeling.trim() })
+      });
+      if (res.ok) setSaved(true);
+    } catch {}
+    setSaving(false);
+  };
+
+  if (saved) {
+    return (
+      <div className="review-section review-done">
+        <span className="review-done-check">&#10003;</span> EOD saved
+      </div>
+    );
+  }
+
+  return (
+    <div className="review-section">
+      <div className="review-section-header">
+        <span className="review-section-title">End of Day</span>
+        <span className="review-hint">2 minutes. Then close the laptop.</span>
+      </div>
+      <input className="review-eod-input" placeholder="Win today" value={win} onChange={e => setWin(e.target.value)} />
+      <input className="review-eod-input" placeholder="Didn't go to plan" value={didntGo} onChange={e => setDidntGo(e.target.value)} />
+      <input className="review-eod-input" placeholder="Feeling" value={feeling} onChange={e => setFeeling(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && submit()} />
+      <button className="review-action-btn" onClick={submit} disabled={saving}>
+        {saving ? 'Saving...' : 'Save EOD'}
+      </button>
+    </div>
+  );
+}
+
+// ── Orphan Alert ──────────────────────────────────────────────────────────
+
+function OrphanAlert({ onNavigate }) {
+  const orphanFetch = useCachedFetch('/api/vault/orphans?days=7', { interval: 300000 });
+  const orphans = orphanFetch.data?.orphans || [];
+
+  if (orphans.length === 0) return null;
+
+  return (
+    <div className="review-section">
+      <div className="review-section-header">
+        <span className="review-section-title">
+          Unreviewed <span className="review-badge-warn">{orphans.length}</span>
+        </span>
+        <button className="review-link" onClick={() => onNavigate?.('imports')}>Review all</button>
+      </div>
+      {orphans.slice(0, 3).map((o, i) => (
+        <div key={i} className="review-orphan">
+          <span className="review-orphan-name">{o.name}</span>
+          <span className="review-orphan-preview">{o.preview}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Main Review Surface ───────────────────────────────────────────────────
+
 export default function Dashboard({ queueData, onNavigate }) {
   const today = new Date();
   const dayCount = Math.max(0, Math.floor((today - START_DATE) / (1000 * 60 * 60 * 24)));
   const dateStr = today.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const timeOfDay = getTimeOfDay();
 
   const planFetch = useCachedFetch('/api/obsidian/ninety-day-plan', { interval: 60000 });
-  const todoFetch = useCachedFetch('/api/todos', { interval: 30000 });
   const td = todayStr();
   const calFetch = useCachedFetch(`/api/obsidian/calendar?start=${td}&end=${td}`, { interval: 120000 });
   const calEvents = (calFetch.data?.events || [])
@@ -33,16 +295,10 @@ export default function Dashboard({ queueData, onNavigate }) {
     .sort((a, b) => new Date(a.start) - new Date(b.start));
 
   const plan = planFetch.data;
-  const todos = (todoFetch.data?.todos || []).filter(t => !t.done);
-  const highTodos = todos.filter(t => t.priority === 'high').slice(0, 3);
-  const topTodos = highTodos.length > 0 ? highTodos : todos.slice(0, 3);
-
   const atRisk = queueData?.at_risk_count ?? 0;
   const queueTotal = queueData?.total ?? 0;
   const p1s = queueData?.open_p1s ?? 0;
-
   const planPct = plan ? Math.round((plan.totalDone / Math.max(plan.totalTasks, 1)) * 100) : 0;
-  const overdue = plan?.overdueTasks?.length ?? 0;
 
   return (
     <div className="dash">
@@ -56,34 +312,29 @@ export default function Dashboard({ queueData, onNavigate }) {
       <div className="dash-stats">
         <div className={`dash-stat ${atRisk > 0 ? 'stat-danger' : ''}`} onClick={() => onNavigate?.('queue')}>
           <span className="stat-val">{queueTotal}</span>
-          <span className="stat-lbl">My Queue</span>
+          <span className="stat-lbl">Queue</span>
           {atRisk > 0 && <span className="stat-sub">{atRisk} at risk</span>}
         </div>
-
         <div className={`dash-stat ${p1s > 0 ? 'stat-warn' : ''}`} onClick={() => onNavigate?.('queue')}>
           <span className="stat-val">{p1s}</span>
           <span className="stat-lbl">P1s</span>
         </div>
-
         <div className="dash-stat" onClick={() => onNavigate?.('plan')}>
           <span className="stat-val">{plan ? `${planPct}%` : '-'}</span>
           <span className="stat-lbl">90-Day</span>
           {plan && <span className="stat-sub">Day {plan.currentDay}</span>}
         </div>
-
-        <div className={`dash-stat ${overdue > 0 ? 'stat-warn' : ''}`} onClick={() => onNavigate?.('todos')}>
-          <span className="stat-val">{todos.length}</span>
-          <span className="stat-lbl">Tasks</span>
-          {overdue > 0 && <span className="stat-sub">{overdue} overdue</span>}
-        </div>
       </div>
+
+      {/* Morning: Standup */}
+      {timeOfDay === 'morning' && <InlineStandup />}
 
       {/* Today's calendar */}
       {calEvents.length > 0 && (
-        <div className="dash-calendar" onClick={() => onNavigate?.('calendar')}>
-          <div className="tasks-header">
-            <span className="tasks-title">Today</span>
-            <button className="tasks-more" onClick={e => { e.stopPropagation(); onNavigate?.('calendar'); }}>Full calendar</button>
+        <div className="review-section" onClick={() => onNavigate?.('calendar')}>
+          <div className="review-section-header">
+            <span className="review-section-title">Today</span>
+            <button className="review-link" onClick={e => { e.stopPropagation(); onNavigate?.('calendar'); }}>Full calendar</button>
           </div>
           {calEvents.slice(0, 5).map((ev, i) => {
             const now = new Date();
@@ -91,9 +342,7 @@ export default function Dashboard({ queueData, onNavigate }) {
             const isPast = !ev.isAllDay && now > new Date(ev.end);
             return (
               <div key={i} className={`dash-cal-event ${isCurrent ? 'cal-now' : ''} ${isPast ? 'cal-past' : ''}`}>
-                <span className="cal-ev-time">
-                  {ev.isAllDay ? 'All day' : formatEventTime(ev.start)}
-                </span>
+                <span className="cal-ev-time">{ev.isAllDay ? 'All day' : formatEventTime(ev.start)}</span>
                 <span className="cal-ev-subject">{ev.subject}</span>
                 {isCurrent && <span className="cal-ev-now">NOW</span>}
               </div>
@@ -102,12 +351,15 @@ export default function Dashboard({ queueData, onNavigate }) {
         </div>
       )}
 
-      {/* 90-Day progress bar */}
+      {/* Always: Tasks */}
+      <InlineTodos onNavigate={onNavigate} />
+
+      {/* 90-Day progress */}
       {plan && (
-        <div className="dash-progress">
+        <div className="review-section">
           <div className="progress-header">
             <span className="progress-title">90-Day Plan</span>
-            <span className="progress-meta">{plan.totalDone}/{plan.totalTasks} done — {plan.nextCheckpoint.label} in {plan.daysToCheckpoint}d</span>
+            <span className="progress-meta">{plan.totalDone}/{plan.totalTasks} — {plan.nextCheckpoint.label} in {plan.daysToCheckpoint}d</span>
           </div>
           <div className="progress-track">
             <div className="progress-fill" style={{ width: `${planPct}%` }} />
@@ -116,37 +368,14 @@ export default function Dashboard({ queueData, onNavigate }) {
         </div>
       )}
 
-      {/* Top tasks */}
-      {topTodos.length > 0 && (
-        <div className="dash-tasks">
-          <div className="tasks-header">
-            <span className="tasks-title">Focus</span>
-            <button className="tasks-more" onClick={() => onNavigate?.('todos')}>All tasks</button>
-          </div>
-          {topTodos.map((t, i) => (
-            <div key={t.id || i} className={`dash-task ${t.priority === 'high' ? 'task-high' : ''}`}>
-              <span className="task-text">{t.text}</span>
-              {t.due_date && <span className="task-due">{t.due_date}</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Quick actions — mobile */}
-      <div className="dash-actions dash-mobile-only">
-        <button className="dash-action" onClick={() => onNavigate?.('capture')}>+ Capture</button>
-        <button className="dash-action" onClick={() => onNavigate?.('standup')}>Standup</button>
-        <button className="dash-action" onClick={() => onNavigate?.('queue')}>Queue</button>
-      </div>
-
       {/* Queue peek — at-risk tickets */}
       {queueData?.at_risk_tickets?.length > 0 && (
-        <div className="dash-queue-peek">
-          <div className="tasks-header">
-            <span className="tasks-title">At Risk</span>
-            <button className="tasks-more" onClick={() => onNavigate?.('queue')}>Full queue</button>
+        <div className="review-section">
+          <div className="review-section-header">
+            <span className="review-section-title">At Risk</span>
+            <button className="review-link" onClick={() => onNavigate?.('queue')}>Full queue</button>
           </div>
-          {queueData.at_risk_tickets.slice(0, window.innerWidth <= 768 ? 3 : 4).map(t => (
+          {queueData.at_risk_tickets.slice(0, 4).map(t => (
             <div key={t.ticket_key} className="dash-task task-high">
               <span className="task-key">{t.ticket_key}</span>
               <span className="task-text">{t.summary}</span>
@@ -154,6 +383,19 @@ export default function Dashboard({ queueData, onNavigate }) {
           ))}
         </div>
       )}
+
+      {/* Orphan captures — unreviewed notes */}
+      <OrphanAlert onNavigate={onNavigate} />
+
+      {/* Evening: EOD */}
+      {timeOfDay === 'evening' && <InlineEod />}
+
+      {/* Quick actions — mobile */}
+      <div className="dash-actions dash-mobile-only">
+        <button className="dash-action" onClick={() => onNavigate?.('capture')}>+ Capture</button>
+        <button className="dash-action" onClick={() => onNavigate?.('chat')}>Ask</button>
+        <button className="dash-action" onClick={() => onNavigate?.('queue')}>Queue</button>
+      </div>
     </div>
   );
 }
