@@ -4,8 +4,8 @@ import useCachedFetch from '../useCachedFetch';
 import './ImportsPanel.css';
 
 function extractJiraKey(text) {
-  const match = (text || '').match(/\b([A-Z]{2,10}-\d+)\b/);
-  return match ? match[1] : null;
+  const match = (text || '').match(/\b([A-Za-z]{2,10}-\d+)\b/);
+  return match ? match[1].toUpperCase() : null;
 }
 
 function EscalateButton({ ticketKey, onDone }) {
