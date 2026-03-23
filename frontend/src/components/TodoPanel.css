@@ -57,7 +57,39 @@
 .todo-filters {
   display: flex;
   gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.todo-sub-filters {
+  display: flex;
+  gap: 4px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+  padding-left: 4px;
+}
+
+.todo-sub-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.todo-sub-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.todo-sub-btn.active {
+  background: rgba(79, 156, 249, 0.1);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .todo-filter-btn {

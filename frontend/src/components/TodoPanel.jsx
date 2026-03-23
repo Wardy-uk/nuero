@@ -29,29 +29,31 @@ function formatDue(dueDate) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
-// Group todos by source prefix
-function groupBySource(todos) {
-  const groups = {};
-  for (const todo of todos) {
-    const src = todo.source || 'Other';
-    // Group by first part before parenthetical: "Master (Now)" → "Master Todo"
-    let groupKey;
-    if (src.startsWith('Master')) groupKey = 'Master Todo';
-    else if (src.startsWith('MS Planner')) groupKey = 'MS Planner';
-    else if (src.startsWith('MS ToDo')) groupKey = 'MS ToDo';
-    else if (src.startsWith('Daily')) groupKey = 'Today\'s Daily Note';
-    else if (src.startsWith('90-Day')) groupKey = '90-Day Plan';
-    else groupKey = src;
+// Extract sub-category from source string
+// "90-Day Plan (Quality & CX)" → "Quality & CX"
+// "Master (Now)" → "Now"
+// "Daily 2026-03-20" → "2026-03-20"
+function getSubCategory(source) {
+  if (!source) return null;
+  const parenMatch = source.match(/\(([^)]+)\)/);
+  if (parenMatch) return parenMatch[1];
+  if (source.startsWith('Daily ')) return source.replace('Daily ', '');
+  return null;
+}
 
-    if (!groups[groupKey]) groups[groupKey] = [];
-    groups[groupKey].push(todo);
-  }
-  return groups;
+// Which top-level group does a source belong to?
+function getTopGroup(source) {
+  if (!source) return 'other';
+  if (source.startsWith('90-Day')) return 'plan';
+  if (source.startsWith('Master') || source.startsWith('Daily')) return 'vault';
+  if (source.startsWith('MS')) return 'ms';
+  return 'other';
 }
 
 export default function TodoPanel() {
   const [showDone, setShowDone] = useState(false);
-  const [filter, setFilter] = useState('all'); // all, overdue, today, high, master, ms, daily
+  const [filter, setFilter] = useState('all'); // all, overdue, today, high, plan, vault, ms
+  const [subFilters, setSubFilters] = useState([]); // multi-select sub-categories
   const [toggling, setToggling] = useState({});
   const [syncing, setSyncing] = useState(false);
 
@@ -65,7 +67,6 @@ export default function TodoPanel() {
     const key = `${todo.filePath}:${todo.lineNumber}`;
     setToggling(prev => ({ ...prev, [key]: true }));
     try {
-      // MS tasks: complete via bridge + vault toggle
       if (todo.ms_id && (todo.source === 'MS Planner' || todo.source === 'MS ToDo')) {
         await fetch(apiUrl('/api/todos/complete-ms'), {
           method: 'POST',
@@ -93,33 +94,70 @@ export default function TodoPanel() {
   const doneTodos = (todos || []).filter(t => t.done);
   const overdueTodos = activeTodos.filter(t => isOverdue(t.due_date));
 
-  // Apply filter
-  let filtered = activeTodos;
-  if (filter === 'overdue') filtered = activeTodos.filter(t => isOverdue(t.due_date));
-  else if (filter === 'today') filtered = activeTodos.filter(t => {
-    if (!t.due_date) return false;
-    const d = new Date(t.due_date);
-    const today = new Date(new Date().toDateString());
-    return d.getTime() === today.getTime() || d < today;
-  });
-  else if (filter === 'high') filtered = activeTodos.filter(t => t.priority === 'high');
-  else if (filter === 'master') filtered = activeTodos.filter(t => t.source && t.source.startsWith('Master'));
-  else if (filter === 'ms') filtered = activeTodos.filter(t => t.source && t.source.startsWith('MS'));
-  else if (filter === 'daily') filtered = activeTodos.filter(t => t.source && t.source.startsWith('Daily'));
-  else if (filter === 'plan') filtered = activeTodos.filter(t => t.source && t.source.startsWith('90-Day'));
+  // Build sub-category options for current top-level filter
+  const subCategoryOptions = useMemo(() => {
+    if (!['plan', 'vault', 'ms'].includes(filter)) return [];
+    const counts = {};
+    for (const t of activeTodos) {
+      if (getTopGroup(t.source) !== filter) continue;
+      const sub = getSubCategory(t.source) || (
+        filter === 'vault'
+          ? (t.source?.startsWith('Master') ? 'Master Todo' : t.source?.startsWith('Daily') ? 'Daily Note' : 'Other')
+          : (t.source?.startsWith('MS Planner') ? 'Planner' : t.source?.startsWith('MS ToDo') ? 'ToDo' : 'Other')
+      );
+      counts[sub] = (counts[sub] || 0) + 1;
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [filter, activeTodos]);
 
-  // Source summary counts
-  const sourceCounts = {};
-  for (const t of activeTodos) {
-    const src = t.source || 'Other';
-    let key;
-    if (src.startsWith('Master')) key = 'Master Todo';
-    else if (src.startsWith('MS')) key = 'MS Tasks';
-    else if (src.startsWith('Daily')) key = 'Daily Note';
-    else if (src.startsWith('90-Day')) key = '90-Day Plan';
-    else key = src;
-    sourceCounts[key] = (sourceCounts[key] || 0) + 1;
+  // Top-level counts
+  const topCounts = useMemo(() => {
+    const c = { plan: 0, vault: 0, ms: 0 };
+    for (const t of activeTodos) {
+      const g = getTopGroup(t.source);
+      if (c[g] !== undefined) c[g]++;
+    }
+    return c;
+  }, [activeTodos]);
+
+  // Apply filters
+  let filtered = activeTodos;
+  if (filter === 'overdue') {
+    filtered = activeTodos.filter(t => isOverdue(t.due_date));
+  } else if (filter === 'today') {
+    filtered = activeTodos.filter(t => {
+      if (!t.due_date) return false;
+      const d = new Date(t.due_date);
+      const today = new Date(new Date().toDateString());
+      return d.getTime() === today.getTime() || d < today;
+    });
+  } else if (filter === 'high') {
+    filtered = activeTodos.filter(t => t.priority === 'high');
+  } else if (['plan', 'vault', 'ms'].includes(filter)) {
+    filtered = activeTodos.filter(t => getTopGroup(t.source) === filter);
+    // Apply sub-filters if any selected
+    if (subFilters.length > 0) {
+      filtered = filtered.filter(t => {
+        const sub = getSubCategory(t.source) || (
+          filter === 'vault'
+            ? (t.source?.startsWith('Master') ? 'Master Todo' : t.source?.startsWith('Daily') ? 'Daily Note' : 'Other')
+            : (t.source?.startsWith('MS Planner') ? 'Planner' : t.source?.startsWith('MS ToDo') ? 'ToDo' : 'Other')
+        );
+        return subFilters.includes(sub);
+      });
+    }
   }
+
+  const toggleSubFilter = (sub) => {
+    setSubFilters(prev =>
+      prev.includes(sub) ? prev.filter(s => s !== sub) : [...prev, sub]
+    );
+  };
+
+  const setTopFilter = (key) => {
+    setFilter(key);
+    setSubFilters([]); // reset sub-filters on top-level change
+  };
 
   return (
     <div className="todo-container">
@@ -142,32 +180,47 @@ export default function TodoPanel() {
         </div>
       </div>
 
-      <div className="todo-source-summary">
-        {Object.entries(sourceCounts).map(([src, count]) => (
-          <span key={src} className="source-chip">{src}: {count}</span>
-        ))}
-      </div>
-
+      {/* Top-level filters */}
       <div className="todo-filters">
         {[
           { key: 'all', label: 'All' },
           { key: 'overdue', label: `Overdue (${overdueTodos.length})` },
           { key: 'today', label: 'Due today' },
           { key: 'high', label: 'High priority' },
-          { key: 'master', label: 'Master Todo' },
-          { key: 'plan', label: '90-Day Plan' },
-          { key: 'ms', label: 'MS Tasks' },
-          { key: 'daily', label: 'Daily Note' },
+          { key: 'plan', label: `90-Day Plan (${topCounts.plan})` },
+          { key: 'vault', label: `Vault Todos (${topCounts.vault})` },
+          { key: 'ms', label: `MS Tasks (${topCounts.ms})` },
         ].map(f => (
           <button
             key={f.key}
             className={`todo-filter-btn ${filter === f.key ? 'active' : ''}`}
-            onClick={() => setFilter(f.key)}
+            onClick={() => setTopFilter(f.key)}
           >
             {f.label}
           </button>
         ))}
       </div>
+
+      {/* Sub-category filters — shown when a group filter is active */}
+      {subCategoryOptions.length > 0 && (
+        <div className="todo-sub-filters">
+          <button
+            className={`todo-sub-btn ${subFilters.length === 0 ? 'active' : ''}`}
+            onClick={() => setSubFilters([])}
+          >
+            All
+          </button>
+          {subCategoryOptions.map(([sub, count]) => (
+            <button
+              key={sub}
+              className={`todo-sub-btn ${subFilters.includes(sub) ? 'active' : ''}`}
+              onClick={() => toggleSubFilter(sub)}
+            >
+              {sub} ({count})
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className="todo-empty">Loading vault tasks...</div>
