@@ -1,6 +1,8 @@
-const Anthropic = require('@anthropic-ai/sdk');
 const microsoft = require('./microsoft');
 const db = require('../db/database');
+
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+const OLLAMA_MODEL = process.env.OLLAMA_TRIAGE_MODEL || 'qwen2.5:3b';
 
 let lastScanTime = null;
 let scanInProgress = false;
@@ -27,12 +29,46 @@ IMPORTANT rules:
 Respond with a JSON array only. No markdown, no explanation. Empty array [] if nothing needs attention.
 Each item: { "emailId": "...", "subject": "...", "from": "...", "urgency": "high|medium|low", "category": "...", "summary": "...", "reason": "..." }`;
 
+async function triageWithOllama(emailSummary) {
+  const prompt = `You are Nick's inbox triage assistant. Nick is Head of Technical Support at Nurtur.
+He manages 15 direct reports. Review these emails and identify items needing attention.
+
+RULES:
+- Skip newsletters, automated notifications, Jira/n8n/Grafana alerts, calendar acceptances
+- Flag anything from Chris Middleton as at least medium urgency
+- Flag SLA breach, complaint, escalation, P1/critical as high urgency
+- Flag direct reports needing a decision as medium
+- urgency: "high", "medium", or "low"
+- category: "action-required", "decision-needed", "escalation", "fyi", "follow-up"
+
+Respond with ONLY a JSON array. Empty array [] if nothing needs attention.
+Format: [{"emailId":"...","subject":"...","from":"...","urgency":"high|medium|low","category":"...","summary":"one sentence","reason":"why"}]
+
+Emails:
+${JSON.stringify(emailSummary, null, 2)}`;
+
+  const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      prompt,
+      stream: false,
+      options: { temperature: 0.1, num_predict: 1500 }
+    }),
+    signal: AbortSignal.timeout(90000)
+  });
+
+  if (!res.ok) throw new Error(`Ollama error: ${res.status}`);
+  const data = await res.json();
+  const text = data.response || '';
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) throw new Error('No JSON in Ollama response');
+  return JSON.parse(jsonMatch[0]);
+}
+
 async function scanInbox() {
   if (scanInProgress) return;
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.log('[InboxScanner] No Claude API key — skipping');
-    return;
-  }
 
   scanInProgress = true;
   console.log('[InboxScanner] Starting scan...');
@@ -76,23 +112,30 @@ async function scanInbox() {
       preview: e.preview
     }));
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
-      system: TRIAGE_PROMPT,
-      messages: [{
-        role: 'user',
-        content: `Here are ${candidates.length} emails from the last 12 hours:\n\n${JSON.stringify(emailSummary, null, 2)}`
-      }]
-    });
-
-    const text = response.content[0]?.text || '[]';
+    let parsed = [];
+    // Try Ollama first
     try {
-      // Extract JSON from response (handle possible markdown wrapping)
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
+      parsed = await triageWithOllama(emailSummary);
+      console.log(`[InboxScanner] Triaged via Ollama: ${parsed.length} flagged`);
+    } catch (ollamaErr) {
+      console.warn('[InboxScanner] Ollama failed, falling back to Claude:', ollamaErr.message);
+      if (process.env.ANTHROPIC_API_KEY) {
+        const Anthropic = require('@anthropic-ai/sdk');
+        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const response = await client.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          system: TRIAGE_PROMPT,
+          messages: [{ role: 'user', content: `Here are ${candidates.length} emails from the last 12 hours:\n\n${JSON.stringify(emailSummary, null, 2)}` }]
+        });
+        const text = response.content[0]?.text || '[]';
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        parsed = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
+        console.log('[InboxScanner] Triaged via Claude (fallback)');
+      }
+    }
 
+    try {
       // Enrich with email metadata and persist to DB
       for (const item of parsed) {
         const email = candidates.find(e => e.id === item.emailId);

@@ -64,6 +64,19 @@ function extractTemporalContext(message) {
   return null;
 }
 
+// Detect query intent to scope context — reduces token usage
+function detectQueryIntent(message) {
+  const msg = message.toLowerCase();
+  if (/queue|ticket|sla|at.risk|escalat|jira|nt-\d/i.test(msg)) return 'queue';
+  if (/heidi|abdi|arman|luke|stephen|willem|nathan|adele|hope|maria|naomi|sebastian|zoe|isabel|kayleigh|person|team|1.2.1|one.to.one/i.test(msg)) return 'people';
+  if (/plan|90.day|outcome|checkpoint|milestone|objective/i.test(msg)) return 'planning';
+  if (/health|hrv|sleep|strava|run|exercise|energy|recovery|wellbeing|feeling/i.test(msg)) return 'wellbeing';
+  if (/standup|yesterday|today|focus|blocker|carry/i.test(msg)) return 'standup';
+  if (/email|inbox|triage|message|teams/i.test(msg)) return 'inbox';
+  if (/calendar|meeting|schedule|appointment/i.test(msg)) return 'calendar';
+  return 'general';
+}
+
 function extractSearchTerms(message) {
   const STOP_WORDS = new Set([
     'what', 'when', 'where', 'who', 'why', 'how', 'is', 'are', 'was', 'were',
@@ -165,7 +178,7 @@ function anthropicAvailable() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-async function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend = false, vaultResults = [], locationContext = null) {
+async function buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend = false, vaultResults = [], locationContext = null, intent = 'general') {
   // Location context — injected regardless of weekend mode
   const locationLine = locationContext ? `\n\n**${locationContext}**` : '';
 
@@ -194,8 +207,8 @@ async function buildContextBlock(queueSummary, dailyNote, previousNote, standupC
   const parts = [];
   const diagnostics = [];
 
-  // Queue
-  if (queueSummary && queueSummary.total > 0) {
+  // Queue — only for queue/general/standup intent
+  if (['queue', 'general', 'standup'].includes(intent) && queueSummary && queueSummary.total > 0) {
     parts.push(`## Current Queue Status
 - Total open tickets: ${queueSummary.total}
 - At-risk (SLA < 2h): ${queueSummary.at_risk_count}
@@ -205,9 +218,11 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
   `- ${t.ticket_key}: ${t.summary} (${t.sla_remaining_minutes ? Math.round(t.sla_remaining_minutes) + ' min remaining' : 'SLA unknown'}, assigned: ${t.assignee})`
 ).join('\n') : ''}`);
     diagnostics.push('queue: yes');
-  } else {
+  } else if (['queue', 'general', 'standup'].includes(intent)) {
     parts.push('## Queue Status\nNo Jira data available yet.');
     diagnostics.push('queue: empty');
+  } else {
+    diagnostics.push('queue: skipped (intent: ' + intent + ')');
   }
 
   // Behavioural patterns from activity log
@@ -240,8 +255,8 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     diagnostics.push('standup: none');
   }
 
-  // Meeting prep — upcoming meetings in the next 3 hours
-  try {
+  // Meeting prep — only for calendar/people/standup/general
+  if (['calendar', 'people', 'standup', 'general'].includes(intent)) try {
     const meetingPrep = obsidian.getMeetingPrepContext(3);
     if (meetingPrep.length > 0) {
       let prepBlock = `## Upcoming Meetings (next 3 hours)`;
@@ -258,7 +273,7 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     }
   } catch (e) {
     diagnostics.push('meetingPrep: error');
-  }
+  } else { diagnostics.push('meetingPrep: skipped'); }
 
   // Recent decisions from decision log
   try {
@@ -302,8 +317,8 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     diagnostics.push('todos: none');
   }
 
-  // 90-day plan summary
-  if (ninetyDayPlan) {
+  // 90-day plan — only for planning/standup/general
+  if (['planning', 'standup', 'general'].includes(intent) && ninetyDayPlan) {
     let planBlock = `## 90-Day Plan — Day ${ninetyDayPlan.currentDay} of 90`;
     planBlock += `\n- Progress: ${ninetyDayPlan.totalDone}/${ninetyDayPlan.totalTasks} tasks complete`;
     planBlock += `\n- Next checkpoint: ${ninetyDayPlan.nextCheckpoint.label} (${ninetyDayPlan.daysToCheckpoint} working days away)`;
@@ -321,12 +336,13 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     }
     parts.push(planBlock);
     diagnostics.push(`90day: day ${ninetyDayPlan.currentDay}`);
-  } else {
+  } else if (['planning', 'standup', 'general'].includes(intent)) {
     diagnostics.push('90day: none');
+  } else {
+    diagnostics.push('90day: skipped');
   }
 
-  // Inbox
-  try {
+  if (['inbox', 'general'].includes(intent)) try {
     const scanner = require('./inbox-scanner');
     const inbox = scanner.getFlaggedItems();
     if (inbox.items.length > 0) {
@@ -348,10 +364,9 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     }
   } catch (e) {
     diagnostics.push('inbox: unavailable');
-  }
+  } else { diagnostics.push('inbox: skipped'); }
 
-  // Upcoming 1-2-1s
-  try {
+  if (['people', 'general'].includes(intent)) try {
     const upcoming121s = obsidian.getUpcoming121s(3);
     if (upcoming121s.length > 0) {
       const lines = upcoming121s.map(u =>
@@ -360,16 +375,15 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
       parts.push(`## Upcoming 1-2-1s\n${lines.join('\n')}`);
       diagnostics.push(`121s: ${upcoming121s.length}`);
     }
-  } catch (e) { diagnostics.push('121s: error'); }
+  } catch (e) { diagnostics.push('121s: error'); } else { diagnostics.push('121s: skipped'); }
 
-  // Location
-  if (locationContext) {
+  if (['wellbeing', 'general'].includes(intent) && locationContext) {
     parts.push(`## Location\n${locationContext}`);
     diagnostics.push('location: yes');
   }
 
-  // Strava activity context
-  try {
+  // Strava — only for wellbeing intent
+  if (intent === 'wellbeing') try {
     const stravaService = require('./strava');
     if (stravaService.isConfigured() && stravaService.isAuthenticated()) {
       const activityCtx = await stravaService.getActivityContext();
@@ -382,10 +396,10 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     }
   } catch (e) {
     diagnostics.push('strava: error');
-  }
+  } else { diagnostics.push('strava: skipped'); }
 
-  // Apple Health context (from iOS Shortcut webhook)
-  try {
+  // Apple Health — only for wellbeing intent
+  if (intent === 'wellbeing') try {
     const healthService = require('./health');
     const healthBlock = healthService.getHealthContextBlock();
     if (healthBlock) {
@@ -394,10 +408,10 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     }
   } catch (e) {
     diagnostics.push('health: error');
-  }
+  } else { diagnostics.push('health: skipped'); }
 
-  // OwnTracks location context
-  try {
+  // OwnTracks — only for wellbeing/general
+  if (['wellbeing', 'general'].includes(intent)) try {
     const locationService = require('./location');
     if (locationService.isConfigured()) {
       const locationBlock = await locationService.getLocationContextBlock();
@@ -408,7 +422,7 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     }
   } catch (e) {
     diagnostics.push('location: error');
-  }
+  } else { diagnostics.push('owntracks: skipped'); }
 
   // Vault search results
   if (vaultResults && vaultResults.length > 0) {
@@ -612,6 +626,8 @@ async function streamChat(conversationId, userMessage, res, location = null) {
   try { todos = obsidian.parseVaultTodos(); } catch (e) { console.warn('[Context] Todos error:', e.message); }
   try { ninetyDayPlan = obsidian.parseNinetyDayPlan(); } catch (e) { console.warn('[Context] 90-day plan error:', e.message); }
 
+  const queryIntent = detectQueryIntent(userMessage);
+
   // Detect synthesis queries — "summarise everything about X", "what do I know about X"
   const SYNTHESIS_PATTERNS = [
     /summaris[e|ing].*(everything|all).*(about|on|regarding)/i,
@@ -623,7 +639,7 @@ async function streamChat(conversationId, userMessage, res, location = null) {
   ];
 
   const isSynthesisQuery = SYNTHESIS_PATTERNS.some(p => p.test(userMessage));
-  const maxVaultResults = isSynthesisQuery ? 12 : 6;
+  const maxVaultResults = isSynthesisQuery ? 12 : queryIntent === 'general' ? 4 : 3;
 
   // Unified retrieval — keyword + semantic + temporal fused via RRF
   let vaultSearchResults = [];
@@ -706,7 +722,7 @@ async function streamChat(conversationId, userMessage, res, location = null) {
   }
 
   const weekend = isWeekend();
-  const contextBlock = await buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, vaultSearchResults, locationContext);
+  const contextBlock = await buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, vaultSearchResults, locationContext, queryIntent);
 
   const startDate = new Date('2026-03-16');
   const today = new Date();

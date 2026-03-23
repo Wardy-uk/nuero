@@ -1,59 +1,97 @@
 'use strict';
 
 const db = require('../db/database');
-const Anthropic = require('@anthropic-ai/sdk');
 
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+const OLLAMA_MODEL = process.env.OLLAMA_TRIAGE_MODEL || 'qwen2.5:3b';
 const TRIAGE_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
-// Classify a batch of emails using Claude
+async function classifyWithOllama(emailList) {
+  const prompt = `You are classifying emails for Nick Ward, Head of Technical Support.
+Classify each email into exactly one category:
+- ACTION: Requires Nick to do something or reply
+- FYI: Informational only, no action needed
+- DELEGATE: Someone else should handle this
+- IGNORE: Automated, spam, or irrelevant
+
+Respond with ONLY a JSON array. No markdown, no explanation.
+Format: [{"index": 0, "category": "ACTION", "reason": "brief reason max 8 words"}, ...]
+
+Emails:
+${emailList}`;
+
+  const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      prompt,
+      stream: false,
+      options: { temperature: 0.1, num_predict: 600 }
+    }),
+    signal: AbortSignal.timeout(60000)
+  });
+
+  if (!res.ok) throw new Error(`Ollama error: ${res.status}`);
+  const data = await res.json();
+  const text = data.response || '';
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) throw new Error('No JSON array in Ollama response');
+  return JSON.parse(jsonMatch[0]);
+}
+
 async function classifyEmails(emails) {
   if (!emails || emails.length === 0) return [];
-
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const emailList = emails.slice(0, 20).map((e, i) =>
     `[${i}] From: ${e.from} <${e.fromEmail}>\nSubject: ${e.subject}\nPreview: ${e.preview?.substring(0, 150) || '(no preview)'}`
   ).join('\n\n');
 
-  const response = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 800,
-    system: `You are classifying emails for Nick Ward, Head of Technical Support at Nurtur.
-Classify each email into exactly one category:
-- ACTION: Requires Nick to do something or reply (escalations, approvals, questions directed at Nick, complaints)
-- FYI: Informational only, no action needed (newsletters, notifications, CCs, status updates)
-- DELEGATE: Someone else should handle this, not Nick directly
-- IGNORE: Automated, spam, or irrelevant
+  let classifications = null;
 
-Respond with ONLY a JSON array, one object per email, in the same order as input.
-Format: [{"index": 0, "category": "ACTION", "reason": "brief reason max 8 words"}, ...]
-No other text.`,
-    messages: [{
-      role: 'user',
-      content: `Classify these ${emails.slice(0, 20).length} emails:\n\n${emailList}`
-    }]
-  });
-
+  // Try Ollama first
   try {
-    const text = response.content[0]?.text || '[]';
-    const clean = text.replace(/```json|```/g, '').trim();
-    const classifications = JSON.parse(clean);
-
-    return emails.map((email, i) => {
-      const cls = classifications.find(c => c.index === i);
-      return {
-        ...email,
-        category: cls?.category || 'FYI',
-        reason: cls?.reason || '',
-        triaged: true,
-        triagedAt: new Date().toISOString()
-      };
-    });
-  } catch (e) {
-    console.warn('[EmailTriage] Parse failed:', e.message);
-    return emails.map(e => ({ ...e, category: 'FYI', reason: '', triaged: false }));
+    classifications = await classifyWithOllama(emailList);
+    console.log('[EmailTriage] Classified via Ollama');
+  } catch (ollamaErr) {
+    console.warn('[EmailTriage] Ollama failed, falling back to Claude:', ollamaErr.message);
+    // Claude fallback
+    try {
+      const Anthropic = require('@anthropic-ai/sdk');
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const response = await client.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 800,
+        system: `You are classifying emails for Nick Ward, Head of Technical Support at Nurtur.
+Classify each email into exactly one category:
+- ACTION: Requires Nick to do something or reply
+- FYI: Informational only, no action needed
+- DELEGATE: Someone else should handle this
+- IGNORE: Automated, spam, or irrelevant
+Respond with ONLY a JSON array. Format: [{"index": 0, "category": "ACTION", "reason": "brief reason max 8 words"}, ...]`,
+        messages: [{ role: 'user', content: `Classify these ${emails.slice(0, 20).length} emails:\n\n${emailList}` }]
+      });
+      const text = response.content[0]?.text || '[]';
+      const clean = text.replace(/```json|```/g, '').trim();
+      classifications = JSON.parse(clean);
+      console.log('[EmailTriage] Classified via Claude (fallback)');
+    } catch (claudeErr) {
+      console.error('[EmailTriage] Both Ollama and Claude failed:', claudeErr.message);
+      return emails.map(e => ({ ...e, category: 'FYI', reason: '', triaged: false }));
+    }
   }
+
+  return emails.map((email, i) => {
+    const cls = (classifications || []).find(c => c.index === i);
+    return {
+      ...email,
+      category: cls?.category || 'FYI',
+      reason: cls?.reason || '',
+      triaged: true,
+      triagedAt: new Date().toISOString()
+    };
+  });
 }
 
 // Run a full triage cycle — fetch, classify, store

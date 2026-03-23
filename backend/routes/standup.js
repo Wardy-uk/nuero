@@ -331,29 +331,77 @@ RULES:
       claudeMessages.push({ role: 'user', content: 'Start my standup.' });
     }
 
-    // Stream response
-    const stream = client.messages.stream({
-      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: claudeMessages
-    });
-
     let fullResponse = '';
+    let usedOllama = false;
 
-    stream.on('text', (text) => {
-      fullResponse += text;
-      res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
-    });
+    // Try Ollama streaming first
+    try {
+      const ollamaMessages = [
+        { role: 'system', content: systemPrompt },
+        ...claudeMessages
+      ];
 
-    stream.on('error', (err) => {
-      res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
-      res.end();
-    });
+      const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: process.env.OLLAMA_MODEL || 'qwen2.5:3b',
+          messages: ollamaMessages,
+          stream: true,
+          options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+        }),
+        signal: AbortSignal.timeout(5000)
+      });
 
-    res.on('close', () => stream.abort());
+      if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
 
-    await new Promise((resolve) => stream.on('end', resolve));
+      usedOllama = true;
+      const reader = ollamaRes.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split('\n').filter(l => l.trim())) {
+          try {
+            const data = JSON.parse(line);
+            if (data.message?.content) {
+              fullResponse += data.message.content;
+              res.write(`data: ${JSON.stringify({ type: 'text', content: data.message.content })}\n\n`);
+            }
+          } catch {}
+        }
+      }
+
+      console.log('[Standup] Response via Ollama');
+    } catch (ollamaErr) {
+      console.warn('[Standup] Ollama failed, falling back to Claude:', ollamaErr.message);
+    }
+
+    // Claude fallback — full streaming
+    if (!usedOllama) {
+      const stream = client.messages.stream({
+        model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: claudeMessages
+      });
+
+      stream.on('text', (text) => {
+        fullResponse += text;
+        res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
+      });
+
+      stream.on('error', (err) => {
+        res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+        res.end();
+      });
+
+      res.on('close', () => stream.abort());
+
+      await new Promise((resolve) => stream.on('end', resolve));
+    }
 
     // Check if daily note is present in the response
     const noteMatch = fullResponse.match(/===DAILY_NOTE_START===\n([\s\S]*?)\n===DAILY_NOTE_END===/);
@@ -362,7 +410,7 @@ RULES:
         const noteContent = noteMatch[1].trim();
         obsidianService.writeTodayDailyNote(noteContent);
         nudges.markStandupDone();
-        console.log('[Standup] Interactive standup complete — daily note written');
+        console.log(`[Standup] Interactive standup complete — daily note written (via ${usedOllama ? 'Ollama' : 'Claude'})`);
         res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: true })}\n\n`);
       } catch (e) {
         console.error('[Standup] Failed to write daily note:', e.message);

@@ -91,54 +91,85 @@ router.get('/prompts', async (req, res) => {
       console.warn('[Journal] Location context failed:', e.message);
     }
 
-    // Generate prompts with Claude
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 256,
-      system: `You are generating evening journal prompts for Nick Ward, Head of Technical Support at Nurtur.
-He is neurodivergent, in a new senior leadership role, and uses journalling to process his day and maintain
-self-awareness. Generate exactly 3 short, warm, specific journal prompts based on today's context.
-
-Rules:
-- Each prompt is a single question, max 15 words
-- Questions should be specific to today where possible, using the context provided
-- If Strava activity data is present, at least one prompt should reference it (energy, recovery, physical feeling)
-- If Strava or Apple Health data is present, at least one prompt should reference physical state
-- Apple Health data may include HRV, resting HR, sleep duration and quality
-- Low HRV or poor sleep = ask about energy and recovery specifically
-- Good metrics = affirm and ask what contributed to that
-- If no health data at all, ask about physical energy/wellbeing in general terms
-- If location data is present showing somewhere other than usual, ask about it — "you spent time at X, what was that about?"
-- If location shows Nick was out and about, factor that into energy/recovery questions
-- Do not reference specific coordinates — only named places
-- Vary the focus: one about work/achievement, one about feelings/energy, one about learning/tomorrow
-- Tone: warm, direct, non-judgemental — like a trusted friend asking
-- Do not use bullet points or numbers — just the questions, one per line
-- Never ask the same question twice`,
-      messages: [{
-        role: 'user',
-        content: `Today's context:\n${contextSummary}\n\nGenerate 3 evening journal prompts for Nick.`
-      }]
-    });
-
-    const text = response.content[0]?.text || '';
-    const prompts = text.split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 5 && l.endsWith('?'))
-      .slice(0, 3);
-
-    // Fallback prompts if Claude returns something unexpected
+    // Generate prompts — Ollama first, Claude fallback
+    let finalPrompts = null;
     const fallbacks = [
       "What was the one thing that actually mattered today?",
       "How are you feeling right now, honestly?",
       "What would you do differently tomorrow?"
     ];
 
-    const finalPrompts = prompts.length === 3 ? prompts : fallbacks;
+    const journalPromptText = `Generate exactly 3 evening journal prompts for Nick Ward, Head of Technical Support at Nurtur. He is neurodivergent and uses journalling to process his day.
+
+Rules:
+- Each prompt is a single question, max 15 words
+- Be specific to today's context where possible
+- If Strava/health data present, reference physical state in one prompt
+- If location data present showing somewhere unusual, ask about it
+- Vary focus: one work/achievement, one feelings/energy, one learning/tomorrow
+- Tone: warm, direct, non-judgemental
+- Output ONLY the 3 questions, one per line, nothing else
+
+Today's context:
+${contextSummary}`;
+
+    // Try Ollama first
+    try {
+      const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: process.env.OLLAMA_MODEL || 'qwen2.5:3b',
+          prompt: journalPromptText,
+          stream: false,
+          options: { temperature: 0.7, num_predict: 200 }
+        }),
+        signal: AbortSignal.timeout(30000)
+      });
+
+      if (ollamaRes.ok) {
+        const data = await ollamaRes.json();
+        const text = data.response || '';
+        const prompts = text.split('\n')
+          .map(l => l.replace(/^\d+[\.\)]\s*/, '').trim())
+          .filter(l => l.length > 5 && l.endsWith('?'))
+          .slice(0, 3);
+        if (prompts.length === 3) {
+          finalPrompts = prompts;
+          console.log('[Journal] Prompts generated via Ollama');
+        }
+      }
+    } catch (ollamaErr) {
+      console.warn('[Journal] Ollama failed, falling back to Claude:', ollamaErr.message);
+    }
+
+    // Claude fallback
+    if (!finalPrompts) {
+      try {
+        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const response = await client.messages.create({
+          model: CLAUDE_MODEL,
+          max_tokens: 256,
+          system: `You are generating evening journal prompts for Nick Ward, Head of Technical Support at Nurtur.
+He is neurodivergent, in a new senior leadership role, and uses journalling to process his day.
+Generate exactly 3 short, warm, specific journal prompts based on today's context.
+Rules: each prompt is a single question max 15 words. Vary focus: work, feelings, tomorrow. One per line.`,
+          messages: [{ role: 'user', content: `Today's context:\n${contextSummary}\n\nGenerate 3 evening journal prompts for Nick.` }]
+        });
+        const text = response.content[0]?.text || '';
+        const prompts = text.split('\n')
+          .map(l => l.trim())
+          .filter(l => l.length > 5 && l.endsWith('?'))
+          .slice(0, 3);
+        if (prompts.length === 3) finalPrompts = prompts;
+        console.log('[Journal] Prompts generated via Claude (fallback)');
+      } catch (claudeErr) {
+        console.warn('[Journal] Claude also failed:', claudeErr.message);
+      }
+    }
 
     res.json({
-      prompts: finalPrompts,
+      prompts: finalPrompts || fallbacks,
       alreadyDone,
       date: todayStr
     });
