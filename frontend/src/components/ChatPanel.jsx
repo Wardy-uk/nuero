@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { apiUrl } from '../api';
+import { apiUrl, apiFetch } from '../api';
 import './ChatPanel.css';
 
 const STORAGE_KEY = 'neuro_last_conversation_id';
@@ -122,7 +122,7 @@ function ExportButton({ content }) {
       .substring(0, 40) || 'neuro-export';
 
     try {
-      const res = await fetch(apiUrl('/api/vault/export-docx'), {
+      const res = await apiFetch('/api/vault/export-docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, filename: firstLine })
@@ -227,7 +227,7 @@ export default function ChatPanel({ location }) {
       const res = await fetch(apiUrl(`/api/chat/history/${encodeURIComponent(convId)}`));
       const data = await res.json();
       if (data.messages && data.messages.length > 0) {
-        const msgs = [...data.messages].reverse().map(m => ({ role: m.role, content: m.content }));
+        const msgs = data.messages.map(m => ({ role: m.role, content: m.content }));
         setMessages(msgs);
         setConversationId(convId);
       }

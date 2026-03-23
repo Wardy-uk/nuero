@@ -7,6 +7,7 @@ const fs = require('fs');
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
 const SYNC_DEBOUNCE_MS = 30 * 1000;       // 30s after last file change
 const PULL_INTERVAL_MS = 5 * 60 * 1000;   // 5 min pull cadence
+const CONFLICTS_DIR = 'Conflicts';
 
 let watcher = null;
 let debounceTimer = null;
@@ -20,6 +21,8 @@ const state = {
   lastCommit: null,
   lastPull: null,
   lastError: null,
+  lastConflict: null,
+  conflicts: 0,
   filesChanged: 0,
   totalSyncs: 0,
 };
@@ -38,6 +41,97 @@ function git(args) {
 async function hasChanges() {
   const status = await git(['status', '--porcelain']);
   return status.length > 0;
+}
+
+// Preserve remote versions of conflicting files before local-wins merge
+async function preserveConflicts() {
+  const saved = [];
+  try {
+    // Fetch latest remote so we can read their version
+    await git(['fetch', 'origin', 'main']);
+
+    // Find files that differ between local HEAD and remote
+    const diffOutput = await git(['diff', '--name-only', 'HEAD', 'origin/main']);
+    if (!diffOutput) return saved;
+
+    const conflictDir = path.join(VAULT_PATH, CONFLICTS_DIR);
+    if (!fs.existsSync(conflictDir)) fs.mkdirSync(conflictDir, { recursive: true });
+
+    const ts = new Date().toISOString().replace(/[T:]/g, '-').slice(0, 16);
+
+    for (const filePath of diffOutput.split('\n').filter(Boolean)) {
+      try {
+        // Get the remote version of this file
+        const remoteContent = await git(['show', `origin/main:${filePath}`]);
+        // Get the local version
+        const localPath = path.join(VAULT_PATH, filePath);
+        const localContent = fs.existsSync(localPath) ? fs.readFileSync(localPath, 'utf-8') : null;
+
+        // Only save if both versions exist and differ
+        if (localContent !== null && remoteContent !== localContent) {
+          const baseName = path.basename(filePath, '.md');
+          const conflictFile = path.join(conflictDir, `${ts}-${baseName}.md`);
+          const conflictContent = [
+            '---',
+            `type: sync-conflict`,
+            `date: ${new Date().toISOString()}`,
+            `original: ${filePath}`,
+            `resolution: pending`,
+            '---',
+            '',
+            `# Sync Conflict: ${baseName}`,
+            `**File:** ${filePath}`,
+            `**Detected:** ${new Date().toLocaleString('en-GB')}`,
+            '',
+            '## Remote Version (was on server)',
+            '```',
+            remoteContent,
+            '```',
+            '',
+            '## Local Version (kept)',
+            '```',
+            localContent,
+            '```',
+            '',
+            '> Review both versions and update the original file. Delete this conflict note when resolved.',
+            ''
+          ].join('\n');
+
+          fs.writeFileSync(conflictFile, conflictContent, 'utf-8');
+          saved.push(filePath);
+          console.log(`[VaultSync] Conflict preserved: ${filePath} → ${CONFLICTS_DIR}/${ts}-${baseName}.md`);
+        }
+      } catch (e) {
+        console.warn(`[VaultSync] Could not preserve conflict for ${filePath}: ${e.message}`);
+      }
+    }
+  } catch (e) {
+    console.error('[VaultSync] preserveConflicts error:', e.message);
+  }
+  return saved;
+}
+
+// List unresolved conflict files
+function getConflicts() {
+  const conflictDir = path.join(VAULT_PATH, CONFLICTS_DIR);
+  if (!VAULT_PATH || !fs.existsSync(conflictDir)) return [];
+  try {
+    return fs.readdirSync(conflictDir)
+      .filter(f => f.endsWith('.md'))
+      .map(f => {
+        const fullPath = path.join(conflictDir, f);
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const originalMatch = content.match(/^original:\s*(.+)$/m);
+        const resolutionMatch = content.match(/^resolution:\s*(.+)$/m);
+        return {
+          file: f,
+          original: originalMatch ? originalMatch[1] : null,
+          resolution: resolutionMatch ? resolutionMatch[1] : 'pending',
+          date: fs.statSync(fullPath).mtime.toISOString()
+        };
+      })
+      .filter(c => c.resolution === 'pending');
+  } catch { return []; }
 }
 
 async function syncVault(reason = 'manual') {
@@ -64,21 +158,42 @@ async function syncVault(reason = 'manual') {
       await git(['pull', '--rebase', 'origin', 'main']);
       state.lastPull = new Date().toISOString();
     } catch (pullErr) {
-      console.error('[VaultSync] Pull conflict — attempting resolution');
-      // Try to finish rebase with local-wins strategy
+      console.error('[VaultSync] Pull conflict — preserving both versions');
+      // Abort the failed rebase so we can handle conflicts safely
+      try { await git(['rebase', '--abort']); } catch {}
+
+      // Preserve conflicting remote content before merging
+      const conflictFiles = await preserveConflicts();
+
+      // Now merge with local-wins — but remote content is already saved
       try {
-        await git(['checkout', '--ours', '.']);
-        await git(['add', '-A']);
-        await git(['rebase', '--continue']);
-      } catch {
-        // Abort rebase and merge instead
-        try { await git(['rebase', '--abort']); } catch {}
-        try {
-          await git(['merge', 'origin/main', '--strategy-option', 'ours', '-m', 'auto-merge: local wins']);
-        } catch (mergeErr) {
-          throw new Error(`Pull/merge failed: ${mergeErr.message}`);
-        }
+        await git(['merge', 'origin/main', '--strategy-option', 'ours', '-m',
+          `auto-merge: local wins, ${conflictFiles.length} conflict(s) preserved in ${CONFLICTS_DIR}/`]);
+      } catch (mergeErr) {
+        throw new Error(`Pull/merge failed: ${mergeErr.message}`);
       }
+
+      // Commit the conflict preservation files
+      if (conflictFiles.length > 0) {
+        await git(['add', '-A']);
+        const hasNew = await hasChanges();
+        if (hasNew) {
+          await git(['commit', '-m', `preserve ${conflictFiles.length} conflict(s) in ${CONFLICTS_DIR}/`]);
+        }
+
+        state.conflicts += conflictFiles.length;
+        state.lastConflict = new Date().toISOString();
+        console.warn(`[VaultSync] ${conflictFiles.length} conflict(s) preserved in ${CONFLICTS_DIR}/`);
+
+        // Send push notification about conflicts
+        try {
+          const webpush = require('./webpush');
+          webpush.sendToAll('NEURO — Sync Conflict',
+            `${conflictFiles.length} file(s) had conflicting changes. Both versions saved in ${CONFLICTS_DIR}/ — please review.`,
+            { type: 'sync_conflict' }).catch(() => {});
+        } catch {}
+      }
+
       state.lastPull = new Date().toISOString();
     }
 
@@ -167,12 +282,14 @@ function stop() {
 }
 
 function getStatus() {
+  const pendingConflicts = getConflicts();
   return {
     ...state,
+    pendingConflicts: pendingConflicts.length,
     vaultPath: VAULT_PATH || null,
     vaultExists: VAULT_PATH ? fs.existsSync(VAULT_PATH) : false,
     syncing,
   };
 }
 
-module.exports = { start: startWatcher, stop, syncVault, getStatus };
+module.exports = { start: startWatcher, stop, syncVault, getStatus, getConflicts };

@@ -5,14 +5,19 @@ const path = require('path');
 
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
 
-// API key auth for external callers (n8n, etc.)
-// If no key is sent, allow through (frontend / same-origin).
-// If a key IS sent, it must match.
+// API key auth — required for all vault access (read and write).
+// Accepts via header (X-Api-Key) or query param (api_key).
+// VAULT_API_KEY must be set in .env — if unset, all vault access is blocked.
 function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'] || req.query.api_key;
-  if (!key) return next(); // no key sent = frontend request, allow
   const expected = process.env.VAULT_API_KEY;
-  if (expected && key !== expected) return res.status(401).json({ error: 'Invalid API key' });
+  if (!expected) {
+    console.error('[Vault] VAULT_API_KEY not configured — blocking all vault access');
+    return res.status(503).json({ error: 'Vault API key not configured on server' });
+  }
+  const key = req.headers['x-api-key'] || req.query.api_key;
+  if (!key || key !== expected) {
+    return res.status(401).json({ error: 'Unauthorized — valid API key required' });
+  }
   next();
 }
 
@@ -182,7 +187,8 @@ router.post('/export-docx', async (req, res) => {
   const safeName = filename.replace(/[^a-z0-9\s\-_]/gi, '').trim() || 'export';
   const docxName = safeName.endsWith('.docx') ? safeName : `${safeName}.docx`;
 
-  const targetDir = path.join(VAULT_PATH, subdir || 'Exports');
+  const targetDir = safePath(subdir || 'Exports');
+  if (!targetDir) return res.status(400).json({ error: 'Invalid export path' });
   if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
   const targetPath = path.join(targetDir, docxName);
 
@@ -193,10 +199,10 @@ router.post('/export-docx', async (req, res) => {
   const relPath = path.relative(VAULT_PATH, mdPath).replace(/\\/g, '/');
 
   // Try Pandoc conversion if available
-  const { execSync } = require('child_process');
+  const { execFileSync } = require('child_process');
   let converted = false;
   try {
-    execSync(`pandoc "${mdPath}" -o "${targetPath}" --from markdown`, { timeout: 10000 });
+    execFileSync('pandoc', [mdPath, '-o', targetPath, '--from', 'markdown'], { timeout: 10000 });
     converted = true;
     console.log(`[Vault] Pandoc converted to docx: ${targetPath}`);
   } catch {
@@ -219,8 +225,8 @@ router.get('/related', async (req, res) => {
     const { path: notePath, limit = 3 } = req.query;
     if (!notePath) return res.status(400).json({ error: 'path required' });
 
-    const vaultPath = process.env.OBSIDIAN_VAULT_PATH;
-    const fullPath = path.join(vaultPath, notePath);
+    const fullPath = safePath(notePath);
+    if (!fullPath) return res.status(400).json({ error: 'Invalid path' });
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ error: 'Note not found' });
     }

@@ -99,6 +99,12 @@ export default function App() {
   }, [activeView]);
 
   const handleNavigate = (view) => {
+    if (view === 'chat') {
+      // Open the aside chat panel instead of mounting a second ChatPanel
+      setChatOpen(true);
+      setSidebarOpen(false);
+      return;
+    }
     setActiveView(view);
     setSidebarOpen(false);
   };
@@ -121,7 +127,6 @@ export default function App() {
       case 'qa': return <QATab />;
       case 'journal': return <JournalPanel />;
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
-      case 'chat': return <ChatPanel location={location} />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
     }

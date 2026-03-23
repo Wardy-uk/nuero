@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { apiUrl } from '../api';
+import { apiUrl, apiFetch } from '../api';
 import './VaultBrowser.css';
 
 function RelatedNotes({ notePath, onNavigate }) {
@@ -8,7 +8,7 @@ function RelatedNotes({ notePath, onNavigate }) {
 
   React.useEffect(() => {
     if (!notePath) return;
-    fetch(apiUrl(`/api/vault/related?path=${encodeURIComponent(notePath)}&limit=3`))
+    apiFetch(`/api/vault/related?path=${encodeURIComponent(notePath)}&limit=3`))
       .then(r => r.json())
       .then(d => setRelated(d.related || []))
       .catch(() => {});
@@ -58,7 +58,7 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
   const loadDir = useCallback(async (dir) => {
     setLoading(true);
     try {
-      const res = await fetch(apiUrl(`/api/vault/list?dir=${encodeURIComponent(dir)}`));
+      const res = await apiFetch(`/api/vault/list?dir=${encodeURIComponent(dir)}`));
       const data = await res.json();
       const sorted = (data.files || []).sort((a, b) => {
         if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
@@ -84,7 +84,7 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
 
   const openFileHandler = async (relativePath) => {
     try {
-      const res = await fetch(apiUrl(`/api/vault/read?path=${encodeURIComponent(relativePath)}`));
+      const res = await apiFetch(`/api/vault/read?path=${encodeURIComponent(relativePath)}`));
       const data = await res.json();
       if (data.content !== undefined) {
         setOpenFile({ path: relativePath, content: data.content });
@@ -101,7 +101,7 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
     setSaving(true);
     setSaveMsg(null);
     try {
-      const res = await fetch(apiUrl('/api/vault/write'), {
+      const res = await apiFetch('/api/vault/write'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: openFile.path, content: edited })
@@ -123,7 +123,7 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
     if (!searchQuery.trim()) return;
     setLoading(true);
     try {
-      const res = await fetch(apiUrl(`/api/vault/search?query=${encodeURIComponent(searchQuery)}&dir=${encodeURIComponent(currentDir)}`));
+      const res = await apiFetch(`/api/vault/search?query=${encodeURIComponent(searchQuery)}&dir=${encodeURIComponent(currentDir)}`));
       const data = await res.json();
       setSearchResults(data.results || []);
     } catch {
