@@ -329,6 +329,54 @@ function GuidedStandup({ onDone }) {
 
 // ── Main StandupEditor ────────────────────────────────────────────────────
 
+function TodayStandup() {
+  const [content, setContent] = React.useState(null);
+
+  React.useEffect(() => {
+    fetch(apiUrl('/api/obsidian/daily'))
+      .then(r => r.json())
+      .then(data => {
+        if (!data.content) return;
+        // Extract standup and focus sections from daily note
+        const lines = data.content.split('\n');
+        const sections = [];
+        let capture = false;
+        let current = [];
+
+        for (const line of lines) {
+          if (/^## (Standup|Focus Today|Carry)/i.test(line)) {
+            if (current.length > 0) sections.push(current.join('\n'));
+            current = [line];
+            capture = true;
+          } else if (/^## /.test(line) && capture) {
+            if (current.length > 0) sections.push(current.join('\n'));
+            current = [];
+            capture = false;
+          } else if (capture) {
+            current.push(line);
+          }
+        }
+        if (current.length > 0) sections.push(current.join('\n'));
+
+        if (sections.length > 0) {
+          setContent(sections.join('\n\n'));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!content) return null;
+
+  return (
+    <div className="today-standup">
+      <div className="today-standup-label">Today's standup</div>
+      <div className="today-standup-content">
+        <ReactMarkdown>{content}</ReactMarkdown>
+      </div>
+    </div>
+  );
+}
+
 export default function StandupEditor() {
   const [mode, setMode] = useState('guided'); // 'guided' | 'manual'
   const [content, setContent] = useState('');
@@ -431,6 +479,9 @@ export default function StandupEditor() {
           <div className="guided-done-sub">Daily note written to vault.</div>
         </div>
       )}
+
+      {/* Today's standup content — shown when standup is done */}
+      {standupDone && <TodayStandup />}
 
       {/* Manual mode */}
       {mode === 'manual' && (

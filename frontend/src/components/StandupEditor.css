@@ -381,3 +381,48 @@
     height: calc(100vh - 200px);
   }
 }
+
+/* Today's standup content */
+.today-standup {
+  margin-top: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.today-standup-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.today-standup-content {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.today-standup-content h2 {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin: 12px 0 4px;
+}
+
+.today-standup-content h2:first-child {
+  margin-top: 0;
+}
+
+.today-standup-content ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.today-standup-content li {
+  margin: 2px 0;
+}
