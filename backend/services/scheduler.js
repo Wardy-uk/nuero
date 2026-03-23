@@ -110,9 +110,9 @@ function start() {
     }
   });
 
-  // Every night at 23:30 — classify all pending imports
-  cron.schedule('30 23 * * *', () => {
-    console.log('[Scheduler] Running nightly imports sweep...');
+  // Hourly imports sweep — classify and auto-route pending imports
+  cron.schedule('30 * * * *', () => {
+    console.log('[Scheduler] Running hourly imports sweep...');
     imports.autoClassify().catch(e => {
       console.error('[Scheduler] Imports sweep failed:', e.message);
     });
