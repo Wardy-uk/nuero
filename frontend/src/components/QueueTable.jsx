@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import './QueueTable.css';
 
@@ -17,6 +18,62 @@ function formatSla(minutes) {
   return `${h}h ${m}m`;
 }
 
+function EscalationSection() {
+  const [escalations, setEscalations] = useState(null);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/jira/escalations'))
+      .then(r => r.json())
+      .then(data => setEscalations(data.tickets || []))
+      .catch(() => setEscalations([]));
+  }, []);
+
+  if (!escalations || escalations.length === 0) return null;
+
+  const needsAttention = escalations.filter(t => !t.hasComment && !t.seen);
+  const seenNoComment = escalations.filter(t => !t.hasComment && t.seen);
+  const commented = escalations.filter(t => t.hasComment);
+
+  return (
+    <div className="escalation-section">
+      <h3 className="escalation-title">Escalations</h3>
+      {needsAttention.length > 0 && (
+        <div className="escalation-group">
+          <span className="escalation-group-label">Needs attention</span>
+          {needsAttention.map(t => (
+            <div key={t.key} className="escalation-card escalation-red">
+              <span className="escalation-key">{t.key}</span>
+              <span className="escalation-summary">{t.summary}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {seenNoComment.length > 0 && (
+        <div className="escalation-group">
+          <span className="escalation-group-label">Seen — no comment yet</span>
+          {seenNoComment.map(t => (
+            <div key={t.key} className="escalation-card escalation-amber">
+              <span className="escalation-key">{t.key}</span>
+              <span className="escalation-summary">{t.summary}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {commented.length > 0 && (
+        <div className="escalation-group">
+          <span className="escalation-group-label">Commented</span>
+          {commented.map(t => (
+            <div key={t.key} className="escalation-card escalation-grey">
+              <span className="escalation-key">{t.key}</span>
+              <span className="escalation-summary">{t.summary}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function QueueTable({ queueData, onRefresh }) {
   const [showMine, setShowMine] = useState(true);
 
@@ -28,6 +85,11 @@ export default function QueueTable({ queueData, onRefresh }) {
   const tickets = data?.tickets || [];
   const configured = data?.configured;
   const lastSync = data?.last_sync;
+
+  // Mark escalations as seen when queue tab is opened
+  useEffect(() => {
+    fetch(apiUrl('/api/jira/escalations/seen'), { method: 'POST' }).catch(() => {});
+  }, []);
 
   return (
     <div className="queue-container">
@@ -48,6 +110,8 @@ export default function QueueTable({ queueData, onRefresh }) {
           <button className="btn btn-secondary" onClick={() => { onRefresh(); fetchFiltered(); }}>Refresh</button>
         </div>
       </div>
+
+      <EscalationSection />
 
       {!configured ? (
         <div className="queue-unconfigured">

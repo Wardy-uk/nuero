@@ -59,6 +59,74 @@
   text-align: center;
 }
 
+.sidebar-item {
+  position: relative;
+}
+
+.sidebar-group {
+  margin-bottom: 4px;
+}
+
+.sidebar-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px 4px;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: default;
+}
+
+.sidebar-group-toggle {
+  cursor: pointer;
+}
+
+.sidebar-group-toggle:hover .sidebar-group-label {
+  color: var(--text-primary);
+}
+
+.sidebar-group-label {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.sidebar-group-chevron {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.sidebar-item.time-highlight {
+  color: var(--accent);
+  background: rgba(90, 163, 249, 0.04);
+}
+
+.sidebar-item.time-highlight .sidebar-icon {
+  color: var(--accent);
+}
+
+.sidebar-item.time-highlight::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  opacity: 0.6;
+}
+
+.sidebar-badge-red {
+  background: #ef4444;
+  color: #fff;
+}
+
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;

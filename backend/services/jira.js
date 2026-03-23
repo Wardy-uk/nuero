@@ -160,6 +160,131 @@ async function syncTickets() {
   }
 }
 
+// ── Escalation queue ──
+
+// Fetch all open escalation tickets
+async function fetchEscalationTickets() {
+  const jql = `resolution = Unresolved AND "Request Type" in ("Escalation (NT)") AND status not in (CLOSED, Done, Resolved) ORDER BY created DESC`;
+
+  const result = await jiraRequest('/rest/api/3/search/jql', {
+    method: 'POST',
+    body: {
+      jql,
+      fields: ['summary', 'status', 'priority', 'assignee', 'created', 'updated', 'comment'],
+      maxResults: 50
+    }
+  });
+  return result.issues || [];
+}
+
+// Check if Nick has commented on a ticket
+// "Nick" = comment author email contains JIRA_EMAIL (nickw@nurtur.tech)
+function nickHasCommented(issue) {
+  const comments = issue.fields?.comment?.comments || [];
+  const nickEmail = (JIRA_EMAIL || '').toLowerCase();
+  return comments.some(c => {
+    const authorEmail = (c.author?.emailAddress || '').toLowerCase();
+    const authorName = (c.author?.displayName || '').toLowerCase();
+    return authorEmail.includes(nickEmail) || authorName.includes('nick ward');
+  });
+}
+
+// Sync escalation queue — store seen/unseen state in agent_state
+async function syncEscalations() {
+  if (!isConfigured()) return { ok: false, reason: 'not configured' };
+
+  try {
+    const issues = await fetchEscalationTickets();
+
+    // Load known ticket keys
+    let known = {};
+    try {
+      const raw = db.getState('escalation_seen');
+      known = raw ? JSON.parse(raw) : {};
+    } catch { known = {}; }
+
+    let newUnseen = 0;
+    const updated = { ...known };
+
+    for (const issue of issues) {
+      const key = issue.key;
+      const hasComment = nickHasCommented(issue);
+
+      if (!updated[key]) {
+        // First time seeing this ticket
+        updated[key] = {
+          seen: false,
+          hasComment,
+          summary: issue.fields?.summary || '',
+          created: issue.fields?.created
+        };
+        if (!hasComment) {
+          newUnseen++;
+          console.log(`[Jira] New escalation without Nick comment: ${key}`);
+        }
+      } else {
+        // Update comment status (Nick may have commented since last check)
+        updated[key].hasComment = hasComment;
+      }
+    }
+
+    // Remove tickets no longer in the queue
+    const activeKeys = new Set(issues.map(i => i.key));
+    for (const key of Object.keys(updated)) {
+      if (!activeKeys.has(key)) delete updated[key];
+    }
+
+    db.setState('escalation_seen', JSON.stringify(updated));
+    db.setState('escalation_last_sync', new Date().toISOString());
+    db.setState('escalation_count', String(issues.length));
+
+    // Trigger nudge if new unseen escalations
+    if (newUnseen > 0) {
+      try {
+        const nudges = require('./nudges');
+        const unseenList = Object.entries(updated)
+          .filter(([, v]) => !v.hasComment && !v.seen)
+          .slice(0, 3)
+          .map(([k, v]) => `${k}: ${v.summary}`)
+          .join('; ');
+        const msg = `${newUnseen} new escalation${newUnseen > 1 ? 's' : ''} need${newUnseen === 1 ? 's' : ''} your attention: ${unseenList}`;
+        nudges.broadcast({ type: 'nudge', nudge_type: 'escalation', message: msg, nag_count: 0 });
+        const webpush = require('./webpush');
+        webpush.sendToAll('NEURO — New Escalation', msg, { type: 'escalation', url: '/queue' }).catch(() => {});
+        console.log(`[Jira] Escalation nudge sent: ${newUnseen} new`);
+      } catch (e) {
+        console.warn('[Jira] Failed to send escalation nudge:', e.message);
+      }
+    }
+
+    return { ok: true, total: issues.length, newUnseen };
+  } catch (err) {
+    console.error('[Jira] Escalation sync failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+// Mark escalation ticket as seen by Nick (called when he opens the queue tab)
+function markEscalationsSeen() {
+  try {
+    const raw = db.getState('escalation_seen');
+    const known = raw ? JSON.parse(raw) : {};
+    for (const key of Object.keys(known)) {
+      known[key].seen = true;
+    }
+    db.setState('escalation_seen', JSON.stringify(known));
+  } catch {}
+}
+
+// Count unseen escalations (tickets Nick hasn't commented on AND hasn't opened)
+function getUnseenEscalationCount() {
+  try {
+    const raw = db.getState('escalation_seen');
+    const known = raw ? JSON.parse(raw) : {};
+    return Object.values(known).filter(v => !v.hasComment && !v.seen).length;
+  } catch { return 0; }
+}
+
 // ── Polling ──
 
 function startPolling() {
@@ -193,5 +318,9 @@ module.exports = {
   isConfigured,
   syncTickets,
   startPolling,
-  stopPolling
+  stopPolling,
+  fetchEscalationTickets,
+  syncEscalations,
+  markEscalationsSeen,
+  getUnseenEscalationCount
 };

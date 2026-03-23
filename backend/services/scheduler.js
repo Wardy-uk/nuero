@@ -161,7 +161,21 @@ function start() {
     });
   }, 30 * 1000);
 
-  console.log('[Scheduler] Started — standup 9am, 1-2-1 9:10am, nag 15m, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, imports 23:30, PLAUD 30m, MS Tasks 30m');
+  // Escalation queue watcher — check every 5 minutes during work hours
+  cron.schedule('*/5 8-18 * * 1-5', () => {
+    jira.syncEscalations().catch(e => {
+      console.error('[Scheduler] Escalation sync failed:', e.message);
+    });
+  });
+
+  // Startup escalation check — after 30s delay
+  setTimeout(() => {
+    jira.syncEscalations().catch(e => {
+      console.error('[Scheduler] Startup escalation sync failed:', e.message);
+    });
+  }, 30000);
+
+  console.log('[Scheduler] Started — standup 9am, 1-2-1 9:10am, nag 15m, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, escalations 5m, imports 23:30, PLAUD 30m, MS Tasks 30m');
 }
 
 module.exports = { start };

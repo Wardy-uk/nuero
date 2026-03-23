@@ -35,6 +35,7 @@ const journalRoutes = require('./routes/journal');
 const stravaRoutes = require('./routes/strava');
 const healthRoutes = require('./routes/health');
 const locationRoutes = require('./routes/location');
+const jiraRoutes = require('./routes/jira');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -63,6 +64,7 @@ app.use('/api/journal', journalRoutes);
 app.use('/api/strava', stravaRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/location', locationRoutes);
+app.use('/api/jira', jiraRoutes);
 app.use('/api/activity', require('./routes/activity'));
 
 // Health / status endpoint

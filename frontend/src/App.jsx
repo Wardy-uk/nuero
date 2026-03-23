@@ -121,6 +121,7 @@ export default function App() {
       case 'qa': return <QATab />;
       case 'journal': return <JournalPanel />;
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
+      case 'chat': return <ChatPanel location={location} />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
     }

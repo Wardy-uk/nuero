@@ -129,6 +129,73 @@ tr.sla-ok .ticket-sla {
   color: var(--success);
 }
 
+.escalation-section {
+  margin-bottom: 20px;
+}
+
+.escalation-title {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.escalation-group {
+  margin-bottom: 8px;
+}
+
+.escalation-group-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.escalation-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  border-left: 3px solid transparent;
+}
+
+.escalation-card.escalation-red {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.escalation-card.escalation-amber {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.escalation-card.escalation-grey {
+  border-left-color: var(--border);
+  background: var(--bg-card);
+  opacity: 0.6;
+}
+
+.escalation-key {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--accent);
+  white-space: nowrap;
+  min-width: 70px;
+}
+
+.escalation-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 768px) {
   .queue-container {
     overflow-x: auto;
