@@ -3,6 +3,37 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
+// NOVA bridge — fallback when MSAL not authenticated
+async function novaBridgeFetch(bridgePath, params = {}) {
+  const baseUrl = process.env.NOVA_BRIDGE_URL;
+  const secret = process.env.NOVA_BRIDGE_SECRET;
+  if (!baseUrl || !secret) return null;
+
+  try {
+    const url = new URL(`/api/neuro-bridge${bridgePath}`, baseUrl);
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+    });
+    const res = await fetch(url.toString(), {
+      headers: { 'x-neuro-bridge-secret': secret },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!res.ok) {
+      console.warn(`[Bridge] ${bridgePath} returned ${res.status}`);
+      return null;
+    }
+    const json = await res.json();
+    return json.ok ? json.data : null;
+  } catch (e) {
+    console.warn(`[Bridge] ${bridgePath} failed:`, e.message);
+    return null;
+  }
+}
+
+function isBridgeConfigured() {
+  return !!(process.env.NOVA_BRIDGE_URL && process.env.NOVA_BRIDGE_SECRET);
+}
+
 // Use the same client ID as @softeria/ms-365-mcp-server (NOVA's Graph integration)
 // This is a public multi-tenant app with Graph permissions pre-consented
 // Token cache shared with NOVA so auth carries across both tools
@@ -170,73 +201,131 @@ function graphFetch(urlPath, token) {
 
 // Fetch calendar events for a date range (YYYY-MM-DD strings)
 async function fetchCalendarEvents(startDate, endDate) {
+  // Priority 1 — MSAL/Graph direct
   const token = await getAccessToken();
-  if (!token) return null; // null = not authenticated, caller should fall back
+  if (token) {
+    try {
+      const start = `${startDate}T00:00:00`;
+      const end = `${endDate}T23:59:59`;
+      const data = await graphFetch(
+        `/me/calendarView?startDateTime=${start}&endDateTime=${end}&$top=50&$orderby=start/dateTime&$select=subject,start,end,location,isAllDay,showAs,isCancelled`,
+        token
+      );
+      if (data && data.value) {
+        return data.value.map(event => {
+          const startDt = event.start.dateTime;
+          const endDt = event.end.dateTime;
+          const date = startDt.split('T')[0];
+          const startTime = startDt.split('T')[1]?.substring(0, 5);
 
-  try {
-    const start = `${startDate}T00:00:00`;
-    const end = `${endDate}T23:59:59`;
-    const data = await graphFetch(
-      `/me/calendarView?startDateTime=${start}&endDateTime=${end}&$top=50&$orderby=start/dateTime&$select=subject,start,end,location,isAllDay,showAs,isCancelled`,
-      token
-    );
-    if (!data || !data.value) return [];
-
-    return data.value.map(event => {
-      const startDt = event.start.dateTime;
-      const endDt = event.end.dateTime;
-      const date = startDt.split('T')[0];
-      const startTime = startDt.split('T')[1]?.substring(0, 5);
-      const endTime = endDt.split('T')[1]?.substring(0, 5);
-
-      return {
-        id: `graph-${date}-${startTime}-${(event.subject || '').substring(0, 20)}`,
-        date,
-        start: startDt,
-        end: endDt,
-        subject: event.subject || '(No subject)',
-        location: event.location?.displayName || null,
-        isAllDay: event.isAllDay,
-        showAs: event.isCancelled ? 'cancelled' : (event.showAs || 'busy')
-      };
-    });
-  } catch (err) {
-    console.error('[Microsoft] Calendar fetch error:', err.message);
-    return null;
+          return {
+            id: `graph-${date}-${startTime}-${(event.subject || '').substring(0, 20)}`,
+            date,
+            start: startDt,
+            end: endDt,
+            subject: event.subject || '(No subject)',
+            location: event.location?.displayName || null,
+            isAllDay: event.isAllDay,
+            showAs: event.isCancelled ? 'cancelled' : (event.showAs || 'busy')
+          };
+        });
+      }
+    } catch (err) {
+      console.error('[Microsoft] Calendar fetch error:', err.message);
+    }
   }
+
+  // Priority 2 — NOVA bridge (when MSAL not authenticated)
+  if (isBridgeConfigured()) {
+    try {
+      const bridgeData = await novaBridgeFetch('/calendar', { start: startDate, end: endDate });
+      if (bridgeData) {
+        // Bridge returns Graph API format — map to NEURO format
+        const events = Array.isArray(bridgeData) ? bridgeData :
+          (bridgeData.value || []);
+        if (events.length > 0) {
+          console.log(`[Calendar] Bridge returned ${events.length} events`);
+          return events.map(e => ({
+            id: e.id,
+            subject: e.subject,
+            start: e.start?.dateTime || e.start,
+            end: e.end?.dateTime || e.end,
+            location: e.location?.displayName || null,
+            isAllDay: e.isAllDay || false,
+            organizer: e.organizer?.emailAddress?.name || null,
+            showAs: e.showAs || 'busy'
+          }));
+        }
+      }
+    } catch (e) {
+      console.warn('[Calendar] Bridge failed:', e.message);
+    }
+  }
+
+  return null;
 }
 
 // Fetch recent emails — unread + recent (last N hours)
 async function fetchRecentEmails(hoursBack = 24, maxResults = 50) {
+  // Priority 1 — MSAL/Graph direct
   const token = await getAccessToken();
-  if (!token) return null;
-
-  try {
-    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
-    const filter = `receivedDateTime ge ${since}`;
-    const select = 'id,subject,from,receivedDateTime,isRead,importance,flag,bodyPreview,hasAttachments';
-    const data = await graphFetch(
-      `/me/messages?$filter=${encodeURIComponent(filter)}&$top=${maxResults}&$orderby=receivedDateTime desc&$select=${select}`,
-      token
-    );
-    if (!data || !data.value) return [];
-
-    return data.value.map(msg => ({
-      id: msg.id,
-      subject: msg.subject || '(No subject)',
-      from: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',
-      fromEmail: msg.from?.emailAddress?.address || '',
-      received: msg.receivedDateTime,
-      isRead: msg.isRead,
-      importance: msg.importance,
-      isFlagged: msg.flag?.flagStatus === 'flagged',
-      preview: (msg.bodyPreview || '').substring(0, 300),
-      hasAttachments: msg.hasAttachments
-    }));
-  } catch (err) {
-    console.error('[Microsoft] Email fetch error:', err.message);
-    return null;
+  if (token) {
+    try {
+      const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
+      const filter = `receivedDateTime ge ${since}`;
+      const select = 'id,subject,from,receivedDateTime,isRead,importance,flag,bodyPreview,hasAttachments';
+      const data = await graphFetch(
+        `/me/messages?$filter=${encodeURIComponent(filter)}&$top=${maxResults}&$orderby=receivedDateTime desc&$select=${select}`,
+        token
+      );
+      if (data && data.value) {
+        return data.value.map(msg => ({
+          id: msg.id,
+          subject: msg.subject || '(No subject)',
+          from: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',
+          fromEmail: msg.from?.emailAddress?.address || '',
+          received: msg.receivedDateTime,
+          isRead: msg.isRead,
+          importance: msg.importance,
+          isFlagged: msg.flag?.flagStatus === 'flagged',
+          preview: (msg.bodyPreview || '').substring(0, 300),
+          hasAttachments: msg.hasAttachments
+        }));
+      }
+    } catch (err) {
+      console.error('[Microsoft] Email fetch error:', err.message);
+    }
   }
+
+  // Priority 2 — NOVA bridge fallback
+  if (isBridgeConfigured()) {
+    try {
+      const bridgeData = await novaBridgeFetch('/mail', {
+        count: maxResults || 40,
+        unreadOnly: false
+      });
+      if (bridgeData) {
+        const messages = Array.isArray(bridgeData) ? bridgeData :
+          (bridgeData.value || []);
+        return messages.map(m => ({
+          id: m.id,
+          subject: m.subject,
+          from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || '',
+          fromEmail: m.from?.emailAddress?.address || '',
+          received: m.receivedDateTime,
+          isRead: m.isRead,
+          importance: m.importance,
+          isFlagged: m.flag?.flagStatus === 'flagged',
+          preview: m.bodyPreview || '',
+          hasAttachments: m.hasAttachments || false
+        }));
+      }
+    } catch (e) {
+      console.warn('[Mail] Bridge failed:', e.message);
+    }
+  }
+
+  return null;
 }
 
 module.exports = {
