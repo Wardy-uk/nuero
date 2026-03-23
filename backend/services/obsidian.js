@@ -692,7 +692,9 @@ function parseNinetyDayPlan() {
   const outcomeRegex = /\*\(Outcome (\d+)/;
 
   const lines = content.split('\n');
-  for (const line of lines) {
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    const lineNumber = li + 1; // 1-based for file operations
     const m = line.match(taskRegex);
     if (m) {
       const status = m[1]; // ' ', 'x', '>', '/'
@@ -707,7 +709,7 @@ function parseNinetyDayPlan() {
       // Clean text — remove outcome ref and trailing *
       text = text.replace(/\s*\*\(Outcome.*$/, '').replace(/\s*\*\(.*?\)\*$/, '').trim();
 
-      tasks.push({ day, dateLabel, text, status, outcome });
+      tasks.push({ day, dateLabel, calendarDate: workingDayToDate(day), text, status, outcome, lineNumber });
     }
 
     // Also parse pre-day-1 tasks and checkpoint items
@@ -725,7 +727,7 @@ function parseNinetyDayPlan() {
       if (text.includes('CHECKPOINT DAY')) {
         const cpMatch = text.match(/CHECKPOINT DAY (\d+)/);
         if (cpMatch) {
-          tasks.push({ day: parseInt(cpMatch[1], 10), dateLabel: '', text: 'Checkpoint presentation', status, outcome: null, isCheckpoint: true });
+          tasks.push({ day: parseInt(cpMatch[1], 10), dateLabel: '', text: 'Checkpoint presentation', status, outcome: null, isCheckpoint: true, lineNumber });
         }
         continue;
       }
@@ -733,7 +735,7 @@ function parseNinetyDayPlan() {
       // Only include pre-day-1 items (they appear before Week 1)
       if (text.includes('Outcome') || text.includes('technical') || text.includes('urgent')) {
         text = text.replace(/\s*\*\(.*?\)\*$/, '').replace(/\*\*/g, '').trim();
-        tasks.push({ day: 0, dateLabel: 'Pre-Day 1', text, status, outcome });
+        tasks.push({ day: 0, dateLabel: 'Pre-Day 1', text, status, outcome, lineNumber });
       }
     }
   }
@@ -781,7 +783,8 @@ function parseNinetyDayPlan() {
     todayTasks,
     totalDone,
     totalTasks,
-    allTasks: tasks
+    allTasks: tasks,
+    filePath: planPath
   };
 }
 

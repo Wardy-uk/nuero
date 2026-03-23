@@ -29,6 +29,7 @@ router.get('/', (req, res) => {
       const plan = obsidian.parseNinetyDayPlan();
       if (plan) {
         const planTasks = plan.allTasks || [];
+        const planPath = plan.filePath || null;
         const OUTCOMES = {
           1: 'Visibility & BI', 2: 'Tiered Model', 3: 'Quality & CX',
           4: 'People & Culture', 5: 'Cross-functional', 6: 'Production'
@@ -44,13 +45,13 @@ router.get('/', (req, res) => {
             id: planId++,
             text: t.text,
             priority: isOverdue ? 'high' : (t.day === plan.currentDay ? 'normal' : 'low'),
-            due_date: t.dateLabel || null,
+            due_date: t.calendarDate || null,
             source: `90-Day Plan${outcomeLabel ? ` (${outcomeLabel})` : ''}`,
             done: isDone ? 1 : 0,
             ms_id: null,
             vault_task: true,
-            filePath: null,
-            lineNumber: null,
+            filePath: planPath,
+            lineNumber: t.lineNumber != null ? t.lineNumber : null,
             planDay: t.day
           });
         }

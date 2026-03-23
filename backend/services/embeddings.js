@@ -8,6 +8,8 @@ const db = require('../db/database');
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
 const SKIP_DIRS = new Set(['Daily', 'Scripts', 'Templates', '.obsidian', '.git', '.trash', 'Imports']);
 const MAX_CHUNK_CHARS = 1500; // keep well within token limits
+const BATCH_SIZE = 8; // files per Voyage API call
+const BATCH_DELAY_MS = 21000; // 21s between batches (free tier = 3 RPM)
 
 function isConfigured() {
   return !!process.env.ANTHROPIC_API_KEY;
@@ -41,29 +43,98 @@ function chunkText(text) {
   return chunks.filter(c => c.length > 20);
 }
 
-async function getEmbedding(text) {
-  // Try Anthropic embeddings API first
+// Batch embed multiple texts in a single Voyage API call
+async function getBatchEmbeddings(texts) {
+  const apiKey = process.env.VOYAGE_API_KEY;
+  if (!apiKey) return texts.map(t => computeSimpleVector(t));
+
   try {
-    const Anthropic = require('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-    // Check if embeddings endpoint exists on the client
-    if (typeof client.embeddings?.create === 'function') {
-      const response = await client.embeddings.create({
-        model: 'voyage-3',
-        input: [text],
+    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'voyage-3.5-lite',
+        input: texts.map(t => t.substring(0, 4000)),
         input_type: 'document'
-      });
-      return response.embeddings?.[0]?.embedding || null;
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      if (res.status === 429) {
+        console.warn('[Embeddings] Voyage 429 rate limited');
+        return null; // signal rate limit — caller should wait and retry
+      }
+      console.warn('[Embeddings] Voyage API error:', res.status, err.substring(0, 200));
+      return texts.map(t => computeSimpleVector(t));
     }
+    const data = await res.json();
+    // Return embeddings in same order as input
+    return texts.map((_, i) => data.data?.[i]?.embedding || computeSimpleVector(texts[i]));
   } catch (e) {
-    console.warn('[Embeddings] Anthropic embeddings API not available:', e.message);
+    console.warn('[Embeddings] Voyage batch call failed:', e.message);
+    return texts.map(t => computeSimpleVector(t));
   }
+}
 
-  // Fallback: use Claude to generate a semantic summary vector approximation
-  // This produces a 128-dim vector from a TF-IDF style word frequency approach
-  // Not true semantic embeddings but much better than pure keyword matching
-  return computeSimpleVector(text);
+async function getEmbedding(text) {
+  const apiKey = process.env.VOYAGE_API_KEY;
+  if (!apiKey) return computeSimpleVector(text);
+
+  try {
+    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'voyage-3.5-lite',
+        input: [text.substring(0, 4000)],
+        input_type: 'document'
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn('[Embeddings] Voyage API error:', res.status, err.substring(0, 200));
+      return computeSimpleVector(text);
+    }
+    const data = await res.json();
+    return data.data?.[0]?.embedding || computeSimpleVector(text);
+  } catch (e) {
+    console.warn('[Embeddings] Voyage call failed:', e.message);
+    return computeSimpleVector(text);
+  }
+}
+
+async function getQueryEmbedding(text) {
+  const apiKey = process.env.VOYAGE_API_KEY;
+  if (!apiKey) return computeSimpleVector(text);
+
+  try {
+    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'voyage-3.5-lite',
+        input: [text.substring(0, 4000)],
+        input_type: 'query'
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!res.ok) return computeSimpleVector(text);
+    const data = await res.json();
+    return data.data?.[0]?.embedding || computeSimpleVector(text);
+  } catch {
+    return computeSimpleVector(text);
+  }
 }
 
 // Simple TF-IDF style vector — 128 dimensions based on word hashing
@@ -99,13 +170,14 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(magA) * Math.sqrt(magB) || 1);
 }
 
-async function embedVaultFile(relativePath, fullPath) {
+// Prepare a file for embedding — returns { relativePath, hash, chunk, modified } or null
+function prepareFile(relativePath, fullPath) {
   let content;
   try { content = fs.readFileSync(fullPath, 'utf-8'); }
-  catch { return false; }
+  catch { return null; }
 
   const body = stripFrontmatter(content);
-  if (body.trim().length < 20) return false;
+  if (body.trim().length < 20) return null;
 
   const hash = contentHash(body);
   const stats = fs.statSync(fullPath);
@@ -113,17 +185,22 @@ async function embedVaultFile(relativePath, fullPath) {
 
   // Check if already embedded with same content
   const existing = db.getEmbedding(relativePath);
-  if (existing && existing.content_hash === hash) return false; // unchanged
+  if (existing && existing.content_hash === hash) return null; // unchanged
 
-  // Embed first chunk only for now (sufficient for search)
   const chunks = chunkText(body);
-  if (chunks.length === 0) return false;
+  if (chunks.length === 0) return null;
 
-  const primaryChunk = chunks[0];
-  const embedding = await getEmbedding(primaryChunk);
+  return { relativePath, hash, chunk: chunks[0], modified };
+}
+
+async function embedVaultFile(relativePath, fullPath) {
+  const prepared = prepareFile(relativePath, fullPath);
+  if (!prepared) return false;
+
+  const embedding = await getEmbedding(prepared.chunk);
   if (!embedding) return false;
 
-  db.saveEmbedding(relativePath, hash, embedding, primaryChunk, modified);
+  db.saveEmbedding(prepared.relativePath, prepared.hash, embedding, prepared.chunk, prepared.modified);
   return true;
 }
 
@@ -163,28 +240,64 @@ async function rebuildEmbeddings(onProgress) {
   const files = listVaultFiles();
   console.log(`[Embeddings] Rebuilding — ${files.length} files to check`);
 
-  let updated = 0, skipped = 0, errors = 0;
-
-  for (let i = 0; i < files.length; i++) {
-    const { relativePath, fullPath } = files[i];
-    try {
-      const changed = await embedVaultFile(relativePath, fullPath);
-      if (changed) updated++;
-      else skipped++;
-    } catch (e) {
-      console.error(`[Embeddings] Error embedding ${relativePath}:`, e.message);
-      errors++;
+  // Prepare all files first (fast, no API calls)
+  const needsEmbedding = [];
+  let skipped = 0;
+  for (const { relativePath, fullPath } of files) {
+    const prepared = prepareFile(relativePath, fullPath);
+    if (prepared) {
+      needsEmbedding.push(prepared);
+    } else {
+      skipped++;
     }
-
-    // Brief pause every 10 files to avoid hammering the API
-    if (i % 10 === 9) {
-      await new Promise(r => setTimeout(r, 200));
-    }
-
-    if (onProgress) onProgress({ i: i + 1, total: files.length, updated, skipped });
   }
 
-  console.log(`[Embeddings] Done — ${updated} updated, ${skipped} unchanged, ${errors} errors`);
+  console.log(`[Embeddings] ${needsEmbedding.length} need embedding, ${skipped} unchanged`);
+
+  const hasVoyage = !!process.env.VOYAGE_API_KEY;
+  let updated = 0, errors = 0, rateLimitRetries = 0;
+
+  // Process in batches
+  for (let i = 0; i < needsEmbedding.length; i += BATCH_SIZE) {
+    const batch = needsEmbedding.slice(i, i + BATCH_SIZE);
+    const texts = batch.map(b => b.chunk);
+
+    try {
+      let embeddings = await getBatchEmbeddings(texts);
+
+      // Handle rate limit — wait and retry once
+      if (embeddings === null) {
+        rateLimitRetries++;
+        console.log(`[Embeddings] Rate limited — waiting 65s before retry (attempt ${rateLimitRetries})`);
+        await new Promise(r => setTimeout(r, 65000));
+        embeddings = await getBatchEmbeddings(texts);
+        if (embeddings === null) {
+          // Still rate limited — fall back to simple vectors for this batch
+          console.warn('[Embeddings] Still rate limited after retry — using simple vectors for batch');
+          embeddings = texts.map(t => computeSimpleVector(t));
+        }
+      }
+
+      // Save each embedding
+      for (let j = 0; j < batch.length; j++) {
+        const { relativePath, hash, chunk, modified } = batch[j];
+        db.saveEmbedding(relativePath, hash, embeddings[j], chunk, modified);
+        updated++;
+      }
+    } catch (e) {
+      console.error(`[Embeddings] Batch error at ${i}:`, e.message);
+      errors += batch.length;
+    }
+
+    if (onProgress) onProgress({ i: Math.min(i + BATCH_SIZE, needsEmbedding.length), total: needsEmbedding.length, updated, skipped });
+
+    // Rate limit pause between batches (only if using Voyage and more batches remain)
+    if (hasVoyage && i + BATCH_SIZE < needsEmbedding.length) {
+      await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+    }
+  }
+
+  console.log(`[Embeddings] Done — ${updated} updated, ${skipped} unchanged, ${errors} errors, ${rateLimitRetries} rate-limit retries`);
   return { updated, skipped, errors };
 }
 
@@ -197,7 +310,7 @@ async function semanticSearch(query, maxResults = 5) {
   }
 
   // Embed the query
-  const queryEmbedding = await getEmbedding(query);
+  const queryEmbedding = await getQueryEmbedding(query);
   if (!queryEmbedding) return null;
 
   // Score all embeddings

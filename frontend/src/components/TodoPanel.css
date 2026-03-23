@@ -231,6 +231,21 @@
   font-size: 13px;
 }
 
+.todo-text-truncated {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.todo-item.expanded {
+  background: var(--bg-tertiary);
+}
+
+.todo-item.expanded .todo-text {
+  white-space: pre-wrap;
+}
+
 .todo-item.done .todo-text {
   text-decoration: line-through;
 }

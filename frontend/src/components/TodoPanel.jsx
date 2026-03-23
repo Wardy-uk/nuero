@@ -56,6 +56,7 @@ export default function TodoPanel() {
   const [subFilters, setSubFilters] = useState([]); // multi-select sub-categories
   const [toggling, setToggling] = useState({});
   const [syncing, setSyncing] = useState(false);
+  const [expanded, setExpanded] = useState(null); // id of expanded todo
 
   const path = `/api/todos${showDone ? '?all=true' : ''}`;
   const transform = useMemo(() => (json) => json.todos || [], []);
@@ -236,21 +237,23 @@ export default function TodoPanel() {
             const dueLabel = formatDue(todo.due_date);
             const toggleKey = `${todo.filePath}:${todo.lineNumber}`;
             const isToggling = toggling[toggleKey];
+            const isExpanded = expanded === `${todo.source}-${todo.id}`;
             return (
-              <div key={`${todo.source}-${todo.id}`} className={`todo-item priority-${todo.priority} ${overdue ? 'overdue' : ''}`}>
+              <div key={`${todo.source}-${todo.id}`} className={`todo-item priority-${todo.priority} ${overdue ? 'overdue' : ''} ${isExpanded ? 'expanded' : ''}`}>
                 <button
                   className={`todo-checkbox ${isToggling ? 'toggling' : ''}`}
                   onClick={() => toggleTodo(todo)}
                   disabled={isToggling || !todo.filePath}
                   title="Mark done"
                 />
-                <div className="todo-text-col">
-                  <span className="todo-text">{todo.text}</span>
+                <div className="todo-text-col" onClick={() => setExpanded(isExpanded ? null : `${todo.source}-${todo.id}`)} style={{ cursor: 'pointer' }}>
+                  <span className={`todo-text ${isExpanded ? '' : 'todo-text-truncated'}`}>{todo.text}</span>
                   <div className="todo-meta-row">
                     {todo.source && <span className={`todo-source ${sourceClass(todo.source)}`}>{todo.source}</span>}
                     {dueLabel && (
                       <span className={`todo-due ${overdue ? 'due-overdue' : ''}`}>{dueLabel}</span>
                     )}
+                    {todo.planDay != null && <span className="todo-due">Day {todo.planDay}</span>}
                   </div>
                 </div>
                 <span className={`todo-priority-badge ${todo.priority}`}>{todo.priority}</span>
