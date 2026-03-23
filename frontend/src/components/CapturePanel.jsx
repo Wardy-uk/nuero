@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import './CapturePanel.css';
 
-const MODES = ['Note', 'Todo', 'Photo', 'File'];
+const MODES = ['Note', 'Todo', 'Escalate', 'Photo', 'File'];
 const MAX_SIZE = 10 * 1024 * 1024;
 
 const QUEUE_KEY = 'neuro_offline_queue';
@@ -56,6 +56,10 @@ export default function CapturePanel() {
   const [showRecent, setShowRecent] = useState(false);
   const [spellcheck, setSpellcheck] = useState(true);
   const [queueCount, setQueueCount] = useState(getQueue().length);
+  const [escalateKey, setEscalateKey] = useState('');
+  const [escalateNote, setEscalateNote] = useState('');
+  const [escalateStatus, setEscalateStatus] = useState(null); // null | 'ok' | 'error'
+  const [escalateMessage, setEscalateMessage] = useState('');
   const fileRef = useRef(null);
 
   const resetForm = () => {
@@ -66,6 +70,10 @@ export default function CapturePanel() {
     setTodoText('');
     setTodoPriority('normal');
     setResult(null);
+    setEscalateKey('');
+    setEscalateNote('');
+    setEscalateStatus(null);
+    setEscalateMessage('');
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -174,6 +182,35 @@ export default function CapturePanel() {
     setSubmitting(false);
   };
 
+  const submitEscalate = async () => {
+    const key = escalateKey.trim().toUpperCase();
+    if (!key.match(/^[A-Z]+-\d+$/)) {
+      setEscalateStatus('error');
+      setEscalateMessage('Enter a valid ticket key e.g. NT-12345');
+      return;
+    }
+    setSubmitting(true);
+    setEscalateStatus(null);
+    try {
+      const res = await fetch(apiUrl(`/api/jira/flagged/${key}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: escalateNote.trim() || null })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Failed');
+      setEscalateStatus('ok');
+      setEscalateMessage(`${key} flagged`);
+      setEscalateKey('');
+      setEscalateNote('');
+      setTimeout(() => setEscalateStatus(null), 2500);
+    } catch (e) {
+      setEscalateStatus('error');
+      setEscalateMessage(e.message);
+    }
+    setSubmitting(false);
+  };
+
   const canSubmit = mode === 'Note'
     ? content.trim().length > 0
     : mode === 'Todo'
@@ -265,6 +302,40 @@ export default function CapturePanel() {
         </div>
       )}
 
+      {mode === 'Escalate' && (
+        <div className="capture-form">
+          <input
+            className="capture-input capture-escalate-key"
+            type="text"
+            placeholder="Ticket key e.g. NT-12345"
+            value={escalateKey}
+            onChange={e => {
+              setEscalateKey(e.target.value.toUpperCase());
+              setEscalateStatus(null);
+            }}
+            onKeyDown={e => e.key === 'Enter' && !submitting && submitEscalate()}
+            autoFocus
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <input
+            className="capture-input capture-escalate-note"
+            type="text"
+            placeholder="Note e.g. verbal from Kim Rush (optional)"
+            value={escalateNote}
+            onChange={e => setEscalateNote(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !submitting && submitEscalate()}
+          />
+          {escalateStatus === 'ok' && (
+            <div className="capture-escalate-ok">{escalateMessage} ✓</div>
+          )}
+          {escalateStatus === 'error' && (
+            <div className="capture-escalate-error">{escalateMessage}</div>
+          )}
+        </div>
+      )}
+
       {mode === 'Photo' && (
         <div className="capture-form">
           <input
@@ -299,13 +370,23 @@ export default function CapturePanel() {
         </div>
       )}
 
-      <button
-        className="capture-submit"
-        onClick={submit}
-        disabled={!canSubmit || submitting}
-      >
-        {submitting ? 'Saving...' : 'Capture'}
-      </button>
+      {mode === 'Escalate' ? (
+        <button
+          className="capture-submit"
+          onClick={submitEscalate}
+          disabled={submitting || !escalateKey.trim()}
+        >
+          {submitting ? 'Flagging...' : 'Flag Escalation'}
+        </button>
+      ) : (
+        <button
+          className="capture-submit"
+          onClick={submit}
+          disabled={!canSubmit || submitting}
+        >
+          {submitting ? 'Saving...' : 'Capture'}
+        </button>
+      )}
 
       {queueCount > 0 && (
         <div className="capture-queue-notice">

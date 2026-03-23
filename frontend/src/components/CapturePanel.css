@@ -315,3 +315,23 @@
   cursor: pointer;
   font-family: var(--font-mono);
 }
+
+.capture-escalate-ok {
+  font-size: 12px;
+  color: #22c55e;
+  font-family: var(--font-mono);
+  padding: 4px 0;
+}
+
+.capture-escalate-error {
+  font-size: 12px;
+  color: #ef4444;
+  font-family: var(--font-mono);
+  padding: 4px 0;
+}
+
+.capture-escalate-key {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}

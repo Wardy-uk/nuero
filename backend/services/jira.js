@@ -160,6 +160,23 @@ async function syncTickets() {
   }
 }
 
+// ── Fetch single ticket details ──
+
+async function fetchTicketDetails(ticketKey) {
+  const issue = await jiraRequest(
+    `/rest/api/3/issue/${ticketKey}?fields=summary,status,priority,assignee,issuetype`
+  );
+  const fields = issue.fields || {};
+  return {
+    key: issue.key,
+    summary: fields.summary || '',
+    status: fields.status?.name || '',
+    priority: fields.priority?.name || '',
+    assignee: fields.assignee?.displayName || 'Unassigned',
+    type: fields.issuetype?.name || ''
+  };
+}
+
 // ── Escalation queue ──
 
 // Fetch all open escalation tickets
@@ -285,6 +302,183 @@ function getUnseenEscalationCount() {
   } catch { return 0; }
 }
 
+// ── Informal escalation flagging (neuro-escalation label) ──
+
+// Fetch tickets with neuro-escalation label
+async function fetchFlaggedTickets() {
+  const jql = `labels = "neuro-escalation" AND resolution = Unresolved ORDER BY updated DESC`;
+
+  const result = await jiraRequest('/rest/api/3/search/jql', {
+    method: 'POST',
+    body: {
+      jql,
+      fields: ['summary', 'status', 'priority', 'assignee', 'created', 'updated',
+               'labels', 'comment'],
+      maxResults: 50
+    }
+  });
+  return result.issues || [];
+}
+
+// Add neuro-escalation label to a Jira ticket
+async function addEscalationLabel(ticketKey) {
+  const issue = await jiraRequest(`/rest/api/3/issue/${ticketKey}?fields=labels`);
+  const currentLabels = issue.fields?.labels || [];
+
+  if (currentLabels.includes('neuro-escalation')) {
+    return { ok: true, alreadyLabelled: true };
+  }
+
+  await jiraRequest(`/rest/api/3/issue/${ticketKey}`, {
+    method: 'PUT',
+    body: {
+      fields: {
+        labels: [...currentLabels, 'neuro-escalation']
+      }
+    }
+  });
+
+  console.log(`[Jira] Added neuro-escalation label to ${ticketKey}`);
+  return { ok: true };
+}
+
+// Remove neuro-escalation label from a Jira ticket
+async function removeEscalationLabel(ticketKey) {
+  const issue = await jiraRequest(`/rest/api/3/issue/${ticketKey}?fields=labels`);
+  const currentLabels = issue.fields?.labels || [];
+  const newLabels = currentLabels.filter(l => l !== 'neuro-escalation');
+
+  await jiraRequest(`/rest/api/3/issue/${ticketKey}`, {
+    method: 'PUT',
+    body: { fields: { labels: newLabels } }
+  });
+
+  console.log(`[Jira] Removed neuro-escalation label from ${ticketKey}`);
+  removeFlaggedTicketLocal(ticketKey);
+  return { ok: true };
+}
+
+// Sync flagged tickets — poll Jira for neuro-escalation label
+async function syncFlaggedTickets() {
+  if (!isConfigured()) return { ok: false, reason: 'not configured' };
+
+  try {
+    const issues = await fetchFlaggedTickets();
+
+    let known = {};
+    try {
+      const raw = db.getState('flagged_tickets');
+      known = raw ? JSON.parse(raw) : {};
+    } catch { known = {}; }
+
+    const updated = { ...known };
+
+    for (const issue of issues) {
+      const key = issue.key;
+      const hasComment = nickHasCommented(issue);
+      const fields = issue.fields || {};
+
+      if (!updated[key]) {
+        updated[key] = {
+          summary: fields.summary || '',
+          status: fields.status?.name || '',
+          priority: fields.priority?.name || '',
+          assignee: fields.assignee?.displayName || 'Unassigned',
+          hasComment,
+          flaggedAt: new Date().toISOString(),
+          flaggedVia: 'jira',
+          note: null
+        };
+        console.log(`[Jira] New flagged ticket detected: ${key}`);
+      } else {
+        updated[key].status = fields.status?.name || updated[key].status;
+        updated[key].assignee = fields.assignee?.displayName || 'Unassigned';
+        updated[key].hasComment = hasComment;
+      }
+    }
+
+    // Remove tickets no longer labelled
+    const activeKeys = new Set(issues.map(i => i.key));
+    for (const key of Object.keys(updated)) {
+      if (!activeKeys.has(key)) {
+        console.log(`[Jira] Flagged ticket ${key} — label removed, dropping from list`);
+        delete updated[key];
+      }
+    }
+
+    db.setState('flagged_tickets', JSON.stringify(updated));
+    db.setState('flagged_last_sync', new Date().toISOString());
+
+    return { ok: true, total: issues.length };
+  } catch (err) {
+    console.error('[Jira] Flagged ticket sync failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+// Flag a ticket from NEURO — adds label to Jira AND stores local metadata
+async function flagTicket(ticketKey, note = null) {
+  await addEscalationLabel(ticketKey);
+
+  let summary = ticketKey, status = '', priority = '', assignee = 'Unassigned';
+  try {
+    const issue = await jiraRequest(
+      `/rest/api/3/issue/${ticketKey}?fields=summary,status,priority,assignee`
+    );
+    summary = issue.fields?.summary || ticketKey;
+    status = issue.fields?.status?.name || '';
+    priority = issue.fields?.priority?.name || '';
+    assignee = issue.fields?.assignee?.displayName || 'Unassigned';
+  } catch (e) {
+    console.warn(`[Jira] Could not fetch details for ${ticketKey}:`, e.message);
+  }
+
+  let known = {};
+  try {
+    const raw = db.getState('flagged_tickets');
+    known = raw ? JSON.parse(raw) : {};
+  } catch {}
+
+  known[ticketKey] = {
+    summary,
+    status,
+    priority,
+    assignee,
+    hasComment: false,
+    flaggedAt: new Date().toISOString(),
+    flaggedVia: 'neuro',
+    note: note || null
+  };
+
+  db.setState('flagged_tickets', JSON.stringify(known));
+  console.log(`[Jira] Ticket ${ticketKey} flagged via NEURO`);
+  return { ok: true, key: ticketKey, summary };
+}
+
+// Unflag a ticket — removes label from Jira and local store
+async function unflagTicket(ticketKey) {
+  await removeEscalationLabel(ticketKey);
+  return { ok: true };
+}
+
+function removeFlaggedTicketLocal(ticketKey) {
+  try {
+    const raw = db.getState('flagged_tickets');
+    const known = raw ? JSON.parse(raw) : {};
+    delete known[ticketKey];
+    db.setState('flagged_tickets', JSON.stringify(known));
+  } catch {}
+}
+
+// Get all flagged tickets from local store
+function getFlaggedTickets() {
+  try {
+    const raw = db.getState('flagged_tickets');
+    const known = raw ? JSON.parse(raw) : {};
+    return Object.entries(known).map(([key, v]) => ({ key, ...v }));
+  } catch { return []; }
+}
+
 // ── Polling ──
 
 function startPolling() {
@@ -319,8 +513,16 @@ module.exports = {
   syncTickets,
   startPolling,
   stopPolling,
+  fetchTicketDetails,
   fetchEscalationTickets,
   syncEscalations,
   markEscalationsSeen,
-  getUnseenEscalationCount
+  getUnseenEscalationCount,
+  fetchFlaggedTickets,
+  addEscalationLabel,
+  removeEscalationLabel,
+  syncFlaggedTickets,
+  flagTicket,
+  unflagTicket,
+  getFlaggedTickets
 };

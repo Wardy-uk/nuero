@@ -224,8 +224,11 @@ export default function AdminPanel({ pushState = {} }) {
     },
     {
       name: 'Microsoft 365',
-      status: status.microsoft?.authenticated ? 'connected' : 'disconnected',
-      detail: status.microsoft?.authenticated ? 'Graph API authenticated' : 'Not authenticated'
+      status: status.microsoft?.source === 'msal' ? 'connected' :
+              status.microsoft?.source === 'nova-bridge' ? 'connected' : 'disconnected',
+      detail: status.microsoft?.source === 'msal' ? 'Graph API authenticated (MSAL)' :
+              status.microsoft?.source === 'nova-bridge' ? 'Connected via NOVA bridge' :
+              'Not authenticated'
     },
     {
       name: 'n8n',
@@ -289,10 +292,20 @@ export default function AdminPanel({ pushState = {} }) {
             <>
               <div className="admin-ms-connected">
                 <span className="admin-ms-connected-dot" />
-                Connected to Microsoft Graph
+                Connected to Microsoft Graph (MSAL)
               </div>
               <div className="admin-ms-scopes">
                 Scopes: <span>Calendars.Read</span><span>Mail.Read</span><span>Tasks.Read</span><span>User.Read</span>
+              </div>
+            </>
+          ) : status.microsoft?.bridge ? (
+            <>
+              <div className="admin-ms-connected">
+                <span className="admin-ms-connected-dot" style={{ background: '#f59e0b' }} />
+                Connected via NOVA bridge
+              </div>
+              <div className="admin-ms-scopes">
+                Calendar, Mail, Tasks available through bridge. MSAL not authenticated — sign in below for direct access.
               </div>
             </>
           ) : deviceCode ? (

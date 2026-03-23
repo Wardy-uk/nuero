@@ -196,6 +196,224 @@ tr.sla-ok .ticket-sla {
   white-space: nowrap;
 }
 
+/* Flagged Escalations section */
+.flagged-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.flagged-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.flagged-title {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flagged-count {
+  background: #f59e0b;
+  color: #000;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.flagged-add-btn {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.flagged-add-btn:hover { opacity: 1; }
+
+.flagged-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.flagged-key-input,
+.flagged-note-input {
+  background: var(--bg-primary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.flagged-error {
+  font-size: 11px;
+  color: #ef4444;
+}
+
+.flagged-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.flagged-card {
+  padding: 10px 12px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  border-left: 3px solid transparent;
+}
+
+.flagged-active {
+  background: rgba(245, 158, 11, 0.06);
+  border-left-color: #f59e0b;
+}
+
+.flagged-commented {
+  background: rgba(255, 255, 255, 0.02);
+  border-left-color: rgba(255, 255, 255, 0.1);
+}
+
+.flagged-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.flagged-key {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.flagged-status {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.flagged-assignee {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+.flagged-unflag-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.flagged-unflag-btn:hover { opacity: 1; color: #ef4444; }
+
+.flagged-summary {
+  font-size: 12px;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.flagged-note {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.flagged-note:hover { color: var(--text-primary); }
+
+.flagged-note-add {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--font-mono);
+}
+
+.flagged-note-add:hover { color: var(--accent); }
+
+.flagged-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-family: var(--font-mono);
+}
+
+.flagged-resolved {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.flagged-resolved-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.flagged-resolved-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.4;
+  padding: 4px 0;
+}
+
+/* Flag button on queue rows */
+.ticket-flag { width: 32px; text-align: center; }
+
+.ticket-flag-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-muted);
+  opacity: 0.3;
+  transition: opacity 0.15s, color 0.15s;
+  padding: 0;
+}
+
+.ticket-flag-btn:hover { opacity: 1; color: #f59e0b; }
+.ticket-flag-btn.ticket-flagged { color: #f59e0b; opacity: 1; }
+
 @media (max-width: 768px) {
   .queue-container {
     overflow-x: auto;

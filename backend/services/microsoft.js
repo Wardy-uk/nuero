@@ -34,6 +34,10 @@ function isBridgeConfigured() {
   return !!(process.env.NOVA_BRIDGE_URL && process.env.NOVA_BRIDGE_SECRET);
 }
 
+function isBridgeConnected() {
+  return !!(process.env.NOVA_BRIDGE_URL && process.env.NOVA_BRIDGE_SECRET);
+}
+
 // Use the same client ID as @softeria/ms-365-mcp-server (NOVA's Graph integration)
 // This is a public multi-tenant app with Graph permissions pre-consented
 // Token cache shared with NOVA so auth carries across both tools
@@ -456,6 +460,7 @@ module.exports = {
   isConfigured,
   isAuthenticated,
   isBridgeConfigured,
+  isBridgeConnected,
   getAccessToken,
   startDeviceCodeFlow,
   fetchCalendarEvents,

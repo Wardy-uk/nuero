@@ -18,6 +18,201 @@ function formatSla(minutes) {
   return `${h}h ${m}m`;
 }
 
+function FlaggedEscalations() {
+  const [flagged, setFlagged] = useState(null);
+  const [flagInput, setFlagInput] = useState('');
+  const [noteInput, setNoteInput] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [editingNote, setEditingNote] = useState(null);
+
+  const fetchFlagged = () => {
+    fetch(apiUrl('/api/jira/flagged'))
+      .then(r => r.json())
+      .then(data => setFlagged(data.tickets || []))
+      .catch(() => setFlagged([]));
+  };
+
+  useEffect(() => { fetchFlagged(); }, []);
+
+  const handleFlag = async () => {
+    const key = flagInput.trim().toUpperCase();
+    if (!key.match(/^[A-Z]+-\d+$/)) {
+      setAddError('Enter a valid ticket key e.g. NT-12345');
+      return;
+    }
+    setAdding(true);
+    setAddError('');
+    try {
+      const res = await fetch(apiUrl(`/api/jira/flagged/${key}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: noteInput.trim() || null })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Failed');
+      setFlagInput('');
+      setNoteInput('');
+      setShowAdd(false);
+      fetchFlagged();
+    } catch (e) {
+      setAddError(e.message);
+    }
+    setAdding(false);
+  };
+
+  const handleUnflag = async (key) => {
+    try {
+      await fetch(apiUrl(`/api/jira/flagged/${key}`), { method: 'DELETE' });
+      fetchFlagged();
+    } catch {}
+  };
+
+  const handleSaveNote = async (key, note) => {
+    try {
+      await fetch(apiUrl(`/api/jira/flagged/${key}/note`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note })
+      });
+      setEditingNote(null);
+      fetchFlagged();
+    } catch {}
+  };
+
+  const active = (flagged || []).filter(t =>
+    !['Done', 'Resolved', 'Closed'].includes(t.status)
+  );
+  const resolved = (flagged || []).filter(t =>
+    ['Done', 'Resolved', 'Closed'].includes(t.status)
+  );
+
+  return (
+    <div className="flagged-section">
+      <div className="flagged-header">
+        <h3 className="flagged-title">
+          Informal Escalations
+          {active.length > 0 && (
+            <span className="flagged-count">{active.length}</span>
+          )}
+        </h3>
+        <button
+          className="flagged-add-btn"
+          onClick={() => setShowAdd(s => !s)}
+          title="Flag a ticket"
+        >
+          {showAdd ? '✕' : '+ Flag ticket'}
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="flagged-add-form">
+          <input
+            className="flagged-key-input"
+            type="text"
+            placeholder="Ticket key e.g. NT-12345"
+            value={flagInput}
+            onChange={e => setFlagInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleFlag()}
+          />
+          <input
+            className="flagged-note-input"
+            type="text"
+            placeholder="Note — e.g. verbally from Kim Rush (optional)"
+            value={noteInput}
+            onChange={e => setNoteInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleFlag()}
+          />
+          {addError && <span className="flagged-error">{addError}</span>}
+          <button
+            className="btn btn-primary"
+            onClick={handleFlag}
+            disabled={adding}
+          >
+            {adding ? 'Flagging...' : 'Flag'}
+          </button>
+        </div>
+      )}
+
+      {!flagged && <div className="flagged-empty">Loading...</div>}
+
+      {flagged && active.length === 0 && !showAdd && (
+        <div className="flagged-empty">No informal escalations flagged.</div>
+      )}
+
+      {active.map(t => (
+        <div
+          key={t.key}
+          className={`flagged-card ${t.hasComment ? 'flagged-commented' : 'flagged-active'}`}
+        >
+          <div className="flagged-card-top">
+            <span className="flagged-key">{t.key}</span>
+            <span className="flagged-status">{t.status}</span>
+            <span className="flagged-assignee">{t.assignee}</span>
+            <button
+              className="flagged-unflag-btn"
+              onClick={() => handleUnflag(t.key)}
+              title="Remove flag"
+            >✕</button>
+          </div>
+          <div className="flagged-summary">{t.summary}</div>
+          {t.note && editingNote !== t.key && (
+            <div
+              className="flagged-note"
+              onClick={() => setEditingNote(t.key)}
+              title="Click to edit"
+            >
+              {t.note}
+            </div>
+          )}
+          {editingNote === t.key && (
+            <input
+              className="flagged-note-input"
+              type="text"
+              defaultValue={t.note || ''}
+              autoFocus
+              onBlur={e => handleSaveNote(t.key, e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleSaveNote(t.key, e.target.value);
+                if (e.key === 'Escape') setEditingNote(null);
+              }}
+            />
+          )}
+          {!t.note && editingNote !== t.key && (
+            <button
+              className="flagged-note-add"
+              onClick={() => setEditingNote(t.key)}
+            >
+              + add note
+            </button>
+          )}
+          <div className="flagged-meta">
+            Flagged {new Date(t.flaggedAt).toLocaleDateString('en-GB')} via {t.flaggedVia}
+            {t.hasComment && ' · commented'}
+          </div>
+        </div>
+      ))}
+
+      {resolved.length > 0 && (
+        <div className="flagged-resolved">
+          <span className="flagged-resolved-label">Resolved ({resolved.length})</span>
+          {resolved.map(t => (
+            <div key={t.key} className="flagged-card flagged-resolved-card">
+              <span className="flagged-key">{t.key}</span>
+              <span className="flagged-summary">{t.summary}</span>
+              <button
+                className="flagged-unflag-btn"
+                onClick={() => handleUnflag(t.key)}
+              >✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EscalationSection() {
   const [escalations, setEscalations] = useState(null);
 
@@ -74,6 +269,38 @@ function EscalationSection() {
   );
 }
 
+function FlagButton({ ticketKey }) {
+  const [flagging, setFlagging] = useState(false);
+  const [flagged, setFlagged] = useState(false);
+
+  const handleFlag = async (e) => {
+    e.stopPropagation();
+    if (flagged) return;
+    setFlagging(true);
+    try {
+      const res = await fetch(apiUrl(`/api/jira/flagged/${ticketKey}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: null })
+      });
+      const data = await res.json();
+      if (data.ok) setFlagged(true);
+    } catch {}
+    setFlagging(false);
+  };
+
+  return (
+    <button
+      className={`ticket-flag-btn ${flagged ? 'ticket-flagged' : ''}`}
+      onClick={handleFlag}
+      disabled={flagging}
+      title={flagged ? 'Flagged as informal escalation' : 'Flag as informal escalation'}
+    >
+      {flagged ? '⚑' : '⚐'}
+    </button>
+  );
+}
+
 export default function QueueTable({ queueData, onRefresh }) {
   const [showMine, setShowMine] = useState(true);
 
@@ -111,6 +338,7 @@ export default function QueueTable({ queueData, onRefresh }) {
         </div>
       </div>
 
+      <FlaggedEscalations />
       <EscalationSection />
 
       {!configured ? (
@@ -131,6 +359,7 @@ export default function QueueTable({ queueData, onRefresh }) {
               <th>Status</th>
               <th>Assignee</th>
               <th>SLA Remaining</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -142,6 +371,9 @@ export default function QueueTable({ queueData, onRefresh }) {
                 <td className="ticket-status">{ticket.status || '-'}</td>
                 <td className="ticket-assignee">{ticket.assignee || 'Unassigned'}</td>
                 <td className="ticket-sla">{formatSla(ticket.sla_remaining_minutes)}</td>
+                <td className="ticket-flag">
+                  <FlagButton ticketKey={ticket.ticket_key} />
+                </td>
               </tr>
             ))}
           </tbody>

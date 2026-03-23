@@ -96,7 +96,9 @@ app.get('/api/status', async (req, res) => {
     },
     microsoft: {
       configured: msConfigured,
-      authenticated: msAuthenticated
+      authenticated: msAuthenticated,
+      bridge: microsoftService.isBridgeConnected(),
+      source: msAuthenticated ? 'msal' : microsoftService.isBridgeConnected() ? 'nova-bridge' : 'none'
     },
     n8n: {
       configured: n8nService.isConfigured()
