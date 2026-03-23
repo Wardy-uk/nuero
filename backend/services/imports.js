@@ -301,7 +301,15 @@ function routeFile(filePath, destination, type) {
     finalPath = path.join(destDir, `${base}-${Date.now()}${ext}`);
   }
 
+  const sourceRel = path.relative(vaultPath, filePath).replace(/\\/g, '/');
   fs.renameSync(filePath, finalPath);
+  const destRel = path.relative(vaultPath, finalPath).replace(/\\/g, '/');
+
+  // Log every move to vault note
+  try {
+    const vaultLogger = require('./vault-logger');
+    vaultLogger.logMove(sourceRel, destRel, type || 'import-route');
+  } catch (e) { console.warn('[Imports] Move logging failed:', e.message); }
 
   broadcast({
     type: 'file_actioned',
@@ -312,11 +320,10 @@ function routeFile(filePath, destination, type) {
   // Remove classification from DB — file has been actioned
   try {
     const db = require('../db/database');
-    const relativePath = path.relative(vaultPath, filePath).replace(/\\/g, '/');
-    db.deleteImportClassification(relativePath);
+    db.deleteImportClassification(sourceRel);
   } catch (e) { /* non-fatal */ }
 
-  return path.relative(vaultPath, finalPath).replace(/\\/g, '/');
+  return destRel;
 }
 
 // Batch classify and route all pending imports
@@ -369,9 +376,10 @@ async function autoClassify() {
             classification: cls
           });
 
-          if ((cls.confidence === 'high' || cls.confidence === 'medium') && cls.destination) {
+          if (cls.confidence === 'high' && cls.destination) {
+            // High confidence — auto-route immediately, no review needed
             const newPath = routeFile(file.filePath, cls.destination, cls.type);
-            console.log(`[Imports] Routed → ${newPath}`);
+            console.log(`[Imports] Auto-routed (high confidence): ${file.fileName} → ${cls.destination}`);
             routed++;
             if (cls.type === 'plaud-transcript') {
               // Post-route: extract entities from PLAUD transcript
@@ -418,16 +426,20 @@ async function autoClassify() {
               }
             }
           } else {
+            // Medium confidence — queue for review; Low/missing — needs-review
+            const reason = cls.confidence === 'medium'
+              ? `Medium confidence: ${cls.reason || 'review suggested'}`
+              : cls.reason || 'Low confidence classification';
             updateFrontmatter(file.filePath, {
               status: 'needs-review',
-              'review-reason': cls.reason || 'Low confidence classification'
+              'review-reason': reason
             });
-            // Remove any stored classification — file is flagged, will show as needs-review
             try {
               const db = require('../db/database');
               db.deleteImportClassification(file.relativePath);
             } catch (e) { /* non-fatal */ }
             flagged++;
+            console.log(`[Imports] Flagged for review (${cls.confidence}): ${file.fileName}`);
           }
         } catch (e) {
           console.error(`[Imports] Error classifying ${file.fileName}:`, e.message);
