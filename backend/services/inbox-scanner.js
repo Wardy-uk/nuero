@@ -39,8 +39,9 @@ async function scanInbox() {
 
   try {
     const authenticated = await microsoft.isAuthenticated();
-    if (!authenticated) {
-      console.log('[InboxScanner] Microsoft not authenticated — skipping');
+    const bridgeAvailable = microsoft.isBridgeConfigured();
+    if (!authenticated && !bridgeAvailable) {
+      console.log('[InboxScanner] Microsoft not authenticated and no bridge — skipping');
       return;
     }
 

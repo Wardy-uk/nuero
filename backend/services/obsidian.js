@@ -566,22 +566,23 @@ function parseIcsEvents(icsText, startDate, endDate) {
 }
 
 async function fetchCalendarEvents(startDate, endDate) {
-  // Priority 1: Microsoft Graph API (most reliable, if authenticated)
+  // Priority 1: Microsoft Graph API or NOVA bridge
   try {
     const microsoft = require('./microsoft');
-    if (microsoft.isConfigured() && await microsoft.isAuthenticated()) {
+    const canUseGraph = microsoft.isConfigured() && await microsoft.isAuthenticated();
+    const canUseBridge = microsoft.isBridgeConfigured();
+    if (canUseGraph || canUseBridge) {
       const graphEvents = await microsoft.fetchCalendarEvents(startDate, endDate);
       if (graphEvents && graphEvents.length > 0) {
-        console.log(`[Calendar] Graph API returned ${graphEvents.length} events`);
+        console.log(`[Calendar] Microsoft returned ${graphEvents.length} events (${canUseGraph ? 'Graph' : 'bridge'})`);
         return graphEvents;
       }
-      // graphEvents === null means auth failed, fall through
       if (graphEvents === null) {
-        console.warn('[Calendar] Graph API auth failed, falling back to ICS');
+        console.warn('[Calendar] Microsoft API failed, falling back to ICS');
       }
     }
   } catch (e) {
-    console.warn('[Calendar] Graph API unavailable:', e.message);
+    console.warn('[Calendar] Microsoft API unavailable:', e.message);
   }
 
   // Priority 2: ICS feed
