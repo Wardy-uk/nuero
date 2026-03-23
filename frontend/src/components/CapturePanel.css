@@ -383,3 +383,29 @@
   color: var(--text-muted);
   margin-bottom: 8px;
 }
+
+/* Escalate section */
+.capture-escalate-section {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.capture-escalate-toggle {
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.capture-escalate-toggle:hover { color: var(--text-secondary); }
+
+.capture-escalate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}

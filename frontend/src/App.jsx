@@ -100,8 +100,9 @@ export default function App() {
 
   const handleNavigate = (view) => {
     if (view === 'chat') {
-      // Open the aside chat panel instead of mounting a second ChatPanel
-      setChatOpen(true);
+      // On mobile or sidebar click: open full-screen chat as main view
+      setChatOpen(false); // close aside if open
+      setActiveView('chat');
       setSidebarOpen(false);
       return;
     }
@@ -127,6 +128,7 @@ export default function App() {
       case 'qa': return <QATab />;
       case 'journal': return <JournalPanel />;
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
+      case 'chat': return <ChatPanel location={location} />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
     }
@@ -143,9 +145,11 @@ export default function App() {
         <main className="main-panel">
           {renderView()}
         </main>
-        <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
-          <ChatPanel location={location} />
-        </aside>
+        {activeView !== 'chat' && (
+          <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
+            <ChatPanel location={location} />
+          </aside>
+        )}
       </div>
       <NudgeBanner onGoToStandup={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} />
       <InstallBanner />

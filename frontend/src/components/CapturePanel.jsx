@@ -246,6 +246,9 @@ export default function CapturePanel() {
         </button>
       </div>
 
+      {/* Escalation section */}
+      <EscalateSection />
+
       {queueCount > 0 && (
         <div className="capture-queue-notice">
           {queueCount} item{queueCount !== 1 ? 's' : ''} queued — will sync when online
@@ -267,6 +270,82 @@ export default function CapturePanel() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Escalate ticket (collapsible) ─────────────────────────────────────────
+
+function EscalateSection() {
+  const [open, setOpen] = useState(false);
+  const [key, setKey] = useState('');
+  const [note, setNote] = useState('');
+  const [status, setStatus] = useState(null); // null | 'ok' | 'error'
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    const k = key.trim().toUpperCase();
+    if (!k.match(/^[A-Z]+-\d+$/)) {
+      setStatus('error');
+      setMessage('Enter a valid ticket key e.g. NT-12345');
+      return;
+    }
+    setSubmitting(true);
+    setStatus(null);
+    try {
+      const res = await fetch(apiUrl(`/api/jira/flagged/${k}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: note.trim() || null })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Failed');
+      setStatus('ok');
+      setMessage(`${k} flagged`);
+      setKey('');
+      setNote('');
+      setTimeout(() => setStatus(null), 2500);
+    } catch (e) {
+      setStatus('error');
+      setMessage(e.message);
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="capture-escalate-section">
+      <button className="capture-escalate-toggle" onClick={() => setOpen(o => !o)}>
+        {open ? '▾' : '▸'} Flag Escalation
+      </button>
+      {open && (
+        <div className="capture-escalate-form">
+          <input
+            className="capture-input capture-escalate-key"
+            type="text"
+            placeholder="Ticket key e.g. NT-12345"
+            value={key}
+            onChange={e => { setKey(e.target.value.toUpperCase()); setStatus(null); }}
+            onKeyDown={e => e.key === 'Enter' && !submitting && submit()}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <input
+            className="capture-input"
+            type="text"
+            placeholder="Note (optional)"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !submitting && submit()}
+          />
+          {status === 'ok' && <div className="capture-escalate-ok">{message}</div>}
+          {status === 'error' && <div className="capture-escalate-error">{message}</div>}
+          <button className="review-action-btn" onClick={submit} disabled={submitting || !key.trim()}>
+            {submitting ? 'Flagging...' : 'Flag'}
+          </button>
         </div>
       )}
     </div>
