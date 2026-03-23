@@ -1059,75 +1059,118 @@ function getRecentDecisions(daysBack = 14) {
   return decisions.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
 }
 
-// Generate a weekly review note in Reflections/
+// ISO week number
+function getWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+// Generate a weekly review note in Reflections/ — auto-populated with data from the week
 function generateWeeklyReview() {
   if (!isConfigured()) return null;
   const vaultPath = getVaultPath();
-  const now = new Date();
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-  const weekStr = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-  const dayOfWeek = now.getDay();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-  monday.setHours(0, 0, 0, 0);
-  const friday = new Date(monday);
-  friday.setDate(monday.getDate() + 4);
-  const monStr = monday.toISOString().split('T')[0];
-  const friStr = friday.toISOString().split('T')[0];
 
-  const meetingsDir = path.join(vaultPath, 'Meetings');
-  const meetings = [];
-  if (fs.existsSync(meetingsDir)) {
-    const files = fs.readdirSync(meetingsDir).filter(f => f.endsWith('.md'));
-    for (const file of files.slice(0, 10)) {
-      const datePrefix = file.substring(0, 5);
-      const fullDate = `${now.getFullYear()}-${datePrefix}`;
-      if (fullDate >= monStr && fullDate <= friStr) meetings.push('- ' + file.replace('.md', ''));
-    }
-  }
+  const today = new Date();
+  if (today.getDay() !== 5) return { skipped: true }; // Friday only
 
-  const decisionDir = path.join(vaultPath, 'Decision Log');
-  const decisionsList = [];
-  if (fs.existsSync(decisionDir)) {
-    const decisionsFile = path.join(decisionDir, 'decisions.md');
-    if (fs.existsSync(decisionsFile)) {
-      const content = fs.readFileSync(decisionsFile, 'utf-8');
-      let inThisWeek = false;
-      for (const line of content.split('\n')) {
-        const dm = line.match(/^## (\d{4}-\d{2}-\d{2})/);
-        if (dm) { inThisWeek = dm[1] >= monStr && dm[1] <= friStr; continue; }
-        if (inThisWeek && line.startsWith('- ')) decisionsList.push(line);
-      }
-    }
-  }
+  // Work out this week's date range (Mon-Fri)
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - 4);
+  const weekStr = `W${getWeekNumber(today)}-${today.getFullYear()}`;
+  const reviewPath = path.join(vaultPath, 'Reflections', `${weekStr}-review.md`);
 
-  let planSummary = '';
+  if (fs.existsSync(reviewPath)) return { skipped: true, weekStr }; // already exists
+
+  const mondayStr = monday.toISOString().split('T')[0];
+  const todayStr = today.toISOString().split('T')[0];
+
+  // 1. Decisions from decision log
+  const decisions = getRecentDecisions(7);
+
+  // 2. Completed 90-day tasks this week
+  let completedPlanTasks = [];
   try {
     const plan = parseNinetyDayPlan();
     if (plan) {
-      const weekTasks = plan.allTasks.filter(t => t.status === 'x' && plan.currentDay - 5 <= t.day && t.day <= plan.currentDay);
-      planSummary = `Day ${plan.currentDay} of ${plan.totalDays} — ${plan.totalDone}/${plan.totalTasks} tasks complete.`;
-      if (weekTasks.length > 0) planSummary += '\nCompleted this week:\n' + weekTasks.map(t => `- ${t.text}`).join('\n');
+      completedPlanTasks = plan.allTasks.filter(t =>
+        t.status === 'x' && t.day >= 0
+      ).slice(0, 10);
     }
   } catch {}
 
-  const reviewContent = `---\ntype: reflection\ndate: ${now.toISOString().split('T')[0]}\nweek: ${weekStr}\n---\n# Weekly Review — ${weekStr}\n\n${monStr} to ${friStr}\n\n---\n\n## 90-Day Plan Progress\n\n${planSummary || '(No plan data available)'}\n\n---\n\n## Meetings This Week\n\n${meetings.length > 0 ? meetings.join('\n') : '- None recorded'}\n\n---\n\n## Decisions Made\n\n${decisionsList.length > 0 ? decisionsList.join('\n') : '- None recorded'}\n\n---\n\n## Wins This Week\n\n- \n\n---\n\n## Challenges\n\n- \n\n---\n\n## What I Learned\n\n- \n\n---\n\n## Priorities Next Week\n\n- [ ] \n\n---\n\n## How I'm Feeling\n\n`;
-
-  const reflectionsDir = path.join(vaultPath, 'Reflections');
-  if (!fs.existsSync(reflectionsDir)) fs.mkdirSync(reflectionsDir, { recursive: true });
-  const filePath = path.join(reflectionsDir, `${weekStr}.md`);
-  if (fs.existsSync(filePath)) {
-    const existing = fs.readFileSync(filePath, 'utf-8');
-    if (!existing.includes('## Wins This Week\n\n-')) {
-      return { filePath, weekStr, skipped: true };
+  // 3. EOD entries from daily notes this week
+  const eodEntries = [];
+  for (let d = new Date(monday); d <= today; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().split('T')[0];
+    const notePath = path.join(vaultPath, 'Daily', `${dateStr}.md`);
+    if (!fs.existsSync(notePath)) continue;
+    const content = fs.readFileSync(notePath, 'utf-8');
+    const winMatch = content.match(/Win:\s*(.+)/);
+    const didntGoMatch = content.match(/Didn't go to plan:\s*(.+)/);
+    if (winMatch || didntGoMatch) {
+      eodEntries.push({
+        date: dateStr,
+        win: winMatch?.[1]?.trim() || null,
+        didntGo: didntGoMatch?.[1]?.trim() || null
+      });
     }
   }
-  fs.writeFileSync(filePath, reviewContent, 'utf-8');
-  return { filePath, weekStr, skipped: false };
+
+  // 4. Meeting notes created this week
+  const meetingNotes = [];
+  const meetingsDir = path.join(vaultPath, 'Meetings');
+  if (fs.existsSync(meetingsDir)) {
+    const files = fs.readdirSync(meetingsDir)
+      .filter(f => f.endsWith('.md') && f >= mondayStr)
+      .slice(0, 8);
+    meetingNotes.push(...files.map(f => f.replace('.md', '')));
+  }
+
+  // Build the populated review note
+  const sections = [];
+
+  sections.push(`---\ntype: reflection\nsubtype: weekly-review\nweek: ${weekStr}\ndate: ${todayStr}\n---`);
+  sections.push(`# Weekly Review — ${weekStr}\n\n*Auto-populated ${new Date().toLocaleString('en-GB')} — edit freely*`);
+
+  // Wins from EOD
+  const wins = eodEntries.filter(e => e.win).map(e => `- ${e.date}: ${e.win}`);
+  sections.push(`## Wins This Week\n${wins.length > 0 ? wins.join('\n') : '- *(add your wins here)*'}`);
+
+  // Challenges from EOD
+  const challenges = eodEntries.filter(e => e.didntGo).map(e => `- ${e.date}: ${e.didntGo}`);
+  sections.push(`## Challenges / What Didn't Go To Plan\n${challenges.length > 0 ? challenges.join('\n') : '- *(add challenges here)*'}`);
+
+  // 90-day plan progress
+  if (completedPlanTasks.length > 0) {
+    const taskLines = completedPlanTasks.map(t => `- [x] Day ${t.day}: ${t.text}`).join('\n');
+    sections.push(`## 90-Day Plan — Completed This Week\n${taskLines}`);
+  }
+
+  // Decisions
+  if (decisions.length > 0) {
+    const decLines = decisions.map(d => `- ${d.date}: ${d.text}`).join('\n');
+    sections.push(`## Decisions Made\n${decLines}`);
+  }
+
+  // Meeting notes
+  if (meetingNotes.length > 0) {
+    sections.push(`## Meetings / Conversations\n${meetingNotes.map(n => `- [[${n}]]`).join('\n')}`);
+  }
+
+  // Energy / reflection (always manual)
+  sections.push(`## Energy & Wellbeing\n*(How were your energy levels this week? Any patterns?)*`);
+  sections.push(`## Looking Ahead — Next Week\n*(Top 3 priorities for next week)*\n1. \n2. \n3. `);
+
+  const content = sections.join('\n\n');
+  const reviewDir = path.join(vaultPath, 'Reflections');
+  if (!fs.existsSync(reviewDir)) fs.mkdirSync(reviewDir, { recursive: true });
+  fs.writeFileSync(reviewPath, content, 'utf-8');
+
+  console.log(`[Obsidian] Weekly review generated: ${reviewPath}`);
+  return { weekStr, path: reviewPath };
 }
 
 // Add a todo to Master Todo inbox via chat command

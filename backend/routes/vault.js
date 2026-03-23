@@ -118,4 +118,33 @@ router.get('/search', (req, res) => {
   res.json({ query, results });
 });
 
+// GET /api/vault/related?path=relative/path&limit=3
+router.get('/related', async (req, res) => {
+  try {
+    const { path: notePath, limit = 3 } = req.query;
+    if (!notePath) return res.status(400).json({ error: 'path required' });
+
+    const vaultPath = process.env.OBSIDIAN_VAULT_PATH;
+    const fullPath = path.join(vaultPath, notePath);
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    const body = content.replace(/^---[\s\S]*?---\n*/, '').substring(0, 500);
+
+    const obsidian = require('../services/obsidian');
+    const results = await obsidian.searchVaultSemantic(body, parseInt(limit) + 1);
+
+    // Exclude the note itself from results
+    const related = (results || [])
+      .filter(r => r.path !== notePath)
+      .slice(0, parseInt(limit));
+
+    res.json({ related });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

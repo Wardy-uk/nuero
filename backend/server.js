@@ -66,6 +66,7 @@ app.use('/api/health', healthRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/activity', require('./routes/activity'));
+app.use('/api/email', require('./routes/email-triage'));
 
 // Health / status endpoint
 app.get('/api/status', async (req, res) => {

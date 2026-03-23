@@ -189,7 +189,19 @@ function start() {
     });
   }, 35000);
 
-  console.log('[Scheduler] Started — standup 9am, 1-2-1 9:10am, nag 15m, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, escalations 5m, flagged 5m, imports 23:30, PLAUD 30m, MS Tasks 30m');
+  // Email triage — run at 8am, 12pm, 5pm weekdays
+  cron.schedule('0 8,12,17 * * 1-5', () => {
+    require('./email-triage').runTriage().catch(e => {
+      console.error('[Scheduler] Email triage failed:', e.message);
+    });
+  });
+
+  // Startup triage after 60s
+  setTimeout(() => {
+    require('./email-triage').runTriage().catch(() => {});
+  }, 60000);
+
+  console.log('[Scheduler] Started — standup 9am, 1-2-1 9:10am, nag 15m, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, escalations 5m, flagged 5m, email triage 8/12/17, imports 23:30, PLAUD 30m, MS Tasks 30m');
 }
 
 module.exports = { start };

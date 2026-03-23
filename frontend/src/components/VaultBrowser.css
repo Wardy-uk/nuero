@@ -431,3 +431,10 @@
     padding: 10px 12px;
   }
 }
+
+.vault-related { margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06); }
+.vault-related-label { font-size: 9px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 8px; }
+.vault-related-item { display: block; width: 100%; text-align: left; background: var(--bg-tertiary); border: none; border-radius: 4px; padding: 8px 10px; margin-bottom: 4px; cursor: pointer; }
+.vault-related-item:hover { background: rgba(90,163,249,0.08); }
+.vault-related-name { display: block; font-size: 12px; color: var(--accent); font-family: var(--font-mono); margin-bottom: 2px; }
+.vault-related-excerpt { display: block; font-size: 11px; color: var(--text-muted); line-height: 1.4; }

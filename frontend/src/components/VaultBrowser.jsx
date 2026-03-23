@@ -3,6 +3,40 @@ import ReactMarkdown from 'react-markdown';
 import { apiUrl } from '../api';
 import './VaultBrowser.css';
 
+function RelatedNotes({ notePath, onNavigate }) {
+  const [related, setRelated] = React.useState([]);
+
+  React.useEffect(() => {
+    if (!notePath) return;
+    fetch(apiUrl(`/api/vault/related?path=${encodeURIComponent(notePath)}&limit=3`))
+      .then(r => r.json())
+      .then(d => setRelated(d.related || []))
+      .catch(() => {});
+  }, [notePath]);
+
+  if (related.length === 0) return null;
+
+  return (
+    <div className="vault-related">
+      <div className="vault-related-label">Related</div>
+      {related.map(r => (
+        <button
+          key={r.path}
+          className="vault-related-item"
+          onClick={() => onNavigate && onNavigate(r.path)}
+        >
+          <span className="vault-related-name">{r.name}</span>
+          {r.excerpts?.[0] && (
+            <span className="vault-related-excerpt">
+              {r.excerpts[0].substring(0, 80)}...
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
   const [currentDir, setCurrentDir] = useState('');
   const [entries, setEntries] = useState([]);
@@ -158,6 +192,7 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
             spellCheck={true}
           />
         )}
+        <RelatedNotes notePath={openFile.path} onNavigate={openFileHandler} />
       </div>
     );
   }

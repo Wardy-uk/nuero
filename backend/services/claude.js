@@ -86,7 +86,20 @@ markers over just mentioning things — if it's worth doing, capture it.
 Nick's direct reports:
 2nd Line: Abdi Mohamed, Arman Shazad, Luke Scaife, Stephen Mitchell, Willem Kruger, Nathan Rutland
 1st Line: Adele Norman-Swift, Heidi Power, Hope Goodall, Maria Pappa, Naomi Wentworth, Sebastian Broome, Zoe Rees
-Digital Design: Isabel Busk, Kayleigh Russell`;
+Digital Design: Isabel Busk, Kayleigh Russell
+
+Drafting from vault — when Nick asks you to draft something for a person or situation:
+1. Tell him what vault context you found before drafting (e.g. "I can see your notes on Heidi from 3 1-2-1s — drafting from those now")
+2. Use [MEETING NOTE: Draft - Title] marker if the draft is worth saving
+3. Structure: context summary → draft → suggested next step
+4. If asking about a team member, always pull their People note context first
+
+Draft triggers — recognise these phrasings and treat as drafting requests:
+- "draft / write / put together [X] for [person]"
+- "help me respond to [person] about [topic]"
+- "what would you say to [person] about [topic]"
+- "I need to tell [person] about [topic]"
+- "update for [person]"`;
 
 function isWeekend() {
   const day = new Date().getDay();
@@ -372,6 +385,33 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
       ).join('\n\n');
     parts.push(vaultBlock);
     diagnostics.push(`vault: ${vaultResults.length} notes`);
+
+    // Related notes — for each vault search result, find 1-2 related notes not already in results
+    try {
+      const seenPaths = new Set(vaultResults.map(r => r.path));
+      const relatedAll = [];
+      for (const result of vaultResults.slice(0, 2)) {
+        const body = result.excerpts?.[0] || '';
+        if (body.length < 20) continue;
+        const related = await obsidian.searchVaultSemantic(body, 3);
+        for (const r of (related || [])) {
+          if (!seenPaths.has(r.path)) {
+            seenPaths.add(r.path);
+            relatedAll.push(r);
+          }
+        }
+      }
+      if (relatedAll.length > 0) {
+        parts.push('## Related Vault Notes (connected context)\n' +
+          relatedAll.slice(0, 3).map(r =>
+            `### ${r.name}\n${r.excerpts?.[0]?.substring(0, 200) || ''}`
+          ).join('\n\n')
+        );
+        diagnostics.push(`related: ${relatedAll.length}`);
+      }
+    } catch (e) {
+      diagnostics.push('related: error');
+    }
   }
 
   console.log('[Context] Sources:', diagnostics.join(', '));
@@ -561,6 +601,37 @@ async function streamChat(conversationId, userMessage, res, location = null) {
     }
   } catch (e) {
     console.warn('[Context] Vault search error:', e.message);
+  }
+
+  // Person-specific context pull for drafting requests
+  const TEAM_MEMBERS = [
+    'Abdi', 'Arman', 'Luke', 'Stephen', 'Willem', 'Nathan',
+    'Adele', 'Heidi', 'Hope', 'Maria', 'Naomi', 'Sebastian', 'Zoe',
+    'Isabel', 'Kayleigh', 'Chris', 'Beth', 'Paul', 'Damon', 'Ricky'
+  ];
+
+  const mentionedPeople = TEAM_MEMBERS.filter(name =>
+    userMessage.toLowerCase().includes(name.toLowerCase())
+  );
+
+  for (const personName of mentionedPeople.slice(0, 2)) {
+    try {
+      const personNote = obsidian.readPersonNote(personName) ||
+        (() => {
+          const allPeople = obsidian.listPeopleNotes();
+          const match = allPeople.find(n => n.toLowerCase().includes(personName.toLowerCase()));
+          return match ? obsidian.readPersonNote(match) : null;
+        })();
+
+      if (personNote && !vaultSearchResults.some(r => r.name.toLowerCase().includes(personName.toLowerCase()))) {
+        const body = personNote.replace(/^---[\s\S]*?---\n*/, '').substring(0, 600);
+        vaultSearchResults.unshift({
+          path: `People/${personName}.md`,
+          name: personName,
+          excerpts: [body]
+        });
+      }
+    } catch {}
   }
 
   // Reverse geocode location if provided
