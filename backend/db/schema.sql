@@ -136,12 +136,14 @@ CREATE INDEX IF NOT EXISTS idx_inbox_email_id ON inbox_items(email_id);
 
 CREATE TABLE IF NOT EXISTS vault_embeddings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  relative_path TEXT NOT NULL UNIQUE,
+  relative_path TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL DEFAULT 0,
   content_hash TEXT NOT NULL,
   embedding TEXT NOT NULL,
   chunk_text TEXT,
   file_modified TEXT,
-  embedded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  embedded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(relative_path, chunk_index)
 );
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_path ON vault_embeddings(relative_path);

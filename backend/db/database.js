@@ -20,6 +20,34 @@ async function init() {
   const schemaPath = path.join(__dirname, 'schema.sql');
   const schema = fs.readFileSync(schemaPath, 'utf-8');
   db.run(schema);
+
+  // Migration: vault_embeddings multi-chunk support
+  // If the old table has UNIQUE on relative_path alone, recreate with (relative_path, chunk_index)
+  try {
+    const tableInfo = db.exec("PRAGMA table_info(vault_embeddings)");
+    const columns = tableInfo.length > 0 ? tableInfo[0].values.map(r => r[1]) : [];
+    if (!columns.includes('chunk_index')) {
+      console.log('[DB] Migrating vault_embeddings for multi-chunk support...');
+      db.run('DROP TABLE IF EXISTS vault_embeddings');
+      db.run(`CREATE TABLE vault_embeddings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        relative_path TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL DEFAULT 0,
+        content_hash TEXT NOT NULL,
+        embedding TEXT NOT NULL,
+        chunk_text TEXT,
+        file_modified TEXT,
+        embedded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(relative_path, chunk_index)
+      )`);
+      db.run('CREATE INDEX IF NOT EXISTS idx_embeddings_path ON vault_embeddings(relative_path)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_embeddings_hash ON vault_embeddings(content_hash)');
+      console.log('[DB] vault_embeddings migrated — embeddings will rebuild on next cycle');
+    }
+  } catch (e) {
+    console.error('[DB] Migration check failed:', e.message);
+  }
+
   save();
   console.log('[DB] Initialized');
 }
@@ -495,23 +523,33 @@ function clearStaleInboxItems() {
   save();
 }
 
-// Embedding helpers
-function saveEmbedding(relativePath, contentHash, embedding, chunkText, fileModified) {
+// Embedding helpers — multi-chunk: each file can have multiple chunks
+function saveEmbedding(relativePath, contentHash, embedding, chunkText, fileModified, chunkIndex = 0) {
   getDb().run(`
     INSERT OR REPLACE INTO vault_embeddings
-      (relative_path, content_hash, embedding, chunk_text, file_modified, embedded_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
-  `, [relativePath, contentHash, JSON.stringify(embedding), chunkText, fileModified]);
+      (relative_path, chunk_index, content_hash, embedding, chunk_text, file_modified, embedded_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+  `, [relativePath, chunkIndex, contentHash, JSON.stringify(embedding), chunkText, fileModified]);
   save();
 }
 
 function getEmbedding(relativePath) {
-  const stmt = getDb().prepare('SELECT * FROM vault_embeddings WHERE relative_path = ?');
+  // Returns first chunk (for backwards compat / change detection)
+  const stmt = getDb().prepare('SELECT * FROM vault_embeddings WHERE relative_path = ? ORDER BY chunk_index ASC LIMIT 1');
   stmt.bind([relativePath]);
   let result = null;
   if (stmt.step()) result = stmt.getAsObject();
   stmt.free();
   return result;
+}
+
+function getEmbeddingChunkCount(relativePath) {
+  const stmt = getDb().prepare('SELECT COUNT(*) as count FROM vault_embeddings WHERE relative_path = ?');
+  stmt.bind([relativePath]);
+  let count = 0;
+  if (stmt.step()) count = stmt.getAsObject().count;
+  stmt.free();
+  return count;
 }
 
 function getAllEmbeddings() {
@@ -523,6 +561,7 @@ function getAllEmbeddings() {
 }
 
 function deleteEmbedding(relativePath) {
+  // Deletes all chunks for this file
   getDb().run('DELETE FROM vault_embeddings WHERE relative_path = ?', [relativePath]);
   save();
 }
@@ -577,6 +616,7 @@ module.exports = {
   clearStaleInboxItems,
   saveEmbedding,
   getEmbedding,
+  getEmbeddingChunkCount,
   getAllEmbeddings,
   deleteEmbedding
 };

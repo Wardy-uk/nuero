@@ -61,6 +61,12 @@ router.post('/note', (req, res) => {
     console.log(`[Capture] Note saved: ${filename}`);
     res.json({ success: true, path: filePath, filename });
     try { require('../services/activity').trackCapture('note'); } catch {}
+    // Embed immediately so it's searchable right away
+    try {
+      const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+      const relativePath = path.relative(vaultPath, filePath).replace(/\\/g, '/');
+      require('../services/embeddings').embedVaultFile(relativePath, filePath).catch(() => {});
+    } catch {}
   } catch (e) {
     console.error('[Capture] Note error:', e);
     res.status(500).json({ error: e.message });

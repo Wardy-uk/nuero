@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const db = require('../db/database');
 
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
-const SKIP_DIRS = new Set(['Daily', 'Scripts', 'Templates', '.obsidian', '.git', '.trash', 'Imports']);
+const SKIP_DIRS = new Set(['Scripts', 'Templates', '.obsidian', '.git', '.trash']);
 const MAX_CHUNK_CHARS = 1500; // keep well within token limits
 const BATCH_SIZE = 8; // files per Voyage API call
 const BATCH_DELAY_MS = 21000; // 21s between batches (free tier = 3 RPM)
@@ -170,7 +170,7 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(magA) * Math.sqrt(magB) || 1);
 }
 
-// Prepare a file for embedding — returns { relativePath, hash, chunk, modified } or null
+// Prepare a file for embedding — returns array of { relativePath, hash, chunk, chunkIndex, modified } or null
 function prepareFile(relativePath, fullPath) {
   let content;
   try { content = fs.readFileSync(fullPath, 'utf-8'); }
@@ -190,17 +190,26 @@ function prepareFile(relativePath, fullPath) {
   const chunks = chunkText(body);
   if (chunks.length === 0) return null;
 
-  return { relativePath, hash, chunk: chunks[0], modified };
+  // Return all chunks for multi-chunk embedding
+  return chunks.map((chunk, i) => ({
+    relativePath, hash, chunk, chunkIndex: i, modified
+  }));
 }
 
+// Embed a single vault file immediately (all chunks)
 async function embedVaultFile(relativePath, fullPath) {
   const prepared = prepareFile(relativePath, fullPath);
   if (!prepared) return false;
 
-  const embedding = await getEmbedding(prepared.chunk);
-  if (!embedding) return false;
+  // Delete old chunks for this file before re-embedding
+  db.deleteEmbedding(relativePath);
 
-  db.saveEmbedding(prepared.relativePath, prepared.hash, embedding, prepared.chunk, prepared.modified);
+  for (const item of prepared) {
+    const embedding = await getEmbedding(item.chunk);
+    if (embedding) {
+      db.saveEmbedding(item.relativePath, item.hash, embedding, item.chunk, item.modified, item.chunkIndex);
+    }
+  }
   return true;
 }
 
@@ -241,25 +250,33 @@ async function rebuildEmbeddings(onProgress) {
   console.log(`[Embeddings] Rebuilding — ${files.length} files to check`);
 
   // Prepare all files first (fast, no API calls)
-  const needsEmbedding = [];
-  let skipped = 0;
+  // Each file may produce multiple chunks
+  const allChunks = [];
+  const filesToDelete = new Set(); // files that changed and need old chunks removed
+  let skippedFiles = 0;
   for (const { relativePath, fullPath } of files) {
     const prepared = prepareFile(relativePath, fullPath);
     if (prepared) {
-      needsEmbedding.push(prepared);
+      filesToDelete.add(relativePath);
+      allChunks.push(...prepared);
     } else {
-      skipped++;
+      skippedFiles++;
     }
   }
 
-  console.log(`[Embeddings] ${needsEmbedding.length} need embedding, ${skipped} unchanged`);
+  // Delete old chunks for changed files before re-embedding
+  for (const filePath of filesToDelete) {
+    db.deleteEmbedding(filePath);
+  }
+
+  console.log(`[Embeddings] ${allChunks.length} chunks from ${filesToDelete.size} files need embedding, ${skippedFiles} files unchanged`);
 
   const hasVoyage = !!process.env.VOYAGE_API_KEY;
   let updated = 0, errors = 0, rateLimitRetries = 0;
 
   // Process in batches
-  for (let i = 0; i < needsEmbedding.length; i += BATCH_SIZE) {
-    const batch = needsEmbedding.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
+    const batch = allChunks.slice(i, i + BATCH_SIZE);
     const texts = batch.map(b => b.chunk);
 
     try {
@@ -272,16 +289,15 @@ async function rebuildEmbeddings(onProgress) {
         await new Promise(r => setTimeout(r, 65000));
         embeddings = await getBatchEmbeddings(texts);
         if (embeddings === null) {
-          // Still rate limited — fall back to simple vectors for this batch
           console.warn('[Embeddings] Still rate limited after retry — using simple vectors for batch');
           embeddings = texts.map(t => computeSimpleVector(t));
         }
       }
 
-      // Save each embedding
+      // Save each embedding with chunk index
       for (let j = 0; j < batch.length; j++) {
-        const { relativePath, hash, chunk, modified } = batch[j];
-        db.saveEmbedding(relativePath, hash, embeddings[j], chunk, modified);
+        const { relativePath, hash, chunk, chunkIndex, modified } = batch[j];
+        db.saveEmbedding(relativePath, hash, embeddings[j], chunk, modified, chunkIndex);
         updated++;
       }
     } catch (e) {
@@ -289,16 +305,16 @@ async function rebuildEmbeddings(onProgress) {
       errors += batch.length;
     }
 
-    if (onProgress) onProgress({ i: Math.min(i + BATCH_SIZE, needsEmbedding.length), total: needsEmbedding.length, updated, skipped });
+    if (onProgress) onProgress({ i: Math.min(i + BATCH_SIZE, allChunks.length), total: allChunks.length, updated, skipped: skippedFiles });
 
     // Rate limit pause between batches (only if using Voyage and more batches remain)
-    if (hasVoyage && i + BATCH_SIZE < needsEmbedding.length) {
+    if (hasVoyage && i + BATCH_SIZE < allChunks.length) {
       await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
     }
   }
 
-  console.log(`[Embeddings] Done — ${updated} updated, ${skipped} unchanged, ${errors} errors, ${rateLimitRetries} rate-limit retries`);
-  return { updated, skipped, errors };
+  console.log(`[Embeddings] Done — ${updated} chunks updated across ${filesToDelete.size} files, ${skippedFiles} files unchanged, ${errors} errors, ${rateLimitRetries} rate-limit retries`);
+  return { updated, skipped: skippedFiles, errors };
 }
 
 async function semanticSearch(query, maxResults = 5) {
@@ -313,24 +329,42 @@ async function semanticSearch(query, maxResults = 5) {
   const queryEmbedding = await getQueryEmbedding(query);
   if (!queryEmbedding) return null;
 
-  // Score all embeddings
+  // Score all embedding chunks
   const scored = allEmbeddings
     .map(row => {
       let embedding;
       try { embedding = JSON.parse(row.embedding); }
       catch { return null; }
       const score = cosineSimilarity(queryEmbedding, embedding);
-      return { relativePath: row.relative_path, chunkText: row.chunk_text, score };
+      return { relativePath: row.relative_path, chunkText: row.chunk_text, chunkIndex: row.chunk_index, score };
     })
     .filter(Boolean)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, maxResults)
     .filter(r => r.score > 0.1); // minimum relevance threshold
 
-  return scored.map(r => ({
+  // Deduplicate by file — keep highest-scoring chunk per file, collect all good excerpts
+  const byFile = new Map();
+  for (const item of scored) {
+    const existing = byFile.get(item.relativePath);
+    if (!existing || item.score > existing.score) {
+      byFile.set(item.relativePath, {
+        relativePath: item.relativePath,
+        score: item.score,
+        excerpts: [item.chunkText ? item.chunkText.slice(0, 300) : '']
+      });
+    } else if (item.score > 0.15 && existing.excerpts.length < 3) {
+      // Also include other high-scoring chunks as additional excerpts
+      existing.excerpts.push(item.chunkText ? item.chunkText.slice(0, 300) : '');
+    }
+  }
+
+  const results = [...byFile.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxResults);
+
+  return results.map(r => ({
     path: r.relativePath,
     name: path.basename(r.relativePath, '.md'),
-    excerpts: [r.chunkText ? r.chunkText.slice(0, 300) : ''],
+    excerpts: r.excerpts,
     score: r.score
   }));
 }
