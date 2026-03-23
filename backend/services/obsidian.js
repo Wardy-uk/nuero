@@ -1164,6 +1164,88 @@ function saveMeetingNoteFromChat(title, conversationSummary) {
   return `Meetings/${filename}`;
 }
 
+// Sync Microsoft Planner + ToDo tasks into vault file Tasks/Microsoft Tasks.md
+async function syncMicrosoftTasks() {
+  if (!isConfigured()) return { ok: false, error: 'Vault not configured' };
+
+  const microsoft = require('./microsoft');
+  const vaultPath = getVaultPath();
+  const tasksDir = path.join(vaultPath, 'Tasks');
+  if (!fs.existsSync(tasksDir)) fs.mkdirSync(tasksDir, { recursive: true });
+
+  const msTasksPath = path.join(tasksDir, 'Microsoft Tasks.md');
+  let plannerCount = 0;
+  let todoCount = 0;
+
+  const lines = ['# Microsoft Tasks', '', `*Last synced: ${new Date().toLocaleString('en-GB')}*`, ''];
+
+  // --- Planner ---
+  try {
+    const plannerTasks = await microsoft.fetchPlannerTasks();
+    if (plannerTasks && plannerTasks.length > 0) {
+      lines.push('## Planner', '');
+      // Filter to incomplete tasks only
+      const active = plannerTasks.filter(t => !t.completedDateTime && t.percentComplete < 100);
+      // Sort by due date (soonest first), then by title
+      active.sort((a, b) => {
+        if (a.dueDateTime && b.dueDateTime) return a.dueDateTime.localeCompare(b.dueDateTime);
+        if (a.dueDateTime) return -1;
+        if (b.dueDateTime) return 1;
+        return (a.title || '').localeCompare(b.title || '');
+      });
+      for (const t of active) {
+        const due = t.dueDateTime ? ` 📅 ${t.dueDateTime.split('T')[0]}` : '';
+        const pct = t.percentComplete > 0 ? ` (${t.percentComplete}%)` : '';
+        lines.push(`- [ ] ${t.title}${pct}${due} <!--id:${t.id}-->`);
+        plannerCount++;
+      }
+      lines.push('');
+    }
+  } catch (e) {
+    console.error('[Sync] Planner fetch failed:', e.message);
+    lines.push('## Planner', '', '*Failed to fetch — see logs*', '');
+  }
+
+  // --- To-Do ---
+  try {
+    const todoLists = await microsoft.fetchTodoLists();
+    if (todoLists && todoLists.length > 0) {
+      lines.push('## ToDo', '');
+      for (const list of todoLists) {
+        // Skip flagged emails list — that's handled by inbox scanner
+        if (list.wellknownListName === 'flaggedEmails') continue;
+        const tasks = await microsoft.fetchTodoTasks(list.id);
+        if (tasks && tasks.length > 0) {
+          if (list.displayName !== 'Tasks') lines.push(`### ${list.displayName}`, '');
+          const active = tasks.filter(t => t.status !== 'completed');
+          active.sort((a, b) => {
+            const aDue = a.dueDateTime?.dateTime || '';
+            const bDue = b.dueDateTime?.dateTime || '';
+            if (aDue && bDue) return aDue.localeCompare(bDue);
+            if (aDue) return -1;
+            if (bDue) return 1;
+            return (a.title || '').localeCompare(b.title || '');
+          });
+          for (const t of active) {
+            const due = t.dueDateTime?.dateTime ? ` 📅 ${t.dueDateTime.dateTime.split('T')[0]}` : '';
+            const imp = t.importance === 'high' ? ' ⚡' : '';
+            lines.push(`- [ ] ${t.title}${imp}${due} <!--id:${t.id}-->`);
+            todoCount++;
+          }
+          lines.push('');
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[Sync] ToDo fetch failed:', e.message);
+    lines.push('## ToDo', '', '*Failed to fetch — see logs*', '');
+  }
+
+  fs.writeFileSync(msTasksPath, lines.join('\n'), 'utf-8');
+  console.log(`[Sync] Microsoft Tasks written: ${plannerCount} planner, ${todoCount} todo`);
+  return { ok: true, planner: plannerCount, todo: todoCount };
+}
+
 module.exports = {
   isConfigured,
   readTodayDailyNote,
@@ -1192,5 +1274,6 @@ module.exports = {
   getMeetingPrepContext,
   getUpcoming121s,
   getRecentDecisions,
-  generateWeeklyReview
+  generateWeeklyReview,
+  syncMicrosoftTasks
 };

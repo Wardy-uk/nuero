@@ -328,6 +328,130 @@ async function fetchRecentEmails(hoursBack = 24, maxResults = 50) {
   return null;
 }
 
+// Fetch To-Do task lists
+async function fetchTodoLists() {
+  // Priority 1 — MSAL/Graph direct
+  const token = await getAccessToken();
+  if (token) {
+    try {
+      const data = await graphFetch('/me/todo/lists', token);
+      if (data && data.value) return data.value;
+    } catch (err) {
+      console.error('[Microsoft] ToDo lists fetch error:', err.message);
+    }
+  }
+  // Priority 2 — NOVA bridge
+  if (isBridgeConfigured()) {
+    try {
+      const bridgeData = await novaBridgeFetch('/todo/lists');
+      if (bridgeData) return bridgeData.value || bridgeData || [];
+    } catch (e) { console.warn('[ToDo] Bridge lists failed:', e.message); }
+  }
+  return null;
+}
+
+// Fetch To-Do tasks for a specific list
+async function fetchTodoTasks(listId) {
+  if (!listId) return null;
+  // Priority 1 — MSAL/Graph direct
+  const token = await getAccessToken();
+  if (token) {
+    try {
+      const data = await graphFetch(`/me/todo/lists/${listId}/tasks?$top=100&$filter=status ne 'completed'`, token);
+      if (data && data.value) return data.value;
+    } catch (err) {
+      console.error('[Microsoft] ToDo tasks fetch error:', err.message);
+    }
+  }
+  // Priority 2 — NOVA bridge
+  if (isBridgeConfigured()) {
+    try {
+      const bridgeData = await novaBridgeFetch('/todo/tasks', { listId });
+      if (bridgeData) return bridgeData.value || bridgeData || [];
+    } catch (e) { console.warn('[ToDo] Bridge tasks failed:', e.message); }
+  }
+  return null;
+}
+
+// Fetch Planner tasks assigned to me
+async function fetchPlannerTasks() {
+  // Priority 1 — MSAL/Graph direct
+  const token = await getAccessToken();
+  if (token) {
+    try {
+      const data = await graphFetch('/me/planner/tasks?$top=200', token);
+      if (data && data.value) return data.value;
+    } catch (err) {
+      console.error('[Microsoft] Planner fetch error:', err.message);
+    }
+  }
+  // Priority 2 — NOVA bridge
+  if (isBridgeConfigured()) {
+    try {
+      const bridgeData = await novaBridgeFetch('/planner/tasks');
+      if (bridgeData) return bridgeData.value || bridgeData || [];
+    } catch (e) { console.warn('[Planner] Bridge failed:', e.message); }
+  }
+  return null;
+}
+
+// Create a To-Do task via bridge
+async function createTodoTask(listId, title, body) {
+  if (isBridgeConfigured()) {
+    const baseUrl = process.env.NOVA_BRIDGE_URL;
+    const secret = process.env.NOVA_BRIDGE_SECRET;
+    try {
+      const res = await fetch(`${baseUrl}/api/neuro-bridge/todo/tasks`, {
+        method: 'POST',
+        headers: { 'x-neuro-bridge-secret': secret, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ todoTaskListId: listId, title, body: body || '' }),
+        signal: AbortSignal.timeout(10000)
+      });
+      const json = await res.json();
+      return json.ok ? json.data : null;
+    } catch (e) { console.warn('[ToDo] Create failed:', e.message); }
+  }
+  return null;
+}
+
+// Update a To-Do task via bridge (e.g. mark complete)
+async function updateTodoTask(taskId, listId, updates) {
+  if (isBridgeConfigured()) {
+    const baseUrl = process.env.NOVA_BRIDGE_URL;
+    const secret = process.env.NOVA_BRIDGE_SECRET;
+    try {
+      const res = await fetch(`${baseUrl}/api/neuro-bridge/todo/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'x-neuro-bridge-secret': secret, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ todoTaskListId: listId, ...updates }),
+        signal: AbortSignal.timeout(10000)
+      });
+      const json = await res.json();
+      return json.ok ? json.data : null;
+    } catch (e) { console.warn('[ToDo] Update failed:', e.message); }
+  }
+  return null;
+}
+
+// Update a Planner task via bridge
+async function updatePlannerTask(taskId, updates) {
+  if (isBridgeConfigured()) {
+    const baseUrl = process.env.NOVA_BRIDGE_URL;
+    const secret = process.env.NOVA_BRIDGE_SECRET;
+    try {
+      const res = await fetch(`${baseUrl}/api/neuro-bridge/planner/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'x-neuro-bridge-secret': secret, 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+        signal: AbortSignal.timeout(10000)
+      });
+      const json = await res.json();
+      return json.ok ? json.data : null;
+    } catch (e) { console.warn('[Planner] Update failed:', e.message); }
+  }
+  return null;
+}
+
 module.exports = {
   isConfigured,
   isAuthenticated,
@@ -335,5 +459,11 @@ module.exports = {
   startDeviceCodeFlow,
   fetchCalendarEvents,
   fetchRecentEmails,
+  fetchTodoLists,
+  fetchTodoTasks,
+  fetchPlannerTasks,
+  createTodoTask,
+  updateTodoTask,
+  updatePlannerTask,
   graphFetch
 };

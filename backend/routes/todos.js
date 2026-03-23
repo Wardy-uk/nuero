@@ -46,4 +46,36 @@ router.post('/toggle', (req, res) => {
   }
 });
 
+// POST /api/todos/complete-ms — complete a Microsoft task via bridge + toggle in vault
+router.post('/complete-ms', async (req, res) => {
+  try {
+    const { msId, source, filePath, lineNumber } = req.body;
+    if (!msId) return res.status(400).json({ error: 'msId required' });
+
+    const microsoft = require('../services/microsoft');
+
+    // Complete in Microsoft via bridge
+    if (source === 'MS Planner') {
+      await microsoft.updatePlannerTask(msId, { percentComplete: 100 });
+    } else if (source === 'MS ToDo') {
+      // Need the listId — fetch lists and find default
+      const lists = await microsoft.fetchTodoLists();
+      const defaultList = lists?.find(l => l.wellknownListName === 'defaultList') || lists?.[0];
+      if (defaultList) {
+        await microsoft.updateTodoTask(msId, defaultList.id, { status: 'completed' });
+      }
+    }
+
+    // Also toggle in vault if we have file info
+    if (filePath && lineNumber != null) {
+      obsidian.toggleTask(filePath, lineNumber);
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[Todos] MS complete error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

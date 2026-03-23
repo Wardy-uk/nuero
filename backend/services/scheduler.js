@@ -145,7 +145,23 @@ function start() {
     }
   });
 
-  console.log('[Scheduler] Started — standup 9am, 1-2-1 9:10am, nag 15m, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, imports 23:30, PLAUD 30m');
+  // Every 30 minutes 8am-6pm weekdays — sync Microsoft Tasks (Planner + ToDo) to vault
+  cron.schedule('15,45 8-18 * * 1-5', () => {
+    console.log('[Scheduler] Syncing Microsoft Tasks...');
+    require('./obsidian').syncMicrosoftTasks().catch(e => {
+      console.error('[Scheduler] MS Tasks sync failed:', e.message);
+    });
+  });
+
+  // Startup MS Tasks sync — 30s after start
+  setTimeout(() => {
+    console.log('[Scheduler] Startup MS Tasks sync...');
+    require('./obsidian').syncMicrosoftTasks().catch(e => {
+      console.error('[Scheduler] Startup MS Tasks sync failed:', e.message);
+    });
+  }, 30 * 1000);
+
+  console.log('[Scheduler] Started — standup 9am, 1-2-1 9:10am, nag 15m, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, imports 23:30, PLAUD 30m, MS Tasks 30m');
 }
 
 module.exports = { start };

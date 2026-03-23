@@ -57,4 +57,84 @@ router.post('/inbox/dismiss', (req, res) => {
   res.json({ success: true });
 });
 
+// GET /api/microsoft/planner/tasks — fetch Planner tasks
+router.get('/planner/tasks', async (req, res) => {
+  try {
+    const tasks = await microsoft.fetchPlannerTasks();
+    res.json({ tasks: tasks || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/microsoft/todo/lists — fetch To-Do task lists
+router.get('/todo/lists', async (req, res) => {
+  try {
+    const lists = await microsoft.fetchTodoLists();
+    res.json({ lists: lists || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/microsoft/todo/tasks?listId=xxx — fetch To-Do tasks
+router.get('/todo/tasks', async (req, res) => {
+  try {
+    const { listId } = req.query;
+    if (!listId) return res.status(400).json({ error: 'listId required' });
+    const tasks = await microsoft.fetchTodoTasks(listId);
+    res.json({ tasks: tasks || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/microsoft/todo/tasks — create a To-Do task
+router.post('/todo/tasks', async (req, res) => {
+  try {
+    const { listId, title, body } = req.body;
+    if (!listId || !title) return res.status(400).json({ error: 'listId and title required' });
+    const result = await microsoft.createTodoTask(listId, title, body);
+    if (!result) return res.status(502).json({ error: 'Bridge unavailable' });
+    res.json({ ok: true, task: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/microsoft/todo/tasks/:taskId — update a To-Do task
+router.patch('/todo/tasks/:taskId', async (req, res) => {
+  try {
+    const { listId, ...updates } = req.body;
+    if (!listId) return res.status(400).json({ error: 'listId required in body' });
+    const result = await microsoft.updateTodoTask(req.params.taskId, listId, updates);
+    if (!result) return res.status(502).json({ error: 'Bridge unavailable' });
+    res.json({ ok: true, task: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/microsoft/planner/tasks/:taskId — update a Planner task
+router.patch('/planner/tasks/:taskId', async (req, res) => {
+  try {
+    const result = await microsoft.updatePlannerTask(req.params.taskId, req.body);
+    if (!result) return res.status(502).json({ error: 'Bridge unavailable' });
+    res.json({ ok: true, task: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/microsoft/tasks/sync — sync MS tasks to Obsidian vault
+router.post('/tasks/sync', async (req, res) => {
+  try {
+    const obsidian = require('../services/obsidian');
+    const result = await obsidian.syncMicrosoftTasks();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

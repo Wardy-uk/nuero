@@ -51,6 +51,7 @@ export default function TodoPanel() {
   const [showDone, setShowDone] = useState(false);
   const [filter, setFilter] = useState('all'); // all, overdue, today, high, master, ms, daily
   const [toggling, setToggling] = useState({});
+  const [syncing, setSyncing] = useState(false);
 
   const path = `/api/todos${showDone ? '?all=true' : ''}`;
   const transform = useMemo(() => (json) => json.todos || [], []);
@@ -62,11 +63,25 @@ export default function TodoPanel() {
     const key = `${todo.filePath}:${todo.lineNumber}`;
     setToggling(prev => ({ ...prev, [key]: true }));
     try {
-      await fetch(apiUrl('/api/todos/toggle'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath: todo.filePath, lineNumber: todo.lineNumber })
-      });
+      // MS tasks: complete via bridge + vault toggle
+      if (todo.ms_id && (todo.source === 'MS Planner' || todo.source === 'MS ToDo')) {
+        await fetch(apiUrl('/api/todos/complete-ms'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            msId: todo.ms_id,
+            source: todo.source,
+            filePath: todo.filePath,
+            lineNumber: todo.lineNumber
+          })
+        });
+      } else {
+        await fetch(apiUrl('/api/todos/toggle'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath: todo.filePath, lineNumber: todo.lineNumber })
+        });
+      }
       await fetchTodos();
     } catch (e) { /* ignore */ }
     setToggling(prev => ({ ...prev, [key]: false }));
@@ -111,6 +126,14 @@ export default function TodoPanel() {
             {activeTodos.length} open
             {overdueTodos.length > 0 && <span className="overdue-count"> / {overdueTodos.length} overdue</span>}
           </span>
+          <button className="btn btn-secondary" disabled={syncing} onClick={async () => {
+            setSyncing(true);
+            try {
+              await fetch(apiUrl('/api/microsoft/tasks/sync'), { method: 'POST' });
+              await fetchTodos();
+            } catch {}
+            setSyncing(false);
+          }}>{syncing ? 'Syncing...' : 'Sync MS'}</button>
           <button className="btn btn-secondary" onClick={fetchTodos}>Refresh</button>
         </div>
       </div>
