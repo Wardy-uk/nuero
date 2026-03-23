@@ -98,6 +98,57 @@ function TodoSaveButton({ messageContent, apiUrlFn }) {
   );
 }
 
+function detectExportIntent(message) {
+  const patterns = [
+    /export (this|that) as (a |an )?(word |docx )?doc(ument)?/i,
+    /save (this|that) as (a |an )?(word |docx )?doc(ument)?/i,
+    /create (a |an )?(word |docx )?doc(ument)? (from|with) this/i,
+    /turn this into (a |an )?(word |docx )?doc(ument)?/i,
+    /(download|get) (this |that )?as (a |an )?(word |docx )?doc(ument)?/i
+  ];
+  return patterns.some(p => p.test(message));
+}
+
+function ExportButton({ content }) {
+  const [exporting, setExporting] = React.useState(false);
+  const [exported, setExported] = React.useState(null);
+
+  const handleExport = async () => {
+    setExporting(true);
+    const firstLine = content.split('\n')[0]
+      .replace(/^#+\s*/, '')
+      .replace(/[^a-z0-9\s]/gi, '')
+      .trim()
+      .substring(0, 40) || 'neuro-export';
+
+    try {
+      const res = await fetch(apiUrl('/api/vault/export-docx'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, filename: firstLine })
+      });
+      const data = await res.json();
+      if (data.ok) setExported(data);
+    } catch {}
+    setExporting(false);
+  };
+
+  if (exported) {
+    return (
+      <div className="chat-export-result">
+        Saved to vault: <code>{exported.path}</code>
+        {exported.converted && ' (Word doc)'}
+      </div>
+    );
+  }
+
+  return (
+    <button className="chat-export-btn" onClick={handleExport} disabled={exporting}>
+      {exporting ? 'Exporting...' : 'Export as Document'}
+    </button>
+  );
+}
+
 export default function ChatPanel({ location }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -301,20 +352,26 @@ export default function ChatPanel({ location }) {
             Ask me anything about your queue, team, or priorities.
           </div>
         )}
-        {messages.map((msg, i) => (
-          <div key={i} className={`chat-bubble ${msg.role}`}>
-            {msg.role === 'assistant' ? (
-              <>
-                <ReactMarkdown>{msg.content || '...'}</ReactMarkdown>
-                {msg.content && msg.content.length > 20 && !streaming && (
-                  <TodoSaveButton messageContent={msg.content} apiUrlFn={apiUrl} />
-                )}
-              </>
-            ) : (
-              <span>{msg.content}</span>
-            )}
-          </div>
-        ))}
+        {messages.map((msg, i) => {
+          const prevMsg = i > 0 ? messages[i - 1] : null;
+          const showExport = msg.role === 'assistant' && msg.content && msg.content.length > 200
+            && !streaming && prevMsg?.role === 'user' && detectExportIntent(prevMsg.content);
+          return (
+            <div key={i} className={`chat-bubble ${msg.role}`}>
+              {msg.role === 'assistant' ? (
+                <>
+                  <ReactMarkdown>{msg.content || '...'}</ReactMarkdown>
+                  {msg.content && msg.content.length > 20 && !streaming && (
+                    <TodoSaveButton messageContent={msg.content} apiUrlFn={apiUrl} />
+                  )}
+                  {showExport && <ExportButton content={msg.content} />}
+                </>
+              ) : (
+                <span>{msg.content}</span>
+              )}
+            </div>
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 

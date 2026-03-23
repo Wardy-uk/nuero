@@ -31,6 +31,39 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
 
 // Extract meaningful search keywords from a user message
 // Strips common stop words and short tokens, returns the best 1-2 terms to search
+function extractTemporalContext(message) {
+  const patterns = [
+    { regex: /last week/i, days: 7 },
+    { regex: /last month/i, days: 30 },
+    { regex: /yesterday/i, days: 1 },
+    { regex: /this week/i, days: 7 },
+    { regex: /(\d+)\s+days?\s+ago/i, daysFromMatch: true },
+    { regex: /in (january|february|march|april|may|june|july|august|september|october|november|december)/i, monthMatch: true }
+  ];
+
+  for (const p of patterns) {
+    const m = message.match(p.regex);
+    if (!m) continue;
+    if (p.daysFromMatch) {
+      const days = parseInt(m[1]);
+      const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      return { from: from.toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] };
+    }
+    if (p.monthMatch) {
+      const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+      const monthIdx = months.indexOf(m[1].toLowerCase());
+      const year = new Date().getFullYear();
+      const from = new Date(year, monthIdx, 1);
+      const to = new Date(year, monthIdx + 1, 0);
+      return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
+    }
+    const days = p.days;
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    return { from: from.toISOString().split('T')[0], to: new Date().toISOString().split('T')[0] };
+  }
+  return null;
+}
+
 function extractSearchTerms(message) {
   const STOP_WORDS = new Set([
     'what', 'when', 'where', 'who', 'why', 'how', 'is', 'are', 'was', 'were',
@@ -579,15 +612,27 @@ async function streamChat(conversationId, userMessage, res, location = null) {
   try { todos = obsidian.parseVaultTodos(); } catch (e) { console.warn('[Context] Todos error:', e.message); }
   try { ninetyDayPlan = obsidian.parseNinetyDayPlan(); } catch (e) { console.warn('[Context] 90-day plan error:', e.message); }
 
-  // Vault search — find relevant notes based on user's message
+  // Detect synthesis queries — "summarise everything about X", "what do I know about X"
+  const SYNTHESIS_PATTERNS = [
+    /summaris[e|ing].*(everything|all).*(about|on|regarding)/i,
+    /what (do i|have i).*(know|written|noted|captured).*(about|on)/i,
+    /give me everything (i have |i.ve )?(on|about)/i,
+    /pull (everything|all).*(on|about)/i,
+    /full picture.*(on|about|of)/i,
+    /everything (related|connected).*(to|about)/i
+  ];
+
+  const isSynthesisQuery = SYNTHESIS_PATTERNS.some(p => p.test(userMessage));
+
+  // Vault search — synthesis mode gets more results
+  const maxVaultResults = isSynthesisQuery ? 12 : 4;
   let vaultSearchResults = [];
   try {
     const terms = extractSearchTerms(userMessage);
     if (terms.length > 0) {
-      // Search for each term, merge results, deduplicate by path
       const seen = new Set();
       for (const term of terms) {
-        const hits = await obsidian.searchVaultSemantic(term, 4);
+        const hits = await obsidian.searchVaultSemantic(term, isSynthesisQuery ? 8 : 4);
         for (const hit of hits) {
           if (!seen.has(hit.path)) {
             seen.add(hit.path);
@@ -595,8 +640,19 @@ async function streamChat(conversationId, userMessage, res, location = null) {
           }
         }
       }
+      // For synthesis queries, also search with combined terms
+      if (isSynthesisQuery && terms.length > 1) {
+        const combinedHits = await obsidian.searchVaultSemantic(terms.join(' '), 6);
+        for (const hit of combinedHits) {
+          if (!seen.has(hit.path)) {
+            seen.add(hit.path);
+            vaultSearchResults.push(hit);
+          }
+        }
+      }
+      vaultSearchResults = vaultSearchResults.slice(0, maxVaultResults);
       if (vaultSearchResults.length > 0) {
-        console.log(`[Context] Vault search for "${terms.join(', ')}" → ${vaultSearchResults.length} hits`);
+        console.log(`[Context] Vault search for "${terms.join(', ')}" → ${vaultSearchResults.length} hits${isSynthesisQuery ? ' (synthesis mode)' : ''}`);
       }
     }
   } catch (e) {
@@ -634,6 +690,31 @@ async function streamChat(conversationId, userMessage, res, location = null) {
     } catch {}
   }
 
+  // Temporal context detection
+  const temporalCtx = extractTemporalContext(userMessage);
+  if (temporalCtx) {
+    try {
+      const terms = extractSearchTerms(userMessage);
+      if (terms.length > 0) {
+        const tempRes = await fetch(
+          `http://localhost:${process.env.PORT || 3001}/api/vault/search/temporal?query=${encodeURIComponent(terms[0])}&from=${temporalCtx.from}&to=${temporalCtx.to}&limit=5`
+        );
+        if (tempRes.ok) {
+          const tempData = await tempRes.json();
+          if (tempData.results?.length > 0) {
+            const notInResults = tempData.results.filter(r =>
+              !vaultSearchResults.some(v => v.path === r.path)
+            );
+            vaultSearchResults = [...notInResults, ...vaultSearchResults].slice(0, 8);
+            console.log(`[Context] Temporal search added ${notInResults.length} date-filtered notes`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Context] Temporal search failed:', e.message);
+    }
+  }
+
   // Reverse geocode location if provided
   let locationContext = null;
   if (location && location.lat && location.lng) {
@@ -656,6 +737,18 @@ async function streamChat(conversationId, userMessage, res, location = null) {
 
   const basePrompt = weekend ? WEEKEND_SYSTEM_PROMPT : SYSTEM_PROMPT;
 
+  const synthesisSuffix = isSynthesisQuery ? `
+
+---
+SYNTHESIS MODE: Nick is asking you to synthesise everything across multiple vault notes.
+Do NOT just list notes or excerpts. Instead:
+1. Read all the vault notes provided in context carefully
+2. Identify the key themes, patterns, and conclusions across them
+3. Write a coherent synthesis — what the combined knowledge says
+4. Flag any contradictions or gaps
+5. End with: "Sources: [note names]"
+This is a knowledge synthesis task, not a search result display.` : '';
+
   const systemPrompt = `${basePrompt}
 
 ---
@@ -664,7 +757,7 @@ async function streamChat(conversationId, userMessage, res, location = null) {
 
 Today is ${today.toISOString().split('T')[0]}. Day ${dayCount} of Nick's new role.
 
-${contextBlock}`;
+${contextBlock}${synthesisSuffix}`;
 
   const messages = history.map(msg => ({ role: msg.role, content: msg.content }));
 

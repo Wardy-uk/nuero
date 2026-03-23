@@ -118,6 +118,101 @@ router.get('/search', (req, res) => {
   res.json({ query, results });
 });
 
+// GET /api/vault/search/temporal?query=X&from=YYYY-MM-DD&to=YYYY-MM-DD
+router.get('/search/temporal', async (req, res) => {
+  const { query, from, to, limit = 5 } = req.query;
+  if (!query) return res.status(400).json({ error: 'query required' });
+
+  const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const toDate = to ? new Date(to) : new Date();
+
+  const results = [];
+  const SKIP_DIRS = new Set(['.obsidian', '.git', '.trash', 'Imports']);
+
+  function walk(dir, depth) {
+    if (depth > 4 || results.length >= parseInt(limit) * 3) return;
+    if (!fs.existsSync(dir)) return;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name)) continue;
+        walk(fullPath, depth + 1);
+      } else if (entry.name.endsWith('.md')) {
+        const stat = fs.statSync(fullPath);
+        const modified = new Date(stat.mtime);
+        if (modified < fromDate || modified > toDate) continue;
+
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        if (!content.toLowerCase().includes(query.toLowerCase())) continue;
+
+        const relPath = path.relative(VAULT_PATH, fullPath).replace(/\\/g, '/');
+        const body = content.replace(/^---[\s\S]*?---\n*/, '');
+        const lines = body.split('\n');
+        const excerpts = [];
+        for (let i = 0; i < lines.length && excerpts.length < 2; i++) {
+          if (lines[i].toLowerCase().includes(query.toLowerCase())) {
+            excerpts.push(lines[i].substring(0, 200));
+          }
+        }
+        results.push({
+          path: relPath,
+          name: entry.name.replace('.md', ''),
+          modified: stat.mtime,
+          excerpts
+        });
+      }
+    }
+  }
+
+  walk(VAULT_PATH, 0);
+  results.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+
+  res.json({ results: results.slice(0, parseInt(limit)), from: fromDate, to: toDate });
+});
+
+// POST /api/vault/export-docx — create a Word doc from markdown content
+router.post('/export-docx', async (req, res) => {
+  const { content, filename, subdir } = req.body;
+  if (!content || !filename) {
+    return res.status(400).json({ error: 'content and filename required' });
+  }
+
+  const safeName = filename.replace(/[^a-z0-9\s\-_]/gi, '').trim() || 'export';
+  const docxName = safeName.endsWith('.docx') ? safeName : `${safeName}.docx`;
+
+  const targetDir = path.join(VAULT_PATH, subdir || 'Exports');
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+  const targetPath = path.join(targetDir, docxName);
+
+  const mdContent = `---\ntype: export\nexported: ${new Date().toISOString()}\noriginal_format: docx\n---\n\n${content}`;
+  const mdPath = path.join(targetDir, docxName.replace('.docx', '.md'));
+  fs.writeFileSync(mdPath, mdContent, 'utf-8');
+
+  const relPath = path.relative(VAULT_PATH, mdPath).replace(/\\/g, '/');
+
+  // Try Pandoc conversion if available
+  const { execSync } = require('child_process');
+  let converted = false;
+  try {
+    execSync(`pandoc "${mdPath}" -o "${targetPath}" --from markdown`, { timeout: 10000 });
+    converted = true;
+    console.log(`[Vault] Pandoc converted to docx: ${targetPath}`);
+  } catch {
+    console.log('[Vault] Pandoc not available — saved as markdown');
+  }
+
+  res.json({
+    ok: true,
+    path: relPath,
+    docxPath: converted ? path.relative(VAULT_PATH, targetPath).replace(/\\/g, '/') : null,
+    filename: docxName,
+    converted,
+    vaultUrl: `/vault?open=${encodeURIComponent(relPath)}`
+  });
+});
+
 // GET /api/vault/related?path=relative/path&limit=3
 router.get('/related', async (req, res) => {
   try {

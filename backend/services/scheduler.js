@@ -201,7 +201,16 @@ function start() {
     require('./email-triage').runTriage().catch(() => {});
   }, 60000);
 
-  console.log('[Scheduler] Started — standup 9am, 1-2-1 9:10am, nag 15m, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, escalations 5m, flagged 5m, email triage 8/12/17, imports 23:30, PLAUD 30m, MS Tasks 30m');
+  // Meeting prep push — check every 5 minutes 8am-6pm weekdays
+  cron.schedule('*/5 8-18 * * 1-5', async () => {
+    try {
+      await require('./meeting-prep').checkUpcomingMeetings();
+    } catch (e) {
+      console.error('[Scheduler] Meeting prep check failed:', e.message);
+    }
+  });
+
+  console.log('[Scheduler] Started — standup 9am, 1-2-1 9:10am, nag 15m, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, escalations 5m, flagged 5m, email triage 8/12/17, meeting prep 5m, imports 23:30, PLAUD 30m, MS Tasks 30m');
 }
 
 module.exports = { start };

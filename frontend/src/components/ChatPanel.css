@@ -315,3 +315,24 @@
   border-color: #f0ad4e;
   color: #f0ad4e;
 }
+
+.chat-export-btn {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  margin-top: 6px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.chat-export-btn:hover { opacity: 1; }
+.chat-export-result {
+  font-size: 11px;
+  color: #22c55e;
+  font-family: var(--font-mono);
+  margin-top: 6px;
+}

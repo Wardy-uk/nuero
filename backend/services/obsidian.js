@@ -149,7 +149,8 @@ function appendDecision(decisionText) {
   const dir = path.join(getVaultPath(), 'Decision Log');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const logPath = path.join(dir, 'decisions.md');
-  const entry = `\n## ${todayDateString()}\n- ${decisionText}\n`;
+  const rawEntry = `\n## ${todayDateString()}\n- ${decisionText}\n`;
+  const entry = autoLink(rawEntry);
   const existing = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf-8') : '# Decision Log\n';
   fs.writeFileSync(logPath, existing + entry, 'utf-8');
   return logPath;
@@ -1160,6 +1161,14 @@ function generateWeeklyReview() {
     sections.push(`## Meetings / Conversations\n${meetingNotes.map(n => `- [[${n}]]`).join('\n')}`);
   }
 
+  // Orphaned notes
+  try {
+    const orphans = findOrphanedNotes(8);
+    if (orphans.length > 0) {
+      sections.push(`## Disconnected Notes (no links)\n*These notes have no connections — worth linking or archiving:*\n${orphans.map(o => `- [[${o.path}|${o.name}]]`).join('\n')}`);
+    }
+  } catch {}
+
   // Energy / reflection (always manual)
   sections.push(`## Energy & Wellbeing\n*(How were your energy levels this week? Any patterns?)*`);
   sections.push(`## Looking Ahead — Next Week\n*(Top 3 priorities for next week)*\n1. \n2. \n3. `);
@@ -1205,7 +1214,8 @@ function saveMeetingNoteFromChat(title, conversationSummary) {
   const filename = `${today}-${safeTitle}.md`;
   const filePath = path.join(meetingsDir, filename);
 
-  const content = `---\ntype: meeting\ndate: ${today}\ntitle: "${title}"\nsource: neuro-chat\n---\n# ${title}\n\n*${today} — captured via NEURO chat*\n\n${conversationSummary}\n`;
+  const rawContent = `---\ntype: meeting\ndate: ${today}\ntitle: "${title}"\nsource: neuro-chat\n---\n# ${title}\n\n*${today} — captured via NEURO chat*\n\n${conversationSummary}\n`;
+  const content = autoLink(rawContent);
   fs.writeFileSync(filePath, content, 'utf-8');
   console.log(`[Chat] Meeting note saved: ${filename}`);
   return `Meetings/${filename}`;
@@ -1293,6 +1303,100 @@ async function syncMicrosoftTasks() {
   return { ok: true, planner: plannerCount, todo: todoCount };
 }
 
+// Auto-link: scan content for known People and Project names, add wiki-links
+function autoLink(content) {
+  if (!isConfigured()) return content;
+  const vaultPath = getVaultPath();
+
+  const linkables = new Map();
+
+  const peopleDir = path.join(vaultPath, 'People');
+  if (fs.existsSync(peopleDir)) {
+    fs.readdirSync(peopleDir).filter(f => f.endsWith('.md')).forEach(f => {
+      const name = f.replace('.md', '');
+      linkables.set(name, name);
+      const parts = name.split(' ');
+      if (parts.length > 1) linkables.set(parts[parts.length - 1], name);
+    });
+  }
+
+  const projectsDir = path.join(vaultPath, 'Projects');
+  if (fs.existsSync(projectsDir)) {
+    fs.readdirSync(projectsDir).filter(f => f.endsWith('.md')).forEach(f => {
+      const name = f.replace('.md', '');
+      linkables.set(name, `Projects/${name}`);
+    });
+  }
+
+  if (linkables.size === 0) return content;
+
+  const [frontmatter, body] = content.startsWith('---')
+    ? (() => {
+        const end = content.indexOf('---', 3);
+        if (end === -1) return ['', content];
+        return [content.substring(0, end + 3), content.substring(end + 3)];
+      })()
+    : ['', content];
+
+  const sorted = [...linkables.entries()].sort((a, b) => b[0].length - a[0].length);
+
+  let linked = body;
+  const alreadyLinked = new Set();
+
+  for (const [name, target] of sorted) {
+    if (name.length < 3) continue;
+    if (alreadyLinked.has(target)) continue;
+
+    const regex = new RegExp(`(?<!\\[\\[)\\b(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b(?!\\]\\])`, 'g');
+    if (regex.test(linked)) {
+      regex.lastIndex = 0;
+      linked = linked.replace(regex, `[[${target}|$1]]`);
+      alreadyLinked.add(target);
+    }
+  }
+
+  return frontmatter + linked;
+}
+
+// Find orphaned notes — notes with no outbound wiki-links to other notes
+function findOrphanedNotes(maxResults = 10) {
+  if (!isConfigured()) return [];
+  const vaultPath = getVaultPath();
+
+  const SKIP_DIRS = new Set(['Daily', 'Scripts', 'Templates', '.obsidian', '.git', '.trash', 'Imports', 'Exports']);
+  const WIKI_LINK_REGEX = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+
+  const orphans = [];
+
+  function walk(dir, depth) {
+    if (depth > 4) return;
+    if (!fs.existsSync(dir)) return;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name)) continue;
+        walk(fullPath, depth + 1);
+      } else if (entry.name.endsWith('.md')) {
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const body = content.replace(/^---[\s\S]*?---\n*/, '');
+        const links = [];
+        let m;
+        WIKI_LINK_REGEX.lastIndex = 0;
+        while ((m = WIKI_LINK_REGEX.exec(body)) !== null) links.push(m[1]);
+        if (links.length === 0) {
+          const relPath = path.relative(vaultPath, fullPath).replace(/\\/g, '/');
+          orphans.push({ path: relPath, name: entry.name.replace('.md', '') });
+        }
+      }
+    }
+  }
+
+  walk(vaultPath, 0);
+  return orphans.slice(0, maxResults);
+}
+
 module.exports = {
   isConfigured,
   readTodayDailyNote,
@@ -1322,5 +1426,7 @@ module.exports = {
   getUpcoming121s,
   getRecentDecisions,
   generateWeeklyReview,
-  syncMicrosoftTasks
+  syncMicrosoftTasks,
+  autoLink,
+  findOrphanedNotes
 };
