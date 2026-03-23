@@ -505,6 +505,7 @@ function handleResponse(conversationId, fullResponse) {
         .join('\n');
       obsidian.saveMeetingNoteFromChat(title, summary);
       console.log('[Chat] Meeting note saved:', title);
+      try { require('./activity').trackVaultWrite('meeting-note'); } catch {}
     } catch (e) {
       console.error('[Chat] Failed to save meeting note:', e.message);
     }

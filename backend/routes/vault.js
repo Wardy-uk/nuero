@@ -367,11 +367,12 @@ router.post('/person-doc', (req, res) => {
 
   const relPath = path.relative(VAULT_PATH, filePath).replace(/\\/g, '/');
 
-  // Trigger entity extraction and embedding
+  // Trigger entity extraction, embedding, and tracking
   try {
     require('../services/embeddings').embedVaultFile(relPath, filePath).catch(() => {});
     require('../services/entities').processNote(relPath);
   } catch {}
+  try { require('../services/activity').trackVaultWrite('person-doc'); } catch {}
 
   res.json({ ok: true, path: relPath, filename });
 });

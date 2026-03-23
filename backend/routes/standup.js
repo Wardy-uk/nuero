@@ -24,6 +24,8 @@ router.post('/save-to-daily', (req, res) => {
   const header = `\n## Standup — ${obsidianService.todayDateString()}\n`;
   const filePath = obsidianService.appendToDailyNote(header + content);
   nudges.markStandupDone();
+  try { require('../services/activity').trackVaultWrite('daily'); } catch {}
+  try { require('../services/activity').trackStandupDone(new Date().getHours(), true); } catch {}
   res.json({ success: true, path: filePath });
 });
 
@@ -154,6 +156,8 @@ ${carrySection || '- None'}
 
     const filePath = obsidianService.writeTodayDailyNote(content);
     nudges.markStandupDone();
+    try { require('../services/activity').trackVaultWrite('daily'); } catch {}
+    try { require('../services/activity').trackStandupDone(new Date().getHours(), true); } catch {}
     console.log(`[Standup] Backup ritual saved to ${filePath}`);
     res.json({ success: true, path: filePath });
   } catch (e) {
@@ -175,6 +179,12 @@ router.post('/eod', (req, res) => {
   ].filter(l => l !== '');
   const filePath = obsidianService.appendToDailyNote(lines.join('\n'));
   nudges.markEodDone();
+  try {
+    const db = require('../db/database');
+    const queue = db.getQueueSummary();
+    require('../services/activity').trackQueueSnapshot(
+      queue.at_risk_count || 0, queue.total || 0, queue.open_p1s || 0);
+  } catch {}
   res.json({ success: true, path: filePath });
 });
 
@@ -185,6 +195,58 @@ router.post('/weekly-review', (req, res) => {
     if (!result) return res.status(500).json({ error: 'Vault not configured' });
     res.json({ success: true, ...result });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/standup/today-status — live standup/EOD status from vault
+router.get('/today-status', (req, res) => {
+  const dailyNote = obsidianService.readTodayDailyNote();
+  const dateStr = obsidianService.todayDateString();
+  let eodDone = false, standupDone = false, eodContent = null;
+  if (dailyNote) {
+    standupDone = dailyNote.includes('## Standup') || dailyNote.includes('## Focus Today');
+    const eodMatch = dailyNote.match(/## EOD[^\n]*\n([\s\S]*?)(?=\n##|$)/);
+    if (eodMatch) { eodDone = true; eodContent = eodMatch[1].trim(); }
+  }
+  try {
+    const db = require('../db/database');
+    if (db.getState(`standup_done_${dateStr}`)) standupDone = true;
+    if (db.getState(`eod_done_${dateStr}`)) eodDone = true;
+  } catch {}
+  res.json({ date: dateStr, standupDone, eodDone, eodContent });
+});
+
+// GET /api/standup/eod-history?days=14 — EOD entries from daily notes
+router.get('/eod-history', (req, res) => {
+  const days = parseInt(req.query.days || '14', 10);
+  const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+  const dailyDir = require('path').join(vaultPath, 'Daily');
+  const fs = require('fs');
+  const pathMod = require('path');
+  if (!fs.existsSync(dailyDir)) return res.json({ entries: [] });
+  const entries = [];
+  const today = new Date();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    const filePath = pathMod.join(dailyDir, `${dateStr}.md`);
+    if (!fs.existsSync(filePath)) continue;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const eodMatch = content.match(/## EOD[^\n]*\n([\s\S]*?)(?=\n##|$)/);
+    if (!eodMatch) continue;
+    const eodText = eodMatch[1].trim();
+    if (!eodText) continue;
+    const winMatch = eodText.match(/\*\*Win:\*\*\s*(.+)/);
+    const didntGoMatch = eodText.match(/\*\*Didn't go to plan:\*\*\s*(.+)/);
+    const feelingMatch = eodText.match(/\*\*Feeling:\*\*\s*(.+)/);
+    entries.push({
+      date: dateStr,
+      win: winMatch ? winMatch[1].trim() : null,
+      didntGo: didntGoMatch ? didntGoMatch[1].trim() : null,
+      feeling: feelingMatch ? feelingMatch[1].trim() : null,
+    });
+  }
+  res.json({ entries });
 });
 
 // POST /api/standup/interactive — Claude-guided standup session
@@ -411,6 +473,8 @@ RULES:
         obsidianService.writeTodayDailyNote(noteContent);
         nudges.markStandupDone();
         console.log(`[Standup] Interactive standup complete — daily note written (via ${usedOllama ? 'Ollama' : 'Claude'})`);
+        try { require('../services/activity').trackStandupDone(new Date().getHours(), true); } catch {}
+        try { require('../services/activity').trackVaultWrite('daily'); } catch {}
         res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: true })}\n\n`);
       } catch (e) {
         console.error('[Standup] Failed to write daily note:', e.message);

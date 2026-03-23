@@ -8,8 +8,8 @@ function trackTabOpen(tabName) {
   db.logActivity('tab_open', { tab: tabName });
 }
 
-function trackStandupDone(hour) {
-  db.logActivity('standup_done', { hour });
+function trackStandupDone(hour, withNote = false) {
+  db.logActivity('standup_done', { hour, withNote });
 }
 
 function trackNudgeSnooze(nudgeType) {
@@ -58,6 +58,34 @@ function extractTopics(message) {
     .slice(0, 5);
 }
 
+function trackQueueSnapshot(atRisk, total, p1s) {
+  db.logActivity('queue_snapshot', { atRisk, total, p1s });
+}
+
+function trackPlanTaskToggled(taskDay, taskText, done) {
+  if (done) db.logActivity('plan_task_done', { day: taskDay, text: taskText?.substring(0, 80) });
+}
+
+function trackOneTwoOneDone(personName) {
+  db.logActivity('one_two_one_done', { person: personName });
+}
+
+function trackImportsSweep(routed, flagged, errors) {
+  db.logActivity('imports_sweep', { routed, flagged, errors });
+}
+
+function trackVaultWrite(noteType) {
+  db.logActivity('vault_write', { type: noteType || 'note' });
+}
+
+function trackEscalationRaised(ticketKey) {
+  db.logActivity('escalation_raised', { key: ticketKey });
+}
+
+function trackEscalationResolved(ticketKey) {
+  db.logActivity('escalation_resolved', { key: ticketKey });
+}
+
 // ── Nightly rollup ─────────────────────────────────────────────────────────
 
 // Build daily summary from activity log for a given date
@@ -68,14 +96,27 @@ function buildDailySummary(dateKey) {
     date: dateKey,
     standup_done: false,
     standup_hour: null,
+    standup_with_note: false,
     standup_snooze_count: 0,
     todo_snooze_count: 0,
     nudge_dismiss_count: 0,
     eod_done: false,
     captures_count: 0,
+    capture_types: {},
     chat_count: 0,
     chat_topics: [],
-    tabs_opened: {}
+    tabs_opened: {},
+    queue_eod_at_risk: null,
+    queue_eod_total: null,
+    queue_eod_p1s: null,
+    plan_tasks_done: 0,
+    one_two_ones: [],
+    imports_routed: 0,
+    imports_flagged: 0,
+    vault_writes: 0,
+    vault_write_types: {},
+    escalations_raised: 0,
+    escalations_resolved: 0,
   };
 
   const topicFreq = {};
@@ -88,6 +129,7 @@ function buildDailySummary(dateKey) {
       case 'standup_done':
         summary.standup_done = true;
         summary.standup_hour = data.hour || event.hour;
+        summary.standup_with_note = data.withNote || false;
         break;
       case 'nudge_snoozed':
         if (data.type === 'standup') summary.standup_snooze_count++;
@@ -98,6 +140,7 @@ function buildDailySummary(dateKey) {
         break;
       case 'capture':
         summary.captures_count++;
+        { const ct = data.type || 'note'; summary.capture_types[ct] = (summary.capture_types[ct] || 0) + 1; }
         break;
       case 'chat_message':
         summary.chat_count++;
@@ -112,6 +155,32 @@ function buildDailySummary(dateKey) {
         if (data.tab) {
           summary.tabs_opened[data.tab] = (summary.tabs_opened[data.tab] || 0) + 1;
         }
+        break;
+      case 'queue_snapshot':
+        summary.queue_eod_at_risk = data.atRisk || 0;
+        summary.queue_eod_total = data.total || 0;
+        summary.queue_eod_p1s = data.p1s || 0;
+        break;
+      case 'plan_task_done':
+        summary.plan_tasks_done = (summary.plan_tasks_done || 0) + 1;
+        break;
+      case 'one_two_one_done':
+        if (data.person && !summary.one_two_ones.includes(data.person))
+          summary.one_two_ones.push(data.person);
+        break;
+      case 'imports_sweep':
+        summary.imports_routed = (summary.imports_routed || 0) + (data.routed || 0);
+        summary.imports_flagged = (summary.imports_flagged || 0) + (data.flagged || 0);
+        break;
+      case 'vault_write':
+        summary.vault_writes = (summary.vault_writes || 0) + 1;
+        { const vt = data.type || 'note'; summary.vault_write_types[vt] = (summary.vault_write_types[vt] || 0) + 1; }
+        break;
+      case 'escalation_raised':
+        summary.escalations_raised = (summary.escalations_raised || 0) + 1;
+        break;
+      case 'escalation_resolved':
+        summary.escalations_resolved = (summary.escalations_resolved || 0) + 1;
         break;
     }
   }
@@ -342,6 +411,13 @@ module.exports = {
   trackCapture,
   trackChatMessage,
   trackEodDone,
+  trackQueueSnapshot,
+  trackPlanTaskToggled,
+  trackOneTwoOneDone,
+  trackImportsSweep,
+  trackVaultWrite,
+  trackEscalationRaised,
+  trackEscalationResolved,
   buildDailySummary,
   runNightlyRollup,
   getPatternsContextBlock,

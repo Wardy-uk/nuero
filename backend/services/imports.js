@@ -455,6 +455,7 @@ async function autoClassify() {
 
     const summary = { routed, flagged, errors, timestamp: new Date().toISOString() };
     console.log(`[Imports] Sweep complete: ${routed} routed, ${flagged} flagged, ${errors} errors`);
+    try { require('./activity').trackImportsSweep(routed, flagged, errors); } catch {}
     db.setState('imports_last_sweep', JSON.stringify(summary));
     db.setState('imports_sweep_running', 'false');
     broadcast({ type: 'sweep_complete', ...summary });

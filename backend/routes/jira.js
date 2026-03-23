@@ -71,6 +71,7 @@ router.post('/flagged/:ticketKey', async (req, res) => {
   const { note } = req.body;
   try {
     const result = await jira.flagTicket(ticketKey, note || null);
+    try { require('../services/activity').trackEscalationRaised(ticketKey); } catch {}
     res.json(result);
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -82,6 +83,7 @@ router.delete('/flagged/:ticketKey', async (req, res) => {
   const { ticketKey } = req.params;
   try {
     const result = await jira.unflagTicket(ticketKey);
+    try { require('../services/activity').trackEscalationResolved(ticketKey); } catch {}
     res.json(result);
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

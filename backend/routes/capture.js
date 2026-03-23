@@ -61,6 +61,7 @@ router.post('/note', (req, res) => {
     console.log(`[Capture] Note saved: ${filename}`);
     res.json({ success: true, path: filePath, filename });
     try { require('../services/activity').trackCapture('note'); } catch {}
+    try { require('../services/activity').trackVaultWrite('capture'); } catch {}
     // Embed immediately so it's searchable right away, and extract entities
     try {
       const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';

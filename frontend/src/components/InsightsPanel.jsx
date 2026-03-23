@@ -8,17 +8,31 @@ export default function InsightsPanel({ onNavigate }) {
   const [suggestions, setSuggestions] = useState([]);
   const [applying, setApplying] = useState(null);
   const [dismissed, setDismissed] = useState(new Set());
+  const [eodHistory, setEodHistory] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [summariesRes, suggestionsRes] = await Promise.all([
+      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes] = await Promise.all([
         fetch(apiUrl('/api/activity/summaries?days=14')),
-        fetch(apiUrl('/api/activity/suggestions'))
+        fetch(apiUrl('/api/activity/suggestions')),
+        fetch(apiUrl('/api/standup/today-status')),
+        fetch(apiUrl('/api/standup/eod-history?days=14'))
       ]);
       const json = await summariesRes.json();
-      setData(json);
       const sugJson = await suggestionsRes.json();
+      const todayLive = await todayStatusRes.json();
+      const eodJson = await eodHistoryRes.json();
+
+      // Merge live status into today
+      if (json.today) {
+        json.today.eod_done = todayLive.eodDone || json.today.eod_done;
+        json.today.standup_done = todayLive.standupDone || json.today.standup_done;
+        json.today._eodContent = todayLive.eodContent;
+      }
+
+      setData(json);
       setSuggestions(sugJson.suggestions || []);
+      setEodHistory(eodJson.entries || []);
     } catch {}
     setLoading(false);
   }, []);
@@ -48,7 +62,6 @@ export default function InsightsPanel({ onNavigate }) {
   };
 
   if (loading) return <div className="insights-panel"><div className="insights-loading">Loading insights...</div></div>;
-
   if (!data) return <div className="insights-panel"><div className="insights-empty">No activity data yet.</div></div>;
 
   const { today, summaries } = data;
@@ -74,7 +87,16 @@ export default function InsightsPanel({ onNavigate }) {
     } catch { return '—'; }
   };
 
-  // Today's stats
+  const fmtCaptureTypes = (types) => {
+    if (!types || Object.keys(types).length === 0) return null;
+    return Object.entries(types).map(([k, v]) => `${k}(${v})`).join(' ');
+  };
+
+  // Parse summary_json for extended fields
+  const parseSummary = (row) => {
+    try { return JSON.parse(row.summary_json || '{}'); } catch { return {}; }
+  };
+
   const todayTopics = today.chat_topics?.length > 0 ? today.chat_topics.join(', ') : '—';
   const todayTabs = Object.entries(today.tabs_opened || {})
     .sort((a, b) => b[1] - a[1])
@@ -87,7 +109,7 @@ export default function InsightsPanel({ onNavigate }) {
         <button className="insights-refresh" onClick={fetchData}>Refresh</button>
       </div>
 
-      {/* Suggestions section */}
+      {/* Suggestions */}
       {visibleSuggestions.length > 0 && (
         <div className="insights-suggestions">
           <div className="insights-suggestions-title">Suggestions</div>
@@ -95,19 +117,11 @@ export default function InsightsPanel({ onNavigate }) {
             <div key={s.id} className={`insights-suggestion severity-${s.severity}`}>
               <div className="suggestion-header">
                 <span className="suggestion-title">{s.title}</span>
-                <button
-                  className="suggestion-dismiss"
-                  onClick={() => setDismissed(prev => new Set([...prev, s.id]))}
-                  title="Dismiss"
-                >{'\u00d7'}</button>
+                <button className="suggestion-dismiss" onClick={() => setDismissed(prev => new Set([...prev, s.id]))} title="Dismiss">{'\u00d7'}</button>
               </div>
               <div className="suggestion-description">{s.description}</div>
               {s.action && (
-                <button
-                  className="suggestion-action-btn"
-                  onClick={() => applySuggestion(s)}
-                  disabled={applying === s.id}
-                >
+                <button className="suggestion-action-btn" onClick={() => applySuggestion(s)} disabled={applying === s.id}>
                   {applying === s.id ? 'Applying...' : s.action.label}
                 </button>
               )}
@@ -135,7 +149,12 @@ export default function InsightsPanel({ onNavigate }) {
           </div>
           <div className="insights-stat">
             <span className="insights-stat-label">Captures</span>
-            <span className="insights-stat-value">{today.captures_count || 0}</span>
+            <span className="insights-stat-value">
+              {today.captures_count || 0}
+              {fmtCaptureTypes(today.capture_types) && (
+                <span className="insights-stat-sub"> {fmtCaptureTypes(today.capture_types)}</span>
+              )}
+            </span>
           </div>
           <div className="insights-stat">
             <span className="insights-stat-label">Chat msgs</span>
@@ -147,6 +166,61 @@ export default function InsightsPanel({ onNavigate }) {
               {today.eod_done ? '✓' : '—'}
             </span>
           </div>
+          {(today.vault_writes || 0) > 0 && (
+            <div className="insights-stat">
+              <span className="insights-stat-label">Notes written</span>
+              <span className="insights-stat-value ok">{today.vault_writes}</span>
+            </div>
+          )}
+          {((today.imports_routed || 0) > 0 || (today.imports_flagged || 0) > 0) && (
+            <div className="insights-stat">
+              <span className="insights-stat-label">Imports</span>
+              <span className="insights-stat-value">
+                {today.imports_routed || 0} filed{(today.imports_flagged || 0) > 0 && ` · ${today.imports_flagged} flagged`}
+              </span>
+            </div>
+          )}
+          {((today.escalations_raised || 0) > 0 || (today.escalations_resolved || 0) > 0) && (
+            <div className="insights-stat">
+              <span className="insights-stat-label">Escalations</span>
+              <span className="insights-stat-value warn">
+                {today.escalations_raised || 0} raised{(today.escalations_resolved || 0) > 0 && ` · ${today.escalations_resolved} resolved`}
+              </span>
+            </div>
+          )}
+          {(today.one_two_ones || []).length > 0 && (
+            <div className="insights-stat wide">
+              <span className="insights-stat-label">1-2-1s</span>
+              <span className="insights-stat-value ok">{today.one_two_ones.join(', ')}</span>
+            </div>
+          )}
+          {(today.plan_tasks_done || 0) > 0 && (
+            <div className="insights-stat">
+              <span className="insights-stat-label">Plan tasks</span>
+              <span className="insights-stat-value ok">{today.plan_tasks_done}</span>
+            </div>
+          )}
+          {today.queue_eod_total !== null && today.queue_eod_total !== undefined && (
+            <div className="insights-stat">
+              <span className="insights-stat-label">Queue EOD</span>
+              <span className={`insights-stat-value ${(today.queue_eod_at_risk || 0) > 0 ? 'warn' : ''}`}>
+                {today.queue_eod_total} open{(today.queue_eod_at_risk || 0) > 0 && ` · ${today.queue_eod_at_risk} at risk`}
+              </span>
+            </div>
+          )}
+          {today.standup_with_note !== undefined && today.standup_done && (
+            <div className="insights-stat">
+              <span className="insights-stat-label">Note saved</span>
+              <span className={`insights-stat-value ${today.standup_with_note ? 'ok' : 'warn'}`}>
+                {today.standup_with_note ? '✓' : '—'}
+              </span>
+            </div>
+          )}
+          {today._eodContent && (
+            <div className="insights-eod-preview">
+              <div className="insights-eod-content">{today._eodContent}</div>
+            </div>
+          )}
           <div className="insights-stat wide">
             <span className="insights-stat-label">Topics</span>
             <span className="insights-stat-value">{todayTopics}</span>
@@ -171,41 +245,94 @@ export default function InsightsPanel({ onNavigate }) {
                 <th>Caps</th>
                 <th>Chats</th>
                 <th>EOD</th>
-                <th>Topics</th>
-                <th>Tabs</th>
+                <th>Plan</th>
+                <th>Imports</th>
+                <th>Escl</th>
               </tr>
             </thead>
             <tbody>
-              {summaries.map(row => (
-                <tr key={row.date_key}>
-                  <td className="insights-date">{row.date_key}</td>
-                  <td className={row.standup_done ? 'ok' : 'warn'}>
-                    {row.standup_done ? `✓ ${formatHour(row.standup_hour)}` : '✗'}
-                  </td>
-                  <td>
-                    {(() => {
-                      const s = row.standup_snooze_count || 0;
-                      const t = row.todo_snooze_count || 0;
-                      let d = 0;
-                      try { d = JSON.parse(row.summary_json || '{}').nudge_dismiss_count || 0; } catch {}
-                      if (s + t + d === 0) return '—';
-                      return `s${s} t${t}${d > 0 ? ` d${d}` : ''}`;
-                    })()}
-                  </td>
-                  <td>{row.captures_count || 0}</td>
-                  <td>{row.chat_count || 0}</td>
-                  <td className={row.eod_done ? 'ok' : ''}>{row.eod_done ? '✓' : '—'}</td>
-                  <td className="insights-topics">{fmtTopics(row.chat_topics)}</td>
-                  <td className="insights-tabs">{fmtTabs(row.tabs_opened)}</td>
-                </tr>
-              ))}
+              {summaries.map(row => {
+                const s = parseSummary(row);
+                return (
+                  <tr key={row.date_key}>
+                    <td className="insights-date">{row.date_key}</td>
+                    <td className={row.standup_done ? 'ok' : 'warn'}>
+                      {row.standup_done ? `✓ ${formatHour(row.standup_hour)}` : '✗'}
+                    </td>
+                    <td>
+                      {(() => {
+                        const st = row.standup_snooze_count || 0;
+                        const t = row.todo_snooze_count || 0;
+                        if (st + t === 0) return '—';
+                        return `s${st} t${t}`;
+                      })()}
+                    </td>
+                    <td>{row.captures_count || 0}</td>
+                    <td>{row.chat_count || 0}</td>
+                    <td className={row.eod_done ? 'ok' : ''}>{row.eod_done ? '✓' : '—'}</td>
+                    <td className={(s.plan_tasks_done || 0) > 0 ? 'ok' : ''}>
+                      {(s.plan_tasks_done || 0) > 0 ? s.plan_tasks_done : '—'}
+                    </td>
+                    <td>
+                      {(() => {
+                        const r = s.imports_routed || 0;
+                        const f = s.imports_flagged || 0;
+                        if (r + f === 0) return '—';
+                        return `${r}↗${f > 0 ? ` ${f}?` : ''}`;
+                      })()}
+                    </td>
+                    <td>
+                      {(() => {
+                        const raised = s.escalations_raised || 0;
+                        const resolved = s.escalations_resolved || 0;
+                        if (raised + resolved === 0) return '—';
+                        return `${raised > 0 ? `${raised}↑` : ''}${resolved > 0 ? ` ${resolved}✓` : ''}`.trim();
+                      })()}
+                    </td>
+                  </tr>
+                );
+              })}
               {summaries.length === 0 && (
-                <tr><td colSpan={8} className="insights-empty-row">No history yet — data builds after the first 10pm rollup</td></tr>
+                <tr><td colSpan={9} className="insights-empty-row">No history yet — data builds after the first 10pm rollup</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* EOD History */}
+      {eodHistory.length > 0 && (
+        <div className="insights-eod-history">
+          <div className="insights-history-title">EOD Reflections</div>
+          <div className="eod-history-list">
+            {eodHistory.map(entry => (
+              <div key={entry.date} className="eod-history-entry">
+                <div className="eod-history-date">{entry.date}</div>
+                <div className="eod-history-fields">
+                  {entry.win && (
+                    <div className="eod-field">
+                      <span className="eod-field-label">Win</span>
+                      <span className="eod-field-value">{entry.win}</span>
+                    </div>
+                  )}
+                  {entry.didntGo && (
+                    <div className="eod-field">
+                      <span className="eod-field-label">Didn't go</span>
+                      <span className="eod-field-value">{entry.didntGo}</span>
+                    </div>
+                  )}
+                  {entry.feeling && (
+                    <div className="eod-field">
+                      <span className="eod-field-label">Feeling</span>
+                      <span className="eod-field-value">{entry.feeling}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

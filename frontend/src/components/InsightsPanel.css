@@ -245,3 +245,58 @@
   .insights-stat.wide { grid-column: span 1; }
   .insights-topics, .insights-tabs { max-width: 100px; }
 }
+
+/* EOD preview in today card */
+.insights-eod-preview {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 0;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  margin-top: 4px;
+}
+.insights-eod-content {
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.insights-stat-sub {
+  font-size: 10px;
+  color: var(--text-muted, #64748b);
+  margin-left: 4px;
+}
+
+/* EOD history section */
+.insights-eod-history { margin-top: 24px; }
+.eod-history-list { display: flex; flex-direction: column; gap: 1px; margin-top: 8px; }
+.eod-history-entry {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 8px 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  align-items: start;
+}
+.eod-history-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary, #64748b);
+  padding-top: 2px;
+}
+.eod-history-fields { display: flex; flex-direction: column; gap: 4px; }
+.eod-field { display: flex; gap: 8px; font-size: 12px; line-height: 1.4; }
+.eod-field-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent, #4fc3f7);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 60px;
+  padding-top: 1px;
+  flex-shrink: 0;
+}
+.eod-field-value { color: var(--text-primary, #e2e8f0); }
+.eod-field-muted { color: var(--text-secondary, #94a3b8); }
