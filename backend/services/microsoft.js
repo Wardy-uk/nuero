@@ -455,6 +455,7 @@ async function updatePlannerTask(taskId, updates) {
 module.exports = {
   isConfigured,
   isAuthenticated,
+  isBridgeConfigured,
   getAccessToken,
   startDeviceCodeFlow,
   fetchCalendarEvents,

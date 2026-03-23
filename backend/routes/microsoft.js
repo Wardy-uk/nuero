@@ -6,7 +6,16 @@ const microsoft = require('../services/microsoft');
 router.get('/status', async (req, res) => {
   const configured = microsoft.isConfigured();
   const authenticated = configured ? await microsoft.isAuthenticated() : false;
-  res.json({ configured, authenticated });
+  const bridgeConfigured = microsoft.isBridgeConfigured();
+  let bridgeConnected = false;
+  if (bridgeConfigured && !authenticated) {
+    // Check if bridge is reachable by testing a lightweight call
+    try {
+      const result = await microsoft.fetchCalendarEvents();
+      bridgeConnected = result !== null;
+    } catch { bridgeConnected = false; }
+  }
+  res.json({ configured, authenticated, bridgeConfigured, bridgeConnected });
 });
 
 // POST /api/microsoft/auth — start device code flow for Graph permissions

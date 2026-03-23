@@ -141,8 +141,14 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
           <span className="topbar-label">Vault</span>
         </div>
         <div className="topbar-indicator">
-          {statusDot(status?.microsoft?.authenticated)}
-          <span className="topbar-label">Microsoft{status?.microsoft?.configured && !status?.microsoft?.authenticated ? ' (not signed in)' : !status?.microsoft?.configured ? ' (not configured)' : ''}</span>
+          {statusDot(status?.microsoft?.authenticated || status?.microsoft?.bridgeConnected)}
+          <span className="topbar-label">Microsoft{
+            status?.microsoft?.authenticated ? '' :
+            status?.microsoft?.bridgeConnected ? ' (via NOVA)' :
+            status?.microsoft?.bridgeConfigured ? ' (bridge offline)' :
+            status?.microsoft?.configured ? ' (not signed in)' :
+            ' (not configured)'
+          }</span>
         </div>
       </div>
       <div className="topbar-right">
