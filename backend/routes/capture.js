@@ -138,6 +138,13 @@ router.post('/photo', upload.single('file'), (req, res) => {
 
     console.log(`[Capture] Photo saved: ${filename}`);
     res.json({ success: true, path: filePath, filename });
+    // Embed and extract entities from the markdown note
+    try {
+      const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+      const relativePath = path.relative(vaultPath, mdPath).replace(/\\/g, '/');
+      require('../services/embeddings').embedVaultFile(relativePath, mdPath).catch(() => {});
+      require('../services/entities').processNote(relativePath);
+    } catch {}
   } catch (e) {
     console.error('[Capture] Photo error:', e);
     res.status(500).json({ error: e.message });
@@ -169,6 +176,13 @@ router.post('/file', upload.single('file'), (req, res) => {
 
     console.log(`[Capture] File saved: ${filename}`);
     res.json({ success: true, path: filePath, filename });
+    // Embed and extract entities from the markdown note
+    try {
+      const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+      const relativePath = path.relative(vaultPath, mdPath).replace(/\\/g, '/');
+      require('../services/embeddings').embedVaultFile(relativePath, mdPath).catch(() => {});
+      require('../services/entities').processNote(relativePath);
+    } catch {}
   } catch (e) {
     console.error('[Capture] File error:', e);
     res.status(500).json({ error: e.message });

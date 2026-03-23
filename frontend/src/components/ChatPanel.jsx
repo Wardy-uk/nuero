@@ -98,6 +98,68 @@ function TodoSaveButton({ messageContent, apiUrlFn }) {
   );
 }
 
+function detectPersonDraft(userMessage, assistantMessage) {
+  if (!userMessage || !assistantMessage) return null;
+  const TEAM_MEMBERS = [
+    'Abdi', 'Arman', 'Luke', 'Stephen', 'Willem', 'Nathan',
+    'Adele', 'Heidi', 'Hope', 'Maria', 'Naomi', 'Sebastian', 'Zoe',
+    'Isabel', 'Kayleigh'
+  ];
+  const mentionedPerson = TEAM_MEMBERS.find(name =>
+    userMessage.toLowerCase().includes(name.toLowerCase())
+  );
+  if (!mentionedPerson) return null;
+
+  const isDraft = /draft|write|put together|performance|review|feedback|pip|summary/i.test(userMessage);
+  if (!isDraft) return null;
+
+  const DOC_TYPES = {
+    'performance': 'performance-review',
+    'pip': 'pip',
+    'feedback': 'feedback',
+    '1-2-1': '1-2-1-summary',
+    'summary': '1-2-1-summary'
+  };
+
+  const docType = Object.keys(DOC_TYPES).find(k =>
+    userMessage.toLowerCase().includes(k)
+  );
+
+  return { personName: mentionedPerson, docType: DOC_TYPES[docType] || 'general' };
+}
+
+function SaveDocButton({ userMessage, assistantContent }) {
+  const draft = detectPersonDraft(userMessage, assistantContent);
+  const [saved, setSaved] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+
+  if (!draft) return null;
+  if (saved) return <span className="chat-export-result">Saved to vault</span>;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await apiFetch('/api/vault/person-doc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          personName: draft.personName,
+          docType: draft.docType,
+          content: assistantContent
+        })
+      });
+      if ((await res.json()).ok) setSaved(true);
+    } catch {}
+    setSaving(false);
+  };
+
+  return (
+    <button className="chat-export-btn" onClick={handleSave} disabled={saving}>
+      {saving ? 'Saving...' : `Save to ${draft.personName}'s vault folder`}
+    </button>
+  );
+}
+
 function detectExportIntent(message) {
   const patterns = [
     /export (this|that) as (a |an )?(word |docx )?doc(ument)?/i,
@@ -365,6 +427,9 @@ export default function ChatPanel({ location }) {
                     <TodoSaveButton messageContent={msg.content} apiUrlFn={apiUrl} />
                   )}
                   {showExport && <ExportButton content={msg.content} />}
+                  {msg.role === 'assistant' && !streaming && prevMsg?.role === 'user' && (
+                    <SaveDocButton userMessage={prevMsg.content} assistantContent={msg.content} />
+                  )}
                 </>
               ) : (
                 <span>{msg.content}</span>

@@ -37,59 +37,32 @@ function RelatedNotes({ notePath, onNavigate }) {
   );
 }
 
-function BacklinksPanel({ notePath }) {
-  const [data, setData] = React.useState(null);
+function Backlinks({ notePath, onNavigate }) {
+  const [backlinks, setBacklinks] = React.useState([]);
 
   React.useEffect(() => {
     if (!notePath) return;
     apiFetch(`/api/vault/backlinks?path=${encodeURIComponent(notePath)}`)
       .then(r => r.json())
-      .then(d => setData(d))
+      .then(d => setBacklinks(d.backlinks || []))
       .catch(() => {});
   }, [notePath]);
 
-  if (!data) return null;
-  const { backlinks = [], entities = [] } = data;
-  if (backlinks.length === 0 && entities.length === 0) return null;
-
-  const people = entities.filter(e => e.entity_type === 'person');
-  const tasks = entities.filter(e => e.entity_type === 'task');
-  const decisions = entities.filter(e => e.entity_type === 'decision');
+  if (backlinks.length === 0) return null;
 
   return (
     <div className="vault-related">
-      {people.length > 0 && (
-        <>
-          <div className="vault-related-label">People mentioned</div>
-          {people.map((e, i) => (
-            <div key={i} className="vault-backlink-tag">{e.entity_value}</div>
-          ))}
-        </>
-      )}
-      {tasks.length > 0 && (
-        <>
-          <div className="vault-related-label">Tasks</div>
-          {tasks.map((e, i) => (
-            <div key={i} className="vault-backlink-item">{e.entity_value}</div>
-          ))}
-        </>
-      )}
-      {decisions.length > 0 && (
-        <>
-          <div className="vault-related-label">Decisions</div>
-          {decisions.map((e, i) => (
-            <div key={i} className="vault-backlink-item">{e.entity_value}</div>
-          ))}
-        </>
-      )}
-      {backlinks.length > 0 && (
-        <>
-          <div className="vault-related-label">Linked from</div>
-          {backlinks.slice(0, 5).map((l, i) => (
-            <div key={i} className="vault-backlink-item">{l.source_path}</div>
-          ))}
-        </>
-      )}
+      <div className="vault-related-label">Mentioned in ({backlinks.length})</div>
+      {backlinks.map(b => (
+        <button
+          key={b.path}
+          className="vault-related-item"
+          onClick={() => onNavigate && onNavigate(b.path)}
+        >
+          <span className="vault-related-name">{b.name}</span>
+          <span className="vault-related-excerpt" style={{ opacity: 0.5 }}>{b.type}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -249,7 +222,7 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
             spellCheck={true}
           />
         )}
-        <BacklinksPanel notePath={openFile.path} />
+        <Backlinks notePath={openFile.path} onNavigate={openFileHandler} />
         <RelatedNotes notePath={openFile.path} onNavigate={openFileHandler} />
       </div>
     );

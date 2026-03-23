@@ -249,15 +249,42 @@ router.get('/related', async (req, res) => {
 });
 
 // GET /api/vault/backlinks?path=relative/path
-router.get('/backlinks', (req, res) => {
-  const { path: notePath } = req.query;
-  if (!notePath) return res.status(400).json({ error: 'path required' });
+router.get('/backlinks', async (req, res) => {
   try {
-    const entities = require('../services/entities');
+    const { path: notePath } = req.query;
+    if (!notePath) return res.status(400).json({ error: 'path required' });
+
     const db = require('../db/database');
     const backlinks = db.getBacklinks(notePath);
-    const entityLinks = db.getEntitiesForPath(notePath);
-    res.json({ backlinks, entities: entityLinks });
+
+    // Also search entity mentions by note name
+    const noteName = path.basename(notePath, '.md');
+    const entityMentions = db.getEntitiesByValue(noteName);
+
+    // Combine and deduplicate
+    const seen = new Set();
+    const combined = [];
+
+    for (const link of backlinks) {
+      if (!seen.has(link.source_path)) {
+        seen.add(link.source_path);
+        combined.push({ path: link.source_path, type: link.link_type });
+      }
+    }
+
+    for (const entity of entityMentions) {
+      if (!seen.has(entity.source_path)) {
+        seen.add(entity.source_path);
+        combined.push({ path: entity.source_path, type: 'mention' });
+      }
+    }
+
+    const enriched = combined.slice(0, 10).map(item => ({
+      ...item,
+      name: path.basename(item.path, '.md')
+    }));
+
+    res.json({ backlinks: enriched, total: combined.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -285,6 +312,41 @@ router.get('/orphans', (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// POST /api/vault/person-doc — generate a structured document from person context
+router.post('/person-doc', (req, res) => {
+  const { personName, docType, content } = req.body;
+  if (!personName || !content) {
+    return res.status(400).json({ error: 'personName and content required' });
+  }
+
+  const VALID_TYPES = ['performance-review', 'pip', '1-2-1-summary', 'feedback', 'general'];
+  const type = VALID_TYPES.includes(docType) ? docType : 'general';
+
+  const safeName = personName.replace(/[^a-zA-Z0-9\s-]/g, '').trim();
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `${dateStr}-${safeName.replace(/\s+/g, '-')}-${type}.md`;
+
+  const targetDir = safePath('People/Documents');
+  if (!targetDir) return res.status(400).json({ error: 'Invalid path' });
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+  const filePath = path.join(targetDir, filename);
+  const titleCase = type.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const fileContent = `---\ntype: ${type}\nperson: ${safeName}\ndate: ${dateStr}\nsource: neuro-chat\n---\n\n# ${titleCase} — ${safeName}\n\n*Generated ${new Date().toLocaleString('en-GB')}*\n\n${content}\n`;
+
+  fs.writeFileSync(filePath, fileContent, 'utf-8');
+
+  const relPath = path.relative(VAULT_PATH, filePath).replace(/\\/g, '/');
+
+  // Trigger entity extraction and embedding
+  try {
+    require('../services/embeddings').embedVaultFile(relPath, filePath).catch(() => {});
+    require('../services/entities').processNote(relPath);
+  } catch {}
+
+  res.json({ ok: true, path: relPath, filename });
 });
 
 module.exports = router;

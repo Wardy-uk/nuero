@@ -659,9 +659,23 @@ async function streamChat(conversationId, userMessage, res, location = null) {
         userMessage.toLowerCase().includes(name.toLowerCase())
       );
 
+      // Build retrieval scope — person, folder, or none
+      let retrievalScope = undefined;
+      if (mentionedPerson) {
+        retrievalScope = `person:${mentionedPerson}`;
+      } else if (/\bmeeting[s]?\b/i.test(userMessage)) {
+        retrievalScope = 'folder:Meetings';
+      } else if (/\bdecision[s]?\b/i.test(userMessage)) {
+        retrievalScope = 'folder:Decision Log';
+      } else if (/\bproject[s]?\b/i.test(userMessage)) {
+        retrievalScope = 'folder:Projects';
+      } else if (/\bpeople\b|\bteam\b/i.test(userMessage)) {
+        retrievalScope = 'folder:People';
+      }
+
       const results = await retrieval.search(terms.join(' '), {
         maxResults: maxVaultResults,
-        scope: mentionedPerson ? `person:${mentionedPerson}` : undefined,
+        scope: retrievalScope,
         from: temporalCtx?.from,
         to: temporalCtx?.to
       });
@@ -669,7 +683,7 @@ async function streamChat(conversationId, userMessage, res, location = null) {
       vaultSearchResults = results;
       if (results.length > 0) {
         const sources = [...new Set(results.flatMap(r => r.sources || []))];
-        console.log(`[Context] Retrieval for "${terms.join(', ')}" → ${results.length} hits via ${sources.join('+')}${isSynthesisQuery ? ' (synthesis)' : ''}${mentionedPerson ? ` (scoped: ${mentionedPerson})` : ''}`);
+        console.log(`[Context] Retrieval for "${terms.join(', ')}" → ${results.length} hits via ${sources.join('+')}${isSynthesisQuery ? ' (synthesis)' : ''}${retrievalScope ? ` (scope: ${retrievalScope})` : ''}`);
       }
     }
   } catch (e) {

@@ -118,12 +118,11 @@ export default function App() {
 
   const handleNavigate = (view) => {
     if (view === 'chat') {
-      // On mobile or sidebar click: open full-screen chat as main view
-      setChatOpen(false); // close aside if open
-      setActiveView('chat');
+      setChatOpen(true);
       setSidebarOpen(false);
-      return;
+      return; // do NOT change activeView — chat lives in aside only
     }
+    setChatOpen(false); // close aside when navigating away
     setActiveView(view);
     setSidebarOpen(false);
   };
@@ -146,7 +145,6 @@ export default function App() {
       case 'qa': return <QATab />;
       case 'journal': return <JournalPanel />;
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
-      case 'chat': return <ChatPanel location={location} />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
     }
@@ -163,11 +161,9 @@ export default function App() {
         <main className="main-panel">
           {renderView()}
         </main>
-        {activeView !== 'chat' && (
-          <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
-            <ChatPanel location={location} />
-          </aside>
-        )}
+        <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
+          <ChatPanel location={location} />
+        </aside>
       </div>
       <NudgeBanner onGoToStandup={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} />
       <InstallBanner />
@@ -177,7 +173,7 @@ export default function App() {
           <span className="bottom-nav-icon">&#x2B21;</span>
           <span>Review</span>
         </button>
-        <button className={activeView === 'chat' ? 'active' : ''} onClick={() => handleNavigate('chat')}>
+        <button className={chatOpen ? 'active' : ''} onClick={() => handleNavigate('chat')}>
           <span className="bottom-nav-icon">&#x203A;</span>
           <span>Ask</span>
         </button>
