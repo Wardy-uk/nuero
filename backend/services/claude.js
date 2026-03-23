@@ -623,43 +623,44 @@ async function streamChat(conversationId, userMessage, res, location = null) {
   ];
 
   const isSynthesisQuery = SYNTHESIS_PATTERNS.some(p => p.test(userMessage));
+  const maxVaultResults = isSynthesisQuery ? 12 : 6;
 
-  // Vault search — synthesis mode gets more results
-  const maxVaultResults = isSynthesisQuery ? 12 : 4;
+  // Unified retrieval — keyword + semantic + temporal fused via RRF
   let vaultSearchResults = [];
   try {
+    const retrieval = require('./retrieval');
     const terms = extractSearchTerms(userMessage);
     if (terms.length > 0) {
-      const seen = new Set();
-      for (const term of terms) {
-        const hits = await obsidian.searchVaultSemantic(term, isSynthesisQuery ? 8 : 4);
-        for (const hit of hits) {
-          if (!seen.has(hit.path)) {
-            seen.add(hit.path);
-            vaultSearchResults.push(hit);
-          }
-        }
-      }
-      // For synthesis queries, also search with combined terms
-      if (isSynthesisQuery && terms.length > 1) {
-        const combinedHits = await obsidian.searchVaultSemantic(terms.join(' '), 6);
-        for (const hit of combinedHits) {
-          if (!seen.has(hit.path)) {
-            seen.add(hit.path);
-            vaultSearchResults.push(hit);
-          }
-        }
-      }
-      vaultSearchResults = vaultSearchResults.slice(0, maxVaultResults);
-      if (vaultSearchResults.length > 0) {
-        console.log(`[Context] Vault search for "${terms.join(', ')}" → ${vaultSearchResults.length} hits${isSynthesisQuery ? ' (synthesis mode)' : ''}`);
+      const temporalCtx = extractTemporalContext(userMessage);
+
+      // Detect person scope
+      const TEAM_MEMBERS = [
+        'Abdi', 'Arman', 'Luke', 'Stephen', 'Willem', 'Nathan',
+        'Adele', 'Heidi', 'Hope', 'Maria', 'Naomi', 'Sebastian', 'Zoe',
+        'Isabel', 'Kayleigh', 'Chris', 'Beth', 'Paul', 'Damon', 'Ricky'
+      ];
+      const mentionedPerson = TEAM_MEMBERS.find(name =>
+        userMessage.toLowerCase().includes(name.toLowerCase())
+      );
+
+      const results = await retrieval.search(terms.join(' '), {
+        maxResults: maxVaultResults,
+        scope: mentionedPerson ? `person:${mentionedPerson}` : undefined,
+        from: temporalCtx?.from,
+        to: temporalCtx?.to
+      });
+
+      vaultSearchResults = results;
+      if (results.length > 0) {
+        const sources = [...new Set(results.flatMap(r => r.sources || []))];
+        console.log(`[Context] Retrieval for "${terms.join(', ')}" → ${results.length} hits via ${sources.join('+')}${isSynthesisQuery ? ' (synthesis)' : ''}${mentionedPerson ? ` (scoped: ${mentionedPerson})` : ''}`);
       }
     }
   } catch (e) {
-    console.warn('[Context] Vault search error:', e.message);
+    console.warn('[Context] Retrieval error:', e.message);
   }
 
-  // Person-specific context pull for drafting requests
+  // Person-specific context — always pull person note if mentioned
   const TEAM_MEMBERS = [
     'Abdi', 'Arman', 'Luke', 'Stephen', 'Willem', 'Nathan',
     'Adele', 'Heidi', 'Hope', 'Maria', 'Naomi', 'Sebastian', 'Zoe',
@@ -679,40 +680,16 @@ async function streamChat(conversationId, userMessage, res, location = null) {
           return match ? obsidian.readPersonNote(match) : null;
         })();
 
-      if (personNote && !vaultSearchResults.some(r => r.name.toLowerCase().includes(personName.toLowerCase()))) {
+      if (personNote && !vaultSearchResults.some(r => r.name?.toLowerCase().includes(personName.toLowerCase()))) {
         const body = personNote.replace(/^---[\s\S]*?---\n*/, '').substring(0, 600);
         vaultSearchResults.unshift({
           path: `People/${personName}.md`,
           name: personName,
-          excerpts: [body]
+          excerpts: [body],
+          sources: ['person-note']
         });
       }
     } catch {}
-  }
-
-  // Temporal context detection
-  const temporalCtx = extractTemporalContext(userMessage);
-  if (temporalCtx) {
-    try {
-      const terms = extractSearchTerms(userMessage);
-      if (terms.length > 0) {
-        const tempRes = await fetch(
-          `http://localhost:${process.env.PORT || 3001}/api/vault/search/temporal?query=${encodeURIComponent(terms[0])}&from=${temporalCtx.from}&to=${temporalCtx.to}&limit=5`
-        );
-        if (tempRes.ok) {
-          const tempData = await tempRes.json();
-          if (tempData.results?.length > 0) {
-            const notInResults = tempData.results.filter(r =>
-              !vaultSearchResults.some(v => v.path === r.path)
-            );
-            vaultSearchResults = [...notInResults, ...vaultSearchResults].slice(0, 8);
-            console.log(`[Context] Temporal search added ${notInResults.length} date-filtered notes`);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[Context] Temporal search failed:', e.message);
-    }
   }
 
   // Reverse geocode location if provided

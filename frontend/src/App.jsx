@@ -147,7 +147,7 @@ export default function App() {
           <ChatPanel location={location} />
         </aside>
       </div>
-      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('journal'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} />
+      <NudgeBanner onGoToStandup={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('dashboard'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} />
       <InstallBanner />
     </div>
   );

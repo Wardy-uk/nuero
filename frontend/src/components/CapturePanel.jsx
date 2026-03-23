@@ -2,9 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import './CapturePanel.css';
 
-const MODES = ['Note', 'Todo', 'Escalate', 'Photo', 'File'];
 const MAX_SIZE = 10 * 1024 * 1024;
-
 const QUEUE_KEY = 'neuro_offline_queue';
 
 function getQueue() {
@@ -16,10 +14,6 @@ function addToQueue(item) {
   const q = getQueue();
   q.push({ ...item, queuedAt: Date.now() });
   localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
-}
-
-function clearQueue() {
-  localStorage.removeItem(QUEUE_KEY);
 }
 
 async function drainQueue(onDrained) {
@@ -35,45 +29,39 @@ async function drainQueue(onDrained) {
       });
       if (!res.ok) remaining.push(item);
     } catch {
-      remaining.push(item); // still offline
+      remaining.push(item);
     }
   }
   localStorage.setItem(QUEUE_KEY, JSON.stringify(remaining));
   if (remaining.length < q.length && onDrained) onDrained(q.length - remaining.length);
 }
 
+// Auto-detect if text looks like a todo
+function looksLikeTodo(text) {
+  const t = text.trim();
+  return /^-?\s*\[.\]/.test(t) ||              // checkbox syntax
+    /^(todo|task|action|reminder):/i.test(t) || // explicit prefix
+    /^(buy|call|email|book|send|fix|update|check|schedule|remind)\s/i.test(t); // action verbs
+}
+
 export default function CapturePanel() {
-  const [mode, setMode] = useState('Note');
-  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [todoText, setTodoText] = useState('');
-  const [todoPriority, setTodoPriority] = useState('normal');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [recent, setRecent] = useState([]);
-  const [showRecent, setShowRecent] = useState(false);
-  const [spellcheck, setSpellcheck] = useState(true);
   const [queueCount, setQueueCount] = useState(getQueue().length);
-  const [escalateKey, setEscalateKey] = useState('');
-  const [escalateNote, setEscalateNote] = useState('');
-  const [escalateStatus, setEscalateStatus] = useState(null); // null | 'ok' | 'error'
-  const [escalateMessage, setEscalateMessage] = useState('');
+  const [showAttach, setShowAttach] = useState(false);
   const fileRef = useRef(null);
+  const textRef = useRef(null);
 
   const resetForm = () => {
-    setTitle('');
     setContent('');
     setFile(null);
     setPreview(null);
-    setTodoText('');
-    setTodoPriority('normal');
     setResult(null);
-    setEscalateKey('');
-    setEscalateNote('');
-    setEscalateStatus(null);
-    setEscalateMessage('');
+    setShowAttach(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -92,9 +80,7 @@ export default function CapturePanel() {
       setQueueCount(getQueue().length);
       if (count > 0) fetchRecent();
     });
-
-    drain(); // drain on mount
-
+    drain();
     const onVisible = () => { if (!document.hidden) drain(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -124,25 +110,29 @@ export default function CapturePanel() {
 
     try {
       let res;
-      if (mode === 'Note') {
-        res = await fetch(apiUrl('/api/capture/note'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim() || null, content })
-        });
-      } else if (mode === 'Todo') {
+
+      if (file) {
+        // File/photo upload
+        const formData = new FormData();
+        formData.append('file', file);
+        const endpoint = file.type.startsWith('image/') ? '/api/capture/photo' : '/api/capture/file';
+        res = await fetch(apiUrl(endpoint), { method: 'POST', body: formData });
+      } else if (looksLikeTodo(content)) {
+        // Auto-detected as todo
+        const text = content.trim()
+          .replace(/^-?\s*\[.\]\s*/, '')  // strip checkbox if present
+          .replace(/^(todo|task|action|reminder):\s*/i, ''); // strip prefix
         res = await fetch(apiUrl('/api/capture/todo'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: todoText.trim(), priority: todoPriority })
+          body: JSON.stringify({ text, priority: 'normal' })
         });
       } else {
-        const formData = new FormData();
-        formData.append('file', file);
-        const endpoint = mode === 'Photo' ? '/api/capture/photo' : '/api/capture/file';
-        res = await fetch(apiUrl(endpoint), {
+        // Default: note capture
+        res = await fetch(apiUrl('/api/capture/note'), {
           method: 'POST',
-          body: formData
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: null, content: content.trim() })
         });
       }
 
@@ -150,27 +140,30 @@ export default function CapturePanel() {
       if (!res.ok) {
         setResult({ error: data.error || 'Upload failed' });
       } else {
-        setResult({ success: true, filename: data.filename || data.text });
+        const isTodo = !file && looksLikeTodo(content);
+        setResult({ success: true, type: isTodo ? 'todo' : file ? 'file' : 'note' });
         fetchRecent();
         setTimeout(resetForm, 2000);
       }
     } catch (err) {
-      // Network error — queue for later if text-based
-      if (mode === 'Note' && content.trim()) {
-        addToQueue({
-          url: apiUrl('/api/capture/note'),
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim() || null, content })
-        });
-        setQueueCount(getQueue().length);
-        setResult({ success: true, queued: true });
-        setTimeout(resetForm, 2000);
-      } else if (mode === 'Todo' && todoText.trim()) {
-        addToQueue({
-          url: apiUrl('/api/capture/todo'),
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: todoText.trim(), priority: todoPriority })
-        });
+      // Offline — queue text captures
+      if (!file && content.trim()) {
+        const isTodo = looksLikeTodo(content);
+        const text = content.trim();
+        if (isTodo) {
+          const cleanText = text.replace(/^-?\s*\[.\]\s*/, '').replace(/^(todo|task|action|reminder):\s*/i, '');
+          addToQueue({
+            url: apiUrl('/api/capture/todo'),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: cleanText, priority: 'normal' })
+          });
+        } else {
+          addToQueue({
+            url: apiUrl('/api/capture/note'),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: null, content: text })
+          });
+        }
         setQueueCount(getQueue().length);
         setResult({ success: true, queued: true });
         setTimeout(resetForm, 2000);
@@ -182,203 +175,68 @@ export default function CapturePanel() {
     setSubmitting(false);
   };
 
-  const submitEscalate = async () => {
-    const key = escalateKey.trim().toUpperCase();
-    if (!key.match(/^[A-Z]+-\d+$/)) {
-      setEscalateStatus('error');
-      setEscalateMessage('Enter a valid ticket key e.g. NT-12345');
-      return;
-    }
-    setSubmitting(true);
-    setEscalateStatus(null);
-    try {
-      const res = await fetch(apiUrl(`/api/jira/flagged/${key}`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: escalateNote.trim() || null })
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Failed');
-      setEscalateStatus('ok');
-      setEscalateMessage(`${key} flagged`);
-      setEscalateKey('');
-      setEscalateNote('');
-      setTimeout(() => setEscalateStatus(null), 2500);
-    } catch (e) {
-      setEscalateStatus('error');
-      setEscalateMessage(e.message);
-    }
-    setSubmitting(false);
-  };
-
-  const canSubmit = mode === 'Note'
-    ? content.trim().length > 0
-    : mode === 'Todo'
-      ? todoText.trim().length > 0
-      : !!file;
+  const canSubmit = content.trim().length > 0 || !!file;
+  const detectedType = file ? (file.type.startsWith('image/') ? 'photo' : 'file')
+    : content.trim() && looksLikeTodo(content) ? 'todo' : 'note';
 
   return (
     <div className="capture-panel">
       <h2 className="capture-title">Capture</h2>
 
-      <div className="capture-modes">
-        {MODES.map(m => (
-          <button
-            key={m}
-            className={`capture-mode-btn ${mode === m ? 'active' : ''}`}
-            onClick={() => { setMode(m); resetForm(); }}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-
       {result && (
         <div className={`capture-result ${result.error ? 'error' : 'success'}`}>
-          {result.error || (result.queued ? `Queued — will sync when online ⏳` : `Captured ✓`)}
+          {result.error || (result.queued ? 'Queued — will sync when online' : result.type === 'todo' ? 'Added to todos' : 'Captured')}
         </div>
       )}
 
-      {mode === 'Note' && (
-        <div className="capture-form">
-          <input
-            className="capture-input"
-            type="text"
-            placeholder="Title (optional)"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            inputMode="text"
-          />
-          <textarea
-            className="capture-textarea"
-            placeholder="What's on your mind?"
-            value={content}
-            onChange={e => setContent(e.target.value)}
-            rows={6}
-            autoFocus
-            inputMode="text"
-            autoComplete="off"
-            autoCorrect={spellcheck ? 'on' : 'off'}
-            spellCheck={spellcheck}
-          />
-          <p className="capture-pencil-hint">✎ Apple Pencil: write directly in the box above</p>
-          <div className="capture-spellcheck-row">
-            <label className="capture-spellcheck-label">
-              <input
-                type="checkbox"
-                checked={spellcheck}
-                onChange={e => setSpellcheck(e.target.checked)}
-              />
-              Spellcheck
-            </label>
+      <div className="capture-form">
+        <textarea
+          ref={textRef}
+          className="capture-textarea"
+          placeholder="What's on your mind?"
+          value={content}
+          onChange={e => setContent(e.target.value)}
+          rows={4}
+          autoFocus
+          disabled={!!file}
+        />
+
+        {/* Type indicator */}
+        {content.trim() && !file && (
+          <div className="capture-type-hint">
+            {detectedType === 'todo' ? 'Will save as todo' : 'Will save as note'}
           </div>
-        </div>
-      )}
+        )}
 
-      {mode === 'Todo' && (
-        <div className="capture-form">
-          <input
-            className="capture-input"
-            type="text"
-            placeholder="What needs doing?"
-            value={todoText}
-            onChange={e => setTodoText(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && canSubmit && !submitting && submit()}
-            inputMode="text"
-            autoFocus
-          />
-          <div className="capture-priority-row">
-            {['low', 'normal', 'high'].map(p => (
-              <button
-                key={p}
-                className={`capture-priority-btn ${todoPriority === p ? 'active priority-' + p : ''}`}
-                onClick={() => setTodoPriority(p)}
-                type="button"
-              >
-                {p === 'high' ? '🔴 High' : p === 'low' ? '🟢 Low' : '⚪ Normal'}
-              </button>
-            ))}
+        {/* File attachment area */}
+        {showAttach && (
+          <div className="capture-attach-area">
+            <input
+              ref={fileRef}
+              type="file"
+              onChange={handleFileSelect}
+              className="capture-file-input"
+            />
+            {preview && <img src={preview} alt="Preview" className="capture-preview-img" />}
+            {file && !preview && (
+              <div className="capture-file-info">
+                <span>{file.name}</span>
+                <span className="capture-file-size">{(file.size / 1024).toFixed(1)} KB</span>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {mode === 'Escalate' && (
-        <div className="capture-form">
-          <input
-            className="capture-input capture-escalate-key"
-            type="text"
-            placeholder="Ticket key e.g. NT-12345"
-            value={escalateKey}
-            onChange={e => {
-              setEscalateKey(e.target.value.toUpperCase());
-              setEscalateStatus(null);
-            }}
-            onKeyDown={e => e.key === 'Enter' && !submitting && submitEscalate()}
-            autoFocus
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <input
-            className="capture-input capture-escalate-note"
-            type="text"
-            placeholder="Note e.g. verbal from Kim Rush (optional)"
-            value={escalateNote}
-            onChange={e => setEscalateNote(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !submitting && submitEscalate()}
-          />
-          {escalateStatus === 'ok' && (
-            <div className="capture-escalate-ok">{escalateMessage} ✓</div>
-          )}
-          {escalateStatus === 'error' && (
-            <div className="capture-escalate-error">{escalateMessage}</div>
-          )}
-        </div>
-      )}
-
-      {mode === 'Photo' && (
-        <div className="capture-form">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileSelect}
-            className="capture-file-input"
-          />
-          {preview && (
-            <div className="capture-preview">
-              <img src={preview} alt="Preview" className="capture-preview-img" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {mode === 'File' && (
-        <div className="capture-form">
-          <input
-            ref={fileRef}
-            type="file"
-            onChange={handleFileSelect}
-            className="capture-file-input"
-          />
-          {file && (
-            <div className="capture-file-info">
-              <span className="capture-file-name">{file.name}</span>
-              <span className="capture-file-size">{(file.size / 1024).toFixed(1)} KB</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {mode === 'Escalate' ? (
+      <div className="capture-actions">
         <button
-          className="capture-submit"
-          onClick={submitEscalate}
-          disabled={submitting || !escalateKey.trim()}
+          className="capture-attach-btn"
+          onClick={() => setShowAttach(o => !o)}
+          title="Attach file or photo"
         >
-          {submitting ? 'Flagging...' : 'Flag Escalation'}
+          {showAttach ? 'Cancel' : 'Attach'}
         </button>
-      ) : (
+
         <button
           className="capture-submit"
           onClick={submit}
@@ -386,7 +244,7 @@ export default function CapturePanel() {
         >
           {submitting ? 'Saving...' : 'Capture'}
         </button>
-      )}
+      </div>
 
       {queueCount > 0 && (
         <div className="capture-queue-notice">
@@ -396,26 +254,19 @@ export default function CapturePanel() {
 
       {recent.length > 0 && (
         <div className="capture-recent">
-          <button
-            className="capture-recent-toggle"
-            onClick={() => setShowRecent(o => !o)}
-          >
-            {showRecent ? '▾' : '▸'} Recent ({recent.length})
-          </button>
-          {showRecent && (
-            <div className="capture-recent-list">
-              {recent.map((item, i) => (
-                <div key={i} className="capture-recent-item">
-                  <span className="capture-recent-name">
-                    {item.title || item.filename.replace(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-/, '').replace('.md', '')}
-                  </span>
-                  {item.preview && (
-                    <span className="capture-recent-preview">{item.preview}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="capture-recent-header">Recent ({recent.length})</div>
+          <div className="capture-recent-list">
+            {recent.slice(0, 8).map((item, i) => (
+              <div key={i} className="capture-recent-item">
+                <span className="capture-recent-name">
+                  {item.title || item.filename.replace(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-/, '').replace('.md', '')}
+                </span>
+                {item.preview && (
+                  <span className="capture-recent-preview">{item.preview}</span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
