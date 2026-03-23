@@ -249,6 +249,9 @@ export default function CapturePanel() {
       {/* Escalation section */}
       <EscalateSection />
 
+      {/* Location capture */}
+      <LocationCapture />
+
       {queueCount > 0 && (
         <div className="capture-queue-notice">
           {queueCount} item{queueCount !== 1 ? 's' : ''} queued — will sync when online
@@ -346,6 +349,108 @@ function EscalateSection() {
           <button className="review-action-btn" onClick={submit} disabled={submitting || !key.trim()}>
             {submitting ? 'Flagging...' : 'Flag'}
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Location capture ──────────────────────────────────────────────────────
+
+function LocationCapture() {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [places, setPlaces] = useState([]);
+  const [gettingLoc, setGettingLoc] = useState(false);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/location/places'))
+      .then(r => r.json())
+      .then(d => setPlaces(d.places || []))
+      .catch(() => {});
+  }, []);
+
+  const savePlace = async () => {
+    if (!name.trim()) return;
+    setGettingLoc(true);
+
+    // Get current position from browser
+    if (!navigator.geolocation) {
+      setGettingLoc(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        setGettingLoc(false);
+        setSaving(true);
+        try {
+          const res = await fetch(apiUrl('/api/location/places'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: name.trim(),
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude
+            })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            setPlaces(data.places);
+            setSaved(true);
+            setName('');
+            setTimeout(() => setSaved(false), 3000);
+          }
+        } catch {}
+        setSaving(false);
+      },
+      () => { setGettingLoc(false); },
+      { timeout: 10000 }
+    );
+  };
+
+  const deletePlace = async (placeName) => {
+    try {
+      const res = await fetch(apiUrl(`/api/location/places/${encodeURIComponent(placeName)}`), { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) setPlaces(data.places);
+    } catch {}
+  };
+
+  return (
+    <div className="capture-escalate-section">
+      <button className="capture-escalate-toggle" onClick={() => setOpen(o => !o)}>
+        {open ? '▾' : '▸'} Save Location
+      </button>
+      {open && (
+        <div className="capture-escalate-form">
+          <div className="capture-location-hint">Save your current GPS position with a name</div>
+          <input
+            className="capture-input"
+            type="text"
+            placeholder="e.g. Work, Home, Gym"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && savePlace()}
+          />
+          {saved && <div className="capture-escalate-ok">Saved</div>}
+          <button className="review-action-btn" onClick={savePlace} disabled={saving || gettingLoc || !name.trim()}>
+            {gettingLoc ? 'Getting location...' : saving ? 'Saving...' : 'Save this location'}
+          </button>
+
+          {places.length > 0 && (
+            <div className="capture-location-places">
+              <div className="capture-location-places-label">Saved places</div>
+              {places.map(p => (
+                <div key={p.name} className="capture-location-place">
+                  <span className="capture-location-place-name">{p.name}</span>
+                  <button className="capture-location-place-del" onClick={() => deletePlace(p.name)} title="Remove">×</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

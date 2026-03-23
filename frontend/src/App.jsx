@@ -92,6 +92,40 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Dwell check — prompt to save location if at an unknown place for 30+ min
+  const [dwellPrompt, setDwellPrompt] = useState(null);
+  useEffect(() => {
+    if (!location) return;
+    const check = () => {
+      fetch(apiUrl(`/api/location/dwell-check?lat=${location.lat}&lng=${location.lng}`))
+        .then(r => r.json())
+        .then(d => {
+          if (d.shouldPrompt && !d.knownPlace) {
+            setDwellPrompt({ lat: d.lat, lng: d.lng, minutes: d.minutesAtLocation });
+          } else {
+            setDwellPrompt(null);
+          }
+        })
+        .catch(() => {});
+    };
+    check();
+    const interval = setInterval(check, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [location]);
+
+  const saveDwellPlace = async (name) => {
+    if (!dwellPrompt || !name.trim()) return;
+    try {
+      await fetch(apiUrl('/api/location/places'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), lat: dwellPrompt.lat, lng: dwellPrompt.lng })
+      });
+      setDwellPrompt(null);
+      setToast({ type: 'success', text: `Saved "${name.trim()}"` });
+    } catch {}
+  };
+
   const statusFetch = useCachedFetch('/api/status', { interval: 30000 });
   const queueFetch = useCachedFetch('/api/queue', { interval: 30000 });
 
@@ -182,6 +216,25 @@ export default function App() {
           <span>Capture</span>
         </button>
       </nav>
+      {/* Dwell prompt — save this location? */}
+      {dwellPrompt && (
+        <div className="app-dwell-prompt">
+          <span>You've been here {dwellPrompt.minutes} min. Save this location?</span>
+          <div className="dwell-prompt-btns">
+            {['Work', 'Home', 'Gym', 'Other'].map(name => (
+              <button key={name} onClick={() => {
+                if (name === 'Other') {
+                  const custom = window.prompt('Name this location:');
+                  if (custom) saveDwellPlace(custom);
+                } else {
+                  saveDwellPlace(name);
+                }
+              }}>{name}</button>
+            ))}
+            <button onClick={() => setDwellPrompt(null)} className="dwell-dismiss">Not now</button>
+          </div>
+        </div>
+      )}
       {/* Toast notifications */}
       {toast && (
         <div className={`app-toast app-toast-${toast.type}`} onClick={() => setToast(null)}>
