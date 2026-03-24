@@ -320,8 +320,8 @@ export default function AdminPanel({ pushState = {} }) {
               <div className="admin-device-code-label">Enter this code at Microsoft</div>
               <div className="admin-device-code-value">{deviceCode.userCode}</div>
               <div className="admin-device-code-link">
-                <a href={deviceCode.verificationUri} target="_blank" rel="noopener noreferrer">
-                  {deviceCode.verificationUri}
+                <a href="https://microsoft.com/devicelogin" target="_blank" rel="noopener noreferrer">
+                  microsoft.com/devicelogin
                 </a>
               </div>
               <div className="admin-device-code-waiting">Waiting for you to sign in...</div>
