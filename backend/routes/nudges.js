@@ -82,4 +82,10 @@ router.post('/trigger-todo', (req, res) => {
   res.json({ success: true });
 });
 
+// POST /api/nudges/nag-check — manual trigger for nag cycle
+router.post('/nag-check', (req, res) => {
+  nudges.nagCheck();
+  res.json({ success: true });
+});
+
 module.exports = router;
