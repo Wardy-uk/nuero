@@ -650,6 +650,52 @@ function deleteLinksForPath(sourcePath) {
   save();
 }
 
+// Do Next helpers
+function createDoNext(text, source, sourceRef, priority, dueDate) {
+  getDb().run(
+    `INSERT INTO do_next (text, source, source_ref, priority, due_date) VALUES (?, ?, ?, ?, ?)`,
+    [text, source || 'manual', sourceRef || null, priority || 'normal', dueDate || null]
+  );
+  save();
+}
+
+function getActiveDoNext() {
+  const stmt = getDb().prepare(
+    `SELECT * FROM do_next WHERE done = 0
+     ORDER BY
+       CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
+       due_date ASC NULLS LAST,
+       created_at ASC`
+  );
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getAllDoNext() {
+  const stmt = getDb().prepare(
+    `SELECT * FROM do_next ORDER BY done ASC, created_at DESC`
+  );
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function completeDoNext(id) {
+  getDb().run(
+    `UPDATE do_next SET done = 1, done_at = datetime('now') WHERE id = ?`,
+    [id]
+  );
+  save();
+}
+
+function deleteDoNext(id) {
+  getDb().run('DELETE FROM do_next WHERE id = ?', [id]);
+  save();
+}
+
 module.exports = {
   init,
   getDb,
@@ -714,5 +760,11 @@ module.exports = {
   getLinksFrom,
   getLinksTo,
   getBacklinks,
-  deleteLinksForPath
+  deleteLinksForPath,
+  // Do Next
+  createDoNext,
+  getActiveDoNext,
+  getAllDoNext,
+  completeDoNext,
+  deleteDoNext
 };

@@ -177,6 +177,21 @@ CREATE INDEX IF NOT EXISTS idx_links_source ON note_links(source_path);
 CREATE INDEX IF NOT EXISTS idx_links_target ON note_links(target_path);
 CREATE INDEX IF NOT EXISTS idx_links_entity ON note_links(target_entity);
 
+-- Do Next — high-signal tasks identified in standups, chat sessions, or manually
+CREATE TABLE IF NOT EXISTS do_next (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  text TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual',
+  source_ref TEXT,
+  priority TEXT NOT NULL DEFAULT 'normal',
+  due_date TEXT,
+  done INTEGER NOT NULL DEFAULT 0,
+  done_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_do_next_done ON do_next(done, due_date);
+
 CREATE TABLE IF NOT EXISTS daily_summary (
   date_key TEXT PRIMARY KEY,
   standup_done INTEGER DEFAULT 0,
