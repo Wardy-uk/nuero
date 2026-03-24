@@ -569,6 +569,35 @@
 
 .review-eod-input::placeholder { color: var(--text-muted); }
 
+/* EOD daily stats */
+.eod-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.eod-stat {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+}
+
+.eod-stat-ok {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.eod-stat-warn {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
 /* Orphan alerts */
 .review-orphan {
   display: flex;

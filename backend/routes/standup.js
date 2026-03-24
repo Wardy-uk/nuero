@@ -250,6 +250,62 @@ router.post('/weekly-review', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/standup/daily-stats — today's productivity stats for EOD
+router.get('/daily-stats', (req, res) => {
+  try {
+    const activity = require('../services/activity');
+    const db = require('../db/database');
+    const summary = activity.buildDailySummary(obsidianService.todayDateString());
+
+    // Todos completed today
+    const allTodos = db.getAllTodos();
+    const todayStr = obsidianService.todayDateString();
+    const completedToday = allTodos.filter(t =>
+      t.done && t.completed_at && t.completed_at.startsWith(todayStr)
+    ).length;
+
+    // Do-next tasks completed today
+    let doNextCompleted = 0;
+    try {
+      const doNextAll = db.getAllDoNext();
+      doNextCompleted = doNextAll.filter(t =>
+        t.done && t.completed_at && t.completed_at.startsWith(todayStr)
+      ).length;
+    } catch {}
+
+    // Meetings attended (inferred from vault writes of type meeting-note)
+    const meetingNotes = (summary.vault_write_types || {})['meeting-note'] || 0;
+    const dailyWrites = (summary.vault_write_types || {})['daily'] || 0;
+
+    // Calendar events today (count those that have passed)
+    let meetingsAttended = 0;
+    try {
+      const calEvents = db.getCalendarEvents(todayStr + 'T00:00:00', todayStr + 'T23:59:59');
+      const now = new Date();
+      meetingsAttended = calEvents.filter(e =>
+        e.show_as !== 'cancelled' && !e.is_all_day && new Date(e.end_time) < now
+      ).length;
+    } catch {}
+
+    res.json({
+      date: todayStr,
+      todosCompleted: completedToday,
+      doNextCompleted,
+      captures: summary.captures_count || 0,
+      captureTypes: summary.capture_types || {},
+      chatMessages: summary.chat_count || 0,
+      vaultWrites: summary.vault_writes || 0,
+      meetingNotesWritten: meetingNotes,
+      meetingsAttended,
+      escalationsRaised: summary.escalations_raised || 0,
+      escalationsResolved: summary.escalations_resolved || 0,
+      importsRouted: summary.imports_routed || 0,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/standup/today-status — live standup/EOD status from vault
 router.get('/today-status', (req, res) => {
   const dailyNote = obsidianService.readTodayDailyNote();

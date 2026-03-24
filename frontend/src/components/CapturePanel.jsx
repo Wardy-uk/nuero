@@ -138,9 +138,12 @@ export default function CapturePanel() {
 
       const data = await res.json();
       if (!res.ok) {
-        setResult({ error: data.error || 'Upload failed' });
+        const errorMsg = res.status === 401
+          ? 'Not logged in — open Settings and re-enter your PIN'
+          : data.error || `Capture failed (${res.status})`;
+        setResult({ error: errorMsg });
         // Vibrate on error
-        try { navigator.vibrate?.([200, 100, 200]); } catch {}
+        try { navigator.vibrate?.([200, 100, 200, 100, 200]); } catch {}
       } else {
         const isTodo = !file && looksLikeTodo(content);
         setResult({ success: true, type: isTodo ? 'todo' : file ? 'file' : 'note' });

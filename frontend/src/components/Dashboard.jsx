@@ -214,6 +214,14 @@ function InlineEod() {
   const [feeling, setFeeling] = useState('');
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/standup/daily-stats'))
+      .then(r => r.json())
+      .then(d => setStats(d))
+      .catch(() => {});
+  }, []);
 
   const submit = async () => {
     if (!win.trim() && !didntGo.trim() && !feeling.trim()) return;
@@ -243,6 +251,34 @@ function InlineEod() {
         <span className="review-section-title">End of Day</span>
         <span className="review-hint">2 minutes. Then close the laptop.</span>
       </div>
+
+      {/* Daily stats summary */}
+      {stats && (
+        <div className="eod-stats">
+          {(stats.todosCompleted + stats.doNextCompleted) > 0 && (
+            <span className="eod-stat eod-stat-ok">{stats.todosCompleted + stats.doNextCompleted} tasks done</span>
+          )}
+          {stats.meetingsAttended > 0 && (
+            <span className="eod-stat">{stats.meetingsAttended} meetings</span>
+          )}
+          {stats.meetingNotesWritten > 0 && (
+            <span className="eod-stat eod-stat-ok">{stats.meetingNotesWritten} meeting notes</span>
+          )}
+          {stats.captures > 0 && (
+            <span className="eod-stat">{stats.captures} captures</span>
+          )}
+          {stats.vaultWrites > 0 && (
+            <span className="eod-stat">{stats.vaultWrites} notes written</span>
+          )}
+          {stats.escalationsRaised > 0 && (
+            <span className="eod-stat eod-stat-warn">{stats.escalationsRaised} escalations</span>
+          )}
+          {stats.chatMessages > 0 && (
+            <span className="eod-stat">{stats.chatMessages} chats</span>
+          )}
+        </div>
+      )}
+
       <input className="review-eod-input" placeholder="Win today" value={win} onChange={e => setWin(e.target.value)} />
       <input className="review-eod-input" placeholder="Didn't go to plan" value={didntGo} onChange={e => setDidntGo(e.target.value)} />
       <input className="review-eod-input" placeholder="Feeling" value={feeling} onChange={e => setFeeling(e.target.value)}
