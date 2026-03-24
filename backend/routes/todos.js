@@ -90,15 +90,16 @@ router.post('/complete-ms', async (req, res) => {
 
     const microsoft = require('../services/microsoft');
 
-    // Complete in Microsoft via bridge
+    // Complete in Microsoft — Graph API first, bridge fallback
     if (source === 'MS Planner') {
-      await microsoft.updatePlannerTask(msId, { percentComplete: 100 });
+      await microsoft.completePlannerTask(msId);
+      console.log(`[Todos] Completed Planner task: ${msId}`);
     } else if (source === 'MS ToDo') {
-      // Need the listId — fetch lists and find default
       const lists = await microsoft.fetchTodoLists();
       const defaultList = lists?.find(l => l.wellknownListName === 'defaultList') || lists?.[0];
       if (defaultList) {
-        await microsoft.updateTodoTask(msId, defaultList.id, { status: 'completed' });
+        await microsoft.completeTodoTask(msId, defaultList.id);
+        console.log(`[Todos] Completed ToDo task: ${msId}`);
       }
     }
 

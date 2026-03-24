@@ -38,18 +38,19 @@ function isBridgeConnected() {
   return !!(process.env.NOVA_BRIDGE_URL && process.env.NOVA_BRIDGE_SECRET);
 }
 
-// Use the same client ID as @softeria/ms-365-mcp-server (NOVA's Graph integration)
-// This is a public multi-tenant app with Graph permissions pre-consented
-// Token cache shared with NOVA so auth carries across both tools
+// Token cache — platform-aware path
+// On Windows: shared with NOVA MCP server. On Pi: local to NEURO.
 const NOVA_DATA_DIR = path.join('C:', 'Users', 'NickW', 'Claude', 'windows automation', 'daypilot', 'data');
-const CACHE_PATH = process.env.MS_TOKEN_CACHE_PATH ||
-  path.join(NOVA_DATA_DIR, '.ms365-token-cache.json');
+const DEFAULT_CACHE_PATH = process.platform === 'win32'
+  ? path.join(NOVA_DATA_DIR, '.ms365-token-cache.json')
+  : path.join(process.env.HOME || '/home/nickw', '.neuro-ms365-token-cache.json');
+const CACHE_PATH = process.env.MS_TOKEN_CACHE_PATH || DEFAULT_CACHE_PATH;
 
-// @softeria/ms-365-mcp-server's built-in public client ID (Graph permissions pre-granted)
+// Public multi-tenant app with Graph permissions
 const CLIENT_ID = process.env.MS_CLIENT_ID || '084a3e9f-a9f4-43f7-89f9-d229cf97853e';
 const TENANT_ID = process.env.MS_TENANT_ID || 'db0f7383-5d7f-4a39-9841-02fbcd1444bd';
 
-const GRAPH_SCOPES = ['Calendars.Read', 'Mail.Read', 'Tasks.Read', 'User.Read'];
+const GRAPH_SCOPES = ['Calendars.Read', 'Mail.Read', 'Tasks.ReadWrite', 'User.Read'];
 
 let msalClient = null;
 let graphTokenCache = { accessToken: null, expiresOn: 0 };
@@ -200,6 +201,67 @@ function graphFetch(urlPath, token) {
     });
     req.on('error', reject);
     req.setTimeout(15000, () => { req.destroy(); reject(new Error('Graph API timeout')); });
+  });
+}
+
+// Graph API write helpers (POST, PATCH)
+function graphPost(urlPath, token, body) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`https://graph.microsoft.com/v1.0${urlPath}`);
+    const payload = JSON.stringify(body);
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    };
+    const req = https.request(options, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        if (res.statusCode >= 400) { reject(new Error(`Graph POST ${res.statusCode}: ${data.substring(0, 200)}`)); return; }
+        try { resolve(JSON.parse(data)); } catch { resolve(null); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Graph API timeout')); });
+    req.write(payload);
+    req.end();
+  });
+}
+
+function graphPatch(urlPath, token, body, extraHeaders = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`https://graph.microsoft.com/v1.0${urlPath}`);
+    const payload = JSON.stringify(body);
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        ...extraHeaders
+      }
+    };
+    const req = https.request(options, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        if (res.statusCode >= 400) { reject(new Error(`Graph PATCH ${res.statusCode}: ${data.substring(0, 200)}`)); return; }
+        if (res.statusCode === 204) { resolve({ ok: true }); return; }
+        try { resolve(JSON.parse(data)); } catch { resolve({ ok: true }); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Graph API timeout')); });
+    req.write(payload);
+    req.end();
   });
 }
 
@@ -399,31 +461,69 @@ async function fetchPlannerTasks() {
   return null;
 }
 
-// Create a To-Do task via bridge
-async function createTodoTask(listId, title, body) {
-  if (isBridgeConfigured()) {
-    const baseUrl = process.env.NOVA_BRIDGE_URL;
-    const secret = process.env.NOVA_BRIDGE_SECRET;
+// Create a To-Do task — Graph first, bridge fallback
+async function createTodoTask(listId, title, bodyText) {
+  // Graph direct
+  const token = await getAccessToken();
+  if (token) {
     try {
+      const result = await graphPost(`/me/todo/lists/${listId}/tasks`, token, {
+        title,
+        body: bodyText ? { content: bodyText, contentType: 'text' } : undefined
+      });
+      if (result) {
+        console.log('[ToDo] Created task via Graph:', title);
+        return result;
+      }
+    } catch (e) { console.warn('[ToDo] Graph create failed:', e.message); }
+  }
+  // Bridge fallback
+  if (isBridgeConfigured()) {
+    try {
+      const baseUrl = process.env.NOVA_BRIDGE_URL;
+      const secret = process.env.NOVA_BRIDGE_SECRET;
       const res = await fetch(`${baseUrl}/api/neuro-bridge/todo/tasks`, {
         method: 'POST',
         headers: { 'x-neuro-bridge-secret': secret, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ todoTaskListId: listId, title, body: body || '' }),
+        body: JSON.stringify({ todoTaskListId: listId, title, body: bodyText || '' }),
         signal: AbortSignal.timeout(10000)
       });
       const json = await res.json();
       return json.ok ? json.data : null;
-    } catch (e) { console.warn('[ToDo] Create failed:', e.message); }
+    } catch (e) { console.warn('[ToDo] Bridge create failed:', e.message); }
   }
   return null;
 }
 
-// Update a To-Do task via bridge (e.g. mark complete)
-async function updateTodoTask(taskId, listId, updates) {
-  if (isBridgeConfigured()) {
-    const baseUrl = process.env.NOVA_BRIDGE_URL;
-    const secret = process.env.NOVA_BRIDGE_SECRET;
+// Complete a To-Do task — Graph first, bridge fallback
+async function completeTodoTask(taskId, listId) {
+  const token = await getAccessToken();
+  if (token) {
     try {
+      const result = await graphPatch(`/me/todo/lists/${listId}/tasks/${taskId}`, token, {
+        status: 'completed',
+        completedDateTime: { dateTime: new Date().toISOString(), timeZone: 'UTC' }
+      });
+      console.log('[ToDo] Completed task via Graph:', taskId);
+      return result;
+    } catch (e) { console.warn('[ToDo] Graph complete failed:', e.message); }
+  }
+  // Bridge fallback
+  return updateTodoTask(taskId, listId, { status: 'completed' });
+}
+
+// Update a To-Do task — Graph first, bridge fallback
+async function updateTodoTask(taskId, listId, updates) {
+  const token = await getAccessToken();
+  if (token) {
+    try {
+      return await graphPatch(`/me/todo/lists/${listId}/tasks/${taskId}`, token, updates);
+    } catch (e) { console.warn('[ToDo] Graph update failed:', e.message); }
+  }
+  if (isBridgeConfigured()) {
+    try {
+      const baseUrl = process.env.NOVA_BRIDGE_URL;
+      const secret = process.env.NOVA_BRIDGE_SECRET;
       const res = await fetch(`${baseUrl}/api/neuro-bridge/todo/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'x-neuro-bridge-secret': secret, 'Content-Type': 'application/json' },
@@ -432,17 +532,49 @@ async function updateTodoTask(taskId, listId, updates) {
       });
       const json = await res.json();
       return json.ok ? json.data : null;
-    } catch (e) { console.warn('[ToDo] Update failed:', e.message); }
+    } catch (e) { console.warn('[ToDo] Bridge update failed:', e.message); }
   }
   return null;
 }
 
-// Update a Planner task via bridge
-async function updatePlannerTask(taskId, updates) {
-  if (isBridgeConfigured()) {
-    const baseUrl = process.env.NOVA_BRIDGE_URL;
-    const secret = process.env.NOVA_BRIDGE_SECRET;
+// Complete a Planner task — Graph first, bridge fallback
+async function completePlannerTask(taskId) {
+  const token = await getAccessToken();
+  if (token) {
     try {
+      // Planner needs the etag for concurrency — fetch task first
+      const task = await graphFetch(`/planner/tasks/${taskId}`, token);
+      if (task) {
+        const etag = task['@odata.etag'] || '*';
+        const result = await graphPatch(`/planner/tasks/${taskId}`, token,
+          { percentComplete: 100 },
+          { 'If-Match': etag }
+        );
+        console.log('[Planner] Completed task via Graph:', taskId);
+        return result;
+      }
+    } catch (e) { console.warn('[Planner] Graph complete failed:', e.message); }
+  }
+  return updatePlannerTask(taskId, { percentComplete: 100 });
+}
+
+// Update a Planner task — Graph first, bridge fallback
+async function updatePlannerTask(taskId, updates) {
+  const token = await getAccessToken();
+  if (token) {
+    try {
+      // Planner needs etag
+      const task = await graphFetch(`/planner/tasks/${taskId}`, token);
+      if (task) {
+        const etag = task['@odata.etag'] || '*';
+        return await graphPatch(`/planner/tasks/${taskId}`, token, updates, { 'If-Match': etag });
+      }
+    } catch (e) { console.warn('[Planner] Graph update failed:', e.message); }
+  }
+  if (isBridgeConfigured()) {
+    try {
+      const baseUrl = process.env.NOVA_BRIDGE_URL;
+      const secret = process.env.NOVA_BRIDGE_SECRET;
       const res = await fetch(`${baseUrl}/api/neuro-bridge/planner/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'x-neuro-bridge-secret': secret, 'Content-Type': 'application/json' },
@@ -451,7 +583,7 @@ async function updatePlannerTask(taskId, updates) {
       });
       const json = await res.json();
       return json.ok ? json.data : null;
-    } catch (e) { console.warn('[Planner] Update failed:', e.message); }
+    } catch (e) { console.warn('[Planner] Bridge update failed:', e.message); }
   }
   return null;
 }
@@ -469,7 +601,11 @@ module.exports = {
   fetchTodoTasks,
   fetchPlannerTasks,
   createTodoTask,
+  completeTodoTask,
   updateTodoTask,
+  completePlannerTask,
   updatePlannerTask,
-  graphFetch
+  graphFetch,
+  graphPost,
+  graphPatch
 };
