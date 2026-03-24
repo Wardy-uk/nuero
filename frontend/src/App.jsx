@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiUrl, getPin, setPin, clearPin } from './api';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -23,7 +24,6 @@ import JournalPanel from './components/JournalPanel';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
 import useCachedFetch from './useCachedFetch';
-import { apiUrl } from './api';
 import CacheIndicator from './components/CacheIndicator';
 import './App.css';
 
@@ -63,7 +63,85 @@ function useLocation() {
   return location;
 }
 
+function PinLogin({ onAuthenticated }) {
+  const [pin, setPinVal] = useState('');
+  const [error, setError] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const submit = async () => {
+    setChecking(true);
+    setError(null);
+    try {
+      const res = await fetch(apiUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setPin(pin);
+        onAuthenticated();
+      } else {
+        setError('Wrong PIN');
+      }
+    } catch {
+      setError('Server unreachable');
+    }
+    setChecking(false);
+  };
+
+  return (
+    <div className="pin-login">
+      <div className="pin-box">
+        <h2 className="pin-title">NEURO</h2>
+        <input
+          type="password"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          className="pin-input"
+          placeholder="Enter PIN"
+          value={pin}
+          onChange={e => setPinVal(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          autoFocus
+        />
+        {error && <div className="pin-error">{error}</div>}
+        <button className="pin-submit" onClick={submit} disabled={checking || !pin}>
+          {checking ? 'Checking...' : 'Unlock'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [authed, setAuthed] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Check if PIN is required and if stored PIN is valid
+  useEffect(() => {
+    fetch(apiUrl('/api/auth/check'), {
+      headers: { 'X-Neuro-Pin': getPin() }
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (!d.required || d.authenticated) setAuthed(true);
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        // Server unreachable — allow through if we have a stored PIN
+        if (getPin()) setAuthed(true);
+        setAuthChecked(true);
+      });
+  }, []);
+
+  if (!authChecked) return null; // loading
+  if (!authed) return <PinLogin onAuthenticated={() => setAuthed(true)} />;
+
+  return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
   const isMobile = window.innerWidth <= 768;
   const [activeView, setActiveView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);

@@ -214,6 +214,67 @@
   color: var(--text-muted) !important;
 }
 
+/* PIN login */
+.pin-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg-primary, #0a0a0a);
+}
+
+.pin-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px;
+}
+
+.pin-title {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  color: var(--accent, #4fc3f7);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.pin-input {
+  width: 200px;
+  text-align: center;
+  font-size: 24px;
+  letter-spacing: 0.3em;
+  padding: 12px;
+  background: var(--bg-secondary, #1e293b);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: var(--text-primary, #e2e8f0);
+  font-family: var(--font-mono);
+  outline: none;
+}
+
+.pin-input:focus { border-color: var(--accent, #4fc3f7); }
+
+.pin-submit {
+  padding: 10px 32px;
+  background: var(--accent, #4fc3f7);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pin-submit:disabled { opacity: 0.4; }
+
+.pin-error {
+  color: #ef4444;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
 /* Offline bar */
 .app-offline-bar {
   position: fixed;

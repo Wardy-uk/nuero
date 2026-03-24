@@ -46,6 +46,44 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// App-level auth — PIN required for all API access
+// Set NEURO_PIN in .env. If not set, auth is disabled (dev mode).
+app.use('/api', (req, res, next) => {
+  const expectedPin = process.env.NEURO_PIN;
+  if (!expectedPin) return next(); // no PIN configured = open access
+
+  // Allow auth check endpoint without PIN
+  if (req.path === '/auth/check' || req.path === '/auth/login') return next();
+
+  // Allow push subscription endpoint (service worker can't send custom headers)
+  if (req.path.startsWith('/push/')) return next();
+
+  // Allow SSE streams (nudges/stream) — they use EventSource which can't set headers
+  if (req.path === '/nudges/stream') return next();
+
+  const provided = req.headers['x-neuro-pin'] || req.query.pin;
+  if (!provided || provided !== expectedPin) {
+    return res.status(401).json({ error: 'PIN required' });
+  }
+  next();
+});
+
+// Auth endpoints (outside PIN middleware)
+app.post('/api/auth/login', (req, res) => {
+  const { pin } = req.body;
+  const expected = process.env.NEURO_PIN;
+  if (!expected) return res.json({ ok: true }); // no PIN = always ok
+  if (pin === expected) return res.json({ ok: true });
+  res.status(401).json({ ok: false, error: 'Wrong PIN' });
+});
+
+app.get('/api/auth/check', (req, res) => {
+  const expected = process.env.NEURO_PIN;
+  if (!expected) return res.json({ required: false });
+  const provided = req.headers['x-neuro-pin'] || req.query.pin;
+  res.json({ required: true, authenticated: provided === expected });
+});
+
 // API routes
 app.use('/api/chat', chatRoutes);
 app.use('/api/queue', queueRoutes);

@@ -1,3 +1,10 @@
 [build]
-  command = "rm -rf node_modules package-lock.json && cd frontend && npm install && VITE_API_URL=https://pi-dev.tailecb90f.ts.net VITE_VAULT_API_KEY=nick-agent-vault-2026 npm run build"
+  command = "rm -rf node_modules package-lock.json && cd frontend && npm install && npm run build"
   publish = "frontend/dist"
+
+[build.environment]
+  # VITE_API_URL and VITE_VAULT_API_KEY must be set in Netlify UI:
+  # Site settings > Build & deploy > Environment variables
+  # VITE_API_URL = https://pi-dev.tailecb90f.ts.net
+  # VITE_VAULT_API_KEY = (your vault key)
+  NODE_VERSION = "20"
