@@ -42,6 +42,7 @@ async function sendToAll(title, body, data = {}) {
         }
       };
       return webpush.sendNotification(pushSub, payload).catch(err => {
+        console.error(`[WebPush] Push failed: ${err.statusCode || err.code || 'unknown'} — ${err.body || err.message}`);
         // 410 Gone or 404 = subscription expired, remove it
         if (err.statusCode === 410 || err.statusCode === 404) {
           console.log('[WebPush] Removing expired subscription:', sub.endpoint.slice(0, 60));

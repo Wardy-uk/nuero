@@ -48,4 +48,31 @@ router.get('/subscriptions', (req, res) => {
   });
 });
 
+// POST /api/push/unsubscribe — remove a specific subscription
+router.post('/unsubscribe', (req, res) => {
+  const { endpoint } = req.body;
+  if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
+  try {
+    db.removePushSubscription(endpoint);
+    console.log('[Push] Unsubscribed:', endpoint.slice(0, 50));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/push/subscriptions — clear all subscriptions (re-subscribe fresh)
+router.delete('/subscriptions', (req, res) => {
+  try {
+    const subs = db.getAllPushSubscriptions();
+    for (const sub of subs) {
+      db.removePushSubscription(sub.endpoint);
+    }
+    console.log(`[Push] Cleared ${subs.length} subscriptions`);
+    res.json({ ok: true, cleared: subs.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

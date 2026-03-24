@@ -364,16 +364,33 @@ export default function AdminPanel({ pushState = {} }) {
                 <span className="admin-ms-connected-dot" />
                 This device is subscribed · {status.push?.subscriptions || 1} device{(status.push?.subscriptions || 1) !== 1 ? 's' : ''} total
               </div>
-              <button className="admin-ms-connect-btn" onClick={async () => {
-                try {
-                  const res = await fetch(apiUrl('/api/push/test'), { method: 'POST' });
-                  const data = await res.json();
-                  if (data.ok) alert('Test notification sent — you should receive it shortly');
-                  else alert('Test failed: ' + (data.error || 'unknown error'));
-                } catch (e) { alert('Test failed: ' + e.message); }
-              }}>
-                Send Test Notification
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button className="admin-ms-connect-btn" onClick={async () => {
+                  try {
+                    const res = await fetch(apiUrl('/api/push/test'), { method: 'POST' });
+                    const data = await res.json();
+                    if (data.ok) alert('Test notification sent — you should receive it shortly');
+                    else alert('Test failed: ' + (data.error || 'unknown error'));
+                  } catch (e) { alert('Test failed: ' + e.message); }
+                }}>
+                  Send Test
+                </button>
+                <button className="admin-ms-connect-btn" onClick={async () => {
+                  try {
+                    // Clear all subs, then re-subscribe
+                    await fetch(apiUrl('/api/push/subscriptions'), { method: 'DELETE' });
+                    await manualSubscribe();
+                    alert('Re-subscribed — try sending a test now');
+                  } catch (e) { alert('Re-subscribe failed: ' + e.message); }
+                }}>
+                  Re-subscribe
+                </button>
+              </div>
+              {pushError && (
+                <div className="admin-ms-desc" style={{ marginTop: '8px', color: '#ef4444' }}>
+                  Push error: {pushError}
+                </div>
+              )}
             </>
           ) : (
             <>
