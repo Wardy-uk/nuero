@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import useCachedFetch from '../useCachedFetch';
 import { apiUrl } from '../api';
+import DoNextPanel from './DoNextPanel';
 import './Dashboard.css';
 
 const START_DATE = new Date('2026-03-16');
@@ -351,8 +352,8 @@ export default function Dashboard({ queueData, onNavigate }) {
         </div>
       )}
 
-      {/* Always: Tasks */}
-      <InlineTodos onNavigate={onNavigate} />
+      {/* Do Next — replaces InlineTodos */}
+      <DoNextPanel compact={true} onNavigate={onNavigate} />
 
       {/* 90-Day progress */}
       {plan && (
@@ -365,6 +366,30 @@ export default function Dashboard({ queueData, onNavigate }) {
             <div className="progress-fill" style={{ width: `${planPct}%` }} />
             <div className="progress-marker" style={{ left: `${Math.round((plan.currentDay / 90) * 100)}%` }} />
           </div>
+        </div>
+      )}
+
+      {/* 90-Day alerts — overdue + today's plan tasks */}
+      {plan && ((plan.overdueTasks?.length > 0) || (plan.todayTasks?.length > 0)) && (
+        <div className="review-section">
+          <div className="review-section-header">
+            <span className="review-section-title">
+              90-Day Plan
+              {plan.overdueTasks?.length > 0 && <span className="review-badge-warn">{plan.overdueTasks.length} overdue</span>}
+            </span>
+            <button className="review-link" onClick={() => onNavigate?.('plan')}>Full plan</button>
+          </div>
+          {plan.overdueTasks?.slice(0, 3).map((t, i) => (
+            <div key={`o${i}`} className="dash-task task-high">
+              <span className="task-key">Day {t.day}</span>
+              <span className="task-text">{t.text}</span>
+            </div>
+          ))}
+          {plan.todayTasks?.filter(t => t.status !== 'x').map((t, i) => (
+            <div key={`t${i}`} className="dash-task">
+              <span className="task-text">{t.text}</span>
+            </div>
+          ))}
         </div>
       )}
 
