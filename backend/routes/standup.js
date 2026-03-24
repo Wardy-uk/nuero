@@ -188,6 +188,59 @@ router.post('/eod', (req, res) => {
   res.json({ success: true, path: filePath });
 });
 
+// GET /api/standup/ritual-history?days=7 — recent standups, EODs, and journals
+router.get('/ritual-history', (req, res) => {
+  const days = parseInt(req.query.days || '7', 10);
+  const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+  const fs = require('fs');
+  const pathMod = require('path');
+  const dailyDir = pathMod.join(vaultPath, 'Daily');
+  const reflectionsDir = pathMod.join(vaultPath, 'Reflections');
+  const entries = [];
+  const today = new Date();
+
+  for (let i = 0; i < days; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    const dayName = d.toLocaleDateString('en-GB', { weekday: 'short' });
+    const entry = { date: dateStr, day: dayName, standup: null, eod: null, journal: null };
+
+    // Check daily note for standup + EOD
+    const dailyFile = pathMod.join(dailyDir, `${dateStr}.md`);
+    if (fs.existsSync(dailyFile)) {
+      const content = fs.readFileSync(dailyFile, 'utf-8');
+
+      // Standup / Focus Today
+      const focusMatch = content.match(/## (?:Focus Today|Standup)[^\n]*\n([\s\S]*?)(?=\n##|$)/);
+      if (focusMatch) {
+        const lines = focusMatch[1].trim().split('\n').filter(l => l.trim()).slice(0, 5);
+        entry.standup = lines.join('\n');
+      }
+
+      // EOD
+      const eodMatch = content.match(/## EOD[^\n]*\n([\s\S]*?)(?=\n##|$)/);
+      if (eodMatch) {
+        entry.eod = eodMatch[1].trim();
+      }
+    }
+
+    // Check journal
+    const journalFile = pathMod.join(reflectionsDir, `${dateStr}-journal.md`);
+    if (fs.existsSync(journalFile)) {
+      const jContent = fs.readFileSync(journalFile, 'utf-8');
+      const body = jContent.replace(/^---[\s\S]*?---\n*/, '').trim();
+      entry.journal = body.substring(0, 500);
+    }
+
+    if (entry.standup || entry.eod || entry.journal) {
+      entries.push(entry);
+    }
+  }
+
+  res.json({ entries });
+});
+
 // POST /api/standup/weekly-review — manually trigger weekly review generation
 router.post('/weekly-review', (req, res) => {
   try {

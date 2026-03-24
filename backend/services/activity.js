@@ -278,6 +278,34 @@ function detectPatterns() {
   // Include today's live data
   const todayKey = new Date().toISOString().split('T')[0];
   const todayLive = buildDailySummary(todayKey);
+
+  // Enrich with vault-based EOD/standup detection (more reliable than DB rollup alone)
+  try {
+    const obsidian = require('./obsidian');
+    const fs = require('fs');
+    const path = require('path');
+    const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+    const dailyDir = path.join(vaultPath, 'Daily');
+    if (fs.existsSync(dailyDir)) {
+      // Check today
+      const todayFile = path.join(dailyDir, `${todayKey}.md`);
+      if (fs.existsSync(todayFile)) {
+        const content = fs.readFileSync(todayFile, 'utf-8');
+        if (content.includes('## EOD')) todayLive.eod_done = true;
+        if (content.includes('## Standup') || content.includes('## Focus Today')) todayLive.standup_done = true;
+      }
+      // Enrich recent summaries from vault too
+      for (const s of summaries) {
+        const file = path.join(dailyDir, `${s.date_key}.md`);
+        if (fs.existsSync(file)) {
+          const content = fs.readFileSync(file, 'utf-8');
+          if (content.includes('## EOD')) s.eod_done = 1;
+          if (content.includes('## Standup') || content.includes('## Focus Today')) s.standup_done = 1;
+        }
+      }
+    }
+  } catch {}
+
   const allDays = [{ ...todayLive, date_key: todayKey }, ...summaries.filter(s => s.date_key !== todayKey)];
 
   // Pattern 1: 3+ consecutive late standups (after 10am) → suggest earlier nudge

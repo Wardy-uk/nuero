@@ -9,14 +9,16 @@ export default function InsightsPanel({ onNavigate }) {
   const [applying, setApplying] = useState(null);
   const [dismissed, setDismissed] = useState(new Set());
   const [eodHistory, setEodHistory] = useState([]);
+  const [ritualHistory, setRitualHistory] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes] = await Promise.all([
+      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes, ritualRes] = await Promise.all([
         fetch(apiUrl('/api/activity/summaries?days=14')),
         fetch(apiUrl('/api/activity/suggestions')),
         fetch(apiUrl('/api/standup/today-status')),
-        fetch(apiUrl('/api/standup/eod-history?days=14'))
+        fetch(apiUrl('/api/standup/eod-history?days=14')),
+        fetch(apiUrl('/api/standup/ritual-history?days=7'))
       ]);
       const json = await summariesRes.json();
       const sugJson = await suggestionsRes.json();
@@ -33,6 +35,8 @@ export default function InsightsPanel({ onNavigate }) {
       setData(json);
       setSuggestions(sugJson.suggestions || []);
       setEodHistory(eodJson.entries || []);
+      const ritualJson = await ritualRes.json();
+      setRitualHistory(ritualJson.entries || []);
     } catch {}
     setLoading(false);
   }, []);
@@ -299,6 +303,40 @@ export default function InsightsPanel({ onNavigate }) {
           </table>
         </div>
       </div>
+
+      {/* Ritual History — standups, EODs, journals */}
+      {ritualHistory.length > 0 && (
+        <div className="insights-eod-history">
+          <div className="insights-history-title">Recent Rituals (7 days)</div>
+          <div className="eod-history-list">
+            {ritualHistory.map(entry => (
+              <div key={entry.date} className="ritual-history-entry">
+                <div className="eod-history-date">{entry.day} {entry.date.slice(5)}</div>
+                <div className="ritual-history-sections">
+                  {entry.standup && (
+                    <div className="ritual-section">
+                      <div className="ritual-section-label">Morning</div>
+                      <div className="ritual-section-content">{entry.standup}</div>
+                    </div>
+                  )}
+                  {entry.eod && (
+                    <div className="ritual-section">
+                      <div className="ritual-section-label">EOD</div>
+                      <div className="ritual-section-content">{entry.eod}</div>
+                    </div>
+                  )}
+                  {entry.journal && (
+                    <div className="ritual-section">
+                      <div className="ritual-section-label">Journal</div>
+                      <div className="ritual-section-content">{entry.journal}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* EOD History */}
       {eodHistory.length > 0 && (
