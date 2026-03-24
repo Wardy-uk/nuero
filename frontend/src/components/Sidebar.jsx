@@ -14,6 +14,7 @@ const SECONDARY_ITEMS = [
   { id: 'calendar',   label: 'Calendar',  icon: '>' },
   { id: 'inbox',      label: 'Inbox',     icon: '>' },
   { id: 'plan',       label: '90-Day Plan', icon: '>' },
+  { id: 'journal',    label: 'Journal',   icon: '>' },
   { id: 'vault',      label: 'Vault',     icon: '>' },
   { id: 'recent',     label: 'Recent',    icon: '>' },
   { id: 'imports',    label: 'Imports',   icon: '>' },

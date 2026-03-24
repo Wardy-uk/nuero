@@ -32,6 +32,8 @@
   background: var(--bg-secondary);
   display: none;
   flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .chat-panel.chat-open {
