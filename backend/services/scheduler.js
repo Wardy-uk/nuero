@@ -118,6 +118,37 @@ function start() {
     });
   });
 
+  // Startup health check — verify capture system is working
+  setTimeout(() => {
+    const fs = require('fs');
+    const path = require('path');
+    const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+    const importsDir = path.join(vaultPath, 'Imports');
+    const issues = [];
+    if (!vaultPath) issues.push('OBSIDIAN_VAULT_PATH not set');
+    else if (!fs.existsSync(vaultPath)) issues.push('Vault path does not exist');
+    if (!fs.existsSync(importsDir)) issues.push('Imports/ directory missing');
+    else {
+      try {
+        const testFile = path.join(importsDir, '.neuro-health-check');
+        fs.writeFileSync(testFile, 'ok');
+        fs.unlinkSync(testFile);
+      } catch (e) { issues.push('Imports/ not writable: ' + e.message); }
+    }
+    if (issues.length > 0) {
+      console.error('[Health] Capture system BROKEN:', issues.join(', '));
+      try {
+        require('./webpush').sendToAll(
+          'NEURO — System Alert',
+          `Capture is broken: ${issues.join(', ')}. Notes will not save.`,
+          { type: 'system_alert' }
+        ).catch(() => {});
+      } catch {}
+    } else {
+      console.log('[Health] Capture system OK — vault writable');
+    }
+  }, 15000);
+
   // Startup embedding check — rebuild 2 min after start
   setTimeout(() => {
     console.log('[Scheduler] Startup embedding check...');

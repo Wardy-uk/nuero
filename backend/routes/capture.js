@@ -58,8 +58,27 @@ router.post('/note', (req, res) => {
       : `${frontmatter(null)}${content.trim()}\n`;
 
     fs.writeFileSync(filePath, body, 'utf-8');
-    console.log(`[Capture] Note saved: ${filename}`);
-    res.json({ success: true, path: filePath, filename });
+
+    // Verify the file actually landed
+    if (!fs.existsSync(filePath)) {
+      console.error(`[Capture] VERIFICATION FAILED — file not found after write: ${filePath}`);
+      try {
+        require('../services/webpush').sendToAll(
+          'NEURO — Capture Failed',
+          `Note "${(title || content.substring(0, 30))}" did not save. Check vault path.`,
+          { type: 'capture_failed' }
+        ).catch(() => {});
+      } catch {}
+      return res.status(500).json({ error: 'File write verification failed' });
+    }
+
+    const written = fs.readFileSync(filePath, 'utf-8');
+    if (written.length < 10) {
+      console.error(`[Capture] VERIFICATION FAILED — file too small: ${written.length} bytes`);
+    }
+
+    console.log(`[Capture] Note saved and verified: ${filename} (${written.length} bytes)`);
+    res.json({ success: true, path: filePath, filename, verified: true });
     try { require('../services/activity').trackCapture('note'); } catch {}
     try { require('../services/activity').trackVaultWrite('capture'); } catch {}
     // Embed immediately so it's searchable right away, and extract entities
@@ -235,6 +254,39 @@ router.get('/recent', (req, res) => {
   } catch (e) {
     console.error('[Capture] Recent error:', e);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/capture/health — verify capture system is working
+router.get('/health', (req, res) => {
+  try {
+    const importsDir = getImportsDir();
+    const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
+    const dirExists = fs.existsSync(importsDir);
+    const vaultExists = fs.existsSync(vaultPath);
+    const writable = dirExists && (() => {
+      try {
+        const testFile = path.join(importsDir, '.neuro-health-check');
+        fs.writeFileSync(testFile, 'ok');
+        fs.unlinkSync(testFile);
+        return true;
+      } catch { return false; }
+    })();
+
+    const healthy = vaultExists && dirExists && writable;
+    if (!healthy) {
+      console.error(`[Capture] Health check FAILED — vault:${vaultExists} imports:${dirExists} writable:${writable}`);
+    }
+
+    res.json({
+      healthy,
+      vault: vaultExists,
+      importsDir: dirExists,
+      writable,
+      vaultPath: vaultPath ? '(configured)' : '(not set)'
+    });
+  } catch (e) {
+    res.status(500).json({ healthy: false, error: e.message });
   }
 });
 

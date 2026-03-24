@@ -139,11 +139,15 @@ export default function CapturePanel() {
       const data = await res.json();
       if (!res.ok) {
         setResult({ error: data.error || 'Upload failed' });
+        // Vibrate on error
+        try { navigator.vibrate?.([200, 100, 200]); } catch {}
       } else {
         const isTodo = !file && looksLikeTodo(content);
         setResult({ success: true, type: isTodo ? 'todo' : file ? 'file' : 'note' });
+        // Haptic success
+        try { navigator.vibrate?.(100); } catch {}
         fetchRecent();
-        setTimeout(resetForm, 2000);
+        setTimeout(resetForm, 3000);
       }
     } catch (err) {
       // Offline — queue text captures
@@ -184,8 +188,11 @@ export default function CapturePanel() {
       <h2 className="capture-title">Capture</h2>
 
       {result && (
-        <div className={`capture-result ${result.error ? 'error' : 'success'}`}>
-          {result.error || (result.queued ? 'Queued — will sync when online' : result.type === 'todo' ? 'Added to todos' : 'Captured')}
+        <div className={`capture-result-banner ${result.error ? 'capture-result-error' : result.queued ? 'capture-result-queued' : 'capture-result-ok'}`}>
+          <span className="capture-result-icon">{result.error ? '✗' : result.queued ? '⏳' : '✓'}</span>
+          <span className="capture-result-text">
+            {result.error || (result.queued ? 'Queued — will sync when online' : result.type === 'todo' ? 'Added to todos' : 'Captured')}
+          </span>
         </div>
       )}
 
