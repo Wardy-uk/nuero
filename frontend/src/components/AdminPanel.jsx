@@ -298,15 +298,22 @@ export default function AdminPanel({ pushState = {} }) {
                 Scopes: <span>Calendars.Read</span><span>Mail.Read</span><span>Tasks.Read</span><span>User.Read</span>
               </div>
             </>
-          ) : status.microsoft?.bridge ? (
+          ) : status.microsoft?.bridge && !deviceCode ? (
             <>
               <div className="admin-ms-connected">
                 <span className="admin-ms-connected-dot" style={{ background: '#f59e0b' }} />
-                Connected via NOVA bridge
+                Connected via NOVA bridge (fallback)
               </div>
-              <div className="admin-ms-scopes">
-                Calendar, Mail, Tasks available through bridge. MSAL not authenticated — sign in below for direct access.
+              <div className="admin-ms-scopes" style={{ marginBottom: '12px' }}>
+                Calendar, Mail, Tasks available through bridge. Sign in directly for two-way sync.
               </div>
+              <button
+                className="admin-ms-connect-btn"
+                onClick={startAuth}
+                disabled={connecting}
+              >
+                {connecting ? 'Starting...' : 'Sign in with Microsoft'}
+              </button>
             </>
           ) : deviceCode ? (
             <div className="admin-device-code">
