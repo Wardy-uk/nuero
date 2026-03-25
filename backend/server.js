@@ -178,10 +178,14 @@ app.get('/api/status', async (req, res) => {
 
 // Serve frontend static files (production — built frontend alongside backend)
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(frontendDist));
-// SPA fallback — any non-API route serves index.html
+// Hashed assets (js/css) — long cache. Everything else — no cache.
+app.use('/assets', express.static(path.join(frontendDist, 'assets'), { maxAge: '1y', immutable: true }));
+app.use(express.static(frontendDist, { maxAge: 0, etag: false }));
+// SPA fallback — any non-API route serves index.html with no-cache
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Pragma', 'no-cache');
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
