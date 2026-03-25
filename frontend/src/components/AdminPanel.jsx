@@ -288,15 +288,22 @@ export default function AdminPanel({ pushState = {} }) {
       <div className="admin-section">
         <div className="admin-section-title">Microsoft 365 Authentication</div>
         <div className="admin-ms-section">
-          {status.microsoft?.authenticated ? (
+          {status.microsoft?.authenticated && !deviceCode ? (
             <>
               <div className="admin-ms-connected">
                 <span className="admin-ms-connected-dot" />
                 Connected to Microsoft Graph (MSAL)
               </div>
-              <div className="admin-ms-scopes">
-                Scopes: <span>Calendars.Read</span><span>Mail.Read</span><span>Tasks.Read</span><span>User.Read</span>
+              <div className="admin-ms-scopes" style={{ marginBottom: '12px' }}>
+                Scopes: <span>Calendars.Read</span><span>Mail.Read</span><span>Tasks.ReadWrite</span><span>User.Read</span>
               </div>
+              <button
+                className="admin-ms-connect-btn"
+                onClick={startAuth}
+                disabled={connecting}
+              >
+                {connecting ? 'Starting...' : 'Re-authenticate'}
+              </button>
             </>
           ) : status.microsoft?.bridge && !deviceCode ? (
             <>
