@@ -129,7 +129,7 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos, onGoToJournal,
                   else if (nudge.type === 'todo') onGoToTodos();
                   else if (nudge.type === 'journal') { if (onGoToJournal) onGoToJournal(); }
                   else if (nudge.type === '121') { if (onGoToPeople) onGoToPeople(); }
-                  // plan_milestone has no specific nav action — just snooze or dismiss
+                  handleDismiss(nudge);
                 }}
               >
                 {nudge.type === 'standup' ? 'Open Standup'
