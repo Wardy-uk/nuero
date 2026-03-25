@@ -19,19 +19,27 @@ function EmailCard({ email, borderClass, onDismiss, dismissing }) {
       <div className="inbox-item-header">
         <span className="inbox-item-from">{email.from}</span>
         {email.reason && <span className="inbox-item-cat">{email.reason}</span>}
-        <button
-          className="inbox-dismiss-btn"
-          onClick={() => onDismiss(email.id)}
-          disabled={dismissing === email.id}
-          title="Dismiss"
-        >
-          {dismissing === email.id ? '...' : '\u00d7'}
-        </button>
       </div>
       <div className="inbox-item-subject">{email.subject}</div>
       {email.preview && (
         <div className="inbox-item-summary">{email.preview.substring(0, 150)}</div>
       )}
+      <div className="inbox-item-actions">
+        <button
+          className="inbox-action-btn inbox-action-done"
+          onClick={() => onDismiss(email.id)}
+          disabled={dismissing === email.id}
+        >
+          {dismissing === email.id ? '...' : 'Done'}
+        </button>
+        <button
+          className="inbox-action-btn inbox-action-ignore"
+          onClick={() => onDismiss(email.id)}
+          disabled={dismissing === email.id}
+        >
+          {dismissing === email.id ? '...' : 'Not relevant'}
+        </button>
+      </div>
     </div>
   );
 }
