@@ -1,6 +1,6 @@
 // NEURO Service Worker — offline shell caching + push notifications
 // Version — bump this string to force cache invalidation on next deploy
-const CACHE_VERSION = 'neuro-v1';
+const CACHE_VERSION = 'neuro-v2';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 
 // App shell files to precache on install
