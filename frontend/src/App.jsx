@@ -20,6 +20,7 @@ import RecentPanel from './components/RecentPanel';
 import VaultBrowser from './components/VaultBrowser';
 import StravaPanel from './components/StravaPanel';
 import InsightsPanel from './components/InsightsPanel';
+import StandupsPanel from './components/StandupsPanel';
 import JournalPanel from './components/JournalPanel';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
@@ -256,6 +257,7 @@ function AuthenticatedApp() {
       case 'vault': return <VaultBrowser initialOpenPath={vaultOpenPath} onClearInitialPath={() => setVaultOpenPath(null)} />;
       case 'qa': return <QATab />;
       case 'journal': return <JournalPanel />;
+      case 'standups': return <StandupsPanel />;
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
       case 'admin': return <AdminPanel pushState={pushState} />;
       default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;

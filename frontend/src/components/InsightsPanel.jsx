@@ -304,39 +304,7 @@ export default function InsightsPanel({ onNavigate }) {
         </div>
       </div>
 
-      {/* Ritual History — standups, EODs, journals */}
-      {ritualHistory.length > 0 && (
-        <div className="insights-eod-history">
-          <div className="insights-history-title">Recent Rituals (7 days)</div>
-          <div className="eod-history-list">
-            {ritualHistory.map(entry => (
-              <div key={entry.date} className="ritual-history-entry">
-                <div className="eod-history-date">{entry.day} {entry.date.slice(5)}</div>
-                <div className="ritual-history-sections">
-                  {entry.standup && (
-                    <div className="ritual-section">
-                      <div className="ritual-section-label">Morning</div>
-                      <div className="ritual-section-content">{entry.standup}</div>
-                    </div>
-                  )}
-                  {entry.eod && (
-                    <div className="ritual-section">
-                      <div className="ritual-section-label">EOD</div>
-                      <div className="ritual-section-content">{entry.eod}</div>
-                    </div>
-                  )}
-                  {entry.journal && (
-                    <div className="ritual-section">
-                      <div className="ritual-section-label">Journal</div>
-                      <div className="ritual-section-content">{entry.journal}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
 
       {/* EOD History */}
       {eodHistory.length > 0 && (

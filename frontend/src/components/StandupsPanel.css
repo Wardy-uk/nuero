@@ -1,0 +1,135 @@
+.standups-panel {
+  max-width: 800px;
+}
+
+.standups-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.standups-title {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.standups-range {
+  display: flex;
+  gap: 4px;
+}
+
+.standups-range-btn {
+  padding: 4px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.standups-range-btn.active {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.standups-loading, .standups-empty {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 20px 0;
+}
+
+.standups-entry {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.standups-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.standups-entry-date {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.standups-entry-badges {
+  display: flex;
+  gap: 6px;
+}
+
+.standups-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.standups-badge-ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+
+.standups-badge-miss {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.standups-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+.standups-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.standups-section-content {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.standups-section-content h2 {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 8px 0 4px;
+}
+
+.standups-section-content h2:first-child { margin-top: 0; }
+
+.standups-section-content ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.standups-section-content li { margin: 2px 0; }
+
+.standups-section-content p { margin: 4px 0; }
+
+.standups-section-content strong { color: var(--accent); }
