@@ -1,6 +1,6 @@
 // NEURO Service Worker — offline shell caching + push notifications
 // Version — bump this string to force cache invalidation on next deploy
-const CACHE_VERSION = 'neuro-v2';
+const CACHE_VERSION = 'neuro-v3';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 
 // App shell files to precache on install
@@ -62,23 +62,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App shell / static assets: cache-first with network update
+  // App shell / static assets: network-first, fall back to cache when offline
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      const fetchPromise = fetch(event.request)
-        .then(response => {
-          // Cache valid responses
-          if (response && response.status === 200) {
-            const clone = response.clone();
-            caches.open(SHELL_CACHE).then(cache => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => null);
-
-      // Return cached version immediately if available, otherwise wait for network
-      return cached || fetchPromise || new Response('Offline', { status: 503 });
-    })
+    fetch(event.request)
+      .then(response => {
+        // Cache valid responses for offline fallback
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(SHELL_CACHE).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => {
+        // Offline — serve from cache
+        return caches.match(event.request)
+          .then(cached => cached || new Response('Offline', { status: 503 }));
+      })
   );
 });
 
