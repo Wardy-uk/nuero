@@ -132,16 +132,24 @@ function pollForDraft(executionId, nameHint) {
 
 // --- Main trigger ---
 async function run121Snapshot(nameHint) {
-  const result = await apiCall(`/api/v1/workflows/${WORKFLOW_121_ID}/run`, {
-    runData: {
-      'When Executed by Another Workflow': [{ json: { nameHint } }]
-    },
-    startNodes: ['When Executed by Another Workflow']
-  });
+  // Use the webhook URL directly (the /api/v1/workflows/{id}/run endpoint is not available)
+  const result = await httpRequest('POST', '/webhook/perf-review-121', { nameHint });
 
-  const executionId = extractExecutionId(result);
+  // Webhook returns immediately — need to find the executionId from recent executions
+  let executionId = extractExecutionId(result);
 
-  // Try to extract draft from synchronous response (if n8n returned it inline)
+  // If webhook didn't return an executionId, fetch the most recent execution for this workflow
+  if (!executionId) {
+    try {
+      const execList = await apiGet(`/api/v1/executions?workflowId=${WORKFLOW_121_ID}&limit=1&status=running,waiting,new`);
+      const latest = execList?.data?.[0] || execList?.results?.[0] || execList?.[0];
+      if (latest) executionId = latest.id;
+    } catch (e) {
+      console.log('[n8n] Could not fetch recent executions:', e.message);
+    }
+  }
+
+  // Try to extract draft from synchronous response (unlikely with webhook trigger)
   const draftData = extractDraftFromExecution(result);
 
   if (draftData && executionId) {
