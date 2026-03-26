@@ -109,8 +109,9 @@ function ApprovalPanel({ approvals, onRefresh }) {
                 <div
                   className="approval-preview"
                   dangerouslySetInnerHTML={{ __html: (a.draftHtml || '')
-                    .replace(/<a[^>]*>.*?Approve & Send.*?<\/a>/gi, '')
-                    .replace(/<div[^>]*>.*?This link will expire.*?<\/div>/gi, '')
+                    .replace(/<a[^>]*Approve[^<]*<\/a>/gi, '')
+                    .replace(/<a[^>]*approve[^<]*<\/a>/gi, '')
+                    .replace(/<div[^>]*>[^<]*expire[^<]*<\/div>/gi, '')
                     .replace(/DRAFT REVIEW/gi, 'REVIEW PREVIEW')
                   }}
                 />
