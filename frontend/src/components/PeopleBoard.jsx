@@ -246,26 +246,7 @@ export default function PeopleBoard() {
   const [autoExpanded, setAutoExpanded] = useState(() => sessionStorage.getItem('people-auto-expanded') === 'true');
   const [pendingApprovals, setPendingApprovals] = useState([]);
 
-  useEffect(() => {
-    if (autoExpanded) return;
-    const allPeople = Object.values(TEAMS).flat();
-    for (const person of allPeople) {
-      const vaultData = peopleData[person.name];
-      if (!vaultData?.frontmatter) continue;
-      const status = get121Status(vaultData.frontmatter);
-      if (status?.status === 'overdue') {
-        setEditingPerson(person.name);
-        setAutoExpanded(true);
-        sessionStorage.setItem('people-auto-expanded', 'true');
-        // Scroll to overdue card after short delay
-        setTimeout(() => {
-          const el = document.querySelector(`[data-person="${person.name}"]`);
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
-        break; // only auto-expand first overdue person
-      }
-    }
-  }, [peopleData, autoExpanded]);
+  // Auto-expand removed — was opening overdue 1-2-1 forms on every page visit
 
   useEffect(() => {
     // Fetch vault notes for each person
