@@ -243,7 +243,7 @@ export default function PeopleBoard() {
   const [running121, setRunning121] = useState(null); // person name currently running
   const [snapshotResult, setSnapshotResult] = useState(null); // { name, data }
   const [editingPerson, setEditingPerson] = useState(null); // person name being updated
-  const [autoExpanded, setAutoExpanded] = useState(false);
+  const [autoExpanded, setAutoExpanded] = useState(() => sessionStorage.getItem('people-auto-expanded') === 'true');
   const [pendingApprovals, setPendingApprovals] = useState([]);
 
   useEffect(() => {
@@ -256,6 +256,7 @@ export default function PeopleBoard() {
       if (status?.status === 'overdue') {
         setEditingPerson(person.name);
         setAutoExpanded(true);
+        sessionStorage.setItem('people-auto-expanded', 'true');
         // Scroll to overdue card after short delay
         setTimeout(() => {
           const el = document.querySelector(`[data-person="${person.name}"]`);
