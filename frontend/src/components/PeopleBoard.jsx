@@ -269,7 +269,11 @@ export default function PeopleBoard() {
   const fetchApprovals = () => {
     fetch(apiUrl('/api/n8n/121/pending'))
       .then(r => r.json())
-      .then(d => setPendingApprovals(d.approvals || []))
+      .then(d => {
+        setPendingApprovals(d.approvals || []);
+        // Auto-dismiss snapshot banner once an approval appears
+        if (d.approvals?.length > 0) setSnapshotResult(null);
+      })
       .catch(() => {});
   };
 

@@ -399,7 +399,8 @@
   border: 1px solid rgba(79, 156, 249, 0.3);
   border-radius: 8px;
   margin-bottom: 24px;
-  overflow: hidden;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .approval-panel-header {
