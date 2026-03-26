@@ -64,7 +64,25 @@ function ApprovalPanel({ approvals, onRefresh }) {
       });
       const data = await res.json();
       if (data.success) {
-        setStatusMsg(prev => ({ ...prev, [approval.id]: { type: 'ok', text: 'Approved — workflow resumed' } }));
+        // Auto-download the MD review file
+        const date = new Date().toISOString().split('T')[0];
+        const fileName = `${date} – ${approval.agentName} 30-Day Performance Review.md`;
+        let markdown = approval.markdown || '';
+        const extra = (additionalSteps[approval.id] || '').trim();
+        if (extra) {
+          const lines = extra.split('\n').map(s => '- [ ] ' + s.trim()).filter(s => s.length > 6).join('\n');
+          markdown = markdown.replace(/## Tracking/, lines + '\n\n## Tracking');
+        }
+        const frontmatter = `---\ntype: performance-review\nperson: "[[People/${approval.agentName}|${approval.agentName}]]"\ndate: ${date}\nsource: n8n-workflow\n---\n\n`;
+        const blob = new Blob([frontmatter + markdown], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        setStatusMsg(prev => ({ ...prev, [approval.id]: { type: 'ok', text: 'Approved — file downloaded, workflow resumed' } }));
         setTimeout(onRefresh, 1500);
       } else {
         setStatusMsg(prev => ({ ...prev, [approval.id]: { type: 'err', text: data.error || 'Approval failed' } }));
