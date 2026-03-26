@@ -1432,11 +1432,11 @@ module.exports = {
   writeReviewToVault
 };
 
-// Write a performance review MD file to vault People/Reviews/ folder
+// Write a performance review MD file to vault Documents/HR/ folder
 function writeReviewToVault(agentName, fileName, content) {
   const vaultPath = getVaultPath();
   if (!vaultPath) throw new Error('Vault path not configured');
-  const reviewDir = path.join(vaultPath, 'People', 'Reviews');
+  const reviewDir = path.join(vaultPath, 'Documents', 'HR');
   if (!fs.existsSync(reviewDir)) fs.mkdirSync(reviewDir, { recursive: true });
   const filePath = path.join(reviewDir, fileName);
   fs.writeFileSync(filePath, content, 'utf-8');
