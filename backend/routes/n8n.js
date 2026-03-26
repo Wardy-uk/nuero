@@ -8,13 +8,13 @@ router.post('/121', async (req, res) => {
     return res.status(400).json({ error: 'n8n API key not configured (N8N_API_KEY)' });
   }
 
-  const { nameHint } = req.body;
+  const { nameHint, mode } = req.body;
   if (!nameHint) {
     return res.status(400).json({ error: 'nameHint is required' });
   }
 
   try {
-    const result = await n8n.run121Snapshot(nameHint);
+    const result = await n8n.run121Snapshot(nameHint, mode || '30day');
     res.json(result);
   } catch (err) {
     console.error('[n8n] 1-2-1 execution error:', err.message);

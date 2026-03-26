@@ -234,6 +234,33 @@
   background: rgba(79, 156, 249, 0.1);
 }
 
+/* Weekly Review button (improvement window only) */
+.person-weekly-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--bg-tertiary);
+  color: #f0ad4e;
+  border: 1px solid #f0ad4e;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.person-weekly-btn:hover {
+  background: rgba(240, 173, 78, 0.1);
+}
+
+.person-weekly-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.person-weekly-btn.running {
+  color: var(--text-muted);
+  border-color: var(--border);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
 .person-121-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;

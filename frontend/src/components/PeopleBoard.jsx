@@ -300,7 +300,7 @@ export default function PeopleBoard() {
       .catch(() => {});
   };
 
-  const run121 = async (personName) => {
+  const run121 = async (personName, mode = '30day') => {
     setRunning121(personName);
     setSnapshotResult(null);
     setEditingPerson(null);
@@ -308,7 +308,7 @@ export default function PeopleBoard() {
       const res = await fetch(apiUrl('/api/n8n/121'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nameHint: personName })
+        body: JSON.stringify({ nameHint: personName, mode })
       });
       const data = await res.json();
       setSnapshotResult({ name: personName, data });
@@ -397,6 +397,15 @@ export default function PeopleBoard() {
                         disabled={isRunning || running121 !== null}
                       >
                         {isRunning ? 'Running...' : '1-2-1 Snapshot'}
+                      </button>
+                    )}
+                    {n8nConfigured && person.note && /improvement window/i.test(person.note) && (
+                      <button
+                        className={`person-weekly-btn ${isRunning ? 'running' : ''}`}
+                        onClick={() => run121(person.name, 'weekly')}
+                        disabled={isRunning || running121 !== null}
+                      >
+                        {isRunning ? 'Running...' : 'Weekly Review'}
                       </button>
                     )}
                   </div>
