@@ -491,10 +491,40 @@
   border-radius: 6px;
   padding: 16px;
   margin: 8px 0 12px;
-  max-height: 500px;
+  max-height: 60vh;
   overflow-y: auto;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.approval-email-override {
+  margin: 8px 0;
+}
+
+.approval-email-override label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.approval-email-override input {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.approval-email-override input:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .approval-preview img {

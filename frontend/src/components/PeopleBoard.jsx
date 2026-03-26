@@ -42,6 +42,7 @@ function get121Status(frontmatter) {
 function ApprovalPanel({ approvals, onRefresh }) {
   const [expanded, setExpanded] = useState(null); // id of expanded approval
   const [additionalSteps, setAdditionalSteps] = useState({});
+  const [emailOverrides, setEmailOverrides] = useState({});
   const [acting, setActing] = useState(null); // id being acted on
   const [statusMsg, setStatusMsg] = useState({});
 
@@ -55,7 +56,7 @@ function ApprovalPanel({ approvals, onRefresh }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          agentEmail: approval.agentEmail,
+          agentEmail: emailOverrides[approval.id] || approval.agentEmail,
           agentName: approval.agentName,
           additionalSteps: additionalSteps[approval.id] || '',
           worstQaCount: 0,
@@ -109,6 +110,15 @@ function ApprovalPanel({ approvals, onRefresh }) {
                   className="approval-preview"
                   dangerouslySetInnerHTML={{ __html: a.draftHtml }}
                 />
+                <div className="approval-email-override">
+                  <label>Send to email</label>
+                  <input
+                    type="email"
+                    placeholder={a.agentEmail}
+                    value={emailOverrides[a.id] || ''}
+                    onChange={e => setEmailOverrides(prev => ({ ...prev, [a.id]: e.target.value }))}
+                  />
+                </div>
                 <div className="approval-additional">
                   <label>Additional next steps (one per line, optional)</label>
                   <textarea
