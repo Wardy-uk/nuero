@@ -108,7 +108,11 @@ function ApprovalPanel({ approvals, onRefresh }) {
               <>
                 <div
                   className="approval-preview"
-                  dangerouslySetInnerHTML={{ __html: a.draftHtml }}
+                  dangerouslySetInnerHTML={{ __html: (a.draftHtml || '')
+                    .replace(/<a[^>]*>.*?Approve & Send.*?<\/a>/gi, '')
+                    .replace(/<div[^>]*>.*?This link will expire.*?<\/div>/gi, '')
+                    .replace(/DRAFT REVIEW/gi, 'REVIEW PREVIEW')
+                  }}
                 />
                 <div className="approval-email-override">
                   <label>Send to email</label>

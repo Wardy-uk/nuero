@@ -492,10 +492,28 @@
   border-radius: 6px;
   padding: 16px;
   margin: 8px 0 12px;
-  max-height: 60vh;
-  overflow-y: auto;
+  max-height: 50vh;
+  overflow-y: scroll;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.approval-preview::-webkit-scrollbar {
+  width: 8px;
+}
+
+.approval-preview::-webkit-scrollbar-track {
+  background: #e5e7eb;
+  border-radius: 4px;
+}
+
+.approval-preview::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+
+.approval-preview::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 .approval-email-override {
