@@ -141,7 +141,7 @@ async function run121Snapshot(nameHint) {
   // If webhook didn't return an executionId, fetch the most recent execution for this workflow
   if (!executionId) {
     try {
-      const execList = await apiGet(`/api/v1/executions?workflowId=${WORKFLOW_121_ID}&limit=1&status=running,waiting,new`);
+      const execList = await apiGet(`/api/v1/executions?workflowId=${WORKFLOW_121_ID}&limit=1&status=running`);
       const latest = execList?.data?.[0] || execList?.results?.[0] || execList?.[0];
       if (latest) executionId = latest.id;
     } catch (e) {
