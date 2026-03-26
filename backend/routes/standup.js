@@ -526,7 +526,6 @@ RULES:
 
       if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
 
-      usedOllama = true;
       const reader = ollamaRes.body.getReader();
       const decoder = new TextDecoder();
 
@@ -545,9 +544,17 @@ RULES:
         }
       }
 
-      console.log('[Standup] Response via Ollama');
+      // Only mark as used if we got a meaningful response
+      if (fullResponse.trim().length > 10) {
+        usedOllama = true;
+        console.log('[Standup] Response via Ollama');
+      } else {
+        console.warn('[Standup] Ollama returned empty/short response, falling back to Claude');
+        fullResponse = '';
+      }
     } catch (ollamaErr) {
       console.warn('[Standup] Ollama failed, falling back to Claude:', ollamaErr.message);
+      fullResponse = '';
     }
 
     // Claude fallback — full streaming
