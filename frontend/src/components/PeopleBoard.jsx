@@ -261,6 +261,9 @@ export default function PeopleBoard() {
       .then(d => setN8nConfigured(d.configured))
       .catch(() => {});
     fetchApprovals();
+    // Poll for new approvals every 10s
+    const approvalTimer = setInterval(fetchApprovals, 10000);
+    return () => clearInterval(approvalTimer);
   }, []);
 
   const fetchApprovals = () => {
