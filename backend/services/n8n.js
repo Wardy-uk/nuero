@@ -92,7 +92,7 @@ function pollForDraft(executionId, nameHint) {
     }
 
     try {
-      const exec = await apiGet(`/api/v1/executions/${executionId}`);
+      const exec = await apiGet(`/api/v1/executions/${executionId}?includeData=true`);
       const waitTill = exec?.waitTill || exec?.data?.waitTill;
       const status = exec?.status || exec?.data?.status;
 
