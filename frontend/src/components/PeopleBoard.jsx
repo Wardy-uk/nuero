@@ -285,6 +285,7 @@ export default function PeopleBoard() {
   const run121 = async (personName) => {
     setRunning121(personName);
     setSnapshotResult(null);
+    setEditingPerson(null);
     try {
       const res = await fetch(apiUrl('/api/n8n/121'), {
         method: 'POST',
