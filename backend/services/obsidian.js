@@ -1428,5 +1428,17 @@ module.exports = {
   generateWeeklyReview,
   syncMicrosoftTasks,
   autoLink,
-  findOrphanedNotes
+  findOrphanedNotes,
+  writeReviewToVault
 };
+
+// Write a performance review MD file to vault People/Reviews/ folder
+function writeReviewToVault(agentName, fileName, content) {
+  const vaultPath = getVaultPath();
+  if (!vaultPath) throw new Error('Vault path not configured');
+  const reviewDir = path.join(vaultPath, 'People', 'Reviews');
+  if (!fs.existsSync(reviewDir)) fs.mkdirSync(reviewDir, { recursive: true });
+  const filePath = path.join(reviewDir, fileName);
+  fs.writeFileSync(filePath, content, 'utf-8');
+  return filePath;
+}

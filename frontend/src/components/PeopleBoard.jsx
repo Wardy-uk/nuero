@@ -39,6 +39,115 @@ function get121Status(frontmatter) {
   return { status: 'ok', daysUntil, label: `Due ${due}` };
 }
 
+function ApprovalPanel({ approvals, onRefresh }) {
+  const [expanded, setExpanded] = useState(null); // id of expanded approval
+  const [additionalSteps, setAdditionalSteps] = useState({});
+  const [acting, setActing] = useState(null); // id being acted on
+  const [statusMsg, setStatusMsg] = useState({});
+
+  if (!approvals.length) return null;
+
+  const handleApprove = async (approval) => {
+    setActing(approval.id);
+    setStatusMsg({});
+    try {
+      const res = await fetch(apiUrl(`/api/n8n/121/approve/${approval.id}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentEmail: approval.agentEmail,
+          agentName: approval.agentName,
+          additionalSteps: additionalSteps[approval.id] || '',
+          worstQaCount: 0,
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatusMsg(prev => ({ ...prev, [approval.id]: { type: 'ok', text: 'Approved — workflow resumed' } }));
+        setTimeout(onRefresh, 1500);
+      } else {
+        setStatusMsg(prev => ({ ...prev, [approval.id]: { type: 'err', text: data.error || 'Approval failed' } }));
+      }
+    } catch (e) {
+      setStatusMsg(prev => ({ ...prev, [approval.id]: { type: 'err', text: e.message } }));
+    }
+    setActing(null);
+  };
+
+  const handleDismiss = async (approval) => {
+    setActing(approval.id);
+    try {
+      await fetch(apiUrl(`/api/n8n/121/dismiss/${approval.id}`), { method: 'POST' });
+      onRefresh();
+    } catch { /* ignore */ }
+    setActing(null);
+  };
+
+  return (
+    <div className="approval-panel">
+      <div className="approval-panel-header">
+        <span className="approval-panel-title">Pending Review Approvals</span>
+        <span className="approval-badge">{approvals.length}</span>
+      </div>
+      <div className="approval-list">
+        {approvals.map(a => (
+          <div key={a.id} className="approval-item">
+            <div className="approval-item-header">
+              <span className="approval-item-name">{a.agentName}</span>
+              <span className="approval-item-date">{new Date(a.receivedAt).toLocaleString()}</span>
+            </div>
+            {a.subject && <div className="approval-item-subject">{a.subject}</div>}
+            <button
+              className="approval-preview-toggle"
+              onClick={() => setExpanded(expanded === a.id ? null : a.id)}
+            >
+              {expanded === a.id ? 'Hide Preview' : 'Show Preview'}
+            </button>
+            {expanded === a.id && (
+              <>
+                <div
+                  className="approval-preview"
+                  dangerouslySetInnerHTML={{ __html: a.draftHtml }}
+                />
+                <div className="approval-additional">
+                  <label>Additional next steps (one per line, optional)</label>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. Schedule follow-up with team lead..."
+                    value={additionalSteps[a.id] || ''}
+                    onChange={e => setAdditionalSteps(prev => ({ ...prev, [a.id]: e.target.value }))}
+                  />
+                </div>
+              </>
+            )}
+            {statusMsg[a.id] && (
+              <div className={`approval-status-msg ${statusMsg[a.id].type}`}>
+                {statusMsg[a.id].text}
+              </div>
+            )}
+            <div className="approval-actions">
+              <button
+                className="approval-btn-approve"
+                onClick={() => handleApprove(a)}
+                disabled={acting === a.id}
+              >
+                {acting === a.id ? 'Approving...' : 'Approve & Send'}
+              </button>
+              <button
+                className="approval-btn-dismiss"
+                onClick={() => handleDismiss(a)}
+                disabled={acting === a.id}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function UpdateForm({ name, frontmatter, onClose, onSaved }) {
   const fm = frontmatter || {};
   const [last121, setLast121] = useState(fm['last-1-2-1'] || '');
@@ -102,6 +211,7 @@ export default function PeopleBoard() {
   const [snapshotResult, setSnapshotResult] = useState(null); // { name, data }
   const [editingPerson, setEditingPerson] = useState(null); // person name being updated
   const [autoExpanded, setAutoExpanded] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState([]);
 
   useEffect(() => {
     if (autoExpanded) return;
@@ -135,12 +245,20 @@ export default function PeopleBoard() {
         .catch(() => {});
     });
 
-    // Check n8n status
+    // Check n8n status + pending approvals
     fetch(apiUrl('/api/n8n/status'))
       .then(r => r.json())
       .then(d => setN8nConfigured(d.configured))
       .catch(() => {});
+    fetchApprovals();
   }, []);
+
+  const fetchApprovals = () => {
+    fetch(apiUrl('/api/n8n/121/pending'))
+      .then(r => r.json())
+      .then(d => setPendingApprovals(d.approvals || []))
+      .catch(() => {});
+  };
 
   const run121 = async (personName) => {
     setRunning121(personName);
@@ -153,6 +271,9 @@ export default function PeopleBoard() {
       });
       const data = await res.json();
       setSnapshotResult({ name: personName, data });
+      // Refresh approvals after a delay (n8n takes time to process)
+      setTimeout(fetchApprovals, 15000);
+      setTimeout(fetchApprovals, 30000);
     } catch (e) {
       setSnapshotResult({ name: personName, data: { success: false, error: e.message } });
     }
@@ -162,6 +283,8 @@ export default function PeopleBoard() {
   return (
     <div className="people-board">
       <h2 className="people-title">Team / People</h2>
+
+      <ApprovalPanel approvals={pendingApprovals} onRefresh={fetchApprovals} />
 
       {snapshotResult && (
         <div className={`snapshot-result ${snapshotResult.data.success ? 'success' : 'error'}`}>
