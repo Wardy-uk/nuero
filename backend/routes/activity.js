@@ -80,24 +80,13 @@ router.post('/rebuild-embeddings', async (req, res) => {
 });
 
 // GET /api/activity/vault-sync — vault sync status
-router.get('/vault-sync', (req, res) => {
-  try {
-    const vaultSync = require('../services/vault-sync');
-    res.json(vaultSync.getStatus());
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+router.get("/vault-sync", (req, res) => {
+  res.json({ enabled: true, mode: "syncthing", note: "Managed externally via Syncthing over Tailscale" });
 });
 
-// POST /api/activity/vault-sync — trigger manual vault sync
-router.post('/vault-sync', async (req, res) => {
-  try {
-    const vaultSync = require('../services/vault-sync');
-    const result = await vaultSync.syncVault('manual');
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+// POST /api/activity/vault-sync — no-op (syncthing manages sync)
+router.post("/vault-sync", (req, res) => {
+  res.json({ ok: true, mode: "syncthing", note: "Sync is managed by Syncthing — no manual trigger needed" });
 });
 
 module.exports = router;

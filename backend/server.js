@@ -169,10 +169,11 @@ app.get('/api/status', async (req, res) => {
       configured: require('./services/location').isConfigured(),
       recorderUrl: process.env.OWNTRACKS_RECORDER_URL || null
     },
-    vaultSync: (() => {
-      try { return require('./services/vault-sync').getStatus(); }
-      catch { return { enabled: false }; }
-    })()
+    vaultSync: {
+      enabled: true,
+      mode: "syncthing",
+      note: "Managed externally via Syncthing over Tailscale"
+    }
   });
 });
 
@@ -204,10 +205,6 @@ async function start() {
   inboxScanner.start();
 
   scheduler.start();
-
-  // Start vault git sync (replaces Windows Task Scheduler VaultSync job)
-  const vaultSync = require('./services/vault-sync');
-  vaultSync.start();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] NUERO running on 0.0.0.0:${PORT}`);
