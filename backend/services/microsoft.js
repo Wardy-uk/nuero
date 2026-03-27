@@ -195,7 +195,7 @@ function graphFetch(urlPath, token) {
       });
     });
     req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Graph API timeout')); });
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Graph API timeout')); });
   });
 }
 
