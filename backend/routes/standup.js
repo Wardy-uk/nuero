@@ -521,7 +521,7 @@ RULES:
           stream: true,
           options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
         }),
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(30000)
       });
 
       if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
