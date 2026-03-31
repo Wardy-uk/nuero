@@ -54,7 +54,7 @@ ${JSON.stringify(emailSummary, null, 2)}`;
       model: OLLAMA_MODEL,
       prompt,
       stream: false,
-      options: { temperature: 0.1, num_predict: 1500 }
+      options: { temperature: 0.1, num_ctx: 2048, num_predict: 512 }
     }),
     signal: AbortSignal.timeout(90000)
   });
@@ -120,7 +120,6 @@ async function scanInbox() {
     } catch (ollamaErr) {
       console.warn('[InboxScanner] Ollama failed, falling back to Claude:', ollamaErr.message);
       if (process.env.ANTHROPIC_API_KEY) {
-        try {
         const Anthropic = require('@anthropic-ai/sdk');
         const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const response = await client.messages.create({
@@ -132,9 +131,7 @@ async function scanInbox() {
         const text = response.content[0]?.text || '[]';
         const jsonMatch = text.match(/\[[\s\S]*\]/);
         parsed = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
-        } catch (claudeErr) {
-          console.warn("[InboxScanner] Claude fallback also failed:", claudeErr.message);
-        }
+        console.log('[InboxScanner] Triaged via Claude (fallback)');
       }
     }
 

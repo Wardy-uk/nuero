@@ -190,8 +190,9 @@ async function classifyWithOllama(fileName, content) {
       model: OLLAMA_MODEL,
       prompt: buildClassifyPrompt(fileName, content),
       stream: false,
-      options: { temperature: 0.1, num_predict: 256 }
-    })
+      options: { temperature: 0.1, num_ctx: 2048, num_predict: 256 }
+    }),
+    signal: AbortSignal.timeout(60000)
   });
 
   if (!ollamaRes.ok) {

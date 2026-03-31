@@ -570,8 +570,9 @@ async function streamOllama(systemPrompt, messages, res) {
       model: OLLAMA_MODEL,
       messages: ollamaMessages,
       stream: true,
-      options: { temperature: 0.7, num_ctx: 4096, num_predict: 1024 }
-    })
+      options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+    }),
+    signal: AbortSignal.timeout(120000)
   });
 
   if (!response.ok) {

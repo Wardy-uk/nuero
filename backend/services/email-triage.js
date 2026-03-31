@@ -28,7 +28,7 @@ ${emailList}`;
       model: OLLAMA_MODEL,
       prompt,
       stream: false,
-      options: { temperature: 0.1, num_predict: 600 }
+      options: { temperature: 0.1, num_ctx: 2048, num_predict: 512 }
     }),
     signal: AbortSignal.timeout(60000)
   });

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import './NinetyDayPlan.css';
 
@@ -7,8 +8,29 @@ const OUTCOME_ICONS = {
 };
 
 export default function NinetyDayPlan() {
-  const { data: plan } = useCachedFetch('/api/obsidian/ninety-day-plan');
+  const { data: plan, refresh } = useCachedFetch('/api/obsidian/ninety-day-plan');
   const [expandedOutcome, setExpandedOutcome] = useState(null);
+  const [toggling, setToggling] = useState(null); // lineNumber being toggled
+
+  const toggleTask = useCallback(async (task) => {
+    if (toggling) return;
+    setToggling(task.lineNumber);
+    try {
+      const res = await fetch(apiUrl('/api/todos/toggle'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath: plan.filePath,
+          lineNumber: task.lineNumber - 1  // API expects 0-based
+        })
+      });
+      if (res.ok) refresh();
+    } catch (e) {
+      console.error('Toggle failed:', e);
+    } finally {
+      setToggling(null);
+    }
+  }, [plan, toggling, refresh]);
 
   if (!plan) return <div className="plan-container"><p className="plan-loading">Loading plan…</p></div>;
 
@@ -68,7 +90,10 @@ export default function NinetyDayPlan() {
             <strong>{plan.overdueTasks.length} overdue</strong>
             <ul className="plan-alert-list">
               {plan.overdueTasks.map((t, i) => (
-                <li key={i}><span className="plan-task-day">D{t.day}</span> {t.text}</li>
+                <li key={i} className={`plan-task-toggle ${toggling === t.lineNumber ? 'toggling' : ''}`} onClick={() => toggleTask(t)}>
+                  <span className="plan-task-check">{toggling === t.lineNumber ? '⏳' : '○'}</span>
+                  <span className="plan-task-day">D{t.day}</span> {t.text}
+                </li>
               ))}
             </ul>
           </div>
@@ -82,8 +107,9 @@ export default function NinetyDayPlan() {
             <strong>Today — Day {plan.currentDay}</strong>
             <ul className="plan-alert-list">
               {plan.todayTasks.map((t, i) => (
-                <li key={i} className={t.status === 'x' ? 'done' : ''}>
-                  {t.status === 'x' ? '✓ ' : ''}{t.text}
+                <li key={i} className={`plan-task-toggle ${t.status === 'x' ? 'done' : ''} ${toggling === t.lineNumber ? 'toggling' : ''}`} onClick={() => toggleTask(t)}>
+                  <span className="plan-task-check">{toggling === t.lineNumber ? '⏳' : t.status === 'x' ? '✓' : '○'}</span>
+                  {t.text}
                 </li>
               ))}
             </ul>
@@ -97,7 +123,8 @@ export default function NinetyDayPlan() {
           <h3 className="plan-week-title">This Week</h3>
           <ul className="plan-week-list">
             {plan.thisWeekTasks.map((t, i) => (
-              <li key={i} className={`plan-week-item ${t.status === '>' ? 'slipped' : ''}`}>
+              <li key={i} className={`plan-week-item plan-task-toggle ${t.status === '>' ? 'slipped' : ''} ${toggling === t.lineNumber ? 'toggling' : ''}`} onClick={() => toggleTask(t)}>
+                <span className="plan-task-check">{toggling === t.lineNumber ? '⏳' : '○'}</span>
                 <span className="plan-task-day">D{t.day}</span>
                 {t.outcome && <span className="plan-outcome-dot" style={{ background: plan.outcomes[t.outcome]?.color }} />}
                 <span className="plan-task-text">{t.text}</span>
@@ -130,9 +157,10 @@ export default function NinetyDayPlan() {
               {isExpanded && o.tasks.length > 0 && (
                 <ul className="plan-outcome-tasks">
                   {o.tasks.map((t, i) => (
-                    <li key={i} className={`plan-ot ${t.status === 'x' ? 'done' : t.day < plan.currentDay && t.status !== 'x' ? 'overdue' : ''}`}>
-                      <span className="plan-ot-status">
-                        {t.status === 'x' ? '✓' : t.status === '>' ? '→' : t.status === '/' ? '◐' : '○'}
+                    <li key={i} className={`plan-ot plan-task-toggle ${t.status === 'x' ? 'done' : t.day < plan.currentDay && t.status !== 'x' ? 'overdue' : ''} ${toggling === t.lineNumber ? 'toggling' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); toggleTask(t); }}>
+                      <span className="plan-task-check">
+                        {toggling === t.lineNumber ? '⏳' : t.status === 'x' ? '✓' : t.status === '>' ? '→' : t.status === '/' ? '◐' : '○'}
                       </span>
                       <span className="plan-task-day">D{t.day}</span>
                       <span className="plan-ot-text">{t.text}</span>

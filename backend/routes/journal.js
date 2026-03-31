@@ -122,7 +122,7 @@ ${contextSummary}`;
           model: process.env.OLLAMA_MODEL || 'qwen2.5:3b',
           prompt: journalPromptText,
           stream: false,
-          options: { temperature: 0.7, num_predict: 200 }
+          options: { temperature: 0.7, num_ctx: 2048, num_predict: 200 }
         }),
         signal: AbortSignal.timeout(30000)
       });

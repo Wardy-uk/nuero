@@ -413,3 +413,45 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Clickable task items */
+.plan-task-toggle {
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.plan-task-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.plan-task-toggle.done {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.plan-task-toggle.done:hover {
+  opacity: 0.8;
+}
+
+.plan-task-toggle.toggling {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.plan-task-check {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.plan-task-toggle:hover .plan-task-check {
+  color: var(--accent);
+}
