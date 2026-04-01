@@ -26,7 +26,7 @@ function EodCapture({ onDone }) {
   };
   return (
     <div className="backup-standup">
-      <h3>End of Day</h3>
+      <h3>End of Day — Quick</h3>
       <p style={{ color: '#888', fontSize: '13px', margin: '0 0 16px' }}>2 minutes. Then close the laptop.</p>
       <input className="backup-input" type="text" placeholder="One win today..." value={win} onChange={e => setWin(e.target.value)} inputMode="text" autoFocus />
       <input className="backup-input" type="text" placeholder="One thing that didn't go to plan..." value={didntGo} onChange={e => setDidntGo(e.target.value)} inputMode="text" />
@@ -35,6 +35,160 @@ function EodCapture({ onDone }) {
         {message && <span className="standup-message">{message}</span>}
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save EOD'}</button>
       </div>
+    </div>
+  );
+}
+
+function GuidedEod({ onDone }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [phase, setPhase] = useState('start');
+  const [noteSaved, setNoteSaved] = useState(false);
+  const [started, setStarted] = useState(false);
+  const [guidedError, setGuidedError] = useState(false);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendToNeuro = useCallback(async (userMessage, isStart = false) => {
+    const newMessages = isStart ? [] : [...messages, { role: 'user', content: userMessage }];
+    if (!isStart) setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+    setStreaming(true);
+    setInput('');
+
+    try {
+      const res = await fetch(apiUrl('/api/standup/eod/interactive'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages, phase: isStart ? 'start' : phase })
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullText = '';
+      let hadError = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'text') {
+              fullText += data.content;
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: 'assistant', content: fullText };
+                return updated;
+              });
+            } else if (data.type === 'done') {
+              if (data.noteSaved) { setNoteSaved(true); setPhase('done'); }
+            } else if (data.type === 'error') {
+              hadError = true;
+              if (isStart) setGuidedError(true);
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: 'assistant', content: `Error: ${data.content}` };
+                return updated;
+              });
+            }
+          } catch {}
+        }
+      }
+
+      if (isStart && (hadError || !fullText)) setGuidedError(true);
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: 'assistant', content: fullText };
+        return updated;
+      });
+      setPhase(prev => prev === 'start' ? 'answering' : prev);
+    } catch (err) {
+      if (isStart) setGuidedError(true);
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: 'assistant', content: `Connection error: ${err.message}` };
+        return updated;
+      });
+    }
+    setStreaming(false);
+    inputRef.current?.focus();
+  }, [messages, phase]);
+
+  useEffect(() => {
+    if (!started) { setStarted(true); sendToNeuro('', true); }
+  }, [started, sendToNeuro]);
+
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text || streaming || phase === 'done') return;
+    sendToNeuro(text, false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  };
+
+  const cleanContent = (content) => {
+    return content.replace(/===EOD_NOTE_START===[\s\S]*?===EOD_NOTE_END===/g, '').trim();
+  };
+
+  if (guidedError) {
+    return (
+      <div className="standup-done-banner" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
+        <span>Guided EOD unavailable — falling back to quick mode.</span>
+        <button className="btn btn-secondary" onClick={onDone}>Switch to Quick</button>
+      </div>
+    );
+  }
+
+  if (noteSaved) {
+    return (
+      <div className="guided-done">
+        <div className="guided-done-icon">✓</div>
+        <div className="guided-done-title">EOD written</div>
+        <div className="guided-done-sub">Have a good evening.</div>
+        {onDone && <button className="btn btn-secondary" style={{ marginTop: '16px' }} onClick={onDone}>Close</button>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="guided-standup">
+      <div className="guided-messages">
+        {messages.length === 0 && <div className="guided-loading">Starting your EOD...</div>}
+        {messages.map((msg, i) => {
+          const content = msg.role === 'assistant' ? cleanContent(msg.content) : msg.content;
+          if (!content && msg.role === 'assistant' && i === messages.length - 1 && streaming) {
+            return <div key={i} className="guided-bubble assistant"><span className="guided-thinking">thinking...</span></div>;
+          }
+          if (!content) return null;
+          return (
+            <div key={i} className={`guided-bubble ${msg.role}`}>
+              {msg.role === 'assistant' ? <ReactMarkdown>{content}</ReactMarkdown> : <span>{content}</span>}
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+      {phase !== 'done' && (
+        <div className="guided-input-row">
+          <textarea ref={inputRef} className="guided-input" value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown} placeholder={streaming ? '' : 'Your answer...'} rows={2}
+            disabled={streaming} autoFocus spellCheck={true} autoCorrect="on" />
+          <button className="guided-send" onClick={handleSend} disabled={streaming || !input.trim()}>→</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -384,6 +538,7 @@ export default function StandupEditor() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [showEod, setShowEod] = useState(false);
+  const [eodMode, setEodMode] = useState('guided'); // 'guided' | 'quick'
   const [guidedDone, setGuidedDone] = useState(false);
 
   const { data: standupData, status: standupStatus } = useCachedFetch('/api/standup');
@@ -427,8 +582,19 @@ export default function StandupEditor() {
   return (
     <div className="standup-editor">
 
-      {/* EOD always available */}
-      {showEod && <EodCapture onDone={() => setShowEod(false)} />}
+      {/* EOD section */}
+      {showEod && (
+        <div style={{ marginBottom: '16px' }}>
+          <div className="standup-mode-toggle" style={{ marginBottom: '12px' }}>
+            <button className={`mode-btn ${eodMode === 'guided' ? 'active' : ''}`} onClick={() => setEodMode('guided')}>Guided</button>
+            <button className={`mode-btn ${eodMode === 'quick' ? 'active' : ''}`} onClick={() => setEodMode('quick')}>Quick</button>
+          </div>
+          {eodMode === 'guided'
+            ? <GuidedEod onDone={() => { setShowEod(false); setEodMode('quick'); }} />
+            : <EodCapture onDone={() => setShowEod(false)} />
+          }
+        </div>
+      )}
 
       {/* Mode toggle + EOD button */}
       <div className="standup-header">
