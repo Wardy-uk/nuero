@@ -54,9 +54,9 @@ ${JSON.stringify(emailSummary, null, 2)}`;
       model: OLLAMA_MODEL,
       prompt,
       stream: false,
-      options: { temperature: 0.1, num_ctx: 2048, num_predict: 512 }
+      options: { temperature: 0.1, num_ctx: 4096, num_predict: 512 }
     }),
-    signal: AbortSignal.timeout(90000)
+    signal: AbortSignal.timeout(300000)
   });
 
   if (!res.ok) throw new Error(`Ollama error: ${res.status}`);

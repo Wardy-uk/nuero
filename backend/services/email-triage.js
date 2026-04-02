@@ -28,9 +28,9 @@ ${emailList}`;
       model: OLLAMA_MODEL,
       prompt,
       stream: false,
-      options: { temperature: 0.1, num_ctx: 2048, num_predict: 512 }
+      options: { temperature: 0.1, num_ctx: 4096, num_predict: 512 }
     }),
-    signal: AbortSignal.timeout(60000)
+    signal: AbortSignal.timeout(300000)
   });
 
   if (!res.ok) throw new Error(`Ollama error: ${res.status}`);
@@ -97,7 +97,7 @@ Respond with ONLY a JSON array. Format: [{"index": 0, "category": "ACTION", "rea
 // Run a full triage cycle — fetch, classify, store
 async function runTriage() {
   const microsoft = require('./microsoft');
-  if (!microsoft.isBridgeConnected() && !(await microsoft.isAuthenticated())) {
+  if (!microsoft.isBridgeConfigured() && !(await microsoft.isAuthenticated())) {
     return { ok: false, reason: 'M365 not connected' };
   }
 
