@@ -275,7 +275,7 @@ async function fetchRecentEmails(hoursBack = 24, maxResults = 50) {
       const filter = `receivedDateTime ge ${since}`;
       const select = 'id,subject,from,receivedDateTime,isRead,importance,flag,bodyPreview,hasAttachments';
       const data = await graphFetch(
-        `/me/messages?$filter=${encodeURIComponent(filter)}&$top=${maxResults}&$orderby=receivedDateTime desc&$select=${select}`,
+        `/me/mailFolders/Inbox/messages?$filter=${encodeURIComponent(filter)}&$top=${maxResults}&$orderby=receivedDateTime desc&$select=${select}`,
         token
       );
       if (data && data.value) {
