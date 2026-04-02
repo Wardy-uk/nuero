@@ -282,7 +282,7 @@ function AuthenticatedApp() {
       <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={() => { setActiveView('todos'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('journal'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} />
       <InstallBanner />
       {/* Mobile bottom nav */}
-      <nav className="mobile-bottom-nav">
+      <nav className={`mobile-bottom-nav ${chatOpen ? 'chat-active-hide' : ''}`}>
         <button className={activeView === 'dashboard' ? 'active' : ''} onClick={() => handleNavigate('dashboard')}>
           <span className="bottom-nav-icon">&#x2B21;</span>
           <span>Review</span>

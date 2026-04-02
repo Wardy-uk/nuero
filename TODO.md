@@ -1,6 +1,18 @@
 # NEURO — Snag List Task Tracker
 
-**Updated:** 2026-03-21
+**Updated:** 2026-03-23
+
+---
+
+## Pending — Due 2026-04-06
+
+- [ ] AI cost reduction — Phase 2 (Pi 5 8GB — when hardware arrives)
+  - Pull qwen2.5:7b on new Pi
+  - Swap OLLAMA_TRIAGE_MODEL=qwen2.5:7b in .env
+  - Move transcript-processor.js to Ollama (7B handles structured JSON from transcripts)
+  - Add intent-based chat routing: simple factual queries → Ollama, complex/drafting → Claude
+  - Test quality of all Ollama services vs Claude baseline
+  - Review Claude spend — target under $0.50/day
 
 ---
 
@@ -14,6 +26,7 @@
 - [x] SNAG-008 — Update .env.example with all env vars
 - [x] SNAG-009 — Add cache TTL to cacheStore and useCachedFetch
 - [x] SNAG-010 — Add decisions GET endpoint to chat routes
+- [x] Ollama cost reduction Phase 1 — email triage, inbox scanner, journal prompts, standup, context scoping
 
 ---
 
