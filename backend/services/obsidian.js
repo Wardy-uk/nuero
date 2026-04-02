@@ -634,7 +634,7 @@ async function fetchCalendarEvents(startDate, endDate) {
 
 // 90-day plan parser
 function parseNinetyDayPlan() {
-  const planPath = path.join(getVaultPath(), 'Areas', '90 Day Plan - Daily Tasks.md');
+  const planPath = path.join(getVaultPath(), 'Projects', '90 Day Plan', '90 Day Plan - Daily Tasks.md');
   if (!fs.existsSync(planPath)) return null;
   const content = fs.readFileSync(planPath, 'utf-8');
 
