@@ -25,6 +25,15 @@ function start() {
     } catch (e) { console.error('[Scheduler] Pre-warm error:', e.message); }
   });
 
+  // 4:55pm weekdays — pre-warm EOD (loads Ollama model + generates Phase 1)
+  cron.schedule('55 16 * * 1-5', () => {
+    console.log('[Scheduler] 4:55pm — pre-warming EOD');
+    try {
+      const standupRouter = require('../routes/standup');
+      if (standupRouter.preWarmEod) standupRouter.preWarmEod();
+    } catch (e) { console.error('[Scheduler] EOD pre-warm error:', e.message); }
+  });
+
   // 9am weekdays — trigger standup and todo nudges
   cron.schedule('0 9 * * 1-5', () => {
     console.log('[Scheduler] 9am — triggering standup + todo nudges');
@@ -256,7 +265,7 @@ function start() {
     }
   });
 
-  console.log('[Scheduler] Started — pre-warm 8:55am, standup 9am, 1-2-1 9:10am, nag 15m, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, escalations 5m, flagged 5m, email triage 8/12/17, meeting prep 5m, imports 23:30, PLAUD 30m, MS Tasks 30m');
+  console.log('[Scheduler] Started — pre-warm 8:55am, standup 9am, 1-2-1 9:10am, nag 15m, EOD pre-warm 4:55pm, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, escalations 5m, flagged 5m, email triage 8/12/17, meeting prep 5m, imports 23:30, PLAUD 30m, MS Tasks 30m');
 }
 
 module.exports = { start };

@@ -195,8 +195,188 @@ async function preWarmStandup() {
   }
 }
 
+// ── EOD pre-warm cache ──────────────────────────────────────────────────
+const eodCache = {
+  date: null,
+  systemPrompt: null,
+  phase1Response: null,
+  warming: false,
+};
+
+async function buildEodContext() {
+  const today = new Date();
+  const todayStr = obsidianService.todayDateString();
+  const dow = today.toLocaleDateString('en-GB', { weekday: 'long' });
+  const isFriday = today.getDay() === 5;
+
+  let focusItems = [];
+  let carryOvers = [];
+  const dailyNote = obsidianService.readTodayDailyNote();
+  if (dailyNote) {
+    const lines = dailyNote.split('\n');
+    let inFocus = false, inCarry = false;
+    for (const line of lines) {
+      if (line.startsWith('## Focus Today')) { inFocus = true; inCarry = false; continue; }
+      if (line.startsWith('## Carry')) { inCarry = true; inFocus = false; continue; }
+      if (line.startsWith('## ')) { inFocus = false; inCarry = false; continue; }
+      if (inFocus && line.match(/^\s*-\s+\[.\]/)) {
+        const done = !!line.match(/^\s*-\s+\[x\]/i);
+        const text = line.replace(/^\s*-\s+\[.\]\s*/, '').replace(/#\w+/g, '').trim();
+        if (text) focusItems.push({ text, done });
+      }
+      if (inCarry && line.match(/^\s*-\s+\[.\]/)) {
+        const done = !!line.match(/^\s*-\s+\[x\]/i);
+        const text = line.replace(/^\s*-\s+\[.\]\s*/, '').replace(/#\w+/g, '').trim();
+        if (text) carryOvers.push({ text, done });
+      }
+    }
+  }
+
+  let statsContext = '';
+  try {
+    const activity = require('../services/activity');
+    const db = require('../db/database');
+    const summary = activity.buildDailySummary(todayStr);
+    const allTodos = db.getAllTodos();
+    const completedToday = allTodos.filter(t => t.done && t.completed_at && t.completed_at.startsWith(todayStr)).length;
+    let doNextCompleted = 0;
+    try { const doNextAll = db.getAllDoNext(); doNextCompleted = doNextAll.filter(t => t.done && t.completed_at && t.completed_at.startsWith(todayStr)).length; } catch {}
+    let meetingsAttended = 0;
+    try {
+      const calEvents = db.getCalendarEvents(todayStr + 'T00:00:00', todayStr + 'T23:59:59');
+      const now = new Date();
+      meetingsAttended = calEvents.filter(e => e.show_as !== 'cancelled' && !e.is_all_day && new Date(e.end_time) < now).length;
+    } catch {}
+    const parts = [];
+    if (completedToday > 0) parts.push(`${completedToday} todos completed`);
+    if (doNextCompleted > 0) parts.push(`${doNextCompleted} do-next tasks done`);
+    if (meetingsAttended > 0) parts.push(`${meetingsAttended} meetings attended`);
+    if ((summary.escalations_raised || 0) > 0) parts.push(`${summary.escalations_raised} escalations raised`);
+    if ((summary.escalations_resolved || 0) > 0) parts.push(`${summary.escalations_resolved} escalations resolved`);
+    if ((summary.captures_count || 0) > 0) parts.push(`${summary.captures_count} captures`);
+    if (parts.length > 0) statsContext = `Activity today: ${parts.join(', ')}.`;
+  } catch {}
+
+  let queueContext = '';
+  try {
+    const db = require('../db/database');
+    const queue = db.getQueueSummary();
+    if (queue.total > 0) {
+      queueContext = `Queue at EOD: ${queue.total} open tickets, ${queue.at_risk_count} at risk, ${queue.open_p1s} P1s.`;
+    }
+  } catch {}
+
+  const focusSummary = focusItems.length > 0
+    ? `Morning focus items: ${focusItems.map(f => `${f.done ? '✓' : '○'} ${f.text}`).join('; ')}`
+    : 'No morning standup found today.';
+  const carrySummary = carryOvers.length > 0
+    ? `Carry-overs: ${carryOvers.map(c => `${c.done ? '✓' : '○'} ${c.text}`).join('; ')}`
+    : '';
+
+  const systemPrompt = `You are NEURO running Nick's end-of-day reflection. Nick is Head of Technical Support at Nurtur Limited.
+
+Your job: guide Nick through a quick EOD reflection in 3-4 short exchanges, then write the EOD section to his daily note.
+
+TODAY: ${dow} ${todayStr}${isFriday ? ' (Friday — wrap up the week, not just the day)' : ''}
+
+CONTEXT:
+${focusSummary}
+${carrySummary}
+${statsContext || 'No activity data available.'}
+${queueContext || ''}
+
+EOD FLOW — follow this exactly:
+
+Phase 1 (start): Give a brief end-of-day summary (2-3 lines — what was planned vs what got done based on focus items). Then ask ONE question: "What was your biggest win today?"
+
+Phase 2 (after win): Ask: "Anything that didn't go to plan or got in the way?"
+
+Phase 3 (after blockers): ${isFriday ? 'Ask: "It\'s Friday — how are you heading into the weekend? Anything lingering?"' : 'Ask: "How are you feeling — energy levels, stress, anything to note?"'}
+
+Phase 4 (finalise): Say "Writing your EOD now..." then output the EOD section in this EXACT format between the markers:
+
+===EOD_NOTE_START===
+
+## EOD — ${todayStr}
+
+**Win:** [main win Nick mentioned]
+
+**Didn't go to plan:** [what didn't go well, or: Nothing flagged]
+
+**Feeling:** [how Nick is feeling]
+
+**Focus check:** [brief summary — e.g. "2/3 focus items done, carry-over cleared"]
+
+${queueContext ? `**Queue:** ${queueContext}` : ''}
+===EOD_NOTE_END===
+
+RULES:
+- One question at a time. Never ask two things in one message.
+- Keep your messages short — 3 lines max except the EOD note.
+- Don't repeat what Nick just said back to him.
+- Don't add unnecessary affirmations ("Great!", "Perfect!").
+- The EOD markers must appear EXACTLY as shown — the app parses them.
+- After writing the EOD note, say something brief to sign off. No more questions.
+- This is a wind-down ritual, not a planning session. Keep it light.`;
+
+  return { systemPrompt, todayStr };
+}
+
+async function preWarmEod() {
+  const todayStr = obsidianService.todayDateString();
+  if (eodCache.date === todayStr && eodCache.phase1Response) {
+    console.log('[EOD] Pre-warm skipped — already cached for today');
+    return;
+  }
+  if (eodCache.warming) {
+    console.log('[EOD] Pre-warm already in progress');
+    return;
+  }
+
+  eodCache.warming = true;
+  console.log('[EOD] Pre-warming EOD for', todayStr);
+
+  try {
+    const { systemPrompt } = await buildEodContext();
+    const ollamaMessages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: 'Start my EOD.' }
+    ];
+
+    const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
+        messages: ollamaMessages,
+        stream: false,
+        options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+      }),
+      signal: AbortSignal.timeout(300000)
+    });
+
+    if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
+    const data = await ollamaRes.json();
+    const response = data.message?.content || '';
+
+    if (response.trim().length > 10) {
+      eodCache.date = todayStr;
+      eodCache.systemPrompt = systemPrompt;
+      eodCache.phase1Response = response;
+      console.log(`[EOD] Pre-warm complete — ${response.length} chars cached`);
+    } else {
+      console.warn('[EOD] Pre-warm got empty response from Ollama');
+    }
+  } catch (err) {
+    console.error('[EOD] Pre-warm failed:', err.message);
+  } finally {
+    eodCache.warming = false;
+  }
+}
+
 // Export for scheduler
 router.preWarmStandup = preWarmStandup;
+router.preWarmEod = preWarmEod;
 
 // GET /api/standup
 router.get('/', (req, res) => {
@@ -580,15 +760,31 @@ router.post('/pre-warm', async (req, res) => {
   }
 });
 
-// GET /api/standup/pre-warm-status — check if cache is ready
+// GET /api/standup/pre-warm-status — check if caches are ready
 router.get('/pre-warm-status', (req, res) => {
   const todayStr = obsidianService.todayDateString();
   res.json({
-    cached: standupCache.date === todayStr && !!standupCache.phase1Response,
-    warming: standupCache.warming,
-    cacheDate: standupCache.date,
-    responseLength: standupCache.phase1Response?.length || 0
+    standup: {
+      cached: standupCache.date === todayStr && !!standupCache.phase1Response,
+      warming: standupCache.warming,
+      responseLength: standupCache.phase1Response?.length || 0
+    },
+    eod: {
+      cached: eodCache.date === todayStr && !!eodCache.phase1Response,
+      warming: eodCache.warming,
+      responseLength: eodCache.phase1Response?.length || 0
+    }
   });
+});
+
+// POST /api/standup/eod/pre-warm — manually trigger EOD pre-warm
+router.post('/eod/pre-warm', async (req, res) => {
+  try {
+    preWarmEod();
+    res.json({ ok: true, message: 'EOD pre-warm started' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // POST /api/standup/interactive — Claude-guided standup session
@@ -760,128 +956,15 @@ router.post('/eod/interactive', async (req, res) => {
     'Access-Control-Allow-Origin': '*'
   });
 
+  let closed = false;
+  res.on('close', () => { closed = true; });
+  const safeSend = (data) => { if (!closed) try { res.write(data); } catch {} };
+  const safeEnd = () => { if (!closed) try { res.end(); } catch {} };
+
   try {
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-    const today = new Date();
     const todayStr = obsidianService.todayDateString();
-    const dow = today.toLocaleDateString('en-GB', { weekday: 'long' });
-    const isFriday = today.getDay() === 5;
-
-    // Read today's daily note for focus items
-    let focusItems = [];
-    let carryOvers = [];
-    const dailyNote = obsidianService.readTodayDailyNote();
-    if (dailyNote) {
-      const lines = dailyNote.split('\n');
-      let inFocus = false, inCarry = false;
-      for (const line of lines) {
-        if (line.startsWith('## Focus Today')) { inFocus = true; inCarry = false; continue; }
-        if (line.startsWith('## Carry')) { inCarry = true; inFocus = false; continue; }
-        if (line.startsWith('## ')) { inFocus = false; inCarry = false; continue; }
-        if (inFocus && line.match(/^\s*-\s+\[.\]/)) {
-          const done = !!line.match(/^\s*-\s+\[x\]/i);
-          const text = line.replace(/^\s*-\s+\[.\]\s*/, '').replace(/#\w+/g, '').trim();
-          if (text) focusItems.push({ text, done });
-        }
-        if (inCarry && line.match(/^\s*-\s+\[.\]/)) {
-          const done = !!line.match(/^\s*-\s+\[x\]/i);
-          const text = line.replace(/^\s*-\s+\[.\]\s*/, '').replace(/#\w+/g, '').trim();
-          if (text) carryOvers.push({ text, done });
-        }
-      }
-    }
-
-    // Gather daily stats
-    let statsContext = '';
-    try {
-      const activity = require('../services/activity');
-      const db = require('../db/database');
-      const summary = activity.buildDailySummary(todayStr);
-      const allTodos = db.getAllTodos();
-      const completedToday = allTodos.filter(t => t.done && t.completed_at && t.completed_at.startsWith(todayStr)).length;
-      let doNextCompleted = 0;
-      try { const doNextAll = db.getAllDoNext(); doNextCompleted = doNextAll.filter(t => t.done && t.completed_at && t.completed_at.startsWith(todayStr)).length; } catch {}
-      let meetingsAttended = 0;
-      try {
-        const calEvents = db.getCalendarEvents(todayStr + 'T00:00:00', todayStr + 'T23:59:59');
-        const now = new Date();
-        meetingsAttended = calEvents.filter(e => e.show_as !== 'cancelled' && !e.is_all_day && new Date(e.end_time) < now).length;
-      } catch {}
-      const parts = [];
-      if (completedToday > 0) parts.push(`${completedToday} todos completed`);
-      if (doNextCompleted > 0) parts.push(`${doNextCompleted} do-next tasks done`);
-      if (meetingsAttended > 0) parts.push(`${meetingsAttended} meetings attended`);
-      if ((summary.escalations_raised || 0) > 0) parts.push(`${summary.escalations_raised} escalations raised`);
-      if ((summary.escalations_resolved || 0) > 0) parts.push(`${summary.escalations_resolved} escalations resolved`);
-      if ((summary.captures_count || 0) > 0) parts.push(`${summary.captures_count} captures`);
-      if (parts.length > 0) statsContext = `Activity today: ${parts.join(', ')}.`;
-    } catch {}
-
-    // Queue end-of-day state
-    let queueContext = '';
-    try {
-      const db = require('../db/database');
-      const queue = db.getQueueSummary();
-      if (queue.total > 0) {
-        queueContext = `Queue at EOD: ${queue.total} open tickets, ${queue.at_risk_count} at risk, ${queue.open_p1s} P1s.`;
-      }
-    } catch {}
-
-    const focusSummary = focusItems.length > 0
-      ? `Morning focus items: ${focusItems.map(f => `${f.done ? '✓' : '○'} ${f.text}`).join('; ')}`
-      : 'No morning standup found today.';
-
-    const carrySummary = carryOvers.length > 0
-      ? `Carry-overs: ${carryOvers.map(c => `${c.done ? '✓' : '○'} ${c.text}`).join('; ')}`
-      : '';
-
-    const systemPrompt = `You are NEURO running Nick's end-of-day reflection. Nick is Head of Technical Support at Nurtur Limited.
-
-Your job: guide Nick through a quick EOD reflection in 3-4 short exchanges, then write the EOD section to his daily note.
-
-TODAY: ${dow} ${todayStr}${isFriday ? ' (Friday — wrap up the week, not just the day)' : ''}
-
-CONTEXT:
-${focusSummary}
-${carrySummary}
-${statsContext || 'No activity data available.'}
-${queueContext || ''}
-
-EOD FLOW — follow this exactly:
-
-Phase 1 (start): Give a brief end-of-day summary (2-3 lines — what was planned vs what got done based on focus items). Then ask ONE question: "What was your biggest win today?"
-
-Phase 2 (after win): Ask: "Anything that didn't go to plan or got in the way?"
-
-Phase 3 (after blockers): ${isFriday ? 'Ask: "It\'s Friday — how are you heading into the weekend? Anything lingering?"' : 'Ask: "How are you feeling — energy levels, stress, anything to note?"'}
-
-Phase 4 (finalise): Say "Writing your EOD now..." then output the EOD section in this EXACT format between the markers:
-
-===EOD_NOTE_START===
-
-## EOD — ${todayStr}
-
-**Win:** [main win Nick mentioned]
-
-**Didn't go to plan:** [what didn't go well, or: Nothing flagged]
-
-**Feeling:** [how Nick is feeling]
-
-**Focus check:** [brief summary — e.g. "2/3 focus items done, carry-over cleared"]
-
-${queueContext ? `**Queue:** ${queueContext}` : ''}
-===EOD_NOTE_END===
-
-RULES:
-- One question at a time. Never ask two things in one message.
-- Keep your messages short — 3 lines max except the EOD note.
-- Don't repeat what Nick just said back to him.
-- Don't add unnecessary affirmations ("Great!", "Perfect!").
-- The EOD markers must appear EXACTLY as shown — the app parses them.
-- After writing the EOD note, say something brief to sign off. No more questions.
-- This is a wind-down ritual, not a planning session. Keep it light.`;
 
     const claudeMessages = messages.map(m => ({ role: m.role, content: m.content }));
     if (phase === 'start' || claudeMessages.length === 0) {
@@ -891,51 +974,70 @@ RULES:
     let fullResponse = '';
     let usedOllama = false;
 
-    // Try Ollama first
-    try {
-      const ollamaMessages = [{ role: 'system', content: systemPrompt }, ...claudeMessages];
-      const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: process.env.OLLAMA_MODEL || 'qwen2.5:3b',
-          messages: ollamaMessages,
-          stream: true,
-          options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
-        }),
-        signal: AbortSignal.timeout(120000)
-      });
-      if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
-      const reader = ollamaRes.body.getReader();
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n').filter(l => l.trim())) {
-          try {
-            const data = JSON.parse(line);
-            if (data.message?.content) {
-              fullResponse += data.message.content;
-              res.write(`data: ${JSON.stringify({ type: 'text', content: data.message.content })}\n\n`);
-            }
-          } catch {}
-        }
+    // ── Phase 1 cache hit — serve pre-warmed EOD response instantly ──
+    if ((phase === 'start' || claudeMessages.length === 1) &&
+        eodCache.date === todayStr && eodCache.phase1Response) {
+      console.log('[EOD] Serving pre-warmed Phase 1 response');
+      fullResponse = eodCache.phase1Response;
+      usedOllama = true;
+      const words = fullResponse.split(' ');
+      const chunkSize = 3;
+      for (let i = 0; i < words.length; i += chunkSize) {
+        const chunk = words.slice(i, i + chunkSize).join(' ') + (i + chunkSize < words.length ? ' ' : '');
+        safeSend(`data: ${JSON.stringify({ type: 'text', content: chunk })}\n\n`);
       }
-      if (fullResponse.trim().length > 10) {
-        usedOllama = true;
-        console.log('[EOD] Response via Ollama');
-      } else {
-        console.warn('[EOD] Ollama returned empty/short response, falling back to Claude');
+    }
+
+    // ── Live Ollama/Claude call (cache miss or follow-up phases) ──
+    const ctx = !usedOllama ? await buildEodContext() : null;
+    const systemPrompt = usedOllama && eodCache.systemPrompt ? eodCache.systemPrompt : ctx?.systemPrompt;
+
+    if (!usedOllama) {
+      try {
+        const ollamaMessages = [{ role: 'system', content: systemPrompt }, ...claudeMessages];
+        const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
+            messages: ollamaMessages,
+            stream: true,
+            options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+          }),
+          signal: AbortSignal.timeout(180000)
+        });
+        if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
+        const reader = ollamaRes.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          for (const line of chunk.split('\n').filter(l => l.trim())) {
+            try {
+              const data = JSON.parse(line);
+              if (data.message?.content) {
+                fullResponse += data.message.content;
+                safeSend(`data: ${JSON.stringify({ type: 'text', content: data.message.content })}\n\n`);
+              }
+            } catch {}
+          }
+        }
+        if (fullResponse.trim().length > 10) {
+          usedOllama = true;
+          console.log('[EOD] Response via Ollama');
+        } else {
+          console.warn('[EOD] Ollama returned empty/short response, falling back to Claude');
+          fullResponse = '';
+        }
+      } catch (ollamaErr) {
+        console.warn('[EOD] Ollama failed, falling back to Claude:', ollamaErr.message);
         fullResponse = '';
       }
-    } catch (ollamaErr) {
-      console.warn('[EOD] Ollama failed, falling back to Claude:', ollamaErr.message);
-      fullResponse = '';
     }
 
     // Claude fallback
-    if (!usedOllama) {
+    if (!usedOllama && systemPrompt) {
       const stream = client.messages.stream({
         model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
         max_tokens: 1024,
@@ -944,11 +1046,11 @@ RULES:
       });
       stream.on('text', (text) => {
         fullResponse += text;
-        res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
+        safeSend(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
       });
       stream.on('error', (err) => {
-        res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
-        res.end();
+        safeSend(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+        safeEnd();
       });
       res.on('close', () => stream.abort());
       await new Promise((resolve) => stream.on('end', resolve));
@@ -968,20 +1070,20 @@ RULES:
           require('../services/activity').trackQueueSnapshot(queue.at_risk_count || 0, queue.total || 0, queue.open_p1s || 0);
         } catch {}
         try { require('../services/activity').trackEodDone(); } catch {}
-        res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: true })}\n\n`);
+        safeSend(`data: ${JSON.stringify({ type: 'done', noteSaved: true })}\n\n`);
       } catch (e) {
         console.error('[EOD] Failed to write EOD note:', e.message);
-        res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: false, noteError: e.message })}\n\n`);
+        safeSend(`data: ${JSON.stringify({ type: 'done', noteSaved: false, noteError: e.message })}\n\n`);
       }
     } else {
-      res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: false })}\n\n`);
+      safeSend(`data: ${JSON.stringify({ type: 'done', noteSaved: false })}\n\n`);
     }
 
-    res.end();
+    safeEnd();
   } catch (err) {
     console.error('[EOD] Interactive error:', err.message);
-    res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
-    res.end();
+    safeSend(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+    safeEnd();
   }
 });
 
