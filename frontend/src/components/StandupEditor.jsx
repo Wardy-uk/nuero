@@ -193,10 +193,40 @@ function GuidedEod({ onDone }) {
   );
 }
 
+function MustDoPanel({ items }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="mustdo-panel">
+      <div className="mustdo-header">
+        <span className="mustdo-icon">!</span>
+        <span className="mustdo-title">Must Do Today — Non-Negotiable</span>
+        <span className="mustdo-count">{items.length}</span>
+      </div>
+      <ul className="mustdo-list">
+        {items.map((item, i) => (
+          <li key={i} className="mustdo-item">
+            <span className="mustdo-bullet" />
+            <span>{item.text}</span>
+            {item.due_date && <span className="mustdo-due">{item.due_date}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function BackupStandup({ onDone }) {
   const [items, setItems] = useState(['', '', '']);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [mustDos, setMustDos] = useState([]);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/standup/must-dos'))
+      .then(r => r.json())
+      .then(d => setMustDos(d.items || []))
+      .catch(() => {});
+  }, []);
 
   const updateItem = (idx, val) => {
     const next = [...items];
@@ -234,6 +264,7 @@ function BackupStandup({ onDone }) {
 
   return (
     <div className="backup-standup">
+      <MustDoPanel items={mustDos} />
       <h3>Quick Standup (max 3 items)</h3>
       <p style={{ color: '#888', fontSize: '13px', margin: '0 0 16px' }}>
         Lightweight backup — what matters today?
@@ -269,8 +300,16 @@ function GuidedStandup({ onDone }) {
   const [noteError, setNoteError] = useState(null);
   const [started, setStarted] = useState(false);
   const [guidedError, setGuidedError] = useState(false);
+  const [mustDos, setMustDos] = useState([]);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/standup/must-dos'))
+      .then(r => r.json())
+      .then(d => setMustDos(d.items || []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -404,6 +443,7 @@ function GuidedStandup({ onDone }) {
   if (guidedError) {
     return (
       <div className="standup-done-banner" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
+        <MustDoPanel items={mustDos} />
         <span>Guided mode unavailable — Claude API may be down.</span>
         <button className="btn btn-secondary" onClick={onDone}>Switch to Manual</button>
       </div>
@@ -427,6 +467,7 @@ function GuidedStandup({ onDone }) {
 
   return (
     <div className="guided-standup">
+      <MustDoPanel items={mustDos} />
       <div className="guided-messages">
         {messages.length === 0 && (
           <div className="guided-loading">Starting your standup...</div>
@@ -498,7 +539,7 @@ function TodayStandup() {
         let current = [];
 
         for (const line of lines) {
-          if (/^## (Standup|Focus Today|Carry)/i.test(line)) {
+          if (/^## (Standup|Must Do Today|Focus Today|Carry)/i.test(line)) {
             if (current.length > 0) sections.push(current.join('\n'));
             current = [line];
             capture = true;

@@ -329,6 +329,86 @@ function parseVaultTodos() {
   return { active, done };
 }
 
+// Scan vault for open #mustdo tasks — New ToDos.md, daily notes, and other task files
+function parseVaultMustDos() {
+  if (!isConfigured()) return [];
+
+  const vaultPath = getVaultPath();
+  const mustDos = [];
+  const seen = new Set();
+
+  // Helper: scan a file for open tasks tagged #mustdo
+  function scanFileForMustDos(filePath, source) {
+    if (!fs.existsSync(filePath)) return;
+    let content;
+    try { content = fs.readFileSync(filePath, 'utf-8'); } catch { return; }
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.includes('#mustdo')) continue;
+
+      // Must be a checkbox line
+      const match = line.match(/^[\s]*-\s+\[([ x>\/])\]\s+(.+)$/);
+      if (!match) continue;
+
+      const statusChar = match[1];
+      if (statusChar === 'x') continue; // skip done
+
+      const rawText = match[2].trim();
+
+      // Clean display text (same as parseTaskLine)
+      let text = rawText
+        .replace(/<!--.*?-->/g, '')
+        .replace(/\[\[([^|]*?\|)?([^\]]*?)\]\]/g, '$2')
+        .replace(/due::\d{4}-\d{2}-\d{2}/g, '')
+        .replace(/📅\s*\d{4}-\d{2}-\d{2}/g, '')
+        .replace(/🕑\s*\d{2}:\d{2}/g, '')
+        .replace(/#\w+/g, '')
+        .replace(/\*\(.*?\)\*/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s*—\s*$/, '')
+        .trim();
+
+      if (text.startsWith('**') && text.endsWith('**')) {
+        text = text.slice(2, -2);
+      }
+      if (!text) continue;
+
+      // Extract due date
+      let due_date = null;
+      const dueMatch = rawText.match(/(?:due::(\d{4}-\d{2}-\d{2})|📅\s*(\d{4}-\d{2}-\d{2}))/);
+      if (dueMatch) due_date = dueMatch[1] || dueMatch[2];
+
+      // Deduplicate by first 60 chars
+      const dedupeKey = text.substring(0, 60).toLowerCase();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      mustDos.push({ text, due_date, source, filePath, lineNumber: i });
+    }
+  }
+
+  // 1. Scan New ToDos.md
+  scanFileForMustDos(path.join(vaultPath, 'Tasks', 'New ToDos.md'), 'New ToDos');
+
+  // 2. Scan Master Todo.md
+  scanFileForMustDos(path.join(vaultPath, 'Tasks', 'Master Todo.md'), 'Master Todo');
+
+  // 3. Scan today's daily note
+  const todayFile = path.join(vaultPath, 'Daily', `${todayDateString()}.md`);
+  scanFileForMustDos(todayFile, 'Daily Note');
+
+  // 4. Scan yesterday's daily note (for carry-overs)
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const yesterdayFile = path.join(vaultPath, 'Daily', `${yesterdayStr}.md`);
+  scanFileForMustDos(yesterdayFile, `Daily ${yesterdayStr}`);
+
+  return mustDos;
+}
+
 function parseTaskLine(line) {
   // Match markdown checkboxes: - [ ], - [x], - [>], - [/]
   const match = line.match(/^[\s]*-\s+\[([ x>\/])\]\s+(.+)$/);
@@ -1412,6 +1492,7 @@ module.exports = {
   extractTags,
   todayDateString,
   parseVaultTodos,
+  parseVaultMustDos,
   parseVaultCalendar,
   fetchCalendarEvents,
   parseNinetyDayPlan,

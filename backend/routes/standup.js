@@ -93,6 +93,8 @@ router.post('/backup', (req, res) => {
     }
 
     const items = focusItems.slice(0, 3);
+    let mustDoItems = [];
+    try { mustDoItems = obsidianService.parseVaultMustDos(); } catch {}
     const today = obsidianService.todayDateString();
     const d = new Date();
     const dayName = d.toLocaleDateString('en-GB', { weekday: 'long' });
@@ -132,6 +134,10 @@ router.post('/backup', (req, res) => {
       }
     }
 
+    const mustDoSection = mustDoItems.length > 0
+      ? `## Must Do Today\n${mustDoItems.map(m => `- [ ] ${m.text} #mustdo`).join('\n')}\n\n`
+      : '';
+
     const content = `---
 type: daily
 date: ${today}
@@ -141,7 +147,7 @@ week: ${weekStr}
 
 > ${framing}
 
-## Focus Today
+${mustDoSection}## Focus Today
 ${focusSection}
 
 ## Carry-Overs
@@ -358,6 +364,17 @@ router.get('/eod-history', (req, res) => {
   res.json({ entries });
 });
 
+// GET /api/standup/must-dos — open #mustdo tasks from vault
+router.get('/must-dos', (req, res) => {
+  try {
+    const mustDos = obsidianService.parseVaultMustDos();
+    res.json({ items: mustDos });
+  } catch (e) {
+    console.error('[Standup] Must-dos error:', e);
+    res.json({ items: [] });
+  }
+});
+
 // POST /api/standup/interactive — Claude-guided standup session
 router.post('/interactive', async (req, res) => {
   const { messages = [], phase = 'start' } = req.body;
@@ -438,6 +455,15 @@ router.post('/interactive', async (req, res) => {
       }
     } catch {}
 
+    let mustDoContext = '';
+    let mustDoItems = [];
+    try {
+      mustDoItems = obsidianService.parseVaultMustDos();
+      if (mustDoItems.length > 0) {
+        mustDoContext = `MUST DO (non-negotiable): ${mustDoItems.map(m => m.text).join('; ')}.`;
+      }
+    } catch {}
+
     // System prompt for the guided standup
     const systemPrompt = `You are NEURO running Nick's morning standup ritual. Nick is Head of Technical Support at Nurtur Limited.
 
@@ -446,6 +472,7 @@ Your job: guide Nick through a focused standup in 3-4 short exchanges, then writ
 TODAY: ${dow} ${todayStr}${isMonday ? ' (Monday — ask about the week ahead, not just today)' : ''}
 
 CONTEXT:
+${mustDoContext || ''}
 ${queueContext || 'Queue data unavailable.'}
 ${planContext || ''}
 ${calendarContext || ''}
@@ -453,7 +480,7 @@ ${carryOvers.length > 0 ? `Carry-overs from yesterday: ${carryOvers.join('; ')}`
 
 STANDUP FLOW — follow this exactly:
 
-Phase 1 (start): Give a brief, sharp morning brief (2-3 lines max — queue status, any at-risk, one key thing from the plan). Then ask ONE question: "What's your main focus today?"
+Phase 1 (start): ${mustDoItems.length > 0 ? `Lead with Must Do items: "You have ${mustDoItems.length} non-negotiable${mustDoItems.length > 1 ? 's' : ''} today: ${mustDoItems.map(m => m.text).join('; ')}." Then give a brief morning context (2-3 lines max — queue status, at-risk, plan).` : 'Give a brief, sharp morning brief (2-3 lines max — queue status, any at-risk, one key thing from the plan).'} Then ask ONE question: "What's your main focus today?"
 
 Phase 2 (after focus answer): Ask: "Any blockers or things that need escalating?"
 
@@ -467,9 +494,12 @@ type: daily
 date: ${todayStr}
 ---
 # Daily Note — ${dow} ${todayStr}
-
+${mustDoItems.length > 0 ? `
+## Must Do Today
+${mustDoItems.map(m => `- [ ] ${m.text} #mustdo`).join('\n')}
+` : ''}
 ## Focus Today
-[checkbox list of focus items Nick mentioned, each as: - [ ] item text]
+[checkbox list of focus items Nick mentioned, each as: - [ ] item text — do NOT include any Must Do items here]
 
 ## Carry-Overs
 ${carryOvers.length > 0 ? carryOvers.map(c => `- [ ] ${c}`).join('\n') : '- None'}

@@ -30,6 +30,35 @@ function getTimeOfDay() {
 
 // ── Inline Standup (morning section) ──────────────────────────────────────
 
+function InlineMustDos() {
+  const [mustDos, setMustDos] = useState([]);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/standup/must-dos'))
+      .then(r => r.json())
+      .then(d => setMustDos(d.items || []))
+      .catch(() => {});
+  }, []);
+
+  if (mustDos.length === 0) return null;
+
+  return (
+    <div className="review-section" style={{ border: '1px solid rgba(239, 68, 68, 0.35)', borderLeft: '3px solid #ef4444', background: 'rgba(239, 68, 68, 0.04)' }}>
+      <div className="review-section-header">
+        <span className="review-section-title" style={{ color: '#ef4444' }}>
+          Must Do — Non-Negotiable ({mustDos.length})
+        </span>
+      </div>
+      {mustDos.map((item, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', fontSize: '13px', fontFamily: 'var(--font-mono)' }}>
+          <span style={{ width: 6, height: 6, background: '#ef4444', borderRadius: '50%', flexShrink: 0 }} />
+          <span>{item.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function InlineStandup() {
   const [ritualData, setRitualData] = useState(null);
   const [phase, setPhase] = useState('idle'); // idle, running, done
@@ -362,6 +391,9 @@ export default function Dashboard({ queueData, onNavigate }) {
           {plan && <span className="stat-sub">Day {plan.currentDay}</span>}
         </div>
       </div>
+
+      {/* Must Do items — always visible */}
+      <InlineMustDos />
 
       {/* Morning: Standup */}
       {timeOfDay === 'morning' && <InlineStandup />}
