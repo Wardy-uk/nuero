@@ -102,12 +102,25 @@ function start() {
   });
 
   // Evening journal nudge — time configurable via agent_state 'journal_nudge_time' (default '21:00')
+  // Pre-warm fires 5 minutes before the configured journal time
   cron.schedule('* 20-22 * * *', () => {
     try {
       const db = require('../db/database');
       const configuredTime = db.getState('journal_nudge_time') || '21:00';
       const [targetHour, targetMin] = configuredTime.split(':').map(Number);
       const now = new Date();
+
+      // Pre-warm journal prompts 5 min before nudge
+      let preWarmHour = targetHour, preWarmMin = targetMin - 5;
+      if (preWarmMin < 0) { preWarmMin += 60; preWarmHour -= 1; }
+      if (now.getHours() === preWarmHour && now.getMinutes() === preWarmMin) {
+        console.log('[Scheduler] Pre-warming journal prompts');
+        try {
+          const journalRouter = require('../routes/journal');
+          if (journalRouter.preWarmJournal) journalRouter.preWarmJournal();
+        } catch (e) { console.error('[Scheduler] Journal pre-warm error:', e.message); }
+      }
+
       if (now.getHours() === targetHour && now.getMinutes() === targetMin) {
         nudges.triggerJournalNudge();
       }
