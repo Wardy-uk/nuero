@@ -3,6 +3,201 @@ const router = express.Router();
 const obsidianService = require('../services/obsidian');
 const nudges = require('../services/nudges');
 
+// ── Standup pre-warm cache ──────────────────────────────────────────────
+// Pre-generates the Phase 1 Ollama response before the user opens the standup,
+// so the first message appears instantly instead of waiting 60-130s for cold-start.
+const standupCache = {
+  date: null,        // YYYY-MM-DD this cache is valid for
+  systemPrompt: null,
+  phase1Response: null,
+  warming: false,
+};
+
+// Build the full standup context (same logic as the interactive handler)
+async function buildStandupContext() {
+  const today = new Date();
+  const todayStr = obsidianService.todayDateString();
+  const dow = today.toLocaleDateString('en-GB', { weekday: 'long' });
+  const isMonday = today.getDay() === 1;
+
+  let carryOvers = [];
+  try {
+    const prev = obsidianService.readPreviousDailyNote();
+    if (prev) {
+      const lines = prev.content.split('\n');
+      let inFocus = false;
+      for (const line of lines) {
+        if (line.startsWith('## Focus Today') || line.startsWith('## Carry')) { inFocus = true; continue; }
+        if (line.startsWith('## ') && inFocus) break;
+        if (inFocus && (line.match(/^\s*-\s+\[\s\]/) || line.match(/^\s*-\s+\[>\]/))) {
+          const text = line.replace(/^\s*-\s+\[.\]\s*/, '').replace(/#\w+/g, '').trim();
+          if (text) carryOvers.push(text);
+        }
+      }
+    }
+  } catch {}
+
+  let queueContext = '';
+  try {
+    const db = require('../db/database');
+    const queue = db.getQueueSummary();
+    if (queue.total > 0) {
+      queueContext = `Queue: ${queue.total} open tickets, ${queue.at_risk_count} at risk, ${queue.open_p1s} P1s.`;
+      if (queue.at_risk_tickets.length > 0) {
+        queueContext += ` At risk: ${queue.at_risk_tickets.slice(0, 3).map(t => t.ticket_key + ' ' + t.summary).join('; ')}.`;
+      }
+    }
+  } catch {}
+
+  let planContext = '';
+  try {
+    const plan = obsidianService.parseNinetyDayPlan();
+    if (plan) {
+      planContext = `90-day plan: Day ${plan.currentDay} of ${plan.totalDays}. ${plan.totalDone}/${plan.totalTasks} tasks done.`;
+      if (plan.todayTasks.length > 0) planContext += ` Today's tasks: ${plan.todayTasks.map(t => t.text).join('; ')}.`;
+      if (plan.overdueTasks.length > 0) planContext += ` ${plan.overdueTasks.length} overdue tasks.`;
+    }
+  } catch {}
+
+  let calendarContext = '';
+  try {
+    const events = await obsidianService.fetchCalendarEvents(todayStr, todayStr);
+    if (events && events.length > 0) {
+      const upcoming = events.filter(e => e.showAs !== 'cancelled');
+      if (upcoming.length > 0) {
+        calendarContext = `Today's calendar: ${upcoming.map(e => {
+          const time = e.start ? e.start.substring(11, 16) : '';
+          return time ? `${time} ${e.subject}` : e.subject;
+        }).join(', ')}.`;
+      }
+    }
+  } catch {}
+
+  let mustDoContext = '';
+  let mustDoItems = [];
+  try {
+    mustDoItems = obsidianService.parseVaultMustDos();
+    if (mustDoItems.length > 0) mustDoContext = `MUST DO (non-negotiable): ${mustDoItems.map(m => m.text).join('; ')}.`;
+  } catch {}
+
+  const systemPrompt = `You are NEURO running Nick's morning standup ritual. Nick is Head of Technical Support at Nurtur Limited.
+
+Your job: guide Nick through a focused standup in 3-4 short exchanges, then write his daily note.
+
+TODAY: ${dow} ${todayStr}${isMonday ? ' (Monday — ask about the week ahead, not just today)' : ''}
+
+CONTEXT:
+${mustDoContext || ''}
+${queueContext || 'Queue data unavailable.'}
+${planContext || ''}
+${calendarContext || ''}
+${carryOvers.length > 0 ? `Carry-overs from yesterday: ${carryOvers.join('; ')}` : 'No carry-overs.'}
+
+STANDUP FLOW — follow this exactly:
+
+Phase 1 (start): ${mustDoItems.length > 0 ? `Lead with Must Do items: "You have ${mustDoItems.length} non-negotiable${mustDoItems.length > 1 ? 's' : ''} today: ${mustDoItems.map(m => m.text).join('; ')}." Then give a brief morning context (2-3 lines max — queue status, at-risk, plan).` : 'Give a brief, sharp morning brief (2-3 lines max — queue status, any at-risk, one key thing from the plan).'} Then ask ONE question: "What's your main focus today?"
+
+Phase 2 (after focus answer): Ask: "Any blockers or things that need escalating?"
+
+Phase 3 (after blockers answer): ${isMonday ? 'Ask: "How are you going into the week — anything to flag energy or capacity-wise?"' : 'Ask: "Anything else before I write this up?"'}
+
+Phase 4 (finalise): Say "Writing your daily note now..." then output the daily note in this EXACT format between the markers:
+
+===DAILY_NOTE_START===
+---
+type: daily
+date: ${todayStr}
+---
+# Daily Note — ${dow} ${todayStr}
+${mustDoItems.length > 0 ? `
+## Must Do Today
+${mustDoItems.map(m => `- [ ] ${m.text} #mustdo`).join('\n')}
+` : ''}
+## Focus Today
+[checkbox list of focus items Nick mentioned, each as: - [ ] item text — do NOT include any Must Do items here]
+
+## Carry-Overs
+${carryOvers.length > 0 ? carryOvers.map(c => `- [ ] ${c}`).join('\n') : '- None'}
+
+## Blockers
+[blockers Nick mentioned, or: - None]
+
+## Queue Watch
+${queueContext || '- No queue data'}
+
+## Notes
+[any other notes from the conversation]
+===DAILY_NOTE_END===
+
+Then end with one short line — something brief and human. No fluff.
+
+RULES:
+- One question at a time. Never ask two things in one message.
+- Keep your messages short — 3 lines max except the daily note.
+- Don't repeat what Nick just said back to him.
+- Don't add unnecessary affirmations ("Great!", "Perfect!").
+- The daily note markers must appear EXACTLY as shown — the app parses them.
+- After writing the daily note, do not ask any more questions.`;
+
+  return { systemPrompt, todayStr, carryOvers, mustDoItems };
+}
+
+// Pre-warm: build context + fire Phase 1 to Ollama, cache the result
+async function preWarmStandup() {
+  const todayStr = obsidianService.todayDateString();
+  if (standupCache.date === todayStr && standupCache.phase1Response) {
+    console.log('[Standup] Pre-warm skipped — already cached for today');
+    return;
+  }
+  if (standupCache.warming) {
+    console.log('[Standup] Pre-warm already in progress');
+    return;
+  }
+
+  standupCache.warming = true;
+  console.log('[Standup] Pre-warming standup for', todayStr);
+
+  try {
+    const { systemPrompt } = await buildStandupContext();
+    const ollamaMessages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: 'Start my standup.' }
+    ];
+
+    const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
+        messages: ollamaMessages,
+        stream: false,
+        options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+      }),
+      signal: AbortSignal.timeout(300000) // 5 min — no rush, this is background
+    });
+
+    if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
+    const data = await ollamaRes.json();
+    const response = data.message?.content || '';
+
+    if (response.trim().length > 10) {
+      standupCache.date = todayStr;
+      standupCache.systemPrompt = systemPrompt;
+      standupCache.phase1Response = response;
+      console.log(`[Standup] Pre-warm complete — ${response.length} chars cached`);
+    } else {
+      console.warn('[Standup] Pre-warm got empty response from Ollama');
+    }
+  } catch (err) {
+    console.error('[Standup] Pre-warm failed:', err.message);
+  } finally {
+    standupCache.warming = false;
+  }
+}
+
+// Export for scheduler
+router.preWarmStandup = preWarmStandup;
+
 // GET /api/standup
 router.get('/', (req, res) => {
   const content = obsidianService.readStandup();
@@ -375,6 +570,27 @@ router.get('/must-dos', (req, res) => {
   }
 });
 
+// POST /api/standup/pre-warm — manually trigger standup pre-warm
+router.post('/pre-warm', async (req, res) => {
+  try {
+    preWarmStandup(); // fire and forget
+    res.json({ ok: true, message: 'Pre-warm started' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/standup/pre-warm-status — check if cache is ready
+router.get('/pre-warm-status', (req, res) => {
+  const todayStr = obsidianService.todayDateString();
+  res.json({
+    cached: standupCache.date === todayStr && !!standupCache.phase1Response,
+    warming: standupCache.warming,
+    cacheDate: standupCache.date,
+    responseLength: standupCache.phase1Response?.length || 0
+  });
+});
+
 // POST /api/standup/interactive — Claude-guided standup session
 router.post('/interactive', async (req, res) => {
   const { messages = [], phase = 'start' } = req.body;
@@ -396,138 +612,7 @@ router.post('/interactive', async (req, res) => {
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    // Build context block
-    const today = new Date();
     const todayStr = obsidianService.todayDateString();
-    const dow = today.toLocaleDateString('en-GB', { weekday: 'long' });
-    const isMonday = today.getDay() === 1;
-
-    // Gather context
-    let carryOvers = [];
-    try {
-      const prev = obsidianService.readPreviousDailyNote();
-      if (prev) {
-        const lines = prev.content.split('\n');
-        let inFocus = false;
-        for (const line of lines) {
-          if (line.startsWith('## Focus Today') || line.startsWith('## Carry')) { inFocus = true; continue; }
-          if (line.startsWith('## ') && inFocus) break;
-          if (inFocus && (line.match(/^\s*-\s+\[\s\]/) || line.match(/^\s*-\s+\[>\]/))) {
-            const text = line.replace(/^\s*-\s+\[.\]\s*/, '').replace(/#\w+/g, '').trim();
-            if (text) carryOvers.push(text);
-          }
-        }
-      }
-    } catch {}
-
-    let queueContext = '';
-    try {
-      const db = require('../db/database');
-      const queue = db.getQueueSummary();
-      if (queue.total > 0) {
-        queueContext = `Queue: ${queue.total} open tickets, ${queue.at_risk_count} at risk, ${queue.open_p1s} P1s.`;
-        if (queue.at_risk_tickets.length > 0) {
-          queueContext += ` At risk: ${queue.at_risk_tickets.slice(0, 3).map(t => t.ticket_key + ' ' + t.summary).join('; ')}.`;
-        }
-      }
-    } catch {}
-
-    let planContext = '';
-    try {
-      const plan = obsidianService.parseNinetyDayPlan();
-      if (plan) {
-        planContext = `90-day plan: Day ${plan.currentDay} of ${plan.totalDays}. ${plan.totalDone}/${plan.totalTasks} tasks done.`;
-        if (plan.todayTasks.length > 0) {
-          planContext += ` Today's tasks: ${plan.todayTasks.map(t => t.text).join('; ')}.`;
-        }
-        if (plan.overdueTasks.length > 0) {
-          planContext += ` ${plan.overdueTasks.length} overdue tasks.`;
-        }
-      }
-    } catch {}
-
-    let calendarContext = '';
-    try {
-      const events = await obsidianService.fetchCalendarEvents(todayStr, todayStr);
-      if (events && events.length > 0) {
-        const upcoming = events.filter(e => e.showAs !== 'cancelled');
-        if (upcoming.length > 0) {
-          calendarContext = `Today's calendar: ${upcoming.map(e => {
-            const time = e.start ? e.start.substring(11, 16) : '';
-            return time ? `${time} ${e.subject}` : e.subject;
-          }).join(', ')}.`;
-        }
-      }
-    } catch {}
-
-    let mustDoContext = '';
-    let mustDoItems = [];
-    try {
-      mustDoItems = obsidianService.parseVaultMustDos();
-      if (mustDoItems.length > 0) {
-        mustDoContext = `MUST DO (non-negotiable): ${mustDoItems.map(m => m.text).join('; ')}.`;
-      }
-    } catch {}
-
-    // System prompt for the guided standup
-    const systemPrompt = `You are NEURO running Nick's morning standup ritual. Nick is Head of Technical Support at Nurtur Limited.
-
-Your job: guide Nick through a focused standup in 3-4 short exchanges, then write his daily note.
-
-TODAY: ${dow} ${todayStr}${isMonday ? ' (Monday — ask about the week ahead, not just today)' : ''}
-
-CONTEXT:
-${mustDoContext || ''}
-${queueContext || 'Queue data unavailable.'}
-${planContext || ''}
-${calendarContext || ''}
-${carryOvers.length > 0 ? `Carry-overs from yesterday: ${carryOvers.join('; ')}` : 'No carry-overs.'}
-
-STANDUP FLOW — follow this exactly:
-
-Phase 1 (start): ${mustDoItems.length > 0 ? `Lead with Must Do items: "You have ${mustDoItems.length} non-negotiable${mustDoItems.length > 1 ? 's' : ''} today: ${mustDoItems.map(m => m.text).join('; ')}." Then give a brief morning context (2-3 lines max — queue status, at-risk, plan).` : 'Give a brief, sharp morning brief (2-3 lines max — queue status, any at-risk, one key thing from the plan).'} Then ask ONE question: "What's your main focus today?"
-
-Phase 2 (after focus answer): Ask: "Any blockers or things that need escalating?"
-
-Phase 3 (after blockers answer): ${isMonday ? 'Ask: "How are you going into the week — anything to flag energy or capacity-wise?"' : 'Ask: "Anything else before I write this up?"'}
-
-Phase 4 (finalise): Say "Writing your daily note now..." then output the daily note in this EXACT format between the markers:
-
-===DAILY_NOTE_START===
----
-type: daily
-date: ${todayStr}
----
-# Daily Note — ${dow} ${todayStr}
-${mustDoItems.length > 0 ? `
-## Must Do Today
-${mustDoItems.map(m => `- [ ] ${m.text} #mustdo`).join('\n')}
-` : ''}
-## Focus Today
-[checkbox list of focus items Nick mentioned, each as: - [ ] item text — do NOT include any Must Do items here]
-
-## Carry-Overs
-${carryOvers.length > 0 ? carryOvers.map(c => `- [ ] ${c}`).join('\n') : '- None'}
-
-## Blockers
-[blockers Nick mentioned, or: - None]
-
-## Queue Watch
-${queueContext || '- No queue data'}
-
-## Notes
-[any other notes from the conversation]
-===DAILY_NOTE_END===
-
-Then end with one short line — something brief and human. No fluff.
-
-RULES:
-- One question at a time. Never ask two things in one message.
-- Keep your messages short — 3 lines max except the daily note.
-- Don't repeat what Nick just said back to him.
-- Don't add unnecessary affirmations ("Great!", "Perfect!").
-- The daily note markers must appear EXACTLY as shown — the app parses them.
-- After writing the daily note, do not ask any more questions.`;
 
     // Build message history
     const claudeMessages = messages.map(m => ({ role: m.role, content: m.content }));
@@ -540,60 +625,81 @@ RULES:
     let fullResponse = '';
     let usedOllama = false;
 
-    // Try Ollama streaming first
-    try {
-      const ollamaMessages = [
-        { role: 'system', content: systemPrompt },
-        ...claudeMessages
-      ];
-
-      const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: process.env.OLLAMA_MODEL || 'qwen2.5:3b',
-          messages: ollamaMessages,
-          stream: true,
-          options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
-        }),
-        signal: AbortSignal.timeout(120000)
-      });
-
-      if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
-
-      const reader = ollamaRes.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n').filter(l => l.trim())) {
-          try {
-            const data = JSON.parse(line);
-            if (data.message?.content) {
-              fullResponse += data.message.content;
-              safeSend(`data: ${JSON.stringify({ type: 'text', content: data.message.content })}\n\n`);
-            }
-          } catch {}
-        }
+    // ── Phase 1 cache hit — serve pre-warmed response instantly ──
+    if ((phase === 'start' || claudeMessages.length === 1) &&
+        standupCache.date === todayStr && standupCache.phase1Response) {
+      console.log('[Standup] Serving pre-warmed Phase 1 response');
+      fullResponse = standupCache.phase1Response;
+      usedOllama = true;
+      // Stream the cached response in chunks for natural feel
+      const words = fullResponse.split(' ');
+      const chunkSize = 3;
+      for (let i = 0; i < words.length; i += chunkSize) {
+        const chunk = words.slice(i, i + chunkSize).join(' ') + (i + chunkSize < words.length ? ' ' : '');
+        safeSend(`data: ${JSON.stringify({ type: 'text', content: chunk })}\n\n`);
       }
+    }
 
-      // Only mark as used if we got a meaningful response
-      if (fullResponse.trim().length > 10) {
-        usedOllama = true;
-        console.log('[Standup] Response via Ollama');
-      } else {
-        console.warn('[Standup] Ollama returned empty/short response, falling back to Claude');
+    // ── Live Ollama/Claude call (cache miss or follow-up phases) ──
+    // Build context (used by both Ollama and Claude fallback)
+    const ctx = !usedOllama ? await buildStandupContext() : null;
+    const systemPrompt = usedOllama && standupCache.systemPrompt ? standupCache.systemPrompt : ctx?.systemPrompt;
+
+    if (!usedOllama) {
+      try {
+        const ollamaMessages = [
+          { role: 'system', content: systemPrompt },
+          ...claudeMessages
+        ];
+
+        const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
+            messages: ollamaMessages,
+            stream: true,
+            options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+          }),
+          signal: AbortSignal.timeout(180000) // 3 min — Pi 5 can be slow on cold start
+        });
+
+        if (!ollamaRes.ok) throw new Error(`Ollama ${ollamaRes.status}`);
+
+        const reader = ollamaRes.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          for (const line of chunk.split('\n').filter(l => l.trim())) {
+            try {
+              const data = JSON.parse(line);
+              if (data.message?.content) {
+                fullResponse += data.message.content;
+                safeSend(`data: ${JSON.stringify({ type: 'text', content: data.message.content })}\n\n`);
+              }
+            } catch {}
+          }
+        }
+
+        // Only mark as used if we got a meaningful response
+        if (fullResponse.trim().length > 10) {
+          usedOllama = true;
+          console.log('[Standup] Response via Ollama');
+        } else {
+          console.warn('[Standup] Ollama returned empty/short response, falling back to Claude');
+          fullResponse = '';
+        }
+      } catch (ollamaErr) {
+        console.warn('[Standup] Ollama failed, falling back to Claude:', ollamaErr.message);
         fullResponse = '';
       }
-    } catch (ollamaErr) {
-      console.warn('[Standup] Ollama failed, falling back to Claude:', ollamaErr.message);
-      fullResponse = '';
     }
 
     // Claude fallback — full streaming
-    if (!usedOllama) {
+    if (!usedOllama && systemPrompt) {
       const stream = client.messages.stream({
         model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
         max_tokens: 1024,
