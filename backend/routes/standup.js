@@ -387,6 +387,11 @@ router.post('/interactive', async (req, res) => {
     'Access-Control-Allow-Origin': '*'
   });
 
+  let closed = false;
+  res.on('close', () => { closed = true; });
+  const safeSend = (data) => { if (!closed) try { res.write(data); } catch {} };
+  const safeEnd = () => { if (!closed) try { res.end(); } catch {} };
+
   try {
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -568,7 +573,7 @@ RULES:
             const data = JSON.parse(line);
             if (data.message?.content) {
               fullResponse += data.message.content;
-              res.write(`data: ${JSON.stringify({ type: 'text', content: data.message.content })}\n\n`);
+              safeSend(`data: ${JSON.stringify({ type: 'text', content: data.message.content })}\n\n`);
             }
           } catch {}
         }
@@ -598,12 +603,12 @@ RULES:
 
       stream.on('text', (text) => {
         fullResponse += text;
-        res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
+        safeSend(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
       });
 
       stream.on('error', (err) => {
-        res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
-        res.end();
+        safeSend(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+        safeEnd();
       });
 
       res.on('close', () => stream.abort());
@@ -621,20 +626,20 @@ RULES:
         console.log(`[Standup] Interactive standup complete — daily note written (via ${usedOllama ? 'Ollama' : 'Claude'})`);
         try { require('../services/activity').trackStandupDone(new Date().getHours(), true); } catch {}
         try { require('../services/activity').trackVaultWrite('daily'); } catch {}
-        res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: true })}\n\n`);
+        safeSend(`data: ${JSON.stringify({ type: 'done', noteSaved: true })}\n\n`);
       } catch (e) {
         console.error('[Standup] Failed to write daily note:', e.message);
-        res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: false, noteError: e.message })}\n\n`);
+        safeSend(`data: ${JSON.stringify({ type: 'done', noteSaved: false, noteError: e.message })}\n\n`);
       }
     } else {
-      res.write(`data: ${JSON.stringify({ type: 'done', noteSaved: false })}\n\n`);
+      safeSend(`data: ${JSON.stringify({ type: 'done', noteSaved: false })}\n\n`);
     }
 
-    res.end();
+    safeEnd();
   } catch (err) {
     console.error('[Standup] Interactive error:', err.message);
-    res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
-    res.end();
+    safeSend(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+    safeEnd();
   }
 });
 
