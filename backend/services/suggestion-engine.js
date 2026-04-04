@@ -159,12 +159,12 @@ function generateSuggestions(focusItems) {
   if (!focusItems || focusItems.length === 0) return [];
 
   const suggestions = [];
-  const recentActions = db.getRecentSaraActions(50);
-  const todayStr = new Date().toISOString().split('T')[0];
-  const recentKeys = new Set(
-    recentActions
-      .filter(a => a.created_at && a.created_at.startsWith(todayStr))
-      .map(a => `${a.type}:${a.focus_item_id}`)
+  // Only deduplicate against PENDING actions (not executed/rejected).
+  // Navigation actions (open_ticket, open_task, etc.) are repeatable —
+  // the user should always have a "Do it" option available.
+  const pendingActions = db.getPendingSaraActions();
+  const pendingKeys = new Set(
+    pendingActions.map(a => `${a.type}:${a.focus_item_id}`)
   );
 
   for (const item of focusItems) {
@@ -175,7 +175,7 @@ function generateSuggestions(focusItems) {
       if (!suggestion) continue;
 
       const dedupeKey = `${suggestion.type}:${item.id}`;
-      if (recentKeys.has(dedupeKey)) continue;
+      if (pendingKeys.has(dedupeKey)) continue;
 
       suggestions.push({
         ...suggestion,
