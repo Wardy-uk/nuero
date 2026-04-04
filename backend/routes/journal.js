@@ -4,13 +4,12 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const Anthropic = require('@anthropic-ai/sdk');
+// Phase 3: Anthropic removed. Uses AI provider for fallback.
 const obsidian = require('../services/obsidian');
 const nudges = require('../services/nudges');
 const db = require('../db/database');
 
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 
 // ── Journal pre-warm cache ──────────────────────────────────────────────
 const journalCache = {
@@ -127,29 +126,29 @@ ${contextSummary}`;
     console.warn('[Journal] Ollama failed, falling back to Claude:', ollamaErr.message);
   }
 
-  // Claude fallback
+  // Cloud fallback via AI routing (Phase 3)
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 256,
-      system: `You are generating evening journal prompts for Nick Ward, Head of Technical Support at Nurtur.
+    const aiProvider = require('../services/ai-provider');
+    const result = await aiProvider.generateJournalPrompts(
+      `You are generating evening journal prompts for Nick Ward, Head of Technical Support at Nurtur.
 He is neurodivergent, in a new senior leadership role, and uses journalling to process his day.
 Generate exactly 3 short, warm, specific journal prompts based on today's context.
-Rules: each prompt is a single question max 15 words. Vary focus: work, feelings, tomorrow. One per line.`,
-      messages: [{ role: 'user', content: `Today's context:\n${contextSummary}\n\nGenerate 3 evening journal prompts for Nick.` }]
-    });
-    const text = response.content[0]?.text || '';
-    const prompts = text.split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 5 && l.endsWith('?'))
-      .slice(0, 3);
-    if (prompts.length === 3) {
-      console.log('[Journal] Prompts generated via Claude (fallback)');
-      return prompts;
+Rules: each prompt is a single question max 15 words. Vary focus: work, feelings, tomorrow. One per line.
+
+Today's context:\n${contextSummary}\n\nGenerate 3 evening journal prompts for Nick.`
+    );
+    if (result.text) {
+      const prompts = result.text.split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 5 && l.endsWith('?'))
+        .slice(0, 3);
+      if (prompts.length === 3) {
+        console.log(`[Journal] Prompts generated via ${result.provider} (fallback)`);
+        return prompts;
+      }
     }
-  } catch (claudeErr) {
-    console.warn('[Journal] Claude also failed:', claudeErr.message);
+  } catch (fallbackErr) {
+    console.warn('[Journal] AI fallback also failed:', fallbackErr.message);
   }
 
   return null;

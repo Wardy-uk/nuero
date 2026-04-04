@@ -805,8 +805,8 @@ router.post('/interactive', async (req, res) => {
   const safeEnd = () => { if (!closed) try { res.end(); } catch {} };
 
   try {
-    const Anthropic = require('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // Phase 3: Anthropic removed. Cloud fallback uses AI routing layer.
+    const aiRouting = require('../services/ai-routing');
 
     const todayStr = obsidianService.todayDateString();
 
@@ -894,28 +894,20 @@ router.post('/interactive', async (req, res) => {
       }
     }
 
-    // Claude fallback — full streaming
+    // Cloud fallback — streaming via AI routing (Phase 3)
     if (!usedOllama && systemPrompt) {
-      const stream = client.messages.stream({
-        model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: claudeMessages
-      });
-
-      stream.on('text', (text) => {
-        fullResponse += text;
-        safeSend(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
-      });
-
-      stream.on('error', (err) => {
-        safeSend(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
-        safeEnd();
-      });
-
-      res.on('close', () => stream.abort());
-
-      await new Promise((resolve) => stream.on('end', resolve));
+      try {
+        const result = await aiRouting.runStreamingChat(systemPrompt, claudeMessages, res, {
+          taskType: 'standup_interactive',
+          maxTokens: 1024,
+          contextWindow: 4096,
+        });
+        fullResponse = result.text || '';
+        console.log(`[Standup] Fallback response via ${result.provider}`);
+      } catch (fallbackErr) {
+        console.error('[Standup] Cloud fallback failed:', fallbackErr.message);
+        safeSend(`data: ${JSON.stringify({ type: 'error', content: 'AI unavailable — try again later' })}\n\n`);
+      }
     }
 
     // Check if daily note is present in the response
@@ -962,8 +954,8 @@ router.post('/eod/interactive', async (req, res) => {
   const safeEnd = () => { if (!closed) try { res.end(); } catch {} };
 
   try {
-    const Anthropic = require('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // Phase 3: Anthropic removed. Cloud fallback uses AI routing layer.
+    const aiRoutingEod = require('../services/ai-routing');
     const todayStr = obsidianService.todayDateString();
 
     const claudeMessages = messages.map(m => ({ role: m.role, content: m.content }));
@@ -1036,24 +1028,20 @@ router.post('/eod/interactive', async (req, res) => {
       }
     }
 
-    // Claude fallback
+    // Cloud fallback — streaming via AI routing (Phase 3)
     if (!usedOllama && systemPrompt) {
-      const stream = client.messages.stream({
-        model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: claudeMessages
-      });
-      stream.on('text', (text) => {
-        fullResponse += text;
-        safeSend(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
-      });
-      stream.on('error', (err) => {
-        safeSend(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
-        safeEnd();
-      });
-      res.on('close', () => stream.abort());
-      await new Promise((resolve) => stream.on('end', resolve));
+      try {
+        const result = await aiRoutingEod.runStreamingChat(systemPrompt, claudeMessages, res, {
+          taskType: 'eod_interactive',
+          maxTokens: 1024,
+          contextWindow: 4096,
+        });
+        fullResponse = result.text || '';
+        console.log(`[EOD] Fallback response via ${result.provider}`);
+      } catch (fallbackErr) {
+        console.error('[EOD] Cloud fallback failed:', fallbackErr.message);
+        safeSend(`data: ${JSON.stringify({ type: 'error', content: 'AI unavailable — try again later' })}\n\n`);
+      }
     }
 
     // Check for EOD note in response

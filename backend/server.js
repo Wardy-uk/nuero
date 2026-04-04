@@ -113,13 +113,14 @@ app.use('/api/email', require('./routes/email-triage'));
 // Health / status endpoint
 app.get('/api/status', async (req, res) => {
   const jiraService = require('./services/jira');
-  const claudeService = require('./services/claude');
   const obsidianService = require('./services/obsidian');
   const microsoftService = require('./services/microsoft');
+  const aiRouting = require('./services/ai-routing');
 
   const n8nService = require('./services/n8n');
   const msConfigured = microsoftService.isConfigured();
   const msAuthenticated = msConfigured ? await microsoftService.isAuthenticated() : false;
+  const ollamaReachable = await aiRouting.checkOllama();
 
   res.json({
     agent: 'NUERO',
@@ -131,9 +132,8 @@ app.get('/api/status', async (req, res) => {
       last_sync: db.getState('jira_last_sync'),
       last_error: db.getState('jira_last_error')
     },
-    claude: {
-      configured: claudeService.isConfigured()
-    },
+    ai: aiRouting.getStatus(),
+    ollamaReachable,
     obsidian: {
       configured: obsidianService.isConfigured()
     },

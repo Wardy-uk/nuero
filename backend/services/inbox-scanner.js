@@ -113,25 +113,24 @@ async function scanInbox() {
     }));
 
     let parsed = [];
-    // Try Ollama first
+    // Try Ollama first, fall back through AI routing layer
     try {
       parsed = await triageWithOllama(emailSummary);
       console.log(`[InboxScanner] Triaged via Ollama: ${parsed.length} flagged`);
     } catch (ollamaErr) {
-      console.warn('[InboxScanner] Ollama failed, falling back to Claude:', ollamaErr.message);
-      if (process.env.ANTHROPIC_API_KEY) {
-        const Anthropic = require('@anthropic-ai/sdk');
-        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const response = await client.messages.create({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 2048,
-          system: TRIAGE_PROMPT,
-          messages: [{ role: 'user', content: `Here are ${candidates.length} emails from the last 12 hours:\n\n${JSON.stringify(emailSummary, null, 2)}` }]
-        });
-        const text = response.content[0]?.text || '[]';
-        const jsonMatch = text.match(/\[[\s\S]*\]/);
-        parsed = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
-        console.log('[InboxScanner] Triaged via Claude (fallback)');
+      console.warn('[InboxScanner] Ollama failed, trying AI routing fallback:', ollamaErr.message);
+      try {
+        const aiProvider = require('./ai-provider');
+        const result = await aiProvider.triageEmails(
+          `${TRIAGE_PROMPT}\n\nHere are ${candidates.length} emails from the last 12 hours:\n\n${JSON.stringify(emailSummary, null, 2)}`
+        );
+        if (result.text) {
+          const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+          parsed = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
+          console.log(`[InboxScanner] Triaged via ${result.provider} (fallback)`);
+        }
+      } catch (fallbackErr) {
+        console.error('[InboxScanner] All AI providers failed:', fallbackErr.message);
       }
     }
 

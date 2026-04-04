@@ -1,8 +1,6 @@
-const Anthropic = require('@anthropic-ai/sdk');
+// Phase 3: Anthropic SDK removed. Chat now routes through ai-provider.
 const db = require('../db/database');
 const obsidian = require('./obsidian');
-
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 
 // Reverse geocode lat/lng to a human-readable place name
 // Uses OSM Nominatim — free, no key required
@@ -26,8 +24,7 @@ async function reverseGeocode(lat, lng) {
     return null;
   }
 }
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
+// Ollama config now managed by ai-routing.js / providers/ollama-provider.js
 
 // Extract meaningful search keywords from a user message
 // Strips common stop words and short tokens, returns the best 1-2 terms to search
@@ -521,89 +518,8 @@ function handleResponse(conversationId, fullResponse) {
   }
 }
 
-// ── Claude API streaming ──
-
-async function streamClaude(systemPrompt, messages, res) {
-  const client = new Anthropic();
-
-  const stream = client.messages.stream({
-    model: CLAUDE_MODEL,
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages: messages
-  });
-
-  let fullResponse = '';
-
-  stream.on('text', (text) => {
-    fullResponse += text;
-    res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
-  });
-
-  stream.on('error', (err) => {
-    console.error('[Claude] Stream error:', err.message);
-    res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
-    res.end();
-  });
-
-  res.on('close', () => {
-    stream.abort();
-  });
-
-  return new Promise((resolve) => {
-    stream.on('end', () => resolve(fullResponse));
-  });
-}
-
-// ── Ollama streaming ──
-
-async function streamOllama(systemPrompt, messages, res) {
-  const ollamaMessages = [
-    { role: 'system', content: systemPrompt },
-    ...messages
-  ];
-
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      messages: ollamaMessages,
-      stream: true,
-      options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
-    }),
-    signal: AbortSignal.timeout(120000)
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Ollama error ${response.status}: ${errText}`);
-  }
-
-  let fullResponse = '';
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value, { stream: true });
-    const lines = chunk.split('\n').filter(l => l.trim());
-
-    for (const line of lines) {
-      try {
-        const data = JSON.parse(line);
-        if (data.message && data.message.content) {
-          fullResponse += data.message.content;
-          res.write(`data: ${JSON.stringify({ type: 'text', content: data.message.content })}\n\n`);
-        }
-      } catch (e) { /* partial chunk */ }
-    }
-  }
-
-  return fullResponse;
-}
+// ── Streaming via AI routing layer (Phase 3) ──
+// Anthropic removed. Uses Ollama → OpenAI failover chain.
 
 // ── Main entry point ──
 
@@ -782,33 +698,33 @@ ${contextBlock}${synthesisSuffix}`;
     'Access-Control-Allow-Origin': '*'
   });
 
-  // Use Ollama as primary (Claude credits exhausted)
-  const useClaude = false;
-  const backend = useClaude ? 'Claude' : 'Ollama';
-  console.log(`[${backend}] Model: ${useClaude ? CLAUDE_MODEL : OLLAMA_MODEL}, system: ${systemPrompt.length} chars, ${messages.length} msgs`);
+  // Phase 3: Route through AI provider (Ollama → OpenAI failover)
+  const aiProvider = require('./ai-provider');
+  console.log(`[Chat] Routing via AI provider, system: ${systemPrompt.length} chars, ${messages.length} msgs`);
 
   try {
-    let fullResponse;
-    if (useClaude) {
-      try {
-        fullResponse = await streamClaude(systemPrompt, messages, res);
-      } catch (claudeErr) {
-        // Claude failed — fall back to Ollama
-        console.error('[Claude] Failed, falling back to Ollama:', claudeErr.message);
-        res.write(`data: ${JSON.stringify({ type: 'text', content: '*[Falling back to local model]*\n\n' })}\n\n`);
-        fullResponse = '*[Falling back to local model]*\n\n' + await streamOllama(systemPrompt, messages, res);
-      }
-    } else {
-      fullResponse = await streamOllama(systemPrompt, messages, res);
+    const result = await aiProvider.streamChat(systemPrompt, messages, res, {
+      taskType: 'chat_stream',
+      maxTokens: 1024,
+      contextWindow: 4096,
+    });
+
+    const fullResponse = result.text || '';
+    if (result.provider !== 'none') {
+      console.log(`[Chat] Response via ${result.provider}${result.fallback ? ' (fallback)' : ''}`);
     }
 
     handleResponse(conversationId, fullResponse);
-    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
-    res.end();
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      res.end();
+    }
   } catch (err) {
-    console.error(`[${backend}] Error:`, err.message);
-    res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
-    res.end();
+    console.error('[Chat] Error:', err.message);
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+      res.end();
+    }
   }
 }
 

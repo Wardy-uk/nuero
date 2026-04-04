@@ -3,7 +3,7 @@ const path = require('path');
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+// CLAUDE_MODEL removed in Phase 3 — AI routing handles provider selection
 
 function broadcast(event) {
   try {
@@ -166,21 +166,7 @@ confidence: <high|medium|low>
 reason: <one sentence>`;
 }
 
-async function classifyWithClaude(fileName, content) {
-  const Anthropic = require('@anthropic-ai/sdk');
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  const response = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 256,
-    messages: [{
-      role: 'user',
-      content: buildClassifyPrompt(fileName, content)
-    }]
-  });
-
-  return response.content[0]?.text || '';
-}
+// classifyWithClaude removed in Phase 3 — replaced by AI routing layer
 
 async function classifyWithOllama(fileName, content) {
   const ollamaRes = await fetch(`${OLLAMA_URL}/api/generate`, {
@@ -209,22 +195,26 @@ async function classifyFile(filePath) {
   const relativePath = path.relative(getVaultPath(), filePath).replace(/\\/g, '/');
 
   let responseText = '';
-  let backend = 'claude';
+  let backend = 'ollama';
 
-  if (process.env.ANTHROPIC_API_KEY) {
-    try {
-      responseText = await classifyWithClaude(fileName, content);
-      console.log(`[Imports] Classified ${fileName} via Claude`);
-    } catch (claudeErr) {
-      console.warn(`[Imports] Claude classification failed, falling back to Ollama: ${claudeErr.message}`);
-      backend = 'ollama';
-      responseText = await classifyWithOllama(fileName, content);
-      console.log(`[Imports] Classified ${fileName} via Ollama`);
-    }
-  } else {
-    backend = 'ollama';
-    console.log(`[Imports] No ANTHROPIC_API_KEY — using Ollama for ${fileName}`);
+  // Try Ollama first, fall back through AI routing
+  try {
     responseText = await classifyWithOllama(fileName, content);
+    console.log(`[Imports] Classified ${fileName} via Ollama`);
+  } catch (ollamaErr) {
+    console.warn(`[Imports] Ollama failed for ${fileName}, trying AI routing:`, ollamaErr.message);
+    try {
+      const aiProvider = require('./ai-provider');
+      const result = await aiProvider.classifyImport(buildClassifyPrompt(fileName, content));
+      if (result.text) {
+        responseText = result.text;
+        backend = result.provider;
+        console.log(`[Imports] Classified ${fileName} via ${result.provider} (fallback)`);
+      }
+    } catch (fallbackErr) {
+      console.error(`[Imports] All AI providers failed for ${fileName}:`, fallbackErr.message);
+      throw fallbackErr;
+    }
   }
 
   const typeMatch = responseText.match(/type:\s*(\S+)/i);
@@ -362,8 +352,9 @@ async function autoClassify() {
 
     // Process in batches of 3 concurrently (Claude API handles parallel requests well)
     // Ollama fallback still needs sequential — detect which backend we're using
-    const useConcurrent = !!process.env.ANTHROPIC_API_KEY;
-    const BATCH_SIZE = useConcurrent ? 3 : 1;
+    // Ollama-first: sequential processing (Pi 5 can't handle concurrent Ollama calls)
+    const useConcurrent = false;
+    const BATCH_SIZE = 1;
 
     for (let i = 0; i < pending.length; i += BATCH_SIZE) {
       const batch = pending.slice(i, i + BATCH_SIZE);
