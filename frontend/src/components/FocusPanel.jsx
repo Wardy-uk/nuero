@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import useCachedFetch from '../useCachedFetch';
+import { apiUrl } from '../api';
 import './FocusPanel.css';
 
 const URGENCY_LABELS = {
@@ -16,6 +17,13 @@ const TYPE_ICONS = {
   todo: '[ ]',
   nudge: '~',
   imports: '>',
+  email: '✉',
+};
+
+const TIER_LABELS = {
+  1: 'ACT NOW',
+  2: 'DO NEXT',
+  3: 'LATER',
 };
 
 function timeAgo(dateStr) {
@@ -27,10 +35,16 @@ function timeAgo(dateStr) {
 }
 
 export default function FocusPanel({ onNavigate }) {
-  const { data, status, refresh } = useCachedFetch('/api/focus', { interval: 30000 });
+  const [showAll, setShowAll] = useState(false);
+  const { data, status, refresh } = useCachedFetch(
+    showAll ? '/api/focus?all=true' : '/api/focus',
+    { interval: 30000 }
+  );
 
   const items = data?.items || [];
   const context = data?.context || {};
+  const suppressed = data?.suppressed || 0;
+  const totalCandidates = data?.totalCandidates || 0;
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -38,6 +52,28 @@ export default function FocusPanel({ onNavigate }) {
     if (h < 17) return 'Afternoon';
     return 'Evening';
   })();
+
+  const handleDismiss = async (e, itemId) => {
+    e.stopPropagation();
+    try {
+      await fetch(apiUrl('/api/focus/dismiss'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId }),
+      });
+      refresh();
+    } catch {}
+  };
+
+  const handleNavigate = (item) => {
+    if (item.type === 'jira_ticket' || item.type === 'escalation') onNavigate?.('queue');
+    else if (item.type === 'meeting') onNavigate?.('calendar');
+    else if (item.type === 'todo') onNavigate?.('todos');
+    else if (item.type === 'nudge' && item.meta?.type === 'standup') onNavigate?.('standup');
+    else if (item.type === 'nudge' && item.meta?.type === 'eod') onNavigate?.('standup');
+    else if (item.type === 'imports') onNavigate?.('imports');
+    else if (item.type === 'email') onNavigate?.('inbox');
+  };
 
   return (
     <div className="focus-panel">
@@ -74,13 +110,7 @@ export default function FocusPanel({ onNavigate }) {
             <li
               key={item.id || i}
               className={`focus-item focus-urgency-${item.urgency || 'low'}`}
-              onClick={() => {
-                if (item.type === 'jira_ticket' || item.type === 'escalation') onNavigate?.('queue');
-                else if (item.type === 'meeting') onNavigate?.('calendar');
-                else if (item.type === 'todo') onNavigate?.('todos');
-                else if (item.type === 'nudge' && item.meta?.type === 'standup') onNavigate?.('standup');
-                else if (item.type === 'imports') onNavigate?.('imports');
-              }}
+              onClick={() => handleNavigate(item)}
             >
               <div className="focus-item-left">
                 <span className="focus-item-icon">{TYPE_ICONS[item.type] || '·'}</span>
@@ -90,11 +120,20 @@ export default function FocusPanel({ onNavigate }) {
                 </div>
               </div>
               <div className="focus-item-right">
+                {item.tier && (
+                  <span className={`focus-tier-badge focus-tier-${item.tier}`}>
+                    {TIER_LABELS[item.tier] || ''}
+                  </span>
+                )}
                 <span className={`focus-urgency-badge focus-urgency-${item.urgency || 'low'}`}>
                   {URGENCY_LABELS[item.urgency] || ''}
                 </span>
-                {item.actionHint && (
-                  <span className="focus-item-hint">{item.actionHint}</span>
+                {!showAll && (
+                  <button
+                    className="focus-dismiss-btn"
+                    onClick={(e) => handleDismiss(e, item.id)}
+                    title="Dismiss for 30 min"
+                  >×</button>
                 )}
               </div>
             </li>
@@ -102,11 +141,30 @@ export default function FocusPanel({ onNavigate }) {
         </ul>
       )}
 
-      {data?.generatedAt && (
-        <div className="focus-footer">
-          Updated {timeAgo(data.generatedAt)}
-        </div>
-      )}
+      {/* Suppression summary + view all toggle */}
+      <div className="focus-footer">
+        {suppressed > 0 && !showAll && (
+          <button
+            className="focus-view-all"
+            onClick={() => setShowAll(true)}
+          >
+            +{suppressed} more hidden
+          </button>
+        )}
+        {showAll && totalCandidates > 0 && (
+          <button
+            className="focus-view-all"
+            onClick={() => setShowAll(false)}
+          >
+            Show focused only
+          </button>
+        )}
+        {data?.generatedAt && (
+          <span className="focus-footer-time">
+            Updated {timeAgo(data.generatedAt)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
