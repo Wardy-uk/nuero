@@ -119,7 +119,7 @@ Return JSON:
       messages: [{ role: 'user', content: userMessage }],
       maxTokens: 350,
       temperature: 0.3,
-    });
+    }, { timeout: 14000 }); // Must complete within Focus route's 15s timeout
 
     if (!result.text || result.provider === 'none') return null;
 
@@ -175,7 +175,7 @@ async function generateDrilldownFraming(context) {
     prompt: `Write one short sentence explaining why these items are shown first. Context: ${context}. Be concise and helpful, under 20 words.`,
     maxTokens: 50,
     temperature: 0.3,
-  });
+  }, { timeout: 4000 });
 
   const text = (result.text || '').trim();
   if (text.length > 5 && text.length < 150 && !text.includes('{') && !text.includes('```')) {
