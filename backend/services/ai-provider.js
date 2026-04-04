@@ -86,38 +86,20 @@ async function enhanceFocus({ items, context, tone, primaryItem }) {
     `${i + 1}. [${item.type}] "${item.title}" — ${item.reason}${item._override ? ` (OVERRIDE: ${item._override})` : ''}`
   ).join('\n');
 
-  const systemPrompt = `You are SARA, a decisive personal AI chief of staff. You produce STRUCTURED JSON output only.
+  // Keep prompt minimal — Pi 5 generates at ~3 tok/s, so 100 output tokens = ~30s
+  const systemPrompt = `SARA: decisive chief of staff. JSON only. Tone: ${tone}. ${toneGuide.split('.')[0]}.`;
 
-TONE: ${tone}
-${toneGuide}
+  const userMessage = `${ctxStr}
+Items: ${items.slice(0, 3).map((item, i) => `${i+1}. ${item.title}`).join('; ')}
 
-RULES:
-- primary.message: one clear instruction, max 15 words
-- primary.reason: one sentence why, max 20 words
-- primary.action: one concrete next step, max 15 words
-- items[].why: one short reason, max 12 words
-- items[].action: one action phrase, 2-5 words
-- ignore: one sentence about what to ignore, max 20 words
-- Be opinionated. Make a call. Don't hedge.
-- Output ONLY valid JSON. No markdown. No explanation.`;
-
-  const userMessage = `Context: ${ctxStr}
-
-Focus items:
-${itemSummary}
-
-Return JSON:
-{
-  "primary": { "message": "...", "reason": "...", "action": "..." },
-  "items": [{ "id": "item-id", "why": "...", "action": "..." }, ...],
-  "ignore": "..."
-}`;
+Reply JSON: {"primary":{"message":"<10 words>","action":"<5 words>"},"ignore":"<10 words>"}
+JSON only:`;
 
   try {
     const result = await aiRouting.runTask('focus_enhancement', {
       systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-      maxTokens: 350,
+      maxTokens: 80,
       temperature: 0.3,
     }, { timeout: 14000 }); // Must complete within Focus route's 15s timeout
 
@@ -127,20 +109,15 @@ Return JSON:
     const parsed = _parseJSON(result.text);
     if (!parsed || !parsed.primary?.message) return null;
 
-    // Validate lengths — reject garbage
-    if (parsed.primary.message.length > 100) return null;
-    if (parsed.primary.reason && parsed.primary.reason.length > 150) return null;
-
-    // Match items by id
-    if (parsed.items && Array.isArray(parsed.items)) {
-      for (const ai of parsed.items) {
-        if (ai.why && ai.why.length > 80) ai.why = ai.why.substring(0, 80);
-        if (ai.action && ai.action.length > 50) ai.action = ai.action.substring(0, 50);
-      }
-    }
+    // Validate — reject garbage
+    if (parsed.primary.message.length > 80) return null;
 
     return {
-      ...parsed,
+      primary: {
+        message: parsed.primary.message.substring(0, 80),
+        action: (parsed.primary.action || '').substring(0, 40),
+      },
+      ignore: (parsed.ignore || '').substring(0, 80),
       provider: result.provider,
       tone,
     };
