@@ -304,30 +304,45 @@ function collectOverdueTodos(ctx) {
 function collectUrgentEmails(ctx) {
   const items = [];
   try {
-    const scanner = require('./inbox-scanner');
-    const inbox = scanner.getFlaggedItems();
-    const allItems = inbox.items || [];
-    const highItems = allItems.filter(i => i.urgency === 'high');
+    // Use email triage (ACTION category) as primary source — more reliable than inbox scanner
+    const emailTriage = require('./email-triage');
+    const triage = emailTriage.getTriageByCategory();
+    const actionEmails = triage?.action || [];
 
-    if (highItems.length > 0) {
-      // Score the top email for better reason text
-      const topEmail = highItems[0];
+    if (actionEmails.length > 0) {
+      const topEmail = actionEmails[0];
       const emailScore = _scoreEmail(topEmail);
 
       items.push({
         type: 'email',
         id: 'email-urgent',
-        title: highItems.length === 1
+        title: actionEmails.length === 1
           ? topEmail.subject
-          : `${highItems.length} urgent email${highItems.length > 1 ? 's' : ''}`,
+          : `${actionEmails.length} email${actionEmails.length > 1 ? 's' : ''} need action`,
         reason: emailScore.reasons.length > 0
           ? emailScore.reasons.slice(0, 3).join(' · ')
-          : (highItems.length === 1 ? `From ${topEmail.from}` : `${highItems.slice(0, 2).map(e => e.from?.split(' ')[0] || '?').join(', ')}`),
-        score: Math.max(70, emailScore.score),
+          : `From ${(topEmail.from || '?').split(' ')[0]}`,
+        score: Math.max(65, emailScore.score),
         urgency: 'high',
         source: 'email',
         actionHint: 'Check inbox',
-        meta: { count: highItems.length },
+        meta: { count: actionEmails.length },
+      });
+    }
+
+    // Also check for DELEGATE emails (lower priority)
+    const delegateEmails = triage?.delegate || [];
+    if (delegateEmails.length > 0 && actionEmails.length === 0) {
+      items.push({
+        type: 'email',
+        id: 'email-delegate',
+        title: `${delegateEmails.length} email${delegateEmails.length > 1 ? 's' : ''} to delegate`,
+        reason: 'Consider delegating these',
+        score: 45,
+        urgency: 'medium',
+        source: 'email',
+        actionHint: 'Review inbox',
+        meta: { count: delegateEmails.length },
       });
     }
   } catch {}
