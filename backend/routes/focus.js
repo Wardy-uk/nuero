@@ -54,8 +54,8 @@ router.get('/', async (req, res) => {
             primaryItem: result.primaryItem,
           });
 
-          // Race against a 8-second timeout — don't block the response forever
-          const timeout = new Promise(resolve => setTimeout(() => resolve(null), 8000));
+          // Race against a 15-second timeout — Pi 5 Ollama can be slow on first call
+          const timeout = new Promise(resolve => setTimeout(() => resolve(null), 15000));
           sara = await Promise.race([enhancePromise, timeout]);
 
           if (sara) {
