@@ -38,6 +38,7 @@ function writeTodayDailyNote(content) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const notePath = path.join(dir, `${todayDateString()}.md`);
   fs.writeFileSync(notePath, content, 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(notePath, 'daily-note'); } catch {}
   return notePath;
 }
 
@@ -47,6 +48,7 @@ function appendToDailyNote(content) {
   const notePath = path.join(dir, `${todayDateString()}.md`);
   const existing = fs.existsSync(notePath) ? fs.readFileSync(notePath, 'utf-8') : '';
   fs.writeFileSync(notePath, existing + '\n' + content, 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(notePath, 'daily-append'); } catch {}
   return notePath;
 }
 
@@ -133,6 +135,7 @@ function updatePersonNote(name, updates) {
   }
 
   fs.writeFileSync(notePath, content, 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(notePath, 'person-note'); } catch {}
   return notePath;
 }
 
@@ -153,6 +156,7 @@ function appendDecision(decisionText) {
   const entry = autoLink(rawEntry);
   const existing = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf-8') : '# Decision Log\n';
   fs.writeFileSync(logPath, existing + entry, 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(logPath, 'decision'); } catch {}
   return logPath;
 }
 
@@ -1279,6 +1283,7 @@ function addTodoFromChat(text) {
     content = content.trimEnd() + '\n' + todoLine + '\n';
   }
   fs.writeFileSync(masterPath, content, 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(masterPath, 'todo-from-chat'); } catch {}
   console.log(`[Chat] Added todo: ${text.trim()}`);
   return true;
 }
@@ -1297,6 +1302,7 @@ function saveMeetingNoteFromChat(title, conversationSummary) {
   const rawContent = `---\ntype: meeting\ndate: ${today}\ntitle: "${title}"\nsource: neuro-chat\n---\n# ${title}\n\n*${today} — captured via NEURO chat*\n\n${conversationSummary}\n`;
   const content = autoLink(rawContent);
   fs.writeFileSync(filePath, content, 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(filePath, 'meeting-note'); } catch {}
   console.log(`[Chat] Meeting note saved: ${filename}`);
   return `Meetings/${filename}`;
 }

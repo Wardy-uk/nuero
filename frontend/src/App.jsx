@@ -22,6 +22,7 @@ import StravaPanel from './components/StravaPanel';
 import InsightsPanel from './components/InsightsPanel';
 import StandupsPanel from './components/StandupsPanel';
 import JournalPanel from './components/JournalPanel';
+import FocusPanel from './components/FocusPanel';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
 import useCachedFetch from './useCachedFetch';
@@ -144,7 +145,7 @@ export default function App() {
 
 function AuthenticatedApp() {
   const isMobile = window.innerWidth <= 768;
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState('focus');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [vaultOpenPath, setVaultOpenPath] = useState(null);
@@ -242,6 +243,7 @@ function AuthenticatedApp() {
 
   const renderView = () => {
     switch (activeView) {
+      case 'focus': return <FocusPanel onNavigate={handleNavigate} />;
       case 'dashboard': return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
       case 'standup': return <StandupEditor />;
       case 'people': return <PeopleBoard />;
@@ -260,7 +262,7 @@ function AuthenticatedApp() {
       case 'standups': return <StandupsPanel />;
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
       case 'admin': return <AdminPanel pushState={pushState} />;
-      default: return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
+      default: return <FocusPanel onNavigate={handleNavigate} />;
     }
   };
 
@@ -283,9 +285,9 @@ function AuthenticatedApp() {
       <InstallBanner />
       {/* Mobile bottom nav */}
       <nav className={`mobile-bottom-nav ${chatOpen ? 'chat-active-hide' : ''}`}>
-        <button className={activeView === 'dashboard' ? 'active' : ''} onClick={() => handleNavigate('dashboard')}>
-          <span className="bottom-nav-icon">&#x2B21;</span>
-          <span>Review</span>
+        <button className={activeView === 'focus' ? 'active' : ''} onClick={() => handleNavigate('focus')}>
+          <span className="bottom-nav-icon">&#x25C9;</span>
+          <span>Focus</span>
         </button>
         <button className={chatOpen ? 'active' : ''} onClick={() => handleNavigate('chat')}>
           <span className="bottom-nav-icon">&#x203A;</span>

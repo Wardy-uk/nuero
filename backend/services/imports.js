@@ -324,6 +324,11 @@ function routeFile(filePath, destination, type) {
     db.deleteImportClassification(sourceRel);
   } catch (e) { /* non-fatal */ }
 
+  // Trigger post-write hooks on the newly routed file
+  try {
+    require('./vault-hooks').onVaultWrite(finalPath, 'import-route');
+  } catch {}
+
   return destRel;
 }
 

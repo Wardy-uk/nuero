@@ -49,6 +49,7 @@ router.post('/write', (req, res) => {
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(filePath, content, 'utf-8');
+  try { require('../services/vault-hooks').onVaultWrite(filePath, 'vault-api-write'); } catch {}
   res.json({ success: true, path: relPath });
 });
 
@@ -62,6 +63,7 @@ router.post('/append', (req, res) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : '';
   fs.writeFileSync(filePath, existing + content, 'utf-8');
+  try { require('../services/vault-hooks').onVaultWrite(filePath, 'vault-api-append'); } catch {}
   res.json({ success: true, path: relPath });
 });
 

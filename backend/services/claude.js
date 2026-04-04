@@ -612,21 +612,25 @@ async function streamChat(conversationId, userMessage, res, location = null) {
   try { require('./activity').trackChatMessage(userMessage); } catch {}
 
   const history = db.getConversationHistory(conversationId, 10);
-  const queueSummary = db.getQueueSummary();
 
+  // Use working memory for cached context (queue, todos, plan)
+  let wmCtx = null;
+  try { wmCtx = await require('./working-memory').getContext(); } catch {}
+
+  const queueSummary = wmCtx?.queueSummary || db.getQueueSummary();
+  const todos = wmCtx?.todos || (() => { try { return obsidian.parseVaultTodos(); } catch { return null; } })();
+  const ninetyDayPlan = wmCtx?.ninetyDayPlan || (() => { try { return obsidian.parseNinetyDayPlan(); } catch { return null; } })();
+
+  // Daily note and standup always read fresh — cheap and must be current
   let dailyNote = null;
   let previousNote = null;
   let standupContent = null;
-  let todos = null;
-  let ninetyDayPlan = null;
 
   try { dailyNote = obsidian.readTodayDailyNote(); } catch (e) { console.warn('[Context] Daily note error:', e.message); }
   if (!dailyNote) {
     try { previousNote = obsidian.readPreviousDailyNote(); } catch (e) { console.warn('[Context] Previous note error:', e.message); }
   }
   try { standupContent = obsidian.readStandup(); } catch (e) { console.warn('[Context] Standup error:', e.message); }
-  try { todos = obsidian.parseVaultTodos(); } catch (e) { console.warn('[Context] Todos error:', e.message); }
-  try { ninetyDayPlan = obsidian.parseNinetyDayPlan(); } catch (e) { console.warn('[Context] 90-day plan error:', e.message); }
 
   const queryIntent = detectQueryIntent(userMessage);
 

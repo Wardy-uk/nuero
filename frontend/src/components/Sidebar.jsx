@@ -3,22 +3,23 @@ import { apiUrl } from '../api';
 import './Sidebar.css';
 
 const PRIMARY_ITEMS = [
-  { id: 'dashboard',  label: 'Review',    icon: '⬡' },
+  { id: 'focus',      label: 'Focus',     icon: '◉' },
   { id: 'chat',       label: 'Ask',       icon: '›' },
   { id: 'capture',    label: 'Capture',   icon: '+' },
 ];
 
 const SECONDARY_ITEMS = [
-  { id: 'people',     label: 'People',    icon: '>' },
+  { id: 'dashboard',  label: 'Review',    icon: '⬡' },
   { id: 'queue',      label: 'Queue',     icon: '>' },
+  { id: 'people',     label: 'People',    icon: '>' },
   { id: 'calendar',   label: 'Calendar',  icon: '>' },
+  { id: 'vault',      label: 'Vault',     icon: '>' },
   { id: 'inbox',      label: 'Inbox',     icon: '>' },
   { id: 'plan',       label: '90-Day Plan', icon: '>' },
   { id: 'standups',   label: 'Standups',  icon: '>' },
   { id: 'journal',    label: 'Journal',   icon: '>' },
-  { id: 'vault',      label: 'Vault',     icon: '>' },
-  { id: 'recent',     label: 'Recent',    icon: '>' },
   { id: 'imports',    label: 'Imports',   icon: '>' },
+  { id: 'recent',     label: 'Recent',    icon: '>' },
   { id: 'insights',   label: 'Insights',  icon: '◈' },
   { id: 'admin',      label: 'Settings',  icon: '>' },
 ];
@@ -34,8 +35,8 @@ function useTimeHighlight() {
       const day = now.getDay();
       const isWeekday = day >= 1 && day <= 5;
       if (!isWeekday) { setHighlight(null); return; }
-      if (h >= 8 && h < 10) { setHighlight('dashboard'); return; }
-      if (h >= 21 && h < 23) { setHighlight('dashboard'); return; }
+      if (h >= 8 && h < 10) { setHighlight('focus'); return; }
+      if (h >= 21 && h < 23) { setHighlight('focus'); return; }
       setHighlight(null);
     }
     check();

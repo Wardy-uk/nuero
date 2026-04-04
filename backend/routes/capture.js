@@ -80,14 +80,8 @@ router.post('/note', (req, res) => {
     console.log(`[Capture] Note saved and verified: ${filename} (${written.length} bytes)`);
     res.json({ success: true, path: filePath, filename, verified: true });
     try { require('../services/activity').trackCapture('note'); } catch {}
-    try { require('../services/activity').trackVaultWrite('capture'); } catch {}
-    // Embed immediately so it's searchable right away, and extract entities
-    try {
-      const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
-      const relativePath = path.relative(vaultPath, filePath).replace(/\\/g, '/');
-      require('../services/embeddings').embedVaultFile(relativePath, filePath).catch(() => {});
-      require('../services/entities').processNote(relativePath);
-    } catch {}
+    // Trigger vault hooks (embedding + entity extraction + working memory invalidation)
+    try { require('../services/vault-hooks').onVaultWrite(filePath, 'capture-note'); } catch {}
   } catch (e) {
     console.error('[Capture] Note error:', e);
     res.status(500).json({ error: e.message });
@@ -129,6 +123,7 @@ router.post('/todo', (req, res) => {
     console.log(`[Capture] Todo saved: ${text.trim()}`);
     res.json({ success: true, text: text.trim() });
     try { require('../services/activity').trackCapture('todo'); } catch {}
+    try { require('../services/vault-hooks').onVaultWrite(masterPath, 'capture-todo'); } catch {}
   } catch (e) {
     console.error('[Capture] Todo error:', e);
     res.status(500).json({ error: e.message });
@@ -158,13 +153,7 @@ router.post('/photo', upload.single('file'), (req, res) => {
 
     console.log(`[Capture] Photo saved: ${filename}`);
     res.json({ success: true, path: filePath, filename });
-    // Embed and extract entities from the markdown note
-    try {
-      const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
-      const relativePath = path.relative(vaultPath, mdPath).replace(/\\/g, '/');
-      require('../services/embeddings').embedVaultFile(relativePath, mdPath).catch(() => {});
-      require('../services/entities').processNote(relativePath);
-    } catch {}
+    try { require('../services/vault-hooks').onVaultWrite(mdPath, 'capture-photo'); } catch {}
   } catch (e) {
     console.error('[Capture] Photo error:', e);
     res.status(500).json({ error: e.message });
@@ -196,13 +185,7 @@ router.post('/file', upload.single('file'), (req, res) => {
 
     console.log(`[Capture] File saved: ${filename}`);
     res.json({ success: true, path: filePath, filename });
-    // Embed and extract entities from the markdown note
-    try {
-      const vaultPath = process.env.OBSIDIAN_VAULT_PATH || '';
-      const relativePath = path.relative(vaultPath, mdPath).replace(/\\/g, '/');
-      require('../services/embeddings').embedVaultFile(relativePath, mdPath).catch(() => {});
-      require('../services/entities').processNote(relativePath);
-    } catch {}
+    try { require('../services/vault-hooks').onVaultWrite(mdPath, 'capture-file'); } catch {}
   } catch (e) {
     console.error('[Capture] File error:', e);
     res.status(500).json({ error: e.message });

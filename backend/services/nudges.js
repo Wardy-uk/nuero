@@ -261,17 +261,59 @@ function hasPendingTodos() {
 }
 
 // Called by cron — creates the initial nudge at 9am
+// Now context-aware: checks if user is active, in a meeting, or standup already started
 function triggerStandupNudge() {
   const dateKey = todayKey();
   const existing = db.getActiveNudgeByTypeAndDate('standup', dateKey);
 
   if (existing) {
-    // Already nudging — don't create a new one
-    return;
+    return; // Already nudging
   }
 
   if (isStandupDone()) {
     return; // Already done today
+  }
+
+  // Context-aware checks — defer if conditions aren't right
+  try {
+    const todayActivity = db.getActivityForDate(dateKey);
+
+    // Check if user already opened the standup tab today
+    const openedStandup = todayActivity.some(a => {
+      if (a.event_type !== 'tab_open') return false;
+      try {
+        const data = typeof a.event_data === 'string' ? JSON.parse(a.event_data) : a.event_data;
+        return data && (data.tab === 'standup' || data.tab === 'dashboard');
+      } catch { return false; }
+    });
+
+    if (openedStandup) {
+      console.log('[Nudge] Standup nudge deferred — user already opened standup/dashboard tab');
+      // Defer: they're already engaging. Check again at next nag cycle.
+      return;
+    }
+
+    // Check if user is currently in a meeting (calendar event happening now)
+    try {
+      const now = new Date();
+      const todayStr = dateKey;
+      const tomorrowStr = new Date(now.getTime() + 86400000).toISOString().split('T')[0];
+      const events = db.getCalendarEvents(todayStr, tomorrowStr);
+      const inMeeting = events.some(e => {
+        if (e.is_all_day) return false;
+        const start = new Date(e.start_time);
+        const end = new Date(e.end_time);
+        return now >= start && now <= end;
+      });
+
+      if (inMeeting) {
+        console.log('[Nudge] Standup nudge deferred — user is in a meeting');
+        return;
+      }
+    } catch {}
+  } catch (e) {
+    // If context checks fail, proceed with the nudge anyway
+    console.warn('[Nudge] Context check failed, proceeding with nudge:', e.message);
   }
 
   // Pick from tier 1 messages (first 10) — different each day
@@ -322,6 +364,24 @@ function nagCheck() {
     if (isSnoozed(nudge.type)) {
       continue;
     }
+
+    // Skip escalation if user is currently in a meeting
+    try {
+      const now = new Date();
+      const todayStr = todayKey();
+      const tomorrowStr = new Date(now.getTime() + 86400000).toISOString().split('T')[0];
+      const events = db.getCalendarEvents(todayStr, tomorrowStr);
+      const inMeeting = events.some(e => {
+        if (e.is_all_day) return false;
+        const start = new Date(e.start_time);
+        const end = new Date(e.end_time);
+        return now >= start && now <= end;
+      });
+      if (inMeeting) {
+        console.log(`[Nudge] Nag deferred for ${nudge.type} — user is in a meeting`);
+        continue;
+      }
+    } catch {}
 
     // Escalate
     const newCount = (nudge.nag_count || 0) + 1;

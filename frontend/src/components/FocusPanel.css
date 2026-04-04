@@ -1,0 +1,221 @@
+.focus-panel {
+  max-width: 720px;
+  width: 100%;
+}
+
+.focus-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.focus-title {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.focus-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.focus-meta-tag {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.focus-meta-warn {
+  color: var(--warning);
+  border-color: rgba(240, 160, 64, 0.25);
+}
+
+.focus-meta-stale {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.focus-refresh {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.focus-refresh:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Empty state */
+.focus-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-secondary);
+}
+.focus-empty-icon {
+  font-size: 32px;
+  color: var(--success);
+  margin-bottom: 12px;
+}
+.focus-empty-text {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.focus-empty-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Item list */
+.focus-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.focus-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  gap: 12px;
+}
+.focus-item:hover {
+  background: var(--bg-tertiary);
+  border-color: rgba(90, 163, 249, 0.2);
+}
+
+/* Urgency left border accent */
+.focus-item.focus-urgency-critical {
+  border-left: 3px solid var(--danger);
+}
+.focus-item.focus-urgency-high {
+  border-left: 3px solid var(--warning);
+}
+.focus-item.focus-urgency-medium {
+  border-left: 3px solid var(--accent);
+}
+
+.focus-item-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.focus-item-icon {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 22px;
+  text-align: center;
+  padding-top: 2px;
+}
+
+.focus-item-content {
+  min-width: 0;
+}
+
+.focus-item-title {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-item-reason {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
+
+.focus-item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.focus-urgency-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.focus-urgency-badge.focus-urgency-critical {
+  color: var(--danger);
+  background: rgba(224, 85, 85, 0.12);
+}
+.focus-urgency-badge.focus-urgency-high {
+  color: var(--warning);
+  background: rgba(240, 160, 64, 0.12);
+}
+.focus-urgency-badge.focus-urgency-medium {
+  color: var(--accent);
+  background: rgba(90, 163, 249, 0.1);
+}
+.focus-urgency-badge.focus-urgency-low {
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.focus-item-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.focus-footer {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .focus-panel {
+    padding: 0;
+  }
+  .focus-item-hint {
+    display: none;
+  }
+  .focus-item-title {
+    white-space: normal;
+  }
+}
