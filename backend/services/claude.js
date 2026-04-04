@@ -782,8 +782,8 @@ ${contextBlock}${synthesisSuffix}`;
     'Access-Control-Allow-Origin': '*'
   });
 
-  // Try Claude API first, fall back to Ollama
-  const useClaude = anthropicAvailable();
+  // Use Ollama as primary (Claude credits exhausted)
+  const useClaude = false;
   const backend = useClaude ? 'Claude' : 'Ollama';
   console.log(`[${backend}] Model: ${useClaude ? CLAUDE_MODEL : OLLAMA_MODEL}, system: ${systemPrompt.length} chars, ${messages.length} msgs`);
 
