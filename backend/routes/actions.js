@@ -12,6 +12,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
 const suggestionEngine = require('../services/suggestion-engine');
+const workingMemory = require('../services/working-memory');
 
 // GET /api/actions — list pending actions + recent history
 router.get('/', (req, res) => {
@@ -40,6 +41,9 @@ router.post('/:id/approve', (req, res) => {
     // Log
     suggestionEngine.logActionExecution(action, result);
 
+    // Invalidate working memory so focus fingerprint changes
+    workingMemory.invalidate('sara action approved');
+
     res.json({ ok: result.ok, detail: result.detail, action });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -54,6 +58,9 @@ router.post('/:id/reject', (req, res) => {
     if (action.status !== 'pending') return res.status(400).json({ error: `Action is ${action.status}, not pending` });
 
     db.updateSaraActionStatus(action.id, 'rejected');
+
+    // Invalidate working memory so focus fingerprint changes
+    workingMemory.invalidate('sara action rejected');
 
     // Log rejection to activity
     try {

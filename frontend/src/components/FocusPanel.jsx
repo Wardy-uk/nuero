@@ -35,6 +35,7 @@ export default function FocusPanel({ onNavigate }) {
   const sara = data?.sara || null;
   const tone = data?.tone || 'focused';
   const suggestions = data?.suggestions || [];
+  const [actionLoading, setActionLoading] = useState(null);
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -173,7 +174,7 @@ export default function FocusPanel({ onNavigate }) {
             <span className="sara-says-label">SARA SUGGESTS</span>
           </div>
           {suggestions.map(s => (
-            <div key={s.id} className="sara-suggestion">
+            <div key={s.id} className={`sara-suggestion ${actionLoading === s.id ? 'sara-suggestion-loading' : ''}`}>
               <div className="sara-suggestion-content">
                 <div className="sara-suggestion-reason">{s.reason}</div>
                 <div className="sara-suggestion-type">{s.type.replace('_', ' ')}</div>
@@ -181,19 +182,31 @@ export default function FocusPanel({ onNavigate }) {
               <div className="sara-suggestion-actions">
                 <button
                   className="sara-approve-btn"
+                  disabled={actionLoading === s.id}
                   onClick={async () => {
+                    setActionLoading(s.id);
                     try {
-                      await fetch(apiUrl(`/api/actions/${s.id}/approve`), { method: 'POST' });
-                      refresh();
+                      const r = await fetch(apiUrl(`/api/actions/${s.id}/approve`), { method: 'POST' });
+                      const result = await r.json();
+                      if (result.ok) {
+                        // Force fresh focus load (bypass cache)
+                        window.setTimeout(() => {
+                          setShowAll(false);
+                          refresh();
+                        }, 300);
+                      }
                     } catch {}
+                    setActionLoading(null);
                   }}
-                >Approve</button>
+                >{actionLoading === s.id ? '...' : 'Approve'}</button>
                 <button
                   className="sara-reject-btn"
+                  disabled={actionLoading === s.id}
                   onClick={async () => {
+                    setActionLoading(s.id);
                     try {
                       await fetch(apiUrl(`/api/actions/${s.id}/reject`), { method: 'POST' });
-                      refresh();
+                      window.setTimeout(() => refresh(), 300);
                     } catch {}
                   }}
                 >Dismiss</button>
