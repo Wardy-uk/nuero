@@ -127,13 +127,21 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // ── Generate suggestions (max 2, deterministic, no AI) ──
+    // ── Suggestions: generate new + include existing pending ──
     let suggestions = [];
     if (!showAll && result.items.length > 0) {
       try {
         const suggestionEngine = require('../services/suggestion-engine');
+        const db = require('../db/database');
+
+        // Generate new suggestions (deduplicates against pending)
         const raw = suggestionEngine.generateSuggestions(result.items);
-        suggestions = suggestionEngine.persistSuggestions(raw);
+        if (raw.length > 0) {
+          suggestionEngine.persistSuggestions(raw);
+        }
+
+        // Return all pending actions (max 2)
+        suggestions = db.getPendingSaraActions().slice(0, 2);
       } catch (e) {
         console.warn('[Focus] Suggestion generation failed:', e.message);
       }
