@@ -38,6 +38,7 @@ const healthRoutes = require('./routes/health');
 const locationRoutes = require('./routes/location');
 const jiraRoutes = require('./routes/jira');
 const focusRoutes = require('./routes/focus');
+const actionsRoutes = require('./routes/actions');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -107,6 +108,7 @@ app.use('/api/health', healthRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/focus', focusRoutes);
+app.use('/api/actions', actionsRoutes);
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/email', require('./routes/email-triage'));
 

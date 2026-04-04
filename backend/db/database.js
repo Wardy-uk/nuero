@@ -696,6 +696,73 @@ function deleteDoNext(id) {
   save();
 }
 
+// ── SARA Actions ──
+
+function createSaraAction(type, payload, confidence, reason, focusItemId) {
+  getDb().run(
+    `INSERT INTO sara_actions (type, payload, confidence, reason, focus_item_id)
+     VALUES (?, ?, ?, ?, ?)`,
+    [type, JSON.stringify(payload), confidence, reason, focusItemId || null]
+  );
+  save();
+  // Return the inserted ID
+  const stmt = getDb().prepare('SELECT last_insert_rowid() as id');
+  stmt.step();
+  const row = stmt.getAsObject();
+  stmt.free();
+  return row.id;
+}
+
+function getPendingSaraActions() {
+  const stmt = getDb().prepare(
+    'SELECT * FROM sara_actions WHERE status = ? ORDER BY confidence DESC, created_at DESC LIMIT 10'
+  );
+  stmt.bind(['pending']);
+  const rows = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    row.payload = JSON.parse(row.payload || '{}');
+    rows.push(row);
+  }
+  stmt.free();
+  return rows;
+}
+
+function getSaraAction(id) {
+  const stmt = getDb().prepare('SELECT * FROM sara_actions WHERE id = ?');
+  stmt.bind([id]);
+  let row = null;
+  if (stmt.step()) {
+    row = stmt.getAsObject();
+    row.payload = JSON.parse(row.payload || '{}');
+  }
+  stmt.free();
+  return row;
+}
+
+function updateSaraActionStatus(id, status) {
+  getDb().run(
+    `UPDATE sara_actions SET status = ?, resolved_at = datetime('now') WHERE id = ?`,
+    [status, id]
+  );
+  save();
+}
+
+function getRecentSaraActions(limit = 20) {
+  const stmt = getDb().prepare(
+    'SELECT * FROM sara_actions ORDER BY created_at DESC LIMIT ?'
+  );
+  stmt.bind([limit]);
+  const rows = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    row.payload = JSON.parse(row.payload || '{}');
+    rows.push(row);
+  }
+  stmt.free();
+  return rows;
+}
+
 module.exports = {
   init,
   getDb,
@@ -766,5 +833,11 @@ module.exports = {
   getActiveDoNext,
   getAllDoNext,
   completeDoNext,
-  deleteDoNext
+  deleteDoNext,
+  // SARA Actions
+  createSaraAction,
+  getPendingSaraActions,
+  getSaraAction,
+  updateSaraActionStatus,
+  getRecentSaraActions,
 };

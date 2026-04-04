@@ -378,6 +378,92 @@
   color: var(--text-muted);
 }
 
+/* ── SARA Suggests block ── */
+.sara-suggests {
+  margin-top: 16px;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  border-left: 3px solid #7c3aed;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  background: rgba(124, 58, 237, 0.04);
+}
+
+.sara-suggests-header {
+  margin-bottom: 8px;
+}
+
+.sara-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.sara-suggestion + .sara-suggestion {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.sara-suggestion-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.sara-suggestion-reason {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.sara-suggestion-type {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.sara-suggestion-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sara-approve-btn {
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  color: #7c3aed;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sara-approve-btn:hover {
+  background: rgba(124, 58, 237, 0.2);
+}
+
+.sara-reject-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sara-reject-btn:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .focus-panel {

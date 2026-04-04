@@ -127,6 +127,18 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // ── Generate suggestions (max 2, deterministic, no AI) ──
+    let suggestions = [];
+    if (!showAll && result.items.length > 0) {
+      try {
+        const suggestionEngine = require('../services/suggestion-engine');
+        const raw = suggestionEngine.generateSuggestions(result.items);
+        suggestions = suggestionEngine.persistSuggestions(raw);
+      } catch (e) {
+        console.warn('[Focus] Suggestion generation failed:', e.message);
+      }
+    }
+
     const response = {
       generatedAt: new Date().toISOString(),
       cacheAge: workingMemory.getCacheAge(),
@@ -146,6 +158,7 @@ router.get('/', async (req, res) => {
       tone,
       primaryItem: result.primaryItem || null,
       sara: sara || null,
+      suggestions,
       items: result.items,
     };
 

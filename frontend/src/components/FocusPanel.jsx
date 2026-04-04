@@ -34,6 +34,7 @@ export default function FocusPanel({ onNavigate }) {
   const totalCandidates = data?.totalCandidates || 0;
   const sara = data?.sara || null;
   const tone = data?.tone || 'focused';
+  const suggestions = data?.suggestions || [];
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -163,6 +164,43 @@ export default function FocusPanel({ onNavigate }) {
             );
           })}
         </ul>
+      )}
+
+      {/* ── SARA Suggests block ── */}
+      {suggestions.length > 0 && !showAll && (
+        <div className="sara-suggests">
+          <div className="sara-suggests-header">
+            <span className="sara-says-label">SARA SUGGESTS</span>
+          </div>
+          {suggestions.map(s => (
+            <div key={s.id} className="sara-suggestion">
+              <div className="sara-suggestion-content">
+                <div className="sara-suggestion-reason">{s.reason}</div>
+                <div className="sara-suggestion-type">{s.type.replace('_', ' ')}</div>
+              </div>
+              <div className="sara-suggestion-actions">
+                <button
+                  className="sara-approve-btn"
+                  onClick={async () => {
+                    try {
+                      await fetch(apiUrl(`/api/actions/${s.id}/approve`), { method: 'POST' });
+                      refresh();
+                    } catch {}
+                  }}
+                >Approve</button>
+                <button
+                  className="sara-reject-btn"
+                  onClick={async () => {
+                    try {
+                      await fetch(apiUrl(`/api/actions/${s.id}/reject`), { method: 'POST' });
+                      refresh();
+                    } catch {}
+                  }}
+                >Dismiss</button>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Footer */}

@@ -207,3 +207,18 @@ CREATE TABLE IF NOT EXISTS daily_summary (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- SARA Action Suggestions (Phase 5A)
+CREATE TABLE IF NOT EXISTS sara_actions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  confidence REAL DEFAULT 0.5,
+  reason TEXT,
+  status TEXT DEFAULT 'pending',
+  focus_item_id TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  resolved_at DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_sara_actions_status ON sara_actions(status);
