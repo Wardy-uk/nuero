@@ -54,6 +54,8 @@ function _buildFingerprint(ctx) {
     (ctx.observations || []).length,
     ctx.snoozeCount || 0,
     ctx.dismissCount || 0,
+    // SARA actions state (changes when action approved/rejected)
+    (() => { try { return require('../db/database').getPendingSaraActions().length; } catch { return 0; } })(),
   ];
 
   return crypto.createHash('md5').update(parts.join('|')).digest('hex').substring(0, 12);

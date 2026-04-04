@@ -117,8 +117,14 @@ function generateSuggestions(focusItems) {
   if (!focusItems || focusItems.length === 0) return [];
 
   const suggestions = [];
-  const pendingActions = db.getPendingSaraActions();
-  const pendingTypes = new Set(pendingActions.map(a => `${a.type}:${a.focus_item_id}`));
+  // Deduplicate against ALL recent actions (pending + executed + rejected today)
+  const recentActions = db.getRecentSaraActions(50);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const recentKeys = new Set(
+    recentActions
+      .filter(a => a.created_at && a.created_at.startsWith(todayStr))
+      .map(a => `${a.type}:${a.focus_item_id}`)
+  );
 
   for (const item of focusItems) {
     for (const rule of SUGGESTION_RULES) {
@@ -127,9 +133,9 @@ function generateSuggestions(focusItems) {
       const suggestion = rule.generate(item);
       if (!suggestion) continue;
 
-      // Deduplicate: don't suggest if similar action is already pending
+      // Deduplicate: don't re-suggest if same action type for same item already exists today
       const dedupeKey = `${suggestion.type}:${item.id}`;
-      if (pendingTypes.has(dedupeKey)) continue;
+      if (recentKeys.has(dedupeKey)) continue;
 
       suggestions.push({
         ...suggestion,
