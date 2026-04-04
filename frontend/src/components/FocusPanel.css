@@ -432,36 +432,60 @@
   flex-shrink: 0;
 }
 
+.sara-do-btn {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--bg-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.3px;
+}
+.sara-do-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
 .sara-approve-btn {
-  background: rgba(124, 58, 237, 0.12);
-  border: 1px solid rgba(124, 58, 237, 0.3);
-  color: #7c3aed;
+  background: rgba(90, 163, 249, 0.1);
+  border: 1px solid rgba(90, 163, 249, 0.3);
+  color: var(--accent);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s;
 }
 .sara-approve-btn:hover {
-  background: rgba(124, 58, 237, 0.2);
+  background: rgba(90, 163, 249, 0.2);
 }
 
 .sara-reject-btn {
   background: none;
-  border: 1px solid var(--border);
+  border: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 4px;
+  font-size: 10px;
+  padding: 4px 8px;
   cursor: pointer;
   transition: all 0.15s;
 }
 .sara-reject-btn:hover {
-  border-color: var(--danger);
-  color: var(--danger);
+  color: var(--text-secondary);
+}
+
+.sara-suggestion-primary {
+  padding-bottom: 10px;
+}
+.sara-suggestion-primary .sara-suggestion-reason {
+  font-size: 13px;
+  font-weight: 500;
 }
 
 /* Responsive */

@@ -44,7 +44,14 @@ router.post('/:id/approve', (req, res) => {
     // Invalidate working memory so focus fingerprint changes
     workingMemory.invalidate('sara action approved');
 
-    res.json({ ok: result.ok, detail: result.detail, action });
+    res.json({
+      ok: result.ok,
+      detail: result.detail,
+      navigate: result.navigate || null,
+      navigateContext: result.navigateContext || null,
+      url: result.url || null,
+      action,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

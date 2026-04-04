@@ -171,17 +171,16 @@ export default function FocusPanel({ onNavigate }) {
       {suggestions.length > 0 && !showAll && (
         <div className="sara-suggests">
           <div className="sara-suggests-header">
-            <span className="sara-says-label">SARA SUGGESTS</span>
+            <span className="sara-says-label">NEXT</span>
           </div>
-          {suggestions.map(s => (
-            <div key={s.id} className={`sara-suggestion ${actionLoading === s.id ? 'sara-suggestion-loading' : ''}`}>
+          {suggestions.map((s, idx) => (
+            <div key={s.id} className={`sara-suggestion ${idx === 0 ? 'sara-suggestion-primary' : ''} ${actionLoading === s.id ? 'sara-suggestion-loading' : ''}`}>
               <div className="sara-suggestion-content">
                 <div className="sara-suggestion-reason">{s.reason}</div>
-                <div className="sara-suggestion-type">{s.type.replace('_', ' ')}</div>
               </div>
               <div className="sara-suggestion-actions">
                 <button
-                  className="sara-approve-btn"
+                  className={idx === 0 ? 'sara-do-btn' : 'sara-approve-btn'}
                   disabled={actionLoading === s.id}
                   onClick={async () => {
                     setActionLoading(s.id);
@@ -189,16 +188,22 @@ export default function FocusPanel({ onNavigate }) {
                       const r = await fetch(apiUrl(`/api/actions/${s.id}/approve`), { method: 'POST' });
                       const result = await r.json();
                       if (result.ok) {
-                        // Force fresh focus load (bypass cache)
-                        window.setTimeout(() => {
-                          setShowAll(false);
-                          refresh();
-                        }, 300);
+                        // Open external URL if provided (e.g. Jira ticket)
+                        if (result.url) {
+                          window.open(result.url, '_blank');
+                        }
+                        // Navigate to the target view
+                        if (result.navigate && onNavigate) {
+                          onNavigate(result.navigate, result.navigateContext || { fromFocus: true });
+                        } else {
+                          // No navigation — just refresh Focus to show next action
+                          window.setTimeout(() => refresh(), 300);
+                        }
                       }
                     } catch {}
                     setActionLoading(null);
                   }}
-                >{actionLoading === s.id ? '...' : 'Approve'}</button>
+                >{actionLoading === s.id ? '...' : (idx === 0 ? 'Do it' : 'Go')}</button>
                 <button
                   className="sara-reject-btn"
                   disabled={actionLoading === s.id}
@@ -208,8 +213,9 @@ export default function FocusPanel({ onNavigate }) {
                       await fetch(apiUrl(`/api/actions/${s.id}/reject`), { method: 'POST' });
                       window.setTimeout(() => refresh(), 300);
                     } catch {}
+                    setActionLoading(null);
                   }}
-                >Dismiss</button>
+                >Skip</button>
               </div>
             </div>
           ))}

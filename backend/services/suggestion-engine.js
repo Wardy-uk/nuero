@@ -1,103 +1,148 @@
 'use strict';
 
 /**
- * Suggestion Engine — generates concrete action suggestions from Focus items.
+ * Suggestion Engine — execution-first action suggestions from Focus items.
  *
- * Phase 5A: Deterministic, rule-based. No LLM.
- * Actions require user approval before execution.
+ * Philosophy: "Do it" not "plan to do it".
+ * Suggestions navigate the user to real actions, not task creation.
  *
- * Supported action types:
- *   - create_task
- *   - draft_message
- *   - update_vault
- *   - nudge
+ * Action types:
+ *   - open_ticket  → navigate to Jira ticket
+ *   - open_task    → navigate to top overdue task in TodoPanel
+ *   - open_email   → navigate to inbox
+ *   - open_standup → navigate to standup
+ *   - draft_reply  → (future: open draft composer)
  *
- * Output shape per suggestion:
- *   { id, type, confidence, reason, payload, autoExecutable: false }
+ * Each suggestion returns a navigation target so the frontend
+ * can immediately move the user to the right place.
  */
 
 const db = require('../db/database');
 
 const SARA_MODE = process.env.SARA_MODE || 'suggest';
+const JIRA_BASE = process.env.JIRA_BASE_URL || '';
 
-// ── Signal type → action mapping ──
+// ── Signal type → execution action mapping ──
 
 const SUGGESTION_RULES = [
   {
-    // Overdue plan task → create a focused task in daily note
-    match: (item) => item.type === 'todo' && item.id.includes('overdue') && item.meta?.overdueCount > 0,
-    generate: (item) => ({
-      type: 'update_vault',
-      confidence: 0.8,
-      reason: `You have ${item.meta.overdueCount} overdue tasks. Adding the top one to today's focus.`,
-      payload: {
-        action: 'append_daily',
-        content: `- [ ] 🔴 ${_extractTopTask(item)} *(carried from overdue)*`,
-      },
-    }),
+    // SLA risk tickets → open the top ticket directly
+    match: (item) => item.type === 'jira_ticket' && item.urgency === 'critical',
+    generate: (item) => {
+      const key = item.meta?.keys?.[0] || item.meta?.key;
+      return {
+        type: 'open_ticket',
+        confidence: 0.95,
+        reason: key ? `Open ${key} — SLA is breaching` : 'Check the at-risk queue now',
+        payload: {
+          ticketKey: key,
+          url: key && JIRA_BASE ? `${JIRA_BASE}/browse/${key}` : null,
+          navigate: 'queue',
+        },
+      };
+    },
   },
   {
-    // SLA breach → nudge to check queue
-    match: (item) => item.type === 'jira_ticket' && (item._override === 'sla_critical' || item.urgency === 'critical'),
-    generate: (item) => ({
-      type: 'nudge',
-      confidence: 0.9,
-      reason: 'Critical SLA risk detected. Sending yourself a queue reminder.',
-      payload: {
-        nudgeType: 'queue_urgent',
-        message: `SLA risk: ${item.title}. Check the queue now.`,
-      },
-    }),
+    // SLA risk (non-critical) → open queue
+    match: (item) => item.type === 'jira_ticket',
+    generate: (item) => {
+      const count = item.meta?.count || 1;
+      return {
+        type: 'open_ticket',
+        confidence: 0.85,
+        reason: `${count} ticket${count > 1 ? 's' : ''} at SLA risk — review queue`,
+        payload: {
+          navigate: 'queue',
+          filter: 'at-risk',
+        },
+      };
+    },
   },
   {
-    // Escalation unseen → create a task to respond
+    // Escalation → open escalation queue
     match: (item) => item.type === 'escalation',
     generate: (item) => ({
-      type: 'create_task',
-      confidence: 0.85,
-      reason: 'Unseen escalations need a response. Creating a task to track this.',
+      type: 'open_ticket',
+      confidence: 0.92,
+      reason: `${item.title} — respond now`,
       payload: {
-        text: `Review escalation${item.meta?.count > 1 ? 's' : ''}: ${item.title}`,
-        priority: 'high',
+        navigate: 'queue',
+        filter: 'escalations',
       },
     }),
   },
   {
-    // Meeting imminent → add prep note to daily
+    // Overdue tasks → open the top overdue task
+    match: (item) => item.type === 'todo' && item.id.includes('overdue'),
+    generate: (item) => ({
+      type: 'open_task',
+      confidence: 0.8,
+      reason: `Start with your top overdue task`,
+      payload: {
+        navigate: 'todos',
+        filter: 'overdue',
+      },
+    }),
+  },
+  {
+    // Due today → open today's tasks
+    match: (item) => item.type === 'todo' && item.id.includes('today'),
+    generate: (item) => ({
+      type: 'open_task',
+      confidence: 0.7,
+      reason: `Tasks due today — start the first one`,
+      payload: {
+        navigate: 'todos',
+        filter: 'today',
+      },
+    }),
+  },
+  {
+    // Urgent emails → open inbox
+    match: (item) => item.type === 'email',
+    generate: (item) => ({
+      type: 'open_email',
+      confidence: 0.75,
+      reason: `${item.meta?.count || 1} urgent email${(item.meta?.count || 1) > 1 ? 's' : ''} — check inbox`,
+      payload: {
+        navigate: 'inbox',
+        filter: 'urgent',
+      },
+    }),
+  },
+  {
+    // Standup not done → open standup
+    match: (item) => item.type === 'nudge' && item.meta?.type === 'standup',
+    generate: (item) => ({
+      type: 'open_standup',
+      confidence: 0.7,
+      reason: 'Do your standup — 2 minutes',
+      payload: {
+        navigate: 'standup',
+      },
+    }),
+  },
+  {
+    // EOD not done → open standup (EOD tab)
+    match: (item) => item.type === 'nudge' && item.meta?.type === 'eod',
+    generate: (item) => ({
+      type: 'open_standup',
+      confidence: 0.65,
+      reason: 'Wrap up — do your EOD',
+      payload: {
+        navigate: 'standup',
+      },
+    }),
+  },
+  {
+    // Meeting imminent → open calendar
     match: (item) => item.type === 'meeting' && item.meta?.minutesAway != null && item.meta.minutesAway <= 15,
     generate: (item) => ({
-      type: 'update_vault',
-      confidence: 0.7,
-      reason: `Meeting "${item.title}" starts soon. Adding a prep section to your daily note.`,
+      type: 'open_task',
+      confidence: 0.8,
+      reason: `"${item.title}" starts in ${item.meta.minutesAway} min — prep now`,
       payload: {
-        action: 'append_daily',
-        content: `\n### Meeting Prep: ${item.title}\n- [ ] Review agenda\n- [ ] Check attendee notes\n`,
-      },
-    }),
-  },
-  {
-    // Standup not done (late) → nudge
-    match: (item) => item.type === 'nudge' && item.meta?.type === 'standup' && (item.meta?.nagCount || 0) >= 3,
-    generate: (item) => ({
-      type: 'nudge',
-      confidence: 0.75,
-      reason: 'Standup has been pending a while. Quick nudge to get it done.',
-      payload: {
-        nudgeType: 'standup_reminder',
-        message: 'Your standup is still pending. 2 minutes — just do it.',
-      },
-    }),
-  },
-  {
-    // Urgent emails → create task to respond
-    match: (item) => item.type === 'email' && item.meta?.count > 0,
-    generate: (item) => ({
-      type: 'create_task',
-      confidence: 0.65,
-      reason: `${item.meta.count} urgent email${item.meta.count > 1 ? 's' : ''} flagged. Creating a task to handle them.`,
-      payload: {
-        text: `Handle urgent inbox: ${item.title}`,
-        priority: 'high',
+        navigate: 'calendar',
       },
     }),
   },
@@ -106,18 +151,14 @@ const SUGGESTION_RULES = [
 
 /**
  * Generate suggestions from Focus shortlist items.
- * Returns max 2 highest-confidence suggestions.
- * Deduplicates against recent pending actions.
- *
- * @param {Array} focusItems - Decision engine output items
- * @returns {Array} Action suggestions (max 2)
+ * Returns 1 primary + optional 1 secondary (max 2).
+ * Deduplicates against today's actions.
  */
 function generateSuggestions(focusItems) {
   if (SARA_MODE === 'off') return [];
   if (!focusItems || focusItems.length === 0) return [];
 
   const suggestions = [];
-  // Deduplicate against ALL recent actions (pending + executed + rejected today)
   const recentActions = db.getRecentSaraActions(50);
   const todayStr = new Date().toISOString().split('T')[0];
   const recentKeys = new Set(
@@ -133,7 +174,6 @@ function generateSuggestions(focusItems) {
       const suggestion = rule.generate(item);
       if (!suggestion) continue;
 
-      // Deduplicate: don't re-suggest if same action type for same item already exists today
       const dedupeKey = `${suggestion.type}:${item.id}`;
       if (recentKeys.has(dedupeKey)) continue;
 
@@ -144,18 +184,17 @@ function generateSuggestions(focusItems) {
         autoExecutable: false,
       });
 
-      break; // One suggestion per focus item
+      break;
     }
   }
 
-  // Return top 2 by confidence
+  // Primary = highest confidence, secondary = next best
   suggestions.sort((a, b) => b.confidence - a.confidence);
   return suggestions.slice(0, 2);
 }
 
 /**
  * Persist suggestions to the database.
- * Returns the created action objects with IDs.
  */
 function persistSuggestions(suggestions) {
   const created = [];
@@ -168,40 +207,35 @@ function persistSuggestions(suggestions) {
 
 /**
  * Execute an approved action.
- * @param {object} action - Action from sara_actions table
- * @returns {{ ok: boolean, detail: string }}
+ * For navigation actions: returns the target so the frontend can navigate.
+ * For vault actions: performs the write then returns confirmation.
  */
 function executeAction(action) {
   const payload = action.payload;
 
   switch (action.type) {
-    case 'create_task': {
-      const obsidian = require('./obsidian');
-      const text = payload.text || 'Untitled task';
-      obsidian.addTodoFromChat(text);
-      return { ok: true, detail: `Task created: ${text}` };
+    case 'open_ticket':
+    case 'open_task':
+    case 'open_email':
+    case 'open_standup': {
+      // Navigation actions — the frontend handles the actual navigation.
+      // We just log and return the target.
+      return {
+        ok: true,
+        detail: `Navigate to ${payload.navigate || action.type}`,
+        navigate: payload.navigate || null,
+        navigateContext: payload.filter ? { fromFocus: true, filter: payload.filter } : { fromFocus: true },
+        url: payload.url || null,
+      };
     }
 
-    case 'update_vault': {
-      const obsidian = require('./obsidian');
-      if (payload.action === 'append_daily') {
-        obsidian.appendToDailyNote(payload.content || '');
-        return { ok: true, detail: 'Appended to daily note' };
-      }
-      return { ok: false, detail: `Unknown vault action: ${payload.action}` };
-    }
-
-    case 'nudge': {
-      const nudges = require('./nudges');
-      const dateKey = new Date().toISOString().split('T')[0];
-      db.createNudge(payload.nudgeType || 'sara', payload.message || 'SARA reminder', dateKey);
-      nudges.broadcast({ type: 'nudge', nudge_type: payload.nudgeType || 'sara', message: payload.message, nag_count: 0 });
-      return { ok: true, detail: `Nudge sent: ${payload.message}` };
-    }
-
-    case 'draft_message': {
-      // Placeholder — log intent but don't send
-      return { ok: true, detail: `Draft prepared: ${payload.subject || 'message'}` };
+    case 'draft_reply': {
+      // Future: open a draft composer
+      return {
+        ok: true,
+        detail: 'Draft reply prepared',
+        navigate: 'inbox',
+      };
     }
 
     default:
@@ -213,7 +247,6 @@ function executeAction(action) {
  * Log an executed action to activity log and daily note.
  */
 function logActionExecution(action, result) {
-  // Activity log
   try {
     db.logActivity('sara_action', {
       actionId: action.id,
@@ -223,12 +256,11 @@ function logActionExecution(action, result) {
     });
   } catch {}
 
-  // Append to daily note
   if (result.ok) {
     try {
       const obsidian = require('./obsidian');
       const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-      const line = `- ${time} — ${action.type}: ${result.detail}`;
+      const line = `- ${time} — ${action.reason || action.type}`;
 
       const daily = obsidian.readTodayDailyNote() || '';
       if (daily.includes('## SARA Actions')) {
@@ -238,13 +270,6 @@ function logActionExecution(action, result) {
       }
     } catch {}
   }
-}
-
-function _extractTopTask(item) {
-  // Extract task text from the collapsed summary reason
-  const reasonMatch = (item.reason || '').match(/Top:\s*(.+)/);
-  if (reasonMatch) return reasonMatch[1].substring(0, 80);
-  return item.title.substring(0, 80);
 }
 
 module.exports = {
