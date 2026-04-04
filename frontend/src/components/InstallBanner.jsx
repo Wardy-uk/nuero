@@ -30,6 +30,7 @@ export default function InstallBanner() {
       background: '#1a1a2e',
       borderTop: '1px solid #00ff88',
       padding: '12px 16px',
+      paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',

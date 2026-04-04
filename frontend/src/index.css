@@ -24,10 +24,17 @@
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.25);
   --font-mono: 'IBM Plex Mono', monospace;
   --font-sans: 'IBM Plex Sans', sans-serif;
+
+  /* iOS safe area insets — used by PWA in standalone mode */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
 }
 
 html, body, #root {
   height: 100%;
+  height: 100dvh;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans);
