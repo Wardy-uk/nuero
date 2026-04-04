@@ -3,49 +3,105 @@
 /**
  * Focus Route — GET /api/focus
  *
- * Phase 3A Activation: Returns decision output with AI-enriched
- * primary directive, per-item guidance, and ignore summary.
+ * Phase 4A: Fingerprint-cached. Skips decision engine + AI if nothing changed.
  *
  * Query params:
  *   ?all=true  — bypass limits, return all candidates
  *   ?noai=true — skip AI enhancement (return deterministic only)
+ *   ?nocache=true — force full recomputation
  */
 
+const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
 const engine = require('../services/decision-engine');
 const workingMemory = require('../services/working-memory');
 const aiProvider = require('../services/ai-provider');
+const vaultCache = require('../services/vault-cache');
 
-// ── AI enhancement cache (short-lived, 3 minutes) ──
+// ── Full response cache (fingerprinted) ──
+let _responseCache = { fingerprint: null, response: null, at: 0 };
+const RESPONSE_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
+// ── AI enhancement cache ──
 let _aiCache = { hash: null, data: null, at: 0 };
 const AI_CACHE_TTL = 3 * 60 * 1000;
+
+/**
+ * Build a fingerprint from all inputs that could change the focus output.
+ * If this hasn't changed, the result is identical — skip everything.
+ */
+function _buildFingerprint(ctx) {
+  const parts = [
+    // Queue state
+    ctx.queueSummary?.total || 0,
+    (ctx.queueSummary?.at_risk_tickets || []).length,
+    ctx.unseenEscalations || 0,
+    // Nudge state
+    (ctx.nudges || []).map(n => `${n.id}:${n.nag_count}`).join(','),
+    // Calendar next 2h
+    (ctx.calendar || []).filter(e => {
+      const start = new Date(e.start_time);
+      return start > new Date() && start < new Date(Date.now() + 2 * 60 * 60 * 1000) && !e.is_all_day;
+    }).map(e => e.event_id).join(','),
+    // Todo state (mtime-based — changes when files change)
+    vaultCache.getStats().misses, // bumps when vault files change
+    // Activity state
+    ctx.standupDone ? 'sd' : '',
+    ctx.eodDone ? 'ed' : '',
+    ctx.pendingImports || 0,
+    // Observations count (changes trigger different tone)
+    (ctx.observations || []).length,
+    ctx.snoozeCount || 0,
+    ctx.dismissCount || 0,
+  ];
+
+  return crypto.createHash('md5').update(parts.join('|')).digest('hex').substring(0, 12);
+}
 
 function _itemsHash(items) {
   return items.map(i => i.id + ':' + i.score).join('|');
 }
 
 router.get('/', async (req, res) => {
+  const t0 = Date.now();
+
   try {
     const showAll = req.query.all === 'true';
     const noAi = req.query.noai === 'true';
+    const noCache = req.query.nocache === 'true';
+
+    // ── Check fingerprint cache (skip everything if unchanged) ──
+    if (!showAll && !noCache) {
+      const ctx = await workingMemory.getContext();
+      const fingerprint = _buildFingerprint(ctx);
+      const now = Date.now();
+
+      if (_responseCache.fingerprint === fingerprint &&
+          _responseCache.response &&
+          (now - _responseCache.at) < RESPONSE_CACHE_TTL) {
+        // Full cache hit — return immediately
+        console.log(`[Focus] Cache HIT (${Date.now() - t0}ms, fp=${fingerprint.substring(0, 6)})`);
+        return res.json(_responseCache.response);
+      }
+    }
+
+    // ── Cache miss — run full pipeline ──
     const result = await engine.evaluate({ showAll });
     const ctx = await workingMemory.getContext();
-
-    // ── Tone selection (deterministic) ──
     const tone = aiProvider.getTone(ctx);
 
-    // ── AI enhancement (cached, non-blocking) ──
+    console.log(`[Focus] Engine: ${Date.now() - t0}ms`);
+
+    // ── AI enhancement (cached separately, non-blocking) ──
     let sara = null;
     if (!showAll && !noAi && result.items.length > 0) {
       const hash = _itemsHash(result.items);
       const now = Date.now();
 
       if (_aiCache.hash === hash && _aiCache.data && (now - _aiCache.at) < AI_CACHE_TTL) {
-        // Cache hit
         sara = _aiCache.data;
       } else {
-        // Cache miss — run AI enhancement with timeout
         try {
           const enhancePromise = aiProvider.enhanceFocus({
             items: result.items,
@@ -53,22 +109,18 @@ router.get('/', async (req, res) => {
             tone,
             primaryItem: result.primaryItem,
           });
-
-          // Race against a 15-second timeout — Pi 5 Ollama can be slow on first call
           const timeout = new Promise(resolve => setTimeout(() => resolve(null), 15000));
           sara = await Promise.race([enhancePromise, timeout]);
-
           if (sara) {
             _aiCache = { hash, data: sara, at: Date.now() };
           }
         } catch (e) {
           console.warn('[Focus] AI enhancement failed:', e.message);
-          // sara stays null — deterministic fallback
         }
       }
     }
 
-    res.json({
+    const response = {
       generatedAt: new Date().toISOString(),
       cacheAge: workingMemory.getCacheAge(),
       context: {
@@ -86,10 +138,18 @@ router.get('/', async (req, res) => {
       mode: result.mode,
       tone,
       primaryItem: result.primaryItem || null,
-      // AI enhancement (null if unavailable — frontend falls back gracefully)
       sara: sara || null,
       items: result.items,
-    });
+    };
+
+    // ── Store in fingerprint cache ──
+    if (!showAll) {
+      const fingerprint = _buildFingerprint(ctx);
+      _responseCache = { fingerprint, response, at: Date.now() };
+      console.log(`[Focus] Built in ${Date.now() - t0}ms (fp=${fingerprint.substring(0, 6)}, items=${result.items.length}, sara=${sara ? 'yes' : 'no'})`);
+    }
+
+    res.json(response);
   } catch (e) {
     console.error('[Focus] Error:', e);
     res.status(500).json({ error: 'Failed to build focus', detail: e.message });
@@ -101,7 +161,8 @@ router.post('/dismiss', (req, res) => {
   const { itemId, itemType } = req.body;
   if (!itemId) return res.status(400).json({ error: 'itemId required' });
   engine.dismiss(itemId, itemType);
-  // Invalidate AI cache on dismiss
+  // Invalidate all caches on dismiss
+  _responseCache = { fingerprint: null, response: null, at: 0 };
   _aiCache = { hash: null, data: null, at: 0 };
   res.json({ ok: true, dismissed: itemId });
 });

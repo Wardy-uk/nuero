@@ -108,12 +108,12 @@ function _scoreEmail(email) {
     else if (ageHours > 72) { score -= 10; reasons.push('Aging'); }
   }
 
-  // Known contact (check People/ folder)
+  // Known contact (CACHED People/ index — no directory scan per email)
   const fromName = (email.from || '').split('<')[0].trim();
   if (fromName) {
     try {
-      const obsidian = require('./obsidian');
-      const people = obsidian.listPeopleNotes();
+      const vaultCache = require('./vault-cache');
+      const people = vaultCache.getPeopleIndex();
       const isKnown = people.some(p => fromName.toLowerCase().includes(p.toLowerCase()) ||
                                         p.toLowerCase().includes(fromName.split(' ')[0].toLowerCase()));
       if (isKnown) { score += 8; reasons.push(`From ${fromName.split(' ')[0]}`); }

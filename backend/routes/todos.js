@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const obsidian = require('../services/obsidian');
+const vaultCache = require('../services/vault-cache');
 const { rankTasks } = require('../services/task-scoring');
 
 // GET /api/todos — reads tasks from Obsidian vault + 90-day plan
 router.get('/', (req, res) => {
   try {
     const showDone = req.query.all === 'true';
-    const { active, done } = obsidian.parseVaultTodos();
+    const { active, done } = vaultCache.getTodos();
 
     const todos = showDone ? [...active, ...done] : active;
 
@@ -25,9 +26,9 @@ router.get('/', (req, res) => {
       lineNumber: t.lineNumber != null ? t.lineNumber : null
     }));
 
-    // Inject 90-day plan tasks
+    // Inject 90-day plan tasks (CACHED)
     try {
-      const plan = obsidian.parseNinetyDayPlan();
+      const plan = vaultCache.getPlan();
       if (plan) {
         const planTasks = plan.allTasks || [];
         const planPath = plan.filePath || null;
@@ -74,69 +75,71 @@ router.get('/', (req, res) => {
 //   ?limit=N (default: 10, max: 30)
 //   ?showAll=true (bypass limit, return everything ranked)
 router.get('/focus', async (req, res) => {
+  const t0 = Date.now();
   try {
     const filter = req.query.filter || 'overdue';
     const limit = Math.min(parseInt(req.query.limit) || 10, 30);
     const showAll = req.query.showAll === 'true';
     const todayStr = new Date().toISOString().split('T')[0];
 
-    const { active } = obsidian.parseVaultTodos();
+    // CACHED: scored tasks (only recomputed if vault files changed or date rolled)
+    const ranked = vaultCache.getScoredTasks(filter, () => {
+      const { active } = vaultCache.getTodos();
 
-    // Map vault tasks to API shape
-    let tasks = active.map((t, i) => ({
-      id: i + 1,
-      text: t.text,
-      priority: t.priority || 'normal',
-      due_date: t.due_date || null,
-      source: t.source || null,
-      done: t.status === 'done' ? 1 : 0,
-      ms_id: t.ms_id || null,
-      vault_task: true,
-      filePath: t.filePath || null,
-      lineNumber: t.lineNumber != null ? t.lineNumber : null,
-    }));
+      let tasks = active.map((t, i) => ({
+        id: i + 1,
+        text: t.text,
+        priority: t.priority || 'normal',
+        due_date: t.due_date || null,
+        source: t.source || null,
+        done: t.status === 'done' ? 1 : 0,
+        ms_id: t.ms_id || null,
+        vault_task: true,
+        filePath: t.filePath || null,
+        lineNumber: t.lineNumber != null ? t.lineNumber : null,
+      }));
 
-    // Inject 90-day plan tasks
-    try {
-      const plan = obsidian.parseNinetyDayPlan();
-      if (plan) {
-        const OUTCOMES = {
-          1: 'Visibility & BI', 2: 'Tiered Model', 3: 'Quality & CX',
-          4: 'People & Culture', 5: 'Cross-functional', 6: 'Production'
-        };
-        let planId = tasks.length + 1;
-        for (const t of (plan.allTasks || [])) {
-          if (t.isCheckpoint || t.status === 'x') continue;
-          const isOverdue = t.day > 0 && t.day < plan.currentDay;
-          const outcomeLabel = t.outcome ? OUTCOMES[t.outcome] || '' : '';
-          tasks.push({
-            id: planId++,
-            text: t.text,
-            priority: isOverdue ? 'high' : (t.day === plan.currentDay ? 'normal' : 'low'),
-            due_date: t.calendarDate || null,
-            source: `90-Day Plan${outcomeLabel ? ` (${outcomeLabel})` : ''}`,
-            done: 0,
-            ms_id: null,
-            vault_task: true,
-            filePath: plan.filePath || null,
-            lineNumber: t.lineNumber != null ? t.lineNumber : null,
-            planDay: t.day,
-          });
+      // Inject 90-day plan tasks (CACHED)
+      try {
+        const plan = vaultCache.getPlan();
+        if (plan) {
+          const OUTCOMES = {
+            1: 'Visibility & BI', 2: 'Tiered Model', 3: 'Quality & CX',
+            4: 'People & Culture', 5: 'Cross-functional', 6: 'Production'
+          };
+          let planId = tasks.length + 1;
+          for (const t of (plan.allTasks || [])) {
+            if (t.isCheckpoint || t.status === 'x') continue;
+            const isOverdue = t.day > 0 && t.day < plan.currentDay;
+            const outcomeLabel = t.outcome ? OUTCOMES[t.outcome] || '' : '';
+            tasks.push({
+              id: planId++,
+              text: t.text,
+              priority: isOverdue ? 'high' : (t.day === plan.currentDay ? 'normal' : 'low'),
+              due_date: t.calendarDate || null,
+              source: `90-Day Plan${outcomeLabel ? ` (${outcomeLabel})` : ''}`,
+              done: 0,
+              ms_id: null,
+              vault_task: true,
+              filePath: plan.filePath || null,
+              lineNumber: t.lineNumber != null ? t.lineNumber : null,
+              planDay: t.day,
+            });
+          }
         }
+      } catch {}
+
+      // Apply filter
+      if (filter === 'overdue') {
+        tasks = tasks.filter(t => t.due_date && t.due_date.split('T')[0] < todayStr && !t.done);
+      } else if (filter === 'today') {
+        tasks = tasks.filter(t => t.due_date && t.due_date.split('T')[0] === todayStr && !t.done);
+      } else {
+        tasks = tasks.filter(t => !t.done);
       }
-    } catch {}
 
-    // Apply filter
-    if (filter === 'overdue') {
-      tasks = tasks.filter(t => t.due_date && t.due_date.split('T')[0] < todayStr && !t.done);
-    } else if (filter === 'today') {
-      tasks = tasks.filter(t => t.due_date && t.due_date.split('T')[0] === todayStr && !t.done);
-    } else {
-      tasks = tasks.filter(t => !t.done);
-    }
-
-    // Score and rank
-    const ranked = rankTasks(tasks, todayStr);
+      return rankTasks(tasks, todayStr);
+    });
     const totalCount = ranked.length;
 
     // Apply limit
@@ -159,6 +162,8 @@ router.get('/focus', async (req, res) => {
         framing = result.text || '';
       } catch {}
     }
+
+    console.log(`[Todos/Focus] Built in ${Date.now() - t0}ms (${totalCount} total, ${items.length} returned)`);
 
     res.json({
       filter,

@@ -49,7 +49,10 @@ async function _processWrite(relativePath, source) {
   const fullPath = path.join(VAULT_PATH, relativePath);
   const tag = `[VaultHook:${source || 'unknown'}]`;
 
-  // 1. Invalidate working memory
+  // 1. Invalidate vault cache + working memory
+  try {
+    require('./vault-cache').invalidate(`vault write: ${relativePath}`);
+  } catch {}
   try {
     const workingMemory = require('./working-memory');
     workingMemory.invalidate(`vault write: ${relativePath}`);

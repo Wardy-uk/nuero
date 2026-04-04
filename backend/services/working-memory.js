@@ -53,7 +53,8 @@ async function refresh() {
 
   _refreshing = true;
   try {
-    const obsidian = require('./obsidian');
+    const vaultCache = require('./vault-cache');
+    const t0 = Date.now();
 
     const now = new Date();
     const dateKey = now.toISOString().split('T')[0];
@@ -62,19 +63,19 @@ async function refresh() {
     const isWeekend = day === 0 || day === 6;
     const isWorkHours = !isWeekend && hour >= 8 && hour <= 18;
 
-    // Queue summary
+    // Queue summary (fast — SQLite)
     let queueSummary = null;
     try { queueSummary = db.getQueueSummary(); } catch {}
 
-    // Vault todos
+    // Vault todos (CACHED — only re-parses if files changed)
     let todos = null;
-    try { todos = obsidian.parseVaultTodos(); } catch {}
+    try { todos = vaultCache.getTodos(); } catch {}
 
-    // 90-day plan
+    // 90-day plan (CACHED — only re-parses if file changed)
     let ninetyDayPlan = null;
-    try { ninetyDayPlan = obsidian.parseNinetyDayPlan(); } catch {}
+    try { ninetyDayPlan = vaultCache.getPlan(); } catch {}
 
-    // Today's calendar
+    // Today's calendar (fast — SQLite)
     let calendar = [];
     try {
       const todayStr = dateKey;
@@ -82,17 +83,17 @@ async function refresh() {
       calendar = db.getCalendarEvents(todayStr, tomorrowStr);
     } catch {}
 
-    // Active nudges
+    // Active nudges (fast — SQLite)
     let nudges = [];
     try { nudges = db.getActiveNudges(); } catch {}
 
-    // Today's activity
+    // Today's activity (fast — SQLite)
     let todayActivity = [];
     try { todayActivity = db.getActivityForDate(dateKey); } catch {}
 
-    // Daily note existence
+    // Daily note (CACHED — only re-reads if file changed)
     let dailyNote = null;
-    try { dailyNote = obsidian.readTodayDailyNote(); } catch {}
+    try { dailyNote = vaultCache.getDailyNote(); } catch {}
 
     // Escalation count
     let unseenEscalations = 0;
@@ -142,7 +143,7 @@ async function refresh() {
     };
 
     _lastRefresh = Date.now();
-    console.log('[WorkingMemory] Context refreshed');
+    console.log(`[WorkingMemory] Context refreshed in ${Date.now() - t0}ms`);
     return _cache;
   } catch (e) {
     console.error('[WorkingMemory] Refresh failed:', e.message);
