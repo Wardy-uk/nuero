@@ -93,30 +93,37 @@ router.get('/', async (req, res) => {
 
     console.log(`[Focus] Engine: ${Date.now() - t0}ms`);
 
-    // ── AI enhancement (cached separately, non-blocking) ──
+    // ── SARA block (always present) ──
     let sara = null;
-    if (!showAll && !noAi && result.items.length > 0) {
+    if (!showAll && result.items.length > 0) {
       const hash = _itemsHash(result.items);
       const now = Date.now();
 
-      if (_aiCache.hash === hash && _aiCache.data && (now - _aiCache.at) < AI_CACHE_TTL) {
+      // Check AI cache first
+      if (!noAi && _aiCache.hash === hash && _aiCache.data && (now - _aiCache.at) < AI_CACHE_TTL) {
         sara = _aiCache.data;
-      } else {
-        try {
-          const enhancePromise = aiProvider.enhanceFocus({
-            items: result.items,
-            context: ctx,
-            tone,
-            primaryItem: result.primaryItem,
-          });
-          const timeout = new Promise(resolve => setTimeout(() => resolve(null), 15000));
-          sara = await Promise.race([enhancePromise, timeout]);
-          if (sara) {
-            _aiCache = { hash, data: sara, at: Date.now() };
+      }
+
+      // If no cached AI result, use deterministic fallback (always instant)
+      if (!sara) {
+        sara = aiProvider.buildDeterministicSara(result.items, tone);
+      }
+
+      // Trigger async AI pre-generation for NEXT request (non-blocking)
+      if (!noAi && _aiCache.hash !== hash) {
+        aiProvider.enhanceFocus({
+          items: result.items,
+          context: ctx,
+          tone,
+          primaryItem: result.primaryItem,
+        }).then(aiSara => {
+          if (aiSara) {
+            _aiCache = { hash, data: aiSara, at: Date.now() };
+            console.log(`[Focus] AI SARA pre-generated (${aiSara.provider})`);
           }
-        } catch (e) {
-          console.warn('[Focus] AI enhancement failed:', e.message);
-        }
+        }).catch(e => {
+          console.warn('[Focus] Async AI pre-generation failed:', e.message);
+        });
       }
     }
 

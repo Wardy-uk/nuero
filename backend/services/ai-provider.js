@@ -144,7 +144,57 @@ function _parseJSON(text) {
 
 
 // ═══════════════════════════════════════════════════════
-// Existing functions (preserved from Phase 3A/B)
+// Deterministic SARA Fallback (Phase 4B)
+// Always available, no AI required.
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Build a SARA block from deterministic decision-engine output.
+ * Used when AI is unavailable — ensures SARA block is always present.
+ */
+function buildDeterministicSara(items, tone) {
+  if (!items || items.length === 0) return null;
+
+  const top = items[0];
+  const TYPE_MESSAGES = {
+    escalation: { message: 'Handle the escalation first.', action: 'Open escalation queue' },
+    jira_ticket: { message: 'SLA tickets need attention.', action: 'Review the at-risk queue' },
+    meeting: { message: 'Meeting soon — prep now.', action: 'Check agenda and people notes' },
+    todo: { message: 'Start with your top overdue task.', action: 'Open and complete the first one' },
+    nudge: { message: 'Complete your standup.', action: 'Open standup now' },
+    email: { message: 'Urgent emails waiting.', action: 'Check inbox' },
+    imports: { message: 'Files need routing.', action: 'Review imports' },
+  };
+
+  const fallback = TYPE_MESSAGES[top.type] || { message: 'Start with the top item.', action: 'Review it now' };
+
+  // Override message for specific nudge types
+  if (top.type === 'nudge' && top.meta?.type === 'eod') {
+    fallback.message = 'Wrap up for the day.';
+    fallback.action = 'Complete your EOD';
+  }
+
+  // Build ignore summary from lowest-priority categories
+  const types = new Set(items.map(i => i.type));
+  const ignoreTypes = ['imports', 'email'].filter(t => !types.has(t) || items.findIndex(i => i.type === t) > 2);
+  const ignore = ignoreTypes.length > 0
+    ? `Lower-priority ${ignoreTypes.join(' and ')} can wait.`
+    : items.length <= 2 ? 'Nothing else needs attention right now.' : 'Focus on the top items only.';
+
+  return {
+    primary: {
+      message: fallback.message,
+      action: fallback.action,
+    },
+    ignore,
+    provider: 'deterministic',
+    tone,
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════
+// Other AI functions
 // ═══════════════════════════════════════════════════════
 
 async function generateDrilldownFraming(context) {
@@ -205,6 +255,7 @@ function getStatus() {
 module.exports = {
   getTone,
   enhanceFocus,
+  buildDeterministicSara,
   generateDrilldownFraming,
   streamChat,
   classifyImport,
