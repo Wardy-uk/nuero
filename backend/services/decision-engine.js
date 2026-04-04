@@ -1,11 +1,11 @@
 'use strict';
 
 /**
- * Decision Engine — Rule-based signal evaluation with tier classification
- * and suppression logic.
+ * Decision Engine — Rule-based signal evaluation with tier classification,
+ * suppression, behaviour-aware scoring, and confidence boosting.
  *
- * Collects signals from existing data sources, scores them deterministically,
- * classifies into tiers, and enforces hard limits.
+ * Phase 2.5: Adds behaviour modifiers, personal suppression, and
+ * "primary" item marking for hesitation reduction.
  *
  * NO LLM calls. NO complex frameworks. Just rules.
  *
@@ -13,32 +13,34 @@
  *   Tier 1 — MUST ACT NOW (score >= 80)
  *   Tier 2 — SHOULD DO NEXT (score >= 50)
  *   Tier 3 — IGNORE FOR NOW (score < 50, suppressed from focus)
- *
- * Hard limits:
- *   Default: 5 items
- *   Max fallback: 7 items
- *   Never more than 7
  */
 
 const db = require('../db/database');
 const workingMemory = require('./working-memory');
 
 // ── Tier thresholds ──
-const TIER_1_MIN = 80;  // MUST ACT NOW
-const TIER_2_MIN = 50;  // SHOULD DO NEXT
-// Below 50 = Tier 3 (suppressed from default focus)
+const TIER_1_MIN = 80;
+const TIER_2_MIN = 50;
 
 // ── Hard limits ──
 const FOCUS_DEFAULT = 5;
 const FOCUS_MAX = 7;
 
-// ── Suppression: in-memory, keyed by item ID ──
-// { [itemId]: { suppressedAt: timestamp, reason: string } }
+// ── Suppression ──
 const _suppressed = new Map();
 const SUPPRESS_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
-// ── Signal Collectors ──
-// Each returns an array of { id, type, title, reason, score, urgency, source, actionHint, meta? }
+// ── Personal suppression: dismiss tracking per type ──
+// Resets daily. { [type]: { count, date } }
+const _typeDismissCounts = new Map();
+
+// ── Confidence gap threshold ──
+const CONFIDENCE_GAP = 12; // if top item leads by this much, mark as primary
+
+
+// ═══════════════════════════════════════════════════════
+// Signal Collectors
+// ═══════════════════════════════════════════════════════
 
 function collectEscalations(ctx) {
   const items = [];
@@ -63,8 +65,6 @@ function collectSlaBreaches(ctx) {
 
   const atRisk = ctx.queueSummary.at_risk_tickets || [];
 
-  // Collapse multiple at-risk tickets into a single signal if > 3
-  // Otherwise show individually
   if (atRisk.length > 3) {
     const p1s = atRisk.filter(t => _isP1(t));
     if (p1s.length > 0) {
@@ -95,7 +95,6 @@ function collectSlaBreaches(ctx) {
       });
     }
   } else {
-    // Show individually if 3 or fewer
     for (const t of atRisk) {
       const isP1 = _isP1(t);
       const slaMin = Math.round(t.sla_remaining_minutes || 0);
@@ -130,8 +129,6 @@ function collectMeetings(ctx) {
     if (start <= now || start > twoHours) continue;
 
     const minutesAway = Math.round((start - now) / 60000);
-
-    // Only surface meetings within 60 min — 2hr meetings are noise
     if (minutesAway > 60) continue;
 
     const imminent = minutesAway <= 15;
@@ -170,7 +167,6 @@ function collectOverdueTodos(ctx) {
 
     if (dueStr < todayStr) {
       overdueCount++;
-      // Track the single highest-priority overdue item
       const score = isPlanTask ? 85 : 65;
       if (!topOverdue || score > topOverdue.score) {
         topOverdue = { text: todo.text, dueStr, isPlanTask, score, source: todo.source };
@@ -184,12 +180,11 @@ function collectOverdueTodos(ctx) {
     }
   }
 
-  // Collapse overdue into 1-2 items max
   if (overdueCount > 0 && topOverdue) {
     if (overdueCount === 1) {
       items.push({
         type: 'todo',
-        id: `todo-overdue-top`,
+        id: 'todo-overdue-top',
         title: topOverdue.text,
         reason: `Overdue (due ${topOverdue.dueStr})`,
         score: topOverdue.score,
@@ -199,10 +194,9 @@ function collectOverdueTodos(ctx) {
         meta: { dueDate: topOverdue.dueStr, overdueCount },
       });
     } else {
-      // Summarise: show count + top item
       items.push({
         type: 'todo',
-        id: `todo-overdue-summary`,
+        id: 'todo-overdue-summary',
         title: `${overdueCount} overdue task${overdueCount > 1 ? 's' : ''}`,
         reason: `Top: ${topOverdue.text.substring(0, 60)}`,
         score: topOverdue.score,
@@ -214,12 +208,11 @@ function collectOverdueTodos(ctx) {
     }
   }
 
-  // Collapse due-today similarly — but lower priority
   if (dueTodayCount > 0 && topDueToday) {
     if (dueTodayCount === 1) {
       items.push({
         type: 'todo',
-        id: `todo-today-top`,
+        id: 'todo-today-top',
         title: topDueToday.text,
         reason: 'Due today',
         score: topDueToday.score,
@@ -231,7 +224,7 @@ function collectOverdueTodos(ctx) {
     } else {
       items.push({
         type: 'todo',
-        id: `todo-today-summary`,
+        id: 'todo-today-summary',
         title: `${dueTodayCount} task${dueTodayCount > 1 ? 's' : ''} due today`,
         reason: `Top: ${topDueToday.text.substring(0, 60)}`,
         score: topDueToday.score,
@@ -253,7 +246,6 @@ function collectUrgentEmails(ctx) {
     const inbox = scanner.getFlaggedItems();
     const highItems = (inbox.items || []).filter(i => i.urgency === 'high');
     if (highItems.length > 0) {
-      // Collapse to single item
       items.push({
         type: 'email',
         id: 'email-urgent',
@@ -281,7 +273,6 @@ function collectNudges(ctx) {
     const isEod = nudge.type === 'eod';
     const nagCount = nudge.nag_count || 0;
 
-    // Standup/EOD nudges are important; others are lower
     const score = isStandup ? 72 + Math.min(nagCount * 3, 15) :
                   isEod ? 65 + Math.min(nagCount * 3, 10) :
                   40 + Math.min(nagCount * 2, 10);
@@ -321,7 +312,56 @@ function collectImports(ctx) {
 }
 
 
-// ── Tier Classification ──
+// ═══════════════════════════════════════════════════════
+// Behaviour Modifiers (Phase 2.5)
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Apply behaviour-aware score modifiers based on working memory observations.
+ * Returns a modifier value to add to the base score.
+ */
+function _behaviourModifier(item, ctx) {
+  let mod = 0;
+  const observations = ctx.observations || [];
+
+  // Queue spike → boost ticket/escalation items
+  if ((item.type === 'jira_ticket' || item.type === 'escalation') &&
+      observations.some(o => o.type === 'queue_spike')) {
+    mod += 5;
+  }
+
+  // SLA worsening → boost ticket items
+  if (item.type === 'jira_ticket' &&
+      observations.some(o => o.type === 'sla_worsening')) {
+    mod += 4;
+  }
+
+  // Standup late → boost standup nudge
+  if (item.type === 'nudge' && item.meta?.type === 'standup' &&
+      observations.some(o => o.type === 'standup_late')) {
+    mod += 6;
+  }
+
+  // Snooze pattern → slightly reduce nudge items (user is avoiding, don't pile on)
+  if (item.type === 'nudge' && (ctx.snoozeCount || 0) >= 4) {
+    mod -= 3;
+  }
+
+  // Personal suppression: if user has dismissed this TYPE 3+ times today, reduce priority
+  const typeDismiss = _getTypeDismissCount(item.type);
+  if (typeDismiss >= 3) {
+    mod -= 8;
+  } else if (typeDismiss >= 2) {
+    mod -= 4;
+  }
+
+  return mod;
+}
+
+
+// ═══════════════════════════════════════════════════════
+// Tier Classification
+// ═══════════════════════════════════════════════════════
 
 function classifyTier(score) {
   if (score >= TIER_1_MIN) return 1;
@@ -330,7 +370,9 @@ function classifyTier(score) {
 }
 
 
-// ── Suppression Logic ──
+// ═══════════════════════════════════════════════════════
+// Suppression
+// ═══════════════════════════════════════════════════════
 
 function isSuppressed(itemId) {
   const entry = _suppressed.get(itemId);
@@ -356,15 +398,32 @@ function clearExpiredSuppressions() {
 }
 
 
-// ── Main Evaluation ──
+// ═══════════════════════════════════════════════════════
+// Personal Suppression (per-type dismiss tracking)
+// ═══════════════════════════════════════════════════════
 
-/**
- * Evaluate all signals and return focus items.
- *
- * @param {object} options
- * @param {boolean} options.showAll - If true, return all candidates (for "view all" mode)
- * @returns {{ items, totalCandidates, returned, suppressed, tiers }}
- */
+function _trackTypeDismiss(type) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const entry = _typeDismissCounts.get(type);
+  if (entry && entry.date === todayStr) {
+    entry.count++;
+  } else {
+    _typeDismissCounts.set(type, { count: 1, date: todayStr });
+  }
+}
+
+function _getTypeDismissCount(type) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const entry = _typeDismissCounts.get(type);
+  if (!entry || entry.date !== todayStr) return 0;
+  return entry.count;
+}
+
+
+// ═══════════════════════════════════════════════════════
+// Main Evaluation
+// ═══════════════════════════════════════════════════════
+
 async function evaluate(options = {}) {
   const { showAll = false } = options;
   const ctx = await workingMemory.getContext();
@@ -380,15 +439,23 @@ async function evaluate(options = {}) {
     ...collectImports(ctx),
   ];
 
-  // Deduplicate by id
+  // Deduplicate by id, apply behaviour modifiers
   const seen = new Set();
   const candidates = [];
   for (const item of allSignals) {
     if (seen.has(item.id)) continue;
     seen.add(item.id);
+
+    // Apply behaviour modifier
+    const mod = _behaviourModifier(item, ctx);
+    const adjustedScore = Math.max(0, Math.min(100, item.score + mod));
+
     candidates.push({
       ...item,
-      tier: classifyTier(item.score),
+      score: adjustedScore,
+      _baseScore: item.score,
+      _behaviourMod: mod,
+      tier: classifyTier(adjustedScore),
     });
   }
 
@@ -397,11 +464,9 @@ async function evaluate(options = {}) {
 
   const totalCandidates = candidates.length;
 
-  // Clean up old suppressions
   clearExpiredSuppressions();
 
   if (showAll) {
-    // View-all mode: return everything, still sorted, with tier labels
     return {
       items: candidates,
       totalCandidates,
@@ -413,57 +478,43 @@ async function evaluate(options = {}) {
 
   // Apply suppression + tier filtering
   const focused = [];
-  let suppressedCount = 0;
 
   for (const item of candidates) {
-    // Tier 3 is always suppressed from default focus
-    if (item.tier === 3) {
-      suppressedCount++;
-      continue;
-    }
-
-    // Check time-based suppression (same item shown recently)
-    if (isSuppressed(item.id)) {
-      suppressedCount++;
-      continue;
-    }
-
-    // Items with no urgency and no clear deadline get suppressed
-    if (item.urgency === 'low' && !item.meta?.dueDate && item.type !== 'nudge') {
-      suppressedCount++;
-      continue;
-    }
+    if (item.tier === 3) continue;
+    if (isSuppressed(item.id)) continue;
+    if (item.urgency === 'low' && !item.meta?.dueDate && item.type !== 'nudge') continue;
 
     focused.push(item);
-
-    // Hard cap
     if (focused.length >= FOCUS_MAX) break;
   }
 
-  // Apply default limit (prefer FOCUS_DEFAULT, allow up to FOCUS_MAX only for tier 1)
+  // Apply default limit
   let finalItems;
   if (focused.length <= FOCUS_DEFAULT) {
     finalItems = focused;
   } else {
-    // Keep all tier 1 items (up to FOCUS_MAX), then fill with tier 2 up to FOCUS_DEFAULT
     const tier1 = focused.filter(i => i.tier === 1);
     const tier2 = focused.filter(i => i.tier === 2);
 
     if (tier1.length >= FOCUS_MAX) {
-      // Even tier 1 alone exceeds max — take top FOCUS_MAX by score
       finalItems = tier1.slice(0, FOCUS_MAX);
     } else if (tier1.length >= FOCUS_DEFAULT) {
-      // Tier 1 fills the default — only add tier 2 if there's room up to max
       finalItems = [...tier1, ...tier2.slice(0, FOCUS_MAX - tier1.length)];
     } else {
-      // Tier 1 is small — fill to FOCUS_DEFAULT with tier 2
       finalItems = [...tier1, ...tier2.slice(0, FOCUS_DEFAULT - tier1.length)];
     }
   }
 
-  suppressedCount += (focused.length - finalItems.length);
-  suppressedCount += (totalCandidates - focused.length - suppressedCount);
-  // Correct: suppressed = total - returned
+  // ── Confidence boosting: mark primary item ──
+  if (finalItems.length >= 2) {
+    const gap = finalItems[0].score - finalItems[1].score;
+    if (gap >= CONFIDENCE_GAP) {
+      finalItems[0].primary = true;
+    }
+  } else if (finalItems.length === 1) {
+    finalItems[0].primary = true;
+  }
+
   const actualSuppressed = totalCandidates - finalItems.length;
 
   return {
@@ -476,10 +527,13 @@ async function evaluate(options = {}) {
 }
 
 /**
- * Manually suppress an item (e.g. user dismissed it).
+ * Dismiss an item — suppresses it and tracks type for personal suppression.
  */
-function dismiss(itemId) {
+function dismiss(itemId, itemType) {
   suppressItem(itemId, 'user-dismissed');
+  if (itemType) {
+    _trackTypeDismiss(itemType);
+  }
 }
 
 function _isP1(ticket) {

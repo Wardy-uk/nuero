@@ -327,7 +327,7 @@ export default function QueueTable({ queueData, onRefresh, focusContext }) {
 
   // In focus mode, show only at-risk tickets by default
   const atRisk = sorted.filter(t => t.at_risk);
-  const tickets = (fromFocus && !showAllTickets) ? atRisk.slice(0, 10) : sorted;
+  const tickets = (fromFocus && !showAllTickets) ? atRisk.slice(0, 5) : sorted;
   const hiddenCount = sorted.length - tickets.length;
 
   // Mark escalations as seen when queue tab is opened

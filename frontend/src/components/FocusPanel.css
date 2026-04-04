@@ -122,6 +122,26 @@
   border-left: 3px solid var(--accent);
 }
 
+/* Primary item — visually dominant, reduces hesitation */
+.focus-item-primary {
+  background: var(--bg-tertiary);
+  border-color: rgba(90, 163, 249, 0.25);
+  padding: 14px 16px;
+}
+.focus-item-primary .focus-item-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.focus-primary-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
 .focus-item-left {
   display: flex;
   align-items: flex-start;

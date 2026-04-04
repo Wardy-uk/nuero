@@ -53,13 +53,13 @@ export default function FocusPanel({ onNavigate }) {
     return 'Evening';
   })();
 
-  const handleDismiss = async (e, itemId) => {
+  const handleDismiss = async (e, item) => {
     e.stopPropagation();
     try {
       await fetch(apiUrl('/api/focus/dismiss'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId }),
+        body: JSON.stringify({ itemId: item.id, itemType: item.type }),
       });
       refresh();
     } catch {}
@@ -120,18 +120,23 @@ export default function FocusPanel({ onNavigate }) {
           {items.map((item, i) => (
             <li
               key={item.id || i}
-              className={`focus-item focus-urgency-${item.urgency || 'low'}`}
+              className={[
+                'focus-item',
+                `focus-urgency-${item.urgency || 'low'}`,
+                item.primary ? 'focus-item-primary' : '',
+              ].filter(Boolean).join(' ')}
               onClick={() => handleNavigate(item)}
             >
               <div className="focus-item-left">
                 <span className="focus-item-icon">{TYPE_ICONS[item.type] || '·'}</span>
                 <div className="focus-item-content">
+                  {item.primary && <div className="focus-primary-label">Start here</div>}
                   <div className="focus-item-title">{item.title}</div>
                   <div className="focus-item-reason">{item.reason}</div>
                 </div>
               </div>
               <div className="focus-item-right">
-                {item.tier && (
+                {item.tier && !item.primary && (
                   <span className={`focus-tier-badge focus-tier-${item.tier}`}>
                     {TIER_LABELS[item.tier] || ''}
                   </span>
@@ -142,7 +147,7 @@ export default function FocusPanel({ onNavigate }) {
                 {!showAll && (
                   <button
                     className="focus-dismiss-btn"
-                    onClick={(e) => handleDismiss(e, item.id)}
+                    onClick={(e) => handleDismiss(e, item)}
                     title="Dismiss for 30 min"
                   >×</button>
                 )}

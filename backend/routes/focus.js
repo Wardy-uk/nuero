@@ -51,9 +51,9 @@ router.get('/', async (req, res) => {
 
 // POST /api/focus/dismiss — user dismisses an item from focus
 router.post('/dismiss', (req, res) => {
-  const { itemId } = req.body;
+  const { itemId, itemType } = req.body;
   if (!itemId) return res.status(400).json({ error: 'itemId required' });
-  engine.dismiss(itemId);
+  engine.dismiss(itemId, itemType);
   res.json({ ok: true, dismissed: itemId });
 });
 

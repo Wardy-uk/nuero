@@ -46,6 +46,8 @@ function EmailCard({ email, borderClass, onDismiss, dismissing }) {
 
 export default function InboxPanel({ focusContext }) {
   const fromFocus = focusContext?.fromFocus;
+  const [showAllAction, setShowAllAction] = useState(!fromFocus);
+  const [showDelegate, setShowDelegate] = useState(!fromFocus);
   const [triage, setTriage] = useState(null);
   const [running, setRunning] = useState(false);
   const [dismissing, setDismissing] = useState(null);
@@ -126,18 +128,31 @@ export default function InboxPanel({ focusContext }) {
       {action.length > 0 && (
         <div className="inbox-section">
           <div className="inbox-section-label inbox-section-action">ACTION ({action.length})</div>
-          {action.map(e => (
+          {(showAllAction ? action : action.slice(0, 5)).map(e => (
             <EmailCard key={e.id} email={e} borderClass="urgency-high" onDismiss={dismiss} dismissing={dismissing} />
           ))}
+          {!showAllAction && action.length > 5 && (
+            <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={() => setShowAllAction(true)}>
+              +{action.length - 5} more action emails
+            </button>
+          )}
         </div>
       )}
 
       {delegate.length > 0 && (
         <div className="inbox-section">
-          <div className="inbox-section-label inbox-section-delegate">DELEGATE ({delegate.length})</div>
-          {delegate.map(e => (
-            <EmailCard key={e.id} email={e} borderClass="urgency-medium" onDismiss={dismiss} dismissing={dismissing} />
-          ))}
+          {fromFocus && !showDelegate ? (
+            <button className="inbox-section-toggle" onClick={() => setShowDelegate(true)}>
+              ▸ DELEGATE ({delegate.length})
+            </button>
+          ) : (
+            <>
+              <div className="inbox-section-label inbox-section-delegate">DELEGATE ({delegate.length})</div>
+              {delegate.map(e => (
+                <EmailCard key={e.id} email={e} borderClass="urgency-medium" onDismiss={dismiss} dismissing={dismissing} />
+              ))}
+            </>
+          )}
         </div>
       )}
 

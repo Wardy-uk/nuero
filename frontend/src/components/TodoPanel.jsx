@@ -82,7 +82,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
 
   const [mode, setMode] = useState(fromFocus ? 'focused' : 'full');
   const [focusFilter, setFocusFilter] = useState(initialFilter);
-  const [showAllFocused, setShowAllFocused] = useState(false);
+  const [focusExpansion, setFocusExpansion] = useState('compact'); // compact (5) | expanded (10) | all
 
   // Full mode state (original)
   const [showDone, setShowDone] = useState(false);
@@ -102,7 +102,8 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   }, []);
 
   // ── Focused mode data ──
-  const focusPath = `/api/todos/focus?filter=${focusFilter}${showAllFocused ? '&showAll=true' : '&limit=10'}`;
+  const focusLimit = focusExpansion === 'all' ? '&showAll=true' : focusExpansion === 'expanded' ? '&limit=10' : '&limit=5';
+  const focusPath = `/api/todos/focus?filter=${focusFilter}${focusLimit}`;
   const { data: focusData, refresh: refreshFocus } = useCachedFetch(
     mode === 'focused' ? focusPath : null,
     { interval: 30000 }
@@ -178,7 +179,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
             <button
               key={f.key}
               className={`todo-filter-btn ${focusFilter === f.key ? 'active' : ''}`}
-              onClick={() => { setFocusFilter(f.key); setShowAllFocused(false); }}
+              onClick={() => { setFocusFilter(f.key); setFocusExpansion('compact'); }}
             >
               {f.label}
             </button>
@@ -186,14 +187,14 @@ export default function TodoPanel({ focusContext, onClearContext }) {
         </div>
 
         {/* Summary header */}
-        {totalCount > 0 && !showAllFocused && (
+        {totalCount > 0 && focusExpansion !== 'all' && (
           <div className="todo-focus-summary">
             <span className="todo-focus-summary-text">
-              Showing the {items.length} most pressing of {totalCount} tasks
+              {items.length === 1 ? 'Your top priority' : `Top ${items.length} of ${totalCount}`}
             </span>
             {breakdown.stale > 0 && (
               <span className="todo-focus-summary-stale">
-                {breakdown.stale} stale backlog items hidden
+                {breakdown.stale} stale items hidden
               </span>
             )}
           </div>
@@ -220,21 +221,28 @@ export default function TodoPanel({ focusContext, onClearContext }) {
           </div>
         )}
 
-        {/* Show all / collapse toggle */}
-        {hidden > 0 && !showAllFocused && (
+        {/* Progressive expansion: compact(5) → expanded(10) → all */}
+        {hidden > 0 && focusExpansion === 'compact' && (
           <div className="todo-focus-footer">
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowAllFocused(true)}>
-              Show all {totalCount} tasks
+            <button className="btn btn-secondary btn-sm" onClick={() => setFocusExpansion('expanded')}>
+              Show more ({Math.min(10, totalCount)} items)
             </button>
-            <span className="todo-focus-footer-hint">
-              Includes {breakdown.stale || 0} stale backlog items
-            </span>
           </div>
         )}
-        {showAllFocused && totalCount > 10 && (
+        {hidden > 0 && focusExpansion === 'expanded' && (
           <div className="todo-focus-footer">
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowAllFocused(false)}>
-              Show top items only
+            <button className="btn btn-secondary btn-sm" onClick={() => setFocusExpansion('compact')}>
+              Fewer
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setFocusExpansion('all')}>
+              Show all {totalCount}
+            </button>
+          </div>
+        )}
+        {focusExpansion === 'all' && totalCount > 10 && (
+          <div className="todo-focus-footer">
+            <button className="btn btn-secondary btn-sm" onClick={() => setFocusExpansion('compact')}>
+              Top items only
             </button>
           </div>
         )}
