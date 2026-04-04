@@ -125,8 +125,11 @@
 /* Primary item — visually dominant, reduces hesitation */
 .focus-item-primary {
   background: var(--bg-tertiary);
-  border-color: rgba(90, 163, 249, 0.25);
-  padding: 14px 16px;
+  border-color: rgba(90, 163, 249, 0.3);
+  border-left: 4px solid var(--accent);
+  padding: 16px 16px;
+  box-shadow: 0 0 12px rgba(90, 163, 249, 0.08), var(--shadow-card);
+  animation: focus-primary-enter 0.4s ease-out;
 }
 .focus-item-primary .focus-item-title {
   font-weight: 600;
@@ -139,7 +142,12 @@
   letter-spacing: 1px;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+}
+
+@keyframes focus-primary-enter {
+  0% { opacity: 0.7; transform: translateY(-2px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 .focus-item-left {

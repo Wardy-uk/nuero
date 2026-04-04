@@ -1,18 +1,13 @@
 'use strict';
 
 /**
- * Decision Engine — Rule-based signal evaluation with tier classification,
- * suppression, behaviour-aware scoring, and confidence boosting.
+ * Decision Engine — Phase 2.6: Decisive Behaviour Layer
  *
- * Phase 2.5: Adds behaviour modifiers, personal suppression, and
- * "primary" item marking for hesitation reduction.
+ * Hard priority overrides, category suppression, time-of-day mode,
+ * email scoring, confidence boosting. Deterministic. No LLM.
  *
- * NO LLM calls. NO complex frameworks. Just rules.
- *
- * Tiers:
- *   Tier 1 — MUST ACT NOW (score >= 80)
- *   Tier 2 — SHOULD DO NEXT (score >= 50)
- *   Tier 3 — IGNORE FOR NOW (score < 50, suppressed from focus)
+ * Override chain: collect → score → behaviour modify → OVERRIDE → suppress → limit → primary
+ * Overrides mutate tier + ordering AFTER scoring. They are non-negotiable.
  */
 
 const db = require('../db/database');
@@ -26,16 +21,107 @@ const TIER_2_MIN = 50;
 const FOCUS_DEFAULT = 5;
 const FOCUS_MAX = 7;
 
-// ── Suppression ──
+// ── Item suppression (per-ID, 30 min window) ──
 const _suppressed = new Map();
-const SUPPRESS_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+const SUPPRESS_WINDOW_MS = 30 * 60 * 1000;
 
-// ── Personal suppression: dismiss tracking per type ──
-// Resets daily. { [type]: { count, date } }
-const _typeDismissCounts = new Map();
+// ── Category suppression (entire types hidden temporarily) ──
+// { [type]: { until: timestamp, reason: string } }
+const _categorySuppression = new Map();
 
-// ── Confidence gap threshold ──
-const CONFIDENCE_GAP = 12; // if top item leads by this much, mark as primary
+// ── Dismiss tracking: per-type with timestamps ──
+// { [type]: [timestamp, timestamp, ...] }
+const _typeDismissHistory = new Map();
+
+// ── Confidence gap ──
+const CONFIDENCE_GAP = 15;
+
+
+// ═══════════════════════════════════════════════════════
+// Time-of-Day Mode
+// ═══════════════════════════════════════════════════════
+
+function _getMode(ctx) {
+  const hour = ctx.timeContext?.hour ?? new Date().getHours();
+  const isWeekend = ctx.timeContext?.isWeekend;
+  if (isWeekend) return 'weekend';
+  if (hour < 11) return 'morning';
+  if (hour < 16) return 'midday';
+  return 'lateday';
+}
+
+function _timeOfDayModifier(item, mode) {
+  switch (mode) {
+    case 'morning':
+      // Boost planning, standup, high-level tasks
+      if (item.type === 'nudge' && item.meta?.type === 'standup') return +5;
+      if (item.type === 'todo') return +3;
+      if (item.type === 'email') return -2;
+      return 0;
+    case 'midday':
+      // Boost execution: tickets, urgent emails
+      if (item.type === 'jira_ticket' || item.type === 'escalation') return +4;
+      if (item.type === 'email') return +3;
+      if (item.type === 'nudge' && item.meta?.type === 'standup') return -3;
+      return 0;
+    case 'lateday':
+      // Boost cleanup, follow-ups, low-effort
+      if (item.type === 'nudge' && item.meta?.type === 'eod') return +5;
+      if (item.type === 'imports') return +3;
+      if (item.type === 'todo') return +2;
+      return 0;
+    case 'weekend':
+      // Suppress work urgency
+      if (item.type === 'jira_ticket' || item.type === 'escalation') return -5;
+      if (item.type === 'nudge' && item.meta?.type === 'standup') return -10;
+      return 0;
+    default:
+      return 0;
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════
+// Email Scoring (deterministic, no LLM)
+// ═══════════════════════════════════════════════════════
+
+function _scoreEmail(email) {
+  let score = 0;
+  const reasons = [];
+
+  // Base by category
+  const cat = (email.category || email.urgency || '').toLowerCase();
+  if (cat === 'high' || cat === 'action') { score += 40; reasons.push('Needs action'); }
+  else if (cat === 'medium' || cat === 'delegate') { score += 25; reasons.push('Consider delegating'); }
+  else if (cat === 'fyi' || cat === 'low') { score += 5; }
+  else { score += 10; }
+
+  // Unread
+  if (!email.isRead) { score += 10; reasons.push('Unread'); }
+
+  // Recency
+  if (email.received || email.created_at) {
+    const ageMs = Date.now() - new Date(email.received || email.created_at).getTime();
+    const ageHours = ageMs / (1000 * 60 * 60);
+    if (ageHours < 4) { score += 6; reasons.push('Recent'); }
+    else if (ageHours < 24) { score += 3; }
+    else if (ageHours > 72) { score -= 10; reasons.push('Aging'); }
+  }
+
+  // Known contact (check People/ folder)
+  const fromName = (email.from || '').split('<')[0].trim();
+  if (fromName) {
+    try {
+      const obsidian = require('./obsidian');
+      const people = obsidian.listPeopleNotes();
+      const isKnown = people.some(p => fromName.toLowerCase().includes(p.toLowerCase()) ||
+                                        p.toLowerCase().includes(fromName.split(' ')[0].toLowerCase()));
+      if (isKnown) { score += 8; reasons.push(`From ${fromName.split(' ')[0]}`); }
+    } catch {}
+  }
+
+  return { score: Math.max(0, Math.min(100, score)), reasons };
+}
 
 
 // ═══════════════════════════════════════════════════════
@@ -54,6 +140,7 @@ function collectEscalations(ctx) {
       urgency: 'critical',
       source: 'jira',
       actionHint: 'Open Queue → Escalations',
+      _unsuppressable: true, // overrides cannot suppress this
     });
   }
   return items;
@@ -77,7 +164,8 @@ function collectSlaBreaches(ctx) {
         urgency: 'critical',
         source: 'jira',
         actionHint: 'Check P1s immediately',
-        meta: { keys: p1s.map(t => t.ticket_key) },
+        meta: { keys: p1s.map(t => t.ticket_key), hasP1: true },
+        _unsuppressable: true,
       });
     }
     const nonP1 = atRisk.filter(t => !_isP1(t));
@@ -109,7 +197,8 @@ function collectSlaBreaches(ctx) {
         urgency: isP1 ? 'critical' : 'high',
         source: 'jira',
         actionHint: 'Check ticket',
-        meta: { key: t.ticket_key, assignee: t.assignee, priority: t.priority },
+        meta: { key: t.ticket_key, assignee: t.assignee, priority: t.priority, hasP1: isP1 },
+        _unsuppressable: isP1,
       });
     }
   }
@@ -131,7 +220,7 @@ function collectMeetings(ctx) {
     const minutesAway = Math.round((start - now) / 60000);
     if (minutesAway > 60) continue;
 
-    const imminent = minutesAway <= 15;
+    const imminent = minutesAway <= 10;
     const soon = minutesAway <= 30;
 
     items.push({
@@ -143,7 +232,8 @@ function collectMeetings(ctx) {
       urgency: imminent ? 'critical' : soon ? 'high' : 'medium',
       source: 'calendar',
       actionHint: imminent ? 'Join / prep now' : 'Coming up',
-      meta: { start: event.start_time, end: event.end_time, location: event.location },
+      meta: { start: event.start_time, end: event.end_time, location: event.location, minutesAway },
+      _unsuppressable: imminent, // imminent meetings cannot be suppressed
     });
   }
   return items;
@@ -181,59 +271,31 @@ function collectOverdueTodos(ctx) {
   }
 
   if (overdueCount > 0 && topOverdue) {
-    if (overdueCount === 1) {
-      items.push({
-        type: 'todo',
-        id: 'todo-overdue-top',
-        title: topOverdue.text,
-        reason: `Overdue (due ${topOverdue.dueStr})`,
-        score: topOverdue.score,
-        urgency: topOverdue.isPlanTask ? 'high' : 'medium',
-        source: topOverdue.source || 'vault',
-        actionHint: 'Complete or reschedule',
-        meta: { dueDate: topOverdue.dueStr, overdueCount },
-      });
-    } else {
-      items.push({
-        type: 'todo',
-        id: 'todo-overdue-summary',
-        title: `${overdueCount} overdue task${overdueCount > 1 ? 's' : ''}`,
-        reason: `Top: ${topOverdue.text.substring(0, 60)}`,
-        score: topOverdue.score,
-        urgency: topOverdue.isPlanTask ? 'high' : 'medium',
-        source: 'vault',
-        actionHint: 'Review todos',
-        meta: { overdueCount },
-      });
-    }
+    items.push({
+      type: 'todo',
+      id: overdueCount === 1 ? 'todo-overdue-top' : 'todo-overdue-summary',
+      title: overdueCount === 1 ? topOverdue.text : `${overdueCount} overdue task${overdueCount > 1 ? 's' : ''}`,
+      reason: overdueCount === 1 ? `Overdue (due ${topOverdue.dueStr})` : `Top: ${topOverdue.text.substring(0, 60)}`,
+      score: topOverdue.score,
+      urgency: topOverdue.isPlanTask ? 'high' : 'medium',
+      source: topOverdue.source || 'vault',
+      actionHint: overdueCount === 1 ? 'Complete or reschedule' : 'Review todos',
+      meta: { dueDate: topOverdue.dueStr, overdueCount },
+    });
   }
 
   if (dueTodayCount > 0 && topDueToday) {
-    if (dueTodayCount === 1) {
-      items.push({
-        type: 'todo',
-        id: 'todo-today-top',
-        title: topDueToday.text,
-        reason: 'Due today',
-        score: topDueToday.score,
-        urgency: topDueToday.isPlanTask ? 'medium' : 'low',
-        source: topDueToday.source || 'vault',
-        actionHint: 'Do today',
-        meta: { dueDate: topDueToday.dueStr, dueTodayCount },
-      });
-    } else {
-      items.push({
-        type: 'todo',
-        id: 'todo-today-summary',
-        title: `${dueTodayCount} task${dueTodayCount > 1 ? 's' : ''} due today`,
-        reason: `Top: ${topDueToday.text.substring(0, 60)}`,
-        score: topDueToday.score,
-        urgency: 'low',
-        source: 'vault',
-        actionHint: 'Review todos',
-        meta: { dueTodayCount },
-      });
-    }
+    items.push({
+      type: 'todo',
+      id: dueTodayCount === 1 ? 'todo-today-top' : 'todo-today-summary',
+      title: dueTodayCount === 1 ? topDueToday.text : `${dueTodayCount} task${dueTodayCount > 1 ? 's' : ''} due today`,
+      reason: dueTodayCount === 1 ? 'Due today' : `Top: ${topDueToday.text.substring(0, 60)}`,
+      score: topDueToday.score,
+      urgency: topDueToday.isPlanTask ? 'medium' : 'low',
+      source: topDueToday.source || 'vault',
+      actionHint: dueTodayCount === 1 ? 'Do today' : 'Review todos',
+      meta: { dueDate: topDueToday.dueStr, dueTodayCount },
+    });
   }
 
   return items;
@@ -244,18 +306,24 @@ function collectUrgentEmails(ctx) {
   try {
     const scanner = require('./inbox-scanner');
     const inbox = scanner.getFlaggedItems();
-    const highItems = (inbox.items || []).filter(i => i.urgency === 'high');
+    const allItems = inbox.items || [];
+    const highItems = allItems.filter(i => i.urgency === 'high');
+
     if (highItems.length > 0) {
+      // Score the top email for better reason text
+      const topEmail = highItems[0];
+      const emailScore = _scoreEmail(topEmail);
+
       items.push({
         type: 'email',
         id: 'email-urgent',
         title: highItems.length === 1
-          ? highItems[0].subject
+          ? topEmail.subject
           : `${highItems.length} urgent email${highItems.length > 1 ? 's' : ''}`,
-        reason: highItems.length === 1
-          ? `From ${highItems[0].from}`
-          : `${highItems.slice(0, 2).map(e => e.from?.split(' ')[0] || 'Unknown').join(', ')}${highItems.length > 2 ? ` +${highItems.length - 2}` : ''}`,
-        score: 70,
+        reason: emailScore.reasons.length > 0
+          ? emailScore.reasons.slice(0, 3).join(' · ')
+          : (highItems.length === 1 ? `From ${topEmail.from}` : `${highItems.slice(0, 2).map(e => e.from?.split(' ')[0] || '?').join(', ')}`),
+        score: Math.max(70, emailScore.score),
         urgency: 'high',
         source: 'email',
         actionHint: 'Check inbox',
@@ -313,65 +381,188 @@ function collectImports(ctx) {
 
 
 // ═══════════════════════════════════════════════════════
-// Behaviour Modifiers (Phase 2.5)
+// Behaviour Modifiers
 // ═══════════════════════════════════════════════════════
 
-/**
- * Apply behaviour-aware score modifiers based on working memory observations.
- * Returns a modifier value to add to the base score.
- */
 function _behaviourModifier(item, ctx) {
   let mod = 0;
   const observations = ctx.observations || [];
 
-  // Queue spike → boost ticket/escalation items
   if ((item.type === 'jira_ticket' || item.type === 'escalation') &&
       observations.some(o => o.type === 'queue_spike')) {
     mod += 5;
   }
 
-  // SLA worsening → boost ticket items
   if (item.type === 'jira_ticket' &&
       observations.some(o => o.type === 'sla_worsening')) {
     mod += 4;
   }
 
-  // Standup late → boost standup nudge
   if (item.type === 'nudge' && item.meta?.type === 'standup' &&
       observations.some(o => o.type === 'standup_late')) {
     mod += 6;
   }
 
-  // Snooze pattern → slightly reduce nudge items (user is avoiding, don't pile on)
   if (item.type === 'nudge' && (ctx.snoozeCount || 0) >= 4) {
     mod -= 3;
   }
 
-  // Personal suppression: if user has dismissed this TYPE 3+ times today, reduce priority
-  const typeDismiss = _getTypeDismissCount(item.type);
-  if (typeDismiss >= 3) {
-    mod -= 8;
-  } else if (typeDismiss >= 2) {
-    mod -= 4;
-  }
+  // Soft per-type dismiss penalty (from daily count)
+  const typeDismiss = _getTypeDismissCountToday(item.type);
+  if (typeDismiss >= 3) mod -= 8;
+  else if (typeDismiss >= 2) mod -= 4;
 
   return mod;
 }
 
 
 // ═══════════════════════════════════════════════════════
-// Tier Classification
+// Hard Priority Overrides (Phase 2.6)
+// Runs AFTER scoring. Mutates tier + ordering.
 // ═══════════════════════════════════════════════════════
 
-function classifyTier(score) {
-  if (score >= TIER_1_MIN) return 1;
-  if (score >= TIER_2_MIN) return 2;
-  return 3;
+function _applyOverrides(items, ctx) {
+  const observations = ctx.observations || [];
+  const hour = ctx.timeContext?.hour ?? new Date().getHours();
+
+  // Detect crisis mode: queue_spike AND sla_worsening simultaneously
+  const inCrisis = observations.some(o => o.type === 'queue_spike') &&
+                   observations.some(o => o.type === 'sla_worsening');
+
+  for (const item of items) {
+    // 1. SLA CRITICAL: P1 at risk → force Tier 1, top 3
+    if (item.type === 'jira_ticket' && item.meta?.hasP1) {
+      item.tier = 1;
+      item.score = Math.max(item.score, 96);
+      item._override = 'sla_critical';
+    }
+
+    // 2. ESCALATION: unseen → always Tier 1, cannot suppress
+    if (item.type === 'escalation') {
+      item.tier = 1;
+      item.score = Math.max(item.score, 97);
+      item._override = 'escalation';
+      item._unsuppressable = true;
+    }
+
+    // 3. MEETING IMMINENT: ≤10 min → force Tier 1, rank above todos
+    if (item.type === 'meeting' && item.meta?.minutesAway != null && item.meta.minutesAway <= 10) {
+      item.tier = 1;
+      item.score = Math.max(item.score, 94);
+      item._override = 'meeting_imminent';
+      item._unsuppressable = true;
+    }
+
+    // 4. STANDUP FAILURE: late AND after 11:30 → force position #1, ignore snooze
+    if (item.type === 'nudge' && item.meta?.type === 'standup' &&
+        observations.some(o => o.type === 'standup_late') &&
+        hour >= 11 && new Date().getMinutes() >= 30) {
+      item.tier = 1;
+      item.score = Math.max(item.score, 98);
+      item._override = 'standup_failure';
+      item._unsuppressable = true;
+    }
+
+    // 5. QUEUE CRISIS MODE: promote tickets, demote todos and emails
+    if (inCrisis) {
+      if (item.type === 'jira_ticket' || item.type === 'escalation') {
+        item.score += 10;
+        item.tier = Math.min(item.tier, 1); // promote to at least tier 1
+        item._override = item._override || 'crisis_mode';
+      }
+      if (item.type === 'todo' || item.type === 'email') {
+        item.score -= 15;
+        item.tier = Math.max(item.tier, 2); // demote to at least tier 2
+      }
+    }
+  }
+
+  // Re-sort after overrides
+  items.sort((a, b) => b.score - a.score);
+  return items;
 }
 
 
 // ═══════════════════════════════════════════════════════
-// Suppression
+// Category Suppression (Phase 2.6)
+// Entire types hidden temporarily based on dismiss patterns.
+// ═══════════════════════════════════════════════════════
+
+function _checkCategorySuppression() {
+  const now = Date.now();
+  const WINDOW_MS = 60 * 60 * 1000; // 60 min lookback for dismiss history
+
+  // Email: dismissed ≥3 in 60 min → suppress emails for 60 min
+  const emailDismisses = _getRecentDismisses('email', WINDOW_MS);
+  if (emailDismisses >= 3 && !_isCategorySuppressed('email')) {
+    _categorySuppression.set('email', {
+      until: now + 60 * 60 * 1000,
+      reason: `Dismissed ${emailDismisses} emails in 60 min`,
+    });
+    console.log(`[DecisionEngine] Category suppressed: email (${emailDismisses} dismissals)`);
+  }
+
+  // Todo: dismissed ≥4 → suppress todos for 45 min
+  const todoDismisses = _getRecentDismisses('todo', WINDOW_MS);
+  if (todoDismisses >= 4 && !_isCategorySuppressed('todo')) {
+    _categorySuppression.set('todo', {
+      until: now + 45 * 60 * 1000,
+      reason: `Dismissed ${todoDismisses} todos in 60 min`,
+    });
+    console.log(`[DecisionEngine] Category suppressed: todo (${todoDismisses} dismissals)`);
+  }
+}
+
+function _isCategorySuppressed(type) {
+  const entry = _categorySuppression.get(type);
+  if (!entry) return false;
+  if (Date.now() > entry.until) {
+    _categorySuppression.delete(type);
+    return false;
+  }
+  return true;
+}
+
+// NEVER suppress these types regardless of category suppression
+const UNSUPPRESSABLE_TYPES = new Set(['escalation']);
+
+
+// ═══════════════════════════════════════════════════════
+// Dismiss Tracking (timed, for category suppression)
+// ═══════════════════════════════════════════════════════
+
+function _trackDismiss(type) {
+  if (!type) return;
+  const now = Date.now();
+  if (!_typeDismissHistory.has(type)) {
+    _typeDismissHistory.set(type, []);
+  }
+  _typeDismissHistory.get(type).push(now);
+
+  // Prune old entries (>2 hours)
+  const cutoff = now - 2 * 60 * 60 * 1000;
+  _typeDismissHistory.set(type,
+    _typeDismissHistory.get(type).filter(t => t > cutoff)
+  );
+}
+
+function _getRecentDismisses(type, windowMs) {
+  const history = _typeDismissHistory.get(type);
+  if (!history) return 0;
+  const cutoff = Date.now() - windowMs;
+  return history.filter(t => t > cutoff).length;
+}
+
+function _getTypeDismissCountToday(type) {
+  const history = _typeDismissHistory.get(type);
+  if (!history) return 0;
+  const todayStart = new Date(new Date().toDateString()).getTime();
+  return history.filter(t => t >= todayStart).length;
+}
+
+
+// ═══════════════════════════════════════════════════════
+// Item Suppression
 // ═══════════════════════════════════════════════════════
 
 function isSuppressed(itemId) {
@@ -399,24 +590,13 @@ function clearExpiredSuppressions() {
 
 
 // ═══════════════════════════════════════════════════════
-// Personal Suppression (per-type dismiss tracking)
+// Tier Classification
 // ═══════════════════════════════════════════════════════
 
-function _trackTypeDismiss(type) {
-  const todayStr = new Date().toISOString().split('T')[0];
-  const entry = _typeDismissCounts.get(type);
-  if (entry && entry.date === todayStr) {
-    entry.count++;
-  } else {
-    _typeDismissCounts.set(type, { count: 1, date: todayStr });
-  }
-}
-
-function _getTypeDismissCount(type) {
-  const todayStr = new Date().toISOString().split('T')[0];
-  const entry = _typeDismissCounts.get(type);
-  if (!entry || entry.date !== todayStr) return 0;
-  return entry.count;
+function classifyTier(score) {
+  if (score >= TIER_1_MIN) return 1;
+  if (score >= TIER_2_MIN) return 2;
+  return 3;
 }
 
 
@@ -427,6 +607,10 @@ function _getTypeDismissCount(type) {
 async function evaluate(options = {}) {
   const { showAll = false } = options;
   const ctx = await workingMemory.getContext();
+  const mode = _getMode(ctx);
+
+  // Check category suppression triggers
+  _checkCategorySuppression();
 
   // Collect all signals
   const allSignals = [
@@ -439,28 +623,30 @@ async function evaluate(options = {}) {
     ...collectImports(ctx),
   ];
 
-  // Deduplicate by id, apply behaviour modifiers
+  // Deduplicate, apply behaviour + time-of-day modifiers
   const seen = new Set();
   const candidates = [];
   for (const item of allSignals) {
     if (seen.has(item.id)) continue;
     seen.add(item.id);
 
-    // Apply behaviour modifier
-    const mod = _behaviourModifier(item, ctx);
-    const adjustedScore = Math.max(0, Math.min(100, item.score + mod));
+    const behaviourMod = _behaviourModifier(item, ctx);
+    const timeMod = _timeOfDayModifier(item, mode);
+    const totalMod = behaviourMod + timeMod;
+    const adjustedScore = Math.max(0, Math.min(100, item.score + totalMod));
 
     candidates.push({
       ...item,
       score: adjustedScore,
       _baseScore: item.score,
-      _behaviourMod: mod,
+      _behaviourMod: behaviourMod,
+      _timeMod: timeMod,
       tier: classifyTier(adjustedScore),
     });
   }
 
-  // Sort by score descending
-  candidates.sort((a, b) => b.score - a.score);
+  // Apply HARD OVERRIDES (mutates tier + ordering)
+  _applyOverrides(candidates, ctx);
 
   const totalCandidates = candidates.length;
 
@@ -473,16 +659,28 @@ async function evaluate(options = {}) {
       returned: candidates.length,
       suppressed: 0,
       tiers: _countTiers(candidates),
+      mode,
     };
   }
 
-  // Apply suppression + tier filtering
+  // Apply suppression + tier filtering + category suppression
   const focused = [];
 
   for (const item of candidates) {
-    if (item.tier === 3) continue;
-    if (isSuppressed(item.id)) continue;
-    if (item.urgency === 'low' && !item.meta?.dueDate && item.type !== 'nudge') continue;
+    // Category suppression (skip entire types) — but never escalations/unsuppressable
+    if (!item._unsuppressable && !UNSUPPRESSABLE_TYPES.has(item.type) &&
+        _isCategorySuppressed(item.type)) {
+      continue;
+    }
+
+    // Tier 3 suppressed (unless override made it unsuppressable)
+    if (item.tier === 3 && !item._unsuppressable) continue;
+
+    // Per-item suppression (user dismissed) — but not unsuppressable items
+    if (!item._unsuppressable && isSuppressed(item.id)) continue;
+
+    // Low urgency without deadline (unless nudge)
+    if (item.urgency === 'low' && !item.meta?.dueDate && item.type !== 'nudge' && !item._unsuppressable) continue;
 
     focused.push(item);
     if (focused.length >= FOCUS_MAX) break;
@@ -506,13 +704,26 @@ async function evaluate(options = {}) {
   }
 
   // ── Confidence boosting: mark primary item ──
+  let primaryItem = null;
   if (finalItems.length >= 2) {
     const gap = finalItems[0].score - finalItems[1].score;
-    if (gap >= CONFIDENCE_GAP) {
+    if (gap >= CONFIDENCE_GAP || finalItems[0]._override) {
       finalItems[0].primary = true;
+      primaryItem = {
+        id: finalItems[0].id,
+        reason: finalItems[0]._override
+          ? _overrideReason(finalItems[0]._override)
+          : 'Clear priority gap',
+        confidence: Math.min(100, 60 + gap),
+      };
     }
   } else if (finalItems.length === 1) {
     finalItems[0].primary = true;
+    primaryItem = {
+      id: finalItems[0].id,
+      reason: 'Only active priority',
+      confidence: 90,
+    };
   }
 
   const actualSuppressed = totalCandidates - finalItems.length;
@@ -523,16 +734,29 @@ async function evaluate(options = {}) {
     returned: finalItems.length,
     suppressed: actualSuppressed,
     tiers: _countTiers(candidates),
+    mode,
+    primaryItem,
   };
 }
 
+function _overrideReason(override) {
+  switch (override) {
+    case 'sla_critical': return 'P1 SLA breaching — act immediately';
+    case 'escalation': return 'Unseen escalation — requires attention';
+    case 'meeting_imminent': return 'Meeting starting in minutes';
+    case 'standup_failure': return 'Standup overdue — do it now';
+    case 'crisis_mode': return 'Queue in crisis — tickets take priority';
+    default: return 'System override';
+  }
+}
+
 /**
- * Dismiss an item — suppresses it and tracks type for personal suppression.
+ * Dismiss an item — suppresses it and tracks type for category suppression.
  */
 function dismiss(itemId, itemType) {
   suppressItem(itemId, 'user-dismissed');
   if (itemType) {
-    _trackTypeDismiss(itemType);
+    _trackDismiss(itemType);
   }
 }
 

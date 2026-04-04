@@ -45,6 +45,8 @@ export default function FocusPanel({ onNavigate }) {
   const context = data?.context || {};
   const suppressed = data?.suppressed || 0;
   const totalCandidates = data?.totalCandidates || 0;
+  const primaryItem = data?.primaryItem || null;
+  const mode = data?.mode || null;
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -130,7 +132,11 @@ export default function FocusPanel({ onNavigate }) {
               <div className="focus-item-left">
                 <span className="focus-item-icon">{TYPE_ICONS[item.type] || '·'}</span>
                 <div className="focus-item-content">
-                  {item.primary && <div className="focus-primary-label">Start here</div>}
+                  {item.primary && (
+                    <div className="focus-primary-label">
+                      Start here{primaryItem?.reason ? ` — ${primaryItem.reason}` : ''}
+                    </div>
+                  )}
                   <div className="focus-item-title">{item.title}</div>
                   <div className="focus-item-reason">{item.reason}</div>
                 </div>

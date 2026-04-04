@@ -6,8 +6,7 @@
  * Returns a hard-limited, prioritised list of "what matters now".
  * Default: 3-5 items. Never more than 7.
  *
- * Uses the Decision Engine for signal collection, tier classification,
- * and suppression. No LLM calls.
+ * Phase 2.6: Includes primaryItem metadata, mode, override info.
  *
  * Query params:
  *   ?all=true  — bypass limits, return all candidates (for "view all" UI)
@@ -40,6 +39,8 @@ router.get('/', async (req, res) => {
       returned: result.returned,
       suppressed: result.suppressed,
       tiers: result.tiers,
+      mode: result.mode,
+      primaryItem: result.primaryItem || null,
       // The items
       items: result.items,
     });
