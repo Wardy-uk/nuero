@@ -186,12 +186,16 @@ export default function TodoPanel({ focusContext, onClearContext }) {
           ))}
         </div>
 
-        {/* Summary header */}
+        {/* AI framing + summary header */}
         {totalCount > 0 && focusExpansion !== 'all' && (
           <div className="todo-focus-summary">
-            <span className="todo-focus-summary-text">
-              {items.length === 1 ? 'Your top priority' : `Top ${items.length} of ${totalCount}`}
-            </span>
+            {focusData?.framing ? (
+              <span className="todo-focus-framing">{focusData.framing}</span>
+            ) : (
+              <span className="todo-focus-summary-text">
+                {items.length === 1 ? 'Your top priority' : `Top ${items.length} of ${totalCount}`}
+              </span>
+            )}
             {breakdown.stale > 0 && (
               <span className="todo-focus-summary-stale">
                 {breakdown.stale} stale items hidden

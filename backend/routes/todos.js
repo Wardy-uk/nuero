@@ -73,7 +73,7 @@ router.get('/', (req, res) => {
 //   ?filter=overdue|today|all (default: overdue)
 //   ?limit=N (default: 10, max: 30)
 //   ?showAll=true (bypass limit, return everything ranked)
-router.get('/focus', (req, res) => {
+router.get('/focus', async (req, res) => {
   try {
     const filter = req.query.filter || 'overdue';
     const limit = Math.min(parseInt(req.query.limit) || 10, 30);
@@ -146,6 +146,20 @@ router.get('/focus', (req, res) => {
     const staleCount = ranked.filter(t => (t._score || 0) < 20).length;
     const recentCount = ranked.filter(t => (t._score || 0) >= 40).length;
 
+    // Generate AI framing (non-blocking, with timeout)
+    let framing = '';
+    if (!showAll && items.length > 0) {
+      try {
+        const aiProvider = require('../services/ai-provider');
+        const topSource = items[0]?._scoreReason || 'current priorities';
+        const context = `${items.length} ${filter} tasks shown of ${totalCount} total. ${staleCount} stale. Top items: ${topSource}`;
+        const framingPromise = aiProvider.generateDrilldownFraming(context);
+        const timeout = new Promise(resolve => setTimeout(() => resolve({ text: '' }), 5000));
+        const result = await Promise.race([framingPromise, timeout]);
+        framing = result.text || '';
+      } catch {}
+    }
+
     res.json({
       filter,
       totalCount,
@@ -156,6 +170,7 @@ router.get('/focus', (req, res) => {
         moderate: totalCount - recentCount - staleCount,
         stale: staleCount,
       },
+      framing,
       items,
     });
   } catch (e) {

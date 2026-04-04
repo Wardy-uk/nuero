@@ -3,76 +3,173 @@
 /**
  * AI Provider — unified interface for AI tasks.
  *
- * Delegates to ai-routing.js which handles Ollama/OpenAI selection,
- * failover, and cost controls. This module adds task-specific
- * prompt engineering and output validation.
+ * Phase 3A Activation: Adds Focus enhancement (primary directive,
+ * per-item guidance, ignore summary, adaptive tone), drill-down framing,
+ * and action suggestions.
  *
- * Phase 3A: Ollama-first local reasoning
- * Phase 3B: OpenAI escalation for high-value tasks
+ * All calls go through ai-routing.js for Ollama/OpenAI selection + cost control.
  */
 
 const aiRouting = require('./ai-routing');
 
-/**
- * Rewrite shortlist reasons into natural decision-oriented language.
- * @param {Array} items - Focus items with reason fields
- * @returns {Array} Items with enhanced _aiReason field (or original if AI unavailable)
- */
-async function enhanceShortlistReasons(items) {
-  if (!items || items.length === 0) return items;
+// ═══════════════════════════════════════════════════════
+// Tone Selection (deterministic, no LLM)
+// ═══════════════════════════════════════════════════════
 
-  // Only enhance top 5
-  const toEnhance = items.slice(0, 5);
-  const summary = toEnhance.map((item, i) =>
-    `${i + 1}. [${item.type}] ${item.title} — ${item.reason}`
+/**
+ * Select the adaptive tone based on context and observations.
+ * Returns: 'calm' | 'focused' | 'assertive' | 'critical'
+ */
+function getTone(ctx) {
+  const observations = ctx.observations || [];
+  const snoozeCount = ctx.snoozeCount || 0;
+  const dismissCount = ctx.dismissCount || 0;
+  const hour = ctx.timeContext?.hour ?? new Date().getHours();
+
+  // CRITICAL: operational urgency
+  const hasCrisis = observations.some(o => o.type === 'queue_spike') &&
+                    observations.some(o => o.type === 'sla_worsening');
+  const hasNewEscalation = observations.some(o => o.type === 'new_escalation');
+  if (hasCrisis || hasNewEscalation) return 'critical';
+
+  // ASSERTIVE: avoidance patterns
+  const hasSnoozePattern = observations.some(o => o.type === 'snooze_pattern');
+  const standupLate = observations.some(o => o.type === 'standup_late');
+  if (hasSnoozePattern || standupLate || snoozeCount >= 5 || dismissCount >= 4) return 'assertive';
+
+  // CALM: overwhelm signals (high item count, lots of overdue)
+  const todoCount = ctx.todos?.active?.length || 0;
+  const overdueCount = (ctx.todos?.active || []).filter(t =>
+    t.due_date && t.due_date.split('T')[0] < ctx.dateKey
+  ).length;
+  if (overdueCount > 50 || todoCount > 200) return 'calm';
+
+  // FOCUSED: normal operating mode
+  return 'focused';
+}
+
+const TONE_INSTRUCTIONS = {
+  calm: 'The user is likely overwhelmed. Be grounding and simplifying. Emphasise what to ignore. Keep everything very short. Frame choices as "just do this one thing."',
+  focused: 'Normal operating mode. Be clear, direct, and professional. One recommendation per item. No fluff.',
+  assertive: 'The user may be avoiding something. Be firm but kind. Challenge drift gently. Use action language. Don\'t offer escape routes.',
+  critical: 'Operational urgency is high. Be urgent and direct. No padding. Immediate action required. Cut everything non-essential.',
+};
+
+
+// ═══════════════════════════════════════════════════════
+// Focus Enhancement (primary directive + item guidance)
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Enhance focus output with AI-generated directive, guidance, and ignore summary.
+ *
+ * @param {object} params
+ * @param {Array} params.items - Decision engine focus items (max 5)
+ * @param {object} params.context - Working memory context
+ * @param {string} params.tone - Selected tone mode
+ * @param {object} params.primaryItem - Primary item metadata from engine (or null)
+ * @returns {object} { primary, items, ignore, provider } or null if AI unavailable
+ */
+async function enhanceFocus({ items, context, tone, primaryItem }) {
+  if (!items || items.length === 0) return null;
+
+  const toneGuide = TONE_INSTRUCTIONS[tone] || TONE_INSTRUCTIONS.focused;
+
+  // Build a compact context summary for the prompt (keep it small)
+  const contextLines = [];
+  if (context.queueSummary?.total) contextLines.push(`Queue: ${context.queueSummary.total} tickets, ${(context.queueSummary.at_risk_tickets || []).length} at risk`);
+  if (context.standupDone === false) contextLines.push('Standup not done yet');
+  if (context.snoozeCount > 0) contextLines.push(`${context.snoozeCount} snoozes today`);
+  const ctxStr = contextLines.length > 0 ? contextLines.join('. ') + '.' : 'Normal day.';
+
+  const itemSummary = items.slice(0, 5).map((item, i) =>
+    `${i + 1}. [${item.type}] "${item.title}" — ${item.reason}${item._override ? ` (OVERRIDE: ${item._override})` : ''}`
   ).join('\n');
 
-  const result = await aiRouting.runTask('shortlist_reasoning', {
-    systemPrompt: 'You rewrite task priority explanations into concise, action-oriented language for a busy manager. One short sentence per item. No numbering. No fluff. Be direct.',
-    messages: [{ role: 'user', content: `Rewrite these priority reasons to be clearer and more actionable:\n\n${summary}` }],
-    maxTokens: 200,
-    temperature: 0.3,
-  });
+  const systemPrompt = `You are SARA, a decisive personal AI chief of staff. You produce STRUCTURED JSON output only.
 
-  if (!result.text || result.provider === 'none') return items;
+TONE: ${tone}
+${toneGuide}
 
-  // Parse response — expect one line per item
-  const lines = result.text.trim().split('\n').filter(l => l.trim());
-  for (let i = 0; i < Math.min(lines.length, toEnhance.length); i++) {
-    const clean = lines[i].replace(/^\d+[\.\)]\s*/, '').trim();
-    if (clean.length > 5 && clean.length < 200) {
-      toEnhance[i]._aiReason = clean;
+RULES:
+- primary.message: one clear instruction, max 15 words
+- primary.reason: one sentence why, max 20 words
+- primary.action: one concrete next step, max 15 words
+- items[].why: one short reason, max 12 words
+- items[].action: one action phrase, 2-5 words
+- ignore: one sentence about what to ignore, max 20 words
+- Be opinionated. Make a call. Don't hedge.
+- Output ONLY valid JSON. No markdown. No explanation.`;
+
+  const userMessage = `Context: ${ctxStr}
+
+Focus items:
+${itemSummary}
+
+Return JSON:
+{
+  "primary": { "message": "...", "reason": "...", "action": "..." },
+  "items": [{ "id": "item-id", "why": "...", "action": "..." }, ...],
+  "ignore": "..."
+}`;
+
+  try {
+    const result = await aiRouting.runTask('focus_enhancement', {
+      systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+      maxTokens: 350,
+      temperature: 0.3,
+    });
+
+    if (!result.text || result.provider === 'none') return null;
+
+    // Parse and validate
+    const parsed = _parseJSON(result.text);
+    if (!parsed || !parsed.primary?.message) return null;
+
+    // Validate lengths — reject garbage
+    if (parsed.primary.message.length > 100) return null;
+    if (parsed.primary.reason && parsed.primary.reason.length > 150) return null;
+
+    // Match items by id
+    if (parsed.items && Array.isArray(parsed.items)) {
+      for (const ai of parsed.items) {
+        if (ai.why && ai.why.length > 80) ai.why = ai.why.substring(0, 80);
+        if (ai.action && ai.action.length > 50) ai.action = ai.action.substring(0, 50);
+      }
     }
+
+    return {
+      ...parsed,
+      provider: result.provider,
+      tone,
+    };
+  } catch (e) {
+    console.warn('[AIProvider] Focus enhancement failed:', e.message);
+    return null;
   }
-
-  return items;
 }
 
-/**
- * Synthesise observations into compact human-readable summary.
- * @param {Array} observations - Working memory observations
- * @returns {string} Summary text or empty string
- */
-async function synthesiseObservations(observations) {
-  if (!observations || observations.length === 0) return '';
-
-  const obsText = observations.map(o => `- ${o.message}`).join('\n');
-
-  const result = await aiRouting.runTask('observation_synthesis', {
-    systemPrompt: 'You summarise system observations into 2-3 concise bullets for a daily note. Be factual and brief. No opinions.',
-    messages: [{ role: 'user', content: `Summarise these observations from today:\n\n${obsText}` }],
-    maxTokens: 150,
-    temperature: 0.2,
-  });
-
-  return result.text || '';
+function _parseJSON(text) {
+  // Try to extract JSON from potentially messy output
+  const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Try to find a JSON object in the text
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try { return JSON.parse(match[0]); } catch {}
+    }
+    return null;
+  }
 }
 
-/**
- * Generate a short framing header for a drill-down view.
- * @param {string} context - e.g. "5 overdue tasks, top is 90-day plan, 179 stale"
- * @returns {string} One-line framing sentence
- */
+
+// ═══════════════════════════════════════════════════════
+// Existing functions (preserved from Phase 3A/B)
+// ═══════════════════════════════════════════════════════
+
 async function generateDrilldownFraming(context) {
   const result = await aiRouting.runTask('drilldown_framing', {
     prompt: `Write one short sentence explaining why these items are shown first. Context: ${context}. Be concise and helpful, under 20 words.`,
@@ -81,45 +178,16 @@ async function generateDrilldownFraming(context) {
   });
 
   const text = (result.text || '').trim();
-  // Validate: must be short, no garbage
   if (text.length > 5 && text.length < 150 && !text.includes('{') && !text.includes('```')) {
-    return text;
+    return { text, provider: result.provider };
   }
-  return '';
+  return { text: '', provider: 'none' };
 }
 
-/**
- * Suggest a next-action phrase for an item.
- * @param {object} item - Focus item
- * @returns {string} Short action phrase or empty string
- */
-async function suggestAction(item) {
-  const result = await aiRouting.runTask('action_suggestion', {
-    prompt: `Given this task: "${item.title}" (${item.reason}), suggest ONE short action phrase (2-5 words). Examples: "reply now", "review before meeting", "delegate to team", "close the loop". Just the phrase, nothing else.`,
-    maxTokens: 20,
-    temperature: 0.4,
-  });
-
-  const text = (result.text || '').trim().toLowerCase();
-  // Validate: must be short phrase
-  if (text.length >= 3 && text.length <= 40 && !text.includes('\n')) {
-    return text;
-  }
-  return '';
-}
-
-/**
- * Run the full streaming chat through the routing layer.
- */
 async function streamChat(systemPrompt, messages, res, options = {}) {
   return aiRouting.runStreamingChat(systemPrompt, messages, res, options);
 }
 
-/**
- * Classify a vault import file using AI.
- * @param {string} prompt - Classification prompt
- * @returns {{ text: string, provider: string }}
- */
 async function classifyImport(prompt) {
   return aiRouting.runTask('import_classification', {
     prompt,
@@ -128,11 +196,6 @@ async function classifyImport(prompt) {
   });
 }
 
-/**
- * Triage emails using AI.
- * @param {string} prompt - Triage prompt
- * @returns {{ text: string, provider: string }}
- */
 async function triageEmails(prompt) {
   return aiRouting.runTask('email_triage', {
     prompt,
@@ -141,26 +204,15 @@ async function triageEmails(prompt) {
   });
 }
 
-/**
- * Process a transcript using AI (escalation-worthy task).
- * @param {string} systemPrompt
- * @param {string} content
- * @returns {{ text: string, provider: string }}
- */
 async function processTranscript(systemPrompt, content) {
   return aiRouting.runTask('transcript_processing', {
     systemPrompt,
     messages: [{ role: 'user', content }],
     maxTokens: 1024,
     temperature: 0.3,
-  }, { confidence: 0.3 }); // low confidence → eligible for OpenAI escalation
+  }, { confidence: 0.3 });
 }
 
-/**
- * Generate journal prompts using AI.
- * @param {string} prompt
- * @returns {{ text: string, provider: string }}
- */
 async function generateJournalPrompts(prompt) {
   return aiRouting.runTask('journal_prompts', {
     prompt,
@@ -169,18 +221,14 @@ async function generateJournalPrompts(prompt) {
   });
 }
 
-/**
- * Get the current AI system status.
- */
 function getStatus() {
   return aiRouting.getStatus();
 }
 
 module.exports = {
-  enhanceShortlistReasons,
-  synthesiseObservations,
+  getTone,
+  enhanceFocus,
   generateDrilldownFraming,
-  suggestAction,
   streamChat,
   classifyImport,
   triageEmails,

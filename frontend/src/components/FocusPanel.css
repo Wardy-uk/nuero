@@ -64,6 +64,81 @@
   border-color: var(--accent);
 }
 
+/* ── SARA Says block ── */
+.sara-says {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.sara-says-header {
+  margin-bottom: 6px;
+}
+
+.sara-says-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.sara-says-message {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.sara-says-action {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.sara-says-ignore {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* Tone variants */
+.sara-tone-critical {
+  border-left-color: var(--danger);
+}
+.sara-tone-critical .sara-says-label {
+  color: var(--danger);
+}
+.sara-tone-assertive {
+  border-left-color: var(--warning);
+}
+.sara-tone-assertive .sara-says-label {
+  color: var(--warning);
+}
+.sara-tone-calm {
+  border-left-color: var(--success);
+}
+.sara-tone-calm .sara-says-label {
+  color: var(--success);
+}
+
+/* Per-item action suggestion */
+.focus-item-action {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
 /* Empty state */
 .focus-empty {
   text-align: center;

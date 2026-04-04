@@ -385,6 +385,12 @@
   color: var(--text-secondary);
 }
 
+.todo-focus-framing {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .todo-focus-summary-stale {
   color: var(--text-muted);
   margin-left: auto;

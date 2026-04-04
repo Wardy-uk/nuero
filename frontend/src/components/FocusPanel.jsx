@@ -3,13 +3,6 @@ import useCachedFetch from '../useCachedFetch';
 import { apiUrl } from '../api';
 import './FocusPanel.css';
 
-const URGENCY_LABELS = {
-  critical: 'CRITICAL',
-  high: 'HIGH',
-  medium: 'MED',
-  low: 'LOW',
-};
-
 const TYPE_ICONS = {
   escalation: '!!',
   jira_ticket: '#',
@@ -18,12 +11,6 @@ const TYPE_ICONS = {
   nudge: '~',
   imports: '>',
   email: '✉',
-};
-
-const TIER_LABELS = {
-  1: 'ACT NOW',
-  2: 'DO NEXT',
-  3: 'LATER',
 };
 
 function timeAgo(dateStr) {
@@ -45,8 +32,8 @@ export default function FocusPanel({ onNavigate }) {
   const context = data?.context || {};
   const suppressed = data?.suppressed || 0;
   const totalCandidates = data?.totalCandidates || 0;
-  const primaryItem = data?.primaryItem || null;
-  const mode = data?.mode || null;
+  const sara = data?.sara || null;
+  const tone = data?.tone || 'focused';
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -68,7 +55,6 @@ export default function FocusPanel({ onNavigate }) {
   };
 
   const handleNavigate = (item) => {
-    // Pass context so drill-down views know they came from Focus and can show prioritised shortlist
     const ctx = { fromFocus: true, focusItem: item };
     if (item.type === 'jira_ticket' || item.type === 'escalation') {
       onNavigate?.('queue', { ...ctx, filter: 'at-risk' });
@@ -88,20 +74,23 @@ export default function FocusPanel({ onNavigate }) {
     }
   };
 
+  // Find AI guidance for a specific item
+  const getItemGuidance = (item) => {
+    if (!sara?.items) return null;
+    return sara.items.find(ai => ai.id === item.id) || null;
+  };
+
   return (
     <div className="focus-panel">
       <div className="focus-header">
         <div className="focus-header-left">
-          <h1 className="focus-title">{greeting} — what matters now</h1>
+          <h1 className="focus-title">{greeting}</h1>
           <div className="focus-meta">
             {context.standupDone === false && (
               <span className="focus-meta-tag focus-meta-warn">Standup pending</span>
             )}
             {context.queueTotal > 0 && (
-              <span className="focus-meta-tag">{context.queueTotal} tickets open</span>
-            )}
-            {context.planProgress != null && (
-              <span className="focus-meta-tag">{Math.round(context.planProgress)}% plan</span>
+              <span className="focus-meta-tag">{context.queueTotal} tickets</span>
             )}
             {status === 'cached' && (
               <span className="focus-meta-tag focus-meta-stale">cached</span>
@@ -111,6 +100,22 @@ export default function FocusPanel({ onNavigate }) {
         <button className="focus-refresh" onClick={refresh} title="Refresh">↻</button>
       </div>
 
+      {/* ── SARA Says block ── */}
+      {sara?.primary && !showAll && (
+        <div className={`sara-says sara-tone-${tone}`}>
+          <div className="sara-says-header">
+            <span className="sara-says-label">SARA</span>
+          </div>
+          <div className="sara-says-message">{sara.primary.message}</div>
+          {sara.primary.action && (
+            <div className="sara-says-action">{sara.primary.action}</div>
+          )}
+          {sara.ignore && (
+            <div className="sara-says-ignore">{sara.ignore}</div>
+          )}
+        </div>
+      )}
+
       {items.length === 0 ? (
         <div className="focus-empty">
           <div className="focus-empty-icon">✓</div>
@@ -119,71 +124,63 @@ export default function FocusPanel({ onNavigate }) {
         </div>
       ) : (
         <ul className="focus-list">
-          {items.map((item, i) => (
-            <li
-              key={item.id || i}
-              className={[
-                'focus-item',
-                `focus-urgency-${item.urgency || 'low'}`,
-                item.primary ? 'focus-item-primary' : '',
-              ].filter(Boolean).join(' ')}
-              onClick={() => handleNavigate(item)}
-            >
-              <div className="focus-item-left">
-                <span className="focus-item-icon">{TYPE_ICONS[item.type] || '·'}</span>
-                <div className="focus-item-content">
-                  {item.primary && (
-                    <div className="focus-primary-label">
-                      Start here{primaryItem?.reason ? ` — ${primaryItem.reason}` : ''}
+          {items.map((item, i) => {
+            const guidance = getItemGuidance(item);
+            return (
+              <li
+                key={item.id || i}
+                className={[
+                  'focus-item',
+                  `focus-urgency-${item.urgency || 'low'}`,
+                  item.primary ? 'focus-item-primary' : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => handleNavigate(item)}
+              >
+                <div className="focus-item-left">
+                  <span className="focus-item-icon">{TYPE_ICONS[item.type] || '·'}</span>
+                  <div className="focus-item-content">
+                    <div className="focus-item-title">{item.title}</div>
+                    {/* AI-enhanced reason, or fall back to deterministic */}
+                    <div className="focus-item-reason">
+                      {guidance?.why || item.reason}
                     </div>
-                  )}
-                  <div className="focus-item-title">{item.title}</div>
-                  <div className="focus-item-reason">{item.reason}</div>
+                    {/* AI action suggestion */}
+                    {guidance?.action && (
+                      <div className="focus-item-action">{guidance.action}</div>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="focus-item-right">
-                {item.tier && !item.primary && (
-                  <span className={`focus-tier-badge focus-tier-${item.tier}`}>
-                    {TIER_LABELS[item.tier] || ''}
-                  </span>
-                )}
-                <span className={`focus-urgency-badge focus-urgency-${item.urgency || 'low'}`}>
-                  {URGENCY_LABELS[item.urgency] || ''}
-                </span>
-                {!showAll && (
-                  <button
-                    className="focus-dismiss-btn"
-                    onClick={(e) => handleDismiss(e, item)}
-                    title="Dismiss for 30 min"
-                  >×</button>
-                )}
-              </div>
-            </li>
-          ))}
+                <div className="focus-item-right">
+                  {!showAll && (
+                    <button
+                      className="focus-dismiss-btn"
+                      onClick={(e) => handleDismiss(e, item)}
+                      title="Dismiss for 30 min"
+                    >×</button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 
-      {/* Suppression summary + view all toggle */}
+      {/* Footer */}
       <div className="focus-footer">
         {suppressed > 0 && !showAll && (
-          <button
-            className="focus-view-all"
-            onClick={() => setShowAll(true)}
-          >
+          <button className="focus-view-all" onClick={() => setShowAll(true)}>
             +{suppressed} more hidden
           </button>
         )}
         {showAll && totalCandidates > 0 && (
-          <button
-            className="focus-view-all"
-            onClick={() => setShowAll(false)}
-          >
+          <button className="focus-view-all" onClick={() => setShowAll(false)}>
             Show focused only
           </button>
         )}
         {data?.generatedAt && (
           <span className="focus-footer-time">
             Updated {timeAgo(data.generatedAt)}
+            {sara?.provider && ` · ${sara.provider}`}
           </span>
         )}
       </div>
