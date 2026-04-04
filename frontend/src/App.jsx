@@ -149,6 +149,7 @@ function AuthenticatedApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [vaultOpenPath, setVaultOpenPath] = useState(null);
+  const [navContext, setNavContext] = useState(null); // context passed from Focus to drill-down views
   const [weekendOverride, setWeekendOverride] = useState(false);
   const weekend = isWeekend() && !weekendOverride;
   const location = useLocation();
@@ -230,13 +231,14 @@ function AuthenticatedApp() {
     }).catch(() => {}); // fire and forget — never block UI
   }, [activeView]);
 
-  const handleNavigate = (view) => {
+  const handleNavigate = (view, context = null) => {
     if (view === 'chat') {
       setChatOpen(true);
       setSidebarOpen(false);
       return; // do NOT change activeView — chat lives in aside only
     }
     setChatOpen(false); // close aside when navigating away
+    setNavContext(context); // pass context to drill-down view (e.g. { filter: 'overdue' })
     setActiveView(view);
     setSidebarOpen(false);
   };
@@ -247,15 +249,15 @@ function AuthenticatedApp() {
       case 'dashboard': return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
       case 'standup': return <StandupEditor />;
       case 'people': return <PeopleBoard />;
-      case 'queue': return <QueueTable queueData={queueData} onRefresh={queueFetch.refresh} />;
+      case 'queue': return <QueueTable queueData={queueData} onRefresh={queueFetch.refresh} focusContext={navContext} />;
       case 'plan': return <NinetyDayPlan />;
-      case 'todos': return <TodoPanel />;
+      case 'todos': return <TodoPanel focusContext={navContext} onClearContext={() => setNavContext(null)} />;
       case 'calendar': return <CalendarView />;
       case 'capture': return <CapturePanel />;
       case 'recent': return <RecentPanel onOpenFile={(path) => { setVaultOpenPath(path); setActiveView('vault'); }} />;
       case 'imports': return <ImportsPanel />;
       case 'strava': return <StravaPanel />;
-      case 'inbox': return <InboxPanel />;
+      case 'inbox': return <InboxPanel focusContext={navContext} />;
       case 'vault': return <VaultBrowser initialOpenPath={vaultOpenPath} onClearInitialPath={() => setVaultOpenPath(null)} />;
       case 'qa': return <QATab />;
       case 'journal': return <JournalPanel />;

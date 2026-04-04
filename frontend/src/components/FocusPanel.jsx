@@ -66,13 +66,24 @@ export default function FocusPanel({ onNavigate }) {
   };
 
   const handleNavigate = (item) => {
-    if (item.type === 'jira_ticket' || item.type === 'escalation') onNavigate?.('queue');
-    else if (item.type === 'meeting') onNavigate?.('calendar');
-    else if (item.type === 'todo') onNavigate?.('todos');
-    else if (item.type === 'nudge' && item.meta?.type === 'standup') onNavigate?.('standup');
-    else if (item.type === 'nudge' && item.meta?.type === 'eod') onNavigate?.('standup');
-    else if (item.type === 'imports') onNavigate?.('imports');
-    else if (item.type === 'email') onNavigate?.('inbox');
+    // Pass context so drill-down views know they came from Focus and can show prioritised shortlist
+    const ctx = { fromFocus: true, focusItem: item };
+    if (item.type === 'jira_ticket' || item.type === 'escalation') {
+      onNavigate?.('queue', { ...ctx, filter: 'at-risk' });
+    } else if (item.type === 'meeting') {
+      onNavigate?.('calendar');
+    } else if (item.type === 'todo') {
+      const filter = item.id?.includes('overdue') ? 'overdue' : item.id?.includes('today') ? 'today' : 'all';
+      onNavigate?.('todos', { ...ctx, filter });
+    } else if (item.type === 'nudge' && item.meta?.type === 'standup') {
+      onNavigate?.('standup');
+    } else if (item.type === 'nudge' && item.meta?.type === 'eod') {
+      onNavigate?.('standup');
+    } else if (item.type === 'imports') {
+      onNavigate?.('imports');
+    } else if (item.type === 'email') {
+      onNavigate?.('inbox', { ...ctx, filter: 'urgent' });
+    }
   };
 
   return (

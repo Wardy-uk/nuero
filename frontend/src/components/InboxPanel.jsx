@@ -44,7 +44,8 @@ function EmailCard({ email, borderClass, onDismiss, dismissing }) {
   );
 }
 
-export default function InboxPanel() {
+export default function InboxPanel({ focusContext }) {
+  const fromFocus = focusContext?.fromFocus;
   const [triage, setTriage] = useState(null);
   const [running, setRunning] = useState(false);
   const [dismissing, setDismissing] = useState(null);
@@ -82,8 +83,20 @@ export default function InboxPanel() {
 
   return (
     <div className="inbox-container">
+      {fromFocus && action.length > 0 && (
+        <div className="todo-focus-summary" style={{ marginBottom: 16 }}>
+          <span className="todo-focus-summary-text">
+            {action.length} email{action.length !== 1 ? 's' : ''} need action — start here
+          </span>
+          {(delegate.length + fyiTotal) > 0 && (
+            <span className="todo-focus-summary-stale">
+              {delegate.length + fyiTotal} lower-priority below
+            </span>
+          )}
+        </div>
+      )}
       <div className="inbox-header">
-        <h2 className="inbox-title">Inbox Triage</h2>
+        <h2 className="inbox-title">{fromFocus ? 'Urgent Emails — Start Here' : 'Inbox Triage'}</h2>
         <div className="inbox-actions">
           {triage?.lastRun && (
             <span className="inbox-last-scan">

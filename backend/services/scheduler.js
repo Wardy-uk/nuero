@@ -85,7 +85,7 @@ function start() {
     } catch (e) { console.error('[Scheduler] Weekly review failed:', e.message); }
   });
 
-  // 10pm nightly — build daily activity summary + entity extraction
+  // 10pm nightly — build daily activity summary + entity extraction + write observations
   cron.schedule('0 22 * * *', () => {
     console.log('[Scheduler] Running nightly activity rollup...');
     try {
@@ -98,6 +98,12 @@ function start() {
       console.log(`[Scheduler] Entity extraction: ${result.processed} notes processed`);
     } catch (e) {
       console.error('[Scheduler] Entity extraction failed:', e.message);
+    }
+    // Write working memory observations to daily note
+    try {
+      require('./working-memory').writeObservationsToDaily();
+    } catch (e) {
+      console.error('[Scheduler] Observation write failed:', e.message);
     }
   });
 

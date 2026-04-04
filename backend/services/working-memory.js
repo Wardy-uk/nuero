@@ -1,13 +1,14 @@
 'use strict';
 
 /**
- * Working Memory — persistent context cache with TTL.
+ * Working Memory — persistent context cache with observations.
  *
- * Instead of rebuilding the full context snapshot from scratch on every
- * chat message / focus request, this service maintains a cached snapshot
- * that refreshes on a 10-minute TTL or on explicit invalidation.
+ * Phase 2c: expanded beyond simple cache to include:
+ *   - Short-lived observations (queue changes, snooze patterns, etc.)
+ *   - Cross-refresh continuity (observations survive cache refresh)
+ *   - Daily note writing (append-only NEURO Observations section)
  *
- * This is Phase 1 working memory — simple, explicit, no AI.
+ * Still deterministic. No LLM calls.
  */
 
 const db = require('../db/database');
@@ -18,9 +19,21 @@ let _cache = null;
 let _lastRefresh = 0;
 let _refreshing = false;
 
+// ── Observations ──
+// Short-lived observations that survive cache refreshes.
+// Each observation: { type, message, timestamp, data }
+// Max 50 observations, auto-pruned after 8 hours.
+const _observations = [];
+const MAX_OBSERVATIONS = 50;
+const OBSERVATION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+
+// Previous state snapshots for change detection
+let _prevQueueTotal = null;
+let _prevAtRiskCount = null;
+let _prevEscalationCount = null;
+
 /**
  * Get the current working context, refreshing if stale.
- * Returns a plain object with queue, todos, plan, calendar, nudges, patterns.
  */
 async function getContext() {
   const now = Date.now();
@@ -35,7 +48,6 @@ async function getContext() {
  */
 async function refresh() {
   if (_refreshing) {
-    // Avoid concurrent refreshes — return stale cache or empty
     return _cache || _buildEmpty();
   }
 
@@ -50,11 +62,11 @@ async function refresh() {
     const isWeekend = day === 0 || day === 6;
     const isWorkHours = !isWeekend && hour >= 8 && hour <= 18;
 
-    // Queue summary (fast — reads from SQLite cache)
+    // Queue summary
     let queueSummary = null;
     try { queueSummary = db.getQueueSummary(); } catch {}
 
-    // Vault todos (parses Master Todo + Microsoft Tasks + Daily notes)
+    // Vault todos
     let todos = null;
     try { todos = obsidian.parseVaultTodos(); } catch {}
 
@@ -62,7 +74,7 @@ async function refresh() {
     let ninetyDayPlan = null;
     try { ninetyDayPlan = obsidian.parseNinetyDayPlan(); } catch {}
 
-    // Today's calendar (from DB cache)
+    // Today's calendar
     let calendar = [];
     try {
       const todayStr = dateKey;
@@ -74,7 +86,7 @@ async function refresh() {
     let nudges = [];
     try { nudges = db.getActiveNudges(); } catch {}
 
-    // Today's activity (for pattern awareness)
+    // Today's activity
     let todayActivity = [];
     try { todayActivity = db.getActivityForDate(dateKey); } catch {}
 
@@ -97,6 +109,16 @@ async function refresh() {
       pendingImports = pending.length;
     } catch {}
 
+    // ── Detect changes and record observations ──
+    _detectChanges(queueSummary, unseenEscalations, nudges, todayActivity);
+
+    // ── Snooze pattern detection ──
+    const snoozeCount = todayActivity.filter(a => a.event_type === 'nudge_snoozed').length;
+    const dismissCount = todayActivity.filter(a => a.event_type === 'nudge_dismissed').length;
+
+    // Prune old observations
+    _pruneObservations();
+
     _cache = {
       refreshedAt: Date.now(),
       dateKey,
@@ -107,12 +129,16 @@ async function refresh() {
       calendar,
       nudges,
       todayActivity,
-      dailyNote: dailyNote ? true : false, // boolean only — the full note is too large to cache
+      dailyNote: dailyNote ? true : false,
       unseenEscalations,
       pendingImports,
       userActiveToday: todayActivity.length > 0,
       standupDone: todayActivity.some(a => a.event_type === 'standup_done'),
       eodDone: todayActivity.some(a => a.event_type === 'eod_done'),
+      // Phase 2c additions
+      observations: _observations.slice(), // copy
+      snoozeCount,
+      dismissCount,
     };
 
     _lastRefresh = Date.now();
@@ -127,9 +153,119 @@ async function refresh() {
 }
 
 /**
- * Invalidate the cache — next getContext() call will force a refresh.
- * Call this when something significant changes (vault write, queue sync, etc.)
+ * Detect changes between refreshes and record observations.
  */
+function _detectChanges(queueSummary, unseenEscalations, nudges, todayActivity) {
+  const now = Date.now();
+
+  // Queue size changed
+  if (queueSummary && _prevQueueTotal !== null) {
+    const diff = queueSummary.total - _prevQueueTotal;
+    if (diff >= 3) {
+      _addObservation('queue_spike', `Queue grew by ${diff} (now ${queueSummary.total})`, { diff, total: queueSummary.total });
+    } else if (diff <= -3) {
+      _addObservation('queue_drop', `Queue shrunk by ${Math.abs(diff)} (now ${queueSummary.total})`, { diff, total: queueSummary.total });
+    }
+  }
+  if (queueSummary) _prevQueueTotal = queueSummary.total;
+
+  // At-risk count changed
+  if (queueSummary && _prevAtRiskCount !== null) {
+    const atRisk = (queueSummary.at_risk_tickets || []).length;
+    if (atRisk > _prevAtRiskCount && atRisk > 0) {
+      _addObservation('sla_worsening', `At-risk tickets increased to ${atRisk}`, { count: atRisk });
+    } else if (atRisk < _prevAtRiskCount && _prevAtRiskCount > 0) {
+      _addObservation('sla_improving', `At-risk tickets dropped to ${atRisk}`, { count: atRisk });
+    }
+  }
+  if (queueSummary) _prevAtRiskCount = (queueSummary.at_risk_tickets || []).length;
+
+  // New escalations
+  if (_prevEscalationCount !== null && unseenEscalations > _prevEscalationCount) {
+    _addObservation('new_escalation', `New escalation detected (${unseenEscalations} unseen)`, { count: unseenEscalations });
+  }
+  _prevEscalationCount = unseenEscalations;
+
+  // Repeated snoozing (check today's activity)
+  const snoozeCount = todayActivity.filter(a => a.event_type === 'nudge_snoozed').length;
+  if (snoozeCount >= 5 && !_hasRecentObservation('snooze_pattern', 60)) {
+    _addObservation('snooze_pattern', `${snoozeCount} snoozes today — possible avoidance pattern`, { count: snoozeCount });
+  }
+
+  // Standup still pending late
+  const hour = new Date().getHours();
+  const standupDone = todayActivity.some(a => a.event_type === 'standup_done');
+  const isWeekday = new Date().getDay() >= 1 && new Date().getDay() <= 5;
+  if (isWeekday && hour >= 11 && !standupDone && !_hasRecentObservation('standup_late', 120)) {
+    _addObservation('standup_late', `Standup still pending at ${hour}:00`, { hour });
+  }
+}
+
+function _addObservation(type, message, data = {}) {
+  _observations.push({
+    type,
+    message,
+    timestamp: Date.now(),
+    data,
+  });
+  // Cap size
+  while (_observations.length > MAX_OBSERVATIONS) {
+    _observations.shift();
+  }
+  console.log(`[WorkingMemory] Observation: ${message}`);
+}
+
+function _hasRecentObservation(type, withinMinutes) {
+  const cutoff = Date.now() - (withinMinutes * 60 * 1000);
+  return _observations.some(o => o.type === type && o.timestamp > cutoff);
+}
+
+function _pruneObservations() {
+  const cutoff = Date.now() - OBSERVATION_TTL_MS;
+  while (_observations.length > 0 && _observations[0].timestamp < cutoff) {
+    _observations.shift();
+  }
+}
+
+/**
+ * Get recent observations, optionally filtered by type.
+ */
+function getObservations(type = null) {
+  _pruneObservations();
+  if (type) return _observations.filter(o => o.type === type);
+  return _observations.slice();
+}
+
+/**
+ * Write today's observations to the daily note (append-only).
+ * Called by scheduler at EOD or on demand.
+ * Only writes if there are observations and the section doesn't already exist.
+ */
+function writeObservationsToDaily() {
+  if (_observations.length === 0) return false;
+
+  try {
+    const obsidian = require('./obsidian');
+    const dailyNote = obsidian.readTodayDailyNote();
+
+    // Don't write if section already exists
+    if (dailyNote && dailyNote.includes('## NEURO Observations')) return false;
+
+    const lines = _observations.map(o => {
+      const time = new Date(o.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      return `- ${time} — ${o.message}`;
+    });
+
+    const section = `\n\n## NEURO Observations\n${lines.join('\n')}\n`;
+    obsidian.appendToDailyNote(section);
+    console.log(`[WorkingMemory] Wrote ${_observations.length} observations to daily note`);
+    return true;
+  } catch (e) {
+    console.warn('[WorkingMemory] Failed to write observations:', e.message);
+    return false;
+  }
+}
+
 function invalidate(reason) {
   _lastRefresh = 0;
   if (reason) {
@@ -137,9 +273,6 @@ function invalidate(reason) {
   }
 }
 
-/**
- * Get the cache age in milliseconds, or null if no cache exists.
- */
 function getCacheAge() {
   if (!_cache) return null;
   return Date.now() - _lastRefresh;
@@ -162,6 +295,9 @@ function _buildEmpty() {
     userActiveToday: false,
     standupDone: false,
     eodDone: false,
+    observations: [],
+    snoozeCount: 0,
+    dismissCount: 0,
   };
 }
 
@@ -170,4 +306,6 @@ module.exports = {
   refresh,
   invalidate,
   getCacheAge,
+  getObservations,
+  writeObservationsToDaily,
 };

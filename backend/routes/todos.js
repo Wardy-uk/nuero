@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const obsidian = require('../services/obsidian');
+const { rankTasks } = require('../services/task-scoring');
 
 // GET /api/todos — reads tasks from Obsidian vault + 90-day plan
 router.get('/', (req, res) => {
@@ -64,6 +65,102 @@ router.get('/', (req, res) => {
   } catch (e) {
     console.error('[Todos] Error parsing vault todos:', e);
     res.status(500).json({ error: 'Failed to parse vault todos' });
+  }
+});
+
+// GET /api/todos/focus — smart prioritised shortlist for drill-downs
+// Query params:
+//   ?filter=overdue|today|all (default: overdue)
+//   ?limit=N (default: 10, max: 30)
+//   ?showAll=true (bypass limit, return everything ranked)
+router.get('/focus', (req, res) => {
+  try {
+    const filter = req.query.filter || 'overdue';
+    const limit = Math.min(parseInt(req.query.limit) || 10, 30);
+    const showAll = req.query.showAll === 'true';
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const { active } = obsidian.parseVaultTodos();
+
+    // Map vault tasks to API shape
+    let tasks = active.map((t, i) => ({
+      id: i + 1,
+      text: t.text,
+      priority: t.priority || 'normal',
+      due_date: t.due_date || null,
+      source: t.source || null,
+      done: t.status === 'done' ? 1 : 0,
+      ms_id: t.ms_id || null,
+      vault_task: true,
+      filePath: t.filePath || null,
+      lineNumber: t.lineNumber != null ? t.lineNumber : null,
+    }));
+
+    // Inject 90-day plan tasks
+    try {
+      const plan = obsidian.parseNinetyDayPlan();
+      if (plan) {
+        const OUTCOMES = {
+          1: 'Visibility & BI', 2: 'Tiered Model', 3: 'Quality & CX',
+          4: 'People & Culture', 5: 'Cross-functional', 6: 'Production'
+        };
+        let planId = tasks.length + 1;
+        for (const t of (plan.allTasks || [])) {
+          if (t.isCheckpoint || t.status === 'x') continue;
+          const isOverdue = t.day > 0 && t.day < plan.currentDay;
+          const outcomeLabel = t.outcome ? OUTCOMES[t.outcome] || '' : '';
+          tasks.push({
+            id: planId++,
+            text: t.text,
+            priority: isOverdue ? 'high' : (t.day === plan.currentDay ? 'normal' : 'low'),
+            due_date: t.calendarDate || null,
+            source: `90-Day Plan${outcomeLabel ? ` (${outcomeLabel})` : ''}`,
+            done: 0,
+            ms_id: null,
+            vault_task: true,
+            filePath: plan.filePath || null,
+            lineNumber: t.lineNumber != null ? t.lineNumber : null,
+            planDay: t.day,
+          });
+        }
+      }
+    } catch {}
+
+    // Apply filter
+    if (filter === 'overdue') {
+      tasks = tasks.filter(t => t.due_date && t.due_date.split('T')[0] < todayStr && !t.done);
+    } else if (filter === 'today') {
+      tasks = tasks.filter(t => t.due_date && t.due_date.split('T')[0] === todayStr && !t.done);
+    } else {
+      tasks = tasks.filter(t => !t.done);
+    }
+
+    // Score and rank
+    const ranked = rankTasks(tasks, todayStr);
+    const totalCount = ranked.length;
+
+    // Apply limit
+    const items = showAll ? ranked : ranked.slice(0, limit);
+
+    // Categorise the backlog
+    const staleCount = ranked.filter(t => (t._score || 0) < 20).length;
+    const recentCount = ranked.filter(t => (t._score || 0) >= 40).length;
+
+    res.json({
+      filter,
+      totalCount,
+      returned: items.length,
+      hidden: totalCount - items.length,
+      breakdown: {
+        pressing: recentCount,
+        moderate: totalCount - recentCount - staleCount,
+        stale: staleCount,
+      },
+      items,
+    });
+  } catch (e) {
+    console.error('[Todos] Focus error:', e);
+    res.status(500).json({ error: e.message });
   }
 });
 

@@ -301,17 +301,34 @@ function FlagButton({ ticketKey }) {
   );
 }
 
-export default function QueueTable({ queueData, onRefresh }) {
+export default function QueueTable({ queueData, onRefresh, focusContext }) {
   const [showMine, setShowMine] = useState(true);
+  const [showAllTickets, setShowAllTickets] = useState(!focusContext?.fromFocus);
+  const fromFocus = focusContext?.fromFocus;
 
   const path = showMine ? '/api/queue?assignee=nick' : '/api/queue';
   const { data: filteredData, refresh: fetchFiltered } = useCachedFetch(path);
   const loading = filteredData === null;
 
   const data = filteredData || queueData;
-  const tickets = data?.tickets || [];
+  const allTickets = data?.tickets || [];
   const configured = data?.configured;
   const lastSync = data?.last_sync;
+
+  // Sort: at-risk first (lowest SLA remaining), then by priority
+  const sorted = [...allTickets].sort((a, b) => {
+    const aRisk = a.at_risk ? 0 : 1;
+    const bRisk = b.at_risk ? 0 : 1;
+    if (aRisk !== bRisk) return aRisk - bRisk;
+    const aSla = a.sla_remaining_minutes ?? 99999;
+    const bSla = b.sla_remaining_minutes ?? 99999;
+    return aSla - bSla;
+  });
+
+  // In focus mode, show only at-risk tickets by default
+  const atRisk = sorted.filter(t => t.at_risk);
+  const tickets = (fromFocus && !showAllTickets) ? atRisk.slice(0, 10) : sorted;
+  const hiddenCount = sorted.length - tickets.length;
 
   // Mark escalations as seen when queue tab is opened
   useEffect(() => {
@@ -320,8 +337,28 @@ export default function QueueTable({ queueData, onRefresh }) {
 
   return (
     <div className="queue-container">
+      {fromFocus && !showAllTickets && atRisk.length > 0 && (
+        <div className="todo-focus-summary" style={{ marginBottom: 16 }}>
+          <span className="todo-focus-summary-text">
+            Showing {tickets.length} at-risk ticket{tickets.length !== 1 ? 's' : ''} of {sorted.length} total
+          </span>
+          {hiddenCount > 0 && (
+            <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setShowAllTickets(true)}>
+              Show all {sorted.length}
+            </button>
+          )}
+        </div>
+      )}
+      {fromFocus && showAllTickets && sorted.length > 10 && (
+        <div className="todo-focus-summary" style={{ marginBottom: 16 }}>
+          <span className="todo-focus-summary-text">Showing all {sorted.length} tickets, sorted by urgency</span>
+          <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setShowAllTickets(false)}>
+            At-risk only
+          </button>
+        </div>
+      )}
       <div className="queue-header">
-        <h2 className="queue-title">Queue</h2>
+        <h2 className="queue-title">{fromFocus && !showAllTickets ? 'At-Risk Tickets — Start Here' : 'Queue'}</h2>
         <div className="queue-meta">
           <div className="queue-filter-toggle">
             <button

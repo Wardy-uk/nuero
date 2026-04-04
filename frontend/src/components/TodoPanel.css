@@ -366,3 +366,52 @@
     font-size: 10px;
   }
 }
+
+/* ── Focused mode ── */
+.todo-focus-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.todo-focus-summary-text {
+  color: var(--text-secondary);
+}
+
+.todo-focus-summary-stale {
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.todo-focus-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  justify-content: center;
+}
+
+.todo-focus-footer-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.todo-score-reason {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent-dim);
+  margin-left: 4px;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
