@@ -248,6 +248,7 @@ export default function PeopleBoard() {
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [viewMode, setViewMode] = useState('reports'); // reports | other
+  const [personSummaries, setPersonSummaries] = useState({});
 
   // Auto-expand removed — was opening overdue 1-2-1 forms on every page visit
 
@@ -262,6 +263,12 @@ export default function PeopleBoard() {
         })
         .catch(() => {});
     });
+
+    // Fetch per-person tasks + decisions
+    fetch(apiUrl('/api/person/summary/all'))
+      .then(r => r.json())
+      .then(d => setPersonSummaries(d.people || {}))
+      .catch(() => {});
 
     // Check n8n status + pending approvals
     fetch(apiUrl('/api/n8n/status'))
@@ -385,6 +392,24 @@ export default function PeopleBoard() {
                   )}
                   {!vaultData?.exists && (
                     <span className="person-no-note">No vault note</span>
+                  )}
+                  {personSummaries[person.name]?.tasks?.length > 0 && (
+                    <div className="person-card-tasks">
+                      {personSummaries[person.name].tasks.map((t, i) => (
+                        <div key={i} className="person-card-task">
+                          <span className="person-card-task-text">☐ {t.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {personSummaries[person.name]?.decisions?.length > 0 && (
+                    <div className="person-card-decisions">
+                      {personSummaries[person.name].decisions.map((d, i) => (
+                        <div key={i} className="person-card-decision">
+                          <span className="person-card-decision-date">{d.date}</span> {d.text}
+                        </div>
+                      ))}
+                    </div>
                   )}
                   <div className="person-card-actions">
                     {vaultData?.exists && (

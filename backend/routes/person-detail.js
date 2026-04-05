@@ -227,4 +227,56 @@ function _walkDir(dir, maxDepth, depth = 0) {
   return results;
 }
 
+// GET /api/person-summary/all — lightweight per-person tasks + decisions for cards
+router.get('/summary/all', (req, res) => {
+  try {
+    const t0 = Date.now();
+    const peopleDir = path.join(VAULT_PATH, 'People');
+    if (!fs.existsSync(peopleDir)) return res.json({ people: {} });
+
+    const files = fs.readdirSync(peopleDir).filter(f => f.endsWith('.md') && !f.startsWith('_'));
+    const names = files.map(f => f.replace('.md', ''));
+
+    // Get all tasks and decisions once
+    let allTasks = [];
+    try {
+      const vaultCache = require('../services/vault-cache');
+      const todos = vaultCache.getTodos();
+      allTasks = (todos?.active || []).filter(t => t.status !== 'done');
+    } catch {}
+
+    let allDecisions = [];
+    try {
+      const obsidian = require('../services/obsidian');
+      allDecisions = obsidian.getRecentDecisions(30) || [];
+    } catch {}
+
+    // Build per-person summary
+    const people = {};
+    for (const name of names) {
+      const firstName = name.split(' ')[0].toLowerCase();
+      const fullName = name.toLowerCase();
+
+      const tasks = allTasks
+        .filter(t => t.text?.toLowerCase().includes(firstName) || t.text?.toLowerCase().includes(fullName))
+        .slice(0, 3)
+        .map(t => ({ text: t.text.substring(0, 80), source: t.source, due_date: t.due_date }));
+
+      const decisions = allDecisions
+        .filter(d => d.text?.toLowerCase().includes(firstName) || d.text?.toLowerCase().includes(fullName))
+        .slice(0, 3)
+        .map(d => ({ date: d.date, text: d.text.substring(0, 80) }));
+
+      if (tasks.length > 0 || decisions.length > 0) {
+        people[name] = { tasks, decisions };
+      }
+    }
+
+    console.log(`[PersonSummary] Built for ${Object.keys(people).length} people in ${Date.now() - t0}ms`);
+    res.json({ people });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

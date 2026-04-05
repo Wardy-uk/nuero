@@ -102,6 +102,40 @@
   text-decoration: underline;
 }
 
+.person-card-tasks {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.person-card-task {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 0;
+  line-height: 1.3;
+}
+
+.person-card-task-text {
+  color: var(--text-primary);
+}
+
+.person-card-decisions {
+  margin-top: 4px;
+}
+
+.person-card-decision {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 2px 0;
+  line-height: 1.3;
+}
+
+.person-card-decision-date {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
 .person-id {
   font-family: var(--font-mono);
   font-size: 10px;
