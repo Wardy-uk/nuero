@@ -65,6 +65,78 @@ router.get('/all', (req, res) => {
   }
 });
 
+// GET /api/meeting-prep/week — all meetings for the next 7 days with prep
+router.get('/week', (req, res) => {
+  try {
+    const daysAhead = parseInt(req.query.days) || 7;
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const endDate = new Date(now.getTime() + daysAhead * 86400000);
+    const endStr = endDate.toISOString().split('T')[0];
+
+    const events = db.getCalendarEvents(todayStr, endStr + 'T23:59:59');
+
+    // Group by date
+    const byDate = {};
+    for (const e of events) {
+      const dateKey = e.start_time.split('T')[0];
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+
+      const start = new Date(e.start_time);
+      byDate[dateKey].push({
+        ...e,
+        startFormatted: start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        endFormatted: new Date(e.end_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        dayLabel: start.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' }),
+      });
+    }
+
+    // Build prep for each meeting
+    const days = Object.entries(byDate)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, meetings]) => ({
+        date,
+        dayLabel: meetings[0]?.dayLabel || date,
+        meetings: meetings.map(m => ({
+          ...m,
+          prep: _buildPrep(m),
+        })),
+      }));
+
+    res.json({ days, totalMeetings: events.length });
+  } catch (e) {
+    console.error('[MeetingPrep] Week error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/meeting-prep/:id — prep for a specific meeting by event_id
+router.get('/:id', (req, res) => {
+  try {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const weekEnd = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0];
+    const events = db.getCalendarEvents(todayStr, weekEnd + 'T23:59:59');
+    const event = events.find(e => e.event_id === req.params.id);
+
+    if (!event) return res.status(404).json({ error: 'Meeting not found' });
+
+    const start = new Date(event.start_time);
+    const enriched = {
+      ...event,
+      startFormatted: start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      endFormatted: new Date(event.end_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      dayLabel: start.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' }),
+      minutesAway: Math.round((start - now) / 60000),
+      prep: _buildPrep(event),
+    };
+
+    res.json({ meeting: enriched });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 function _getUpcomingMeetings(hoursAhead) {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];

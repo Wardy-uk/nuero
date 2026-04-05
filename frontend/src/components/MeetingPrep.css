@@ -223,3 +223,69 @@
 .prep-meeting-mini .prep-meeting-subject {
   font-size: 13px;
 }
+
+/* Week view */
+.prep-week-summary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.prep-week-day {
+  margin-bottom: 14px;
+}
+
+.prep-week-day-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.prep-week-meeting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.prep-week-meeting:hover {
+  background: var(--bg-tertiary);
+}
+
+.prep-week-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 40px;
+}
+
+.prep-week-subject {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prep-week-people {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Active button state for mode toggle */
+.btn.active {
+  background: rgba(90, 163, 249, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
