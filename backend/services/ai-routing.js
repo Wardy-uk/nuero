@@ -40,6 +40,7 @@ const TASK_MODELS = {
   drilldown_framing: LIGHTWEIGHT_MODEL,
   action_suggestion: LIGHTWEIGHT_MODEL,
   chat_stream: 'gemma3:4b',
+  chat_sync: 'gemma3:4b',
   standup_interactive: 'gemma3:4b',
   eod_interactive: 'gemma3:4b',
 };

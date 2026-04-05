@@ -11,6 +11,20 @@ router.post('/', (req, res) => {
   claude.streamChat(convId, message, res, location || null);
 });
 
+// POST /api/chat/sync — non-streaming chat (works through reverse proxies)
+router.post('/sync', async (req, res) => {
+  const { message, conversationId, location } = req.body;
+  if (!message) return res.status(400).json({ error: 'message is required' });
+  const convId = conversationId || `conv_${Date.now()}`;
+
+  try {
+    const response = await claude.syncChat(convId, message, location || null);
+    res.json(response);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/chat/conversations — list recent conversations
 router.get('/conversations', (req, res) => {
   const conversations = db.getRecentConversations(5);

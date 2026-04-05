@@ -318,7 +318,8 @@ export default function ChatPanel({ location }) {
     setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
     try {
-      const response = await fetch(apiUrl('/api/chat'), {
+      // Use non-streaming sync endpoint (Tailscale Funnel buffers SSE)
+      const response = await fetch(apiUrl('/api/chat/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -328,40 +329,20 @@ export default function ChatPanel({ location }) {
         })
       });
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.type === 'text') {
-              setMessages(prev => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last.role === 'assistant') {
-                  updated[updated.length - 1] = { ...last, content: last.content + data.content };
-                }
-                return updated;
-              });
-            } else if (data.type === 'error') {
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', content: `Error: ${data.content}` };
-                return updated;
-              });
-            }
-          } catch (e) { /* ignore parse errors */ }
-        }
+      const data = await response.json();
+      if (data.message) {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'assistant', content: data.message };
+          return updated;
+        });
+        if (data.conversationId) setConversationId(data.conversationId);
+      } else if (data.error) {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'assistant', content: `Error: ${data.error}` };
+          return updated;
+        });
       }
     } catch (err) {
       setMessages(prev => {

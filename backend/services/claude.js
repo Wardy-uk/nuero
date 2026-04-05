@@ -731,7 +731,70 @@ ${contextBlock}${synthesisSuffix}`;
   }
 }
 
+/**
+ * Non-streaming chat — returns full response as JSON.
+ * Works through reverse proxies (Tailscale Funnel) that buffer SSE.
+ */
+async function syncChat(conversationId, userMessage, location = null) {
+  db.saveMessage(conversationId, 'user', userMessage);
+  try { require('./activity').trackChatMessage(userMessage); } catch {}
+
+  const history = db.getConversationHistory(conversationId, 10);
+
+  let wmCtx = null;
+  try { wmCtx = await require('./working-memory').getContext(); } catch {}
+
+  const queueSummary = wmCtx?.queueSummary || db.getQueueSummary();
+  const todos = wmCtx?.todos || (() => { try { return obsidian.parseVaultTodos(); } catch { return null; } })();
+  const ninetyDayPlan = wmCtx?.ninetyDayPlan || (() => { try { return obsidian.parseNinetyDayPlan(); } catch { return null; } })();
+
+  let dailyNote = null;
+  let previousNote = null;
+  let standupContent = null;
+
+  try { dailyNote = obsidian.readTodayDailyNote(); } catch {}
+  if (!dailyNote) { try { previousNote = obsidian.readPreviousDailyNote(); } catch {} }
+  try { standupContent = obsidian.readStandup(); } catch {}
+
+  const queryIntent = detectQueryIntent(userMessage);
+  const weekend = isWeekend();
+
+  // Simplified context (no vault search for sync mode — keep it fast)
+  const contextBlock = await buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, [], null, queryIntent);
+
+  const startDate = new Date('2026-03-16');
+  const today = new Date();
+  const dayCount = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+  const basePrompt = weekend ? WEEKEND_SYSTEM_PROMPT : SYSTEM_PROMPT;
+  const systemPrompt = `${basePrompt}\n\nDay ${dayCount} in role.\n\n---\nCONTEXT:\n${contextBlock}`;
+
+  const messages = history.map(msg => ({ role: msg.role, content: msg.content }));
+
+  // Use Ollama non-streaming chat
+  const aiRouting = require('./ai-routing');
+  const result = await aiRouting.runTask('chat_sync', {
+    systemPrompt,
+    messages,
+    maxTokens: 1024,
+    temperature: 0.7,
+  }, { timeout: 60000 });
+
+  const fullResponse = result.text || '*[AI unavailable — try again later]*';
+  console.log(`[Chat/Sync] Response via ${result.provider} (${fullResponse.length} chars)`);
+
+  // Save and handle response
+  db.saveMessage(conversationId, 'assistant', fullResponse);
+  handleResponse(conversationId, fullResponse);
+
+  return {
+    conversationId,
+    message: fullResponse,
+    provider: result.provider,
+  };
+}
+
 module.exports = {
   isConfigured,
-  streamChat
+  streamChat,
+  syncChat,
 };
