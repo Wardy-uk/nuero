@@ -13,14 +13,18 @@ router.post('/', (req, res) => {
 
 // POST /api/chat/sync — non-streaming chat (works through reverse proxies)
 router.post('/sync', async (req, res) => {
+  console.log('[Chat/Sync] Request received');
   const { message, conversationId, location } = req.body;
   if (!message) return res.status(400).json({ error: 'message is required' });
   const convId = conversationId || `conv_${Date.now()}`;
 
   try {
+    console.log('[Chat/Sync] Calling syncChat...');
     const response = await claude.syncChat(convId, message, location || null);
+    console.log('[Chat/Sync] Response ready, sending JSON');
     res.json(response);
   } catch (e) {
+    console.error('[Chat/Sync] Error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
