@@ -151,6 +151,18 @@ export default function MeetingPrep() {
                 </div>
               )}
 
+              {/* Vault context */}
+              {meeting.prep?.vaultContext?.length > 0 && (
+                <div className="prep-section">
+                  <div className="prep-section-title">Related Notes</div>
+                  {meeting.prep.vaultContext.map((v, i) => (
+                    <div key={i} className="prep-vault-ref">
+                      <span className="prep-vault-label">{v.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Suggested topics */}
               {meeting.prep?.suggestedTopics?.length > 0 && (
                 <div className="prep-section">

@@ -235,6 +235,17 @@
   font-size: 13px;
 }
 
+/* Vault references */
+.prep-vault-ref {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.prep-vault-label {
+  color: var(--text-primary);
+}
+
 /* Week view */
 .prep-week-summary {
   font-family: var(--font-mono);

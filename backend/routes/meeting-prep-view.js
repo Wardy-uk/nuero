@@ -272,22 +272,94 @@ function _buildPrep(meeting) {
   // 3. Pull recent decisions mentioning any attendee
   try {
     const obsidian = require('../services/obsidian');
-    const decisions = obsidian.getRecentDecisions(14);
+    const decisions = obsidian.getRecentDecisions(30);
     if (decisions && decisions.length > 0) {
       const names = matchedPeople.map(p => p.toLowerCase());
+      const firstNames = matchedPeople.map(p => p.split(' ')[0].toLowerCase());
       prep.recentDecisions = decisions
-        .filter(d => names.some(n => d.text?.toLowerCase().includes(n)))
-        .slice(0, 3)
+        .filter(d => [...names, ...firstNames].some(n => d.text?.toLowerCase().includes(n)))
+        .slice(0, 5)
         .map(d => ({ date: d.date, text: d.text }));
     }
   } catch {}
 
-  // 4. Generate suggested topics from people notes
+  // 4. Search vault for recent mentions of attendees
+  prep.vaultContext = [];
+  try {
+    const entities = require('../services/entities');
+    for (const person of matchedPeople.slice(0, 3)) {
+      const mentions = entities.getMentionsOf(person);
+      if (mentions && mentions.length > 0) {
+        // Filter to meaningful paths (not People/ notes themselves)
+        const meaningful = mentions
+          .filter(p => !p.startsWith('People/'))
+          .slice(0, 3);
+        for (const notePath of meaningful) {
+          prep.vaultContext.push({
+            person,
+            source: notePath,
+            label: path.basename(notePath, '.md'),
+          });
+        }
+      }
+    }
+  } catch {}
+
+  // 5. Check recent daily notes for mentions
+  try {
+    const vaultPath = VAULT_PATH;
+    const dailyDir = path.join(vaultPath, 'Daily');
+    if (fs.existsSync(dailyDir)) {
+      const files = fs.readdirSync(dailyDir)
+        .filter(f => f.match(/^\d{4}-\d{2}-\d{2}\.md$/))
+        .sort().reverse().slice(0, 7); // last 7 days
+      for (const file of files) {
+        const content = fs.readFileSync(path.join(dailyDir, file), 'utf-8');
+        const firstNames = matchedPeople.map(p => p.split(' ')[0]);
+        for (const name of firstNames) {
+          if (name.length > 2 && content.toLowerCase().includes(name.toLowerCase())) {
+            const dateStr = file.replace('.md', '');
+            // Find the line mentioning them
+            const line = content.split('\n').find(l =>
+              l.toLowerCase().includes(name.toLowerCase()) && l.trim().length > 10
+            );
+            if (line) {
+              prep.vaultContext.push({
+                person: name,
+                source: `Daily/${file}`,
+                label: `${dateStr}: ${line.trim().substring(0, 80)}`,
+              });
+            }
+            break; // one mention per daily note is enough
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // Deduplicate vault context
+  const seenLabels = new Set();
+  prep.vaultContext = (prep.vaultContext || []).filter(v => {
+    if (seenLabels.has(v.label)) return false;
+    seenLabels.add(v.label);
+    return true;
+  }).slice(0, 5);
+
+  // 6. Generate suggested topics
+  const isReview = (meeting.subject || '').toLowerCase().match(/review|probation|performance|1-2-1|121|kit/);
+
   for (const att of prep.attendees) {
+    if (att.next121Due) {
+      const due = new Date(att.next121Due);
+      const daysSince = Math.round((Date.now() - due.getTime()) / 86400000);
+      if (daysSince > 0) {
+        prep.suggestedTopics.push(`1-2-1 overdue for ${att.name} (was due ${att.next121Due})`);
+      }
+    }
     if (att.last121) {
       const daysSince = Math.round((Date.now() - new Date(att.last121).getTime()) / 86400000);
       if (daysSince > 14) {
-        prep.suggestedTopics.push(`Catch up with ${att.name} — last 1-2-1 was ${daysSince} days ago`);
+        prep.suggestedTopics.push(`Last 1-2-1 with ${att.name} was ${daysSince} days ago`);
       }
     }
     if (att.recentNotes) {
@@ -295,13 +367,22 @@ function _buildPrep(meeting) {
     }
   }
 
-  // 5. Checklist
-  prep.checklist = [
-    'Review agenda',
-    ...(prep.attendees.length > 0 ? ['Check attendee notes'] : []),
-    ...(prep.recentDecisions.length > 0 ? ['Review recent decisions'] : []),
-    'Prepare key questions',
-  ];
+  if (isReview) {
+    prep.suggestedTopics.push('Review progress against objectives');
+    prep.suggestedTopics.push('Discuss any blockers or concerns');
+    prep.suggestedTopics.push('Agree next actions and timeline');
+  }
+
+  // 7. Checklist (context-aware)
+  prep.checklist = ['Review agenda'];
+  if (prep.attendees.length > 0) prep.checklist.push('Check attendee vault notes');
+  if (prep.recentDecisions.length > 0) prep.checklist.push('Review recent decisions');
+  if (isReview) {
+    prep.checklist.push('Check PeopleHR records');
+    prep.checklist.push('Review previous performance notes');
+    prep.checklist.push('Prepare feedback points');
+  }
+  prep.checklist.push('Prepare key questions');
 
   return prep;
 }
