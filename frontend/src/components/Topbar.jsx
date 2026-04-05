@@ -100,9 +100,26 @@ function QuickAdd({ apiUrl: apiUrlFn }) {
 
 export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, chatOpen, weekend, onWeekendOverride, weekendOverride, children }) {
   const jiraStatus = status?.jira?.status || 'unknown';
-  const claudeOk = status?.claude?.configured;
   const atRisk = queueData?.at_risk_count || 0;
   const itIsWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
+
+  // AI provider status
+  const ai = status?.ai || {};
+  const ollamaOk = status?.ollamaReachable;
+  const ollamaQueue = ai.ollama?.queueDepth || 0;
+  const ollamaInUse = ai.ollama?.inUse;
+  const openaiEnabled = ai.openai?.enabled && ai.openai?.configured;
+  const openaiThrottled = ai.openai?.throttled;
+
+  // Ollama health: green=idle/ok, amber=busy/queued, red=overloaded, grey=dead
+  const ollamaHealth = !ollamaOk ? 'dead' :
+    ollamaQueue > 2 ? 'red' :
+    ollamaInUse || ollamaQueue > 0 ? 'amber' : 'green';
+
+  // Chat provider label
+  const chatProvider = openaiEnabled && !openaiThrottled ? 'OpenAI' :
+    ollamaOk ? 'Ollama' : 'Offline';
+  const chatOk = chatProvider !== 'Offline';
 
   const statusDot = (ok) => (
     <span className={`status-dot ${ok ? 'ok' : 'warn'}`} />
@@ -129,8 +146,12 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
           </button>
         )}
         <div className="topbar-indicator">
-          {statusDot(claudeOk)}
-          <span className="topbar-label">Claude</span>
+          <span className={`status-dot ollama-${ollamaHealth}`} title={`Ollama: ${ollamaHealth}${ollamaQueue > 0 ? ` (${ollamaQueue} queued)` : ''}`} />
+          <span className="topbar-label">Ollama</span>
+        </div>
+        <div className="topbar-indicator">
+          {statusDot(chatOk)}
+          <span className="topbar-label">{chatProvider}</span>
         </div>
         <div className="topbar-indicator">
           {statusDot(jiraStatus === 'ok')}

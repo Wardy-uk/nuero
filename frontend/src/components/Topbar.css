@@ -83,6 +83,17 @@
   background: #f59e0b;
 }
 
+/* Ollama health dots */
+.status-dot.ollama-green { background: var(--success); }
+.status-dot.ollama-amber { background: #f59e0b; }
+.status-dot.ollama-red { background: var(--danger); animation: pulse-dot 1.5s ease-in-out infinite; }
+.status-dot.ollama-dead { background: var(--text-muted); opacity: 0.4; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 .topbar-right {
   display: flex;
   align-items: center;
