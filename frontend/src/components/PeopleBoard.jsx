@@ -247,6 +247,7 @@ export default function PeopleBoard() {
   const [autoExpanded, setAutoExpanded] = useState(() => sessionStorage.getItem('people-auto-expanded') === 'true');
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [selectedPerson, setSelectedPerson] = useState(null);
+  const [viewMode, setViewMode] = useState('reports'); // reports | other
 
   // Auto-expand removed — was opening overdue 1-2-1 forms on every page visit
 
@@ -307,9 +308,21 @@ export default function PeopleBoard() {
 
   return (
     <div className="people-board">
-      <h2 className="people-title">Team / People</h2>
+      <div className="people-header">
+        <h2 className="people-title">People</h2>
+        <div className="people-toggle">
+          <button
+            className={`people-toggle-btn ${viewMode === 'reports' ? 'active' : ''}`}
+            onClick={() => setViewMode('reports')}
+          >Reports</button>
+          <button
+            className={`people-toggle-btn ${viewMode === 'other' ? 'active' : ''}`}
+            onClick={() => setViewMode('other')}
+          >Other</button>
+        </div>
+      </div>
 
-      <ApprovalPanel approvals={pendingApprovals} onRefresh={fetchApprovals} />
+      {viewMode === 'reports' && <ApprovalPanel approvals={pendingApprovals} onRefresh={fetchApprovals} />}
 
       {snapshotResult && (
         <div className={`snapshot-result ${snapshotResult.data.success ? 'success' : 'error'}`}>
@@ -327,7 +340,15 @@ export default function PeopleBoard() {
         </div>
       )}
 
-      {Object.entries(TEAMS).map(([teamName, members]) => (
+      {viewMode === 'other' && (
+        <AllPeopleSection
+          excludeNames={Object.values(TEAMS).flat().map(p => p.name)}
+          onSelect={setSelectedPerson}
+          expanded={true}
+        />
+      )}
+
+      {viewMode === 'reports' && Object.entries(TEAMS).map(([teamName, members]) => (
         <div key={teamName} className="team-group">
           <h3 className="team-name">{teamName}</h3>
           <div className="team-cards">
@@ -413,12 +434,6 @@ export default function PeopleBoard() {
         </div>
       ))}
 
-      {/* All vault People (non-reports) */}
-      <AllPeopleSection
-        excludeNames={Object.values(TEAMS).flat().map(p => p.name)}
-        onSelect={setSelectedPerson}
-      />
-
       {/* Person detail overlay */}
       {selectedPerson && (
         <PersonDetail name={selectedPerson} onClose={() => setSelectedPerson(null)} />
@@ -427,9 +442,9 @@ export default function PeopleBoard() {
   );
 }
 
-function AllPeopleSection({ excludeNames, onSelect }) {
+function AllPeopleSection({ excludeNames, onSelect, expanded: defaultExpanded = false }) {
   const [people, setPeople] = useState(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   useEffect(() => {
     fetch(apiUrl('/api/vault/list?dir=People'))
