@@ -377,7 +377,9 @@ function _readPersonNote(name) {
       if (fmEnd !== -1) body = body.substring(fmEnd + 3);
     }
     // Strip ALL code-fenced blocks (dataview, etc.)
-    body = body.replace(/```[^`]*```/gs, '');
+    // Split on ``` lines and remove every other segment
+    const parts = body.split('```');
+    body = parts.filter((_, i) => i % 2 === 0).join('');
     // Strip inline dataview keywords
     body = body.replace(/^(TASK|FROM|WHERE|AND|SORT|GROUP|LIMIT)\s.*$/gm, '');
     const noteLines = body.split('\n')
