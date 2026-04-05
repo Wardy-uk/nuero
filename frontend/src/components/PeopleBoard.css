@@ -63,6 +63,10 @@
   font-weight: 500;
   font-size: 13px;
 }
+.person-name-clickable:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
 
 .person-id {
   font-family: var(--font-mono);

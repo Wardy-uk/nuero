@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
+import PersonDetail from './PersonDetail';
 import './PeopleBoard.css';
 
 const TEAMS = {
@@ -245,6 +246,7 @@ export default function PeopleBoard() {
   const [editingPerson, setEditingPerson] = useState(null); // person name being updated
   const [autoExpanded, setAutoExpanded] = useState(() => sessionStorage.getItem('people-auto-expanded') === 'true');
   const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [selectedPerson, setSelectedPerson] = useState(null);
 
   // Auto-expand removed — was opening overdue 1-2-1 forms on every page visit
 
@@ -338,8 +340,8 @@ export default function PeopleBoard() {
 
               return (
                 <div key={person.id} className={`person-card status-${status}`} data-person={person.name}>
-                  <div className="person-header">
-                    <span className="person-name">{person.name}</span>
+                  <div className="person-header" onClick={() => setSelectedPerson(person.name)} style={{ cursor: 'pointer' }}>
+                    <span className="person-name person-name-clickable">{person.name}</span>
                     <span className="person-id">{person.id}</span>
                   </div>
                   <span className="person-role">{person.role}</span>
@@ -410,6 +412,66 @@ export default function PeopleBoard() {
           </div>
         </div>
       ))}
+
+      {/* All vault People (non-reports) */}
+      <AllPeopleSection
+        excludeNames={Object.values(TEAMS).flat().map(p => p.name)}
+        onSelect={setSelectedPerson}
+      />
+
+      {/* Person detail overlay */}
+      {selectedPerson && (
+        <PersonDetail name={selectedPerson} onClose={() => setSelectedPerson(null)} />
+      )}
+    </div>
+  );
+}
+
+function AllPeopleSection({ excludeNames, onSelect }) {
+  const [people, setPeople] = useState(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/vault/list?dir=People'))
+      .then(r => r.json())
+      .then(d => {
+        const files = (d.files || [])
+          .filter(f => f.type === 'file' && f.name.endsWith('.md') && !f.name.startsWith('_'))
+          .map(f => f.name.replace('.md', ''))
+          .filter(name => !excludeNames.some(ex => ex.toLowerCase() === name.toLowerCase()))
+          .sort();
+        setPeople(files);
+      })
+      .catch(() => setPeople([]));
+  }, []);
+
+  if (!people || people.length === 0) return null;
+
+  return (
+    <div className="team-section" style={{ marginTop: 24 }}>
+      <button
+        className="team-name"
+        onClick={() => setExpanded(!expanded)}
+        style={{ cursor: 'pointer', background: 'none', border: 'none', color: 'inherit', font: 'inherit', padding: 0, textAlign: 'left', width: '100%' }}
+      >
+        {expanded ? '▾' : '▸'} Other People ({people.length})
+      </button>
+      {expanded && (
+        <div className="team-cards" style={{ marginTop: 8 }}>
+          {people.map(name => (
+            <div
+              key={name}
+              className="person-card"
+              onClick={() => onSelect(name)}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="person-header">
+                <span className="person-name person-name-clickable">{name}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
