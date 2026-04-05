@@ -139,10 +139,11 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
 
     let fullResponse = '';
     const reader = response.body;
+    const decoder = new TextDecoder();
 
-    // Node fetch returns a ReadableStream
+    // Node fetch returns a ReadableStream with Uint8Array chunks
     for await (const chunk of reader) {
-      const text = chunk.toString();
+      const text = decoder.decode(chunk, { stream: true });
       const lines = text.split('\n').filter(l => l.trim());
       for (const line of lines) {
         try {
