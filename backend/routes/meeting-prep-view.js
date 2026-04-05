@@ -214,17 +214,18 @@ function _buildPrep(meeting) {
 
   // 1. Get attendees from Graph API data first, then fall back to subject matching
   // Filter out: self, conference rooms, resource accounts
-  const ROOM_PATTERNS = ['room', 'epic room', 'meeting room', 'boardroom', 'conf', 'huddle'];
   const graphAttendees = (meeting.attendees || [])
     .filter(a => {
       if (!a.name) return false;
       const email = (a.email || '').toLowerCase();
-      const name = a.name.toLowerCase();
       // Exclude self
       if (email.includes('nickw@') || email.includes('nick.ward@')) return false;
-      // Exclude rooms/resources (email pattern or name pattern)
+      // Exclude rooms/resources by email domain patterns
       if (email.includes('room@') || email.includes('resource@') || email.includes('conf@')) return false;
-      if (ROOM_PATTERNS.some(p => name.includes(p))) return false;
+      if (email.endsWith('@resource.nurtur.tech') || email.endsWith('@rooms.nurtur.tech')) return false;
+      // Exclude if email matches the meeting location (conference room)
+      const loc = (meeting.location || '').toLowerCase();
+      if (loc && a.name.toLowerCase() === loc) return false;
       return true;
     })
     .map(a => a.name);
@@ -250,7 +251,9 @@ function _buildPrep(meeting) {
       if (prepNames.has(name)) continue;
       if (email.includes('nickw@') || email.includes('nick.ward@')) continue;
       if (email.includes('room@') || email.includes('resource@') || email.includes('conf@')) continue;
-      if (ROOM_PATTERNS.some(p => name.includes(p))) continue;
+      if (email.endsWith('@resource.nurtur.tech') || email.endsWith('@rooms.nurtur.tech')) continue;
+      const loc = (meeting.location || '').toLowerCase();
+      if (loc && name === loc) continue;
       {
         prep.attendees.push({
           name: att.name,
