@@ -696,6 +696,58 @@ function deleteDoNext(id) {
   save();
 }
 
+// ── Location Visits ──
+
+function saveLocationVisit(dateKey, placeName, lat, lng, arrival, departure, durationMinutes, source, placeId) {
+  getDb().run(
+    `INSERT INTO location_visits (date_key, place_name, lat, lng, arrival, departure, duration_minutes, source, place_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [dateKey, placeName, lat, lng, arrival, departure || null, durationMinutes, source || 'owntracks', placeId || null]
+  );
+  save();
+}
+
+function getLocationVisits(dateFrom, dateTo, limit = 100) {
+  const stmt = getDb().prepare(
+    'SELECT * FROM location_visits WHERE date_key >= ? AND date_key <= ? ORDER BY date_key DESC, arrival DESC LIMIT ?'
+  );
+  stmt.bind([dateFrom, dateTo, limit]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getLocationVisitsByPlace(placeName, limit = 50) {
+  const stmt = getDb().prepare(
+    'SELECT * FROM location_visits WHERE place_name = ? ORDER BY date_key DESC LIMIT ?'
+  );
+  stmt.bind([placeName, limit]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function getFrequentLocations(daysBack = 30, minVisits = 2) {
+  const cutoff = new Date(Date.now() - daysBack * 86400000).toISOString().split('T')[0];
+  const stmt = getDb().prepare(
+    `SELECT place_name, ROUND(AVG(lat), 6) as avg_lat, ROUND(AVG(lng), 6) as avg_lng,
+            COUNT(*) as visit_count, SUM(duration_minutes) as total_minutes,
+            MAX(date_key) as last_visit
+     FROM location_visits
+     WHERE date_key >= ? AND place_name IS NOT NULL
+     GROUP BY place_name
+     HAVING COUNT(*) >= ?
+     ORDER BY visit_count DESC`
+  );
+  stmt.bind([cutoff, minVisits]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
 // ── SARA Actions ──
 
 function createSaraAction(type, payload, confidence, reason, focusItemId) {
@@ -834,6 +886,11 @@ module.exports = {
   getAllDoNext,
   completeDoNext,
   deleteDoNext,
+  // Location visits
+  saveLocationVisit,
+  getLocationVisits,
+  getLocationVisitsByPlace,
+  getFrequentLocations,
   // SARA Actions
   createSaraAction,
   getPendingSaraActions,

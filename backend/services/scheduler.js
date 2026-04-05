@@ -105,6 +105,19 @@ function start() {
     } catch (e) {
       console.error('[Scheduler] Observation write failed:', e.message);
     }
+    // Record today's location dwells to history
+    try {
+      require('./location-history').recordTodaysDwells();
+    } catch (e) {
+      console.error('[Scheduler] Location recording failed:', e.message);
+    }
+  });
+
+  // Record location dwells every 30 min during active hours (9am-9pm)
+  cron.schedule('*/30 9-21 * * *', () => {
+    try {
+      require('./location-history').recordTodaysDwells();
+    } catch {}
   });
 
   // Evening journal nudge — time configurable via agent_state 'journal_nudge_time' (default '21:00')

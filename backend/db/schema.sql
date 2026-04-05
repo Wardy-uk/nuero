@@ -222,3 +222,21 @@ CREATE TABLE IF NOT EXISTS sara_actions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sara_actions_status ON sara_actions(status);
+
+-- Location visit history (Phase 5)
+CREATE TABLE IF NOT EXISTS location_visits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date_key TEXT NOT NULL,
+  place_name TEXT,
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  arrival TEXT NOT NULL,
+  departure TEXT,
+  duration_minutes INTEGER DEFAULT 0,
+  source TEXT DEFAULT 'owntracks',
+  place_id TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_location_visits_date ON location_visits(date_key);
+CREATE INDEX IF NOT EXISTS idx_location_visits_place ON location_visits(place_name);

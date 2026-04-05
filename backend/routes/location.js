@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const location = require('../services/location');
+const locationHistory = require('../services/location-history');
 const db = require('../db/database');
 
 // GET /api/location/today — today's dwell summary
@@ -160,6 +161,38 @@ router.get('/dwell-check', (req, res) => {
     res.json({ shouldPrompt: false });
   } catch (e) {
     res.json({ shouldPrompt: false });
+  }
+});
+
+// GET /api/location/history — location visit history
+router.get('/history', (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const summary = locationHistory.getHistorySummary(days);
+    res.json(summary);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/location/frequent — frequently visited places
+router.get('/frequent', (req, res) => {
+  try {
+    const frequent = db.getFrequentLocations(30, 2);
+    const unnamed = locationHistory.getUnnamedFrequentLocations(3);
+    res.json({ frequent, suggestNaming: unnamed });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/location/record — manually trigger today's dwell recording
+router.post('/record', async (req, res) => {
+  try {
+    const result = await locationHistory.recordTodaysDwells();
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
