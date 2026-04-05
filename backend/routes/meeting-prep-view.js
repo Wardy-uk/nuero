@@ -213,8 +213,20 @@ function _buildPrep(meeting) {
   };
 
   // 1. Get attendees from Graph API data first, then fall back to subject matching
+  // Filter out: self, conference rooms, resource accounts
+  const ROOM_PATTERNS = ['room', 'epic room', 'meeting room', 'boardroom', 'conf', 'huddle'];
   const graphAttendees = (meeting.attendees || [])
-    .filter(a => a.name && !a.email?.toLowerCase().includes('nickw@') && !a.email?.toLowerCase().includes('nick.ward@'))
+    .filter(a => {
+      if (!a.name) return false;
+      const email = (a.email || '').toLowerCase();
+      const name = a.name.toLowerCase();
+      // Exclude self
+      if (email.includes('nickw@') || email.includes('nick.ward@')) return false;
+      // Exclude rooms/resources (email pattern or name pattern)
+      if (email.includes('room@') || email.includes('resource@') || email.includes('conf@')) return false;
+      if (ROOM_PATTERNS.some(p => name.includes(p))) return false;
+      return true;
+    })
     .map(a => a.name);
 
   // Merge: Graph attendees + subject/organizer matching (dedup)
@@ -232,8 +244,14 @@ function _buildPrep(meeting) {
   if (graphAttendees.length > 0) {
     const prepNames = new Set(prep.attendees.map(a => a.name.toLowerCase()));
     for (const att of (meeting.attendees || [])) {
-      if (att.name && !prepNames.has(att.name.toLowerCase()) &&
-          !att.email?.toLowerCase().includes('nickw@') && !att.email?.toLowerCase().includes('nick.ward@')) {
+      if (!att.name) continue;
+      const email = (att.email || '').toLowerCase();
+      const name = att.name.toLowerCase();
+      if (prepNames.has(name)) continue;
+      if (email.includes('nickw@') || email.includes('nick.ward@')) continue;
+      if (email.includes('room@') || email.includes('resource@') || email.includes('conf@')) continue;
+      if (ROOM_PATTERNS.some(p => name.includes(p))) continue;
+      {
         prep.attendees.push({
           name: att.name,
           role: null,
@@ -351,9 +369,17 @@ function _readPersonNote(name) {
 
     // Get recent notes (last dated section)
     const body = content.replace(/^---[\s\S]*?---\n*/, '')
-      .replace(/```dataview[\s\S]*?```/g, '');
+      .replace(/```dataview[\s\S]*?```/g, '')   // fenced dataview blocks
+      .replace(/```[\s\S]*?```/g, '')            // any other code blocks
+      .replace(/^TASK\s.*$/gm, '')               // inline dataview TASK queries
+      .replace(/^FROM\s.*$/gm, '')
+      .replace(/^WHERE\s.*$/gm, '')
+      .replace(/^AND\s.*$/gm, '')
+      .replace(/^SORT\s.*$/gm, '')
+      .replace(/^GROUP\s.*$/gm, '')
+      .replace(/^LIMIT\s.*$/gm, '');
     const noteLines = body.split('\n')
-      .filter(l => l.trim() && !l.startsWith('#'))
+      .filter(l => l.trim() && !l.startsWith('#') && l.trim().length > 3)
       .slice(-5)
       .join('\n');
     if (noteLines.length > 10) {
