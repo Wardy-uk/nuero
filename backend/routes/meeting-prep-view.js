@@ -358,9 +358,9 @@ function _readPersonNote(name) {
       const endIdx = content.indexOf('---', 3);
       if (endIdx !== -1) {
         const fm = content.substring(3, endIdx);
-        const roleMatch = fm.match(/^role:\s*(.+)$/m);
-        const last121Match = fm.match(/^last-1-2-1:\s*(\S.*)$/m);
-        const next121Match = fm.match(/^next-1-2-1-due:\s*(\S.*)$/m);
+        const roleMatch = fm.match(/^role:[ \t]*(.+)$/m);
+        const last121Match = fm.match(/^last-1-2-1:[ \t]+(.+)$/m);
+        const next121Match = fm.match(/^next-1-2-1-due:[ \t]+(.+)$/m);
         const tagsMatch = fm.match(/tags:\s*\[(.+?)\]/);
 
         if (roleMatch) result.role = roleMatch[1].trim();
@@ -370,17 +370,16 @@ function _readPersonNote(name) {
       }
     }
 
-    // Get recent notes (last dated section)
-    const body = content.replace(/^---[\s\S]*?---\n*/, '')
-      .replace(/```dataview[\s\S]*?```/g, '')   // fenced dataview blocks
-      .replace(/```[\s\S]*?```/g, '')            // any other code blocks
-      .replace(/^TASK\s.*$/gm, '')               // inline dataview TASK queries
-      .replace(/^FROM\s.*$/gm, '')
-      .replace(/^WHERE\s.*$/gm, '')
-      .replace(/^AND\s.*$/gm, '')
-      .replace(/^SORT\s.*$/gm, '')
-      .replace(/^GROUP\s.*$/gm, '')
-      .replace(/^LIMIT\s.*$/gm, '');
+    // Strip frontmatter
+    let body = content;
+    if (body.startsWith('---')) {
+      const fmEnd = body.indexOf('---', 3);
+      if (fmEnd !== -1) body = body.substring(fmEnd + 3);
+    }
+    // Strip ALL code-fenced blocks (dataview, etc.)
+    body = body.replace(/```[^`]*```/gs, '');
+    // Strip inline dataview keywords
+    body = body.replace(/^(TASK|FROM|WHERE|AND|SORT|GROUP|LIMIT)\s.*$/gm, '');
     const noteLines = body.split('\n')
       .filter(l => {
         const t = l.trim();
