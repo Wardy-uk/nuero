@@ -14,6 +14,23 @@ const db = require('../db/database');
 
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
 
+// IMPORTANT: static routes MUST come before /:name (Express matches in order)
+
+// GET /api/person/list
+router.get('/list', (req, res) => {
+  try {
+    const peopleDir = path.join(VAULT_PATH, 'People');
+    if (!fs.existsSync(peopleDir)) return res.json({ people: [] });
+    const people = fs.readdirSync(peopleDir)
+      .filter(f => f.endsWith('.md') && !f.startsWith('_'))
+      .map(f => f.replace('.md', ''))
+      .sort();
+    res.json({ people });
+  } catch (e) {
+    res.json({ people: [] });
+  }
+});
+
 // GET /api/person/:name
 router.get('/:name', (req, res) => {
   const name = decodeURIComponent(req.params.name);
@@ -226,21 +243,6 @@ function _walkDir(dir, maxDepth, depth = 0) {
   }
   return results;
 }
-
-// GET /api/person/list — list all People names (no vault API key needed)
-router.get('/list', (req, res) => {
-  try {
-    const peopleDir = path.join(VAULT_PATH, 'People');
-    if (!fs.existsSync(peopleDir)) return res.json({ people: [] });
-    const people = fs.readdirSync(peopleDir)
-      .filter(f => f.endsWith('.md') && !f.startsWith('_'))
-      .map(f => f.replace('.md', ''))
-      .sort();
-    res.json({ people });
-  } catch (e) {
-    res.json({ people: [] });
-  }
-});
 
 // GET /api/person/summary/all — lightweight per-person tasks + decisions for cards
 router.get('/summary/all', (req, res) => {
