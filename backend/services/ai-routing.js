@@ -39,8 +39,8 @@ const TASK_MODELS = {
   focus_enhancement: LIGHTWEIGHT_MODEL,
   drilldown_framing: LIGHTWEIGHT_MODEL,
   action_suggestion: LIGHTWEIGHT_MODEL,
-  chat_stream: 'gemma3:4b',
-  chat_sync: 'gemma3:4b',
+  chat_stream: 'qwen2.5:1.5b',
+  chat_sync: 'qwen2.5:1.5b',
   standup_interactive: 'gemma3:4b',
   eod_interactive: 'gemma3:4b',
 };
