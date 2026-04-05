@@ -39,9 +39,9 @@ const TASK_MODELS = {
   focus_enhancement: LIGHTWEIGHT_MODEL,
   drilldown_framing: LIGHTWEIGHT_MODEL,
   action_suggestion: LIGHTWEIGHT_MODEL,
-  chat_stream: LIGHTWEIGHT_MODEL,       // TODO: switch to gemma3:4b when available
-  standup_interactive: LIGHTWEIGHT_MODEL, // TODO: switch to gemma3:4b when available
-  eod_interactive: LIGHTWEIGHT_MODEL,     // TODO: switch to gemma3:4b when available
+  chat_stream: 'gemma3:4b',
+  standup_interactive: 'gemma3:4b',
+  eod_interactive: 'gemma3:4b',
 };
 
 // ── Background tasks → Pi 4 worker ──
