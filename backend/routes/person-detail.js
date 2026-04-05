@@ -227,7 +227,22 @@ function _walkDir(dir, maxDepth, depth = 0) {
   return results;
 }
 
-// GET /api/person-summary/all — lightweight per-person tasks + decisions for cards
+// GET /api/person/list — list all People names (no vault API key needed)
+router.get('/list', (req, res) => {
+  try {
+    const peopleDir = path.join(VAULT_PATH, 'People');
+    if (!fs.existsSync(peopleDir)) return res.json({ people: [] });
+    const people = fs.readdirSync(peopleDir)
+      .filter(f => f.endsWith('.md') && !f.startsWith('_'))
+      .map(f => f.replace('.md', ''))
+      .sort();
+    res.json({ people });
+  } catch (e) {
+    res.json({ people: [] });
+  }
+});
+
+// GET /api/person/summary/all — lightweight per-person tasks + decisions for cards
 router.get('/summary/all', (req, res) => {
   try {
     const t0 = Date.now();

@@ -472,15 +472,12 @@ function AllPeopleSection({ excludeNames, onSelect, expanded: defaultExpanded = 
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   useEffect(() => {
-    fetch(apiUrl('/api/vault/list?dir=People'))
+    fetch(apiUrl('/api/person/list'))
       .then(r => r.json())
       .then(d => {
-        const files = (d.files || [])
-          .filter(f => f.type === 'file' && f.name.endsWith('.md') && !f.name.startsWith('_'))
-          .map(f => f.name.replace('.md', ''))
-          .filter(name => !excludeNames.some(ex => ex.toLowerCase() === name.toLowerCase()))
-          .sort();
-        setPeople(files);
+        const all = d.people || [];
+        const filtered = all.filter(name => !excludeNames.some(ex => ex.toLowerCase() === name.toLowerCase()));
+        setPeople(filtered);
       })
       .catch(() => setPeople([]));
   }, []);
