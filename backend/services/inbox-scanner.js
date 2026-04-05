@@ -113,25 +113,20 @@ async function scanInbox() {
     }));
 
     let parsed = [];
-    // Try Ollama first, fall back through AI routing layer
+    // Route through AI provider (sends to Pi 4 worker, falls back to local)
+    // DO NOT call Ollama directly — it blocks Pi 5 for interactive use
     try {
-      parsed = await triageWithOllama(emailSummary);
-      console.log(`[InboxScanner] Triaged via Ollama: ${parsed.length} flagged`);
-    } catch (ollamaErr) {
-      console.warn('[InboxScanner] Ollama failed, trying AI routing fallback:', ollamaErr.message);
-      try {
-        const aiProvider = require('./ai-provider');
-        const result = await aiProvider.triageEmails(
-          `${TRIAGE_PROMPT}\n\nHere are ${candidates.length} emails from the last 12 hours:\n\n${JSON.stringify(emailSummary, null, 2)}`
-        );
-        if (result.text) {
-          const jsonMatch = result.text.match(/\[[\s\S]*\]/);
-          parsed = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
-          console.log(`[InboxScanner] Triaged via ${result.provider} (fallback)`);
-        }
-      } catch (fallbackErr) {
-        console.error('[InboxScanner] All AI providers failed:', fallbackErr.message);
+      const aiProvider = require('./ai-provider');
+      const result = await aiProvider.triageEmails(
+        `${TRIAGE_PROMPT}\n\nHere are ${candidates.length} emails from the last 12 hours:\n\n${JSON.stringify(emailSummary, null, 2)}`
+      );
+      if (result.text) {
+        const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+        parsed = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
+        console.log(`[InboxScanner] Triaged via ${result.provider}`);
       }
+    } catch (aiErr) {
+      console.error('[InboxScanner] AI triage failed:', aiErr.message);
     }
 
     try {

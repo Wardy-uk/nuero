@@ -50,31 +50,26 @@ async function classifyEmails(emails) {
 
   let classifications = null;
 
-  // Try Ollama first, fall back through AI routing
+  // Route through AI provider (Pi 4 worker first, then local fallback)
+  // DO NOT call Pi 5 Ollama directly — it blocks interactive use
   try {
-    classifications = await classifyWithOllama(emailList);
-    console.log('[EmailTriage] Classified via Ollama');
-  } catch (ollamaErr) {
-    console.warn('[EmailTriage] Ollama failed, trying AI routing fallback:', ollamaErr.message);
-    try {
-      const aiProvider = require('./ai-provider');
-      const result = await aiProvider.triageEmails(
-        `You are classifying emails for Nick Ward, Head of Technical Support at Nurtur.
+    const aiProvider = require('./ai-provider');
+    const result = await aiProvider.triageEmails(
+      `You are classifying emails for Nick Ward, Head of Technical Support at Nurtur.
 Classify each email into exactly one category: ACTION, FYI, DELEGATE, or IGNORE.
 Respond with ONLY a JSON array. Format: [{"index": 0, "category": "ACTION", "reason": "brief reason max 8 words"}, ...]
 
 Classify these ${emails.slice(0, 20).length} emails:\n\n${emailList}`
-      );
-      if (result.text) {
-        const clean = result.text.replace(/```json|```/g, '').trim();
-        const jsonMatch = clean.match(/\[[\s\S]*\]/);
+    );
+    if (result.text) {
+      const clean = result.text.replace(/```json|```/g, '').trim();
+      const jsonMatch = clean.match(/\[[\s\S]*\]/);
         classifications = JSON.parse(jsonMatch ? jsonMatch[0] : '[]');
         console.log(`[EmailTriage] Classified via ${result.provider} (fallback)`);
       }
-    } catch (fallbackErr) {
-      console.error('[EmailTriage] All AI providers failed:', fallbackErr.message);
-      return emails.map(e => ({ ...e, category: 'FYI', reason: '', triaged: false }));
-    }
+  } catch (aiErr) {
+    console.error('[EmailTriage] AI classification failed:', aiErr.message);
+    return emails.map(e => ({ ...e, category: 'FYI', reason: '', triaged: false }));
   }
 
   return emails.map((email, i) => {
