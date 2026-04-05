@@ -21,7 +21,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from '@modelcontextprotocol/sdk/node_modules/zod/lib/index.mjs';
+import { z } from 'zod';
 
 const NEURO_URL = process.env.NEURO_URL || 'http://localhost:3001';
 const NEURO_PIN = process.env.NEURO_PIN || '';
