@@ -158,6 +158,191 @@ function VaultSyncCard({ vaultSync }) {
   );
 }
 
+function AiSettingsSection() {
+  const [settings, setSettings] = useState(null);
+  const [aiStatus, setAiStatus] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(null);
+
+  const fetchSettings = () => {
+    fetch(apiUrl('/api/ai/settings'))
+      .then(r => r.json())
+      .then(d => { setSettings(d.settings); setAiStatus(d.status); })
+      .catch(() => {});
+  };
+
+  useEffect(() => { fetchSettings(); }, []);
+
+  const updateSetting = async (key, value) => {
+    setSaving(true);
+    try {
+      const r = await fetch(apiUrl('/api/ai/settings'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      });
+      const result = await r.json();
+      if (result.ok) {
+        setSaved(key);
+        setTimeout(() => setSaved(null), 2000);
+        fetchSettings();
+      }
+    } catch {}
+    setSaving(false);
+  };
+
+  if (!settings) return <div className="admin-card-detail">Loading AI settings...</div>;
+
+  return (
+    <div className="admin-ms-section">
+      {/* AI Mode */}
+      <div className="ai-setting-row">
+        <div className="ai-setting-label">AI Mode</div>
+        <select
+          className="ai-setting-select"
+          value={settings.ai_mode?.value || 'ollama-only'}
+          onChange={e => updateSetting('ai_mode', e.target.value)}
+          disabled={saving}
+        >
+          <option value="off">Off (rules only)</option>
+          <option value="ollama-only">Ollama only</option>
+          <option value="hybrid">Hybrid (Ollama + OpenAI)</option>
+          <option value="critical-only">Critical only (OpenAI for critical tasks)</option>
+        </select>
+        {saved === 'ai_mode' && <span className="ai-setting-saved">✓</span>}
+      </div>
+
+      {/* SARA Mode */}
+      <div className="ai-setting-row">
+        <div className="ai-setting-label">SARA Suggestions</div>
+        <select
+          className="ai-setting-select"
+          value={settings.sara_mode?.value || 'suggest'}
+          onChange={e => updateSetting('sara_mode', e.target.value)}
+          disabled={saving}
+        >
+          <option value="suggest">Enabled</option>
+          <option value="off">Off</option>
+        </select>
+        {saved === 'sara_mode' && <span className="ai-setting-saved">✓</span>}
+      </div>
+
+      {/* OpenAI */}
+      <div className="ai-setting-group">
+        <div className="ai-setting-group-title">OpenAI</div>
+
+        <div className="ai-setting-row">
+          <div className="ai-setting-label">Enabled</div>
+          <select
+            className="ai-setting-select"
+            value={settings.openai_enabled?.value || 'false'}
+            onChange={e => updateSetting('openai_enabled', e.target.value)}
+            disabled={saving}
+          >
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+          {saved === 'openai_enabled' && <span className="ai-setting-saved">✓</span>}
+        </div>
+
+        <div className="ai-setting-row">
+          <div className="ai-setting-label">API Key</div>
+          <input
+            className="ai-setting-input"
+            type="password"
+            placeholder={settings.openai_api_key?.hasValue ? '••••••' : 'Not set'}
+            onBlur={e => { if (e.target.value) updateSetting('openai_api_key', e.target.value); }}
+            disabled={saving}
+          />
+          {saved === 'openai_api_key' && <span className="ai-setting-saved">✓</span>}
+        </div>
+
+        <div className="ai-setting-row">
+          <div className="ai-setting-label">Model</div>
+          <input
+            className="ai-setting-input"
+            defaultValue={settings.openai_model?.value || 'gpt-4o-mini'}
+            onBlur={e => updateSetting('openai_model', e.target.value)}
+            disabled={saving}
+          />
+          {saved === 'openai_model' && <span className="ai-setting-saved">✓</span>}
+        </div>
+
+        <div className="ai-setting-row">
+          <div className="ai-setting-label">Daily call limit</div>
+          <input
+            className="ai-setting-input ai-setting-input-sm"
+            type="number"
+            defaultValue={settings.openai_daily_call_limit?.value || 50}
+            onBlur={e => updateSetting('openai_daily_call_limit', e.target.value)}
+            disabled={saving}
+          />
+          {saved === 'openai_daily_call_limit' && <span className="ai-setting-saved">✓</span>}
+        </div>
+
+        <div className="ai-setting-row">
+          <div className="ai-setting-label">Daily token limit</div>
+          <input
+            className="ai-setting-input ai-setting-input-sm"
+            type="number"
+            defaultValue={settings.openai_daily_token_limit?.value || 50000}
+            onBlur={e => updateSetting('openai_daily_token_limit', e.target.value)}
+            disabled={saving}
+          />
+          {saved === 'openai_daily_token_limit' && <span className="ai-setting-saved">✓</span>}
+        </div>
+      </div>
+
+      {/* Pi 4 Worker */}
+      <div className="ai-setting-group">
+        <div className="ai-setting-group-title">Pi 4 Worker</div>
+        <div className="ai-setting-row">
+          <div className="ai-setting-label">Enabled</div>
+          <select
+            className="ai-setting-select"
+            value={settings.pi4_worker_enabled?.value || 'false'}
+            onChange={e => updateSetting('pi4_worker_enabled', e.target.value)}
+            disabled={saving}
+          >
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+          {saved === 'pi4_worker_enabled' && <span className="ai-setting-saved">✓</span>}
+        </div>
+        <div className="ai-setting-row">
+          <div className="ai-setting-label">URL</div>
+          <input
+            className="ai-setting-input"
+            defaultValue={settings.pi4_worker_url?.value || ''}
+            onBlur={e => updateSetting('pi4_worker_url', e.target.value)}
+            disabled={saving}
+          />
+          {saved === 'pi4_worker_url' && <span className="ai-setting-saved">✓</span>}
+        </div>
+      </div>
+
+      {/* Live Status */}
+      {aiStatus && (
+        <div className="ai-setting-group">
+          <div className="ai-setting-group-title">Live Status</div>
+          <div className="ai-status-grid">
+            <div>Ollama: <span className="ai-status-val">{aiStatus.ollamaModel}</span></div>
+            <div>Light model: <span className="ai-status-val">{aiStatus.ollamaLightModel}</span></div>
+            <div>Queue: <span className="ai-status-val">{aiStatus.ollamaQueueDepth} {aiStatus.ollamaInUse ? '(active)' : '(idle)'}</span></div>
+            {aiStatus.openaiCallsToday > 0 && (
+              <div>OpenAI today: <span className="ai-status-val">{aiStatus.openaiCallsToday} calls, {aiStatus.openaiTokensToday} tokens</span></div>
+            )}
+            {aiStatus.openaiThrottled && <div className="ai-status-warn">OpenAI throttled</div>}
+            {aiStatus.pi4Enabled && (
+              <div>Pi 4: <span className="ai-status-val">{aiStatus.pi4Healthy ? 'healthy' : 'unreachable'}</span></div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPanel({ pushState = {} }) {
   const { supported: pushSupported, subscribed: pushSubscribed, error: pushError, manualSubscribe } = pushState;
   const { data: status, refresh: fetchStatus } = useCachedFetch('/api/status');
@@ -204,9 +389,11 @@ export default function AdminPanel({ pushState = {} }) {
 
   const integrations = [
     {
-      name: 'Claude AI',
-      status: status.claude?.configured ? 'connected' : 'unconfigured',
-      detail: status.claude?.configured ? 'API key set' : 'ANTHROPIC_API_KEY not set'
+      name: 'AI (Ollama)',
+      status: status.ollamaReachable ? 'connected' : 'disconnected',
+      detail: status.ollamaReachable
+        ? `Mode: ${status.ai?.mode || '?'} · Model: ${status.ai?.ollama?.model || '?'}`
+        : 'Ollama not reachable'
     },
     {
       name: 'Jira',
@@ -283,6 +470,11 @@ export default function AdminPanel({ pushState = {} }) {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="admin-section">
+        <div className="admin-section-title">AI & SARA</div>
+        <AiSettingsSection />
       </div>
 
       <div className="admin-section">

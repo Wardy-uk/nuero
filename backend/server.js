@@ -109,6 +109,7 @@ app.use('/api/location', locationRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/focus', focusRoutes);
 app.use('/api/actions', actionsRoutes);
+app.use('/api/ai', require('./routes/ai-settings'));
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/email', require('./routes/email-triage'));
 
