@@ -3,7 +3,8 @@
 /**
  * Focus Route — GET /api/focus
  *
- * Phase 4A: Fingerprint-cached. Skips decision engine + AI if nothing changed.
+ * Phase 6A: Next-action engine integration.
+ * Returns one primary action + optional secondary + auto-executed list + can-wait.
  *
  * Query params:
  *   ?all=true  — bypass limits, return all candidates
@@ -18,6 +19,8 @@ const engine = require('../services/decision-engine');
 const workingMemory = require('../services/working-memory');
 const aiProvider = require('../services/ai-provider');
 const vaultCache = require('../services/vault-cache');
+const nextActionEngine = require('../services/next-action-engine');
+const agentLoop = require('../services/agent-loop');
 
 // ── Full response cache (fingerprinted) ──
 let _responseCache = { fingerprint: null, response: null, at: 0 };
@@ -129,20 +132,22 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // ── Suggestions: generate new + include existing pending ──
+    // ── Phase 6A: Next-action engine ──
+    let nextActions = { primaryAction: null, secondaryAction: null, autoExecuted: [], canWait: [] };
+    if (!showAll && result.items.length > 0) {
+      nextActions = nextActionEngine.computeNextActions(result.items, ctx);
+    }
+
+    // ── Legacy suggestions (kept for backward compat, will be removed) ──
     let suggestions = [];
     if (!showAll && result.items.length > 0) {
       try {
         const suggestionEngine = require('../services/suggestion-engine');
         const db = require('../db/database');
-
-        // Generate new suggestions (deduplicates against pending)
         const raw = suggestionEngine.generateSuggestions(result.items);
         if (raw.length > 0) {
           suggestionEngine.persistSuggestions(raw);
         }
-
-        // Return all pending actions (max 2)
         suggestions = db.getPendingSaraActions().slice(0, 2);
       } catch (e) {
         console.warn('[Focus] Suggestion generation failed:', e.message);
@@ -168,15 +173,23 @@ router.get('/', async (req, res) => {
       tone,
       primaryItem: result.primaryItem || null,
       sara: sara || null,
+      // Phase 6A: next-action data
+      nextAction: nextActions.primaryAction,
+      secondaryAction: nextActions.secondaryAction,
+      autoExecuted: nextActions.autoExecuted,
+      canWait: nextActions.canWait,
+      // Legacy (still used by old frontend until refactored)
       suggestions,
       items: result.items,
+      // Agent loop status
+      agentLoopAge: agentLoop.getLastRunAge(),
     };
 
     // ── Store in fingerprint cache ──
     if (!showAll) {
       const fingerprint = _buildFingerprint(ctx);
       _responseCache = { fingerprint, response, at: Date.now() };
-      console.log(`[Focus] Built in ${Date.now() - t0}ms (fp=${fingerprint.substring(0, 6)}, items=${result.items.length}, sara=${sara ? 'yes' : 'no'})`);
+      console.log(`[Focus] Built in ${Date.now() - t0}ms (fp=${fingerprint.substring(0, 6)}, items=${result.items.length}, sara=${sara ? 'yes' : 'no'}, action=${nextActions.primaryAction?.label || 'none'})`);
     }
 
     res.json(response);
@@ -195,6 +208,17 @@ router.post('/dismiss', (req, res) => {
   _responseCache = { fingerprint: null, response: null, at: 0 };
   _aiCache = { hash: null, data: null, at: 0 };
   res.json({ ok: true, dismissed: itemId });
+});
+
+// POST /api/focus/action-done — log an outcome after the user completes an action
+router.post('/action-done', (req, res) => {
+  const { actionType, detail } = req.body;
+  if (!detail) return res.status(400).json({ error: 'detail required' });
+  nextActionEngine.logOutcome(actionType, detail);
+  // Invalidate cache so next focus fetch shows updated state
+  _responseCache = { fingerprint: null, response: null, at: 0 };
+  workingMemory.invalidate('action completed');
+  res.json({ ok: true });
 });
 
 module.exports = router;

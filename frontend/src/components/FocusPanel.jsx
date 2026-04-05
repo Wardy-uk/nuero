@@ -13,6 +13,13 @@ const TYPE_ICONS = {
   email: '✉',
 };
 
+const URGENCY_LABELS = {
+  critical: 'NOW',
+  high: 'SOON',
+  medium: 'TODAY',
+  low: 'LATER',
+};
+
 function timeAgo(dateStr) {
   if (!dateStr) return '';
   const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
@@ -34,8 +41,16 @@ export default function FocusPanel({ onNavigate }) {
   const totalCandidates = data?.totalCandidates || 0;
   const sara = data?.sara || null;
   const tone = data?.tone || 'focused';
-  const suggestions = data?.suggestions || [];
   const [actionLoading, setActionLoading] = useState(null);
+
+  // Phase 6A: next-action data
+  const nextAction = data?.nextAction || null;
+  const secondaryAction = data?.secondaryAction || null;
+  const autoExecuted = data?.autoExecuted || [];
+  const canWait = data?.canWait || [];
+
+  // Legacy suggestions (fallback)
+  const suggestions = data?.suggestions || [];
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -76,11 +91,37 @@ export default function FocusPanel({ onNavigate }) {
     }
   };
 
+  // Execute primary/secondary next action
+  const handleNextAction = async (action) => {
+    setActionLoading(action.focusItemId);
+    try {
+      // Open external URL if provided (e.g. Jira ticket)
+      if (action.url) {
+        window.open(action.url, '_blank');
+      }
+      // Navigate to the target view
+      if (action.target && onNavigate) {
+        onNavigate(action.target, action.targetContext || { fromFocus: true });
+      }
+      // Log the action-done
+      await fetch(apiUrl('/api/focus/action-done'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionType: action.type, detail: action.label }),
+      }).catch(() => {});
+      // Refresh after a short delay to get updated state
+      window.setTimeout(() => refresh(), 500);
+    } catch {}
+    setActionLoading(null);
+  };
+
   // Find AI guidance for a specific item
   const getItemGuidance = (item) => {
     if (!sara?.items) return null;
     return sara.items.find(ai => ai.id === item.id) || null;
   };
+
+  const hasNextAction = nextAction && !showAll;
 
   return (
     <div className="focus-panel">
@@ -118,6 +159,57 @@ export default function FocusPanel({ onNavigate }) {
         </div>
       )}
 
+      {/* ── Phase 6A: Primary Action block ── */}
+      {hasNextAction && (
+        <div className={`next-action next-action-${nextAction.urgency || 'medium'}`}>
+          <div className="next-action-header">
+            <span className="next-action-badge">{URGENCY_LABELS[nextAction.urgency] || 'NEXT'}</span>
+          </div>
+          <div className="next-action-body">
+            <div className="next-action-label">{nextAction.label}</div>
+            <div className="next-action-reason">{nextAction.reason}</div>
+          </div>
+          <button
+            className="next-action-btn"
+            onClick={() => handleNextAction(nextAction)}
+            disabled={actionLoading === nextAction.focusItemId}
+          >
+            {actionLoading === nextAction.focusItemId ? '...' : 'Do it'}
+          </button>
+        </div>
+      )}
+
+      {/* ── Secondary action (smaller) ── */}
+      {secondaryAction && !showAll && (
+        <div className="next-action-secondary">
+          <span className="next-action-secondary-label">{secondaryAction.label}</span>
+          <span className="next-action-secondary-reason">{secondaryAction.reason}</span>
+          <button
+            className="next-action-secondary-btn"
+            onClick={() => handleNextAction(secondaryAction)}
+            disabled={actionLoading === secondaryAction.focusItemId}
+          >
+            {actionLoading === secondaryAction.focusItemId ? '...' : 'Go'}
+          </button>
+        </div>
+      )}
+
+      {/* ── Auto-executed actions (what SARA already did) ── */}
+      {autoExecuted.length > 0 && !showAll && (
+        <div className="auto-executed">
+          <div className="auto-executed-header">
+            <span className="sara-says-label">HANDLED</span>
+          </div>
+          {autoExecuted.map((a, i) => (
+            <div key={i} className="auto-executed-item">
+              <span className="auto-executed-check">✓</span>
+              <span className="auto-executed-text">{a.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Focus items list ── */}
       {items.length === 0 ? (
         <div className="focus-empty">
           <div className="focus-empty-icon">✓</div>
@@ -167,8 +259,27 @@ export default function FocusPanel({ onNavigate }) {
         </ul>
       )}
 
-      {/* ── SARA Suggests block ── */}
-      {suggestions.length > 0 && !showAll && (
+      {/* ── Can-wait items ── */}
+      {canWait.length > 0 && !showAll && (
+        <div className="can-wait">
+          <div className="can-wait-header">
+            <span className="sara-says-label">CAN WAIT</span>
+          </div>
+          {canWait.map((w, i) => (
+            <div
+              key={i}
+              className="can-wait-item"
+              onClick={() => w.target && onNavigate?.(w.target, { fromFocus: true })}
+            >
+              <span className="can-wait-label">{w.label}</span>
+              <span className="can-wait-reason">{w.reason}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Legacy suggestions (fallback if no next-action) ── */}
+      {!hasNextAction && suggestions.length > 0 && !showAll && (
         <div className="sara-suggests">
           <div className="sara-suggests-header">
             <span className="sara-says-label">NEXT</span>
@@ -188,15 +299,10 @@ export default function FocusPanel({ onNavigate }) {
                       const r = await fetch(apiUrl(`/api/actions/${s.id}/approve`), { method: 'POST' });
                       const result = await r.json();
                       if (result.ok) {
-                        // Open external URL if provided (e.g. Jira ticket)
-                        if (result.url) {
-                          window.open(result.url, '_blank');
-                        }
-                        // Navigate to the target view
+                        if (result.url) window.open(result.url, '_blank');
                         if (result.navigate && onNavigate) {
                           onNavigate(result.navigate, result.navigateContext || { fromFocus: true });
                         } else {
-                          // No navigation — just refresh Focus to show next action
                           window.setTimeout(() => refresh(), 300);
                         }
                       }

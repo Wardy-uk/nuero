@@ -199,6 +199,23 @@ function start() {
     }
   }, 15000);
 
+  // ── Agent Loop — Phase 6A ──
+  // Every 10 minutes during work hours: evaluate state, run safe auto-actions, pre-compute next action
+  cron.schedule('*/10 8-18 * * 1-5', () => {
+    const agentLoop = require('./agent-loop');
+    agentLoop.runCycle().catch(e => {
+      console.error('[Scheduler] Agent loop failed:', e.message);
+    });
+  });
+
+  // Startup agent loop — run 45s after start to let other services init first
+  setTimeout(() => {
+    const agentLoop = require('./agent-loop');
+    agentLoop.runCycle().catch(e => {
+      console.error('[Scheduler] Startup agent loop failed:', e.message);
+    });
+  }, 45000);
+
   // Startup embedding check — rebuild 2 min after start
   setTimeout(() => {
     console.log('[Scheduler] Startup embedding check...');
