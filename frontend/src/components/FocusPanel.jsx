@@ -61,7 +61,7 @@ export default function FocusPanel({ onNavigate }) {
     if (item.type === 'jira_ticket' || item.type === 'escalation') {
       onNavigate?.('queue', { ...ctx, filter: 'at-risk' });
     } else if (item.type === 'meeting') {
-      onNavigate?.('calendar');
+      onNavigate?.('meeting-prep');
     } else if (item.type === 'todo') {
       const filter = item.id?.includes('overdue') ? 'overdue' : item.id?.includes('today') ? 'today' : 'all';
       onNavigate?.('todos', { ...ctx, filter });

@@ -113,6 +113,7 @@ app.use('/api/jira', jiraRoutes);
 app.use('/api/focus', focusRoutes);
 app.use('/api/actions', actionsRoutes);
 app.use('/api/ai/settings', require('./routes/ai-settings'));
+app.use('/api/meeting-prep', require('./routes/meeting-prep-view'));
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/email', require('./routes/email-triage'));
 

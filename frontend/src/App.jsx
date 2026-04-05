@@ -23,6 +23,7 @@ import InsightsPanel from './components/InsightsPanel';
 import StandupsPanel from './components/StandupsPanel';
 import JournalPanel from './components/JournalPanel';
 import FocusPanel from './components/FocusPanel';
+import MeetingPrep from './components/MeetingPrep';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
 import useCachedFetch from './useCachedFetch';
@@ -253,6 +254,7 @@ function AuthenticatedApp() {
       case 'plan': return <NinetyDayPlan />;
       case 'todos': return <TodoPanel focusContext={navContext} onClearContext={() => setNavContext(null)} />;
       case 'calendar': return <CalendarView />;
+      case 'meeting-prep': return <MeetingPrep />;
       case 'capture': return <CapturePanel />;
       case 'recent': return <RecentPanel onOpenFile={(path) => { setVaultOpenPath(path); setActiveView('vault'); }} />;
       case 'imports': return <ImportsPanel />;

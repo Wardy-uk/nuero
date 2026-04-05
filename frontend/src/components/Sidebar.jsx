@@ -13,6 +13,7 @@ const SECONDARY_ITEMS = [
   { id: 'queue',      label: 'Queue',     icon: '>' },
   { id: 'people',     label: 'People',    icon: '>' },
   { id: 'calendar',   label: 'Calendar',  icon: '>' },
+  { id: 'meeting-prep', label: 'Meeting Prep', icon: '>' },
   { id: 'vault',      label: 'Vault',     icon: '>' },
   { id: 'inbox',      label: 'Inbox',     icon: '>' },
   { id: 'plan',       label: '90-Day Plan', icon: '>' },

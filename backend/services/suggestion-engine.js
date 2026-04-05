@@ -142,7 +142,7 @@ const SUGGESTION_RULES = [
       confidence: 0.8,
       reason: `"${item.title}" starts in ${item.meta.minutesAway} min — prep now`,
       payload: {
-        navigate: 'calendar',
+        navigate: 'meeting-prep',
       },
     }),
   },
