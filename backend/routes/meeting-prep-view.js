@@ -66,7 +66,7 @@ router.get('/all', (req, res) => {
 });
 
 // GET /api/meeting-prep/week — all meetings for the next 7 days with prep
-router.get('/week', (req, res) => {
+router.get('/week', async (req, res) => {
   try {
     const daysAhead = parseInt(req.query.days) || 7;
     const now = new Date();
@@ -74,11 +74,31 @@ router.get('/week', (req, res) => {
     const endDate = new Date(now.getTime() + daysAhead * 86400000);
     const endStr = endDate.toISOString().split('T')[0];
 
-    const events = db.getCalendarEvents(todayStr, endStr + 'T23:59:59');
+    // Use live calendar (Microsoft Graph) — DB cache only has today
+    const obsidian = require('../services/obsidian');
+    let events;
+    try {
+      events = await obsidian.fetchCalendarEvents(todayStr, endStr);
+    } catch {
+      // Fall back to DB cache if Microsoft unavailable
+      events = db.getCalendarEvents(todayStr, endStr + 'T23:59:59');
+    }
+
+    // Normalise field names (live Graph API vs DB cache use different names)
+    const normalised = events.map(e => ({
+      event_id: e.event_id || e.id || '',
+      subject: e.subject || '',
+      start_time: e.start_time || e.start || '',
+      end_time: e.end_time || e.end || '',
+      is_all_day: e.is_all_day ?? e.isAllDay ?? false,
+      location: e.location || null,
+      organizer: e.organizer || null,
+      showAs: e.showAs || e.show_as || null,
+    })).filter(e => !e.is_all_day);
 
     // Group by date
     const byDate = {};
-    for (const e of events) {
+    for (const e of normalised) {
       const dateKey = e.start_time.split('T')[0];
       if (!byDate[dateKey]) byDate[dateKey] = [];
 
@@ -111,13 +131,32 @@ router.get('/week', (req, res) => {
 });
 
 // GET /api/meeting-prep/:id — prep for a specific meeting by event_id
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const weekEnd = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0];
-    const events = db.getCalendarEvents(todayStr, weekEnd + 'T23:59:59');
-    const event = events.find(e => e.event_id === req.params.id);
+
+    const obsidian = require('../services/obsidian');
+    let events;
+    try {
+      events = await obsidian.fetchCalendarEvents(todayStr, weekEnd);
+    } catch {
+      events = db.getCalendarEvents(todayStr, weekEnd + 'T23:59:59');
+    }
+
+    // Normalise + find
+    const event = events
+      .map(e => ({
+        event_id: e.event_id || e.id || '',
+        subject: e.subject || '',
+        start_time: e.start_time || e.start || '',
+        end_time: e.end_time || e.end || '',
+        is_all_day: e.is_all_day ?? e.isAllDay ?? false,
+        location: e.location || null,
+        organizer: e.organizer || null,
+      }))
+      .find(e => e.event_id === req.params.id);
 
     if (!event) return res.status(404).json({ error: 'Meeting not found' });
 
