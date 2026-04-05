@@ -358,9 +358,9 @@ function _readPersonNote(name) {
       const endIdx = content.indexOf('---', 3);
       if (endIdx !== -1) {
         const fm = content.substring(3, endIdx);
-        const roleMatch = fm.match(/role:\s*(.+)/);
-        const last121Match = fm.match(/last-1-2-1:\s*(.+)/);
-        const next121Match = fm.match(/next-1-2-1-due:\s*(.+)/);
+        const roleMatch = fm.match(/^role:\s*(.+)$/m);
+        const last121Match = fm.match(/^last-1-2-1:\s*(\S.*)$/m);
+        const next121Match = fm.match(/^next-1-2-1-due:\s*(\S.*)$/m);
         const tagsMatch = fm.match(/tags:\s*\[(.+?)\]/);
 
         if (roleMatch) result.role = roleMatch[1].trim();
@@ -382,7 +382,16 @@ function _readPersonNote(name) {
       .replace(/^GROUP\s.*$/gm, '')
       .replace(/^LIMIT\s.*$/gm, '');
     const noteLines = body.split('\n')
-      .filter(l => l.trim() && !l.startsWith('#') && l.trim().length > 3)
+      .filter(l => {
+        const t = l.trim();
+        if (!t || t.length <= 3) return false;
+        if (t.startsWith('#')) return false;
+        if (t.startsWith('|')) return false;     // markdown tables
+        if (t.startsWith('- [[')) return false;  // wiki-link lists
+        if (t.startsWith('---')) return false;    // horizontal rules
+        if (t.match(/^[\-\|:\s]+$/)) return false; // table separators
+        return true;
+      })
       .slice(-5)
       .join('\n');
     if (noteLines.length > 10) {
