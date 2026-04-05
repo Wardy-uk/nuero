@@ -690,13 +690,16 @@ ${contextBlock}${synthesisSuffix}`;
 
   const messages = history.map(msg => ({ role: msg.role, content: msg.content }));
 
-  // Set SSE headers
+  // Set SSE headers (X-Accel-Buffering: no tells reverse proxies not to buffer)
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'no-cache, no-transform',
     'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
     'Access-Control-Allow-Origin': '*'
   });
+  // Flush headers immediately so proxy knows it's a stream
+  res.flushHeaders();
 
   // Phase 3: Route through AI provider (Ollama → OpenAI failover)
   const aiProvider = require('./ai-provider');
