@@ -63,6 +63,9 @@ app.use('/api', (req, res, next) => {
   // Allow SSE streams (nudges/stream) — they use EventSource which can't set headers
   if (req.path === '/nudges/stream') return next();
 
+  // Allow Strava OAuth flow (browser redirects can't send PIN header)
+  if (req.path === '/strava/auth' || req.path === '/strava/callback') return next();
+
   const provided = req.headers['x-neuro-pin'] || req.query.pin;
   if (!provided || provided !== expectedPin) {
     return res.status(401).json({ error: 'PIN required' });
