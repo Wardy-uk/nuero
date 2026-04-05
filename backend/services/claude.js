@@ -762,14 +762,21 @@ async function syncChat(conversationId, userMessage, location = null) {
 
   console.log(`[Chat/Sync] Context built in ${Date.now() - t0}ms, ${messages.length} msgs`);
 
-  // Use Ollama non-streaming chat
-  const aiRouting = require('./ai-routing');
-  const result = await aiRouting.runTask('chat_sync', {
-    systemPrompt,
-    messages,
-    maxTokens: 256,
-    temperature: 0.7,
-  }, { timeout: 30000 });
+  // Call Ollama directly — bypass priority queue for interactive chat speed
+  const ollamaProvider = require('./providers/ollama-provider');
+  let result;
+  try {
+    const text = await ollamaProvider.chat(systemPrompt, messages, {
+      model: 'qwen2.5:1.5b',
+      maxTokens: 256,
+      temperature: 0.7,
+      timeout: 25000,
+    });
+    result = { text, provider: 'ollama' };
+  } catch (e) {
+    console.warn('[Chat/Sync] Ollama failed:', e.message);
+    result = { text: '*[AI busy — try again in a moment]*', provider: 'none' };
+  }
 
   const fullResponse = result.text || '*[AI unavailable — try again later]*';
   console.log(`[Chat/Sync] Response via ${result.provider} (${fullResponse.length} chars)`);
