@@ -736,48 +736,40 @@ ${contextBlock}${synthesisSuffix}`;
  * Works through reverse proxies (Tailscale Funnel) that buffer SSE.
  */
 async function syncChat(conversationId, userMessage, location = null) {
+  const t0 = Date.now();
   db.saveMessage(conversationId, 'user', userMessage);
   try { require('./activity').trackChatMessage(userMessage); } catch {}
 
-  const history = db.getConversationHistory(conversationId, 10);
-
+  // Lightweight context — only use working memory cache, no heavy parsing
   let wmCtx = null;
   try { wmCtx = await require('./working-memory').getContext(); } catch {}
 
-  const queueSummary = wmCtx?.queueSummary || db.getQueueSummary();
-  const todos = wmCtx?.todos || (() => { try { return obsidian.parseVaultTodos(); } catch { return null; } })();
-  const ninetyDayPlan = wmCtx?.ninetyDayPlan || (() => { try { return obsidian.parseNinetyDayPlan(); } catch { return null; } })();
+  // Minimal context block (no vault search, no meeting prep, no patterns)
+  const contextParts = [];
+  if (wmCtx?.queueSummary?.total) {
+    contextParts.push(`Queue: ${wmCtx.queueSummary.total} tickets, ${(wmCtx.queueSummary.at_risk_tickets || []).length} at risk`);
+  }
+  if (wmCtx?.standupDone === false) contextParts.push('Standup not done yet');
+  const contextBlock = contextParts.length > 0 ? contextParts.join('. ') : 'No urgent context.';
 
-  let dailyNote = null;
-  let previousNote = null;
-  let standupContent = null;
-
-  try { dailyNote = obsidian.readTodayDailyNote(); } catch {}
-  if (!dailyNote) { try { previousNote = obsidian.readPreviousDailyNote(); } catch {} }
-  try { standupContent = obsidian.readStandup(); } catch {}
-
-  const queryIntent = detectQueryIntent(userMessage);
   const weekend = isWeekend();
-
-  // Simplified context (no vault search for sync mode — keep it fast)
-  const contextBlock = await buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, [], null, queryIntent);
-
-  const startDate = new Date('2026-03-16');
-  const today = new Date();
-  const dayCount = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
   const basePrompt = weekend ? WEEKEND_SYSTEM_PROMPT : SYSTEM_PROMPT;
-  const systemPrompt = `${basePrompt}\n\nDay ${dayCount} in role.\n\n---\nCONTEXT:\n${contextBlock}`;
+  const systemPrompt = `${basePrompt}\n\nBrief context: ${contextBlock}`;
 
+  // Last 5 messages only (keep prompt small for 1.5b model)
+  const history = db.getConversationHistory(conversationId, 5);
   const messages = history.map(msg => ({ role: msg.role, content: msg.content }));
+
+  console.log(`[Chat/Sync] Context built in ${Date.now() - t0}ms, ${messages.length} msgs`);
 
   // Use Ollama non-streaming chat
   const aiRouting = require('./ai-routing');
   const result = await aiRouting.runTask('chat_sync', {
     systemPrompt,
     messages,
-    maxTokens: 1024,
+    maxTokens: 256,
     temperature: 0.7,
-  }, { timeout: 60000 });
+  }, { timeout: 30000 });
 
   const fullResponse = result.text || '*[AI unavailable — try again later]*';
   console.log(`[Chat/Sync] Response via ${result.provider} (${fullResponse.length} chars)`);
