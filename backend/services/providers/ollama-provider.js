@@ -106,7 +106,7 @@ async function chat(systemPrompt, messages, options = {}) {
  */
 async function streamChat(systemPrompt, messages, res, options = {}) {
   const model = options.model || OLLAMA_MODEL;
-  const timeout = options.timeout || 300000;
+  const timeout = options.timeout || 90000; // 90s max for streaming chat
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);

@@ -178,7 +178,7 @@ async function classifyWithOllama(fileName, content) {
       stream: false,
       options: { temperature: 0.1, num_ctx: 2048, num_predict: 256 }
     }),
-    signal: AbortSignal.timeout(60000)
+    signal: AbortSignal.timeout(30000) // 30s — fail fast to AI routing
   });
 
   if (!ollamaRes.ok) {

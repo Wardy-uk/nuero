@@ -56,7 +56,7 @@ ${JSON.stringify(emailSummary, null, 2)}`;
       stream: false,
       options: { temperature: 0.1, num_ctx: 4096, num_predict: 512 }
     }),
-    signal: AbortSignal.timeout(300000)
+    signal: AbortSignal.timeout(30000) // 30s — fail fast, let AI routing handle fallback to Pi 4
   });
 
   if (!res.ok) throw new Error(`Ollama error: ${res.status}`);
