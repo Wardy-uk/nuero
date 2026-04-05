@@ -1,0 +1,13 @@
+{
+  "name": "neuro-mcp-server",
+  "version": "1.0.0",
+  "description": "NEURO MCP Server — exposes local brain/cortex to external chat clients",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  }
+}

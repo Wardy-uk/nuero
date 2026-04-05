@@ -519,178 +519,55 @@ function handleResponse(conversationId, fullResponse) {
 }
 
 // ── Streaming via AI routing layer (Phase 3) ──
-// Anthropic removed. Uses Ollama → OpenAI failover chain.
+// ═══════════════════════════════════════════════════════
+// Chat v2 — API-primary, Ollama fallback, proper routing
+// ═══════════════════════════════════════════════════════
 
-// ── Main entry point ──
+const { buildChatContext, getChatPolicy } = require('./chat-context-v2');
 
+/**
+ * Determine chat mode based on AI routing config.
+ * Returns 'api' if OpenAI is available, 'local' otherwise.
+ */
+function _getChatMode() {
+  const aiRouting = require('./ai-routing');
+  const status = aiRouting.getStatus();
+  if (status.openai?.enabled && status.openai?.configured && !status.openai?.throttled) {
+    if (status.mode === 'hybrid' || status.mode === 'critical-only') return 'api';
+  }
+  return 'local';
+}
+
+/**
+ * Build the system prompt with context.
+ */
+async function _buildChatPrompt(userMessage, mode) {
+  const weekend = isWeekend();
+  const basePrompt = weekend ? WEEKEND_SYSTEM_PROMPT : SYSTEM_PROMPT;
+  const { systemContext } = await buildChatContext(userMessage, { mode });
+  return `${basePrompt}\n\n---\nCONTEXT:\n${systemContext}`;
+}
+
+/**
+ * Streaming chat — API-primary, Ollama fallback.
+ * Uses SSE for OpenAI (works through most proxies), sync fallback for Ollama.
+ */
 async function streamChat(conversationId, userMessage, res, location = null) {
   db.saveMessage(conversationId, 'user', userMessage);
   try { require('./activity').trackChatMessage(userMessage); } catch {}
 
-  const history = db.getConversationHistory(conversationId, 10);
-
-  // Use working memory for cached context (queue, todos, plan)
-  let wmCtx = null;
-  try { wmCtx = await require('./working-memory').getContext(); } catch {}
-
-  const queueSummary = wmCtx?.queueSummary || db.getQueueSummary();
-  const todos = wmCtx?.todos || (() => { try { return obsidian.parseVaultTodos(); } catch { return null; } })();
-  const ninetyDayPlan = wmCtx?.ninetyDayPlan || (() => { try { return obsidian.parseNinetyDayPlan(); } catch { return null; } })();
-
-  // Daily note and standup always read fresh — cheap and must be current
-  let dailyNote = null;
-  let previousNote = null;
-  let standupContent = null;
-
-  try { dailyNote = obsidian.readTodayDailyNote(); } catch (e) { console.warn('[Context] Daily note error:', e.message); }
-  if (!dailyNote) {
-    try { previousNote = obsidian.readPreviousDailyNote(); } catch (e) { console.warn('[Context] Previous note error:', e.message); }
-  }
-  try { standupContent = obsidian.readStandup(); } catch (e) { console.warn('[Context] Standup error:', e.message); }
-
-  const queryIntent = detectQueryIntent(userMessage);
-
-  // Detect synthesis queries — "summarise everything about X", "what do I know about X"
-  const SYNTHESIS_PATTERNS = [
-    /summaris[e|ing].*(everything|all).*(about|on|regarding)/i,
-    /what (do i|have i).*(know|written|noted|captured).*(about|on)/i,
-    /give me everything (i have |i.ve )?(on|about)/i,
-    /pull (everything|all).*(on|about)/i,
-    /full picture.*(on|about|of)/i,
-    /everything (related|connected).*(to|about)/i
-  ];
-
-  const isSynthesisQuery = SYNTHESIS_PATTERNS.some(p => p.test(userMessage));
-  const maxVaultResults = isSynthesisQuery ? 12 : queryIntent === 'general' ? 4 : 3;
-
-  // Unified retrieval — keyword + semantic + temporal fused via RRF
-  let vaultSearchResults = [];
-  try {
-    const retrieval = require('./retrieval');
-    const terms = extractSearchTerms(userMessage);
-    if (terms.length > 0) {
-      const temporalCtx = extractTemporalContext(userMessage);
-
-      // Detect person scope
-      const TEAM_MEMBERS = [
-        'Abdi', 'Arman', 'Luke', 'Stephen', 'Willem', 'Nathan',
-        'Adele', 'Heidi', 'Hope', 'Maria', 'Naomi', 'Sebastian', 'Zoe',
-        'Isabel', 'Kayleigh', 'Chris', 'Beth', 'Paul', 'Damon', 'Ricky'
-      ];
-      const mentionedPerson = TEAM_MEMBERS.find(name =>
-        userMessage.toLowerCase().includes(name.toLowerCase())
-      );
-
-      // Build retrieval scope — person, folder, or none
-      let retrievalScope = undefined;
-      if (mentionedPerson) {
-        retrievalScope = `person:${mentionedPerson}`;
-      } else if (/\bmeeting[s]?\b/i.test(userMessage)) {
-        retrievalScope = 'folder:Meetings';
-      } else if (/\bdecision[s]?\b/i.test(userMessage)) {
-        retrievalScope = 'folder:Decision Log';
-      } else if (/\bproject[s]?\b/i.test(userMessage)) {
-        retrievalScope = 'folder:Projects';
-      } else if (/\bpeople\b|\bteam\b/i.test(userMessage)) {
-        retrievalScope = 'folder:People';
-      }
-
-      const results = await retrieval.search(terms.join(' '), {
-        maxResults: maxVaultResults,
-        scope: retrievalScope,
-        from: temporalCtx?.from,
-        to: temporalCtx?.to
-      });
-
-      vaultSearchResults = results;
-      if (results.length > 0) {
-        const sources = [...new Set(results.flatMap(r => r.sources || []))];
-        console.log(`[Context] Retrieval for "${terms.join(', ')}" → ${results.length} hits via ${sources.join('+')}${isSynthesisQuery ? ' (synthesis)' : ''}${retrievalScope ? ` (scope: ${retrievalScope})` : ''}`);
-      }
-    }
-  } catch (e) {
-    console.warn('[Context] Retrieval error:', e.message);
-  }
-
-  // Person-specific context — always pull person note if mentioned
-  const TEAM_MEMBERS = [
-    'Abdi', 'Arman', 'Luke', 'Stephen', 'Willem', 'Nathan',
-    'Adele', 'Heidi', 'Hope', 'Maria', 'Naomi', 'Sebastian', 'Zoe',
-    'Isabel', 'Kayleigh', 'Chris', 'Beth', 'Paul', 'Damon', 'Ricky'
-  ];
-
-  const mentionedPeople = TEAM_MEMBERS.filter(name =>
-    userMessage.toLowerCase().includes(name.toLowerCase())
-  );
-
-  for (const personName of mentionedPeople.slice(0, 2)) {
-    try {
-      const personNote = obsidian.readPersonNote(personName) ||
-        (() => {
-          const allPeople = obsidian.listPeopleNotes();
-          const match = allPeople.find(n => n.toLowerCase().includes(personName.toLowerCase()));
-          return match ? obsidian.readPersonNote(match) : null;
-        })();
-
-      if (personNote && !vaultSearchResults.some(r => r.name?.toLowerCase().includes(personName.toLowerCase()))) {
-        const body = personNote.replace(/^---[\s\S]*?---\n*/, '').substring(0, 600);
-        vaultSearchResults.unshift({
-          path: `People/${personName}.md`,
-          name: personName,
-          excerpts: [body],
-          sources: ['person-note']
-        });
-      }
-    } catch {}
-  }
-
-  // Reverse geocode location if provided
-  let locationContext = null;
-  if (location && location.lat && location.lng) {
-    try {
-      const place = await reverseGeocode(location.lat, location.lng);
-      locationContext = place
-        ? `Nick's current location: ${place} (±${location.accuracy || '?'}m)`
-        : `Nick's current location: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`;
-    } catch (e) {
-      console.warn('[Context] Geocode failed:', e.message);
-    }
-  }
-
-  const weekend = isWeekend();
-  const contextBlock = await buildContextBlock(queueSummary, dailyNote, previousNote, standupContent, todos, ninetyDayPlan, weekend, vaultSearchResults, locationContext, queryIntent);
-
-  const startDate = new Date('2026-03-16');
-  const today = new Date();
-  const dayCount = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
-
-  const basePrompt = weekend ? WEEKEND_SYSTEM_PROMPT : SYSTEM_PROMPT;
-
-  const synthesisSuffix = isSynthesisQuery ? `
-
----
-SYNTHESIS MODE: Nick is asking you to synthesise everything across multiple vault notes.
-Do NOT just list notes or excerpts. Instead:
-1. Read all the vault notes provided in context carefully
-2. Identify the key themes, patterns, and conclusions across them
-3. Write a coherent synthesis — what the combined knowledge says
-4. Flag any contradictions or gaps
-5. End with: "Sources: [note names]"
-This is a knowledge synthesis task, not a search result display.` : '';
-
-  const systemPrompt = `${basePrompt}
-
----
-
-## Live Context (auto-injected)
-
-Today is ${today.toISOString().split('T')[0]}. Day ${dayCount} of Nick's new role.
-
-${contextBlock}${synthesisSuffix}`;
+  const chatMode = _getChatMode();
+  const policy = getChatPolicy(chatMode);
+  const t0 = Date.now();
+  // Build context and prompt using Chat Context v2
+  const systemPrompt = await _buildChatPrompt(userMessage, chatMode);
+  const history = db.getConversationHistory(conversationId, policy.maxHistory);
 
   const messages = history.map(msg => ({ role: msg.role, content: msg.content }));
 
-  // Set SSE headers (X-Accel-Buffering: no tells reverse proxies not to buffer)
+  console.log(`[Chat] Mode: ${chatMode}, context: ${Date.now() - t0}ms, ${messages.length} msgs`);
+
+  // Set SSE headers
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -698,28 +575,34 @@ ${contextBlock}${synthesisSuffix}`;
     'X-Accel-Buffering': 'no',
     'Access-Control-Allow-Origin': '*'
   });
-  // Flush headers immediately so proxy knows it's a stream
   res.flushHeaders();
 
-  // Phase 3: Route through AI provider (Ollama → OpenAI failover)
+  // Send mode indicator to frontend
+  if (!res.writableEnded) {
+    res.write(`data: ${JSON.stringify({ type: 'mode', mode: chatMode })}\n\n`);
+  }
+
+  // Route through AI provider (API-primary: OpenAI first, Ollama fallback)
   const aiProvider = require('./ai-provider');
-  console.log(`[Chat] Routing via AI provider, system: ${systemPrompt.length} chars, ${messages.length} msgs`);
 
   try {
     const result = await aiProvider.streamChat(systemPrompt, messages, res, {
       taskType: 'chat_stream',
-      maxTokens: 1024,
+      maxTokens: policy.maxTokens,
       contextWindow: 4096,
+      temperature: policy.temperature,
     });
 
     const fullResponse = result.text || '';
     if (result.provider !== 'none') {
-      console.log(`[Chat] Response via ${result.provider}${result.fallback ? ' (fallback)' : ''}`);
+      console.log(`[Chat] Response via ${result.provider}${result.fallback ? ' (fallback)' : ''} in ${Date.now() - t0}ms`);
     }
 
+    db.saveMessage(conversationId, 'assistant', fullResponse);
     handleResponse(conversationId, fullResponse);
+
     if (!res.writableEnded) {
-      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'done', provider: result.provider })}\n\n`);
       res.end();
     }
   } catch (err) {
@@ -733,55 +616,34 @@ ${contextBlock}${synthesisSuffix}`;
 
 /**
  * Non-streaming chat — returns full response as JSON.
- * Works through reverse proxies (Tailscale Funnel) that buffer SSE.
+ * Fallback for environments that don't support SSE (Tailscale Funnel).
  */
 async function syncChat(conversationId, userMessage, location = null) {
   const t0 = Date.now();
   db.saveMessage(conversationId, 'user', userMessage);
   try { require('./activity').trackChatMessage(userMessage); } catch {}
 
-  // Lightweight context — only use working memory cache, no heavy parsing
-  let wmCtx = null;
-  try { wmCtx = await require('./working-memory').getContext(); } catch {}
+  const chatMode = _getChatMode();
+  const policy = getChatPolicy(chatMode);
 
-  // Minimal context block (no vault search, no meeting prep, no patterns)
-  const contextParts = [];
-  if (wmCtx?.queueSummary?.total) {
-    contextParts.push(`Queue: ${wmCtx.queueSummary.total} tickets, ${(wmCtx.queueSummary.at_risk_tickets || []).length} at risk`);
-  }
-  if (wmCtx?.standupDone === false) contextParts.push('Standup not done yet');
-  const contextBlock = contextParts.length > 0 ? contextParts.join('. ') : 'No urgent context.';
-
-  const weekend = isWeekend();
-  const basePrompt = weekend ? WEEKEND_SYSTEM_PROMPT : SYSTEM_PROMPT;
-  const systemPrompt = `${basePrompt}\n\nBrief context: ${contextBlock}`;
-
-  // Last 5 messages only (keep prompt small for 1.5b model)
-  const history = db.getConversationHistory(conversationId, 5);
+  const systemPrompt = await _buildChatPrompt(userMessage, chatMode);
+  const history = db.getConversationHistory(conversationId, policy.maxHistory);
   const messages = history.map(msg => ({ role: msg.role, content: msg.content }));
 
-  console.log(`[Chat/Sync] Context built in ${Date.now() - t0}ms, ${messages.length} msgs`);
+  console.log(`[Chat/Sync] Mode: ${chatMode}, context: ${Date.now() - t0}ms, ${messages.length} msgs`);
 
-  // Call Ollama directly — bypass priority queue for interactive chat speed
-  const ollamaProvider = require('./providers/ollama-provider');
-  let result;
-  try {
-    const text = await ollamaProvider.chat(systemPrompt, messages, {
-      model: 'qwen2.5:1.5b',
-      maxTokens: 256,
-      temperature: 0.7,
-      timeout: 25000,
-    });
-    result = { text, provider: 'ollama' };
-  } catch (e) {
-    console.warn('[Chat/Sync] Ollama failed:', e.message);
-    result = { text: '*[AI busy — try again in a moment]*', provider: 'none' };
-  }
+  // Route through AI provider (respects all routing/cost controls)
+  const aiRouting = require('./ai-routing');
+  const result = await aiRouting.runTask('chat_sync', {
+    systemPrompt,
+    messages,
+    maxTokens: policy.maxTokens,
+    temperature: policy.temperature,
+  }, { timeout: chatMode === 'api' ? 30000 : 25000 });
 
   const fullResponse = result.text || '*[AI unavailable — try again later]*';
-  console.log(`[Chat/Sync] Response via ${result.provider} (${fullResponse.length} chars)`);
+  console.log(`[Chat/Sync] Response via ${result.provider} in ${Date.now() - t0}ms (${fullResponse.length} chars)`);
 
-  // Save and handle response
   db.saveMessage(conversationId, 'assistant', fullResponse);
   handleResponse(conversationId, fullResponse);
 
@@ -789,6 +651,7 @@ async function syncChat(conversationId, userMessage, location = null) {
     conversationId,
     message: fullResponse,
     provider: result.provider,
+    mode: chatMode,
   };
 }
 

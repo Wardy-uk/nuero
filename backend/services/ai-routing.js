@@ -217,29 +217,31 @@ async function runStreamingChat(systemPrompt, messages, res, options = {}) {
   const forceCloud = options.forceCloud || false;
   const model = TASK_MODELS[taskType] || HEAVY_MODEL;
 
-  if (!forceCloud) {
-    try {
-      const text = await ollamaProvider.streamChat(systemPrompt, messages, res, { ...options, model });
-      if (text && text.trim().length > 0) {
-        return { text, provider: 'ollama', fallback: false };
-      }
-    } catch (err) {
-      console.warn(`[AIRouting] Ollama stream failed: ${err.message}`);
-      if (!res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ type: 'text', content: '*[Local model unavailable, trying cloud...]*\n\n' })}\n\n`);
-      }
-    }
-  }
-
+  // API-primary: try OpenAI FIRST for chat (better quality, streaming works through proxies)
   if (_isOpenAIAllowed(taskType)) {
     try {
       const result = await openaiProvider.streamChat(systemPrompt, messages, res, options);
       if (result.fullText) {
         _recordOpenAIUsage(result.usage);
-        return { text: result.fullText, provider: 'openai', fallback: !forceCloud };
+        return { text: result.fullText, provider: 'openai', fallback: false };
       }
     } catch (err) {
       console.warn(`[AIRouting] OpenAI stream failed: ${err.message}`);
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ type: 'text', content: '*[Cloud unavailable, using local model...]*\n\n' })}\n\n`);
+      }
+    }
+  }
+
+  // Fallback: try Ollama locally
+  if (!forceCloud) {
+    try {
+      const text = await ollamaProvider.streamChat(systemPrompt, messages, res, { ...options, model });
+      if (text && text.trim().length > 0) {
+        return { text, provider: 'ollama', fallback: true };
+      }
+    } catch (err) {
+      console.warn(`[AIRouting] Ollama stream failed: ${err.message}`);
     }
   }
 

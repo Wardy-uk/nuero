@@ -306,6 +306,8 @@ export default function ChatPanel({ location }) {
     refreshConvList();
   };
 
+  const [chatMode, setChatMode] = useState(null); // 'api' | 'local' | null
+
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || streaming) return;
@@ -313,43 +315,101 @@ export default function ChatPanel({ location }) {
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: text }]);
     setStreaming(true);
-
-    // Add placeholder for assistant response
     setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
+    const body = JSON.stringify({
+      message: text,
+      conversationId,
+      location: location ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy } : null
+    });
+
+    // Try streaming first (works with OpenAI through proxies)
+    let streamed = false;
     try {
-      // Use non-streaming sync endpoint (Tailscale Funnel buffers SSE)
-      const response = await fetch(apiUrl('/api/chat/sync'), {
+      const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          conversationId,
-          location: location ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy } : null
-        })
+        body,
       });
 
-      const data = await response.json();
-      if (data.message) {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'assistant', content: data.message };
-          return updated;
+      if (response.ok && response.headers.get('content-type')?.includes('event-stream')) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'mode') {
+                setChatMode(data.mode);
+              } else if (data.type === 'text') {
+                streamed = true;
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const last = updated[updated.length - 1];
+                  if (last?.role === 'assistant') {
+                    updated[updated.length - 1] = { ...last, content: last.content + data.content };
+                  }
+                  return updated;
+                });
+              } else if (data.type === 'done') {
+                if (data.provider) setChatMode(data.provider === 'openai' ? 'api' : 'local');
+              } else if (data.type === 'error') {
+                setMessages(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { role: 'assistant', content: `Error: ${data.content}` };
+                  return updated;
+                });
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (streamErr) {
+      // Streaming failed — fall through to sync
+      console.warn('Stream failed, trying sync:', streamErr.message);
+    }
+
+    // Sync fallback if streaming didn't produce content
+    if (!streamed) {
+      try {
+        const response = await fetch(apiUrl('/api/chat/sync'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
         });
-        if (data.conversationId) setConversationId(data.conversationId);
-      } else if (data.error) {
+        const data = await response.json();
+        if (data.message) {
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: 'assistant', content: data.message };
+            return updated;
+          });
+          setChatMode(data.mode || (data.provider === 'openai' ? 'api' : 'local'));
+          if (data.conversationId) setConversationId(data.conversationId);
+        } else if (data.error) {
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: 'assistant', content: `Error: ${data.error}` };
+            return updated;
+          });
+        }
+      } catch (syncErr) {
         setMessages(prev => {
           const updated = [...prev];
-          updated[updated.length - 1] = { role: 'assistant', content: `Error: ${data.error}` };
+          updated[updated.length - 1] = { role: 'assistant', content: `Connection error: ${syncErr.message}` };
           return updated;
         });
       }
-    } catch (err) {
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: 'assistant', content: `Connection error: ${err.message}` };
-        return updated;
-      });
     }
 
     setStreaming(false);
@@ -370,7 +430,10 @@ export default function ChatPanel({ location }) {
         <span className="chat-title" onClick={() => setShowConvList(!showConvList)} style={{ cursor: 'pointer' }}>
           NUERO {conversations.length > 0 && <span className="chat-conv-toggle">▾</span>}
         </span>
-        <span className="chat-status">{streaming ? 'thinking...' : loadingHistory ? 'loading...' : 'ready'}</span>
+        <span className="chat-status">
+          {streaming ? 'thinking...' : loadingHistory ? 'loading...' : 'ready'}
+          {chatMode && !streaming && <span className="chat-mode"> · {chatMode === 'api' ? 'OpenAI' : chatMode === 'openai' ? 'OpenAI' : 'Local'}</span>}
+        </span>
         <button className="chat-new-btn" onClick={startNew}>New</button>
       </div>
 
