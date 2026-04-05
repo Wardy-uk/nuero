@@ -36,8 +36,10 @@ function _getSettingValue(setting) {
   return process.env[setting.env] || setting.default;
 }
 
+const pi4Worker = require('../services/pi4-worker-client');
+
 // GET /api/ai/settings
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const settings = {};
   for (const [key, def] of Object.entries(RUNTIME_SETTINGS)) {
     const value = _getSettingValue(def);
@@ -50,8 +52,9 @@ router.get('/', (req, res) => {
     };
   }
 
-  // Add live status
+  // Add live status (with fresh Pi 4 health check)
   const status = aiRouting.getStatus();
+  const pi4Healthy = pi4Worker.isEnabled() ? await pi4Worker.isHealthy() : null;
 
   res.json({
     settings,
@@ -65,8 +68,8 @@ router.get('/', (req, res) => {
       openaiTokensToday: status.openai?.tokensToday,
       openaiThrottled: status.openai?.throttled,
       openaiLastFallback: status.openai?.lastFallbackReason,
-      pi4Enabled: status.pi4Worker?.enabled,
-      pi4Healthy: status.pi4Worker?.lastHealthy,
+      pi4Enabled: pi4Worker.isEnabled(),
+      pi4Healthy,
       backgroundTasks: status.backgroundTasks,
       taskModels: status.taskModels,
     },
