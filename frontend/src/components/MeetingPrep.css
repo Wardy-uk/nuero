@@ -120,6 +120,17 @@
   border-radius: 3px;
 }
 
+.prep-rsvp {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: lowercase;
+}
+.prep-rsvp-accepted { color: var(--success); background: rgba(64, 201, 122, 0.1); }
+.prep-rsvp-tentativelyAccepted { color: var(--warning); background: rgba(240, 160, 64, 0.1); }
+.prep-rsvp-declined { color: var(--danger); background: rgba(224, 85, 85, 0.1); }
+
 .prep-person-meta {
   font-family: var(--font-mono);
   font-size: 11px;

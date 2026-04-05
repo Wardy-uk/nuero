@@ -132,7 +132,13 @@ export default function MeetingPrep() {
                       <div className="prep-person-header">
                         <span className="prep-person-name">{att.name}</span>
                         {att.role && <span className="prep-person-role">{att.role}</span>}
+                        {att.rsvp && att.rsvp !== 'none' && (
+                          <span className={`prep-rsvp prep-rsvp-${att.rsvp}`}>{att.rsvp}</span>
+                        )}
                       </div>
+                      {att.email && !att.last121 && !att.recentNotes && (
+                        <div className="prep-person-meta">{att.email}</div>
+                      )}
                       {att.last121 && <div className="prep-person-meta">Last 1-2-1: {att.last121}</div>}
                       {att.recentNotes && <div className="prep-person-notes">{att.recentNotes}</div>}
                       {att.tags?.length > 0 && (

@@ -208,7 +208,7 @@ async function fetchCalendarEvents(startDate, endDate) {
       const start = `${startDate}T00:00:00`;
       const end = `${endDate}T23:59:59`;
       const data = await graphFetch(
-        `/me/calendarView?startDateTime=${start}&endDateTime=${end}&$top=50&$orderby=start/dateTime&$select=subject,start,end,location,isAllDay,showAs,isCancelled`,
+        `/me/calendarView?startDateTime=${start}&endDateTime=${end}&$top=50&$orderby=start/dateTime&$select=subject,start,end,location,isAllDay,showAs,isCancelled,attendees,organizer`,
         token
       );
       if (data && data.value) {
@@ -226,7 +226,13 @@ async function fetchCalendarEvents(startDate, endDate) {
             subject: event.subject || '(No subject)',
             location: event.location?.displayName || null,
             isAllDay: event.isAllDay,
-            showAs: event.isCancelled ? 'cancelled' : (event.showAs || 'busy')
+            showAs: event.isCancelled ? 'cancelled' : (event.showAs || 'busy'),
+            attendees: (event.attendees || []).map(a => ({
+              name: a.emailAddress?.name || '',
+              email: a.emailAddress?.address || '',
+              status: a.status?.response || 'none',
+            })),
+            organizer: event.organizer?.emailAddress?.name || null,
           };
         });
       }

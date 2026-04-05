@@ -93,6 +93,7 @@ router.get('/week', async (req, res) => {
       is_all_day: e.is_all_day ?? e.isAllDay ?? false,
       location: e.location || null,
       organizer: e.organizer || null,
+      attendees: e.attendees || [],
       showAs: e.showAs || e.show_as || null,
     })).filter(e => !e.is_all_day);
 
@@ -155,6 +156,7 @@ router.get('/:id', async (req, res) => {
         is_all_day: e.is_all_day ?? e.isAllDay ?? false,
         location: e.location || null,
         organizer: e.organizer || null,
+        attendees: e.attendees || [],
       }))
       .find(e => e.event_id === req.params.id);
 
@@ -210,13 +212,40 @@ function _buildPrep(meeting) {
     checklist: [],
   };
 
-  // 1. Match attendees from meeting subject + organizer
-  const matchedPeople = _matchPeople(meeting.subject, meeting.organizer);
+  // 1. Get attendees from Graph API data first, then fall back to subject matching
+  const graphAttendees = (meeting.attendees || [])
+    .filter(a => a.name && !a.email?.toLowerCase().includes('nickw@') && !a.email?.toLowerCase().includes('nick.ward@'))
+    .map(a => a.name);
 
-  // 2. Pull People notes for each match
+  // Merge: Graph attendees + subject/organizer matching (dedup)
+  const subjectMatched = _matchPeople(meeting.subject, meeting.organizer);
+  const allNames = [...new Set([...graphAttendees, ...subjectMatched])];
+  const matchedPeople = allNames.length > 0 ? allNames : subjectMatched;
+
+  // 2. Pull People notes for each attendee
   for (const person of matchedPeople) {
     const note = _readPersonNote(person);
     prep.attendees.push(note);
+  }
+
+  // Also add Graph attendees who don't have vault notes (show name + email)
+  if (graphAttendees.length > 0) {
+    const prepNames = new Set(prep.attendees.map(a => a.name.toLowerCase()));
+    for (const att of (meeting.attendees || [])) {
+      if (att.name && !prepNames.has(att.name.toLowerCase()) &&
+          !att.email?.toLowerCase().includes('nickw@') && !att.email?.toLowerCase().includes('nick.ward@')) {
+        prep.attendees.push({
+          name: att.name,
+          role: null,
+          last121: null,
+          next121Due: null,
+          tags: [],
+          recentNotes: null,
+          email: att.email,
+          rsvp: att.status,
+        });
+      }
+    }
   }
 
   // 3. Pull recent decisions mentioning any attendee
