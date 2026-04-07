@@ -21,6 +21,7 @@ router.get('/', (req, res) => {
       source: t.source || null,
       done: t.status === 'done' ? 1 : 0,
       ms_id: t.ms_id || null,
+      mustdo: t.mustdo || false,
       vault_task: true,
       filePath: t.filePath || null,
       lineNumber: t.lineNumber != null ? t.lineNumber : null

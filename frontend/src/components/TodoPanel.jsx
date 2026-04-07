@@ -259,6 +259,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   const activeTodos = (todos || []).filter(t => !t.done);
   const doneTodos = (todos || []).filter(t => t.done);
   const overdueTodos = activeTodos.filter(t => isOverdue(t.due_date));
+  const mustDoTodos = activeTodos.filter(t => t.mustdo);
 
   const subCategoryOptions = useMemo(() => {
     if (!['plan', 'vault', 'ms'].includes(filter)) return [];
@@ -285,7 +286,9 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   }, [activeTodos]);
 
   let filtered = activeTodos;
-  if (filter === 'overdue') {
+  if (filter === 'mustdo') {
+    filtered = mustDoTodos;
+  } else if (filter === 'overdue') {
     filtered = activeTodos.filter(t => isOverdue(t.due_date));
   } else if (filter === 'today') {
     filtered = activeTodos.filter(t => {
@@ -348,6 +351,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
       <div className="todo-filters">
         {[
           { key: 'all', label: 'All' },
+          ...(mustDoTodos.length > 0 ? [{ key: 'mustdo', label: `Must Do (${mustDoTodos.length})` }] : []),
           { key: 'overdue', label: `Overdue (${overdueTodos.length})` },
           { key: 'today', label: 'Due today' },
           { key: 'high', label: 'High priority' },
@@ -357,7 +361,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
         ].map(f => (
           <button
             key={f.key}
-            className={`todo-filter-btn ${filter === f.key ? 'active' : ''}`}
+            className={`todo-filter-btn ${filter === f.key ? 'active' : ''}${f.key === 'mustdo' ? ' mustdo-filter' : ''}`}
             onClick={() => setTopFilter(f.key)}
           >
             {f.label}

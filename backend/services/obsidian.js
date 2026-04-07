@@ -429,6 +429,9 @@ function parseTaskLine(line) {
   else if (statusChar === '/') status = 'in-progress';
   else status = 'open';
 
+  // Check for #mustdo tag before stripping
+  const mustdo = /#mustdo\b/.test(rawText);
+
   // Extract due date from due::YYYY-MM-DD or 📅 YYYY-MM-DD
   let due_date = null;
   const dueMatch = rawText.match(/(?:due::(\d{4}-\d{2}-\d{2})|📅\s*(\d{4}-\d{2}-\d{2}))/);
@@ -461,7 +464,7 @@ function parseTaskLine(line) {
 
   if (!text) return null;
 
-  return { text, status, priority: null, due_date, ms_id, source: null };
+  return { text, status, priority: null, due_date, ms_id, mustdo, source: null };
 }
 
 // Vault calendar parser — reads "## Calendar Today" from daily notes

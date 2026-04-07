@@ -114,6 +114,22 @@
   border-color: var(--accent);
 }
 
+.todo-filter-btn.mustdo-filter {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.todo-filter-btn.mustdo-filter:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.todo-filter-btn.mustdo-filter.active {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
 .todo-list {
   display: flex;
   flex-direction: column;
