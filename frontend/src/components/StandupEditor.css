@@ -398,6 +398,28 @@
   cursor: default;
 }
 
+/* Progress dots */
+.guided-progress {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 8px 0;
+}
+.guided-progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: all 0.2s;
+}
+.guided-progress-dot.active {
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(90, 163, 249, 0.4);
+}
+.guided-progress-dot.done {
+  background: var(--success, #22c55e);
+}
+
 /* Done state */
 .guided-done {
   text-align: center;

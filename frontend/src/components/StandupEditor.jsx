@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import ReactMarkdown from 'react-markdown';
@@ -40,119 +40,83 @@ function EodCapture({ onDone }) {
 }
 
 function GuidedEod({ onDone }) {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [streaming, setStreaming] = useState(false);
-  const [phase, setPhase] = useState('start');
-  const [noteSaved, setNoteSaved] = useState(false);
-  const [started, setStarted] = useState(false);
-  const [guidedError, setGuidedError] = useState(false);
-  const bottomRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+  const [briefing, setBriefing] = useState('');
+  const [questions, setQuestions] = useState([]);
+  const [answers, setAnswers] = useState([]);
+  const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const sendToNeuro = useCallback(async (userMessage, isStart = false) => {
-    const newMessages = isStart ? [] : [...messages, { role: 'user', content: userMessage }];
-    if (!isStart) setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-    setStreaming(true);
-    setInput('');
-
-    try {
-      const res = await fetch(apiUrl('/api/standup/eod/interactive'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages, phase: isStart ? 'start' : phase })
+    fetch(apiUrl('/api/standup/eod/questions'))
+      .then(r => r.json())
+      .then(d => {
+        setBriefing(d.briefing || 'Time to wrap up.');
+        setQuestions(d.questions || ["What was your biggest win today?", "Anything that didn't go to plan?", "How are you feeling?"]);
+        setAnswers(new Array(d.questions?.length || 3).fill(''));
+        setLoading(false);
+      })
+      .catch(() => {
+        setQuestions(["What was your biggest win today?", "Anything that didn't go to plan?", "How are you feeling?"]);
+        setAnswers(['', '', '']);
+        setBriefing('Time to wrap up.');
+        setLoading(false);
       });
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let fullText = '';
-      let hadError = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.type === 'text') {
-              fullText += data.content;
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', content: fullText };
-                return updated;
-              });
-            } else if (data.type === 'done') {
-              if (data.noteSaved) { setNoteSaved(true); setPhase('done'); }
-            } else if (data.type === 'error') {
-              hadError = true;
-              if (isStart) setGuidedError(true);
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', content: `Error: ${data.content}` };
-                return updated;
-              });
-            }
-          } catch {}
-        }
-      }
-
-      if (isStart && (hadError || !fullText)) setGuidedError(true);
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: 'assistant', content: fullText };
-        return updated;
-      });
-      setPhase(prev => prev === 'start' ? 'answering' : prev);
-    } catch (err) {
-      if (isStart) setGuidedError(true);
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: 'assistant', content: `Connection error: ${err.message}` };
-        return updated;
-      });
-    }
-    setStreaming(false);
-    inputRef.current?.focus();
-  }, [messages, phase]);
+  }, []);
 
   useEffect(() => {
-    if (!started) { setStarted(true); sendToNeuro('', true); }
-  }, [started, sendToNeuro]);
+    if (!loading && inputRef.current) inputRef.current.focus();
+  }, [step, loading]);
 
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text || streaming || phase === 'done') return;
-    sendToNeuro(text, false);
+  const handleNext = () => {
+    if (step < questions.length - 1) {
+      setStep(s => s + 1);
+    } else {
+      handleSubmit();
+    }
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (answers[step]?.trim()) handleNext();
+    }
   };
 
-  const cleanContent = (content) => {
-    return content.replace(/===EOD_NOTE_START===[\s\S]*?===EOD_NOTE_END===/g, '').trim();
+  const handleSubmit = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(apiUrl('/api/standup/eod/submit-guided'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers, questions })
+      });
+      if (res.ok) {
+        setDone(true);
+      } else {
+        setError('Failed to save EOD');
+      }
+    } catch {
+      setError('Connection error');
+    }
+    setSaving(false);
   };
 
-  if (guidedError) {
+  if (loading) return <div className="guided-loading">Loading your EOD...</div>;
+
+  if (error) {
     return (
       <div className="standup-done-banner" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
-        <span>Guided EOD unavailable — falling back to quick mode.</span>
+        <span>{error}</span>
         <button className="btn btn-secondary" onClick={onDone}>Switch to Quick</button>
       </div>
     );
   }
 
-  if (noteSaved) {
+  if (done) {
     return (
       <div className="guided-done">
         <div className="guided-done-icon">✓</div>
@@ -165,30 +129,51 @@ function GuidedEod({ onDone }) {
 
   return (
     <div className="guided-standup">
-      <div className="guided-messages">
-        {messages.length === 0 && <div className="guided-loading">Starting your EOD...</div>}
-        {messages.map((msg, i) => {
-          const content = msg.role === 'assistant' ? cleanContent(msg.content) : msg.content;
-          if (!content && msg.role === 'assistant' && i === messages.length - 1 && streaming) {
-            return <div key={i} className="guided-bubble assistant"><span className="guided-thinking">thinking...</span></div>;
-          }
-          if (!content) return null;
-          return (
-            <div key={i} className={`guided-bubble ${msg.role}`}>
-              {msg.role === 'assistant' ? <ReactMarkdown>{content}</ReactMarkdown> : <span>{content}</span>}
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
-      </div>
-      {phase !== 'done' && (
-        <div className="guided-input-row">
-          <textarea ref={inputRef} className="guided-input" value={input} onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown} placeholder={streaming ? '' : 'Your answer...'} rows={2}
-            disabled={streaming} autoFocus spellCheck={true} autoCorrect="on" />
-          <button className="guided-send" onClick={handleSend} disabled={streaming || !input.trim()}>→</button>
-        </div>
+      {briefing && step === 0 && (
+        <div className="guided-bubble assistant"><span>{briefing}</span></div>
       )}
+
+      {questions.slice(0, step).map((q, i) => (
+        <React.Fragment key={i}>
+          <div className="guided-bubble assistant">{q}</div>
+          <div className="guided-bubble user"><span>{answers[i]}</span></div>
+        </React.Fragment>
+      ))}
+
+      <div className="guided-bubble assistant">{questions[step]}</div>
+
+      <div className="guided-progress">
+        {questions.map((_, i) => (
+          <span key={i} className={`guided-progress-dot ${i < step ? 'done' : i === step ? 'active' : ''}`} />
+        ))}
+      </div>
+
+      <div className="guided-input-row">
+        <textarea
+          ref={inputRef}
+          className="guided-input"
+          value={answers[step] || ''}
+          onChange={e => {
+            const next = [...answers];
+            next[step] = e.target.value;
+            setAnswers(next);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Your answer..."
+          rows={2}
+          disabled={saving}
+          autoFocus
+          spellCheck={true}
+          autoCorrect="on"
+        />
+        <button
+          className="guided-send"
+          onClick={handleNext}
+          disabled={saving || !(answers[step]?.trim())}
+        >
+          {saving ? '...' : step === questions.length - 1 ? '✓' : '→'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -293,178 +278,97 @@ function BackupStandup({ onDone }) {
   );
 }
 
-// ── Guided standup ────────────────────────────────────────────────────────
+// ── Guided standup (deterministic stepper — AI generates questions, code asks them) ──
 
 function GuidedStandup({ onDone }) {
-  const [messages, setMessages] = useState([]); // { role: 'user'|'assistant', content: string }
-  const [input, setInput] = useState('');
-  const [streaming, setStreaming] = useState(false);
-  const [phase, setPhase] = useState('start');
-  const [noteSaved, setNoteSaved] = useState(false);
-  const [noteError, setNoteError] = useState(null);
-  const [started, setStarted] = useState(false);
-  const [guidedError, setGuidedError] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [briefing, setBriefing] = useState('');
+  const [questions, setQuestions] = useState([]);
+  const [answers, setAnswers] = useState([]);
+  const [step, setStep] = useState(0); // 0..questions.length-1 = answering, questions.length = saving
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState(null);
   const [mustDos, setMustDos] = useState([]);
-  const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Load must-dos + questions on mount
   useEffect(() => {
-    fetch(apiUrl('/api/standup/must-dos'))
+    fetch(apiUrl('/api/standup/must-dos')).then(r => r.json()).then(d => setMustDos(d.items || [])).catch(() => {});
+    fetch(apiUrl('/api/standup/questions'))
       .then(r => r.json())
-      .then(d => setMustDos(d.items || []))
-      .catch(() => {});
+      .then(d => {
+        setBriefing(d.briefing || 'Good morning.');
+        setQuestions(d.questions || ["What's your main focus today?", "Any blockers?", "Anything else?"]);
+        setAnswers(new Array(d.questions?.length || 3).fill(''));
+        setLoading(false);
+      })
+      .catch(() => {
+        setQuestions(["What's your main focus today?", "Any blockers or things that need escalating?", "Anything else before I write this up?"]);
+        setAnswers(['', '', '']);
+        setBriefing('Good morning.');
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (!loading && inputRef.current) inputRef.current.focus();
+  }, [step, loading]);
 
-  const sendToNeuro = useCallback(async (userMessage, isStart = false) => {
-    const newMessages = isStart
-      ? []
-      : [...messages, { role: 'user', content: userMessage }];
-
-    if (!isStart) {
-      setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+  const handleNext = () => {
+    if (step < questions.length - 1) {
+      setStep(s => s + 1);
+    } else {
+      handleSubmit();
     }
-
-    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-    setStreaming(true);
-    setInput('');
-
-    try {
-      const res = await fetch(apiUrl('/api/standup/interactive'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newMessages,
-          phase: isStart ? 'start' : phase
-        })
-      });
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let fullText = '';
-      let hadError = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.type === 'text') {
-              fullText += data.content;
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', content: fullText };
-                return updated;
-              });
-            } else if (data.type === 'done') {
-              if (data.noteSaved) {
-                setNoteSaved(true);
-                setPhase('done');
-              }
-            } else if (data.type === 'error') {
-              hadError = true;
-              if (isStart) {
-                setGuidedError(true);
-              }
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', content: `Error: ${data.content}` };
-                return updated;
-              });
-            }
-          } catch {}
-        }
-      }
-
-      // If first message errored, flag guided mode as unavailable
-      if (isStart && (hadError || !fullText)) {
-        setGuidedError(true);
-      }
-
-      // Update messages with the full assistant response for next round
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: 'assistant', content: fullText };
-        return updated;
-      });
-
-      setPhase(prev => {
-        if (prev === 'start') return 'answering';
-        return prev;
-      });
-
-    } catch (err) {
-      if (isStart) setGuidedError(true);
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: 'assistant', content: `Connection error: ${err.message}` };
-        return updated;
-      });
-    }
-
-    setStreaming(false);
-    inputRef.current?.focus();
-  }, [messages, phase]);
-
-  // Auto-start on mount
-  useEffect(() => {
-    if (!started) {
-      setStarted(true);
-      sendToNeuro('', true);
-    }
-  }, [started, sendToNeuro]);
-
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text || streaming || phase === 'done') return;
-    sendToNeuro(text, false);
   };
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (answers[step]?.trim()) handleNext();
     }
   };
 
-  // Filter out the daily note markers from display
-  const cleanContent = (content) => {
-    return content
-      .replace(/===DAILY_NOTE_START===[\s\S]*?===DAILY_NOTE_END===/g, '')
-      .trim();
+  const handleSubmit = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(apiUrl('/api/standup/submit-guided'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers, questions })
+      });
+      if (res.ok) {
+        setDone(true);
+      } else {
+        setError('Failed to save daily note');
+      }
+    } catch {
+      setError('Connection error');
+    }
+    setSaving(false);
   };
 
-  if (guidedError) {
+  if (loading) {
+    return <div className="guided-loading">Loading your standup...</div>;
+  }
+
+  if (error) {
     return (
       <div className="standup-done-banner" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
-        <MustDoPanel items={mustDos} />
-        <span>Guided mode unavailable — Claude API may be down.</span>
+        <span>{error}</span>
         <button className="btn btn-secondary" onClick={onDone}>Switch to Manual</button>
       </div>
     );
   }
 
-  if (noteSaved) {
+  if (done) {
     return (
       <div className="guided-done">
         <div className="guided-done-icon">✓</div>
         <div className="guided-done-title">Daily note written</div>
         <div className="guided-done-sub">Standup complete. Have a good one.</div>
-        {onDone && (
-          <button className="btn btn-secondary" style={{ marginTop: '16px' }} onClick={onDone}>
-            Close
-          </button>
-        )}
+        {onDone && <button className="btn btn-secondary" style={{ marginTop: '16px' }} onClick={onDone}>Close</button>}
       </div>
     );
   }
@@ -472,56 +376,61 @@ function GuidedStandup({ onDone }) {
   return (
     <div className="guided-standup">
       <MustDoPanel items={mustDos} />
-      <div className="guided-messages">
-        {messages.length === 0 && (
-          <div className="guided-loading">Starting your standup...</div>
-        )}
-        {messages.map((msg, i) => {
-          const content = msg.role === 'assistant' ? cleanContent(msg.content) : msg.content;
-          if (!content && msg.role === 'assistant' && i === messages.length - 1 && streaming) {
-            return (
-              <div key={i} className="guided-bubble assistant">
-                <span className="guided-thinking">thinking...</span>
-              </div>
-            );
-          }
-          if (!content) return null;
-          return (
-            <div key={i} className={`guided-bubble ${msg.role}`}>
-              {msg.role === 'assistant'
-                ? <ReactMarkdown>{content}</ReactMarkdown>
-                : <span>{content}</span>
-              }
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
-      </div>
 
-      {phase !== 'done' && (
-        <div className="guided-input-row">
-          <textarea
-            ref={inputRef}
-            className="guided-input"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={streaming ? '' : 'Your answer...'}
-            rows={2}
-            disabled={streaming}
-            autoFocus
-            spellCheck={true}
-            autoCorrect="on"
-          />
-          <button
-            className="guided-send"
-            onClick={handleSend}
-            disabled={streaming || !input.trim()}
-          >
-            →
-          </button>
+      {/* Briefing */}
+      {briefing && step === 0 && (
+        <div className="guided-bubble assistant">
+          <span>{briefing}</span>
         </div>
       )}
+
+      {/* Previous Q&A pairs */}
+      {questions.slice(0, step).map((q, i) => (
+        <React.Fragment key={i}>
+          <div className="guided-bubble assistant">{q}</div>
+          <div className="guided-bubble user"><span>{answers[i]}</span></div>
+        </React.Fragment>
+      ))}
+
+      {/* Current question */}
+      <div className="guided-bubble assistant">
+        {questions[step]}
+      </div>
+
+      {/* Progress */}
+      <div className="guided-progress">
+        {questions.map((_, i) => (
+          <span key={i} className={`guided-progress-dot ${i < step ? 'done' : i === step ? 'active' : ''}`} />
+        ))}
+      </div>
+
+      {/* Input */}
+      <div className="guided-input-row">
+        <textarea
+          ref={inputRef}
+          className="guided-input"
+          value={answers[step] || ''}
+          onChange={e => {
+            const next = [...answers];
+            next[step] = e.target.value;
+            setAnswers(next);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Your answer..."
+          rows={2}
+          disabled={saving}
+          autoFocus
+          spellCheck={true}
+          autoCorrect="on"
+        />
+        <button
+          className="guided-send"
+          onClick={handleNext}
+          disabled={saving || !(answers[step]?.trim())}
+        >
+          {saving ? '...' : step === questions.length - 1 ? '✓' : '→'}
+        </button>
+      </div>
     </div>
   );
 }

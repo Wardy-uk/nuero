@@ -378,9 +378,398 @@ async function preWarmEod() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 6A: Deterministic guided flow — AI generates questions, code asks them
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Question cache ──
+const questionCache = {
+  standup: { date: null, briefing: null, questions: null, warming: false },
+  eod: { date: null, briefing: null, questions: null, warming: false },
+};
+
+const STANDUP_FALLBACK_QUESTIONS = [
+  "What's your main focus today?",
+  "Any blockers or things that need escalating?",
+  "Anything else before I write this up?"
+];
+
+const EOD_FALLBACK_QUESTIONS = [
+  "What was your biggest win today?",
+  "Anything that didn't go to plan or got in the way?",
+  "How are you feeling — energy levels, stress, anything to note?"
+];
+
+/**
+ * Generate standup questions + briefing from context via AI.
+ * Returns { briefing, questions } or null.
+ */
+async function generateStandupQuestions() {
+  const ctx = await buildStandupContext();
+  const today = new Date();
+  const dow = today.toLocaleDateString('en-GB', { weekday: 'long' });
+  const isMonday = today.getDay() === 1;
+
+  const prompt = `Generate a morning standup briefing and 3 questions for Nick Ward, Head of Technical Support at Nurtur.
+
+Context:
+${ctx.mustDoItems?.length ? `Must-dos: ${ctx.mustDoItems.length} non-negotiable items` : 'No must-dos'}
+${ctx.systemPrompt.match(/Queue:.*?\./)?.[0] || 'No queue data'}
+${ctx.systemPrompt.match(/90-day plan:.*?\./)?.[0] || ''}
+${ctx.systemPrompt.match(/Carry-overs.*?\./)?.[0] || 'No carry-overs'}
+${ctx.systemPrompt.match(/Today's calendar:.*?\./)?.[0] || 'No meetings'}
+Day: ${dow}${isMonday ? ' (Monday)' : ''}
+
+Output EXACTLY this format, nothing else:
+BRIEFING: [2-3 sentence morning context — queue status, key priorities, calendar highlights]
+Q1: [first question — about main focus today]
+Q2: [second question — about blockers or escalations]
+Q3: [third question — ${isMonday ? 'about the week ahead' : 'anything else or how they are feeling'}]`;
+
+  try {
+    const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
+        prompt,
+        stream: false,
+        options: { temperature: 0.6, num_ctx: 2048, num_predict: 300 }
+      }),
+      signal: AbortSignal.timeout(300000)
+    });
+
+    if (ollamaRes.ok) {
+      const data = await ollamaRes.json();
+      const text = data.response || '';
+      return _parseQuestionResponse(text);
+    }
+  } catch (e) {
+    console.warn('[Standup] Ollama question gen failed:', e.message);
+  }
+
+  // OpenAI fallback
+  try {
+    const aiRouting = require('../services/ai-routing');
+    const result = await aiRouting.runTask('standup_questions', prompt);
+    if (result?.text) return _parseQuestionResponse(result.text);
+  } catch {}
+
+  return null;
+}
+
+/**
+ * Generate EOD questions + briefing from context via AI.
+ */
+async function generateEodQuestions() {
+  const ctx = await buildEodContext();
+  const today = new Date();
+  const dow = today.toLocaleDateString('en-GB', { weekday: 'long' });
+  const isFriday = today.getDay() === 5;
+
+  // Extract focus summary from the system prompt
+  const focusMatch = ctx.systemPrompt.match(/Morning focus items:.*?\./)?.[0] || 'No morning standup found';
+  const statsMatch = ctx.systemPrompt.match(/Activity today:.*?\./)?.[0] || '';
+  const queueMatch = ctx.systemPrompt.match(/Queue at EOD:.*?\./)?.[0] || '';
+
+  const prompt = `Generate an end-of-day briefing and 3 questions for Nick Ward, Head of Technical Support at Nurtur.
+
+Context:
+${focusMatch}
+${statsMatch}
+${queueMatch}
+Day: ${dow}${isFriday ? ' (Friday)' : ''}
+
+Output EXACTLY this format, nothing else:
+BRIEFING: [2-3 sentence EOD summary — what was planned, what happened, queue state]
+Q1: [first question — about biggest win today]
+Q2: [second question — about what didn't go to plan]
+Q3: [third question — ${isFriday ? 'about heading into the weekend' : 'about energy/feelings/stress'}]`;
+
+  try {
+    const ollamaRes = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
+        prompt,
+        stream: false,
+        options: { temperature: 0.6, num_ctx: 2048, num_predict: 300 }
+      }),
+      signal: AbortSignal.timeout(300000)
+    });
+
+    if (ollamaRes.ok) {
+      const data = await ollamaRes.json();
+      const text = data.response || '';
+      return _parseQuestionResponse(text);
+    }
+  } catch (e) {
+    console.warn('[EOD] Ollama question gen failed:', e.message);
+  }
+
+  try {
+    const aiRouting = require('../services/ai-routing');
+    const result = await aiRouting.runTask('eod_questions', prompt);
+    if (result?.text) return _parseQuestionResponse(result.text);
+  } catch {}
+
+  return null;
+}
+
+function _parseQuestionResponse(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let briefing = '';
+  const questions = [];
+
+  for (const line of lines) {
+    if (line.startsWith('BRIEFING:')) {
+      briefing = line.replace('BRIEFING:', '').trim();
+    } else if (/^Q\d:/.test(line)) {
+      questions.push(line.replace(/^Q\d:\s*/, '').trim());
+    }
+  }
+
+  if (questions.length >= 2) {
+    return { briefing: briefing || null, questions: questions.slice(0, 3) };
+  }
+  return null;
+}
+
+// Pre-warm questions (called by scheduler)
+async function preWarmStandupQuestions() {
+  const todayStr = obsidianService.todayDateString();
+  const cache = questionCache.standup;
+  if (cache.date === todayStr && cache.questions) return;
+  if (cache.warming) return;
+  cache.warming = true;
+  try {
+    const result = await generateStandupQuestions();
+    if (result) {
+      cache.date = todayStr;
+      cache.briefing = result.briefing;
+      cache.questions = result.questions;
+      console.log(`[Standup] Questions pre-warmed: ${result.questions.length} questions`);
+    }
+  } catch (e) {
+    console.error('[Standup] Question pre-warm failed:', e.message);
+  } finally { cache.warming = false; }
+}
+
+async function preWarmEodQuestions() {
+  const todayStr = obsidianService.todayDateString();
+  const cache = questionCache.eod;
+  if (cache.date === todayStr && cache.questions) return;
+  if (cache.warming) return;
+  cache.warming = true;
+  try {
+    const result = await generateEodQuestions();
+    if (result) {
+      cache.date = todayStr;
+      cache.briefing = result.briefing;
+      cache.questions = result.questions;
+      console.log(`[EOD] Questions pre-warmed: ${result.questions.length} questions`);
+    }
+  } catch (e) {
+    console.error('[EOD] Question pre-warm failed:', e.message);
+  } finally { cache.warming = false; }
+}
+
+// GET /api/standup/questions — get pre-generated standup questions
+router.get('/questions', async (req, res) => {
+  const todayStr = obsidianService.todayDateString();
+  const cache = questionCache.standup;
+
+  // Try cached first
+  if (cache.date === todayStr && cache.questions) {
+    return res.json({ briefing: cache.briefing, questions: cache.questions, source: 'cached' });
+  }
+
+  // Generate on-demand if not cached
+  try {
+    const result = await generateStandupQuestions();
+    if (result) {
+      cache.date = todayStr;
+      cache.briefing = result.briefing;
+      cache.questions = result.questions;
+      return res.json({ ...result, source: 'generated' });
+    }
+  } catch {}
+
+  // Deterministic fallback — build briefing from context
+  let briefing = '';
+  try {
+    const ctx = await buildStandupContext();
+    const queue = ctx.systemPrompt.match(/Queue:.*?\./)?.[0] || '';
+    const mustDos = ctx.mustDoItems?.length || 0;
+    briefing = `${mustDos > 0 ? `You have ${mustDos} must-dos today. ` : ''}${queue || 'Queue data loading.'}`;
+  } catch {}
+
+  res.json({ briefing: briefing || 'Good morning.', questions: STANDUP_FALLBACK_QUESTIONS, source: 'fallback' });
+});
+
+// GET /api/standup/eod/questions — get pre-generated EOD questions
+router.get('/eod/questions', async (req, res) => {
+  const todayStr = obsidianService.todayDateString();
+  const cache = questionCache.eod;
+
+  if (cache.date === todayStr && cache.questions) {
+    return res.json({ briefing: cache.briefing, questions: cache.questions, source: 'cached' });
+  }
+
+  try {
+    const result = await generateEodQuestions();
+    if (result) {
+      cache.date = todayStr;
+      cache.briefing = result.briefing;
+      cache.questions = result.questions;
+      return res.json({ ...result, source: 'generated' });
+    }
+  } catch {}
+
+  res.json({ briefing: 'Time to wrap up.', questions: EOD_FALLBACK_QUESTIONS, source: 'fallback' });
+});
+
+// POST /api/standup/submit-guided — assemble daily note from guided answers
+router.post('/submit-guided', (req, res) => {
+  try {
+    const { answers, questions } = req.body;
+    if (!answers || !Array.isArray(answers) || answers.length < 2) {
+      return res.status(400).json({ error: 'At least 2 answers required' });
+    }
+
+    const todayStr = obsidianService.todayDateString();
+    const d = new Date();
+    const dow = d.toLocaleDateString('en-GB', { weekday: 'long' });
+    const dayNum = d.getDate();
+    const monthName = d.toLocaleDateString('en-GB', { month: 'long' });
+    const year = d.getFullYear();
+    const jan1 = new Date(year, 0, 1);
+    const weekNum = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    const weekStr = `${year}-W${String(weekNum).padStart(2, '0')}`;
+
+    // Parse answers
+    const focus = answers[0] || '';
+    const blockers = answers[1] || 'None';
+    const extra = answers[2] || '';
+
+    // Build focus items from first answer
+    const focusLines = focus.split(/[,;\n]/)
+      .map(l => l.trim())
+      .filter(l => l.length > 0)
+      .map(l => `- [ ] ${l} #focus`);
+    if (focusLines.length === 0) focusLines.push(`- [ ] ${focus} #focus`);
+
+    // Must-dos
+    let mustDoSection = '';
+    try {
+      const mustDoItems = obsidianService.parseVaultMustDos();
+      if (mustDoItems.length > 0) {
+        mustDoSection = `## Must Do Today\n${mustDoItems.map(m => `- [ ] ${m.text} #mustdo`).join('\n')}\n\n`;
+      }
+    } catch {}
+
+    // Carry-overs
+    let carrySection = '- None';
+    try {
+      const prev = obsidianService.readPreviousDailyNote();
+      if (prev) {
+        const lines = prev.content.split('\n');
+        let inCarry = false;
+        const carries = [];
+        for (const line of lines) {
+          if (line.startsWith('## Carry') || line.startsWith('## Focus Today')) { inCarry = true; continue; }
+          if (line.startsWith('## ') && inCarry) break;
+          if (inCarry && line.match(/^\s*-\s+\[\s\]/)) carries.push(line.trim());
+        }
+        if (carries.length > 0) carrySection = carries.join('\n');
+      }
+    } catch {}
+
+    // Queue
+    let queueLine = '- No queue data';
+    try {
+      const db = require('../db/database');
+      const queue = db.getQueueSummary();
+      if (queue.total > 0) {
+        queueLine = `- ${queue.total} open tickets, ${queue.at_risk_count} at risk, ${queue.open_p1s} P1s`;
+      }
+    } catch {}
+
+    const content = `---
+type: daily
+date: ${todayStr}
+week: ${weekStr}
+---
+# Daily Note — ${dow} ${dayNum} ${monthName} ${year}
+
+${mustDoSection}## Focus Today
+${focusLines.join('\n')}
+
+## Carry-Overs
+${carrySection}
+
+## Blockers
+- ${blockers === 'None' || !blockers.trim() ? 'None' : blockers}
+
+## Queue Watch
+${queueLine}
+
+## Notes
+${extra && extra.trim() ? `- ${extra}` : '- None'}
+`;
+
+    obsidianService.writeDailyNote(content);
+    nudges.markStandupDone();
+    try { require('../services/activity').trackVaultWrite('daily'); } catch {}
+    try { require('../services/activity').trackStandupDone(new Date().getHours(), true); } catch {}
+
+    res.json({ ok: true, message: 'Daily note written' });
+  } catch (e) {
+    console.error('[Standup] Submit guided failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/standup/eod/submit-guided — assemble EOD section from guided answers
+router.post('/eod/submit-guided', (req, res) => {
+  try {
+    const { answers } = req.body;
+    if (!answers || !Array.isArray(answers) || answers.length < 2) {
+      return res.status(400).json({ error: 'At least 2 answers required' });
+    }
+
+    const todayStr = obsidianService.todayDateString();
+    const win = answers[0] || 'Nothing specific';
+    const didntGo = answers[1] || 'Nothing flagged';
+    const feeling = answers[2] || '';
+
+    // Queue context
+    let queueLine = '';
+    try {
+      const db = require('../db/database');
+      const queue = db.getQueueSummary();
+      if (queue.total > 0) queueLine = `\n**Queue:** ${queue.total} open, ${queue.at_risk_count} at risk`;
+    } catch {}
+
+    const eodContent = `\n## EOD — ${todayStr}\n\n**Win:** ${win}\n\n**Didn't go to plan:** ${didntGo}\n\n**Feeling:** ${feeling || 'Not noted'}${queueLine}\n`;
+
+    obsidianService.appendToDailyNote(eodContent);
+    nudges.markEodDone();
+    try { require('../services/activity').trackVaultWrite('daily'); } catch {}
+
+    res.json({ ok: true, message: 'EOD written to daily note' });
+  } catch (e) {
+    console.error('[EOD] Submit guided failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Export for scheduler
 router.preWarmStandup = preWarmStandup;
 router.preWarmEod = preWarmEod;
+router.preWarmStandupQuestions = preWarmStandupQuestions;
+router.preWarmEodQuestions = preWarmEodQuestions;
 
 // GET /api/standup
 router.get('/', (req, res) => {

@@ -16,21 +16,23 @@ function start() {
   // Start Jira polling (fetches on startup + every 5 min)
   jira.startPolling();
 
-  // 8:55am weekdays — pre-warm standup (loads Ollama model + generates Phase 1)
+  // 8:55am weekdays — pre-warm standup questions
   cron.schedule('55 8 * * 1-5', () => {
     console.log('[Scheduler] 8:55am — pre-warming standup');
     try {
       const standupRouter = require('../routes/standup');
       if (standupRouter.preWarmStandup) standupRouter.preWarmStandup();
+      if (standupRouter.preWarmStandupQuestions) standupRouter.preWarmStandupQuestions();
     } catch (e) { console.error('[Scheduler] Pre-warm error:', e.message); }
   });
 
-  // 4:55pm weekdays — pre-warm EOD (loads Ollama model + generates Phase 1)
+  // 4:55pm weekdays — pre-warm EOD questions
   cron.schedule('55 16 * * 1-5', () => {
     console.log('[Scheduler] 4:55pm — pre-warming EOD');
     try {
       const standupRouter = require('../routes/standup');
       if (standupRouter.preWarmEod) standupRouter.preWarmEod();
+      if (standupRouter.preWarmEodQuestions) standupRouter.preWarmEodQuestions();
     } catch (e) { console.error('[Scheduler] EOD pre-warm error:', e.message); }
   });
 
