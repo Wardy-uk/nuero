@@ -585,12 +585,13 @@ export default function StandupEditor() {
   const [showEod, setShowEod] = useState(false);
   const [eodMode, setEodMode] = useState('guided'); // 'guided' | 'quick'
   const [guidedDone, setGuidedDone] = useState(false);
+  const [forceRedo, setForceRedo] = useState(false);
 
   const { data: standupData, status: standupStatus } = useCachedFetch('/api/standup');
   const { data: ritualData } = useCachedFetch('/api/standup/ritual-state');
 
-  // Check if standup already done today
-  const standupDone = ritualData?.standupDoneToday || guidedDone;
+  // Check if standup already done today — forceRedo overrides
+  const standupDone = forceRedo ? false : (ritualData?.standupDoneToday || guidedDone);
 
   useEffect(() => {
     if (standupData && !contentSet) {
@@ -668,10 +669,10 @@ export default function StandupEditor() {
       </div>
 
       {/* Already done banner */}
-      {standupDone && mode === 'guided' && !guidedDone && (
+      {standupDone && mode === 'guided' && (
         <div className="standup-done-banner">
           ✓ Standup already done today.
-          <button className="standup-redo-btn" onClick={() => setGuidedDone(false)}>
+          <button className="standup-redo-btn" onClick={() => setForceRedo(true)}>
             Redo
           </button>
         </div>
@@ -679,7 +680,7 @@ export default function StandupEditor() {
 
       {/* Guided mode */}
       {mode === 'guided' && !standupDone && (
-        <GuidedStandup onDone={() => { setGuidedDone(true); setMode('manual'); }} />
+        <GuidedStandup onDone={() => { setGuidedDone(true); setForceRedo(false); setMode('manual'); }} />
       )}
 
       {/* Guided done */}
