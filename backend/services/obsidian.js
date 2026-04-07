@@ -783,7 +783,7 @@ function parseNinetyDayPlan() {
   const lines = content.split('\n');
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li];
-    const lineNumber = li + 1; // 1-based for file operations
+    const lineNumber = li; // 0-based — toggleTask uses 0-based indexing
     const m = line.match(taskRegex);
     if (m) {
       const status = m[1]; // ' ', 'x', '>', '/'
