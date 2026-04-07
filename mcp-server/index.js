@@ -94,7 +94,11 @@ server.tool('search_vault', 'Search the Obsidian vault for notes', {
   const data = await neuroApi(`/api/vault/search?query=${encodeURIComponent(query)}&limit=${maxResults || 5}`, {
     headers: VAULT_API_KEY ? { 'X-Api-Key': VAULT_API_KEY } : {},
   });
-  const results = (data.results || []).map(r => `### ${r.name}\n${r.excerpt || r.preview || ''}`).join('\n\n');
+  const results = (data.results || []).map(r => {
+    const title = r.name || r.path?.split('/').pop()?.replace('.md', '') || 'Untitled';
+    const excerpt = r.excerpt || r.preview || (r.matches || []).map(m => m.text).join('\n') || '';
+    return `### ${title}\nPath: ${r.path || '?'}\n${excerpt}`;
+  }).join('\n\n');
   return { content: [{ type: 'text', text: results || 'No results found.' }] };
 });
 

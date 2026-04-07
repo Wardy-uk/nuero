@@ -115,7 +115,7 @@ router.get('/search', (req, res) => {
               matches.push({ line: i + 1, text: lines[i].substring(0, 200) });
             }
           }
-          results.push({ path: relPath, matches });
+          results.push({ path: relPath, name: entry.name.replace('.md', ''), matches });
         }
       }
     }
