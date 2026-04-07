@@ -40,6 +40,15 @@
   border-color: rgba(240, 160, 64, 0.25);
 }
 
+.focus-meta-btn {
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.focus-meta-btn:hover {
+  background: rgba(240, 160, 64, 0.15);
+  border-color: var(--warning);
+}
+
 .focus-meta-stale {
   color: var(--text-muted);
   opacity: 0.6;

@@ -130,7 +130,7 @@ export default function FocusPanel({ onNavigate }) {
           <h1 className="focus-title">{greeting}</h1>
           <div className="focus-meta">
             {context.standupDone === false && (
-              <span className="focus-meta-tag focus-meta-warn">Standup pending</span>
+              <button className="focus-meta-tag focus-meta-warn focus-meta-btn" onClick={() => onNavigate?.('standup')}>Standup pending →</button>
             )}
             {context.queueTotal > 0 && (
               <span className="focus-meta-tag">{context.queueTotal} tickets</span>

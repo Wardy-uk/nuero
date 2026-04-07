@@ -360,18 +360,23 @@ function collectNudges(ctx) {
                   isEod ? 65 + Math.min(nagCount * 3, 10) :
                   40 + Math.min(nagCount * 2, 10);
 
+    // Standup is non-negotiable before 11am — always shows in focus
+    const hour = new Date().getHours();
+    const standupCritical = isStandup && hour < 11;
+
     items.push({
       type: 'nudge',
       id: `nudge-${nudge.id}`,
-      title: isStandup ? 'Standup not done' :
+      title: isStandup ? 'Do your standup' :
              isEod ? 'End-of-day not done' :
              `${nudge.type} reminder`,
-      reason: nudge.message,
-      score,
-      urgency: nagCount >= 4 ? 'high' : nagCount >= 2 ? 'medium' : 'low',
+      reason: isStandup && standupCritical ? '2 minutes — do it before anything else' : nudge.message,
+      score: standupCritical ? 93 : score,
+      urgency: standupCritical ? 'critical' : (nagCount >= 4 ? 'high' : nagCount >= 2 ? 'medium' : 'low'),
       source: 'neuro',
       actionHint: isStandup ? 'Open Standup' : isEod ? 'Open EOD' : `Complete ${nudge.type}`,
       meta: { nagCount, type: nudge.type },
+      _unsuppressable: standupCritical,
     });
   }
   return items;
