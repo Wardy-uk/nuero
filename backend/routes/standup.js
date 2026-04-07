@@ -719,7 +719,7 @@ ${queueLine}
 ${extra && extra.trim() ? `- ${extra}` : '- None'}
 `;
 
-    obsidianService.writeDailyNote(content);
+    obsidianService.writeTodayDailyNote(content);
     nudges.markStandupDone();
     try { require('../services/activity').trackVaultWrite('daily'); } catch {}
     try { require('../services/activity').trackStandupDone(new Date().getHours(), true); } catch {}
