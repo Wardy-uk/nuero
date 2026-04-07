@@ -896,6 +896,7 @@ function toggleTask(filePath, lineNumber) {
   lines[lineNumber] = match[1] + newStatus + match[3];
 
   fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(filePath, 'task-toggle'); } catch {}
   return newStatus === 'x' ? 'done' : 'open';
 }
 
