@@ -149,10 +149,12 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
           <span className={`status-dot ollama-${ollamaHealth}`} title={`Ollama: ${ollamaHealth}${ollamaQueue > 0 ? ` (${ollamaQueue} queued)` : ''}`} />
           <span className="topbar-label">Ollama</span>
         </div>
-        <div className="topbar-indicator">
-          {statusDot(chatOk)}
-          <span className="topbar-label">{chatProvider}</span>
-        </div>
+        {chatProvider !== 'Ollama' && (
+          <div className="topbar-indicator">
+            {statusDot(chatOk)}
+            <span className="topbar-label">{chatProvider}</span>
+          </div>
+        )}
         <div className="topbar-indicator">
           {statusDot(jiraStatus === 'ok')}
           <span className="topbar-label">Jira {jiraStatus === 'not_configured' ? '(not configured)' : ''}</span>
