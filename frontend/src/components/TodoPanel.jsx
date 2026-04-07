@@ -278,9 +278,11 @@ export default function TodoPanel({ focusContext, onClearContext }) {
           body: JSON.stringify({ filePath: todo.filePath, lineNumber: todo.lineNumber })
         });
       }
+      // Small delay to let vault cache invalidate before refetch
+      await new Promise(r => setTimeout(r, 300));
       if (mode === 'focused') refreshFocus();
       else fetchTodos();
-    } catch (e) { /* ignore */ }
+    } catch (e) { console.error('[TodoPanel] Toggle error:', e); }
     setToggling(prev => ({ ...prev, [key]: false }));
   };
 

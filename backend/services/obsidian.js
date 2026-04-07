@@ -896,6 +896,9 @@ function toggleTask(filePath, lineNumber) {
   lines[lineNumber] = match[1] + newStatus + match[3];
 
   fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
+  // Invalidate vault cache synchronously (vault-hooks debounces 2s which is too slow for UI)
+  try { require('./vault-cache').invalidate('task-toggle'); } catch {}
+  // Also fire the async vault-hooks for embeddings/entities (debounced is fine for these)
   try { require('./vault-hooks').onVaultWrite(filePath, 'task-toggle'); } catch {}
   return newStatus === 'x' ? 'done' : 'open';
 }
