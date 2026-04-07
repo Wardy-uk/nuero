@@ -77,7 +77,11 @@ async function buildStandupContext() {
   let mustDoItems = [];
   try {
     mustDoItems = obsidianService.parseVaultMustDos();
-    if (mustDoItems.length > 0) mustDoContext = `MUST DO (non-negotiable): ${mustDoItems.map(m => m.text).join('; ')}.`;
+    if (mustDoItems.length > 0) {
+      // Limit prompt to top 5 must-dos to avoid blowing context window on small models
+      const topMustDos = mustDoItems.slice(0, 5);
+      mustDoContext = `MUST DO (${mustDoItems.length} non-negotiable items, top ${topMustDos.length}): ${topMustDos.map(m => m.text).join('; ')}${mustDoItems.length > 5 ? ` (+${mustDoItems.length - 5} more)` : ''}.`;
+    }
   } catch {}
 
   const systemPrompt = `You are NEURO running Nick's morning standup ritual. Nick is Head of Technical Support at Nurtur Limited.
@@ -95,7 +99,7 @@ ${carryOvers.length > 0 ? `Carry-overs from yesterday: ${carryOvers.join('; ')}`
 
 STANDUP FLOW — follow this exactly:
 
-Phase 1 (start): ${mustDoItems.length > 0 ? `Lead with Must Do items: "You have ${mustDoItems.length} non-negotiable${mustDoItems.length > 1 ? 's' : ''} today: ${mustDoItems.map(m => m.text).join('; ')}." Then give a brief morning context (2-3 lines max — queue status, at-risk, plan).` : 'Give a brief, sharp morning brief (2-3 lines max — queue status, any at-risk, one key thing from the plan).'} Then ask ONE question: "What's your main focus today?"
+Phase 1 (start): ${mustDoItems.length > 0 ? `Say "You have ${mustDoItems.length} must-dos today." Do NOT list them — they're shown separately in the UI. Give a brief morning context (2-3 lines max — queue status, at-risk, plan).` : 'Give a brief, sharp morning brief (2-3 lines max — queue status, any at-risk, one key thing from the plan).'} Then ask ONE question: "What's your main focus today?"
 
 Phase 2 (after focus answer): Ask: "Any blockers or things that need escalating?"
 
@@ -111,7 +115,7 @@ date: ${todayStr}
 # Daily Note — ${dow} ${todayStr}
 ${mustDoItems.length > 0 ? `
 ## Must Do Today
-${mustDoItems.map(m => `- [ ] ${m.text} #mustdo`).join('\n')}
+[${mustDoItems.length} items — already tracked in vault, do NOT list them here]
 ` : ''}
 ## Focus Today
 [checkbox list of focus items Nick mentioned, each as: - [ ] item text — do NOT include any Must Do items here]
@@ -855,7 +859,7 @@ router.post('/interactive', async (req, res) => {
             model: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
             messages: ollamaMessages,
             stream: true,
-            options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+            options: { temperature: 0.7, num_ctx: 4096, num_predict: 1024 }
           }),
           signal: AbortSignal.timeout(180000) // 3 min — Pi 5 can be slow on cold start
         });
@@ -994,7 +998,7 @@ router.post('/eod/interactive', async (req, res) => {
             model: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
             messages: ollamaMessages,
             stream: true,
-            options: { temperature: 0.7, num_ctx: 2048, num_predict: 512 }
+            options: { temperature: 0.7, num_ctx: 4096, num_predict: 1024 }
           }),
           signal: AbortSignal.timeout(180000)
         });
