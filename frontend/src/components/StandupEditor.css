@@ -221,7 +221,13 @@
   color: #fff;
   padding: 1px 7px;
   border-radius: 10px;
+}
+
+.mustdo-expand {
   margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.15s;
 }
 
 .mustdo-list {

@@ -194,23 +194,27 @@ function GuidedEod({ onDone }) {
 }
 
 function MustDoPanel({ items }) {
+  const [expanded, setExpanded] = useState(false);
   if (!items || items.length === 0) return null;
   return (
     <div className="mustdo-panel">
-      <div className="mustdo-header">
+      <div className="mustdo-header" onClick={() => setExpanded(e => !e)} style={{ cursor: 'pointer' }}>
         <span className="mustdo-icon">!</span>
         <span className="mustdo-title">Must Do Today — Non-Negotiable</span>
         <span className="mustdo-count">{items.length}</span>
+        <span className="mustdo-expand">{expanded ? '▾' : '▸'}</span>
       </div>
-      <ul className="mustdo-list">
-        {items.map((item, i) => (
-          <li key={i} className="mustdo-item">
-            <span className="mustdo-bullet" />
-            <span>{item.text}</span>
-            {item.due_date && <span className="mustdo-due">{item.due_date}</span>}
-          </li>
-        ))}
-      </ul>
+      {expanded && (
+        <ul className="mustdo-list">
+          {items.map((item, i) => (
+            <li key={i} className="mustdo-item">
+              <span className="mustdo-bullet" />
+              <span>{item.text}</span>
+              {item.due_date && <span className="mustdo-due">{item.due_date}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
