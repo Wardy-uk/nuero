@@ -437,3 +437,192 @@
   padding: 4px 10px;
   font-size: 11px;
 }
+
+/* ── MoSCoW Review ── */
+.moscow-review {
+  max-width: 600px;
+  width: 100%;
+}
+
+.moscow-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.moscow-title {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.moscow-progress-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.moscow-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+}
+.moscow-close:hover {
+  color: var(--text-primary);
+}
+
+.moscow-progress-track {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.moscow-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.moscow-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 24px 20px;
+  margin-bottom: 20px;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.moscow-task-text {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.moscow-task-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.moscow-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.moscow-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 12px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.moscow-btn:hover {
+  border-color: var(--moscow-color);
+  background: color-mix(in srgb, var(--moscow-color) 8%, var(--bg-secondary));
+  transform: translateY(-1px);
+}
+.moscow-btn:active {
+  transform: translateY(0);
+}
+
+.moscow-btn-label {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--moscow-color);
+}
+
+.moscow-btn-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.moscow-skip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.moscow-skip-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px 12px;
+}
+.moscow-skip-btn:hover {
+  color: var(--accent);
+}
+
+.moscow-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.moscow-done {
+  text-align: center;
+  padding: 48px 24px;
+}
+.moscow-done-icon {
+  font-size: 32px;
+  color: var(--success, #22c55e);
+  margin-bottom: 12px;
+}
+.moscow-done-title {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.moscow-done-stats {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.moscow-loading {
+  text-align: center;
+  padding: 48px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .moscow-buttons {
+    grid-template-columns: 1fr 1fr;
+  }
+  .moscow-hint {
+    display: none;
+  }
+}

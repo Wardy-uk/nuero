@@ -748,6 +748,50 @@ function getFrequentLocations(daysBack = 30, minVisits = 2) {
   return rows;
 }
 
+// ── MoSCoW Task Prioritisation ──
+
+function _taskKey(filePath, lineNumber, text) {
+  // Stable key: path + first 60 chars of text (line numbers shift when file is edited)
+  const shortText = (text || '').substring(0, 60).replace(/\s+/g, ' ').trim();
+  return `${filePath || 'unknown'}::${shortText}`;
+}
+
+function setTaskMoscow(filePath, lineNumber, text, moscow) {
+  const key = _taskKey(filePath, lineNumber, text);
+  getDb().run(
+    `INSERT OR REPLACE INTO task_moscow (task_key, moscow, task_text, updated_at)
+     VALUES (?, ?, ?, datetime('now'))`,
+    [key, moscow, (text || '').substring(0, 200)]
+  );
+  return key;
+}
+
+function getTaskMoscow(filePath, lineNumber, text) {
+  const key = _taskKey(filePath, lineNumber, text);
+  const stmt = getDb().prepare('SELECT moscow FROM task_moscow WHERE task_key = ?');
+  stmt.bind([key]);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    return row.moscow;
+  }
+  stmt.free();
+  return null;
+}
+
+function getAllTaskMoscow() {
+  const stmt = getDb().prepare('SELECT task_key, moscow, task_text, updated_at FROM task_moscow ORDER BY updated_at DESC');
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function deleteTaskMoscow(filePath, lineNumber, text) {
+  const key = _taskKey(filePath, lineNumber, text);
+  getDb().run('DELETE FROM task_moscow WHERE task_key = ?', [key]);
+}
+
 // ── SARA Actions ──
 
 function createSaraAction(type, payload, confidence, reason, focusItemId) {
@@ -891,6 +935,11 @@ module.exports = {
   getLocationVisits,
   getLocationVisitsByPlace,
   getFrequentLocations,
+  // MoSCoW
+  setTaskMoscow,
+  getTaskMoscow,
+  getAllTaskMoscow,
+  deleteTaskMoscow,
   // SARA Actions
   createSaraAction,
   getPendingSaraActions,

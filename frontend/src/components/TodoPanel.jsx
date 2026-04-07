@@ -45,6 +45,137 @@ function getTopGroup(source) {
   return 'other';
 }
 
+// ── MoSCoW Review ──
+const MOSCOW_OPTIONS = [
+  { key: 'must', label: 'Must', color: '#ef4444', desc: 'Non-negotiable' },
+  { key: 'should', label: 'Should', color: '#f59e0b', desc: 'Important but not critical' },
+  { key: 'could', label: 'Could', color: '#3b82f6', desc: 'Nice to have' },
+  { key: 'wont', label: "Won't", color: '#6b7280', desc: 'Not now' },
+];
+
+function MoscowReview({ onClose }) {
+  const [tasks, setTasks] = useState([]);
+  const [index, setIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ total: 0, triaged: 0, untriaged: 0 });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(apiUrl('/api/todos/moscow/review'))
+      .then(r => r.json())
+      .then(d => {
+        setTasks(d.tasks || []);
+        setStats({ total: d.total, triaged: d.triaged, untriaged: d.untriaged });
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const current = tasks[index];
+  const progress = tasks.length > 0 ? Math.round(((index) / tasks.length) * 100) : 0;
+
+  const handleRate = async (moscow) => {
+    if (!current || saving) return;
+    setSaving(true);
+    try {
+      await fetch(apiUrl('/api/todos/moscow'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath: current.filePath,
+          lineNumber: current.lineNumber,
+          text: current.text,
+          moscow,
+        })
+      });
+    } catch {}
+    setSaving(false);
+    if (index < tasks.length - 1) {
+      setIndex(i => i + 1);
+    } else {
+      // Done
+      setIndex(tasks.length);
+    }
+  };
+
+  const handleSkip = () => {
+    if (index < tasks.length - 1) setIndex(i => i + 1);
+    else setIndex(tasks.length);
+  };
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === '1' || e.key === 'm' || e.key === 'M') handleRate('must');
+      else if (e.key === '2' || e.key === 's' || e.key === 'S') handleRate('should');
+      else if (e.key === '3' || e.key === 'c' || e.key === 'C') handleRate('could');
+      else if (e.key === '4' || e.key === 'w' || e.key === 'W') handleRate('wont');
+      else if (e.key === ' ' || e.key === 'ArrowRight') { e.preventDefault(); handleSkip(); }
+      else if (e.key === 'Escape') onClose?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  });
+
+  if (loading) return <div className="moscow-review"><div className="moscow-loading">Loading tasks...</div></div>;
+
+  if (tasks.length === 0 || index >= tasks.length) {
+    return (
+      <div className="moscow-review">
+        <div className="moscow-done">
+          <div className="moscow-done-icon">✓</div>
+          <div className="moscow-done-title">All tasks triaged</div>
+          <div className="moscow-done-stats">{stats.triaged + (index)} of {stats.total} rated</div>
+          <button className="btn btn-primary" onClick={onClose} style={{ marginTop: '16px' }}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="moscow-review">
+      <div className="moscow-header">
+        <h2 className="moscow-title">MoSCoW Triage</h2>
+        <div className="moscow-progress-info">
+          <span>{index + 1} of {tasks.length} remaining</span>
+          <button className="moscow-close" onClick={onClose}>✕</button>
+        </div>
+      </div>
+
+      <div className="moscow-progress-track">
+        <div className="moscow-progress-fill" style={{ width: `${progress}%` }} />
+      </div>
+
+      <div className="moscow-card">
+        <div className="moscow-task-text">{current.text}</div>
+        <div className="moscow-task-meta">
+          {current.source && <span className={`todo-source ${sourceClass(current.source)}`}>{current.source}</span>}
+          {current.due_date && <span className={`todo-due ${isOverdue(current.due_date) ? 'due-overdue' : ''}`}>{formatDue(current.due_date)}</span>}
+        </div>
+      </div>
+
+      <div className="moscow-buttons">
+        {MOSCOW_OPTIONS.map(opt => (
+          <button
+            key={opt.key}
+            className="moscow-btn"
+            style={{ '--moscow-color': opt.color }}
+            onClick={() => handleRate(opt.key)}
+            disabled={saving}
+          >
+            <span className="moscow-btn-label">{opt.label}</span>
+            <span className="moscow-btn-desc">{opt.desc}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="moscow-skip">
+        <button className="moscow-skip-btn" onClick={handleSkip}>Skip →</button>
+        <span className="moscow-hint">Keys: 1-4 to rate, Space to skip, Esc to close</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Shared todo item renderer ──
 function TodoItem({ todo, toggling, onToggle, expanded, onExpand }) {
   const overdue = isOverdue(todo.due_date);
@@ -91,6 +222,13 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   const [toggling, setToggling] = useState({});
   const [syncing, setSyncing] = useState(false);
   const [expanded, setExpanded] = useState(null);
+  const [showMoscow, setShowMoscow] = useState(false);
+  const [moscowRatings, setMoscowRatings] = useState({});
+
+  // Load MoSCoW ratings
+  useEffect(() => {
+    fetch(apiUrl('/api/todos/moscow')).then(r => r.json()).then(d => setMoscowRatings(d.ratings || {})).catch(() => {});
+  }, [showMoscow]); // Refresh when moscow review closes
 
   // Clear nav context after consuming it
   useEffect(() => {
@@ -154,6 +292,10 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     const breakdown = focusData?.breakdown || {};
     const loading = focusData === null;
 
+    if (showMoscow) {
+      return <MoscowReview onClose={() => setShowMoscow(false)} />;
+    }
+
     return (
       <div className="todo-container">
         <div className="todo-header">
@@ -162,6 +304,9 @@ export default function TodoPanel({ focusContext, onClearContext }) {
              focusFilter === 'today' ? 'Due Today' : 'Tasks'} — Start Here
           </h2>
           <div className="todo-header-right">
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowMoscow(true)}>
+              MoSCoW
+            </button>
             <button className="btn btn-secondary btn-sm" onClick={() => { setMode('full'); }}>
               Full view
             </button>
@@ -324,6 +469,10 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     setSubFilters([]);
   };
 
+  if (showMoscow) {
+    return <MoscowReview onClose={() => setShowMoscow(false)} />;
+  }
+
   return (
     <div className="todo-container">
       <div className="todo-header">
@@ -333,6 +482,9 @@ export default function TodoPanel({ focusContext, onClearContext }) {
             {activeTodos.length} open
             {overdueTodos.length > 0 && <span className="overdue-count"> / {overdueTodos.length} overdue</span>}
           </span>
+          <button className="btn btn-secondary" onClick={() => setShowMoscow(true)}>
+            MoSCoW
+          </button>
           <button className="btn btn-secondary" onClick={() => setMode('focused')}>
             Smart view
           </button>

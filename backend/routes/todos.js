@@ -233,4 +233,100 @@ router.post('/complete-ms', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════
+// MoSCoW Review
+// ═══════════════════════════════════════════════════════
+
+const db = require('../db/database');
+
+// GET /api/todos/moscow — get all MoSCoW ratings
+router.get('/moscow', (req, res) => {
+  try {
+    const ratings = db.getAllTaskMoscow();
+    // Build a lookup map keyed by task_key
+    const map = {};
+    for (const r of ratings) map[r.task_key] = r.moscow;
+    res.json({ ratings: map, total: ratings.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/todos/moscow — set MoSCoW for a task
+router.post('/moscow', (req, res) => {
+  try {
+    const { filePath, lineNumber, text, moscow } = req.body;
+    if (!moscow || !['must', 'should', 'could', 'wont'].includes(moscow)) {
+      return res.status(400).json({ error: 'moscow must be: must, should, could, wont' });
+    }
+    if (!text) return res.status(400).json({ error: 'text required' });
+    const key = db.setTaskMoscow(filePath, lineNumber, text, moscow);
+    res.json({ ok: true, key, moscow });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/todos/moscow — remove MoSCoW rating for a task
+router.delete('/moscow', (req, res) => {
+  try {
+    const { filePath, lineNumber, text } = req.body;
+    db.deleteTaskMoscow(filePath, lineNumber, text);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/todos/moscow/review — get untriaged tasks for review
+router.get('/moscow/review', (req, res) => {
+  try {
+    const { active } = vaultCache.getTodos();
+    const allRatings = db.getAllTaskMoscow();
+    const ratedKeys = new Set(allRatings.map(r => r.task_key));
+
+    // Build task key the same way the DB does
+    const taskKey = (t) => `${t.filePath || 'unknown'}::${(t.text || '').substring(0, 60).replace(/\s+/g, ' ').trim()}`;
+
+    // Also include 90-day plan tasks
+    let allTasks = active.map(t => ({
+      text: t.text,
+      source: t.source || null,
+      due_date: t.due_date || null,
+      filePath: t.filePath || null,
+      lineNumber: t.lineNumber != null ? t.lineNumber : null,
+      priority: t.priority || 'normal',
+    }));
+
+    try {
+      const plan = vaultCache.getPlan();
+      if (plan) {
+        for (const t of (plan.allTasks || [])) {
+          if (t.isCheckpoint || t.status === 'x') continue;
+          allTasks.push({
+            text: t.text,
+            source: '90-Day Plan',
+            due_date: t.calendarDate || null,
+            filePath: plan.filePath || null,
+            lineNumber: t.lineNumber != null ? t.lineNumber : null,
+            priority: 'normal',
+          });
+        }
+      }
+    } catch {}
+
+    // Filter to untriaged only
+    const untriaged = allTasks.filter(t => !ratedKeys.has(taskKey(t)));
+
+    res.json({
+      total: allTasks.length,
+      triaged: allRatings.length,
+      untriaged: untriaged.length,
+      tasks: untriaged,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

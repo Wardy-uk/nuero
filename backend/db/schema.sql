@@ -240,3 +240,15 @@ CREATE TABLE IF NOT EXISTS location_visits (
 
 CREATE INDEX IF NOT EXISTS idx_location_visits_date ON location_visits(date_key);
 CREATE INDEX IF NOT EXISTS idx_location_visits_place ON location_visits(place_name);
+
+-- MoSCoW task prioritisation (Phase 6A)
+CREATE TABLE IF NOT EXISTS task_moscow (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_key TEXT UNIQUE NOT NULL,
+  moscow TEXT NOT NULL CHECK(moscow IN ('must', 'should', 'could', 'wont')),
+  task_text TEXT,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_moscow_key ON task_moscow(task_key);
+CREATE INDEX IF NOT EXISTS idx_task_moscow_priority ON task_moscow(moscow);
