@@ -45,7 +45,7 @@ const CACHE_PATH = process.env.MS_TOKEN_CACHE_PATH ||
 const CLIENT_ID = process.env.MS_CLIENT_ID || '084a3e9f-a9f4-43f7-89f9-d229cf97853e';
 const TENANT_ID = process.env.MS_TENANT_ID || 'db0f7383-5d7f-4a39-9841-02fbcd1444bd';
 
-const GRAPH_SCOPES = ['Calendars.Read', 'Mail.Read', 'Tasks.Read', 'User.Read'];
+const GRAPH_SCOPES = ['Calendars.ReadWrite', 'Mail.Read', 'Tasks.ReadWrite', 'User.Read'];
 
 let msalClient = null;
 let graphTokenCache = { accessToken: null, expiresOn: 0 };
@@ -196,6 +196,39 @@ function graphFetch(urlPath, token) {
     });
     req.on('error', reject);
     req.setTimeout(30000, () => { req.destroy(); reject(new Error('Graph API timeout')); });
+  });
+}
+
+// Generic Graph API request (supports GET, PATCH, POST, DELETE)
+function graphRequest(urlPath, token, options = {}) {
+  const { method = 'GET', body = null, headers: extraHeaders = {} } = options;
+  return new Promise((resolve, reject) => {
+    const url = new URL(`https://graph.microsoft.com/v1.0${urlPath}`);
+    const reqHeaders = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...extraHeaders,
+    };
+    const reqOptions = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method,
+      headers: reqHeaders,
+    };
+    const req = https.request(reqOptions, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        if (res.statusCode === 204) { resolve({}); return; }
+        if (res.statusCode === 401) { resolve(null); return; }
+        if (res.statusCode >= 400) { reject(new Error(`Graph API ${res.statusCode}: ${data.substring(0, 300)}`)); return; }
+        try { resolve(JSON.parse(data)); } catch { resolve(data ? { raw: data } : {}); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Graph API timeout')); });
+    if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
+    req.end();
   });
 }
 
@@ -458,6 +491,136 @@ async function updatePlannerTask(taskId, updates) {
   return null;
 }
 
+// ═══════════════════════════════════════════════════════
+// Task Completion — 2-way sync
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Complete a Planner task (mark as 100%).
+ * Planner PATCH requires an If-Match ETag header.
+ */
+async function completePlannerTask(taskId) {
+  // Try Graph API first
+  const token = await getAccessToken();
+  if (token) {
+    try {
+      // Fetch the task to get its ETag
+      const task = await graphRequest(`/planner/tasks/${taskId}`, token);
+      if (task && task['@odata.etag']) {
+        await graphRequest(`/planner/tasks/${taskId}`, token, {
+          method: 'PATCH',
+          body: { percentComplete: 100 },
+          headers: { 'If-Match': task['@odata.etag'] },
+        });
+        console.log(`[Microsoft] Planner task ${taskId} completed via Graph`);
+        return true;
+      }
+    } catch (e) {
+      console.warn(`[Microsoft] Planner complete via Graph failed:`, e.message);
+    }
+  }
+  // Fallback: bridge
+  if (isBridgeConfigured()) {
+    try {
+      const result = await updatePlannerTask(taskId, { percentComplete: 100 });
+      if (result) {
+        console.log(`[Microsoft] Planner task ${taskId} completed via bridge`);
+        return true;
+      }
+    } catch (e) {
+      console.warn(`[Microsoft] Planner complete via bridge failed:`, e.message);
+    }
+  }
+  console.error(`[Microsoft] Failed to complete Planner task ${taskId}`);
+  return false;
+}
+
+/**
+ * Complete a To-Do task.
+ */
+async function completeTodoTask(taskId, listId) {
+  // Try Graph API first
+  const token = await getAccessToken();
+  if (token && listId) {
+    try {
+      await graphRequest(`/me/todo/lists/${listId}/tasks/${taskId}`, token, {
+        method: 'PATCH',
+        body: { status: 'completed' },
+      });
+      console.log(`[Microsoft] ToDo task ${taskId} completed via Graph`);
+      return true;
+    } catch (e) {
+      console.warn(`[Microsoft] ToDo complete via Graph failed:`, e.message);
+    }
+  }
+  // Fallback: bridge
+  if (isBridgeConfigured()) {
+    try {
+      const result = await updateTodoTask(taskId, listId, { status: 'completed' });
+      if (result) {
+        console.log(`[Microsoft] ToDo task ${taskId} completed via bridge`);
+        return true;
+      }
+    } catch (e) {
+      console.warn(`[Microsoft] ToDo complete via bridge failed:`, e.message);
+    }
+  }
+  console.error(`[Microsoft] Failed to complete ToDo task ${taskId}`);
+  return false;
+}
+
+/**
+ * Uncomplete a Planner task (set back to 0%).
+ */
+async function uncompletePlannerTask(taskId) {
+  const token = await getAccessToken();
+  if (token) {
+    try {
+      const task = await graphRequest(`/planner/tasks/${taskId}`, token);
+      if (task && task['@odata.etag']) {
+        await graphRequest(`/planner/tasks/${taskId}`, token, {
+          method: 'PATCH',
+          body: { percentComplete: 0 },
+          headers: { 'If-Match': task['@odata.etag'] },
+        });
+        return true;
+      }
+    } catch (e) {
+      console.warn(`[Microsoft] Planner uncomplete failed:`, e.message);
+    }
+  }
+  if (isBridgeConfigured()) {
+    try {
+      return !!(await updatePlannerTask(taskId, { percentComplete: 0 }));
+    } catch {}
+  }
+  return false;
+}
+
+/**
+ * Uncomplete a To-Do task.
+ */
+async function uncompleteTodoTask(taskId, listId) {
+  const token = await getAccessToken();
+  if (token && listId) {
+    try {
+      await graphRequest(`/me/todo/lists/${listId}/tasks/${taskId}`, token, {
+        method: 'PATCH',
+        body: { status: 'notStarted' },
+      });
+      return true;
+    } catch (e) {
+      console.warn(`[Microsoft] ToDo uncomplete failed:`, e.message);
+    }
+  }
+  if (isBridgeConfigured()) {
+    try {
+      return !!(await updateTodoTask(taskId, listId, { status: 'notStarted' }));
+    } catch {}
+  }
+  return false;
+}
+
 module.exports = {
   isConfigured,
   isAuthenticated,
@@ -472,5 +635,10 @@ module.exports = {
   createTodoTask,
   updateTodoTask,
   updatePlannerTask,
-  graphFetch
+  completePlannerTask,
+  completeTodoTask,
+  uncompletePlannerTask,
+  uncompleteTodoTask,
+  graphFetch,
+  graphRequest,
 };

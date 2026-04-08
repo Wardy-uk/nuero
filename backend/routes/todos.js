@@ -200,24 +200,27 @@ router.post('/toggle', (req, res) => {
   }
 });
 
-// POST /api/todos/complete-ms — complete a Microsoft task via bridge + toggle in vault
+// POST /api/todos/complete-ms — complete a Microsoft task via Graph + toggle in vault
 router.post('/complete-ms', async (req, res) => {
   try {
     const { msId, source, filePath, lineNumber } = req.body;
     if (!msId) return res.status(400).json({ error: 'msId required' });
 
     const microsoft = require('../services/microsoft');
+    let msCompleted = false;
 
-    // Complete in Microsoft — Graph API first, bridge fallback
     if (source === 'MS Planner') {
-      await microsoft.completePlannerTask(msId);
-      console.log(`[Todos] Completed Planner task: ${msId}`);
+      msCompleted = await microsoft.completePlannerTask(msId);
     } else if (source === 'MS ToDo') {
+      // Search all lists for the task
       const lists = await microsoft.fetchTodoLists();
-      const defaultList = lists?.find(l => l.wellknownListName === 'defaultList') || lists?.[0];
-      if (defaultList) {
-        await microsoft.completeTodoTask(msId, defaultList.id);
-        console.log(`[Todos] Completed ToDo task: ${msId}`);
+      if (lists) {
+        for (const list of lists) {
+          try {
+            msCompleted = await microsoft.completeTodoTask(msId, list.id);
+            if (msCompleted) break;
+          } catch {}
+        }
       }
     }
 
@@ -226,7 +229,7 @@ router.post('/complete-ms', async (req, res) => {
       obsidian.toggleTask(filePath, lineNumber);
     }
 
-    res.json({ ok: true });
+    res.json({ ok: true, msCompleted });
   } catch (e) {
     console.error('[Todos] MS complete error:', e);
     res.status(500).json({ error: e.message });
