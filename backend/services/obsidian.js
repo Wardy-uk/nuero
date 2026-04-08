@@ -1326,22 +1326,7 @@ async function syncMicrosoftTasks() {
   const msTasksPath = path.join(tasksDir, 'Microsoft Tasks.md');
   let plannerCount = 0;
   let todoCount = 0;
-  let syncedUp = 0;   // vault → Microsoft completions
-  let syncedDown = 0;  // Microsoft → vault completions
 
-  // ── Step 1: Read current vault state to detect locally-completed tasks ──
-  const localCompleted = new Map(); // msId → true (tasks marked [x] in vault)
-  if (fs.existsSync(msTasksPath)) {
-    const existing = fs.readFileSync(msTasksPath, 'utf-8');
-    for (const line of existing.split('\n')) {
-      const idMatch = line.match(/<!--id:(.+?)-->/);
-      if (idMatch && line.match(/^\s*-\s+\[x\]/i)) {
-        localCompleted.set(idMatch[1], true);
-      }
-    }
-  }
-
-  // ── Step 2: Fetch from Microsoft + push local completions up ──
   const lines = ['# Microsoft Tasks', '', `*Last synced: ${new Date().toLocaleString('en-GB')}*`, ''];
 
   // --- Planner ---
@@ -1349,22 +1334,9 @@ async function syncMicrosoftTasks() {
     const plannerTasks = await microsoft.fetchPlannerTasks();
     if (plannerTasks && plannerTasks.length > 0) {
       lines.push('## Planner', '');
-
-      // Push local completions → Microsoft
-      for (const t of plannerTasks) {
-        if (localCompleted.has(t.id) && !t.completedDateTime && t.percentComplete < 100) {
-          try {
-            await microsoft.completePlannerTask(t.id);
-            syncedUp++;
-            console.log(`[Sync] Pushed Planner completion: ${t.title}`);
-          } catch (e) {
-            console.warn(`[Sync] Failed to push Planner completion for ${t.id}:`, e.message);
-          }
-        }
-      }
-
-      // Write active (incomplete) tasks to vault
-      const active = plannerTasks.filter(t => !t.completedDateTime && t.percentComplete < 100 && !localCompleted.has(t.id));
+      // Filter to incomplete tasks only
+      const active = plannerTasks.filter(t => !t.completedDateTime && t.percentComplete < 100);
+      // Sort by due date (soonest first), then by title
       active.sort((a, b) => {
         if (a.dueDateTime && b.dueDateTime) return a.dueDateTime.localeCompare(b.dueDateTime);
         if (a.dueDateTime) return -1;
@@ -1377,11 +1349,6 @@ async function syncMicrosoftTasks() {
         lines.push(`- [ ] ${t.title}${pct}${due} <!--id:${t.id}-->`);
         plannerCount++;
       }
-
-      // Tasks completed in Microsoft that were open in vault → count as synced down
-      const completedInMs = plannerTasks.filter(t => (t.completedDateTime || t.percentComplete >= 100) && !localCompleted.has(t.id));
-      syncedDown += completedInMs.length;
-
       lines.push('');
     }
   } catch (e) {
@@ -1395,25 +1362,12 @@ async function syncMicrosoftTasks() {
     if (todoLists && todoLists.length > 0) {
       lines.push('## ToDo', '');
       for (const list of todoLists) {
+        // Skip flagged emails list — that's handled by inbox scanner
         if (list.wellknownListName === 'flaggedEmails') continue;
         const tasks = await microsoft.fetchTodoTasks(list.id);
         if (tasks && tasks.length > 0) {
           if (list.displayName !== 'Tasks') lines.push(`### ${list.displayName}`, '');
-
-          // Push local completions → Microsoft
-          for (const t of tasks) {
-            if (localCompleted.has(t.id) && t.status !== 'completed') {
-              try {
-                await microsoft.completeTodoTask(t.id, list.id);
-                syncedUp++;
-                console.log(`[Sync] Pushed ToDo completion: ${t.title}`);
-              } catch (e) {
-                console.warn(`[Sync] Failed to push ToDo completion for ${t.id}:`, e.message);
-              }
-            }
-          }
-
-          const active = tasks.filter(t => t.status !== 'completed' && !localCompleted.has(t.id));
+          const active = tasks.filter(t => t.status !== 'completed');
           active.sort((a, b) => {
             const aDue = a.dueDateTime?.dateTime || '';
             const bDue = b.dueDateTime?.dateTime || '';
@@ -1438,9 +1392,8 @@ async function syncMicrosoftTasks() {
   }
 
   fs.writeFileSync(msTasksPath, lines.join('\n'), 'utf-8');
-  const summary = `${plannerCount} planner, ${todoCount} todo${syncedUp ? `, ${syncedUp} pushed to MS` : ''}${syncedDown ? `, ${syncedDown} completed in MS` : ''}`;
-  console.log(`[Sync] Microsoft Tasks written: ${summary}`);
-  return { ok: true, planner: plannerCount, todo: todoCount, syncedUp, syncedDown };
+  console.log(`[Sync] Microsoft Tasks written: ${plannerCount} planner, ${todoCount} todo`);
+  return { ok: true, planner: plannerCount, todo: todoCount };
 }
 
 // Auto-link: scan content for known People and Project names, add wiki-links
