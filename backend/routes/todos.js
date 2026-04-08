@@ -200,31 +200,19 @@ router.post('/toggle', (req, res) => {
   }
 });
 
-// POST /api/todos/complete-ms — complete a Microsoft task via bridge + toggle in vault
+// POST /api/todos/complete-ms — complete a Microsoft task via Power Automate webhook + toggle in vault
 router.post('/complete-ms', async (req, res) => {
   try {
     const { msId, source, filePath, lineNumber } = req.body;
     if (!msId) return res.status(400).json({ error: 'msId required' });
 
-    const microsoft = require('../services/microsoft');
-
-    // Complete in Microsoft — Graph API first, bridge fallback
-    if (source === 'MS Planner') {
-      await microsoft.completePlannerTask(msId);
-      console.log(`[Todos] Completed Planner task: ${msId}`);
-    } else if (source === 'MS ToDo') {
-      const lists = await microsoft.fetchTodoLists();
-      const defaultList = lists?.find(l => l.wellknownListName === 'defaultList') || lists?.[0];
-      if (defaultList) {
-        await microsoft.completeTodoTask(msId, defaultList.id);
-        console.log(`[Todos] Completed ToDo task: ${msId}`);
-      }
-    }
-
-    // Also toggle in vault if we have file info
+    // Toggle in vault first (instant)
     if (filePath && lineNumber != null) {
       obsidian.toggleTask(filePath, lineNumber);
     }
+
+    // Fire-and-forget webhook to Power Automate to complete in Microsoft
+    _fireWebhook(msId, source).catch(() => {});
 
     res.json({ ok: true });
   } catch (e) {
@@ -232,6 +220,30 @@ router.post('/complete-ms', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// Power Automate webhook — fire and forget
+async function _fireWebhook(taskId, source) {
+  const webhookUrl = process.env.PA_TASK_COMPLETE_WEBHOOK;
+  if (!webhookUrl) {
+    console.warn('[Todos] PA_TASK_COMPLETE_WEBHOOK not configured — skipping MS completion');
+    return;
+  }
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId, source }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) {
+      console.log(`[Todos] PA webhook fired: ${source} ${taskId}`);
+    } else {
+      console.warn(`[Todos] PA webhook returned ${res.status}`);
+    }
+  } catch (e) {
+    console.warn(`[Todos] PA webhook failed: ${e.message}`);
+  }
+}
 
 // ═══════════════════════════════════════════════════════
 // MoSCoW Review
