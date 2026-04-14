@@ -291,6 +291,22 @@
   color: var(--success);
 }
 
+/* View 1-1 Prep button */
+.person-prep-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--bg-tertiary);
+  color: #a78bfa;
+  border: 1px solid #a78bfa;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.person-prep-btn:hover {
+  background: rgba(167, 139, 250, 0.1);
+}
+
 /* Edit Note button */
 .person-edit-btn {
   font-family: var(--font-mono);

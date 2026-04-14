@@ -182,6 +182,46 @@ function ApprovalPanel({ approvals, onRefresh }) {
   );
 }
 
+function PrepViewer({ name, onClose }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(apiUrl(`/api/obsidian/people/${encodeURIComponent(name)}/121-prep/latest`))
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => { setData({ found: false, error: 'Failed to load' }); setLoading(false); });
+  }, [name]);
+
+  return (
+    <div className="note-editor-overlay" onClick={onClose}>
+      <div className="note-editor" onClick={e => e.stopPropagation()}>
+        <div className="note-editor-header">
+          <span className="note-editor-title">
+            {data?.found ? `${data.filename}` : `Latest 1-1 Prep — ${name}`}
+          </span>
+          <button className="note-editor-close" onClick={onClose}>x</button>
+        </div>
+        {loading ? (
+          <div className="note-editor-loading">Loading...</div>
+        ) : data?.found ? (
+          <textarea
+            className="note-editor-textarea"
+            value={data.content}
+            readOnly
+            spellCheck={false}
+          />
+        ) : (
+          <div className="note-editor-loading">No 1-1 prep note found for {name}.</div>
+        )}
+        <div className="note-editor-actions">
+          {data?.found && <span className="update-msg">{data.path}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NoteEditor({ name, onClose, onSaved }) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -321,6 +361,7 @@ export default function PeopleBoard() {
   const [snapshotResult, setSnapshotResult] = useState(null); // { name, data }
   const [editingPerson, setEditingPerson] = useState(null); // person name being updated
   const [editingNote, setEditingNote] = useState(null); // person name whose raw note is being edited
+  const [viewingPrep, setViewingPrep] = useState(null); // person name whose latest 1-1 prep is being viewed
   const [autoExpanded, setAutoExpanded] = useState(() => sessionStorage.getItem('people-auto-expanded') === 'true');
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [selectedPerson, setSelectedPerson] = useState(null);
@@ -424,6 +465,10 @@ export default function PeopleBoard() {
       </div>
 
       {viewMode === 'reports' && <ApprovalPanel approvals={pendingApprovals} onRefresh={fetchApprovals} />}
+
+      {viewingPrep && (
+        <PrepViewer name={viewingPrep} onClose={() => setViewingPrep(null)} />
+      )}
 
       {editingNote && (
         <NoteEditor
@@ -570,6 +615,13 @@ export default function PeopleBoard() {
                         Edit Note
                       </button>
                     )}
+                    <button
+                      className="person-prep-btn"
+                      onClick={() => setViewingPrep(person.name)}
+                      title="View the most recent 1-1 prep note"
+                    >
+                      View 1-1 Prep
+                    </button>
                     {n8nConfigured && (
                       <button
                         className={`person-121-btn ${isRunning ? 'running' : ''}`}

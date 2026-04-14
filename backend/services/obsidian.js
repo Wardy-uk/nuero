@@ -137,6 +137,40 @@ function updatePersonNote(name, updates) {
   return notePath;
 }
 
+// Find the latest "1-1 {name} Prep.md" note under Meetings/ (any subfolder).
+// Files follow the pattern: YYYY-MM-DD \u2013 1-1 {Full Name} Prep.md
+function findLatest121Prep(personName) {
+  const meetingsDir = path.join(getVaultPath(), 'Meetings');
+  if (!fs.existsSync(meetingsDir)) return null;
+  const nameLower = personName.toLowerCase();
+  const results = [];
+  const walk = (dir, depth) => {
+    if (depth > 5) return;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full, depth + 1); continue; }
+      if (!entry.name.endsWith('.md')) continue;
+      const lower = entry.name.toLowerCase();
+      // Match "1-1 {name} prep" or "1-2-1 {name} prep"
+      if (!/1-(?:2-)?1 .+ prep\.md$/.test(lower)) continue;
+      if (!lower.includes(nameLower)) continue;
+      // Extract leading date (YYYY-MM-DD) for sorting
+      const match = entry.name.match(/^(\d{4}-\d{2}-\d{2})/);
+      const date = match ? match[1] : '0000-00-00';
+      results.push({ path: full, filename: entry.name, date });
+    }
+  };
+  walk(meetingsDir, 0);
+  if (!results.length) return null;
+  results.sort((a, b) => b.date.localeCompare(a.date));
+  const latest = results[0];
+  const content = fs.readFileSync(latest.path, 'utf-8');
+  const relativePath = path.relative(getVaultPath(), latest.path).replace(/\\/g, '/');
+  return { path: relativePath, filename: latest.filename, date: latest.date, content };
+}
+
 // Write a person note's full raw content (used by the vault note editor)
 function writePersonNoteRaw(name, content) {
   const peopleDir = path.join(getVaultPath(), 'People');
@@ -1509,6 +1543,7 @@ module.exports = {
   listPeopleNotes,
   updatePersonNote,
   writePersonNoteRaw,
+  findLatest121Prep,
   appendDecision,
   parseFrontmatter,
   extractTags,
