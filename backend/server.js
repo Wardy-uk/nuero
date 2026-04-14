@@ -116,6 +116,10 @@ app.use('/api/ai/settings', require('./routes/ai-settings'));
 app.use('/api/meeting-prep', require('./routes/meeting-prep-view'));
 app.use('/api/person', require('./routes/person-detail'));
 app.use('/api/activity', require('./routes/activity'));
+app.use('/api/1to1', require('./routes/one-to-one'));
+app.use('/api/vault-actions', require('./routes/vault-actions'));
+app.use('/api/development-plan', require('./routes/development-plan'));
+app.use('/api/training', require('./routes/training-sync'));
 app.use('/api/email', require('./routes/email-triage'));
 
 // Health / status endpoint

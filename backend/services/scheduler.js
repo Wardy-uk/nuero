@@ -74,6 +74,20 @@ function start() {
     nudges.triggerEodNudge();
   });
 
+  // Daily 2am — sync NOVA training matrix into vault
+  cron.schedule('0 2 * * *', async () => {
+    try {
+      if (!process.env.NOVA_DB_PATH) return; // Not configured, skip silently
+      const trainingSync = require('./training-sync');
+      const result = await trainingSync.syncTraining({ action: 'sync_all' });
+      if (result.status === 'updated') {
+        console.log(`[Scheduler] Training sync: ${result.changes.length} changes`);
+      } else {
+        console.warn('[Scheduler] Training sync error:', result.error);
+      }
+    } catch (e) { console.error('[Scheduler] Training sync failed:', e.message); }
+  });
+
   // Friday 4:30pm — generate weekly review
   cron.schedule('30 16 * * 5', () => {
     try {

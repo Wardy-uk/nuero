@@ -362,6 +362,8 @@ export default function PeopleBoard() {
   const [editingPerson, setEditingPerson] = useState(null); // person name being updated
   const [editingNote, setEditingNote] = useState(null); // person name whose raw note is being edited
   const [viewingPrep, setViewingPrep] = useState(null); // person name whose latest 1-1 prep is being viewed
+  const [generatingPrep, setGeneratingPrep] = useState(null); // person name currently generating prep
+  const [prepResult, setPrepResult] = useState(null); // { name, path, status, changes[] }
   const [autoExpanded, setAutoExpanded] = useState(() => sessionStorage.getItem('people-auto-expanded') === 'true');
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [selectedPerson, setSelectedPerson] = useState(null);
@@ -622,6 +624,44 @@ export default function PeopleBoard() {
                     >
                       View 1-1 Prep
                     </button>
+                    <button
+                      className={`person-generate-prep-btn ${generatingPrep === person.name ? 'running' : ''}`}
+                      onClick={async () => {
+                        if (generatingPrep) return;
+                        setGeneratingPrep(person.name);
+                        setPrepResult(null);
+                        try {
+                          let res = await fetch(apiUrl('/api/1to1/prep'), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ person: person.name }),
+                          });
+                          let data = await res.json();
+                          if (!data.ok && /already exists/i.test(data.error || '')) {
+                            if (window.confirm(`Prep file already exists for ${person.name} today. Overwrite?`)) {
+                              res = await fetch(apiUrl('/api/1to1/prep'), {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ person: person.name, force: true }),
+                              });
+                              data = await res.json();
+                            } else {
+                              setGeneratingPrep(null);
+                              return;
+                            }
+                          }
+                          setPrepResult({ name: person.name, ...data });
+                        } catch (e) {
+                          setPrepResult({ name: person.name, ok: false, error: e.message });
+                        } finally {
+                          setGeneratingPrep(null);
+                        }
+                      }}
+                      disabled={!!generatingPrep}
+                      title="Generate a new 1-1 prep doc (NEURO)"
+                    >
+                      {generatingPrep === person.name ? 'Generating...' : 'Generate Prep'}
+                    </button>
                     {n8nConfigured && (
                       <button
                         className={`person-121-btn ${isRunning ? 'running' : ''}`}
@@ -664,6 +704,33 @@ export default function PeopleBoard() {
       {/* Person detail overlay */}
       {selectedPerson && (
         <PersonDetail name={selectedPerson} onClose={() => setSelectedPerson(null)} />
+      )}
+      {prepResult && (
+        <div
+          style={{
+            position: 'fixed', bottom: 24, right: 24, zIndex: 10000,
+            background: prepResult.ok ? '#1e3a2f' : '#3a1e1e',
+            color: '#fff', padding: '14px 18px', borderRadius: 8,
+            maxWidth: 420, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            fontSize: 13, lineHeight: 1.5,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <strong>{prepResult.name}</strong>
+            <button
+              onClick={() => setPrepResult(null)}
+              style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16 }}
+            >×</button>
+          </div>
+          {prepResult.ok ? (
+            <>
+              <div>{prepResult.status === 'created' ? '✅ Created' : '✅ Updated'}: <code>{prepResult.path}</code></div>
+              {(prepResult.changes || []).map((c, i) => <div key={i} style={{ opacity: 0.85 }}>• {c}</div>)}
+            </>
+          ) : (
+            <div>❌ {prepResult.error || 'Failed'}</div>
+          )}
+        </div>
       )}
     </div>
   );

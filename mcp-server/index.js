@@ -158,7 +158,7 @@ server.tool('get_queue', 'Get Jira queue summary — tickets, SLA risk, escalati
   };
 });
 
-server.tool('get_meeting_prep', 'Get meeting prep for next upcoming meeting', {}, async () => {
+server.tool('get_next_meeting_prep', 'Get meeting prep for next upcoming calendar meeting (automatic, no params)', {}, async () => {
   const data = await neuroApi('/api/meeting-prep');
   if (!data.meeting) return { content: [{ type: 'text', text: 'No upcoming meetings.' }] };
   const m = data.meeting;
@@ -194,6 +194,127 @@ server.tool('create_task', 'Create a new task in the vault Master Todo', {
   });
   return { content: [{ type: 'text', text: `Task created: ${text}` }] };
 });
+
+// ═══════════════════════════════════════════════════════
+// Tools: 1:1 Meeting Workflow
+// ═══════════════════════════════════════════════════════
+
+server.tool('generate_1to1_prep',
+  'Generate a 1:1 meeting prep document for a direct report and save it to the vault (Meetings/YYYY/MM/...). Pulls latest performance review, development plan, open actions, and recent meetings.',
+  {
+    person: z.string().describe('Person name, must match People/{name}.md (e.g. "Heidi Power")'),
+    date: z.string().optional().describe('ISO date (YYYY-MM-DD). Default: today'),
+    force: z.boolean().optional().describe('Overwrite existing prep file if it exists'),
+  },
+  async ({ person, date, force }) => {
+    const data = await neuroApi('/api/1to1/prep', {
+      method: 'POST',
+      body: JSON.stringify({ person, date, force }),
+    });
+    const changes = (data.changes || []).map(c => `- ${c}`).join('\n');
+    return {
+      content: [{
+        type: 'text',
+        text: `**${data.status}** — ${data.path}\n\n${changes}\n\nSections included: review=${data.sections?.hasReview}, plan=${data.sections?.hasPlan}, actions=${data.sections?.actionCount}, meetings=${data.sections?.meetingCount}`,
+      }],
+    };
+  });
+
+server.tool('manage_meeting_note',
+  'Create, append to, or update a structured meeting note in the vault.',
+  {
+    action: z.enum(['create', 'append', 'update']).describe('create: new note; append: add to end; update: replace a section'),
+    title: z.string().describe('Meeting title (becomes filename slug)'),
+    date: z.string().optional().describe('ISO date (default today)'),
+    type: z.enum(['1-1', 'team', 'project', 'external']).optional().describe('Meeting type (default 1-1)'),
+    people: z.array(z.string()).optional().describe('Attendee names (must match People/{name}.md)'),
+    body: z.string().optional().describe('Body content (for create/append)'),
+    section: z.string().optional().describe('Section name to replace (for update), e.g. "Action Items"'),
+    content: z.string().optional().describe('New section content (for update)'),
+  },
+  async (args) => {
+    const data = await neuroApi('/api/1to1/notes', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    });
+    return { content: [{ type: 'text', text: `**${data.status}** — ${data.path}\n${(data.changes || []).join('\n')}` }] };
+  });
+
+server.tool('find_action_items',
+  'Find open (or closed) action items across the vault, optionally filtered by person.',
+  {
+    person: z.string().optional().describe('Filter to actions assigned to or mentioning this person'),
+    status: z.enum(['open', 'done', 'all']).optional().describe('Default: open'),
+    daysBack: z.number().optional().describe('Only scan dated files within this many days (default 90)'),
+  },
+  async ({ person, status, daysBack }) => {
+    const qs = new URLSearchParams();
+    if (person) qs.set('person', person);
+    if (status) qs.set('status', status);
+    if (daysBack) qs.set('daysBack', String(daysBack));
+    const data = await neuroApi(`/api/vault-actions?${qs.toString()}`);
+    const items = (data.items || []).slice(0, 30).map(a => {
+      const check = a.done ? '[x]' : '[ ]';
+      const due = a.dueDate ? ` 📅 ${a.dueDate}` : '';
+      const who = a.assignee ? ` 👤 ${a.assignee}` : '';
+      return `- ${check} ${a.text}${due}${who}\n  _(${a.file}:${a.lineNumber})_`;
+    }).join('\n');
+    return {
+      content: [{
+        type: 'text',
+        text: `Found ${data.count} action items${person ? ` for ${person}` : ''}.\n\n${items || '(none)'}`,
+      }],
+    };
+  });
+
+server.tool('manage_development_plan',
+  'Read or update a direct report\'s development plan (Documents/HR/{Person} - Development Plan.md).',
+  {
+    action: z.enum(['read', 'update_progress', 'add_goal', 'complete_goal']),
+    person: z.string().describe('Person name'),
+    goalNumber: z.number().optional().describe('Goal number (for update_progress / complete_goal)'),
+    progressNote: z.string().optional().describe('Progress note to append'),
+    newGoal: z.object({
+      title: z.string(),
+      targetDate: z.string(),
+      what: z.string().optional(),
+      why: z.string().optional(),
+      measure: z.string().optional(),
+    }).optional().describe('New goal payload (for add_goal)'),
+    date: z.string().optional().describe('Override date (default today)'),
+  },
+  async (args) => {
+    const data = await neuroApi('/api/development-plan', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    });
+    if (args.action === 'read') {
+      const goals = (data.goals || []).map(g =>
+        `**Goal ${g.number}${g.complete ? ' ✅' : ''} — ${g.title}** (target: ${g.targetDate || '—'})\n  Progress: ${g.progress.length} entries`
+      ).join('\n\n');
+      return { content: [{ type: 'text', text: `${data.path}\n\n${goals || '(no goals)'}` }] };
+    }
+    return { content: [{ type: 'text', text: `**${data.status}** — ${data.path}\n${(data.changes || []).join('\n')}` }] };
+  });
+
+server.tool('sync_training_matrix',
+  'Sync training status from NOVA SQLite DB into the vault (Training Matrix.md + person profiles).',
+  {
+    action: z.enum(['sync_all', 'sync_person']).describe('sync_all: all users and matrix; sync_person: single user'),
+    person: z.string().optional().describe('Person name (for sync_person)'),
+  },
+  async (args) => {
+    const data = await neuroApi('/api/training/sync', {
+      method: 'POST',
+      body: JSON.stringify(args),
+      timeout: 60000,
+    });
+    return { content: [{ type: 'text', text: `**${data.status}**\n${(data.changes || []).join('\n')}` }] };
+  });
+
+// ═══════════════════════════════════════════════════════
+// Tools: System
+// ═══════════════════════════════════════════════════════
 
 server.tool('get_status', 'Get NEURO system status — AI, integrations, health', {}, async () => {
   const data = await neuroApi('/api/status');
