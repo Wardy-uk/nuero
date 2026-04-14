@@ -7,3 +7,6 @@ dist/
 *.db-shm
 backend/C:/
 backend/C:/
+
+# Local Netlify folder
+.netlify

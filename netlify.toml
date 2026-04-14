@@ -1,6 +1,8 @@
 [build]
-  command = "rm -rf node_modules package-lock.json && cd frontend && rm -rf node_modules dist && npm install && npm run build"
-  publish = "frontend/dist"
+  base = "frontend"
+  command = "rm -rf node_modules dist && npm install && npm run build"
+  publish = "dist"
+  ignore = "false"
 
 [build.environment]
   # VITE_API_URL and VITE_VAULT_API_KEY must be set in Netlify UI:
