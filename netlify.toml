@@ -1,6 +1,10 @@
 [build]
   base = "frontend"
-  command = "rm -rf node_modules dist && npm install && npm run build"
+  # rollup has a platform-specific optional-dep bug
+  # (https://github.com/npm/cli/issues/4828); we must wipe BOTH the
+  # workspace-root node_modules/package-lock and the frontend ones so
+  # npm fully re-resolves rollup's linux binary on Netlify's Linux box.
+  command = "rm -rf ../node_modules ../package-lock.json node_modules dist && npm install && npm run build"
   publish = "dist"
   ignore = "false"
 
