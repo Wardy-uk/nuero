@@ -131,10 +131,18 @@ function pollForDraft(executionId, nameHint) {
 }
 
 // --- Main trigger ---
-async function run121Snapshot(nameHint, mode = '30day') {
-  const lookbackDays = mode === 'weekly' ? 7 : 30;
+async function run121Snapshot(nameHint, mode = '30day', opts = {}) {
+  const lookbackDays = opts.lookbackDays ?? (mode === 'weekly' ? 7 : 30);
+  const nextStepsDays = opts.nextStepsDays ?? lookbackDays;
+  const isProbationary = opts.isProbationary === true;
   // Use the webhook URL directly (the /api/v1/workflows/{id}/run endpoint is not available)
-  const result = await httpRequest('POST', '/webhook/perf-review-121', { nameHint, mode, lookbackDays });
+  const result = await httpRequest('POST', '/webhook/perf-review-121', {
+    nameHint,
+    mode,
+    lookbackDays,
+    nextStepsDays,
+    isProbationary,
+  });
 
   // Webhook returns immediately — need to find the executionId from recent executions
   let executionId = extractExecutionId(result);

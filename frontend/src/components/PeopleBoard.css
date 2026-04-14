@@ -291,6 +291,54 @@
   color: var(--success);
 }
 
+/* Snapshot options (lookback / next steps) on each card */
+.person-snapshot-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+
+.snapshot-opt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.snapshot-opt select {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.person-emp-status {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.person-emp-status.probation {
+  color: #f0ad4e;
+  border-color: #f0ad4e;
+  background: rgba(240, 173, 78, 0.08);
+}
+
 /* 1-2-1 Snapshot button */
 .person-121-btn {
   font-family: var(--font-mono);

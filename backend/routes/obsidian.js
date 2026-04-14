@@ -48,11 +48,11 @@ router.get('/people/:name', (req, res) => {
 
 // POST /api/obsidian/people/:name/update — update person note frontmatter and append notes
 router.post('/people/:name/update', (req, res) => {
-  const { last121, next121Due, notes } = req.body;
-  if (!last121 && !next121Due && !notes) {
-    return res.status(400).json({ error: 'At least one field required (last121, next121Due, notes)' });
+  const { last121, next121Due, notes, employmentStatus } = req.body;
+  if (!last121 && !next121Due && !notes && !employmentStatus) {
+    return res.status(400).json({ error: 'At least one field required (last121, next121Due, notes, employmentStatus)' });
   }
-  const result = obsidianService.updatePersonNote(req.params.name, { last121, next121Due, notes });
+  const result = obsidianService.updatePersonNote(req.params.name, { last121, next121Due, notes, employmentStatus });
   if (result === null) {
     return res.status(404).json({ error: `Person note not found: ${req.params.name}` });
   }

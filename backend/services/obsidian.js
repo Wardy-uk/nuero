@@ -103,28 +103,26 @@ function updatePersonNote(name, updates) {
   let content = fs.readFileSync(notePath, 'utf-8');
 
   // Update frontmatter fields
-  if (updates.last121 || updates.next121Due) {
-    if (content.startsWith('---')) {
-      const endIdx = content.indexOf('---', 3);
-      if (endIdx !== -1) {
-        let fm = content.substring(0, endIdx + 3);
-        const rest = content.substring(endIdx + 3);
-        if (updates.last121) {
-          if (fm.includes('last-1-2-1:')) {
-            fm = fm.replace(/last-1-2-1:.*/, `last-1-2-1: ${updates.last121}`);
-          } else {
-            fm = fm.replace(/---\s*$/, `last-1-2-1: ${updates.last121}\n---`);
-          }
+  if (updates.last121 || updates.next121Due || updates.employmentStatus) {
+    if (!content.startsWith('---')) {
+      content = `---\n---\n` + content;
+    }
+    const endIdx = content.indexOf('---', 3);
+    if (endIdx !== -1) {
+      let fm = content.substring(0, endIdx + 3);
+      const rest = content.substring(endIdx + 3);
+      const setField = (key, value) => {
+        const re = new RegExp(`${key}:.*`);
+        if (re.test(fm)) {
+          fm = fm.replace(re, `${key}: ${value}`);
+        } else {
+          fm = fm.replace(/---\s*$/, `${key}: ${value}\n---`);
         }
-        if (updates.next121Due) {
-          if (fm.includes('next-1-2-1-due:')) {
-            fm = fm.replace(/next-1-2-1-due:.*/, `next-1-2-1-due: ${updates.next121Due}`);
-          } else {
-            fm = fm.replace(/---\s*$/, `next-1-2-1-due: ${updates.next121Due}\n---`);
-          }
-        }
-        content = fm + rest;
-      }
+      };
+      if (updates.last121) setField('last-1-2-1', updates.last121);
+      if (updates.next121Due) setField('next-1-2-1-due', updates.next121Due);
+      if (updates.employmentStatus) setField('employment-status', updates.employmentStatus);
+      content = fm + rest;
     }
   }
 

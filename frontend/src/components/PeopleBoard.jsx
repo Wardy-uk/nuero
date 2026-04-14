@@ -186,12 +186,13 @@ function UpdateForm({ name, frontmatter, onClose, onSaved }) {
   const fm = frontmatter || {};
   const [last121, setLast121] = useState(fm['last-1-2-1'] || '');
   const [next121, setNext121] = useState(fm['next-1-2-1-due'] || '');
+  const [employmentStatus, setEmploymentStatus] = useState(fm['employment-status'] || 'Permanent');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
 
   const handleSave = async () => {
-    if (!last121 && !next121 && !notes.trim()) { setMsg('Fill in at least one field'); return; }
+    if (!last121 && !next121 && !notes.trim() && !employmentStatus) { setMsg('Fill in at least one field'); return; }
     setSaving(true);
     try {
       const res = await fetch(apiUrl(`/api/obsidian/people/${encodeURIComponent(name)}/update`), {
@@ -200,6 +201,7 @@ function UpdateForm({ name, frontmatter, onClose, onSaved }) {
         body: JSON.stringify({
           last121: last121 || undefined,
           next121Due: next121 || undefined,
+          employmentStatus: employmentStatus || undefined,
           notes: notes.trim() || undefined
         })
       });
@@ -226,6 +228,15 @@ function UpdateForm({ name, frontmatter, onClose, onSaved }) {
       </label>
       <label className="update-label">Next 1-2-1 due
         <input type="date" className="update-input" value={next121} onChange={e => setNext121(e.target.value)} />
+      </label>
+      <label className="update-label">Employment Status
+        <select className="update-input" value={employmentStatus} onChange={e => setEmploymentStatus(e.target.value)}>
+          <option value="Permanent">Permanent</option>
+          <option value="Probation">Probation</option>
+          <option value="Improvement Window">Improvement Window</option>
+          <option value="Notice">Notice</option>
+          <option value="Contractor">Contractor</option>
+        </select>
       </label>
       <label className="update-label">Notes
         <textarea className="update-textarea" rows={3} placeholder="Key points from meeting..." value={notes} onChange={e => setNotes(e.target.value)} />
@@ -292,15 +303,32 @@ export default function PeopleBoard() {
       .catch(() => {});
   };
 
+  const [snapshotOpts, setSnapshotOpts] = useState({}); // { [name]: { lookbackDays, nextStepsDays } }
+
+  const getOpts = (personName) => snapshotOpts[personName] || { lookbackDays: 31, nextStepsDays: 31 };
+  const setOpts = (personName, patch) => setSnapshotOpts(prev => ({
+    ...prev,
+    [personName]: { ...getOpts(personName), ...patch }
+  }));
+
   const run121 = async (personName, mode = '30day') => {
     setRunning121(personName);
     setSnapshotResult(null);
     setEditingPerson(null);
+    const opts = getOpts(personName);
+    const fm = peopleData[personName]?.frontmatter || {};
+    const isProbationary = /probation/i.test(fm['employment-status'] || '');
     try {
       const res = await fetch(apiUrl('/api/n8n/121'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nameHint: personName, mode })
+        body: JSON.stringify({
+          nameHint: personName,
+          mode,
+          lookbackDays: opts.lookbackDays,
+          nextStepsDays: opts.nextStepsDays,
+          isProbationary
+        })
       });
       const data = await res.json();
       setSnapshotResult({ name: personName, data });
@@ -411,6 +439,40 @@ export default function PeopleBoard() {
                       ))}
                     </div>
                   )}
+                  {n8nConfigured && (() => {
+                    const opts = getOpts(person.name);
+                    const empStatus = fm['employment-status'] || '';
+                    const isProb = /probation/i.test(empStatus);
+                    return (
+                      <div className="person-snapshot-opts">
+                        <label className="snapshot-opt">
+                          <span>Lookback</span>
+                          <select
+                            value={opts.lookbackDays}
+                            onChange={e => setOpts(person.name, { lookbackDays: Number(e.target.value) })}
+                          >
+                            <option value={7}>7 days</option>
+                            <option value={14}>14 days</option>
+                            <option value={31}>31 days</option>
+                          </select>
+                        </label>
+                        <label className="snapshot-opt">
+                          <span>Next steps</span>
+                          <select
+                            value={opts.nextStepsDays}
+                            onChange={e => setOpts(person.name, { nextStepsDays: Number(e.target.value) })}
+                          >
+                            <option value={7}>7 days</option>
+                            <option value={14}>14 days</option>
+                            <option value={31}>31 days</option>
+                          </select>
+                        </label>
+                        {empStatus && (
+                          <span className={`person-emp-status${isProb ? ' probation' : ''}`}>{empStatus}</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="person-card-actions">
                     {vaultData?.exists && (
                       <button
