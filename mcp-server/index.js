@@ -357,6 +357,141 @@ server.tool('team_health_snapshot',
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   });
 
+// ═══════════════════════════════════════════════════════
+// Tools: Tier 3 — Profile, Plan, Weekly, KB
+// ═══════════════════════════════════════════════════════
+
+server.tool('manage_person_profile',
+  'Create or modify a person profile file in People/. Actions: create (new note), update (merge frontmatter), add_meeting (append to 1-2-1 history table), add_task (add a tagged task bullet).',
+  {
+    action: z.enum(['create', 'update', 'add_meeting', 'add_task']),
+    person: z.string().describe('Person name (must match People/{name}.md)'),
+    frontmatter: z.record(z.string(), z.any()).optional().describe('Frontmatter fields to set (for create/update)'),
+    date: z.string().optional().describe('ISO date (for add_meeting/add_task, default today)'),
+    meetingType: z.string().optional().describe('For add_meeting — e.g. "1-2-1", "Probation check-in"'),
+    peopleHR: z.string().optional().describe('For add_meeting — "✅" or "❌"'),
+    notes: z.string().optional().describe('For add_meeting — row notes cell'),
+    task: z.string().optional().describe('For add_task — the task description'),
+    accepted: z.boolean().optional().describe('For add_task — tag as #accepted (true) or #watch (false)'),
+    force: z.boolean().optional().describe('Overwrite existing file on create'),
+  },
+  async (args) => {
+    const data = await neuroApi('/api/person-profile', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    });
+    return { content: [{ type: 'text', text: `**${data.status}** — ${data.path}\n${(data.changes || []).join('\n')}` }] };
+  });
+
+server.tool('manage_evidence_register',
+  'Add or update an entry in the 90-Day Plan Evidence Register (Projects/90 Day Plan/Evidence Register.md). Entries are grouped by Outcome.',
+  {
+    action: z.enum(['add', 'update', 'list']),
+    outcome: z.string().optional().describe('Outcome reference ("1", "Outcome 1", or substring of title). Required for add/update.'),
+    evidence: z.string().optional().describe('Evidence description (new row for add, or substring to find for update)'),
+    location: z.string().optional().describe('Where the evidence lives (URL or [[wiki-link]])'),
+    checkpoint: z.string().optional().describe('Which checkpoint this satisfies — e.g. "Day 15", "Day 30 + Day 45"'),
+  },
+  async (args) => {
+    const data = await neuroApi('/api/evidence', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    });
+    if (args.action === 'list') {
+      const lines = [`# Evidence Register\nPath: ${data.path}\n`];
+      for (const o of data.outcomes || []) {
+        lines.push(`## ${o.title} _(${o.rowCount} rows)_`);
+        for (const r of o.rows.slice(0, 5)) {
+          lines.push(`- ${r.evidence.substring(0, 80)} — ${r.checkpoint}`);
+        }
+        lines.push('');
+      }
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    }
+    return { content: [{ type: 'text', text: `**${data.status}** — ${data.outcome || data.path}\n${(data.changes || []).join('\n')}` }] };
+  });
+
+server.tool('compare_checkpoint_progress',
+  'Compare the 90-Day Plan deliverables for a checkpoint against the Evidence Register and return a gap analysis with completion %.',
+  {
+    checkpoint: z.string().describe('Checkpoint reference — e.g. "day-15", "day-30", "Day 60"'),
+  },
+  async ({ checkpoint }) => {
+    const data = await neuroApi(`/api/checkpoint/${encodeURIComponent(checkpoint)}`);
+    const a = data.analysis;
+    const lines = [
+      `# Checkpoint: ${data.checkpoint} (${data.plan.date})`,
+      `**Status:** ${data.plan.status || 'n/a'}`,
+      `**Completion:** ${a.covered} / ${a.total} (${a.completionPct}%)`,
+      `**Evidence entries tagged:** ${data.evidence.count}`,
+      '',
+      '## Deliverables',
+    ];
+    for (const d of a.deliverables) {
+      lines.push(`- ${d.covered ? '✅' : '❌'} ${d.deliverable}${d.covered ? ` _(${d.evidenceCount} evidence)_` : ''}`);
+    }
+    if (a.gaps.length) {
+      lines.push('', '## Gaps');
+      for (const g of a.gaps) lines.push(`- ${g}`);
+    }
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+server.tool('summarize_week',
+  'Generate a weekly summary markdown brief for Chris Middleton, aggregating meetings, reviews, dev plan updates, and action items from the week.',
+  {
+    weekStarting: z.string().optional().describe('ISO date (YYYY-MM-DD) of Monday. Defaults to this week\'s Monday.'),
+  },
+  async ({ weekStarting }) => {
+    const qs = new URLSearchParams();
+    if (weekStarting) qs.set('weekStarting', weekStarting);
+    const data = await neuroApi(`/api/weekly-summary?${qs.toString()}`);
+    return { content: [{ type: 'text', text: data.markdown }] };
+  });
+
+server.tool('find_knowledge_gaps',
+  'Identify missing KB articles by scanning dev plans, meeting notes, and projects for "KBA" / "KB article" / "knowledge base" mentions.',
+  {
+    topic: z.string().optional().describe('Filter suggestions containing this substring'),
+    daysBack: z.number().optional().describe('How far back to scan (default 90)'),
+  },
+  async ({ topic, daysBack }) => {
+    const qs = new URLSearchParams();
+    if (topic) qs.set('topic', topic);
+    if (daysBack) qs.set('daysBack', String(daysBack));
+    const data = await neuroApi(`/api/knowledge-gaps?${qs.toString()}`);
+    const lines = [
+      `# Knowledge Gap Suggestions`,
+      `Scanned last ${data.daysBack} days. ${data.counts.uniqueTopics} unique topics from ${data.counts.planMentions + data.counts.meetingMentions + data.counts.projectMentions} mentions.`,
+      `Existing KB articles in vault: ${data.counts.existingKbArticles}`,
+      '',
+      '## Top Suggestions',
+    ];
+    for (const s of (data.suggestions || []).slice(0, 15)) {
+      const sources = s.sources.map(src => src.source).join(', ');
+      lines.push(`- **${s.topic}** _(${s.count} mentions, sources: ${sources})_`);
+    }
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+server.tool('manage_kb_article',
+  'Create or update a KB article in KB/{category}/. Uses a standard 6-section template if content is not supplied.',
+  {
+    action: z.enum(['create', 'update']),
+    title: z.string().describe('Article title'),
+    category: z.string().optional().describe('Category subfolder (e.g. "Feeds", "Hub", "Valuation")'),
+    content: z.string().optional().describe('Full article markdown (replaces body)'),
+    tags: z.array(z.string()).optional().describe('Frontmatter tags'),
+    force: z.boolean().optional().describe('Overwrite existing article on create'),
+  },
+  async (args) => {
+    const data = await neuroApi('/api/kb-article', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    });
+    return { content: [{ type: 'text', text: `**${data.status}** — ${data.path}\n${(data.changes || []).join('\n')}` }] };
+  });
+
 // Training matrix sync is owned by the n8n "Training Matrix Sync" workflow
 // which fetches NOVA /api/public/training-export and POSTs to NEURO
 // /api/training/apply-matrix on a schedule. No MCP tool exposes this — there

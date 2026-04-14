@@ -142,6 +142,12 @@ app.use('/api/vault-actions', require('./routes/vault-actions'));
 app.use('/api/development-plan', require('./routes/development-plan'));
 app.use('/api/training', require('./routes/training-sync'));
 app.use('/api/team-health', require('./routes/team-health'));
+app.use('/api/person-profile', require('./routes/person-profile'));
+app.use('/api/evidence', require('./routes/evidence-register'));
+app.use('/api/checkpoint', require('./routes/checkpoint'));
+app.use('/api/weekly-summary', require('./routes/weekly-summary'));
+app.use('/api/knowledge-gaps', require('./routes/knowledge-gaps'));
+app.use('/api/kb-article', require('./routes/kb-article'));
 app.use('/api/email', require('./routes/email-triage'));
 
 // Health / status endpoint
