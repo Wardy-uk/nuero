@@ -322,18 +322,25 @@ server.tool('get_person_timeline',
   });
 
 server.tool('team_health_snapshot',
-  'Get a prioritised list of issues across direct reports (overdue 1:1s, due soon goals, improvement windows, overdue actions).',
+  'Get a prioritised list of issues across direct reports. Defaults to HIGH severity only — the things requiring Nick\'s immediate attention. Override with severity="medium" to include elevated items or severity="all" for the full picture.',
   {
-    team: z.string().optional().describe('Optional: filter to a single team ("2nd Line Technical Support", "1st Line Customer Care", "Digital Design")'),
+    team: z.string().optional().describe('Filter to a single team ("2nd Line Technical Support", "1st Line Customer Care", "Digital Design")'),
+    severity: z.enum(['high', 'medium', 'low', 'all']).optional().describe('Minimum severity to include. Default: "high" (only urgent items). "medium" includes high+med. "all" or "low" returns everything.'),
   },
-  async ({ team }) => {
+  async ({ team, severity }) => {
     const qs = new URLSearchParams();
     if (team) qs.set('team', team);
+    if (severity) qs.set('severity', severity);
     const data = await neuroApi(`/api/team-health?${qs.toString()}`);
-    const { counts, issues } = data;
+    const { counts, issues, severityFilter, filteredCount } = data;
     const lines = [`# Team Health — ${data.team}`, ''];
-    lines.push(`**High:** ${counts.high}  **Med:** ${counts.med}  **Low:** ${counts.low}  (${counts.peopleWithIssues} of ${counts.peopleWithIssues + counts.peopleClean} have issues)`);
+    lines.push(`**Filter:** ${severityFilter}  (showing ${filteredCount} of ${counts.high + counts.med + counts.low} total issues)`);
+    lines.push(`**All severities:** 🔴 ${counts.high} high · 🟡 ${counts.med} med · ⚪ ${counts.low} low  (${counts.peopleWithIssues} people with issues, ${counts.peopleClean} clean)`);
     lines.push('');
+    if (!issues.length) {
+      lines.push(`_No issues at severity '${severityFilter}' or above. Use severity='all' to see the full picture._`);
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    }
     const byPerson = {};
     for (const i of issues) {
       if (!byPerson[i.person]) byPerson[i.person] = [];

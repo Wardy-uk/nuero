@@ -13,7 +13,8 @@ const teamHealth = require('../services/team-health');
 router.get('/', (req, res) => {
   try {
     const team = req.query.team ? String(req.query.team) : undefined;
-    const result = teamHealth.teamHealthSnapshot({ team });
+    const severity = req.query.severity ? String(req.query.severity) : 'high';
+    const result = teamHealth.teamHealthSnapshot({ team, severity });
     if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
     res.json({ ok: true, ...result });
   } catch (e) {

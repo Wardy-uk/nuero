@@ -198,40 +198,64 @@ function analysePerson({ name, team }) {
 
 const SEVERITY_RANK = { high: 3, med: 2, low: 1 };
 
-function teamHealthSnapshot({ team } = {}) {
+// Accept both 'med' (internal) and 'medium' (friendly) for the filter param.
+function normaliseSeverityFilter(sev) {
+  const s = String(sev || '').toLowerCase();
+  if (s === 'medium') return 'med';
+  if (['high', 'med', 'low', 'all'].includes(s)) return s;
+  return 'high'; // default
+}
+
+function teamHealthSnapshot({ team, severity = 'high' } = {}) {
   const vault = VAULT_PATH();
   if (!vault) return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
 
   const people = allPeople(team);
   if (!people.length) return { status: 'error', error: `Unknown team: ${team}. Valid: ${Object.keys(TEAMS).join(', ')}` };
 
+  const filter = normaliseSeverityFilter(severity);
   const perPerson = people.map(analysePerson);
 
-  // Flat prioritised list: sort by highest severity first, then by count
-  const flat = [];
+  // Always compute the full counts (across all severities) so callers can
+  // see what was filtered out vs what's included.
+  const allIssues = [];
   for (const p of perPerson) {
-    for (const i of p.issues) flat.push({ person: p.name, team: p.team, ...i });
+    for (const i of p.issues) allIssues.push({ person: p.name, team: p.team, ...i });
   }
-  flat.sort((a, b) => {
+
+  const allCounts = {
+    high: allIssues.filter(i => i.severity === 'high').length,
+    med: allIssues.filter(i => i.severity === 'med').length,
+    low: allIssues.filter(i => i.severity === 'low').length,
+    peopleWithIssues: perPerson.filter(p => p.issues.length).length,
+    peopleClean: perPerson.filter(p => !p.issues.length).length,
+  };
+
+  // Apply filter: 'high' → only high; 'med' → high + med; 'low' → all; 'all' → all.
+  const minRank = filter === 'all' || filter === 'low' ? 1
+    : filter === 'med' ? 2
+    : 3;
+  const filtered = allIssues.filter(i => (SEVERITY_RANK[i.severity] || 0) >= minRank);
+
+  filtered.sort((a, b) => {
     const r = (SEVERITY_RANK[b.severity] || 0) - (SEVERITY_RANK[a.severity] || 0);
     if (r) return r;
     return a.person.localeCompare(b.person);
   });
 
-  const counts = {
-    high: flat.filter(i => i.severity === 'high').length,
-    med: flat.filter(i => i.severity === 'med').length,
-    low: flat.filter(i => i.severity === 'low').length,
-    peopleWithIssues: perPerson.filter(p => p.issues.length).length,
-    peopleClean: perPerson.filter(p => !p.issues.length).length,
-  };
+  const filteredPerPerson = perPerson.map(p => ({
+    ...p,
+    issues: p.issues.filter(i => (SEVERITY_RANK[i.severity] || 0) >= minRank),
+  })).filter(p => p.issues.length > 0);
 
   return {
     status: 'ok',
     team: team || 'all',
-    counts,
-    issues: flat,
-    perPerson,
+    severityFilter: filter,
+    counts: allCounts,
+    filteredCount: filtered.length,
+    issues: filtered,
+    perPerson: filteredPerPerson,
   };
 }
 
