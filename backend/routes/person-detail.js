@@ -268,21 +268,46 @@ router.get('/summary/all', (req, res) => {
       allDecisions = obsidian.getRecentDecisions(30) || [];
     } catch {}
 
+    // Precompute lowercase tokens for all tracked people so we can detect
+    // multi-person meta tasks (e.g. "align cases (Heidi, Nathan, Sebastian)")
+    // and exclude them — they're planning tasks, not per-person tasks.
+    const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const nameTokens = names.map(n => ({
+      name: n,
+      first: n.split(' ')[0].toLowerCase(),
+      full: n.toLowerCase(),
+      firstRe: new RegExp(`\\b${escapeRe(n.split(' ')[0].toLowerCase())}\\b`, 'i'),
+    }));
+    const countTrackedPeopleIn = (text) => {
+      const lower = (text || '').toLowerCase();
+      let n = 0;
+      for (const nt of nameTokens) {
+        if (nt.firstRe.test(lower) || lower.includes(nt.full)) n++;
+        if (n > 1) return n;
+      }
+      return n;
+    };
+
     // Build per-person summary
     const people = {};
-    for (const name of names) {
-      const firstName = name.split(' ')[0].toLowerCase();
-      const fullName = name.toLowerCase();
+    for (const nt of nameTokens) {
+      const matches = (text) => {
+        const lower = (text || '').toLowerCase();
+        if (!(nt.firstRe.test(lower) || lower.includes(nt.full))) return false;
+        return countTrackedPeopleIn(text) <= 1;
+      };
 
       const tasks = allTasks
-        .filter(t => t.text?.toLowerCase().includes(firstName) || t.text?.toLowerCase().includes(fullName))
+        .filter(t => matches(t.text))
         .slice(0, 3)
         .map(t => ({ text: t.text.substring(0, 80), source: t.source, due_date: t.due_date }));
 
       const decisions = allDecisions
-        .filter(d => d.text?.toLowerCase().includes(firstName) || d.text?.toLowerCase().includes(fullName))
+        .filter(d => matches(d.text))
         .slice(0, 3)
         .map(d => ({ date: d.date, text: d.text.substring(0, 80) }));
+
+      const name = nt.name;
 
       if (tasks.length > 0 || decisions.length > 0) {
         people[name] = { tasks, decisions };
