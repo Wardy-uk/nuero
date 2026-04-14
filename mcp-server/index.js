@@ -297,20 +297,11 @@ server.tool('manage_development_plan',
     return { content: [{ type: 'text', text: `**${data.status}** — ${data.path}\n${(data.changes || []).join('\n')}` }] };
   });
 
-server.tool('sync_training_matrix',
-  'Sync training status from NOVA SQLite DB into the vault (Training Matrix.md + person profiles).',
-  {
-    action: z.enum(['sync_all', 'sync_person']).describe('sync_all: all users and matrix; sync_person: single user'),
-    person: z.string().optional().describe('Person name (for sync_person)'),
-  },
-  async (args) => {
-    const data = await neuroApi('/api/training/sync', {
-      method: 'POST',
-      body: JSON.stringify(args),
-      timeout: 60000,
-    });
-    return { content: [{ type: 'text', text: `**${data.status}**\n${(data.changes || []).join('\n')}` }] };
-  });
+// Training matrix sync is owned by the n8n "Training Matrix Sync" workflow
+// which fetches NOVA /api/public/training-export and POSTs to NEURO
+// /api/training/apply-matrix on a schedule. No MCP tool exposes this — there
+// is no useful manual-trigger story from a chat client since the caller would
+// still need NOVA data to pass through.
 
 // ═══════════════════════════════════════════════════════
 // Tools: System

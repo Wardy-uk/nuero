@@ -74,19 +74,9 @@ function start() {
     nudges.triggerEodNudge();
   });
 
-  // Daily 2am — sync NOVA training matrix into vault
-  cron.schedule('0 2 * * *', async () => {
-    try {
-      if (!process.env.NOVA_DB_PATH) return; // Not configured, skip silently
-      const trainingSync = require('./training-sync');
-      const result = await trainingSync.syncTraining({ action: 'sync_all' });
-      if (result.status === 'updated') {
-        console.log(`[Scheduler] Training sync: ${result.changes.length} changes`);
-      } else {
-        console.warn('[Scheduler] Training sync error:', result.error);
-      }
-    } catch (e) { console.error('[Scheduler] Training sync failed:', e.message); }
-  });
+  // Training matrix sync is owned by n8n ("Training Matrix Sync" workflow) —
+  // it fetches NOVA /api/public/training-export and POSTs to NEURO
+  // /api/training/apply-matrix. No NEURO-side cron needed.
 
   // Friday 4:30pm — generate weekly review
   cron.schedule('30 16 * * 5', () => {

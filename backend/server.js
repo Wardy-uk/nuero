@@ -48,11 +48,13 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// App-level auth — PIN required for all API access
-// Set NEURO_PIN in .env. If not set, auth is disabled (dev mode).
+// App-level auth — PIN required for all API access, OR NEURO_API_TOKEN for
+// machine-to-machine callers (n8n, scheduled jobs). Set NEURO_PIN / NEURO_API_TOKEN
+// in .env. If neither is set, auth is disabled (dev mode).
 app.use('/api', (req, res, next) => {
   const expectedPin = process.env.NEURO_PIN;
-  if (!expectedPin) return next(); // no PIN configured = open access
+  const expectedApiToken = process.env.NEURO_API_TOKEN;
+  if (!expectedPin && !expectedApiToken) return next(); // no auth configured = open access
 
   // Allow auth check endpoint without PIN
   if (req.path === '/auth/check' || req.path === '/auth/login') return next();
@@ -66,12 +68,31 @@ app.use('/api', (req, res, next) => {
   // Allow Strava OAuth flow (browser redirects can't send PIN header)
   if (req.path === '/strava/auth' || req.path === '/strava/callback') return next();
 
-  const provided = req.headers['x-neuro-pin'] || req.query.pin;
-  if (!provided || provided !== expectedPin) {
-    return res.status(401).json({ error: 'PIN required' });
+  const providedPin = req.headers['x-neuro-pin'] || req.query.pin;
+  const providedApiToken = req.headers['x-neuro-api-token'] || req.query.api_token;
+
+  if (expectedApiToken && providedApiToken && providedApiToken === expectedApiToken) {
+    // Machine client authenticated — tag the request so routes can enforce
+    // API-only mode or audit which caller wrote.
+    req.apiClient = 'n8n';
+    return next();
+  }
+
+  if (expectedPin && providedPin && providedPin === expectedPin) {
+    return next();
+  }
+
+  return res.status(401).json({ error: 'Authentication required' });
+});
+
+// Helper for routes that should ONLY be callable by machine clients
+// (rejects interactive/PIN auth). Use: router.post('/x', requireApiClient, handler).
+app.locals.requireApiClient = (req, res, next) => {
+  if (!req.apiClient) {
+    return res.status(403).json({ ok: false, error: 'API token required' });
   }
   next();
-});
+};
 
 // Auth endpoints (outside PIN middleware)
 app.post('/api/auth/login', (req, res) => {
