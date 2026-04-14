@@ -137,6 +137,16 @@ function updatePersonNote(name, updates) {
   return notePath;
 }
 
+// Write a person note's full raw content (used by the vault note editor)
+function writePersonNoteRaw(name, content) {
+  const peopleDir = path.join(getVaultPath(), 'People');
+  if (!fs.existsSync(peopleDir)) fs.mkdirSync(peopleDir, { recursive: true });
+  const notePath = path.join(peopleDir, `${name}.md`);
+  fs.writeFileSync(notePath, content, 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(notePath, 'person-note'); } catch {}
+  return notePath;
+}
+
 function listPeopleNotes() {
   const dir = path.join(getVaultPath(), 'People');
   if (!fs.existsSync(dir)) return [];
@@ -1498,6 +1508,7 @@ module.exports = {
   readPersonNote,
   listPeopleNotes,
   updatePersonNote,
+  writePersonNoteRaw,
   appendDecision,
   parseFrontmatter,
   extractTags,

@@ -182,6 +182,71 @@ function ApprovalPanel({ approvals, onRefresh }) {
   );
 }
 
+function NoteEditor({ name, onClose, onSaved }) {
+  const [content, setContent] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    fetch(apiUrl(`/api/obsidian/people/${encodeURIComponent(name)}`))
+      .then(r => r.json())
+      .then(d => {
+        setContent(d.content || '');
+        setLoading(false);
+      })
+      .catch(() => { setMsg('Failed to load note'); setLoading(false); });
+  }, [name]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMsg('');
+    try {
+      const res = await fetch(apiUrl(`/api/obsidian/people/${encodeURIComponent(name)}/raw`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+      if (res.ok) {
+        setMsg('Saved');
+        if (onSaved) onSaved();
+        setTimeout(onClose, 800);
+      } else {
+        const data = await res.json();
+        setMsg(data.error || 'Save failed');
+      }
+    } catch (e) { setMsg(e.message || 'Save failed'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="note-editor-overlay" onClick={onClose}>
+      <div className="note-editor" onClick={e => e.stopPropagation()}>
+        <div className="note-editor-header">
+          <span className="note-editor-title">Edit vault note — {name}.md</span>
+          <button className="note-editor-close" onClick={onClose}>x</button>
+        </div>
+        {loading ? (
+          <div className="note-editor-loading">Loading...</div>
+        ) : (
+          <textarea
+            className="note-editor-textarea"
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            spellCheck={false}
+          />
+        )}
+        <div className="note-editor-actions">
+          {msg && <span className={`update-msg ${msg === 'Saved' ? 'ok' : ''}`}>{msg}</span>}
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving || loading}>
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UpdateForm({ name, frontmatter, onClose, onSaved }) {
   const fm = frontmatter || {};
   const [last121, setLast121] = useState(fm['last-1-2-1'] || '');
@@ -255,6 +320,7 @@ export default function PeopleBoard() {
   const [running121, setRunning121] = useState(null); // person name currently running
   const [snapshotResult, setSnapshotResult] = useState(null); // { name, data }
   const [editingPerson, setEditingPerson] = useState(null); // person name being updated
+  const [editingNote, setEditingNote] = useState(null); // person name whose raw note is being edited
   const [autoExpanded, setAutoExpanded] = useState(() => sessionStorage.getItem('people-auto-expanded') === 'true');
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [selectedPerson, setSelectedPerson] = useState(null);
@@ -358,6 +424,19 @@ export default function PeopleBoard() {
       </div>
 
       {viewMode === 'reports' && <ApprovalPanel approvals={pendingApprovals} onRefresh={fetchApprovals} />}
+
+      {editingNote && (
+        <NoteEditor
+          name={editingNote}
+          onClose={() => setEditingNote(null)}
+          onSaved={() => {
+            fetch(apiUrl(`/api/obsidian/people/${encodeURIComponent(editingNote)}`))
+              .then(r => r.json())
+              .then(data => setPeopleData(prev => ({ ...prev, [editingNote]: data })))
+              .catch(() => {});
+          }}
+        />
+      )}
 
       {snapshotResult && (
         <div className={`snapshot-result ${snapshotResult.data.success ? 'success' : 'error'}`}>
@@ -480,6 +559,15 @@ export default function PeopleBoard() {
                         onClick={() => setEditingPerson(editingPerson === person.name ? null : person.name)}
                       >
                         Update 1-2-1
+                      </button>
+                    )}
+                    {vaultData?.exists && (
+                      <button
+                        className="person-edit-btn"
+                        onClick={() => setEditingNote(person.name)}
+                        title="Edit raw vault note"
+                      >
+                        Edit Note
                       </button>
                     )}
                     {n8nConfigured && (

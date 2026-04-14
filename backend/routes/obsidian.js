@@ -46,6 +46,21 @@ router.get('/people/:name', (req, res) => {
   res.json({ name: req.params.name, exists: true, content, frontmatter, tags });
 });
 
+// PUT /api/obsidian/people/:name/raw — overwrite the full person note (markdown body + frontmatter)
+router.put('/people/:name/raw', (req, res) => {
+  const { content } = req.body;
+  if (typeof content !== 'string') {
+    return res.status(400).json({ error: 'content (string) is required' });
+  }
+  try {
+    const result = obsidianService.writePersonNoteRaw(req.params.name, content);
+    res.json({ success: true, path: result });
+  } catch (err) {
+    console.error('[obsidian] writePersonNoteRaw error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/obsidian/people/:name/update — update person note frontmatter and append notes
 router.post('/people/:name/update', (req, res) => {
   const { last121, next121Due, notes, employmentStatus } = req.body;
