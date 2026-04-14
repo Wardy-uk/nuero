@@ -297,6 +297,59 @@ server.tool('manage_development_plan',
     return { content: [{ type: 'text', text: `**${data.status}** — ${data.path}\n${(data.changes || []).join('\n')}` }] };
   });
 
+server.tool('get_person_timeline',
+  'Get a chronological timeline of events for a direct report (meetings, reviews, development plan progress, action items) over the last N days.',
+  {
+    person: z.string().describe('Person name, must match People/{name}.md'),
+    daysBack: z.number().optional().describe('How far back to look (default 60)'),
+  },
+  async ({ person, daysBack }) => {
+    const qs = new URLSearchParams();
+    if (daysBack) qs.set('daysBack', String(daysBack));
+    const data = await neuroApi(`/api/person/${encodeURIComponent(person)}/timeline?${qs.toString()}`);
+    const { counts, events } = data;
+    const lines = [`# Timeline: ${data.person} (last ${data.daysBack} days)`, ''];
+    lines.push(`**${counts.total} events** — meetings:${counts.meetings} reviews:${counts.reviews} plan:${counts.planEntries} actions:${counts.actions}`);
+    lines.push('');
+    for (const e of events.slice(0, 40)) {
+      const icon = e.type === 'meeting' ? '📅' : e.type === 'review' ? '📊' : e.type === 'plan' ? '🎯' : '✓';
+      lines.push(`${icon} **${e.date}** — ${e.title}`);
+      if (e.excerpt) lines.push(`  > ${e.excerpt}`);
+      if (e.path) lines.push(`  [[${e.path.replace(/\.md$/, '')}]]`);
+      lines.push('');
+    }
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+server.tool('team_health_snapshot',
+  'Get a prioritised list of issues across direct reports (overdue 1:1s, due soon goals, improvement windows, overdue actions).',
+  {
+    team: z.string().optional().describe('Optional: filter to a single team ("2nd Line Technical Support", "1st Line Customer Care", "Digital Design")'),
+  },
+  async ({ team }) => {
+    const qs = new URLSearchParams();
+    if (team) qs.set('team', team);
+    const data = await neuroApi(`/api/team-health?${qs.toString()}`);
+    const { counts, issues } = data;
+    const lines = [`# Team Health — ${data.team}`, ''];
+    lines.push(`**High:** ${counts.high}  **Med:** ${counts.med}  **Low:** ${counts.low}  (${counts.peopleWithIssues} of ${counts.peopleWithIssues + counts.peopleClean} have issues)`);
+    lines.push('');
+    const byPerson = {};
+    for (const i of issues) {
+      if (!byPerson[i.person]) byPerson[i.person] = [];
+      byPerson[i.person].push(i);
+    }
+    for (const [person, list] of Object.entries(byPerson)) {
+      lines.push(`## ${person} _(${list[0].team})_`);
+      for (const i of list) {
+        const dot = i.severity === 'high' ? '🔴' : i.severity === 'med' ? '🟡' : '⚪';
+        lines.push(`- ${dot} **${i.type}** — ${i.title}`);
+      }
+      lines.push('');
+    }
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
 // Training matrix sync is owned by the n8n "Training Matrix Sync" workflow
 // which fetches NOVA /api/public/training-export and POSTs to NEURO
 // /api/training/apply-matrix on a schedule. No MCP tool exposes this — there

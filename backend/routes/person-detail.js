@@ -321,4 +321,20 @@ router.get('/summary/all', (req, res) => {
   }
 });
 
+// GET /api/person/:name/timeline?daysBack=60
+// Chronological history of meetings, reviews, plan entries, action items.
+router.get('/:name/timeline', (req, res) => {
+  try {
+    const name = decodeURIComponent(req.params.name);
+    const daysBack = req.query.daysBack ? parseInt(req.query.daysBack, 10) : 60;
+    const personTimeline = require('../services/person-timeline');
+    const result = personTimeline.getTimeline({ person: name, daysBack });
+    if (result.status === 'error') return res.status(404).json({ ok: false, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[person/timeline]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;

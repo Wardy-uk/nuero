@@ -141,6 +141,7 @@ app.use('/api/1to1', require('./routes/one-to-one'));
 app.use('/api/vault-actions', require('./routes/vault-actions'));
 app.use('/api/development-plan', require('./routes/development-plan'));
 app.use('/api/training', require('./routes/training-sync'));
+app.use('/api/team-health', require('./routes/team-health'));
 app.use('/api/email', require('./routes/email-triage'));
 
 // Health / status endpoint
