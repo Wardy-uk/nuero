@@ -188,13 +188,16 @@ export default function CapturePanel() {
 
   return (
     <div className="capture-panel">
-      <h2 className="capture-title">Capture</h2>
+      <div className="capture-sara">
+        <span className="capture-sara-label">SARA</span>
+        <span className="capture-sara-line">Get it out of your head. I'll route it.</span>
+      </div>
 
       {result && (
         <div className={`capture-result-banner ${result.error ? 'capture-result-error' : result.queued ? 'capture-result-queued' : 'capture-result-ok'}`}>
           <span className="capture-result-icon">{result.error ? '✗' : result.queued ? '⏳' : '✓'}</span>
           <span className="capture-result-text">
-            {result.error || (result.queued ? 'Queued — will sync when online' : result.type === 'todo' ? 'Added to todos' : 'Captured')}
+            {result.error || (result.queued ? 'Queued. Will sync when online.' : result.type === 'todo' ? 'Added to todos.' : 'Captured.')}
           </span>
         </div>
       )}
@@ -203,7 +206,7 @@ export default function CapturePanel() {
         <textarea
           ref={textRef}
           className="capture-textarea"
-          placeholder="What's on your mind?"
+          placeholder="Type it. I'll sort it."
           value={content}
           onChange={e => setContent(e.target.value)}
           rows={4}

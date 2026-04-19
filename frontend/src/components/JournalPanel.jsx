@@ -98,7 +98,7 @@ export default function JournalPanel() {
   if (loading) {
     return (
       <div className="journal-panel">
-        <div className="journal-loading">Preparing tonight's prompts...</div>
+        <div className="journal-loading">Loading...</div>
       </div>
     );
   }
@@ -107,9 +107,9 @@ export default function JournalPanel() {
     return (
       <div className="journal-panel">
         <div className="journal-done">
-          <div className="journal-done-icon">&#10003;</div>
-          <h2>Journal complete for today</h2>
-          <p>Saved to Reflections/{date}-journal.md</p>
+          <div className="journal-done-icon">&check;</div>
+          <h2>Already done today.</h2>
+          <p>Reflections/{date}-journal.md</p>
           <div className="journal-settings">
             <div className="journal-settings-label">Evening nudge time</div>
             <div className="journal-settings-row">
@@ -135,9 +135,9 @@ export default function JournalPanel() {
     return (
       <div className="journal-panel">
         <div className="journal-done">
-          <div className="journal-done-icon">&#10003;</div>
-          <h2>Done. That's today filed.</h2>
-          <p>Saved to Reflections/{date}-journal.md</p>
+          <div className="journal-done-icon">&check;</div>
+          <h2>Filed. That's today done.</h2>
+          <p>Reflections/{date}-journal.md</p>
         </div>
       </div>
     );
@@ -147,8 +147,12 @@ export default function JournalPanel() {
 
   return (
     <div className="journal-panel">
+      <div className="journal-sara">
+        <span className="journal-sara-label">SARA</span>
+        <span className="journal-sara-line">Three questions. Two minutes. Then you're done.</span>
+      </div>
       <div className="journal-header">
-        <h2>Evening Journal</h2>
+        <h2>Journal</h2>
         <div className="journal-meta">
           <span className="journal-date">{date}</span>
           <span className="journal-step">{currentStep + 1} of {prompts.length}</span>

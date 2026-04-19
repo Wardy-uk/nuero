@@ -27,6 +27,49 @@ const TEAMS = {
   ],
 };
 
+function getSaraStatus(person, vaultData, summaries) {
+  const fm = vaultData?.frontmatter || {};
+  const empStatus = (fm['employment-status'] || '').toLowerCase();
+  const status = (fm.status || '').toLowerCase();
+  const tags = (vaultData?.tags || []).map(t => t.toLowerCase());
+  const tasks = summaries?.[person.name]?.tasks || [];
+  const overdueTasks = tasks.filter(t => t.overdue);
+
+  const s121 = get121Status(fm);
+
+  if (s121?.status === 'overdue') return { word: 'overdue', tone: 'danger', reason: s121.label };
+  if (status === 'risk' || empStatus.includes('improvement')) return { word: 'slipping', tone: 'danger', reason: empStatus || 'Flagged at risk' };
+  if (empStatus.includes('probation')) return { word: 'watch', tone: 'warning', reason: 'Probation' };
+  if (tags.includes('blocked') || status === 'blocked') return { word: 'blocked', tone: 'warning', reason: 'Tagged blocked' };
+  if (s121?.status === 'due-soon') return { word: 'watch', tone: 'warning', reason: s121.label };
+  if (overdueTasks.length > 0) return { word: 'watch', tone: 'warning', reason: `${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}` };
+  if (status === 'flag' || person.note) return { word: 'watch', tone: 'warning', reason: person.note || 'Flagged' };
+  return { word: 'solid', tone: 'ok', reason: '' };
+}
+
+function buildTeamSaraLine(teams, peopleData, personSummaries) {
+  const allPeople = Object.values(teams).flat();
+  const statuses = allPeople.map(p => getSaraStatus(p, peopleData[p.name], personSummaries));
+  const overdue = statuses.filter(s => s.word === 'overdue' || s.word === 'slipping');
+  const watching = statuses.filter(s => s.word === 'watch');
+  const solid = statuses.filter(s => s.word === 'solid');
+
+  const parts = [];
+  if (overdue.length > 0) parts.push(`${overdue.length} need attention.`);
+  if (watching.length > 0) parts.push(`${watching.length} on watch.`);
+  if (solid.length > 0 && overdue.length === 0) parts.push(`${solid.length} solid.`);
+  if (overdue.length === 0 && watching.length === 0) parts.push('Team looks good right now.');
+
+  const overdueNames = allPeople
+    .filter((_, i) => statuses[i].word === 'overdue')
+    .map(p => p.name.split(' ')[0]);
+  if (overdueNames.length > 0 && overdueNames.length <= 3) {
+    parts.push(`${overdueNames.join(', ')} — 1-2-1 overdue.`);
+  }
+
+  return parts.join(' ');
+}
+
 function get121Status(frontmatter) {
   const due = frontmatter?.['next-1-2-1-due'];
   if (!due) return null;
@@ -450,10 +493,18 @@ export default function PeopleBoard() {
     setRunning121(null);
   };
 
+  const saraLine = buildTeamSaraLine(TEAMS, peopleData, personSummaries);
+
   return (
     <div className="people-board">
+      {/* SARA team assessment */}
+      <div className="team-sara">
+        <span className="team-sara-label">SARA</span>
+        <p className="team-sara-line">{saraLine}</p>
+      </div>
+
       <div className="people-header">
-        <h2 className="people-title">People</h2>
+        <h2 className="people-title">Team</h2>
         <div className="people-toggle">
           <button
             className={`people-toggle-btn ${viewMode === 'reports' ? 'active' : ''}`}
@@ -517,16 +568,17 @@ export default function PeopleBoard() {
               const vaultData = peopleData[person.name];
               const tags = vaultData?.tags || [];
               const fm = vaultData?.frontmatter || {};
-              const status = fm.status || (person.note ? 'flag' : 'ok');
+              const sara = getSaraStatus(person, vaultData, personSummaries);
               const isRunning = running121 === person.name;
 
               return (
-                <div key={person.id} className={`person-card status-${status}`} data-person={person.name}>
+                <div key={person.id} className={`person-card sara-status-${sara.tone}`} data-person={person.name}>
                   <div className="person-header" onClick={() => setSelectedPerson(person.name)} style={{ cursor: 'pointer' }}>
                     <span className="person-name person-name-clickable">{person.name}</span>
-                    <span className="person-id">{person.id}</span>
+                    <span className={`sara-status-badge sara-status-${sara.tone}`}>{sara.word}</span>
                   </div>
                   <span className="person-role">{person.role}</span>
+                  {sara.reason && <span className="sara-status-reason">{sara.reason}</span>}
                   {(() => {
                     const s121 = get121Status(fm);
                     if (!s121) return null;

@@ -20,7 +20,7 @@ const express = require('express');
 const WORKER_PORT = process.env.WORKER_PORT || 3002;
 const WORKER_SECRET = process.env.WORKER_SECRET || '';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:7b';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));

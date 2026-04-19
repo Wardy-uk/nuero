@@ -102,7 +102,7 @@ ${contextSummary}`;
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
+        model: process.env.OLLAMA_MODEL || 'qwen2.5:1.5b',
         prompt: journalPromptText,
         stream: false,
         options: { temperature: 0.7, num_ctx: 2048, num_predict: 200 }

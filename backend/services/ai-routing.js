@@ -8,7 +8,7 @@
  *
  * Model routing on Pi 5:
  *   - qwen2.5:1.5b for lightweight tasks (focus, framing)
- *   - qwen2.5:7b for heavy tasks (chat)
+ *   - qwen2.5:1.5b for heavy tasks (chat)
  *
  * Priority queue: HIGH (focus, chat) runs before LOW (background fallback).
  * Only one local Ollama request at a time.
@@ -33,7 +33,7 @@ const OPENAI_CRITICAL_TYPES = (process.env.OPENAI_CRITICAL_ONLY_TYPES || 'escala
 
 // ── Model-per-task routing (Pi 5 only) ──
 const LIGHTWEIGHT_MODEL = 'qwen2.5:1.5b';
-const HEAVY_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:7b';
+const HEAVY_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
 
 const TASK_MODELS = {
   focus_enhancement: LIGHTWEIGHT_MODEL,

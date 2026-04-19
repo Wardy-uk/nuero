@@ -31,7 +31,7 @@ router.post('/subscribe', (req, res) => {
 // POST /api/push/test — send a test notification
 router.post('/test', async (req, res) => {
   try {
-    await webpush.sendToAll('NEURO Test', 'Push notifications are working!', { type: 'test' });
+    await webpush.sendToAll('SARA', 'Push notifications are working.', { type: 'test' });
     res.json({ ok: true });
   } catch (e) {
     console.error('[Push] Test error:', e);

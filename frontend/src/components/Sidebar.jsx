@@ -3,12 +3,13 @@ import { apiUrl } from '../api';
 import './Sidebar.css';
 
 const PRIMARY_ITEMS = [
-  { id: 'focus',      label: 'Focus',     icon: '◉' },
+  { id: 'briefing',   label: 'Briefing',  icon: '◉' },
   { id: 'chat',       label: 'Ask',       icon: '›' },
   { id: 'capture',    label: 'Capture',   icon: '+' },
 ];
 
 const SECONDARY_ITEMS = [
+  { id: 'focus',      label: 'Focus',     icon: '◎' },
   { id: 'dashboard',  label: 'Review',    icon: '⬡' },
   { id: 'queue',      label: 'Queue',     icon: '>' },
   { id: 'people',     label: 'People',    icon: '>' },
@@ -36,8 +37,8 @@ function useTimeHighlight() {
       const day = now.getDay();
       const isWeekday = day >= 1 && day <= 5;
       if (!isWeekday) { setHighlight(null); return; }
-      if (h >= 8 && h < 10) { setHighlight('focus'); return; }
-      if (h >= 21 && h < 23) { setHighlight('focus'); return; }
+      if (h >= 8 && h < 10) { setHighlight('briefing'); return; }
+      if (h >= 21 && h < 23) { setHighlight('briefing'); return; }
       setHighlight(null);
     }
     check();

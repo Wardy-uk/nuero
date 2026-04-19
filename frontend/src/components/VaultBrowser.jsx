@@ -248,6 +248,14 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
   // Browser view
   return (
     <div className="vault-browser">
+      <div className="vault-sara">
+        <span className="vault-sara-label">SARA</span>
+        <span className="vault-sara-line">
+          {searchResults ? `${searchResults.length} results.` :
+           entries.length === 0 && !loading ? 'Empty directory.' :
+           `${entries.filter(e => e.type !== 'directory').length} notes in this folder.`}
+        </span>
+      </div>
       <div className="vault-header">
         <h2 className="vault-title">Vault</h2>
         <div className="vault-search">

@@ -17,12 +17,24 @@ export default function StandupsPanel() {
       .finally(() => setLoading(false));
   }, [days]);
 
+  const streakCount = entries.filter(e => e.standup).length;
+  const missCount = entries.filter(e => !e.standup).length;
+  const saraLine = missCount === 0
+    ? `${streakCount}-day streak. Keep it up.`
+    : missCount === 1
+    ? `${streakCount} of ${entries.length} days logged. One miss.`
+    : `${missCount} missed standups in ${days} days. That's drift.`;
+
   if (loading) return <div className="standups-panel"><div className="standups-loading">Loading...</div></div>;
 
   return (
     <div className="standups-panel">
+      <div className="standups-sara">
+        <span className="standups-sara-label">SARA</span>
+        <span className="standups-sara-line">{saraLine}</span>
+      </div>
       <div className="standups-header">
-        <h2 className="standups-title">Standups & Rituals</h2>
+        <h2 className="standups-title">Standup</h2>
         <div className="standups-range">
           {[7, 14, 30].map(d => (
             <button
@@ -37,7 +49,7 @@ export default function StandupsPanel() {
       </div>
 
       {entries.length === 0 && (
-        <div className="standups-empty">No rituals found in the last {days} days</div>
+        <div className="standups-empty">No standups in the last {days} days. Start one.</div>
       )}
 
       {entries.map(entry => (

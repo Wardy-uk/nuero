@@ -94,11 +94,12 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos, onGoToJournal,
         return (
           <div key={i} className={`nudge-banner ${isEscalated ? 'escalated' : ''} ${nudge.type}`}>
             <div className="nudge-content">
+              <span className="nudge-sara-label">SARA</span>
               <span className="nudge-type">
                 {nudge.type === 'standup' ? 'STANDUP'
                   : nudge.type === 'todo' ? 'TODOS'
-                  : nudge.type === 'eod' ? 'END OF DAY'
-                  : nudge.type === '121' ? '1-2-1 DUE'
+                  : nudge.type === 'eod' ? 'EOD'
+                  : nudge.type === '121' ? '1-2-1'
                   : nudge.type === 'plan_milestone' ? 'PLAN'
                   : nudge.type === 'journal' ? 'JOURNAL'
                   : nudge.type.toUpperCase()}
@@ -132,12 +133,12 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos, onGoToJournal,
                   handleDismiss(nudge);
                 }}
               >
-                {nudge.type === 'standup' ? 'Open Standup'
-                  : nudge.type === 'todo' ? 'Open Todos'
-                  : nudge.type === 'eod' ? 'Do EOD'
-                  : nudge.type === 'journal' ? 'Open Journal'
-                  : nudge.type === '121' ? 'Open People'
-                  : 'View'}
+                {nudge.type === 'standup' ? 'Do it'
+                  : nudge.type === 'todo' ? 'Open'
+                  : nudge.type === 'eod' ? 'Do it'
+                  : nudge.type === 'journal' ? 'Open'
+                  : nudge.type === '121' ? 'Open'
+                  : 'Go'}
               </button>
             </div>
           </div>

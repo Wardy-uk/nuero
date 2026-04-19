@@ -119,9 +119,9 @@ function GuidedEod({ onDone }) {
   if (done) {
     return (
       <div className="guided-done">
-        <div className="guided-done-icon">✓</div>
-        <div className="guided-done-title">EOD written</div>
-        <div className="guided-done-sub">Have a good evening.</div>
+        <div className="guided-done-icon">&check;</div>
+        <div className="guided-done-title">EOD filed.</div>
+        <div className="guided-done-sub">Close the laptop.</div>
         {onDone && <button className="btn btn-secondary" style={{ marginTop: '16px' }} onClick={onDone}>Close</button>}
       </div>
     );
@@ -130,7 +130,10 @@ function GuidedEod({ onDone }) {
   return (
     <div className="guided-standup">
       {briefing && step === 0 && (
-        <div className="guided-bubble assistant"><span>{briefing}</span></div>
+        <div className="guided-sara-line">
+          <span className="guided-sara-label">SARA</span>
+          <span className="guided-sara-text">{briefing}</span>
+        </div>
       )}
 
       {questions.slice(0, step).map((q, i) => (
@@ -365,9 +368,9 @@ function GuidedStandup({ onDone }) {
   if (done) {
     return (
       <div className="guided-done">
-        <div className="guided-done-icon">✓</div>
-        <div className="guided-done-title">Daily note written</div>
-        <div className="guided-done-sub">Standup complete. Have a good one.</div>
+        <div className="guided-done-icon">&check;</div>
+        <div className="guided-done-title">Daily note written.</div>
+        <div className="guided-done-sub">Go.</div>
         {onDone && <button className="btn btn-secondary" style={{ marginTop: '16px' }} onClick={onDone}>Close</button>}
       </div>
     );
@@ -377,10 +380,11 @@ function GuidedStandup({ onDone }) {
     <div className="guided-standup">
       <MustDoPanel items={mustDos} />
 
-      {/* Briefing */}
+      {/* SARA briefing */}
       {briefing && step === 0 && (
-        <div className="guided-bubble assistant">
-          <span>{briefing}</span>
+        <div className="guided-sara-line">
+          <span className="guided-sara-label">SARA</span>
+          <span className="guided-sara-text">{briefing}</span>
         </div>
       )}
 
@@ -595,9 +599,9 @@ export default function StandupEditor() {
       {/* Guided done */}
       {mode === 'guided' && (standupDone || guidedDone) && !showEod && (
         <div className="guided-done">
-          <div className="guided-done-icon">✓</div>
-          <div className="guided-done-title">Standup complete</div>
-          <div className="guided-done-sub">Daily note written to vault.</div>
+          <div className="guided-done-icon">&check;</div>
+          <div className="guided-done-title">Standup done.</div>
+          <div className="guided-done-sub">Written to vault.</div>
         </div>
       )}
 

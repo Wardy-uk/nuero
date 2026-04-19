@@ -1,0 +1,413 @@
+.briefing {
+  max-width: 720px;
+  width: 100%;
+}
+
+/* ── SARA opening line ── */
+.briefing-sara {
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.briefing-sara-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.briefing-sara-line {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.briefing-sara-loading {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.briefing-sara-action {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 8px;
+}
+
+/* Tone variants */
+.briefing-tone-critical {
+  border-left-color: var(--danger);
+}
+.briefing-tone-critical .briefing-sara-label {
+  color: var(--danger);
+}
+.briefing-tone-assertive {
+  border-left-color: var(--warning);
+}
+.briefing-tone-assertive .briefing-sara-label {
+  color: var(--warning);
+}
+.briefing-tone-calm {
+  border-left-color: var(--success);
+}
+.briefing-tone-calm .briefing-sara-label {
+  color: var(--success);
+}
+
+/* ── Primary action block ── */
+.briefing-next {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: rgba(90, 163, 249, 0.06);
+  border: 1px solid rgba(90, 163, 249, 0.2);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.briefing-next:hover {
+  background: rgba(90, 163, 249, 0.1);
+}
+
+.briefing-next-critical {
+  background: rgba(224, 85, 85, 0.06);
+  border-color: rgba(224, 85, 85, 0.25);
+  border-left-color: var(--danger);
+}
+.briefing-next-critical:hover {
+  background: rgba(224, 85, 85, 0.1);
+}
+.briefing-next-high {
+  background: rgba(240, 160, 64, 0.06);
+  border-color: rgba(240, 160, 64, 0.2);
+  border-left-color: var(--warning);
+}
+.briefing-next-high:hover {
+  background: rgba(240, 160, 64, 0.1);
+}
+
+.briefing-next-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.briefing-next-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.briefing-next-critical .briefing-next-badge { color: var(--danger); }
+.briefing-next-high .briefing-next-badge { color: var(--warning); }
+
+.briefing-next-label {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.briefing-next-reason {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.briefing-next-btn {
+  flex-shrink: 0;
+  background: var(--accent);
+  border: none;
+  color: var(--bg-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.briefing-next-btn:hover {
+  opacity: 0.9;
+}
+.briefing-next-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.briefing-next-critical .briefing-next-btn { background: var(--danger); }
+.briefing-next-high .briefing-next-btn { background: var(--warning); }
+
+/* ── Action cards ── */
+.briefing-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 20px;
+}
+
+.briefing-card {
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+.briefing-card:hover {
+  background: var(--bg-tertiary);
+  border-color: rgba(90, 163, 249, 0.2);
+}
+
+.briefing-card-critical {
+  border-left: 3px solid var(--danger);
+}
+.briefing-card-high {
+  border-left: 3px solid var(--warning);
+}
+.briefing-card-medium {
+  border-left: 3px solid var(--accent);
+}
+
+.briefing-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.briefing-card-source {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.briefing-card-key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.briefing-card-sla {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.briefing-card-sla.sla-danger {
+  color: var(--warning);
+}
+.briefing-card-sla.sla-breached {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.briefing-card-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+.briefing-card:hover .briefing-card-dismiss {
+  opacity: 1;
+}
+.briefing-card-dismiss:hover {
+  color: var(--danger);
+}
+
+.briefing-card-title {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+
+.briefing-card-take {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.briefing-card-cta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* ── Empty state ── */
+.briefing-empty {
+  padding: 48px 24px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.briefing-empty-line {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ── Quick stats bar ── */
+.briefing-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+.briefing-stat {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.briefing-stat:hover {
+  background: var(--bg-tertiary);
+  border-color: rgba(90, 163, 249, 0.2);
+}
+.briefing-stat.stat-warn {
+  border-color: rgba(240, 160, 64, 0.3);
+}
+
+.briefing-stat-val {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.briefing-stat.stat-warn .briefing-stat-val {
+  color: var(--warning);
+}
+
+.briefing-stat-lbl {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.briefing-stat-sub {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--warning);
+  margin-top: 2px;
+}
+
+/* ── Standup nudge ── */
+.briefing-standup-nudge {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: rgba(240, 160, 64, 0.06);
+  border: 1px solid rgba(240, 160, 64, 0.2);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  color: var(--warning);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.briefing-standup-nudge:hover {
+  background: rgba(240, 160, 64, 0.1);
+}
+
+/* ── Footer ── */
+.briefing-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.briefing-refresh {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.briefing-refresh:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .briefing-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .briefing-next {
+    flex-wrap: wrap;
+  }
+  .briefing-next-reason {
+    white-space: normal;
+  }
+  .briefing-next-btn {
+    width: 100%;
+    text-align: center;
+  }
+  .briefing-card-dismiss {
+    opacity: 1;
+  }
+}

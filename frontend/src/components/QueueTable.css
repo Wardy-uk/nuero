@@ -1,7 +1,38 @@
 .queue-container {
-  max-width: 900px;
+  max-width: 800px;
+  width: 100%;
 }
 
+/* ── SARA line ── */
+.triage-sara {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.triage-sara-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.triage-sara-line {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* ── Header ── */
 .queue-header {
   display: flex;
   justify-content: space-between;
@@ -18,207 +49,245 @@
 .queue-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .queue-sync {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
 }
 
-.queue-unconfigured, .queue-empty {
-  background: var(--bg-card);
+.queue-filter-toggle {
+  display: flex;
+  gap: 2px;
+}
+
+.triage-refresh-btn {
+  background: none;
   border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 15px;
+  width: 30px;
+  height: 30px;
   border-radius: 4px;
-  padding: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.triage-refresh-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.queue-empty {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 32px;
   text-align: center;
   font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text-secondary);
 }
 
-.queue-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.queue-table th {
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
+.triage-empty {
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
 }
 
-.queue-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+/* ── Triage groups ── */
+.triage-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.queue-table tr:hover {
+.triage-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.triage-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.triage-group-header:hover {
   background: var(--bg-tertiary);
 }
 
-.queue-table tr.sla-danger {
-  background: rgba(224, 85, 85, 0.08);
-}
-
-.queue-table tr.sla-danger td {
-  border-bottom-color: rgba(224, 85, 85, 0.2);
-}
-
-.queue-table tr.sla-warning {
-  background: rgba(240, 160, 64, 0.06);
-}
-
-.queue-table tr.sla-ok {
-  /* default */
-}
-
-.ticket-key {
+.triage-group-label {
   font-family: var(--font-mono);
-  font-weight: 500;
-  color: var(--accent);
-  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 
-.ticket-summary {
-  max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.triage-group-danger .triage-group-label { color: var(--danger); }
+.triage-group-warning .triage-group-label { color: var(--warning); }
+.triage-group-neutral .triage-group-label { color: var(--text-muted); }
 
-.ticket-priority {
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-.ticket-status {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.ticket-assignee {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.ticket-sla {
-  font-family: var(--font-mono);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-tr.sla-danger .ticket-sla {
-  color: var(--danger);
-}
-
-tr.sla-warning .ticket-sla {
-  color: var(--warning);
-}
-
-tr.sla-ok .ticket-sla {
-  color: var(--success);
-}
-
-.escalation-section {
-  margin-bottom: 20px;
-}
-
-.escalation-title {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.escalation-group {
-  margin-bottom: 8px;
-}
-
-.escalation-group-label {
-  display: block;
+.triage-group-count {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.triage-group-danger .triage-group-count {
+  color: var(--danger);
+  background: rgba(224, 85, 85, 0.12);
+}
+.triage-group-warning .triage-group-count {
+  color: var(--warning);
+  background: rgba(240, 160, 64, 0.1);
+}
+.triage-group-neutral .triage-group-count {
   color: var(--text-muted);
-  text-transform: uppercase;
-  margin-bottom: 4px;
+  background: var(--bg-tertiary);
 }
 
-.escalation-card {
+.triage-group-chevron {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.triage-group-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Triage card (individual ticket) ── */
+.triage-card {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.triage-card:hover {
+  background: var(--bg-tertiary);
+}
+
+.triage-card.sla-breached {
+  border-left: 3px solid var(--danger);
+  background: rgba(224, 85, 85, 0.04);
+}
+.triage-card.sla-danger {
+  border-left: 3px solid var(--danger);
+}
+.triage-card.sla-warning {
+  border-left: 3px solid var(--warning);
+}
+
+.triage-card-top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  margin-bottom: 4px;
-  font-size: 13px;
-  border-left: 3px solid transparent;
+  gap: 8px;
+  margin-bottom: 3px;
 }
 
-.escalation-card.escalation-red {
-  border-left-color: #ef4444;
-  background: rgba(239, 68, 68, 0.08);
-}
-
-.escalation-card.escalation-amber {
-  border-left-color: #f59e0b;
-  background: rgba(245, 158, 11, 0.06);
-}
-
-.escalation-card.escalation-grey {
-  border-left-color: var(--border);
-  background: var(--bg-card);
-  opacity: 0.6;
-}
-
-.escalation-key {
+.triage-card-key {
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--accent);
   white-space: nowrap;
-  min-width: 70px;
 }
 
-.escalation-summary {
+.triage-card-priority {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.triage-card-sla {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.triage-card-sla.sla-breached {
+  color: var(--danger);
+  font-weight: 700;
+}
+.triage-card-sla.sla-danger { color: var(--danger); }
+.triage-card-sla.sla-warning { color: var(--warning); }
+.triage-card-sla.sla-ok { color: var(--success); }
+
+.triage-card-summary {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Flagged Escalations section */
+.triage-card-meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.triage-card-assignee {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.triage-card-status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.triage-flag-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+  opacity: 0.3;
+  transition: opacity 0.15s, color 0.15s;
+  padding: 0 2px;
+}
+.triage-flag-btn:hover { opacity: 1; color: var(--warning); }
+.triage-flag-btn.triage-flagged { color: var(--warning); opacity: 1; }
+
+/* ── Flagged escalations (preserved from original) ── */
 .flagged-section {
-  margin-bottom: 24px;
-  padding: 16px;
+  margin-bottom: 16px;
+  padding: 14px;
   background: var(--bg-secondary);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(240, 160, 64, 0.15);
 }
 
 .flagged-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .flagged-title {
-  font-size: 13px;
+  font-size: 11px;
   font-family: var(--font-mono);
-  color: var(--text-secondary);
+  color: var(--warning);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 600;
+  letter-spacing: 1px;
+  font-weight: 700;
   margin: 0;
   display: flex;
   align-items: center;
@@ -226,8 +295,8 @@ tr.sla-ok .ticket-sla {
 }
 
 .flagged-count {
-  background: #f59e0b;
-  color: #000;
+  background: var(--warning);
+  color: var(--bg-primary);
   font-size: 10px;
   font-weight: 700;
   padding: 1px 6px;
@@ -246,14 +315,13 @@ tr.sla-ok .ticket-sla {
   opacity: 0.7;
   transition: opacity 0.15s;
 }
-
 .flagged-add-btn:hover { opacity: 1; }
 
 .flagged-add-form {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   padding: 10px;
   background: var(--bg-tertiary);
   border-radius: 4px;
@@ -262,7 +330,7 @@ tr.sla-ok .ticket-sla {
 .flagged-key-input,
 .flagged-note-input {
   background: var(--bg-primary);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -272,37 +340,31 @@ tr.sla-ok .ticket-sla {
 
 .flagged-error {
   font-size: 11px;
-  color: #ef4444;
-}
-
-.flagged-empty {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
+  color: var(--danger);
 }
 
 .flagged-card {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 4px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   border-left: 3px solid transparent;
 }
 
 .flagged-active {
-  background: rgba(245, 158, 11, 0.06);
-  border-left-color: #f59e0b;
+  background: rgba(240, 160, 64, 0.06);
+  border-left-color: var(--warning);
 }
 
 .flagged-commented {
   background: rgba(255, 255, 255, 0.02);
-  border-left-color: rgba(255, 255, 255, 0.1);
+  border-left-color: var(--border);
 }
 
 .flagged-card-top {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .flagged-key {
@@ -336,13 +398,12 @@ tr.sla-ok .ticket-sla {
   opacity: 0.5;
   transition: opacity 0.15s;
 }
-
-.flagged-unflag-btn:hover { opacity: 1; color: #ef4444; }
+.flagged-unflag-btn:hover { opacity: 1; color: var(--danger); }
 
 .flagged-summary {
   font-size: 12px;
   color: var(--text-primary);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .flagged-note {
@@ -352,11 +413,10 @@ tr.sla-ok .ticket-sla {
   cursor: pointer;
   padding: 2px 0;
 }
-
 .flagged-note:hover { color: var(--text-primary); }
 
 .flagged-note-add {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
   background: none;
   border: none;
@@ -364,73 +424,24 @@ tr.sla-ok .ticket-sla {
   padding: 0;
   font-family: var(--font-mono);
 }
-
 .flagged-note-add:hover { color: var(--accent); }
 
 .flagged-meta {
   font-size: 10px;
   color: var(--text-muted);
-  margin-top: 4px;
+  margin-top: 3px;
   font-family: var(--font-mono);
 }
 
-.flagged-resolved {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.flagged-resolved-label {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  display: block;
-  margin-bottom: 6px;
-}
-
-.flagged-resolved-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  opacity: 0.4;
-  padding: 4px 0;
-}
-
-/* Flag button on queue rows */
-.ticket-flag { width: 32px; text-align: center; }
-
-.ticket-flag-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--text-muted);
-  opacity: 0.3;
-  transition: opacity 0.15s, color 0.15s;
-  padding: 0;
-}
-
-.ticket-flag-btn:hover { opacity: 1; color: #f59e0b; }
-.ticket-flag-btn.ticket-flagged { color: #f59e0b; opacity: 1; }
-
+/* ── Responsive ── */
 @media (max-width: 768px) {
-  .queue-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
   .queue-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
   }
 
-  .queue-table {
-    min-width: 650px;
-  }
-
-  .ticket-summary {
-    max-width: 180px;
+  .triage-card-summary {
+    white-space: normal;
   }
 }

@@ -453,7 +453,10 @@ export default function AdminPanel({ pushState = {} }) {
 
   return (
     <div className="admin-container">
-      <h2 className="admin-title">Settings</h2>
+      <div className="admin-sara">
+        <span className="admin-sara-label">SARA</span>
+        <span className="admin-sara-line">System configuration. Change what I connect to.</span>
+      </div>
 
       <div className="admin-section">
         <div className="admin-section-title">Integrations</div>
@@ -556,13 +559,13 @@ export default function AdminPanel({ pushState = {} }) {
             </div>
             {!status.push?.configured && (
               <div className="admin-card-detail" style={{ color: 'var(--accent-warn, #f59e0b)' }}>
-                SSH into Pi and run: <code>npx web-push generate-vapid-keys</code> — paste output into Pi .env and restart NEURO
+                Run <code>npx web-push generate-vapid-keys</code> on Pi, add to .env, restart.
               </div>
             )}
           </div>
           {!pushSupported ? (
             <div className="admin-ms-desc">
-              Push not supported on this browser. On iOS: Safari → Share → Add to Home Screen → reopen from icon.
+              Push not supported in this browser. Install as PWA first.
             </div>
           ) : pushSubscribed ? (
             <>
@@ -600,11 +603,8 @@ export default function AdminPanel({ pushState = {} }) {
             </>
           ) : (
             <>
-              <div className="admin-ms-desc" style={{ marginBottom: '8px' }}>
-                <strong>iOS users:</strong> Install NEURO as a PWA first — Safari → Share → Add to Home Screen → reopen from icon.
-              </div>
               <div className="admin-ms-desc" style={{ marginBottom: '12px' }}>
-                Then tap Enable Notifications and accept the permission prompt.
+                iOS: install as PWA first (Safari → Share → Add to Home Screen). Then tap Enable and accept the prompt.
               </div>
               <button
                 className="admin-ms-connect-btn"
@@ -701,7 +701,7 @@ export default function AdminPanel({ pushState = {} }) {
         <div className="admin-section-title">System</div>
         <div className="admin-card">
           <div className="admin-card-header">
-            <span className="admin-card-name">NUERO</span>
+            <span className="admin-card-name">NEURO</span>
             <span className="admin-status-badge connected">v{status.version}</span>
           </div>
           <div className="admin-card-detail">

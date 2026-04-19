@@ -211,6 +211,74 @@ function ExportButton({ content }) {
   );
 }
 
+function useVoiceInput() {
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const recognitionRef = useRef(null);
+
+  const supported = typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const start = () => {
+    if (!supported || listening) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-GB';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      let final = '';
+      let interim = '';
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      setTranscript(final || interim);
+    };
+
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => setListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListening(true);
+    setTranscript('');
+  };
+
+  const stop = () => {
+    recognitionRef.current?.stop();
+    setListening(false);
+  };
+
+  return { listening, transcript, start, stop, supported };
+}
+
+function speakSara(text) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const clean = text
+    .replace(/\[.*?\]/g, '')
+    .replace(/[#*_`>]/g, '')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, ' ')
+    .trim();
+  if (!clean) return;
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.rate = 1.05;
+  utterance.pitch = 1.0;
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => /samantha|karen|moira|fiona/i.test(v.name) && /en/i.test(v.lang))
+    || voices.find(v => /en-GB/i.test(v.lang) && /female/i.test(v.name))
+    || voices.find(v => /en-GB/i.test(v.lang))
+    || voices.find(v => /en/i.test(v.lang));
+  if (preferred) utterance.voice = preferred;
+  window.speechSynthesis.speak(utterance);
+}
+
 export default function ChatPanel({ location }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -222,8 +290,12 @@ export default function ChatPanel({ location }) {
   const [showConvList, setShowConvList] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [confirmation, setConfirmation] = React.useState(null);
+  const [voiceOut, setVoiceOut] = useState(() => {
+    try { return localStorage.getItem('sara_voice_out') === 'true'; } catch { return false; }
+  });
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const voice = useVoiceInput();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -259,6 +331,39 @@ export default function ChatPanel({ location }) {
       setTimeout(() => setConfirmation(null), 8000);
     }
   }, [messages, streaming]);
+
+  // Voice input → fill input field
+  useEffect(() => {
+    if (voice.transcript) setInput(voice.transcript);
+  }, [voice.transcript]);
+
+  // Auto-send when voice input finishes
+  const prevListening = useRef(false);
+  useEffect(() => {
+    if (prevListening.current && !voice.listening && voice.transcript.trim()) {
+      setTimeout(() => sendMessage(), 100);
+    }
+    prevListening.current = voice.listening;
+  }, [voice.listening]);
+
+  // Speak SARA's response when streaming ends
+  useEffect(() => {
+    if (streaming || !voiceOut || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.role === 'assistant' && last.content) {
+      speakSara(last.content);
+    }
+  }, [streaming]);
+
+  // Persist voice output preference
+  const toggleVoiceOut = () => {
+    setVoiceOut(v => {
+      const next = !v;
+      try { localStorage.setItem('sara_voice_out', String(next)); } catch {}
+      if (!next) window.speechSynthesis?.cancel();
+      return next;
+    });
+  };
 
   // Persist conversationId
   useEffect(() => {
@@ -428,13 +533,24 @@ export default function ChatPanel({ location }) {
     <div className="chat-container">
       <div className="chat-header">
         <span className="chat-title" onClick={() => setShowConvList(!showConvList)} style={{ cursor: 'pointer' }}>
-          NUERO {conversations.length > 0 && <span className="chat-conv-toggle">▾</span>}
+          SARA {conversations.length > 0 && <span className="chat-conv-toggle">▾</span>}
         </span>
-        <span className="chat-status">
-          {streaming ? 'thinking...' : loadingHistory ? 'loading...' : 'ready'}
-          {chatMode && !streaming && <span className="chat-mode"> · {chatMode === 'api' ? 'OpenAI' : chatMode === 'openai' ? 'OpenAI' : 'Local'}</span>}
-        </span>
-        <button className="chat-new-btn" onClick={startNew}>New</button>
+        <div className="chat-header-right">
+          {'speechSynthesis' in window && (
+            <button
+              className={`chat-voice-toggle ${voiceOut ? 'active' : ''}`}
+              onClick={toggleVoiceOut}
+              title={voiceOut ? 'Voice on' : 'Voice off'}
+            >
+              {voiceOut ? '🔊' : '🔇'}
+            </button>
+          )}
+          <span className="chat-status">
+            {streaming ? '' : loadingHistory ? 'loading' : ''}
+            {chatMode && !streaming && <span className="chat-mode">{chatMode === 'api' || chatMode === 'openai' ? 'API' : 'Local'}</span>}
+          </span>
+          <button className="chat-new-btn" onClick={startNew}>New</button>
+        </div>
       </div>
 
       {showConvList && conversations.length > 0 && (
@@ -455,28 +571,43 @@ export default function ChatPanel({ location }) {
       <div className="chat-messages">
         {messages.length === 0 && !loadingHistory && (
           <div className="chat-empty">
-            Ask me anything about your queue, team, or priorities.
+            <span className="chat-empty-label">SARA</span>
+            <span className="chat-empty-text">Queue, team, priorities, vault — ask or tell me what to do.</span>
           </div>
         )}
         {messages.map((msg, i) => {
           const prevMsg = i > 0 ? messages[i - 1] : null;
+          const isLast = i === messages.length - 1;
           const showExport = msg.role === 'assistant' && msg.content && msg.content.length > 200
             && !streaming && prevMsg?.role === 'user' && detectExportIntent(prevMsg.content);
+          const isThinking = msg.role === 'assistant' && isLast && streaming && !msg.content;
           return (
-            <div key={i} className={`chat-bubble ${msg.role}`}>
-              {msg.role === 'assistant' ? (
-                <>
-                  <ReactMarkdown>{msg.content || '...'}</ReactMarkdown>
+            <div key={i} className={`chat-msg chat-msg-${msg.role}`}>
+              {msg.role === 'assistant' && (
+                <span className="chat-msg-label">SARA</span>
+              )}
+              {msg.role === 'user' && (
+                <span className="chat-msg-label chat-msg-label-user">You</span>
+              )}
+              {isThinking ? (
+                <div className="chat-thinking">
+                  <span className="chat-thinking-dot" />
+                  <span className="chat-thinking-dot" />
+                  <span className="chat-thinking-dot" />
+                </div>
+              ) : msg.role === 'assistant' ? (
+                <div className="chat-msg-body">
+                  <ReactMarkdown>{msg.content || ''}</ReactMarkdown>
                   {msg.content && msg.content.length > 20 && !streaming && (
                     <TodoSaveButton messageContent={msg.content} apiUrlFn={apiUrl} />
                   )}
                   {showExport && <ExportButton content={msg.content} />}
-                  {msg.role === 'assistant' && !streaming && prevMsg?.role === 'user' && (
+                  {!streaming && prevMsg?.role === 'user' && (
                     <SaveDocButton userMessage={prevMsg.content} assistantContent={msg.content} />
                   )}
-                </>
+                </div>
               ) : (
-                <span>{msg.content}</span>
+                <div className="chat-msg-body">{msg.content}</div>
               )}
             </div>
           );
@@ -497,13 +628,23 @@ export default function ChatPanel({ location }) {
       )}
 
       <div className="chat-input-row">
+        {voice.supported && (
+          <button
+            className={`chat-mic-btn ${voice.listening ? 'chat-mic-active' : ''}`}
+            onClick={voice.listening ? voice.stop : voice.start}
+            disabled={streaming}
+            title={voice.listening ? 'Stop listening' : 'Voice input'}
+          >
+            {voice.listening ? '◉' : '◎'}
+          </button>
+        )}
         <textarea
           ref={inputRef}
           className="chat-input"
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Message NUERO..."
+          placeholder={voice.listening ? 'Listening...' : 'Message SARA...'}
           rows={1}
           disabled={streaming}
         />

@@ -1,3 +1,74 @@
+/* ── SARA team assessment ── */
+.team-sara {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.team-sara-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.team-sara-line {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* ── SARA status badge on cards ── */
+.sara-status-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+.sara-status-badge.sara-status-ok {
+  color: var(--success);
+  background: rgba(64, 201, 122, 0.1);
+}
+.sara-status-badge.sara-status-warning {
+  color: var(--warning);
+  background: rgba(240, 160, 64, 0.1);
+}
+.sara-status-badge.sara-status-danger {
+  color: var(--danger);
+  background: rgba(224, 85, 85, 0.12);
+}
+
+.sara-status-reason {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Card border by SARA status */
+.person-card.sara-status-danger {
+  border-left: 3px solid var(--danger);
+}
+.person-card.sara-status-warning {
+  border-left: 3px solid var(--warning);
+}
+.person-card.sara-status-ok {
+  border-left: 3px solid rgba(64, 201, 122, 0.3);
+}
+
 .people-board {
   max-width: 900px;
 }
@@ -75,17 +146,7 @@
   gap: 4px;
 }
 
-.person-card.status-flag {
-  border-left: 3px solid var(--warning);
-}
-
-.person-card.status-risk {
-  border-left: 3px solid var(--danger);
-}
-
-.person-card.status-ok {
-  border-left: 3px solid var(--border);
-}
+/* Legacy status classes removed — now using .sara-status-* */
 
 .person-header {
   display: flex;

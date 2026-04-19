@@ -5,6 +5,32 @@
   font-family: var(--font-sans, 'IBM Plex Sans', sans-serif);
 }
 
+.journal-sara {
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+}
+.journal-sara-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 4px;
+}
+.journal-sara-line {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
 .journal-loading {
   color: var(--text-muted);
   font-family: var(--font-mono);

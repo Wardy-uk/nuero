@@ -23,6 +23,7 @@ import InsightsPanel from './components/InsightsPanel';
 import StandupsPanel from './components/StandupsPanel';
 import JournalPanel from './components/JournalPanel';
 import FocusPanel from './components/FocusPanel';
+import BriefingPanel from './components/BriefingPanel';
 import MeetingPrep from './components/MeetingPrep';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
@@ -146,7 +147,7 @@ export default function App() {
 
 function AuthenticatedApp() {
   const isMobile = window.innerWidth <= 768;
-  const [activeView, setActiveView] = useState('focus');
+  const [activeView, setActiveView] = useState('briefing');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [vaultOpenPath, setVaultOpenPath] = useState(null);
@@ -246,6 +247,7 @@ function AuthenticatedApp() {
 
   const renderView = () => {
     switch (activeView) {
+      case 'briefing': return <BriefingPanel onNavigate={handleNavigate} />;
       case 'focus': return <FocusPanel onNavigate={handleNavigate} />;
       case 'dashboard': return <Dashboard queueData={queueData} onNavigate={handleNavigate} />;
       case 'standup': return <StandupEditor />;
@@ -266,7 +268,7 @@ function AuthenticatedApp() {
       case 'standups': return <StandupsPanel />;
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
       case 'admin': return <AdminPanel pushState={pushState} />;
-      default: return <FocusPanel onNavigate={handleNavigate} />;
+      default: return <BriefingPanel onNavigate={handleNavigate} />;
     }
   };
 
@@ -289,9 +291,9 @@ function AuthenticatedApp() {
       <InstallBanner />
       {/* Mobile bottom nav */}
       <nav className={`mobile-bottom-nav ${chatOpen ? 'chat-active-hide' : ''}`}>
-        <button className={activeView === 'focus' ? 'active' : ''} onClick={() => handleNavigate('focus')}>
+        <button className={activeView === 'briefing' ? 'active' : ''} onClick={() => handleNavigate('briefing')}>
           <span className="bottom-nav-icon">&#x25C9;</span>
-          <span>Focus</span>
+          <span>Briefing</span>
         </button>
         <button className={chatOpen ? 'active' : ''} onClick={() => handleNavigate('chat')}>
           <span className="bottom-nav-icon">&#x203A;</span>

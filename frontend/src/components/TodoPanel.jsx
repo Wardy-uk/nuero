@@ -206,6 +206,14 @@ function TodoItem({ todo, toggling, onToggle, expanded, onExpand }) {
   );
 }
 
+function buildTodoSaraLine(active, overdue) {
+  if (active.length === 0) return "No open tasks. Rare. Use it well.";
+  if (overdue.length === 0) return `${active.length} open. Nothing overdue.`;
+  if (overdue.length === 1) return `${active.length} open. 1 overdue — deal with it.`;
+  if (overdue.length >= 5) return `${overdue.length} overdue. That's not a backlog, that's avoidance.`;
+  return `${active.length} open. ${overdue.length} overdue.`;
+}
+
 export default function TodoPanel({ focusContext, onClearContext }) {
   // Determine initial mode: if arriving from Focus, start in focused shortlist mode
   const fromFocus = focusContext?.fromFocus;
@@ -355,7 +363,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
           <div className="todo-empty">Loading prioritised tasks...</div>
         ) : items.length === 0 ? (
           <div className="todo-empty">
-            {focusFilter === 'overdue' ? 'No overdue tasks. Nice.' : 'Nothing due. Clear.'}
+            {focusFilter === 'overdue' ? 'Nothing overdue. That\'s clean.' : 'Nothing due. Clear.'}
           </div>
         ) : (
           <div className="todo-list">
@@ -475,8 +483,14 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     return <MoscowReview onClose={() => setShowMoscow(false)} />;
   }
 
+  const todoSaraLine = buildTodoSaraLine(activeTodos, overdueTodos);
+
   return (
     <div className="todo-container">
+      <div className="todo-sara">
+        <span className="todo-sara-label">SARA</span>
+        <span className="todo-sara-line">{todoSaraLine}</span>
+      </div>
       <div className="todo-header">
         <h2 className="todo-title">Todos</h2>
         <div className="todo-header-right">
@@ -549,7 +563,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
         <div className="todo-list">
           {filtered.length === 0 && (
             <div className="todo-empty">
-              {filter === 'all' ? 'No open todos. Nice work.' : 'No matching todos.'}
+              {filter === 'all' ? 'No open todos. Rare.' : 'No matching todos.'}
             </div>
           )}
           {filtered.map(todo => (

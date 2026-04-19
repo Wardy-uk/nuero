@@ -51,6 +51,15 @@
   flex: 1;
 }
 
+.nudge-sara-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 .nudge-type {
   font-weight: 600;
   font-size: 11px;

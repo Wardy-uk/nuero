@@ -1,6 +1,6 @@
-// NEURO Service Worker — offline shell caching + push notifications
+// SARA / NEURO Service Worker — offline shell caching + push notifications
 // Version — bump this string to force cache invalidation on next deploy
-const CACHE_VERSION = 'neuro-v5';
+const CACHE_VERSION = 'neuro-v6';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 
 // App shell files to precache on install
@@ -92,10 +92,10 @@ self.addEventListener('push', (event) => {
     data: data.data || {},
     vibrate: [200, 100, 200],
     requireInteraction: true,
-    tag: data.data?.type || 'neuro-notification'
+    tag: data.data?.type || 'sara-notification'
   };
   event.waitUntil(
-    self.registration.showNotification(data.title || 'NEURO', options)
+    self.registration.showNotification(data.title || 'SARA', options)
   );
 });
 

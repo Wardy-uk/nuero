@@ -321,7 +321,7 @@ function triggerStandupNudge() {
   db.createNudge('standup', msg, dateKey);
   console.log('[Nudge] Standup nudge created for', dateKey);
   broadcast({ type: 'nudge', nudge_type: 'standup', message: msg, nag_count: 0 });
-  webpush.sendToAll('NEURO — Standup', msg, { type: 'standup', url: '/standup' }).catch(() => {});
+  webpush.sendToAll('SARA', msg, { type: 'standup', url: '/standup' }).catch(() => {});
 }
 
 function triggerTodoNudge() {
@@ -336,7 +336,7 @@ function triggerTodoNudge() {
   db.createNudge('todo', msg, dateKey);
   console.log('[Nudge] Todo nudge created for', dateKey);
   broadcast({ type: 'nudge', nudge_type: 'todo', message: msg, nag_count: 0 });
-  webpush.sendToAll('NEURO — Todos', msg, { type: 'todo', url: '/todos' }).catch(() => {});
+  webpush.sendToAll('SARA', msg, { type: 'todo', url: '/todos' }).catch(() => {});
 }
 
 // Called every 15 min — escalates existing nudges
@@ -389,9 +389,8 @@ function nagCheck() {
     const msg = getNagMessage(nudge.type, newCount);
     console.log(`[Nudge] Nag #${newCount} for ${nudge.type}: ${msg}`);
     broadcast({ type: 'nudge', nudge_type: nudge.type, message: msg, nag_count: newCount });
-    const title = nudge.type === 'standup' ? 'NEURO — Standup' : 'NEURO — Todos';
     const url = nudge.type === 'standup' ? '/standup' : '/todos';
-    webpush.sendToAll(title, msg, { type: nudge.type, url }).catch(() => {});
+    webpush.sendToAll('SARA', msg, { type: nudge.type, url }).catch(() => {});
   }
 }
 
@@ -449,7 +448,7 @@ function checkPlanMilestoneNudge() {
     console.log('[Nudge] Plan milestone nudge firing');
     broadcast({ type: 'nudge', nudge_type: 'plan_milestone', message: msg, nag_count: 0 });
     webpush.sendToAll(
-      `NEURO — Plan Check-In`,
+      `SARA`,
       msg,
       { type: 'plan_milestone', url: '/plan' }
     ).catch(() => {});
@@ -489,7 +488,7 @@ function check121Nudges() {
     db.setState(stateKey, new Date().toISOString());
     console.log('[Nudge] 1-2-1 nudge:', msg);
     broadcast({ type: 'nudge', nudge_type: '121', message: msg, nag_count: 0 });
-    webpush.sendToAll('NEURO — 1-2-1 Due', msg, { type: '121', url: '/people' }).catch(() => {});
+    webpush.sendToAll('SARA', msg, { type: '121', url: '/people' }).catch(() => {});
   } catch (e) {
     console.error('[Nudge] 1-2-1 check failed:', e.message);
   }
@@ -506,7 +505,7 @@ function triggerEodNudge() {
   db.setState(stateKey, new Date().toISOString());
   const msg = "End of day. Before you close the laptop: one win, one thing that didn't go to plan, how you're feeling. 2 minutes. Standup tab → EOD.";
   broadcast({ type: 'nudge', nudge_type: 'eod', message: msg, nag_count: 0 });
-  webpush.sendToAll('NEURO — End of Day', msg, { type: 'eod', url: '/standup' }).catch(() => {});
+  webpush.sendToAll('SARA', msg, { type: 'eod', url: '/standup' }).catch(() => {});
 }
 
 function markEodDone() {
@@ -542,7 +541,7 @@ function triggerJournalNudge() {
 
   console.log('[Nudge] Journal nudge triggered');
   broadcast({ type: 'nudge', nudge_type: 'journal', message: msg, nag_count: 0 });
-  webpush.sendToAll('NEURO — Evening Reflection', msg, { type: 'journal', url: '/journal' }).catch(() => {});
+  webpush.sendToAll('SARA', msg, { type: 'journal', url: '/journal' }).catch(() => {});
 }
 
 function markJournalDone() {
