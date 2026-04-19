@@ -128,7 +128,7 @@ function getChatPolicy(mode) {
   }
   // Local/fallback
   return {
-    maxTokens: 256,
+    maxTokens: 512,
     maxHistory: 5,
     temperature: 0.7,
     contextBudget: 500,
