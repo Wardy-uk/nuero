@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import useCachedFetch from '../useCachedFetch';
 import { apiUrl } from '../api';
+import { speakIfEnabled } from '../voiceUtils';
 import './BriefingPanel.css';
 
 const SOURCE_ICONS = {
@@ -56,6 +57,15 @@ export default function BriefingPanel({ onNavigate }) {
       : '-');
 
   const [actionLoading, setActionLoading] = useState(null);
+
+  // Speak SARA's opening line once per briefing visit
+  const spokenRef = useRef(null);
+  useEffect(() => {
+    const msg = sara?.primary?.message;
+    if (!msg || msg === spokenRef.current) return;
+    spokenRef.current = msg;
+    speakIfEnabled(msg);
+  }, [sara?.primary?.message]);
 
   const handleCardClick = (item) => {
     const ctx = { fromBriefing: true, focusItem: item };

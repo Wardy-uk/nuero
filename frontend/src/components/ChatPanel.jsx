@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { apiUrl, apiFetch } from '../api';
+import { speakSara, isVoiceOutEnabled, setVoiceOutEnabled } from '../voiceUtils';
 import './ChatPanel.css';
 
 const STORAGE_KEY = 'neuro_last_conversation_id';
@@ -257,27 +258,7 @@ function useVoiceInput() {
   return { listening, transcript, start, stop, supported };
 }
 
-function speakSara(text) {
-  if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const clean = text
-    .replace(/\[.*?\]/g, '')
-    .replace(/[#*_`>]/g, '')
-    .replace(/\n{2,}/g, '. ')
-    .replace(/\n/g, ' ')
-    .trim();
-  if (!clean) return;
-  const utterance = new SpeechSynthesisUtterance(clean);
-  utterance.rate = 1.05;
-  utterance.pitch = 1.0;
-  const voices = window.speechSynthesis.getVoices();
-  const preferred = voices.find(v => /samantha|karen|moira|fiona/i.test(v.name) && /en/i.test(v.lang))
-    || voices.find(v => /en-GB/i.test(v.lang) && /female/i.test(v.name))
-    || voices.find(v => /en-GB/i.test(v.lang))
-    || voices.find(v => /en/i.test(v.lang));
-  if (preferred) utterance.voice = preferred;
-  window.speechSynthesis.speak(utterance);
-}
+// speakSara imported from voiceUtils
 
 export default function ChatPanel({ location }) {
   const [messages, setMessages] = useState([]);
@@ -290,9 +271,7 @@ export default function ChatPanel({ location }) {
   const [showConvList, setShowConvList] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [confirmation, setConfirmation] = React.useState(null);
-  const [voiceOut, setVoiceOut] = useState(() => {
-    try { return localStorage.getItem('sara_voice_out') === 'true'; } catch { return false; }
-  });
+  const [voiceOut, setVoiceOut] = useState(isVoiceOutEnabled);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const voice = useVoiceInput();
@@ -359,8 +338,7 @@ export default function ChatPanel({ location }) {
   const toggleVoiceOut = () => {
     setVoiceOut(v => {
       const next = !v;
-      try { localStorage.setItem('sara_voice_out', String(next)); } catch {}
-      if (!next) window.speechSynthesis?.cancel();
+      setVoiceOutEnabled(next);
       return next;
     });
   };

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { apiUrl, API_BASE } from '../api';
 import useCachedFetch from '../useCachedFetch';
+import { speakIfEnabled } from '../voiceUtils';
 import './NudgeBanner.css';
 
 export default function NudgeBanner({ onGoToStandup, onGoToTodos, onGoToJournal, onGoToPeople }) {
@@ -80,6 +81,20 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos, onGoToJournal,
     }
     setNudges(prev => prev.filter(n => n !== nudge));
   };
+
+  // Speak new nudges aloud (once per nudge type per session)
+  const spokenNudgesRef = useRef(new Set());
+  useEffect(() => {
+    const visible = nudges.filter(n => !snoozed[n.type]);
+    for (const n of visible) {
+      const key = `${n.type}_${n.nag_count || 0}`;
+      if (!spokenNudgesRef.current.has(key) && n.message) {
+        spokenNudgesRef.current.add(key);
+        speakIfEnabled(n.message);
+        break; // one at a time — don't stack utterances
+      }
+    }
+  }, [nudges, snoozed]);
 
   const isWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
 
