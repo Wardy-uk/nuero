@@ -20,10 +20,15 @@ function pickVoice() {
   const voices = window.speechSynthesis.getVoices();
   cachedVoice = voices.find(v => /google.*uk.*female/i.test(v.name))
     || voices.find(v => /hazel/i.test(v.name) && /en-GB/i.test(v.lang))
+    || voices.find(v => /libby/i.test(v.name) && /en-GB/i.test(v.lang))
+    || voices.find(v => /sonia/i.test(v.name) && /en-GB/i.test(v.lang))
+    || voices.find(v => /maisie/i.test(v.name) && /en-GB/i.test(v.lang))
     || voices.find(v => /moira|fiona/i.test(v.name) && /en/i.test(v.lang))
-    || voices.find(v => /en-GB/i.test(v.lang) && /female/i.test(v.name))
+    || voices.find(v => /en-GB/i.test(v.lang) && !/male/i.test(v.name))
     || voices.find(v => /en-GB/i.test(v.lang))
     || null;
+  if (cachedVoice) console.log(`[SARA Voice] Selected: ${cachedVoice.name} (${cachedVoice.lang})`);
+  else console.warn('[SARA Voice] No suitable voice found', voices.map(v => `${v.name} [${v.lang}]`));
   return cachedVoice;
 }
 
