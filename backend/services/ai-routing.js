@@ -156,8 +156,12 @@ async function runTask(taskType, payload, options = {}) {
     return { text: '', provider: 'none', fallback: false, reason: 'AI mode is off' };
   }
 
-  // ── Route background tasks to Pi 4 worker ──
-  if (BACKGROUND_TASKS.has(taskType) && !forceLocal && pi4Worker.isEnabled()) {
+  // ── Route background tasks to Pi 4 worker — never fall back to local Ollama ──
+  if (BACKGROUND_TASKS.has(taskType) && !forceLocal) {
+    if (!pi4Worker.isEnabled()) {
+      console.log(`[AIRouting] ${taskType}: skipped (Pi 4 worker not enabled)`);
+      return { text: '', provider: 'none', fallback: true, reason: 'Pi 4 worker not enabled' };
+    }
     try {
       const workerResult = await pi4Worker.runTask(taskType, payload);
       if (workerResult.ok && workerResult.result) {
@@ -168,7 +172,7 @@ async function runTask(taskType, payload, options = {}) {
     } catch (e) {
       console.warn(`[AIRouting] Pi 4 worker unreachable for ${taskType}: ${e.message}`);
     }
-    // Fall through to local Ollama
+    return { text: '', provider: 'none', fallback: true, reason: 'Pi 4 worker unavailable' };
   }
 
   // ── Select model for this task ──
