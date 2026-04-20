@@ -12,12 +12,12 @@ router.get('/', (req, res) => {
 
 // SSE stream for real-time nudges
 router.get('/stream', (req, res) => {
-  res.writeHead(200, {
+  res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*'
   });
+  res.flushHeaders();
   res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
   nudges.addClient(res);
 });
