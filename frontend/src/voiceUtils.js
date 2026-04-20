@@ -9,7 +9,22 @@ export function setVoiceOutEnabled(enabled) {
   if (!enabled) window.speechSynthesis?.cancel();
 }
 
-// Chrome on Windows lazily loads voices — cache after voiceschanged fires
+// iOS Safari requires a user gesture before speechSynthesis works.
+// We "unlock" it on the first tap by speaking a silent utterance.
+let unlocked = false;
+function unlockAudio() {
+  if (unlocked || !('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance('');
+  u.volume = 0;
+  window.speechSynthesis.speak(u);
+  unlocked = true;
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('touchstart', unlockAudio, { once: true });
+  document.addEventListener('click', unlockAudio, { once: true });
+}
+
+// Chrome/Windows lazily loads voices — cache after voiceschanged fires
 let cachedVoice = null;
 if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
   window.speechSynthesis.onvoiceschanged = () => { cachedVoice = null; };
@@ -18,11 +33,17 @@ if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
 function pickVoice() {
   if (cachedVoice) return cachedVoice;
   const voices = window.speechSynthesis.getVoices();
+  // iOS: Samantha (default), Martha/Kate (en-GB)
+  // Chrome: Google UK English Female
+  // Windows: Libby, Sonia, Maisie (neural), Hazel (legacy)
+  // macOS: Moira, Fiona (en-GB/en-IE)
   cachedVoice = voices.find(v => /google.*uk.*female/i.test(v.name))
-    || voices.find(v => /hazel/i.test(v.name) && /en-GB/i.test(v.lang))
+    || voices.find(v => /martha/i.test(v.name) && /en-GB/i.test(v.lang))
+    || voices.find(v => /kate/i.test(v.name) && /en-AU/i.test(v.lang))
     || voices.find(v => /libby/i.test(v.name) && /en-GB/i.test(v.lang))
     || voices.find(v => /sonia/i.test(v.name) && /en-GB/i.test(v.lang))
     || voices.find(v => /maisie/i.test(v.name) && /en-GB/i.test(v.lang))
+    || voices.find(v => /hazel/i.test(v.name) && /en-GB/i.test(v.lang))
     || voices.find(v => /moira|fiona/i.test(v.name) && /en/i.test(v.lang))
     || voices.find(v => /en-GB/i.test(v.lang) && !/male/i.test(v.name))
     || voices.find(v => /en-GB/i.test(v.lang))
