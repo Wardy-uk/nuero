@@ -68,8 +68,8 @@ export function speakSara(text) {
   const clean = cleanText(text);
   if (!clean) return;
   const utterance = new SpeechSynthesisUtterance(clean);
-  utterance.rate = 0.9;
-  utterance.pitch = 0.95;
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
   const voice = pickVoice();
   if (voice) utterance.voice = voice;
   window.speechSynthesis.speak(utterance);

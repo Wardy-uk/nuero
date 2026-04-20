@@ -56,12 +56,12 @@
     top: calc(48px + env(safe-area-inset-top, 0px));
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: env(safe-area-inset-bottom, 0px);
     width: 100%;
     min-width: 0;
-    height: calc(100dvh - 48px - env(safe-area-inset-top, 0px));
     z-index: 50;
     border-left: none;
+    overflow: hidden;
   }
 
   .chat-panel.chat-open {
