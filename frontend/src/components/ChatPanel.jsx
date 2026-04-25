@@ -445,7 +445,7 @@ export default function ChatPanel({ location }) {
                   return updated;
                 });
               } else if (data.type === 'done') {
-                if (data.provider) setChatMode(data.provider === 'openai' ? 'api' : 'local');
+                if (data.provider) setChatMode(data.provider === 'openrouter' ? 'api' : 'local');
               } else if (data.type === 'error') {
                 setMessages(prev => {
                   const updated = [...prev];
@@ -477,7 +477,7 @@ export default function ChatPanel({ location }) {
             updated[updated.length - 1] = { role: 'assistant', content: data.message };
             return updated;
           });
-          setChatMode(data.mode || (data.provider === 'openai' ? 'api' : 'local'));
+          setChatMode(data.mode || (data.provider === 'openrouter' ? 'api' : 'local'));
           if (data.conversationId) setConversationId(data.conversationId);
         } else if (data.error) {
           setMessages(prev => {
@@ -525,7 +525,7 @@ export default function ChatPanel({ location }) {
           )}
           <span className="chat-status">
             {streaming ? '' : loadingHistory ? 'loading' : ''}
-            {chatMode && !streaming && <span className="chat-mode">{chatMode === 'api' || chatMode === 'openai' ? 'API' : 'Local'}</span>}
+            {chatMode && !streaming && <span className="chat-mode">{chatMode === 'api' || chatMode === 'openrouter' ? 'API' : 'Local'}</span>}
           </span>
           <button className="chat-new-btn" onClick={startNew}>New</button>
         </div>

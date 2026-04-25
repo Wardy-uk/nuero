@@ -108,8 +108,8 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
   const ollamaOk = status?.ollamaReachable;
   const ollamaQueue = ai.ollama?.queueDepth || 0;
   const ollamaInUse = ai.ollama?.inUse;
-  const openaiEnabled = ai.openai?.enabled && ai.openai?.configured;
-  const openaiThrottled = ai.openai?.throttled;
+  const openrouterEnabled = ai.openrouter?.enabled && ai.openrouter?.configured;
+  const openrouterThrottled = ai.openrouter?.throttled;
 
   // Ollama health: green=idle/ok, amber=busy/queued, red=overloaded, grey=dead
   const ollamaHealth = !ollamaOk ? 'dead' :
@@ -117,7 +117,7 @@ export default function Topbar({ status, queueData, onMenuToggle, onChatToggle, 
     ollamaInUse || ollamaQueue > 0 ? 'amber' : 'green';
 
   // Chat provider label
-  const chatProvider = openaiEnabled && !openaiThrottled ? 'OpenAI' :
+  const chatProvider = openrouterEnabled && !openrouterThrottled ? 'OpenRouter' :
     ollamaOk ? 'Ollama' : 'Offline';
   const chatOk = chatProvider !== 'Offline';
 

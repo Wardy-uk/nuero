@@ -227,22 +227,22 @@ function AiSettingsSection() {
         {saved === 'sara_mode' && <span className="ai-setting-saved">✓</span>}
       </div>
 
-      {/* OpenAI */}
+      {/* OpenRouter */}
       <div className="ai-setting-group">
-        <div className="ai-setting-group-title">OpenAI</div>
+        <div className="ai-setting-group-title">OpenRouter</div>
 
         <div className="ai-setting-row">
           <div className="ai-setting-label">Enabled</div>
           <select
             className="ai-setting-select"
-            value={settings.openai_enabled?.value || 'false'}
-            onChange={e => updateSetting('openai_enabled', e.target.value)}
+            value={settings.openrouter_enabled?.value || 'false'}
+            onChange={e => updateSetting('openrouter_enabled', e.target.value)}
             disabled={saving}
           >
             <option value="false">No</option>
             <option value="true">Yes</option>
           </select>
-          {saved === 'openai_enabled' && <span className="ai-setting-saved">✓</span>}
+          {saved === 'openrouter_enabled' && <span className="ai-setting-saved">✓</span>}
         </div>
 
         <div className="ai-setting-row">
@@ -250,22 +250,22 @@ function AiSettingsSection() {
           <input
             className="ai-setting-input"
             type="password"
-            placeholder={settings.openai_api_key?.hasValue ? '••••••' : 'Not set'}
-            onBlur={e => { if (e.target.value) updateSetting('openai_api_key', e.target.value); }}
+            placeholder={settings.openrouter_api_key?.hasValue ? '••••••' : 'Not set'}
+            onBlur={e => { if (e.target.value) updateSetting('openrouter_api_key', e.target.value); }}
             disabled={saving}
           />
-          {saved === 'openai_api_key' && <span className="ai-setting-saved">✓</span>}
+          {saved === 'openrouter_api_key' && <span className="ai-setting-saved">✓</span>}
         </div>
 
         <div className="ai-setting-row">
           <div className="ai-setting-label">Model</div>
           <input
             className="ai-setting-input"
-            defaultValue={settings.openai_model?.value || 'gpt-4o-mini'}
-            onBlur={e => updateSetting('openai_model', e.target.value)}
+            defaultValue={settings.openrouter_model?.value || 'google/gemini-2.5-flash'}
+            onBlur={e => updateSetting('openrouter_model', e.target.value)}
             disabled={saving}
           />
-          {saved === 'openai_model' && <span className="ai-setting-saved">✓</span>}
+          {saved === 'openrouter_model' && <span className="ai-setting-saved">✓</span>}
         </div>
 
         <div className="ai-setting-row">
@@ -273,11 +273,11 @@ function AiSettingsSection() {
           <input
             className="ai-setting-input ai-setting-input-sm"
             type="number"
-            defaultValue={settings.openai_daily_call_limit?.value || 50}
-            onBlur={e => updateSetting('openai_daily_call_limit', e.target.value)}
+            defaultValue={settings.openrouter_daily_call_limit?.value || 100}
+            onBlur={e => updateSetting('openrouter_daily_call_limit', e.target.value)}
             disabled={saving}
           />
-          {saved === 'openai_daily_call_limit' && <span className="ai-setting-saved">✓</span>}
+          {saved === 'openrouter_daily_call_limit' && <span className="ai-setting-saved">✓</span>}
         </div>
 
         <div className="ai-setting-row">
@@ -285,11 +285,11 @@ function AiSettingsSection() {
           <input
             className="ai-setting-input ai-setting-input-sm"
             type="number"
-            defaultValue={settings.openai_daily_token_limit?.value || 50000}
-            onBlur={e => updateSetting('openai_daily_token_limit', e.target.value)}
+            defaultValue={settings.openrouter_daily_token_limit?.value || 100000}
+            onBlur={e => updateSetting('openrouter_daily_token_limit', e.target.value)}
             disabled={saving}
           />
-          {saved === 'openai_daily_token_limit' && <span className="ai-setting-saved">✓</span>}
+          {saved === 'openrouter_daily_token_limit' && <span className="ai-setting-saved">✓</span>}
         </div>
       </div>
 
@@ -329,10 +329,10 @@ function AiSettingsSection() {
             <div>Ollama: <span className="ai-status-val">{aiStatus.ollamaModel}</span></div>
             <div>Light model: <span className="ai-status-val">{aiStatus.ollamaLightModel}</span></div>
             <div>Queue: <span className="ai-status-val">{aiStatus.ollamaQueueDepth} {aiStatus.ollamaInUse ? '(active)' : '(idle)'}</span></div>
-            {aiStatus.openaiCallsToday > 0 && (
-              <div>OpenAI today: <span className="ai-status-val">{aiStatus.openaiCallsToday} calls, {aiStatus.openaiTokensToday} tokens</span></div>
+            {aiStatus.openrouterCallsToday > 0 && (
+              <div>OpenRouter today: <span className="ai-status-val">{aiStatus.openrouterCallsToday} calls, {aiStatus.openrouterTokensToday} tokens</span></div>
             )}
-            {aiStatus.openaiThrottled && <div className="ai-status-warn">OpenAI throttled</div>}
+            {aiStatus.openrouterThrottled && <div className="ai-status-warn">OpenRouter throttled</div>}
             {aiStatus.pi4Enabled && (
               <div>Pi 4: <span className="ai-status-val">{aiStatus.pi4Healthy ? 'healthy' : 'unreachable'}</span></div>
             )}

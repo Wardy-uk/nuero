@@ -569,7 +569,7 @@ const { buildChatContext, getChatPolicy } = require('./chat-context-v2');
 function _getChatMode() {
   const aiRouting = require('./ai-routing');
   const status = aiRouting.getStatus();
-  if (status.openai?.enabled && status.openai?.configured && !status.openai?.throttled) {
+  if (status.openrouter?.enabled && status.openrouter?.configured && !status.openrouter?.throttled) {
     if (status.mode === 'hybrid' || status.mode === 'critical-only') return 'api';
   }
   return 'local';

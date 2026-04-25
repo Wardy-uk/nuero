@@ -1,40 +1,45 @@
 'use strict';
 
 /**
- * AI Routing Policy — Phase 4B: Pi split + priority queue + model-per-task.
+ * AI Routing Policy — Phase 5: Pi local + OpenRouter cloud split.
  *
- * Pi 5 handles: focus_enhancement, drilldown_framing, chat_stream (interactive)
- * Pi 4 handles: email_triage, import_classification, journal_prompts, transcript_processing
+ * Light tasks (Pi 5 Ollama): focus_enhancement, drilldown_framing, action_suggestion
+ * Heavy tasks (OpenRouter):  chat_stream, chat_sync, standup_interactive, eod_interactive
+ * Background tasks (Pi 4):   email_triage, import_classification, journal_prompts, transcript_processing
  *
- * Model routing on Pi 5:
- *   - qwen2.5:1.5b for lightweight tasks (focus, framing)
- *   - qwen2.5:1.5b for heavy tasks (chat)
- *
- * Priority queue: HIGH (focus, chat) runs before LOW (background fallback).
- * Only one local Ollama request at a time.
+ * Priority queue still applies for local Ollama requests.
  */
 
 const ollamaProvider = require('./providers/ollama-provider');
-const openaiProvider = require('./providers/openai-provider');
+const openrouterProvider = require('./providers/openrouter-provider');
 const pi4Worker = require('./pi4-worker-client');
 
 // ── Config ──
 const AI_MODE = process.env.AI_MODE || 'ollama-only';
-const OPENAI_ENABLED = process.env.OPENAI_ENABLED === 'true';
-const OPENAI_DAILY_CALL_LIMIT = parseInt(process.env.OPENAI_DAILY_CALL_LIMIT) || 50;
-const OPENAI_DAILY_TOKEN_LIMIT = parseInt(process.env.OPENAI_DAILY_TOKEN_LIMIT) || 50000;
-const OPENAI_MAX_ESCALATIONS_PER_HOUR = parseInt(process.env.OPENAI_MAX_ESCALATIONS_PER_HOUR) || 10;
+const OPENROUTER_ENABLED = process.env.OPENROUTER_ENABLED === 'true';
+const OPENROUTER_DAILY_CALL_LIMIT = parseInt(process.env.OPENROUTER_DAILY_CALL_LIMIT) || 100;
+const OPENROUTER_DAILY_TOKEN_LIMIT = parseInt(process.env.OPENROUTER_DAILY_TOKEN_LIMIT) || 100000;
+const OPENROUTER_MAX_ESCALATIONS_PER_HOUR = parseInt(process.env.OPENROUTER_MAX_ESCALATIONS_PER_HOUR) || 20;
 
-const OPENAI_ALLOWED_TASKS = (process.env.OPENAI_ALLOWED_TASKS || 'all')
+const OPENROUTER_ALLOWED_TASKS = (process.env.OPENROUTER_ALLOWED_TASKS || 'all')
   .split(',').map(s => s.trim()).filter(Boolean);
-const OPENAI_CRITICAL_TYPES = (process.env.OPENAI_CRITICAL_ONLY_TYPES || 'escalation_reasoning,sla_ambiguity,cross_context_synthesis')
+const OPENROUTER_CRITICAL_TYPES = (process.env.OPENROUTER_CRITICAL_ONLY_TYPES || 'escalation_reasoning,sla_ambiguity,cross_context_synthesis,transcript_processing')
   .split(',').map(s => s.trim()).filter(Boolean);
 
 
-// ── Model-per-task routing (Pi 5 only) ──
+// ── Model-per-task routing ──
 const LIGHTWEIGHT_MODEL = 'qwen2.5:1.5b';
 const HEAVY_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:1.5b';
 
+// Tasks that should go to OpenRouter when available (heavy/interactive)
+const CLOUD_PREFERRED_TASKS = new Set([
+  'chat_stream',
+  'chat_sync',
+  'standup_interactive',
+  'eod_interactive',
+]);
+
+// Local model selection for tasks that stay on Pi
 const TASK_MODELS = {
   focus_enhancement: LIGHTWEIGHT_MODEL,
   drilldown_framing: LIGHTWEIGHT_MODEL,
@@ -54,9 +59,8 @@ const BACKGROUND_TASKS = new Set([
 ]);
 
 // ── Priority queue (simple semaphore) ──
-// Only one local Ollama request at a time. HIGH preempts LOW.
 let _ollamaInUse = false;
-const _highQueue = []; // { resolve, reject, fn }
+const _highQueue = [];
 const _lowQueue = [];
 
 async function _queueOllamaRequest(priority, fn) {
@@ -74,7 +78,6 @@ async function _queueOllamaRequest(priority, fn) {
 async function _processQueue() {
   if (_ollamaInUse) return;
 
-  // HIGH priority first
   const entry = _highQueue.shift() || _lowQueue.shift();
   if (!entry) return;
 
@@ -86,7 +89,6 @@ async function _processQueue() {
     entry.reject(e);
   } finally {
     _ollamaInUse = false;
-    // Process next in queue
     setImmediate(_processQueue);
   }
 }
@@ -113,20 +115,20 @@ function _resetIfNewDay() {
 }
 function _currentHourKey() { return new Date().getHours().toString(); }
 
-function _isOpenAIAllowed(taskType) {
+function _isOpenRouterAllowed(taskType) {
   _resetIfNewDay();
   if (AI_MODE === 'off' || AI_MODE === 'ollama-only') return false;
-  if (!OPENAI_ENABLED || !openaiProvider.isConfigured()) return false;
-  if (AI_MODE === 'critical-only' && !OPENAI_CRITICAL_TYPES.includes(taskType)) return false;
-  if (AI_MODE === 'hybrid' && OPENAI_ALLOWED_TASKS[0] !== 'all' && !OPENAI_ALLOWED_TASKS.includes(taskType)) return false;
-  if (_usage.calls >= OPENAI_DAILY_CALL_LIMIT) { _usage.lastFallbackReason = 'Daily call limit'; return false; }
-  if (_usage.tokens >= OPENAI_DAILY_TOKEN_LIMIT) { _usage.lastFallbackReason = 'Daily token limit'; return false; }
+  if (!OPENROUTER_ENABLED || !openrouterProvider.isConfigured()) return false;
+  if (AI_MODE === 'critical-only' && !OPENROUTER_CRITICAL_TYPES.includes(taskType)) return false;
+  if (AI_MODE === 'hybrid' && OPENROUTER_ALLOWED_TASKS[0] !== 'all' && !OPENROUTER_ALLOWED_TASKS.includes(taskType)) return false;
+  if (_usage.calls >= OPENROUTER_DAILY_CALL_LIMIT) { _usage.lastFallbackReason = 'Daily call limit'; return false; }
+  if (_usage.tokens >= OPENROUTER_DAILY_TOKEN_LIMIT) { _usage.lastFallbackReason = 'Daily token limit'; return false; }
   const hk = _currentHourKey();
-  if ((_usage.hourlyEscalations.get(hk) || 0) >= OPENAI_MAX_ESCALATIONS_PER_HOUR) { _usage.lastFallbackReason = 'Hourly limit'; return false; }
+  if ((_usage.hourlyEscalations.get(hk) || 0) >= OPENROUTER_MAX_ESCALATIONS_PER_HOUR) { _usage.lastFallbackReason = 'Hourly limit'; return false; }
   return true;
 }
 
-function _recordOpenAIUsage(usage) {
+function _recordOpenRouterUsage(usage) {
   _resetIfNewDay();
   _usage.calls++;
   _usage.tokens += usage?.total_tokens || 0;
@@ -144,8 +146,8 @@ function _recordOpenAIUsage(usage) {
  *
  * Routing order:
  *   1. Background tasks → Pi 4 worker (if enabled)
- *   2. Local Ollama via priority queue (model selected by task type)
- *   3. OpenAI (if allowed + under budget)
+ *   2. Cloud-preferred tasks → OpenRouter (if allowed + under budget), Ollama fallback
+ *   3. Light tasks → Local Ollama via priority queue
  *   4. Safe no-op
  */
 async function runTask(taskType, payload, options = {}) {
@@ -156,7 +158,7 @@ async function runTask(taskType, payload, options = {}) {
     return { text: '', provider: 'none', fallback: false, reason: 'AI mode is off' };
   }
 
-  // ── Route background tasks to Pi 4 worker — never fall back to local Ollama ──
+  // ── Route background tasks to Pi 4 worker ──
   if (BACKGROUND_TASKS.has(taskType) && !forceLocal) {
     if (!pi4Worker.isEnabled()) {
       console.log(`[AIRouting] ${taskType}: skipped (Pi 4 worker not enabled)`);
@@ -175,37 +177,50 @@ async function runTask(taskType, payload, options = {}) {
     return { text: '', provider: 'none', fallback: true, reason: 'Pi 4 worker unavailable' };
   }
 
-  // ── Select model for this task ──
+  // ── Cloud-preferred tasks: try OpenRouter first, fall back to local ──
+  const preferCloud = CLOUD_PREFERRED_TASKS.has(taskType);
+
+  if ((preferCloud || forceCloud) && !forceLocal && _isOpenRouterAllowed(taskType)) {
+    try {
+      const result = await _runOpenRouter(taskType, payload, options);
+      if (result.text && result.text.trim().length > 0) {
+        _recordOpenRouterUsage(result.usage);
+        return { text: result.text, provider: 'openrouter', fallback: false };
+      }
+    } catch (err) {
+      console.warn(`[AIRouting] OpenRouter failed for ${taskType}: ${err.message}`);
+      _usage.lastFallbackReason = `OpenRouter error: ${err.message.substring(0, 100)}`;
+    }
+  }
+
+  // ── Local Ollama (primary for light tasks, fallback for heavy) ──
   const model = TASK_MODELS[taskType] || HEAVY_MODEL;
   const payloadWithModel = { ...payload, model };
   const priority = _getTaskPriority(taskType);
 
-  // ── Try local Ollama via priority queue ──
   if (!forceCloud) {
     try {
       const text = await _queueOllamaRequest(priority, () =>
         _runOllama(taskType, payloadWithModel, options)
       );
       if (text && text.trim().length > 0) {
-        return { text, provider: 'ollama', fallback: BACKGROUND_TASKS.has(taskType), model };
+        return { text, provider: 'ollama', fallback: preferCloud, model };
       }
     } catch (err) {
       console.warn(`[AIRouting] Ollama failed for ${taskType}: ${err.message}`);
     }
   }
 
-  // ── Try OpenAI escalation ──
-  const shouldEscalate = !forceLocal && (forceCloud || (confidence < 0.5 && _isOpenAIAllowed(taskType)));
-  if (shouldEscalate || (forceCloud && _isOpenAIAllowed(taskType))) {
+  // ── Last resort: try OpenRouter if we haven't yet ──
+  if (!preferCloud && !forceLocal && _isOpenRouterAllowed(taskType)) {
     try {
-      const result = await _runOpenAI(taskType, payload, options);
+      const result = await _runOpenRouter(taskType, payload, options);
       if (result.text && result.text.trim().length > 0) {
-        _recordOpenAIUsage(result.usage);
-        return { text: result.text, provider: 'openai', fallback: false };
+        _recordOpenRouterUsage(result.usage);
+        return { text: result.text, provider: 'openrouter', fallback: false };
       }
     } catch (err) {
-      console.warn(`[AIRouting] OpenAI failed for ${taskType}: ${err.message}`);
-      _usage.lastFallbackReason = `OpenAI error: ${err.message.substring(0, 100)}`;
+      console.warn(`[AIRouting] OpenRouter escalation failed for ${taskType}: ${err.message}`);
     }
   }
 
@@ -213,7 +228,7 @@ async function runTask(taskType, payload, options = {}) {
 }
 
 /**
- * Streaming chat (always local Pi 5, never Pi 4).
+ * Streaming chat — OpenRouter-primary for heavy tasks, Ollama fallback.
  */
 async function runStreamingChat(systemPrompt, messages, res, options = {}) {
   _resetIfNewDay();
@@ -221,16 +236,16 @@ async function runStreamingChat(systemPrompt, messages, res, options = {}) {
   const forceCloud = options.forceCloud || false;
   const model = TASK_MODELS[taskType] || HEAVY_MODEL;
 
-  // API-primary: try OpenAI FIRST for chat (better quality, streaming works through proxies)
-  if (_isOpenAIAllowed(taskType)) {
+  // Cloud-primary: try OpenRouter FIRST for chat
+  if (_isOpenRouterAllowed(taskType)) {
     try {
-      const result = await openaiProvider.streamChat(systemPrompt, messages, res, options);
+      const result = await openrouterProvider.streamChat(systemPrompt, messages, res, options);
       if (result.fullText) {
-        _recordOpenAIUsage(result.usage);
-        return { text: result.fullText, provider: 'openai', fallback: false };
+        _recordOpenRouterUsage(result.usage);
+        return { text: result.fullText, provider: 'openrouter', fallback: false };
       }
     } catch (err) {
-      console.warn(`[AIRouting] OpenAI stream failed: ${err.message}`);
+      console.warn(`[AIRouting] OpenRouter stream failed: ${err.message}`);
       if (!res.writableEnded) {
         res.write(`data: ${JSON.stringify({ type: 'text', content: '*[Cloud unavailable, using local model...]*\n\n' })}\n\n`);
       }
@@ -275,17 +290,15 @@ async function _runOllama(taskType, payload, options) {
   });
 }
 
-async function _runOpenAI(taskType, payload, options) {
+async function _runOpenRouter(taskType, payload, options) {
   if (payload.messages) {
-    return openaiProvider.chat(payload.systemPrompt || '', payload.messages, {
-      model: payload.model,
+    return openrouterProvider.chat(payload.systemPrompt || '', payload.messages, {
       temperature: payload.temperature,
       maxTokens: payload.maxTokens,
       timeout: options.timeout,
     });
   }
-  return openaiProvider.generate(payload.prompt || '', {
-    model: payload.model,
+  return openrouterProvider.generate(payload.prompt || '', {
     temperature: payload.temperature,
     maxTokens: payload.maxTokens,
     timeout: options.timeout,
@@ -301,15 +314,15 @@ function getStatus() {
   _resetIfNewDay();
   return {
     mode: AI_MODE,
-    openai: {
-      enabled: OPENAI_ENABLED,
-      configured: openaiProvider.isConfigured(),
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    openrouter: {
+      enabled: OPENROUTER_ENABLED,
+      configured: openrouterProvider.isConfigured(),
+      model: process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash',
       callsToday: _usage.calls,
       tokensToday: _usage.tokens,
-      dailyCallLimit: OPENAI_DAILY_CALL_LIMIT,
-      dailyTokenLimit: OPENAI_DAILY_TOKEN_LIMIT,
-      throttled: _usage.calls >= OPENAI_DAILY_CALL_LIMIT || _usage.tokens >= OPENAI_DAILY_TOKEN_LIMIT,
+      dailyCallLimit: OPENROUTER_DAILY_CALL_LIMIT,
+      dailyTokenLimit: OPENROUTER_DAILY_TOKEN_LIMIT,
+      throttled: _usage.calls >= OPENROUTER_DAILY_CALL_LIMIT || _usage.tokens >= OPENROUTER_DAILY_TOKEN_LIMIT,
       lastFallbackReason: _usage.lastFallbackReason,
     },
     ollama: {
@@ -321,6 +334,7 @@ function getStatus() {
     },
     pi4Worker: pi4Worker.getStatus(),
     taskModels: TASK_MODELS,
+    cloudPreferredTasks: [...CLOUD_PREFERRED_TASKS],
     backgroundTasks: [...BACKGROUND_TASKS],
   };
 }
