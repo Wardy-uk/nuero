@@ -37,6 +37,18 @@ function _getSettingValue(setting) {
 
 const pi4Worker = require('../services/pi4-worker-client');
 
+// Bootstrap: sync DB-stored settings into process.env on startup
+// so values set via admin panel survive PM2 restarts.
+(function _bootstrapFromDb() {
+  for (const def of Object.values(RUNTIME_SETTINGS)) {
+    const stored = db.getState(`ai_setting_${def.key}`);
+    if (stored !== null && stored !== undefined && stored !== '') {
+      process.env[def.env] = stored;
+    }
+  }
+  console.log('[AI Settings] Bootstrapped from DB');
+})();
+
 // GET /api/ai/settings
 router.get('/', async (req, res) => {
   const settings = {};
