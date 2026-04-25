@@ -206,8 +206,8 @@ function AiSettingsSection() {
         >
           <option value="off">Off (rules only)</option>
           <option value="ollama-only">Ollama only</option>
-          <option value="hybrid">Hybrid (Ollama + OpenAI)</option>
-          <option value="critical-only">Critical only (OpenAI for critical tasks)</option>
+          <option value="hybrid">Hybrid (Ollama + OpenRouter)</option>
+          <option value="critical-only">Critical only (OpenRouter for critical tasks)</option>
         </select>
         {saved === 'ai_mode' && <span className="ai-setting-saved">✓</span>}
       </div>
