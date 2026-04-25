@@ -37,20 +37,30 @@ function _getSettingValue(setting) {
 
 const pi4Worker = require('../services/pi4-worker-client');
 
-// Bootstrap: sync DB-stored settings into process.env on startup
-// so values set via admin panel survive PM2 restarts.
-(function _bootstrapFromDb() {
-  for (const def of Object.values(RUNTIME_SETTINGS)) {
-    const stored = db.getState(`ai_setting_${def.key}`);
-    if (stored !== null && stored !== undefined && stored !== '') {
-      process.env[def.env] = stored;
+// Bootstrap: sync DB-stored settings into process.env so values
+// set via admin panel survive PM2 restarts. Runs once on first request
+// (DB isn't ready at require time).
+let _bootstrapped = false;
+function _bootstrapFromDb() {
+  if (_bootstrapped) return;
+  _bootstrapped = true;
+  try {
+    for (const def of Object.values(RUNTIME_SETTINGS)) {
+      const stored = db.getState(`ai_setting_${def.key}`);
+      if (stored !== null && stored !== undefined && stored !== '') {
+        process.env[def.env] = stored;
+      }
     }
+    console.log('[AI Settings] Bootstrapped from DB');
+  } catch (e) {
+    _bootstrapped = false;
+    console.warn('[AI Settings] Bootstrap deferred:', e.message);
   }
-  console.log('[AI Settings] Bootstrapped from DB');
-})();
+}
 
 // GET /api/ai/settings
 router.get('/', async (req, res) => {
+  _bootstrapFromDb();
   const settings = {};
   for (const [key, def] of Object.entries(RUNTIME_SETTINGS)) {
     const value = _getSettingValue(def);
@@ -127,4 +137,5 @@ router.post('/', (req, res) => {
   res.json({ ok: true, applied, errors: Object.keys(errors).length > 0 ? errors : undefined });
 });
 
+router.bootstrap = _bootstrapFromDb;
 module.exports = router;

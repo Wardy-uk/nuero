@@ -237,6 +237,9 @@ async function start() {
   await db.init();
   db.setState('imports_sweep_running', 'false');
 
+  // Bootstrap admin-panel AI settings from DB into process.env
+  require('./routes/ai-settings').bootstrap();
+
   // Seed Strava tokens from env if not already in DB
   require('./services/strava').seedTokensFromEnv();
 
