@@ -105,9 +105,14 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
 
     let fullText = '';
     let buffer = '';
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
 
-    for await (const chunk of response.body) {
-      buffer += chunk.toString();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
