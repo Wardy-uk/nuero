@@ -14,17 +14,18 @@ const ollamaProvider = require('./providers/ollama-provider');
 const openrouterProvider = require('./providers/openrouter-provider');
 const pi4Worker = require('./pi4-worker-client');
 
-// ── Config ──
-const AI_MODE = process.env.AI_MODE || 'ollama-only';
-const OPENROUTER_ENABLED = process.env.OPENROUTER_ENABLED === 'true';
-const OPENROUTER_DAILY_CALL_LIMIT = parseInt(process.env.OPENROUTER_DAILY_CALL_LIMIT) || 100;
-const OPENROUTER_DAILY_TOKEN_LIMIT = parseInt(process.env.OPENROUTER_DAILY_TOKEN_LIMIT) || 100000;
-const OPENROUTER_MAX_ESCALATIONS_PER_HOUR = parseInt(process.env.OPENROUTER_MAX_ESCALATIONS_PER_HOUR) || 20;
-
-const OPENROUTER_ALLOWED_TASKS = (process.env.OPENROUTER_ALLOWED_TASKS || 'all')
-  .split(',').map(s => s.trim()).filter(Boolean);
-const OPENROUTER_CRITICAL_TYPES = (process.env.OPENROUTER_CRITICAL_ONLY_TYPES || 'escalation_reasoning,sla_ambiguity,cross_context_synthesis,transcript_processing')
-  .split(',').map(s => s.trim()).filter(Boolean);
+// ── Config (read live so admin panel changes take effect without restart) ──
+function _cfg() {
+  return {
+    aiMode: process.env.AI_MODE || 'ollama-only',
+    enabled: process.env.OPENROUTER_ENABLED === 'true',
+    dailyCallLimit: parseInt(process.env.OPENROUTER_DAILY_CALL_LIMIT) || 100,
+    dailyTokenLimit: parseInt(process.env.OPENROUTER_DAILY_TOKEN_LIMIT) || 100000,
+    maxEscalationsPerHour: parseInt(process.env.OPENROUTER_MAX_ESCALATIONS_PER_HOUR) || 20,
+    allowedTasks: (process.env.OPENROUTER_ALLOWED_TASKS || 'all').split(',').map(s => s.trim()).filter(Boolean),
+    criticalTypes: (process.env.OPENROUTER_CRITICAL_ONLY_TYPES || 'escalation_reasoning,sla_ambiguity,cross_context_synthesis,transcript_processing').split(',').map(s => s.trim()).filter(Boolean),
+  };
+}
 
 
 // ── Model-per-task routing ──
@@ -117,14 +118,15 @@ function _currentHourKey() { return new Date().getHours().toString(); }
 
 function _isOpenRouterAllowed(taskType) {
   _resetIfNewDay();
-  if (AI_MODE === 'off' || AI_MODE === 'ollama-only') return false;
-  if (!OPENROUTER_ENABLED || !openrouterProvider.isConfigured()) return false;
-  if (AI_MODE === 'critical-only' && !OPENROUTER_CRITICAL_TYPES.includes(taskType)) return false;
-  if (AI_MODE === 'hybrid' && OPENROUTER_ALLOWED_TASKS[0] !== 'all' && !OPENROUTER_ALLOWED_TASKS.includes(taskType)) return false;
-  if (_usage.calls >= OPENROUTER_DAILY_CALL_LIMIT) { _usage.lastFallbackReason = 'Daily call limit'; return false; }
-  if (_usage.tokens >= OPENROUTER_DAILY_TOKEN_LIMIT) { _usage.lastFallbackReason = 'Daily token limit'; return false; }
+  const c = _cfg();
+  if (c.aiMode === 'off' || c.aiMode === 'ollama-only') return false;
+  if (!c.enabled || !openrouterProvider.isConfigured()) return false;
+  if (c.aiMode === 'critical-only' && !c.criticalTypes.includes(taskType)) return false;
+  if (c.aiMode === 'hybrid' && c.allowedTasks[0] !== 'all' && !c.allowedTasks.includes(taskType)) return false;
+  if (_usage.calls >= c.dailyCallLimit) { _usage.lastFallbackReason = 'Daily call limit'; return false; }
+  if (_usage.tokens >= c.dailyTokenLimit) { _usage.lastFallbackReason = 'Daily token limit'; return false; }
   const hk = _currentHourKey();
-  if ((_usage.hourlyEscalations.get(hk) || 0) >= OPENROUTER_MAX_ESCALATIONS_PER_HOUR) { _usage.lastFallbackReason = 'Hourly limit'; return false; }
+  if ((_usage.hourlyEscalations.get(hk) || 0) >= c.maxEscalationsPerHour) { _usage.lastFallbackReason = 'Hourly limit'; return false; }
   return true;
 }
 
@@ -154,7 +156,7 @@ async function runTask(taskType, payload, options = {}) {
   _resetIfNewDay();
   const { forceLocal = false, forceCloud = false, confidence = 1.0 } = options;
 
-  if (AI_MODE === 'off') {
+  if (_cfg().aiMode === 'off') {
     return { text: '', provider: 'none', fallback: false, reason: 'AI mode is off' };
   }
 
@@ -313,16 +315,16 @@ async function _runOpenRouter(taskType, payload, options) {
 function getStatus() {
   _resetIfNewDay();
   return {
-    mode: AI_MODE,
+    mode: _cfg().aiMode,
     openrouter: {
-      enabled: OPENROUTER_ENABLED,
+      enabled: _cfg().enabled,
       configured: openrouterProvider.isConfigured(),
       model: process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4-5-20251001',
       callsToday: _usage.calls,
       tokensToday: _usage.tokens,
-      dailyCallLimit: OPENROUTER_DAILY_CALL_LIMIT,
-      dailyTokenLimit: OPENROUTER_DAILY_TOKEN_LIMIT,
-      throttled: _usage.calls >= OPENROUTER_DAILY_CALL_LIMIT || _usage.tokens >= OPENROUTER_DAILY_TOKEN_LIMIT,
+      dailyCallLimit: _cfg().dailyCallLimit,
+      dailyTokenLimit: _cfg().dailyTokenLimit,
+      throttled: _usage.calls >= _cfg().dailyCallLimit || _usage.tokens >= _cfg().dailyTokenLimit,
       lastFallbackReason: _usage.lastFallbackReason,
     },
     ollama: {
@@ -343,4 +345,4 @@ async function checkOllama() {
   return ollamaProvider.isAvailable();
 }
 
-module.exports = { runTask, runStreamingChat, getStatus, checkOllama, AI_MODE };
+module.exports = { runTask, runStreamingChat, getStatus, checkOllama, getAIMode: () => _cfg().aiMode };

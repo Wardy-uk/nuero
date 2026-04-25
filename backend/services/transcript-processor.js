@@ -28,7 +28,7 @@ RULES:
 async function processTranscript(filePath) {
   // Phase 3: Requires AI routing (Ollama or OpenAI), not Anthropic
   const aiRouting = require('./ai-routing');
-  if (aiRouting.AI_MODE === 'off') {
+  if (aiRouting.getAIMode() === 'off') {
     console.log('[TranscriptProcessor] AI mode is off — skipping');
     return null;
   }

@@ -5,18 +5,19 @@
  * OpenAI-compatible API with model routing across providers.
  */
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4-5-20251001';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+function _key() { return process.env.OPENROUTER_API_KEY || ''; }
+function _model() { return process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4-5-20251001'; }
+
 function isConfigured() {
-  return !!OPENROUTER_API_KEY;
+  return !!_key();
 }
 
 async function chat(systemPrompt, messages, options = {}) {
-  if (!OPENROUTER_API_KEY) throw new Error('OpenRouter API key not configured');
+  if (!_key()) throw new Error('OpenRouter API key not configured');
 
-  const model = options.model || OPENROUTER_MODEL;
+  const model = options.model || _model();
   const timeout = options.timeout || 30000;
 
   const controller = new AbortController();
@@ -27,7 +28,7 @@ async function chat(systemPrompt, messages, options = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${_key()}`,
         'HTTP-Referer': 'https://neuro.nurtur.tech',
         'X-Title': 'NEURO',
       },
@@ -67,9 +68,9 @@ async function generate(prompt, options = {}) {
 }
 
 async function streamChat(systemPrompt, messages, res, options = {}) {
-  if (!OPENROUTER_API_KEY) throw new Error('OpenRouter API key not configured');
+  if (!_key()) throw new Error('OpenRouter API key not configured');
 
-  const model = options.model || OPENROUTER_MODEL;
+  const model = options.model || _model();
   const timeout = options.timeout || 60000;
 
   const controller = new AbortController();
@@ -80,7 +81,7 @@ async function streamChat(systemPrompt, messages, res, options = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${_key()}`,
         'HTTP-Referer': 'https://neuro.nurtur.tech',
         'X-Title': 'NEURO',
       },
