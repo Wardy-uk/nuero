@@ -73,7 +73,7 @@ async function refresh() {
 
     // 90-day plan (CACHED — only re-parses if file changed)
     let ninetyDayPlan = null;
-    try { ninetyDayPlan = vaultCache.getPlan(); } catch {}
+    try { ninetyDayPlan = vaultCache.getPlan(); } catch (e) { console.warn('[WorkingMemory] getPlan failed:', e.message); }
 
     // Today's calendar (fast — SQLite)
     let calendar = [];

@@ -146,7 +146,12 @@ async function buildChatContext(userMessage, options = {}) {
   const contextBlock = parts.join('\n\n');
   const tokenEstimate = Math.round(contextBlock.length / 4); // rough estimate
 
-  console.log(`[ChatContextV2] Built in ${Date.now() - t0}ms, ~${tokenEstimate} tokens (${mode})`);
+  const sources = [];
+  if (wm?.queueSummary?.total > 0) sources.push('queue');
+  if (wm?.todos?.active?.length > 0) sources.push(`todos:${wm.todos.active.length}`);
+  if (wm?.ninetyDayPlan) sources.push(`plan:day${wm.ninetyDayPlan.currentDay}`);
+  else sources.push('plan:MISSING');
+  console.log(`[ChatContextV2] Built in ${Date.now() - t0}ms, ~${tokenEstimate} tokens (${mode}), sources: ${sources.join(', ')}`);
 
   return { systemContext: contextBlock, tokenEstimate };
 }
