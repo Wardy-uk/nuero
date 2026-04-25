@@ -88,13 +88,28 @@ async function buildChatContext(userMessage, options = {}) {
     } catch {}
   }
 
-  // ── 5. Active observations (compact) ──
+  // ── 5. 90-day plan (if available) ──
+  if (wm?.ninetyDayPlan) {
+    const plan = wm.ninetyDayPlan;
+    let planBlock = `90-Day Plan: Day ${plan.currentDay}/90, ${plan.totalDone}/${plan.totalTasks} done.`;
+    if (plan.overdueTasks?.length > 0) {
+      planBlock += ` ${plan.overdueTasks.length} overdue:`;
+      planBlock += plan.overdueTasks.slice(0, 5).map(t => `\n- Day ${t.day}: ${t.text}`).join('');
+    }
+    if (plan.todayTasks?.length > 0) {
+      planBlock += `\nToday's plan tasks:`;
+      planBlock += plan.todayTasks.map(t => `\n- [${t.status === 'x' ? 'x' : ' '}] ${t.text}`).join('');
+    }
+    parts.push(planBlock);
+  }
+
+  // ── 6. Active observations (compact) ──
   if (isApi && wm?.observations?.length > 0) {
     const recent = wm.observations.slice(-3).map(o => o.message);
     parts.push(`Recent observations: ${recent.join('; ')}`);
   }
 
-  // ── 6. Calendar (next 2 hours, compact) ──
+  // ── 7. Calendar (next 2 hours, compact) ──
   if (isApi && wm?.calendar?.length > 0) {
     const now = new Date();
     const soon = wm.calendar
