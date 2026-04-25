@@ -261,7 +261,7 @@ function AiSettingsSection() {
           <div className="ai-setting-label">Model</div>
           <input
             className="ai-setting-input"
-            defaultValue={settings.openrouter_model?.value || 'google/gemini-2.5-flash'}
+            defaultValue={settings.openrouter_model?.value || 'anthropic/claude-haiku-4-5-20251001'}
             onBlur={e => updateSetting('openrouter_model', e.target.value)}
             disabled={saving}
           />

@@ -317,7 +317,7 @@ function getStatus() {
     openrouter: {
       enabled: OPENROUTER_ENABLED,
       configured: openrouterProvider.isConfigured(),
-      model: process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash',
+      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4-5-20251001',
       callsToday: _usage.calls,
       tokensToday: _usage.tokens,
       dailyCallLimit: OPENROUTER_DAILY_CALL_LIMIT,

@@ -6,7 +6,7 @@
  */
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4-5-20251001';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 function isConfigured() {
