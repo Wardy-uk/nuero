@@ -329,6 +329,9 @@ function AiSettingsSection() {
             <div>Ollama: <span className="ai-status-val">{aiStatus.ollamaModel}</span></div>
             <div>Light model: <span className="ai-status-val">{aiStatus.ollamaLightModel}</span></div>
             <div>Queue: <span className="ai-status-val">{aiStatus.ollamaQueueDepth} {aiStatus.ollamaInUse ? '(active)' : '(idle)'}</span></div>
+            {aiStatus.openrouterModel && (
+              <div>OpenRouter: <span className="ai-status-val">{aiStatus.openrouterModel}</span></div>
+            )}
             {aiStatus.openrouterCallsToday > 0 && (
               <div>OpenRouter today: <span className="ai-status-val">{aiStatus.openrouterCallsToday} calls, {aiStatus.openrouterTokensToday} tokens</span></div>
             )}
