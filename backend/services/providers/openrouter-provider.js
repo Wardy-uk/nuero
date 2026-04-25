@@ -8,7 +8,7 @@
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 function _key() { return process.env.OPENROUTER_API_KEY || ''; }
-function _model() { return process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4-5-20251001'; }
+function _model() { return process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5'; }
 
 function isConfigured() {
   return !!_key();

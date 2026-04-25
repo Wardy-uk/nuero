@@ -319,7 +319,7 @@ function getStatus() {
     openrouter: {
       enabled: _cfg().enabled,
       configured: openrouterProvider.isConfigured(),
-      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4-5-20251001',
+      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5',
       callsToday: _usage.calls,
       tokensToday: _usage.tokens,
       dailyCallLimit: _cfg().dailyCallLimit,
