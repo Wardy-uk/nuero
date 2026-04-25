@@ -88,7 +88,29 @@ async function buildChatContext(userMessage, options = {}) {
     } catch {}
   }
 
-  // ── 5. 90-day plan (if available) ──
+  // ── 5. Active todos (hierarchical, bounded) ──
+  if (wm?.todos?.active?.length > 0) {
+    const all = wm.todos.active;
+    const fmt = t => `- ${t.text}${t.due_date ? ` (due: ${t.due_date})` : ''}`;
+
+    const planTasks = all.filter(t => (t.source || '').includes('Daily') && t.priority === 'high');
+    const vaultTasks = all.filter(t => {
+      const src = (t.source || '').toLowerCase();
+      return src.includes('master') || (src.includes('daily') && t.priority !== 'high');
+    });
+    const msTasks = all.filter(t => {
+      const src = (t.source || '').toLowerCase();
+      return src.includes('ms ') || src.includes('planner') || src.includes('todo');
+    });
+
+    let todoBlock = `Active tasks (${all.length} total):`;
+    if (planTasks.length > 0) todoBlock += `\nFocus today:\n${planTasks.slice(0, 6).map(fmt).join('\n')}`;
+    if (vaultTasks.length > 0) todoBlock += `\nVault tasks:\n${vaultTasks.slice(0, isApi ? 8 : 4).map(fmt).join('\n')}`;
+    if (msTasks.length > 0) todoBlock += `\nMS Planner/ToDo:\n${msTasks.slice(0, isApi ? 6 : 3).map(fmt).join('\n')}`;
+    parts.push(todoBlock);
+  }
+
+  // ── 6. 90-day plan (if available) ──
   if (wm?.ninetyDayPlan) {
     const plan = wm.ninetyDayPlan;
     let planBlock = `90-Day Plan: Day ${plan.currentDay}/90, ${plan.totalDone}/${plan.totalTasks} done.`;
@@ -103,13 +125,13 @@ async function buildChatContext(userMessage, options = {}) {
     parts.push(planBlock);
   }
 
-  // ── 6. Active observations (compact) ──
+  // ── 7. Active observations (compact) ──
   if (isApi && wm?.observations?.length > 0) {
     const recent = wm.observations.slice(-3).map(o => o.message);
     parts.push(`Recent observations: ${recent.join('; ')}`);
   }
 
-  // ── 7. Calendar (next 2 hours, compact) ──
+  // ── 8. Calendar (next 2 hours, compact) ──
   if (isApi && wm?.calendar?.length > 0) {
     const now = new Date();
     const soon = wm.calendar
