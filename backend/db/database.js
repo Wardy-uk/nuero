@@ -225,6 +225,14 @@ function completeNudgeByType(type, dateKey) {
   save();
 }
 
+function completeAllNudgesByType(type) {
+  getDb().run(
+    "UPDATE nudges SET active = 0, completed_at = datetime('now') WHERE type = ? AND active = 1",
+    [type]
+  );
+  save();
+}
+
 function incrementNagCount(id) {
   getDb().run(
     'UPDATE nudges SET nag_count = nag_count + 1 WHERE id = ?',
@@ -878,6 +886,7 @@ module.exports = {
   getActiveNudgeByTypeAndDate,
   completeNudge,
   completeNudgeByType,
+  completeAllNudgesByType,
   incrementNagCount,
   createTodo,
   clearMsTodos,

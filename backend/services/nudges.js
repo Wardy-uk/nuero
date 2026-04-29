@@ -344,6 +344,14 @@ function nagCheck() {
   const nudges = db.getActiveNudges();
 
   for (const nudge of nudges) {
+    // Clear stale nudges from previous days
+    if (nudge.date_key && nudge.date_key < todayKey()) {
+      db.completeNudge(nudge.id);
+      console.log(`[Nudge] Cleared stale ${nudge.type} nudge from ${nudge.date_key}`);
+      broadcast({ type: 'nudge_cleared', nudge_type: nudge.type });
+      continue;
+    }
+
     // Check if standup was completed since last check
     if (nudge.type === 'standup' && isStandupDone()) {
       db.completeNudge(nudge.id);
@@ -394,8 +402,17 @@ function nagCheck() {
   }
 }
 
-// Called on startup — fires nudges if server starts after 9am on a weekday
+// Called on startup — clears stale nudges from previous days, then fires if needed
 function startupCheck() {
+  const staleNudges = db.getActiveNudges().filter(n => n.date_key && n.date_key < todayKey());
+  if (staleNudges.length > 0) {
+    console.log(`[Nudge] Startup — clearing ${staleNudges.length} stale nudge(s) from previous days`);
+    for (const n of staleNudges) {
+      db.completeNudge(n.id);
+    }
+    broadcast({ type: 'nudge_cleared', nudge_type: 'all' });
+  }
+
   const now = new Date();
   const day = now.getDay(); // 0=Sun, 6=Sat
   const hour = now.getHours();
@@ -410,7 +427,7 @@ function startupCheck() {
 
 // Mark standup as done (called when user saves standup to daily note)
 function markStandupDone() {
-  db.completeNudgeByType('standup', todayKey());
+  db.completeAllNudgesByType('standup');
   broadcast({ type: 'nudge_cleared', nudge_type: 'standup' });
   try {
     const hour = new Date().getHours();
