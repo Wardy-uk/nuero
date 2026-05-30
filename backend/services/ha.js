@@ -1,0 +1,124 @@
+'use strict';
+
+// Home Assistant integration — reads phone sensors, presence, and environment
+// from the HA server running on the Pi (Companion app reports into HA).
+// Pattern mirrors services/location.js: env-gated, HTTP pull, cached context block.
+
+const HA_URL = (process.env.HA_URL || 'http://localhost:8123').replace(/\/$/, '');
+const HA_TOKEN = process.env.HA_TOKEN || '';
+// Entity prefix for the phone reporting via the Companion app (e.g. nicks_iphone)
+const PHONE_PREFIX = process.env.HA_PHONE_PREFIX || 'nicks_iphone';
+// person.<id> entity tracked for presence
+const PERSON_ID = process.env.HA_PERSON_ID || 'nick';
+
+function isConfigured() {
+  return !!(HA_URL && HA_TOKEN);
+}
+
+// --- Core API -------------------------------------------------------------
+
+async function fetchStates() {
+  const res = await fetch(`${HA_URL}/api/states`, {
+    headers: { Authorization: `Bearer ${HA_TOKEN}` },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`HA API error: ${res.status}`);
+  return res.json();
+}
+
+// 60s in-memory cache — phone state changes often but chat/journal calls
+// can burst, so avoid hammering the HA API within a single interaction.
+let _cache = { at: 0, states: null };
+
+async function getStates() {
+  if (!isConfigured()) return [];
+  if (_cache.states && Date.now() - _cache.at < 60_000) return _cache.states;
+  try {
+    const states = await fetchStates();
+    _cache = { at: Date.now(), states };
+    return states;
+  } catch (e) {
+    console.warn('[HA] Failed to fetch states:', e.message);
+    return _cache.states || [];
+  }
+}
+
+async function getEntity(entityId) {
+  const states = await getStates();
+  return states.find(e => e.entity_id === entityId) || null;
+}
+
+function pick(states, entityId) {
+  const e = states.find(s => s.entity_id === entityId);
+  return e ? e.state : null;
+}
+
+function isUsable(v) {
+  return v && !['unavailable', 'unknown', 'none'].includes(String(v).toLowerCase());
+}
+
+// --- Convenience views ----------------------------------------------------
+
+// Phone + presence snapshot — the data the Companion app actually reports.
+async function getPhoneStatus() {
+  const states = await getStates();
+  if (!states.length) return null;
+
+  const presence = pick(states, `person.${PERSON_ID}`)
+    || pick(states, `device_tracker.${PHONE_PREFIX}`);
+  const battery = pick(states, `sensor.${PHONE_PREFIX}_battery_level`);
+  const batteryState = pick(states, `sensor.${PHONE_PREFIX}_battery_state`);
+  const ssid = pick(states, `sensor.${PHONE_PREFIX}_ssid`);
+  const connection = pick(states, `sensor.${PHONE_PREFIX}_connection_type`);
+  const geocoded = pick(states, `sensor.${PHONE_PREFIX}_geocoded_location`);
+
+  return {
+    presence: isUsable(presence) ? presence : null,
+    batteryLevel: isUsable(battery) ? Number(battery) : null,
+    batteryState: isUsable(batteryState) ? batteryState : null,
+    ssid: isUsable(ssid) ? ssid : null,
+    connectionType: isUsable(connection) ? connection : null,
+    geocodedLocation: isUsable(geocoded) ? geocoded : null,
+  };
+}
+
+// Markdown context block for Claude chat — mirrors location.getLocationContextBlock().
+async function getHaContextBlock() {
+  if (!isConfigured()) return null;
+  try {
+    const states = await getStates();
+    if (!states.length) return null;
+
+    const phone = await getPhoneStatus();
+    const weather = states.find(s => s.entity_id.startsWith('weather.'));
+
+    const lines = [];
+    if (phone?.presence) lines.push(`- Presence: ${phone.presence}`);
+    if (phone?.batteryLevel != null) {
+      const charging = phone.batteryState && phone.batteryState !== 'Not Charging'
+        ? ` (${phone.batteryState})` : '';
+      lines.push(`- Phone battery: ${phone.batteryLevel}%${charging}`);
+    }
+    if (phone?.ssid) lines.push(`- Wi‑Fi: ${phone.ssid}`);
+    if (phone?.geocodedLocation) lines.push(`- Location: ${phone.geocodedLocation}`);
+    if (weather && isUsable(weather.state)) {
+      const temp = weather.attributes?.temperature;
+      const unit = weather.attributes?.temperature_unit || '°C';
+      lines.push(`- Weather: ${weather.state}${temp != null ? `, ${temp}${unit}` : ''}`);
+    }
+
+    if (!lines.length) return null;
+    return `## Home Assistant\n${lines.join('\n')}`;
+  } catch (e) {
+    console.warn('[HA] Context block failed:', e.message);
+    return null;
+  }
+}
+
+module.exports = {
+  isConfigured,
+  getStates,
+  getEntity,
+  getPhoneStatus,
+  getHaContextBlock,
+};

@@ -39,6 +39,7 @@ const locationRoutes = require('./routes/location');
 const jiraRoutes = require('./routes/jira');
 const focusRoutes = require('./routes/focus');
 const actionsRoutes = require('./routes/actions');
+const haRoutes = require('./routes/ha');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -133,6 +134,7 @@ app.use('/api/location', locationRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/focus', focusRoutes);
 app.use('/api/actions', actionsRoutes);
+app.use('/api/ha', haRoutes);
 app.use('/api/ai/settings', require('./routes/ai-settings'));
 app.use('/api/meeting-prep', require('./routes/meeting-prep-view'));
 app.use('/api/person', require('./routes/person-detail'));
@@ -210,6 +212,10 @@ app.get('/api/status', async (req, res) => {
     location: {
       configured: require('./services/location').isConfigured(),
       recorderUrl: process.env.OWNTRACKS_RECORDER_URL || null
+    },
+    homeAssistant: {
+      configured: require('./services/ha').isConfigured(),
+      url: process.env.HA_URL || null
     },
     vaultSync: {
       enabled: true,

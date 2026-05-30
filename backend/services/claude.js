@@ -458,6 +458,20 @@ ${queueSummary.at_risk_tickets.length > 0 ? '### At-Risk Tickets\n' + queueSumma
     diagnostics.push('location: error');
   } else { diagnostics.push('owntracks: skipped'); }
 
+  // Home Assistant — phone/presence/environment, for wellbeing/general
+  if (['wellbeing', 'general'].includes(intent)) try {
+    const haService = require('./ha');
+    if (haService.isConfigured()) {
+      const haBlock = await haService.getHaContextBlock();
+      if (haBlock) {
+        parts.push(haBlock);
+        diagnostics.push('ha: yes');
+      }
+    }
+  } catch (e) {
+    diagnostics.push('ha: error');
+  } else { diagnostics.push('ha: skipped'); }
+
   // Vault search results
   if (vaultResults && vaultResults.length > 0) {
     const vaultBlock = `## Relevant Vault Notes\n` +
