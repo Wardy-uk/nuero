@@ -30,7 +30,7 @@
 
 ## WS3 — Home Assistant Integration
 
-- Status: Not started
+- Status: Converged
 
 ## WS4 — Voice Interface
 
@@ -38,7 +38,12 @@
 
 ## WS5 — Context Inference
 
-- Status: Not started
+- Goal: infer current context from shared state and telemetry
+- Success criteria:
+  - SARA can infer a bounded current activity/context state
+  - SARA can expose inference confidence and reasons
+  - SARA can expose a recommended view without auto-switching to it
+  - inference remains subordinate to the one shared state model
 
 ## WS6 — Distributed Nodes
 

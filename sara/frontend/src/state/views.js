@@ -72,8 +72,10 @@ export const VIEW_REGISTRY = [
 ];
 
 // The view SARA opens on. Manual selection (charter: "manual user-selected view")
-// is supported now via the view switcher; automatic recommendation from the State
-// Engine is a later work package and deliberately NOT implemented here.
+// is supported via the view switcher. As of WS5-WP1 the State Engine also derives a
+// *recommended* view (model.inference.recommendedView), surfaced by RecommendedView —
+// but it is ADVISORY ONLY: it never sets DEFAULT_VIEW or currentView on its own. SARA
+// opens on Mission Control and only a user action changes the view.
 export const DEFAULT_VIEW = SARA_VIEWS.MISSION_CONTROL;
 
 export function getView(id) {

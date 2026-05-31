@@ -1,12 +1,15 @@
-# Executive Dashboard (planned view)
+# Executive Dashboard (available view)
 
-Placeholder for a future SARA view. **Not built in WS2-WP1.**
+Built in **WS2A-WP1**. The operational SARA view.
 
 Registered in `frontend/src/state/views.js` as `executive-dashboard` (status:
-`planned`). Selecting it renders the shared `PlannedView` placeholder.
+`available`) and wired into `components/ViewRouter.jsx`. Implemented in
+`ExecutiveDashboard.jsx` (+ `.css`).
 
-When this view is built, it will read the **same shared state** as Mission Control
-(`useSaraState()`), add a `<screen>.jsx` here, and be wired into
-`components/ViewRouter.jsx`. It must not introduce its own source of truth.
+It reads the **same shared state** as Mission Control via `useSaraState()` and owns no
+data of its own: KPI tiles, the queue broken down by section, and the people roster all
+come from the WS1 State Engine domains (`model.domains.*`); What Matters Now comes from
+the shared placeholder presentation layer; the clock from the shared clock. It does not
+depend on Home Assistant / WS3 telemetry.
 
-Intended focus: queue, people and SLA metrics at depth.
+Focus: queue, people and SLA metrics at depth.

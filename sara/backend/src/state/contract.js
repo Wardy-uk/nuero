@@ -61,6 +61,39 @@ function validate(model) {
     errors.push('confidence must be an object with a numeric score and level string');
   }
 
+  // Telemetry is the Home Assistant signal block folded into SARA's situational state
+  // (WS3-WP1). HA is a telemetry bus only; the engine still produces the model. The
+  // contract enforces the block's shape so state and health can NEVER disagree about
+  // whether telemetry is live or unavailable — `available` is a required boolean and
+  // `source` a required string. Signals themselves are allowed to be null (honest
+  // "no live signal"), so their per-field shape is not enforced here.
+  if (!isObject(model.telemetry) || typeof model.telemetry.source !== 'string' || typeof model.telemetry.available !== 'boolean') {
+    errors.push('telemetry must be an object with a source string and available boolean');
+  } else if (!isObject(model.telemetry.signals)) {
+    errors.push('telemetry.signals must be an object');
+  }
+
+  // Inference is the bounded context-inference block folded into the one shared model
+  // (WS5-WP1). It extends the same model — it is NOT a parallel state owner. The
+  // contract enforces its shape AND its advisory guarantee: `advisory` MUST be exactly
+  // `true`, so the shared model itself promises the recommendation never drives the UI.
+  // `recommendedView` is null (honest "no confident recommendation") or a view id
+  // string. `confidence` and `reasons` are required so a recommendation can never be
+  // exposed without the uncertainty and evidence behind it.
+  if (!isObject(model.inference)) {
+    errors.push('inference must be an object');
+  } else {
+    if (model.inference.advisory !== true) errors.push('inference.advisory must be exactly true (recommendation is advisory only)');
+    if (typeof model.inference.activity !== 'string' || !model.inference.activity) errors.push('inference.activity must be a non-empty string');
+    if (!(model.inference.recommendedView === null || typeof model.inference.recommendedView === 'string')) {
+      errors.push('inference.recommendedView must be null or a view id string');
+    }
+    if (!isObject(model.inference.confidence) || typeof model.inference.confidence.score !== 'number' || typeof model.inference.confidence.level !== 'string') {
+      errors.push('inference.confidence must be an object with a numeric score and level string');
+    }
+    if (!Array.isArray(model.inference.reasons)) errors.push('inference.reasons must be an array');
+  }
+
   if (!isObject(model.domains)) {
     errors.push('domains must be an object');
   } else {

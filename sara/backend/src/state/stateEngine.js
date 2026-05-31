@@ -16,8 +16,10 @@
 
 const { CONTRACT, SCHEMA_VERSION, DOMAINS, DOMAIN_CONTRACTS, validate } = require('./contract');
 const seed = require('./seed');
+const ha = require('../telemetry/homeAssistant');
+const { deriveInference } = require('./inference');
 
-const RUNTIME_LABEL = 'WS1-WP1';
+const RUNTIME_LABEL = 'WS5-WP1';
 
 // Input providers, one per contract domain. Seeded in WS1; swap for live readers
 // later without touching the engine or the contract.
@@ -28,8 +30,10 @@ const PROVIDERS = {
   vault: seed.vault,
 };
 
-// Current location is a seeded situational input (not a domain). Same seam as the
-// domain providers: swap for a live reader (OwnTracks / calendar) in a later WP.
+// Current location is a situational input (not a domain). The seed reader is the
+// honest fallback; WS3 lets the Home Assistant telemetry bridge feed it live when a
+// location signal is present. The contract is unchanged — location stays the same
+// shape whether it comes from HA or seed (that is the seam).
 const LOCATION_PROVIDER = seed.location;
 
 function isObject(v) {
@@ -99,16 +103,69 @@ function buildBriefing(domains) {
   return { line, derivedFrom: ['queue', 'people', 'focus'] };
 }
 
+// Map a context label off the HA location zone, so a screen reading location stays
+// the same shape it always was. Display/representation only — no decision is taken.
+function locationContext(zone) {
+  if (zone === 'home') return 'home';
+  if (zone === 'not_home') return 'away';
+  return 'elsewhere';
+}
+
+/**
+ * Build the situational `location` block. When the HA telemetry bridge reports a live
+ * location signal, location comes from HA (`source: 'home-assistant'`); otherwise it
+ * falls back to the seeded reader (`source: 'seed'`). Either way the shape is the same
+ * — HA being absent can never break a consumer, it only changes the source.
+ */
+function buildLocation(telemetry) {
+  const loc = telemetry.available ? telemetry.signals.location : null;
+  if (loc && loc.label) {
+    return {
+      source: ha.TELEMETRY_SOURCE,
+      label: loc.label,
+      context: locationContext(loc.zone),
+      since: telemetry.polledAt,
+      summary: `Home Assistant places you at ${loc.label}.`,
+      entityId: loc.entityId,
+    };
+  }
+  // Honest fallback: HA unavailable or carrying no location signal -> seeded input.
+  return { ...LOCATION_PROVIDER(), telemetry: 'fallback' };
+}
+
+// Shape the cached HA snapshot into the model's telemetry block. Read-only: the engine
+// never asks HA to decide anything, it only surfaces what HA reported and how stale it
+// is. `ageMs` lets a consumer judge freshness without owning its own clock.
+function buildTelemetry(telemetry) {
+  return {
+    source: telemetry.source,
+    available: telemetry.available,
+    reason: telemetry.reason || null,
+    detail: telemetry.detail || null,
+    polledAt: telemetry.polledAt || null,
+    ageMs: telemetry.polledAt ? Date.now() - Date.parse(telemetry.polledAt) : null,
+    signals: telemetry.signals,
+  };
+}
+
 /**
  * Assemble the single shared runtime model from the domain providers, derive the
- * briefing, and self-validate against the v1 contract.
+ * briefing, fold in Home Assistant telemetry, and self-validate against the contract.
  * @returns {object} the assembled model (carries meta.valid / meta.errors)
  */
 function buildModel() {
   const domains = {};
   for (const name of DOMAINS) domains[name] = PROVIDERS[name]();
 
-  const dataSource = 'seed'; // honest: inputs are hardcoded, not live yet (WS1 scope)
+  // Read the latest cached HA telemetry snapshot. This is synchronous and never
+  // throws — an absent/unreachable HA yields an honest `available: false` snapshot,
+  // so model assembly is never blocked or broken by telemetry.
+  const telemetry = ha.getTelemetry();
+
+  // Domains are still seeded (WS3 is a telemetry slice, not a domain-integration one).
+  // The location and telemetry blocks below may be live via HA; that is surfaced on
+  // their own `source` fields, so `dataSource` stays an honest statement about domains.
+  const dataSource = 'seed';
   const model = {
     contract: CONTRACT,
     schemaVersion: SCHEMA_VERSION,
@@ -119,13 +176,24 @@ function buildModel() {
     sara: {
       name: 'SARA',
       status: 'online',
-      note: 'State Engine v1 contract is live. Inputs are seeded (hardcoded), not yet wired to real sources (WS1 scope).',
+      note: 'State Engine contract is live. Domain inputs are seeded (hardcoded); location/telemetry may be live via the Home Assistant bridge when configured, otherwise they fall back honestly.',
     },
-    location: LOCATION_PROVIDER(),
+    location: buildLocation(telemetry),
+    telemetry: buildTelemetry(telemetry),
     confidence: deriveConfidence(domains, dataSource),
     briefing: buildBriefing(domains),
     domains,
   };
+
+  // Context inference (WS5-WP1). Derived AFTER the rest of the model is assembled, from
+  // the same inputs the model already carries — so inference extends the one shared
+  // model rather than owning a parallel state. It is advisory: it recommends a view but
+  // never selects one, and telemetry is just one of its inputs (HA stays a bus).
+  model.inference = deriveInference({
+    domains: model.domains,
+    telemetry: model.telemetry,
+    location: model.location,
+  });
 
   const { valid, errors } = validate(model);
   model.meta = { valid, errors, domainCount: DOMAINS.length };
@@ -155,7 +223,26 @@ function getHealth() {
     dataSource: model.dataSource,
     valid: model.meta.valid,
     location: model.location.label,
+    locationSource: model.location.source,
     confidence: { level: model.confidence.level, score: model.confidence.score },
+    // Same telemetry verdict the state model carries, so health and state can never
+    // disagree about whether Home Assistant telemetry is live or unavailable.
+    telemetry: {
+      source: model.telemetry.source,
+      available: model.telemetry.available,
+      reason: model.telemetry.reason,
+      polledAt: model.telemetry.polledAt,
+    },
+    // Same inference verdict the state model carries (WS5-WP1) — advisory only. Health
+    // reports the inferred activity, the recommended view, and confidence so operators
+    // can see what SARA inferred without parsing the full model. It is a read-only echo;
+    // health takes no action on it.
+    inference: {
+      activity: model.inference.activity,
+      recommendedView: model.inference.recommendedView,
+      advisory: model.inference.advisory,
+      confidence: { level: model.inference.confidence.level, score: model.inference.confidence.score },
+    },
     startedAt: model.startedAt,
     checkedAt: new Date().toISOString(),
   };

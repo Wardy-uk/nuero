@@ -14,7 +14,10 @@ const express = require('express');
 
 const healthRoute = require('./src/routes/health');
 const stateRoute = require('./src/routes/state');
+const telemetryRoute = require('./src/routes/telemetry');
+const inferenceRoute = require('./src/routes/inference');
 const { RUNTIME_LABEL } = require('./src/state/stateEngine');
+const ha = require('./src/telemetry/homeAssistant');
 
 const app = express();
 const PORT = process.env.SARA_PORT || 3005;
@@ -24,6 +27,8 @@ app.use(express.json());
 // --- API (the defined frontend <-> backend runtime path) ---
 app.use('/api/health', healthRoute);
 app.use('/api/state', stateRoute);
+app.use('/api/telemetry', telemetryRoute);
+app.use('/api/inference', inferenceRoute);
 
 // --- Static frontend (production) ---
 // Vite builds to ../frontend/dist. If it exists, serve it with SPA fallback so
@@ -42,11 +47,14 @@ if (fs.existsSync(distDir)) {
       `SARA backend (${RUNTIME_LABEL}) is up on port ${PORT}.\n` +
         `Frontend build not found at ${distDir}.\n` +
         `Run the frontend dev server, or build it for production.\n` +
-        `API: GET /api/health , GET /api/state\n`
+        `API: GET /api/health , GET /api/state , GET /api/telemetry , GET /api/inference\n`
     );
   });
 }
 
 app.listen(PORT, () => {
   console.log(`[SARA ${RUNTIME_LABEL}] backend listening on http://0.0.0.0:${PORT}`);
+  // Start the Home Assistant telemetry poller. No-op (and logs why) when HA is not
+  // configured — the runtime stays up and screens fall back honestly.
+  ha.start();
 });

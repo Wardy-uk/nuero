@@ -1,12 +1,14 @@
-# Presence (planned view)
+# Presence (available view)
 
-Placeholder for a future SARA view. **Not built in WS2-WP1.**
+Built in **WS2A-WP1**. The calm ambient SARA view.
 
-Registered in `frontend/src/state/views.js` as `presence` (status: `planned`).
-Selecting it renders the shared `PlannedView` placeholder.
+Registered in `frontend/src/state/views.js` as `presence` (status: `available`) and
+wired into `components/ViewRouter.jsx`. Implemented in `PresenceMode.jsx` (+ `.css`).
 
-When this view is built, it will read the **same shared state** as Mission Control
-(`useSaraState()`), add a `<screen>.jsx` here, and be wired into
-`components/ViewRouter.jsx`. It must not introduce its own source of truth.
+It reads the **same shared state** as Mission Control via `useSaraState()` and owns no
+data of its own: a large clock from the shared clock, location and status from the
+model, the briefing line the engine derives, and the next item from the shared
+placeholder presentation layer. It shows *less* of the same model — never a different
+model — and does not depend on Home Assistant / WS3 telemetry.
 
-Intended focus: a calm ambient view for when SARA is just present.
+Focus: a calm ambient view for when SARA is just present.
