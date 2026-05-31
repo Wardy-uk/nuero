@@ -2,6 +2,7 @@ import { SaraStateProvider } from './state/saraState';
 import ViewSwitcher from './components/ViewSwitcher';
 import RecommendedView from './components/RecommendedView';
 import ViewRouter from './components/ViewRouter';
+import ExitButton from './components/ExitButton';
 
 // SARA app shell (WS2-WP1; advisory inference strip added WS5-WP1).
 //
@@ -16,6 +17,7 @@ export default function App() {
   return (
     <SaraStateProvider>
       <div className="app">
+        <ExitButton />
         <ViewSwitcher />
         <RecommendedView />
         <main className="app__view">

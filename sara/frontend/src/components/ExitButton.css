@@ -1,0 +1,94 @@
+/* Exit control — fixed top-right on every view (WS2-WP2).
+   Frosted to match the Mission Control card language. Sits in the top-right corner
+   above the view switcher's empty right side, clear of screen content. Touch-sized. */
+
+.exit {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+
+/* The resting trigger — a round power glyph */
+.exit__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 8px 28px rgba(39, 44, 51, 0.08), 0 1px 2px rgba(39, 44, 51, 0.04);
+  color: var(--ink-dim);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.08s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.exit__trigger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  box-shadow: 0 10px 30px rgba(208, 90, 82, 0.22);
+}
+.exit__trigger:active {
+  transform: scale(0.94);
+}
+
+/* Confirm cluster */
+.exit--confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8px 28px rgba(39, 44, 51, 0.12), 0 1px 2px rgba(39, 44, 51, 0.04);
+}
+.exit__ask {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.exit__act {
+  min-height: 38px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.exit__act:active {
+  transform: scale(0.96);
+}
+.exit__act--yes {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.exit__act--no {
+  background: transparent;
+  color: var(--ink-dim);
+}
+.exit__act--no:hover {
+  color: var(--ink);
+  border-color: var(--ink-dim);
+}
+
+/* Closing status pill */
+.exit--status {
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8px 28px rgba(39, 44, 51, 0.12);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-dim);
+}

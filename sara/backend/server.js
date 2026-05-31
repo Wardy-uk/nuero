@@ -16,6 +16,7 @@ const healthRoute = require('./src/routes/health');
 const stateRoute = require('./src/routes/state');
 const telemetryRoute = require('./src/routes/telemetry');
 const inferenceRoute = require('./src/routes/inference');
+const kioskRoute = require('./src/routes/kiosk');
 const { RUNTIME_LABEL } = require('./src/state/stateEngine');
 const ha = require('./src/telemetry/homeAssistant');
 
@@ -29,6 +30,7 @@ app.use('/api/health', healthRoute);
 app.use('/api/state', stateRoute);
 app.use('/api/telemetry', telemetryRoute);
 app.use('/api/inference', inferenceRoute);
+app.use('/api/kiosk', kioskRoute);
 
 // --- Static frontend (production) ---
 // Vite builds to ../frontend/dist. If it exists, serve it with SPA fallback so
