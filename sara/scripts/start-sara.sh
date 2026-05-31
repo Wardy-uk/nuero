@@ -37,6 +37,18 @@ fi
 
 echo "[sara] opening Mission Control at ${SARA_URL}"
 
+# --- Clear a stale Chromium profile lock ---
+# A kiosk session that was killed un-cleanly (power-off, crash, closing the panel
+# trap mid-launch) can leave SingletonLock/Cookie/Socket pointing at a dead PID.
+# Under --kiosk --noerrdialogs Chromium then suppresses the "profile in use" dialog
+# and simply never opens a window — i.e. "SARA won't load from the desktop". Only
+# remove the locks when NO chromium is running, so we never disturb a live session.
+if ! pgrep -x chromium >/dev/null 2>&1 && ! pgrep -x chromium-browser >/dev/null 2>&1; then
+  rm -f "$HOME/.config/chromium/SingletonLock" \
+        "$HOME/.config/chromium/SingletonCookie" \
+        "$HOME/.config/chromium/SingletonSocket" 2>/dev/null || true
+fi
+
 # --- Hide the Pi taskbar (wf-panel-pi) for the SARA session ---
 # On Pi OS labwc the panel is supervised by lwrespawn (it respawns if simply
 # killed) and reserves a layer-shell zone, so a kiosk window can't cover it. We
