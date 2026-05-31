@@ -48,7 +48,7 @@ export default function MissionControl() {
 
   const goal = model.domains?.focus?.current;
   const confidenceLevel = model.confidence?.level;
-  const mc = presentation.missionControl;
+  const mc = presentation;
 
   return (
     <section className="mc" aria-label="Mission Control">

@@ -1,22 +1,26 @@
-// SARA shared UI-state — placeholder presentation content (WS2-WP1).
+// SARA shared UI-state — placeholder presentation content (WS2-WP1 / WS2A-WP1).
 //
-// Mission Control introduces three NEW UI-only fields that the WS1 State Engine
-// model does not yet produce: "What Matters Now", "Up Next", and "Quick Actions".
-// The build brief explicitly allows placeholder/static values for these — but they
-// MUST live in the shared-state layer, NOT inside the screen component, so that no
-// screen becomes a source of truth (charter principle 7; convergence failure
-// condition: "state is hardcoded inside the screen instead of sourced from shared
-// state").
+// Three UI-only fields that the WS1 State Engine model does not yet produce —
+// "What Matters Now", "Up Next", and "Quick Actions" — live here. The build brief
+// explicitly allows placeholder/static values for these, but they MUST live in the
+// shared-state layer, NOT inside any screen component, so that no screen becomes a
+// source of truth (charter principle 7; convergence failure condition: "state is
+// hardcoded inside the screen instead of sourced from shared state").
 //
-// This module is that home. It is the swappable seam for these fields, exactly like
-// backend/src/state/seed.js is for the engine domains: a later work package replaces
-// these literals with values derived from the State Engine model, and the Mission
-// Control screen does not change — it already reads them from shared state.
+// This is the ONE shared placeholder presentation layer for every view. Mission
+// Control (WS2), and now Executive Dashboard and Presence (WS2A), all read these same
+// fields through shared state — none of them owns or duplicates the content. The
+// block is view-neutral on purpose: a screen formats and orders it, nothing more.
+//
+// It is the swappable seam for these fields, exactly like backend/src/state/seed.js
+// is for the engine domains: a later work package replaces these literals with values
+// derived from the State Engine model, and no screen changes — they already read them
+// from shared state.
 //
 // `source: 'placeholder'` is stamped on the block so any consumer (and the UI) can
 // tell this content is not derived from live state yet.
 
-export const MISSION_CONTROL_PRESENTATION = {
+export const SHARED_PRESENTATION = {
   source: 'placeholder',
 
   // What Matters Now — the few things SARA would put in front of you right now.

@@ -1,0 +1,396 @@
+/* Executive Dashboard v0 — operational, denser than Mission Control (WS2A-WP1).
+   Reads the shared SARA theme tokens defined in App.css. Same calm light palette,
+   but a tighter information grid for queue + people depth. */
+
+.ed {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Centred message states (waking / offline) */
+.ed--message {
+  min-height: 50vh;
+  align-items: center;
+  justify-content: center;
+}
+.ed__waking {
+  color: var(--ink-dim);
+  font-size: 18px;
+}
+.ed__offline {
+  color: var(--danger);
+  font-size: 16px;
+  text-align: center;
+  max-width: 32ch;
+}
+
+/* Header */
+.ed__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ed__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ed__mark {
+  font-weight: 700;
+  letter-spacing: 3px;
+  font-size: 24px;
+  color: var(--ink);
+}
+.ed__view-tag {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-dim);
+}
+.ed__state {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.ed__seed {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--warning-ink);
+  background: var(--warning-soft);
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+.ed__clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+.ed__time {
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.ed__confidence {
+  font-size: 12px;
+  text-transform: capitalize;
+  color: var(--ink-dim);
+}
+.ed__confidence--high {
+  color: var(--success-ink);
+}
+.ed__confidence--moderate {
+  color: var(--warning-ink);
+}
+.ed__confidence--low {
+  color: var(--danger);
+}
+
+/* Engine briefing line */
+.ed__briefing {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+/* KPI tiles */
+.ed__kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.ed__kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.ed__kpi--urgent {
+  border-top-color: var(--danger);
+}
+.ed__kpi--attention {
+  border-top-color: var(--warning-ink);
+}
+.ed__kpi-value {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ed__kpi-label {
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+/* Shared section label */
+.ed__section-label {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--ink-dim);
+}
+
+/* Body grid: wide queue column + people/priorities side column */
+.ed__columns {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.ed__side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ed__panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.ed__panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.ed__panel-summary {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+.ed__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Queue sections */
+.ed__queue-section + .ed__queue-section {
+  margin-top: 14px;
+}
+.ed__queue-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--ink-dim);
+}
+.ed__queue-heading--urgent {
+  color: var(--danger);
+}
+.ed__queue-heading--attention {
+  color: var(--warning-ink);
+}
+.ed__queue-heading--watch {
+  color: var(--accent-ink);
+}
+.ed__queue-count {
+  font-size: 11px;
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--ink-dim);
+}
+.ed__ticket {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+}
+.ed__ticket--urgent {
+  border-left-color: var(--danger);
+}
+.ed__ticket--attention {
+  border-left-color: var(--warning-ink);
+}
+.ed__ticket--watch {
+  border-left-color: var(--accent);
+}
+.ed__ticket-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ed__ticket-key {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  font-variant-numeric: tabular-nums;
+}
+.ed__ticket-summary {
+  flex: 1;
+  font-size: 15px;
+  color: var(--ink);
+}
+.ed__ticket-sla {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+.ed__ticket-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.ed__ticket-assignee {
+  font-weight: 600;
+}
+.ed__ticket-take {
+  line-height: 1.4;
+}
+
+/* People roster */
+.ed__person {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.ed__person:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.ed__person-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ed__person-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ed__person-status {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--ink-dim);
+  background: var(--bg);
+}
+.ed__person-status--solid {
+  color: var(--success-ink);
+  background: #e6f5ee;
+}
+.ed__person-status--watch {
+  color: var(--warning-ink);
+  background: var(--warning-soft);
+}
+.ed__person-status--slipping {
+  color: var(--danger);
+  background: #fbe9e7;
+}
+.ed__person-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.ed__person-flag {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+
+/* What Matters Now (shared placeholder presentation) */
+.ed__matter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+}
+.ed__matter--urgent {
+  border-left-color: var(--danger);
+}
+.ed__matter--attention {
+  border-left-color: var(--warning-ink);
+}
+.ed__matter--watch {
+  border-left-color: var(--accent);
+}
+.ed__matter-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ed__matter-detail {
+  font-size: 13px;
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+
+/* Current focus footer */
+.ed__focus {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px 18px;
+  flex-wrap: wrap;
+}
+.ed__focus-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--ink-dim);
+}
+.ed__focus-title {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ed__focus-timebox {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+/* Responsive: collapse to a single column on narrow / portrait touchscreens */
+@media (max-width: 720px) {
+  .ed__columns {
+    grid-template-columns: 1fr;
+  }
+  .ed__kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

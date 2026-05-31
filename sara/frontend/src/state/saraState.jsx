@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { MISSION_CONTROL_PRESENTATION } from './presentation';
+import { SHARED_PRESENTATION } from './presentation';
 import { DEFAULT_VIEW } from './views';
 
 // SARA shared state/context — the single in-app source of truth for every screen
@@ -14,9 +14,10 @@ import { DEFAULT_VIEW } from './views';
 //                       the authoritative shared state (current state, location,
 //                       confidence, current goal/focus, domains). The frontend does
 //                       NOT re-derive or own any of it.
-//   2. `presentation` — the placeholder UI-only fields (What Matters Now, Up Next,
-//                       Quick Actions) housed in shared state (see presentation.js),
-//                       NOT inside the screen.
+//   2. `presentation` — the shared placeholder UI-only fields (What Matters Now, Up
+//                       Next, Quick Actions) housed in shared state (see
+//                       presentation.js), NOT inside any screen. Every view reads
+//                       this one block.
 //   3. `now`          — a live clock ticked here, so screens read the current time
 //                       from shared state instead of owning a timer of their own.
 //
@@ -66,7 +67,7 @@ export function SaraStateProvider({ children }) {
     error,
     model,
     now,
-    presentation: { missionControl: MISSION_CONTROL_PRESENTATION },
+    presentation: SHARED_PRESENTATION,
     currentView,
     setCurrentView,
   };

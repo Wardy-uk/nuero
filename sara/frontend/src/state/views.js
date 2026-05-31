@@ -6,11 +6,12 @@
 // canonical list of views and the current-view default — the structural proof
 // that the project is NOT hardcoded around a single home screen.
 //
-// WS2-WP1 builds only Mission Control. The other views are declared here as
-// `planned` so the architecture has a real future-view structure from the start;
-// their screens are placeholders (see screens/<id>/README.md) until their own work
-// packages land. Adding a view later means: flip its status to `available`, add a
-// screen folder, and wire it in ViewRouter — no change to the shared-state model.
+// WS2-WP1 built Mission Control; WS2A-WP1 adds Executive Dashboard and Presence as
+// real `available` views. The remaining views (Focus, Companion, Stream Deck) stay
+// `planned` so the architecture keeps a real future-view structure; their screens are
+// placeholders (see screens/<id>/README.md) until their own work packages land.
+// Adding a view means: flip its status to `available`, add a screen folder, and wire
+// it in ViewRouter — no change to the shared-state model.
 //
 // This is the "view type definition" called for in the build brief, expressed in
 // plain JS to match the existing converged runtime (React + Vite, no TypeScript).
@@ -41,13 +42,13 @@ export const VIEW_REGISTRY = [
     id: SARA_VIEWS.EXECUTIVE_DASHBOARD,
     label: 'Executive Dashboard',
     blurb: 'Queue, people and SLA metrics at depth.',
-    status: 'planned',
+    status: 'available',
   },
   {
     id: SARA_VIEWS.PRESENCE,
     label: 'Presence',
     blurb: 'Calm ambient view for when SARA is just present.',
-    status: 'planned',
+    status: 'available',
   },
   {
     id: SARA_VIEWS.FOCUS,
