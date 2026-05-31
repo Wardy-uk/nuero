@@ -54,9 +54,16 @@ SARA_URL=http://pi5.tailecb90f.ts.net:3005/ bash scripts/start-sara.sh
 
 ## Notes
 
-- The script prefers Chromium in `--kiosk --app` mode (Pi OS default browser) and
-  falls back to `firefox --kiosk`, then `xdg-open`.
+- The script opens Chromium in `--kiosk` mode (full-screen, no browser chrome; Pi OS
+  default browser) and falls back to `firefox --kiosk`, then `xdg-open`.
+- **Taskbar:** on Pi OS labwc the panel (`wf-panel-pi`) reserves screen space and
+  respawns if killed, so a kiosk window can't cover it. The launcher hides the panel
+  (stops its `lwrespawn` supervisor + the panel) **for the SARA session only** and
+  restores it when the browser closes. On any desktop without `wf-panel-pi` this is a
+  no-op. If SARA is force-killed before it can restore the panel, logging out and back
+  in (or a reboot) brings the panel back via the normal desktop autostart.
 - If the runtime is not answering, the script nudges PM2 and waits ~10s. If it is
   still down, it tells you to run `runtime/start.sh` and exits without opening a
   blank window.
-- To leave kiosk mode: `Ctrl`+`W` or `Alt`+`F4`.
+- To leave kiosk mode and bring the taskbar back: `Alt`+`F4` (labwc closes the
+  window, which lets the launcher restore the panel).

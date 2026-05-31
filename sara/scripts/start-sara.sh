@@ -37,13 +37,35 @@ fi
 
 echo "[sara] opening Mission Control at ${SARA_URL}"
 
-# Prefer Chromium in app/kiosk mode (Pi OS default browser); fall back gracefully.
+# --- Hide the Pi taskbar (wf-panel-pi) for the SARA session ---
+# On Pi OS labwc the panel is supervised by lwrespawn (it respawns if simply
+# killed) and reserves a layer-shell zone, so a kiosk window can't cover it. We
+# stop the supervisor + panel for the duration of the SARA session and restore
+# them on exit. No-op on desktops without wf-panel-pi (other distros, X11, etc.).
+PANEL_HIDDEN=0
+restore_panel() {
+  if [ "$PANEL_HIDDEN" = "1" ]; then
+    # Respawn exactly as the desktop autostart does, so it's supervised again.
+    nohup /usr/bin/lwrespawn /usr/bin/wf-panel-pi >/dev/null 2>&1 &
+    PANEL_HIDDEN=0
+  fi
+}
+if command -v wf-panel-pi >/dev/null 2>&1 && pgrep -x wf-panel-pi >/dev/null 2>&1; then
+  trap restore_panel EXIT INT TERM
+  pkill -f 'lwrespawn .*wf-panel-pi' 2>/dev/null || true  # stop the respawner first
+  pkill -x wf-panel-pi 2>/dev/null || true                # then the panel itself
+  PANEL_HIDDEN=1
+fi
+
+# Open the UI full-screen (kiosk). Run in the FOREGROUND (no exec) so the panel is
+# restored when the browser closes. Canonical kiosk is just `--kiosk <url>`; the
+# previous `--app` flag is redundant under kiosk and can suppress fullscreen.
 if command -v chromium-browser >/dev/null 2>&1; then
-  exec chromium-browser --kiosk --app="$SARA_URL" --noerrdialogs --disable-infobars
+  chromium-browser --kiosk --noerrdialogs --disable-infobars "$SARA_URL"
 elif command -v chromium >/dev/null 2>&1; then
-  exec chromium --kiosk --app="$SARA_URL" --noerrdialogs --disable-infobars
+  chromium --kiosk --noerrdialogs --disable-infobars "$SARA_URL"
 elif command -v firefox >/dev/null 2>&1; then
-  exec firefox --kiosk "$SARA_URL"
+  firefox --kiosk "$SARA_URL"
 else
-  exec xdg-open "$SARA_URL"
+  xdg-open "$SARA_URL"
 fi
