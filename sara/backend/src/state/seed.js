@@ -95,6 +95,19 @@ function people() {
   };
 }
 
+// Current location is part of SARA's situational state, not a domain. Seeded here
+// (the swappable layer) so a later work package can replace it with a live reader
+// (OwnTracks / calendar context) without changing the engine or the contract.
+function location() {
+  return {
+    source: 'seed',
+    label: 'Office — Wilmslow',
+    context: 'on-site',
+    since: '2026-05-31T08:40:00+01:00',
+    summary: 'On-site at the Wilmslow office since 08:40.',
+  };
+}
+
 function vault() {
   const picks = [
     { title: '1-2-1 — Luke (12 Mar)', reason: 'Target you set here is now overdue.', path: 'People/Luke/1-2-1 2026-03-12.md' },
@@ -107,4 +120,4 @@ function vault() {
   };
 }
 
-module.exports = { queue, focus, people, vault };
+module.exports = { queue, focus, people, vault, location };

@@ -50,6 +50,17 @@ function validate(model) {
     errors.push('briefing.line must be a non-empty string');
   }
 
+  // Current location and confidence are part of SARA's situational state (WS1
+  // criterion 2: state + location + confidence exposed consistently). Location is
+  // a seeded input in WS1 (swappable seam, like the domains); confidence is derived
+  // by the engine. The contract enforces their shape only — not where they come from.
+  if (!isObject(model.location) || typeof model.location.source !== 'string' || typeof model.location.label !== 'string') {
+    errors.push('location must be an object with source and label strings');
+  }
+  if (!isObject(model.confidence) || typeof model.confidence.score !== 'number' || typeof model.confidence.level !== 'string') {
+    errors.push('confidence must be an object with a numeric score and level string');
+  }
+
   if (!isObject(model.domains)) {
     errors.push('domains must be an object');
   } else {

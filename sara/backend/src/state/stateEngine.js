@@ -14,7 +14,7 @@
 //
 // CommonJS only (NEURO backend convention — no ESM).
 
-const { CONTRACT, SCHEMA_VERSION, DOMAINS, validate } = require('./contract');
+const { CONTRACT, SCHEMA_VERSION, DOMAINS, DOMAIN_CONTRACTS, validate } = require('./contract');
 const seed = require('./seed');
 
 const RUNTIME_LABEL = 'WS1-WP1';
@@ -27,6 +27,54 @@ const PROVIDERS = {
   people: seed.people,
   vault: seed.vault,
 };
+
+// Current location is a seeded situational input (not a domain). Same seam as the
+// domain providers: swap for a live reader (OwnTracks / calendar) in a later WP.
+const LOCATION_PROVIDER = seed.location;
+
+function isObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
+ * Derive SARA's confidence in the assembled model — real engine work, not a seeded
+ * value. Confidence falls out of two honest signals: whether every domain is
+ * contract-shaped, and whether inputs are live or still seeded. A malformed domain
+ * (the same fault the invalid-model path surfaces) drops confidence to `low`, so
+ * confidence and the existing degraded-health behaviour stay consistent.
+ */
+function deriveConfidence(domains, dataSource) {
+  const malformed = DOMAINS.filter((name) => {
+    const d = domains[name];
+    return !isObject(d) || !DOMAIN_CONTRACTS[name].every((k) => k in d);
+  });
+  if (malformed.length) {
+    const plural = malformed.length === 1 ? 'domain is' : 'domains are';
+    return {
+      source: 'derived',
+      score: 0.3,
+      level: 'low',
+      rationale: `Model is degraded — ${malformed.join(', ')} ${plural} not contract-shaped.`,
+      basis: ['domain-structure-incomplete'],
+    };
+  }
+  if (dataSource === 'seed') {
+    return {
+      source: 'derived',
+      score: 0.6,
+      level: 'moderate',
+      rationale: 'All domains are contract-shaped, but inputs are seeded (hardcoded), not live.',
+      basis: ['contract-valid', 'inputs-seeded'],
+    };
+  }
+  return {
+    source: 'derived',
+    score: 0.9,
+    level: 'high',
+    rationale: 'All domains are contract-shaped and sourced from live inputs.',
+    basis: ['contract-valid', 'inputs-live'],
+  };
+}
 
 // Process start — stable across requests so consumers can read uptime.
 const startedAt = new Date().toISOString();
@@ -60,11 +108,12 @@ function buildModel() {
   const domains = {};
   for (const name of DOMAINS) domains[name] = PROVIDERS[name]();
 
+  const dataSource = 'seed'; // honest: inputs are hardcoded, not live yet (WS1 scope)
   const model = {
     contract: CONTRACT,
     schemaVersion: SCHEMA_VERSION,
     runtime: RUNTIME_LABEL,
-    dataSource: 'seed', // honest: inputs are hardcoded, not live yet (WS1 scope)
+    dataSource,
     generatedAt: new Date().toISOString(),
     startedAt,
     sara: {
@@ -72,6 +121,8 @@ function buildModel() {
       status: 'online',
       note: 'State Engine v1 contract is live. Inputs are seeded (hardcoded), not yet wired to real sources (WS1 scope).',
     },
+    location: LOCATION_PROVIDER(),
+    confidence: deriveConfidence(domains, dataSource),
     briefing: buildBriefing(domains),
     domains,
   };
@@ -103,6 +154,8 @@ function getHealth() {
     schemaVersion: model.schemaVersion,
     dataSource: model.dataSource,
     valid: model.meta.valid,
+    location: model.location.label,
+    confidence: { level: model.confidence.level, score: model.confidence.score },
     startedAt: model.startedAt,
     checkedAt: new Date().toISOString(),
   };
