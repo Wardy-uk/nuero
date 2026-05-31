@@ -6,12 +6,13 @@
 // canonical list of views and the current-view default — the structural proof
 // that the project is NOT hardcoded around a single home screen.
 //
-// WS2-WP1 built Mission Control; WS2A-WP1 adds Executive Dashboard and Presence as
-// real `available` views. The remaining views (Focus, Companion, Stream Deck) stay
-// `planned` so the architecture keeps a real future-view structure; their screens are
-// placeholders (see screens/<id>/README.md) until their own work packages land.
-// Adding a view means: flip its status to `available`, add a screen folder, and wire
-// it in ViewRouter — no change to the shared-state model.
+// All six declared views now have real screens (Mission Control from WS2-WP1;
+// Executive Dashboard + Presence from WS2A-WP1; Focus, Companion and Stream Deck added
+// after). Companion is an honest v0 shell — it has no chat channel in the WS1 contract
+// yet, so it presents shared state and a disabled composer rather than faking replies.
+// The registry's `status` field stays the seam: a future view is added as `planned`
+// (rendering the PlannedView fallback) until its screen is wired into ViewRouter, with
+// no change to the shared-state model.
 //
 // This is the "view type definition" called for in the build brief, expressed in
 // plain JS to match the existing converged runtime (React + Vite, no TypeScript).
@@ -54,19 +55,19 @@ export const VIEW_REGISTRY = [
     id: SARA_VIEWS.FOCUS,
     label: 'Focus',
     blurb: 'One thing, timeboxed — the current do-next.',
-    status: 'planned',
+    status: 'available',
   },
   {
     id: SARA_VIEWS.COMPANION,
     label: 'Companion',
     blurb: 'Conversational companion mode.',
-    status: 'planned',
+    status: 'available',
   },
   {
     id: SARA_VIEWS.STREAM_DECK,
     label: 'Stream Deck',
     blurb: 'Large touch-action grid for quick triggers.',
-    status: 'planned',
+    status: 'available',
   },
 ];
 
