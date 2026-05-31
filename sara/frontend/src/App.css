@@ -27,7 +27,14 @@
 html,
 body {
   margin: 0;
-  background: var(--bg);
+  /* Calm premium gradient base (Reference A): a faint teal wash top-right and a
+     warm neutral bottom-left over a near-white field. Gives frosted cards
+     something to lift off, without a heavy photographic backdrop. */
+  background:
+    radial-gradient(1200px 620px at 78% -12%, #e9f4f5 0%, transparent 55%),
+    radial-gradient(900px 520px at -5% 112%, #f3eee7 0%, transparent 50%),
+    linear-gradient(180deg, #f6f9fa 0%, #edf1f2 100%);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
