@@ -17,18 +17,10 @@
 const { CONTRACT, SCHEMA_VERSION, DOMAINS, DOMAIN_CONTRACTS, validate } = require('./contract');
 const seed = require('./seed');
 const ha = require('../telemetry/homeAssistant');
+const neuro = require('../integrations/neuroSnapshot');
 const { deriveInference } = require('./inference');
 
-const RUNTIME_LABEL = 'WS5-WP1';
-
-// Input providers, one per contract domain. Seeded in WS1; swap for live readers
-// later without touching the engine or the contract.
-const PROVIDERS = {
-  queue: seed.queue,
-  focus: seed.focus,
-  people: seed.people,
-  vault: seed.vault,
-};
+const RUNTIME_LABEL = 'WS5-WP2';
 
 // Current location is a situational input (not a domain). The seed reader is the
 // honest fallback; WS3 lets the Home Assistant telemetry bridge feed it live when a
@@ -62,7 +54,7 @@ function deriveConfidence(domains, dataSource) {
       basis: ['domain-structure-incomplete'],
     };
   }
-  if (dataSource === 'seed') {
+  if (dataSource !== 'neuro') {
     return {
       source: 'derived',
       score: 0.6,
@@ -77,6 +69,347 @@ function deriveConfidence(domains, dataSource) {
     level: 'high',
     rationale: 'All domains are contract-shaped and sourced from live inputs.',
     basis: ['contract-valid', 'inputs-live'],
+  };
+}
+
+function sourceFor(raw) {
+  return raw ? neuro.NEURO_SOURCE : 'seed';
+}
+
+function trimText(value, max = 160) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function titleFromItem(item, fallback = 'Untitled') {
+  return (
+    item?.label ||
+    item?.title ||
+    item?.summary ||
+    item?.text ||
+    item?.subject ||
+    fallback
+  );
+}
+
+function summariseQueueTicket(ticket) {
+  const parts = [ticket.status, ticket.priority].filter(Boolean);
+  if (typeof ticket.sla_remaining_minutes === 'number') {
+    parts.push(`${ticket.sla_remaining_minutes}m SLA`);
+  }
+  return parts.join(' · ');
+}
+
+function mapQueueTicket(ticket) {
+  return {
+    key: ticket.ticket_key || ticket.key || ticket.id || 'UNKNOWN',
+    summary: titleFromItem(ticket),
+    assignee: ticket.assignee || 'Unassigned',
+    slaMins: typeof ticket.sla_remaining_minutes === 'number' ? ticket.sla_remaining_minutes : null,
+    take: summariseQueueTicket(ticket),
+  };
+}
+
+function buildQueue(neuroData) {
+  const raw = neuroData?.queue;
+  if (!raw || !Array.isArray(raw.tickets)) return seed.queue();
+
+  const allTickets = raw.tickets.map(mapQueueTicket);
+  const urgentKeys = new Set((raw.at_risk_tickets || []).map((ticket) => ticket.ticket_key || ticket.key || ticket.id));
+  const actNow = allTickets.filter(
+    (ticket) =>
+      urgentKeys.has(ticket.key) ||
+      (typeof ticket.slaMins === 'number' && ticket.slaMins <= 120)
+  );
+  const today = [];
+  const watch = [];
+  for (const ticket of allTickets) {
+    if (actNow.some((candidate) => candidate.key === ticket.key)) continue;
+    if (today.length < 4) today.push(ticket);
+    else watch.push(ticket);
+  }
+
+  return {
+    source: sourceFor(raw),
+    summary: `${raw.total || allTickets.length} open, ${raw.at_risk_count || actNow.length} at risk, ${raw.open_p1s || 0} P1s.`,
+    open: raw.total || allTickets.length,
+    breaching: raw.at_risk_count || actNow.length,
+    sections: {
+      act_now: actNow,
+      today,
+      watch,
+    },
+  };
+}
+
+function buildFocus(neuroData) {
+  const raw = neuroData?.focus;
+  if (!raw) return seed.focus();
+
+  const current = raw.nextAction || raw.primaryItem || raw.items?.[0] || null;
+  const title = titleFromItem(current, 'No current action');
+  const reason = trimText(
+    current?.reason ||
+      current?.why ||
+      current?.explanation ||
+      raw.sara?.summary ||
+      raw.sara?.text ||
+      raw.sara?.message ||
+      raw.context?.summary,
+    220
+  );
+
+  return {
+    source: sourceFor(raw),
+    summary: reason || title,
+    current: current
+      ? {
+          id: current.id || current.key || current.ticket_key || 'focus-current',
+          title,
+          reason,
+          timeboxMins:
+            current.timeboxMins ??
+            current.durationMinutes ??
+            current.estimateMinutes ??
+            null,
+          deferCount: Number(current.deferCount || 0),
+        }
+      : null,
+    deferEscalation: [
+      'You moved this once already. Name the real next move.',
+      'This has slipped again. Clear ten minutes and finish the first step.',
+      'You are avoiding this. Remove the blocker or re-scope it honestly.',
+    ],
+  };
+}
+
+function severityToStatus(severity) {
+  if (severity === 'high') return 'slipping';
+  if (severity === 'med') return 'watch';
+  return 'solid';
+}
+
+function buildPeople(neuroData) {
+  const raw = neuroData?.team;
+  if (!raw || !Array.isArray(raw.perPerson)) return seed.people();
+
+  const members = raw.perPerson.map((person) => {
+    const issue = person.issues?.[0] || null;
+    const severity = issue?.severity || 'low';
+    return {
+      name: person.name,
+      role: person.team,
+      metric: `${person.issues?.length || 0} live issue${person.issues?.length === 1 ? '' : 's'}`,
+      status: severityToStatus(severity),
+      flag: issue?.title || 'No active issue surfaced.',
+    };
+  });
+
+  const needAttention = members.filter((member) => member.status !== 'solid').length;
+  return {
+    source: sourceFor(raw),
+    summary:
+      raw.filteredCount > 0
+        ? `${raw.filteredCount} live team issue${raw.filteredCount === 1 ? '' : 's'} across ${raw.perPerson.length} people.`
+        : 'No live team issues surfaced from NEURO.',
+    members,
+    meta: {
+      counts: raw.counts || null,
+      filteredCount: raw.filteredCount || members.length,
+      severityFilter: raw.severityFilter || null,
+      needAttention,
+    },
+  };
+}
+
+function buildVault(neuroData) {
+  const capture = neuroData?.capture;
+  const context = neuroData?.context;
+  if (!capture && !context) return seed.vault();
+
+  const picks = [];
+  if (context?.dailyNote?.path || context?.dailyNote?.title || context?.date) {
+    picks.push({
+      title: context.dailyNote?.title || `Daily note — ${context.date || 'today'}`,
+      reason: trimText(context.dailyNote?.summary || context.dailyNote?.path || 'Latest working context from NEURO.'),
+      path: context.dailyNote?.path || context.dailyNote?.filePath || context.date || 'daily-note',
+    });
+  }
+
+  for (const item of capture?.items || []) {
+    if (picks.length >= 4) break;
+    picks.push({
+      title: item.title || item.filename || 'Capture',
+      reason: trimText(item.preview || item.relativePath || 'Recent capture surfaced from NEURO.'),
+      path: item.relativePath || item.filename || 'capture',
+    });
+  }
+
+  if (!picks.length) return seed.vault();
+  return {
+    source: sourceFor(capture || context),
+    summary: `${picks.length} live vault item${picks.length === 1 ? '' : 's'} surfaced from NEURO.`,
+    picks,
+  };
+}
+
+function buildPresentation(neuroData, domains) {
+  const fallback = {
+    source: 'placeholder',
+    whatMattersNow: [
+      {
+        id: 'wmn-fallback-focus',
+        title: domains.focus?.current?.title || 'Current focus unavailable',
+        detail: domains.focus?.summary || 'SARA is using fallback focus context.',
+        tone: 'attention',
+      },
+    ],
+    upNext: [
+      {
+        id: 'next-fallback',
+        time: 'Pending',
+        label: domains.focus?.summary || 'No live runway available.',
+      },
+    ],
+    quickActions: [
+      { id: 'qa-capture', label: 'Capture', action: 'capture', icon: '✎' },
+      { id: 'qa-queue', label: 'Open Queue', action: 'open-queue', icon: '▤' },
+      { id: 'qa-focus', label: 'Start Focus', action: 'start-focus', icon: '◎' },
+      { id: 'qa-brief', label: 'Daily Brief', action: 'daily-brief', icon: '☼' },
+    ],
+    standup: {
+      source: 'placeholder',
+      yesterday: [],
+      carryForward: [],
+      prompts: [
+        'What changed since the last standup?',
+        'What will move the queue or the team most today?',
+        'What needs a direct follow-up from you?',
+      ],
+    },
+    todos: { source: 'placeholder', items: [] },
+    capture: { source: 'placeholder', shortcuts: [], recent: [] },
+  };
+
+  const queue = neuroData?.queue;
+  const focus = neuroData?.focus;
+  const todos = neuroData?.todos;
+  const context = neuroData?.context;
+  const capture = neuroData?.capture;
+  const team = neuroData?.team;
+
+  if (!queue && !focus && !todos && !context && !capture && !team) return fallback;
+
+  const whatMattersNow = [];
+  for (const ticket of queue?.at_risk_tickets || []) {
+    if (whatMattersNow.length >= 3) break;
+    whatMattersNow.push({
+      id: `wmn-ticket-${ticket.ticket_key || ticket.key || ticket.id}`,
+      title: ticket.summary || ticket.ticket_key || 'At-risk ticket',
+      detail: summariseQueueTicket(ticket) || 'Live queue issue surfaced from NEURO.',
+      tone: 'urgent',
+    });
+  }
+  const personIssue = team?.issues?.[0];
+  if (personIssue) {
+    whatMattersNow.push({
+      id: `wmn-person-${personIssue.person}`,
+      title: personIssue.person,
+      detail: personIssue.title,
+      tone: personIssue.severity === 'high' ? 'attention' : 'watch',
+    });
+  }
+  if (focus?.nextAction || focus?.primaryItem) {
+    const current = focus.nextAction || focus.primaryItem;
+    whatMattersNow.push({
+      id: 'wmn-focus',
+      title: titleFromItem(current),
+      detail: trimText(current.reason || current.why || focus.sara?.summary || 'Current NEURO priority.'),
+      tone: 'attention',
+    });
+  }
+
+  const upNext = [];
+  if (focus?.secondaryAction) {
+    upNext.push({
+      id: 'upnext-secondary',
+      time: 'Next',
+      label: titleFromItem(focus.secondaryAction),
+    });
+  }
+  for (const task of context?.ninetyDayPlan?.todayTasks || []) {
+    if (upNext.length >= 3) break;
+    upNext.push({
+      id: `upnext-plan-${task.lineNumber || upNext.length}`,
+      time: 'Today',
+      label: titleFromItem(task),
+    });
+  }
+  if (!upNext.length && Array.isArray(context?.todos)) {
+    for (const task of context.todos.slice(0, 3)) {
+      upNext.push({
+        id: `upnext-todo-${task.lineNumber || upNext.length}`,
+        time: 'Soon',
+        label: titleFromItem(task),
+      });
+    }
+  }
+
+  const standupSections = {
+    source: context?.standup ? neuro.NEURO_SOURCE : 'placeholder',
+    yesterday: [],
+    carryForward: [],
+    prompts: [
+      'What needs blocking time before lunch?',
+      'Who needs a direct follow-up from you today?',
+      'What should SARA surface again this afternoon?',
+    ],
+  };
+  const standupText = typeof context?.standup === 'string' ? context.standup : '';
+  const bulletMatches = [...standupText.matchAll(/^\s*-\s+\[?[ x>]\]?\s*(.+)$/gm)].map((match) => trimText(match[1], 120));
+  standupSections.yesterday = bulletMatches.slice(0, 3);
+  standupSections.carryForward = (context?.todos || [])
+    .slice(0, 3)
+    .map((item) => titleFromItem(item));
+
+  const todoItems = (todos?.todos || [])
+    .filter((item) => !item.done)
+    .slice(0, 6)
+    .map((item) => ({
+      id: item.id,
+      title: item.text,
+      state: item.mustdo ? 'must-do' : item.priority || 'open',
+      dueDate: item.due_date || null,
+      source: item.source || null,
+      filePath: item.filePath || null,
+      lineNumber: item.lineNumber ?? null,
+    }));
+
+  const recentCapture = (capture?.items || []).slice(0, 5).map((item, index) => ({
+    id: `capture-recent-${index}`,
+    title: item.title || item.filename || 'Capture',
+    detail: trimText(item.preview || item.relativePath || 'Recent capture surfaced from NEURO.', 140),
+    relativePath: item.relativePath || null,
+    modified: item.modified || null,
+  }));
+
+  return {
+    source: neuro.NEURO_SOURCE,
+    whatMattersNow: whatMattersNow.length ? whatMattersNow : fallback.whatMattersNow,
+    upNext: upNext.length ? upNext : fallback.upNext,
+    quickActions: fallback.quickActions,
+    standup: standupSections,
+    todos: {
+      source: todoItems.length ? neuro.NEURO_SOURCE : 'placeholder',
+      items: todoItems.length ? todoItems : fallback.todos.items,
+    },
+    capture: {
+      source: recentCapture.length ? neuro.NEURO_SOURCE : 'placeholder',
+      shortcuts: [
+        { id: 'cap-note', label: 'Quick note', detail: 'Writes to NEURO capture inbox.' },
+        { id: 'cap-todo', label: 'Todo', detail: 'Creates a real task through NEURO capture.' },
+      ],
+      recent: recentCapture,
+    },
   };
 }
 
@@ -154,18 +487,22 @@ function buildTelemetry(telemetry) {
  * @returns {object} the assembled model (carries meta.valid / meta.errors)
  */
 function buildModel() {
-  const domains = {};
-  for (const name of DOMAINS) domains[name] = PROVIDERS[name]();
+  const neuroSnapshot = neuro.getSnapshot();
+  const neuroData = neuroSnapshot.available ? neuroSnapshot.data : null;
+  const domains = {
+    queue: buildQueue(neuroData),
+    focus: buildFocus(neuroData),
+    people: buildPeople(neuroData),
+    vault: buildVault(neuroData),
+  };
 
   // Read the latest cached HA telemetry snapshot. This is synchronous and never
   // throws — an absent/unreachable HA yields an honest `available: false` snapshot,
   // so model assembly is never blocked or broken by telemetry.
   const telemetry = ha.getTelemetry();
 
-  // Domains are still seeded (WS3 is a telemetry slice, not a domain-integration one).
-  // The location and telemetry blocks below may be live via HA; that is surfaced on
-  // their own `source` fields, so `dataSource` stays an honest statement about domains.
-  const dataSource = 'seed';
+  const seedCount = DOMAINS.filter((name) => domains[name]?.source === 'seed').length;
+  const dataSource = seedCount === DOMAINS.length ? 'seed' : seedCount > 0 ? 'mixed' : 'neuro';
   const model = {
     contract: CONTRACT,
     schemaVersion: SCHEMA_VERSION,
@@ -176,14 +513,23 @@ function buildModel() {
     sara: {
       name: 'SARA',
       status: 'online',
-      note: 'State Engine contract is live. Domain inputs are seeded (hardcoded); location/telemetry may be live via the Home Assistant bridge when configured, otherwise they fall back honestly.',
+      note: 'State Engine contract is live. SARA prefers real NUERO-backed runtime data, falls back honestly when an upstream source is unavailable, and never lets screens own their own truth.',
     },
     location: buildLocation(telemetry),
     telemetry: buildTelemetry(telemetry),
+    neuro: {
+      source: neuroSnapshot.source,
+      available: neuroSnapshot.available,
+      reason: neuroSnapshot.reason,
+      detail: neuroSnapshot.detail,
+      polledAt: neuroSnapshot.polledAt,
+      errors: neuroSnapshot.errors,
+    },
     confidence: deriveConfidence(domains, dataSource),
     briefing: buildBriefing(domains),
     domains,
   };
+  model.presentation = buildPresentation(neuroData, domains);
 
   // Context inference (WS5-WP1). Derived AFTER the rest of the model is assembled, from
   // the same inputs the model already carries — so inference extends the one shared
@@ -232,6 +578,11 @@ function getHealth() {
       available: model.telemetry.available,
       reason: model.telemetry.reason,
       polledAt: model.telemetry.polledAt,
+    },
+    neuro: {
+      available: model.neuro.available,
+      reason: model.neuro.reason,
+      polledAt: model.neuro.polledAt,
     },
     // Same inference verdict the state model carries (WS5-WP1) — advisory only. Health
     // reports the inferred activity, the recommended view, and confidence so operators

@@ -41,8 +41,8 @@
 }
 .ed__mark {
   font-weight: 700;
-  letter-spacing: 3px;
-  font-size: 24px;
+  letter-spacing: 2px;
+  font-size: 22px;
   color: var(--ink);
 }
 .ed__view-tag {
@@ -114,10 +114,11 @@
   flex-direction: column;
   gap: 4px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.82);
   border-top: 3px solid var(--accent);
-  border-radius: 12px;
+  border-radius: 18px;
   padding: 14px 16px;
+  box-shadow: 0 12px 28px rgba(50, 64, 91, 0.08);
 }
 .ed__kpi--urgent {
   border-top-color: var(--danger);
@@ -160,9 +161,10 @@
 }
 .ed__panel {
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 18px;
   padding: 16px 18px;
+  box-shadow: 0 12px 28px rgba(50, 64, 91, 0.08);
 }
 .ed__panel-head {
   display: flex;
@@ -211,7 +213,7 @@
 }
 .ed__queue-count {
   font-size: 11px;
-  background: var(--bg);
+  background: rgba(239, 244, 252, 0.92);
   border-radius: 999px;
   padding: 1px 8px;
   color: var(--ink-dim);
@@ -297,7 +299,7 @@
   padding: 2px 8px;
   border-radius: 999px;
   color: var(--ink-dim);
-  background: var(--bg);
+  background: rgba(239, 244, 252, 0.92);
 }
 .ed__person-status--solid {
   color: var(--success-ink);
@@ -358,11 +360,12 @@
   align-items: center;
   gap: 12px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.82);
   border-left: 4px solid var(--accent);
-  border-radius: 12px;
+  border-radius: 18px;
   padding: 14px 18px;
   flex-wrap: wrap;
+  box-shadow: 0 12px 28px rgba(50, 64, 91, 0.08);
 }
 .ed__focus-label {
   font-size: 12px;

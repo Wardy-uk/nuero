@@ -6,13 +6,10 @@
 // canonical list of views and the current-view default — the structural proof
 // that the project is NOT hardcoded around a single home screen.
 //
-// All six declared views now have real screens (Mission Control from WS2-WP1;
-// Executive Dashboard + Presence from WS2A-WP1; Focus, Companion and Stream Deck added
-// after). Companion is an honest v0 shell — it has no chat channel in the WS1 contract
-// yet, so it presents shared state and a disabled composer rather than faking replies.
-// The registry's `status` field stays the seam: a future view is added as `planned`
-// (rendering the PlannedView fallback) until its screen is wired into ViewRouter, with
-// no change to the shared-state model.
+// The current product-alignment slice reshapes the registry around the written NEURO /
+// SARA screen set while preserving the protected many-views architecture. Some screens
+// are fully implemented, some are honest v0 read-only surfaces, and some remain bounded
+// placeholders — but every one is backed by the same shared state/context model.
 //
 // This is the "view type definition" called for in the build brief, expressed in
 // plain JS to match the existing converged runtime (React + Vite, no TypeScript).
@@ -20,12 +17,24 @@
 // Canonical SaraView identifiers. The string value is the stable view id used in
 // the registry, the router, and (later) the recommended/selected view in state.
 export const SARA_VIEWS = {
-  MISSION_CONTROL: 'mission-control',
-  EXECUTIVE_DASHBOARD: 'executive-dashboard',
-  PRESENCE: 'presence',
+  BRIEFING: 'mission-control',
+  SARA: 'companion',
+  STANDUP: 'standup',
+  QUEUE: 'executive-dashboard',
+  TEAM: 'team',
   FOCUS: 'focus',
-  COMPANION: 'companion',
-  STREAM_DECK: 'stream-deck',
+  TODOS: 'todos',
+  VAULT: 'vault',
+  CAPTURE: 'capture',
+  SETTINGS: 'settings',
+};
+
+const VIEW_ALIASES = {
+  'mission-control': SARA_VIEWS.BRIEFING,
+  'executive-dashboard': SARA_VIEWS.QUEUE,
+  companion: SARA_VIEWS.SARA,
+  presence: SARA_VIEWS.BRIEFING,
+  'stream-deck': SARA_VIEWS.CAPTURE,
 };
 
 // The view registry. Order here is the order views are offered in the UI. Every
@@ -34,21 +43,33 @@ export const SARA_VIEWS = {
 //   status: 'planned'   -> reserved by the architecture; screen is a placeholder
 export const VIEW_REGISTRY = [
   {
-    id: SARA_VIEWS.MISSION_CONTROL,
-    label: 'Mission Control',
-    blurb: 'At-a-glance situational view: what matters now and up next.',
+    id: SARA_VIEWS.BRIEFING,
+    label: 'Briefing',
+    blurb: "SARA's opening line, priority actions, and quick stats.",
     status: 'available',
   },
   {
-    id: SARA_VIEWS.EXECUTIVE_DASHBOARD,
-    label: 'Executive Dashboard',
-    blurb: 'Queue, people and SLA metrics at depth.',
+    id: SARA_VIEWS.SARA,
+    label: 'SARA',
+    blurb: 'Text conversation surface over the shared model and NEURO chat bridge.',
     status: 'available',
   },
   {
-    id: SARA_VIEWS.PRESENCE,
-    label: 'Presence',
-    blurb: 'Calm ambient view for when SARA is just present.',
+    id: SARA_VIEWS.STANDUP,
+    label: 'Standup',
+    blurb: "Guided morning flow over SARA's current priorities.",
+    status: 'available',
+  },
+  {
+    id: SARA_VIEWS.QUEUE,
+    label: 'Queue',
+    blurb: "SARA's Jira triage: act now, today, watch.",
+    status: 'available',
+  },
+  {
+    id: SARA_VIEWS.TEAM,
+    label: 'Team',
+    blurb: 'People board with current flags and SARA assessments.',
     status: 'available',
   },
   {
@@ -58,15 +79,27 @@ export const VIEW_REGISTRY = [
     status: 'available',
   },
   {
-    id: SARA_VIEWS.COMPANION,
-    label: 'Companion',
-    blurb: 'Conversational companion mode.',
+    id: SARA_VIEWS.TODOS,
+    label: 'Todos',
+    blurb: 'Backlog view for tasks SARA is keeping in sight.',
     status: 'available',
   },
   {
-    id: SARA_VIEWS.STREAM_DECK,
-    label: 'Stream Deck',
-    blurb: 'Large touch-action grid for quick triggers.',
+    id: SARA_VIEWS.VAULT,
+    label: 'Vault',
+    blurb: "Notes SARA is surfacing from the vault seam.",
+    status: 'available',
+  },
+  {
+    id: SARA_VIEWS.CAPTURE,
+    label: 'Capture',
+    blurb: 'Universal capture surface for thoughts and quick intents.',
+    status: 'available',
+  },
+  {
+    id: SARA_VIEWS.SETTINGS,
+    label: 'Settings',
+    blurb: 'Connection, source, and runtime status.',
     status: 'available',
   },
 ];
@@ -76,8 +109,13 @@ export const VIEW_REGISTRY = [
 // *recommended* view (model.inference.recommendedView), surfaced by RecommendedView —
 // but it is ADVISORY ONLY: it never sets DEFAULT_VIEW or currentView on its own. SARA
 // opens on Mission Control and only a user action changes the view.
-export const DEFAULT_VIEW = SARA_VIEWS.MISSION_CONTROL;
+export const DEFAULT_VIEW = SARA_VIEWS.BRIEFING;
+
+export function normalizeViewId(id) {
+  return VIEW_ALIASES[id] || id;
+}
 
 export function getView(id) {
-  return VIEW_REGISTRY.find((v) => v.id === id) || null;
+  const normalized = normalizeViewId(id);
+  return VIEW_REGISTRY.find((v) => v.id === normalized) || null;
 }

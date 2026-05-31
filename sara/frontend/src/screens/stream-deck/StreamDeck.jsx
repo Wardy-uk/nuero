@@ -16,7 +16,7 @@ import './StreamDeck.css';
 // No telemetry, no WS3 dependency.
 
 export default function StreamDeck() {
-  const { status, error, model, presentation, currentView, setCurrentView } = useSaraState();
+  const { status, error, model, presentation, currentView, setCurrentView, runQuickAction, actionFeedback } = useSaraState();
 
   if (status === 'connecting') {
     return (
@@ -39,9 +39,16 @@ export default function StreamDeck() {
   return (
     <section className="deck" aria-label="Stream Deck">
       <p className="deck__label">Quick triggers</p>
+      {actionFeedback && <p className="deck__feedback">{actionFeedback}</p>}
       <div className="deck__grid" aria-label="Action keys">
         {actions.map((a) => (
-          <button key={a.id} type="button" className="deck__key" data-action={a.action}>
+          <button
+            key={a.id}
+            type="button"
+            className="deck__key"
+            data-action={a.action}
+            onClick={() => runQuickAction(a.action)}
+          >
             <span className="deck__key-icon" aria-hidden="true">{a.icon}</span>
             <span className="deck__key-label">{a.label}</span>
           </button>

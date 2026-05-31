@@ -13,6 +13,12 @@
   padding: 24px 16px;
   max-width: 640px;
   margin: 0 auto;
+  padding: 28px 26px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 36px rgba(50, 64, 91, 0.1);
+  backdrop-filter: blur(16px);
 }
 
 /* Message / empty states */
@@ -94,6 +100,17 @@
   color: var(--ink-dim);
 }
 
+.focus__feedback {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: rgba(94, 193, 202, 0.12);
+  border: 1px solid rgba(94, 193, 202, 0.28);
+  padding: 10px 14px;
+  border-radius: 999px;
+}
+
 /* Large touch action row */
 .focus__actions {
   display: flex;
@@ -109,8 +126,8 @@
   font-size: 17px;
   font-weight: 600;
   color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(214, 223, 239, 0.96);
   border-radius: 14px;
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease, transform 0.05s ease;
@@ -124,12 +141,12 @@
 }
 .focus__action--primary {
   color: #fff;
-  background: var(--accent-ink);
-  border-color: var(--accent-ink);
+  background: linear-gradient(135deg, #5ec1ca, #4d94b8);
+  border-color: #5eaec1;
 }
 .focus__action--primary:hover {
-  background: #2a818a;
-  border-color: #2a818a;
+  background: linear-gradient(135deg, #56b8c1, #4887a8);
+  border-color: #4f9ab0;
 }
 
 @media (max-width: 620px) {

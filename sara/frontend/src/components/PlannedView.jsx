@@ -1,13 +1,9 @@
 import { getView } from '../state/views';
 
-// PlannedView — calm placeholder for a declared-but-not-yet-built view (WS2-WP1).
+// PlannedView — calm placeholder for a declared-but-not-yet-built view.
 //
-// The architecture reserves several future views (Executive Dashboard, Presence,
-// Focus, Companion, Stream Deck). They are real entries in the view registry but
-// have no screen yet. Selecting one lands here. This exists so the many-views
-// structure is demonstrable now without building those screens (out of scope), and
-// proves the current view can change away from Mission Control — the app is not
-// locked to a single home screen.
+// Any future product screen can land here until it is implemented without changing the
+// shared-state model or the surrounding app shell.
 export default function PlannedView({ viewId }) {
   const view = getView(viewId);
   return (

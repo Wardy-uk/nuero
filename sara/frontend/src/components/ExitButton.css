@@ -22,7 +22,7 @@
   border: 1px solid rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.72);
   box-shadow: 0 8px 28px rgba(39, 44, 51, 0.08), 0 1px 2px rgba(39, 44, 51, 0.04);
-  color: var(--ink-dim);
+  color: #55627f;
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
@@ -46,7 +46,7 @@
   padding: 8px 8px 8px 14px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.88);
   box-shadow: 0 8px 28px rgba(39, 44, 51, 0.12), 0 1px 2px rgba(39, 44, 51, 0.04);
 }
 .exit__ask {
@@ -73,7 +73,7 @@
   color: #fff;
 }
 .exit__act--no {
-  background: transparent;
+  background: rgba(239, 244, 252, 0.92);
   color: var(--ink-dim);
 }
 .exit__act--no:hover {
@@ -86,7 +86,7 @@
   padding: 12px 18px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.88);
   box-shadow: 0 8px 28px rgba(39, 44, 51, 0.12);
   font-size: 14px;
   font-weight: 600;

@@ -14,7 +14,7 @@ import './FocusView.css';
 // target it is — not a fabricated screen-owned clock. No telemetry, no WS3 dependency.
 
 export default function FocusView() {
-  const { status, error, model, presentation } = useSaraState();
+  const { status, error, model, presentation, runQuickAction, actionFeedback } = useSaraState();
 
   if (status === 'connecting') {
     return (
@@ -72,16 +72,32 @@ export default function FocusView() {
           Mission Control's Quick Actions. `data-action` is the stable id a later
           work package wires up. */}
       <div className="focus__actions" aria-label="Focus actions">
-        <button type="button" className="focus__action focus__action--primary" data-action="start-focus">
+        <button
+          type="button"
+          className="focus__action focus__action--primary"
+          data-action="start-focus"
+          onClick={() => runQuickAction('start-focus')}
+        >
           Start
         </button>
-        <button type="button" className="focus__action" data-action="defer">
+        <button
+          type="button"
+          className="focus__action"
+          data-action="defer"
+          onClick={() => runQuickAction('defer-focus', { itemId: goal.id })}
+        >
           Defer
         </button>
-        <button type="button" className="focus__action" data-action="done">
+        <button
+          type="button"
+          className="focus__action"
+          data-action="done"
+          onClick={() => runQuickAction('done-focus', { detail: goal.title })}
+        >
           Done
         </button>
       </div>
+      {actionFeedback && <p className="focus__feedback">{actionFeedback}</p>}
     </section>
   );
 }

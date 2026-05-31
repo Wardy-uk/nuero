@@ -5,9 +5,10 @@
 
 .advice {
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.82);
   border-left: 3px solid var(--accent);
-  border-radius: 12px;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(50, 64, 91, 0.08);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
@@ -49,7 +50,7 @@
   text-transform: capitalize;
   padding: 3px 9px;
   border-radius: 999px;
-  background: var(--bg);
+  background: rgba(239, 244, 252, 0.92);
   color: var(--ink-dim);
   white-space: nowrap;
 }
@@ -112,7 +113,7 @@
   text-transform: uppercase;
   letter-spacing: 0.8px;
   color: var(--ink-dim);
-  background: var(--bg);
+  background: rgba(239, 244, 252, 0.92);
   padding: 3px 8px;
   border-radius: 999px;
 }

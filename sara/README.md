@@ -5,8 +5,10 @@ Systematic Action & Response Agent — the directive/interaction layer of NEURO.
 This directory is the **SARA runtime foundation** delivered by work package
 `WS0-WP1`. It is a small, honest slice: enough to boot on the Pi 5, start a
 frontend and backend, and prove the two talk to each other. It is **not** the
-feature set — no intelligence, no Jira/vault/voice yet. Those arrive in later
-work packages.
+full feature set — but it now includes the converged shared-state runtime, the
+many-views UI foundation, Home Assistant telemetry, bounded inference, and a
+text chat bridge back into the existing NEURO backend. Voice and the broader
+NEURO screen set still arrive in later work packages.
 
 ## Layout
 
@@ -18,7 +20,7 @@ sara/
       contract.js          state-engine-v1 contract + validate()
       seed.js              hardcoded domain inputs (the swappable layer)
       stateEngine.js       the engine: assemble -> derive briefing -> validate
-    src/routes/            /api/health, /api/state
+    src/routes/            /api/health, /api/state, /api/chat, /api/telemetry, /api/inference
     test/                  node --test contract smoke tests
   frontend/                React + Vite UI (one state, many views — WS2)
     src/App.jsx            app shell: shared-state provider + view switcher + router
@@ -49,6 +51,8 @@ Frontend and backend talk over **`/api`**:
 
 - `GET /api/health` — liveness (used by PM2/operators)
 - `GET /api/state` — the single shared state model
+- `GET /api/chat` — honest NEURO chat-bridge availability
+- `POST /api/chat` — pass a prompt through to the existing NEURO chat endpoint
 
 In **dev**, Vite serves the frontend on port 5174 and proxies `/api` to the
 backend (default port 3005). In **production**, `vite build` emits
@@ -139,6 +143,10 @@ current goal, *What Matters Now*, *Up Next*, and *Quick Actions*.
 - **Honest placeholders.** *What Matters Now / Up Next / Quick Actions* are static
   placeholder content stamped `source: 'placeholder'`, living in shared state so a
   later work package can derive them from the engine without changing the screen.
+- **Companion bridge.** The Companion view now sends text prompts through the backend's
+  `/api/chat` bridge into the existing NEURO chat path when `NEURO_BASE_URL` and
+  `NEURO_PIN` are configured. If that upstream is absent, the UI surfaces the gap
+  plainly instead of faking a reply.
 
 ### Launch on the Pi desktop
 
@@ -160,4 +168,6 @@ terminal: `bash scripts/start-sara.sh`.
   seed data, surfaced honestly as `dataSource: 'seed'`.
 - No auth on the SARA backend yet (NEURO's PIN/token middleware is not ported).
   Only reachable over the private Tailscale network.
+- The Companion screen is text-chat only. Voice I/O, nudges streaming, and the broader
+  NEURO screen set still need dedicated work.
 - Contract smoke tests only (`npm test` in `backend/`); no CI wired.

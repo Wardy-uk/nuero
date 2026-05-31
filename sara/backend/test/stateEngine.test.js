@@ -6,13 +6,16 @@ const assert = require('node:assert/strict');
 const { getState, getHealth, buildModel } = require('../src/state/stateEngine');
 const { validate, CONTRACT, SCHEMA_VERSION, DOMAINS } = require('../src/state/contract');
 const ha = require('../src/telemetry/homeAssistant');
+const neuro = require('../src/integrations/neuroSnapshot');
 
 test('assembled model conforms to the v1 contract', () => {
+  neuro._setSnapshotForTest(null);
   const { valid, errors } = validate(buildModel());
   assert.equal(valid, true, `contract errors: ${errors.join('; ')}`);
 });
 
 test('getState exposes the v1 contract over the shared model', () => {
+  neuro._setSnapshotForTest(null);
   const s = getState();
   assert.equal(s.contract, CONTRACT);
   assert.equal(s.schemaVersion, SCHEMA_VERSION);
@@ -25,6 +28,7 @@ test('getState exposes the v1 contract over the shared model', () => {
 });
 
 test('briefing is derived from domain data, not a fixed string', () => {
+  neuro._setSnapshotForTest(null);
   const s = getState();
   // seed has 2 breaching tickets and Nathan slipping -> both must surface
   assert.match(s.briefing.line, /breaching SLA/);
@@ -32,6 +36,7 @@ test('briefing is derived from domain data, not a fixed string', () => {
 });
 
 test('state exposes current location and confidence (WS1 criterion 2)', () => {
+  neuro._setSnapshotForTest(null);
   const s = getState();
   // location: seeded input, honestly flagged, carries a human label
   assert.ok(s.location, 'location missing from state');
@@ -46,11 +51,13 @@ test('state exposes current location and confidence (WS1 criterion 2)', () => {
 });
 
 test('assembled model with location and confidence is contract-valid', () => {
+  neuro._setSnapshotForTest(null);
   const { valid, errors } = validate(buildModel());
   assert.equal(valid, true, `contract errors: ${errors.join('; ')}`);
 });
 
 test('health derives from the same model and reports valid', () => {
+  neuro._setSnapshotForTest(null);
   const h = getHealth();
   assert.equal(h.status, 'ok');
   assert.equal(h.valid, true);
@@ -63,6 +70,7 @@ test('health derives from the same model and reports valid', () => {
 });
 
 test('validate rejects a model missing a domain (degrades honestly)', () => {
+  neuro._setSnapshotForTest(null);
   const broken = buildModel();
   delete broken.domains.queue;
   const { valid, errors } = validate(broken);
@@ -73,6 +81,7 @@ test('validate rejects a model missing a domain (degrades honestly)', () => {
 // --- WS3-WP1: Home Assistant telemetry bridge ------------------------------
 
 test('model carries a telemetry block and stays contract-valid when HA is absent', () => {
+  neuro._setSnapshotForTest(null);
   ha._setSnapshotForTest(null); // restore the unconfigured/unavailable default
   const s = getState();
   assert.ok(s.telemetry, 'telemetry block missing from state');
@@ -83,6 +92,7 @@ test('model carries a telemetry block and stays contract-valid when HA is absent
 });
 
 test('location falls back to seed honestly when HA telemetry is unavailable', () => {
+  neuro._setSnapshotForTest(null);
   ha._setSnapshotForTest(null);
   const s = getState();
   assert.equal(s.location.source, 'seed', 'absent HA must leave location on the seed reader');
@@ -90,6 +100,7 @@ test('location falls back to seed honestly when HA telemetry is unavailable', ()
 });
 
 test('live HA location signal feeds the shared model (location flips to HA source)', () => {
+  neuro._setSnapshotForTest(null);
   ha._setSnapshotForTest({
     source: 'home-assistant',
     available: true,
@@ -118,9 +129,114 @@ test('live HA location signal feeds the shared model (location flips to HA sourc
 });
 
 test('contract rejects a model with no telemetry block', () => {
+  neuro._setSnapshotForTest(null);
   const broken = buildModel();
   delete broken.telemetry;
   const { valid, errors } = validate(broken);
   assert.equal(valid, false);
   assert.ok(errors.some((e) => e.includes('telemetry')), 'expected a telemetry error');
+});
+
+test('live NEURO snapshot replaces seeded domains and presentation honestly', () => {
+  neuro._setSnapshotForTest({
+    source: 'neuro',
+    available: true,
+    reason: null,
+    detail: null,
+    polledAt: '2026-05-31T18:15:00.000Z',
+    errors: {},
+    data: {
+      queue: {
+        total: 2,
+        at_risk_count: 1,
+        open_p1s: 1,
+        at_risk_tickets: [
+          {
+            ticket_key: 'SUP-101',
+            summary: 'Portal login broken',
+            assignee: 'Adele',
+            priority: 'P1',
+            status: 'Open',
+            sla_remaining_minutes: 45,
+          },
+        ],
+        tickets: [
+          {
+            ticket_key: 'SUP-101',
+            summary: 'Portal login broken',
+            assignee: 'Adele',
+            priority: 'P1',
+            status: 'Open',
+            sla_remaining_minutes: 45,
+          },
+          {
+            ticket_key: 'SUP-102',
+            summary: 'Export timeout',
+            assignee: 'Nathan',
+            priority: 'Medium',
+            status: 'Investigating',
+            sla_remaining_minutes: 300,
+          },
+        ],
+      },
+      focus: {
+        sara: { summary: 'Triage the portal outage first.' },
+        nextAction: {
+          id: 'focus-1',
+          label: 'Triage portal outage',
+          reason: 'Customer impact is active and SLA is inside the hour.',
+          timeboxMins: 15,
+          deferCount: 0,
+        },
+      },
+      todos: {
+        todos: [
+          { id: 1, text: 'Prepare standup notes', priority: 'high', due_date: '2026-05-31', source: 'Vault', done: 0 },
+        ],
+      },
+      context: {
+        date: '2026-05-31',
+        dailyNote: { title: 'Daily Note', path: 'Daily/2026-05-31.md' },
+        todos: [{ text: 'Prep queue comms' }],
+        standup: '- [ ] Follow up with Adele\n- [ ] Update the outage thread',
+      },
+      team: {
+        filteredCount: 1,
+        severityFilter: 'all',
+        counts: { high: 1, med: 0, low: 0, peopleWithIssues: 1, peopleClean: 0 },
+        issues: [{ person: 'Adele Norman-Swift', severity: 'high', title: '1:1 overdue by 3d' }],
+        perPerson: [
+          {
+            name: 'Adele Norman-Swift',
+            team: '1st Line Customer Care',
+            issues: [{ severity: 'high', title: '1:1 overdue by 3d' }],
+          },
+        ],
+      },
+      capture: {
+        items: [
+          {
+            filename: '2026-05-31-note.md',
+            relativePath: 'Imports/2026-05-31-note.md',
+            title: 'Queue outage notes',
+            preview: 'Portal outage summary and holding reply.',
+            modified: '2026-05-31T18:00:00.000Z',
+          },
+        ],
+      },
+    },
+  });
+
+  const s = getState();
+  assert.equal(s.dataSource, 'neuro');
+  assert.equal(s.domains.queue.source, 'neuro');
+  assert.equal(s.domains.focus.source, 'neuro');
+  assert.equal(s.domains.people.source, 'neuro');
+  assert.equal(s.domains.vault.source, 'neuro');
+  assert.equal(s.confidence.level, 'high');
+  assert.equal(s.presentation.source, 'neuro');
+  assert.equal(s.presentation.todos.source, 'neuro');
+  assert.match(s.presentation.whatMattersNow[0].title, /Portal login broken/);
+  assert.equal(s.presentation.capture.recent[0].title, 'Queue outage notes');
+  neuro._setSnapshotForTest(null);
 });

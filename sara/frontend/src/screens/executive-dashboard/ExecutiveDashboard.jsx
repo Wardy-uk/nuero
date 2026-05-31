@@ -68,11 +68,11 @@ export default function ExecutiveDashboard() {
   ];
 
   return (
-    <section className="ed" aria-label="Executive Dashboard">
+    <section className="ed" aria-label="Queue">
       <header className="ed__header">
         <div className="ed__brand">
           <span className="ed__mark">SARA</span>
-          <span className="ed__view-tag">Executive Dashboard</span>
+          <span className="ed__view-tag">Queue</span>
           <span className="ed__state" data-state={model.sara?.status}>
             {model.sara?.status}
           </span>

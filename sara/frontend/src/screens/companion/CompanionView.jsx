@@ -1,22 +1,17 @@
+import { useState } from 'react';
 import { useSaraState } from '../../state/saraState';
 import './CompanionView.css';
 
-// Companion v0 — conversational companion mode, shell only (WS post-WS2A).
+// Companion v1 — bounded conversation bridge.
 //
-// Companion is the one planned view that genuinely needs an input channel SARA does not
-// have yet: the WS1 contract exposes read-only state over /api/state, with no chat
-// endpoint. So v0 is an HONEST SHELL — it presents what SARA can already say from shared
-// state as opening messages, and shows a deliberately DISABLED composer with a clear
-// note that live conversation arrives in a later work package. It invents no replies and
-// owns no data: messages are derived from the engine model (greeting from status/location,
-// then the derived briefing line) and the shared clock. No telemetry, no WS3 dependency.
-
-function formatTime(date) {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
+// This is still not the final voice-first SARA surface, but it now closes the dead-shell
+// gap honestly: the screen reads the shared state model for context, and sends text
+// prompts through the backend's NEURO chat bridge. Conversation state lives in the shared
+// frontend provider rather than being invented per screen.
 
 export default function CompanionView() {
-  const { status, error, model, now } = useSaraState();
+  const { status, error, model, chatMessages, chatStatus, chatError, sendChat } = useSaraState();
+  const [draft, setDraft] = useState('');
 
   if (status === 'connecting') {
     return (
@@ -33,48 +28,62 @@ export default function CompanionView() {
     );
   }
 
-  // Opening messages — all derived from shared state, none invented.
-  const messages = [
-    `Hi Nick. It's ${formatTime(now)} and you're at ${model.location?.label || 'an unknown spot'}.`,
-  ];
-  if (model.briefing?.line) messages.push(model.briefing.line);
-
   return (
-    <section className="companion" aria-label="Companion">
+    <section className="companion" aria-label="SARA">
       <header className="companion__header">
         <span className="companion__mark">SARA</span>
         <span className="companion__status" data-state={model.sara?.status}>
           {model.sara?.status}
         </span>
-        <span className="companion__shell-tag">companion · v0 shell</span>
+        <span className="companion__shell-tag">SARA</span>
       </header>
 
       <div className="companion__thread" aria-label="Conversation">
-        {messages.map((text, i) => (
-          <div key={i} className="companion__msg companion__msg--sara">
-            <span className="companion__msg-who">SARA</span>
-            <p className="companion__msg-text">{text}</p>
+        {chatMessages.map((message) => (
+          <div
+            key={message.id}
+            className={`companion__msg ${message.role === 'user' ? 'companion__msg--user' : 'companion__msg--sara'}`}
+          >
+            <span className="companion__msg-who">{message.role === 'user' ? 'Nick' : 'SARA'}</span>
+            <p className={`companion__msg-text ${message.error ? 'companion__msg-text--error' : ''}`}>
+              {message.text || (message.pending ? 'Thinking…' : '')}
+            </p>
           </div>
         ))}
       </div>
 
-      {/* Composer is deliberately disabled — there is no chat channel in the WS1
-          contract yet. Honest placeholder rather than a fake reply loop. */}
-      <form className="companion__composer" aria-label="Message SARA" onSubmit={(e) => e.preventDefault()}>
+      <form
+        className="companion__composer"
+        aria-label="Message SARA"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const sent = await sendChat(draft);
+          if (sent) setDraft('');
+        }}
+      >
         <input
           type="text"
           className="companion__input"
-          placeholder="Conversation arrives in a later work package…"
-          disabled
-          aria-disabled="true"
+          placeholder="Ask SARA what matters, what's slipping, or what to do next…"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
         />
-        <button type="submit" className="companion__send" disabled aria-disabled="true">
-          Send
+        <button type="submit" className="companion__send" disabled={!draft.trim() || chatStatus === 'sending' || chatStatus === 'streaming'}>
+          {chatStatus === 'sending' || chatStatus === 'streaming' ? 'Sending…' : 'Send'}
         </button>
       </form>
+      {chatError && (
+        <p className={`companion__note ${chatStatus === 'unavailable' || chatStatus === 'error' ? 'companion__note--warn' : ''}`}>
+          {chatStatus === 'unavailable'
+            ? `NEURO chat is unavailable: ${chatError}`
+            : chatStatus === 'error'
+              ? `Chat failed: ${chatError}`
+              : chatError}
+        </p>
+      )}
       <p className="companion__note">
-        Companion is a shell for now: SARA shows what it already knows from shared state.
-        Live chat needs an input channel the current state contract doesn't expose yet.
+        Companion now reuses the existing NEURO chat path when configured. If that upstream
+        is missing, SARA says so plainly instead of faking a reply.
       </p>
     </section>
   );

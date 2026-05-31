@@ -1,5 +1,5 @@
 import { useSaraState } from '../state/saraState';
-import { VIEW_REGISTRY } from '../state/views';
+import { VIEW_REGISTRY, normalizeViewId } from '../state/views';
 
 // ViewSwitcher — manual, touch-friendly selector for the current view (WS2-WP1).
 //
@@ -15,7 +15,7 @@ export default function ViewSwitcher() {
   return (
     <nav className="switcher" aria-label="SARA views">
       {VIEW_REGISTRY.map((view) => {
-        const active = view.id === currentView;
+        const active = view.id === normalizeViewId(currentView);
         return (
           <button
             key={view.id}

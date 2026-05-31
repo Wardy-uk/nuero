@@ -61,4 +61,39 @@ export const SHARED_PRESENTATION = {
     { id: 'qa-focus', label: 'Start Focus', action: 'start-focus', icon: '◎' },
     { id: 'qa-brief', label: 'Daily Brief', action: 'daily-brief', icon: '☼' },
   ],
+
+  standup: {
+    source: 'placeholder',
+    yesterday: [
+      'Portal login loop acknowledged and re-owned.',
+      'Adele closed the duplicate-import investigation.',
+    ],
+    carryForward: [
+      "Prep Willem's probation review.",
+      'Tighten the QA coaching notes for Nathan.',
+    ],
+    prompts: [
+      'What is carrying forward that still matters today?',
+      'What needs blocking time before lunch?',
+      'Who needs a direct nudge from you today?',
+    ],
+  },
+
+  todos: {
+    source: 'placeholder',
+    items: [
+      { id: 'todo-1', title: "Draft Willem's probation review", state: 'due-today' },
+      { id: 'todo-2', title: 'Review Nathan coaching notes', state: 'watch' },
+      { id: 'todo-3', title: 'Capture Q2 skills matrix actions', state: 'backlog' },
+    ],
+  },
+
+  capture: {
+    source: 'placeholder',
+    shortcuts: [
+      { id: 'cap-1', label: 'Quick note', detail: 'Drop a thought into the inbox.' },
+      { id: 'cap-2', label: 'Todo', detail: 'Add a task without breaking flow.' },
+      { id: 'cap-3', label: 'Follow-up', detail: 'Pin something for later review.' },
+    ],
+  },
 };

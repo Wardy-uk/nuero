@@ -1,4 +1,5 @@
 import { useSaraState } from '../../state/saraState';
+import { SARA_VIEWS } from '../../state/views';
 import './MissionControl.css';
 
 // Mission Control v1 — premium "appliance" home screen (WS2-WP2 visual uplift).
@@ -40,8 +41,20 @@ const TONE_GLYPH = {
   watch: '●',
 };
 
+const RAIL_ITEMS = [
+  { id: SARA_VIEWS.BRIEFING, label: 'Home', icon: '⌂' },
+  { id: SARA_VIEWS.QUEUE, label: 'Queue', icon: '▤' },
+  { id: SARA_VIEWS.TODOS, label: 'Tasks', icon: '☑' },
+  { id: SARA_VIEWS.CAPTURE, label: 'Capture', icon: '✎' },
+  { id: SARA_VIEWS.SETTINGS, label: 'Settings', icon: '⚙' },
+];
+
+function formatState(activity) {
+  return String(activity || 'unknown').replace(/-/g, ' ').toUpperCase();
+}
+
 export default function MissionControl() {
-  const { status, error, model, now, presentation } = useSaraState();
+  const { status, error, model, now, presentation, currentView, setCurrentView, runQuickAction, actionFeedback } = useSaraState();
 
   // Calm connection states — still pure reflections of shared state, just not
   // arrived (or unreachable) yet. No data is invented locally.
@@ -68,6 +81,8 @@ export default function MissionControl() {
       ? Math.max(0, Math.min(100, confidenceScore > 1 ? confidenceScore : confidenceScore * 100))
       : null;
   const name = model.user?.name || 'Nick';
+  const inferredState = model.inference?.activity || model.sara?.status || 'unknown';
+  const inferredSummary = model.inference?.summary || goal?.title || 'Shared state is live.';
   // Location sub-line: prefer an explicit detail, else humanise the zone slug
   // ("home-office" -> "Home Office"), else a calm fallback.
   const humanise = (s) => s.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -84,143 +99,165 @@ export default function MissionControl() {
   const weather = mc.weather; // optional placeholder; only renders when present
 
   return (
-    <section className="mc" aria-label="Mission Control">
-      {/* Header: brand · greeting · clock */}
-      <header className="mc__header">
-        <div className="mc__brand">
-          <span className="mc__orb" aria-hidden="true" data-state={model.sara?.status} />
-          <span className="mc__mark">SARA</span>
-          {model.dataSource === 'seed' && <span className="mc__seed">seed data</span>}
-        </div>
-        <div className="mc__greeting">
-          <p className="mc__hello">
-            {greeting(now)}, {name}
-          </p>
-          <p className="mc__date">{formatDate(now)}</p>
-        </div>
-        <div className="mc__clock">
-          <span className="mc__time">{formatTime(now)}</span>
-        </div>
-      </header>
+    <section className="mc" aria-label="Briefing">
+      <div className="mc__scene" />
+      <div className="mc__shell">
+        <header className="mc__header">
+          <div className="mc__brand">
+            <span className="mc__orb" aria-hidden="true" data-state={model.sara?.status} />
+            <span className="mc__mark">SARA</span>
+            {model.dataSource !== 'neuro' && <span className="mc__seed">{model.dataSource}</span>}
+          </div>
+          <div className="mc__greeting">
+            <p className="mc__hello">
+              {greeting(now)}, {name} <span className="mc__sun">☼</span>
+            </p>
+            <p className="mc__date">{formatDate(now)}</p>
+          </div>
+          <div className="mc__clock">
+            <span className="mc__time">{formatTime(now)}</span>
+          </div>
+        </header>
 
-      {/* Situational stat cards: state · location · confidence */}
-      <div className="mc__stats">
-        <article className="mc__card mc__stat">
-          <p className="mc__stat-label">State</p>
-          <p className="mc__stat-value" data-state={model.sara?.status}>
-            {model.sara?.status || '—'}
-          </p>
-          <p className="mc__stat-sub">{goal?.title || 'No active focus'}</p>
-        </article>
-
-        <article className="mc__card mc__stat">
-          <p className="mc__stat-label">Location</p>
-          <p className="mc__stat-value">{model.location?.label || '—'}</p>
-          <p className="mc__stat-sub">{locationSub}</p>
-        </article>
-
-        <article className="mc__card mc__stat mc__stat--confidence">
-          <p className="mc__stat-label">Confidence</p>
-          <p className={`mc__stat-value mc__confidence--${confidenceLevel}`}>
-            {confidencePct != null ? `${Math.round(confidencePct)}%` : '—'}
-            {confidenceLevel && <span className="mc__confidence-word">{confidenceLevel}</span>}
-          </p>
-          {confidencePct != null && (
-            <div className="mc__meter" role="presentation">
-              <span
-                className={`mc__meter-fill mc__meter-fill--${confidenceLevel}`}
-                style={{ width: `${confidencePct}%` }}
-              />
-            </div>
-          )}
-        </article>
-      </div>
-
-      {/* Current goal — required by the behavioural spec; the one thing that matters */}
-      <section className="mc__card mc__goal" aria-label="Current goal">
-        <p className="mc__section-label">Current goal</p>
-        {goal ? (
-          <>
-            <p className="mc__goal-title">{goal.title}</p>
-            {goal.reason && <p className="mc__goal-reason">{goal.reason}</p>}
-          </>
-        ) : (
-          <p className="mc__goal-title mc__muted">Nothing set — pick the highest-leverage thing.</p>
-        )}
-      </section>
-
-      <div className="mc__columns">
-        {/* Today's priorities (What Matters Now) */}
-        <section className="mc__card mc__priorities" aria-label="What matters now">
-          <p className="mc__section-label">Today's priorities</p>
-          <ul className="mc__list">
-            {matters.map((item) => (
-              <li key={item.id} className={`mc__matter mc__matter--${item.tone}`}>
-                <span
-                  className={`mc__matter-glyph mc__matter-glyph--${item.tone}`}
-                  aria-hidden="true"
+        <div className="mc__body">
+          <nav className="mc__rail" aria-label="Primary views">
+            {RAIL_ITEMS.map((item) => {
+              const active = currentView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`mc__rail-button${active ? ' mc__rail-button--active' : ''}`}
+                  aria-pressed={active}
+                  onClick={() => setCurrentView(item.id)}
+                  title={item.label}
                 >
-                  {TONE_GLYPH[item.tone] || '●'}
-                </span>
-                <span className="mc__matter-body">
-                  <span className="mc__matter-title">{item.title}</span>
-                  {item.detail && <span className="mc__matter-detail">{item.detail}</span>}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+                  <span className="mc__rail-icon" aria-hidden="true">
+                    {item.icon}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
 
-        {/* Up next (+ optional weather) */}
-        <aside className="mc__side">
-          <section className="mc__card mc__upnext" aria-label="Up next">
-            <p className="mc__section-label">Up next</p>
-            {upNext.length > 0 ? (
-              <ul className="mc__list mc__list--next">
-                {upNext.map((item, i) => (
-                  <li key={item.id} className={`mc__next${i === 0 ? ' mc__next--lead' : ''}`}>
-                    <span className="mc__next-time">{item.time}</span>
-                    <span className="mc__next-label">{item.label}</span>
-                    {item.relative && <span className="mc__next-rel">{item.relative}</span>}
-                  </li>
+          <div className="mc__content">
+            <div className="mc__stats">
+              <article className="mc__card mc__stat">
+                <p className="mc__stat-label">State</p>
+                <p className="mc__stat-value">{formatState(inferredState)}</p>
+                <p className="mc__stat-sub">{goal?.title || inferredSummary}</p>
+              </article>
+
+              <article className="mc__card mc__stat">
+                <p className="mc__stat-label">Location</p>
+                <p className="mc__stat-value">{model.location?.label || '—'}</p>
+                <p className="mc__stat-sub">{locationSub}</p>
+              </article>
+
+              <article className="mc__card mc__stat mc__stat--confidence">
+                <p className="mc__stat-label">Confidence</p>
+                <p className={`mc__stat-value mc__confidence--${confidenceLevel}`}>
+                  {confidencePct != null ? `${Math.round(confidencePct)}%` : '—'}
+                  {confidenceLevel && <span className="mc__confidence-word">{confidenceLevel}</span>}
+                </p>
+                {confidencePct != null && (
+                  <div className="mc__meter" role="presentation">
+                    <span
+                      className={`mc__meter-fill mc__meter-fill--${confidenceLevel}`}
+                      style={{ width: `${confidencePct}%` }}
+                    />
+                  </div>
+                )}
+              </article>
+            </div>
+
+            <div className="mc__columns">
+              <section className="mc__card mc__priorities" aria-label="Today's priorities">
+                <div className="mc__panel-head">
+                  <p className="mc__section-label">Today's priorities</p>
+                  {goal && <p className="mc__panel-note">{goal.title}</p>}
+                </div>
+                <ul className="mc__list">
+                  {matters.map((item, index) => (
+                    <li key={item.id} className={`mc__matter mc__matter--${item.tone}`}>
+                      <span
+                        className={`mc__matter-glyph mc__matter-glyph--${item.tone}`}
+                        aria-hidden="true"
+                      >
+                        {TONE_GLYPH[item.tone] || '●'}
+                      </span>
+                      <span className="mc__matter-body">
+                        <span className="mc__matter-title">{item.title}</span>
+                        {item.detail && <span className="mc__matter-detail">{item.detail}</span>}
+                      </span>
+                      <span className="mc__matter-when">
+                        {upNext[index]?.time || (index === 0 ? 'Today' : index === 1 ? 'Soon' : 'Watch')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <button type="button" className="mc__view-all" onClick={() => setCurrentView(SARA_VIEWS.QUEUE)}>
+                  View all ({matters.length})
+                </button>
+              </section>
+
+              <aside className="mc__side">
+                <section className="mc__card mc__upnext" aria-label="Up next">
+                  <p className="mc__section-label">Up next</p>
+                  {upNext.length > 0 ? (
+                    <ul className="mc__list mc__list--next">
+                      {upNext.slice(0, 2).map((item, i) => (
+                        <li key={item.id} className={`mc__next${i === 0 ? ' mc__next--lead' : ''}`}>
+                          <span className="mc__next-time">{item.time}</span>
+                          <span className="mc__next-label">{item.label}</span>
+                          {item.relative && <span className="mc__next-rel">{item.relative}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mc__muted">Nothing scheduled.</p>
+                  )}
+                </section>
+
+                <section className="mc__card mc__weather" aria-label="Conditions">
+                  <span className="mc__weather-icon" aria-hidden="true">
+                    {(weather && weather.icon) || '⛅'}
+                  </span>
+                  <div className="mc__weather-copy">
+                    <span className="mc__weather-temp">
+                      {weather?.temp || (model.telemetry?.signals?.environment?.state ? `${model.telemetry.signals.environment.state}${model.telemetry.signals.environment.unit || ''}` : 'Live')}
+                    </span>
+                    <span className="mc__weather-desc">
+                      {weather?.description || model.telemetry?.signals?.environment?.label || 'Telemetry ready'}
+                    </span>
+                  </div>
+                </section>
+              </aside>
+            </div>
+
+            <section className="mc__launch mc__card" aria-label="Quick launch">
+              <p className="mc__section-label">Quick launch</p>
+              {actionFeedback && <p className="mc__action-feedback">{actionFeedback}</p>}
+              <div className="mc__tiles">
+                {actions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className="mc__tile"
+                    data-action={action.action}
+                    onClick={() => runQuickAction(action.action)}
+                  >
+                    <span className="mc__tile-icon" aria-hidden="true">
+                      {action.icon}
+                    </span>
+                    <span className="mc__tile-label">{action.label}</span>
+                  </button>
                 ))}
-              </ul>
-            ) : (
-              <p className="mc__muted">Nothing scheduled.</p>
-            )}
-          </section>
-
-          {weather && (
-            <section className="mc__card mc__weather" aria-label="Weather">
-              <span className="mc__weather-icon" aria-hidden="true">
-                {weather.icon || '⛅'}
-              </span>
-              <span className="mc__weather-temp">{weather.temp}</span>
-              <span className="mc__weather-desc">{weather.description}</span>
+              </div>
             </section>
-          )}
-        </aside>
-      </div>
-
-      {/* Quick launch — Stream-Deck-style tiles (Reference C) */}
-      <section className="mc__launch" aria-label="Quick launch">
-        <p className="mc__section-label">Quick launch</p>
-        <div className="mc__tiles">
-          {actions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              className="mc__tile"
-              data-action={action.action}
-            >
-              <span className="mc__tile-icon" aria-hidden="true">
-                {action.icon}
-              </span>
-              <span className="mc__tile-label">{action.label}</span>
-            </button>
-          ))}
+          </div>
         </div>
-      </section>
+      </div>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSaraState } from '../state/saraState';
-import { getView } from '../state/views';
+import { getView, normalizeViewId } from '../state/views';
 import './RecommendedView.css';
 
 // RecommendedView — the advisory context-inference strip (WS5-WP1).
@@ -25,7 +25,7 @@ export default function RecommendedView() {
   const inference = model?.inference;
   if (!inference) return null;
 
-  const recId = inference.recommendedView;
+  const recId = normalizeViewId(inference.recommendedView);
   const recView = recId ? getView(recId) : null;
   const onRecommended = Boolean(recId && recId === currentView);
   const level = inference.confidence?.level;

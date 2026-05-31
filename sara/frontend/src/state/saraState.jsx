@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { SHARED_PRESENTATION } from './presentation';
-import { DEFAULT_VIEW } from './views';
+import { DEFAULT_VIEW, normalizeViewId } from './views';
 
 // SARA shared state/context — the single in-app source of truth for every screen
 // (WS2-WP1).
@@ -26,17 +26,86 @@ import { DEFAULT_VIEW } from './views';
 
 const SaraStateContext = createContext(null);
 
+function createMessage(role, text, extra = {}) {
+  return {
+    id: extra.id || `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    text,
+    ...extra,
+  };
+}
+
+function deriveOpeningMessages(model) {
+  if (!model) return [];
+  const messages = [
+    createMessage('sara', `Hi Nick. You're at ${model.location?.label || 'an unknown spot'}.`, { kind: 'opening' }),
+  ];
+  if (model.briefing?.line) {
+    messages.push(createMessage('sara', model.briefing.line, { kind: 'briefing' }));
+  }
+  return messages;
+}
+
+function extractAssistantDelta(payload) {
+  if (!payload || payload === '[DONE]') return '';
+
+  try {
+    const parsed = JSON.parse(payload);
+    if (typeof parsed === 'string') return parsed;
+    if (typeof parsed.delta === 'string') return parsed.delta;
+    if (typeof parsed.content === 'string') return parsed.content;
+    if (typeof parsed.message === 'string') return parsed.message;
+    if (typeof parsed.reply === 'string') return parsed.reply;
+    if (Array.isArray(parsed.choices)) {
+      const [choice] = parsed.choices;
+      if (choice?.delta?.content) return String(choice.delta.content);
+      if (choice?.message?.content) return String(choice.message.content);
+      if (choice?.text) return String(choice.text);
+    }
+  } catch {
+    return payload;
+  }
+
+  return '';
+}
+
+function parseSseChunk(rest, chunk) {
+  const blocks = `${rest}${chunk}`.split(/\r?\n\r?\n/);
+  const nextRest = blocks.pop() || '';
+  const deltas = [];
+
+  for (const block of blocks) {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.replace(/^data:\s?/, ''))
+      .join('\n');
+
+    const delta = extractAssistantDelta(data);
+    if (!delta) continue;
+    deltas.push(delta);
+  }
+
+  return { deltas, rest: nextRest };
+}
+
 export function SaraStateProvider({ children }) {
   const [status, setStatus] = useState('connecting'); // connecting | connected | disconnected
   const [model, setModel] = useState(null);
   const [error, setError] = useState(null);
   const [now, setNow] = useState(() => new Date());
   const [currentView, setCurrentView] = useState(DEFAULT_VIEW);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatStatus, setChatStatus] = useState('idle'); // idle | sending | streaming | unavailable | error
+  const [chatError, setChatError] = useState(null);
+  const [chatBridge, setChatBridge] = useState({ status: 'checking', detail: null, available: false });
+  const [neuroAuth, setNeuroAuth] = useState({ status: 'checking', configured: false, source: 'none', detail: null });
+  const [actionFeedback, setActionFeedback] = useState(null);
 
   // Read the one shared state model from the backend (the WS1 runtime path).
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    async function loadState() {
       try {
         const res = await fetch('/api/state');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -44,10 +113,44 @@ export function SaraStateProvider({ children }) {
         if (cancelled) return;
         setModel(data);
         setStatus('connected');
+        setError(null);
       } catch (e) {
         if (cancelled) return;
         setError(e.message);
         setStatus('disconnected');
+      }
+    }
+
+    loadState();
+    const id = setInterval(loadState, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!actionFeedback) return undefined;
+    const id = setTimeout(() => setActionFeedback(null), 2600);
+    return () => clearTimeout(id);
+  }, [actionFeedback]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/neuro-auth');
+        const data = await res.json();
+        if (cancelled) return;
+        setNeuroAuth({
+          status: res.ok ? 'ready' : 'error',
+          configured: Boolean(data.configured),
+          source: data.source || 'none',
+          detail: data.detail || null,
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setNeuroAuth({ status: 'error', configured: false, source: 'none', detail: e.message });
       }
     })();
     return () => {
@@ -62,14 +165,311 @@ export function SaraStateProvider({ children }) {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/chat');
+        const data = await res.json();
+        if (cancelled) return;
+        setChatBridge({
+          status: res.ok ? 'available' : 'unavailable',
+          available: res.ok && data.available !== false,
+          detail: data.detail || data.reason || null,
+          chatPath: data.chatPath || null,
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setChatBridge({ status: 'error', available: false, detail: e.message });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Seed the conversation from shared state once the model is available. This keeps the
+  // opening read grounded in the same authoritative model every other screen consumes.
+  useEffect(() => {
+    if (!model) return;
+    setChatMessages((current) => (current.length > 0 ? current : deriveOpeningMessages(model)));
+  }, [model]);
+
+  async function sendChat(message) {
+    const trimmed = String(message || '').trim();
+    if (!trimmed) return false;
+
+    const placeholderId = `sara-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setChatError(null);
+    setChatStatus('sending');
+    setChatMessages((current) => [
+      ...current,
+      createMessage('user', trimmed),
+      createMessage('sara', '', { id: placeholderId, pending: true }),
+    ]);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: trimmed }),
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const problem = await res.json();
+          detail = problem.detail || problem.reason || detail;
+        } catch {
+          // keep the HTTP fallback
+        }
+        throw Object.assign(new Error(detail), { status: res.status });
+      }
+
+      if (contentType.includes('text/event-stream') && res.body) {
+        setChatStatus('streaming');
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let rest = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const parsed = parseSseChunk(rest, decoder.decode(value, { stream: true }));
+          rest = parsed.rest;
+          if (parsed.deltas.length > 0) {
+            const deltaText = parsed.deltas.join('');
+            setChatMessages((current) =>
+              current.map((entry) =>
+                entry.id === placeholderId ? { ...entry, text: `${entry.text}${deltaText}` } : entry
+              )
+            );
+          }
+        }
+
+        const tail = decoder.decode();
+        if (tail || rest) {
+          const parsed = parseSseChunk(rest, `${tail}\n\n`);
+          if (parsed.deltas.length > 0) {
+            const deltaText = parsed.deltas.join('');
+            setChatMessages((current) =>
+              current.map((entry) =>
+                entry.id === placeholderId ? { ...entry, text: `${entry.text}${deltaText}` } : entry
+              )
+            );
+          }
+        }
+      } else if (contentType.includes('application/json')) {
+        const body = await res.json();
+        const text = body.reply || body.message || body.content || body.text || '';
+        setChatMessages((current) =>
+          current.map((entry) => (entry.id === placeholderId ? { ...entry, text, pending: false } : entry))
+        );
+      } else {
+        const text = await res.text();
+        setChatMessages((current) =>
+          current.map((entry) => (entry.id === placeholderId ? { ...entry, text, pending: false } : entry))
+        );
+      }
+
+      setChatMessages((current) =>
+        current.map((entry) =>
+          entry.id === placeholderId && !entry.text
+            ? { ...entry, text: 'SARA answered, but the upstream stream carried no readable text.', pending: false }
+            : entry.id === placeholderId
+              ? { ...entry, pending: false }
+              : entry
+        )
+      );
+      setChatStatus('idle');
+      return true;
+    } catch (e) {
+      const nextStatus = e.status === 503 ? 'unavailable' : 'error';
+      setChatStatus(nextStatus);
+      setChatError(e.message);
+      setChatMessages((current) =>
+        current.map((entry) =>
+          entry.id === placeholderId
+            ? {
+                ...entry,
+                pending: false,
+                text:
+                  nextStatus === 'unavailable'
+                    ? `NEURO chat is not configured yet — ${e.message}`
+                    : `SARA could not reach the NEURO chat upstream — ${e.message}`,
+                error: true,
+              }
+            : entry
+        )
+      );
+      return false;
+    }
+  }
+
+  async function captureNote(content, title = '') {
+    const trimmed = String(content || '').trim();
+    if (!trimmed) return { ok: false, error: 'Note content is required.' };
+
+    const res = await fetch('/api/capture/note', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title, content: trimmed }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: body.error || `HTTP ${res.status}` };
+    }
+
+    try {
+      const state = await fetch('/api/state');
+      if (state.ok) setModel(await state.json());
+    } catch {
+      // keep the successful capture result even if the follow-up refresh fails
+    }
+    return { ok: true, data: body };
+  }
+
+  async function captureTodo(text) {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return { ok: false, error: 'Todo text is required.' };
+
+    const res = await fetch('/api/capture/todo', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: trimmed }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: body.error || `HTTP ${res.status}` };
+    }
+
+    try {
+      const state = await fetch('/api/state');
+      if (state.ok) setModel(await state.json());
+    } catch {
+      // keep the successful capture result even if the follow-up refresh fails
+    }
+    return { ok: true, data: body };
+  }
+
+  async function setNeuroPin(pin) {
+    const trimmed = String(pin || '').trim();
+    if (!trimmed) return { ok: false, error: 'PIN is required.' };
+    const res = await fetch('/api/neuro-auth', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pin: trimmed }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: body.error || `HTTP ${res.status}` };
+
+    setNeuroAuth({ status: 'ready', configured: true, source: body.source || 'session', detail: null });
+    try {
+      const state = await fetch('/api/state');
+      if (state.ok) setModel(await state.json());
+    } catch {
+      // leave existing model in place if refresh fails
+    }
+    return { ok: true };
+  }
+
+  async function refreshModel() {
+    try {
+      const state = await fetch('/api/state');
+      if (state.ok) setModel(await state.json());
+    } catch {
+      // keep current state if refresh fails
+    }
+  }
+
+  async function runQuickAction(actionId, payload = {}) {
+    const action = String(actionId || '').trim();
+    if (!action) return { ok: false, error: 'action is required' };
+
+    if (action === 'capture') {
+      setCurrentView(normalizeViewId('capture'));
+      setActionFeedback('Capture ready');
+      return { ok: true };
+    }
+    if (action === 'open-queue') {
+      setCurrentView(normalizeViewId('executive-dashboard'));
+      setActionFeedback('Queue opened');
+      return { ok: true };
+    }
+    if (action === 'start-focus') {
+      setCurrentView(normalizeViewId('focus'));
+      setActionFeedback('Focus opened');
+      return { ok: true };
+    }
+    if (action === 'daily-brief') {
+      setCurrentView(normalizeViewId('standup'));
+      setActionFeedback('Standup opened');
+      return { ok: true };
+    }
+    if (action === 'defer-focus') {
+      const res = await fetch('/api/actions/focus/dismiss', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          itemId: payload.itemId,
+          itemType: payload.itemType || null,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const error = body.error || `HTTP ${res.status}`;
+        setActionFeedback(error);
+        return { ok: false, error };
+      }
+      await refreshModel();
+      setActionFeedback('Focus deferred');
+      return { ok: true };
+    }
+    if (action === 'done-focus') {
+      const res = await fetch('/api/actions/focus/done', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          actionType: 'manual',
+          detail: payload.detail || 'Completed focus item',
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const error = body.error || `HTTP ${res.status}`;
+        setActionFeedback(error);
+        return { ok: false, error };
+      }
+      await refreshModel();
+      setActionFeedback('Focus marked done');
+      return { ok: true };
+    }
+
+    const error = `Unknown action: ${action}`;
+    setActionFeedback(error);
+    return { ok: false, error };
+  }
+
   const value = {
     status,
     error,
     model,
     now,
-    presentation: SHARED_PRESENTATION,
+    presentation: model?.presentation || SHARED_PRESENTATION,
     currentView,
-    setCurrentView,
+    setCurrentView: (viewId) => setCurrentView(normalizeViewId(viewId)),
+    chatMessages,
+    chatStatus,
+    chatError,
+    chatBridge,
+    neuroAuth,
+    actionFeedback,
+    sendChat,
+    captureNote,
+    captureTodo,
+    setNeuroPin,
+    runQuickAction,
   };
 
   return <SaraStateContext.Provider value={value}>{children}</SaraStateContext.Provider>;
