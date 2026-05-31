@@ -72,10 +72,17 @@ fi
 # Open the UI full-screen (kiosk). Run in the FOREGROUND (no exec) so the panel is
 # restored when the browser closes. Canonical kiosk is just `--kiosk <url>`; the
 # previous `--app` flag is redundant under kiosk and can suppress fullscreen.
+#
+# --password-store=basic: this is an auto-login kiosk with no login password, so the
+# GNOME "login" keyring is never unlocked at boot. Without this flag Chromium tries to
+# use the Secret Service for its cookie store and throws an "Unlock Keyring" dialog on
+# every launch — un-dismissable on a touchscreen with no keyboard. `basic` keeps the
+# cookie store in a plain local file instead, so there is no keyring prompt. SARA holds
+# no secrets in the browser, so there is nothing to protect here.
 if command -v chromium-browser >/dev/null 2>&1; then
-  chromium-browser --kiosk --noerrdialogs --disable-infobars "$SARA_URL"
+  chromium-browser --kiosk --noerrdialogs --disable-infobars --password-store=basic "$SARA_URL"
 elif command -v chromium >/dev/null 2>&1; then
-  chromium --kiosk --noerrdialogs --disable-infobars "$SARA_URL"
+  chromium --kiosk --noerrdialogs --disable-infobars --password-store=basic "$SARA_URL"
 elif command -v firefox >/dev/null 2>&1; then
   firefox --kiosk "$SARA_URL"
 else
