@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=SARA
+GenericName=SARA Mission Control
+Comment=Open SARA Mission Control full-screen
+# Adjust the path if SARA is checked out somewhere other than /mnt/data/nuero.
+Exec=/mnt/data/nuero/sara/scripts/start-sara.sh
+Icon=/mnt/data/nuero/sara/desktop/sara.svg
+Terminal=false
+Categories=Utility;
+StartupNotify=true

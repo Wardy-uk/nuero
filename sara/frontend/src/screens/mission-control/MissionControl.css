@@ -1,0 +1,275 @@
+/* Mission Control v0 — calm, light, touchscreen-friendly (WS2-WP1).
+   Reads from the shared SARA theme tokens defined in App.css. Optimised for a
+   7-inch Pi touchscreen: generous tap targets, desk-distance type, low clutter. */
+
+.mc {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Centred message states (waking / offline) */
+.mc--message {
+  min-height: 50vh;
+  align-items: center;
+  justify-content: center;
+}
+.mc__waking {
+  color: var(--ink-dim);
+  font-size: 18px;
+}
+.mc__offline {
+  color: var(--danger);
+  font-size: 16px;
+  text-align: center;
+  max-width: 32ch;
+}
+
+/* Header: SARA mark + state + live clock */
+.mc__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.mc__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.mc__mark {
+  font-weight: 700;
+  letter-spacing: 3px;
+  font-size: 26px;
+  color: var(--ink);
+}
+.mc__state {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.mc__seed {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--warning-ink);
+  background: var(--warning-soft);
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+.mc__clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+}
+.mc__time {
+  font-size: 40px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.mc__date {
+  font-size: 14px;
+  color: var(--ink-dim);
+}
+
+/* Situational chips: location + confidence */
+.mc__situational {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.mc__chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 16px;
+  min-height: 56px;
+  justify-content: center;
+}
+.mc__chip-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--ink-dim);
+}
+.mc__chip-value {
+  font-size: 16px;
+  color: var(--ink);
+}
+.mc__confidence {
+  text-transform: capitalize;
+  font-weight: 600;
+}
+.mc__confidence--high {
+  color: var(--success-ink);
+}
+.mc__confidence--moderate {
+  color: var(--warning-ink);
+}
+.mc__confidence--low {
+  color: var(--danger);
+}
+
+/* Shared section label */
+.mc__section-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--ink-dim);
+}
+
+/* Current goal — the one thing */
+.mc__goal {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.mc__goal-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.mc__goal-reason {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+.mc__muted {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
+/* Two-column body: What Matters Now + Up Next */
+.mc__columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.mc__panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.mc__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* What Matters Now items, toned by urgency */
+.mc__matter {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+}
+.mc__matter--urgent {
+  border-left-color: var(--danger);
+}
+.mc__matter--attention {
+  border-left-color: var(--warning-ink);
+}
+.mc__matter--watch {
+  border-left-color: var(--accent);
+}
+.mc__matter-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mc__matter-detail {
+  font-size: 14px;
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+
+/* Up Next rows */
+.mc__next {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.mc__next-time {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+}
+.mc__next-label {
+  font-size: 16px;
+  color: var(--ink);
+}
+
+/* Quick Actions — large touch targets */
+.mc__action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.mc__action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 84px;
+  padding: 14px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.05s ease;
+}
+.mc__action:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.mc__action:active {
+  transform: scale(0.97);
+}
+.mc__action-icon {
+  font-size: 26px;
+  color: var(--accent-ink);
+  line-height: 1;
+}
+.mc__action-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Responsive: stack columns and shrink the action grid on narrow / portrait
+   touchscreens so Mission Control stays readable on a 7-inch display. */
+@media (max-width: 620px) {
+  .mc__columns {
+    grid-template-columns: 1fr;
+  }
+  .mc__action-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .mc__time {
+    font-size: 34px;
+  }
+}

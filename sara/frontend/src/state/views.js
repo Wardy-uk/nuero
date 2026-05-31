@@ -1,0 +1,79 @@
+// SARA view system — the "one state, many views" registry (WS2-WP1).
+//
+// Protected principle 7 (charter): SARA's UI must be view-based and
+// interchangeable. Screens are *representations* of the one shared state model;
+// they do not own data and they are not the architecture. This module is the
+// canonical list of views and the current-view default — the structural proof
+// that the project is NOT hardcoded around a single home screen.
+//
+// WS2-WP1 builds only Mission Control. The other views are declared here as
+// `planned` so the architecture has a real future-view structure from the start;
+// their screens are placeholders (see screens/<id>/README.md) until their own work
+// packages land. Adding a view later means: flip its status to `available`, add a
+// screen folder, and wire it in ViewRouter — no change to the shared-state model.
+//
+// This is the "view type definition" called for in the build brief, expressed in
+// plain JS to match the existing converged runtime (React + Vite, no TypeScript).
+
+// Canonical SaraView identifiers. The string value is the stable view id used in
+// the registry, the router, and (later) the recommended/selected view in state.
+export const SARA_VIEWS = {
+  MISSION_CONTROL: 'mission-control',
+  EXECUTIVE_DASHBOARD: 'executive-dashboard',
+  PRESENCE: 'presence',
+  FOCUS: 'focus',
+  COMPANION: 'companion',
+  STREAM_DECK: 'stream-deck',
+};
+
+// The view registry. Order here is the order views are offered in the UI. Every
+// view is a representation of the same shared state — none of them is "the app".
+//   status: 'available' -> a screen exists and renders now
+//   status: 'planned'   -> reserved by the architecture; screen is a placeholder
+export const VIEW_REGISTRY = [
+  {
+    id: SARA_VIEWS.MISSION_CONTROL,
+    label: 'Mission Control',
+    blurb: 'At-a-glance situational view: what matters now and up next.',
+    status: 'available',
+  },
+  {
+    id: SARA_VIEWS.EXECUTIVE_DASHBOARD,
+    label: 'Executive Dashboard',
+    blurb: 'Queue, people and SLA metrics at depth.',
+    status: 'planned',
+  },
+  {
+    id: SARA_VIEWS.PRESENCE,
+    label: 'Presence',
+    blurb: 'Calm ambient view for when SARA is just present.',
+    status: 'planned',
+  },
+  {
+    id: SARA_VIEWS.FOCUS,
+    label: 'Focus',
+    blurb: 'One thing, timeboxed — the current do-next.',
+    status: 'planned',
+  },
+  {
+    id: SARA_VIEWS.COMPANION,
+    label: 'Companion',
+    blurb: 'Conversational companion mode.',
+    status: 'planned',
+  },
+  {
+    id: SARA_VIEWS.STREAM_DECK,
+    label: 'Stream Deck',
+    blurb: 'Large touch-action grid for quick triggers.',
+    status: 'planned',
+  },
+];
+
+// The view SARA opens on. Manual selection (charter: "manual user-selected view")
+// is supported now via the view switcher; automatic recommendation from the State
+// Engine is a later work package and deliberately NOT implemented here.
+export const DEFAULT_VIEW = SARA_VIEWS.MISSION_CONTROL;
+
+export function getView(id) {
+  return VIEW_REGISTRY.find((v) => v.id === id) || null;
+}

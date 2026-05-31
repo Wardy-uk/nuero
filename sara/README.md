@@ -20,11 +20,25 @@ sara/
       stateEngine.js       the engine: assemble -> derive briefing -> validate
     src/routes/            /api/health, /api/state
     test/                  node --test contract smoke tests
-  frontend/                React + Vite connectivity-proof UI
-    src/App.jsx            reads /api/state, reports runtime health
+  frontend/                React + Vite UI (one state, many views — WS2)
+    src/App.jsx            app shell: shared-state provider + view switcher + router
+    src/state/             shared UI state/context (the in-app source of truth)
+      saraState.jsx        SaraStateProvider + useSaraState() — reads /api/state,
+                          live clock, current-view selection
+      views.js             SaraView registry + current-view default (the view "type")
+      presentation.js      placeholder UI-only content (What Matters Now / Up Next /
+                          Quick Actions), housed in shared state — NOT in the screen
+    src/components/        ViewRouter, ViewSwitcher, PlannedView
+    src/screens/           one folder per view; only Mission Control is built
+      mission-control/     MissionControl.jsx + .css (the first usable screen)
+      executive-dashboard/ presence/ focus/ companion/ stream-deck/  (placeholders)
+  scripts/
+    start-sara.sh          Pi desktop display launcher (opens the UI full-screen)
+  desktop/
+    SARA.desktop           desktop icon (XDG entry) + sara.svg + install README
   runtime/
     ecosystem.config.js    PM2 process definition (boot persistence)
-    start.sh               one-command bring-up on the Pi
+    start.sh               one-command runtime bring-up on the Pi
   attractor/
     build_status/          factual per-work-package build reports
 ```
@@ -92,10 +106,53 @@ model from per-domain inputs (`queue`, `focus`, `people`, `vault`), derives SARA
 briefing line from that model, and self-validates against the contract — `/api/health`
 reports `degraded` if the model ever fails its own contract.
 
+SARA's situational state is exposed consistently on both surfaces (`/api/state` and
+`/api/health`) and in the UI: **current state** (`sara.status`), **current location**
+(`location` — seeded in WS1, the swappable layer, like the domains), and
+**confidence** (`confidence` — *derived* by the engine from domain conformance and
+data source: `moderate` while inputs are seeded, dropping to `low` when a domain
+fails its contract, in step with degraded health).
+
 Inputs are **seeded (hardcoded)** in WS1 — flagged `dataSource: 'seed'` at the root
 and `source: 'seed'` on every domain. `seed.js` is the swappable layer: a later work
 package replaces each provider with a live reader (Jira, do-next, people notes, vault)
 without changing the engine or the contract.
+
+## Mission Control & the view system (WS2 scope)
+
+The frontend is now a **view-based UI over one shared state model** (charter
+principle 7: *one state, many views*). The first usable screen — **Mission Control
+v0** — renders the SARA header, current time, current state, location, confidence,
+current goal, *What Matters Now*, *Up Next*, and *Quick Actions*.
+
+- **Shared state, not screen state.** Every screen reads from
+  `frontend/src/state/saraState.jsx` (`useSaraState()`). That context assembles the
+  WS1 State Engine model (`/api/state` — current state / location / confidence /
+  current goal) plus a placeholder presentation layer (`presentation.js`) for the
+  new UI-only fields, plus a shared live clock. No screen owns data.
+- **Current-view architecture.** `views.js` declares the `SaraView` registry and the
+  current-view default; `ViewRouter` maps the current view to a screen; `ViewSwitcher`
+  lets you select one manually. Mission Control is built; Executive Dashboard,
+  Presence, Focus, Companion and Stream Deck are reserved as `planned` views (their
+  `screens/<id>/` folders hold README placeholders only). The app is **not** hardcoded
+  to a single home screen.
+- **Honest placeholders.** *What Matters Now / Up Next / Quick Actions* are static
+  placeholder content stamped `source: 'placeholder'`, living in shared state so a
+  later work package can derive them from the engine without changing the screen.
+
+### Launch on the Pi desktop
+
+Mission Control opens full-screen from a desktop icon. The runtime stays alive under
+PM2 (`runtime/start.sh`); the desktop icon only *displays* the UI:
+
+```bash
+cd /mnt/data/nuero/sara
+chmod +x scripts/start-sara.sh
+cp desktop/SARA.desktop ~/Desktop/ && chmod +x ~/Desktop/SARA.desktop
+```
+
+Full install/usage notes: [`desktop/README.md`](desktop/README.md). Or launch from a
+terminal: `bash scripts/start-sara.sh`.
 
 ## Known limitations (WS1 scope)
 
