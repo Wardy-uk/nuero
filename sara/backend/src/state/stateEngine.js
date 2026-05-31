@@ -1,63 +1,111 @@
-// SARA State Engine — PLACEHOLDER (WS0-WP1)
+// SARA State Engine — v1 (WS1-WP1).
 //
 // Protected principle: there is ONE SARA and ONE shared state model. This module
-// is the single source of truth for runtime state. In WS0 it holds an in-memory
-// placeholder so the runtime can boot and prove the frontend/backend loop.
+// is the single source of truth for runtime state. WS0 returned a placeholder
+// literal; WS1 makes this a real engine: it assembles the one shared model from
+// named domain inputs, derives SARA's briefing from that model, validates the
+// result against the v1 contract, and exposes it over the existing /api path.
 //
-// This is intentionally temporary. A later work package replaces the internals
-// with the real central State Engine. The SHAPE here is forward-compatible:
-//   - one root object, namespaced by domain
-//   - `placeholder: true` so any consumer can tell this is not real state yet
-//   - additive — future domains (queue, vault, people, focus...) slot in as keys
+// Inputs are still seeded (hardcoded) — the engine and the contract are real;
+// only the data source is not yet live, and that is surfaced honestly
+// (`dataSource: 'seed'` at the root, `source: 'seed'` on every domain). Swapping
+// seed.js providers for live readers later changes neither this engine nor the
+// contract — that is the seam.
 //
 // CommonJS only (NEURO backend convention — no ESM).
 
-const RUNTIME_LABEL = 'WS0-WP1';
+const { CONTRACT, SCHEMA_VERSION, DOMAINS, validate } = require('./contract');
+const seed = require('./seed');
 
-// Single in-memory state object. Replaced by the central State Engine later.
-const state = {
-  schemaVersion: 0,
-  placeholder: true,
-  runtime: RUNTIME_LABEL,
-  startedAt: new Date().toISOString(),
-  sara: {
-    name: 'SARA',
-    status: 'online',
-    note: 'Runtime foundation only. No intelligence wired yet (WS0 scope).',
-  },
-  // Future central State Engine populates these. Empty + labelled for now.
-  domains: {
-    // queue:  {}   // Jira triage
-    // vault:  {}   // Obsidian
-    // people: {}   // team board
-    // focus:  {}   // do-next
-  },
+const RUNTIME_LABEL = 'WS1-WP1';
+
+// Input providers, one per contract domain. Seeded in WS1; swap for live readers
+// later without touching the engine or the contract.
+const PROVIDERS = {
+  queue: seed.queue,
+  focus: seed.focus,
+  people: seed.people,
+  vault: seed.vault,
 };
 
+// Process start — stable across requests so consumers can read uptime.
+const startedAt = new Date().toISOString();
+
 /**
- * Return the current shared state.
- * @returns {object} the single shared state model (placeholder in WS0).
+ * Derive SARA's briefing line from the assembled domains. This is real work the
+ * engine does over the model — not a hardcoded sentence — so the headline always
+ * reflects current domain data. When the providers go live, the briefing follows.
  */
-function getState() {
-  return {
-    ...state,
-    servedAt: new Date().toISOString(),
-  };
+function buildBriefing(domains) {
+  const parts = [];
+  if (domains.queue.breaching > 0) {
+    const n = domains.queue.breaching;
+    parts.push(`${n} ${n === 1 ? 'ticket is' : 'tickets are'} breaching SLA.`);
+  }
+  const slipping = domains.people.members.find((m) => m.status === 'slipping');
+  if (slipping) parts.push(`${slipping.name} is slipping — ${slipping.flag}.`);
+  if (domains.focus.current) parts.push(`Start with: ${domains.focus.current.title}.`);
+  const line = parts.length
+    ? parts.join(' ')
+    : 'Queue is calm. Pick the highest-leverage thing and start.';
+  return { line, derivedFrom: ['queue', 'people', 'focus'] };
 }
 
 /**
- * Lightweight health view derived from the same single state model, so health
- * and state can never disagree about whether SARA is up.
+ * Assemble the single shared runtime model from the domain providers, derive the
+ * briefing, and self-validate against the v1 contract.
+ * @returns {object} the assembled model (carries meta.valid / meta.errors)
+ */
+function buildModel() {
+  const domains = {};
+  for (const name of DOMAINS) domains[name] = PROVIDERS[name]();
+
+  const model = {
+    contract: CONTRACT,
+    schemaVersion: SCHEMA_VERSION,
+    runtime: RUNTIME_LABEL,
+    dataSource: 'seed', // honest: inputs are hardcoded, not live yet (WS1 scope)
+    generatedAt: new Date().toISOString(),
+    startedAt,
+    sara: {
+      name: 'SARA',
+      status: 'online',
+      note: 'State Engine v1 contract is live. Inputs are seeded (hardcoded), not yet wired to real sources (WS1 scope).',
+    },
+    briefing: buildBriefing(domains),
+    domains,
+  };
+
+  const { valid, errors } = validate(model);
+  model.meta = { valid, errors, domainCount: DOMAINS.length };
+  return model;
+}
+
+/**
+ * Return the current shared state model (assembled fresh, validated, stamped).
+ */
+function getState() {
+  return { ...buildModel(), servedAt: new Date().toISOString() };
+}
+
+/**
+ * Health view derived from the SAME model, so health and state can never disagree
+ * about whether SARA is up or whether the model is contract-valid. Reports
+ * `degraded` if the engine produced a model that fails its own contract.
  */
 function getHealth() {
+  const model = buildModel();
   return {
-    status: 'ok',
-    sara: state.sara.status,
-    runtime: state.runtime,
-    placeholder: state.placeholder,
-    startedAt: state.startedAt,
+    status: model.meta.valid ? 'ok' : 'degraded',
+    sara: model.sara.status,
+    runtime: model.runtime,
+    contract: model.contract,
+    schemaVersion: model.schemaVersion,
+    dataSource: model.dataSource,
+    valid: model.meta.valid,
+    startedAt: model.startedAt,
     checkedAt: new Date().toISOString(),
   };
 }
 
-module.exports = { getState, getHealth, RUNTIME_LABEL };
+module.exports = { getState, getHealth, buildModel, RUNTIME_LABEL };

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 
-// WS0-WP1 connectivity proof: the frontend reads the shared state model from the
-// backend over the defined runtime path (/api) and reports whether the loop is up.
-// This is intentionally minimal — it proves runtime health, not features.
+// WS1-WP1: the frontend reads the single shared runtime model (State Engine v1)
+// from the backend over the existing /api path and renders SARA's derived briefing
+// plus a per-domain summary. Data is seeded (hardcoded) in WS1 — surfaced honestly
+// via the seed banner rather than the old WS0 placeholder flag.
+
+const DOMAIN_ORDER = ['queue', 'focus', 'people', 'vault'];
 
 export default function App() {
   const [status, setStatus] = useState('connecting');
@@ -30,6 +33,8 @@ export default function App() {
     };
   }, []);
 
+  const domains = state?.domains;
+
   return (
     <main className="sara">
       <header className="sara__header">
@@ -38,36 +43,47 @@ export default function App() {
         <span className="sara__status">{status}</span>
       </header>
 
-      {state?.placeholder && (
+      {state?.dataSource === 'seed' && (
         <div className="sara__banner">
-          Placeholder state — central State Engine not wired yet (WS0 scope).
+          Seed data — State Engine v1 contract is live, inputs are hardcoded (WS1 scope).
         </div>
       )}
 
       <section className="sara__panel">
         {status === 'connected' && state && (
-          <dl className="sara__kv">
-            <dt>runtime</dt>
-            <dd>{state.runtime}</dd>
-            <dt>sara.status</dt>
-            <dd>{state.sara?.status}</dd>
-            <dt>backend started</dt>
-            <dd>{state.startedAt}</dd>
-            <dt>served at</dt>
-            <dd>{state.servedAt}</dd>
-          </dl>
+          <>
+            <p className="sara__briefing">{state.briefing?.line}</p>
+            <dl className="sara__kv">
+              <dt>runtime</dt>
+              <dd>{state.runtime}</dd>
+              <dt>contract</dt>
+              <dd>
+                {state.contract} (v{state.schemaVersion})
+              </dd>
+              <dt>valid</dt>
+              <dd>{String(state.meta?.valid)}</dd>
+              <dt>served at</dt>
+              <dd>{state.servedAt}</dd>
+            </dl>
+            {domains && (
+              <ul className="sara__domains">
+                {DOMAIN_ORDER.map((name) => (
+                  <li key={name}>
+                    <span className="sara__domain-name">{name}</span>
+                    <span className="sara__domain-summary">{domains[name]?.summary}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
         {status === 'disconnected' && (
-          <p className="sara__error">
-            Backend unreachable on /api/state — {error}
-          </p>
+          <p className="sara__error">Backend unreachable on /api/state — {error}</p>
         )}
         {status === 'connecting' && <p className="sara__muted">Reaching backend…</p>}
       </section>
 
-      <footer className="sara__footer">
-        Runtime foundation only. {state?.sara?.note}
-      </footer>
+      <footer className="sara__footer">{state?.sara?.note}</footer>
     </main>
   );
 }

@@ -100,6 +100,37 @@ body {
   word-break: break-word;
 }
 
+.sara__briefing {
+  margin: 0 0 16px;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.sara__domains {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid #1c2230;
+}
+.sara__domains li {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.sara__domain-name {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 12px;
+}
+.sara__domain-summary {
+  color: var(--text);
+}
+
 .sara__error {
   color: var(--danger);
   font-family: 'IBM Plex Mono', ui-monospace, monospace;

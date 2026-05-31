@@ -14,8 +14,12 @@ work packages.
 sara/
   backend/                 Express (CommonJS) runtime backend
     server.js              boot, /api routes, serves built frontend in prod
-    src/state/             the single shared State Engine (PLACEHOLDER in WS0)
+    src/state/             the single shared State Engine (v1 contract — WS1)
+      contract.js          state-engine-v1 contract + validate()
+      seed.js              hardcoded domain inputs (the swappable layer)
+      stateEngine.js       the engine: assemble -> derive briefing -> validate
     src/routes/            /api/health, /api/state
+    test/                  node --test contract smoke tests
   frontend/                React + Vite connectivity-proof UI
     src/App.jsx            reads /api/state, reports runtime health
   runtime/
@@ -80,10 +84,23 @@ and restarts the PM2 process.
 
 - `SARA_PORT` — backend port, default **3005** (kept off NEURO's 3001).
 
-## Known limitations (WS0 scope)
+## State Engine v1 (WS1 scope)
 
-- State is an in-memory placeholder flagged `placeholder: true`. It resets on
-  restart and carries no real data. The central State Engine replaces it later.
+The State Engine now exposes a **real, enforced contract** (`state-engine-v1`,
+`schemaVersion: 1`) over the same `/api` path. The engine assembles the one shared
+model from per-domain inputs (`queue`, `focus`, `people`, `vault`), derives SARA's
+briefing line from that model, and self-validates against the contract — `/api/health`
+reports `degraded` if the model ever fails its own contract.
+
+Inputs are **seeded (hardcoded)** in WS1 — flagged `dataSource: 'seed'` at the root
+and `source: 'seed'` on every domain. `seed.js` is the swappable layer: a later work
+package replaces each provider with a live reader (Jira, do-next, people notes, vault)
+without changing the engine or the contract.
+
+## Known limitations (WS1 scope)
+
+- Domain inputs are hardcoded, not live. The shape and engine are real; the data is
+  seed data, surfaced honestly as `dataSource: 'seed'`.
 - No auth on the SARA backend yet (NEURO's PIN/token middleware is not ported).
   Only reachable over the private Tailscale network.
-- No tests, no CI. This package proves the runtime loop, nothing more.
+- Contract smoke tests only (`npm test` in `backend/`); no CI wired.
