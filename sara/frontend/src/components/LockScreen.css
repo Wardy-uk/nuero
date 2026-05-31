@@ -1,0 +1,117 @@
+/* LockScreen — full-screen privacy overlay (WS2-WP3).
+   Sits above everything (Exit button is z 1000) so no dashboard content leaks behind
+   it. Calm, on-brand with the Mission Control light aesthetic: heavy frosted blur over
+   whatever was on screen, centred SARA mark + clock + tap-to-unlock. */
+
+.lock {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: rgba(244, 247, 248, 0.72);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  backdrop-filter: blur(28px) saturate(1.2);
+  animation: lock-in 0.18s ease;
+}
+@keyframes lock-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lock__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 56px;
+  text-align: center;
+}
+
+.lock__mark {
+  font-weight: 700;
+  letter-spacing: 6px;
+  font-size: 22px;
+  color: var(--ink-dim);
+}
+
+.lock__orb {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, #ffffff 0%, var(--accent-soft) 42%, transparent 64%);
+  border: 4px solid var(--accent);
+  box-shadow: 0 0 0 6px rgba(94, 193, 202, 0.16), inset 0 0 14px rgba(94, 193, 202, 0.5);
+  animation: lock-pulse 2.6s ease-in-out infinite;
+}
+@keyframes lock-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 6px rgba(94, 193, 202, 0.16), inset 0 0 14px rgba(94, 193, 202, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(94, 193, 202, 0.06), inset 0 0 14px rgba(94, 193, 202, 0.5);
+  }
+}
+
+.lock__time {
+  font-size: 56px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.lock__reason {
+  font-size: 16px;
+  color: var(--ink-dim);
+}
+
+.lock__hint {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--accent-ink);
+}
+
+/* Manual lock trigger — top-right, sits just left of the Exit button (which is at
+   right: 12px, width 46px). Same frosted round language as Exit. */
+.lockbtn {
+  position: fixed;
+  top: 12px;
+  right: 70px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 8px 28px rgba(39, 44, 51, 0.08), 0 1px 2px rgba(39, 44, 51, 0.04);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  color: #55627f;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.08s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.lockbtn:hover {
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  box-shadow: 0 10px 30px rgba(94, 193, 202, 0.22);
+}
+.lockbtn:active {
+  transform: scale(0.94);
+}

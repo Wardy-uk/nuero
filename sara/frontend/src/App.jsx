@@ -1,29 +1,48 @@
-import { SaraStateProvider } from './state/saraState';
+import { SaraStateProvider, useSaraState } from './state/saraState';
+import { usePresenceLock } from './state/usePresenceLock';
 import ViewSwitcher from './components/ViewSwitcher';
 import RecommendedView from './components/RecommendedView';
 import ViewRouter from './components/ViewRouter';
 import ExitButton from './components/ExitButton';
+import LockScreen from './components/LockScreen';
 
-// SARA app shell (WS2-WP1; advisory inference strip added WS5-WP1).
+// SARA app shell (WS2-WP1; inference strip WS5-WP1; Exit + auto-lock WS2-WP2/WP3).
 //
-// The shell provides the shared-state context for every screen, offers the manual view
-// switcher (the visible proof of the many-views architecture), shows SARA's advisory
-// context inference (RecommendedView — read-only, never auto-switches), and renders
-// whichever view is current via ViewRouter. It deliberately holds no screen data —
-// screens read shared state directly. This keeps the app from being hardcoded around a
-// single home screen, and keeps the recommendation advisory: only the user's click on
-// the switcher or the suggestion's button changes the current view.
+// The shell provides the shared-state context for every screen, the manual view switcher
+// (proof of the many-views architecture), SARA's advisory context inference, an Exit
+// control, and a privacy auto-lock. The lock + clock live in an inner component so they
+// can read the shared clock from context; the provider itself wraps everything.
+function AppShell() {
+  const { now } = useSaraState();
+  const { locked, reason, lockNow, unlock } = usePresenceLock();
+
+  return (
+    <div className="app">
+      {/* Lock covers everything (z above these); render it last so it's on top. */}
+      <button
+        type="button"
+        className="lockbtn"
+        aria-label="Lock SARA"
+        title="Lock SARA"
+        onClick={lockNow}
+      >
+        <span aria-hidden="true">🔒</span>
+      </button>
+      <ExitButton />
+      <ViewSwitcher />
+      <RecommendedView />
+      <main className="app__view">
+        <ViewRouter />
+      </main>
+      {locked && <LockScreen reason={reason} now={now} onUnlock={unlock} />}
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <SaraStateProvider>
-      <div className="app">
-        <ExitButton />
-        <ViewSwitcher />
-        <RecommendedView />
-        <main className="app__view">
-          <ViewRouter />
-        </main>
-      </div>
+      <AppShell />
     </SaraStateProvider>
   );
 }

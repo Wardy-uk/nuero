@@ -21,11 +21,18 @@
 
 const TELEMETRY_SOURCE = 'home-assistant';
 
-// The three bounded signal slots and the env var that names each slot's HA entity.
+// The bounded signal slots and the env var that names each slot's HA entity.
 const SIGNAL_SLOTS = {
   location: 'SARA_HA_LOCATION_ENTITY', // e.g. person.nick / device_tracker.nick_phone
   presence: 'SARA_HA_PRESENCE_ENTITY', // e.g. binary_sensor.office_occupancy / person.nick
   environment: 'SARA_HA_ENV_ENTITY', // e.g. sensor.office_temperature
+  // Proximity drives SARA's "walked away" auto-lock. It is deliberately source-agnostic
+  // so the trigger can be UPGRADED without code change (charter seam): point it at a
+  // categorical tracker today (device_tracker.nicks_iphone -> home/not_home) and at a
+  // Private BLE distance sensor later (sensor.<device>_estimated_distance, metres) for
+  // true desk-level ranging from the iPhone, then the Apple Watch. The numeric away
+  // threshold (metres) is read from SARA_HA_PROXIMITY_AWAY_M when the state is numeric.
+  proximity: 'SARA_HA_PROXIMITY_ENTITY',
 };
 
 /** Read runtime config from env each call (no hidden caching of config). */
@@ -40,6 +47,8 @@ function config() {
     entities,
     pollMs: Number(process.env.SARA_HA_POLL_MS) || 30000,
     timeoutMs: Number(process.env.SARA_HA_TIMEOUT_MS) || 4000,
+    // Metres beyond which a numeric (BLE distance) proximity signal counts as "away".
+    proximityAwayM: Number(process.env.SARA_HA_PROXIMITY_AWAY_M) || 8,
   };
 }
 
@@ -55,7 +64,7 @@ function unavailable(reason, detail) {
     reason,
     detail: detail || null,
     polledAt: null,
-    signals: { location: null, presence: null, environment: null },
+    signals: { location: null, presence: null, environment: null, proximity: null },
   };
 }
 
@@ -107,7 +116,52 @@ function mapEnvironment(ha) {
   };
 }
 
-const SLOT_MAPPERS = { location: mapLocation, presence: mapPresence, environment: mapEnvironment };
+// Proximity → SARA's "are you here?" signal for auto-lock. Source-agnostic by design:
+//   * NUMERIC state (e.g. Private BLE `..._estimated_distance` in metres): away when the
+//     distance exceeds the configured threshold. This is the desk-level upgrade path.
+//   * CATEGORICAL state (device_tracker home/not_home, person, binary_sensor on/off):
+//     away when the state reads as not-present. Works today with zero extra setup.
+// `away` is the single boolean the frontend lock logic consumes; `present` is its inverse
+// only when presence is known (null state -> both null, so the lock never fires blind).
+const AWAY_WORDS = ['not_home', 'away', 'off', 'false', 'not_connected', 'disconnected', 'none', 'unavailable', 'unknown'];
+const HOME_WORDS = ['home', 'on', 'true', 'connected', 'present', 'detected', 'occupied', 'active'];
+
+function mapProximity(ha, cfg = config()) {
+  if (!ha || typeof ha.state === 'undefined' || ha.state === null) return null;
+  const raw = String(ha.state);
+  const num = Number(raw);
+  const isNumeric = raw.trim() !== '' && !Number.isNaN(num);
+
+  let away = null;
+  let distanceM = null;
+  if (isNumeric) {
+    distanceM = num;
+    away = num > cfg.proximityAwayM;
+  } else {
+    const s = raw.toLowerCase();
+    if (AWAY_WORDS.includes(s)) away = true;
+    else if (HOME_WORDS.includes(s)) away = false;
+    else away = null; // unknown categorical -> don't guess, never lock blind
+  }
+
+  return {
+    entityId: ha.entity_id || null,
+    state: raw,
+    mode: isNumeric ? 'distance' : 'categorical',
+    distanceM,
+    awayThresholdM: isNumeric ? cfg.proximityAwayM : null,
+    away,
+    present: away === null ? null : !away,
+    label: ha.attributes?.friendly_name || ha.entity_id || 'proximity',
+  };
+}
+
+const SLOT_MAPPERS = {
+  location: mapLocation,
+  presence: mapPresence,
+  environment: mapEnvironment,
+  proximity: mapProximity,
+};
 
 /**
  * Build a telemetry snapshot from raw HA states keyed by slot. Pure; no I/O.
@@ -116,9 +170,9 @@ const SLOT_MAPPERS = { location: mapLocation, presence: mapPresence, environment
  * @param {string} polledAt ISO timestamp of the poll
  */
 function mapStatesToTelemetry(statesBySlot, cfg, polledAt) {
-  const signals = { location: null, presence: null, environment: null };
+  const signals = { location: null, presence: null, environment: null, proximity: null };
   for (const slot of Object.keys(SLOT_MAPPERS)) {
-    if (statesBySlot[slot]) signals[slot] = SLOT_MAPPERS[slot](statesBySlot[slot]);
+    if (statesBySlot[slot]) signals[slot] = SLOT_MAPPERS[slot](statesBySlot[slot], cfg);
   }
   const requested = Object.values(cfg.entities).filter(Boolean).length;
   const got = Object.values(signals).filter(Boolean).length;
@@ -229,6 +283,7 @@ module.exports = {
   mapLocation,
   mapPresence,
   mapEnvironment,
+  mapProximity,
   unavailable,
   _setSnapshotForTest,
 };

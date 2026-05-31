@@ -14,11 +14,16 @@ const express = require('express');
 
 const healthRoute = require('./src/routes/health');
 const stateRoute = require('./src/routes/state');
+const chatRoute = require('./src/routes/chat');
+const actionsRoute = require('./src/routes/actions');
+const neuroAuthRoute = require('./src/routes/neuroAuth');
 const telemetryRoute = require('./src/routes/telemetry');
 const inferenceRoute = require('./src/routes/inference');
 const kioskRoute = require('./src/routes/kiosk');
+const presenceRoute = require('./src/routes/presence');
 const { RUNTIME_LABEL } = require('./src/state/stateEngine');
 const ha = require('./src/telemetry/homeAssistant');
+const neuro = require('./src/integrations/neuroSnapshot');
 
 const app = express();
 const PORT = process.env.SARA_PORT || 3005;
@@ -28,9 +33,13 @@ app.use(express.json());
 // --- API (the defined frontend <-> backend runtime path) ---
 app.use('/api/health', healthRoute);
 app.use('/api/state', stateRoute);
+app.use('/api/chat', chatRoute);
+app.use('/api/actions', actionsRoute);
+app.use('/api/neuro-auth', neuroAuthRoute);
 app.use('/api/telemetry', telemetryRoute);
 app.use('/api/inference', inferenceRoute);
 app.use('/api/kiosk', kioskRoute);
+app.use('/api/presence', presenceRoute);
 
 // --- Static frontend (production) ---
 // Vite builds to ../frontend/dist. If it exists, serve it with SPA fallback so
@@ -49,7 +58,7 @@ if (fs.existsSync(distDir)) {
       `SARA backend (${RUNTIME_LABEL}) is up on port ${PORT}.\n` +
         `Frontend build not found at ${distDir}.\n` +
         `Run the frontend dev server, or build it for production.\n` +
-        `API: GET /api/health , GET /api/state , GET /api/telemetry , GET /api/inference\n`
+        `API: GET /api/health , GET /api/state , GET /api/chat , GET /api/neuro-auth , GET /api/telemetry , GET /api/inference\n`
     );
   });
 }
@@ -59,4 +68,8 @@ app.listen(PORT, () => {
   // Start the Home Assistant telemetry poller. No-op (and logs why) when HA is not
   // configured — the runtime stays up and screens fall back honestly.
   ha.start();
+  // Start the bounded NEURO snapshot poller. It feeds real queue/focus/todo/context
+  // data into the shared model when the upstream is reachable, and falls back
+  // honestly when it is not.
+  neuro.start();
 });
