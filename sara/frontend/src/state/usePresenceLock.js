@@ -16,11 +16,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // doesn't immediately re-lock.
 export function usePresenceLock({
   idleMs = 3 * 60 * 1000, // lock after 3 min of no interaction
-  pollMs = 15 * 1000, // ask the backend "am I away?" every 15s
+  pollMs = 5 * 1000, // ask the backend "am I away?" every 5s
   awayStreak = 2, // consecutive away polls required before AWAY locks
 } = {}) {
   const [locked, setLocked] = useState(false);
   const [reason, setReason] = useState(null); // 'idle' | 'away' | 'manual'
+  const reasonRef = useRef(null);
+  reasonRef.current = reason;
 
   const idleTimer = useRef(null);
   const awayCount = useRef(0);
@@ -37,6 +39,17 @@ export function usePresenceLock({
     if (idleTimer.current) clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(() => lock('idle'), idleMs);
   }, [idleMs, lock]);
+
+  // Auto-unlock: only for an AWAY-triggered lock when the Watch returns. A manual or
+  // idle lock still needs a deliberate tap (we don't want idle-lock to clear just
+  // because the Watch is in range). Defined AFTER resetIdle so it closes over it.
+  const autoUnlock = useCallback(() => {
+    if (!lockedRef.current || reasonRef.current !== 'away') return;
+    awayCount.current = 0;
+    setLocked(false);
+    setReason(null);
+    resetIdle();
+  }, [resetIdle]);
 
   const unlock = useCallback(() => {
     awayCount.current = 0; // require a fresh away streak before AWAY can re-fire
@@ -80,6 +93,7 @@ export function usePresenceLock({
               if (awayCount.current >= awayStreak) lock('away');
             } else if (data.away === false) {
               awayCount.current = 0; // present -> reset
+              autoUnlock(); // walked back -> clear an away-lock automatically
             }
             // data.away === null -> unknown: leave the streak untouched, don't lock.
           }
@@ -95,7 +109,7 @@ export function usePresenceLock({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [pollMs, awayStreak, lock]);
+  }, [pollMs, awayStreak, lock, autoUnlock]);
 
   return { locked, reason, lockNow, unlock };
 }

@@ -1,0 +1,21 @@
+[Unit]
+Description=SARA Watch presence detector (BLE proximity via Apple Watch IRK)
+After=bluetooth.target network.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+# IRK lives in a local-only file (NOT in git): /etc/sara-watch.env  ->  WATCH_IRK=<hex>
+EnvironmentFile=/etc/sara-watch.env
+# RSSI threshold and flip-window tuned with Nick (desk -43..-61; -70 gives clean margin).
+Environment=WATCH_STATUS_FILE=/home/nickw/watch-irk/presence.json
+Environment=WATCH_RSSI_THRESHOLD=-70
+Environment=WATCH_WINDOW=7
+Environment=WATCH_NEEDED=5
+ExecStart=/home/nickw/watch-irk/venv/bin/python -u /home/nickw/watch-irk/watch-presence-service.py
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

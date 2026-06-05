@@ -1,0 +1,20 @@
+[Unit]
+Description=SARA terminal agent (reports station presence to SARA backend)
+After=watch-presence.service network.target
+Wants=watch-presence.service
+
+[Service]
+Type=simple
+Environment=STATION_NAME=living-room
+Environment=SARA_URL=http://localhost:3005
+Environment=WATCH_STATUS_FILE=/home/nickw/watch-irk/presence.json
+# NOTE: display blanking / kiosk launch were removed from the agent — the lock is now
+# the in-app SARA overlay (driven by /api/presence). This agent only reports the Tier-2
+# station to SARA. It does NOT touch the display (that caused the white-screen issues).
+ExecStart=/home/nickw/watch-irk/venv/bin/python -u /home/nickw/watch-irk/sara-terminal-agent.py
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -17,6 +17,7 @@
 const { CONTRACT, SCHEMA_VERSION, DOMAINS, DOMAIN_CONTRACTS, validate } = require('./contract');
 const seed = require('./seed');
 const ha = require('../telemetry/homeAssistant');
+const stations = require('./stations');
 const neuro = require('../integrations/neuroSnapshot');
 const { deriveInference } = require('./inference');
 
@@ -445,25 +446,69 @@ function locationContext(zone) {
 }
 
 /**
- * Build the situational `location` block. When the HA telemetry bridge reports a live
- * location signal, location comes from HA (`source: 'home-assistant'`); otherwise it
- * falls back to the seeded reader (`source: 'seed'`). Either way the shape is the same
- * — HA being absent can never break a consumer, it only changes the source.
+ * Build the situational `location` block — two tiers:
+ *   zone    (Tier 1, coarse GPS)     — Home / Work / elsewhere, from the HA telemetry
+ *                                       bridge (device_tracker / person), else seed.
+ *   station (Tier 2, fine proximity) — at desk / living-room / driving, from whichever
+ *                                       TERMINAL currently sees you (stations registry).
+ * Top-level `label`/`context`/`source` are preserved for existing consumers: they prefer
+ * the live station when one is active (the most specific truth — "you're at the living
+ * room screen"), else fall back to the GPS zone, else the seed. HA/station being absent
+ * can never break a consumer; it only changes which tier supplies the headline.
  */
 function buildLocation(telemetry) {
   const loc = telemetry.available ? telemetry.signals.location : null;
+
+  // Tier 1 — zone (GPS via HA, else seeded fallback).
+  let zone;
   if (loc && loc.label) {
-    return {
+    zone = {
       source: ha.TELEMETRY_SOURCE,
       label: loc.label,
       context: locationContext(loc.zone),
       since: telemetry.polledAt,
-      summary: `Home Assistant places you at ${loc.label}.`,
       entityId: loc.entityId,
     };
+  } else {
+    const seeded = LOCATION_PROVIDER();
+    zone = {
+      source: seeded.source || 'seed',
+      label: seeded.label,
+      context: seeded.context || 'elsewhere',
+      since: seeded.since || null,
+      telemetry: 'fallback',
+    };
   }
-  // Honest fallback: HA unavailable or carrying no location signal -> seeded input.
-  return { ...LOCATION_PROVIDER(), telemetry: 'fallback' };
+
+  // Tier 2 — station (the active terminal, if any currently sees you).
+  const act = stations.active();
+  const station = act
+    ? {
+        name: act.station,
+        present: true,
+        source: act.source,
+        rssi: act.rssi,
+        since: act.reportedAt,
+      }
+    : null;
+
+  // Headline fields: most specific wins. Station (you're physically AT a device) beats
+  // the GPS zone. Both feed a human summary.
+  const label = station ? station.name : zone.label;
+  const source = station ? `terminal:${station.source}` : zone.source;
+  const summary = station
+    ? `You're at ${station.name}${zone.label ? ` (${zone.label})` : ''}.`
+    : `${zone.label}.`;
+
+  return {
+    source,
+    label,
+    context: zone.context,
+    since: station ? station.since : zone.since,
+    summary,
+    zone,
+    station,
+  };
 }
 
 // Shape the cached HA snapshot into the model's telemetry block. Read-only: the engine

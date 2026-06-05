@@ -83,13 +83,17 @@ export default function MissionControl() {
   const name = model.user?.name || 'Nick';
   const inferredState = model.inference?.activity || model.sara?.status || 'unknown';
   const inferredSummary = model.inference?.summary || goal?.title || 'Shared state is live.';
-  // Location sub-line: prefer an explicit detail, else humanise the zone slug
-  // ("home-office" -> "Home Office"), else a calm fallback.
-  const humanise = (s) => s.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  // Location sub-line: prefer an explicit detail, else humanise a string slug
+  // ("home-office" -> "Home Office"), else a calm fallback. NB location.zone is an
+  // OBJECT in the two-tier model (zone + station), so read its label/context, never the
+  // object itself — guard with typeof so a non-string can never crash render.
+  const humanise = (s) =>
+    typeof s === 'string' ? s.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null;
+  const zoneLabel = model.location?.zone?.label || model.location?.zone; // obj or legacy string
   const locationSub =
     model.location?.detail ||
-    (model.location?.zone && humanise(model.location.zone)) ||
-    (model.location?.context && humanise(model.location.context)) ||
+    humanise(zoneLabel) ||
+    humanise(model.location?.context) ||
     'Tracked';
 
   const mc = presentation;

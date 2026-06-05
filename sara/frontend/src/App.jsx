@@ -14,7 +14,10 @@ import LockScreen from './components/LockScreen';
 // can read the shared clock from context; the provider itself wraps everything.
 function AppShell() {
   const { now } = useSaraState();
-  const { locked, reason, lockNow, unlock } = usePresenceLock();
+  // Fast watch-driven lock: poll 2s, lock on the first away report. The presence
+  // service already does noise-smoothing (7/10 over ~5s), so a second streak layer
+  // here would only add latency — awayStreak:1 keeps end-to-end lock ~5-6s.
+  const { locked, reason, lockNow, unlock } = usePresenceLock({ pollMs: 2000, awayStreak: 1 });
 
   return (
     <div className="app">
