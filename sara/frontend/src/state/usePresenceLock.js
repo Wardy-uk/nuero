@@ -23,8 +23,11 @@ export function usePresenceLock({
   const [locked, setLocked] = useState(false);
   const [reason, setReason] = useState(null); // 'idle' | 'away' | 'manual'
   const [pending, setPending] = useState(null); // null | seconds left on the lock countdown
+  const [paused, setPaused] = useState(false); // auto-lock (idle + away) suspended by the user
   const reasonRef = useRef(null);
   reasonRef.current = reason;
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
 
   const idleTimer = useRef(null);
   const awayCount = useRef(0);
@@ -93,6 +96,7 @@ export function usePresenceLock({
 
   const resetIdle = useCallback(() => {
     if (idleTimer.current) clearTimeout(idleTimer.current);
+    if (pausedRef.current) return; // auto-lock paused — don't arm the idle timer
     idleTimer.current = setTimeout(() => lock('idle'), idleMs);
   }, [idleMs, lock]);
 
@@ -118,6 +122,26 @@ export function usePresenceLock({
   }, [resetIdle, cancelCountdown]);
 
   const lockNow = useCallback(() => lock('manual'), [lock]);
+
+  // Pause / resume the AUTOMATIC lock (idle timer + walk-away). Manual lock still works.
+  // Pausing also clears any armed idle timer and aborts an in-progress countdown so it
+  // can't fire after you've said "leave me unlocked". Resuming re-arms the idle clock.
+  const togglePause = useCallback(() => {
+    setPaused((prev) => {
+      const next = !prev;
+      if (next) {
+        if (idleTimer.current) clearTimeout(idleTimer.current);
+        cancelCountdown();
+        awayCount.current = 0;
+      } else if (!lockedRef.current) {
+        // re-arm idle on resume (resetIdle reads pausedRef, which updates next render —
+        // safe because we only arm when not locked and the timeout is long)
+        if (idleTimer.current) clearTimeout(idleTimer.current);
+        idleTimer.current = setTimeout(() => lock('idle'), idleMs);
+      }
+      return next;
+    });
+  }, [cancelCountdown, idleMs, lock]);
 
   // OS-unlock auto-clear (Windows desktop only). When Windows itself is unlocked via
   // Hello, the Electron shell emits 'os-unlocked' — lift SARA's overlay too, since the
@@ -157,7 +181,7 @@ export function usePresenceLock({
           if (!cancelled) {
             if (data.away === true) {
               awayCount.current += 1;
-              if (awayCount.current >= awayStreak) {
+              if (awayCount.current >= awayStreak && !pausedRef.current) {
                 // Grace countdown only where the lock is disruptive (Windows: real OS lock
                 // + Hello). On the Pi kiosk the lock is just a cheap in-app overlay, so lock
                 // instantly — keeping the Pi's behaviour unchanged.
@@ -190,5 +214,5 @@ export function usePresenceLock({
     if (countdownTimer.current) clearInterval(countdownTimer.current);
   }, []);
 
-  return { locked, reason, pending, lockNow, unlock, dismissCountdown: cancelCountdown };
+  return { locked, reason, pending, paused, lockNow, unlock, togglePause, dismissCountdown: cancelCountdown };
 }

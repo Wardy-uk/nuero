@@ -110,3 +110,16 @@
 .lockbtn:active {
   transform: scale(0.94);
 }
+
+/* Auto-lock paused — amber so it's obvious at a glance that the privacy lock is off. */
+.lockbtn--paused {
+  color: #b9772a;
+  border-color: #e8a13a;
+  background: rgba(232, 161, 58, 0.16);
+  box-shadow: 0 8px 28px rgba(232, 161, 58, 0.22);
+}
+.lockbtn--paused:hover {
+  color: #a8661f;
+  border-color: #e8a13a;
+  box-shadow: 0 10px 30px rgba(232, 161, 58, 0.3);
+}

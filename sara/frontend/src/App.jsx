@@ -21,7 +21,7 @@ function AppShell() {
   // here would only add latency — awayStreak:1 keeps end-to-end lock ~5-6s.
   // Watch-presence is the primary lock trigger; idle is a long safety-net (15 min) so a
   // glance-display doesn't keep locking itself while you're nearby.
-  const { locked, reason, pending, lockNow, unlock, dismissCountdown } = usePresenceLock({
+  const { locked, reason, pending, paused, lockNow, unlock, togglePause, dismissCountdown } = usePresenceLock({
     pollMs: 2000,
     awayStreak: 1,
     idleMs: 15 * 60 * 1000,
@@ -35,6 +35,16 @@ function AppShell() {
 
   const sysControls = (
     <div className="app__sys">
+      <button
+        type="button"
+        className={`lockbtn${paused ? ' lockbtn--paused' : ''}`}
+        aria-label={paused ? 'Resume auto-lock' : 'Pause auto-lock'}
+        title={paused ? 'Auto-lock paused — tap to resume' : 'Pause auto-lock'}
+        aria-pressed={paused}
+        onClick={togglePause}
+      >
+        <span aria-hidden="true">{paused ? '▶' : '⏸'}</span>
+      </button>
       <button type="button" className="lockbtn" aria-label="Lock SARA" title="Lock SARA" onClick={lockNow}>
         <span aria-hidden="true">🔒</span>
       </button>
