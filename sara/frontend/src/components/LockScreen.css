@@ -82,19 +82,14 @@
   color: var(--accent-ink);
 }
 
-/* Manual lock trigger — top-right, sits just left of the Exit button (which is at
-   right: 12px, width 46px). Same frosted round language as Exit. */
+/* Manual lock trigger — lives at the foot of the left nav, next to the power button.
+   Pill shape; sizing/position handled by .app__sys in App.css. */
 .lockbtn {
-  position: fixed;
-  top: 12px;
-  right: 70px;
-  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
+  height: 40px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.72);
   box-shadow: 0 8px 28px rgba(39, 44, 51, 0.08), 0 1px 2px rgba(39, 44, 51, 0.04);

@@ -17,7 +17,7 @@ function trimSlash(value) {
 
 function getConfig(env = process.env) {
   return {
-    baseUrl: trimSlash(env.NEURO_BASE_URL || ''),
+    baseUrl: trimSlash(env.NEURO_BASE_URL || 'https://nuero.nickward.co.uk'),
     pin: neuroConfig.getPin(env),
     chatPath: env.NEURO_CHAT_PATH || DEFAULT_CHAT_PATH,
     nudgesPath: env.NEURO_NUDGES_PATH || DEFAULT_NUDGE_PATH,

@@ -79,10 +79,14 @@ fi
 # every launch — un-dismissable on a touchscreen with no keyboard. `basic` keeps the
 # cookie store in a plain local file instead, so there is no keyring prompt. SARA holds
 # no secrets in the browser, so there is nothing to protect here.
+# --disk-cache-size=1 / --disable-application-cache: the SARA frontend is redeployed
+# often; without this the kiosk serves a stale cached bundle after an update ("I can't
+# see my change"). Disabling the HTTP cache makes every launch load the current build.
+KIOSK_FLAGS="--kiosk --noerrdialogs --disable-infobars --password-store=basic --disk-cache-size=1 --disable-application-cache --aggressive-cache-discard"
 if command -v chromium-browser >/dev/null 2>&1; then
-  chromium-browser --kiosk --noerrdialogs --disable-infobars --password-store=basic "$SARA_URL"
+  chromium-browser $KIOSK_FLAGS "$SARA_URL"
 elif command -v chromium >/dev/null 2>&1; then
-  chromium --kiosk --noerrdialogs --disable-infobars --password-store=basic "$SARA_URL"
+  chromium $KIOSK_FLAGS "$SARA_URL"
 elif command -v firefox >/dev/null 2>&1; then
   firefox --kiosk "$SARA_URL"
 else

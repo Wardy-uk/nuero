@@ -11,7 +11,7 @@
 // the snapshot synchronously for the State Engine to fold in.
 
 const NEURO_SOURCE = 'neuro';
-const DEFAULT_BASE_URL = 'http://127.0.0.1:3001';
+const DEFAULT_BASE_URL = 'https://nuero.nickward.co.uk';
 const neuroConfig = require('./neuroConfig');
 
 const ENDPOINTS = {

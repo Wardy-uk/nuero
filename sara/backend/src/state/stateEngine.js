@@ -19,6 +19,7 @@ const seed = require('./seed');
 const ha = require('../telemetry/homeAssistant');
 const stations = require('./stations');
 const neuro = require('../integrations/neuroSnapshot');
+const nova = require('../integrations/novaSnapshot');
 const { deriveInference } = require('./inference');
 
 const RUNTIME_LABEL = 'WS5-WP2';
@@ -437,11 +438,22 @@ function buildBriefing(domains) {
   return { line, derivedFrom: ['queue', 'people', 'focus'] };
 }
 
+// Work zones — HA zone names (the iPhone person/device_tracker reports its zone as the
+// state) that mean "Nick is at work". Configurable; matched case-insensitively as a
+// substring so "Office", "Wilmslow Office", "Nurtur Work" all resolve to 'work'.
+const WORK_ZONES = (process.env.SARA_WORK_ZONES || 'work,office')
+  .split(',')
+  .map((z) => z.trim().toLowerCase())
+  .filter(Boolean);
+
 // Map a context label off the HA location zone, so a screen reading location stays
 // the same shape it always was. Display/representation only — no decision is taken.
+// 'work' (from the iPhone's HA work zone) is what drives Mission Control's Eyes-On mode.
 function locationContext(zone) {
   if (zone === 'home') return 'home';
   if (zone === 'not_home') return 'away';
+  const z = String(zone || '').toLowerCase();
+  if (WORK_ZONES.some((w) => z.includes(w))) return 'work';
   return 'elsewhere';
 }
 
@@ -526,6 +538,109 @@ function buildTelemetry(telemetry) {
   };
 }
 
+function humaniseNovaAction(t) {
+  if (t === 'draft_response') return 'AI drafted a reply — approve or edit.';
+  if (t === 'escalate') return 'AI wants to escalate — confirm.';
+  if (t === 'gather_context') return 'AI needs more context before acting.';
+  return 'Needs your review.';
+}
+
+/**
+ * Shape the cached NOVA snapshot into model.nova with a "needs Nick's eyes on" slant.
+ * This is an INTEGRATION block (like model.neuro / model.telemetry), not a contract
+ * DOMAIN — so it never affects validation or confidence. The slant is an exception/
+ * decision queue: pending AI approvals (escalations + low-confidence first), overdue
+ * customers, and queue-health warnings. Healthy/green signals are suppressed to an
+ * "all clear" flag rather than surfaced as items. Absent NOVA -> honest available:false.
+ */
+function buildNova(snapshot) {
+  if (!snapshot || !snapshot.available) {
+    return {
+      source: nova.NOVA_SOURCE,
+      available: false,
+      reason: snapshot ? snapshot.reason : 'not-configured',
+      detail: snapshot ? snapshot.detail : null,
+      polledAt: snapshot ? snapshot.polledAt : null,
+      eyesOn: { headline: 'NOVA not connected.', items: [], stats: null, allClear: false },
+    };
+  }
+
+  const ap = snapshot.data?.approvals?.data || {};
+  const apItems = ap.items || []; // /api/approvals returns { data: { items: [...] } }
+  const breached = snapshot.data?.breached?.data || []; // public SLA breach board (per agent)
+  const items = [];
+
+  // Pending AI approvals — each a decision waiting on Nick. Escalations and low-confidence
+  // drafts most need a human, so they carry higher priority and sort to the top.
+  for (const a of apItems) {
+    const escalate = a.action_type === 'escalate';
+    const lowConf = typeof a.confidence === 'number' && a.confidence < 0.7;
+    items.push({
+      id: `approval-${a.decision_id || a.ticket_id}`,
+      kind: 'approval',
+      priority: escalate ? 3 : lowConf ? 2 : 1,
+      title: a.ticket_summary || a.ticket_id || 'Pending approval',
+      detail: humaniseNovaAction(a.action_type),
+      ticketId: a.ticket_id || null,
+      assignee: a.assignee_name || null,
+      confidence: typeof a.confidence === 'number' ? a.confidence : null,
+      ageMins: a.created_at ? Math.round((Date.now() - Date.parse(a.created_at)) / 60000) : null,
+    });
+  }
+
+  // Overdue — tickets past the 2h response window, summed across NOVA's SLA breach board.
+  const overdue = breached.reduce((s, r) => s + (Number(r.OpenTickets_Over2Hours) || 0), 0);
+  const worstOldestDays = breached.reduce((m, r) => Math.max(m, Number(r.OldestTicketDays) || 0), 0);
+  if (overdue > 0) {
+    items.push({
+      id: 'overdue-tickets',
+      kind: 'overdue',
+      priority: overdue >= 20 ? 3 : 2,
+      title: `${overdue} ticket${overdue === 1 ? '' : 's'} past 2h response`,
+      detail: 'Open beyond the SLA response window.',
+    });
+  }
+  // A standout long-running ticket is worth its own line.
+  if (worstOldestDays >= 14) {
+    items.push({
+      id: 'worst-oldest',
+      kind: 'overdue',
+      priority: worstOldestDays >= 60 ? 3 : 1,
+      title: `Oldest open ticket: ${worstOldestDays} days`,
+      detail: 'A long-running ticket that may need a push.',
+    });
+  }
+
+  // Queue health: pending approvals, and how many are past their decision deadline.
+  const pending = apItems.length;
+  const timedOut = apItems.filter((a) => a.expires_at && Date.parse(a.expires_at) < Date.now()).length;
+
+  items.sort((x, y) => y.priority - x.priority);
+
+  const allClear = items.length === 0;
+  const headlineParts = [];
+  if (pending) headlineParts.push(`${pending} approval${pending === 1 ? '' : 's'} waiting`);
+  if (overdue) headlineParts.push(`${overdue} overdue`);
+
+  return {
+    source: nova.NOVA_SOURCE,
+    available: true,
+    reason: snapshot.reason || null,
+    polledAt: snapshot.polledAt,
+    eyesOn: {
+      headline: allClear ? 'Nothing needs your eyes right now.' : headlineParts.join(' · '),
+      items,
+      stats: {
+        approvalsPending: pending,
+        approvalsTimedOut: timedOut,
+        customersOverdue: overdue,
+        worstOldestDays,
+      },
+      allClear,
+    },
+  };
+}
+
 /**
  * Assemble the single shared runtime model from the domain providers, derive the
  * briefing, fold in Home Assistant telemetry, and self-validate against the contract.
@@ -570,6 +685,7 @@ function buildModel() {
       polledAt: neuroSnapshot.polledAt,
       errors: neuroSnapshot.errors,
     },
+    nova: buildNova(nova.getSnapshot()),
     confidence: deriveConfidence(domains, dataSource),
     briefing: buildBriefing(domains),
     domains,

@@ -25,6 +25,7 @@ const locationRoute = require('./src/routes/location');
 const { RUNTIME_LABEL } = require('./src/state/stateEngine');
 const ha = require('./src/telemetry/homeAssistant');
 const neuro = require('./src/integrations/neuroSnapshot');
+const nova = require('./src/integrations/novaSnapshot');
 
 const app = express();
 const PORT = process.env.SARA_PORT || 3005;
@@ -74,4 +75,8 @@ app.listen(PORT, () => {
   // data into the shared model when the upstream is reachable, and falls back
   // honestly when it is not.
   neuro.start();
+  // Start the bounded NOVA snapshot poller. Feeds approvals/overdue/exception signals
+  // into model.nova for the "At Work" view. Idle (and logs why) until NOVA_BASE_URL is
+  // set, so the runtime stays up and the view falls back honestly.
+  nova.start();
 });

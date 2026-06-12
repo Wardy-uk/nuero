@@ -21,6 +21,7 @@ export const SARA_VIEWS = {
   SARA: 'companion',
   STANDUP: 'standup',
   QUEUE: 'executive-dashboard',
+  ATWORK: 'at-work',
   TEAM: 'team',
   FOCUS: 'focus',
   TODOS: 'todos',
@@ -64,6 +65,12 @@ export const VIEW_REGISTRY = [
     id: SARA_VIEWS.QUEUE,
     label: 'Queue',
     blurb: "SARA's Jira triage: act now, today, watch.",
+    status: 'available',
+  },
+  {
+    id: SARA_VIEWS.ATWORK,
+    label: 'At Work',
+    blurb: "NOVA signals that need your eyes — approvals, overdue customers, exceptions.",
     status: 'available',
   },
   {

@@ -2,6 +2,7 @@ import { useSaraState } from '../state/saraState';
 import { SARA_VIEWS } from '../state/views';
 import MissionControl from '../screens/mission-control/MissionControl';
 import ExecutiveDashboard from '../screens/executive-dashboard/ExecutiveDashboard';
+import AtWorkView from '../screens/at-work/AtWorkView';
 import StandupView from '../screens/standup/StandupView';
 import TeamView from '../screens/team/TeamView';
 import FocusView from '../screens/focus/FocusView';
@@ -29,6 +30,8 @@ export default function ViewRouter() {
       return <StandupView />;
     case SARA_VIEWS.QUEUE:
       return <ExecutiveDashboard />;
+    case SARA_VIEWS.ATWORK:
+      return <AtWorkView />;
     case SARA_VIEWS.TEAM:
       return <TeamView />;
     case SARA_VIEWS.FOCUS:

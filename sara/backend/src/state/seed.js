@@ -101,10 +101,10 @@ function people() {
 function location() {
   return {
     source: 'seed',
-    label: 'Office — Wilmslow',
+    label: 'Office — Little Eaton',
     context: 'on-site',
     since: '2026-05-31T08:40:00+01:00',
-    summary: 'On-site at the Wilmslow office since 08:40.',
+    summary: 'On-site at the Little Eaton office since 08:40.',
   };
 }
 

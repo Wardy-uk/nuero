@@ -1,267 +1,313 @@
+import { useState } from 'react';
 import { useSaraState } from '../../state/saraState';
 import { SARA_VIEWS } from '../../state/views';
 import './MissionControl.css';
 
-// Mission Control v1 — premium "appliance" home screen (WS2-WP2 visual uplift).
+// Mission Control — "JARVIS fusion" ambient HUD (WS2-WP4 redesign).
 //
-// Same shared-state discipline as v0 (charter principle 7): this screen reads
-// everything from useSaraState() and owns NO data of its own. It only formats,
-// orders and styles — it never becomes a source of truth. The v1 change is purely
-// presentational: it brings the screen up to the Reference A "Mission Control"
-// concept — spacious light layout, strong hierarchy, premium frosted cards over a
-// calm gradient, and Stream-Deck-style quick launch tiles. All data bindings are
-// unchanged from v0; new fields (location detail, up-next relative time, weather)
-// are rendered ONLY when shared state supplies them, so nothing is invented here.
+// A presence-first home screen: a pulsing central orb inside rotating reticle rings,
+// framed by four glass readout cards, a header greeting + live clock, and a footer
+// action row. Pure representation of shared state (charter principle 7).
+//
+// EYES-ON MODE (NOVA): the same orb/rings shell, but the four cards repopulate with the
+// "needs Nick's eyes on" signal from model.nova — approvals waiting, overdue customers,
+// exceptions. It auto-activates when SARA places you at work (location context/label),
+// and can be toggled manually via the rail's eye button. Only the cards + core label
+// change; the orb, rings, header and footer are untouched.
 
 function formatTime(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
-
-function formatDate(date) {
-  return date.toLocaleDateString([], {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
-}
-
-// Greeting is derived from the shared clock — presentation only, not invented data.
 function greeting(date) {
   const h = date.getHours();
   if (h < 12) return 'Good morning';
   if (h < 18) return 'Good afternoon';
   return 'Good evening';
 }
-
-// What-Matters tone → glyph. Keeps v0's tone vocabulary (urgent / attention /
-// watch) but renders it as a glanceable status mark like the reference concept.
-const TONE_GLYPH = {
-  urgent: '▲',
-  attention: '◆',
-  watch: '●',
-};
-
-const RAIL_ITEMS = [
-  { id: SARA_VIEWS.BRIEFING, label: 'Home', icon: '⌂' },
-  { id: SARA_VIEWS.QUEUE, label: 'Queue', icon: '▤' },
-  { id: SARA_VIEWS.TODOS, label: 'Tasks', icon: '☑' },
-  { id: SARA_VIEWS.CAPTURE, label: 'Capture', icon: '✎' },
-  { id: SARA_VIEWS.SETTINGS, label: 'Settings', icon: '⚙' },
-];
-
 function formatState(activity) {
-  return String(activity || 'unknown').replace(/-/g, ' ').toUpperCase();
+  return String(activity || 'online').replace(/[-_]/g, ' ').toUpperCase();
+}
+function humanise(s) {
+  return typeof s === 'string'
+    ? s.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : null;
 }
 
-export default function MissionControl() {
-  const { status, error, model, now, presentation, currentView, setCurrentView, runQuickAction, actionFeedback } = useSaraState();
+// whatMattersNow tone -> readout value colour class
+const TONE_CLASS = { urgent: 'a', attention: 'w', watch: 'g' };
 
-  // Calm connection states — still pure reflections of shared state, just not
-  // arrived (or unreachable) yet. No data is invented locally.
+// Left nav rail items (full-bleed JARVIS view owns its own nav).
+const NAV = [
+  { id: SARA_VIEWS.BRIEFING, icon: '⌂', label: 'Home' },
+  { id: SARA_VIEWS.QUEUE, icon: '▤', label: 'Queue' },
+  { id: SARA_VIEWS.TEAM, icon: '👥', label: 'Team' },
+  { id: SARA_VIEWS.FOCUS, icon: '◎', label: 'Focus' },
+  { id: SARA_VIEWS.TODOS, icon: '☑', label: 'Tasks' },
+  { id: SARA_VIEWS.VAULT, icon: '▦', label: 'Vault' },
+  { id: SARA_VIEWS.CAPTURE, icon: '✎', label: 'Capture' },
+  { id: SARA_VIEWS.SARA, icon: '◴', label: 'SARA' },
+  { id: SARA_VIEWS.STANDUP, icon: '◇', label: 'Standup' },
+  { id: SARA_VIEWS.SETTINGS, icon: '⚙', label: 'Settings' },
+];
+
+export default function MissionControl() {
+  const { status, error, model, now, presentation, currentView, setCurrentView, runQuickAction } =
+    useSaraState();
+  // Eyes-On override: null = follow location (auto), true/false = manual hold.
+  const [eyesOverride, setEyesOverride] = useState(null);
+
   if (status === 'connecting') {
     return (
-      <section className="mc mc--message">
-        <p className="mc__waking">Waking SARA…</p>
+      <section className="jv jv--msg" aria-label="Mission Control">
+        <p className="jv__msg-text">Waking SARA…</p>
       </section>
     );
   }
   if (status === 'disconnected' || !model) {
     return (
-      <section className="mc mc--message">
-        <p className="mc__offline">SARA backend unreachable on /api/state{error ? ` — ${error}` : ''}.</p>
+      <section className="jv jv--msg" aria-label="Mission Control">
+        <p className="jv__msg-text jv__msg-text--err">
+          SARA backend unreachable on /api/state{error ? ` — ${error}` : ''}.
+        </p>
       </section>
     );
   }
 
-  const goal = model.domains?.focus?.current;
-  const confidenceLevel = model.confidence?.level;
-  const confidenceScore = model.confidence?.score;
-  const confidencePct =
-    typeof confidenceScore === 'number'
-      ? Math.max(0, Math.min(100, confidenceScore > 1 ? confidenceScore : confidenceScore * 100))
-      : null;
   const name = model.user?.name || 'Nick';
-  const inferredState = model.inference?.activity || model.sara?.status || 'unknown';
-  const inferredSummary = model.inference?.summary || goal?.title || 'Shared state is live.';
-  // Location sub-line: prefer an explicit detail, else humanise a string slug
-  // ("home-office" -> "Home Office"), else a calm fallback. NB location.zone is an
-  // OBJECT in the two-tier model (zone + station), so read its label/context, never the
-  // object itself — guard with typeof so a non-string can never crash render.
-  const humanise = (s) =>
-    typeof s === 'string' ? s.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null;
-  const zoneLabel = model.location?.zone?.label || model.location?.zone; // obj or legacy string
-  const locationSub =
-    model.location?.detail ||
-    humanise(zoneLabel) ||
-    humanise(model.location?.context) ||
-    'Tracked';
+  const activity = model.inference?.activity || model.sara?.status || 'online';
+  const conf = model.confidence || {};
+  const confPct =
+    typeof conf.score === 'number'
+      ? Math.round(conf.score > 1 ? conf.score : conf.score * 100)
+      : null;
 
-  const mc = presentation;
-  const matters = mc.whatMattersNow || [];
-  const upNext = mc.upNext || [];
-  const actions = mc.quickActions || [];
-  const weather = mc.weather; // optional placeholder; only renders when present
+  const matters = (presentation?.whatMattersNow || []).slice(0, 3);
+  const upNext = (presentation?.upNext || [])[0];
+  const queue = model.domains?.queue || {};
+  const people = model.domains?.people || {};
+  const env = model.telemetry?.signals?.environment;
+
+  // SITREP card values
+  const locLabel = model.location?.label || humanise(model.location?.zone?.label) || '—';
+  const upNextStr = upNext ? `${upNext.time !== 'Next' ? upNext.time + ' ' : ''}${upNext.label}` : '—';
+
+  // QUEUE card: team needing attention (slipping/watch) out of total
+  const needAttention = (people.members || []).filter((m) => m.status !== 'solid').length;
+
+  const actions = (presentation?.quickActions || []).slice(0, 4);
+
+  // --- Eyes-On mode -------------------------------------------------------------
+  // Auto-on when SARA places you at work (location context 'work', or an office/work
+  // label as a GPS-for-now heuristic). A manual toggle holds it on/off until cleared.
+  const atWork =
+    model.location?.context === 'work' || /office|work/i.test(model.location?.label || '');
+  const eyesOn = eyesOverride !== null ? eyesOverride : atWork;
+  const nova = model.nova;
+  const novaEyes = nova?.eyesOn;
+  const novaOk = !!nova?.available;
+  const eyesItems = (novaEyes?.items || []).slice(0, 3);
+  const nstats = novaEyes?.stats || {};
+
+  const tlHead = eyesOn ? 'Needs your eyes' : 'Priorities';
+  const blHead = eyesOn ? 'Workload' : 'Queue';
+  const brHead = eyesOn ? 'Status' : 'Conditions';
 
   return (
-    <section className="mc" aria-label="Briefing">
-      <div className="mc__scene" />
-      <div className="mc__shell">
-        <header className="mc__header">
-          <div className="mc__brand">
-            <span className="mc__orb" aria-hidden="true" data-state={model.sara?.status} />
-            <span className="mc__mark">SARA</span>
-            {model.dataSource !== 'neuro' && <span className="mc__seed">{model.dataSource}</span>}
+    <section className="jv" aria-label="Mission Control" data-mode={eyesOn ? 'eyes-on' : 'standard'}>
+      {/* left nav rail (full-bleed view owns its own nav) */}
+      <nav className="jv__nav" aria-label="SARA views">
+        <div className="jv__nav-orb" aria-hidden="true" />
+        {NAV.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`jv__nav-btn${currentView === item.id ? ' jv__nav-btn--on' : ''}`}
+            onClick={() => setCurrentView(item.id)}
+            title={item.label}
+            aria-label={item.label}
+          >
+            {item.icon}
+          </button>
+        ))}
+        {/* Eyes-On toggle — holds the work dashboard on/off regardless of location. */}
+        <button
+          type="button"
+          className={`jv__nav-btn jv__nav-eye${eyesOn ? ' jv__nav-btn--on' : ''}`}
+          onClick={() => setEyesOverride(!eyesOn)}
+          title={`Eyes On${eyesOverride === null ? ' (auto)' : ''}`}
+          aria-label="Eyes On"
+          aria-pressed={eyesOn}
+        >
+          ◉
+        </button>
+      </nav>
+
+      {/* rotating reticle rings */}
+      <div className="jv__reticle" aria-hidden="true">
+        <div className="jv__ring jv__ring--1" />
+        <div className="jv__ring jv__ring--2" />
+        <div className="jv__ring jv__ring--3" />
+      </div>
+
+      {/* central pulsing orb */}
+      <div className="jv__orbwrap" aria-hidden="true">
+        <div className="jv__pulse" />
+        <div className="jv__pulse jv__pulse--b" />
+        <div className="jv__orb" data-state={model.sara?.status}>
+          <div className="jv__glint" />
+        </div>
+      </div>
+      <div className="jv__coreinfo">
+        <div className="jv__core-state">{eyesOn ? '◉ EYES ON' : `◇ ${formatState(activity)}`}</div>
+        {confPct != null && (
+          <div className="jv__core-conf">
+            {confPct}% {conf.level || ''} confidence
           </div>
-          <div className="mc__greeting">
-            <p className="mc__hello">
-              {greeting(now)}, {name} <span className="mc__sun">☼</span>
-            </p>
-            <p className="mc__date">{formatDate(now)}</p>
-          </div>
-          <div className="mc__clock">
-            <span className="mc__time">{formatTime(now)}</span>
-          </div>
-        </header>
+        )}
+      </div>
 
-        <div className="mc__body">
-          <nav className="mc__rail" aria-label="Primary views">
-            {RAIL_ITEMS.map((item) => {
-              const active = currentView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`mc__rail-button${active ? ' mc__rail-button--active' : ''}`}
-                  aria-pressed={active}
-                  onClick={() => setCurrentView(item.id)}
-                  title={item.label}
-                >
-                  <span className="mc__rail-icon" aria-hidden="true">
-                    {item.icon}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="mc__content">
-            <div className="mc__stats">
-              <article className="mc__card mc__stat">
-                <p className="mc__stat-label">State</p>
-                <p className="mc__stat-value">{formatState(inferredState)}</p>
-                <p className="mc__stat-sub">{goal?.title || inferredSummary}</p>
-              </article>
-
-              <article className="mc__card mc__stat">
-                <p className="mc__stat-label">Location</p>
-                <p className="mc__stat-value">{model.location?.label || '—'}</p>
-                <p className="mc__stat-sub">{locationSub}</p>
-              </article>
-
-              <article className="mc__card mc__stat mc__stat--confidence">
-                <p className="mc__stat-label">Confidence</p>
-                <p className={`mc__stat-value mc__confidence--${confidenceLevel}`}>
-                  {confidencePct != null ? `${Math.round(confidencePct)}%` : '—'}
-                  {confidenceLevel && <span className="mc__confidence-word">{confidenceLevel}</span>}
-                </p>
-                {confidencePct != null && (
-                  <div className="mc__meter" role="presentation">
-                    <span
-                      className={`mc__meter-fill mc__meter-fill--${confidenceLevel}`}
-                      style={{ width: `${confidencePct}%` }}
-                    />
-                  </div>
-                )}
-              </article>
-            </div>
-
-            <div className="mc__columns">
-              <section className="mc__card mc__priorities" aria-label="Today's priorities">
-                <div className="mc__panel-head">
-                  <p className="mc__section-label">Today's priorities</p>
-                  {goal && <p className="mc__panel-note">{goal.title}</p>}
-                </div>
-                <ul className="mc__list">
-                  {matters.map((item, index) => (
-                    <li key={item.id} className={`mc__matter mc__matter--${item.tone}`}>
-                      <span
-                        className={`mc__matter-glyph mc__matter-glyph--${item.tone}`}
-                        aria-hidden="true"
-                      >
-                        {TONE_GLYPH[item.tone] || '●'}
-                      </span>
-                      <span className="mc__matter-body">
-                        <span className="mc__matter-title">{item.title}</span>
-                        {item.detail && <span className="mc__matter-detail">{item.detail}</span>}
-                      </span>
-                      <span className="mc__matter-when">
-                        {upNext[index]?.time || (index === 0 ? 'Today' : index === 1 ? 'Soon' : 'Watch')}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <button type="button" className="mc__view-all" onClick={() => setCurrentView(SARA_VIEWS.QUEUE)}>
-                  View all ({matters.length})
-                </button>
-              </section>
-
-              <aside className="mc__side">
-                <section className="mc__card mc__upnext" aria-label="Up next">
-                  <p className="mc__section-label">Up next</p>
-                  {upNext.length > 0 ? (
-                    <ul className="mc__list mc__list--next">
-                      {upNext.slice(0, 2).map((item, i) => (
-                        <li key={item.id} className={`mc__next${i === 0 ? ' mc__next--lead' : ''}`}>
-                          <span className="mc__next-time">{item.time}</span>
-                          <span className="mc__next-label">{item.label}</span>
-                          {item.relative && <span className="mc__next-rel">{item.relative}</span>}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mc__muted">Nothing scheduled.</p>
-                  )}
-                </section>
-
-                <section className="mc__card mc__weather" aria-label="Conditions">
-                  <span className="mc__weather-icon" aria-hidden="true">
-                    {(weather && weather.icon) || '⛅'}
-                  </span>
-                  <div className="mc__weather-copy">
-                    <span className="mc__weather-temp">
-                      {weather?.temp || (model.telemetry?.signals?.environment?.state ? `${model.telemetry.signals.environment.state}${model.telemetry.signals.environment.unit || ''}` : 'Live')}
-                    </span>
-                    <span className="mc__weather-desc">
-                      {weather?.description || model.telemetry?.signals?.environment?.label || 'Telemetry ready'}
-                    </span>
-                  </div>
-                </section>
-              </aside>
-            </div>
-
-            <section className="mc__launch mc__card" aria-label="Quick launch">
-              <p className="mc__section-label">Quick launch</p>
-              {actionFeedback && <p className="mc__action-feedback">{actionFeedback}</p>}
-              <div className="mc__tiles">
-                {actions.map((action) => (
-                  <button
-                    key={action.id}
-                    type="button"
-                    className="mc__tile"
-                    data-action={action.action}
-                    onClick={() => runQuickAction(action.action)}
-                  >
-                    <span className="mc__tile-icon" aria-hidden="true">
-                      {action.icon}
-                    </span>
-                    <span className="mc__tile-label">{action.label}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
+      {/* header */}
+      <header className="jv__hdr">
+        <div>
+          <div className="jv__eyebrow">S.A.R.A · {(model.sara?.status || 'online').toUpperCase()}</div>
+          <div className="jv__greet">
+            {greeting(now)}, {name}
           </div>
         </div>
+        <div className="jv__clock">{formatTime(now)}</div>
+      </header>
+
+      {/* TOP-LEFT — Priorities / Needs your eyes */}
+      <div className="jv__card jv__card--tl">
+        <div className="jv__card-h">{tlHead}</div>
+        {eyesOn ? (
+          !novaOk ? (
+            <div className="jv__li"><span className="jv__li-k">NOVA</span><span className="jv__li-v jv__li-v--w">not connected</span></div>
+          ) : novaEyes?.allClear ? (
+            <div className="jv__li"><span className="jv__li-k">All clear</span><span className="jv__li-v jv__li-v--g">✓</span></div>
+          ) : (
+            eyesItems.map((it) => (
+              <div className="jv__li" key={it.id}>
+                <span className="jv__li-k">{it.title}</span>
+                <span className={`jv__li-v jv__li-v--${toneForP(it.priority)}`}>{eyesValue(it)}</span>
+              </div>
+            ))
+          )
+        ) : matters.length ? (
+          matters.map((m) => (
+            <div className="jv__li" key={m.id}>
+              <span className="jv__li-k">{m.title}</span>
+              <span className={`jv__li-v jv__li-v--${TONE_CLASS[m.tone] || 'g'}`}>{shortDetail(m.detail)}</span>
+            </div>
+          ))
+        ) : (
+          <div className="jv__li"><span className="jv__li-k">Queue calm</span></div>
+        )}
+      </div>
+
+      {/* TOP-RIGHT — Sitrep */}
+      <div className="jv__card jv__card--tr">
+        <div className="jv__card-h">Sitrep</div>
+        <div className="jv__li"><span className="jv__li-k">Location</span><span className="jv__li-v">{locLabel}</span></div>
+        {eyesOn ? (
+          <>
+            <div className="jv__li"><span className="jv__li-k">Approvals</span><span className={`jv__li-v jv__li-v--${nstats.approvalsPending ? 'a' : 'g'}`}>{novaOk ? (nstats.approvalsPending ?? 0) : '—'}</span></div>
+            <div className="jv__li"><span className="jv__li-k">Overdue</span><span className={`jv__li-v jv__li-v--${nstats.customersOverdue ? 'a' : 'g'}`}>{novaOk ? (nstats.customersOverdue ?? 0) : '—'}</span></div>
+          </>
+        ) : (
+          <>
+            <div className="jv__li"><span className="jv__li-k">Up next</span><span className="jv__li-v">{upNextStr}</span></div>
+            <div className="jv__li"><span className="jv__li-k">Confidence</span><span className="jv__li-v jv__li-v--g">{confPct != null ? `${confPct}% ${conf.level || ''}` : '—'}</span></div>
+          </>
+        )}
+      </div>
+
+      {/* BOTTOM-LEFT — Queue / Workload */}
+      <div className="jv__card jv__card--bl">
+        <div className="jv__card-h">{blHead}</div>
+        {eyesOn ? (
+          <>
+            <div className="jv__li"><span className="jv__li-k">Approvals waiting</span><span className={`jv__li-v jv__li-v--${nstats.approvalsPending ? 'a' : 'g'}`}>{novaOk ? (nstats.approvalsPending ?? 0) : '—'}</span></div>
+            <div className="jv__li"><span className="jv__li-k">Customers overdue</span><span className={`jv__li-v jv__li-v--${nstats.customersOverdue ? 'a' : 'g'}`}>{novaOk ? (nstats.customersOverdue ?? 0) : '—'}</span></div>
+            <div className="jv__li"><span className="jv__li-k">Timed out</span><span className="jv__li-v">{novaOk ? (nstats.approvalsTimedOut ?? 0) : '—'}</span></div>
+          </>
+        ) : (
+          <>
+            <div className="jv__li"><span className="jv__li-k">Open</span><span className="jv__li-v">{queue.open ?? '—'}</span></div>
+            <div className="jv__li"><span className="jv__li-k">Breaching SLA</span><span className={`jv__li-v jv__li-v--${queue.breaching ? 'a' : 'g'}`}>{queue.breaching ?? 0}</span></div>
+            <div className="jv__li"><span className="jv__li-k">Team flags</span><span className={`jv__li-v jv__li-v--${needAttention ? 'w' : 'g'}`}>{needAttention ? `${needAttention} need attention` : 'all steady'}</span></div>
+          </>
+        )}
+      </div>
+
+      {/* BOTTOM-RIGHT — Conditions / Status */}
+      <div className="jv__card jv__card--br">
+        <div className="jv__card-h">{brHead}</div>
+        {eyesOn ? (
+          !novaOk ? (
+            <div className="jv__li"><span className="jv__li-k">NOVA</span><span className="jv__li-v jv__li-v--w">standby</span></div>
+          ) : (
+            <>
+              <div className="jv__li"><span className="jv__li-k">Exceptions</span><span className={`jv__li-v jv__li-v--${novaEyes?.allClear ? 'g' : 'a'}`}>{novaEyes?.allClear ? 'all clear' : `${(novaEyes?.items || []).length} to action`}</span></div>
+              <div className="jv__li"><span className="jv__li-k">Commitments</span><span className="jv__li-v jv__li-v--g">{nstats.commitmentsMet != null ? `${nstats.commitmentsMet}%` : '—'}</span></div>
+            </>
+          )
+        ) : env ? (
+          <>
+            <div className="jv__li"><span className="jv__li-k">{env.label?.split(':')[0] || 'Sensor'}</span><span className="jv__li-v">{env.state}{env.unit || ''}</span></div>
+            <div className="jv__li"><span className="jv__li-k">Telemetry</span><span className="jv__li-v jv__li-v--g">live</span></div>
+            <div className="jv__li"><span className="jv__li-k">Source</span><span className="jv__li-v">Home Assistant</span></div>
+          </>
+        ) : (
+          <div className="jv__li"><span className="jv__li-k">Telemetry</span><span className="jv__li-v">standby</span></div>
+        )}
+      </div>
+
+      {/* footer actions + SARA line */}
+      <div className="jv__foot">
+        {actions.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            className="jv__act"
+            onClick={() => runQuickAction?.(a.action)}
+          >
+            {a.icon} {a.label}
+          </button>
+        ))}
+        <span className="jv__say">
+          ▸ SARA: {eyesOn
+            ? (novaOk ? novaEyes?.headline : 'NOVA not connected — set NOVA_BASE_URL to surface approvals.')
+            : (model.inference?.summary || 'standing by.')}
+        </span>
       </div>
     </section>
   );
+}
+
+// keep readout values short so cards stay tidy (word-boundary truncation, no mid-word cuts)
+function shortDetail(detail) {
+  if (!detail) return '';
+  const s = String(detail);
+  const m = s.match(/(\d+m SLA|overdue by \d+d|\d+ unseen|×\d+|\d+d)/i);
+  if (m) return m[0];
+  const tail = s.split('·').pop().trim();
+  if (tail.length <= 16) return tail;
+  return `${tail.slice(0, 16).replace(/\s+\S*$/, '')}…`;
+}
+
+// eyes-on helpers
+function toneForP(p) {
+  return p >= 3 ? 'a' : p === 2 ? 'w' : 'g';
+}
+function fmtAgeShort(m) {
+  if (typeof m !== 'number') return '';
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h}h` : `${Math.round(h / 24)}d`;
+}
+function eyesValue(it) {
+  if (it.kind === 'approval') return it.ageMins != null ? fmtAgeShort(it.ageMins) : 'review';
+  if (it.kind === 'overdue') return 'overdue';
+  return 'today';
 }

@@ -3,30 +3,40 @@
    infers and what it would suggest — never loud, never a control that acts on its own.
    Uses the shared theme tokens from App.css. */
 
+/* Bottom strip: a single compact horizontal row pinned at the foot of the shell.
+   Fixed height, never grows, so the view above always fits the Pi window. */
 .advice {
+  flex: 0 0 auto;
   background: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.82);
   border-left: 3px solid var(--accent);
-  border-radius: 18px;
-  box-shadow: 0 12px 28px rgba(50, 64, 91, 0.08);
-  padding: 12px 14px;
+  border-radius: 14px;
+  box-shadow: 0 8px 22px rgba(50, 64, 91, 0.08);
+  padding: 8px 14px;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
 }
 
 .advice__top {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .advice__read {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
+}
+.advice__summary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .advice__eyebrow {

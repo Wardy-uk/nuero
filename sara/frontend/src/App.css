@@ -40,49 +40,130 @@ body {
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;
 }
 
+/* App shell fills the viewport exactly (no page scroll) and lays out as a column:
+   top view-switcher (fixed) → current view (fills) → SARA THINKS strip (fixed at
+   bottom). Tuned to fit fully within the Pi touchscreen window. */
 .app {
-  max-width: 1120px;
+  height: 100vh;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 16px 18px 28px;
-  min-height: 100vh;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
+  overflow: hidden;
 }
 
 .app--briefing {
   max-width: none;
+}
+
+/* Full-bleed view (JARVIS Briefing): no padding/max-width, view fills the viewport. */
+.app--bleed {
+  max-width: none;
   padding: 0;
   gap: 0;
+  position: relative;
+  border-radius: 0;
+  width: 100vw;
+  height: 100vh;
+}
+.app__bleed-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+/* lock/power live at the foot of the JARVIS left nav rail (60px). Styled to MATCH the
+   nav menu buttons (.jv__nav-btn). */
+.app__sys--floating {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  width: 60px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.app__sys--floating .lockbtn,
+.app__sys--floating .exit__trigger {
+  width: 38px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid rgba(40, 200, 170, 0.16);
+  background: transparent;
+  color: #5ba898;
+  font-size: 15px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.app__sys--floating .lockbtn:hover,
+.app__sys--floating .exit__trigger:hover {
+  border-color: #34d6b0;
+  color: #eafff8;
+  box-shadow: 0 0 10px rgba(52, 214, 176, 0.35) inset;
+}
+
+/* Middle band: left nav rail + current view, side by side, filling remaining height. */
+.app__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 10px;
 }
 
 .app__view {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* View switcher — app chrome for the many-views architecture */
-.switcher {
+/* Left nav card: the view list (scrolls) plus a lock/power row pinned at its foot. */
+.app__nav {
+  flex: 0 0 auto;
+  width: 88px;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
-  padding-bottom: 4px;
+  min-height: 0;
+}
+
+/* View switcher — LEFT navigation rail for the many-views architecture. Fills the
+   nav card and scrolls vertically if the views overflow. */
+.switcher {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.switcher::-webkit-scrollbar {
+  display: none;
 }
 .switcher__chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 42px;
-  padding: 8px 14px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 10px;
   border: 1px solid rgba(255, 255, 255, 0.82);
   border-radius: 999px;
   background: var(--surface);
   backdrop-filter: blur(16px);
   box-shadow: 0 8px 22px rgba(50, 64, 91, 0.08);
   color: var(--ink-dim);
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
@@ -95,6 +176,26 @@ body {
   color: var(--accent-ink);
   border-color: rgba(94, 193, 202, 0.52);
   background: rgba(94, 193, 202, 0.2);
+}
+
+/* Lock + power row at the foot of the nav, side by side, gapped off the menu list. */
+.app__sys {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+.app__sys .lockbtn,
+.app__sys .exit {
+  position: static;
+  top: auto;
+  right: auto;
+  flex: 1 1 0;
+}
+.app__sys .lockbtn,
+.app__sys .exit__trigger {
+  width: 100%;
+  height: 40px;
 }
 .switcher__soon {
   font-size: 10px;

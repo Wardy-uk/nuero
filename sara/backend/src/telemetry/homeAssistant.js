@@ -88,7 +88,10 @@ function mapLocation(ha) {
   let label;
   if (zone === 'home') label = 'Home';
   else if (zone === 'not_home') label = 'Away';
-  else label = ha.attributes?.friendly_name || zone;
+  // A custom-zone state IS the zone's friendly name (e.g. "Office"). Do NOT use the
+  // entity's friendly_name here — for a `person` that's the person's name ("Nick"),
+  // not the place. The zone/state is the correct location label.
+  else label = zone;
   return { entityId: ha.entity_id || null, state: zone, zone, label };
 }
 
