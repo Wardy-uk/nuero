@@ -45,6 +45,7 @@ const TASK_MODELS = {
   focus_enhancement: LIGHTWEIGHT_MODEL,
   drilldown_framing: LIGHTWEIGHT_MODEL,
   action_suggestion: LIGHTWEIGHT_MODEL,
+  knowledge_consolidation: 'qwen2.5:1.5b',
   chat_stream: 'qwen2.5:1.5b',
   chat_sync: 'qwen2.5:1.5b',
   standup_interactive: 'gemma3:4b',
@@ -281,6 +282,7 @@ async function _runOllama(taskType, payload, options) {
       model: payload.model,
       temperature: payload.temperature,
       maxTokens: payload.maxTokens,
+      contextWindow: payload.contextWindow,
       timeout: options.timeout,
     });
   }
@@ -288,6 +290,7 @@ async function _runOllama(taskType, payload, options) {
     model: payload.model,
     temperature: payload.temperature,
     maxTokens: payload.maxTokens,
+    contextWindow: payload.contextWindow,
     timeout: options.timeout,
   });
 }
@@ -297,12 +300,14 @@ async function _runOpenRouter(taskType, payload, options) {
     return openrouterProvider.chat(payload.systemPrompt || '', payload.messages, {
       temperature: payload.temperature,
       maxTokens: payload.maxTokens,
+      contextWindow: payload.contextWindow,
       timeout: options.timeout,
     });
   }
   return openrouterProvider.generate(payload.prompt || '', {
     temperature: payload.temperature,
     maxTokens: payload.maxTokens,
+    contextWindow: payload.contextWindow,
     timeout: options.timeout,
   });
 }
