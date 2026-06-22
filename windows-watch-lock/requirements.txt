@@ -1,0 +1,7 @@
+# Windows on ARM64: install with --prefer-binary so cryptography/pillow/winrt pull
+# their prebuilt arm64 wheels instead of trying to compile from source.
+#   pip install --prefer-binary -r requirements.txt
+bleak>=0.21
+cryptography>=44
+pystray>=0.19
+pillow>=10

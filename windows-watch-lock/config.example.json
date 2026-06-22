@@ -1,0 +1,9 @@
+{
+  "irk_hex": "REPLACE_WITH_YOUR_WATCH_IRK_HEX",
+  "selftest_rpa": "AA:BB:CC:DD:EE:FF",
+  "present_window_s": 15,
+  "away_timeout_s": 25,
+  "scan_mode": "active",
+  "auto_lock": true,
+  "wake_on_return": true
+}

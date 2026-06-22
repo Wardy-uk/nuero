@@ -1,0 +1,14 @@
+# Local virtualenv
+venv/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Runtime state & logs
+presence.json
+presence.json.tmp
+*.log
+
+# Real config holds the watch IRK (secret) — commit config.example.json instead
+config.json
