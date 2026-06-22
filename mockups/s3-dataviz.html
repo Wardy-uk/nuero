@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>S3 Premium Data Viz</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Inter','Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{display:flex;align-items:center;justify-content:center;background:#000;padding:20px}
+.s{width:1024px;height:600px;overflow:hidden;border-radius:18px;color:#e6e8ee;display:grid;grid-template-columns:58px 1fr;background:#0a0a0c}
+.nav{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 0;border-right:1px solid #1b1b20}
+.nav .d{width:26px;height:26px;border-radius:7px;margin-bottom:10px;background:linear-gradient(135deg,#6e8bff,#34d2c2)}
+.nav button{width:38px;height:36px;border:0;background:transparent;color:#6b6b75;font-size:15px;border-radius:8px;cursor:pointer}
+.nav button.on{background:#1b1b22;color:#e6e8ee}
+.nav .sys{margin-top:auto;display:flex;flex-direction:column;gap:6px}
+.nav .sys button{background:#141418}
+.body{padding:16px 18px;display:flex;flex-direction:column;gap:14px;min-height:0}
+.top{display:flex;justify-content:space-between;align-items:center}
+.top .hi{font-size:16px;font-weight:600}.top .hi small{color:#7a7a85;font-weight:400;margin-left:8px}
+.top .clk{font-size:15px;color:#7a7a85;font-variant-numeric:tabular-nums}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{background:#111114;border:1px solid #1f1f26;border-radius:12px;padding:12px 14px}
+.kpi .l{font-size:11px;color:#7a7a85}
+.kpi .v{font-size:28px;font-weight:700;margin-top:4px;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.kpi .v .ch{font-size:12px;font-weight:600;margin-left:6px}
+.up{color:#3ad29a}.dn{color:#ff6b6b}.wn{color:#f5b544}
+.spark{margin-top:8px;height:22px;width:100%}
+.grid{display:grid;grid-template-columns:1.5fr 1fr;gap:12px;flex:1;min-height:0}
+.card{background:#111114;border:1px solid #1f1f26;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;min-height:0}
+.h{font-size:12px;font-weight:600;color:#9a9aa5;margin-bottom:12px;display:flex;justify-content:space-between}
+.h .mut{color:#5e5e68;font-weight:400}
+.r{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px}
+.r+.r{border-top:1px solid #1b1b20}
+.b{font-size:9px;font-weight:700;padding:2px 7px;border-radius:5px}
+.b-now{background:rgba(245,181,68,.15);color:#f5b544}.b-p1{background:rgba(255,107,107,.15);color:#ff6b6b}.b-ok{background:rgba(58,210,154,.13);color:#3ad29a}
+.r .nm{font-weight:500}.r .mt{margin-left:auto;color:#6b6b75;font-size:12px;font-variant-numeric:tabular-nums}
+.barrow{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px}
+.barrow .nm{width:54px}.barrow .bar{flex:1;height:6px;border-radius:3px;background:#1f1f26;overflow:hidden}
+.barrow .bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#6e8bff,#34d2c2)}
+.barrow .pct{width:34px;text-align:right;color:#9a9aa5;font-variant-numeric:tabular-nums}
+.foot{display:flex;gap:8px;align-items:center}
+.foot .t{background:#15151a;border:1px solid #22222a;border-radius:9px;padding:8px 14px;font-size:12px;font-weight:500;color:#c4c4cd}
+.foot .think{margin-left:auto;font-size:12px;color:#7a7a85}.foot .think b{color:#6e8bff}
+</style></head>
+<body><div class="s">
+  <nav class="nav"><div class="d"></div>
+    <button class="on">⌂</button><button>▤</button><button>☑</button><button>👥</button><button>◎</button><button>⚙</button>
+    <div class="sys"><button>🔒</button><button>⏻</button></div></nav>
+  <div class="body">
+    <div class="top"><div class="hi">Good evening, Nick<small>Home · Firefighting</small></div><div class="clk">19:30 · Fri 5 Jun</div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Open queue</div><div class="v">42<span class="ch dn">▲6</span></div>
+        <svg class="spark" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="#ff6b6b" stroke-width="2" points="0,16 14,14 28,15 42,10 56,12 70,7 84,9 100,4"/></svg></div>
+      <div class="kpi"><div class="l">Breaching SLA</div><div class="v wn">2</div>
+        <svg class="spark" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="#f5b544" stroke-width="2" points="0,18 16,12 32,15 48,11 64,14 80,9 100,11"/></svg></div>
+      <div class="kpi"><div class="l">Team QA</div><div class="v up">88%</div>
+        <svg class="spark" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="#3ad29a" stroke-width="2" points="0,16 16,14 32,12 48,13 64,9 80,8 100,5"/></svg></div>
+      <div class="kpi"><div class="l">Confidence</div><div class="v">90%<span class="ch up">high</span></div>
+        <svg class="spark" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="#6e8bff" stroke-width="2" points="0,14 16,12 32,13 48,8 64,9 80,6 100,5"/></svg></div>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="h"><span>Today's priorities</span><span class="mut">3 active</span></div>
+        <div class="r"><span class="b b-now">NOW</span><span class="nm">SMS Issues breaching</span><span class="mt">0m SLA</span></div>
+        <div class="r"><span class="b b-p1">P1</span><span class="nm">Abdi 1:1 overdue</span><span class="mt">37d</span></div>
+        <div class="r"><span class="b b-now">WATCH</span><span class="nm">Unseen escalations</span><span class="mt">×2</span></div>
+        <div class="r"><span class="b b-ok">DONE</span><span class="nm">Bulk export fixed</span><span class="mt">✓</span></div>
+      </div>
+      <div class="card"><div class="h"><span>Team QA</span><span class="mut">avg 84%</span></div>
+        <div class="barrow"><span class="nm">Abdi</span><span class="bar"><i style="width:82%"></i></span><span class="pct">82</span></div>
+        <div class="barrow"><span class="nm">Adele</span><span class="bar"><i style="width:91%"></i></span><span class="pct">91</span></div>
+        <div class="barrow"><span class="nm">Nathan</span><span class="bar"><i style="width:74%;background:#f5b544"></i></span><span class="pct">74</span></div>
+        <div class="barrow"><span class="nm">Arman</span><span class="bar"><i style="width:88%"></i></span><span class="pct">88</span></div>
+      </div>
+    </div>
+    <div class="foot"><div class="t">✎ Capture</div><div class="t">▤ Queue</div><div class="t">◎ Focus</div><div class="t">☼ Brief</div>
+      <div class="think"><b>SARA</b> · firefighting — open Queue ›</div></div>
+  </div>
+</div></body></html>

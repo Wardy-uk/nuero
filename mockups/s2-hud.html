@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>S2 Sci-fi HUD</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Rajdhani','Segoe UI',system-ui,sans-serif}
+body{display:flex;align-items:center;justify-content:center;background:#000;padding:20px}
+.s{width:1024px;height:600px;overflow:hidden;border-radius:18px;position:relative;color:#bfe9ff;
+  background:radial-gradient(ellipse at 50% 50%,#031a26 0%,#01101a 60%,#000a12 100%);
+  font-family:'Consolas','Segoe UI',monospace}
+.grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,200,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(0,200,255,.05) 1px,transparent 1px);background-size:32px 32px}
+.scan{position:absolute;inset:0;background:linear-gradient(rgba(0,229,255,.03) 50%,transparent 50%);background-size:100% 4px;opacity:.5}
+.nav{position:absolute;left:0;top:0;bottom:0;width:62px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 0;border-right:1px solid rgba(0,200,255,.18);z-index:5}
+.nav .d{width:26px;height:26px;border:2px solid #2fd0ff;border-radius:50%;margin-bottom:10px;box-shadow:0 0 12px #2fd0ff}
+.nav button{width:40px;height:34px;border:1px solid rgba(0,200,255,.2);background:transparent;color:#5fa8c8;font-size:14px;cursor:pointer}
+.nav button.on{border-color:#2fd0ff;color:#caf3ff;box-shadow:0 0 10px rgba(47,208,255,.5) inset}
+.nav .sys{margin-top:auto;display:flex;flex-direction:column;gap:6px}
+/* central reticle */
+.core{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);width:300px;height:300px}
+.core .r{position:absolute;inset:0;border-radius:50%;border:1px solid rgba(47,208,255,.4)}
+.core .r2{inset:26px;border:1px dashed rgba(47,208,255,.3)}
+.core .r3{inset:70px;border:2px solid rgba(47,208,255,.7);box-shadow:0 0 24px rgba(47,208,255,.5),0 0 24px rgba(47,208,255,.4) inset}
+.core .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.core .pct{font-size:52px;font-weight:700;color:#eafaff;text-shadow:0 0 18px rgba(47,208,255,.7)}
+.core .lab{font-size:12px;letter-spacing:3px;color:#5fc8e8}
+.core .tick{position:absolute;width:2px;height:10px;background:#2fd0ff;left:50%;top:-1px;transform-origin:50% 151px;opacity:.6}
+.hdr{position:absolute;top:20px;left:80px;right:26px;display:flex;justify-content:space-between;align-items:flex-start;z-index:5}
+.hdr .t{font-size:13px;letter-spacing:2px;color:#5fc8e8}
+.hdr .big{font-size:22px;color:#eafaff;letter-spacing:1px}
+.hdr .clk{font-size:26px;color:#eafaff;text-shadow:0 0 14px rgba(47,208,255,.6)}
+/* side readouts */
+.panel{position:absolute;border:1px solid rgba(0,200,255,.25);background:rgba(0,40,60,.25);padding:10px 12px;z-index:5}
+.panel .h{font-size:10px;letter-spacing:2px;color:#5fc8e8;border-bottom:1px solid rgba(0,200,255,.2);padding-bottom:5px;margin-bottom:7px}
+.panel .li{font-size:13px;color:#bfe9ff;padding:3px 0;display:flex;justify-content:space-between;gap:14px}
+.panel .li .a{color:#ff6b6b}.panel .li .w{color:#ffc04a}
+.left{left:80px;top:120px;width:236px}
+.right{right:26px;top:120px;width:236px}
+.foot{position:absolute;left:80px;right:26px;bottom:18px;display:flex;align-items:center;gap:10px;z-index:5;border-top:1px solid rgba(0,200,255,.18);padding-top:10px}
+.foot .b{border:1px solid rgba(0,200,255,.3);padding:7px 14px;font-size:12px;letter-spacing:1px;color:#bfe9ff}
+.foot .think{margin-left:auto;color:#5fc8e8;font-size:12px;letter-spacing:1px}
+</style></head>
+<body><div class="s">
+  <div class="grid"></div><div class="scan"></div>
+  <nav class="nav"><div class="d"></div>
+    <button class="on">⌂</button><button>▤</button><button>☑</button><button>👥</button><button>◎</button><button>⚙</button>
+    <div class="sys"><button>🔒</button><button>⏻</button></div></nav>
+  <div class="hdr"><div><div class="t">SARA · STATUS: FIREFIGHTING</div><div class="big">GOOD EVENING, NICK</div></div><div class="clk">19:30</div></div>
+  <div class="core">
+    <div class="r"></div><div class="r r2"></div><div class="r r3"></div>
+    <div class="tick" style="transform:translateX(-50%) rotate(40deg)"></div>
+    <div class="tick" style="transform:translateX(-50%) rotate(150deg)"></div>
+    <div class="tick" style="transform:translateX(-50%) rotate(260deg)"></div>
+    <div class="c"><div class="pct">90%</div><div class="lab">CONFIDENCE</div></div>
+  </div>
+  <div class="panel left"><div class="h">PRIORITIES</div>
+    <div class="li"><span>SMS Issues</span><span class="a">SLA 0m</span></div>
+    <div class="li"><span>Abdi 1:1</span><span class="w">+37d</span></div>
+    <div class="li"><span>Escalations</span><span class="w">×2</span></div></div>
+  <div class="panel right"><div class="h">SITREP</div>
+    <div class="li"><span>Location</span><span>HOME</span></div>
+    <div class="li"><span>Up next</span><span>10:30</span></div>
+    <div class="li"><span>Queue</span><span class="a">42 ▲</span></div></div>
+  <div class="foot"><div class="b">▤ QUEUE</div><div class="b">◎ FOCUS</div><div class="b">✎ CAPTURE</div><div class="b">☼ BRIEF</div>
+    <div class="think">SARA › OPEN QUEUE ›</div></div>
+</div></body></html>

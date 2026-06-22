@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>J4 Fusion — HUD rings + pulsing orb</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Consolas','Segoe UI',monospace}
+body{display:flex;align-items:center;justify-content:center;background:#000;padding:20px}
+.s{width:1024px;height:600px;overflow:hidden;border-radius:18px;position:relative;color:#e4f6ee;
+  background:
+    radial-gradient(circle at 50% 46%,rgba(46,240,200,.5),transparent 44%),
+    radial-gradient(circle at 86% 12%,rgba(255,140,50,.5),transparent 36%),
+    radial-gradient(circle at 8% 90%,rgba(150,90,255,.52),transparent 42%),
+    radial-gradient(circle at 94% 88%,rgba(255,55,140,.42),transparent 40%),
+    radial-gradient(circle at 4% 14%,rgba(60,160,255,.42),transparent 38%),
+    radial-gradient(circle at 60% 96%,rgba(120,255,140,.28),transparent 34%),
+    linear-gradient(150deg,#103f52 0%,#1a2456 50%,#241636 100%)}
+.s::after{content:"";position:absolute;inset:0;background:linear-gradient(rgba(40,214,176,.025) 50%,transparent 50%);background-size:100% 3px;pointer-events:none}
+.nav{position:absolute;left:0;top:0;bottom:0;width:60px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 0;border-right:1px solid rgba(40,200,170,.15);z-index:6}
+.nav .d{width:24px;height:24px;border:2px solid #34d6b0;border-radius:50%;margin-bottom:10px;box-shadow:0 0 12px #34d6b0;animation:navpulse 3s ease-in-out infinite}
+.nav button{width:38px;height:32px;border:1px solid rgba(40,200,170,.18);background:transparent;color:#5ba898;font-size:13px;cursor:pointer}
+.nav button.on{border-color:#34d6b0;color:#e9fff6;box-shadow:0 0 10px rgba(52,214,176,.4) inset}
+.nav .sys{margin-top:auto;display:flex;flex-direction:column;gap:6px}
+/* rotating reticle rings */
+.reticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:322px;height:322px}
+.reticle div{position:absolute;border-radius:50%;border:1px solid rgba(52,214,176,.30)}
+.reticle .o1{inset:0;border-top-color:#3df0c4;border-left-color:#8a6cff;border-width:2px;animation:spin 18s linear infinite;box-shadow:0 0 16px rgba(61,240,196,.4)}
+.reticle .o2{inset:38px;border-style:dashed;border-top-color:#ff6fa6;border-right-color:#8a6cff;border-color:rgba(138,108,255,.35);animation:spin 26s linear infinite reverse}
+.reticle .o3{inset:82px;border-right-color:#ffb24a;border-top-color:#ff6f70;border-width:2px;animation:spin 12s linear infinite;box-shadow:0 0 16px rgba(255,150,80,.4)}
+/* tick marks on outer ring */
+.reticle .o1::before,.reticle .o1::after{content:"";position:absolute;width:2px;height:12px;background:#34d6b0;left:50%;top:-2px;box-shadow:0 0 6px #34d6b0}
+.reticle .o1::after{top:auto;bottom:-2px}
+/* central pulsing orb — warm teal/aqua, not blue */
+.orbwrap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:240px;height:240px;display:flex;align-items:center;justify-content:center}
+.pulse{position:absolute;width:84px;height:84px;border-radius:50%;border:3px solid rgba(120,255,220,.9);animation:pulsering 4.4s ease-out infinite}
+.pulse.b{animation-delay:2.2s}
+.orb{width:84px;height:84px;border-radius:50%;position:relative;z-index:2;
+  background:
+    radial-gradient(circle at 74% 80%,rgba(255,90,160,.6),transparent 50%),
+    radial-gradient(circle at 76% 26%,rgba(150,110,255,.65),transparent 50%),
+    radial-gradient(circle at 24% 76%,rgba(90,200,255,.6),transparent 50%),
+    radial-gradient(circle at 26% 22%,rgba(120,255,210,.85),transparent 50%),
+    radial-gradient(circle at 46% 42%,#ffffff 0%,#e6fff6 12%,#43ecca 36%,#16b6a4 58%,#0c7a86 80%,rgba(12,40,56,.4) 92%);
+  box-shadow:0 0 100px 22px rgba(70,235,205,.6),0 0 46px rgba(190,255,245,.7),0 0 90px 10px rgba(150,110,255,.35),0 0 110px 14px rgba(255,90,160,.22),inset -10px -12px 38px rgba(6,28,34,.6),inset 10px 12px 38px rgba(255,255,255,.5);
+  animation:breathe 4.4s ease-in-out infinite}
+.orb .glint{position:absolute;width:26px;height:15px;border-radius:50%;top:18px;left:24px;background:rgba(255,255,255,.7);filter:blur(6px);transform:rotate(-22deg)}
+.coreinfo{position:absolute;left:50%;top:calc(50% + 120px);transform:translateX(-50%);text-align:center;z-index:5;white-space:nowrap}
+.coreinfo .st{font-size:16px;letter-spacing:3px;color:#ffd479}
+.coreinfo .cf{font-size:12px;letter-spacing:2px;color:#56c8b0;margin-top:5px}
+/* header */
+.hdr{position:absolute;top:18px;left:80px;right:24px;display:flex;justify-content:space-between;align-items:flex-start;z-index:6}
+.hdr .t{font-size:13px;letter-spacing:3px;color:#56c8b0}
+.hdr .big{font-size:26px;letter-spacing:2px;color:#eafff8;font-family:'Segoe UI',sans-serif;font-weight:300}
+.hdr .clk{font-size:40px;font-weight:200;color:#eafff8;text-shadow:0 0 16px rgba(52,214,176,.5);font-family:'Segoe UI',sans-serif}
+/* corner readouts fly in */
+.read{position:absolute;width:262px;min-height:118px;
+  border:1px solid rgba(150,240,220,.22);border-radius:22px;
+  background:linear-gradient(160deg,rgba(20,46,50,.5),rgba(10,26,32,.42));
+  padding:15px 18px;z-index:6;backdrop-filter:blur(10px) saturate(1.2);
+  box-shadow:0 10px 30px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.14);
+  animation:flyin .8s ease-out both}
+.read .h{font-size:10px;letter-spacing:2.5px;color:#7fe0c8;margin-bottom:11px;opacity:.9}
+.read .li{font-size:15px;padding:6px 0;display:flex;justify-content:space-between;gap:18px;color:#e0f3ec;font-family:'Segoe UI',sans-serif}
+.read .li+.li{border-top:1px solid rgba(255,255,255,.06)}
+.read .a{color:#ff8a8a}.read .w{color:#ffc878}.read .g{color:#6fe7bc}
+.tl{left:80px;top:104px;animation-delay:.2s}
+.bl{left:80px;bottom:74px;animation-delay:.5s}
+.tr{right:24px;top:104px;animation-delay:.35s}
+.br{right:24px;bottom:74px;animation-delay:.65s}
+.foot{position:absolute;left:80px;right:24px;bottom:18px;display:flex;align-items:center;gap:8px;z-index:6}
+.foot .b{border:1px solid rgba(40,200,170,.28);padding:9px 16px;font-size:13px;letter-spacing:1px;color:#cfeede}
+.foot .think{margin-left:auto;color:#56c8b0;font-size:13px;letter-spacing:1px;animation:blink 2.4s step-end infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes navpulse{0%,100%{box-shadow:0 0 12px #34d6b0}50%{box-shadow:0 0 22px #34d6b0,0 0 6px #fff}}
+@keyframes breathe{0%,100%{transform:scale(.86)}50%{transform:scale(1.28)}}
+@keyframes pulsering{0%{transform:scale(.8);opacity:1}100%{transform:scale(3);opacity:0}}
+/* slowed below via per-element durations */
+@keyframes flyin{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes blink{0%,92%{opacity:1}94%,100%{opacity:.4}}
+</style></head>
+<body><div class="s">
+  <nav class="nav"><div class="d"></div>
+    <button class="on">⌂</button><button>▤</button><button>☑</button><button>👥</button><button>◎</button><button>⚙</button>
+    <div class="sys"><button>🔒</button><button>⏻</button></div></nav>
+  <div class="reticle"><div class="o1"></div><div class="o2"></div><div class="o3"></div></div>
+  <div class="orbwrap">
+    <div class="pulse"></div><div class="pulse b"></div>
+    <div class="orb"><div class="glint"></div></div>
+  </div>
+  <div class="coreinfo"><div class="st">◇ FIREFIGHTING</div><div class="cf">90% CONFIDENCE</div></div>
+  <div class="hdr"><div><div class="t">S.A.R.A · ONLINE</div><div class="big">GOOD EVENING, NICK</div></div><div class="clk">19:30</div></div>
+  <div class="read tl"><div class="h">PRIORITIES</div>
+    <div class="li"><span>SMS Issues</span><span class="a">SLA 0m</span></div>
+    <div class="li"><span>Abdi 1:1</span><span class="w">+37d</span></div>
+    <div class="li"><span>Escalations</span><span class="w">×2</span></div></div>
+  <div class="read tr"><div class="h">SITREP</div>
+    <div class="li"><span>Location</span><span>Home · Living room</span></div>
+    <div class="li"><span>Up next</span><span>10:30 standup</span></div>
+    <div class="li"><span>Confidence</span><span class="g">90% high</span></div></div>
+  <div class="read bl"><div class="h">QUEUE</div>
+    <div class="li"><span>Open</span><span class="a">42 ▲6</span></div>
+    <div class="li"><span>Team QA</span><span class="g">88%</span></div></div>
+  <div class="read br"><div class="h">CONDITIONS</div>
+    <div class="li"><span>Temp</span><span>17°C</span></div>
+    <div class="li"><span>Sky</span><span>Partly cloudy</span></div>
+    <div class="li"><span>Office</span><span>21°C</span></div></div>
+  <div class="foot"><div class="b">▤ QUEUE</div><div class="b">◎ FOCUS</div><div class="b">✎ CAPTURE</div><div class="b">☼ BRIEF</div>
+    <div class="think">▸ SARA: firefighting — shall I open the Queue?</div></div>
+</div></body></html>

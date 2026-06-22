@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>S1 Apple/Tesla Minimal</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:'SF Pro Display','Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{display:flex;align-items:center;justify-content:center;background:#000;padding:20px}
+.s{width:1024px;height:600px;overflow:hidden;border-radius:18px;position:relative;color:#f5f5f7;background:#000}
+.nav{position:absolute;left:0;top:0;bottom:0;width:60px;display:flex;flex-direction:column;align-items:center;gap:18px;padding:24px 0;z-index:5}
+.nav button{width:8px;height:8px;border-radius:50%;border:0;background:#3a3a3c;cursor:pointer}
+.nav button.on{background:#f5f5f7;width:8px;height:24px;border-radius:4px}
+.nav .sys{margin-top:auto;display:flex;flex-direction:column;gap:16px}
+.nav .sys button{width:18px;height:18px;border-radius:50%;background:#2c2c2e}
+.clk{position:absolute;top:36px;right:44px;text-align:right}
+.clk .t{font-size:22px;font-weight:500;color:#86868b;letter-spacing:.5px}
+.wrap{position:absolute;left:96px;top:0;bottom:0;right:44px;display:flex;flex-direction:column;justify-content:center}
+.eyebrow{font-size:15px;color:#86868b;font-weight:500}
+.huge{font-size:96px;font-weight:600;letter-spacing:-3px;line-height:.95;margin-top:6px}
+.huge .accent{color:#ff453a}
+.statement{font-size:24px;color:#a1a1a6;margin-top:24px;font-weight:400;max-width:560px;line-height:1.35}
+.row{position:absolute;left:96px;right:44px;bottom:54px;display:flex;gap:56px}
+.kv .k{font-size:12px;color:#636366;text-transform:uppercase;letter-spacing:1.5px}
+.kv .v{font-size:22px;font-weight:600;margin-top:6px}
+.think{position:absolute;left:96px;right:44px;bottom:22px;font-size:13px;color:#636366}
+</style></head>
+<body><div class="s">
+  <nav class="nav"><button class="on"></button><button></button><button></button><button></button><button></button><button></button>
+    <div class="sys"><button></button><button></button></div></nav>
+  <div class="clk"><div class="t">19:30</div></div>
+  <div class="wrap">
+    <div class="eyebrow">Good evening, Nick</div>
+    <div class="huge">2 tickets<br><span class="accent">breaching.</span></div>
+    <div class="statement">You're firefighting. Standup at 10:30, and Abdi's 1:1 is 37 days overdue.</div>
+  </div>
+  <div class="row">
+    <div class="kv"><div class="k">State</div><div class="v">Firefighting</div></div>
+    <div class="kv"><div class="k">Location</div><div class="v">Home</div></div>
+    <div class="kv"><div class="k">Confidence</div><div class="v">90%</div></div>
+  </div>
+  <div class="think">SARA · open the Queue when you're ready ›</div>
+</div></body></html>

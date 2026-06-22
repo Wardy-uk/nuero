@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>S4 Warm Human</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Nunito','Segoe UI',system-ui,sans-serif}
+body{display:flex;align-items:center;justify-content:center;background:#222;padding:20px}
+.s{width:1024px;height:600px;overflow:hidden;border-radius:18px;color:#4a3f3a;display:grid;grid-template-columns:96px 1fr;gap:14px;padding:14px;
+  background:linear-gradient(160deg,#fdeede 0%,#fbe3e0 45%,#eee6fb 100%)}
+.nav{display:flex;flex-direction:column;align-items:center;gap:6px;background:#fff;border-radius:24px;padding:14px 8px;box-shadow:0 10px 26px rgba(180,140,120,.18)}
+.nav .d{width:34px;height:34px;border-radius:50%;margin-bottom:8px;background:radial-gradient(circle at 36% 32%,#ffd9a8,#ff9d7a 60%,#f06ea0)}
+.nav button{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;border:0;background:transparent;color:#b09a92;font-size:9px;font-weight:700;padding:8px 0;border-radius:16px;cursor:pointer}
+.nav button .i{font-size:18px}
+.nav button.on{background:#ffe9d6;color:#ef8a5a}
+.nav .sys{margin-top:auto;display:flex;gap:6px;width:100%}
+.nav .sys button{flex:1;background:#f6efe9;border-radius:14px;font-size:14px;padding:9px 0}
+.body{display:flex;flex-direction:column;gap:14px;min-height:0}
+.hi{display:flex;justify-content:space-between;align-items:center}
+.hi .g{font-size:30px;font-weight:800;color:#5a4a42}
+.hi .g span{color:#ef8a5a}
+.hi .clk{font-size:30px;font-weight:800;color:#7a6a62}
+.hi .clk small{display:block;font-size:12px;font-weight:700;color:#b09a92;text-align:right}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.c{background:#fff;border-radius:22px;padding:16px 18px;box-shadow:0 10px 24px rgba(180,140,120,.16)}
+.c .l{font-size:11px;font-weight:800;color:#c0a89f;text-transform:uppercase;letter-spacing:.5px}
+.c .v{font-size:22px;font-weight:800;margin-top:6px;color:#5a4a42}
+.c .v small{font-size:13px;color:#5bbf94}
+.c.em{background:linear-gradient(135deg,#ffb27a,#ff8f9e);color:#fff}
+.c.em .l{color:#fff8}.c.em .v{color:#fff}
+.cols{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;flex:1;min-height:0}
+.panel{background:#fff;border-radius:22px;padding:16px 18px;box-shadow:0 10px 24px rgba(180,140,120,.16);display:flex;flex-direction:column;min-height:0}
+.panel .l{font-size:12px;font-weight:800;color:#c0a89f;text-transform:uppercase;margin-bottom:10px}
+.task{display:flex;align-items:center;gap:12px;padding:9px 0}
+.task+.task{border-top:2px solid #f6efe9}
+.task .e{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font-size:16px;background:#fff1e6}
+.task .e.u{background:#ffe2e2}
+.task .nm{font-weight:700;font-size:15px;color:#5a4a42}.task .nm small{display:block;color:#b09a92;font-weight:600;font-size:12px}
+.task .w{margin-left:auto;font-size:13px;font-weight:700;color:#c0a89f}
+.next{align-items:flex-start}
+.next .t{font-size:40px;font-weight:800;color:#ef8a5a}
+.next .n{font-size:16px;font-weight:700;color:#5a4a42}
+.next .wx{margin-top:auto;font-size:14px;color:#b09a92}
+.foot{display:flex;gap:10px}
+.tile{flex:1;background:#fff;border-radius:18px;padding:13px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:800;color:#6a5a52;box-shadow:0 8px 20px rgba(180,140,120,.14)}
+.tile .i{font-size:18px}
+.think{font-size:13px;font-weight:600;color:#a8928a;padding:0 4px}
+.think b{color:#ef8a5a;font-weight:800}
+</style></head>
+<body><div class="s">
+  <nav class="nav"><div class="d"></div>
+    <button class="on"><span class="i">⌂</span>Home</button><button><span class="i">▤</span>Queue</button>
+    <button><span class="i">☑</span>Tasks</button><button><span class="i">👥</span>Team</button>
+    <button><span class="i">◎</span>Focus</button><button><span class="i">⚙</span>Set</button>
+    <div class="sys"><button>🔒</button><button>⏻</button></div></nav>
+  <div class="body">
+    <div class="hi"><div class="g">Evening, <span>Nick</span> 👋</div><div class="clk">19:30<small>FRI 5 JUNE</small></div></div>
+    <div class="cards">
+      <div class="c em"><div class="l">Right now</div><div class="v">Firefighting</div></div>
+      <div class="c"><div class="l">Location</div><div class="v">Home 🏠</div></div>
+      <div class="c"><div class="l">Confidence</div><div class="v">90% <small>great</small></div></div>
+    </div>
+    <div class="cols">
+      <div class="panel"><div class="l">Today's priorities</div>
+        <div class="task"><div class="e u">🔥</div><div class="nm">SMS Issues<small>breaching · 0m SLA</small></div><div class="w">now</div></div>
+        <div class="task"><div class="e">🗓️</div><div class="nm">Abdi 1:1<small>37 days overdue</small></div><div class="w">today</div></div>
+        <div class="task"><div class="e">📨</div><div class="nm">Escalations<small>2 unseen</small></div><div class="w">watch</div></div>
+      </div>
+      <div class="panel next"><div class="l">Up next</div><div class="t">10:30</div><div class="n">Do standup</div><div class="wx">⛅ 17°C · partly cloudy</div></div>
+    </div>
+    <div class="foot">
+      <div class="tile"><span class="i">✎</span>Capture</div><div class="tile"><span class="i">▤</span>Queue</div>
+      <div class="tile"><span class="i">◎</span>Focus</div><div class="tile"><span class="i">☼</span>Brief</div>
+    </div>
+    <div class="think"><b>SARA thinks:</b> you're firefighting — want me to open the Queue? ›</div>
+  </div>
+</div></body></html>
