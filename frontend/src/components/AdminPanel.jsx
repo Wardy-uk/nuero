@@ -158,6 +158,98 @@ function VaultSyncCard({ vaultSync }) {
   );
 }
 
+function PlaudSyncCard({ plaud, onRefresh }) {
+  const [syncing, setSyncing] = useState(false);
+  const [result, setResult] = useState(null);
+
+  if (!plaud) return null;
+
+  const triggerSync = async (incremental = true) => {
+    setSyncing(true);
+    setResult(null);
+    try {
+      const res = await fetch(apiUrl('/api/plaud/sync'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incremental })
+      });
+      const data = await res.json();
+      setResult(data);
+      onRefresh?.();
+    } catch (e) {
+      setResult({ error: e.message });
+    }
+    setSyncing(false);
+  };
+
+  const formatTime = (iso) => {
+    if (!iso) return 'never';
+    return new Date(iso).toLocaleString();
+  };
+
+  const statusClass = plaud.running ? 'connected' : plaud.configured ? 'connected' : 'unconfigured';
+  const statusLabel = plaud.running ? 'syncing' : plaud.configured ? 'ready' : 'not configured';
+
+  return (
+    <div className="admin-section">
+      <div className="admin-section-title">Plaud MCP</div>
+      <div className="admin-ms-section">
+        <div className="admin-card" style={{ marginBottom: '12px' }}>
+          <div className="admin-card-header">
+            <span className="admin-card-name">Recorder Import</span>
+            <span className={`admin-status-badge ${statusClass}`}>{statusLabel}</span>
+          </div>
+          <div className="admin-card-detail">
+            {plaud.configured
+              ? `${plaud.summaryFolder} + ${plaud.transcriptFolder}`
+              : 'OBSIDIAN_VAULT_PATH not set'}
+          </div>
+        </div>
+
+        {plaud.configured && (
+          <>
+            <div className="admin-card-detail" style={{ marginBottom: '8px' }}>
+              Synced: <strong>{plaud.syncedCount || 0}</strong> · Failed: <strong>{plaud.failedCount || 0}</strong>
+            </div>
+            <div className="admin-card-detail" style={{ marginBottom: '12px' }}>
+              Last run: <strong>{formatTime(plaud.lastRunAt)}</strong> · Last success: <strong>{formatTime(plaud.lastSuccessfulSyncAt)}</strong>
+            </div>
+            {plaud.lastError && (
+              <div className="admin-error" style={{ marginBottom: '8px' }}>
+                Last error: {plaud.lastError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                className="admin-ms-connect-btn"
+                onClick={() => triggerSync(true)}
+                disabled={syncing || plaud.running}
+              >
+                {syncing || plaud.running ? 'Syncing...' : 'Sync New Recordings'}
+              </button>
+              <button
+                className="admin-ms-connect-btn"
+                style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--text-muted)' }}
+                onClick={() => triggerSync(false)}
+                disabled={syncing || plaud.running}
+              >
+                Full Resync
+              </button>
+            </div>
+            {result && (
+              <div className="admin-card-detail" style={{ marginTop: '8px' }}>
+                {result.error
+                  ? `Sync failed: ${result.error}`
+                  : `Imported ${result.imported || 0}, updated ${result.updated || 0}, skipped ${result.skipped || 0}, failed ${result.failed || 0}`}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AiSettingsSection() {
   const [settings, setSettings] = useState(null);
   const [aiStatus, setAiStatus] = useState(null);
@@ -421,6 +513,14 @@ export default function AdminPanel({ pushState = {} }) {
               'Not authenticated'
     },
     {
+      name: 'Plaud MCP',
+      status: status.plaud?.running ? 'connected' :
+              status.plaud?.configured ? 'connected' : 'unconfigured',
+      detail: status.plaud?.configured
+        ? `${status.plaud.syncedCount || 0} synced · ${status.plaud.failedCount || 0} failed`
+        : 'Vault path not configured for Plaud import'
+    },
+    {
       name: 'n8n',
       status: status.n8n?.configured ? 'connected' : 'unconfigured',
       detail: status.n8n?.configured ? 'API key set — workflows available' : 'N8N_API_KEY not set'
@@ -549,6 +649,8 @@ export default function AdminPanel({ pushState = {} }) {
           {authError && <div className="admin-error">{authError}</div>}
         </div>
       </div>
+
+      <PlaudSyncCard plaud={status.plaud} onRefresh={fetchStatus} />
 
       <div className="admin-section">
         <div className="admin-section-title">Push Notifications</div>

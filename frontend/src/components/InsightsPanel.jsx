@@ -5,25 +5,29 @@ import './InsightsPanel.css';
 export default function InsightsPanel({ onNavigate }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [knowledge, setKnowledge] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
   const [applying, setApplying] = useState(null);
+  const [promoting, setPromoting] = useState(null);
   const [dismissed, setDismissed] = useState(new Set());
   const [eodHistory, setEodHistory] = useState([]);
   const [ritualHistory, setRitualHistory] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes, ritualRes] = await Promise.all([
+      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes, ritualRes, knowledgeRes] = await Promise.all([
         fetch(apiUrl('/api/activity/summaries?days=14')),
         fetch(apiUrl('/api/activity/suggestions')),
         fetch(apiUrl('/api/standup/today-status')),
         fetch(apiUrl('/api/standup/eod-history?days=14')),
-        fetch(apiUrl('/api/standup/ritual-history?days=7'))
+        fetch(apiUrl('/api/standup/ritual-history?days=7')),
+        fetch(apiUrl('/api/knowledge-memory/overview'))
       ]);
       const json = await summariesRes.json();
       const sugJson = await suggestionsRes.json();
       const todayLive = await todayStatusRes.json();
       const eodJson = await eodHistoryRes.json();
+      const knowledgeJson = await knowledgeRes.json();
 
       // Merge live status into today
       if (json.today) {
@@ -33,6 +37,7 @@ export default function InsightsPanel({ onNavigate }) {
       }
 
       setData(json);
+      setKnowledge(knowledgeJson.ok ? knowledgeJson : null);
       setSuggestions(sugJson.suggestions || []);
       setEodHistory(eodJson.entries || []);
       const ritualJson = await ritualRes.json();
@@ -42,6 +47,25 @@ export default function InsightsPanel({ onNavigate }) {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const promoteCandidate = async (candidate) => {
+    const suggestedDomain = candidate.path.startsWith('Plaud/') ? 'Meetings' : 'General';
+    const chosenDomain = window.prompt('Promote into which Knowledge domain/folder?', suggestedDomain);
+    if (!chosenDomain) return;
+    setPromoting(candidate.path);
+    try {
+      const res = await fetch(apiUrl('/api/knowledge-memory/promote'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourcePath: candidate.path, domain: chosenDomain })
+      });
+      const result = await res.json();
+      if (result.ok) {
+        await fetchData();
+      }
+    } catch {}
+    setPromoting(null);
+  };
 
   const applySuggestion = async (suggestion) => {
     if (suggestion.action.navigate) {
@@ -131,6 +155,111 @@ export default function InsightsPanel({ onNavigate }) {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {knowledge && (
+        <div className="knowledge-memory-panel">
+          <div className="insights-history-title">Knowledge Memory</div>
+
+          <div className="knowledge-stats-grid">
+            <div className="knowledge-stat-card">
+              <span className="knowledge-stat-label">Raw Memory</span>
+              <span className="knowledge-stat-value">{knowledge.counts.rawNotes}</span>
+              <span className="knowledge-stat-copy">Recent notes waiting to be distilled.</span>
+            </div>
+            <div className="knowledge-stat-card">
+              <span className="knowledge-stat-label">Trusted Notes</span>
+              <span className="knowledge-stat-value">{knowledge.counts.trustedNotes}</span>
+              <span className="knowledge-stat-copy">Curated context SARA can lean on.</span>
+            </div>
+            <div className="knowledge-stat-card">
+              <span className="knowledge-stat-label">Promote Next</span>
+              <span className="knowledge-stat-value">{knowledge.counts.promotionCandidates}</span>
+              <span className="knowledge-stat-copy">Likely signal trapped in raw intake.</span>
+            </div>
+            <div className="knowledge-stat-card">
+              <span className="knowledge-stat-label">Reflection Notes</span>
+              <span className="knowledge-stat-value">{knowledge.counts.reflectionNotes}</span>
+              <span className="knowledge-stat-copy">Weekly consolidation already written back.</span>
+            </div>
+          </div>
+
+          <div className="knowledge-section-grid">
+            <div className="knowledge-section-card">
+              <div className="knowledge-section-header">
+                <span className="knowledge-section-title">Active Context</span>
+              </div>
+              {knowledge.activeContext?.length > 0 ? knowledge.activeContext.map(item => (
+                <div key={item.path} className="knowledge-list-item">
+                  <div className="knowledge-item-topline">
+                    <span className="knowledge-item-title">{item.name}</span>
+                    <span className="knowledge-item-meta">{item.knowledgeState}</span>
+                  </div>
+                  <div className="knowledge-item-copy">{item.excerpt}</div>
+                </div>
+              )) : (
+                <div className="knowledge-empty">No trusted context yet. Promote a few high-signal notes and this wakes up quickly.</div>
+              )}
+            </div>
+
+            <div className="knowledge-section-card">
+              <div className="knowledge-section-header">
+                <span className="knowledge-section-title">Promotion Queue</span>
+                <button className="knowledge-inline-btn" onClick={() => onNavigate?.('imports')}>Open imports</button>
+              </div>
+              {knowledge.promotionCandidates?.length > 0 ? knowledge.promotionCandidates.map(candidate => (
+                <div key={candidate.path} className="knowledge-list-item">
+                  <div className="knowledge-item-topline">
+                    <span className="knowledge-item-title">{candidate.name}</span>
+                    <span className="knowledge-item-meta">{candidate.folder}</span>
+                  </div>
+                  <div className="knowledge-item-copy">{candidate.excerpt}</div>
+                  <button
+                    className="knowledge-promote-btn"
+                    onClick={() => promoteCandidate(candidate)}
+                    disabled={promoting === candidate.path}
+                  >
+                    {promoting === candidate.path ? 'Promoting...' : 'Promote to Knowledge'}
+                  </button>
+                </div>
+              )) : (
+                <div className="knowledge-empty">Nothing obvious to promote right now.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="knowledge-section-grid">
+            <div className="knowledge-section-card">
+              <div className="knowledge-section-header">
+                <span className="knowledge-section-title">Top Domains</span>
+              </div>
+              {knowledge.topDomains?.length > 0 ? knowledge.topDomains.map(domain => (
+                <div key={domain.domain} className="knowledge-domain-row">
+                  <span>{domain.domain}</span>
+                  <strong>{domain.count}</strong>
+                </div>
+              )) : (
+                <div className="knowledge-empty">No curated domains yet.</div>
+              )}
+            </div>
+
+            <div className="knowledge-section-card">
+              <div className="knowledge-section-header">
+                <span className="knowledge-section-title">Knowledge Gaps</span>
+              </div>
+              {knowledge.knowledgeGaps?.length > 0 ? knowledge.knowledgeGaps.map(gap => (
+                <div key={gap.topic} className="knowledge-list-item">
+                  <div className="knowledge-item-topline">
+                    <span className="knowledge-item-title">{gap.topic}</span>
+                    <span className="knowledge-item-meta">{gap.count} mentions</span>
+                  </div>
+                </div>
+              )) : (
+                <div className="knowledge-empty">No repeat gaps surfaced yet.</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
