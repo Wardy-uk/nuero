@@ -22,3 +22,9 @@ __pycache__/
 # Runtime logs & local-only dirs
 sara/logs/
 /Private
+
+# Machine-local Claude Code overrides (keep memory/skills tracked)
+.claude/settings.local.json
+
+# One-off migration staging blob (patch + tarball)
+/_incoming-daypilot-sara/
