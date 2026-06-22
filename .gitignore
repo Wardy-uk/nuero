@@ -10,3 +10,15 @@ backend/C:/
 
 # Local Netlify folder
 .netlify
+
+# Dev screenshots / scratch images at repo root
+/pi-*.png
+
+# Python caches & local backups
+__pycache__/
+*.pyc
+*.bak-*
+
+# Runtime logs & local-only dirs
+sara/logs/
+/Private
