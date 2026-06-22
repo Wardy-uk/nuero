@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sara",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "cwd": "sara/backend",
+      "port": 3005
+    },
+    {
+      "name": "sara-frontend",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5176"],
+      "cwd": "sara/frontend",
+      "port": 5176
+    }
+  ]
+}
