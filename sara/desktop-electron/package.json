@@ -1,0 +1,13 @@
+{
+  "name": "sara-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SARA desktop shell (Electron) — cross-platform window + OS-level lock/wake adapter",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
