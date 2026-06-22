@@ -91,6 +91,29 @@ function start() {
     } catch (e) { console.error('[Scheduler] Weekly review failed:', e.message); }
   });
 
+  // Monday 8:10am — generate a knowledge reflection brief for the week ahead
+  cron.schedule('10 8 * * 1', () => {
+    try {
+      const result = require('./knowledge-memory').generateReflection({ write: true });
+      if (result?.path) {
+        require('./webpush').sendToAll(
+          'NEURO — Knowledge Reflection',
+          'Your latest knowledge reflection is ready. Review what to promote before the week drifts.',
+          { type: 'knowledge_reflection', url: '/insights' }
+        ).catch(() => {});
+      }
+    } catch (e) {
+      console.error('[Scheduler] Knowledge reflection failed:', e.message);
+    }
+  });
+
+  // Weekdays 10 minutes after the main intake cycles — consolidate raw intake into working notes
+  cron.schedule('40 * * * 1-5', () => {
+    require('./knowledge-memory').consolidateAllImports({ limit: 30 }).catch((e) => {
+      console.error('[Scheduler] Import consolidation failed:', e.message);
+    });
+  });
+
   // 10pm nightly — build daily activity summary + entity extraction + write observations
   cron.schedule('0 22 * * *', () => {
     console.log('[Scheduler] Running nightly activity rollup...');
@@ -174,6 +197,15 @@ function start() {
     });
   });
 
+  // 6:10pm daily — write a human-readable import activity report into the vault
+  cron.schedule('10 18 * * *', () => {
+    try {
+      require('./knowledge-memory').writeDailyImportReport();
+    } catch (e) {
+      console.error('[Scheduler] Daily import report failed:', e.message);
+    }
+  });
+
   // Startup health check — verify capture system is working
   setTimeout(() => {
     const fs = require('fs');
@@ -241,19 +273,29 @@ function start() {
     }
   }, 60 * 1000);
 
-  // Every 30 minutes 8am-6pm — sweep PLAUD folder specifically (time-sensitive imports)
+  // Startup consolidation + operating model doc — after intake has settled
+  setTimeout(() => {
+    require('./knowledge-memory').ensureVaultOperatingModelDoc();
+    require('./knowledge-memory').consolidateAllImports({ limit: 30 }).catch((e) => {
+      console.error('[Scheduler] Startup import consolidation failed:', e.message);
+    });
+  }, 90 * 1000);
+
+  // Every 30 minutes 8am-6pm — sync Plaud via official MCP
   cron.schedule('*/30 8-18 * * *', () => {
-    const importsService = require('./imports');
-    const plaudPending = importsService.getPending().filter(f =>
-      f.subdir === 'PLAUD' && f.status !== 'needs-review'
-    );
-    if (plaudPending.length > 0) {
-      console.log(`[Scheduler] ${plaudPending.length} PLAUD imports pending — sweeping`);
-      importsService.autoClassify().catch(e => {
-        console.error('[Scheduler] PLAUD sweep failed:', e.message);
-      });
-    }
+    console.log('[Scheduler] Syncing Plaud via MCP...');
+    require('./plaud-sync').syncPlaudRecordings({ incremental: true }).catch(e => {
+      console.error('[Scheduler] Plaud MCP sync failed:', e.message);
+    });
   });
+
+  // Startup Plaud sync — after 45s delay
+  setTimeout(() => {
+    console.log('[Scheduler] Startup Plaud MCP sync...');
+    require('./plaud-sync').syncPlaudRecordings({ incremental: true }).catch(e => {
+      console.error('[Scheduler] Startup Plaud MCP sync failed:', e.message);
+    });
+  }, 45 * 1000);
 
   // Every 30 minutes 8am-6pm weekdays — sync Microsoft Tasks (Planner + ToDo) to vault
   cron.schedule('15,45 8-18 * * 1-5', () => {
@@ -320,7 +362,7 @@ function start() {
     }
   });
 
-  console.log('[Scheduler] Started — pre-warm 8:55am, standup 9am, 1-2-1 9:10am, nag 15m, EOD pre-warm 4:55pm, EOD 5pm, weekly review Fri 4:30pm, plan milestone 9:05am, Jira 5m, escalations 5m, flagged 5m, email triage 8/12/17, meeting prep 5m, imports 23:30, PLAUD 30m, MS Tasks 30m');
+  console.log('[Scheduler] Started — pre-warm 8:55am, standup 9am, 1-2-1 9:10am, nag 15m, EOD pre-warm 4:55pm, EOD 5pm, weekly review Fri 4:30pm, knowledge reflection Mon 8:10am, import consolidation hourly, import report 18:10, plan milestone 9:05am, Jira 5m, escalations 5m, flagged 5m, email triage 8/12/17, meeting prep 5m, imports 23:30, Plaud MCP 30m, MS Tasks 30m');
 }
 
 module.exports = { start };

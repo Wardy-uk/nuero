@@ -40,6 +40,7 @@ const jiraRoutes = require('./routes/jira');
 const focusRoutes = require('./routes/focus');
 const actionsRoutes = require('./routes/actions');
 const haRoutes = require('./routes/ha');
+const plaudRoutes = require('./routes/plaud');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -135,6 +136,7 @@ app.use('/api/jira', jiraRoutes);
 app.use('/api/focus', focusRoutes);
 app.use('/api/actions', actionsRoutes);
 app.use('/api/ha', haRoutes);
+app.use('/api/plaud', plaudRoutes);
 app.use('/api/ai/settings', require('./routes/ai-settings'));
 app.use('/api/meeting-prep', require('./routes/meeting-prep-view'));
 app.use('/api/person', require('./routes/person-detail'));
@@ -149,6 +151,7 @@ app.use('/api/evidence', require('./routes/evidence-register'));
 app.use('/api/checkpoint', require('./routes/checkpoint'));
 app.use('/api/weekly-summary', require('./routes/weekly-summary'));
 app.use('/api/knowledge-gaps', require('./routes/knowledge-gaps'));
+app.use('/api/knowledge-memory', require('./routes/knowledge-memory'));
 app.use('/api/kb-article', require('./routes/kb-article'));
 app.use('/api/email', require('./routes/email-triage'));
 
@@ -188,6 +191,7 @@ app.get('/api/status', async (req, res) => {
     n8n: {
       configured: n8nService.isConfigured()
     },
+    plaud: require('./services/plaud-sync').getStatus(),
     push: {
       configured: require('./services/webpush').isConfigured(),
       subscriptions: db.getAllPushSubscriptions().length
