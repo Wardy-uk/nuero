@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const obsidian = require('./obsidian');
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
@@ -22,6 +23,436 @@ function getVaultPath() {
 
 function getImportsPath() {
   return path.join(getVaultPath(), 'Imports');
+}
+
+function listMarkdownFiles(rootPath) {
+  if (!rootPath || !fs.existsSync(rootPath)) return [];
+  const results = [];
+  const stack = [rootPath];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue;
+      const nextPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(nextPath);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+        results.push(nextPath);
+      }
+    }
+  }
+  return results;
+}
+
+function cleanQuoted(value) {
+  return String(value || '').trim().replace(/^"+|"+$/g, '');
+}
+
+function slugifySegment(value, fallback = 'Untitled') {
+  const clean = String(value || '')
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return clean || fallback;
+}
+
+function getDatePartsFromFrontmatter(frontmatter) {
+  const stamp = cleanQuoted(frontmatter.start_at || frontmatter.created_at || new Date().toISOString());
+  const date = new Date(stamp);
+  const safe = Number.isNaN(date.getTime()) ? new Date() : date;
+  const iso = safe.toISOString().slice(0, 10);
+  return {
+    iso,
+    year: iso.slice(0, 4),
+    month: iso.slice(5, 7)
+  };
+}
+
+function extractDateFromText(...values) {
+  for (const value of values) {
+    const match = String(value || '').match(/(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+function buildCanonicalMeetingPath(filePath, frontmatter, content) {
+  const title = getPlaudTitle(filePath, frontmatter, content)
+    .replace(/^\d{4}-\d{2}-\d{2}[\s–-]*/u, '')
+    .replace(/^\d{2}-\d{2}[\s–-]*/u, '')
+    .replace(/\b(?:-summary|-obsidian meeting template|-transcript)\b/gi, '')
+    .replace(/[_:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const date = extractDateFromText(frontmatter.date, frontmatter.start_at, frontmatter.created_at, title, path.basename(filePath))
+    || getDatePartsFromFrontmatter(frontmatter).iso;
+  const year = date.slice(0, 4);
+  const month = date.slice(5, 7);
+  return {
+    date,
+    year,
+    month,
+    title: slugifySegment(title || 'Meeting'),
+    relativeDir: `Meetings/${year}/${month}`,
+    relativePath: `Meetings/${year}/${month}/${date} – ${slugifySegment(title || 'Meeting')}.md`
+  };
+}
+
+function extractMeetingType(content, title = '') {
+  const combined = `${title}\n${content}`.toLowerCase();
+  const typeSection = String(content).match(/^#{1,6}\s*Meeting Type\s*$\s*([\s\S]*?)(?=^#{1,6}\s+|\Z)/im);
+  const candidate = (typeSection?.[1] || combined).toLowerCase();
+  if (/\b(1-1|1:1|1-2-1|121|one-to-one|one to one|probation|performance review|return-to-work)\b/i.test(candidate)) return '1-1';
+  if (/\b(client meeting|consultation|customer meeting|discovery call|demo|sales call)\b/i.test(candidate)) return 'Client Meeting';
+  if (/\b(project meeting|kick-?off|rollout|migration|integration|workshop|implementation)\b/i.test(candidate)) return 'Project Meeting';
+  if (/\b(discussion)\b/i.test(candidate)) return 'Discussion';
+  if (/\b(stand[ -]?up|daily meeting|team stand up|team meeting|weekly meeting|operational meeting|leadership meeting)\b/i.test(candidate)) return 'Operational Meeting';
+  return 'Operational Meeting';
+}
+
+function extractAttendeesForFrontmatter(content) {
+  const matches = [];
+  const attendeesBlock = String(content).match(/### Attendees\s*\n([\s\S]*?)(?=\n---\s*\n|\n###\s+|\n##\s+|$)/i);
+  if (!attendeesBlock) return matches;
+  for (const line of attendeesBlock[1].split('\n')) {
+    const bullet = line.match(/^\s*-\s+(.+?)\s*$/);
+    if (!bullet) continue;
+    const rawName = bullet[1].replace(/\[\[(?:[^|\]]+\|)?([^\]]+)\]\]/g, '$1').trim();
+    if (!rawName || /unknown speaker/i.test(rawName)) continue;
+    const matched = matchKnownPerson(rawName) || rawName;
+    const link = matched === rawName ? `[[People/${slugifySegment(rawName)}|${rawName}]]` : `[[People/${matched}|${rawName}]]`;
+    if (!matches.includes(link)) matches.push(link);
+  }
+  return matches;
+}
+
+function setCanonicalMeetingFrontmatter(filePath, extraFields = {}) {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const frontmatter = parseFrontmatter(content);
+  const canonical = buildCanonicalMeetingPath(filePath, frontmatter, content);
+  const meetingType = extractMeetingType(content, canonical.title);
+  const attendees = extractAttendeesForFrontmatter(content);
+  updateFrontmatter(filePath, {
+    type: 'meeting',
+    date: canonical.date,
+    'meeting-type': `"${meetingType}"`,
+    people: attendees.length ? `\n${attendees.map((person) => `  - "${person}"`).join('\n')}` : '',
+    source: 'PLAUD',
+    ...extraFields
+  });
+  return canonical;
+}
+
+function buildCanonicalTranscriptPath(filePath, frontmatter, content = '') {
+  const titleSource = cleanQuoted(frontmatter.title) || path.basename(filePath, path.extname(filePath));
+  const title = String(titleSource)
+    .replace(/^\d{4}-\d{2}-\d{2}[\s–-]*/u, '')
+    .replace(/^\d{2}-\d{2}[\s–-]*/u, '')
+    .replace(/\b(?:-transcript)\b/gi, '')
+    .replace(/[_:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const date = extractDateFromText(frontmatter.date, frontmatter.start_at, frontmatter.created_at, titleSource, content, path.basename(filePath))
+    || getDatePartsFromFrontmatter(frontmatter).iso;
+  const year = date.slice(0, 4);
+  const month = date.slice(5, 7);
+  const safeTitle = slugifySegment(title || 'Transcript');
+  return {
+    date,
+    year,
+    month,
+    title: safeTitle,
+    relativeDir: `Meetings/transcripts/${year}/${month}`,
+    relativePath: `Meetings/transcripts/${year}/${month}/${date} – ${safeTitle}.md`
+  };
+}
+
+function canonicalizePlaudTranscript(transcriptPath, { summaryRelativePath = null } = {}) {
+  if (!transcriptPath || !fs.existsSync(transcriptPath)) {
+    return { status: 'error', error: 'transcriptPath not found' };
+  }
+
+  const vaultPath = getVaultPath();
+  const content = fs.readFileSync(transcriptPath, 'utf-8');
+  const frontmatter = parseFrontmatter(content);
+  const canonical = buildCanonicalTranscriptPath(transcriptPath, frontmatter, content);
+  const currentRelative = path.relative(vaultPath, transcriptPath).replace(/\\/g, '/');
+  let finalRelativePath = currentRelative;
+  let finalFullPath = transcriptPath;
+
+  if (currentRelative !== canonical.relativePath) {
+    const canonicalFullPath = path.join(vaultPath, canonical.relativePath);
+    if (fs.existsSync(canonicalFullPath) && path.resolve(canonicalFullPath) !== path.resolve(transcriptPath)) {
+      const parsed = path.parse(canonical.relativePath);
+      let counter = 2;
+      let candidateRelative = canonical.relativePath;
+      let candidateFull = canonicalFullPath;
+      while (fs.existsSync(candidateFull)) {
+        candidateRelative = path.join(parsed.dir, `${parsed.name} ${counter}${parsed.ext}`).replace(/\\/g, '/');
+        candidateFull = path.join(vaultPath, candidateRelative);
+        counter += 1;
+      }
+      fs.mkdirSync(path.dirname(candidateFull), { recursive: true });
+      fs.renameSync(transcriptPath, candidateFull);
+      finalRelativePath = candidateRelative;
+      finalFullPath = candidateFull;
+    } else {
+      fs.mkdirSync(path.dirname(canonicalFullPath), { recursive: true });
+      fs.renameSync(transcriptPath, canonicalFullPath);
+      finalRelativePath = canonical.relativePath;
+      finalFullPath = canonicalFullPath;
+    }
+  }
+
+  const linkedMeeting = summaryRelativePath ? `[[${summaryRelativePath.replace(/\.md$/i, '')}]]` : '';
+  updateFrontmatter(finalFullPath, {
+    type: 'transcript',
+    date: canonical.date,
+    source: 'PLAUD',
+    meeting: linkedMeeting ? `"${linkedMeeting}"` : '',
+    note_type: '"transcript"'
+  });
+
+  try {
+    if (currentRelative !== finalRelativePath) {
+      require('./vault-logger').logMove(currentRelative, finalRelativePath, 'transcript');
+    }
+  } catch {}
+
+  try { require('./vault-hooks').onVaultWrite(finalFullPath, 'plaud-transcript-route'); } catch {}
+
+  return {
+    status: 'ok',
+    relativePath: finalRelativePath
+  };
+}
+
+function matchKnownPerson(text) {
+  const haystack = String(text || '').toLowerCase();
+  if (!haystack) return null;
+
+  const people = obsidian.listPeopleNotes()
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  for (const person of people) {
+    const personLower = person.toLowerCase();
+    if (haystack.includes(personLower)) return person;
+
+    const parts = personLower.split(/\s+/).filter((part) => part.length > 2);
+    if (parts.length >= 2 && parts.every((part) => haystack.includes(part))) {
+      return person;
+    }
+  }
+
+  return null;
+}
+
+function getPlaudTitle(filePath, frontmatter, content) {
+  const frontmatterTitle = cleanQuoted(frontmatter.title);
+  if (frontmatterTitle) return frontmatterTitle;
+
+  const headingMatch = String(content).match(/^#\s+(.+)$/m);
+  if (headingMatch) return headingMatch[1].trim();
+
+  return path.basename(filePath, path.extname(filePath));
+}
+
+function looksLikePlaudSummary(filePath, frontmatter, content) {
+  const noteType = cleanQuoted(frontmatter.note_type).toLowerCase();
+  const normalizedPath = String(filePath).replace(/\\/g, '/').toLowerCase();
+  const isImportsPlaud = normalizedPath.includes('/imports/plaud/');
+  const fileName = path.basename(filePath).toLowerCase();
+
+  if (noteType && noteType !== 'summary') return false;
+
+  return noteType === 'summary'
+    || fileName.endsWith('-summary.md')
+    || fileName.endsWith('-obsidian meeting template.md')
+    || /###\s+meeting type/i.test(content)
+    || /###\s+action items/i.test(content)
+    || /###\s+key decisions/i.test(content)
+    || isImportsPlaud;
+}
+
+function getPlaudSummaryPreference(frontmatter, filePath, content = '') {
+  const tab = cleanQuoted(frontmatter.plaud_summary_tab).toLowerCase();
+  const type = cleanQuoted(frontmatter.plaud_summary_type).toLowerCase();
+  const fileName = path.basename(filePath).toLowerCase();
+  const text = `${tab}\n${type}\n${fileName}\n${content.slice(0, 400)}`.toLowerCase();
+
+  if (text.includes('obsidian meeting template')) return 3;
+  if (text.includes('summary') || type === 'consumer_note' || type === 'auto_sum_note') return 2;
+  return 1;
+}
+
+function isPlaudTranscript(frontmatter, filePath) {
+  const noteType = cleanQuoted(frontmatter.note_type).toLowerCase();
+  const normalizedPath = String(filePath).replace(/\\/g, '/').toLowerCase();
+  const fileName = path.basename(filePath).toLowerCase();
+  return noteType === 'transcript'
+    || normalizedPath.includes('/plaud/transcripts/')
+    || fileName.endsWith('-transcript.md');
+}
+
+function isPlaudStagingPath(relativePath) {
+  const normalized = String(relativePath || '').replace(/\\/g, '/');
+  return normalized.startsWith('Plaud/Summaries/')
+    || normalized.startsWith('Imports/PLAUD/');
+}
+
+function isLegacyPlaudCleanupPath(relativePath) {
+  const normalized = String(relativePath || '').replace(/\\/g, '/');
+  return normalized.startsWith('Meetings/')
+    || normalized.startsWith('Team/')
+    || normalized.startsWith('Projects/')
+    || normalized.startsWith('Plaud/');
+}
+
+function isKnowledgeMemoryGenerated(frontmatter) {
+  return cleanQuoted(frontmatter.managed_by).toLowerCase() === 'sara-knowledge-memory'
+    || cleanQuoted(frontmatter.source).toLowerCase() === 'sara-import-consolidation';
+}
+
+function readMarkdownNote(fullPath) {
+  const vaultPath = getVaultPath();
+  const content = fs.readFileSync(fullPath, 'utf-8');
+  const frontmatter = parseFrontmatter(content);
+  return {
+    fullPath,
+    relativePath: path.relative(vaultPath, fullPath).replace(/\\/g, '/'),
+    content,
+    frontmatter,
+    plaudId: cleanQuoted(frontmatter.plaud_id),
+    summaryPreference: getPlaudSummaryPreference(frontmatter, fullPath, content)
+  };
+}
+
+function classifyPlaudDeterministic(filePath, content, opts = {}) {
+  const frontmatter = parseFrontmatter(content);
+  const normalizedPath = String(filePath).replace(/\\/g, '/').toLowerCase();
+  const allowLegacyPlaudCleanup = opts.context === 'plaud-cleanup';
+  if (!looksLikePlaudSummary(filePath, frontmatter, content) || (!allowLegacyPlaudCleanup && !normalizedPath.includes('/plaud/') && !cleanQuoted(frontmatter.plaud_id))) {
+    return null;
+  }
+
+  const title = getPlaudTitle(filePath, frontmatter, content);
+  const body = content.replace(/^---[\s\S]*?---\n*/, '');
+  const lower = `${title}\n${body}`.toLowerCase();
+  const { year, month } = getDatePartsFromFrontmatter(frontmatter);
+  const transcriptInsight = opts.transcriptInsight || null;
+  const hintedPerson = transcriptInsight?.people?.find((person) => person.vaultMatch)?.vaultMatch
+    || matchKnownPerson(title)
+    || matchKnownPerson(body);
+  const explicit121Pattern = /\b(1-1|1:1|1-2-1|121|one-to-one|one to one|one-on-one|one on one)\b/i;
+  const hr121Pattern = /\b(probation|performance review|return-to-work)\b/i;
+  const teamMeetingPattern = /\b(stand[ -]?up|daily meeting|team stand up|team meeting|weekly meeting|operational meeting|leadership meeting)\b/i;
+  const titleLower = title.toLowerCase();
+  const fileStemLower = path.basename(filePath, path.extname(filePath)).toLowerCase();
+  const explicit121 = explicit121Pattern.test(titleLower)
+    || explicit121Pattern.test(fileStemLower)
+    || /###\s+meeting type\s*\n\s*(1-1|1:1|1-2-1|121|one-to-one|one to one|one-on-one|one on one)\b/i.test(content);
+  const hr121 = hr121Pattern.test(titleLower)
+    || /###\s+meeting type\s*\n\s*(probation|performance review|return-to-work)\b/i.test(content);
+
+  if (transcriptInsight?.is121 || explicit121 || (hr121 && hintedPerson && !teamMeetingPattern.test(lower))) {
+    const canonical = buildCanonicalMeetingPath(filePath, frontmatter, content);
+    return {
+      type: 'meeting',
+      destination: canonical.relativeDir,
+      confidence: hintedPerson ? 'high' : 'medium',
+      reason: hintedPerson
+        ? `Deterministic PLAUD routing: identified a 1-2-1/performance note for ${hintedPerson}.`
+        : 'Deterministic PLAUD routing: identified a 1-2-1/performance note.'
+    };
+  }
+
+  if (teamMeetingPattern.test(lower)) {
+    const canonical = buildCanonicalMeetingPath(filePath, frontmatter, content);
+    return {
+      type: 'meeting',
+      destination: canonical.relativeDir,
+      confidence: 'high',
+      reason: 'Deterministic PLAUD routing: identified a team or operational meeting.'
+    };
+  }
+
+  if (/\b(client meeting|consultation|customer meeting|discovery call|demo|sales call)\b/i.test(lower)) {
+    const canonical = buildCanonicalMeetingPath(filePath, frontmatter, content);
+    return {
+      type: 'meeting',
+      destination: canonical.relativeDir,
+      confidence: 'high',
+      reason: 'Deterministic PLAUD routing: identified a client-facing meeting.'
+    };
+  }
+
+  if (/\b(project meeting|kick-?off|rollout|migration|integration|workshop|implementation)\b/i.test(lower)) {
+    const canonical = buildCanonicalMeetingPath(filePath, frontmatter, content);
+    return {
+      type: 'meeting',
+      destination: canonical.relativeDir,
+      confidence: 'medium',
+      reason: 'Deterministic PLAUD routing: identified a project or implementation meeting.'
+    };
+  }
+
+  return null;
+}
+
+function renderKnownPersonLinks(content) {
+  const people = obsidian.listPeopleNotes();
+  if (!people.length) return content;
+
+  let updated = String(content).replace(
+    /(### Attendees\s*\n)([\s\S]*?)(?=\n---\s*\n|\n###\s+|\n##\s+|$)/,
+    (match, prefix, attendeesBlock) => {
+      const lines = attendeesBlock
+        .split('\n')
+        .map((line) => line.trimEnd());
+
+      const rewritten = lines.map((line) => {
+        const bullet = line.match(/^\s*-\s+(.+?)\s*$/);
+        if (!bullet) return line;
+        const name = bullet[1].trim();
+        const matched = matchKnownPerson(name) || people.find((person) => person.toLowerCase() === name.toLowerCase());
+        if (!matched) return line;
+        return `- [[People/${matched}|${name}]]`;
+      });
+
+      return `${prefix}${rewritten.join('\n')}`.trimEnd();
+    }
+  );
+
+  for (const person of people) {
+    const escaped = person.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    updated = updated.replace(
+      new RegExp(`(^|[^\\[])@${escaped}(?=\\b)`, 'gmi'),
+      `$1[[People/${person}|@${person}]]`
+    );
+  }
+
+  return updated;
+}
+
+function updateTranscriptSummaryLink(transcriptPath, summaryRelativePath) {
+  if (!transcriptPath || !fs.existsSync(transcriptPath)) return;
+  const linkedPath = summaryRelativePath.replace(/\.md$/i, '');
+  const content = fs.readFileSync(transcriptPath, 'utf-8');
+  const next = content.replace(/^Summary:\s*\[\[[^\]]+\]\]/m, `Summary: [[${linkedPath}]]`);
+  if (next !== content) {
+    fs.writeFileSync(transcriptPath, next, 'utf-8');
+    try { require('./vault-hooks').onVaultWrite(transcriptPath, 'plaud-transcript-link'); } catch {}
+  }
+}
+
+function updatePlaudSummaryMetadata(filePath, fields = {}) {
+  const normalized = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === null || value === undefined || value === '') continue;
+    normalized[key] = typeof value === 'string' && !/^".*"$/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+  }
+  updateFrontmatter(filePath, normalized);
 }
 
 // Recursively list all .md files in Imports/ and subdirs
@@ -138,16 +569,16 @@ VAULT FOLDERS (choose destination from this list only):
 - Meetings/         → meeting notes, call notes, discussion summaries
 - Calls/            → call notes (use when explicitly a phone or video call)
 - People/           → notes about a specific person (1-2-1s, feedback, personal updates)
+- Team/             → internal team operations and working rhythms
 - Ideas/            → ideas, concepts, brainstorms, things to explore
 - Projects/         → notes tied to a specific named project
 - Areas/            → ongoing responsibilities (health, finance, leadership, team management)
 - Decision Log/     → a decision that was made
 - Reflections/      → personal reflections, journal entries, retrospectives
-- Imports/PLAUD/    → voice recording transcripts from PLAUD device
 - Archive/          → anything that doesn't fit elsewhere or is low value
 
 TYPES (choose one):
-meeting-note, call-note, action, decision, idea, reference, person-update, plaud-transcript, reflection, needs-review
+meeting, call-note, action, decision, idea, reference, person-update, plaud-transcript, reflection, needs-review
 
 RULES:
 - If content is fewer than 10 meaningful words with no clear category, type MUST be needs-review
@@ -189,10 +620,26 @@ async function classifyWithOllama(fileName, content) {
   return data.response || '';
 }
 
-async function classifyFile(filePath) {
+async function classifyFile(filePath, opts = {}) {
   const content = fs.readFileSync(filePath, 'utf-8');
   const fileName = path.basename(filePath);
   const relativePath = path.relative(getVaultPath(), filePath).replace(/\\/g, '/');
+
+  const deterministicPlaud = classifyPlaudDeterministic(filePath, content, opts);
+  if (deterministicPlaud) {
+    const classification = {
+      ...deterministicPlaud,
+      backend: 'deterministic',
+      rawResponse: deterministicPlaud.reason
+    };
+    try {
+      const db = require('../db/database');
+      db.saveImportClassification(relativePath, classification);
+    } catch (e) {
+      console.warn('[Imports] Failed to persist deterministic classification:', e.message);
+    }
+    return classification;
+  }
 
   let responseText = '';
   let backend = 'ollama';
@@ -239,9 +686,10 @@ async function classifyFile(filePath) {
   // Validate destination is a real vault folder — reject invented paths
   const VALID_DESTINATIONS = [
     'Meetings/', 'Calls/', 'People/', 'Ideas/', 'Projects/',
-    'Areas/', 'Decision Log/', 'Reflections/', 'Imports/PLAUD/', 'Archive/'
+    'Areas/', 'Decision Log/', 'Reflections/', 'Team/', 'Archive/'
   ];
-  if (classification.destination && !VALID_DESTINATIONS.some(d => classification.destination.startsWith(d.replace('/', '')))) {
+  const normalizedDestination = String(classification.destination || '').replace(/\\/g, '/');
+  if (classification.destination && !VALID_DESTINATIONS.some((d) => normalizedDestination.startsWith(d))) {
     console.warn(`[Imports] Invalid destination "${classification.destination}" — forcing needs-review`);
     classification.type = 'needs-review';
     classification.confidence = 'low';
@@ -322,6 +770,420 @@ function routeFile(filePath, destination, type) {
   return destRel;
 }
 
+async function routePlaudSummary(summaryPath, { transcriptPath = null, transcriptInsight = null, forceCanonical = false } = {}) {
+  if (!summaryPath || !fs.existsSync(summaryPath)) {
+    return { status: 'error', error: 'summaryPath not found' };
+  }
+
+  const vaultPath = getVaultPath();
+  const relativeSummaryPath = path.relative(vaultPath, summaryPath).replace(/\\/g, '/');
+  const classification = await classifyFile(summaryPath, { transcriptInsight, context: 'plaud-summary' });
+  const content = fs.readFileSync(summaryPath, 'utf-8');
+  const frontmatter = parseFrontmatter(content);
+  const canonical = buildCanonicalMeetingPath(summaryPath, frontmatter, content);
+  const fallbackDestination = canonical.relativeDir;
+  const effectiveClassification = (!classification.destination && forceCanonical)
+    ? {
+        ...classification,
+        type: 'meeting',
+        destination: fallbackDestination,
+        confidence: classification.confidence || 'medium',
+        reason: classification.reason && classification.reason !== 'Could not parse classification'
+          ? classification.reason
+          : 'Forced canonical PLAUD routing based on vault rules'
+      }
+    : classification;
+  const destination = effectiveClassification.destination || fallbackDestination;
+
+  const enhanced = renderKnownPersonLinks(content);
+  if (enhanced !== content) {
+    fs.writeFileSync(summaryPath, enhanced, 'utf-8');
+  }
+
+  let finalRelativePath = relativeSummaryPath;
+  const canonicalTargetRelative = canonical.relativePath;
+  const canonicalTargetFull = path.join(vaultPath, canonicalTargetRelative);
+  if (relativeSummaryPath !== canonicalTargetRelative) {
+    if (fs.existsSync(canonicalTargetFull) && path.resolve(summaryPath) !== path.resolve(canonicalTargetFull)) {
+      const ext = path.extname(canonicalTargetRelative);
+      const parsed = path.parse(canonicalTargetRelative);
+      let counter = 2;
+      let candidateRelative = canonicalTargetRelative;
+      let candidateFull = canonicalTargetFull;
+      while (fs.existsSync(candidateFull)) {
+        candidateRelative = path.join(parsed.dir, `${parsed.name} ${counter}${ext}`).replace(/\\/g, '/');
+        candidateFull = path.join(vaultPath, candidateRelative);
+        counter += 1;
+      }
+      fs.mkdirSync(path.dirname(candidateFull), { recursive: true });
+      fs.renameSync(summaryPath, candidateFull);
+      finalRelativePath = candidateRelative;
+    } else {
+      fs.mkdirSync(path.dirname(canonicalTargetFull), { recursive: true });
+      fs.renameSync(summaryPath, canonicalTargetFull);
+      finalRelativePath = canonicalTargetRelative;
+    }
+  }
+
+  const finalFullPath = path.resolve(vaultPath, finalRelativePath);
+  setCanonicalMeetingFrontmatter(finalFullPath, {
+    status: 'processed',
+    transcript_path: transcriptPath
+      ? path.relative(vaultPath, transcriptPath).replace(/\\/g, '/')
+      : '',
+    plaud_route_reason: effectiveClassification.reason || 'Plaud note routed to final destination',
+    plaud_route_backend: effectiveClassification.backend || 'deterministic'
+  });
+
+  try {
+    const sourceRel = relativeSummaryPath;
+    if (sourceRel !== finalRelativePath) {
+      const vaultLogger = require('./vault-logger');
+      vaultLogger.logMove(sourceRel, finalRelativePath, 'meeting');
+    }
+  } catch {}
+
+  broadcast({
+    type: 'file_actioned',
+    filePath: summaryPath,
+    action: 'routed'
+  });
+
+  try {
+    const db = require('../db/database');
+    db.deleteImportClassification(relativeSummaryPath);
+  } catch {}
+
+  if (transcriptPath) {
+    updateTranscriptSummaryLink(transcriptPath, finalRelativePath);
+  }
+
+  try { require('./vault-hooks').onVaultWrite(finalFullPath, 'plaud-route'); } catch {}
+
+  return {
+    status: 'ok',
+    relativePath: finalRelativePath,
+    destination,
+    classification: effectiveClassification
+  };
+}
+
+function chooseCanonicalPlaudNote(notes) {
+  return [...notes].sort((a, b) => {
+    const byPreference = (b.summaryPreference || 0) - (a.summaryPreference || 0);
+    if (byPreference !== 0) return byPreference;
+
+    const aGenerated = isKnowledgeMemoryGenerated(a.frontmatter) ? 1 : 0;
+    const bGenerated = isKnowledgeMemoryGenerated(b.frontmatter) ? 1 : 0;
+    if (aGenerated !== bGenerated) return aGenerated - bGenerated;
+
+    const aStaging = isPlaudStagingPath(a.relativePath) ? 1 : 0;
+    const bStaging = isPlaudStagingPath(b.relativePath) ? 1 : 0;
+    if (aStaging !== bStaging) return aStaging - bStaging;
+
+    return a.relativePath.localeCompare(b.relativePath);
+  })[0] || null;
+}
+
+function ensurePlaudCleanupReportDir() {
+  const dir = path.join(getVaultPath(), 'Documents', 'System', 'SARA Import Reports');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function archivePlaudDuplicate(note, archiveFolder, usedTargets = new Set()) {
+  const vaultPath = getVaultPath();
+  const destinationDir = path.join(vaultPath, archiveFolder);
+  fs.mkdirSync(destinationDir, { recursive: true });
+
+  const parsed = path.parse(note.relativePath);
+  let fileName = `${sanitizeFileName(path.basename(parsed.name))}${parsed.ext}`;
+  let targetRelative = path.join(archiveFolder, fileName).replace(/\\/g, '/');
+  let counter = 2;
+  while (fs.existsSync(path.join(vaultPath, targetRelative)) || usedTargets.has(targetRelative)) {
+    fileName = `${sanitizeFileName(path.basename(parsed.name))} ${counter}${parsed.ext}`;
+    targetRelative = path.join(archiveFolder, fileName).replace(/\\/g, '/');
+    counter += 1;
+  }
+
+  fs.renameSync(note.fullPath, path.join(vaultPath, targetRelative));
+  usedTargets.add(targetRelative);
+  try { require('./vault-hooks').onVaultWrite(path.join(vaultPath, targetRelative), 'plaud-cleanup-archive'); } catch {}
+  return targetRelative;
+}
+
+function sanitizeFileName(value) {
+  return String(value || 'Untitled')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || 'Untitled';
+}
+
+function buildPlaudCleanupReport(summary) {
+  const lines = [];
+  lines.push(`# Plaud Cleanup Report — ${new Date().toISOString()}`);
+  lines.push('');
+  lines.push(`- Dry run: ${summary.dryRun ? 'yes' : 'no'}`);
+  lines.push(`- Candidate groups: ${summary.scannedGroups}`);
+  lines.push(`- Candidate singles: ${summary.scannedSingles}`);
+  lines.push(`- Routed: ${summary.routed.length}`);
+  lines.push(`- Updated in place: ${summary.updatedInPlace.length}`);
+  lines.push(`- Archived duplicates: ${summary.archived.length}`);
+  lines.push(`- Needs review: ${summary.needsReview.length}`);
+  lines.push(`- Errors: ${summary.errors.length}`);
+  lines.push('');
+
+  const sections = [
+    ['Routed', summary.routed, (item) => `- \`${item.from}\` -> \`${item.to}\` (${item.reason})`],
+    ['Updated In Place', summary.updatedInPlace, (item) => `- \`${item.path}\` (${item.reason})`],
+    ['Archived Duplicates', summary.archived, (item) => `- \`${item.from}\` -> \`${item.to}\` (${item.reason})`],
+    ['Needs Review', summary.needsReview, (item) => `- \`${item.path}\` (${item.reason})`],
+    ['Errors', summary.errors, (item) => `- \`${item.path}\` (${item.error})`]
+  ];
+
+  for (const [heading, items, render] of sections) {
+    lines.push(`## ${heading}`);
+    if (!items.length) {
+      lines.push('- None');
+    } else {
+      for (const item of items) lines.push(render(item));
+    }
+    lines.push('');
+  }
+
+  return `${lines.join('\n').trimEnd()}\n`;
+}
+
+async function backfillPlaudNotes({ limit = 500, dryRun = false, archiveDuplicates = true } = {}) {
+  const vaultPath = getVaultPath();
+  if (!vaultPath || !fs.existsSync(vaultPath)) {
+    return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
+  }
+
+  const allNotes = listMarkdownFiles(vaultPath).map(readMarkdownNote);
+  const transcriptByPlaudId = new Map();
+  const groupedByPlaudId = new Map();
+  const singleCandidates = [];
+
+  for (const note of allNotes) {
+    if (isPlaudTranscript(note.frontmatter, note.fullPath)) {
+      if (note.plaudId) transcriptByPlaudId.set(note.plaudId, note);
+      continue;
+    }
+
+    const looksPlaud = note.plaudId || looksLikePlaudSummary(note.fullPath, note.frontmatter, note.content);
+    if (!looksPlaud) continue;
+
+    if (note.plaudId) {
+      if (!groupedByPlaudId.has(note.plaudId)) groupedByPlaudId.set(note.plaudId, []);
+      groupedByPlaudId.get(note.plaudId).push(note);
+    } else if (isPlaudStagingPath(note.relativePath) || isLegacyPlaudCleanupPath(note.relativePath)) {
+      singleCandidates.push(note);
+    }
+  }
+
+  const summary = {
+    status: 'ok',
+    dryRun,
+    scannedGroups: groupedByPlaudId.size,
+    scannedSingles: singleCandidates.length,
+    routed: [],
+    updatedInPlace: [],
+    archived: [],
+    needsReview: [],
+    errors: []
+  };
+
+  const archiveFolder = `Archive/Plaud Cleanup/${new Date().toISOString().slice(0, 10)}`;
+  const archiveTargets = new Set();
+  let processed = 0;
+
+  for (const [plaudId, notes] of groupedByPlaudId) {
+    if (processed >= limit) break;
+    processed += 1;
+
+    const canonical = chooseCanonicalPlaudNote(notes);
+    if (!canonical) continue;
+
+    const transcript = transcriptByPlaudId.get(plaudId) || null;
+    const keeper = notes.find((note) => !isPlaudStagingPath(note.relativePath) && !isKnowledgeMemoryGenerated(note.frontmatter)) || canonical;
+    const duplicates = notes.filter((note) => note.fullPath !== canonical.fullPath && note.fullPath !== keeper.fullPath);
+
+    try {
+      if (!dryRun && canonical.fullPath !== keeper.fullPath) {
+        fs.writeFileSync(keeper.fullPath, canonical.content, 'utf-8');
+        try { require('./vault-hooks').onVaultWrite(keeper.fullPath, 'plaud-cleanup-merge'); } catch {}
+        summary.updatedInPlace.push({
+          path: keeper.relativePath,
+          reason: `Replaced with preferred Plaud content for ${plaudId}`
+        });
+      }
+
+      const routeTargetPath = canonical.fullPath !== keeper.fullPath ? keeper.fullPath : canonical.fullPath;
+      const routePreview = await classifyFile(routeTargetPath, { context: 'plaud-cleanup' });
+      if (!routePreview.destination) {
+        if (!dryRun) {
+          const forcedRouteResult = await routePlaudSummary(routeTargetPath, {
+            transcriptPath: transcript?.fullPath || null,
+            forceCanonical: true
+          });
+          if (forcedRouteResult.status === 'ok') {
+            if (transcript?.fullPath) {
+              const transcriptResult = canonicalizePlaudTranscript(transcript.fullPath, {
+                summaryRelativePath: forcedRouteResult.relativePath
+              });
+              if (transcriptResult.status === 'ok') {
+                transcript.fullPath = path.join(vaultPath, transcriptResult.relativePath);
+                transcript.relativePath = transcriptResult.relativePath;
+              }
+            }
+            summary.routed.push({
+              from: path.relative(vaultPath, routeTargetPath).replace(/\\/g, '/'),
+              to: forcedRouteResult.relativePath,
+              reason: forcedRouteResult.classification?.reason || `Forced canonical route for ${plaudId}`
+            });
+          } else {
+            summary.needsReview.push({
+              path: path.relative(vaultPath, routeTargetPath).replace(/\\/g, '/'),
+              reason: `No routing destination for ${plaudId}`
+            });
+          }
+        } else {
+          summary.routed.push({
+            from: path.relative(vaultPath, routeTargetPath).replace(/\\/g, '/'),
+            to: canonical.relativePath,
+            reason: `Would force canonical route for ${plaudId}`
+          });
+        }
+      } else if (!dryRun) {
+        const routeResult = await routePlaudSummary(routeTargetPath, {
+          transcriptPath: transcript?.fullPath || null
+        });
+        if (routeResult.status === 'ok') {
+          if (transcript?.fullPath) {
+            const transcriptResult = canonicalizePlaudTranscript(transcript.fullPath, {
+              summaryRelativePath: routeResult.relativePath
+            });
+            if (transcriptResult.status === 'ok') {
+              transcript.fullPath = path.join(vaultPath, transcriptResult.relativePath);
+              transcript.relativePath = transcriptResult.relativePath;
+            }
+          }
+          summary.routed.push({
+            from: path.relative(vaultPath, routeTargetPath).replace(/\\/g, '/'),
+            to: routeResult.relativePath,
+            reason: routeResult.classification?.reason || `Routed Plaud note ${plaudId}`
+          });
+        } else {
+          summary.errors.push({
+            path: path.relative(vaultPath, routeTargetPath).replace(/\\/g, '/'),
+            error: routeResult.error || `Failed to route ${plaudId}`
+          });
+        }
+      } else {
+        summary.routed.push({
+          from: path.relative(vaultPath, routeTargetPath).replace(/\\/g, '/'),
+          to: routePreview.destination,
+          reason: routePreview.reason || `Would route Plaud note ${plaudId}`
+        });
+      }
+
+      for (const duplicate of duplicates) {
+        const reason = duplicate.summaryPreference < canonical.summaryPreference
+          ? `Lower-priority Plaud variant for ${plaudId}`
+          : `Duplicate Plaud note for ${plaudId}`;
+        if (archiveDuplicates && !dryRun) {
+          const archivedTo = archivePlaudDuplicate(duplicate, archiveFolder, archiveTargets);
+          summary.archived.push({
+            from: duplicate.relativePath,
+            to: archivedTo,
+            reason
+          });
+        } else {
+          summary.archived.push({
+            from: duplicate.relativePath,
+            to: `${archiveFolder}/...`,
+            reason
+          });
+        }
+      }
+    } catch (error) {
+      summary.errors.push({
+        path: canonical.relativePath,
+        error: error.message
+      });
+    }
+  }
+
+  for (const note of singleCandidates.slice(0, Math.max(0, limit - processed))) {
+    try {
+      const routePreview = await classifyFile(note.fullPath, { context: 'plaud-cleanup' });
+      if (!routePreview.destination) {
+        if (!dryRun) {
+          const forcedRouteResult = await routePlaudSummary(note.fullPath, { forceCanonical: true });
+          if (forcedRouteResult.status === 'ok') {
+            summary.routed.push({
+              from: note.relativePath,
+              to: forcedRouteResult.relativePath,
+              reason: forcedRouteResult.classification?.reason || 'Forced canonical route for legacy Plaud note'
+            });
+            continue;
+          }
+        } else {
+          const canonical = buildCanonicalMeetingPath(note.fullPath, note.frontmatter, note.content);
+          summary.routed.push({
+            from: note.relativePath,
+            to: canonical.relativePath,
+            reason: 'Would force canonical route for legacy Plaud note'
+          });
+          continue;
+        }
+        summary.needsReview.push({
+          path: note.relativePath,
+          reason: 'Legacy Plaud note could not be deterministically routed'
+        });
+        continue;
+      }
+
+      if (!dryRun) {
+        const routeResult = await routePlaudSummary(note.fullPath);
+        if (routeResult.status === 'ok') {
+          summary.routed.push({
+            from: note.relativePath,
+            to: routeResult.relativePath,
+            reason: routeResult.classification?.reason || 'Routed legacy Plaud note'
+          });
+        } else {
+          summary.errors.push({
+            path: note.relativePath,
+            error: routeResult.error || 'Failed to route legacy Plaud note'
+          });
+        }
+      } else {
+        summary.routed.push({
+          from: note.relativePath,
+          to: routePreview.destination,
+          reason: routePreview.reason || 'Would route legacy Plaud note'
+        });
+      }
+    } catch (error) {
+      summary.errors.push({
+        path: note.relativePath,
+        error: error.message
+      });
+    }
+  }
+
+  const reportDir = ensurePlaudCleanupReportDir();
+  const reportPath = path.join(reportDir, `Plaud Cleanup - ${new Date().toISOString().slice(0, 10)}${dryRun ? ' Dry Run' : ''}.md`);
+  const reportMarkdown = buildPlaudCleanupReport(summary);
+  fs.writeFileSync(reportPath, reportMarkdown, 'utf-8');
+  try { require('./vault-hooks').onVaultWrite(reportPath, 'plaud-cleanup-report'); } catch {}
+
+  summary.reportPath = path.relative(vaultPath, reportPath).replace(/\\/g, '/');
+  return summary;
+}
+
 // Batch classify and route all pending imports
 async function autoClassify() {
   const db = require('../db/database');
@@ -335,7 +1197,10 @@ async function autoClassify() {
   db.setState('imports_sweep_running', 'true');
 
   try {
-    const pending = getPending().filter(f => f.status !== 'needs-review');
+    const pending = getPending().filter((file) => {
+      if (file.status !== 'needs-review') return true;
+      return String(file.relativePath || '').replace(/\\/g, '/').startsWith('Imports/PLAUD/');
+    });
 
     if (pending.length === 0) {
       console.log('[Imports] No pending files to classify');
@@ -463,4 +1328,13 @@ async function autoClassify() {
   }
 }
 
-module.exports = { getPending, getImportsPath, classifyFile, routeFile, updateFrontmatter, autoClassify };
+module.exports = {
+  getPending,
+  getImportsPath,
+  classifyFile,
+  routeFile,
+  routePlaudSummary,
+  backfillPlaudNotes,
+  updateFrontmatter,
+  autoClassify
+};
