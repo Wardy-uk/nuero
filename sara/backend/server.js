@@ -12,6 +12,22 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 
+// Minimal .env loader (no dependency) — loads sara/backend/.env into process.env so the
+// NEURO connection (NEURO_BASE_URL / NEURO_PIN / NEURO_VAULT_KEY) survives restarts. The .env
+// is gitignored; secrets never enter the repo.
+(function loadEnv() {
+  try {
+    const envPath = path.join(__dirname, '.env');
+    if (!fs.existsSync(envPath)) return;
+    for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([\w.]+)\s*=\s*(.*)\s*$/);
+      if (m && !line.trim().startsWith('#') && process.env[m[1]] === undefined) {
+        process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+      }
+    }
+  } catch { /* keep defaults */ }
+})();
+
 const healthRoute = require('./src/routes/health');
 const stateRoute = require('./src/routes/state');
 const chatRoute = require('./src/routes/chat');
@@ -22,10 +38,12 @@ const inferenceRoute = require('./src/routes/inference');
 const kioskRoute = require('./src/routes/kiosk');
 const presenceRoute = require('./src/routes/presence');
 const locationRoute = require('./src/routes/location');
+const cognitionGraphRoute = require('./src/routes/cognitionGraph');
 const { RUNTIME_LABEL } = require('./src/state/stateEngine');
 const ha = require('./src/telemetry/homeAssistant');
 const neuro = require('./src/integrations/neuroSnapshot');
 const nova = require('./src/integrations/novaSnapshot');
+const vaultGraph = require('./src/integrations/vaultGraph');
 
 const app = express();
 const PORT = process.env.SARA_PORT || 3005;
@@ -43,6 +61,7 @@ app.use('/api/inference', inferenceRoute);
 app.use('/api/kiosk', kioskRoute);
 app.use('/api/presence', presenceRoute);
 app.use('/api/location', locationRoute);
+app.use('/api/cognition/graph', cognitionGraphRoute);
 
 // --- Static frontend (production) ---
 // Vite builds to ../frontend/dist. If it exists, serve it with SPA fallback so
@@ -79,4 +98,7 @@ app.listen(PORT, () => {
   // into model.nova for the "At Work" view. Idle (and logs why) until NOVA_BASE_URL is
   // set, so the runtime stays up and the view falls back honestly.
   nova.start();
+  // Start the bounded vault cognition-graph poller — real backlinks/related + knowledge gaps
+  // for the Cognitive Convergence Graph. Idle/honest when NEURO is unreachable.
+  vaultGraph.start();
 });

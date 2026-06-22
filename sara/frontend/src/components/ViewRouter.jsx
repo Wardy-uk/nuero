@@ -1,5 +1,6 @@
 import { useSaraState } from '../state/saraState';
 import { SARA_VIEWS } from '../state/views';
+import CognitionEnvironment from '../screens/cognition/CognitionEnvironment';
 import MissionControl from '../screens/mission-control/MissionControl';
 import ExecutiveDashboard from '../screens/executive-dashboard/ExecutiveDashboard';
 import AtWorkView from '../screens/at-work/AtWorkView';
@@ -22,6 +23,8 @@ export default function ViewRouter() {
   const { currentView } = useSaraState();
 
   switch (currentView) {
+    case SARA_VIEWS.COGNITION:
+      return <CognitionEnvironment />;
     case SARA_VIEWS.BRIEFING:
       return <MissionControl />;
     case SARA_VIEWS.SARA:

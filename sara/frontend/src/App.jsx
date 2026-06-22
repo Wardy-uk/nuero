@@ -28,10 +28,16 @@ function AppShell() {
     graceMs: 5000, // "Locking…" countdown before an AWAY lock; activity cancels it
   });
 
-  // The Briefing (JARVIS) view is full-bleed: it draws its OWN nav, header and footer,
-  // so the shell hides its chrome (ViewSwitcher + SARA-thinks strip) to avoid doubling
-  // up. Every other view keeps the shared shell chrome.
-  const fullBleed = normalizeViewId(currentView) === SARA_VIEWS.BRIEFING;
+  // Some views are full-bleed: they draw their OWN nav, header and footer, so the shell
+  // hides its chrome (ViewSwitcher + SARA-thinks strip) to avoid doubling up. The Briefing
+  // (JARVIS) and the Cognition Environment are both full-bleed. Every other view keeps the
+  // shared shell chrome.
+  const view = normalizeViewId(currentView);
+  const fullBleed = view === SARA_VIEWS.BRIEFING || view === SARA_VIEWS.COGNITION;
+  // The Cognition Environment owns its own bottom bar and presence affordances, so the
+  // shell's floating lock/power column would collide with it. Auto-lock still runs (the
+  // hook + lock overlay are unconditional), so only the manual buttons are hidden there.
+  const showFloatingSys = view === SARA_VIEWS.BRIEFING;
 
   const sysControls = (
     <div className="app__sys">
@@ -60,7 +66,7 @@ function AppShell() {
         <main className="app__bleed-view">
           <ViewRouter />
         </main>
-        <div className="app__sys app__sys--floating">{sysControls.props.children}</div>
+        {showFloatingSys && <div className="app__sys app__sys--floating">{sysControls.props.children}</div>}
         {pending != null && !locked && <LockCountdown seconds={pending} onStay={dismissCountdown} />}
         {locked && <LockScreen reason={reason} now={now} onUnlock={unlock} />}
       </div>

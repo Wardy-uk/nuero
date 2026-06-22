@@ -17,6 +17,7 @@
 // Canonical SaraView identifiers. The string value is the stable view id used in
 // the registry, the router, and (later) the recommended/selected view in state.
 export const SARA_VIEWS = {
+  COGNITION: 'cognition',
   BRIEFING: 'mission-control',
   SARA: 'companion',
   STANDUP: 'standup',
@@ -43,6 +44,12 @@ const VIEW_ALIASES = {
 //   status: 'available' -> a screen exists and renders now
 //   status: 'planned'   -> reserved by the architecture; screen is a placeholder
 export const VIEW_REGISTRY = [
+  {
+    id: SARA_VIEWS.COGNITION,
+    label: 'Cognition',
+    blurb: "SARA's primary surface: ambient state, one active focus, signals — and the seam.",
+    status: 'available',
+  },
   {
     id: SARA_VIEWS.BRIEFING,
     label: 'Briefing',
@@ -115,8 +122,8 @@ export const VIEW_REGISTRY = [
 // is supported via the view switcher. As of WS5-WP1 the State Engine also derives a
 // *recommended* view (model.inference.recommendedView), surfaced by RecommendedView —
 // but it is ADVISORY ONLY: it never sets DEFAULT_VIEW or currentView on its own. SARA
-// opens on Mission Control and only a user action changes the view.
-export const DEFAULT_VIEW = SARA_VIEWS.BRIEFING;
+// opens on the Cognition Environment and only a user action changes the view.
+export const DEFAULT_VIEW = SARA_VIEWS.COGNITION;
 
 export function normalizeViewId(id) {
   return VIEW_ALIASES[id] || id;
