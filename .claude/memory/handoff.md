@@ -27,8 +27,14 @@ except generated reports (lint audit). No git commits made.
 - **graph_config:** read returns 10 canonical colour groups + Obsidian-overwrite warning.
 - **plaud reconcile:** match logic validated (486 dated active notes / 116 active plaud_ids; token-echo→present, unrelated→missing, timestamp-name→date-only, no-notes-date→missing). Live PLAUD list only runs on Pi.
 
-## NOT DONE / next steps
-1. **Deploy to Pi 5** — none of this is live yet. Needs: git commit + push, `ssh nickw@100.100.28.58`, pull, restart NEURO (pm2) + MCP server. Memory `pi5-deployment` has process names/paths.
+## DEPLOYED 2026-06-30 — all 8 tools live on Pi 5
+- Committed (4ff8c96, 0b1097b, b1bd094) + pushed to origin/main. Pi 5 reconciled + restarted; all 8 routes live (lint/contextual/fix/alias/connect/graph + plaud reconcile/repull), weekly hygiene cron registered, neuro-backend healthy.
+- **Bug fixed in deploy (b1bd094):** engine scanned Syncthing `.stversions` (1041 phantom notes → 993 false broken links on the Pi). Added `.stversions`/`.sync` to the exclude set. Pi lint now 606/58.
+- **Pi git was badly drifted** (unpushed-looking HEAD + dirty tree + untracked files shadowing tracked ones). Reconciled the SAFE way: tarball backup `/mnt/data/nuero-worktree-backup-20260630-123919.tgz` + full snapshot branch `pi-local-snapshot-20260630` (pushed to GitHub) → analysis proved origin strictly ahead, nothing unique on Pi → `git checkout -f -B main origin/main` + npm install + restart. **Recovery point: branch `pi-local-snapshot-20260630` on origin.** Pi now tracks origin/main cleanly — future deploys are clean `git pull`s.
+- Leftover Pi cruft (harmless, untracked): `backend/server.js.bak-vh`, old `.bak`/db-backup/dev-check files. Cosmetic: scheduler startup log summary string doesn't list the new Fri 4:35pm hygiene pass (cron IS registered).
+
+## OUTSTANDING
+1. **Pi vault replica is out of sync with Windows canonical** — Pi `/home/nickw/nuero-vault` has 606 real notes (Plaud 21!) vs Windows 828 (Plaud 219); 209 orphans vs 5. Syncthing convergence gap (possibly the boot-race from the 06-23 handoff recurring). So **MCP tools hitting the Pi see a stale view** — run canonical hygiene against the WINDOWS vault (engine validated there) until Syncthing is reconciled. Investigate Pi Syncthing health.
 2. **Run the real workflows (Nick to trigger, with sign-off):**
    - `vault_lint` for a fresh audit (45 broken links genuinely actionable — mostly Decision Log → renamed/binned meeting notes).
    - `vault_contextual_link mode=plan` over WIDER roots than the 4 already-stamped (e.g. People, Projects, Ideas) to surface fresh cards.
