@@ -65,4 +65,17 @@ router.post('/repull', async (req, res) => {
   }
 });
 
+// POST /api/plaud/repull-stubs  { limit?: number }  — recover "No transcript returned" notes
+router.post('/repull-stubs', async (req, res) => {
+  try {
+    const result = await plaudSync.repullStubTranscripts({
+      limit: req.body?.limit ? parseInt(req.body.limit, 10) : null,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('[PlaudSync] Stub re-fetch failed:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

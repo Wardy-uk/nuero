@@ -627,6 +627,22 @@ server.tool('vault_plaud_repull',
     return { content: [{ type: 'text', text: lines.filter(Boolean).join('\n') }] };
   });
 
+server.tool('vault_plaud_repull_stubs',
+  'Recover "No transcript returned by Plaud" stub notes. PLAUD often returns an empty transcript under load even when the full transcript exists — this re-fetches each stub\'s transcript (retrying on empty) and rewrites its ## Transcript section in place. Backed up, throttled, resumable. Use limit to test a small batch first.',
+  {
+    limit: z.number().optional().describe('Cap notes this run (e.g. 5) to test; re-run to continue'),
+  },
+  async ({ limit }) => {
+    const data = await neuroApi('/api/plaud/repull-stubs', { method: 'POST', body: JSON.stringify({ limit }), timeout: 600000 });
+    if (data.skipped) return { content: [{ type: 'text', text: `Skipped: ${data.reason}` }] };
+    const lines = [
+      `Stub re-fetch — ${data.totalStubs} stubs found, processed ${data.scanned}: **${data.recovered} recovered**, ${data.stillEmpty} still empty, ${data.failed} failed.`,
+      data.backupDir ? `Backups: \`${data.backupDir}\`` : '',
+    ];
+    for (const r of (data.results || []).filter(r => r.status !== 'recovered').slice(0, 10)) lines.push(`- ${r.status}: \`${r.rel}\`${r.error ? ' — ' + r.error : ''}`);
+    return { content: [{ type: 'text', text: lines.filter(Boolean).join('\n') }] };
+  });
+
 // ═══════════════════════════════════════════════════════
 // Tools: Operational Context
 // ═══════════════════════════════════════════════════════

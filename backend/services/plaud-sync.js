@@ -903,11 +903,12 @@ async function reconcilePlaudRecordings({ minJaccard = 0.5, write = true } = {})
 async function processRecordingFresh(client, recording, syncState) {
   const details = await withRetry(`get_file ${recording.id}`, () => callTool(client, 'get_file', { file_id: recording.id }));
   const noteList = await withRetry(`get_note ${recording.id}`, () => callTool(client, 'get_note', { file_id: recording.id }));
-  const transcriptPayload = await withRetry(`get_transcript ${recording.id}`, () => callTool(client, 'get_transcript', { file_id: recording.id }));
 
   const preferredSummary = choosePreferredSummary(Array.isArray(noteList) ? noteList : []);
   const summaryBody = renderNote(noteList);
-  const transcriptBody = renderTranscript(extractTranscriptSegments(transcriptPayload));
+  // get_transcript returns empty intermittently under load even when a transcript
+  // exists; fetchTranscriptBody retries on empty before giving up (prevents stubs).
+  const transcriptBody = await fetchTranscriptBody(client, recording.id);
 
   const baseName = buildNoteBaseName(details);
   const summaryRelativePath = `${normalizeVaultPath(getSummaryFolder())}/${baseName}.md`;
@@ -1015,11 +1016,106 @@ async function repullPlaudRecordings({ ids = null, limit = null } = {}) {
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// Stub transcript recovery
+//
+// get_transcript returns empty intermittently (under load) even when PLAUD holds
+// a full transcript — proven by re-fetching: a "No transcript returned" note's
+// transcript comes back in full on a clean call. The old plugin + early repulls
+// wrote those empties as "No transcript returned by Plaud" stubs. This recovers
+// them: re-fetch each stub's transcript and rewrite the note (backed up).
+// ═══════════════════════════════════════════════════════
+
+const STUB_MARKER = 'No transcript returned by Plaud';
+const PLAUD_BACKUP_REL = ['Scripts', '.lint-backups'];
+
+// Fetch + render a transcript, retrying on EMPTY (not just on thrown errors).
+async function fetchTranscriptBody(client, id, { emptyRetries = 3, emptyDelayMs = 2500 } = {}) {
+  for (let attempt = 0; attempt <= emptyRetries; attempt += 1) {
+    const payload = await withRetry(`get_transcript ${id}`, () => callTool(client, 'get_transcript', { file_id: id }));
+    const body = renderTranscript(extractTranscriptSegments(payload));
+    if (body && body.trim()) return body;
+    if (attempt < emptyRetries) await sleep(emptyDelayMs * (attempt + 1));
+  }
+  return '';
+}
+
+// Find every note carrying the stub marker that has a plaud_id to re-fetch.
+function findStubTranscriptNotes() {
+  const vaultPath = getVaultPath();
+  const out = [];
+  for (const fp of readMarkdownFiles(vaultPath)) {
+    const relParts = path.relative(vaultPath, fp).split(path.sep);
+    if (relParts.some((seg) => RECONCILE_EXCLUDE.has(seg))) continue;
+    let content = '';
+    try { content = fs.readFileSync(fp, 'utf-8'); } catch { continue; }
+    if (!content.includes(STUB_MARKER)) continue;
+    const pid = extractFrontmatterValue(content, 'plaud_id');
+    if (!pid) continue;
+    out.push({ path: fp, rel: path.relative(vaultPath, fp).replace(/\\/g, '/'), plaud_id: pid, content });
+  }
+  return out;
+}
+
+/**
+ * Recover stub transcript notes: re-fetch each "No transcript returned" note's
+ * transcript and rewrite its ## Transcript section in place. Append/overwrite is
+ * surgical (frontmatter + everything before ## Transcript preserved), backed up,
+ * throttled and resumable (a recovered note no longer carries the marker).
+ * @param {object} opts  { limit?: number }
+ */
+async function repullStubTranscripts({ limit = null } = {}) {
+  const runningState = readRunningState();
+  if (runningState.active && !runningState.stale) {
+    return { started: false, skipped: true, reason: 'PLAUD sync/repull already running' };
+  }
+  let stubs = findStubTranscriptNotes();
+  const totalStubs = stubs.length;
+  if (limit && stubs.length > limit) stubs = stubs.slice(0, limit);
+  if (!stubs.length) return { started: true, totalStubs, scanned: 0, recovered: 0, stillEmpty: 0, failed: 0, results: [] };
+
+  writeRunningState(true);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupDir = path.join(getVaultPath(), ...PLAUD_BACKUP_REL, `stub-refetch-${stamp}`);
+  let recovered = 0, stillEmpty = 0, failed = 0;
+  const results = [];
+  try {
+    const { client, transport } = await createClient();
+    try {
+      for (const s of stubs) {
+        try {
+          const body = await fetchTranscriptBody(client, s.plaud_id);
+          if (!body) { stillEmpty += 1; results.push({ rel: s.rel, status: 'still-empty' }); }
+          else {
+            const bk = path.join(backupDir, s.rel);
+            fs.mkdirSync(path.dirname(bk), { recursive: true });
+            fs.copyFileSync(s.path, bk);
+            const idx = s.content.indexOf('## Transcript');
+            const head = idx >= 0 ? s.content.slice(0, idx) : s.content.replace(/\n*$/, '') + '\n\n';
+            fs.writeFileSync(s.path, `${head}## Transcript\n\n${body.trim()}\n`, 'utf-8');
+            try { require('./vault-hooks').onVaultWrite(s.path, 'plaud-stub-refetch'); } catch {}
+            recovered += 1; results.push({ rel: s.rel, status: 'recovered', chars: body.length });
+          }
+        } catch (error) {
+          failed += 1; results.push({ rel: s.rel, status: 'failed', error: error.message });
+        }
+        if (DEFAULT_BETWEEN_RECORDINGS_MS > 0) await sleep(DEFAULT_BETWEEN_RECORDINGS_MS);
+      }
+    } finally {
+      await transport.close();
+    }
+    return { started: true, totalStubs, scanned: stubs.length, recovered, stillEmpty, failed, backupDir: path.relative(getVaultPath(), backupDir).replace(/\\/g, '/'), results };
+  } finally {
+    writeRunningState(false);
+  }
+}
+
 module.exports = {
   getStatus,
   syncPlaudRecordings,
   reconcilePlaudRecordings,
   repullPlaudRecordings,
+  repullStubTranscripts,
   renderNote,
   renderTranscript,
   extractTranscriptSegments,
