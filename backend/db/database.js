@@ -3,17 +3,39 @@ const path = require('path');
 const fs = require('fs');
 
 const DB_PATH = path.join(__dirname, 'agent.db');
+const DB_DIR = path.dirname(DB_PATH);
 
 let db = null;
+
+function timestampToken() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function quarantineDb(reason = 'corrupt') {
+  if (!fs.existsSync(DB_PATH)) return null;
+  const target = path.join(DB_DIR, `agent.db.${reason}.${timestampToken()}`);
+  fs.renameSync(DB_PATH, target);
+  return target;
+}
 
 async function init() {
   const SQL = await initSqlJs();
 
+  db = new SQL.Database();
   if (fs.existsSync(DB_PATH)) {
-    const buffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
+    try {
+      const buffer = fs.readFileSync(DB_PATH);
+      if (buffer.length === 0) {
+        const moved = quarantineDb('empty');
+        console.warn(`[DB] Existing database was empty; moved to ${moved}`);
+      } else {
+        db = new SQL.Database(buffer);
+      }
+    } catch (e) {
+      const moved = quarantineDb('malformed');
+      console.error(`[DB] Failed to load database (${e.message}); moved to ${moved}`);
+      db = new SQL.Database();
+    }
   }
 
   // Run migrations
@@ -54,9 +76,12 @@ async function init() {
 
 function save() {
   if (!db) return;
+  fs.mkdirSync(DB_DIR, { recursive: true });
   const data = db.export();
   const buffer = Buffer.from(data);
-  fs.writeFileSync(DB_PATH, buffer);
+  const tempPath = path.join(DB_DIR, `agent.db.tmp-${process.pid}`);
+  fs.writeFileSync(tempPath, buffer);
+  fs.renameSync(tempPath, DB_PATH);
 }
 
 function getDb() {
