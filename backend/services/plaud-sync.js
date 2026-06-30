@@ -273,7 +273,8 @@ async function withRetry(label, operation, options = {}) {
         throw error;
       }
 
-      const delay = baseDelayMs * Math.pow(2, attempt - 1);
+      // Exponential backoff + jitter (avoids thundering-herd re-tries on 429).
+      const delay = baseDelayMs * Math.pow(2, attempt - 1) + Math.floor(Math.random() * baseDelayMs);
       console.warn(
         `[PlaudSync] ${label} failed on attempt ${attempt}/${attempts} (${error.message}). Retrying in ${delay}ms...`
       );
@@ -767,11 +768,262 @@ function getStatus() {
   };
 }
 
+// ═══════════════════════════════════════════════════════
+// Reconcile + targeted re-pull (build handoff §9)
+//
+// The 23 Jun reset binned ~178 recordings' notes into Archive, so they have no
+// ACTIVE note even though the ledger still lists them as synced. Incremental sync
+// would skip them. Reconcile finds recordings with no active note (by date +
+// title-token match, NOT filename equality); repull fetches those FRESH from
+// PLAUD (never restores from Archive) through the same throttled/retried/ledgered
+// pipeline as syncPlaudRecordings.
+// ═══════════════════════════════════════════════════════
+
+const REPORT_FOLDER = 'Documents/System/Vault Audit';
+// Active scan skips Archive (the whole point) + non-note/system dirs.
+const RECONCILE_EXCLUDE = new Set(['Archive', '.obsidian', '.git', '.trash', '.stfolder', '.claude', 'Templates', 'Scripts', 'node_modules', 'Conflicts']);
+
+function titleTokens(str) {
+  return new Set(
+    String(str || '')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 3),
+  );
+}
+
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+
+function recordingDateStr(recording) {
+  const raw = recording.start_at || recording.created_at || recording.updated_at || null;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+
+// Read every ACTIVE note (Archive excluded) and index it by date + title tokens,
+// plus the set of plaud_ids that resolve to an active note.
+function buildActiveNoteIndex() {
+  const vaultPath = getVaultPath();
+  const byDate = new Map();   // 'YYYY-MM-DD' -> [ Set<token> ]
+  const plaudIds = new Set();
+
+  for (const filePath of readMarkdownFiles(vaultPath)) {
+    const relParts = path.relative(vaultPath, filePath).split(path.sep);
+    if (relParts.some((seg) => RECONCILE_EXCLUDE.has(seg))) continue;
+
+    let content = '';
+    try { content = fs.readFileSync(filePath, 'utf-8'); } catch { continue; }
+
+    const pid = extractFrontmatterValue(content, 'plaud_id');
+    if (pid) plaudIds.add(pid);
+
+    const base = path.basename(filePath, '.md');
+    const fnDate = base.match(/(\d{4}-\d{2}-\d{2})/);
+    const date = (fnDate && fnDate[1])
+      || extractFrontmatterValue(content, 'date')
+      || (extractFrontmatterValue(content, 'start_at') || '').slice(0, 10)
+      || null;
+    if (!date) continue;
+
+    // Tokens from the filename minus its date prefix (the human title).
+    const titlePart = base.replace(/\d{4}-\d{2}-\d{2}/g, ' ');
+    const tokens = titleTokens(titlePart);
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date).push(tokens);
+  }
+  return { byDate, plaudIds };
+}
+
+/**
+ * Read-only. List every PLAUD recording and find those with no ACTIVE vault note.
+ * Match: plaud_id in an active note (strong) OR same date + title-token Jaccard ≥0.5;
+ * recordings with no descriptive title match by date alone. Writes a report.
+ * @returns {{ total, present, missing: Array<{id,date,title}>, reportPath }}
+ */
+async function reconcilePlaudRecordings({ minJaccard = 0.5, write = true } = {}) {
+  const index = buildActiveNoteIndex();
+  const { client, transport } = await createClient();
+  let recordings;
+  try {
+    recordings = await listRecordings(client);
+  } finally {
+    await transport.close();
+  }
+
+  const missing = [];
+  for (const rec of recordings) {
+    const id = rec.id;
+    const title = rec.name || '';
+    if (index.plaudIds.has(id)) continue;                 // active note carries the id
+
+    const date = recordingDateStr(rec);
+    const sameDate = date ? (index.byDate.get(date) || []) : [];
+    const tokens = titleTokens(title);
+
+    let present;
+    if (tokens.size === 0) {
+      present = sameDate.length > 0;                       // unnamed/timestamp → date match
+    } else {
+      present = sameDate.some((noteTokens) => jaccard(tokens, noteTokens) >= minJaccard);
+    }
+    if (!present) missing.push({ id, date: date || 'undated', title: title || '(unnamed)' });
+  }
+
+  missing.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  let reportPath = null;
+  if (write) {
+    const lines = [
+      '---', 'type: reference', `created: ${new Date().toISOString().slice(0, 10)}`, 'tags: [plaud, reconcile, audit]', 'author: NEURO plaud-sync', '---',
+      `# PLAUD Reconciliation — ${new Date().toISOString().slice(0, 10)}`, '',
+      `**${recordings.length}** PLAUD recordings · **${recordings.length - missing.length}** have an active note · **${missing.length}** missing.`, '',
+      'Missing recordings have no active vault note (notes may be in Archive). Re-pull fetches these FRESH from PLAUD — never restore from Archive.', '',
+      '| Date | PLAUD ID | Title |', '|---|---|---|',
+      ...missing.map((m) => `| ${m.date} | \`${m.id}\` | ${m.title.replace(/\|/g, '\\|')} |`),
+    ];
+    const dir = path.join(getVaultPath(), REPORT_FOLDER);
+    fs.mkdirSync(dir, { recursive: true });
+    const outPath = path.join(dir, `PLAUD Missing Reconciliation ${new Date().toISOString().slice(0, 10)}.md`);
+    fs.writeFileSync(outPath, lines.join('\n'), 'utf-8');
+    reportPath = path.relative(getVaultPath(), outPath).replace(/\\/g, '/');
+  }
+
+  return { total: recordings.length, present: recordings.length - missing.length, missing, reportPath };
+}
+
+// Fetch + render + stage + route a single recording FRESH. Mirrors the inner body
+// of syncPlaudRecordings but always writes to default (new) paths and updates the
+// shared ledger so a crash resumes. Returns the routed summary path.
+async function processRecordingFresh(client, recording, syncState) {
+  const details = await withRetry(`get_file ${recording.id}`, () => callTool(client, 'get_file', { file_id: recording.id }));
+  const noteList = await withRetry(`get_note ${recording.id}`, () => callTool(client, 'get_note', { file_id: recording.id }));
+  const transcriptPayload = await withRetry(`get_transcript ${recording.id}`, () => callTool(client, 'get_transcript', { file_id: recording.id }));
+
+  const preferredSummary = choosePreferredSummary(Array.isArray(noteList) ? noteList : []);
+  const summaryBody = renderNote(noteList);
+  const transcriptBody = renderTranscript(extractTranscriptSegments(transcriptPayload));
+
+  const baseName = buildNoteBaseName(details);
+  const summaryRelativePath = `${normalizeVaultPath(getSummaryFolder())}/${baseName}.md`;
+  const transcriptRelativePath = `${normalizeVaultPath(getTranscriptFolder())}/${baseName}.md`;
+
+  const summaryWrite = writeFile(summaryRelativePath, renderSummaryNote(details, preferredSummary, summaryBody, transcriptRelativePath));
+  const transcriptWrite = writeFile(transcriptRelativePath, renderTranscriptNote(details, summaryRelativePath, transcriptBody));
+
+  let transcriptResult = null;
+  try { transcriptResult = await require('./transcript-processor').processTranscript(transcriptWrite.fullPath); }
+  catch (error) { console.error('[PlaudSync] Transcript enrichment failed:', error.message); }
+
+  let finalSummaryRelativePath = summaryRelativePath;
+  try {
+    const routeResult = await require('./imports').routePlaudSummary(summaryWrite.fullPath, {
+      transcriptPath: transcriptWrite.fullPath,
+      transcriptInsight: transcriptResult,
+    });
+    if (routeResult.status === 'ok' && routeResult.relativePath) finalSummaryRelativePath = routeResult.relativePath;
+    else if (routeResult.error) console.warn(`[PlaudSync] PLAUD route skipped for ${recording.id}: ${routeResult.error}`);
+  } catch (error) { console.error(`[PlaudSync] PLAUD route failed for ${recording.id}:`, error.message); }
+
+  syncState.syncedRecordings[recording.id] = {
+    summaryRelativePath: finalSummaryRelativePath,
+    transcriptRelativePath,
+    syncedAt: new Date().toISOString(),
+    sourceCreatedAt: details.created_at || null,
+    sourceStartAt: details.start_at || null,
+    sourceFingerprint: details.updated_at || details.modified_at || details.created_at || details.start_at || null,
+    summaryPreferenceRank: getSummaryPreferenceRank(preferredSummary),
+    summaryPreferenceLabel: describeSummaryChoice(preferredSummary),
+  };
+  delete syncState.failedRecordings[recording.id];
+  writeSyncState(syncState);
+  return finalSummaryRelativePath;
+}
+
+/**
+ * Targeted, throttled, resumable re-pull of specific recordings (default: the
+ * reconcile "missing" set). Force-processes each id (bypassing the incremental
+ * skip), persisting the ledger after every recording so a crash resumes.
+ * @param {object} opts
+ * @param {string[]} [opts.ids]   Recording ids to pull. Omit to reconcile first.
+ * @param {number}   [opts.limit] Cap recordings this run (for safe batched runs).
+ */
+async function repullPlaudRecordings({ ids = null, limit = null } = {}) {
+  const runningState = readRunningState();
+  if (runningState.active && !runningState.stale) {
+    return { started: false, skipped: true, reason: 'PLAUD sync/repull already running' };
+  }
+
+  let targetIds = ids;
+  if (!targetIds) {
+    const recon = await reconcilePlaudRecordings({ write: false });
+    targetIds = recon.missing.map((m) => m.id);
+  }
+  if (limit && targetIds.length > limit) targetIds = targetIds.slice(0, limit);
+
+  writeRunningState(true);
+  const syncState = readSyncState();
+  const startedAt = new Date();
+  syncState.lastRunAt = startedAt.toISOString();
+  writeSyncState(syncState);
+
+  let pulled = 0, failed = 0;
+  const failures = [];
+  try {
+    ensureFolder(normalizeVaultPath(getSummaryFolder()));
+    ensureFolder(normalizeVaultPath(getTranscriptFolder()));
+    const { client, transport } = await createClient();
+    try {
+      // Index the live recording list once so we have each id's metadata.
+      const recordings = await listRecordings(client);
+      const byId = new Map(recordings.map((r) => [r.id, r]));
+
+      for (const id of targetIds) {
+        const recording = byId.get(id) || { id };
+        try {
+          await processRecordingFresh(client, recording, syncState);
+          pulled += 1;
+        } catch (error) {
+          failed += 1;
+          const message = error.message || String(error);
+          console.error(`[PlaudSync] Re-pull ${id} failed:`, message);
+          syncState.failedRecordings[id] = { failedAt: new Date().toISOString(), message, title: recording.name || id };
+          writeSyncState(syncState);
+          failures.push({ id, title: recording.name || id, error: message });
+        }
+        if (DEFAULT_BETWEEN_RECORDINGS_MS > 0) await sleep(DEFAULT_BETWEEN_RECORDINGS_MS);
+      }
+
+      if (failed === 0) syncState.lastSuccessfulSyncAt = startedAt.toISOString();
+      writeSyncState(syncState);
+      db.setState(PLAUD_LAST_ERROR_KEY, failed > 0 ? failures[0].error : '');
+
+      return { started: true, requested: targetIds.length, pulled, failed, remaining: targetIds.length - pulled - failed, failures, resumable: true };
+    } finally {
+      await transport.close();
+    }
+  } catch (error) {
+    db.setState(PLAUD_LAST_ERROR_KEY, error.message);
+    throw error;
+  } finally {
+    writeRunningState(false);
+  }
+}
+
 module.exports = {
   getStatus,
   syncPlaudRecordings,
+  reconcilePlaudRecordings,
+  repullPlaudRecordings,
   renderNote,
   renderTranscript,
   extractTranscriptSegments,
-  htmlUnescape
+  htmlUnescape,
+  // exported for tests / reuse
+  _internal: { titleTokens, jaccard, recordingDateStr, buildActiveNoteIndex },
 };

@@ -467,6 +467,167 @@ server.tool('list_people', 'List all people in the vault', {}, async () => {
 });
 
 // ═══════════════════════════════════════════════════════
+// Tools: Vault Hygiene  (NEURO-owned; server-side whole-vault scans)
+// ═══════════════════════════════════════════════════════
+
+server.tool('vault_lint',
+  'Read-only vault health scan: broken [[links]], orphans (no links in/out), under-linked People notes, and stale notes. Writes a dated report to Documents/System/Vault Audit/. Touches nothing else.',
+  {},
+  async () => {
+    const data = await neuroApi('/api/vault-hygiene/lint', { timeout: 30000 });
+    const c = data.counts || {};
+    const lines = [
+      `# Vault Lint — ${data.scanned} notes scanned`,
+      '',
+      `| Check | Count |`,
+      `|---|---|`,
+      `| Broken links | ${c.broken} |`,
+      `| Orphans | ${c.orphans} |`,
+      `| Under-linked People | ${c.underlinkedPeople} |`,
+      `| Stale | ${c.stale} |`,
+      '',
+    ];
+    if (data.broken?.length) lines.push('## Broken (first 15)', ...data.broken.slice(0, 15).map(b => `- \`${b.from}\` → \`[[${b.target}]]\``), '');
+    if (data.orphans?.length) lines.push('## Orphans', ...data.orphans.map(o => `- \`${o}\``), '');
+    if (data.reportPath) lines.push(`_Full report: \`${data.reportPath}\`_`);
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+server.tool('vault_contextual_link',
+  'Add contextual [[wikilinks]] for genuine prose mentions of roster People/Projects. mode="plan" (default) is read-only and produces autonomy cards (per note: proposed link + the justifying sentence); mode="apply" appends an idempotent "## Mentioned" block, backs up every touched file, and writes a changelog. Full-name matching only — never bare first names. ALWAYS run plan and review before apply.',
+  {
+    mode: z.enum(['plan', 'apply']).optional().describe('plan (default, read-only cards) or apply (append links)'),
+    roots: z.array(z.string()).optional().describe('Vault folders to scan (default: Meetings, Reflections, Calls, Decision Log)'),
+    only: z.array(z.string()).optional().describe('apply mode only — restrict to these note paths (the approved subset). Omit to apply every proposal.'),
+  },
+  async ({ mode, roots, only }) => {
+    const m = mode || 'plan';
+    if (m === 'apply') {
+      const data = await neuroApi('/api/vault-hygiene/contextual-link/apply', {
+        method: 'POST', body: JSON.stringify({ roots, only }), timeout: 60000,
+      });
+      const lines = [`Applied **${data.totalLinks} links across ${data.notesDone} notes**.`, `Backups: \`${data.backupDir}\``, `Changelog: \`${data.changelogPath}\``, ''];
+      for (const a of (data.applied || []).slice(0, 40)) lines.push(`- \`${a.rel}\` (+${a.links.length}): ${a.links.map(l => `[[${l}]]`).join(', ')}`);
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    }
+    const data = await neuroApi('/api/vault-hygiene/contextual-link/plan', {
+      method: 'POST', body: JSON.stringify({ roots }), timeout: 60000,
+    });
+    const lines = [
+      `# Contextual-Link Plan (DRY RUN)`,
+      `**${data.total} proposed links across ${data.notesTouched} notes** (scanned ${data.scanned}). By area: ${Object.entries(data.byRoot || {}).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}.`,
+      '',
+    ];
+    for (const n of (data.perNote || []).slice(0, 40)) {
+      lines.push(`## ${n.rel}`);
+      for (const x of n.props) lines.push(`- **[[${x.link}]]**${x.via} — "…${x.why}…"`);
+      lines.push('');
+    }
+    if (data.reportPath) lines.push(`_Full cards: \`${data.reportPath}\` — review, then call again with mode="apply"._`);
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+server.tool('vault_alias_suggest',
+  'Scan the vault for capitalised full-name variants that closely match a roster person but are not an exact name/alias (e.g. "Abdi Mohammad" → Abdi Mohamed). Read-only — proposes aliases for you to approve; never edits frontmatter.',
+  {
+    threshold: z.number().optional().describe('Minimum similarity 0–1 (default 0.82)'),
+  },
+  async ({ threshold }) => {
+    const qs = threshold ? `?threshold=${threshold}` : '';
+    const data = await neuroApi(`/api/vault-hygiene/alias-suggest${qs}`, { timeout: 30000 });
+    const lines = [`# Alias Suggestions — ${data.count} candidates`, ''];
+    for (const s of data.suggestions || []) lines.push(`- **${s.candidate}** → [[${s.person}]] _(score ${s.score})_ — "…${s.sample}…"`);
+    if (data.reportPath) lines.push('', `_Report: \`${data.reportPath}\`_`);
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+server.tool('vault_fix',
+  'Propose or apply fixes for broken links + orphans. mode="plan" (default) is read-only and writes a tiered Fix Plan. mode="apply" actions ONLY the tiers you pass per category (each: skip|conservative|moderate|aggressive, default skip). Links: conservative = exact-match repoints only (recommended); moderate/aggressive add fuzzy matches that mislink on this data (wrong-date stand-ups) — review-only. Every touched file is backed up; changelog written.',
+  {
+    mode: z.enum(['plan', 'apply']).optional().describe('plan (default, read-only) or apply'),
+    links: z.enum(['skip', 'conservative', 'moderate', 'aggressive']).optional().describe('apply only — link repoint tier (default skip; conservative recommended)'),
+    archived: z.enum(['skip', 'conservative', 'moderate', 'aggressive']).optional().describe('apply only — restore notes that exist only in Archive (moderate+ )'),
+    expected: z.enum(['skip', 'conservative', 'moderate', 'aggressive']).optional().describe('apply only — suppress expected orphans via config (moderate+)'),
+    missing: z.enum(['skip', 'conservative', 'moderate', 'aggressive']).optional().describe('apply only — stub genuinely-missing targets (aggressive only)'),
+  },
+  async ({ mode, links, archived, expected, missing }) => {
+    if ((mode || 'plan') === 'apply') {
+      const data = await neuroApi('/api/vault-hygiene/fix/apply', { method: 'POST', body: JSON.stringify({ links, archived, expected, missing }), timeout: 60000 });
+      return { content: [{ type: 'text', text: `Fix applied — repointed ${data.repointed}, restored ${data.restored}, stubs ${data.stubs}, expected-suppressed ${data.expectedSuppressed}.\nBackups: \`${data.backupDir}\`\nChangelog: \`${data.changelogPath}\`` }] };
+    }
+    const data = await neuroApi('/api/vault-hygiene/fix/plan', { method: 'POST', body: JSON.stringify({}), timeout: 60000 });
+    const s = data.summary || {};
+    const lines = [
+      `# Vault Fix Plan (DRY RUN)`, '',
+      `**Link repoints** — conservative ${s.links?.conservative} | +moderate ${s.links?.moderate} | +aggressive ${s.links?.aggressive}`,
+      `**Archived-only targets** — ${s.archivedLinks} links / ${s.archivedNotes} notes`,
+      `**Expected orphans** ${s.expectedOrphans} · **People orphans** ${s.peopleOrphans} · **Content orphans** ${s.contentOrphans}`,
+      `**Missing targets** ${s.missing}`, '',
+      '⚠️ Only conservative link repoints are exact-safe. Moderate/aggressive are fuzzy and mislink here — review first.', '',
+    ];
+    if (data.linkFixes?.length) { lines.push('## Sample repoints'); for (const x of data.linkFixes.slice(0, 12)) lines.push(`- [${x.tier} ${x.sim}] \`${x.from}\`: \`[[${x.oldTarget}]]\` → \`[[${x.newBase}]]\``); }
+    if (data.reportPath) lines.push('', `_Full plan: \`${data.reportPath}\`_`);
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+server.tool('vault_connect_orphans',
+  'FALLBACK for graph density (prefer vault_contextual_link). Appends hub links to orphans: NOVA orphans → [[MOC - NOVA]]; Daily notes → prev/next nav chain. Append-only, backed up, idempotent. Trades orphans for single-link leaves — use sparingly.',
+  {
+    nova: z.boolean().optional().describe('Link NOVA orphans to [[MOC - NOVA]] (default true)'),
+    daily: z.boolean().optional().describe('Chain Daily notes prev/next (default true)'),
+  },
+  async ({ nova, daily }) => {
+    const data = await neuroApi('/api/vault-hygiene/connect-orphans', { method: 'POST', body: JSON.stringify({ nova, daily }), timeout: 60000 });
+    return { content: [{ type: 'text', text: `Connected — NOVA orphans linked ${data.nova}, Daily notes chained ${data.daily}.\nBackups: \`${data.backupDir}\`\nChangelog: \`${data.changelogPath}\`` }] };
+  });
+
+server.tool('vault_graph_config',
+  'Manage Obsidian .obsidian/graph.json. mode="read" (default) returns the current colour groups; mode="apply" backs up to graph.json.bak-<date> then writes the canonical area colour scheme (People/Team teal, Meetings/Calls blue, Daily green, Ideas purple, Reflections rose, Decision Log red, NOVA orange, MOCs gold). WARNING: apply with the Obsidian graph view CLOSED — Obsidian rewrites graph.json on close and will clobber the change.',
+  {
+    mode: z.enum(['read', 'apply']).optional().describe('read (default) or apply'),
+  },
+  async ({ mode }) => {
+    const apply = mode === 'apply';
+    const data = await neuroApi('/api/vault-hygiene/graph-config', { method: 'POST', body: JSON.stringify({ apply }), timeout: 15000 });
+    const groups = (data.colorGroups || []).map(g => `- ${g.query}`).join('\n');
+    const head = data.applied ? `Applied canonical colour scheme. Backup: \`${data.backupPath}\`` : `Current colour groups (${(data.colorGroups || []).length}):`;
+    return { content: [{ type: 'text', text: `${head}\n${groups}\n\n⚠️ ${data.warning}` }] };
+  });
+
+server.tool('vault_plaud_reconcile',
+  'Read-only. List every PLAUD recording and find those with no ACTIVE vault note (notes may be binned in Archive). Matches by plaud_id, or date + title-token overlap (≥0.5). Writes a missing-recordings report. Re-pull fetches these FRESH — never from Archive.',
+  {},
+  async () => {
+    const data = await neuroApi('/api/plaud/reconcile', { method: 'POST', body: JSON.stringify({}), timeout: 120000 });
+    const lines = [
+      `# PLAUD Reconciliation`,
+      `${data.total} recordings · ${data.present} have an active note · **${data.missing?.length || 0} missing**.`,
+      '',
+    ];
+    for (const m of (data.missing || []).slice(0, 40)) lines.push(`- ${m.date} \`${m.id}\` — ${m.title}`);
+    if ((data.missing?.length || 0) > 40) lines.push(`…and ${data.missing.length - 40} more`);
+    if (data.reportPath) lines.push('', `_Report: \`${data.reportPath}\`. Re-pull with vault_plaud_repull._`);
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+server.tool('vault_plaud_repull',
+  'Throttled, resumable re-pull of PLAUD recordings that have no active note (default: the reconcile "missing" set). Sequential with backoff on 429 and incremental ledger persistence, so a crash resumes instead of restarting. Use limit to batch safely. Routes pulled notes into Meetings/.',
+  {
+    limit: z.number().optional().describe('Cap recordings this run (e.g. 20) for a safe batch; re-run to continue'),
+    ids: z.array(z.string()).optional().describe('Specific PLAUD recording ids to pull (default: all missing from reconcile)'),
+  },
+  async ({ limit, ids }) => {
+    const data = await neuroApi('/api/plaud/repull', { method: 'POST', body: JSON.stringify({ limit, ids }), timeout: 600000 });
+    if (data.skipped) return { content: [{ type: 'text', text: `Skipped: ${data.reason}` }] };
+    const lines = [
+      `Re-pull complete — requested ${data.requested}, pulled ${data.pulled}, failed ${data.failed}, remaining ${data.remaining}.`,
+      data.resumable ? '_Resumable: re-run to continue from where it stopped._' : '',
+    ];
+    if (data.failures?.length) { lines.push('', 'Failures:'); for (const f of data.failures.slice(0, 10)) lines.push(`- \`${f.id}\` ${f.title}: ${f.error}`); }
+    return { content: [{ type: 'text', text: lines.filter(Boolean).join('\n') }] };
+  });
+
+// ═══════════════════════════════════════════════════════
 // Tools: Operational Context
 // ═══════════════════════════════════════════════════════
 

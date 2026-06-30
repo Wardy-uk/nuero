@@ -91,6 +91,24 @@ function start() {
     } catch (e) { console.error('[Scheduler] Weekly review failed:', e.message); }
   });
 
+  // Friday 4:35pm — weekly vault-hygiene pass (READ-ONLY): refresh the lint audit
+  // and contextual-link cards so they're ready to review/approve. Never applies.
+  cron.schedule('35 16 * * 5', () => {
+    try {
+      const vaultRoot = process.env.OBSIDIAN_VAULT_PATH;
+      if (!vaultRoot) return;
+      const hygiene = require('./vault-hygiene');
+      const lintRes = hygiene.lint(vaultRoot);
+      const planRes = hygiene.contextualLinkPlan(vaultRoot);
+      console.log(`[Scheduler] Weekly hygiene: ${lintRes.broken.length} broken, ${lintRes.orphans.length} orphans; ${planRes.total} link cards across ${planRes.notesTouched} notes.`);
+      if (planRes.total > 0 || lintRes.broken.length > 0) {
+        require('./webpush').sendToAll('NEURO — Vault Hygiene',
+          `${lintRes.broken.length} broken links, ${lintRes.orphans.length} orphans, ${planRes.total} link cards to review in Vault Audit.`,
+          { type: 'vault_hygiene', url: '/vault' }).catch(() => {});
+      }
+    } catch (e) { console.error('[Scheduler] Weekly hygiene failed:', e.message); }
+  });
+
   // Monday 8:10am — generate a knowledge reflection brief for the week ahead
   cron.schedule('10 8 * * 1', () => {
     try {

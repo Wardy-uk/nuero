@@ -38,4 +38,31 @@ router.post('/cleanup', async (req, res) => {
   }
 });
 
+// POST /api/plaud/reconcile  — read-only; find recordings with no active note
+router.post('/reconcile', async (req, res) => {
+  try {
+    const result = await plaudSync.reconcilePlaudRecordings({
+      minJaccard: req.body?.minJaccard != null ? Number(req.body.minJaccard) : undefined,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('[PlaudSync] Reconcile failed:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/plaud/repull  { ids?: string[], limit?: number }  — throttled, resumable
+router.post('/repull', async (req, res) => {
+  try {
+    const result = await plaudSync.repullPlaudRecordings({
+      ids: Array.isArray(req.body?.ids) ? req.body.ids : null,
+      limit: req.body?.limit ? parseInt(req.body.limit, 10) : null,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('[PlaudSync] Re-pull failed:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

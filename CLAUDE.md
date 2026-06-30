@@ -25,8 +25,8 @@ npm run dev:frontend     # vite
 - `server.js` — Express bootstrap, PIN auth middleware, route wiring, SPA fallback (262 lines)
 - `db/database.js` — sql.js init, state KV store, query helpers
 - `db/schema.sql` — Full schema (conversations, jira cache, todos, calendar, inbox, vault embeddings, entities, do-next, location visits, task MoSCoW, nudges, SARA actions, daily summary)
-- `routes/*.js` — ~40 Express route modules (CommonJS `module.exports`)
-- `services/*.js` — ~45 business logic modules including AI pipelines, vault access, Jira sync, Microsoft Graph, scheduling
+- `routes/*.js` — ~40 Express route modules (CommonJS `module.exports`), incl. `vault-hygiene` (lint / contextual-link / alias-suggest)
+- `services/*.js` — ~45 business logic modules including AI pipelines, vault access, Jira sync, Microsoft Graph, scheduling, and `vault-hygiene` (deterministic vault-graph maintenance)
 
 ### Frontend (`frontend/src/`)
 - `App.jsx` — Main SPA shell, tab navigation
@@ -71,6 +71,7 @@ npm run dev:frontend     # vite
 | Knowledge | — | kb-article, knowledge-gaps, embeddings, retrieval |
 | Evidence | — | evidence-register |
 | Checkpoint | NinetyDayPlan | checkpoint-progress |
+| Vault Hygiene | — | vault-hygiene (routes/vault-hygiene); MCP: vault_lint, vault_contextual_link, vault_alias_suggest, vault_fix, vault_connect_orphans, vault_graph_config, vault_plaud_reconcile, vault_plaud_repull |
 
 ## Key Patterns
 - **CommonJS throughout backend** — `require()` / `module.exports`. NOT ESM. No `import` statements.
@@ -80,6 +81,8 @@ npm run dev:frontend     # vite
 - **Vault sync** — Syncthing over Tailscale (replaced Git-based sync). Obsidian vault at `C:\Users\NickW\Documents\Nicks knowledge base`
 - **Plaud intake** — `plaud-sync.js` writes transcript + preferred Plaud summary/Obsidian note, then `imports.js` routes the note of record into canonical vault paths: meetings in `Meetings/YYYY/MM/` and transcripts in `Meetings/transcripts/YYYY/MM/`, while enriching people links and keeping backlinks aligned
 - **Plaud cleanup** — `/api/plaud/cleanup` and `imports.backfillPlaudNotes()` backfill historical Plaud notes, re-route legacy meeting-note copies into correct folders, archive duplicate variants, and write a cleanup report into `Documents/System/SARA Import Reports/`
+- **Vault hygiene** — `services/vault-hygiene.js` is the deterministic graph-maintenance engine (pure CommonJS, takes vault root so it runs in-process or standalone via `node`). Capabilities: `lint`, `contextualLinkPlan`/`Apply`, `aliasSuggest`, `fixPlan`/`fixApply` (tiered: skip|conservative|moderate|aggressive — links default conservative=exact-only; fuzzy mislinks here so it's review-only), `connectOrphans` (fallback), `graphConfig`. Read-only by default; mutating ops are append-only/surgical, back up every touched file to `Scripts/.lint-backups/<ts>/`, write a changelog, and are idempotent (markers `<!-- ctx-links -->`, `<!-- hub-link -->`, `<!-- daily-nav -->`). Precision rules: FULL-NAME matching only, strip wikilinks/code/paths before matching, resolve path-form links when deduping, skip names mapping to >1 person. Reports → `Documents/System/Vault Audit/`. Exclude set must include generated output (`Vault Audit`, `.lint-backups`, `Archive`…) or scans self-pollute. Wired into the scheduler as a READ-ONLY Friday 4:35pm pass (refreshes lint + link cards, never applies). Ports of the throwaway `Scripts/_*.js` prototypes; full spec in `Projects/NEURO/Vault Hygiene Engine — Build Handoff` (vault).
+- **PLAUD reconcile/repull** — `plaud-sync.js` `reconcilePlaudRecordings()` (read-only) lists every PLAUD recording and finds those with no ACTIVE note (Archive excluded) by plaud_id or date+title-token Jaccard ≥0.5; `repullPlaudRecordings({ids?,limit?})` re-pulls them FRESH (never from Archive) through the existing throttled (750ms gap, concurrency 1), 429-backoff-with-jitter, ledger-persisted-per-recording pipeline — resumable: a crash continues from the ledger. The §9.3 "no throttling" lesson was about the separate Obsidian plaud-mcp-sync plugin, NOT this service.
 - **Offline-first** — IndexedDB caching via `idb` library, service worker for PWA
 - **Per-component CSS** — each component has its own `.css` file, no Tailwind
 - **SPA fallback** — non-API routes serve `index.html` with no-cache headers
