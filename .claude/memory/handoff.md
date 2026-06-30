@@ -1,31 +1,47 @@
-# Session Handoff — 2026-06-19 19:15
+# HANDOFF — Vault Hygiene Engine productionised (2026-06-30)
 
-Session was **Pi estate cleanup** + **SARA surface onto Pi 4** (not NEURO/SARA app code).
+## What this session did
+Actioned `Projects/NEURO/Vault Hygiene Engine — Build Handoff (Claude Code).md` in full —
+ported the throwaway `Scripts/_*.js` prototypes into NEURO as first-class capabilities
+(backend service + route + MCP tools + scheduler). **All §1 + §9 capabilities built and
+validated read-only/dry-run against the live Windows vault.** Nothing of Nick's was mutated
+except generated reports (lint audit). No git commits made.
 
-## SARA now runs on the Pi 4 touchscreen (NEW)
-- **Surface/brain split**: `sara-backend` stays on pi5:3005 (coupled to HA/watch/neuro); Pi 4 runs a Chromium **kiosk** on its DSI screen pointed at **`http://100.100.28.58:3005/`** (pi5 tailnet IP — sidesteps pi-dev's broken MagicDNS that makes pi5's `:8443` unreachable).
-- Launcher `sara/scripts/start-sara-frontend.sh` (deployed to pi-dev `~/sara-frontend/`); autostart via `~/.config/autostart/sara-kiosk.desktop` (`lwrespawn` keep-alive). **Verified survives reboot** — SARA up ~9s after desktop loads. Details: memory `sara-frontend-node-pidev`.
-- `start-sara-frontend.sh` is NEW + uncommitted in the nuero repo (offered to commit).
+### New files
+- `backend/services/vault-hygiene.js` — deterministic engine (pure CommonJS, takes vault root → runs in-process OR standalone via `node`). Exports: `lint`, `contextualLinkPlan`/`Apply`, `aliasSuggest`, `fixPlan`/`fixApply`, `connectOrphans`, `graphConfig`.
+- `backend/routes/vault-hygiene.js` — `/api/vault-hygiene/*` (lint, contextual-link/plan+apply, fix/plan+apply, connect-orphans, graph-config, alias-suggest). Wired in `server.js`. Mutating routes re-index touched files via `vault-hooks`.
 
-## What was done (earlier — Pi estate cleanup)
-- Confirmed **pi5 = canonical NEURO brain**. pi-dev's duplicate `neuro-backend` was a misconfigured zombie → **stopped + pm2 saved**.
-- **Migrated tally off pi5 → pi-dev** (app + SQLite + receipts/backups). pm2 on pi-dev:3003, saved, autostarts. Public edge = pi-dev's **own** Tailscale Funnel `/tally`. Netlify (`tally-nickward`, siteId `4c29f4a7-…`) redeployed → points at pi-dev.
-- **Fixed canonical netlify.toml** in `C:\Users\NickW\Claude\finance` (repo `Wardy-uk/tally`): pi5→pi-dev, commit `0228c1f`, pushed to main.
-- **pi5 cleanup**: deleted dead `quest`; removed orphaned `/tally` Funnel mount; made pi5 **headless** (lightdm disabled, `multi-user.target`). pi5 pm2 now = neuro-backend + sara-backend only.
-- Enabled **persistent journald on pi-dev** (`Storage=persistent`).
+### Edited
+- `mcp-server/index.js` — 8 new MCP tools: vault_lint, vault_contextual_link (mode plan/apply), vault_alias_suggest, vault_fix (mode plan/apply, tiered), vault_connect_orphans, vault_graph_config, vault_plaud_reconcile, vault_plaud_repull.
+- `backend/services/plaud-sync.js` — added `reconcilePlaudRecordings()` (read-only, §9.1) + `repullPlaudRecordings({ids?,limit?})` (§9.2) + jitter on the existing `withRetry`. **KEY: NEURO's plaud-sync ALREADY had the throttle/429-backoff/per-recording-ledger §9.3 demanded — the "no throttling" lesson was about the SEPARATE Obsidian plaud-mcp-sync plugin.**
+- `backend/routes/plaud.js` — `/api/plaud/reconcile` + `/api/plaud/repull`.
+- `backend/services/scheduler.js` — Friday 4:35pm READ-ONLY weekly hygiene pass (lint + contextual cards, never applies) + push (§7.6).
+- `CLAUDE.md` — documented the engine, tools, patterns.
 
-## What's still pending
+## Validation (all read-only / write:false against live vault)
+- **lint:** 800 notes; 45 distinct broken links (deduped from 65), 5 orphans (one a real sync-conflict file), 19 under-linked People. Report written: `Documents/System/Vault Audit/Lint Report 2026-06-30.md`.
+- **contextual proposer:** deterministic (re-derived existing `## Mentioned` on 26/30 stamped notes; the 4 diffs are project-link subsets = more conservative). **0 bare-first-name mislinks** (full-name rule holds). Idempotent (marker skip). The 4 ctx roots are already fully stamped from 29 Jun → plan returns 0 there (correct).
+- **alias_suggest:** 2 genuine candidates (Lucy Reid/Lucy Reed → Lucy Read). Abdi/Naomi already aliased → correctly excluded.
+- **fix plan:** conservative=0 (exact-only → safe no-op), moderate=6/aggressive=7 all fuzzy. Reproduced the §3.6 hazard exactly (top aggressive match = wrong-DATE stand-up 06-17→06-25) and correctly quarantined behind aggressive tier.
+- **connect_orphans:** 95/95 dailies already chained, 0 NOVA orphans → idempotent no-op.
+- **graph_config:** read returns 10 canonical colour groups + Obsidian-overwrite warning.
+- **plaud reconcile:** match logic validated (486 dated active notes / 116 active plaud_ids; token-echo→present, unrelated→missing, timestamp-name→date-only, no-notes-date→missing). Live PLAUD list only runs on Pi.
+
+## NOT DONE / next steps
+1. **Deploy to Pi 5** — none of this is live yet. Needs: git commit + push, `ssh nickw@100.100.28.58`, pull, restart NEURO (pm2) + MCP server. Memory `pi5-deployment` has process names/paths.
+2. **Run the real workflows (Nick to trigger, with sign-off):**
+   - `vault_lint` for a fresh audit (45 broken links genuinely actionable — mostly Decision Log → renamed/binned meeting notes).
+   - `vault_contextual_link mode=plan` over WIDER roots than the 4 already-stamped (e.g. People, Projects, Ideas) to surface fresh cards.
+   - `vault_fix mode=apply links=conservative` is safe (0 here). Fuzzy stays review-only.
+   - `vault_plaud_reconcile` then `vault_plaud_repull limit=20` (batched) for the ~178 binned recordings. Reference list: `Documents/System/Vault Audit/PLAUD Missing Reconciliation.md`.
+3. **apply paths NOT run live** (correct — need per-step sign-off): contextual apply, fix apply, connect, graph apply, plaud repull. Logic proven; just unrun against the live vault.
+
+---
+
+## Carried over from 2026-06-19 (SARA / Pi estate — still pending)
 - **Delete once happy**: pi5 old `/home/nickw/tally` + DB; local `C:\tmp\tally-deploy`.
-- **Step 6** — re-check Ollama perf on pi5 (the real load; the "kiosk" never existed).
+- **Ollama perf recheck on pi5** (the real load).
 - **Pi 3 utility node** — "later", not started.
-- Pre-existing SARA TODOs (from 06-12 session, untouched): PWA Phase 2 mobile-responsive layout; Focus Enforced port into SARA.
-
-## Key decisions
-- **Do NOT move sara-backend off pi5** — bolted to pi5-local HA (`:8123`), watch-irk BLE presence, NEURO (`:3001`). Cross-tailnet hops for an 83MB process = fragile. Correct where it is.
-- Tally used **Full move (A)**, not the planned "Hybrid" — Tailscale Serve is localhost-only (see mistakes.md).
-
-## Gotchas for next session
-- **pi-dev's frequent reboots = Nick installing stuff**, NOT hardware. No PSU concern.
-- **pi-dev owns the DSI SARA touchscreen** (`card1-DSI-1 connected`) — its desktop GUI is needed; do NOT headless it like pi5.
-- pi-dev SSH: `ssh -o BatchMode=yes -o ConnectTimeout=12 pi`; pm2 needs `bash -ic` (node 22 via nvm). pi5: `ssh pi5`.
-- Memory written: `tally-on-pi-dev`, `tailscale-serve-localhost-only`. mistakes.md: Serve-localhost-only; always `pm2 save` after start.
+- SARA TODOs (from 06-12, untouched): PWA Phase 2 mobile-responsive layout; Focus Enforced port into SARA.
+- `sara/scripts/start-sara-frontend.sh` is NEW + uncommitted in the nuero repo (offered to commit).
+- Memories: `tally-on-pi-dev`, `tailscale-serve-localhost-only`, `sara-frontend-node-pidev`.
