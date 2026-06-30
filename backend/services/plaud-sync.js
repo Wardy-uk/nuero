@@ -781,7 +781,7 @@ function getStatus() {
 
 const REPORT_FOLDER = 'Documents/System/Vault Audit';
 // Active scan skips Archive (the whole point) + non-note/system dirs.
-const RECONCILE_EXCLUDE = new Set(['Archive', '.obsidian', '.git', '.trash', '.stfolder', '.claude', 'Templates', 'Scripts', 'node_modules', 'Conflicts']);
+const RECONCILE_EXCLUDE = new Set(['Archive', '.obsidian', '.git', '.trash', '.stfolder', '.stversions', '.sync', '.claude', 'Templates', 'Scripts', 'node_modules', 'Conflicts']);
 
 function titleTokens(str) {
   return new Set(

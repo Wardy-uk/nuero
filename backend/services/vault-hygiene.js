@@ -30,7 +30,7 @@ const path = require('path');
 // Directories never scanned (handoff §2.5). Excludes generated reports + backups
 // so the engine is deterministic and never links to its own output.
 const EXCLUDE_DIRS = new Set([
-  '.git', '.obsidian', '.trash', '.stfolder', '.claude', '.lint-backups',
+  '.git', '.obsidian', '.trash', '.stfolder', '.stversions', '.sync', '.claude', '.lint-backups',
   'Archive', 'Templates', 'Scripts', 'Conflicts', 'node_modules', 'Vault Audit',
 ]);
 
