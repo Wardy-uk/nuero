@@ -1,0 +1,46 @@
+.lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+  padding: 1rem;
+}
+
+.lock__box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 300px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 2rem 1.5rem;
+}
+
+.lock__brand { font-weight: 700; letter-spacing: 0.18em; font-size: 1.5rem; }
+.lock__hint { margin: 0; color: var(--muted); font-size: 0.85rem; }
+
+.lock__input {
+  width: 100%;
+  padding: 0.7rem;
+  text-align: center;
+  font-size: 1.4rem;
+  letter-spacing: 0.3em;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+}
+
+.lock__btn {
+  width: 100%;
+  padding: 0.7rem;
+  background: var(--accent);
+  color: #04121f;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}

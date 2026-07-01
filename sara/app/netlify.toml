@@ -1,0 +1,16 @@
+# Netlify config for SARA's light-touch app.
+#
+# This app lives in a subdirectory of the `nuero` monorepo. In the Netlify site
+# settings set the *Base directory* to `sara/app` — Netlify then reads THIS file
+# (paths below are relative to that base). A stray netlify.toml at the repo root
+# would win over this one, so keep config here and the base set correctly.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# SPA fallback — serve index.html for client-side routes (never for /api, which
+# goes cross-origin to the NEURO brain over Tailscale, not through Netlify).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

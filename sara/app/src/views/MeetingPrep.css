@@ -1,0 +1,37 @@
+.mp__none { color: var(--muted); text-align: center; }
+
+.mp__meeting { border-left: 3px solid var(--accent); }
+.mp__when { color: var(--accent); font-size: 0.8rem; font-weight: 600; }
+.mp__subject { font-size: 1.15rem; font-weight: 600; margin-top: 0.2rem; }
+.mp__loc { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+
+.mp__block { margin-top: 1rem; }
+.mp__h {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+
+.mp__person { padding: 0.35rem 0; border-top: 1px solid var(--line); }
+.mp__person:first-of-type { border-top: none; }
+.mp__person-name { font-weight: 600; font-size: 0.92rem; }
+.mp__role { color: var(--muted); font-weight: 400; }
+.mp__person-notes { color: var(--muted); font-size: 0.82rem; margin-top: 0.15rem; }
+
+.mp__list { margin: 0; padding-left: 1.1rem; }
+.mp__list li { margin: 0.2rem 0; font-size: 0.9rem; }
+
+.mp__decision {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--panel-2);
+  border-radius: 8px;
+  margin-bottom: 0.35rem;
+}
+
+.mp__later { margin-top: 1.5rem; }
+.mp__later-item { display: flex; gap: 0.75rem; padding: 0.6rem 0.8rem; align-items: center; }
+.mp__later-time { color: var(--accent); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.mp__later-subject { font-size: 0.9rem; }

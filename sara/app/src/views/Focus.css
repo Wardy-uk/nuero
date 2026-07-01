@@ -1,0 +1,71 @@
+.focus__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.focus__refresh {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 10px;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.focus__hint { margin-top: 0.5rem; color: var(--muted); font-size: 0.8rem; }
+
+.focus__briefing {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  line-height: 1.45;
+}
+
+.focus__next { border-left: 3px solid var(--accent); }
+.focus__next-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.focus__next-title { font-size: 1.1rem; font-weight: 600; margin-top: 0.2rem; }
+.focus__next-reason { color: var(--muted); font-size: 0.85rem; margin-top: 0.3rem; }
+
+.focus__clear { text-align: center; color: var(--muted); }
+
+.focus__item { display: flex; align-items: flex-start; gap: 0.6rem; }
+.focus__item-main { flex: 1; min-width: 0; }
+.focus__item-title { font-weight: 600; }
+.focus__item-reason { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+
+.focus__item-meta { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+.focus__badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.focus__badge--critical { background: #4a1420; color: #ff9db0; }
+.focus__badge--high { background: #4a2f14; color: #ffcf8a; }
+.focus__badge--medium { background: #14324a; color: #8ad0ff; }
+.focus__badge--low { background: var(--panel-2); color: var(--muted); }
+
+.focus__type { color: var(--muted); font-size: 0.75rem; }
+.focus__score { color: var(--muted); font-size: 0.75rem; margin-left: auto; }
+
+/* Left accent by urgency */
+.focus__u--critical { border-left: 3px solid #ff6b81; }
+.focus__u--high { border-left: 3px solid #ffb454; }
+.focus__u--medium { border-left: 3px solid var(--accent); }
+
+.focus__dismiss {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.2rem;
+}
+.focus__dismiss:disabled { opacity: 0.4; }

@@ -1,0 +1,21 @@
+{
+  "name": "sara-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "SARA light-touch app surface — quick, on-hand, cross-device (phone/laptop) interface to the NEURO brain. Capture · Focus · Chat · Meeting prep · Brain management.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}

@@ -1,0 +1,103 @@
+.cap__modes {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.cap__mode {
+  flex: 1;
+  padding: 0.5rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.cap__mode--on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.cap__form { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.cap__title,
+.cap__text {
+  width: 100%;
+  padding: 0.7rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+}
+
+.cap__textwrap { position: relative; }
+.cap__text { resize: vertical; min-height: 7rem; }
+
+.cap__mic {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.cap__mic--on {
+  background: #5a1f1f;
+  border-color: #ff8a8a;
+  animation: cap-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cap-pulse { 50% { opacity: 0.55; } }
+
+.cap__prio {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.cap__submit {
+  padding: 0.8rem;
+  background: var(--accent);
+  color: #04121f;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.cap__submit:disabled { opacity: 0.5; cursor: default; }
+
+.cap__flash {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+
+.cap__recent { margin-top: 1.5rem; }
+.cap__recent-h {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+}
+.cap__recent-item { padding: 0.7rem; }
+.cap__recent-title { font-size: 0.9rem; font-weight: 600; }
+.cap__recent-preview {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

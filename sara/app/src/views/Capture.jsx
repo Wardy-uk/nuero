@@ -1,0 +1,154 @@
+import { useEffect, useRef, useState } from 'react';
+import { apiFetch } from '../api';
+import './Capture.css';
+
+// Capture = zero-friction input straight to the brain. Must work on a bad day.
+//   Note → POST /api/capture/note {title?, content}
+//   Todo → POST /api/capture/todo {text, priority?}
+// Optional voice dictation via the Web Speech API (append to the text box).
+const RECENT_LIMIT = 5;
+
+export default function Capture() {
+  const [mode, setMode] = useState('note'); // 'note' | 'todo'
+  const [title, setTitle] = useState('');
+  const [text, setText] = useState('');
+  const [priority, setPriority] = useState('normal'); // todo only
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState(null); // { ok, msg }
+  const [recent, setRecent] = useState([]);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  const SpeechRecognition = typeof window !== 'undefined'
+    && (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  async function loadRecent() {
+    try {
+      const data = await apiFetch('/api/capture/recent');
+      setRecent((data.items || []).slice(0, RECENT_LIMIT));
+    } catch { /* recent is a nicety — never block capture on it */ }
+  }
+  useEffect(() => { loadRecent(); }, []);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setFlash(null);
+    try {
+      if (mode === 'note') {
+        const res = await apiFetch('/api/capture/note', {
+          method: 'POST',
+          body: JSON.stringify({ title: title.trim() || undefined, content: text.trim() }),
+        });
+        setFlash({ ok: true, msg: `Saved → ${res.filename || 'vault'}` });
+      } else {
+        await apiFetch('/api/capture/todo', {
+          method: 'POST',
+          body: JSON.stringify({ text: text.trim(), priority: priority === 'high' ? 'high' : undefined }),
+        });
+        setFlash({ ok: true, msg: 'Todo added' });
+      }
+      setTitle('');
+      setText('');
+      loadRecent();
+    } catch (err) {
+      setFlash({ ok: false, msg: err.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleVoice() {
+    if (!SpeechRecognition) return;
+    if (listening) { recognitionRef.current?.stop(); return; }
+    const rec = new SpeechRecognition();
+    rec.lang = 'en-GB';
+    rec.interimResults = false;
+    rec.continuous = true;
+    rec.onresult = (evt) => {
+      let chunk = '';
+      for (let i = evt.resultIndex; i < evt.results.length; i++) chunk += evt.results[i][0].transcript;
+      setText((prev) => (prev ? `${prev} ${chunk}` : chunk).trim());
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recognitionRef.current = rec;
+    rec.start();
+    setListening(true);
+  }
+
+  return (
+    <section>
+      <h1 className="view__title">Capture</h1>
+      <p className="view__lede">Get it out of your head. Zero friction.</p>
+
+      <div className="cap__modes">
+        <button type="button" className={`cap__mode${mode === 'note' ? ' cap__mode--on' : ''}`} onClick={() => setMode('note')}>Note</button>
+        <button type="button" className={`cap__mode${mode === 'todo' ? ' cap__mode--on' : ''}`} onClick={() => setMode('todo')}>Todo</button>
+      </div>
+
+      <form className="cap__form" onSubmit={submit}>
+        {mode === 'note' && (
+          <input
+            className="cap__title"
+            type="text"
+            placeholder="Title (optional)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        )}
+        <div className="cap__textwrap">
+          <textarea
+            className="cap__text"
+            placeholder={mode === 'note' ? "What's on your mind?" : 'What needs doing?'}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={5}
+            autoFocus
+          />
+          {SpeechRecognition && (
+            <button
+              type="button"
+              className={`cap__mic${listening ? ' cap__mic--on' : ''}`}
+              onClick={toggleVoice}
+              aria-label={listening ? 'Stop dictation' : 'Dictate'}
+              title={listening ? 'Stop dictation' : 'Dictate'}
+            >
+              {listening ? '⏺' : '🎤'}
+            </button>
+          )}
+        </div>
+
+        {mode === 'todo' && (
+          <label className="cap__prio">
+            <input
+              type="checkbox"
+              checked={priority === 'high'}
+              onChange={(e) => setPriority(e.target.checked ? 'high' : 'normal')}
+            />
+            High priority
+          </label>
+        )}
+
+        <button className="cap__submit" type="submit" disabled={busy || !text.trim()}>
+          {busy ? 'Saving…' : mode === 'note' ? 'Save to vault' : 'Add todo'}
+        </button>
+      </form>
+
+      {flash && <div className={`cap__flash${flash.ok ? '' : ' err'}`}>{flash.msg}</div>}
+
+      {recent.length > 0 && (
+        <div className="cap__recent">
+          <div className="cap__recent-h">Recent captures</div>
+          {recent.map((r) => (
+            <div className="card cap__recent-item" key={r.relativePath}>
+              <div className="cap__recent-title">{r.title || r.filename}</div>
+              {r.preview && <div className="cap__recent-preview">{r.preview}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
