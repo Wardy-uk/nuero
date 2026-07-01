@@ -613,13 +613,19 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
           const noteList = await withRetry(`get_note ${recording.id}`, () =>
             callTool(client, 'get_note', { file_id: recording.id })
           );
-          const transcriptPayload = await withRetry(`get_transcript ${recording.id}`, () =>
-            callTool(client, 'get_transcript', { file_id: recording.id })
-          );
-
           const preferredSummary = choosePreferredSummary(Array.isArray(noteList) ? noteList : []);
           const summaryBody = renderNote(noteList);
-          const transcriptBody = renderTranscript(extractTranscriptSegments(transcriptPayload));
+          // Retry on empty — PLAUD returns nothing while a recording is still transcribing.
+          const transcriptBody = await fetchTranscriptBody(client, recording.id);
+
+          // Not ready: PLAUD has produced neither transcript nor summary yet (a premature
+          // pull mid-processing). Skip WITHOUT writing a stub or marking it synced, so the
+          // next sync cycle re-pulls it once PLAUD has finished — no orphan stub is created.
+          if (!summaryBody.trim() && !transcriptBody.trim()) {
+            skipped += 1;
+            console.log(`[PlaudSync] ${recording.id} not ready (no transcript/summary yet) — retry next cycle`);
+            continue;
+          }
 
           const baseName = buildNoteBaseName(details);
           const defaultSummaryRelativePath = `${normalizeVaultPath(getSummaryFolder())}/${baseName}.md`;
