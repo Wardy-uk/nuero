@@ -160,6 +160,53 @@ router.post('/photo', upload.single('file'), (req, res) => {
   }
 });
 
+// POST /api/capture/handwriting — transcribe a handwritten ink image → text (no save).
+// Vision runs through OpenRouter (Claude, vision-capable) directly — Ollama can't do
+// vision, so we bypass ai-routing. Returns { text } for the client to drop into the
+// note composer and save via /note. The ink image itself is not persisted.
+router.post('/handwriting', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No image uploaded' });
+  }
+
+  const openrouter = require('../services/providers/openrouter-provider');
+  if (!openrouter.isConfigured()) {
+    return res.status(503).json({ error: 'Handwriting transcription needs OpenRouter (no API key configured)' });
+  }
+
+  try {
+    const mime = req.file.mimetype || 'image/png';
+    const dataUrl = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
+
+    const systemPrompt = 'You are a precise handwriting transcriber. Transcribe the handwritten note in the image into plain text. Output ONLY the transcribed text — no preamble, no commentary, no code fences. Preserve line breaks and list structure. If a word is illegible, use [?].';
+    const messages = [{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Transcribe this handwritten note.' },
+        { type: 'image_url', image_url: { url: dataUrl } },
+      ],
+    }];
+
+    const result = await openrouter.chat(systemPrompt, messages, {
+      temperature: 0,
+      maxTokens: 1500,
+      timeout: 40000,
+    });
+
+    const text = (result.text || '').trim();
+    if (!text) {
+      return res.status(502).json({ error: 'Transcription returned nothing — try writing more clearly.' });
+    }
+
+    console.log(`[Capture] Handwriting transcribed: ${text.length} chars`);
+    res.json({ text });
+    try { require('../services/activity').trackCapture('handwriting'); } catch {}
+  } catch (e) {
+    console.error('[Capture] Handwriting error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/capture/file — any file upload
 router.post('/file', upload.single('file'), (req, res) => {
   if (!req.file) {

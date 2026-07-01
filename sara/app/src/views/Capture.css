@@ -19,6 +19,7 @@
   border-color: var(--accent);
   color: var(--text);
 }
+.cap__mode--ink { flex: 0 0 auto; width: 3rem; }
 
 .cap__form { display: flex; flex-direction: column; gap: 0.6rem; }
 

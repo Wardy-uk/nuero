@@ -1,0 +1,46 @@
+.ink {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ink__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.ink__hint { color: var(--muted); font-size: 0.8rem; }
+
+.ink__actions { display: flex; gap: 0.35rem; }
+.ink__btn {
+  padding: 0.4rem 0.7rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.ink__btn:disabled { opacity: 0.5; cursor: default; }
+.ink__btn--go {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04121f;
+  font-weight: 600;
+}
+
+.ink__canvas {
+  width: 100%;
+  height: 40vh;
+  min-height: 240px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  touch-action: none; /* let pointer events drive drawing, not scroll/zoom */
+  cursor: crosshair;
+}
+
+.ink__error { font-size: 0.82rem; }

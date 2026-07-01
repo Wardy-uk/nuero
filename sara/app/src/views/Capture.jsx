@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../api';
+import InkCanvas from '../components/InkCanvas';
 import './Capture.css';
 
 // Capture = zero-friction input straight to the brain. Must work on a bad day.
@@ -17,6 +18,7 @@ export default function Capture() {
   const [flash, setFlash] = useState(null); // { ok, msg }
   const [recent, setRecent] = useState([]);
   const [listening, setListening] = useState(false);
+  const [handwriting, setHandwriting] = useState(false);
   const recognitionRef = useRef(null);
 
   const SpeechRecognition = typeof window !== 'undefined'
@@ -86,7 +88,15 @@ export default function Capture() {
       <div className="cap__modes">
         <button type="button" className={`cap__mode${mode === 'note' ? ' cap__mode--on' : ''}`} onClick={() => setMode('note')}>Note</button>
         <button type="button" className={`cap__mode${mode === 'todo' ? ' cap__mode--on' : ''}`} onClick={() => setMode('todo')}>Todo</button>
+        <button type="button" className={`cap__mode cap__mode--ink${handwriting ? ' cap__mode--on' : ''}`} onClick={() => setHandwriting((v) => !v)} aria-pressed={handwriting} title="Handwrite with Pencil">✍️</button>
       </div>
+
+      {handwriting && (
+        <InkCanvas
+          onText={(t) => { setText((prev) => (prev ? `${prev}\n${t}` : t)); setHandwriting(false); }}
+          onCancel={() => setHandwriting(false)}
+        />
+      )}
 
       <form className="cap__form" onSubmit={submit}>
         {mode === 'note' && (

@@ -45,6 +45,27 @@ export async function apiFetch(path, options = {}) {
   return ct.includes('application/json') ? res.json() : res.text();
 }
 
+// Send a handwritten ink image (PNG blob) to the brain for transcription → text.
+// Multipart upload (no base64 body-size limit). Returns the transcribed text.
+export async function transcribeHandwriting(blob) {
+  const form = new FormData();
+  form.append('file', blob, 'handwriting.png');
+
+  const headers = {}; // let the browser set the multipart boundary
+  const pin = getPin();
+  if (pin) headers['X-Neuro-Pin'] = pin;
+
+  const res = await fetch(apiUrl('/api/capture/handwriting'), { method: 'POST', headers, body: form });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    let msg = `${res.status} ${res.statusText}`;
+    try { const j = JSON.parse(body); if (j.error) msg = j.error; } catch {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return data.text || '';
+}
+
 // Streaming chat over the brain's SSE endpoint (POST /api/chat). Parses the
 // `data: {...}` event stream and fans out to callbacks. Falls back is the caller's
 // job — if this throws, call /api/chat/sync instead.
