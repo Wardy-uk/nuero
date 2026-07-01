@@ -1,7 +1,17 @@
 # HANDOFF — Vault Hygiene Engine + PLAUD recovery + graph cleanup (2026-06-30 → 07-01)
 
 ## Headline
-Actioned the full Vault Hygiene Engine build handoff, deployed to Pi 5, recovered/pulled 153 PLAUD recordings, deduped People/Team, and did a long graph-orphan cleanup. Engine code committed + pushed + live on Pi. The remaining vault work is CONTENT dedup (Summary-N variants), not code.
+Actioned the full Vault Hygiene Engine build handoff, deployed to Pi 5, recovered/pulled 153 PLAUD recordings, deduped People/Team, did a long graph-orphan cleanup, and then **baked all the manual fixes into the pipeline so the vault self-maintains**. Engine code committed + pushed + live on Pi.
+
+## SELF-MAINTAINING PIPELINE (2026-07-01) — the manual work is now automated
+The recurring "fresh rim every morning" is fixed at source. All deployed to Pi 5.
+- **Premature-stub gate** (`plaud-sync.js` sync loop): skips a recording if PLAUD has neither transcript nor summary yet (was writing empty stubs mid-transcription, then marking synced so they never re-pulled). Re-pulls next cycle. THE root cause.
+- **Auto-link on import** (`plaud-sync.js` sync + repull return, gated on new imports): runs `contextualLinkApply` on Meetings/Plaud → new meetings arrive linked.
+- **Report self-stamping**: every report writer appends `_Part of [[Logs]]_` at write-time (vault-hygiene lint/plan/fix/alias, plaud reconcile, `knowledge-memory` daily import report line ~1435, `imports` cleanup report ~1180). Reports born connected.
+- **Engine fixes** (`vault-hygiene.js`): `DEFAULT_PROJECT_LINKS` case-insensitive (catches lowercase "Nova"); `closeOpenFence()` so appended `[[links]]` aren't trapped in unclosed ``` fences (that bug made notes look linked but Obsidian ignored them).
+- **Nightly sweep 2:30am** (`scheduler.js` → `vault-hygiene.nightlySweep`, APPLY): `dedupSummaries` (group by plaud_id — same-date "Summary N" can be DIFFERENT meetings; keep richest SAME-DIR variant, archive another only if ≥95% word-shingle contained; never move routed notes, never delete → `Archive/Summary Duplicates`), `collectUnnamedRecordings` ("Speaker N" + no full-name person link → `MOCs/Orphan.md`), `sweepEmptyStubs`.
+- **Graph → 0 real orphans**: People/Team dedup (15 Team notes merged into canonical People/, `Archive/Team-merged`), added Emma Maciver + Riannah Clegg to roster + force-relinked their meetings, hubs `MOCs/Orphan.md` + `MOCs/Logs.md`. KEY LESSON: my external graph reconstruction was WRONG repeatedly (missed .canvas/.base files, counted code-block links + own-report phantom links, basename collisions) — Nick's visual spot-checks were ground truth. Don't trust a rebuilt Obsidian graph; handle by category / defer to his eyes.
+- Manual-only remaining: naming "Speaker N" recordings (queued in `MOCs/Orphan.md`) — genuinely needs a human. Also `Archive/Pending Transcription` holds 7 untranscribed 07-01 recordings that re-create when Nick transcribes them in PLAUD.
 
 ## Shipped & committed (origin/main, Pi 5 live)
 - `backend/services/vault-hygiene.js` + `routes/vault-hygiene.js` — engine: lint, contextualLinkPlan/Apply, aliasSuggest, fixPlan/fixApply (tiered), connectOrphans, graphConfig. 8 MCP tools (`vault_lint`, `vault_contextual_link`, `vault_fix`, `vault_alias_suggest`, `vault_connect_orphans`, `vault_graph_config`, `vault_plaud_reconcile`, `vault_plaud_repull`).
