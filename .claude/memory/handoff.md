@@ -1,53 +1,44 @@
-# HANDOFF — Vault Hygiene Engine productionised (2026-06-30)
+# HANDOFF — Vault Hygiene Engine + PLAUD recovery + graph cleanup (2026-06-30 → 07-01)
 
-## What this session did
-Actioned `Projects/NEURO/Vault Hygiene Engine — Build Handoff (Claude Code).md` in full —
-ported the throwaway `Scripts/_*.js` prototypes into NEURO as first-class capabilities
-(backend service + route + MCP tools + scheduler). **All §1 + §9 capabilities built and
-validated read-only/dry-run against the live Windows vault.** Nothing of Nick's was mutated
-except generated reports (lint audit). No git commits made.
+## Headline
+Actioned the full Vault Hygiene Engine build handoff, deployed to Pi 5, recovered/pulled 153 PLAUD recordings, deduped People/Team, and did a long graph-orphan cleanup. Engine code committed + pushed + live on Pi. The remaining vault work is CONTENT dedup (Summary-N variants), not code.
 
-### New files
-- `backend/services/vault-hygiene.js` — deterministic engine (pure CommonJS, takes vault root → runs in-process OR standalone via `node`). Exports: `lint`, `contextualLinkPlan`/`Apply`, `aliasSuggest`, `fixPlan`/`fixApply`, `connectOrphans`, `graphConfig`.
-- `backend/routes/vault-hygiene.js` — `/api/vault-hygiene/*` (lint, contextual-link/plan+apply, fix/plan+apply, connect-orphans, graph-config, alias-suggest). Wired in `server.js`. Mutating routes re-index touched files via `vault-hooks`.
+## Shipped & committed (origin/main, Pi 5 live)
+- `backend/services/vault-hygiene.js` + `routes/vault-hygiene.js` — engine: lint, contextualLinkPlan/Apply, aliasSuggest, fixPlan/fixApply (tiered), connectOrphans, graphConfig. 8 MCP tools (`vault_lint`, `vault_contextual_link`, `vault_fix`, `vault_alias_suggest`, `vault_connect_orphans`, `vault_graph_config`, `vault_plaud_reconcile`, `vault_plaud_repull`).
+- `plaud-sync.js` — `reconcilePlaudRecordings`, `repullPlaudRecordings`, **`repullStubTranscripts`** (recovers "No transcript returned" stubs — get_transcript returns empty under load even when a transcript exists; retry-on-empty added). Routes: `/api/plaud/reconcile|repull|repull-stubs`. MCP: `vault_plaud_repull_stubs`.
+- Commits: `4ff8c96` engine, `b1bd094` .stversions fix, `458c0fe` stub recovery. Pi tracks origin/main cleanly (reconciled — see git note below).
+- Scheduler: read-only Friday 4:35pm hygiene pass.
 
-### Edited
-- `mcp-server/index.js` — 8 new MCP tools: vault_lint, vault_contextual_link (mode plan/apply), vault_alias_suggest, vault_fix (mode plan/apply, tiered), vault_connect_orphans, vault_graph_config, vault_plaud_reconcile, vault_plaud_repull.
-- `backend/services/plaud-sync.js` — added `reconcilePlaudRecordings()` (read-only, §9.1) + `repullPlaudRecordings({ids?,limit?})` (§9.2) + jitter on the existing `withRetry`. **KEY: NEURO's plaud-sync ALREADY had the throttle/429-backoff/per-recording-ledger §9.3 demanded — the "no throttling" lesson was about the SEPARATE Obsidian plaud-mcp-sync plugin.**
-- `backend/routes/plaud.js` — `/api/plaud/reconcile` + `/api/plaud/repull`.
-- `backend/services/scheduler.js` — Friday 4:35pm READ-ONLY weekly hygiene pass (lint + contextual cards, never applies) + push (§7.6).
-- `CLAUDE.md` — documented the engine, tools, patterns.
+## PLAUD outcome
+- reconcile→0 missing (all 199 recordings have notes). **108 stub transcripts recovered** + 45 missing pulled. Hardened fetch = no new stubs.
+- ⚠️ "Stub" recordings named by timestamp (e.g. `090044`, `095549`, `16 28 23`) often have REAL 200+ line transcripts — just "Speaker N" + no summary. **DO NOT archive them by name — read the content first.** I nearly binned 3 real meetings this way.
+- Durable follow-up: patch report-writers to self-link to `[[Logs]]` (Vault Audit reports regenerate & re-orphan). Not done.
 
-## Validation (all read-only / write:false against live vault)
-- **lint:** 800 notes; 45 distinct broken links (deduped from 65), 5 orphans (one a real sync-conflict file), 19 under-linked People. Report written: `Documents/System/Vault Audit/Lint Report 2026-06-30.md`.
-- **contextual proposer:** deterministic (re-derived existing `## Mentioned` on 26/30 stamped notes; the 4 diffs are project-link subsets = more conservative). **0 bare-first-name mislinks** (full-name rule holds). Idempotent (marker skip). The 4 ctx roots are already fully stamped from 29 Jun → plan returns 0 there (correct).
-- **alias_suggest:** 2 genuine candidates (Lucy Reid/Lucy Reed → Lucy Read). Abdi/Naomi already aliased → correctly excluded.
-- **fix plan:** conservative=0 (exact-only → safe no-op), moderate=6/aggressive=7 all fuzzy. Reproduced the §3.6 hazard exactly (top aggressive match = wrong-DATE stand-up 06-17→06-25) and correctly quarantined behind aggressive tier.
-- **connect_orphans:** 95/95 dailies already chained, 0 NOVA orphans → idempotent no-op.
-- **graph_config:** read returns 10 canonical colour groups + Obsidian-overwrite warning.
-- **plaud reconcile:** match logic validated (486 dated active notes / 116 active plaud_ids; token-echo→present, unrelated→missing, timestamp-name→date-only, no-notes-date→missing). Live PLAUD list only runs on Pi.
+## Pi state
+- Pi 5 (`nickw@100.100.28.58`, `/mnt/data/nuero`) was badly git-drifted; reconciled safely: tarball `/mnt/data/nuero-worktree-backup-20260630-123919.tgz` + snapshot branch `pi-local-snapshot-20260630` (on origin) → `git checkout -f -B main origin/main`. Now clean, future deploys = normal `git pull`. Pi has NO github creds (can't push from Pi).
+- Syncthing was DOWN on **Windows** (not Pi) — restarted it; Pi↔Windows now converged.
 
-## DEPLOYED 2026-06-30 — all 8 tools live on Pi 5
-- Committed (4ff8c96, 0b1097b, b1bd094) + pushed to origin/main. Pi 5 reconciled + restarted; all 8 routes live (lint/contextual/fix/alias/connect/graph + plaud reconcile/repull), weekly hygiene cron registered, neuro-backend healthy.
-- **Bug fixed in deploy (b1bd094):** engine scanned Syncthing `.stversions` (1041 phantom notes → 993 false broken links on the Pi). Added `.stversions`/`.sync` to the exclude set. Pi lint now 606/58.
-- **Pi git was badly drifted** (unpushed-looking HEAD + dirty tree + untracked files shadowing tracked ones). Reconciled the SAFE way: tarball backup `/mnt/data/nuero-worktree-backup-20260630-123919.tgz` + full snapshot branch `pi-local-snapshot-20260630` (pushed to GitHub) → analysis proved origin strictly ahead, nothing unique on Pi → `git checkout -f -B main origin/main` + npm install + restart. **Recovery point: branch `pi-local-snapshot-20260630` on origin.** Pi now tracks origin/main cleanly — future deploys are clean `git pull`s.
-- Leftover Pi cruft (harmless, untracked): `backend/server.js.bak-vh`, old `.bak`/db-backup/dev-check files. Cosmetic: scheduler startup log summary string doesn't list the new Fri 4:35pm hygiene pass (cron IS registered).
+## Vault changes made (all backed up to Scripts/.lint-backups/)
+- 1221 contextual links applied across 361 meeting notes.
+- **People/Team dedup**: 15 `Team/{person}` notes were duplicates of canonical `People/{person}` (31 links → People, 0 → Team). Merged unique content into People/, archived Team copies to `Archive/Team-merged/`. Adele got proper person frontmatter.
+- New MOCs: `MOCs/Orphan.md` (unidentified meetings, owner [[Nick Ward]]), `MOCs/Logs.md` (auto-gen reports).
+- Archived junk: 8 empty PLAUD stubs + 6 empty `Untitled-2026030915…` 0-byte imports + empty `Untitled.canvas` → `Archive/`.
 
-## OUTSTANDING
-1. **Pi vault replica is out of sync with Windows canonical** — Pi `/home/nickw/nuero-vault` has 606 real notes (Plaud 21!) vs Windows 828 (Plaud 219); 209 orphans vs 5. Syncthing convergence gap (possibly the boot-race from the 06-23 handoff recurring). So **MCP tools hitting the Pi see a stale view** — run canonical hygiene against the WINDOWS vault (engine validated there) until Syncthing is reconciled. Investigate Pi Syncthing health.
-2. **Run the real workflows (Nick to trigger, with sign-off):**
-   - `vault_lint` for a fresh audit (45 broken links genuinely actionable — mostly Decision Log → renamed/binned meeting notes).
-   - `vault_contextual_link mode=plan` over WIDER roots than the 4 already-stamped (e.g. People, Projects, Ideas) to surface fresh cards.
-   - `vault_fix mode=apply links=conservative` is safe (0 here). Fuzzy stays review-only.
-   - `vault_plaud_reconcile` then `vault_plaud_repull limit=20` (batched) for the ~178 binned recordings. Reference list: `Documents/System/Vault Audit/PLAUD Missing Reconciliation.md`.
-3. **apply paths NOT run live** (correct — need per-step sign-off): contextual apply, fix apply, connect, graph apply, plaud repull. Logic proven; just unrun against the live vault.
+## ⚠️ MY GRAPH-ANALYSIS WAS UNRELIABLE — read before trying again
+I built a markdown link-graph analyser to find Obsidian orphans and it was WRONG ~10 times. Obsidian's graph differs from a naive .md link scan in ALL these ways (each one burned a cycle):
+1. **Only .md** — misses `.canvas` and `.base` files (Obsidian shows them; empty `Untitled.canvas` = orphan).
+2. **Code-block links** — Obsidian does NOT draw edges for `[[links]]` in ``` fences or `inline code`. Must strip both.
+3. **Phantom report links** — Vault Audit lint/plan reports `[[link]]` to every note they list → falsely "connect" orphans. Reports also list notes as `## headings` (not links → no edge). Exclude `Vault Audit/` as an edge source.
+4. **Basename collisions** — `[[2026-06-24]]` (daily vs SARA report), `[[Heidi Power]]` (People vs Team). Must resolve path-aware: exact path > same-folder > shortest path.
+5. **Frontmatter links** (`manager: [[Nick Ward]]`) — Obsidian draws these; a naive body-only scan misses them.
+6. Result: "0 orphans" from my tool ≠ what Nick sees. **Trust the user's eyes / Obsidian, not a reconstructed graph.**
+Best analyser version reached: `C:\tmp\truth2.js` (strip code, path-aware, canvas incl, Vault Audit excluded) — closest but still imperfect.
 
----
+## OUTSTANDING (next session)
+1. **Summary-N dedup** — THE real remaining rim cause. PLAUD makes multiple partial summaries per recording (Summary, Summary 2, Summary 3…). Dedup content-safely (word-shingle containment — a variant is only droppable if ~all its text exists in a kept copy; per 2026-06-23 mistakes-log). Keep one canonical per plaud_id, archive rest.
+2. **Name the unnamed "Speaker N" recordings** (in MOCs/Orphan.md) — human task; then they weave into people.
+3. Durable report self-linking patch (optional).
+4. Pi vault (`/home/nickw/nuero-vault`) had `.stversions` (1041 old versions) inflating scans — now excluded in engine, but the folder still exists on Pi.
 
-## Carried over from 2026-06-19 (SARA / Pi estate — still pending)
-- **Delete once happy**: pi5 old `/home/nickw/tally` + DB; local `C:\tmp\tally-deploy`.
-- **Ollama perf recheck on pi5** (the real load).
-- **Pi 3 utility node** — "later", not started.
-- SARA TODOs (from 06-12, untouched): PWA Phase 2 mobile-responsive layout; Focus Enforced port into SARA.
-- `sara/scripts/start-sara-frontend.sh` is NEW + uncommitted in the nuero repo (offered to commit).
-- Memories: `tally-on-pi-dev`, `tailscale-serve-localhost-only`, `sara-frontend-node-pidev`.
+## USER STATE
+Nick is neurodivergent; overwhelm is the failure mode. This session ran VERY long chasing graph orphans — a partly-unwinnable goal (a knowledge vault has a healthy fringe; his own handoff §5 says "success is NOT fewer orphans"). His spot-checks were RIGHT every time my tool was wrong. Be honest about tool limits; don't over-claim "zero".
