@@ -1026,7 +1026,9 @@ function collectUnnamedRecordings(root, { apply = true } = {}) {
       const rp = rel(root, f);
       const c = fs.readFileSync(f, 'utf8');
       if (!/\bSpeaker \d/.test(c)) continue;                 // has unnamed speakers
-      if (/\[\[People\/|\[\[(Nick Ward|Chris Middleton)\b/.test(c)) continue; // already has a person link
+      // Skip if it already links to ANY person (full-name wikilink) or has a
+      // Mentioned/Also-mentions block from contextual linking.
+      if (/\[\[[A-Z][a-z]+ [A-Z][a-z]+/.test(c) || /## Mentioned|Also mentions/.test(c)) continue;
       const linkRef = rp.replace(/\.md$/, '');
       if (existing.includes(linkRef)) continue;              // already listed
       found.push(rp);
