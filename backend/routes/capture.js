@@ -169,31 +169,51 @@ router.post('/handwriting', upload.single('file'), async (req, res) => {
     return res.status(400).json({ error: 'No image uploaded' });
   }
 
-  const openrouter = require('../services/providers/openrouter-provider');
-  if (!openrouter.isConfigured()) {
-    return res.status(503).json({ error: 'Handwriting transcription needs OpenRouter (no API key configured)' });
+  // Vision goes direct to the Anthropic API (Claude Haiku 4.5 — vision-capable,
+  // cheap, best-in-class at messy handwriting). The Pi has ANTHROPIC_API_KEY but no
+  // OpenRouter key, and the project has no Anthropic SDK, so we call the REST API with
+  // fetch — same pattern as providers/openrouter-provider.js.
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return res.status(503).json({ error: 'Handwriting transcription needs ANTHROPIC_API_KEY (not configured)' });
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 40000);
   try {
-    const mime = req.file.mimetype || 'image/png';
-    const dataUrl = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
+    const mediaType = req.file.mimetype || 'image/png';
+    const b64 = req.file.buffer.toString('base64');
+    const model = process.env.HANDWRITING_MODEL || 'claude-haiku-4-5';
 
-    const systemPrompt = 'You are a precise handwriting transcriber. Transcribe the handwritten note in the image into plain text. Output ONLY the transcribed text — no preamble, no commentary, no code fences. Preserve line breaks and list structure. If a word is illegible, use [?].';
-    const messages = [{
-      role: 'user',
-      content: [
-        { type: 'text', text: 'Transcribe this handwritten note.' },
-        { type: 'image_url', image_url: { url: dataUrl } },
-      ],
-    }];
-
-    const result = await openrouter.chat(systemPrompt, messages, {
-      temperature: 0,
-      maxTokens: 1500,
-      timeout: 40000,
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1500,
+        system: 'You are a precise handwriting transcriber. Transcribe the handwritten note in the image into plain text. Output ONLY the transcribed text — no preamble, no commentary, no code fences. Preserve line breaks and list structure. If a word is illegible, use [?].',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
+            { type: 'text', text: 'Transcribe this handwritten note.' },
+          ],
+        }],
+      }),
+      signal: controller.signal,
     });
 
-    const text = (result.text || '').trim();
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      throw new Error(`Anthropic API ${resp.status}: ${body.slice(0, 200)}`);
+    }
+
+    const data = await resp.json();
+    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
     if (!text) {
       return res.status(502).json({ error: 'Transcription returned nothing — try writing more clearly.' });
     }
@@ -204,6 +224,8 @@ router.post('/handwriting', upload.single('file'), async (req, res) => {
   } catch (e) {
     console.error('[Capture] Handwriting error:', e);
     res.status(500).json({ error: e.message });
+  } finally {
+    clearTimeout(timer);
   }
 });
 
