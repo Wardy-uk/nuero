@@ -939,6 +939,166 @@ function graphConfig(root, { apply = false, display = {}, forces = {}, colorGrou
   return { applied: true, backupPath: rel(root, backupPath), colorGroups: next.colorGroups, warning: 'Written. If the graph view was open in Obsidian, it may overwrite this on close — apply with the graph closed.' };
 }
 
+// ── Phase 3: nightly hygiene sweep ──────────────────────────────────────────
+
+function frontmatterValue(text, key) {
+  const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fm) return null;
+  const m = fm[1].match(new RegExp('^' + key + '\\s*:\\s*"?([^"\\n]+)"?', 'mi'));
+  return m ? m[1].trim() : null;
+}
+
+// k-word shingles of a note's prose (for content-containment dedup).
+function shingleSet(text, k = 6) {
+  const words = cleanProse(text).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length > 1);
+  const s = new Set();
+  for (let i = 0; i + k <= words.length; i++) s.add(words.slice(i, i + k).join(' '));
+  return s;
+}
+function containment(a, b) {
+  if (!a.size) return 1;
+  let inB = 0;
+  for (const x of a) if (b.has(x)) inB++;
+  return inB / a.size;
+}
+
+/**
+ * Content-safe Summary-N dedup. Groups summary notes by plaud_id (the ONLY safe
+ * key — same-date "Summary N" can be DIFFERENT meetings). Keeps the richest
+ * variant; archives another ONLY if ≥threshold of its word-shingles already exist
+ * in a kept variant. Never merges distinct recordings; never deletes.
+ */
+function dedupSummaries(root, { threshold = 0.95, apply = true } = {}) {
+  const byId = new Map();
+  for (const f of walk(root)) {
+    const rp = rel(root, f);
+    if (!(rp.startsWith('Meetings/') || rp.startsWith('Plaud/'))) continue;
+    const c = fs.readFileSync(f, 'utf8');
+    if (/note_type\s*:\s*"?transcript/i.test(c)) continue; // transcripts aren't summary variants
+    const id = frontmatterValue(c, 'plaud_id');
+    if (!id) continue;
+    if (!byId.has(id)) byId.set(id, []);
+    byId.get(id).push({ f, rp, body: c.replace(/^---[\s\S]*?---/, ''), len: c.length });
+  }
+
+  const stamp = tsStamp();
+  const backupDir = path.join(root, ...BACKUP_REL, `dedup-${stamp}`);
+  const archiveDir = path.join(root, 'Archive', 'Summary Duplicates');
+  const dropped = [], keptUnique = [];
+  for (const [, notes] of byId) {
+    if (notes.length < 2) continue;
+    notes.sort((a, b) => b.len - a.len);       // richest first = canonical
+    const canonical = notes[0];
+    const canonicalDir = path.dirname(canonical.f);
+    const keep = shingleSet(canonical.body);
+    for (const n of notes.slice(1)) {
+      const ns = shingleSet(n.body);
+      const c = containment(ns, keep);
+      // Only archive a same-directory variant fully contained in the canonical —
+      // never move a routed note (e.g. Meetings/1-2-1/) for a raw import copy.
+      if (c >= threshold && path.dirname(n.f) === canonicalDir) {
+        if (apply) {
+          const bk = path.join(backupDir, path.basename(n.f));
+          ensureDir(path.dirname(bk)); fs.copyFileSync(n.f, bk);
+          ensureDir(archiveDir);
+          let dest = path.join(archiveDir, path.basename(n.f)); let i = 2;
+          while (fs.existsSync(dest)) dest = path.join(archiveDir, path.basename(n.f, '.md') + ` (${i++}).md`);
+          fs.renameSync(n.f, dest);
+        }
+        dropped.push({ rel: n.rp, keptRel: canonical.rp, containment: +c.toFixed(3) });
+      } else {
+        keptUnique.push({ rel: n.rp, containment: +c.toFixed(3) });
+        for (const x of ns) keep.add(x); // union — a 3rd variant contained in EITHER kept note also drops
+      }
+    }
+  }
+  return { dropped, keptUnique, archiveDir: rel(root, archiveDir) };
+}
+
+// Collect meeting/recording notes with only "Speaker N" (no roster person linked)
+// into MOCs/Orphan.md — the ones only a human can name. Idempotent.
+function collectUnnamedRecordings(root, { apply = true } = {}) {
+  const orphanPath = path.join(root, 'MOCs', 'Orphan.md');
+  const existing = fs.existsSync(orphanPath) ? fs.readFileSync(orphanPath, 'utf8') : '';
+  const found = [];
+  for (const root2 of ['Meetings', 'Plaud']) {
+    for (const f of walk(path.join(root, root2))) {
+      const rp = rel(root, f);
+      const c = fs.readFileSync(f, 'utf8');
+      if (!/\bSpeaker \d/.test(c)) continue;                 // has unnamed speakers
+      if (/\[\[People\/|\[\[(Nick Ward|Chris Middleton)\b/.test(c)) continue; // already has a person link
+      const linkRef = rp.replace(/\.md$/, '');
+      if (existing.includes(linkRef)) continue;              // already listed
+      found.push(rp);
+    }
+  }
+  if (apply && found.length) {
+    let o = existing || '---\ntype: moc\ntags: [moc, orphans, review]\n---\n# Orphan — Notes to Review\n\nOwner: [[Nick Ward]]\n';
+    o += `\n## Unnamed recordings (swept ${todayStr()})\n` + found.map((r) => `- [[${r.replace(/\.md$/, '')}|${path.basename(r, '.md')}]]`).join('\n') + '\n';
+    fs.writeFileSync(orphanPath, o, 'utf8');
+  }
+  return { collected: found };
+}
+
+// Archive genuinely-empty recordings (no transcript AND no summary) — the
+// readiness gate prevents new ones, this cleans any straggler.
+function sweepEmptyStubs(root, { apply = true } = {}) {
+  const STUB = 'No transcript returned by Plaud';
+  const NOSUM = 'No summary content returned';
+  const emptyIds = new Set();
+  for (const f of walk(path.join(root, 'Plaud', 'Transcripts'))) {
+    if (fs.readFileSync(f, 'utf8').includes(STUB)) { const id = frontmatterValue(fs.readFileSync(f, 'utf8'), 'plaud_id'); if (id) emptyIds.add(id); }
+  }
+  // only archive an id if its SUMMARY is also empty (else it's a real meeting awaiting transcription)
+  const archiveDir = path.join(root, 'Archive', 'Empty Recordings');
+  const archived = [];
+  for (const f of walk(root)) {
+    const c = fs.readFileSync(f, 'utf8');
+    const id = frontmatterValue(c, 'plaud_id');
+    if (!id || !emptyIds.has(id)) continue;
+    const isTranscript = /note_type\s*:\s*"?transcript/i.test(c);
+    if (!isTranscript && !c.includes(NOSUM)) { emptyIds.delete(id); } // summary has content → keep whole recording
+  }
+  if (apply) {
+    for (const f of walk(root)) {
+      const id = frontmatterValue(fs.readFileSync(f, 'utf8'), 'plaud_id');
+      if (id && emptyIds.has(id)) {
+        ensureDir(archiveDir);
+        let dest = path.join(archiveDir, path.basename(f)); let i = 2;
+        while (fs.existsSync(dest)) dest = path.join(archiveDir, path.basename(f, '.md') + ` (${i++}).md`);
+        fs.renameSync(f, dest); archived.push(rel(root, f));
+      }
+    }
+  }
+  return { archived };
+}
+
+/**
+ * Nightly hygiene sweep — the automated version of the manual cleanup:
+ * dedup Summary-N, collect unnamed recordings, archive empty stragglers.
+ * Writes a dated sweep report. All mutations are reversible (archive, not delete).
+ */
+function nightlySweep(root, { apply = true } = {}) {
+  const dedup = dedupSummaries(root, { apply });
+  const orphans = collectUnnamedRecordings(root, { apply });
+  const empties = sweepEmptyStubs(root, { apply });
+
+  const today = todayStr();
+  const L = [
+    '---', 'type: reference', `created: ${today}`, 'tags: [vault, hygiene, sweep]', 'author: NEURO vault-hygiene', '---',
+    `# Nightly Hygiene Sweep — ${today}`, '',
+    `- Summary-N duplicates archived: **${dedup.dropped.length}** (kept ${dedup.keptUnique.length} with unique content)`,
+    `- Unnamed recordings collected to Orphan hub: **${orphans.collected.length}**`,
+    `- Empty recordings archived: **${empties.archived.length}**`, '',
+  ];
+  if (dedup.dropped.length) { L.push('## Duplicate summaries archived'); for (const d of dedup.dropped) L.push(`- \`${d.rel}\` → kept \`${d.keptRel}\` (${Math.round(d.containment * 100)}% contained)`); L.push(''); }
+  if (dedup.keptUnique.length) { L.push('## Kept — unique content (NOT dropped)'); for (const k of dedup.keptUnique) L.push(`- \`${k.rel}\` (${Math.round(k.containment * 100)}% overlap)`); L.push(''); }
+  ensureDir(path.join(root, ...REPORT_REL));
+  const outPath = path.join(root, ...REPORT_REL, `Hygiene Sweep ${today}.md`);
+  fs.writeFileSync(outPath, L.join('\n') + '\n\n_Part of [[Logs]]_\n', 'utf8');
+  return { dedup, orphans, empties, reportPath: rel(root, outPath) };
+}
+
 module.exports = {
   lint,
   contextualLinkPlan,
@@ -948,6 +1108,8 @@ module.exports = {
   fixApply,
   connectOrphans,
   graphConfig,
+  dedupSummaries,
+  nightlySweep,
   // exported for tests / reuse
   _internal: { walk, parseAliases, extractLinks, linkedSet, cleanProse, buildPeopleIndex, proposeContextualLinks, similarity, norm, dice, EXCLUDE_DIRS },
 };

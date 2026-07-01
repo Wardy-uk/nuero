@@ -109,6 +109,18 @@ function start() {
     } catch (e) { console.error('[Scheduler] Weekly hygiene failed:', e.message); }
   });
 
+  // Nightly 2:30am — hygiene sweep (APPLY): content-safe Summary-N dedup, collect
+  // unnamed "Speaker N" recordings into the Orphan hub, archive empty stragglers.
+  // All mutations are reversible (archive + backups) and reported to Vault Audit.
+  cron.schedule('30 2 * * *', () => {
+    try {
+      const vaultRoot = process.env.OBSIDIAN_VAULT_PATH;
+      if (!vaultRoot) return;
+      const r = require('./vault-hygiene').nightlySweep(vaultRoot, { apply: true });
+      console.log(`[Scheduler] Nightly sweep: ${r.dedup.dropped.length} duplicate summaries archived, ${r.orphans.collected.length} unnamed recordings collected, ${r.empties.archived.length} empty recordings archived. Report: ${r.reportPath}`);
+    } catch (e) { console.error('[Scheduler] Nightly sweep failed:', e.message); }
+  });
+
   // Monday 8:10am — generate a knowledge reflection brief for the week ahead
   cron.schedule('10 8 * * 1', () => {
     try {
