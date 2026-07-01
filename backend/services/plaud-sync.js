@@ -896,7 +896,7 @@ async function reconcilePlaudRecordings({ minJaccard = 0.5, write = true } = {})
     const dir = path.join(getVaultPath(), REPORT_FOLDER);
     fs.mkdirSync(dir, { recursive: true });
     const outPath = path.join(dir, `PLAUD Missing Reconciliation ${new Date().toISOString().slice(0, 10)}.md`);
-    fs.writeFileSync(outPath, lines.join('\n'), 'utf-8');
+    fs.writeFileSync(outPath, lines.join('\n') + '\n\n_Part of [[Logs]]_\n', 'utf-8');
     reportPath = path.relative(getVaultPath(), outPath).replace(/\\/g, '/');
   }
 

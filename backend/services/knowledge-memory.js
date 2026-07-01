@@ -1432,7 +1432,7 @@ function writeDailyImportReport(dateKey = isoDate()) {
   fs.mkdirSync(folder, { recursive: true });
   const targetPath = `${REPORT_DIR}/${dateKey}.md`;
   const fullPath = path.join(vault, targetPath);
-  fs.writeFileSync(fullPath, `${buildDailyImportReport(dateKey)}\n`, 'utf-8');
+  fs.writeFileSync(fullPath, `${buildDailyImportReport(dateKey)}\n\n_Part of [[Logs]]_\n`, 'utf-8');
   try { vaultHooks.onVaultWrite(fullPath, 'import-daily-report'); } catch {}
   return { status: 'ok', path: targetPath, markdown: buildDailyImportReport(dateKey) };
 }

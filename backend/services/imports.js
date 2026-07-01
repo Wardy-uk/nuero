@@ -1177,7 +1177,7 @@ async function backfillPlaudNotes({ limit = 500, dryRun = false, archiveDuplicat
   const reportDir = ensurePlaudCleanupReportDir();
   const reportPath = path.join(reportDir, `Plaud Cleanup - ${new Date().toISOString().slice(0, 10)}${dryRun ? ' Dry Run' : ''}.md`);
   const reportMarkdown = buildPlaudCleanupReport(summary);
-  fs.writeFileSync(reportPath, reportMarkdown, 'utf-8');
+  fs.writeFileSync(reportPath, reportMarkdown + '\n\n_Part of [[Logs]]_\n', 'utf-8');
   try { require('./vault-hooks').onVaultWrite(reportPath, 'plaud-cleanup-report'); } catch {}
 
   summary.reportPath = path.relative(vaultPath, reportPath).replace(/\\/g, '/');
