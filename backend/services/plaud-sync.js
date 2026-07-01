@@ -718,6 +718,15 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
       writeSyncState(syncState);
       db.setState(PLAUD_LAST_ERROR_KEY, failed > 0 ? failures[0].error : '');
 
+      // Phase 2: auto-link newly imported meetings so they arrive already connected
+      // (contextual-link scans Meetings/Plaud; already-linked notes are skipped).
+      if (imported + updated > 0) {
+        try {
+          const linked = require('./vault-hygiene').contextualLinkApply(getVaultPath(), { roots: ['Meetings', 'Plaud'] });
+          if (linked.totalLinks) console.log(`[PlaudSync] auto-linked ${linked.totalLinks} links across ${linked.notesDone} new notes`);
+        } catch (e) { console.error('[PlaudSync] auto contextual-link failed:', e.message); }
+      }
+
       return {
         started: true,
         imported,
@@ -1009,6 +1018,12 @@ async function repullPlaudRecordings({ ids = null, limit = null } = {}) {
       if (failed === 0) syncState.lastSuccessfulSyncAt = startedAt.toISOString();
       writeSyncState(syncState);
       db.setState(PLAUD_LAST_ERROR_KEY, failed > 0 ? failures[0].error : '');
+
+      // Phase 2: auto-link the freshly re-pulled meetings.
+      if (pulled > 0) {
+        try { require('./vault-hygiene').contextualLinkApply(getVaultPath(), { roots: ['Meetings', 'Plaud'] }); }
+        catch (e) { console.error('[PlaudSync] auto contextual-link failed:', e.message); }
+      }
 
       return { started: true, requested: targetIds.length, pulled, failed, remaining: targetIds.length - pulled - failed, failures, resumable: true };
     } finally {
