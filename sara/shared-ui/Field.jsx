@@ -152,14 +152,30 @@ function drive({ degraded, confidenceLevel, quiet, activity, pressing }) {
   // Blind never pulses. She cannot know whether anything is pressing, and a
   // field that breathes over an unreadable pool is asserting exactly the thing
   // it cannot see.
-  if (degraded) return { depth: 0, period: 0, dim: 0.9, pulse: 0 };
+  // ⚠ `unresolved` is a FLAG, NOT A POINT ON THE RAMP, and that is the whole
+  // difficulty of the colour change. Blind is not "low urgency", it is "no
+  // information" — putting it at the blue end would paint an outage the same
+  // calm colour as a quiet afternoon, which is the blind-looks-like-clear
+  // failure this component exists to prevent. It desaturates instead, and it
+  // still never settles, so two channels carry it rather than one.
+  if (degraded) return { depth: 0, period: 0, dim: 1, pulse: 0, intensity: 0, unresolved: true };
   // Quiet: she settles rarely (nothing is being worked out) but stays PRESENT.
   // ⚠ dim was 0.45 here, which made "staying out of the way" mean "gone".
   // ⚠ Quiet still pulses when something is pressing. `quiet` means SARA will
   // not SPEAK — it has never meant she may hide a breaching escalation, and the
   // gate already refuses to drop a critical item off duty. Silent is not the
   // same as invisible.
-  if (quiet) return { depth: 0.35, period: 16, dim: 0.78, pulse: pressing ? PULSE_AMP : 0 };
+  // ⚠ dim is 1, not 0.78. Quiet used to be expressed by FADING her; it is
+  // expressed by COLOUR now, so she is exactly as present in a meeting as in a
+  // fire. A pressing item still drives her to the red end even here, because
+  // quiet has never meant she may hide an escalation.
+  if (quiet) {
+    return {
+      depth: 0.35, period: 16, dim: 1,
+      pulse: pressing ? PULSE_AMP : 0,
+      intensity: pressing ? 1 : 0.08,
+    };
+  }
   // ⚠ The low-confidence floor is 0.45, not 0.34: below about 0.4 the settle
   // stops being legible as a settle at all, so "she is unsure" and "she is not
   // working" became the same picture. It is still clearly short of moderate.
@@ -173,8 +189,52 @@ function drive({ degraded, confidenceLevel, quiet, activity, pressing }) {
   // `pre-meeting` keeps its 7s: imminent is not the same as pressing, and that
   // one is about a clock rather than about a queue.
   const period = activity === 'pre-meeting' ? 7 : 9.5;
-  return { depth, period, dim: 1, pulse: pressing ? PULSE_AMP : 0 };
+  // Blue → orange → red. Pressing goes straight to the top: it is the one fact
+  // that should be readable across a room, and it must not be averaged down by
+  // a low-confidence read happening at the same time. Firefighting sits high
+  // without being maximal — "the queue is busy" is not the same claim as "this
+  // needs you now", and those two were conflated once already.
+  const intensity = pressing ? 1
+    : activity === 'firefighting' ? 0.75
+    : 0.18 + depth * 0.42;
+  return { depth, period, dim: 1, pulse: pressing ? PULSE_AMP : 0, intensity };
 }
+
+// ── Her colour ──────────────────────────────────────────────────────────────
+//
+// Nick, 6 Sep 2026: "she should always be visible — it should be the colour of
+// her presence that changes, not the visibility. Where she currently fades,
+// that should be blue and a lower intensity; where she is strong, red and
+// stronger; orange in the middle."
+//
+// ⚠ COLOUR NOW CARRIES WHAT DIMMING USED TO, which is why `dim` is pinned at 1
+// above. Every state has to be tellable apart by hue alone — and the one that
+// cannot be, blind, gets its own desaturated grey rather than a place on the
+// ramp.
+//
+// Stops chosen to survive the very low alphas the substrate draws at: a dark
+// navy multiplied down to 0.03 on a #0b0f14 ground is simply black.
+const COLD = [90, 150, 240];    // blue  — quiet, nothing needs him
+const MID = [240, 150, 60];     // orange — a normal working read
+const HOT = [240, 70, 60];      // red   — something is pressing
+const UNRESOLVED = [150, 160, 170]; // grey — cannot see, NOT calm
+
+const mix = (a, b, t) => [
+  Math.round(a[0] + (b[0] - a[0]) * t),
+  Math.round(a[1] + (b[1] - a[1]) * t),
+  Math.round(a[2] + (b[2] - a[2]) * t),
+];
+
+// ⚠ TWO SEGMENTS, so orange genuinely sits in the MIDDLE. A straight blue→red
+// blend passes through a muddy purple and never through orange at all.
+function fieldColour(intensity, unresolved) {
+  if (unresolved) return UNRESOLVED;
+  const t = clamp(intensity ?? 0.4, 0, 1);
+  return t <= 0.5 ? mix(COLD, MID, t * 2) : mix(MID, HOT, (t - 0.5) * 2);
+}
+
+/** Nodes sit slightly lighter than their edges, as they always have. */
+const lighten = (c, amount = 30) => c.map((v) => Math.min(255, v + amount));
 
 // ⚠ `still` — one frame, no loop, for a screen that is not lit.
 //
@@ -282,8 +342,10 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
       return true;
     }
 
-    function paint(t, k, focus, dim) {
+    function paint(t, k, focus, dim, colour) {
       ctx.clearRect(0, 0, w, h);
+      const edgeRGB = colour.join(',');
+      const nodeRGB = lighten(colour).join(',');
 
       // Edges first — cognition is relationship-first, nodes secondary.
       for (let i = 0; i < ALPHA_BUCKETS; i++) { edgeBuckets[i].length = 0; nodeBuckets[i].length = 0; }
@@ -305,7 +367,7 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
       for (let b = 0; b < ALPHA_BUCKETS; b++) {
         const list = edgeBuckets[b];
         if (!list.length) continue;
-        ctx.strokeStyle = `rgba(120,170,235,${(bucketAlpha(b, EDGE_REST_ALPHA, EDGE_COHERENT) * dim).toFixed(3)})`;
+        ctx.strokeStyle = `rgba(${edgeRGB},${(bucketAlpha(b, EDGE_REST_ALPHA, EDGE_COHERENT) * dim).toFixed(3)})`;
         ctx.beginPath();
         for (let i = 0; i < list.length; i++) {
           const n1 = nodes[edges[list[i]][0]];
@@ -331,7 +393,7 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
       for (let b = 0; b < ALPHA_BUCKETS; b++) {
         const list = nodeBuckets[b];
         if (!list.length) continue;
-        ctx.fillStyle = `rgba(150,190,240,${(bucketAlpha(b, NODE_REST_ALPHA, NODE_COHERENT) * dim).toFixed(3)})`;
+        ctx.fillStyle = `rgba(${nodeRGB},${(bucketAlpha(b, NODE_REST_ALPHA, NODE_COHERENT) * dim).toFixed(3)})`;
         ctx.beginPath();
         for (let i = 0; i < list.length; i++) {
           const nd = nodes[list[i]];
@@ -358,7 +420,8 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
       // signal that says something needs them.
       const paintStill = () => {
         const d = driveRef.current;
-        paint(0, 0.45 * d.depth, { x: w * 0.7, y: h * 0.25 }, d.dim * (1 + d.pulse));
+        paint(0, 0.45 * d.depth, { x: w * 0.7, y: h * 0.25 }, d.dim * (1 + d.pulse),
+              fieldColour(d.intensity, d.unresolved));
       };
       paintStill();
       const ro = new ResizeObserver(() => {
@@ -411,7 +474,7 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
         ? 1 + d.pulse * (0.5 - 0.5 * Math.cos((2 * Math.PI * t) / PULSE_PERIOD))
         : 1;
 
-      paint(t, k, focus, d.dim * breath);
+      paint(t, k, focus, d.dim * breath, fieldColour(d.intensity, d.unresolved));
     }
 
     function start() {
