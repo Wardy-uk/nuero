@@ -303,6 +303,24 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
         finally { setBusy(false); }
         return undefined;
 
+      case 'meeting':
+        // ⚠ A THIRD API, and for the same reason `session` is a second one:
+        // this releases the quiet state on an OCCURRENCE, which the attention
+        // lifecycle knows nothing about and would refuse. The key travels so
+        // the server can check it against the meeting actually running — a
+        // polled screen can be holding the one before this.
+        setBusy(true);
+        try {
+          await apiFetch(`/api/attention/meeting/${intent.action === 'finished' ? 'finished' : 'resume'}`, {
+            method: 'POST',
+            body: JSON.stringify({ key: intent.key }),
+          });
+          await load({ quiet: true });
+        } catch { /* left on screen — a button that clears itself on an error is
+                     one Nick believes worked */ }
+        finally { setBusy(false); }
+        return undefined;
+
       case 'navigate':
         if (intent.tab) onNavigate?.(intent.tab);
         return undefined;

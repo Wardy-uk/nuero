@@ -213,4 +213,74 @@ router.post('/records/:id/act', async (req, res) => {
   }
 });
 
+/**
+ * "That's finished" — the meeting he is in ended early.
+ *
+ * ⚠ IT RELEASES THE QUIET STATE, IT DOES NOT CREATE ONE. There is deliberately
+ * no route to declare yourself INTO a meeting: the calendar decides that, and a
+ * manual way to make SARA go silent is a mute button wearing a meeting's
+ * clothes. See `services/meeting-finish.js` for the rest of the rules.
+ *
+ * ⚠ IT WRITES NOTHING TO THE CALENDAR. The meeting is not Nick's to shorten —
+ * other people are in it and Graph would mail every one of them. This records
+ * where HE is.
+ *
+ * ⚠ The event is taken from the LIVE FEED, never from the request body. A
+ * client posting its own start/end times is a client that can silence any
+ * meeting it likes, including one it has invented; all it may send is the key
+ * SARA gave it, and a key that is not the meeting running now is refused.
+ */
+router.post('/meeting/finished', async (req, res) => {
+  try {
+    const meetingFinish = require('../services/meeting-finish');
+    const now = new Date();
+    const live = attention.currentMeetingEvent(now);
+    if (!live) return res.status(409).json({ ok: false, error: 'not in a meeting' });
+
+    const { key } = req.body || {};
+    const liveKey = meetingFinish.keyFor(live);
+    // ⚠ A STALE SCREEN MUST NOT RELEASE THE WRONG MEETING. The phone polls, so
+    // the key in its hand can name the meeting BEFORE this one — releasing that
+    // would silence nothing and leave him wondering why the button did not work,
+    // or worse, land on an occurrence he is about to be in.
+    if (key && key !== liveKey) {
+      return res.status(409).json({ ok: false, error: 'that is not the meeting running now', key: liveKey });
+    }
+
+    const result = meetingFinish.finish(live, now);
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.reason });
+
+    // The pool is rebuilt from working memory, which caches for ten minutes —
+    // without this the immediate refresh re-renders the quiet screen and the
+    // button reads as one that did nothing.
+    try { require('../services/working-memory').invalidate('attention: meeting finished early'); } catch { /* best effort */ }
+
+    res.json({ ok: true, key: result.key, subject: result.entry.subject, scheduledEnd: result.entry.scheduledEnd });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
+ * The way back. Pressed by mistake, or it started up again.
+ *
+ * ⚠ NOT OPTIONAL. The cost of a wrong press is SARA speaking up in a real
+ * meeting — the exact failure the quiet state exists to prevent — so undoing it
+ * has to be possible, and cheap. Clearing a key that was not there is a success:
+ * it is already resumed, and an error would send him looking for a problem that
+ * does not exist.
+ */
+router.post('/meeting/resume', (req, res) => {
+  try {
+    const { key } = req.body || {};
+    if (!key || typeof key !== 'string') return res.status(400).json({ ok: false, error: 'key required' });
+    const result = require('../services/meeting-finish').resume(key);
+    if (!result.ok) return res.status(500).json({ ok: false, error: result.reason });
+    try { require('../services/working-memory').invalidate('attention: meeting resumed'); } catch { /* best effort */ }
+    res.json({ ok: true, cleared: result.cleared });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;

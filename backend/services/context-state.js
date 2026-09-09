@@ -353,6 +353,20 @@ function deriveConfidence({ activity, knownCount, contradictions }) {
 }
 
 /**
+ * `<lead> "<subject>".`, with the subject TRIMMED before it is quoted.
+ *
+ * ⚠ Graph returns subjects carrying trailing whitespace, and the quote mark is
+ * exactly what makes it visible — this reached the Surface as
+ * `You're in "Nurtur - Micom (Commercials) ".` A blank subject falls back to the
+ * unnamed wording rather than quoting an empty string, which reads as a meeting
+ * with no name rather than as one SARA could not name.
+ */
+function _quotedSubject(subject, lead, fallback) {
+  const s = typeof subject === 'string' ? subject.trim() : '';
+  return s ? `${lead} "${s}".` : fallback;
+}
+
+/**
  * Resolve the context.
  *
  * @param {object} inputs  see INPUT_BLOCKS — every block optional, each may
@@ -440,7 +454,11 @@ function resolveContext(inputs = {}, now = new Date()) {
   if (meetings.current) {
     activity = ACTIVITY.IN_MEETING;
     label = 'In a meeting';
-    summary = meetings.current.subject ? `You're in "${meetings.current.subject}".` : "You're in a meeting.";
+    // ⚠ TRIMMED BEFORE IT IS QUOTED. Graph returns subjects with trailing
+    // whitespace often enough that it reached the Surface as
+    // `You're in "Nurtur - Micom (Commercials) ".` — the quote mark is what
+    // makes stray space visible, so it is stripped where the quote is added.
+    summary = _quotedSubject(meetings.current.subject, "You're in", "You're in a meeting.");
     quiet = true;
     reasons.push('A calendar event with other people in it is running now.');
     reasons.push('SARA stays quiet in a meeting — this is the one state where speaking up is wrong by default.');
@@ -449,7 +467,7 @@ function resolveContext(inputs = {}, now = new Date()) {
     activity = ACTIVITY.PRE_MEETING;
     label = 'Meeting shortly';
     const mins = meetings.minutesToNext;
-    summary = `${meetings.next.subject || 'A meeting'} in ${mins} minute${mins === 1 ? '' : 's'}.`;
+    summary = `${String(meetings.next.subject || '').trim() || 'A meeting'} in ${mins} minute${mins === 1 ? '' : 's'}.`;
     reasons.push(`A meeting with other people starts in ${mins} minute${mins === 1 ? '' : 's'} — inside the ${PRE_MEETING_MINUTES}-minute prep window.`);
     derivedFrom.push('calendar');
   } else if (breaching > 0 || escalations > 0) {
@@ -464,7 +482,7 @@ function resolveContext(inputs = {}, now = new Date()) {
   } else if (session) {
     activity = ACTIVITY.IN_FOCUS_SESSION;
     label = 'In a focus session';
-    summary = session.taskTitle ? `You're working on "${session.taskTitle}".` : "You're in a focus session.";
+    summary = _quotedSubject(session.taskTitle, "You're working on", "You're in a focus session.");
     reasons.push(`A focus session is running${session.taskTitle ? `: "${session.taskTitle}"` : ''}.`);
     derivedFrom.push('focusSession');
   } else if (isWorkingDay && known(src.rituals) && src.rituals.standupOutstanding && hour < MORNING_ENDS_HOUR) {

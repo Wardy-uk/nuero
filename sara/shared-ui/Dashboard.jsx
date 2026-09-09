@@ -29,11 +29,38 @@ function Row({ row }) {
     <li className={`dash__row${row.level ? ` dash__row--${row.level}` : ''}`}>
       {row.when && <span className="dash__when">{row.when}</span>}
       <span className="dash__what">{row.what}</span>
-      {row.meta && <span className="dash__meta">{row.meta}</span>}
+      <span className="dash__right">
+        {/* ⚠ The words arrived composed, and the number is NOT recomputed here.
+            A client subtracting two times keeps counting down against a payload
+            that stopped refreshing, which is a stale fact wearing a live one's
+            clothes. */}
+        {row.countdown && <b className="dash__count">{row.countdown}</b>}
+        {row.meta && <span className="dash__meta">{row.meta}</span>}
+      </span>
       {/* The evidence line. Meeting prep's rule, generalised: a row whose
           source is unknown must not look identical to a sourced one. */}
       {row.note && <span className="dash__note">{row.note}</span>}
     </li>
+  );
+}
+
+// ── Right now ───────────────────────────────────────────────────────────────
+//
+// What he is IN, or that the diary is clear. Nick, 8 Sep 2026: "there should be
+// a 'current' section as well, showing what I should be currently doing - or
+// indicating I'm free if theres nothing in the diary."
+//
+// ⚠ It renders ONLY when the server sent one, and the server sends one only
+// when the diary was actually read — "I couldn't look" and "there's nothing on"
+// are opposite facts, and the panel's note already carries the first. Nothing
+// here decides which of the two this is.
+function Now({ now }) {
+  return (
+    <div className={`dash__now${now.free ? ' dash__now--free' : ''}`}>
+      <span className="dash__nowlabel">now</span>
+      <span className="dash__nowwhat">{now.what}</span>
+      {now.meta && <span className="dash__nowmeta">{now.meta}</span>}
+    </div>
   );
 }
 
@@ -57,12 +84,16 @@ function Figure({ figure }) {
 
 export default function Dashboard({ dashboard }) {
   if (!dashboard) return null;
-  const { kind, label, rows = [], figure = null, note = null, gaps = [] } = dashboard;
-  const bare = rows.length === 0 && !figure;
+  const { kind, label, rows = [], figure = null, note = null, gaps = [], now = null } = dashboard;
+  const bare = rows.length === 0 && !figure && !now;
 
   return (
     <section className={`dash dash--${kind}${bare ? ' dash--bare' : ''}`} aria-label={label}>
       {label && <div className="dash__label">{label}</div>}
+
+      {/* Above the list, because "what am I in" is a different question from
+          "what is coming" and it is the one being asked first. */}
+      {now && <Now now={now} />}
 
       {figure && <Figure figure={figure} />}
 

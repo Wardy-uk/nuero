@@ -29,6 +29,49 @@
   color: #5d6b7a;
 }
 
+/* ── Right now ────────────────────────────────────────────────────────────
+   What he is IN, above what is coming. Given its own band rather than a row,
+   because it answers a different question from the list below it and reading it
+   as the first item of the day would be worse than not showing it at all. */
+.dash__now {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.55rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 5px;
+  border-left: 2px solid #5ec1ca;
+  background: rgba(94, 193, 202, 0.07);
+}
+
+/* Clear is a calm state and must not look like an alert or like an empty
+   panel — muted, still present, still saying something. */
+.dash__now--free {
+  border-left-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.dash__nowlabel {
+  font-size: 0.6rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #5d6b7a;
+}
+
+.dash__nowwhat {
+  color: #e6edf3;
+  font-size: 0.95rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dash__now--free .dash__nowwhat { color: #8b98a8; }
+
+.dash__nowmeta {
+  font-size: 0.72rem;
+  color: #5d6b7a;
+  white-space: nowrap;
+}
+
 /* ── Rows ─────────────────────────────────────────────────────────────────
    `when` / `what` / `meta` on one line, `note` wrapping underneath it. */
 .dash__rows {
@@ -67,10 +110,28 @@
   overflow-wrap: anywhere;
 }
 
+/* The right-hand column holds the countdown and the meta, so adding one did not
+   need a fourth grid column that every other row would leave empty. */
+.dash__right {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
 .dash__meta {
   font-size: 0.7rem;
   color: #5d6b7a;
   white-space: nowrap;
+}
+
+/* The one countdown on the panel, so it can afford to be the brightest thing in
+   its column. A second one would make neither mean anything. */
+.dash__count {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #5ec1ca;
+  font-variant-numeric: tabular-nums;
 }
 
 .dash__note {

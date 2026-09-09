@@ -151,6 +151,10 @@ function row(when, what, opts = {}) {
   return {
     when: when === null || when === undefined ? null : String(when),
     what: String(what),
+    // How long until this one starts, in words, composed HERE — a client
+    // subtracting two times is a fourth opinion about the same minute, and one
+    // that keeps counting down against a payload that stopped refreshing.
+    countdown: opts.countdown ? String(opts.countdown) : null,
     meta: opts.meta ? String(opts.meta) : null,
     // The evidence line. Meeting prep's rule, generalised: a row whose source
     // is unknown must not look identical to a sourced one.
@@ -170,21 +174,130 @@ function timeOf(event) {
   return m ? m[0] : null;
 }
 
-/** The agenda, as rows. `known:false` yields NO rows and a stated gap. */
-function agendaRows(agenda, limit = 4) {
+/** The end of an event, sliced out of the string exactly as `timeOf` slices the start. */
+function endTimeOf(event) {
+  const s = event && (event.end || event.endTime);
+  if (typeof s !== 'string') return null;
+  const m = s.match(/\d{2}:\d{2}/);
+  return m ? m[0] : null;
+}
+
+// Two titles name the same thing. Case and surrounding space only — nothing
+// fuzzy, because the cost of a wrong match here is a real item HIDDEN from a
+// list Nick uses to find what he owes, and the cost of a miss is only that he
+// sees it twice, which is the state we are already in.
+function normTitle(v) {
+  return typeof v === 'string' ? v.trim().toLowerCase().replace(/\s+/g, ' ') : null;
+}
+
+// ⚠ THE COUNTDOWN STARTS AT HALF AN HOUR, and that is Nick's number (8 Sep
+// 2026). Beyond it the clock time IS the useful fact — "in 3 hours" reads as
+// something to react to when it is not — and a countdown on every row would
+// make none of them mean anything.
+const COUNTDOWN_MINUTES = 30;
+
+function countdownFor(event) {
+  if (!isObj(event) || event.allDay === true) return null;
+  const m = event.minutesAway;
+  // ⚠ `null` is "across a day boundary" and is NOT zero. Printing "now" over
+  // tomorrow's first meeting is a placeholder shown as a fact.
+  if (!Number.isFinite(m) || m < 0 || m > COUNTDOWN_MINUTES) return null;
+  if (m === 0) return 'now';
+  return m === 1 ? 'in 1 min' : `in ${m} min`;
+}
+
+/**
+ * The agenda, as rows. `known:false` yields NO rows and a stated gap.
+ *
+ * ⚠ A RUNNING event is NOT a row — it is the `now` slot above them, because
+ * "what am I in" and "what is coming" are different questions and answering
+ * both with one list is what made the same meeting appear twice.
+ *
+ * @param {object} [opts.countdownHandledFor] a subject the TRANSITION is
+ *   already counting down. Saying "starts in 9 minutes" above a row reading
+ *   "in 9 min" is the same fact twice on one screen.
+ */
+function agendaRows(agenda, limit = 4, opts = {}) {
   if (!isObj(agenda) || agenda.known !== true || !Array.isArray(agenda.events)) return [];
-  return agenda.events.slice(0, limit).map((e) => row(
-    timeOf(e) || '—',
-    e.subject || e.title || 'Untitled',
-    {
-      // ⚠ "solo" is only said when the brain KNOWS. `attendeesOther` is
-      // three-valued and null means "we could not tell" — half Nick's diary is
-      // solo blocks, so guessing either way is wrong in a way he would notice.
-      meta: e.attendeesOther === true ? 'with others'
-        : e.attendeesOther === false ? 'on your own'
-          : null,
-    }
-  ));
+  const spokenFor = normTitle(opts.countdownHandledFor);
+  return agenda.events
+    .filter((e) => e && e.running !== true)
+    .slice(0, limit)
+    .map((e, i) => row(
+      timeOf(e) || '—',
+      e.subject || e.title || 'Untitled',
+      {
+        // ⚠ THE NEXT ONE ONLY. The list is sorted, so index 0 is the next
+        // thing; a countdown further down the day is noise competing with it.
+        countdown: i === 0 && normTitle(e.subject) !== spokenFor ? countdownFor(e) : null,
+        // ⚠ "solo" is only said when the brain KNOWS. `attendeesOther` is
+        // three-valued and null means "we could not tell" — half Nick's diary is
+        // solo blocks, so guessing either way is wrong in a way he would notice.
+        meta: e.attendeesOther === true ? 'with others'
+          : e.attendeesOther === false ? 'on your own'
+            : null,
+      }
+    ));
+}
+
+/**
+ * What he is in RIGHT NOW, or that the diary is clear. PURE.
+ *
+ * Nick, 8 Sep 2026: "there should be a 'current' section as well, showing what
+ * I should be currently doing - or indicating I'm free if there's nothing in
+ * the diary." The agenda already answered "what's next" and nothing answered
+ * "what's on", so a running meeting was indistinguishable from a free hour.
+ *
+ * ⚠ AN UNREADABLE DIARY YIELDS NULL, NEVER "FREE". "I couldn't look" and
+ * "there's nothing on" are opposite facts and only one of them licenses him to
+ * start something — this is the same refusal the dashboard note already makes,
+ * and answering it twice differently is how a surface starts lying.
+ *
+ * ⚠ IT SPEAKS ABOUT THE DIARY, NOT ABOUT HIM. "Nothing in the diary" is a fact
+ * that can be checked; "you're free" is a claim about his workload that a
+ * calendar cannot support, with 150 open tasks sitting one panel below.
+ */
+function nowSlot(agenda) {
+  if (!isObj(agenda) || agenda.known !== true) return null;
+  const events = Array.isArray(agenda.events) ? agenda.events : [];
+
+  // ⚠ All-day events are excluded on BOTH branches. One is not something he is
+  // "in", and it has no end time to count down to — rendering its 00:00 as a
+  // clock reading is the bug the agenda already learned once.
+  const running = events.find((e) => e && e.running === true && e.allDay !== true);
+  if (running) {
+    const until = endTimeOf(running);
+    return {
+      what: running.subject || 'Untitled',
+      meta: until ? `until ${until}` : null,
+      free: false,
+    };
+  }
+
+  // ⚠ Only the TODAY scope can say anything about the rest of today. A rolled
+  // forward agenda is here precisely BECAUSE today has nothing left in it, so
+  // "clear for the rest of the day" is the true statement in that case — and
+  // "free until 09:00" about tomorrow morning would not be.
+  const next = agenda.scope === 'today'
+    ? events.find((e) => e && e.running !== true && e.allDay !== true)
+    : null;
+  const at = next ? timeOf(next) : null;
+  return {
+    what: 'Nothing in the diary',
+    meta: at ? `free until ${at}` : 'clear for the rest of the day',
+    free: true,
+  };
+}
+
+/**
+ * The subject the transition is already counting down, if it is doing that.
+ * Only `leave-now` counts: a post-meeting prompt names something that has
+ * finished and is not competing with a countdown.
+ */
+function transitionSubject(payload) {
+  const t = payload && payload.transition;
+  if (!isObj(t) || t.kind !== 'leave-now') return null;
+  return (isObj(t.meta) && t.meta.subject) || null;
 }
 
 /**
@@ -213,15 +326,15 @@ function gapsOf(payload) {
 
 function dashSteady(payload) {
   const agenda = payload.agenda;
-  const rows = agendaRows(agenda);
   const known = isObj(agenda) && agenda.known === true;
+  const rows = agendaRows(agenda, 4, { countdownHandledFor: transitionSubject(payload) });
 
-  // The one open thing, beneath the day. `primary` is the brain's choice; this
-  // does not pick a different one.
-  const p = payload.primary;
-  if (p && p.kind === 'item') {
-    rows.push(row('open', p.title, { meta: p.urgency || null, note: p.say || null }));
-  }
+  // ⚠ THE PRIMARY IS NOT REPEATED HERE. It used to be appended as an `open`
+  // row — the same title and the same `say` that the headline two lines above
+  // had just given, word for word (Nick, 8 Sep 2026, seeing it three times on
+  // one screen). The dashboard answers "what shape is the day"; the headline
+  // answers "what should I do". Restating one inside the other buys nothing
+  // and costs the panel its meaning.
 
   return {
     kind: SURFACES.STEADY,
@@ -229,20 +342,26 @@ function dashSteady(payload) {
     // verbatim — a client deciding "today" vs "tomorrow" for itself is a second
     // opinion about the one thing an agenda is for.
     label: !known ? 'your day' : agenda.scope === 'today' ? 'the rest of your day' : `${agenda.scope}`,
+    now: nowSlot(agenda),
     rows,
     figure: null,
-    // ⚠ "I couldn't see your diary" and "your diary is empty" are different
-    // facts and the second is good news. Never collapse them.
-    note: known ? null : 'I couldn’t read your diary, so this isn’t the whole day.',
+    // ⚠ Three distinct facts, and only the last two are good news: "I couldn't
+    // see your diary", "nothing left today", "here is what's left". Collapsing
+    // the first into either of the others is the failure the whole provenance
+    // model exists to prevent.
+    note: !known ? 'I couldn’t read your diary, so this isn’t the whole day.'
+      : rows.length === 0 ? 'Nothing else in the diary.'
+        : null,
   };
 }
 
 function dashPreMeeting(payload) {
-  const rows = agendaRows(payload.agenda, 3);
   const known = isObj(payload.agenda) && payload.agenda.known === true;
+  const rows = agendaRows(payload.agenda, 3, { countdownHandledFor: transitionSubject(payload) });
   return {
     kind: SURFACES.PRE_MEETING,
     label: 'what’s coming',
+    now: nowSlot(payload.agenda),
     rows,
     figure: null,
     note: known ? null : 'I couldn’t read your diary.',
@@ -456,15 +575,57 @@ function dashInbox(payload) {
   };
 }
 
-function dashInMeeting() {
+/**
+ * In a meeting.
+ *
+ * ⚠ IT SHOWED NOTHING AT ALL, and that was wrong (Nick, 8 Sep 2026: "rest of
+ * day is missing"). The restraint this state exists for is about the POOL —
+ * SARA does not put work in front of him while he is in a room with people, and
+ * `attention.gate()` has already held it back. It was never about the DIARY. So
+ * a panel labelled "nothing, on purpose" over an unread agenda withheld the two
+ * facts he actually wants mid-meeting: when this one is due to end, and what is
+ * after it. Neither is something to decide about; both are the shape of the day.
+ *
+ * ⚠ NO `now` BAND HERE, deliberately, and it is the one surface without one.
+ * The headline directly above is the context card — "In a meeting / You're in
+ * X" — so a band repeating X is the same thing twice on one screen, which is
+ * the whole complaint. The end time is the fact the headline does NOT have, so
+ * it goes in the note instead.
+ *
+ * ⚠ "DUE TO END", never "ends". It is the scheduled end, not a claim about when
+ * he will actually get out, and his meetings overrun.
+ */
+function dashInMeeting(payload) {
+  const safe = isObj(payload) ? payload : {};
+  const agenda = safe.agenda;
+  const known = isObj(agenda) && agenda.known === true;
+  // The running one is excluded by `agendaRows` already, so these are genuinely
+  // what comes AFTER — which is what the label promises.
+  const rows = agendaRows(agenda, 3, { countdownHandledFor: transitionSubject(safe) });
+  const running = known
+    ? (agenda.events || []).find((e) => e && e.running === true && e.allDay !== true)
+    : null;
+  const until = running ? endTimeOf(running) : null;
+
+  // ⚠ THE RESTRAINT IS STILL STATED, in every branch. Without it the panel reads
+  // as a complete picture of what is waiting, when the point of this state is
+  // that things are deliberately being held back — the foot's "N held" line says
+  // so too, and both saying it is cheaper than either being the only one that
+  // does.
+  const held = 'Nothing from your list until you’re out — it’ll still be there.';
+  const parts = [];
+  if (until) parts.push(`Due to end at ${until}.`);
+  if (!known) parts.push('I couldn’t read your diary, so I can’t say what’s after this.');
+  else if (rows.length === 0) parts.push('Nothing else in the diary.');
+  parts.push(held);
+
   return {
     kind: SURFACES.IN_MEETING,
-    label: 'nothing, on purpose',
-    rows: [],
+    label: 'what’s after this',
+    now: null,
+    rows,
     figure: null,
-    // The one state where interrupting is actively wrong. Saying WHY the screen
-    // is empty is what stops it reading as broken.
-    note: 'You’re in something. Whatever’s waiting will still be there.',
+    note: parts.join(' '),
   };
 }
 
@@ -526,6 +687,17 @@ function utterancesFor(payload, surface, session) {
   }
 
   if (surface === SURFACES.IN_MEETING) {
+    // ⚠ "That's finished" LEADS, and it is the only thing on this surface that
+    // changes anything (Nick, 8 Sep 2026). The diary is a plan, and a meeting
+    // that broke up twenty minutes early otherwise costs twenty minutes in
+    // which SARA refuses to help — off the calendar's word alone, with no way
+    // to tell her otherwise. ⚠ It is a `meeting` intent, NOT `act`: the primary
+    // here is a CONTEXT card with no `recordId`, the attention lifecycle would
+    // refuse the verb, and a sentence NEURO cannot honour is worse than none —
+    // the same reason `shrink` / `step-away` / `finish` are `session` intents.
+    if (isObj(payload.meeting) && payload.meeting.key) {
+      out.push(say('That’s finished', { kind: 'meeting', action: 'finished', key: payload.meeting.key }));
+    }
     // Capture is the one thing that is never an interruption — it is him
     // putting something down, not her picking something up.
     out.push(say('Capture a thought', { kind: 'navigate', tab: 'capture' }));
@@ -608,6 +780,62 @@ function finish(list, payload) {
 }
 
 /**
+ * What the dashboard (and the transition) ALREADY shows, so nothing is rendered
+ * twice on one screen. PURE.
+ *
+ * ⚠ WHY. Nick, 8 Sep 2026: "find a better way to present this so I dont see the
+ * same thing three times." One meeting was the transition prompt, the primary
+ * headline AND an agenda row; one task was the headline AND a dashboard row AND
+ * a card in the list below. Every one of those was a correct decision taken
+ * three times by three layers that could not see each other.
+ *
+ * ⚠ IT IS ADVISORY AND IT FILTERS NOTHING. The pool leaves this module exactly
+ * as it arrived — `decision-engine` stays the one generator and
+ * `attention.gate()` the one filter, and a framing layer quietly removing items
+ * from the feed is the second brain this file exists not to be. A renderer that
+ * ignores `covered` shows the old, repetitive screen; it never shows a wrong
+ * one.
+ *
+ * ⚠ MATCHING IS EXACT-ON-TITLE, never fuzzy. A false match HIDES a real item
+ * from the list Nick uses to find what he owes; a miss only shows him something
+ * twice, which is the state we are already in. The asymmetry decides it.
+ */
+function coveredBy(payload, dashboard) {
+  const shown = new Set();
+  for (const r of (dashboard && Array.isArray(dashboard.rows) ? dashboard.rows : [])) {
+    const t = normTitle(r && r.what);
+    if (t) shown.add(t);
+  }
+  // ⚠ The `now` slot counts as shown ONLY when it names a real thing. Its
+  // free-time wording is a sentence, not a title, and must never suppress a
+  // card that happens to be phrased like it.
+  if (dashboard && isObj(dashboard.now) && dashboard.now.free === false) {
+    const t = normTitle(dashboard.now.what);
+    if (t) shown.add(t);
+  }
+
+  const cardIds = [];
+  for (const c of (Array.isArray(payload.secondary) ? payload.secondary : [])) {
+    if (!c || c.kind !== 'item' || !c.id) continue;
+    const t = normTitle(c.title);
+    if (t && shown.has(t)) cardIds.push(c.id);
+  }
+
+  // ⚠ Reported as a FACT ("these name the same thing"), never as an
+  // instruction to hide the primary. The transition can be dismissed on the
+  // client, and a rule that hid the headline unconditionally would leave the
+  // screen with no lead at all the moment he pressed "not now".
+  const t = payload.transition;
+  const p = payload.primary;
+  const transitionIsPrimary = Boolean(
+    isObj(t) && isObj(t.meta) && p && p.kind === 'item'
+    && normTitle(t.meta.subject) && normTitle(t.meta.subject) === normTitle(p.title)
+  );
+
+  return { cardIds, transitionIsPrimary };
+}
+
+/**
  * Compose the surface. PURE.
  *
  * @param {object} payload  a built `attention` payload
@@ -630,7 +858,7 @@ function compose(payload, opts = {}) {
   let dashboard;
   switch (surface) {
     case SURFACES.BLIND: dashboard = dashBlind(safe); break;
-    case SURFACES.IN_MEETING: dashboard = dashInMeeting(); break;
+    case SURFACES.IN_MEETING: dashboard = dashInMeeting(safe); break;
     case SURFACES.FIREFIGHTING: dashboard = dashFirefighting(safe); break;
     case SURFACES.PRE_MEETING: dashboard = dashPreMeeting(safe); break;
     case SURFACES.SESSION: dashboard = dashSession(safe, session); break;
@@ -656,6 +884,8 @@ function compose(payload, opts = {}) {
     // finish" under an inbox panel is the mute path disagreeing with the screen
     // it is attached to.
     utterances: utterancesFor(safe, surface, session),
+    // Advisory only — see `coveredBy`. Nothing has been removed from the pool.
+    covered: coveredBy(safe, dashboard),
   };
 }
 
@@ -667,5 +897,9 @@ module.exports = {
   MAX_UTTERANCES,
   // Exported for the tests, which drive each dashboard directly rather than
   // through eight payload fixtures.
-  _internals: { dashSteady, dashSession, dashOffDuty, dashBlind, dashFirefighting, utterancesFor, timeOf },
+  _internals: {
+    dashSteady, dashSession, dashOffDuty, dashBlind, dashFirefighting, dashPreMeeting, dashInMeeting,
+    utterancesFor, timeOf, endTimeOf, nowSlot, agendaRows, coveredBy, countdownFor,
+    COUNTDOWN_MINUTES,
+  },
 };

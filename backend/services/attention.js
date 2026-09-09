@@ -46,7 +46,7 @@
  * CommonJS only — NEURO backend convention.
  */
 
-const { resolveContext, ACTIVITY } = require('./context-state');
+const { resolveContext, ACTIVITY, isRealMeeting } = require('./context-state');
 const { resolveSaraLiteTab } = require('../../shared/action-surfaces.cjs');
 
 const SECONDARY_MAX = 3;
@@ -381,9 +381,14 @@ function _calendarInput(gaps) {
     const from = _dayStart(now);
     const to = _dayEnd(now);
     const rows = db.getCalendarEvents(from, to) || [];
-    return {
+    const calendar = {
       known: true,
       events: rows.map((r) => ({
+        // The occurrence's own id, carried so "that one's finished" can be
+        // keyed on the meeting rather than on a boolean that would leak into
+        // the next one. Null on the ICS/bridge paths, which is why
+        // `meeting-finish.keyFor` has a start-plus-subject fallback.
+        id: r.event_id || null,
         start: r.start_time,
         end: r.end_time,
         subject: r.subject,
@@ -399,10 +404,86 @@ function _calendarInput(gaps) {
         attendeesOther: r.attendees_other === 1 ? true : r.attendees_other === 0 ? false : null,
       })),
     };
+
+    // ⚠ APPLIED ONCE, HERE, rather than threaded as a flag through
+    // `context-state`, `agendaFor` and `transitions`. Three consumers each
+    // remembering to honour a field is three chances to forget one, and a
+    // surface still calling him "in a meeting" after he has said he is out is
+    // worse than the twenty silent minutes this exists to fix. Rewriting the
+    // effective end makes every consumer — including any written later — right
+    // by default, and the diary's own fact survives as `scheduledEnd`.
+    //
+    // ⚠ It can only ever RELEASE the quiet state, never create one: the
+    // override moves an end earlier and nothing anywhere can move one later.
+    try {
+      return require('./meeting-finish').applyTo(calendar, require('./meeting-finish').list(now), now);
+    } catch (e) {
+      // An unreadable override overrides nothing — the diary's own word stands,
+      // which is the status quo and the safe direction (SARA stays quiet).
+      console.warn('[Attention] meeting overrides unavailable:', e.message);
+      return calendar;
+    }
   } catch (e) {
     gaps.push({ input: 'calendar', why: e.message });
     return { known: false };
   }
+}
+
+/**
+ * The meeting he is IN right now, as something addressable. PURE.
+ *
+ * ⚠ It exists so "that's finished" can name an OCCURRENCE. A button carrying no
+ * key would have to mean "whatever meeting you think I'm in", which is a
+ * different question the moment two events overlap, and a boolean override
+ * would leak into the next meeting entirely.
+ *
+ * ⚠ `isRealMeeting` is BORROWED from context-state, never re-implemented — the
+ * button must appear on exactly the meetings that made her go quiet, and a
+ * second definition of "a real meeting" is two answers free to drift. Half
+ * Nick's diary is solo blocks, and `attendeesOther` must be exactly `true`.
+ *
+ * ⚠ An event ALREADY released is not returned: the state it would release has
+ * already gone, and a button that does nothing is worse than no button.
+ */
+function _currentMeetingEvent(calendar, now) {
+  if (!calendar || calendar.known !== true || !Array.isArray(calendar.events)) return null;
+  const nowMs = now.getTime();
+  let current = null;
+  for (const ev of calendar.events) {
+    if (!isRealMeeting(ev) || ev.finishedEarly === true) continue;
+    const startMs = new Date(ev.start).getTime();
+    const endMs = new Date(ev.end).getTime();
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
+    if (startMs <= nowMs && endMs > nowMs) {
+      if (!current || startMs > new Date(current.start).getTime()) current = ev;
+    }
+  }
+  return current;
+}
+
+function _currentMeeting(calendar, now) {
+  const current = _currentMeetingEvent(calendar, now);
+  if (!current) return null;
+  const key = require('./meeting-finish').keyFor(current);
+  if (!key) return null;
+  return {
+    key,
+    subject: typeof current.subject === 'string' ? current.subject.trim() : null,
+    // The diary's own end, so a surface can say when it was DUE to finish.
+    scheduledEnd: current.scheduledEnd || current.end || null,
+  };
+}
+
+/**
+ * The running meeting as a whole EVENT, read fresh.
+ *
+ * ⚠ The route uses this INSTEAD OF the request body. A client posting its own
+ * start and end times is a client that can silence any meeting it likes,
+ * including one it invented — all it may send is the key SARA gave it, for the
+ * server to check against what is actually running.
+ */
+function currentMeetingEvent(now = new Date()) {
+  return _currentMeetingEvent(_calendarInput([]), now);
 }
 
 /**
@@ -445,6 +526,9 @@ function agendaFor(calendar, now, limit = 4, tomorrow = null, opts = {}) {
     .slice(0, limit)
     .map((e) => ({
       start: e.start,
+      // Carried so a surface can say how long the thing he is IN has left to
+      // run. Sliced, never parsed — the same rule `start` is under.
+      end: e.end,
       subject: e.subject,
       // Minutes until it STARTS; negative while it is running, which is a
       // different fact from "soon" and the renderer needs to tell them apart.
@@ -484,6 +568,7 @@ function agendaFor(calendar, now, limit = 4, tomorrow = null, opts = {}) {
     .slice(0, limit)
     .map((e) => ({
       start: e.start,
+      end: e.end,
       subject: e.subject,
       // No countdown across a day boundary: "in 15 hours" is not a useful fact
       // and reads as though it were happening soon.
@@ -1048,6 +1133,15 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
       gaps,
       escalations: inputs.escalations,
       inbox: inputs.inbox,
+      // ⚠ Passed in so the composer can spot the SAME THING SAID TWICE. The
+      // transition names an event, the primary card can BE that event, and the
+      // dashboard lists it a third time — Nick, 8 Sep 2026: "find a better way
+      // to present this so I dont see the same thing three times". Deciding
+      // that here rather than in each renderer is the same rule as `say` and
+      // `tab`: three surfaces render one decision.
+      transition,
+      // The meeting he is in, addressable — see `_currentMeeting`.
+      meeting: _currentMeeting(inputs.calendar, now),
     };
     framed = require('./sara-surface').compose(draft, {
       session: inputs.focusSession && inputs.focusSession.active ? inputs.focusSession.active : null,
@@ -1083,6 +1177,17 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     // dishonest half of being adaptive.
     askedSurface: framed ? framed.askedSurface : null,
     utterances: framed ? framed.utterances : [],
+    // What is already on screen somewhere else, so no renderer shows it twice.
+    // ⚠ ADVISORY, never a filter applied here: `secondary` is unchanged and
+    // every other consumer (the widget, the mobile snapshot) still sees the
+    // whole pool. Hiding a card from the payload would be this layer re-ranking
+    // the pool, which is `attention.gate()`'s job and not this module's.
+    covered: framed ? framed.covered : null,
+    // ⚠ The meeting he is IN, by key, so "that's finished" names an OCCURRENCE
+    // rather than meaning "whatever meeting you think I'm in". Null whenever he
+    // is not in one, which is what stops the button existing where it would do
+    // nothing.
+    meeting: _currentMeeting(inputs.calendar, now),
     // The lifecycle view of the same decision. Additive: every field this
     // payload returned before is unchanged and still means the same thing, which
     // is what lets the widget and the kiosk be migrated separately.
@@ -1172,4 +1277,4 @@ function sessionMatchesCard(session, card) {
   }
 }
 
-module.exports = { build, gather, gate, sayLine, agendaFor, sessionMatchesCard, SECONDARY_MAX };
+module.exports = { build, gather, gate, sayLine, agendaFor, currentMeetingEvent, sessionMatchesCard, SECONDARY_MAX };

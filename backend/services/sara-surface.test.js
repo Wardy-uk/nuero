@@ -61,8 +61,9 @@ test('positive control — a steady payload composes a real dashboard', () => {
 
   assert.equal(r.surface, SURFACES.STEADY);
   assert.equal(r.dashboard.kind, SURFACES.STEADY);
-  assert.ok(r.dashboard.rows.length >= 2, 'the meeting and the open item should both be rows');
+  assert.ok(r.dashboard.rows.length >= 1, 'the meeting should be a row');
   assert.match(r.dashboard.rows[0].what, /Naomi/);
+  assert.ok(r.dashboard.now, 'a read diary always answers "what am I in right now"');
   assert.ok(r.utterances.length > 1);
 });
 
@@ -125,9 +126,14 @@ test('⚠ "I couldn’t read your diary" is never rendered as an empty day', () 
   assert.equal(unread.dashboard.rows.length, 0);
   assert.match(unread.dashboard.note, /couldn.t read your diary/i);
 
-  // An empty diary that WAS read is a different fact, and good news.
+  assert.equal(unread.dashboard.now, null, '⚠ an unreadable diary is never rendered as "free"');
+
+  // An empty diary that WAS read is a different fact, and good news. It says so
+  // rather than going silent — a blank panel and a broken one look identical.
   const empty = compose(payload({ agenda: { known: true, scope: 'today', events: [] } }));
-  assert.equal(empty.dashboard.note, null, 'a read-but-empty diary must not claim it was unreadable');
+  assert.doesNotMatch(empty.dashboard.note, /couldn.t/i, 'a read-but-empty diary must not claim it was unreadable');
+  assert.match(empty.dashboard.note, /Nothing else/i);
+  assert.equal(empty.dashboard.now.free, true);
 });
 
 test('⚠ gaps ride on EVERY dashboard, not only the blind one', () => {
@@ -171,6 +177,169 @@ test('⚠ "on your own" is said only when the brain KNOWS', () => {
   assert.equal(r.dashboard.rows[2].meta, null, 'undecidable must say nothing at all');
 });
 
+// ── The countdown, the "now" slot, and saying it once ───────────────────────
+//
+// Nick, 8 Sep 2026, on the Surface: the next thing in the diary should count
+// down from half an hour; there should be a "current" section saying what he is
+// in or that he is free; and he should not see the same thing three times.
+
+test('the NEXT thing counts down, from half an hour, and only the next one', () => {
+  const r = compose(payload({
+    agenda: {
+      known: true,
+      scope: 'today',
+      events: [
+        { start: '2026-09-08T14:00:00', subject: 'Micom', minutesAway: 9 },
+        { start: '2026-09-08T15:45:00', subject: 'F&C', minutesAway: 114 },
+      ],
+    },
+  }));
+  assert.equal(r.dashboard.rows[0].countdown, 'in 9 min');
+  // ⚠ A countdown on every row is noise competing with the one that matters.
+  assert.equal(r.dashboard.rows[1].countdown, null);
+});
+
+test('⚠ nothing beyond half an hour counts down, and null is NOT zero', () => {
+  const far = compose(payload({
+    agenda: {
+      known: true, scope: 'today',
+      events: [{ start: '2026-09-08T17:00:00', subject: 'Late', minutesAway: 31 }],
+    },
+  }));
+  assert.equal(far.dashboard.rows[0].countdown, null, '31 minutes is past the line Nick drew');
+
+  // ⚠ A rolled-forward agenda carries `minutesAway: null` — "across a day
+  // boundary", not "starting now". Printing "now" over tomorrow morning is a
+  // placeholder rendered as a fact.
+  const ahead = compose(payload({
+    agenda: {
+      known: true, scope: 'tomorrow',
+      events: [{ start: '2026-09-09T09:00:00', subject: 'Standup', minutesAway: null }],
+    },
+  }));
+  assert.equal(ahead.dashboard.rows[0].countdown, null);
+
+  // An all-day event has no minute to count down to.
+  const allDay = compose(payload({
+    agenda: {
+      known: true, scope: 'today',
+      events: [{ start: '2026-09-08T00:00:00', subject: 'Hiking', minutesAway: 5, allDay: true }],
+    },
+  }));
+  assert.equal(allDay.dashboard.rows[0].countdown, null);
+});
+
+test('the "now" slot says what he is IN, with when it ends', () => {
+  const r = compose(payload({
+    agenda: {
+      known: true, scope: 'today',
+      events: [
+        { start: '2026-09-08T14:00:00', end: '2026-09-08T15:00:00', subject: 'Micom', running: true, minutesAway: -6 },
+        { start: '2026-09-08T15:45:00', subject: 'F&C', minutesAway: 99 },
+      ],
+    },
+  }));
+  assert.equal(r.dashboard.now.what, 'Micom');
+  assert.equal(r.dashboard.now.meta, 'until 15:00');
+  assert.equal(r.dashboard.now.free, false);
+  assert.equal(r.dashboard.rows[0].what, 'F&C');
+  // ⚠ The thing he is in is NOT also a row. "What am I in" and "what is coming"
+  // are different questions; answering both with one list is what put the same
+  // meeting on screen twice.
+  assert.equal(r.dashboard.rows.length, 1);
+});
+
+test('⚠ "free" is a claim about the DIARY, and only ever when it was read', () => {
+  const clear = compose(payload({
+    agenda: {
+      known: true, scope: 'today',
+      events: [{ start: '2026-09-08T14:00:00', subject: 'Micom', minutesAway: 9 }],
+    },
+  }));
+  assert.equal(clear.dashboard.now.free, true);
+  assert.equal(clear.dashboard.now.meta, 'free until 14:00');
+  // It speaks about the diary. "You're free" is a claim about his workload that
+  // a calendar cannot support, with the task list one panel below.
+  assert.match(clear.dashboard.now.what, /diary/i);
+
+  // ⚠ A rolled-forward agenda is here BECAUSE today has nothing left, so it may
+  // say so — but never "free until 09:00" about tomorrow morning.
+  const rolled = compose(payload({
+    agenda: {
+      known: true, scope: 'tomorrow',
+      events: [{ start: '2026-09-09T09:00:00', subject: 'Standup', minutesAway: null }],
+    },
+  }));
+  assert.equal(rolled.dashboard.now.meta, 'clear for the rest of the day');
+
+  // ⚠ And an unreadable diary never claims either.
+  assert.equal(compose(payload({ agenda: { known: false, events: [] } })).dashboard.now, null);
+});
+
+test('⚠ a card the dashboard already shows is reported as covered', () => {
+  const r = compose(payload({
+    agenda: {
+      known: true, scope: 'today',
+      events: [{ start: '2026-09-08T14:00:00', subject: 'Nurtur - Micom', minutesAway: 9 }],
+    },
+    primary: card(),
+    secondary: [
+      card({ id: 'cal-1', type: 'meeting', title: 'Nurtur - Micom' }),
+      card({ id: 'email-urgent', type: 'email', title: '6 emails need action' }),
+    ],
+  }));
+  assert.deepEqual(r.covered.cardIds, ['cal-1']);
+  // ⚠ ADVISORY. The pool leaves the composer exactly as it arrived — filtering
+  // it here would be this layer re-ranking the feed, which is the gate's job.
+  assert.equal(r.dashboard.rows.length, 1);
+});
+
+test('⚠ the free-time wording can never suppress a card', () => {
+  // "Nothing in the diary" is a sentence, not a title. A card that happened to
+  // be phrased like it must still reach the screen.
+  const r = compose(payload({
+    agenda: { known: true, scope: 'today', events: [] },
+    secondary: [card({ id: 'odd', title: 'Nothing in the diary' })],
+  }));
+  assert.equal(r.dashboard.now.free, true);
+  assert.deepEqual(r.covered.cardIds, []);
+});
+
+test('⚠ the transition naming the primary is a FACT, not an instruction', () => {
+  // The prompt, the headline and the row were the same meeting three times. The
+  // composer says the first two are the same thing; whether to hide one is the
+  // renderer's call, because the transition can be dismissed on the client and
+  // a screen with no lead at all is the worse failure.
+  const t = { kind: 'leave-now', prompt: '"Micom" starts in 9 minutes.', meta: { subject: 'Micom' } };
+  const same = compose(payload({
+    transition: t,
+    primary: card({ type: 'meeting', title: 'Micom' }),
+    agenda: { known: true, scope: 'today', events: [{ start: '2026-09-08T14:00:00', subject: 'Micom', minutesAway: 9 }] },
+  }));
+  assert.equal(same.covered.transitionIsPrimary, true);
+  // ⚠ And the row does NOT count down, because the prompt above it already is.
+  assert.equal(same.dashboard.rows[0].countdown, null);
+
+  const other = compose(payload({
+    transition: t,
+    primary: card({ title: 'Succession plan' }),
+    agenda: { known: true, scope: 'today', events: [{ start: '2026-09-08T14:00:00', subject: 'Something else', minutesAway: 9 }] },
+  }));
+  assert.equal(other.covered.transitionIsPrimary, false);
+  assert.equal(other.dashboard.rows[0].countdown, 'in 9 min');
+});
+
+test('⚠ the primary is NOT restated inside the dashboard', () => {
+  // It used to be appended as an `open` row carrying the same title and the
+  // same `say` the headline two lines above had just given.
+  const r = compose(payload({
+    agenda: { known: true, scope: 'today', events: [] },
+    primary: card({ title: 'Succession plan' }),
+  }));
+  assert.equal(r.dashboard.rows.length, 0);
+  assert.ok(!JSON.stringify(r.dashboard.rows).includes('Succession plan'));
+});
+
 test('⚠ firefighting never renders an empty box', () => {
   // The brain called it firefighting, so something IS live. An empty
   // escalations panel under that word reads as an all-clear at the moment it is
@@ -182,6 +351,102 @@ test('⚠ firefighting never renders an empty box', () => {
   assert.equal(r.surface, SURFACES.FIREFIGHTING);
   assert.equal(r.dashboard.rows.length, 1);
   assert.equal(r.dashboard.rows[0].level, 'crit');
+});
+
+test('"That’s finished" leads in a meeting, and is a `meeting` intent', () => {
+  // Nick, 8 Sep 2026. The diary is a plan, and a meeting that broke up twenty
+  // minutes early otherwise costs twenty minutes in which SARA refuses to help.
+  // It leads because it is the only thing on this surface that changes anything.
+  const r = compose(payload({
+    context: { activity: 'in-meeting' },
+    meeting: { key: 'id:evt-1::2026-09-08T14:00:00Z', subject: 'Micom', scheduledEnd: '2026-09-08T14:30:00Z' },
+  }));
+  assert.equal(r.utterances[0].say, 'That’s finished');
+  const i = r.utterances[0].intent;
+  // ⚠ NOT an `act`. The primary here is a CONTEXT card with no `recordId` and
+  // the attention lifecycle would refuse the verb — a sentence NEURO cannot
+  // honour is worse than none, the same reason the session verbs are their own
+  // kind.
+  assert.equal(i.kind, 'meeting');
+  assert.equal(i.action, 'finished');
+  // ⚠ It names the OCCURRENCE. Without a key it would mean "whatever meeting
+  // you think I'm in", which is a different question the moment two overlap.
+  assert.equal(i.key, 'id:evt-1::2026-09-08T14:00:00Z');
+  assert.ok(sentences(r).includes('Show me everything'), 'the escape hatch survives');
+});
+
+test('⚠ no key, no button — it is never offered where it would do nothing', () => {
+  const r = compose(payload({ context: { activity: 'in-meeting' } }));
+  assert.ok(!sentences(r).includes('That’s finished'));
+});
+
+test('⚠ "finished" is offered ONLY in a meeting', () => {
+  // There is deliberately no way to declare yourself INTO one: the calendar
+  // decides that, and a manual way to make SARA go quiet is a mute button
+  // wearing a meeting's clothes.
+  for (const activity of ['steady', 'pre-meeting', 'firefighting', 'ritual', 'off', 'in-focus-session']) {
+    const r = compose(payload({
+      context: { activity },
+      meeting: { key: 'id:evt-1::2026-09-08T14:00:00Z' },
+      primary: card(),
+    }));
+    assert.ok(!sentences(r).includes('That’s finished'), activity);
+  }
+});
+
+test('⚠ in a meeting she still shows the DIARY — the restraint is about the pool', () => {
+  // It showed nothing at all under "nothing, on purpose" (Nick, 8 Sep 2026:
+  // "rest of day is missing"). The gate holds back WORK while he is in a room
+  // with people; it was never a reason to withhold when this one ends or what
+  // is after it, neither of which is something to decide about.
+  const r = compose(payload({
+    context: { activity: 'in-meeting' },
+    agenda: {
+      known: true, scope: 'today',
+      events: [
+        { start: '2026-09-08T14:00:00', end: '2026-09-08T14:30:00', subject: 'Micom', running: true, minutesAway: -9 },
+        { start: '2026-09-08T15:45:00', subject: 'F&C', minutesAway: 105 },
+      ],
+    },
+  }));
+  assert.equal(r.dashboard.kind, SURFACES.IN_MEETING);
+  assert.equal(r.dashboard.rows.length, 1, 'what is AFTER this, not this');
+  assert.equal(r.dashboard.rows[0].what, 'F&C');
+  // ⚠ "Due to end", never "ends" — it is the scheduled end, not a claim about
+  // when he will actually get out.
+  assert.match(r.dashboard.note, /Due to end at 14:30/);
+});
+
+test('⚠ no `now` band in a meeting — the headline above already names it', () => {
+  // The context card reads "In a meeting / You're in X". A band repeating X is
+  // the same thing twice on one screen, which is the whole complaint. The end
+  // time is the fact the headline does NOT carry, so it goes in the note.
+  const r = compose(payload({
+    context: { activity: 'in-meeting' },
+    agenda: {
+      known: true, scope: 'today',
+      events: [{ start: '2026-09-08T14:00:00', end: '2026-09-08T14:30:00', subject: 'Micom', running: true }],
+    },
+  }));
+  assert.equal(r.dashboard.now, null);
+  assert.ok(!JSON.stringify(r.dashboard.rows).includes('Micom'), 'the meeting he is IN is not a row either');
+});
+
+test('⚠ in a meeting the restraint is stated in EVERY branch', () => {
+  // Without it the panel reads as a complete picture of what is waiting, when
+  // the point of the state is that things are deliberately held back.
+  const cases = [
+    { known: false, events: [] },
+    { known: true, scope: 'today', events: [] },
+    { known: true, scope: 'today', events: [{ start: '2026-09-08T15:45:00', subject: 'F&C', minutesAway: 105 }] },
+  ];
+  for (const agenda of cases) {
+    const r = compose(payload({ context: { activity: 'in-meeting' }, agenda }));
+    assert.match(r.dashboard.note, /still be there/i, JSON.stringify(agenda));
+  }
+  // ⚠ And an unreadable diary says so rather than rendering as "nothing after".
+  const blind = compose(payload({ context: { activity: 'in-meeting' }, agenda: { known: false, events: [] } }));
+  assert.match(blind.dashboard.note, /couldn.t read your diary/i);
 });
 
 test('⚠ in a meeting she says WHY the screen is empty', () => {

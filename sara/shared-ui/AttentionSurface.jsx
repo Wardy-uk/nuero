@@ -87,8 +87,31 @@ export default function AttentionSurface({
   const {
     context, primary, secondary = [], dropped = [], quiet,
     rationale, poolAvailable, gaps = [], transition = null, ambient = null,
-    dashboard = null, utterances = [],
+    dashboard = null, utterances = [], covered = null,
   } = data;
+
+  // ── Saying it ONCE ─────────────────────────────────────────────────────────
+  //
+  // Nick, 8 Sep 2026: "find a better way to present this so I dont see the same
+  // thing three times." One meeting was the transition prompt, the headline AND
+  // an agenda row; one task was the headline, a dashboard row and a card in the
+  // list below. Every one of those was a correct decision, taken three times by
+  // three layers that could not see each other.
+  //
+  // ⚠ WHAT IS THE SAME THING IS THE COMPOSER'S CALL (`covered`), never worked
+  // out here — three renderers each matching titles their own way is the drift
+  // that `say` and `tab` are composed server-side to avoid. This only decides
+  // what to DO about it, which is a rendering decision and belongs here.
+  const coveredIds = new Set(Array.isArray(covered?.cardIds) ? covered.cardIds : []);
+  const rest = secondary.filter((c) => c && !coveredIds.has(c.id));
+
+  // ⚠ Whether the transition is on screen is CLIENT state — he can dismiss it —
+  // so the headline is folded into it only while it is actually showing. A rule
+  // that hid the headline on the server's word alone would leave the screen with
+  // no lead at all the moment he pressed "not now", which is the worse failure
+  // by far.
+  const transitionShown = Boolean(!sayOverride && transition && dismissedTransition !== transition.prompt);
+  const transitionSaysPrimary = transitionShown && covered?.transitionIsPrimary === true;
 
   const act = (card, action, opts) => onAct && onAct(card, action, opts);
 
@@ -160,7 +183,7 @@ export default function AttentionSurface({
 
         <div className="surface__say">
           {/* A transition is time-critical and leads when there is one. */}
-          {!sayOverride && transition && dismissedTransition !== transition.prompt && (
+          {transitionShown && (
             <div className="surface__transition">
               <p className="surface__saylead">{transition.prompt}</p>
               <p className="surface__saysub">{transition.question}</p>
@@ -189,8 +212,17 @@ export default function AttentionSurface({
 
           {sayOverride || (primary ? (
             <>
-              <p className="surface__saylead">{primary.title}</p>
-              {primary.say && <p className="surface__saysub">{primary.say}</p>}
+              {/* ⚠ Not repeated under the transition that just named it. The
+                  prompt above carries the title, the countdown and the way in;
+                  restating all three is the "same thing three times" Nick was
+                  looking at. The ACTIONS below stay either way — folding the
+                  wording must never fold the way to answer it. */}
+              {!transitionSaysPrimary && (
+                <>
+                  <p className="surface__saylead">{primary.title}</p>
+                  {primary.say && <p className="surface__saysub">{primary.say}</p>}
+                </>
+              )}
               {primary.kind === 'item' && onAct && !speaks && (
                 <>
                   <div className="surface__acts">
@@ -315,9 +347,12 @@ export default function AttentionSurface({
           </div>
         )}
 
-        {!hideSecondary && secondary.length > 0 && (
+        {/* ⚠ `rest`, not `secondary` — what the dashboard above already shows is
+            not listed again. Nothing has been dropped from the FEED: the pool
+            reaches every other consumer whole, and `covered` is advisory. */}
+        {!hideSecondary && rest.length > 0 && (
           <ul className="surface__rest">
-            {secondary.map((card) => (
+            {rest.map((card) => (
               <li key={card.id}>
                 <button type="button" className="surface__row" onClick={() => onOpen && onOpen(card)}>
                   <span className="surface__rowtitle">{card.title}</span>
