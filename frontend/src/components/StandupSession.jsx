@@ -87,14 +87,16 @@ export default function StandupSession({ kind = 'standup', onDone, onSwitchToMan
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [session?.messages, sending]);
   useEffect(() => { if (!loading && !sending) inputRef.current?.focus(); }, [loading, sending]);
 
-  async function send(text) {
+  async function send(text, { optimistic = true } = {}) {
     const message = (text ?? input).trim();
     if (!message || sending) return;
 
-    // Optimistic — but the server has already been told, so this is display
-    // only. If the turn fails the message is still there on reload.
-    setSession((s) => (s ? { ...s, messages: [...s.messages, { role: 'user', content: message }] } : s));
-    setInput('');
+    // Display-only. Whether the SERVER has it is a separate question, answered
+    // below — assuming it does is what used to lose the message.
+    if (optimistic) {
+      setSession((s) => (s ? { ...s, messages: [...s.messages, { role: 'user', content: message }] } : s));
+      setInput('');
+    }
     setSending(true);
     setError(null);
 
@@ -105,20 +107,34 @@ export default function StandupSession({ kind = 'standup', onDone, onSwitchToMan
       });
       setSession(s);
     } catch (e) {
-      // The server kept the message. Offer a retry that re-runs the turn rather
-      // than making him type it again.
+      // Did the message actually LAND? A 503 from the turn carries the server's
+      // own transcript with his words already appended — that is the case the
+      // "(continue)" retry was written for. A transport failure carries no
+      // session at all, and the request never reached a handler, so the words
+      // exist nowhere but this browser. Treating the two the same is how Retry
+      // came to answer "(continue)" and drop what he wrote.
+      const landed = e.session?.messages?.at(-1)?.role === 'user';
       if (e.session) setSession(e.session);
-      setError({ message: e.message, retryable: true, retryText: message });
+      setError({ message: e.message, retryable: true, retryText: message, landed });
     } finally {
       setSending(false);
     }
   }
 
   async function retryTurn() {
+    const pending = error?.retryText;
+    const landed = error?.landed;
+
+    // Never reached the server: send the real words again, not a placeholder.
+    if (pending && !landed) {
+      setError(null);
+      return send(pending, { optimistic: false });
+    }
+
     const last = session?.messages?.at(-1);
     setError(null);
-    // The user's message is already on the server; an empty reply just re-runs
-    // the assistant turn against the stored transcript.
+    // The server already holds his message; an empty reply just re-runs the
+    // assistant turn against the stored transcript.
     if (last?.role === 'user') {
       setSending(true);
       try {
@@ -220,7 +236,11 @@ export default function StandupSession({ kind = 'standup', onDone, onSwitchToMan
               <button className="btn btn-secondary" onClick={onSwitchToManual}>Switch to Manual</button>
             )}
           </div>
-          <div className="ss__error-note">Nothing you've typed is lost — it's saved on the Pi.</div>
+          <div className="ss__error-note">
+            {error.landed === false && error.retryText
+              ? 'That message did not reach the Pi. Retry sends it again — nothing to retype.'
+              : "Nothing you've typed is lost — it's saved on the Pi."}
+          </div>
         </div>
       )}
 

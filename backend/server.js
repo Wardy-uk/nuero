@@ -442,9 +442,29 @@ async function start() {
 
   scheduler.start();
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] NUERO running on 0.0.0.0:${PORT}`);
   });
+
+  // ── Keep-alive: a thinking pause is not an idle connection ──────────────────
+  // Node closes an idle keep-alive socket after 5s by default. That is fine for
+  // a polled GET and wrong for the one interaction in NEURO built around Nick
+  // pausing to think: the standup. He reads SARA's question, types for thirty
+  // seconds, presses send — and the browser writes the POST into a socket the
+  // server closed twenty-five seconds ago. The request never arrives, so it
+  // never reaches a handler, is never logged, and the message is never saved;
+  // the browser reports the bare `TypeError: Failed to fetch`, which is
+  // indistinguishable from the Pi being down. A GET survives this because a
+  // browser will re-send an idempotent request on a dead socket. A POST is not
+  // idempotent and is not re-sent, so the reply turn is the exposed case.
+  // Measured on the live Pi before changing anything: the server sent FIN
+  // 6,006ms after answering.
+  //
+  // 65s is longer than any realistic pause mid-sentence, and headersTimeout
+  // MUST stay above keepAliveTimeout or Node kills the connection while the
+  // request that just won the race is still arriving.
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
 }
 
 start().catch(err => {

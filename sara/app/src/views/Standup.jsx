@@ -145,14 +145,16 @@ export default function Standup({ intentKind = null }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [session?.messages, sending]);
 
-  async function send(text) {
+  async function send(text, { optimistic = true } = {}) {
     const message = (text ?? input).trim();
     if (!message || sending) return;
 
-    // Display-only optimism: the server is told in the same breath and is the
-    // one holding the transcript, so a failure here still has the message.
-    setSession((s) => (s ? { ...s, messages: [...s.messages, { role: 'user', content: message }] } : s));
-    setInput('');
+    // Display-only. Whether the SERVER has it is a separate question, answered
+    // below — assuming it does is what used to lose the message.
+    if (optimistic) {
+      setSession((s) => (s ? { ...s, messages: [...s.messages, { role: 'user', content: message }] } : s));
+      setInput('');
+    }
     setSending(true);
     setError(null);
 
@@ -170,14 +172,30 @@ export default function Standup({ intentKind = null }) {
         if (e.session) setSession(e.session);
         return;
       }
+      // Did the message actually LAND? A 503 from the turn carries the server's
+      // own transcript with his words already appended — that is the case the
+      // "(continue)" retry was written for. A transport failure carries no
+      // session at all, and the request never reached a handler, so the words
+      // exist nowhere but this phone. Treating the two the same is how Retry
+      // came to answer "(continue)" and drop what he wrote.
+      const landed = e.session?.messages?.at(-1)?.role === 'user';
       if (e.session) setSession(e.session);
-      setError({ message: e.message, retryable: true });
+      setError({ message: e.message, retryable: true, retryText: message, landed });
     } finally {
       setSending(false);
     }
   }
 
   async function retryTurn() {
+    const pending = error?.retryText;
+    const landed = error?.landed;
+
+    // Never reached the server: send the real words again, not a placeholder.
+    if (pending && !landed) {
+      setError(null);
+      return send(pending, { optimistic: false });
+    }
+
     const last = session?.messages?.at(-1);
     setError(null);
     if (last?.role !== 'user') { begin(false); return; }
@@ -294,7 +312,11 @@ export default function Standup({ intentKind = null }) {
               Finish with what we have
             </button>
           </div>
-          <div className="su__error-note">Nothing you’ve typed is lost — it’s saved on the Pi.</div>
+          <div className="su__error-note">
+            {error.landed === false && error.retryText
+              ? 'That message did not reach the Pi. Retry sends it again — nothing to retype.'
+              : 'Nothing you’ve typed is lost — it’s saved on the Pi.'}
+          </div>
         </div>
       )}
 
