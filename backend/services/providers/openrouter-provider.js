@@ -270,6 +270,19 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
     }
 
     const message = data.choices?.[0]?.message;
+    // ⚠ THE REPLY RAN OUT OF ROOM. `length` means max_tokens cut the model
+    // off mid-sentence — and when it is cut off inside a tool-call block, the
+    // LAST call in `tool_calls` is a fragment. Its arguments are commonly
+    // truncated all the way to `{}`, which is VALID JSON, so it parses clean,
+    // reaches the handler and comes back as an ordinary "key is required" —
+    // indistinguishable from the model genuinely forgetting a field. Worse, the
+    // calls the model had not reached yet are simply never made, and nothing
+    // anywhere says so. Measured on Nick's standup of 11 Sep 2026: 400 tokens,
+    // five resolve_commitment calls, the fifth arriving as `{}`, and the
+    // `set_weekly_target` he had just been asked for never emitted at all — so
+    // the number he gave was silently dropped and SARA asked again.
+    const cutOff = data.choices?.[0]?.finish_reason === 'length';
+
     // A tool loop can fail over mid-conversation, so the served model is read
     // each round; the last one to answer is what gets billed.
     if (data.model) servedModel = data.model;
@@ -283,11 +296,32 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
     if (message?.content) text = text ? `${text}\n${message.content}` : message.content;
 
     const calls = message?.tool_calls || [];
-    if (!calls.length) return { text, usage, toolCalls, model: servedModel || model };
+    if (!calls.length) {
+      if (cutOff) console.warn('[OpenRouter] Reply truncated at max_tokens (no tool calls) — returning partial text');
+      return { text, usage, toolCalls, truncated: cutOff || undefined, model: servedModel || model };
+    }
 
     convo.push(message);
 
-    for (const call of calls) {
+    for (let ci = 0; ci < calls.length; ci++) {
+      const call = calls[ci];
+      // Only the LAST call can be the fragment — everything before it was
+      // emitted whole, and those are real decisions that must still be applied.
+      const isFragment = cutOff && ci === calls.length - 1;
+      if (isFragment) {
+        console.warn(`[OpenRouter] Tool call \`${call.function?.name}\` was cut off at max_tokens — refused, asking the model to repeat it`);
+        convo.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify({
+            ok: false,
+            truncated: true,
+            error: 'Your reply was cut off before this call finished, so it was NOT run. Make it again, on its own, and say nothing else.',
+          }),
+        });
+        continue;
+      }
+
       let args = {};
       try {
         args = JSON.parse(call.function?.arguments || '{}');

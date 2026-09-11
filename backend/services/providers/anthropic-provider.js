@@ -223,14 +223,43 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
     if (said) text = text ? `${text}\n${said}` : said;
 
     const toolUses = (response.content || []).filter(b => b.type === 'tool_use');
-    if (response.stop_reason !== 'tool_use' || toolUses.length === 0) {
-      return { text, usage, toolCalls };
+
+    // ⚠ THE REPLY RAN OUT OF ROOM. `max_tokens` means the model was cut off
+    // mid-block, and the failure is SILENT in the opposite direction to
+    // OpenRouter's: because the stop reason is no longer `tool_use`, this used
+    // to return the prose and drop EVERY call on the floor — including ones
+    // emitted whole before the cut. Nick's standup of 11 Sep 2026 lost a weekly
+    // target to that shape on the OpenRouter side; the fallback provider must
+    // not lose it a different way. Complete calls still run; the fragment (only
+    // ever the last block) is refused by name and asked for again.
+    const cutOff = response.stop_reason === 'max_tokens';
+    if (cutOff) {
+      console.warn(`[Anthropic] Reply truncated at max_tokens with ${toolUses.length} tool call(s) — the last is incomplete`);
+    }
+
+    if ((response.stop_reason !== 'tool_use' && !cutOff) || toolUses.length === 0) {
+      return { text, usage, toolCalls, truncated: cutOff || undefined };
     }
 
     convo.push({ role: 'assistant', content: response.content });
 
     const results = [];
-    for (const use of toolUses) {
+    for (let ui = 0; ui < toolUses.length; ui++) {
+      const use = toolUses[ui];
+      if (cutOff && ui === toolUses.length - 1) {
+        console.warn(`[Anthropic] Tool call \`${use.name}\` was cut off at max_tokens — refused, asking the model to repeat it`);
+        results.push({
+          type: 'tool_result',
+          tool_use_id: use.id,
+          content: JSON.stringify({
+            ok: false,
+            truncated: true,
+            error: 'Your reply was cut off before this call finished, so it was NOT run. Make it again, on its own, and say nothing else.',
+          }),
+          is_error: true,
+        });
+        continue;
+      }
       const result = await runTool(use.name, use.input);
       toolCalls.push({ name: use.name, input: use.input, result });
       results.push({
@@ -249,4 +278,10 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
   return { text, usage, toolCalls, truncated: true };
 }
 
-module.exports = { isConfigured, chat, generate, streamChat, chatWithTools, vision, _normaliseHistory };
+module.exports = {
+  isConfigured, chat, generate, streamChat, chatWithTools, vision, _normaliseHistory,
+  // Test seam. The truncation rules in `chatWithTools` are about what the SDK
+  // hands back, so they can only be pinned by handing back a scripted response
+  // — exercising them for real means paying Anthropic to run out of tokens.
+  _internals: { setClient: (c) => { _client = c; } },
+};

@@ -28,6 +28,10 @@
 const db = require('../db/database');
 const obsidian = require('./obsidian');
 
+// The per-round cap on the tool path. Covers the prose AND every tool call the
+// round makes; see the note at the call site for what 400 cost.
+const TOOL_TURN_MAX_TOKENS = 1200;
+
 const KIND_STANDUP = 'standup';
 const KIND_EOD = 'eod';
 
@@ -597,6 +601,21 @@ function toolDefinitions() {
  * after this point still leaves the decision recorded.
  */
 async function executeTool(session, name, input = {}) {
+  const result = await _executeTool(session, name, input);
+  // ⚠ A TOOL THAT REFUSES MUST LEAVE A TRACE. The session transcript stores
+  // assistant TEXT only — tool calls, their arguments and their results are
+  // discarded — so a refused call used to be reconstructible from nothing at
+  // all. On 11 Sep 2026 that cost a morning of guesswork over a standup that
+  // kept asking for a number it had already been given: the model was relaying
+  // a tool error to Nick in the tool's own vocabulary ("as separate strings")
+  // and no log line anywhere recorded that a call had been refused.
+  if (result && result.ok === false) {
+    console.warn(`[StandupSession] ${name} refused: ${result.error || 'no reason given'}`);
+  }
+  return result;
+}
+
+async function _executeTool(session, name, input = {}) {
   const chatTools = require('./chat-tools');
 
   switch (name) {
@@ -723,7 +742,18 @@ async function _turn(session) {
         session.messages,
         toolDefinitions(),
         (name, input) => executeTool(session, name, input),
-        { maxTokens: 400, maxRounds: 4 }
+        // ⚠ THIS IS A TOOL-BLOCK BUDGET, NOT A PROSE BUDGET, and it was 400.
+        // Message length is governed by the prompt ("under about 60 words"),
+        // not by this number — what this has to cover is the prose PLUS every
+        // tool call the turn makes, and the wrap-up turn legitimately makes
+        // several at once. Measured on 11 Sep 2026: the closing turn emitted
+        // five resolve_commitment calls, ran out at 400, delivered the fifth as
+        // `{}` and never reached the `set_weekly_target` carrying the number
+        // Nick had just given — so his target was dropped in silence and SARA
+        // asked him for it again. The providers now refuse a cut-off call
+        // rather than running it, which makes the failure loud; this is what
+        // stops it happening in the first place.
+        { maxTokens: TOOL_TURN_MAX_TOKENS, maxRounds: 4 }
       );
       reply = result.text || '';
       session.degraded = false;
