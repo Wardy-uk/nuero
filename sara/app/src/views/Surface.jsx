@@ -331,6 +331,15 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
             }
           } else {
             await apiFetch(`/api/session/${intent.action}`, { method: 'POST', body: JSON.stringify({}) });
+            // "That's done" on a card he was working: the session is closed,
+            // and the card it was about is completed in the same breath. The
+            // brain only attaches a record when that card allows completion.
+            if (intent.action === 'finish' && intent.recordId) {
+              await apiFetch(`/api/attention/records/${intent.recordId}/act`, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'complete' }),
+              });
+            }
           }
           await load({ quiet: true });
         } catch { /* left on screen — a card that vanishes on an error is one

@@ -293,6 +293,7 @@
 }
 .surface__aside--warn { color: #e0c97e; }
 .surface__saysub--warn { color: #e0c97e; }
+.surface__saysub--onit { color: #7fcf9c; }
 
 .surface__footrow {
   display: flex;

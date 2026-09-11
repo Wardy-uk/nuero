@@ -293,6 +293,18 @@ export default function AttentionSurface({
               {!transitionSaysPrimary && (
                 <>
                   <p className="surface__saylead">{primary.title}</p>
+                  {/* ⚠ He is ALREADY ON IT. The brain stamps `session` on the
+                      card a running session is about, and without this line
+                      SARA went on reading "you have not replied yet" as if
+                      nobody had touched it. The `say` beneath stays — it is
+                      still true — but it no longer stands alone. */}
+                  {primary.session && (
+                    <p className="surface__saysub surface__saysub--onit">
+                      {primary.session.status === 'active' ? 'You’re on it' : 'You started this'}
+                      {Number.isFinite(primary.session.elapsedMinutes) ? ` — ${primary.session.elapsedMinutes} min in` : ''}
+                      {primary.session.nextStep ? ` · next: ${primary.session.nextStep}` : ''}
+                    </p>
+                  )}
                   {primary.say && <p className="surface__saysub">{primary.say}</p>}
                 </>
               )}

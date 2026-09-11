@@ -776,7 +776,23 @@ function utterancesFor(payload, surface, session) {
     // It is a `session` intent, not `act`: it lives on `/api/session/start`,
     // and the client tells the record afterwards, as the desktop card does.
     const startable = allowed.has('start') && !!p.title;
-    if (startable) {
+    // ⚠ ALREADY ON IT. `attention.js` strips `start` from a card whose session
+    // is running and stamps `session` instead — so without this branch, starting
+    // the work dropped the card back to the old order, which cut "That's done"
+    // and offered "It's too big" on something he was actively doing (Nick,
+    // 11 Sep 2026). The session verbs apply here exactly as on the session
+    // surface, because firefighting outranks a focus session and this card is
+    // where he is looking. "That's done" FINISHES the session and carries the
+    // record, so one sentence closes both — ending only one leaves either a
+    // clock running over finished work or a card asking about it.
+    if (isObj(p.session)) {
+      out.push(
+        say('Make it smaller', { kind: 'session', action: 'shrink' }),
+        say('That’s done', { kind: 'session', action: 'finish', recordId: can('complete') ? p.recordId : null }),
+        say('Something came up', { kind: 'session', action: 'step-away' }),
+        openIt,
+      );
+    } else if (startable) {
       const onIt = session
         ? null
         : say('I’m on it', { kind: 'session', action: 'start', recordId: p.recordId, text: p.title });

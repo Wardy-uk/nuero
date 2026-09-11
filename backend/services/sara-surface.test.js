@@ -650,6 +650,30 @@ test('⚠ a startable card LEADS with "I’m on it" and keeps "That’s done" in
   assert.ok(!sentences(busy).includes('I’m on it'));
   assert.ok(sentences(busy).includes('That’s done'));
 
+  // ⚠ Once he is ON it the brain strips `start` and stamps `session`. That must
+  // not fall back to the old order (which cut "That's done" and offered "It's
+  // too big" on work he was doing) — it gets the session verbs, and "That's
+  // done" finishes the session AND carries the record to complete.
+  const working = compose(payload({
+    context: { activity: 'firefighting' },
+    primary: { ...esc, actions: ['acknowledge', 'defer', 'open', 'complete'],
+      session: { id: 'fs_1', status: 'active', elapsedMinutes: 2, nextStep: null, stale: false } },
+  }), { session: { taskTitle: null, elapsedMinutes: 2, plannedMinutes: 30 } });
+  assert.deepEqual(sentences(working), [
+    'Make it smaller', 'That’s done', 'Something came up', 'Open Queue → Escalations', 'Show me everything',
+  ]);
+  const doneIntent = working.utterances[1].intent;
+  assert.equal(doneIntent.kind, 'session');
+  assert.equal(doneIntent.action, 'finish');
+  assert.equal(doneIntent.recordId, 'rec_1');
+  assert.ok(!sentences(working).includes('It’s too big'));
+  // A card that refuses completion finishes the session and closes nothing else.
+  const noComplete = compose(payload({
+    context: { activity: 'firefighting' },
+    primary: { ...esc, actions: ['acknowledge', 'open'], session: { id: 'fs_1', status: 'active', elapsedMinutes: 2 } },
+  }));
+  assert.equal(noComplete.utterances.find((u) => u.say === 'That’s done').intent.recordId, null);
+
   // Negative: `start` must be EXPLICITLY allowed. A card without it keeps the
   // original order, and an empty action set never infers one.
   assert.ok(!sentences(compose(payload({ primary: card() }))).includes('I’m on it'));
