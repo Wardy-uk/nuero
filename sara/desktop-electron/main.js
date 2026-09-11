@@ -79,6 +79,56 @@ ipcMain.handle('sara:attention', (_e, on) => {
   return true;
 });
 
+// --- Watch presence → OS lock (main process) ------------------------------------
+// See presenceLock.js for why this is decided HERE rather than in whichever SARA
+// build the window happens to load. Off with SARA_PRESENCE_LOCK=0; a no-op where
+// the adapter cannot lock (the Pi), and blind — never locking — while the Watch
+// reporter's file is missing or stale.
+const fs = require('fs');
+const path = require('path');
+const { Notification } = require('electron');
+const presenceLock = require('./presenceLock');
+const PRESENCE_FILE = process.env.WATCH_STATUS_FILE
+  || path.resolve(__dirname, '..', '..', 'windows-watch-lock', 'presence.json');
+let presence = presenceLock.initialState();
+let warning = null;
+let lastBlindWhy = null;
+
+function readPresence() {
+  try { return JSON.parse(fs.readFileSync(PRESENCE_FILE, 'utf8')); } catch { return null; }
+}
+
+function startPresenceLock() {
+  if (process.env.SARA_PRESENCE_LOCK === '0' || !lockAdapter.canOSLock) return;
+  console.log(`[SARA] presence lock watching ${PRESENCE_FILE}`);
+  powerMonitor.on('lock-screen', () => { presence = { ...presence, graceUntil: null, awayCount: 0 }; });
+  setInterval(async () => {
+    const payload = readPresence();
+    const now = Date.now();
+    const r = presenceLock.assessReading(payload, now);
+    // Say once when she goes blind, so a dead reporter is findable in the log
+    // rather than being a lock that simply never happens.
+    const why = r.known ? null : r.why;
+    if (why !== lastBlindWhy) { console.log(`[SARA] presence ${why ? 'blind: ' + why : 'reading again'}`); lastBlindWhy = why; }
+
+    const { state, action } = presenceLock.step(presence, { payload, now, idleS: powerMonitor.getSystemIdleTime() });
+    presence = state;
+    if (action === 'warn') {
+      if (Notification.isSupported()) {
+        warning = new Notification({ title: 'SARA', body: 'Your Watch has gone — locking in 5 seconds. Move the mouse to stop it.', silent: true });
+        warning.show();
+      }
+    } else if (action === 'cancel-warn') {
+      warning?.close(); warning = null;
+    } else if (action === 'lock') {
+      warning?.close(); warning = null;
+      await lockAdapter.lock();
+    } else if (action === 'wake') {
+      await lockAdapter.wake();
+    }
+  }, 2000).unref?.();
+}
+
 // Single-instance guard. A second launch (stray shortcut, autostart, an unlock-time
 // relaunch) must NOT open a duplicate window with its own state — that's how you end up
 // with one SARA still showing the lock overlay while a fresh one boots. Instead the
@@ -99,9 +149,11 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     mainWindow = await createWindow();
+    startPresenceLock();
     // When Windows itself is unlocked (Hello), tell the renderer so SARA's privacy
     // overlay lifts too — the OS already re-authenticated, no second tap needed.
     powerMonitor.on('unlock-screen', () => {
+      presence = presenceLock.onOSUnlocked(presence);
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sara:os-unlocked');
     });
     app.on('activate', async () => {

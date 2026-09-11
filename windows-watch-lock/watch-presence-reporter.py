@@ -224,7 +224,20 @@ class Reporter:
         tmp = STATUS_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f)
-        os.replace(tmp, STATUS_FILE)  # atomic — SARA never reads a half-written file
+        # atomic — SARA never reads a half-written file.
+        # ⚠ On Windows the replace is REFUSED (WinError 5) while any other process
+        # holds the target open, even for a moment's read. That killed this
+        # reporter on 4 Sep 2026 and nothing restarted it, so the Watch lock was
+        # silently dead from then on. A refused write is retried briefly and then
+        # SKIPPED: the next heartbeat writes again, and a reader treats a file that
+        # stops updating as stale (blind), never as a verdict.
+        for attempt in range(5):
+            try:
+                os.replace(tmp, STATUS_FILE)
+                return
+            except PermissionError:
+                time.sleep(0.05 * (attempt + 1))
+        log("status write skipped: presence.json busy (will retry next tick)")
 
 
 async def main():
@@ -266,4 +279,14 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # ⚠ Started once, at login, with nothing supervising it — so any unhandled
+    # error used to end presence for the rest of the session in silence. Restart
+    # after a pause instead; Ctrl+C still exits.
+    while True:
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            break
+        except Exception as e:  # noqa: BLE001 — log it and come back
+            log(f"reporter crashed ({type(e).__name__}: {e}); restarting in 10s")
+            time.sleep(10)
