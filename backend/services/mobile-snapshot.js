@@ -81,6 +81,20 @@ function tasksSection(now) {
       // Whether the phone may tick it offline. Only a NEURO-owned task has an
       // identity that survives the delay — see mobile-sync's TODO_COMPLETE note.
       completableOffline: Number.isInteger(t.task_id),
+      // ⚠ WHO OWNS THE STATUS. Without these the phone cannot mark a Planner
+      // task started at all: `/api/todos/wip-ms` is keyed on msId, and four of
+      // the five rows in the Must Move lane are MS tasks — so the WIP control
+      // was missing from exactly the work it was built for. The iOS lane swipe
+      // had to say "owned elsewhere" on most rows and do nothing.
+      //
+      // ⚠ `filePath`/`lineNumber` are deliberately NOT here: toTodoShape sets
+      // both to null for a NEURO-owned row, which every row in this list is.
+      // wip-ms guards the vault mirror on them, so the push still reaches
+      // Graph — the lane just shows the old value until the next sync rather
+      // than updating immediately. Sending fabricated ones would be worse.
+      msId: t.ms_id || null,
+      msSource: t.msSource || null,
+      msPlan: t.msPlan || null,
     }));
     return { known: true, total: ranked.length, items };
   } catch (e) {

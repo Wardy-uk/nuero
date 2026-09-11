@@ -180,3 +180,22 @@ test('build() never presents an unreadable pool as a calm day', async () => {
     assert.match(snap.followUps.why, /NOT an all-clear/);
   }
 });
+
+// ⚠ The owner fields the phone needs to mark a Planner task started.
+//
+// Without msId, /api/todos/wip-ms cannot be called at all — and four of the
+// five rows in the Must Move lane are MS tasks, so the iOS WIP control was
+// missing from exactly the work it was built for and had to say "owned
+// elsewhere" on most rows.
+test('a task carries who owns its status', async () => {
+  const snap = await snapshot.build({});
+  assert.equal(snap.tasks.known, true);
+  for (const item of snap.tasks.items) {
+    assert.ok('msId' in item, 'msId must be present, even as null');
+    assert.ok('msSource' in item, 'msSource must be present');
+    assert.ok('msPlan' in item, 'msPlan must be present');
+    // ⚠ null is the correct value for a task NEURO alone owns — the key has to
+    // EXIST so the client can tell "not linked" from "the field was dropped".
+    if (item.msId !== null) assert.equal(typeof item.msId, 'string');
+  }
+});
