@@ -164,6 +164,8 @@ class MainActivity : Activity() {
     private fun neededPermissions(): List<String> = buildList {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(Manifest.permission.BLUETOOTH_SCAN)
         else add(Manifest.permission.ACCESS_FINE_LOCATION)
+        // Android 10 grants it from the same dialog; 11 sends you to Settings for it.
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
     }
 

@@ -17,6 +17,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.LocationManager
 import android.net.wifi.WifiManager
@@ -242,6 +243,13 @@ class SensorService : Service() {
     private fun currentFault(): String? {
         if (rpa == null) return "no valid IRK configured - cannot recognise the Watch"
         if (!isLocationOn()) return "Location is off - Android returns no Bluetooth scan results without it"
+        // ⚠ Android 10-11 (the bedroom P30): with only FOREGROUND location, scan results
+        // stop the moment another app (the kiosk) is in front — silently, no error. Named
+        // as a fault so it reads as "cannot hear" rather than as an empty room.
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.Q..Build.VERSION_CODES.R &&
+            checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return "background location not granted - Android 10+ withholds scan results behind other apps"
+        }
         return scanFault
     }
 

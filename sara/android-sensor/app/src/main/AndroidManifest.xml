@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <!-- Android 10-11: scan results are withheld from an app that is not in front unless it
+         holds BACKGROUND location. The sensor always runs behind the kiosk browser. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" android:maxSdkVersion="30" />
     <!-- Android 12+: nothing here derives a location from a scan. -->
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"

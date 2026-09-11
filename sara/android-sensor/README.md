@@ -31,6 +31,10 @@ fingerprint came back `kitchen / unsure — kitchen and bedroom are close (1.46 
   fault (`status: unknown`, with the reason), never as an empty room.
 - **More than 5 scan starts in 30s is silently throttled**, so restarts are spaced
   7s; a long-running scan can be demoted, so it is refreshed every 25 minutes.
+- **Android 10–11 withholds scan results from an app that is not in front** unless it
+  holds BACKGROUND location — and the sensor always sits behind the kiosk browser.
+  Declared for API 29–30, granted over ADB (`pm grant … ACCESS_BACKGROUND_LOCATION`),
+  and reported as a named fault when missing. Matters for the bedroom Huawei P30.
 - **The CPU sleeps with the screen off even on a charger**, so the service holds a
   partial wake lock and a Wi-Fi lock. It is a wall-powered tablet.
 
