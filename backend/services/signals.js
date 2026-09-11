@@ -1,5 +1,7 @@
 'use strict';
 
+const { parseStoredUtc } = require('./stored-time');
+
 /**
  * Every sense SARA has, and whether it is actually working.
  *
@@ -57,7 +59,10 @@ const db = require('../db/database');
  */
 function rate(lastAt, expectMinutes, now = new Date(), { staleAfter = null } = {}) {
   if (!lastAt) return { state: 'never', ageMinutes: null };
-  const t = Date.parse(lastAt);
+  // ⚠ `recorded_at` is UTC with no marker; Date.parse reads that as LOCAL,
+  // which on this BST Pi aged a 23-minute-old reading as 83 and reported a
+  // live sensor as stale. See services/stored-time.js.
+  const t = parseStoredUtc(lastAt);
   if (!Number.isFinite(t)) return { state: 'error', ageMinutes: null, why: 'unreadable timestamp' };
 
   const ageMinutes = Math.max(0, Math.round((now.getTime() - t) / 60000));

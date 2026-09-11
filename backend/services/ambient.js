@@ -1,5 +1,7 @@
 'use strict';
 
+const { storedDate } = require('./stored-time');
+
 /**
  * Ambient observations — what SARA can notice about Nick's body and his day.
  *
@@ -553,8 +555,8 @@ function _standHours(now, gaps) {
     const bucket = (metric) => {
       const out = new Map();
       for (const r of (db.getHealthSamples(metric, since, 20000) || [])) {
-        const t = new Date(r.recorded_at);
-        if (Number.isNaN(t.getTime())) continue;
+        const t = storedDate(r.recorded_at);
+        if (!t) continue;   // storedDate answers null on an unreadable stamp
         const key = _hourKey(t);
         out.set(key, (out.get(key) || 0) + (Number(r.value) || 0));
       }
@@ -563,8 +565,8 @@ function _standHours(now, gaps) {
     const count = (metric) => {
       const out = new Map();
       for (const r of (db.getHealthSamples(metric, since, 20000) || [])) {
-        const t = new Date(r.recorded_at);
-        if (Number.isNaN(t.getTime())) continue;
+        const t = storedDate(r.recorded_at);
+        if (!t) continue;   // storedDate answers null on an unreadable stamp
         const key = _hourKey(t);
         out.set(key, (out.get(key) || 0) + 1);
       }
@@ -606,8 +608,8 @@ function _dailyTotals(metric, windowDays, now, gaps) {
     const rows = db.getHealthSamples(metric, since, 5000) || [];
     const byDay = new Map();
     for (const r of rows) {
-      const t = new Date(r.recorded_at);
-      if (Number.isNaN(t.getTime())) continue;
+      const t = storedDate(r.recorded_at);
+      if (!t) continue;   // storedDate answers null on an unreadable stamp
       const key = _dayKey(t);
       byDay.set(key, (byDay.get(key) || 0) + (Number(r.value) || 0));
     }
