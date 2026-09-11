@@ -1,5 +1,6 @@
 import { useContext, useEffect, useRef } from 'react';
 import { FieldCoverContext } from './FieldCover';
+import { drive, colour, nodeColour, rgbText, PULSE_PERIOD } from './fieldDrive.mjs';
 import './Field.css';
 
 // Field — SARA's presence on the phone.
@@ -16,16 +17,19 @@ import './Field.css';
 // THE COHERENCE ON SCREEN IS THE COHERENCE OF THE READ. The field is driven by
 // the brain's own state, so it is informative before a word is read:
 //
-//   * can't see your work  → no coherence at all. Pure noise. If NEURO's queue
-//                            is unreachable the screen LOOKS unresolved, which
-//                            is the honest thing for it to look like.
-//   * low confidence       → it barely settles. She is genuinely unsure and the
-//                            picture says so.
-//   * high confidence      → a clean, complete settle.
-//   * quiet (in a meeting) → near-still, but STILL THERE. Staying out of the
-//                            way is a visual fact, not a disappearance — she
-//                            settles rarely rather than fading out.
-//   * firefighting         → settles more often. Something is actually going on.
+//   * can't see your work  → no coherence at all, and GREY. Pure noise. If
+//                            NEURO is unreachable the screen LOOKS unresolved,
+//                            which is the honest thing for it to look like.
+//   * low confidence       → it barely settles, blue-leaning. She is genuinely
+//                            unsure and the picture says so.
+//   * high confidence      → a clean, complete settle, towards orange.
+//   * quiet (in a meeting) → near-still and BLUE, but exactly as visible —
+//                            staying out of the way is a colour, not a fade.
+//   * firefighting         → high on the ramp. Something is actually going on.
+//   * pressing             → red, and a slow breath.
+//
+// Colour is the state channel and presence is constant (Nick, 6 Sep 2026) —
+// the numbers live in `fieldDrive.mjs`.
 //
 // That mapping is why this survives the "no decorative oscillation" rule: it
 // never animates for the look of it. If the state is flat, so is the field.
@@ -89,11 +93,23 @@ const ALPHA_BUCKETS = 17;
 // keeps "the coherence on screen is the coherence of the read" exactly as true
 // as it was, and is the only way to crank visibility without the field starting
 // to claim things it has not read.
-const NODE_REST_ALPHA = 0.14;  // the substrate at rest. Was 0.07 — a node at
-                               // 0.07 x 0.45 dim is 0.031 on a #0b0f14 ground,
-                               // which is black.
+// ⚠ RAISED AGAIN on 11 Sep 2026 to the iOS app's 0.42 / 0.24, and the reason
+// is a SCREENSHOT, not a preference. The iOS port (nuero-ios c225350) raised
+// these for SwiftUI and wrote that the web's 0.14 / 0.03 were "right for a
+// browser canvas, where a 0.7px hairline still reads". Rendered in the laptop's
+// actual Electron window, side by side, THAT WAS NOT TRUE: at 0.14 / 0.03 the
+// blind and steady fields were close to black and quiet survived only where a
+// cluster happened to be dense — Nick's "I always want to see her" failing on
+// the desk screen as it had on the phone. With colour now carrying the state
+// (fieldDrive.mjs), a faint substrate also hides the one channel that says what
+// state she is in.
+//
+// The Field.css rule still holds: if a sentence ever becomes hard to read,
+// move the SCRIM, not these.
+const NODE_REST_ALPHA = 0.42;  // the substrate at rest. Was 0.14, before that
+                               // 0.07 — which on a #0b0f14 ground is black.
 const NODE_COHERENT = 0.32;    // added at full coherence
-const EDGE_REST_ALPHA = 0.03;  // was 0.012, i.e. below the cull once dimmed
+const EDGE_REST_ALPHA = 0.24;  // was 0.03, and 0.012 before that (below the cull)
 const EDGE_COHERENT = 0.18;
 
 // ⚠ THE CULL IS A PERF GUARD AND MUST BE TESTED BEFORE `dim` IS APPLIED. It was
@@ -104,25 +120,10 @@ const EDGE_COHERENT = 0.18;
 // sparse dot field rather than a mesh.
 const EDGE_CULL_ALPHA = 0.006;
 
-// ── The slow pulse ──────────────────────────────────────────────────────────
-//
-// Nick, 31 Aug 2026: "change anything pressing to a slow pulse."
-//
-// ⚠ IT SURVIVES THE "NO DECORATIVE OSCILLATION" RULE ONLY BECAUSE IT IS
-// STATE-DRIVEN. It happens when something is pressing and it stops when nothing
-// is, so the breathing itself carries information — if the pool is calm the
-// field does not breathe at all. A pulse that ran always would be exactly the
-// screensaver this component was written to avoid.
-//
-// It BRIGHTENS and never darkens (the multiplier runs 1 → 1+amp, never below
-// 1). Dipping below the resting level would make her LESS visible at the moment
-// something needs him, which is backwards.
-//
-// Slow on purpose: ~6.5s is a breath, and a breath at the edge of vision reads
-// as "something is waiting" where a faster flicker reads as agitation. It also
-// stays legible at IDLE_FPS.
-const PULSE_PERIOD = 6.5;
-const PULSE_AMP = 0.45;
+// ── The slow pulse, the ramp and the drive ──────────────────────────────────
+// Live in `fieldDrive.mjs`, PURE, so the states pin from the node suite. Colour
+// is the state channel there (blue → orange → red, grey when blind) and
+// presence is constant — see that file for why.
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -141,100 +142,6 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const bucketOf = (alpha, rest, span) =>
   clamp(Math.round(((alpha - rest) / span) * (ALPHA_BUCKETS - 1)), 0, ALPHA_BUCKETS - 1);
 const bucketAlpha = (b, rest, span) => rest + (b / (ALPHA_BUCKETS - 1)) * span;
-
-// How the read becomes a picture. `depth` is how much order arrives (0 = none),
-// `period` how many seconds between settles.
-function drive({ degraded, confidenceLevel, quiet, activity, pressing }) {
-  // Blind: pure noise, and BRIGHT. Being unable to see is not a reason to
-  // disappear — an unresolved field is the honest picture of an unreadable
-  // read, and it has to be visible enough to read as unresolved rather than as
-  // an empty screen.
-  // Blind never pulses. She cannot know whether anything is pressing, and a
-  // field that breathes over an unreadable pool is asserting exactly the thing
-  // it cannot see.
-  // ⚠ `unresolved` is a FLAG, NOT A POINT ON THE RAMP, and that is the whole
-  // difficulty of the colour change. Blind is not "low urgency", it is "no
-  // information" — putting it at the blue end would paint an outage the same
-  // calm colour as a quiet afternoon, which is the blind-looks-like-clear
-  // failure this component exists to prevent. It desaturates instead, and it
-  // still never settles, so two channels carry it rather than one.
-  if (degraded) return { depth: 0, period: 0, dim: 1, pulse: 0, intensity: 0, unresolved: true };
-  // Quiet: she settles rarely (nothing is being worked out) but stays PRESENT.
-  // ⚠ dim was 0.45 here, which made "staying out of the way" mean "gone".
-  // ⚠ Quiet still pulses when something is pressing. `quiet` means SARA will
-  // not SPEAK — it has never meant she may hide a breaching escalation, and the
-  // gate already refuses to drop a critical item off duty. Silent is not the
-  // same as invisible.
-  // ⚠ dim is 1, not 0.78. Quiet used to be expressed by FADING her; it is
-  // expressed by COLOUR now, so she is exactly as present in a meeting as in a
-  // fire. A pressing item still drives her to the red end even here, because
-  // quiet has never meant she may hide an escalation.
-  if (quiet) {
-    return {
-      depth: 0.35, period: 16, dim: 1,
-      pulse: pressing ? PULSE_AMP : 0,
-      intensity: pressing ? 1 : 0.08,
-    };
-  }
-  // ⚠ The low-confidence floor is 0.45, not 0.34: below about 0.4 the settle
-  // stops being legible as a settle at all, so "she is unsure" and "she is not
-  // working" became the same picture. It is still clearly short of moderate.
-  const depth = confidenceLevel === 'high' ? 1 : confidenceLevel === 'moderate' ? 0.7 : 0.45;
-  // ⚠ `firefighting` no longer SHORTENS the settle. It used to drop to 5.5s, so
-  // once the pulse arrived the same fact was being told twice — a faster settle
-  // AND a breath — which reads as agitation rather than as one clear signal.
-  // The pulse carries "something needs you" now; the settle is left to mean
-  // what it always meant, which is how much she is resolving.
-  //
-  // `pre-meeting` keeps its 7s: imminent is not the same as pressing, and that
-  // one is about a clock rather than about a queue.
-  const period = activity === 'pre-meeting' ? 7 : 9.5;
-  // Blue → orange → red. Pressing goes straight to the top: it is the one fact
-  // that should be readable across a room, and it must not be averaged down by
-  // a low-confidence read happening at the same time. Firefighting sits high
-  // without being maximal — "the queue is busy" is not the same claim as "this
-  // needs you now", and those two were conflated once already.
-  const intensity = pressing ? 1
-    : activity === 'firefighting' ? 0.75
-    : 0.18 + depth * 0.42;
-  return { depth, period, dim: 1, pulse: pressing ? PULSE_AMP : 0, intensity };
-}
-
-// ── Her colour ──────────────────────────────────────────────────────────────
-//
-// Nick, 6 Sep 2026: "she should always be visible — it should be the colour of
-// her presence that changes, not the visibility. Where she currently fades,
-// that should be blue and a lower intensity; where she is strong, red and
-// stronger; orange in the middle."
-//
-// ⚠ COLOUR NOW CARRIES WHAT DIMMING USED TO, which is why `dim` is pinned at 1
-// above. Every state has to be tellable apart by hue alone — and the one that
-// cannot be, blind, gets its own desaturated grey rather than a place on the
-// ramp.
-//
-// Stops chosen to survive the very low alphas the substrate draws at: a dark
-// navy multiplied down to 0.03 on a #0b0f14 ground is simply black.
-const COLD = [90, 150, 240];    // blue  — quiet, nothing needs him
-const MID = [240, 150, 60];     // orange — a normal working read
-const HOT = [240, 70, 60];      // red   — something is pressing
-const UNRESOLVED = [150, 160, 170]; // grey — cannot see, NOT calm
-
-const mix = (a, b, t) => [
-  Math.round(a[0] + (b[0] - a[0]) * t),
-  Math.round(a[1] + (b[1] - a[1]) * t),
-  Math.round(a[2] + (b[2] - a[2]) * t),
-];
-
-// ⚠ TWO SEGMENTS, so orange genuinely sits in the MIDDLE. A straight blue→red
-// blend passes through a muddy purple and never through orange at all.
-function fieldColour(intensity, unresolved) {
-  if (unresolved) return UNRESOLVED;
-  const t = clamp(intensity ?? 0.4, 0, 1);
-  return t <= 0.5 ? mix(COLD, MID, t * 2) : mix(MID, HOT, (t - 0.5) * 2);
-}
-
-/** Nodes sit slightly lighter than their edges, as they always have. */
-const lighten = (c, amount = 30) => c.map((v) => Math.min(255, v + amount));
 
 // ⚠ `still` — one frame, no loop, for a screen that is not lit.
 //
@@ -342,10 +249,13 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
       return true;
     }
 
-    function paint(t, k, focus, dim, colour) {
+    function paint(t, k, focus, dim) {
       ctx.clearRect(0, 0, w, h);
-      const edgeRGB = colour.join(',');
-      const nodeRGB = lighten(colour).join(',');
+      // ⚠ COLOUR IS THE STATE CHANNEL — read per paint off the live drive, so a
+      // poll changes her hue without rebuilding the substrate.
+      const d0 = driveRef.current;
+      const edgeRgb = rgbText(colour(d0.intensity, d0.unresolved));
+      const nodeRgb = rgbText(nodeColour(colour(d0.intensity, d0.unresolved)));
 
       // Edges first — cognition is relationship-first, nodes secondary.
       for (let i = 0; i < ALPHA_BUCKETS; i++) { edgeBuckets[i].length = 0; nodeBuckets[i].length = 0; }
@@ -367,7 +277,7 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
       for (let b = 0; b < ALPHA_BUCKETS; b++) {
         const list = edgeBuckets[b];
         if (!list.length) continue;
-        ctx.strokeStyle = `rgba(${edgeRGB},${(bucketAlpha(b, EDGE_REST_ALPHA, EDGE_COHERENT) * dim).toFixed(3)})`;
+        ctx.strokeStyle = `rgba(${edgeRgb},${(bucketAlpha(b, EDGE_REST_ALPHA, EDGE_COHERENT) * dim).toFixed(3)})`;
         ctx.beginPath();
         for (let i = 0; i < list.length; i++) {
           const n1 = nodes[edges[list[i]][0]];
@@ -393,7 +303,7 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
       for (let b = 0; b < ALPHA_BUCKETS; b++) {
         const list = nodeBuckets[b];
         if (!list.length) continue;
-        ctx.fillStyle = `rgba(${nodeRGB},${(bucketAlpha(b, NODE_REST_ALPHA, NODE_COHERENT) * dim).toFixed(3)})`;
+        ctx.fillStyle = `rgba(${nodeRgb},${(bucketAlpha(b, NODE_REST_ALPHA, NODE_COHERENT) * dim).toFixed(3)})`;
         ctx.beginPath();
         for (let i = 0; i < list.length; i++) {
           const nd = nodes[list[i]];
@@ -420,8 +330,7 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
       // signal that says something needs them.
       const paintStill = () => {
         const d = driveRef.current;
-        paint(0, 0.45 * d.depth, { x: w * 0.7, y: h * 0.25 }, d.dim * (1 + d.pulse),
-              fieldColour(d.intensity, d.unresolved));
+        paint(0, 0.45 * d.depth, { x: w * 0.7, y: h * 0.25 }, d.dim * (1 + d.pulse));
       };
       paintStill();
       const ro = new ResizeObserver(() => {
@@ -474,7 +383,7 @@ export default function Field({ activity, confidenceLevel, quiet = false, degrad
         ? 1 + d.pulse * (0.5 - 0.5 * Math.cos((2 * Math.PI * t) / PULSE_PERIOD))
         : 1;
 
-      paint(t, k, focus, d.dim * breath, fieldColour(d.intensity, d.unresolved));
+      paint(t, k, focus, d.dim * breath);
     }
 
     function start() {
