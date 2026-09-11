@@ -43,8 +43,31 @@ function broadcast(event) {
   }
 }
 
-function todayKey() {
-  return new Date().toISOString().split('T')[0];
+/**
+ * The date every nudge is keyed on — LOCAL, never UTC.
+ *
+ * ⚠ THIS WAS `new Date().toISOString().split('T')[0]`, and it is the trap
+ * `meeting-prep-view.js` already carries a helper and a comment against:
+ * "toISOString() shifts the day either side of midnight in BST".
+ *
+ * It survived only because the Pi runs on UTC, where the two agree. Everything
+ * else in this file reads the SYSTEM clock — `isPastStandupCutoff` uses
+ * `getHours()`, and all 25 `cron.schedule` calls run in the system timezone
+ * with no `timezone` option passed. So the moment the Pi is moved to
+ * Europe/London, cron and `getHours()` move to BST while this stayed on UTC,
+ * and between 00:00 and 01:00 BST every nudge would be created under
+ * YESTERDAY's key. `getActiveNudgeByTypeAndDate` would not find today's, so
+ * `triggerStandupNudge` would create a duplicate every run, and
+ * `clearStaleNudges` — which retires anything with `date_key < todayKey()` —
+ * would bin the lot an hour later.
+ *
+ * `now` is injectable for the same reason the rest of this file does it.
+ */
+function todayKey(now = new Date()) {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function isPastStandupCutoff(now = new Date()) {
@@ -1055,4 +1078,7 @@ module.exports = {
   setLeave,
   clearLeave,
   nudgeSuppression,
+  // Exported for tests. Every nudge in this file is keyed on it, and it is the
+  // one thing that breaks the day the Pi stops running on UTC.
+  todayKey,
 };
