@@ -25,8 +25,26 @@ import { useEffect, useRef, useState } from 'react';
 // screen that looks broken; a bug that fails open is merely a screen that
 // stayed on. The backlight agent makes the same choice for the same reason.
 
-const ROOM = import.meta.env.VITE_SARA_ROOM || 'living-room';
+const ROOM = resolveRoom();
 const POLL_MS = 4000;
+
+// Which room this screen is in. `?room=study` on the URL wins and is remembered, so
+// one build serves every screen (the Pi 4 kiosk, the study tablet) — the tablet's
+// kiosk browser opens `/?room=study` and a later in-app navigation that drops the
+// query string must not quietly move the screen back to the living room. Falls back
+// to the build-time VITE_SARA_ROOM, then the living room, so the existing kiosk is
+// unchanged. Storage can throw (private mode, blocked site data): never fatal.
+function resolveRoom() {
+  const clean = (v) => (typeof v === 'string' && /^[a-z0-9-]{1,40}$/.test(v.trim()) ? v.trim() : null);
+  let fromUrl = null;
+  try { fromUrl = clean(new URLSearchParams(window.location.search).get('room')); } catch { /* no window */ }
+  try {
+    if (fromUrl) { window.localStorage.setItem('sara_room', fromUrl); return fromUrl; }
+    const stored = clean(window.localStorage.getItem('sara_room'));
+    if (stored) return stored;
+  } catch { /* storage unavailable */ }
+  return fromUrl || import.meta.env.VITE_SARA_ROOM || 'living-room';
+}
 
 export function useDisplayState() {
   const [state, setState] = useState('full');
