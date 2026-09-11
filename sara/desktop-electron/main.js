@@ -27,6 +27,13 @@ async function createWindow() {
     },
   });
   win.removeMenu();
+  // ⚠ SARA.vbs launches with window style 0 so no console is ever created — and
+  // Windows passes that SW_HIDE to the process, which the FIRST ShowWindow call
+  // obeys. So she started, ran, and never appeared (11 Sep 2026: four live
+  // processes, no window handle). The first show is spent hidden; asking again
+  // is a normal show. A console launch is unaffected — she is already visible.
+  win.once('ready-to-show', () => { if (!win.isVisible()) win.show(); });
+  setTimeout(() => { if (!win.isDestroyed() && !win.isVisible()) win.show(); }, 3000);
   const ses = win.webContents.session;
   await ses.clearCache().catch(() => {});
   await ses.clearStorageData({
