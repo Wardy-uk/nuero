@@ -148,12 +148,17 @@
   height: 100%;
   gap: 0.25rem;
 }
+/* ⚠ Earlier days were `--bg-tertiary` (#1a1e2a) on `--bg-card` (#1a1e2e) — the
+   same colour to the eye, so every bar but today's was invisible and the chart
+   read as a week with nothing in it (Nick, 11 Sep 2026). Same hue as today,
+   dimmer, so the week is visible and today still stands out. */
 .adhd__spark-bar {
-  background: var(--bg-tertiary);
+  background: var(--accent);
+  opacity: 0.38;
   border-radius: 3px 3px 0 0;
   min-height: 3px;
 }
-.adhd__spark-bar--today { background: var(--accent); }
+.adhd__spark-bar--today { opacity: 1; }
 .adhd__spark-day {
   text-align: center;
   font-size: 0.62rem;
