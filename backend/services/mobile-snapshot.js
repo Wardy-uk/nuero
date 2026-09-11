@@ -190,6 +190,8 @@ function focusSection(attentionPayload) {
         // #87's rule, carried through: a "you're halfway" built on an assumed
         // length must SAY it is assumed, every time it is read.
         plannedAssumed: !!s.plannedAssumed,
+        // Set partway through: a real length, not a forecast.
+        plannedLate: !!s.plannedLate,
         // Gate 3. The concrete next step is the thing that makes resuming
         // possible at all — coming back to "the task" is a wall, coming back to
         // a named physical action is a decision. It has to reach the phone,

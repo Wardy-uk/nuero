@@ -137,6 +137,10 @@ export default function AdhdPanel({ onNavigate }) {
   // The "make it smaller" box. Null when closed; a string while being typed.
   const [smaller, setSmaller] = useState(null);
 
+  // The estimate picker on the session card. Null when closed; a string (the
+  // custom minutes being typed) while open.
+  const [estimating, setEstimating] = useState(null);
+
   // What the last finished session took against what Nick said it would.
   const [closeout, setCloseout] = useState(null);
 
@@ -438,9 +442,61 @@ export default function AdhdPanel({ onNavigate }) {
               ? ` · ${session.overrunMinutes} over the ${session.plannedMinutes} you gave it`
               : ` · about ${session.remainingMinutes} left`}
             {/* The #87 rule, carried all the way to the screen: a number resting
-                on an assumption has to say so, every single time. */}
-            {session.plannedAssumed && <span className="adhd__assumed"> · assuming 30 min, nobody estimated it</span>}
+                on an assumption has to say so, every single time — and now the
+                sentence that says so is also the way to fix it. Offered AFTER
+                starting, never before: a "how long?" in front of the clock is
+                friction at exactly the moment starting is hardest. */}
+            {estimating === null && (session.plannedAssumed ? (
+              <button type="button" className="adhd__assumed adhd__estimate-link" onClick={() => setEstimating('')}>
+                {' '}· assuming 30 min, nobody estimated it — set one
+              </button>
+            ) : (
+              <button type="button" className="adhd__estimate-link adhd__estimate-link--set" onClick={() => setEstimating('')}>
+                {' '}· {session.plannedLate ? 'estimated partway through' : 'your estimate'} — change
+              </button>
+            ))}
           </p>
+          {estimating !== null && (
+            <div className="adhd__estimate">
+              <span className="adhd__estimate-q">How long, all in?</span>
+              {[15, 30, 45, 60, 90].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={`adhd__estimate-opt${!session.plannedAssumed && session.plannedMinutes === m ? ' adhd__estimate-opt--on' : ''}`}
+                  onClick={() => { sessionPost('estimate', { minutes: m }); setEstimating(null); }}
+                >{m}m</button>
+              ))}
+              <input
+                className="adhd__estimate-input"
+                type="number"
+                min="1"
+                inputMode="numeric"
+                placeholder="min"
+                aria-label="Custom estimate in minutes"
+                value={estimating}
+                onChange={(e) => setEstimating(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && Number(estimating) > 0) { sessionPost('estimate', { minutes: Number(estimating) }); setEstimating(null); }
+                  if (e.key === 'Escape') setEstimating(null);
+                }}
+              />
+              <button
+                type="button"
+                className="adhd__do"
+                disabled={!(Number(estimating) > 0)}
+                onClick={() => { sessionPost('estimate', { minutes: Number(estimating) }); setEstimating(null); }}
+              >Set</button>
+              <button type="button" className="adhd__later" onClick={() => setEstimating(null)}>Cancel</button>
+              {/* Said before he picks, not after: a number given this far in is
+                  kept for the clock and left out of the accuracy read. */}
+              {session.elapsedMinutes > 5 && (
+                <p className="adhd__estimate-note">
+                  {session.elapsedMinutes} min in, so it'll be used for the clock but not counted as a forecast.
+                </p>
+              )}
+            </div>
+          )}
           {session.interruptions > 0 && (
             <p className="adhd__session-int">
               {session.interruptions} interruption{session.interruptions === 1 ? '' : 's'} since you started

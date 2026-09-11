@@ -82,6 +82,13 @@ const CHECK_IN_MINUTES = 20;
 
 const VALID_SOURCES = ['manual', 'task-switch', 'escalation', 'meeting', 'unknown'];
 
+// How far into a session an estimate still counts as a FORECAST. "Twenty
+// minutes" said ten minutes in is a reading of the work already under way, and
+// scoring it as a prediction would flatter every estimate made late.
+const ESTIMATE_GRACE_MINUTES = 5;
+// Same ceiling task-store uses: past a working week it is a typo, not a plan.
+const MAX_SESSION_ESTIMATE_MINUTES = 2400;
+
 function pad(n) { return String(n).padStart(2, '0'); }
 
 /** Local date string — never toISOString(), which shifts the day on BST evenings. */
@@ -136,6 +143,10 @@ function _archive(session, now) {
     endedAt: session.endedAt,
     plannedMinutes: session.plannedMinutes,
     plannedAssumed: session.plannedAssumed,
+    // An estimate given partway through: a real length, NOT a forecast. Readers
+    // that score forecasts (initiation-signals, day-planner) leave these out.
+    plannedLate: Boolean(session.plannedLate),
+    estimateSetAtMinutes: session.estimateSetAtMinutes ?? null,
     // The honest number: focus time, excluding every paused stretch.
     actualMinutes: Math.round(_elapsedMs(session, now) / 60000),
     endedReason: session.endedReason,
@@ -217,6 +228,8 @@ function _decorate(session, now) {
     // The #87 rule, carried through unchanged: a "you're halfway" built on an
     // assumed length must say that it is assumed, every time it is read.
     plannedAssumed: Boolean(session.plannedAssumed),
+    plannedLate: Boolean(session.plannedLate),
+    estimateSetAtMinutes: session.estimateSetAtMinutes ?? null,
     elapsedMinutes,
     remainingMinutes: Math.max(0, planned - elapsedMinutes),
     overrun: elapsedMinutes > planned,
@@ -568,6 +581,68 @@ function resume(now = Date.now()) {
 //                            which is a different question and needs a
 //                            different prompt.
 
+/**
+ * "It'll take about 45 minutes" — Nick's own length for the session that is
+ * running. Nick, 11 Sep 2026: a session started from an escalation has no task
+ * to carry an estimate, and nothing could change one once a session began, so
+ * every such session tracked against the assumed thirty minutes for its whole
+ * life.
+ *
+ * ⚠ Asked for AFTER starting, never before. Starting is the hard half, and a
+ * "how long?" in front of the clock is friction at exactly the wrong moment.
+ *
+ * ⚠ LATE IS RECORDED, NOT REFUSED. Set within `ESTIMATE_GRACE_MINUTES` of focus
+ * time it is a forecast; set later it is a reading of work already under way,
+ * and `plannedLate` keeps it out of every read that scores forecasts. The
+ * session still uses it for "about N left" either way — it is the best length
+ * anybody has.
+ *
+ * ⚠ Written back to the task, when there is one, as an EXACT number: he typed
+ * it, so #87's laundering rule does not apply, and snapping 45 to an hour would
+ * be the planner disagreeing with him about his own work. A failed write-back
+ * never fails the estimate — the session is what he is looking at.
+ */
+function setEstimate(minutes, now = Date.now()) {
+  const session = _read();
+  if (!session) return { ok: false, reason: 'no-session' };
+  const n = Number(minutes);
+  if (!Number.isFinite(n) || n <= 0 || n > MAX_SESSION_ESTIMATE_MINUTES) {
+    return { ok: false, reason: 'invalid-minutes' };
+  }
+
+  const atMinutes = Math.round(_elapsedMs(session, now) / 60000);
+  session.plannedMinutes = Math.ceil(n);
+  session.plannedAssumed = false;
+  session.estimateSetAtMinutes = atMinutes;
+  // Once late, always late: re-setting early is impossible by construction, and
+  // an estimate revised at minute 2 after a first guess at minute 1 is still in
+  // the grace window, so this is simply the current reading.
+  session.plannedLate = atMinutes > ESTIMATE_GRACE_MINUTES;
+  _write(session);
+
+  let taskUpdated = false;
+  if (session.taskId != null) {
+    try {
+      require('./task-store').updateTask(session.taskId, {
+        estimateMinutes: session.plannedMinutes,
+        estimateExact: true,
+      });
+      taskUpdated = true;
+    } catch (e) {
+      console.warn('[Focus] Estimate set on session but not on task:', e.message);
+    }
+  }
+
+  try {
+    db.logActivity('focus_session_estimated', {
+      sessionId: session.id, taskId: session.taskId ?? null,
+      plannedMinutes: session.plannedMinutes, atMinutes, late: session.plannedLate,
+    });
+  } catch { /* bookkeeping */ }
+
+  return { ok: true, session: _decorate(session, now), taskUpdated };
+}
+
 /** The next concrete, physical step. Freeform, bounded, never invented by NEURO. */
 function setNextStep(step, now = Date.now()) {
   const session = _read();
@@ -796,8 +871,10 @@ module.exports = {
   checkIn,
   shrink,
   setNextStep,
+  setEstimate,
   stepAway,
   ASSUMED_MINUTES,
+  ESTIMATE_GRACE_MINUTES,
   HISTORY_LIMIT,
   PAUSE_STALE_MINUTES,
   STALE_FLOOR_MINUTES,

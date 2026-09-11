@@ -105,11 +105,72 @@ function SessionCard({ session, onChanged, onFinished }) {
       <div className="now__meta">
         {session.elapsedMinutes != null && `${session.elapsedMinutes}m in`}
         {session.plannedMinutes != null && ` of ${session.plannedMinutes}m`}
-        {/* #87's rule: an assumed length must say it is assumed, every time. */}
-        {session.plannedAssumed && ' (assumed)'}
+        {/* #87's rule: an assumed length must say it is assumed, every time —
+            and saying so is now also the way to replace it. Offered AFTER
+            starting only: a "how long?" in front of the clock is friction at
+            exactly the moment starting is hardest. */}
+        {asking !== 'estimate' && (
+          <button
+            type="button"
+            className="now__est-link"
+            disabled={busy}
+            onClick={() => { setStep(''); setAsking('estimate'); }}
+          >
+            {session.plannedAssumed ? ' (assumed — set yours)' : ' · change'}
+          </button>
+        )}
         {/* Stated plainly, with no verdict attached. */}
         {session.shrinks > 0 && ` · made smaller ${session.shrinks}x`}
       </div>
+
+      {asking === 'estimate' && (
+        <div className="now__sess-shrink">
+          <span className="now__sess-label">How long, all in?</span>
+          <div className="now__sess-acts">
+            {[15, 30, 45, 60, 90].map((m) => (
+              <button
+                key={m}
+                type="button"
+                className="now__sess-btn"
+                aria-pressed={!session.plannedAssumed && session.plannedMinutes === m}
+                disabled={busy}
+                onClick={() => post('/api/session/estimate', { minutes: m })}
+              >
+                {m}m
+              </button>
+            ))}
+          </div>
+          <div className="now__sess-acts">
+            <input
+              className="now__sess-input now__est-input"
+              type="number"
+              min="1"
+              inputMode="numeric"
+              placeholder="or minutes"
+              aria-label="Custom estimate in minutes"
+              value={step}
+              onChange={(e) => setStep(e.target.value)}
+            />
+            <button
+              type="button"
+              className="now__sess-btn now__sess-btn--go"
+              disabled={busy || !(Number(step) > 0)}
+              onClick={() => post('/api/session/estimate', { minutes: Number(step) })}
+            >
+              Set
+            </button>
+            <button type="button" className="now__sess-btn" disabled={busy} onClick={() => setAsking(null)}>
+              Cancel
+            </button>
+          </div>
+          {/* Said before he picks: this far in it is a reading, not a forecast. */}
+          {session.elapsedMinutes > 5 && (
+            <div className="now__meta">
+              {session.elapsedMinutes}m in, so it’ll run the clock but won’t count as a forecast.
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <div className="now__sess-err">{error}</div>}
 

@@ -70,6 +70,69 @@ test("a task's own estimate is used, and is not an assumption", () => {
   assert.match(session.text, /leave requests/i);
 });
 
+// ── Estimating a session that is already running (11 Sep 2026) ───────────────
+
+test('an estimate set early replaces the assumption and counts as a forecast', () => {
+  reset();
+  fs2.start({ text: 'NT-30940 — Re: Formal Complaint' }, T0);
+  const r = fs2.setEstimate(45, T0 + 3 * MIN);
+  assert.equal(r.ok, true);
+  assert.equal(r.session.plannedMinutes, 45);
+  assert.equal(r.session.plannedAssumed, false);
+  assert.equal(r.session.plannedLate, false);
+  assert.equal(r.session.remainingMinutes, 42);
+  assert.equal(r.taskUpdated, false, 'no task behind it, nothing to write back');
+});
+
+test('⚠ an estimate set partway through is KEPT for the clock and marked late', () => {
+  reset();
+  fs2.start({ text: 'Late estimate' }, T0);
+  const r = fs2.setEstimate(20, T0 + 10 * MIN);
+  assert.equal(r.session.plannedMinutes, 20);
+  assert.equal(r.session.plannedAssumed, false);
+  assert.equal(r.session.plannedLate, true, 'ten minutes in is a reading, not a forecast');
+  assert.equal(r.session.estimateSetAtMinutes, 10);
+
+  // And it travels into history, where the forecast readers look for it.
+  fs2.finish({}, T0 + 25 * MIN);
+  const [row] = fs2.history();
+  assert.equal(row.plannedLate, true);
+  assert.equal(row.plannedMinutes, 20);
+});
+
+test('⚠ the grace window counts FOCUS time, not wall clock', () => {
+  reset();
+  fs2.start({ text: 'Pulled away early' }, T0);
+  fs2.pause({}, T0 + 2 * MIN);
+  // An hour on something else, then an estimate at three focus minutes.
+  fs2.resume(T0 + 62 * MIN);
+  const r = fs2.setEstimate(30, T0 + 63 * MIN);
+  assert.equal(r.session.plannedLate, false);
+});
+
+test('a typed estimate is written back to the task EXACTLY, not snapped', () => {
+  reset();
+  const store = require('./task-store');
+  const { id } = store.createTask({ text: 'Draft the complaint response', skipExport: true });
+  fs2.start({ taskId: id }, T0);
+  const r = fs2.setEstimate(45, T0 + MIN);
+  assert.equal(r.taskUpdated, true);
+  // 45 would snap to 60 on a preset; he typed it, so it stays 45.
+  assert.equal(db.getTaskRow(id).estimate_minutes, 45);
+});
+
+test('nonsense and no-session are refused, and the session is untouched', () => {
+  reset();
+  assert.equal(fs2.setEstimate(30, T0).reason, 'no-session');
+  fs2.start({ text: 'Refusals' }, T0);
+  for (const bad of [0, -5, 'soon', null, 99999]) {
+    assert.equal(fs2.setEstimate(bad, T0 + MIN).ok, false, String(bad));
+  }
+  const view = fs2.current(T0 + MIN);
+  assert.equal(view.plannedAssumed, true);
+  assert.equal(view.plannedMinutes, fs2.ASSUMED_MINUTES);
+});
+
 test('a session survives the read — it is state, not a variable', () => {
   reset();
   fs2.start({ text: 'Persisted thing', minutes: 30 }, T0);

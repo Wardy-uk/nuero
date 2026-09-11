@@ -523,7 +523,9 @@ function durationSamples() {
   try {
     const history = JSON.parse(db.getState('focus_session_history') || '[]');
     for (const s of history) {
-      if (s?.plannedMinutes > 0 && s?.actualMinutes > 0) {
+      // ⚠ Not a late estimate: set partway through, it already knows part of
+      // the answer, and would drag the multiplier towards 1 for no reason.
+      if (s?.plannedMinutes > 0 && s?.actualMinutes > 0 && !s?.plannedLate) {
         out.push({ planned: s.plannedMinutes, actual: s.actualMinutes });
       }
     }

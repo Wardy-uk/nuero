@@ -10,6 +10,7 @@
  * POST /api/session/pause      — { reason?, source? }
  * POST /api/session/resume
  * POST /api/session/interrupt  — note something landed, without stopping the clock
+ * POST /api/session/estimate   — { minutes } — his own length, settable mid-session
  * POST /api/session/finish     — { completeTask? }
  * POST /api/session/abandon
  *
@@ -126,6 +127,26 @@ router.post('/shrink', (req, res) => {
   }
 });
 
+/**
+ * POST /api/session/estimate — { minutes } — Nick's own length for the running
+ * session. Late estimates are accepted and marked (`plannedLate`), never
+ * refused; see `focus-session.setEstimate`.
+ */
+router.post('/estimate', (req, res) => {
+  try {
+    const result = session.setEstimate(req.body?.minutes);
+    if (result.ok) return res.json(result);
+    // Said in words: the panel prints `error`, and a bare "400 Bad Request"
+    // over a number he just typed tells him nothing.
+    const error = result.reason === 'no-session'
+      ? 'No session is running to estimate.'
+      : 'That needs to be a number of minutes, up to a working week.';
+    res.status(400).json({ ...result, error });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /** POST /api/session/next-step — set or clear the concrete next action. */
 router.post('/next-step', (req, res) => {
   try {
@@ -189,6 +210,7 @@ router.post('/finish', (req, res) => {
       closeout = signals.estimateCloseout({
         plannedMinutes: result.session?.plannedMinutes ?? null,
         plannedAssumed: result.session?.plannedAssumed !== false,
+        plannedLate: result.session?.plannedLate === true,
         actualMinutes: result.actualMinutes,
       });
     } catch { /* bookkeeping; the finish stands */ }

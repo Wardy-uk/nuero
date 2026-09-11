@@ -121,6 +121,29 @@ test('estimates Nick set are judged, and mixed history keeps the two apart', () 
   assert.equal(r.estimates.over, 1);
 });
 
+test('⚠ an estimate set partway through is left out of the read, and counted', () => {
+  // A number given ten minutes in already knows part of the answer. Scoring it
+  // as a forecast would flatter every late estimate.
+  const history = [
+    session({ id: 'a', plannedAssumed: false, plannedMinutes: 60, actualMinutes: 45 }),
+    session({ id: 'b', plannedAssumed: false, plannedMinutes: 60, actualMinutes: 62 }),
+    session({ id: 'c', plannedAssumed: false, plannedMinutes: 30, actualMinutes: 90 }),
+    session({ id: 'd', plannedAssumed: false, plannedLate: true, plannedMinutes: 20, actualMinutes: 21 }),
+  ];
+  const r = signals.assess({ history, anchor: NOW });
+  assert.equal(r.estimates.judged, 3, 'the late one is not judged');
+  assert.equal(r.estimates.lateExcluded, 1, 'the exclusion is stated, not silent');
+  assert.equal(r.estimates.close, 1, 'only b — the late 20-vs-21 must not add a "called it"');
+});
+
+test('a late estimate closes out as a fact, never as called-it or over', () => {
+  const out = signals.estimateCloseout({ plannedMinutes: 20, plannedAssumed: false, plannedLate: true, actualMinutes: 21 });
+  assert.equal(out.kind, 'late-estimate');
+  assert.equal(out.diffMinutes, null);
+  assert.ok(!/called|over|under/i.test(out.say), out.say);
+  assert.match(out.say, /partway/);
+});
+
 test('too few real estimates refuses rather than reporting a thin split', () => {
   const history = [
     session({ id: 'a', plannedAssumed: false, plannedMinutes: 60, actualMinutes: 45 }),

@@ -160,6 +160,7 @@ function startsFrom(history, live) {
       taskId: live.taskId ?? null,
       plannedMinutes: live.plannedMinutes ?? null,
       plannedAssumed: Boolean(live.plannedAssumed),
+      plannedLate: Boolean(live.plannedLate),
       actualMinutes: null,
       shrinks: live.shrinks || 0,
       originalText: live.originalText || null,
@@ -183,6 +184,7 @@ function startsFrom(history, live) {
       taskId: s.taskId ?? null,
       plannedMinutes: s.plannedMinutes ?? null,
       plannedAssumed: Boolean(s.plannedAssumed),
+      plannedLate: Boolean(s.plannedLate),
       actualMinutes: Number.isFinite(s.actualMinutes) ? s.actualMinutes : null,
       shrinks: s.shrinks || 0,
       originalText: s.originalText || null,
@@ -307,11 +309,16 @@ function assessShrinks(starts, anchor) {
 function assessEstimates(starts) {
   const judged = [];
   let assumed = 0;
+  let late = 0;
 
   for (const s of starts) {
     if (s.live) continue; // still running — no actual yet
     if (!(s.plannedMinutes > 0) || !(s.actualMinutes > 0)) continue;
     if (s.plannedAssumed) { assumed += 1; continue; }
+    // ⚠ An estimate given partway through is a reading of work already under
+    // way, not a forecast — counting it would flatter every late guess. Left
+    // out and COUNTED, the same way the assumed ones are.
+    if (s.plannedLate) { late += 1; continue; }
     judged.push(s);
   }
 
@@ -323,6 +330,7 @@ function assessEstimates(starts) {
         : 'no finished sessions yet where you set the estimate',
       judged: judged.length,
       assumedExcluded: assumed,
+      lateExcluded: late,
       under: 0,
       close: 0,
       over: 0,
@@ -348,6 +356,7 @@ function assessEstimates(starts) {
     judged: judged.length,
     // Reported, never hidden: on most days the excluded majority IS the finding.
     assumedExcluded: assumed,
+    lateExcluded: late,
     under,
     close,
     over,
@@ -443,7 +452,7 @@ function assessTriage(events, anchor) {
  * information about how long the work takes, which is the only thing this is
  * for. `kind` is structured so a caller can style it without parsing the words.
  */
-function estimateCloseout({ plannedMinutes = null, plannedAssumed = true, actualMinutes = null } = {}) {
+function estimateCloseout({ plannedMinutes = null, plannedAssumed = true, plannedLate = false, actualMinutes = null } = {}) {
   // ⚠ ZERO IS A MEASUREMENT, NOT AN ABSENCE. A session closed inside a minute
   // rounds to 0 and is a real, and for this surface a rather important, thing
   // to have happened — the whole premise is that small starts count. Only an
@@ -458,6 +467,16 @@ function estimateCloseout({ plannedMinutes = null, plannedAssumed = true, actual
     return {
       kind: 'no-estimate',
       say: `${spent}. There was no estimate of yours to compare that with — worth setting one next time.`,
+      diffMinutes: null,
+    };
+  }
+
+  // Set partway through: the number is his, but it was not a forecast, so it
+  // is neither "called it" nor "over". Says what happened and nothing more.
+  if (plannedLate) {
+    return {
+      kind: 'late-estimate',
+      say: `${spent} against the ${plannedMinutes} you set partway through.`,
       diffMinutes: null,
     };
   }
