@@ -64,6 +64,9 @@ const DOORS = new Set([
   'mobile',          // the v1 snapshot + sync contract
   'weekly-target',   // read + set his own number for the week (Review → Week)
   'friction',        // what got in his way, from things he did. Read-only in practice.
+  'signals',         // where he is for the top bar (room / zone / town) + sense
+                     // health. GET-only router: no writes, no credentials, no body data.
+                     // ⚠ The town is a place name, never the geocoded ADDRESS.
   // ⚠ `health` is deliberately NOT a door: body data behind an unauthenticated
   // desk screen. The Today screen names it as not shown here rather than failing.
   // ⚠ `journal`, `vault`, `vault-hygiene` and `plaud` were doors until 11 Sep 2026

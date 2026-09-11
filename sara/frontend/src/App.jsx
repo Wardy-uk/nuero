@@ -16,6 +16,7 @@ import ExitButton from './components/ExitButton';
 import LockScreen from './components/LockScreen';
 import ClockScreen from './components/ClockScreen';
 import ConnectionStatus from './components/ConnectionStatus';
+import Whereabouts from '../../shared-ui/Whereabouts';
 import { startAutoFlush } from '../../app/src/mobile/outbox';
 import './App.css';
 // ⚠ Imported AFTER the kiosk's own sheet, deliberately. `App.css` above carries
@@ -58,6 +59,8 @@ import './KioskShell.css';
 // Module scope so the hook's effect is not re-created on every render. Same
 // origin as the SPA, so `sara/backend` answers and attaches the credential.
 const fetchAttentionForField = () => fetch('/api/attention').then((r) => r.json());
+// Through sara/backend's `signals` door; a refusal or an outage renders nothing.
+const fetchWhereabouts = () => fetch('/api/signals/room').then((r) => (r.ok ? r.json() : null));
 
 function AppShell() {
   const { now } = useSaraState();
@@ -129,6 +132,7 @@ function AppShell() {
 
         <header className="app__header">
           <span className="app__brand">SARA</span>
+          <Whereabouts fetchJson={fetchWhereabouts} />
           {/* Not chrome. "This is demo data" and "nothing here is current" are
               facts about everything below, and this is the surface with nobody
               standing at it to ask. Silent when live. */}

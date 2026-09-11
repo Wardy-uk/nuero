@@ -191,3 +191,12 @@ test('⚠ doors with no kiosk screen behind them are CLOSED — vault, vault-hyg
   // positive control: the scan is not refusing everything
   assert.equal(isAllowed('/capture/feature'), true);
 });
+
+// The top bar's whereabouts (11 Sep 2026). The door is the whole `signals`
+// segment, matched exactly — never a prefix, so a neighbour cannot ride in on it.
+test('the signals door opens for the top bar, and only that exact segment', () => {
+  assert.equal(isAllowed('/signals/room'), true);
+  assert.equal(isAllowed('/signals'), true);
+  assert.equal(isAllowed('/signals-admin'), false);
+  assert.equal(isAllowed('/signalsx/room'), false);
+});

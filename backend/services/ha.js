@@ -89,6 +89,13 @@ function pickChangedAt(states, entityId) {
   return e ? (e.last_changed || e.last_updated || null) : null;
 }
 
+/** One attribute of an entity, or null. */
+function pickAttr(states, entityId, attr) {
+  const e = states.find(s => s.entity_id === entityId);
+  const v = e && e.attributes ? e.attributes[attr] : null;
+  return v == null ? null : v;
+}
+
 function isUsable(v) {
   return v && !['unavailable', 'unknown', 'none'].includes(String(v).toLowerCase());
 }
@@ -278,6 +285,14 @@ async function _haPhoneStatus(states) {
   const ssid = pick(states, E('sensor', 'ssid'));
   const connection = pick(states, E('sensor', 'connection_type'));
   const geocoded = pick(states, E('sensor', 'geocoded_location'));
+  // ⚠ The geocoded STATE is a full multi-line street address. The town is the
+  // `Locality` attribute, and a banner must only ever get the town: an address
+  // on a desk screen is a privacy leak, a town is an answer to "where is he".
+  // The Companion app writes the literal "N/A" for an attribute it has no value
+  // for, which is not a place.
+  const locality = pickAttr(states, E('sensor', 'geocoded_location'), 'Locality');
+  const geocodedUpdatedAt = pickUpdatedAt(states, E('sensor', 'geocoded_location'));
+  const geocodedAgeMs = geocodedUpdatedAt ? Date.now() - new Date(geocodedUpdatedAt).getTime() : null;
 
   // Sensors the Companion app has always reported and NEURO has never read.
   // `activity` is the CoreMotion classification — Still / Walking / Running /
@@ -310,6 +325,9 @@ async function _haPhoneStatus(states) {
     ssid: isUsable(ssid) ? ssid : null,
     connectionType: isUsable(connection) ? connection : null,
     geocodedLocation: isUsable(geocoded) ? geocoded : null,
+    geocodedLocality: isUsable(locality) && String(locality).trim().toUpperCase() !== 'N/A'
+      ? String(locality).trim() : null,
+    geocodedAgeHours: Number.isFinite(geocodedAgeMs) ? Math.round((geocodedAgeMs / 3600000) * 10) / 10 : null,
 
     // Motion and attention. Every one is null when absent rather than a
     // stand-in — "we did not read it" and "he is not moving" are opposite facts

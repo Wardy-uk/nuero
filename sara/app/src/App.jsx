@@ -10,6 +10,11 @@ import Field from '../../shared-ui/Field';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
 import { PRIMARY, SECONDARY, TABS, VALID_TABS, DEFAULT_TAB, revealsSecondary } from '../../shared-ui/tabs';
 import { speechRecognitionCtor } from './speechRecognition';
+import Whereabouts from '../../shared-ui/Whereabouts';
+
+// Straight to NEURO with the PIN, like every other phone view. Module scope so
+// the header's poll is not re-armed on every render.
+const fetchWhereabouts = () => apiFetch('/api/signals/room');
 
 // ⚠ "Voice" opens Capture straight into recording, so where nothing can take
 // dictation (the Pi, the laptop's Electron window) it was a tab that did nothing.
@@ -251,6 +256,7 @@ export default function App() {
       )}
       <header className="app__header">
         <span className="app__brand">SARA</span>
+        <Whereabouts fetchJson={fetchWhereabouts} />
         <span className="app__sub">mobile</span>
         {runtime.buildLabel && <span className="app__build">{runtime.buildLabel}</span>}
         <button

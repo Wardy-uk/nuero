@@ -39,19 +39,20 @@ router.get('/room', async (req, res) => {
     const whereabouts = require('../services/whereabouts');
     const r = await roomPresence.read();
 
-    // The town-scale answer, for when the house-scale one cannot see him — the
-    // office zone is 150m wide and twenty miles away, so unlike `home` it has no
-    // boundary problem and can be trusted.
+    // The town-scale answers, for when the house-scale one cannot see him — a
+    // named zone (the office zone is 150m wide and twenty miles away, so unlike
+    // `home` it has no boundary problem), else the phone's town once he is out.
+    // `fromPhone` drops either once it is stale.
     let zone = null;
+    let away = null;
     try {
       const ha = require('../services/ha');
       if (ha.isConfigured()) {
-        const phone = await ha.getPhoneStatus();
-        zone = phone && phone.presence ? phone.presence : null;
+        ({ zone, away } = whereabouts.fromPhone(await ha.getPhoneStatus()));
       }
     } catch { /* a missing zone is simply a coarser answer, never an error */ }
 
-    const w = whereabouts.describe(r, zone);
+    const w = whereabouts.describe(r, zone, away);
     return res.json({ ...r, label: w.label, kind: w.kind, known: w.known, why: w.why });
 
   } catch (e) {
