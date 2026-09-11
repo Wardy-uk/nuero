@@ -40,6 +40,43 @@ test('no greeting for where he already was when the backend restarted', () => {
   assert.equal(later.arrival, null);
 });
 
+// Replays the first live test (11 Sep 2026): sat still in the study, the fingerprint
+// called another room sure for 16s and came back — and he was greeted "welcome back".
+function walk(steps, bootedAt = 0) {
+  let state = {};
+  const out = [];
+  for (const [t, room, since] of steps) {
+    const r = nextArrival(state, clock(room, since, t), t, { bootedAt });
+    state = r.state;
+    out.push(r);
+  }
+  return out;
+}
+
+test('a 16-second wobble to another room and back is NOT an arrival', () => {
+  const T = 1000000;
+  const rs = walk([
+    [T + 30000, 'study', T],               // settled in the study
+    [T + 40000, 'bedroom', T + 40000],     // the wobble begins
+    [T + 56000, 'study', T + 56000],       // 16s later, back
+    [T + 90000, 'study', T + 56000],       // held well past the arrival window
+  ]);
+  assert.equal(rs[0].arrival, 'study', 'the first settle is an arrival');
+  assert.equal(rs[3].arrival, null);
+  assert.match(rs[3].suppressed, /back after 16s/);
+});
+
+test('a real walk out and back (~56s) IS an arrival', () => {
+  const T = 1000000;
+  const rs = walk([
+    [T + 30000, 'study', T],
+    [T + 40000, 'kitchen', T + 40000],
+    [T + 96000, 'study', T + 96000],
+    [T + 125000, 'study', T + 96000],
+  ]);
+  assert.equal(rs[3].arrival, 'study');
+});
+
 test('no sure room, no arrival', () => {
   assert.equal(nextArrival({ announcedSince: null }, { room: null, since: null, sustained: null }, 5, {}).arrival, null);
 });

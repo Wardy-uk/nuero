@@ -38,18 +38,21 @@ const RECENT_KEEP = 4;
 const WORK_START_MINUTES = 8 * 60;
 const WORK_END_MINUTES = 18 * 60;
 
+// ⚠ Every opener uses his name (Nick, 11 Sep 2026, after "Welcome back." on the
+// first live test: "it didn't use my name"). A greeting without it reads as an
+// announcement to the room rather than SARA speaking to him. Pinned by a test.
 const OPENERS = {
-  morning: ['Morning, Nick.', 'Morning.', 'Good morning, Nick.', 'Morning. Here we go.'],
-  afternoon: ['Afternoon, Nick.', 'Afternoon.', 'Hey, Nick.'],
-  evening: ['Evening, Nick.', 'Evening.', 'Hey, Nick.'],
-  any: ['Hi, Nick.', 'There you are.'],
+  morning: ['Morning, Nick.', 'Good morning, Nick.', 'Morning, Nick. Here we go.'],
+  afternoon: ['Afternoon, Nick.', 'Good afternoon, Nick.', 'Hey, Nick.'],
+  evening: ['Evening, Nick.', 'Good evening, Nick.', 'Hey, Nick.'],
+  any: ['Hi, Nick.', 'There you are, Nick.'],
   // Only once he has already been greeted today — "welcome back" to the first
   // arrival of the day is a small lie, and small lies are what make a voice grate.
-  again: ['Welcome back.', 'Hello again.', 'Back again.'],
+  again: ['Welcome back, Nick.', 'Hello again, Nick.', 'Back again, Nick.'],
 };
 
 const ROOM_OPENERS = {
-  study: ['Back at the desk.'],
+  study: ['Back at the desk, Nick.'],
 };
 
 const LEADS = ['Top of the list:', 'First thing worth knowing:', 'Most pressing:', 'One thing:', 'Heads up:'];

@@ -71,6 +71,11 @@ test('"welcome back" is only offered once he has been greeted today', () => {
   assert.ok([...again].some((o) => g.OPENERS.again.includes(o)));
 });
 
+test('every opener uses his name', () => {
+  const all = [...Object.values(g.OPENERS).flat(), ...Object.values(g.ROOM_OPENERS).flat()];
+  for (const o of all) assert.match(o, /\bNick\b/, `"${o}" does not say his name`);
+});
+
 test('work hours are a working day, 08:00 to 18:00', () => {
   assert.equal(g.isWorkHours(at(7, 59), true), false);
   assert.equal(g.isWorkHours(at(8, 0), true), true);

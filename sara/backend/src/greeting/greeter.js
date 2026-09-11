@@ -40,6 +40,12 @@ const pending = require('./pending');
 const ARRIVAL_MS = 25 * 1000;
 const WARMUP_MS = 60 * 1000;
 const TICK_MS = 5 * 1000;
+// ⚠ A RETURN ONLY COUNTS AFTER A REAL ABSENCE. Measured 11 Sep 2026 on the first
+// live test: with Nick sat still in the study, the fingerprint called another room
+// `sure` for 16 SECONDS and came back, and the detector greeted him "welcome back"
+// for an arrival that never happened. His real walk out and back was ~56s, so 45s
+// sits between the wobble and the walk.
+const MIN_AWAY_MS = 45 * 1000;
 
 /** "living-room=ha:media_player.x,study=sensor" -> Map. PURE. Bad entries are dropped. */
 function parseSpeakers(raw) {
@@ -55,22 +61,39 @@ function parseSpeakers(raw) {
 
 /**
  * Has he just arrived somewhere? PURE.
- * @param {{announcedSince:number|null}} state
+ * @param {{announcedSince, room, since, leftAt}} state  from the previous call
  * @param {{room, since, sustained}} clock  from sustainedClock
  */
-function nextArrival(state, clock, now, { arrivalMs = ARRIVAL_MS, bootedAt = 0, warmupMs = WARMUP_MS } = {}) {
-  const announcedSince = state ? state.announcedSince : null;
-  if (!clock || !clock.sustained || clock.sustained.ms < arrivalMs) return { state: { announcedSince }, arrival: null };
-  if (clock.since === announcedSince) return { state: { announcedSince }, arrival: null };
-  const next = { announcedSince: clock.since };
+function nextArrival(state, clock, now, {
+  arrivalMs = ARRIVAL_MS, bootedAt = 0, warmupMs = WARMUP_MS, minAwayMs = MIN_AWAY_MS,
+} = {}) {
+  const s = { announcedSince: null, room: null, since: null, leftAt: {}, ...(state || {}) };
+  const next = { ...s, leftAt: { ...s.leftAt } };
+  const room = clock ? clock.room : null;
+  const since = clock ? clock.since : null;
+
+  // When he LEFT a room is when the next room began — so a wobble away and back
+  // is measured as the short absence it was.
+  if (room !== s.room && s.room != null) next.leftAt[s.room] = since != null ? since : now;
+  next.room = room;
+  next.since = since;
+
+  if (!clock || !clock.sustained || clock.sustained.ms < arrivalMs) return { state: next, arrival: null };
+  if (since === s.announcedSince) return { state: next, arrival: null };
+
+  next.announcedSince = since;
   if (now - bootedAt < warmupMs) return { state: next, arrival: null, suppressed: 'warm-up' };
-  return { state: next, arrival: clock.room };
+  const left = s.leftAt[room];
+  if (left != null && since - left < minAwayMs) {
+    return { state: next, arrival: null, suppressed: `back after ${Math.round((since - left) / 1000)}s — not an arrival` };
+  }
+  return { state: next, arrival: room };
 }
 
 function createGreeter({ env = process.env, fetchImpl = (...a) => fetch(...a), log = console } = {}) {
   const speakers = parseSpeakers(env.SARA_GREET_SPEAKERS);
   const bootedAt = Date.now();
-  const st = { lastRoom: null, room: null, since: null, announcedSince: null };
+  const st = { lastRoom: null, room: null, since: null, arrival: {} };
   let timer = null;
 
   async function claim(room) {
@@ -148,9 +171,9 @@ function createGreeter({ env = process.env, fetchImpl = (...a) => fetch(...a), l
     st.room = clock.room;
     st.since = clock.since;
 
-    const { state, arrival, suppressed } = nextArrival({ announcedSince: st.announcedSince }, clock, nowMs, { bootedAt });
-    st.announcedSince = state.announcedSince;
-    if (suppressed) log.log(`[greeter] ${clock.room}: arrival during warm-up — not greeting`);
+    const { state, arrival, suppressed } = nextArrival(st.arrival, clock, nowMs, { bootedAt });
+    st.arrival = state;
+    if (suppressed) log.log(`[greeter] ${clock.room}: not greeting — ${suppressed}`);
     if (arrival && speakers.has(arrival)) return deliver(arrival);
     return null;
   }
@@ -171,4 +194,4 @@ function createGreeter({ env = process.env, fetchImpl = (...a) => fetch(...a), l
   return { start, stop, tick, deliver, speakers, state: st };
 }
 
-module.exports = { createGreeter, parseSpeakers, nextArrival, ARRIVAL_MS, WARMUP_MS };
+module.exports = { createGreeter, parseSpeakers, nextArrival, ARRIVAL_MS, WARMUP_MS, MIN_AWAY_MS };
