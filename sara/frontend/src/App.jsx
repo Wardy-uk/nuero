@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { SaraStateProvider, useSaraState } from './state/saraState';
 import { useDisplayState } from './state/useDisplayState';
 import { PRIMARY, SECONDARY, TABS, DEFAULT_TAB, revealsSecondary } from '../../shared-ui/tabs';
+import { speechRecognitionCtor } from '../../app/src/speechRecognition';
+
+// ⚠ "Voice" opens Capture straight into recording, so where nothing can take
+// dictation (the Pi, the laptop's Electron window) it was a tab that did nothing.
+// Hidden from the menu only — the id stays valid, so a notification routed to it
+// still lands on Capture rather than falling through.
+const canShowTab = (t) => t.id !== 'voice' || Boolean(speechRecognitionCtor());
 import Field from '../../shared-ui/Field';
 import { FieldCover } from '../../shared-ui/FieldCover';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
@@ -144,7 +151,7 @@ function AppShell() {
             bare `hidden` attribute. Without it this row renders permanently
             open. */}
         <nav className="app__nav app__nav--more" aria-label="Everything else" hidden={!moreVisible}>
-          {SECONDARY.map((t) => (
+          {SECONDARY.filter(canShowTab).map((t) => (
             <button
               key={t.id}
               type="button"

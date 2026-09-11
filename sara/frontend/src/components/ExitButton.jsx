@@ -22,12 +22,22 @@ import './ExitButton.css';
 // a stray palm must not close SARA. Cancel is the wider of the two, because
 // the safe answer should be the easier one to hit.
 export default function ExitButton({ variant = 'chrome' }) {
-  const [phase, setPhase] = useState('idle'); // idle | confirm | closing
+  const [phase, setPhase] = useState('idle'); // idle | confirm | closing | cannot
+  const [cannot, setCannot] = useState(null);
 
   async function quit() {
     setPhase('closing');
     try {
-      await fetch('/api/kiosk/exit', { method: 'POST' });
+      const res = await fetch('/api/kiosk/exit', { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      // ⚠ The backend now says when it could not close anything (the browser
+      // runs on another Pi). "Closing…" sitting there for ever over a screen
+      // that never closes read as SARA hanging.
+      if (body.ok === false) {
+        setCannot(body.error || 'SARA can’t close this screen from here.');
+        setPhase('cannot');
+        return;
+      }
     } catch {
       window.close();
     }
@@ -36,6 +46,16 @@ export default function ExitButton({ variant = 'chrome' }) {
   if (variant === 'nav') {
     return (
       <div className="exitnav">
+        {phase === 'cannot' && (
+          <div className="exitnav__confirm" role="status">
+            <span className="exitnav__ask">{cannot}</span>
+            <div className="exitnav__acts">
+              <button type="button" className="exitnav__act exitnav__act--no" onClick={() => setPhase('idle')}>
+                OK
+              </button>
+            </div>
+          </div>
+        )}
         {phase === 'confirm' && (
           <div className="exitnav__confirm" role="dialog" aria-label="Close SARA?">
             <span className="exitnav__ask">Close SARA?</span>
@@ -68,6 +88,14 @@ export default function ExitButton({ variant = 'chrome' }) {
     return (
       <div className="exit exit--status" role="status">
         Closing SARA…
+      </div>
+    );
+  }
+
+  if (phase === 'cannot') {
+    return (
+      <div className="exit exit--status" role="status" onClick={() => setPhase('idle')}>
+        {cannot}
       </div>
     );
   }

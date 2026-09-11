@@ -9,6 +9,13 @@ import actionSurfaces from '../../../shared/action-surfaces.cjs';
 import Field from '../../shared-ui/Field';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
 import { PRIMARY, SECONDARY, TABS, VALID_TABS, DEFAULT_TAB, revealsSecondary } from '../../shared-ui/tabs';
+import { speechRecognitionCtor } from './speechRecognition';
+
+// ⚠ "Voice" opens Capture straight into recording, so where nothing can take
+// dictation (the Pi, the laptop's Electron window) it was a tab that did nothing.
+// Hidden from the menu only — the id stays valid, so a notification routed to it
+// still lands on Capture rather than falling through.
+const canShowTab = (t) => t.id !== 'voice' || Boolean(speechRecognitionCtor());
 import DeploymentGuard from './components/DeploymentGuard';
 import { readRuntime } from './runtime';
 import './App.css';
@@ -303,7 +310,7 @@ export default function App() {
           is display:flex, which beats the bare `hidden` attribute. Without it
           the secondary row renders permanently open. */}
       <nav className="app__nav app__nav--more" aria-label="Everything else" hidden={!moreVisible}>
-        {SECONDARY.map((t) => (
+        {SECONDARY.filter(canShowTab).map((t) => (
           <button
             key={t.id}
             type="button"

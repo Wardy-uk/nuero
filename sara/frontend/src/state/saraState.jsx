@@ -196,37 +196,12 @@ function buildUrgentSnapshot(model) {
   };
 }
 
-async function maybeNotifyUrgentChange(snapshot, onOpen) {
-  if (!snapshot || !isWindowBackgrounded()) return;
-
-  if (snapshot.top.viewId) onOpen(snapshot.top.viewId, snapshot.top.viewContext || null);
-  window.saraNative?.attention?.(true);
-
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'default') {
-    try {
-      await Notification.requestPermission();
-    } catch {
-      return;
-    }
-  }
-  if (Notification.permission === 'granted') {
-    try {
-      const notification = new Notification('SARA needs your eyes', {
-        body: snapshot.top.detail ? `${snapshot.top.title} — ${snapshot.top.detail}` : snapshot.top.title,
-        tag: `sara-urgent-${snapshot.top.key}`,
-        renotify: true,
-      });
-      notification.onclick = () => {
-        window.focus();
-        if (snapshot.top.viewId) onOpen(snapshot.top.viewId, snapshot.top.viewContext || null);
-        window.saraNative?.attention?.(true);
-      };
-    } catch {
-      // Notification support varies between shells; attention() still covers desktop.
-    }
-  }
-}
+// ⚠ `maybeNotifyUrgentChange` USED TO LIVE HERE (removed 11 Sep 2026). It raised a
+// desktop Notification ("SARA needs your eyes") off this file's own `/api/state`
+// model — a second opinion about urgency, beside NEURO's attention feed that every
+// screen now renders — requested notification permission on its own with no tap,
+// and navigated to legacy view ids no screen mounts. SARA interrupting belongs to
+// NEURO's governor and the attention lifecycle, not to a poll in the kiosk.
 
 export function SaraStateProvider({ children }) {
   const [status, setStatus] = useState('connecting'); // connecting | connected | disconnected
@@ -287,7 +262,6 @@ export function SaraStateProvider({ children }) {
         viewContext: nextUrgentSnapshot.top.viewContext || null,
         createdAt: Date.now(),
       });
-      void maybeNotifyUrgentChange(nextUrgentSnapshot, openUrgentViewRef.current);
     }
 
     hasHydratedStateRef.current = true;

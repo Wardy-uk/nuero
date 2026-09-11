@@ -7,15 +7,36 @@
 // restores the Pi taskbar, so killing Chromium lets the launcher exit cleanly and the
 // user lands back on the Pi desktop. This backend (PM2 sara-backend) keeps running, so
 // the kiosk can be relaunched from the desktop icon.
+//
+// ⚠ THE BROWSER IS NOT ALWAYS ON THIS HOST (11 Sep 2026). The desk screen moved to
+// pi-dev on 19 Jun and loads this backend over the tailnet, so Exit ran pkill on
+// pi5 — where no browser runs — answered ok:true, and nothing closed. It now
+// checks first and says so, rather than reporting a close that did not happen.
 const express = require('express');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 
 const router = express.Router();
 
+function browserRunsHere() {
+  try {
+    execSync('pgrep -x chromium || pgrep -x chromium-browser', { stdio: 'ignore', timeout: 2000 });
+    return true;
+  } catch {
+    return false; // no match, or no pgrep (off-Pi) — either way nothing here to close
+  }
+}
+
 router.post('/exit', (_req, res) => {
+  if (!browserRunsHere()) {
+    return res.json({
+      ok: false,
+      reason: 'browser-elsewhere',
+      error: 'This screen’s browser runs on another machine, so SARA can’t close it from here.',
+    });
+  }
   // Best-effort across Chromium binary names. Detached and fire-and-forget so it can
-  // never take this process down; errors (e.g. running off-Pi where pkill is absent)
-  // are ignored. Reply first — the browser making the request is about to be closed.
+  // never take this process down. Reply first — the browser making the request is
+  // about to be closed.
   res.json({ ok: true });
   exec(
     'pkill -x chromium; pkill -x chromium-browser; pkill -f "/usr/lib/chromium/chromium"',
