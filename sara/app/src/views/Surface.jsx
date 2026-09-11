@@ -312,7 +312,26 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
         // sending them there would be a sentence NEURO cannot honour.
         setBusy(true);
         try {
-          await apiFetch(`/api/session/${intent.action}`, { method: 'POST', body: JSON.stringify({}) });
+          if (intent.action === 'start') {
+            // "I'm on it" names what the session is about; the brain composed
+            // the words. No `force` — nothing already running is switched
+            // without Nick saying so (the brain does not offer this sentence
+            // while a session runs, so a 409 here is a race and is left alone).
+            await apiFetch('/api/session/start', {
+              method: 'POST',
+              body: JSON.stringify({ text: intent.text, source: 'attention' }),
+            });
+            // Told, not moved: the record keeps its state and gains the
+            // evidence. A failure here must not read as the start failing.
+            if (intent.recordId) {
+              await apiFetch(`/api/attention/records/${intent.recordId}/act`, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'start' }),
+              }).catch(() => {});
+            }
+          } else {
+            await apiFetch(`/api/session/${intent.action}`, { method: 'POST', body: JSON.stringify({}) });
+          }
           await load({ quiet: true });
         } catch { /* left on screen — a card that vanishes on an error is one
                      Nick believes he has dealt with */ }

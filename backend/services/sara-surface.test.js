@@ -625,6 +625,37 @@ test('⚠ "Make it smaller" LEADS on the session surface', () => {
   assert.equal(sentences(r)[0], 'Make it smaller');
 });
 
+test('⚠ a startable card LEADS with "I’m on it" and keeps "That’s done" inside the cap', () => {
+  // Nick, 11 Sep 2026: on an escalation the old order cut "That's done" off
+  // entirely, and there was no way to say he had picked it up.
+  const esc = card({
+    type: 'escalation', title: 'NT-30940 — Re: Formal Complaint', tab: 'surface',
+    actionHint: 'Open Queue → Escalations',
+    actions: ['acknowledge', 'defer', 'open', 'start', 'complete'],
+  });
+  const r = compose(payload({ context: { activity: 'firefighting' }, primary: esc }));
+  assert.deepEqual(sentences(r), [
+    'I’m on it', 'Open Queue → Escalations', 'Not now — an hour', 'That’s done', 'Show me everything',
+  ]);
+  const onIt = r.utterances[0].intent;
+  assert.equal(onIt.kind, 'session', 'start lives on /api/session, not the lifecycle');
+  assert.equal(onIt.action, 'start');
+  assert.equal(onIt.text, 'NT-30940 — Re: Formal Complaint');
+  assert.equal(onIt.recordId, 'rec_1');
+
+  // A session already running: never offered (no silent switch, no kiosk
+  // confirm) — and "That's done" is still there.
+  const busy = compose(payload({ context: { activity: 'firefighting' }, primary: esc }),
+    { session: { taskTitle: 'Something else', elapsedMinutes: 12, plannedMinutes: 30 } });
+  assert.ok(!sentences(busy).includes('I’m on it'));
+  assert.ok(sentences(busy).includes('That’s done'));
+
+  // Negative: `start` must be EXPLICITLY allowed. A card without it keeps the
+  // original order, and an empty action set never infers one.
+  assert.ok(!sentences(compose(payload({ primary: card() }))).includes('I’m on it'));
+  assert.ok(!sentences(compose(payload({ primary: card({ actions: [] }) }))).includes('I’m on it'));
+});
+
 test('⚠ "Show me everything" is always present, and always last', () => {
   // The escape hatch is non-negotiable: Nick's failure mode is avoidance, and a
   // thing he cannot find is worse than a menu he does not need.
@@ -662,7 +693,7 @@ test('⚠ session verbs are `session` intents, never `act` ones', () => {
   // the bounding rule exists to prevent. Caught by reading the routes rather
   // than assuming the two verb sets matched.
   const LIFECYCLE = new Set(['acknowledge', 'defer', 'open', 'start', 'complete', 'dismiss']);
-  const SESSION = new Set(['shrink', 'step-away', 'finish', 'pause', 'resume', 'check-in']);
+  const SESSION = new Set(['start', 'shrink', 'step-away', 'finish', 'pause', 'resume', 'check-in']);
 
   const r = compose(payload({ context: { activity: 'in-focus-session' }, primary: card() }), {
     session: { taskTitle: 'Succession plan', elapsedMinutes: 5, plannedMinutes: 30 },

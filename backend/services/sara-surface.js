@@ -738,22 +738,52 @@ function utterancesFor(payload, surface, session) {
   // The working surfaces — steady, pre-meeting, firefighting, ritual — all hang
   // off the primary card, so they share one vocabulary.
   if (actionable) {
-    if (p.actionHint) out.push(say(p.actionHint, { kind: 'navigate', tab: p.tab || 'surface', recordId: p.recordId, action: 'open' }));
-    else out.push(say('Open it', { kind: 'navigate', tab: p.tab || 'surface', recordId: p.recordId, action: 'open' }));
+    const openIt = p.actionHint
+      ? say(p.actionHint, { kind: 'navigate', tab: p.tab || 'surface', recordId: p.recordId, action: 'open' })
+      : say('Open it', { kind: 'navigate', tab: p.tab || 'surface', recordId: p.recordId, action: 'open' });
 
     // ⚠ "Not now" carries HOW LONG and WHY. A snooze whose length SARA picked is
     // one he has no reason to trust, and the reason is what makes a thing put
     // off three times for `too-big` a different problem from one put off for
     // `not-now`. Both are recoverable only at the moment the gesture is made.
-    if (can('defer')) {
-      out.push(say('Not now — an hour', { kind: 'act', action: 'defer', recordId: p.recordId, minutes: 60, reason: 'not-now' }));
-      out.push(say('It’s too big', { kind: 'act', action: 'defer', recordId: p.recordId, minutes: 60 * 20, reason: 'too-big' }));
-    }
+    const notNow = can('defer')
+      ? say('Not now — an hour', { kind: 'act', action: 'defer', recordId: p.recordId, minutes: 60, reason: 'not-now' })
+      : null;
+    const tooBig = can('defer')
+      ? say('It’s too big', { kind: 'act', action: 'defer', recordId: p.recordId, minutes: 60 * 20, reason: 'too-big' })
+      : null;
     // Seen is NOT a snooze: it stops her asking again and leaves the card where
     // it is — the one state the old suppression timer could not express.
-    if (can('acknowledge')) out.push(say('Seen it', { kind: 'act', action: 'acknowledge', recordId: p.recordId }));
-    if (can('complete')) out.push(say('That’s done', { kind: 'act', action: 'complete', recordId: p.recordId }));
-    if (can('dismiss')) out.push(say('Not mine', { kind: 'act', action: 'dismiss', recordId: p.recordId }));
+    const seen = can('acknowledge') ? say('Seen it', { kind: 'act', action: 'acknowledge', recordId: p.recordId }) : null;
+    const done = can('complete') ? say('That’s done', { kind: 'act', action: 'complete', recordId: p.recordId }) : null;
+    const notMine = can('dismiss') ? say('Not mine', { kind: 'act', action: 'dismiss', recordId: p.recordId }) : null;
+
+    // ⚠ A card that can be STARTED gets a different order (Nick, 11 Sep 2026).
+    // Only four sentences fit before "Show me everything", and on an escalation
+    // the old order cut "That's done" off entirely. Starting is the hard half,
+    // so "I'm on it" LEADS — the "Make it smaller" rule — and "That's done" is
+    // kept; "It's too big" and "Seen it" fill in only if room is left, because
+    // once a session is running "Make it smaller" answers too-big better.
+    //
+    // ⚠ `start` must be EXPLICITLY allowed, never inferred from an empty action
+    // set (`can`'s legacy leniency): a sentence that starts a session on a
+    // meeting or a nudge is one NEURO would have refused to offer.
+    //
+    // ⚠ Not offered while ANY session is running. Firefighting outranks a focus
+    // session, so this surface can be up with one going, and starting would
+    // mean silently parking it or a confirm dialog on a kiosk. The server
+    // already strips `start` when the session is on THIS card.
+    // It is a `session` intent, not `act`: it lives on `/api/session/start`,
+    // and the client tells the record afterwards, as the desktop card does.
+    const startable = allowed.has('start') && !!p.title;
+    if (startable) {
+      const onIt = session
+        ? null
+        : say('I’m on it', { kind: 'session', action: 'start', recordId: p.recordId, text: p.title });
+      out.push(onIt, openIt, notNow, done, seen, tooBig, notMine);
+    } else {
+      out.push(openIt, notNow, tooBig, seen, done, notMine);
+    }
   } else {
     out.push(say('What have I got on?', { kind: 'ask', text: 'What have I got on today?' }));
     out.push(say('What am I forgetting?', { kind: 'ask', text: 'What am I forgetting?' }));

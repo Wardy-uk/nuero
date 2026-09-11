@@ -251,9 +251,29 @@ function actionsFor(card) {
   return [...out, 'dismiss'];
 }
 
-/** May a focus session be started on this card? PURE. */
+/**
+ * May a focus session be started on this card? PURE.
+ *
+ * A session needs ONE thing to be about. A todo always is one. An escalation or
+ * an urgent email is one only when the card names a single ticket or message —
+ * replying to a formal complaint is real work that gets interrupted, which is
+ * exactly what a session and its return prompt exist for. "3 unseen escalations"
+ * and "5 emails need action" are piles: a session titled with a count cannot be
+ * picked back up, so they get no button. Meetings, nudges and imports never do.
+ *
+ * ⚠ Starting sends nothing and touches neither Jira nor the mailbox; it is the
+ * same record-untouched `start` a todo gets. And with no task behind the card,
+ * finishing the session does not clear it — "Done" still does.
+ */
 function isStartable(card) {
-  return !!card && card.type === 'todo' && !!card.title;
+  if (!card || !card.title) return false;
+  const meta = card.meta && typeof card.meta === 'object' ? card.meta : {};
+  switch (card.type) {
+    case 'todo': return true;
+    case 'escalation': return !!meta.ticket_key;
+    case 'email': return meta.count === 1 && !!meta.emailId;
+    default: return false;
+  }
 }
 
 /**

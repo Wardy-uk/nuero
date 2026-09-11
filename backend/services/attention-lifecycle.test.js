@@ -108,6 +108,37 @@ test('an unsuppressable item is not offered a dismiss button it cannot honour', 
   assert.ok(!lifecycle.actionsFor({ type: 'meeting', title: 'Standup' }).includes('start'));
 });
 
+test('a single escalation or email can be started; a pile of them cannot', () => {
+  const starts = (card) => lifecycle.isStartable(card);
+
+  // ONE ticket, ONE message: real work with a name, so a session can hold it.
+  assert.ok(starts({
+    type: 'escalation', title: 'NT-30940 — Re: Formal Complaint',
+    meta: { ticket_key: 'NT-30940', escalations: [{ key: 'NT-30940' }] },
+  }));
+  assert.ok(starts({
+    type: 'email', title: 'Contract renewal',
+    meta: { count: 1, emailId: 'AAMk-1', subject: 'Contract renewal' },
+  }));
+
+  // Negatives: a count is not something to pick back up after an interruption.
+  assert.ok(!starts({ type: 'escalation', title: '3 unseen escalations', meta: { ticket_key: null } }));
+  assert.ok(!starts({ type: 'email', title: '4 emails need action', meta: { count: 4, emailId: 'AAMk-1' } }));
+  assert.ok(!starts({ type: 'email', title: '2 emails to delegate', meta: { count: 2 } }));
+  // No title, nothing to call the session.
+  assert.ok(!starts({ type: 'escalation', title: '', meta: { ticket_key: 'NT-1' } }));
+  // And the types that were never work stay without it.
+  for (const type of ['meeting', 'nudge', 'imports', 'nova_flag', 'plan_closure']) {
+    assert.ok(!starts({ type, title: 'Something', meta: { ticket_key: 'NT-1', count: 1, emailId: 'x' } }), type);
+  }
+
+  // Unsuppressable still only loses dismiss — start survives beside complete.
+  assert.deepEqual(
+    lifecycle.actionsFor({ type: 'escalation', title: 'NT-1 — x', unsuppressable: true, meta: { ticket_key: 'NT-1' } }),
+    ['acknowledge', 'defer', 'open', 'start', 'complete'],
+  );
+});
+
 // ── The notification gate (pure) ─────────────────────────────────────────────
 
 const OPEN = {
