@@ -26,10 +26,12 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
+import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -77,12 +79,24 @@ class SensorService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
 
+    // SARA's greeting on arrival (11 Sep 2026). NEURO chooses the words and whether to
+    // speak; sara/backend hands them over in the reply to a reading; this only says
+    // them. Android's own engine, because WebView speech output is unreliable.
+    private var tts: TextToSpeech? = null
+    @Volatile private var ttsReady = false
+    @Volatile private var lastGreetingId: String? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         settings = Settings(this)
         running = true
+        tts = TextToSpeech(this) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (ttsReady) tts?.language = Locale.UK
+            else Log.w(TAG, "text-to-speech unavailable (status $status) - greetings will not be spoken")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -106,6 +120,7 @@ class SensorService : Service() {
         try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
         wakeLock?.let { if (it.isHeld) it.release() }
         wifiLock?.let { if (it.isHeld) it.release() }
+        tts?.shutdown()
         thread.quitSafely()
         pushExecutor.shutdown()
         super.onDestroy()
@@ -284,6 +299,7 @@ class SensorService : Service() {
                     ?.bufferedReader()?.use { it.readText() }?.take(200) ?: ""
                 lastPush = if (code < 400) "accepted ($code)" else "REJECTED $code: $text"
                 conn.disconnect()
+                if (code < 400) speakGreeting(text)
             } catch (e: Exception) {
                 lastPush = "failed: ${e.javaClass.simpleName} ${e.message ?: ""}".trim()
             } finally {
@@ -291,6 +307,19 @@ class SensorService : Service() {
                 pushing.set(false)
             }
         }
+    }
+
+    /** Speak the greeting in a reading's reply, once per id. Never fails the push. */
+    private fun speakGreeting(replyBody: String) {
+        val greeting = Greeting.parse(replyBody) ?: return
+        if (greeting.id == lastGreetingId) return
+        lastGreetingId = greeting.id
+        lastGreeting = greeting.text
+        if (!ttsReady) {
+            Log.w(TAG, "greeting received but text-to-speech is not ready")
+            return
+        }
+        tts?.speak(greeting.text, TextToSpeech.QUEUE_FLUSH, null, greeting.id)
     }
 
     // ── Device state ────────────────────────────────────────────────────────
@@ -374,6 +403,7 @@ class SensorService : Service() {
         @Volatile var lastPush: String? = null
         @Volatile var lastPushAt: Long = 0
         @Volatile var running: Boolean = false
+        @Volatile var lastGreeting: String? = null
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, SensorService::class.java))

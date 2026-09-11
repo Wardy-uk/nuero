@@ -105,6 +105,7 @@ class MainActivity : Activity() {
             val age = (System.currentTimeMillis() - SensorService.lastPushAt) / 1000
             b.append("Last push: ").append(push).append(" (${age}s ago)\n")
         }
+        SensorService.lastGreeting?.let { b.append("Last greeting: ").append(it).append('\n') }
         val r = SensorService.lastReading
         if (r == null) {
             b.append("\nNo reading yet.")

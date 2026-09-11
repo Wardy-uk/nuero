@@ -134,4 +134,7 @@ app.listen(PORT, () => {
   // Start the bounded vault cognition-graph poller — real backlinks/related + knowledge gaps
   // for the Cognitive Convergence Graph. Idle/honest when NEURO is unreachable.
   vaultGraph.start();
+  // Greet Nick when he walks into a room that can speak. Off (and says so) unless
+  // SARA_GREET_SPEAKERS names the rooms.
+  require('./src/greeting/greeter').createGreeter().start();
 });

@@ -12,9 +12,17 @@
   gap: 0.4rem;
   background: #06080c;
   color: #7d8da5;
-  /* No pointer events: there is nothing here to interact with, and swallowing
-     taps would stop them reaching whatever is underneath when this clears. */
-  pointer-events: none;
+  /* ⚠ SWALLOWS EVERY TAP (Nick, 11 Sep 2026: "lock the tablet down so no one can
+     access it if I'm not there"). This used to be `pointer-events: none`, on the
+     reasoning that taps should reach whatever is underneath when this clears —
+     but while it is SHOWING, "underneath" is the whole live SARA shell, so anyone
+     standing at a screen in a room Nick is not in could tick his tasks, capture
+     notes or talk to SARA blind. Once the overlay clears it unmounts, so blocking
+     here costs nothing when he is actually present. Nothing to tap still holds:
+     it absorbs input, it does not invite it. */
+  pointer-events: auto;
+  touch-action: none;
+  cursor: default;
   user-select: none;
 }
 

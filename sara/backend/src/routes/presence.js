@@ -40,6 +40,7 @@ const history = require('../presence/history');
 const profiles = require('../presence/profiles');
 const { classify } = require('../presence/fingerprint');
 const { resolveRoom, displayState } = require('../presence/rooms');
+const pendingGreetings = require('../greeting/pending');
 
 profiles.load();
 
@@ -153,6 +154,11 @@ router.post('/sensor', express.json({ limit: '16kb' }), (req, res) => {
   // refusal from an acceptance will happily report into a hole for a fortnight.
   if (!r.ok) return res.status(400).json(r);
 
+  // A sensor that can speak (the study tablet) collects its room's greeting in the
+  // reply to its reading. Additive: a Pi sensor ignores the field.
+  const greeting = pendingGreetings.take(r.room);
+  const reply = greeting ? { ...r, greeting } : r;
+
   // Feed any calibration in progress. Never allowed to fail the sensor's push:
   // a bookkeeping error must not cost a reading.
   try {
@@ -161,7 +167,7 @@ router.post('/sensor', express.json({ limit: '16kb' }), (req, res) => {
   } catch (e) {
     console.warn('[presence] calibration sample skipped: ' + e.message);
   }
-  return res.json(r);
+  return res.json(reply);
 });
 
 // ── Calibration ─────────────────────────────────────────────────────────────
@@ -403,3 +409,4 @@ module.exports = router;
 module.exports.homePresence = homePresence;
 module.exports.presenceSource = presenceSource;
 module.exports.sustainedClock = sustainedClock;
+module.exports.liveVector = liveVector;
