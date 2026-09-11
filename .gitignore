@@ -44,3 +44,4 @@ sara/logs/
 # (`LimitCORE=0`, set 31 Aug 2026 after 63 dumps / 3.0 GB from one restart loop).
 core
 core.[0-9]*
+.DS_Store

@@ -262,6 +262,23 @@ router.get('/focus', async (req, res) => {
         jiraKey: t.jiraKey || null,
         text: t.text,
         priority: t.priority || 'normal',
+        // Same field, THIRD whitelist. `toTodoShape` carries moscow and
+        // estimateMinutes, /focus dropped both, and the phone's field editor
+        // then seeded every row as "none" — showing a task ranked Should as
+        // unranked, and an hour's estimate as absent. Editing against a
+        // baseline the screen invented is worse than not offering the edit.
+        //
+        // ⚠ `moscowSet` IS HIS DECISION AND `moscow` IS NOT. decorateTask
+        // overwrites `moscow` further down with classifyMoscow's reading, so
+        // by the time this leaves the route the field says what the task READS
+        // as, which for an unranked row is a value nobody chose. An editor
+        // seeding from that shows the classifier's guess as his own call, and
+        // the first Save writes the guess into the store as a decision. Same
+        // split the framing lines already use: `meta.moscow` is "you rated
+        // this a MUST", `moscow` is "reads as urgent".
+        moscowSet: t.moscow || null,
+        moscowProposed: Boolean(t.moscowProposed),
+        estimateMinutes: t.estimateMinutes == null ? null : t.estimateMinutes,
         due_date: t.due_date || null,
         source: t.source || null,
         done: t.status === 'done' ? 1 : 0,
