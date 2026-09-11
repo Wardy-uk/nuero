@@ -57,15 +57,15 @@ const DOORS = new Set([
   'tasks',           // create / patch a NEURO task
   'wins',            // the momentum ledger. Read-only in practice.
   'capture',         // notes, todos, features. The whole point of the kiosk.
-  'journal',         // prompts + save
   'standup-session',  // the ritual, both kinds
   'meeting-prep',    // read-only prep. Drafts nothing outbound.
   'chat',            // ask SARA. Tool tiers are enforced by NEURO, not here.
   'tts',             // speech, if the kiosk ever gets a speaker
   'mobile',          // the v1 snapshot + sync contract
-  'vault',           // read + write notes
-  'vault-hygiene',   // lint / link / alias — all dry-run by default upstream
-  'plaud',           // reconcile + repull
+  // ⚠ `journal`, `vault`, `vault-hygiene` and `plaud` were doors until 11 Sep 2026
+  // and no kiosk screen used any of them — vault READ AND WRITE with a key
+  // attached, behind an unauthenticated touchscreen. Access with no screen behind
+  // it is exposure, not capability. Add one back only with the screen that needs it.
   'push',            // subscription. Harmless on a kiosk; kept so the shared
                      // shell does not have to special-case which app it is in.
 ]);
@@ -138,13 +138,16 @@ function createRouter(options = {}) {
         signal: controller.signal,
       });
 
-      const text = await upstream.text();
+      // ⚠ BYTES, not text. `upstream.text()` decodes as UTF-8, which mangles any
+      // binary body — `/api/tts/speak` answers with WAV audio, and the kiosk's
+      // server-speech fallback played noise. A Buffer is exact for JSON too.
+      const body = Buffer.from(await upstream.arrayBuffer());
       // Status and body as they arrived. A screen has to be able to tell a 401
       // from a 500 from a 200 carrying `{ok:false}`, and flattening them here
       // is how it loses that.
       res.status(upstream.status);
       res.type(upstream.headers.get('content-type') || 'application/json');
-      return res.send(text);
+      return res.send(body);
     } catch (e) {
       const aborted = e.name === 'AbortError';
       return res.status(504).json({

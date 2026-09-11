@@ -71,7 +71,14 @@ function createRouter(options = {}) {
   // split gets the diary it asked for. Anything unrecognised is dropped rather
   // than forwarded — NEURO ignores it, but a proxy should not invent parameters.
   const asked = String(req.query.view || '').toLowerCase();
-  const view = ['work', 'personal', 'flip'].includes(asked) ? `?view=${asked}` : '';
+  const params = new URLSearchParams();
+  if (['work', 'personal', 'flip'].includes(asked)) params.set('view', asked);
+  // ⚠ `ask` is forwarded too (bounded, as NEURO bounds it). Dropping it meant a
+  // question asked at the kiosk streamed an answer and left the dashboard where
+  // it was — and `inbox`, a surface reachable ONLY by asking, could never show.
+  const question = String(req.query.ask || '').trim().slice(0, 200);
+  if (question) params.set('ask', question);
+  const view = params.toString() ? `?${params}` : '';
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

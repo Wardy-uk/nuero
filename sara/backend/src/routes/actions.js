@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const neuroChat = require('../integrations/neuroChat');
+const neuroConfig = require('../integrations/neuroConfig');
 
 async function postJson(path, body) {
   const availability = neuroChat.getAvailability();
@@ -13,7 +14,7 @@ async function postJson(path, body) {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-neuro-pin': availability.config.pin,
+      ...neuroConfig.authHeaders(),
     },
     body: JSON.stringify(body || {}),
     signal: AbortSignal.timeout(5000),
@@ -31,41 +32,17 @@ async function postJson(path, body) {
   return { ok: true, status: res.status, payload };
 }
 
-async function getJson(path) {
-  const availability = neuroChat.getAvailability();
-  if (!availability.available) {
-    return { ok: false, status: 503, error: availability.detail || 'NEURO bridge not configured' };
-  }
-
-  const res = await fetch(neuroChat.buildUrl(availability.config.baseUrl, path), {
-    headers: {
-      Accept: 'application/json',
-      'x-neuro-pin': availability.config.pin,
-    },
-    signal: AbortSignal.timeout(5000),
-  });
-
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return {
-      ok: false,
-      status: res.status,
-      error: payload.error || payload.detail || `HTTP ${res.status}`,
-    };
-  }
-
-  return { ok: true, status: res.status, payload };
-}
-
-router.get('/', async (_req, res) => {
-  try {
-    const result = await getJson('/api/actions');
-    if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
-    return res.json(result.payload);
-  } catch (error) {
-    return res.status(502).json({ ok: false, error: error.message });
-  }
-});
+// ⚠ `GET /` (the pending-action list), `POST /:id/approve` and `POST /:id/reject`
+// USED TO LIVE HERE, and they were the hole in this backend's whole safety model
+// (found 11 Sep 2026). `neuroProxy.js` is an allowlist that refuses `/api/actions`
+// precisely because approving a queued action SENDS EMAIL AS NICK, books meetings
+// with real attendees and chases direct reports — and this router was mounted
+// AHEAD of it, forwarding approve/reject to NEURO with SARA's own credential. On a
+// server bound to 0.0.0.0 with no auth of its own, that put "send this email" in
+// reach of anything on the tailnet. The GET listed every pending action,
+// drafted email bodies included. No screen called any of the three; they are gone
+// rather than guarded, because an unused door with a credential behind it is how
+// this happened. Approving stays on NEURO's desktop Actions panel, behind the PIN.
 
 // The LEGACY suppression path, kept for one job only: a card the kiosk cannot
 // resolve to a canonical attention record. `saraState` tries the record first
@@ -100,24 +77,5 @@ router.post('/focus/dismiss', async (req, res) => {
 // The replacement is `POST /api/attention/records/:id/act` with
 // `action: 'complete'` — see `src/routes/attention.js`.
 
-router.post('/:id/approve', async (req, res) => {
-  try {
-    const result = await postJson(`/api/actions/${req.params.id}/approve`);
-    if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
-    return res.json(result.payload);
-  } catch (error) {
-    return res.status(502).json({ ok: false, error: error.message });
-  }
-});
-
-router.post('/:id/reject', async (req, res) => {
-  try {
-    const result = await postJson(`/api/actions/${req.params.id}/reject`);
-    if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
-    return res.json(result.payload);
-  } catch (error) {
-    return res.status(502).json({ ok: false, error: error.message });
-  }
-});
 
 module.exports = router;

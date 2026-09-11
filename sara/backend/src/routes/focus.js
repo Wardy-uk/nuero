@@ -1,4 +1,5 @@
 const express = require('express');
+const neuroConfig = require('../integrations/neuroConfig');
 const router = express.Router();
 
 const neuroChat = require('../integrations/neuroChat');
@@ -12,7 +13,9 @@ async function getJson(path) {
   const res = await fetch(neuroChat.buildUrl(availability.config.baseUrl, path), {
     headers: {
       Accept: 'application/json',
-      'x-neuro-pin': availability.config.pin,
+      // Token first, PIN as fallback — the credential every other route sends.
+      // PIN-only here 401'd the Focus tab on a token-only SARA.
+      ...neuroConfig.authHeaders(),
     },
     signal: AbortSignal.timeout(5000),
   });

@@ -117,3 +117,27 @@ test('a pinned view is forwarded; anything else is dropped, not invented', async
   // A proxy passes parameters on; it does not make them up.
   assert.ok(!seen[1].includes('view='), 'an unrecognised view must not be forwarded');
 });
+
+test('⚠ a QUESTION is forwarded, so asking at the kiosk moves the dashboard', async () => {
+  // It was dropped: the answer streamed and the screen stayed put, and `inbox` —
+  // a surface reachable only by asking — could never appear on the kiosk.
+  const seen = [];
+  const fetchImpl = async (url) => { seen.push(url); return new Response(JSON.stringify(GOOD)); };
+
+  let h = await serve({ env: CONFIGURED, fetchImpl });
+  await h.get('/api/attention?ask=' + encodeURIComponent("what's in my inbox"));
+  h.server.close();
+  assert.equal(new URL(seen[0]).searchParams.get('ask'), "what's in my inbox");
+
+  h = await serve({ env: CONFIGURED, fetchImpl });
+  await h.get('/api/attention?view=work&ask=' + 'x'.repeat(500));
+  h.server.close();
+  const u = new URL(seen[1]);
+  assert.equal(u.searchParams.get('view'), 'work');
+  assert.equal(u.searchParams.get('ask').length, 200, 'bounded as NEURO bounds it');
+
+  h = await serve({ env: CONFIGURED, fetchImpl });
+  await h.get('/api/attention?ask=%20%20');
+  h.server.close();
+  assert.ok(!seen[2].includes('ask='), 'a blank question is not a question');
+});

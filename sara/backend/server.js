@@ -33,8 +33,6 @@ const stateRoute = require('./src/routes/state');
 const chatRoute = require('./src/routes/chat');
 const focusRoute = require('./src/routes/focus');
 const actionsRoute = require('./src/routes/actions');
-const emailRoute = require('./src/routes/email');
-const jiraRoute = require('./src/routes/jira');
 const neuroAuthRoute = require('./src/routes/neuroAuth');
 const telemetryRoute = require('./src/routes/telemetry');
 const inferenceRoute = require('./src/routes/inference');
@@ -63,8 +61,10 @@ app.use('/api/state', stateRoute);
 app.use('/api/chat', chatRoute);
 app.use('/api/focus', focusRoute);
 app.use('/api/actions', actionsRoute);
-app.use('/api/email', emailRoute);
-app.use('/api/jira', jiraRoute);
+// ⚠ `/api/email` and `/api/jira` were mounted here, AHEAD of the allowlist, with no
+// screen calling either: they read email-triage summaries and ticket details to
+// anything on the tailnet, and wrote (run triage, dismiss mail, mark escalations
+// seen) with SARA's credential. Removed 11 Sep 2026 — see routes/actions.js.
 app.use('/api/neuro-auth', neuroAuthRoute);
 app.use('/api/telemetry', telemetryRoute);
 app.use('/api/inference', inferenceRoute);

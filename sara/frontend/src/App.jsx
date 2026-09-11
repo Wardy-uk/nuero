@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SaraStateProvider, useSaraState } from './state/saraState';
 import { useDisplayState } from './state/useDisplayState';
 import { PRIMARY, SECONDARY, TABS, DEFAULT_TAB, revealsSecondary } from '../../shared-ui/tabs';
@@ -9,6 +9,7 @@ import ExitButton from './components/ExitButton';
 import LockScreen from './components/LockScreen';
 import ClockScreen from './components/ClockScreen';
 import ConnectionStatus from './components/ConnectionStatus';
+import { startAutoFlush } from '../../app/src/mobile/outbox';
 import './App.css';
 // ⚠ Imported AFTER the kiosk's own sheet, deliberately. `App.css` above carries
 // the THEME (`:root` tokens, the body wash) the remaining chrome is built on;
@@ -91,6 +92,13 @@ function AppShell() {
   // passthrough, which reports failure as a 200 carrying `available:false` —
   // the hook treats both that and `poolAvailable:false` as blind.
   const fieldDrive = useFieldDrive(fetchAttentionForField, active !== 'surface');
+
+  // ⚠ The capture outbox only drains when something starts it, and only the
+  // phone's shell did. So a note captured at the desk while NEURO was briefly
+  // unreachable sat queued until the next capture or a "Send now" tap — on the
+  // one screen nobody is standing at to notice. No PIN gate here, so it starts
+  // on mount.
+  useEffect(() => startAutoFlush(), []);
 
   const isSecondary = revealsSecondary(active);
   const moreVisible = navOpen || isSecondary;

@@ -52,7 +52,7 @@ function recorder(answer = { ok: true }) {
     return {
       status: 200, ok: true,
       headers: { get: () => 'application/json' },
-      text: async () => JSON.stringify(answer),
+      arrayBuffer: async () => new TextEncoder().encode(JSON.stringify(answer)).buffer,
     };
   };
   return { seen, fetchImpl };
@@ -141,7 +141,7 @@ test('⚠ the upstream STATUS survives — a refusal is not rewritten as a succe
   const fetchImpl = async () => ({
     status: 401, ok: false,
     headers: { get: () => 'application/json' },
-    text: async () => JSON.stringify({ error: 'bad pin' }),
+    arrayBuffer: async () => new TextEncoder().encode(JSON.stringify({ error: 'bad pin' })).buffer,
   });
   const { server, call } = await serve({ fetchImpl, env: CONFIGURED });
   const res = await call('/api/todos/focus');
@@ -161,4 +161,33 @@ test('an unreachable NEURO is named, not swallowed', async () => {
   server.close();
   assert.equal(res.status, 504);
   assert.equal(res.body.reason, 'unreachable');
+});
+
+test('⚠ a BINARY body arrives byte-for-byte — the TTS audio was being decoded as text', async () => {
+  // A RIFF header plus bytes that are not valid UTF-8. `upstream.text()` turned
+  // 0xFF/0xFE into U+FFFD, so the kiosk's server-speech fallback played noise.
+  const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0xff, 0xfe, 0x00, 0x80, 0xc3, 0x28]);
+  const fetchImpl = async () => ({
+    status: 200, ok: true,
+    headers: { get: () => 'audio/wav' },
+    arrayBuffer: async () => wav.buffer.slice(0),
+  });
+  const app = express();
+  app.use(express.json());
+  app.use('/api', createRouter({ fetchImpl, env: CONFIGURED }));
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/api/tts/speak`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  const got = new Uint8Array(await res.arrayBuffer());
+  server.close();
+  assert.equal(res.headers.get('content-type'), 'audio/wav');
+  assert.deepEqual([...got], [...wav]);
+});
+
+test('⚠ doors with no kiosk screen behind them are CLOSED — vault, vault-hygiene, plaud, journal', () => {
+  for (const p of ['/vault/file', '/vault-hygiene/lint', '/plaud/repull', '/journal/save']) {
+    assert.equal(isAllowed(p), false, p + ' is reachable from the kiosk again');
+  }
+  // positive control: the scan is not refusing everything
+  assert.equal(isAllowed('/capture/feature'), true);
 });
