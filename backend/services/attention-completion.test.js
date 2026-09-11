@@ -162,6 +162,54 @@ test('a vault checkbox says WHY the tick stopped here, rather than reading as no
   assert.notEqual(result.taskWhy, 'nothing to complete');
 });
 
+// ── Done on an escalation (11 Sep 2026) ─────────────────────────────────────
+
+test('⚠ Done on an escalation takes THAT ticket off the list, counts once, and leaves the rest', () => {
+  // Nick pressed Done on NT-30940 and the card came straight back: it is built
+  // from Jira's "no reply, not seen" list, and resolving the record changed
+  // neither. Nothing is written to Jira — the ticket stays open there.
+  const jira = require('./jira');
+  db.setState('escalation_seen', JSON.stringify({
+    'NT-30940': { seen: false, hasComment: false, summary: 'Re: Formal Complaint', created: '2026-09-10T17:58:42+01:00' },
+    'NT-11111': { seen: false, hasComment: false, summary: 'Another one', created: '2026-09-09T09:00:00+01:00' },
+  }));
+  const escCard = () => ({
+    kind: 'item', id: 'escalations-unseen', type: 'escalation',
+    title: 'NT-30940 — Re: Formal Complaint', urgency: 'critical', tier: 1, source: 'jira',
+    meta: { ticket_key: 'NT-30940', escalations: [{ key: 'NT-30940' }] },
+  });
+  const handledCount = () => db.getActivityForDate(require('./time-fit').dateStr(new Date()))
+    .filter((r) => r.event_type === 'escalation_handled').length;
+
+  const rec = seed(escCard());
+  const result = lifecycle.act(rec.id, 'complete');
+  assert.equal(result.ok, true);
+  assert.equal(result.handled, true);
+  assert.equal(result.taskCompleted, false, 'no task was closed, and it must not say one was');
+  assert.match(result.taskWhy, /NT-30940.*still open in Jira/);
+
+  const unseen = jira.getUnseenEscalations().map((e) => e.key);
+  assert.ok(!unseen.includes('NT-30940'), 'the card would be regenerated');
+  assert.ok(unseen.includes('NT-11111'), '⚠ a card naming one ticket must not clear another');
+  assert.equal(handledCount(), 1, 'one win for the ticket');
+
+  // Pressed again on a fresh record (a stale screen): still handled, no second win.
+  const again = lifecycle.act(seed(escCard()).id, 'complete');
+  assert.equal(again.handled, true);
+  assert.equal(handledCount(), 1, '⚠ pressing Done twice must not count twice');
+});
+
+test('an escalation the sync no longer holds is said, not claimed as handled', () => {
+  db.setState('escalation_seen', JSON.stringify({}));
+  const rec = seed({
+    kind: 'item', id: 'escalations-unseen', type: 'escalation', title: 'NT-99999 — gone', urgency: 'critical',
+    meta: { ticket_key: 'NT-99999' },
+  });
+  const result = lifecycle.act(rec.id, 'complete');
+  assert.equal(result.handled, false);
+  assert.match(result.taskWhy, /no longer in the escalation sync/);
+});
+
 test('the owner survives the round trip through the record', () => {
   // The owner is stored in the record's meta and read back out of it at action
   // time. A card is generated at one poll and acted on minutes later, so this is

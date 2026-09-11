@@ -145,9 +145,14 @@ export default function AttentionCard({
     // the second. Four resolved records for one Microsoft task in three days,
     // each one reported as a clearance. If the work is still open, say so — the
     // honest sentence is what stops Nick pressing it a fifth time.
+    // `handled`: off the list without a task closing — an escalation he dealt
+    // with, still open in Jira. Not "nothing was closed", which would send him
+    // off to press it again.
     const text = result.taskCompleted === true
       ? `Done. ${result.taskWhy || 'Task closed too.'}`
-      : `Nothing was closed — ${result.taskWhy || 'no task matched this card'}. It will come back until the work is closed where it lives.`;
+      : result.handled === true
+        ? `Done — ${result.taskWhy || 'off your list'}.`
+        : `Nothing was closed — ${result.taskWhy || 'no task matched this card'}. It will come back until the work is closed where it lives.`;
     return { ok: true, text };
   });
 

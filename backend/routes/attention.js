@@ -222,7 +222,7 @@ router.post('/records/:id/act', async (req, res) => {
     // so without this the client's immediate refresh re-renders the card that
     // was just completed and it reads as a button that did nothing. Same call
     // `/api/focus` already makes after an action completes.
-    if (taskCompleted) {
+    if (taskCompleted || result.handled) {
       try { require('../services/working-memory').invalidate('attention: card completed'); } catch { /* best effort */ }
     }
 
@@ -233,6 +233,9 @@ router.post('/records/:id/act', async (req, res) => {
       // resolving the card and closing the task are two outcomes, and a tick
       // held by the outcome-note rule must not read as a completion.
       taskCompleted,
+      // Off his list without a task closing (an escalation he dealt with). The
+      // card stops coming back; nothing is claimed about a task.
+      handled: Boolean(result.handled),
       // Held by the outcome-note rule: the tick landed and the task closes once
       // its write-up exists. Not a failure, and not a completion yet.
       taskHeld: Boolean(result.taskHeld),

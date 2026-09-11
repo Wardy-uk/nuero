@@ -436,6 +436,47 @@ function markEscalationsSeen() {
   try { require('./nudges').triggerEscalationNudge(); } catch {}
 }
 
+/**
+ * "Done" on an escalation card — Nick has dealt with his part of these tickets.
+ *
+ * Nick, 11 Sep 2026: he pressed Done on NT-30940 and the card came straight back,
+ * because the card is generated from `!hasComment && !seen` and Done changed
+ * neither — the attention record resolved, the next poll opened a fresh one.
+ *
+ * ⚠ Marks the NAMED keys only, never the whole queue (`markEscalationsSeen`'s
+ * blast radius). A card naming one ticket must not quietly clear four others.
+ *
+ * ⚠ Nothing is written to Jira. The ticket stays open where it lives, stays on
+ * the Escalations tab (`acknowledged`), and a sync never un-sees it —
+ * `Object.assign` there refreshes details and keeps `seen`. `handledAt` is kept
+ * so the difference between "seen" and "Nick said it was dealt with" survives.
+ *
+ * Returns what actually CHANGED, so the caller logs a win only for a ticket that
+ * was on his list — pressing Done twice must not count twice.
+ */
+function markEscalationsHandled(keys, at = new Date().toISOString()) {
+  const out = { marked: [], already: [], missing: [] };
+  const wanted = [...new Set((keys || []).filter(Boolean))];
+  if (!wanted.length) return out;
+
+  const raw = db.getState('escalation_seen');
+  const known = raw ? JSON.parse(raw) : {};
+  for (const key of wanted) {
+    const row = known[key];
+    if (!row) { out.missing.push(key); continue; }
+    if (row.seen) { out.already.push(key); continue; }
+    row.seen = true;
+    row.handledAt = at;
+    out.marked.push({ key, summary: row.summary || '' });
+  }
+  if (out.marked.length) {
+    db.setState('escalation_seen', JSON.stringify(known));
+    // Nothing unseen may be left for the banner to nag about.
+    try { require('./nudges').triggerEscalationNudge(); } catch {}
+  }
+  return out;
+}
+
 function getUnseenEscalationCount() {
   try {
     const raw = db.getState('escalation_seen');
@@ -584,6 +625,7 @@ module.exports = {
   fetchOpenIssuesByKey,
   syncEscalations,
   markEscalationsSeen,
+  markEscalationsHandled,
   getUnseenEscalationCount,
   getUnseenEscalations,
   decorateWithReplyState,

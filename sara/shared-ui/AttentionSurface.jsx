@@ -73,6 +73,9 @@ export function describeCompletion(res) {
     };
   }
   if (res.taskCompleted === true) return { tone: 'done', lead: 'Done — and the task is closed.', sub: why };
+  // Off his list with no task behind it — an escalation he dealt with. The
+  // ticket is still open in Jira, and `taskWhy` says so.
+  if (res.handled === true) return { tone: 'done', lead: 'Done — off your list.', sub: why };
   // ⚠ Held is its own outcome: the tick landed and the task closes when its
   // write-up exists. Rendered as "no task was closed" it read as the tick failing.
   if (res.taskHeld === true) return { tone: 'partial', lead: 'Ticked — held until its write-up is in.', sub: why };

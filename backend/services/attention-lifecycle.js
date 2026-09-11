@@ -651,6 +651,10 @@ function act(recordId, action, opts = {}) {
       // screen could not tell "held until the write-up" from "nothing was closed"
       // without matching words — and rendered the hold as a failure.
       let taskHeld = false;
+      // The work is off Nick's list somewhere that stops the card being
+      // regenerated, without a task being closed — an escalation he has dealt
+      // with. Distinct from `taskCompleted` so no screen claims a task closed.
+      let handled = false;
       let taskWhy = 'nothing to complete';
       let pendingMicrosoft = null;
       const target = completionTargetFor({
@@ -698,11 +702,35 @@ function act(recordId, action, opts = {}) {
         } catch (e) {
           taskWhy = e.message;
         }
+      } else if (row.type === 'escalation') {
+        // ⚠ Done on an escalation (Nick, 11 Sep 2026). The card is built from
+        // Jira's "no reply from you, not seen" list, so resolving the record
+        // alone brought it back on the next poll. Marking the named tickets
+        // handled takes them off that list — NOT off Jira, where they stay
+        // open — and each one newly handled is a win for today.
+        const meta = _parse(row.meta, {});
+        const keys = meta.ticket_key
+          ? [meta.ticket_key]
+          : (Array.isArray(meta.escalations) ? meta.escalations.map((e) => e && e.key) : []);
+        try {
+          const r = require('./jira').markEscalationsHandled(keys, at);
+          for (const m of r.marked) {
+            try { db.logActivity('escalation_handled', { key: m.key, summary: m.summary }); } catch { /* the handling stands */ }
+          }
+          const off = [...r.marked.map((m) => m.key), ...r.already];
+          handled = off.length > 0;
+          taskWhy = handled
+            ? `${off.join(', ')} off your list — still open in Jira`
+            : (keys.length ? `${keys.join(', ')} no longer in the escalation sync` : 'no ticket named on this card');
+        } catch (e) {
+          taskWhy = `could not mark it handled — ${e.message}`;
+        }
       }
       _event(recordId, 'resolved', at, `done — ${taskWhy}`);
       return {
         ok: true,
         taskCompleted,
+        handled,
         taskHeld,
         taskWhy,
         // Non-null when the completion still has to reach Microsoft. The caller

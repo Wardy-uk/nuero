@@ -84,6 +84,8 @@ const DONE_EVENTS = new Map([
   ['eod_done', 'ritual'],
   ['one_two_one_done', '1-2-1'],
   ['escalation_resolved', 'escalation'],
+  // Done on an escalation card: his part dealt with, ticket still open in Jira.
+  ['escalation_handled', 'escalation'],
   ['focus_session_done', 'focus session'],
 ]);
 
@@ -255,6 +257,12 @@ function readCommits(since) {
  * nobody sees, where the other way costs the number its meaning.
  */
 function _completionKey(row, data) {
+  // One ticket handled is one win a day, however the card got pressed. A new
+  // event type (11 Sep 2026) with no rows keyed any other way, so this changes
+  // no existing key.
+  if (row.event_type === 'escalation_handled' && data.key) {
+    return `escalation:handled:${data.key}:${row.date_key || ''}`;
+  }
   if (row.event_type !== 'task_done') return null;
   if (data.msId) return `task:ms:${data.msId}`;
   if (data.filePath && data.lineNumber != null) return `task:file:${data.filePath}#${data.lineNumber}`;
@@ -299,6 +307,7 @@ function collect({ since, until } = {}) {
         case 'eod_done': text = 'End of day done'; break;
         case 'one_two_one_done': text = `1-2-1 with ${data.person || data.personName || 'a report'}`; break;
         case 'escalation_resolved': text = `Escalation resolved: ${data.key || data.ticketKey || ''}`.trim(); break;
+        case 'escalation_handled': text = `Escalation handled: ${[data.key, data.summary].filter(Boolean).join(' — ') || 'ticket'}`; break;
         case 'focus_session_done': text = `Focus session: ${data.text || 'finished'}`; break;
         default: text = label;
       }
