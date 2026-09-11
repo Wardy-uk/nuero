@@ -13,8 +13,8 @@ const clock = (room, since, now) => ({ room, since, sustained: room ? { room, ms
 test('an arrival is a sure room that has held for the arrival window', () => {
   const boot = 0;
   const since = 100000;
-  assert.equal(nextArrival({ announcedSince: null }, clock('study', since, since + 10000), since + 10000, { bootedAt: boot }).arrival, null, 'too soon — walking through');
-  const r = nextArrival({ announcedSince: null }, clock('study', since, since + 26000), since + 26000, { bootedAt: boot });
+  assert.equal(nextArrival({ announcedSince: null }, clock('study', since, since + 5000), since + 5000, { bootedAt: boot }).arrival, null, 'too soon — walking through');
+  const r = nextArrival({ announcedSince: null }, clock('study', since, since + 11000), since + 11000, { bootedAt: boot });
   assert.equal(r.arrival, 'study');
   assert.equal(r.state.announcedSince, since);
 });

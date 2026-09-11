@@ -37,9 +37,13 @@ const ha = require('../telemetry/homeAssistant');
 const neuroConfig = require('../integrations/neuroConfig');
 const pending = require('./pending');
 
-const ARRIVAL_MS = 25 * 1000;
+// How long a sure room must hold before it is an arrival. Was 25s; measured on the
+// second live test the greeting landed ~60s after he walked in (≈16s for the
+// fingerprint to become sure, the 25s hold, a wobble resetting it, polling). The
+// wobble is MIN_AWAY_MS's job now, so this only has to rule out a walk-through.
+const ARRIVAL_MS = 10 * 1000;
 const WARMUP_MS = 60 * 1000;
-const TICK_MS = 5 * 1000;
+const TICK_MS = 3 * 1000;
 // ⚠ A RETURN ONLY COUNTS AFTER A REAL ABSENCE. Measured 11 Sep 2026 on the first
 // live test: with Nick sat still in the study, the fingerprint called another room
 // `sure` for 16 SECONDS and came back, and the detector greeted him "welcome back"
