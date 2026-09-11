@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNickNow, stampFor } from '../mobile/useNickNow';
 import { apiFetch } from '../api';
+import Readiness from '../../../shared-ui/Readiness.jsx';
 import { enqueue, flush, outcomeFor, pending as pendingOps, subscribe } from '../mobile/outbox';
 import Freshness from '../components/Freshness';
 import './Now.css';
@@ -571,6 +572,23 @@ export default function Now({ onNavigate }) {
   // The last finish's close-out, verbatim from the server.
   const [closeout, setCloseout] = useState(null);
 
+  // ⚠ READINESS RIDES ON /api/attention, which this screen did not read.
+  // attention.js attaches it to every payload and the Scriptable widget has
+  // rendered the dial off it for months — the PWA, the kiosk and iOS all threw
+  // it away. Its own fetch, so a failure here cannot take the session card with
+  // it: the two are independent facts about the same moment.
+  const [readiness, setReadiness] = useState(null);
+  useEffect(() => {
+    let live = true;
+    apiFetch('/api/attention')
+      .then((d) => { if (live) setReadiness(d?.readiness || null); })
+      // ⚠ Swallowed deliberately and ONLY here: Readiness renders nothing
+      // without data, so a missing dial is the correct outcome of a failed
+      // read. It never renders a zero.
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
   const reloadSession = useCallback(async () => {
     try {
       setLive({ data: await apiFetch('/api/session'), error: null });
@@ -662,6 +680,17 @@ export default function Now({ onNavigate }) {
           failure to come back, so it sits above anything new to start. */}
       {recovery && (
         <ReturnCard recovery={recovery} onChanged={sessionChanged} onFinished={finished} />
+      )}
+
+      {/* ⚠ Readiness, from the same /api/attention the Surface reads. It sits
+          BELOW the return prompt and above the working set: how recovered he is
+          informs what to take on, but it never outranks an unclosed session.
+          Renders nothing at all without data — see Readiness.jsx, which refuses
+          to draw a dial for a number it does not have. */}
+      {readiness && (
+        <div className="card now__readiness">
+          <Readiness readiness={readiness} />
+        </div>
       )}
 
       <Freshness
