@@ -4,6 +4,14 @@ import './MeetingPrep.css';
 
 // Meeting prep / calendar = glance at what's next and its prep before you walk in.
 // GET /api/meeting-prep → { meeting: {..., prep}, laterToday[], message? }
+// People HR's words for the absence where it gave any ("Annual Leave"), else the
+// bare status said as words rather than a slug.
+function awayWords(away) {
+  if (away?.reason) return away.reason;
+  const s = String(away?.status || '').replace(/_/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Booked off';
+}
+
 function fromNow(mins) {
   if (mins == null) return '';
   if (mins < 0) return 'now';
@@ -48,9 +56,32 @@ export default function MeetingPrep() {
           {prep?.attendees?.length > 0 && (
             <div className="mp__block">
               <div className="mp__h">Attendees</div>
+              {/* ⚠ Leave, from People HR — not Graph's accepted/declined, which
+                  is usually weeks stale. Three facts kept apart: booked off,
+                  checked and nothing booked (silent), and COULD NOT CHECK. The
+                  last must never render like the second, or someone on a beach
+                  reads as someone who will be in the room. */}
+              {prep.someoneAway?.length > 0 && (
+                <div className="mp__away-sum">
+                  Off that day: {prep.someoneAway.join(', ')}
+                </div>
+              )}
+              {(() => {
+                const unknown = prep.attendees.filter((a) => a.awayUnknown).length;
+                return unknown > 0 ? (
+                  <div className="mp__away-unknown-sum">
+                    Couldn&rsquo;t check leave for {unknown} of {prep.attendees.length}
+                    {' '}— don&rsquo;t read that as them being in.
+                  </div>
+                ) : null;
+              })()}
               {prep.attendees.map((a, i) => (
                 <div className="mp__person" key={i}>
-                  <div className="mp__person-name">{a.name}{a.role ? <span className="mp__role"> · {a.role}</span> : ''}</div>
+                  <div className="mp__person-name">
+                    {a.name}{a.role ? <span className="mp__role"> · {a.role}</span> : ''}
+                    {a.away && <span className="mp__away"> Off · {awayWords(a.away)}</span>}
+                    {!a.away && a.awayUnknown && <span className="mp__away-unknown"> leave not checked</span>}
+                  </div>
                   {a.recentNotes && <div className="mp__person-notes">{a.recentNotes}</div>}
                   {/* ⚠ "Noted as outstanding", NOT "Owes you".
                       These rows were extracted automatically from 232 meeting

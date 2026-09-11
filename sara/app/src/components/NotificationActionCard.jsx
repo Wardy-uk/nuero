@@ -7,12 +7,23 @@ import './NotificationActionCard.css';
 
 const { resolveNueroUrl, resolveSaraLitePlan } = actionSurfaces;
 
+// The kiosk reaches NEURO through sara/backend's allowlist, and `journal` and
+// `vault-hygiene` are deliberately NOT doors there (11 Sep 2026). Refused, it
+// answers 403 with `reason: "not-a-door"`. That is a decision about this screen,
+// not a fault, so it must not render as an error — and must not render as an
+// empty journal or a clean vault either. apiFetch flattens the body into the
+// message, so the reason is read back out of it.
+function isClosedDoor(error) {
+  const message = String(error?.message || '');
+  return message.startsWith('403 ') && message.includes('not-a-door');
+}
+
 function trimItems(list, limit) {
   return Array.isArray(list) ? list.slice(0, limit) : [];
 }
 
 export default function NotificationActionCard({ intent, onDismiss, onNavigate }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
+  const [state, setState] = useState({ loading: true, data: null, error: null, closed: false });
   const [answers, setAnswers] = useState([]);
   const [saving, setSaving] = useState(false);
   const [doneIds, setDoneIds] = useState({});
@@ -35,11 +46,11 @@ export default function NotificationActionCard({ intent, onDismiss, onNavigate }
     let active = true;
 
     async function load() {
-      setState({ loading: true, data: null, error: null });
+      setState({ loading: true, data: null, error: null, closed: false });
 
       if (!handledInSara) {
         if (!active) return;
-        setState({ loading: false, data: null, error: null });
+        setState({ loading: false, data: null, error: null, closed: false });
         return;
       }
 
@@ -65,10 +76,14 @@ export default function NotificationActionCard({ intent, onDismiss, onNavigate }
           setAnswers((data.prompts || []).map(() => ''));
         }
 
-        setState({ loading: false, data, error: null });
+        setState({ loading: false, data, error: null, closed: false });
       } catch (error) {
         if (!active) return;
-        setState({ loading: false, data: null, error: error.message });
+        if (isClosedDoor(error)) {
+          setState({ loading: false, data: null, error: null, closed: true });
+          return;
+        }
+        setState({ loading: false, data: null, error: error.message, closed: false });
       }
     }
 
@@ -169,7 +184,13 @@ export default function NotificationActionCard({ intent, onDismiss, onNavigate }
           Deleted rather than left dark: a second standup flow on the same phone
           is how the two silently disagree about what today's standup was. */}
 
-      {!state.loading && !state.error && handledInSara && kind === 'journal' && (
+      {!state.loading && state.closed && kind === 'journal' && (
+        <div className="notif__body">
+          <p className="notif__lede">Journal isn’t available on this screen — it doesn’t reach your vault. Open it on your phone.</p>
+        </div>
+      )}
+
+      {!state.loading && !state.error && !state.closed && handledInSara && kind === 'journal' && (
         <div className="notif__body">
           <p className="notif__lede">Tonight’s reflection is ready here.</p>
           {trimItems(state.data?.prompts, 3).map((prompt, index) => (
@@ -190,7 +211,6 @@ export default function NotificationActionCard({ intent, onDismiss, onNavigate }
             <button type="button" className="notif__btn notif__btn--primary" disabled={!canSubmit || saving} onClick={submitGuided}>
               {saving ? 'Saving…' : state.data?.completed ? 'Saved' : 'Save journal'}
             </button>
-            <button type="button" className="notif__btn" onClick={() => onNavigate('brain')}>Brain tab</button>
           </div>
         </div>
       )}
@@ -248,16 +268,28 @@ export default function NotificationActionCard({ intent, onDismiss, onNavigate }
         </div>
       )}
 
+      {/* Vault maintenance moved to NEURO's Brain Health panel (31 Aug 2026) and
+          SARA has no Brain tab any more — this used to navigate to 'brain', which
+          does not exist, so the tap silently landed on the Surface. It now says
+          where the work lives instead of pretending to take him there. */}
       {!state.loading && !state.error && handledInSara && kind === 'brain' && (
         <div className="notif__body">
-          <p className="notif__lede">Vault hygiene is ready for a quick pass.</p>
-          <div className="notif__grid">
-            <div><strong>{state.data?.counts?.broken ?? 0}</strong><span>broken</span></div>
-            <div><strong>{state.data?.counts?.orphans ?? 0}</strong><span>orphans</span></div>
-            <div><strong>{state.data?.counts?.stale ?? 0}</strong><span>stale</span></div>
-          </div>
+          {state.closed ? (
+            <p className="notif__lede">Vault hygiene isn’t shown on this screen — it doesn’t reach your vault.</p>
+          ) : (
+            <>
+              <p className="notif__lede">Vault hygiene is ready for a quick pass.</p>
+              {/* A missing count is "not reported", never 0 — a clean-looking
+                  grid over a scan that said nothing is a false all-clear. */}
+              <div className="notif__grid">
+                <div><strong>{state.data?.counts?.broken ?? '—'}</strong><span>broken</span></div>
+                <div><strong>{state.data?.counts?.orphans ?? '—'}</strong><span>orphans</span></div>
+                <div><strong>{state.data?.counts?.stale ?? '—'}</strong><span>stale</span></div>
+              </div>
+            </>
+          )}
+          <p className="notif__status">The pass itself lives in NEURO → Brain Health, on the desktop.</p>
           <div className="notif__actions">
-            <button type="button" className="notif__btn notif__btn--primary" onClick={() => onNavigate('brain')}>Open Brain</button>
             <button type="button" className="notif__btn" onClick={() => onNavigate('capture')}>Capture note</button>
           </div>
         </div>

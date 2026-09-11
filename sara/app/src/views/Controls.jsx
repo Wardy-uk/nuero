@@ -19,6 +19,18 @@ import './Controls.css';
 // device: a second copy of the settings would be a second opinion about when to
 // interrupt, and the whole point of the contract is that there is one.
 
+// ⚠ An opaque id is NEVER a label (CLAUDE.md, "A suggested task says where it
+// came from"). Evidence refs for calendar and email records are Microsoft Graph
+// ids — 150 characters of base64 that identify the item to Microsoft and to
+// nobody reading this screen. A ticket key or a short slug is kept; a Graph id
+// is dropped and the source name alone stands.
+function readableRef(ref) {
+  const text = String(ref || '').trim();
+  if (!text) return null;
+  if (/AAMk|AQMk/.test(text) || text.length > 60) return null;
+  return text;
+}
+
 const PAUSES = [
   { label: '30 min', minutes: 30 },
   { label: '1 hour', minutes: 60 },
@@ -53,6 +65,18 @@ const EVENT_WORDS = {
   dismissed: 'you dismissed it',
   resolved: 'resolved',
   expired: 'expired',
+};
+
+// The kinds of prompt `attention-learning` can quieten, in words. A kind not
+// listed here is shown as its own slug rather than dropped — an unnamed mute is
+// still a mute, and hiding it is how a feature gets switched off unseen.
+const MUTED_KIND_WORDS = {
+  sedentary: 'Get up and move',
+  'no-exercise': 'No exercise lately',
+  'long-focus': 'Long stretch on one thing',
+  'low-water': 'Drink some water',
+  'not-eaten': 'Haven’t eaten',
+  'health-signal': 'Health changes',
 };
 
 function when(iso) {
@@ -96,6 +120,49 @@ export default function Controls() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Prompts SARA has quietened. Loaded apart from the settings on purpose: a
+  // failure here must not blank the controls, and a failure of the settings must
+  // not read as "nothing muted". `muted === null` with an error is "I couldn't
+  // look"; an empty array is a real "nothing is muted".
+  const [muted, setMuted] = useState(null);
+  const [mutedError, setMutedError] = useState(null);
+  const [unmuting, setUnmuting] = useState(null);
+  const [mutedNote, setMutedNote] = useState(null);
+
+  const loadMuted = useCallback(async () => {
+    try {
+      const r = await apiFetch('/api/attention/muted');
+      if (!r || r.ok !== true || !Array.isArray(r.muted)) {
+        throw new Error(r?.error || 'NEURO answered without a list');
+      }
+      setMuted(r.muted);
+      setMutedError(null);
+    } catch (e) {
+      setMuted(null);
+      setMutedError(e.message);
+    }
+  }, []);
+
+  useEffect(() => { loadMuted(); }, [loadMuted]);
+
+  async function unmute(kind) {
+    setUnmuting(kind);
+    setMutedNote(null);
+    try {
+      await apiFetch(`/api/attention/muted/${encodeURIComponent(kind)}`, { method: 'DELETE' });
+      setMutedNote(`${MUTED_KIND_WORDS[kind] || kind} is back on. SARA starts judging it afresh.`);
+    } catch (e) {
+      // A 404 means it was not muted by the time we asked — say so rather than
+      // "failed", then re-read so the list matches what NEURO holds.
+      setMutedNote(/^404\b/.test(e.message)
+        ? `${MUTED_KIND_WORDS[kind] || kind} was already on.`
+        : `Couldn’t turn it back on — ${e.message}`);
+    } finally {
+      setUnmuting(null);
+      loadMuted();
+    }
+  }
 
   const patch = useCallback(async (body) => {
     setBusy(true);
@@ -283,6 +350,48 @@ export default function Controls() {
       </section>
 
       <section className="controls__section">
+        <h3 className="controls__heading">
+          Quietened by SARA{Array.isArray(muted) ? ` (${muted.length})` : ''}
+        </h3>
+        <p className="controls__hint controls__intro">
+          Prompts that kept making no difference. A muted prompt stops interrupting you; it still shows on the Surface.
+        </p>
+        {mutedError && (
+          <>
+            <p className="controls__error">I couldn't read what's muted, so this is not a clean list — {mutedError}</p>
+            <button className="controls__btn" onClick={loadMuted}>Try again</button>
+          </>
+        )}
+        {!mutedError && muted === null && <p className="controls__muted">Checking…</p>}
+        {Array.isArray(muted) && muted.length === 0 && (
+          <p className="controls__muted">Nothing is muted. Every prompt can still reach you.</p>
+        )}
+        {Array.isArray(muted) && muted.map((m) => (
+          <div key={m.kind} className="controls__record">
+            <div className="controls__recordTop">
+              <span className="controls__state controls__state--suppressed">Muted</span>
+              <span className="controls__recordTitle">{MUTED_KIND_WORDS[m.kind] || m.kind}</span>
+            </div>
+            <p className="controls__why">
+              {m.why || 'No reason was recorded.'}
+            </p>
+            <p className="controls__stamps">
+              {m.by === 'sara' ? 'SARA quietened it' : `muted by ${m.by}`}
+              {m.at ? ` ${when(m.at)}` : ''}
+            </p>
+            <button
+              className="controls__btn"
+              disabled={unmuting === m.kind}
+              onClick={() => unmute(m.kind)}
+            >
+              {unmuting === m.kind ? 'Turning it back on…' : 'Turn it back on'}
+            </button>
+          </div>
+        ))}
+        {mutedNote && <p className="controls__muted">{mutedNote}</p>}
+      </section>
+
+      <section className="controls__section">
         <h3 className="controls__heading">On SARA's mind ({records.length})</h3>
         {records.length === 0 && <p className="controls__muted">Nothing open. That is a real answer, not a blank screen.</p>}
         {records.map((r) => (
@@ -297,7 +406,7 @@ export default function Controls() {
             {r.reason && <p className="controls__why">{r.reason}</p>}
             <p className="controls__evidence">
               {r.evidence?.length
-                ? r.evidence.map((e) => `${e.source}${e.ref ? ` · ${e.ref}` : ''}`).join(' — ')
+                ? r.evidence.map((e) => `${e.source}${readableRef(e.ref) ? ` · ${readableRef(e.ref)}` : ''}`).join(' — ')
                 : 'No source to cite, so this will not interrupt you.'}
             </p>
             <p className="controls__stamps">

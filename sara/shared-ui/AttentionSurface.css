@@ -224,6 +224,32 @@
   min-height: 40px;
 }
 
+/* What "that's done" actually did. A hairline on the left rather than a filled
+   box — it is a note about the last thing, not a new thing competing with the
+   headline. Amber when no task was closed, because "the card went away" and
+   "the work is finished" must never look alike. */
+.surface__outcome {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid var(--line);
+  color: var(--text);
+  padding: 0.2rem 0 0.2rem 0.65rem;
+  margin: 0 0 0.75rem;
+  font: inherit;
+  cursor: pointer;
+}
+.surface__outcome--done { border-left-color: rgba(76, 154, 255, 0.7); }
+.surface__outcome--partial,
+.surface__outcome--warn { border-left-color: #e0c97e; }
+.surface__outcomelead { font-size: 0.86rem; }
+.surface__outcome--warn .surface__outcomelead { color: #e0c97e; }
+.surface__outcomesub { color: var(--muted); font-size: 0.76rem; line-height: 1.45; }
+
 /* ── Everything else, quieter ──────────────────────────────────────────────
  * Hairlines rather than filled cards. Boxes here would make three more things
  * compete with the one thing, which is the whole failure being fixed. */

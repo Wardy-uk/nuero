@@ -96,3 +96,8 @@
 }
 .controls__history li:first-child { border-top: none; }
 .controls__historyWhen { flex: none; width: 4.5rem; color: var(--muted); font-size: 0.75rem; }
+
+/* ── Quietened prompts ───────────────────────────────────────────────────── */
+
+.controls__intro { margin: 0 0 0.4rem; }
+.controls__record .controls__btn { margin-top: 0.45rem; }

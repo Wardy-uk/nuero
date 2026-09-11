@@ -39,6 +39,50 @@ const VOICE_ERRORS = {
   // Only reached when nothing was captured — an abort after a good turn returns early.
   aborted: 'Dictation was cut off before it caught anything. Tap 🎤 and try again.',
 };
+
+// What SARA reached for during a reply, in plain words.
+//
+// ⚠ NAMES ONLY, never arguments. A tool's input is the task text, the note path,
+// the draft email — private content that has no business on a line under a chat
+// bubble. The name is enough to say what she did.
+//
+// ⚠ "ran", never "done". NEURO reports WHICH tools ran (`type:'tool'` over SSE,
+// `tools: [names]` from /api/chat/sync) and not whether each one worked — a
+// `create_task` that refused still ran. Claiming success here would be a
+// statement the payload cannot support.
+const TOOL_LABELS = {
+  get_tasks: 'Check your tasks',
+  get_calendar: 'Check your calendar',
+  search_vault: 'Search the vault',
+  read_note: 'Read a note',
+  create_task: 'Create a task',
+  complete_task: 'Complete a task',
+  append_daily_note: 'Add to today’s note',
+  capture_feature: 'Capture a feature idea',
+  draft_email_reply: 'Draft an email reply (for your approval)',
+  get_urgent_emails: 'Check urgent email',
+  schedule_focus_block: 'Book a focus block (for your approval)',
+  create_meeting: 'Set up a meeting (for your approval)',
+  escalate_ticket: 'Escalate a ticket (for your approval)',
+};
+
+function toolLabel(name) {
+  const key = String(name || '').trim();
+  if (!key) return 'A tool';
+  if (Object.prototype.hasOwnProperty.call(TOOL_LABELS, key)) return TOOL_LABELS[key];
+  const words = key.split('_').join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// The sync fallback's shape: `tools` is an array of names. `toolCalls` is
+// accepted too (objects carrying `name`) in case a backend returns the raw
+// provider shape — only the name is ever read from it.
+function toolNamesFrom(res) {
+  if (Array.isArray(res?.tools)) return res.tools.filter((t) => typeof t === 'string');
+  if (Array.isArray(res?.toolCalls)) return res.toolCalls.map((c) => c && c.name).filter((t) => typeof t === 'string');
+  return [];
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState([]); // { role, content }
   const [input, setInput] = useState('');
@@ -219,10 +263,21 @@ export default function Chat() {
     setBusy(true);
 
     const body = { message: text, conversationId: convRef.current || undefined };
+    // ⚠ Spread the last message rather than rebuilding it — rebuilding as
+    // {role, content} drops the `tools` a tool turn has already attached, and the
+    // tool events arrive BEFORE the text.
     const appendToLast = (chunk) =>
       setMessages((m) => {
         const copy = m.slice();
-        copy[copy.length - 1] = { role: 'assistant', content: copy[copy.length - 1].content + chunk };
+        const last = copy[copy.length - 1];
+        copy[copy.length - 1] = { ...last, role: 'assistant', content: last.content + chunk };
+        return copy;
+      });
+    const addToolToLast = (name) =>
+      setMessages((m) => {
+        const copy = m.slice();
+        const last = copy[copy.length - 1];
+        copy[copy.length - 1] = { ...last, tools: [...(last.tools || []), name] };
         return copy;
       });
 
@@ -231,6 +286,7 @@ export default function Chat() {
       await chatStream(body, {
         onMode: setMode,
         onChunk: (c) => { got = true; appendToLast(c); },
+        onTool: (name) => { if (name) addToolToLast(name); },
         onError: (msg) => appendToLast(got ? '' : `⚠️ ${msg}`),
       });
     } catch {
@@ -241,7 +297,12 @@ export default function Chat() {
         setMode(res.mode || null);
         setMessages((m) => {
           const copy = m.slice();
-          copy[copy.length - 1] = { role: 'assistant', content: res.message || '(no reply)' };
+          const tools = toolNamesFrom(res);
+          copy[copy.length - 1] = {
+            role: 'assistant',
+            content: res.message || '(no reply)',
+            ...(tools.length ? { tools } : {}),
+          };
           return copy;
         });
       } catch (err) {
@@ -308,8 +369,20 @@ export default function Chat() {
           <div className="chat__empty">Ask anything — the brain has your vault, queue and calendar in context.</div>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={`chat__msg chat__msg--${m.role}`}>
-            {m.content || (busy && i === messages.length - 1 ? <span className="chat__typing">…</span> : '')}
+          <div key={i} className={`chat__turn chat__turn--${m.role}`}>
+            <div className={`chat__msg chat__msg--${m.role}`}>
+              {m.content || (busy && i === messages.length - 1 ? <span className="chat__typing">…</span> : '')}
+            </div>
+            {m.role === 'assistant' && Array.isArray(m.tools) && m.tools.length > 0 && (
+              <ul className="chat__tools" title="NEURO reports which tools ran, not whether each one worked.">
+                {m.tools.map((t, j) => (
+                  <li key={`${t}-${j}`} className="chat__tool">
+                    <span className="chat__toolname">{toolLabel(t)}</span>
+                    <span className="chat__toolstate">ran</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ))}
         <div ref={endRef} />

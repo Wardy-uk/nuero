@@ -238,11 +238,20 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
    * pocket running an older bundle must not lose the ability to clear a card.
    */
   async function act(card, action, opts = {}) {
-    if (!card || card.kind !== 'item') return;
+    if (!card || card.kind !== 'item') return undefined;
+    // ⚠ `complete` NEVER takes the legacy route. A dismissal is not a completion,
+    // and substituting one for the other is the bug the attention contract
+    // removed — so a card with no record says it could not be done.
+    if (action === 'complete' && !card.recordId) {
+      return { ok: false, error: 'This card has no record to complete — nothing was changed.' };
+    }
     setBusy(true);
     try {
+      let res = { ok: true };
       if (card.recordId) {
-        await apiFetch(`/api/attention/records/${card.recordId}/act`, {
+        // The response carries `taskCompleted` / `taskWhy` — what "done"
+        // actually closed — and is handed back so the surface can say it.
+        res = await apiFetch(`/api/attention/records/${card.recordId}/act`, {
           method: 'POST',
           body: JSON.stringify({ action, ...opts }),
         });
@@ -253,9 +262,16 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
         });
       }
       await load({ quiet: true });
-    } catch { /* leave it on screen if it failed — a card that vanishes on an
-                 error is a card Nick believes he has dealt with */ }
-    finally { setBusy(false); }
+      return res;
+    } catch (e) {
+      // Leave it on screen if it failed — a card that vanishes on an error is a
+      // card Nick believes he has dealt with. The refusal is returned in NEURO's
+      // own words where the body carried them (apiFetch flattens it into the
+      // message), so "record is resolved" is not reported as a network fault.
+      const msg = String((e && e.message) || 'failed');
+      const inBody = msg.match(/"error"\s*:\s*"([^"]+)"/);
+      return { ok: false, error: inBody ? inBody[1] : msg };
+    } finally { setBusy(false); }
   }
 
   function open(card) {

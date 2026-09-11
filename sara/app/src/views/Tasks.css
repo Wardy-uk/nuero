@@ -59,7 +59,8 @@
 
 .tasks__clear { text-align: center; color: var(--muted); }
 
-.tasks__item { display: flex; align-items: flex-start; gap: 0.7rem; }
+.tasks__item { display: block; }
+.tasks__row { display: flex; align-items: flex-start; gap: 0.7rem; }
 .tasks__item--done { opacity: 0.5; }
 .tasks__item--done .tasks__text { text-decoration: line-through; }
 
@@ -149,6 +150,99 @@
   font-size: 0.78rem;
   margin-top: 0.75rem;
 }
+
+/* The "more" toggle. Same generous hit area as the tick — it is the only way
+   into the row's controls. */
+.tasks__more {
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 8px;
+  width: 2rem;
+  height: 1.8rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tasks__wip,
+.tasks__lane {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.tasks__wip { border-color: var(--accent); color: inherit; }
+
+/* The open row. One control group per line, label in a fixed left column, so a
+   group never runs on from the one before it with nothing but a gap between. */
+.tasks__panel {
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.tasks__editor { display: flex; flex-direction: column; gap: 0.55rem; }
+.tasks__group,
+.tasks__save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.tasks__label {
+  flex: 0 0 6.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tasks__note { font-size: 0.78rem; color: var(--muted); }
+.tasks__btn {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.tasks__btn--on { border-color: var(--accent); background: var(--accent-dim); }
+.tasks__btn--quiet { color: var(--muted); }
+.tasks__btn:disabled { opacity: 0.5; cursor: default; }
+.tasks__mins {
+  width: 4.5rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  font: inherit;
+  font-size: 0.8rem;
+}
+.tasks__save { border-top: 1px dashed var(--line); padding-top: 0.5rem; }
+.tasks__rowerr { font-size: 0.8rem; color: #ff9db0; }
+
+/* After an add: a possible duplicate, a fold, or a half-landed capture. */
+.tasks__addnote {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+.tasks__addnote--warn { border-left: 3px solid #ffd79d; }
+.tasks__addnote--info { border-left: 3px solid var(--accent, #7aa2f7); }
+
+.tasks__held { display: flex; flex-direction: column; gap: 0.45rem; }
+/* A column parent would read the label's basis as a HEIGHT. */
+.tasks__held .tasks__label { flex: none; }
+.tasks__heldrow { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.tasks__heldtext { font-size: 0.85rem; min-width: 0; }
 
 /* The running total after a tick. Deliberately understated — a statement of
    fact, not a celebration. */

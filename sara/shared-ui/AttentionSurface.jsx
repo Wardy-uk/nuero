@@ -37,6 +37,8 @@ import './AttentionSurface.css';
 //   * DISMISS IS OFFERED ONLY WHEN THE RECORD ALLOWS IT. An escalation is
 //     deliberately not dismissable, and a button NEURO will refuse is worse
 //     than no button at all.
+//   * "THAT'S DONE" SAYS WHAT IT CLOSED. The card clearing and the task closing
+//     are two outcomes; a held tick is not a completion, and the screen says so.
 
 // How long "not now" means, in Nick's words rather than in minutes.
 export const DEFERRALS = [
@@ -45,6 +47,37 @@ export const DEFERRALS = [
   { label: 'Tomorrow', minutes: 60 * 20, reason: 'no-context' },
   { label: 'Too big', minutes: 60 * 20, reason: 'too-big' },
 ];
+
+// What "that's done" actually did, in words.
+//
+// ⚠ Resolving the CARD and closing the TASK are two outcomes, and the act route
+// states both (`taskCompleted` + `taskWhy`) rather than implying one from the
+// other. A tick held by the outcome-note rule comes back `taskCompleted: false`
+// and `taskHeld: true`, so it renders as held — never as finished, never as failed.
+// `taskWhy` is the server's own sentence and is shown verbatim — a second
+// phrasing on the client is a second answer free to drift.
+//
+// `undefined` means the shell did not report a result at all, and says NOTHING
+// rather than guessing — "it failed" over a completion that landed is the lie in
+// the other direction.
+export function describeCompletion(res) {
+  if (res === undefined) return null;
+  const why = typeof res?.taskWhy === 'string' && res.taskWhy
+    ? res.taskWhy.charAt(0).toUpperCase() + res.taskWhy.slice(1)
+    : null;
+  if (!res || res.ok === false) {
+    return {
+      tone: 'warn',
+      lead: 'That didn’t go through — the card is still open.',
+      sub: (res && res.error) || 'NEURO didn’t confirm it.',
+    };
+  }
+  if (res.taskCompleted === true) return { tone: 'done', lead: 'Done — and the task is closed.', sub: why };
+  // ⚠ Held is its own outcome: the tick landed and the task closes when its
+  // write-up exists. Rendered as "no task was closed" it read as the tick failing.
+  if (res.taskHeld === true) return { tone: 'partial', lead: 'Ticked — held until its write-up is in.', sub: why };
+  return { tone: 'partial', lead: 'Card cleared — no task was closed.', sub: why };
+}
 
 export default function AttentionSurface({
   data,
@@ -73,6 +106,10 @@ export default function AttentionSurface({
   // the next one must appear on its own. A boolean would silence every later
   // transition too, which is how a useful prompt becomes one nobody sees again.
   const [dismissedTransition, setDismissedTransition] = useState(null);
+  // The result of the last "that's done". Held HERE rather than on the card,
+  // because a completed card is resolved and leaves the feed on the next read —
+  // the answer to "did that close the task?" must outlive the thing it is about.
+  const [outcome, setOutcome] = useState(null);
 
   if (!data) {
     return (
@@ -113,7 +150,29 @@ export default function AttentionSurface({
   const transitionShown = Boolean(!sayOverride && transition && dismissedTransition !== transition.prompt);
   const transitionSaysPrimary = transitionShown && covered?.transitionIsPrimary === true;
 
-  const act = (card, action, opts) => onAct && onAct(card, action, opts);
+  const act = async (card, action, opts) => {
+    if (!onAct) return undefined;
+    const res = await onAct(card, action, opts);
+    if (action === 'complete') setOutcome(describeCompletion(res));
+    return res;
+  };
+
+  // A tapped sentence is the same sentence as a tapped button, so "that's done"
+  // reports what it did whichever way he said it.
+  const sayIt = async (u) => {
+    const res = await onSay(u, primary);
+    const intent = u && u.intent;
+    if (intent && intent.kind === 'act' && intent.action === 'complete') setOutcome(describeCompletion(res));
+  };
+
+  // ⚠ Offered only where it can mean something: a shell that can act, a card
+  // with a RECORD to act on, and a record that allows it. Without a record the
+  // only route left is the legacy dismissal, and a "done" that quietly became a
+  // dismissal is the exact bug the attention contract removed.
+  const canComplete = (card) => Boolean(
+    onAct && card && card.kind === 'item' && card.recordId
+    && (card.actions || []).includes('complete'),
+  );
 
   // ⚠ The sentences REPLACE the button row only when the brain composed them
   // AND the shell knows how to act on one. Either missing falls through to the
@@ -182,6 +241,20 @@ export default function AttentionSurface({
         {beforeSay}
 
         <div className="surface__say">
+          {/* What the last "that's done" did. Tap to clear — it stays until read,
+              because a note that fades on its own is one he may never see. */}
+          {outcome && !sayOverride && (
+            <button
+              type="button"
+              className={`surface__outcome surface__outcome--${outcome.tone}`}
+              onClick={() => setOutcome(null)}
+              aria-label="Clear this note"
+            >
+              <span className="surface__outcomelead">{outcome.lead}</span>
+              {outcome.sub && <span className="surface__outcomesub">{outcome.sub}</span>}
+            </button>
+          )}
+
           {/* A transition is time-critical and leads when there is one. */}
           {transitionShown && (
             <div className="surface__transition">
@@ -233,6 +306,19 @@ export default function AttentionSurface({
                     >
                       {primary.actionHint || 'Open it'}
                     </button>
+                    {/* The sentence he would say, not a UI verb. It is Nick's
+                        explicit confirmation — the ONLY action that resolves —
+                        and what it closed is reported below, never implied. */}
+                    {canComplete(primary) && (
+                      <button
+                        type="button"
+                        className="surface__btn"
+                        disabled={busy}
+                        onClick={() => { act(primary, 'complete'); setDeferring(false); }}
+                      >
+                        That&rsquo;s done
+                      </button>
+                    )}
                     {/* ⚠ "Not now" opens the durations rather than deferring on
                         a guess. A snooze whose length SARA picked is one Nick
                         has no reason to trust, and the length is most of what
@@ -339,7 +425,7 @@ export default function AttentionSurface({
                 type="button"
                 className={`surface__say-btn${u.intent && u.intent.kind === 'reveal' ? ' surface__say-btn--quiet' : ''}`}
                 disabled={busy}
-                onClick={() => onSay(u, primary)}
+                onClick={() => sayIt(u)}
               >
                 {u.say}
               </button>

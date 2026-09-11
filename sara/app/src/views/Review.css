@@ -100,3 +100,19 @@
   border-color: rgba(200, 70, 70, 0.5);
   color: #f2b8b8;
 }
+
+/* ── Weekly target setter ── */
+.rev__target { margin-top: 0.5rem; }
+.rev__target .rev__note { margin: 0.4rem 0; }
+.rev__target-change { margin: 0.5rem 0 0; }
+.rev__target-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.rev__target-input {
+  width: 5.5rem;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  font-size: 0.9rem;
+}

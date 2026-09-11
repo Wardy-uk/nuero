@@ -80,3 +80,29 @@
    incomplete picture, and it must not look like a failure to be dismissed. */
 .mp__block--gaps { border-left: 2px solid #e0c97e; padding-left: 0.6rem; }
 .mp__gapnote { font-size: 0.72rem; color: #e0c97e; margin-top: 0.3rem; }
+
+/* Leave. "Off" is a fact worth seeing before you prepare for a conversation that
+   will not happen; "not checked" is quieter but always present, because an
+   absent flag must only ever mean "nothing booked". */
+.mp__away {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #ffd08a;
+  border: 1px solid #ffd08a;
+  border-radius: 6px;
+  padding: 0 0.3rem;
+  margin-left: 0.35rem;
+  white-space: nowrap;
+}
+.mp__away-unknown {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 0 0.3rem;
+  margin-left: 0.35rem;
+  white-space: nowrap;
+}
+.mp__away-sum { font-size: 0.84rem; color: #ffd08a; margin-bottom: 0.3rem; }
+.mp__away-unknown-sum { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; }

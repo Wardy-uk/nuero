@@ -129,3 +129,38 @@
   color: var(--accent, #7aa2f7);
   border-left: 3px solid var(--accent, #7aa2f7);
 }
+
+/* ── Parity sections: getting started, got in the way, body ──
+   Quiet on purpose. They sit below the one thing and must never outshout it. */
+.today__gap { color: #f0d6a6; font-size: 0.78rem; line-height: 1.45; margin: 0.45rem 0 0; }
+.today__quiet { color: var(--muted); font-size: 0.82rem; line-height: 1.45; margin: 0; }
+.today__because { color: var(--muted); font-size: 0.74rem; line-height: 1.4; margin: 0.2rem 0 0; }
+
+.today__init-stats { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; font-size: 0.88rem; color: var(--muted); }
+.today__init-stats strong { color: var(--text, inherit); font-size: 1.05rem; margin-right: 0.2rem; }
+.today__init-note { display: block; font-style: normal; color: var(--accent); font-size: 0.72rem; }
+.today__init-live { color: var(--accent); font-size: 0.78rem; margin-top: 0.4rem; }
+.today__init-ladder { margin: 0.55rem 0 0; padding-left: 1rem; font-size: 0.82rem; line-height: 1.45; }
+.today__init-from { color: var(--muted); }
+.today__init-est { color: var(--muted); font-size: 0.78rem; line-height: 1.45; margin: 0.5rem 0 0; }
+
+.today__friction-item + .today__friction-item,
+.today__finding + .today__finding { border-top: 1px solid var(--line); margin-top: 0.55rem; padding-top: 0.55rem; }
+.today__friction-text,
+.today__finding-title { font-size: 0.9rem; line-height: 1.4; margin: 0; }
+.today__finding-detail { color: var(--muted); font-size: 0.8rem; line-height: 1.4; margin: 0.15rem 0 0; }
+.today__finding--read .today__finding-title { color: var(--muted); }
+
+.today__small-btn {
+  margin-top: 0.45rem;
+  background: var(--panel-2, transparent);
+  border: 1px solid var(--line);
+  color: var(--text, inherit);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.today__small-btn:disabled { cursor: default; opacity: 0.6; }
+.today__small-btn--link { background: transparent; border: none; padding: 0.35rem 0; color: var(--muted); text-decoration: underline; }

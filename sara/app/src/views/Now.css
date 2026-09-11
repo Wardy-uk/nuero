@@ -213,3 +213,42 @@
   margin-top: 0.6rem;
 }
 .now__sess-checkin .now__sess-label { margin-bottom: 0; }
+
+/* ── The way back, the start, and the close-out ────────────────────────────── */
+
+/* The return prompt leads the screen, so it carries the accent edge. */
+.now__return { border-left: 3px solid var(--accent, #4c9aff); margin-bottom: 0.85rem; }
+
+.now__closeout { margin-bottom: 0.85rem; }
+
+.now__start { margin-top: 0.6rem; }
+
+.now__start-label { margin-top: 0.7rem; }
+
+/* A pickable task. One-handed, so a full-width target, never a small radio. */
+.now__start-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  margin-top: 0.4rem;
+  background: var(--panel-2, #1c2530);
+  border: 1px solid var(--line, #26313f);
+  color: var(--text, #e6edf3);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+  min-height: 44px;
+}
+.now__start-opt .now__meta { margin-top: 0; }
+
+/* Selected is shown by edge AND fill, so it does not rest on colour alone. */
+.now__start-opt[aria-pressed="true"],
+.now__sess-btn[aria-pressed="true"] {
+  background: var(--accent-dim, #2b3d57);
+  border-color: var(--accent, #4c9aff);
+  box-shadow: inset 3px 0 0 var(--accent, #4c9aff);
+}

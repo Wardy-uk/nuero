@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { apiUrl, authHeaders } from '../api';
 import { useNickNow, stampFor } from '../mobile/useNickNow';
 import { describeStorage, clearLocalData, SCHEMA_VERSION } from '../mobile/localStore';
 import { pending as pendingOps, subscribe, flush } from '../mobile/outbox';
@@ -157,7 +158,7 @@ export default function Review() {
             ))
           )}
 
-          <h2 className="rev__h">Anything still on this phone</h2>
+          <h2 className="rev__h">Anything still on this device</h2>
           {unsent === 0 ? (
             <div className="card rev__calm">Nothing waiting — everything reached NEURO.</div>
           ) : (
@@ -185,6 +186,7 @@ export default function Review() {
           ) : (
             <div className="card rev__unread">No weekly target reading.</div>
           )}
+          <WeeklyTargetSetter onSet={() => refresh()} />
 
           <h2 className="rev__h">People in the diary</h2>
           {s.people.known === false ? (
@@ -206,9 +208,10 @@ export default function Review() {
       <h2 className="rev__h">This device</h2>
       <div className="card rev__storage">
         <p className="rev__note">
-          Neuro Mobile keeps a small working set in this app&rsquo;s own browser storage so it
-          still works with no signal. <strong>It is not encrypted</strong>, and iOS may clear it
-          if the app goes unused or the phone runs low on space. Your PIN is not kept here.
+          This app keeps a small working set in its own browser storage, on this device only, so
+          it still works with no connection. <strong>It is not encrypted</strong>, and the browser
+          or operating system may clear it &mdash; for example when the app has gone unused or the
+          device runs low on space. Your PIN is not kept in this store.
           NEURO remains the only canonical copy of anything.
         </p>
         {storage && storage.available === false && (
@@ -233,11 +236,141 @@ export default function Review() {
         </div>
         {clearing && <p className="rev__row-meta">{clearing === 'working' ? 'Clearing…' : clearing}</p>}
         <p className="rev__note rev__note--small">
-          iOS cannot read your Obsidian vault or a Notion workspace directly. NEURO ingests and
-          indexes those, and this app syncs only the derived working set above.
-          Background sync is not guaranteed on iOS — the queue is sent when the app is open.
+          This app does not read your Obsidian vault or a Notion workspace directly. NEURO ingests
+          and indexes those, and this app syncs only the derived working set above.
+          Nothing is sent in the background &mdash; the queue goes when this app is open.
         </p>
       </div>
     </section>
+  );
+}
+
+// ── Setting the weekly target ───────────────────────────────────────────────
+//
+// GET/POST /api/weekly-target. The number is Nick's. NEURO's proposal is shown
+// WITH its basis so it can be argued with, and choosing it only fills the box —
+// nothing is set without the Set press. Once a target exists this does not ask
+// again; "Change" is there if he goes looking for it (the route allows it).
+//
+// Its own fetch rather than apiFetch, because the answers worth reading are in
+// the body: setTarget's refusal sentence (400) and the kiosk's `not-a-door`.
+async function readJson(path, options = {}) {
+  const res = await fetch(apiUrl(path), { ...options, headers: authHeaders(path, options.headers) });
+  let body = null;
+  try { body = await res.json(); } catch { /* nothing to read */ }
+  return { ok: res.ok, status: res.status, body };
+}
+
+function WeeklyTargetSetter({ onSet }) {
+  const [state, setState] = useState({ loading: true, error: null, notHere: false, data: null });
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [refusal, setRefusal] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await readJson('/api/weekly-target');
+      if (r.status === 403 && r.body?.reason === 'not-a-door') {
+        return setState({ loading: false, error: null, notHere: true, data: null });
+      }
+      if (!r.ok) return setState({ loading: false, error: r.body?.error || `${r.status}`, notHere: false, data: null });
+      setState({ loading: false, error: null, notHere: false, data: r.body });
+    } catch (e) {
+      setState({ loading: false, error: e.message, notHere: false, data: null });
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (saving || value === '') return;
+    setSaving(true);
+    setRefusal(null);
+    try {
+      const r = await readJson('/api/weekly-target', {
+        method: 'POST',
+        body: JSON.stringify({ target: Number(value), source: 'manual' }),
+      });
+      if (!r.ok) {
+        // setTarget reports in words ("target must be a whole number").
+        setRefusal(r.body?.error || `${r.status}`);
+      } else {
+        setEditing(false);
+        setValue('');
+        onSet?.();
+        await load();
+      }
+    } catch (err) {
+      setRefusal(err.message);
+    }
+    setSaving(false);
+  }
+
+  const { loading, error, notHere, data } = state;
+  if (loading) return null;
+  if (notHere) return <div className="card rev__calm">Setting the weekly target isn&rsquo;t available on this screen.</div>;
+  if (error) return <div className="card rev__unread">Couldn&rsquo;t check the weekly target &mdash; {error}.</div>;
+  if (!data) return null;
+
+  const isSet = data.target != null;
+  if (isSet && !editing) {
+    return (
+      <div className="rev__target-change">
+        <button type="button" className="rev__btn" onClick={() => { setEditing(true); setValue(String(data.target)); }}>
+          Change this week&rsquo;s target
+        </button>
+      </div>
+    );
+  }
+
+  const suggestion = data.suggestion;
+
+  return (
+    <form className="card rev__target" onSubmit={submit}>
+      <div className="rev__row-title">
+        {isSet ? 'Change this week’s target' : 'No target set for this week'}
+      </div>
+      {!isSet && (
+        <p className="rev__note">Unset is not a target of zero &mdash; it means nobody has said what the week is for yet.</p>
+      )}
+
+      {suggestion == null ? (
+        <p className="rev__note">No proposal &mdash; past weeks couldn&rsquo;t be read.</p>
+      ) : suggestion.value == null ? (
+        <p className="rev__note">No proposal yet &mdash; {suggestion.basis}.</p>
+      ) : (
+        <p className="rev__note">
+          Proposal: {suggestion.value}, the {suggestion.basis}
+          {Array.isArray(suggestion.weeks) && suggestion.weeks.length > 0 && ` (${suggestion.weeks.join(', ')})`}.{' '}
+          <button type="button" className="rev__btn" onClick={() => setValue(String(suggestion.value))}>
+            Use {suggestion.value}
+          </button>
+        </p>
+      )}
+
+      <div className="rev__target-row">
+        <input
+          className="rev__target-input"
+          type="number"
+          inputMode="numeric"
+          min="1"
+          max={data.maxTarget || undefined}
+          step="1"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          aria-label="Tasks to close this week"
+          placeholder="tasks"
+        />
+        <button type="submit" className="rev__btn" disabled={saving || value === ''}>
+          {saving ? 'Setting…' : 'Set'}
+        </button>
+        {isSet && (
+          <button type="button" className="rev__btn" onClick={() => { setEditing(false); setRefusal(null); }}>Cancel</button>
+        )}
+      </div>
+      {refusal && <p className="err rev__note">Not set &mdash; {refusal}</p>}
+    </form>
   );
 }

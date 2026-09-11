@@ -46,6 +46,28 @@
 
 .chat__empty { color: var(--muted); font-size: 0.9rem; text-align: center; margin: auto 0; }
 
+/* A turn is the bubble plus anything said about it. The bubble keeps its own
+   max-width; the wrapper only carries the alignment the bubble used to. */
+.chat__turn { display: flex; flex-direction: column; gap: 0.25rem; }
+.chat__turn--user { align-items: flex-end; }
+.chat__turn--assistant { align-items: flex-start; }
+
+/* The tools a reply ran. Small and muted: this is provenance under the answer,
+   not a second answer. Names only — never the arguments. */
+.chat__tools {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-width: 85%;
+}
+.chat__tool { color: var(--muted); font-size: 0.74rem; line-height: 1.4; }
+.chat__toolname::before { content: '↳ '; }
+.chat__toolstate { margin-left: 0.4rem; opacity: 0.75; }
+.chat__toolstate::before { content: '· '; }
+
 .chat__msg {
   max-width: 85%;
   padding: 0.6rem 0.8rem;
