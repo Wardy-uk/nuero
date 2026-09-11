@@ -97,6 +97,35 @@ router.get('/history', (req, res) => {
   }
 });
 
+/**
+ * Prompts SARA has quietened, and the way to turn one back on.
+ *
+ * ⚠ Before 11 Sep 2026 the ONLY way back was asking SARA in the standup
+ * (`resume_prompt`): `attention-learning` could mute a kind of prompt that kept
+ * being ignored, and no screen could even SEE that it had. A mute nobody can
+ * inspect is a feature quietly switched off. `unmute` also clears the evidence
+ * behind it, or the next sweep re-mutes it on the same history.
+ */
+router.get('/muted', (req, res) => {
+  try {
+    res.json({ ok: true, muted: require('../services/attention-learning').mutedList() });
+  } catch (e) {
+    // An unreadable store is a named failure, never an empty list — "nothing is
+    // muted" and "I could not look" send him to different places.
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.delete('/muted/:kind', (req, res) => {
+  try {
+    const result = require('../services/attention-learning').unmute(String(req.params.kind || '').trim());
+    if (!result.ok) return res.status(404).json({ ok: false, error: `"${req.params.kind}" was not muted.` });
+    res.json({ ok: true, kind: result.kind });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 router.get('/settings', (req, res) => {
   try {
     res.json({ settings: settings.read(), deferReasons: [...lifecycle.DEFER_REASONS], levels: settings.LEVELS });

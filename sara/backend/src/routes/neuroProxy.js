@@ -62,6 +62,10 @@ const DOORS = new Set([
   'chat',            // ask SARA. Tool tiers are enforced by NEURO, not here.
   'tts',             // speech, if the kiosk ever gets a speaker
   'mobile',          // the v1 snapshot + sync contract
+  'weekly-target',   // read + set his own number for the week (Review → Week)
+  'friction',        // what got in his way, from things he did. Read-only in practice.
+  // ⚠ `health` is deliberately NOT a door: body data behind an unauthenticated
+  // desk screen. The Today screen names it as not shown here rather than failing.
   // ⚠ `journal`, `vault`, `vault-hygiene` and `plaud` were doors until 11 Sep 2026
   // and no kiosk screen used any of them — vault READ AND WRITE with a key
   // attached, behind an unauthenticated touchscreen. Access with no screen behind
