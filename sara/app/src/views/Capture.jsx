@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../api';
 import { enqueue, flush, discard, retry, outcomeFor, pending as pendingOps, subscribe } from '../mobile/outbox';
 import './Capture.css';
+import { speechRecognitionCtor } from '../speechRecognition';
 
 // CAPTURE — get it out of Nick's head immediately, and never lose it.
 //
@@ -37,8 +38,7 @@ export default function Capture({ autoRecord = false }) {
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
 
-  const SpeechRecognition = typeof window !== 'undefined'
-    && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const SpeechRecognition = speechRecognitionCtor();
 
   const reloadQueue = useCallback(async () => {
     try { setQueue(await pendingOps()); } catch { /* never block capture on the queue view */ }

@@ -29,10 +29,27 @@ router.post('/subscribe', (req, res) => {
 });
 
 // POST /api/push/test — send a test notification
+// ⚠ This used to answer `{ok:true}` unconditionally — `sendToAll` returns
+// nothing, and its two silent drops (no VAPID, no subscriptions) plus a failed
+// delivery all came back as success. A test button that passes while the thing
+// it tests is off sends the search somewhere else entirely (the iOS app shipped
+// the same lie and fixed it the same way). The truth is in `push_log`, which
+// every outcome now writes: read back the row THIS send produced.
 router.post('/test', async (req, res) => {
   try {
+    const before = (db.getPushLog(1)[0] || {}).id || 0;
     await webpush.sendToAll('SARA', 'Push notifications are working.', { type: 'test' });
-    res.json({ ok: true });
+    const row = db.getPushLog(20).find((r) => r.id > before && r.type === 'test');
+    if (!row) return res.json({ ok: false, outcome: 'unknown', reason: 'NEURO recorded no outcome for the test' });
+    const sent = row.outcome === 'sent' && row.sent_count > 0;
+    res.json({
+      ok: sent,
+      outcome: row.outcome,
+      reason: row.reason || null,
+      sentCount: row.sent_count,
+      failedCount: row.failed_count,
+      subscriptions: db.getAllPushSubscriptions().length,
+    });
   } catch (e) {
     console.error('[Push] Test error:', e);
     res.status(500).json({ error: e.message });

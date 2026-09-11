@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiFetch, apiFetchBlob, chatStream } from '../api';
 import { speakSara, isVoiceOutEnabled, setVoiceOutEnabled, unlockAudio } from '../voiceUtils';
 import './Chat.css';
+import { speechRecognitionCtor, noMicReason } from '../speechRecognition';
 
 // Chat = talk to the brain, with real vault reasoning behind it.
 // Streams over POST /api/chat (SSE). If streaming fails, falls back to POST /api/chat/sync.
@@ -59,8 +60,7 @@ export default function Chat() {
   // speakViaServer runs from a setTimeout inside an effect, so it must not read state.
   const ttsVoiceRef = useRef(ttsVoice);
 
-  const SpeechRecognition = typeof window !== 'undefined'
-    && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const SpeechRecognition = speechRecognitionCtor();
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, busy]);
 
@@ -322,8 +322,7 @@ export default function Chat() {
       )}
       {!SpeechRecognition && (
         <div className="chat__voice-note chat__voice-note--err">
-          This browser has no speech recognition, so there’s no mic. On iPhone that usually
-          means the installed app rather than Safari.
+          {noMicReason()}
         </div>
       )}
 

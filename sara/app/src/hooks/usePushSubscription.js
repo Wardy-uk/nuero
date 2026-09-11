@@ -28,11 +28,26 @@ function _urlBase64ToUint8Array(base64String) {
 }
 
 export function pushSupported() {
-  return typeof navigator !== 'undefined'
-    && 'serviceWorker' in navigator
-    && typeof window !== 'undefined'
-    && 'PushManager' in window
-    && typeof Notification !== 'undefined';
+  return pushUnsupportedReason() === null;
+}
+
+/**
+ * Why this runtime cannot receive a push, or null when it can.
+ *
+ * ⚠ Two places offered "Turn notifications on" and could never deliver: the
+ * laptop's Electron window (Electron has no web-push service at all, and wipes
+ * its service workers on every launch) and the Pi kiosk (plain http on a
+ * non-localhost address is not a secure context, so no service worker exists).
+ * The API objects exist in both, which is why checking for them said yes.
+ */
+export function pushUnsupportedReason() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'No browser here.';
+  if (window.saraNative) return 'The desktop app can’t receive push notifications — your phone gets them.';
+  if (window.isSecureContext === false) return 'This screen isn’t on a secure connection, so it can’t receive notifications.';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
+    return 'This browser can’t receive push notifications.';
+  }
+  return null;
 }
 
 /** granted | denied | default | unsupported — what the browser will do if asked. */

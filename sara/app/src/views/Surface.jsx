@@ -11,6 +11,7 @@ import { speakIfEnabled, isAudioUnlocked, unlockAudio, isVoiceOutEnabled, setVoi
 import Field from '../../../shared-ui/Field';
 import AttentionSurface from '../../../shared-ui/AttentionSurface';
 import './Surface.css';
+import { speechRecognitionCtor, noMicReason } from '../speechRecognition';
 
 // Surface — SARA without a menu.
 //
@@ -81,8 +82,7 @@ function tabFor(card) {
 // It is a CAPABILITY check, not a device check: nothing here asks whether it is
 // "the kiosk". If a mic is ever plugged into the Pi the button returns on its
 // own, which is the outcome Nick's principle actually wants.
-const CAN_LISTEN = typeof window !== 'undefined'
-  && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+const CAN_LISTEN = Boolean(speechRecognitionCtor());
 
 export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArrival }) {
   const [state, setState] = useState({ loading: true, error: null, data: null });
@@ -183,8 +183,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
 
     if (listening) { recognitionRef.current?.stop(); return; }
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) { setVoiceErr('This browser has no speech recognition.'); return; }
+    const SpeechRecognition = speechRecognitionCtor();
+    if (!SpeechRecognition) { setVoiceErr(noMicReason() || 'No speech recognition here.'); return; }
 
     const rec = new SpeechRecognition();
     rec.lang = 'en-GB';

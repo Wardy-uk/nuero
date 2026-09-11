@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
-import { enableNotifications, permissionState, pushSupported } from '../hooks/usePushSubscription';
+import { enableNotifications, permissionState, pushSupported, pushUnsupportedReason } from '../hooks/usePushSubscription';
 import './Controls.css';
 
 // SARA Controls — the surface where Nick decides how much SARA is allowed to
@@ -113,6 +113,24 @@ export default function Controls() {
     }
   }, []);
 
+  // ⚠ Reports what NEURO RECORDED for the send, never "sent" because the request
+  // returned — the route used to say ok whatever happened, and a test that passes
+  // while delivery is off sends the search somewhere else.
+  const [testNote, setTestNote] = useState(null);
+  async function sendTest() {
+    setTestNote('Sending…');
+    try {
+      const r = await apiFetch('/api/push/test', { method: 'POST' });
+      if (r.ok) {
+        setTestNote(`NEURO delivered it to ${r.sentCount} of ${r.subscriptions} registered device${r.subscriptions === 1 ? '' : 's'}${r.failedCount ? ` (${r.failedCount} failed)` : ''}. If nothing appears here within a few seconds, this device isn’t one of them — turn notifications off and on again.`);
+      } else {
+        setTestNote(`Not delivered — ${r.outcome}${r.reason ? `: ${r.reason}` : ''}.`);
+      }
+    } catch (e) {
+      setTestNote(`Couldn’t ask NEURO to send one — ${e.message}`);
+    }
+  }
+
   async function turnOn() {
     setPermissionNote(null);
     const result = await enableNotifications();
@@ -156,6 +174,20 @@ export default function Controls() {
             </button>
           )}
           {permissionNote && <p className="controls__error">{permissionNote}</p>}
+        </section>
+      )}
+      {!pushSupported() && (
+        <section className="controls__section">
+          <h3 className="controls__heading">Notifications</h3>
+          <p className="controls__muted">{pushUnsupportedReason()}</p>
+        </section>
+      )}
+      {pushSupported() && permission === 'granted' && (
+        <section className="controls__section">
+          <h3 className="controls__heading">Notifications</h3>
+          <p className="controls__muted">On for this device.</p>
+          <button className="controls__btn" onClick={sendTest}>Send a test</button>
+          {testNote && <p className="controls__muted">{testNote}</p>}
         </section>
       )}
 
