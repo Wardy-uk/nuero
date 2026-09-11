@@ -233,6 +233,9 @@ router.post('/records/:id/act', async (req, res) => {
       // resolving the card and closing the task are two outcomes, and a tick
       // held by the outcome-note rule must not read as a completion.
       taskCompleted,
+      // Held by the outcome-note rule: the tick landed and the task closes once
+      // its write-up exists. Not a failure, and not a completion yet.
+      taskHeld: Boolean(result.taskHeld),
       taskWhy,
       // Present only when the completion had to leave the building.
       msPush,

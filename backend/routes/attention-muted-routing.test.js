@@ -53,3 +53,18 @@ test('turning on something that was not muted is a 404 with the reason, not a su
   assert.equal(res.status, 404);
   assert.match(res.json.error, /was not muted/);
 });
+
+test('⚠ an UNREADABLE store is a named failure, never "nothing muted", and is not overwritten', async () => {
+  // The service keeps its key private, so read it from the source rather than guess it.
+  const src = require('fs').readFileSync(require.resolve('../services/attention-learning'), 'utf8');
+  const stateKey = (src.match(/STATE_KEY = '([^']+)'/) || [])[1];
+  assert.ok(stateKey, 'could not find the store key');
+  db.setState(stateKey, '{not json');
+
+  const res = await call('GET', '/api/attention/muted');
+  assert.equal(res.status, 500);
+  assert.equal(res.json.ok, false);
+
+  learning.mute('sedentary', 'test', 'nick');
+  assert.equal(db.getState(stateKey), '{not json', 'a write over an unreadable store erased it');
+});

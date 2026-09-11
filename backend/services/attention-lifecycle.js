@@ -626,6 +626,11 @@ function act(recordId, action, opts = {}) {
     // surface can say what actually happened rather than implying both.
     case 'complete': {
       let taskCompleted = false;
+      // ⚠ A FLAG, not only a sentence. A tick held by the outcome-note rule used
+      // to come back as `taskCompleted:false` with the hold only in `taskWhy`, so a
+      // screen could not tell "held until the write-up" from "nothing was closed"
+      // without matching words — and rendered the hold as a failure.
+      let taskHeld = false;
       let taskWhy = 'nothing to complete';
       let pendingMicrosoft = null;
       const target = completionTargetFor({
@@ -664,7 +669,8 @@ function act(recordId, action, opts = {}) {
             // (`task-blocks`), so a held tick comes back held rather than being
             // forced through here. Its refusal is reported, not swallowed.
             const updated = taskStore.setStatus(match.id, 'done');
-            taskCompleted = !(updated && updated.held);
+            taskHeld = Boolean(updated && updated.held);
+            taskCompleted = !taskHeld;
             taskWhy = taskCompleted
               ? `task #${match.id} completed`
               : `task #${match.id} is held — ${(updated && updated.held && updated.held.reason) || 'awaiting a write-up'}`;
@@ -677,6 +683,7 @@ function act(recordId, action, opts = {}) {
       return {
         ok: true,
         taskCompleted,
+        taskHeld,
         taskWhy,
         // Non-null when the completion still has to reach Microsoft. The caller
         // MUST await it and report the outcome; ignoring it resolves the record

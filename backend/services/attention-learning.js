@@ -153,11 +153,20 @@ function _load() {
     };
   } catch (e) {
     console.error('[AttentionLearning] Could not read:', e.message);
-    return { deliveries: [], muted: {} };
+    // ⚠ UNREADABLE is not EMPTY. Returned as an empty store, the next `_save`
+    // wrote that emptiness over the real history and every mute Nick or SARA had
+    // made (the `triage-shadow._load` rule), and `mutedList` told the Controls
+    // screen "nothing is muted". Readers that only need a yes/no (`isMuted`) still
+    // get the permissive answer — an unreadable mute must not silence a prompt.
+    return { deliveries: [], muted: {}, unreadable: true };
   }
 }
 
 function _save(state) {
+  if (state.unreadable) {
+    console.warn('[AttentionLearning] Not saving — the stored state could not be read, and overwriting it would erase it');
+    return;
+  }
   const cutoff = Date.now() - RETAIN_DAYS * 86400000;
   db.setState(STATE_KEY, JSON.stringify({
     deliveries: state.deliveries.filter(d => Date.parse(d.at) >= cutoff),
@@ -180,6 +189,7 @@ function isMuted(kind) {
 /** Everything muted, with why and when — what the EOD reads out. */
 function mutedList() {
   const state = _load();
+  if (state.unreadable) throw new Error('the mute store could not be read');
   return Object.entries(state.muted).map(([kind, m]) => ({
     kind,
     why: m.why || null,
