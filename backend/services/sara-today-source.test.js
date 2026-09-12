@@ -128,3 +128,32 @@ test('the device section is device-neutral and keeps its facts', () => {
   assert.match(device, /on this device only/);
   assert.match(device, /may clear it/);
 });
+
+// ── Both estimate exclusions are said, not just one ──────────────────────────
+//
+// `initiation-signals` returns `assumedExcluded` AND `lateExcluded` on both its
+// branches. Today rendered only the first, so the line claimed "across N
+// sessions you set" while silently dropping the ones he DID set more than
+// ESTIMATE_GRACE_MINUTES in — the exclusion most likely to make him doubt the
+// number, because he remembers setting those. The comment above it even said
+// "the exclusion is said", singular, while only one of the two was.
+
+test('Today names BOTH estimate exclusions', () => {
+  assert.match(today, /estimates\.assumedExcluded/,
+    'positive control: the assumed exclusion must still be rendered');
+  assert.match(today, /estimates\.lateExcluded/,
+    'the late exclusion is unreported again — "N sessions you set" is then not the whole set');
+});
+
+test('a late estimate is not phrased as a failure', () => {
+  // ⚠ It is not one. A number given partway through already knows part of the
+  // answer, so it runs the clock without counting as a forecast — the same
+  // words the session card uses. `initiation-signals` is pinned against
+  // scoring language and this line must not reintroduce it.
+  const line = today.match(/lateExcluded[^`]*`([^`]*)`/);
+  assert.ok(line, 'positive control: the late-exclusion sentence must be findable');
+  for (const banned of ['failed', 'failure', 'too late', 'missed', 'wrong']) {
+    assert.ok(!line[1].toLowerCase().includes(banned),
+      `the late-exclusion line calls it "${banned}" — it is a measurement, not a mark against him`);
+  }
+});

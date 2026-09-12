@@ -263,13 +263,22 @@ function InitiationSection({ signals }) {
         </ul>
       )}
 
-      {/* Only sessions where the estimate was his. NEURO's own 30-minute
-          assumption is excluded and the exclusion is said. */}
+      {/* Only sessions where the estimate was his, and BOTH exclusions are said.
+          ⚠ `lateExcluded` was carried by `initiation-signals` and read by nobody,
+          so this line claimed "across N sessions you set" while silently dropping
+          the ones he DID set more than ESTIMATE_GRACE_MINUTES in — the case most
+          likely to make him doubt the number, because he remembers setting them.
+          The comment here used to say "the exclusion is said" in the singular
+          while only one of the two was. */}
       {estimates.known ? (
         <p className="today__init-est">
           Your estimates: {estimates.close} close, {estimates.under} under, {estimates.over} over,
           across {estimates.judged} session{estimates.judged === 1 ? '' : 's'} you set.
           {estimates.assumedExcluded > 0 && ` ${estimates.assumedExcluded} more had no estimate of yours.`}
+          {/* Not a failure and not phrased as one: a number given partway through
+              already knows part of the answer, so it runs the clock without
+              counting as a forecast. Same words the session card uses. */}
+          {estimates.lateExcluded > 0 && ` ${estimates.lateExcluded} you set partway through, so they ran the clock without counting as forecasts.`}
         </p>
       ) : estimates.reason && !nothingYet ? (
         <p className="today__init-est">Estimates: {estimates.reason}.</p>
