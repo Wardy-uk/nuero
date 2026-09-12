@@ -349,10 +349,50 @@ async function sendToAll(title, body, data = {}) {
     return;
   }
 
-  const subscriptions = db.getAllPushSubscriptions();
+  const allSubscriptions = db.getAllPushSubscriptions();
+
+  // ── Gate 0: WHO CAN SEE IT ─────────────────────────────────────────────────
+  //
+  // WARNING  A SUBSCRIPTION IS A DEVICE, AND SOME DEVICES ARE SHARED. The
+  //   living-room kiosk is a browser like any other and can hold a push
+  //   subscription; a notification reading "NT-27530 has breached, Naomi
+  //   hasn't replied in nine days" lands on a screen the whole household can
+  //   read. Location is not the axis - audience is. Today there is exactly one
+  //   subscription and it is an Apple endpoint, so nothing is being leaked;
+  //   this exists so that subscribing from the kiosk cannot quietly start.
+  //
+  // WARNING  DEFAULT PRIVATE. Callers opt IN to `privacy: 'ambient'` for things
+  //   that reveal nothing (a timer, the weather). Forgetting to say is not
+  //   permission to broadcast, which is the same default `endpoints.resolve`
+  //   takes for exactly the same reason.
+  const { classifyPushEndpoint } = require('./endpoints');
+  const ambient = data && data.privacy === 'ambient';
+  const classified = allSubscriptions.map(sub => ({
+    sub,
+    seen: sub.audience
+      ? { audience: sub.audience, confidence: 'stated', label: sub.label || null }
+      : classifyPushEndpoint(sub.endpoint, sub.label),
+  }));
+  const subscriptions = ambient
+    ? classified.map(c => c.sub)
+    : classified.filter(c => c.seen.audience !== 'shared').map(c => c.sub);
+  const audienceSkipped = classified.length - subscriptions.length;
+  // WARNING  Unknowns are SENT TO and COUNTED, never silently trusted. Refusing
+  //   would silence the one subscription that predates labelling, which is
+  //   every subscription there is.
+  const unlabelled = classified.filter(c => c.seen.confidence !== 'stated').length;
+  if (unlabelled) {
+    console.warn(`[WebPush] ${unlabelled} subscription(s) do not say what device they are`);
+  }
+
   if (subscriptions.length === 0) {
-    console.warn(`[WebPush] No subscriptions — dropped: "${title}"`);
-    _record(title, data, 'undeliverable', 'no subscriptions');
+    const why = audienceSkipped
+      // Named rather than reported as "no subscriptions": "the only device
+      // here is shared" is a fact he can act on.
+      ? `withheld — the only ${audienceSkipped} subscription(s) are shared devices`
+      : 'no subscriptions';
+    console.warn(`[WebPush] ${why} — dropped: "${title}"`);
+    _record(title, data, 'undeliverable', why);
     return;
   }
 

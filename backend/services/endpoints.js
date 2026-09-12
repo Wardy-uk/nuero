@@ -194,4 +194,31 @@ function resolveAll(req = {}) {
   return { endpoints: [first.endpoint, ...first.alternatives.map(a => a.id)], ...first };
 }
 
-module.exports = { resolve, resolveAll, score, sameRoom, CAPABILITIES, AUDIENCES, PRIVACY };
+
+/**
+ * What KIND of device is behind a web-push subscription?
+ *
+ * ⚠ A push endpoint names the PUSH SERVICE, not the device. `web.push.apple.com`
+ *   means Apple pushed it — an iPhone, an iPad, a Mac — and an iPad on the
+ *   kitchen worktop is a SHARED screen. So this returns a LIKELIHOOD and never a
+ *   certainty, and an explicit label from the client always wins over it.
+ *
+ * ⚠ UNKNOWN IS TREATED AS PRIVATE, deliberately, and REPORTED. Refusing would
+ *   silence a subscription that predates labelling — today that is the only one
+ *   there is, so the safe-looking choice would mean Nick gets no notifications
+ *   at all. Sending while COUNTING the unknowns fails in the working direction
+ *   and keeps the gap visible, which is what lets it be closed rather than
+ *   discovered.
+ */
+function classifyPushEndpoint(url, label = null) {
+  const known = { phone: 'private', desktop: 'private', kiosk: 'shared', tv: 'shared' };
+  if (label && known[label]) {
+    return { audience: known[label], label, confidence: 'stated', why: 'the client said it is the ' + label };
+  }
+  const host = (String(url || '').match(/^https?:\/\/([^/]+)/) || [])[1] || '';
+  if (/apple\.com$/i.test(host)) {
+    return { audience: 'private', label: null, confidence: 'inferred', why: 'an Apple push endpoint — probably his phone, but an iPad on a worktop is shared' };
+  }
+  return { audience: 'private', label: null, confidence: 'unknown', why: 'nothing says what device this is — treated as private so it still works, and counted' };
+}
+module.exports = { resolve, resolveAll, score, sameRoom, classifyPushEndpoint, CAPABILITIES, AUDIENCES, PRIVACY };

@@ -165,3 +165,51 @@ test('room matching survives case and punctuation', () => {
   assert.equal(ep.sameRoom('office', 'Office'), true);
   assert.equal(ep.sameRoom('', ''), false, 'two unknowns are not the same room');
 });
+
+// ── Classifying a push subscription ──────────────────────────────────────────
+//
+// ⚠ A subscription IS a device, and some devices are shared. The living-room
+// kiosk is a browser like any other and can hold one; a notification reading a
+// colleague's name lands on a screen the household can read. Measured 12 Sep
+// 2026: exactly one subscription exists and it is an Apple endpoint, so nothing
+// is leaking — this exists so that subscribing from the kiosk cannot quietly
+// start leaking.
+
+test('an explicitly labelled kiosk is SHARED, and the label beats the host', () => {
+  // An Apple push endpoint on a shared iPad is still a shared device.
+  const r = ep.classifyPushEndpoint('https://web.push.apple.com/x', 'kiosk');
+  assert.equal(r.audience, 'shared');
+  assert.equal(r.confidence, 'stated');
+});
+
+test('a labelled phone or desktop is private', () => {
+  assert.equal(ep.classifyPushEndpoint('https://any', 'phone').audience, 'private');
+  assert.equal(ep.classifyPushEndpoint('https://any', 'desktop').audience, 'private');
+});
+
+test('⚠ an Apple endpoint is INFERRED private, never asserted', () => {
+  // It names the push SERVICE, not the device — an iPad on a worktop is shared.
+  const r = ep.classifyPushEndpoint('https://web.push.apple.com/QPY_mmv93xk');
+  assert.equal(r.audience, 'private');
+  assert.equal(r.confidence, 'inferred', 'the uncertainty travels with the answer');
+});
+
+test('⚠ an unlabelled subscription is treated as private AND flagged unknown', () => {
+  // Treated as private so it still works — refusing would silence the only
+  // subscription that exists. Flagged so the gap stays visible.
+  const r = ep.classifyPushEndpoint('https://fcm.googleapis.com/fcm/send/abc');
+  assert.equal(r.audience, 'private');
+  assert.equal(r.confidence, 'unknown');
+  assert.match(r.why, /counted/);
+});
+
+test('an unreadable endpoint does not throw', () => {
+  for (const bad of [null, undefined, '', 'not a url', 42]) {
+    assert.equal(ep.classifyPushEndpoint(bad).audience, 'private');
+  }
+});
+
+test('⚠ an unknown label falls back to inference rather than being trusted', () => {
+  const r = ep.classifyPushEndpoint('https://web.push.apple.com/x', 'toaster');
+  assert.equal(r.confidence, 'inferred', 'a label nobody recognises is not a statement');
+});

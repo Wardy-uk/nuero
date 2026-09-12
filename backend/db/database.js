@@ -82,6 +82,17 @@ async function init() {
 
   // Migration: tasks.moscow_proposed (added the day after the tasks table itself)
   try {
+    // A push subscription must say what DEVICE it is, or work detail can be
+    // pushed to a screen the family can read. Additive; existing rows keep
+    // NULL and are classified by inference, which is reported as inference.
+    const pushColumns = db.prepare('PRAGMA table_info(push_subscriptions)').all().map(r => r.name);
+    if (!pushColumns.includes('label')) {
+      db.exec('ALTER TABLE push_subscriptions ADD COLUMN label TEXT');
+    }
+    if (!pushColumns.includes('audience')) {
+      db.exec('ALTER TABLE push_subscriptions ADD COLUMN audience TEXT');
+    }
+
     const taskColumns = db.prepare('PRAGMA table_info(tasks)').all().map(r => r.name);
     if (taskColumns.length && !taskColumns.includes('moscow_proposed')) {
       db.exec('ALTER TABLE tasks ADD COLUMN moscow_proposed INTEGER NOT NULL DEFAULT 0');
@@ -640,11 +651,17 @@ function getCalendarEvents(startDate, endDate) {
 }
 
 // Push subscription helpers
-function savePushSubscription(subscription) {
+function savePushSubscription(subscription, meta = {}) {
+  // ⚠ The device is recorded AT SUBSCRIBE TIME, because it is the only moment
+  // anything knows what it is. A push endpoint names the push SERVICE, not the
+  // device, so this cannot be recovered later — and without it a subscription
+  // from the living-room kiosk is indistinguishable from one on his phone, and
+  // work detail would be pushed to a screen the family can read.
   run(`
-    INSERT OR REPLACE INTO push_subscriptions (endpoint, keys_p256dh, keys_auth)
-    VALUES (?, ?, ?)
-  `, [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth]);
+    INSERT OR REPLACE INTO push_subscriptions (endpoint, keys_p256dh, keys_auth, label, audience)
+    VALUES (?, ?, ?, ?, ?)
+  `, [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth,
+      meta.label || null, meta.audience || null]);
 }
 
 function getAllPushSubscriptions() {

@@ -811,6 +811,30 @@ export default function AdhdPanel({ onNavigate }) {
             smaller number is the exact bug this card had for months: it showed
             0 finished on days full of finished work, and looked correct doing it.
           */}
+          {/*
+            ── What this deliberately does NOT count ──
+            A different fact from the line below it, and they must not read
+            alike: `gaps` is a source that FAILED, `knownGaps` is a source
+            nobody has wired up, each for a stated reason. Collapsed because
+            this is a reward surface and three paragraphs of caveat at the foot
+            of it is how the number above stops being read - but reachable,
+            because a count that cannot say what it leaves out is the same bug
+            as one that cannot say what it failed to see.
+
+            It had NO READER on any surface until now, which is how its middle
+            entry came to name a function deleted on 26 Aug and describe a
+            limitation lifted on 16 Aug: a stale explanation protected from
+            correction by nobody ever seeing it.
+          */}
+          {momentum.knownGaps?.length > 0 && (
+            <details className="adhd__known-gaps">
+              <summary>What this doesn&rsquo;t count</summary>
+              <ul>
+                {momentum.knownGaps.map((g) => <li key={g}>{g}</li>)}
+              </ul>
+            </details>
+          )}
+
           {data.gaps?.length > 0 && (
             <p className="adhd__gap">Couldn't read: {data.gaps.join('; ')}</p>
           )}

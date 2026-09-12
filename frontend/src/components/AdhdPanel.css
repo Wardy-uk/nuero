@@ -366,6 +366,27 @@
   color: var(--warning);
 }
 
+/* What the ledger deliberately does not count. MUTED, never --warning: the
+   rule beside it is amber because a source FAILED, and painting a considered
+   omission the same colour is how a permanent caveat comes to read as a fault
+   and gets ignored along with the real one. */
+.adhd__known-gaps {
+  margin: 0.6rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.adhd__known-gaps summary {
+  cursor: pointer;
+}
+
+.adhd__known-gaps ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
 .adhd__win-src {
   font-size: 0.7rem;
   color: var(--text-muted);
