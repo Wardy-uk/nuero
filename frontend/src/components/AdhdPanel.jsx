@@ -17,6 +17,49 @@ async function api(path, options = {}) {
   return res.json();
 }
 
+// "While you're in here" — more work sharing the context he is already loaded
+// into. Nick's opening ask for the adaptive work: *"if I'm working on a Jira
+// ticket/complaint, are there any more Jira tickets while I'm there."*
+//
+// ⚠ IT SAYS WHAT IT IS BASING THE SUGGESTION ON. `working.why` is rendered
+//   above the list, because a cohort with no premise is a fact from nowhere and
+//   the honest answer to "why are you showing me these" is most of its value.
+//
+// ⚠ IT SUGGESTS AND NOTHING ELSE. Tapping a row navigates to the task list; it
+//   does not start, tick, reorder or block anything. Every one of those already
+//   has a control with its own rules, and a second door would be a second set
+//   of rules to keep in step.
+//
+// ⚠ NOTHING RENDERS WHEN THERE IS NO COHORT, and that is the common case — on
+//   the live store 56 of 93 tasks have none. A band that always says something
+//   is a band nobody reads.
+export function WhileHere({ data, onNavigate }) {
+  if (!data || !data.best) return null;
+  const { working, best } = data;
+  return (
+    <section className="adhd__cohort">
+      <div className="adhd__cohort-label">
+        While you&rsquo;re in here
+        {working && working.why && <span className="adhd__cohort-why"> · {working.why}</span>}
+      </div>
+      <p className="adhd__cohort-lead">
+        {best.count} more in <strong>{best.label}</strong>
+      </p>
+      <ul className="adhd__cohort-list">
+        {best.tasks.map(t => (
+          <li key={t.id}>
+            <button type="button" className="adhd__cohort-task" onClick={() => onNavigate && onNavigate('todos')}>
+              <span className="adhd__cohort-id">#{t.id}</span>
+              <span className="adhd__cohort-text">{t.text}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {best.more > 0 && <p className="adhd__cohort-more">and {best.more} more</p>}
+    </section>
+  );
+}
+
 // `Now` — the execution surface, and the desktop's default view.
 //
 // This was the ADHD "Today" dashboard, sitting four clicks deep under MORE. It
@@ -134,6 +177,11 @@ export default function AdhdPanel({ onNavigate }) {
     }
   }, []);
 
+  // "While you're in here" — the cohort band. Its own fetch rather than a field
+  // on /api/adhd, because it is a different question (what is he ON) answered
+  // from different sources, and folding it in would make one slow read of three.
+  const [cohort, setCohort] = useState(null);
+
   // The "make it smaller" box. Null when closed; a string while being typed.
   const [smaller, setSmaller] = useState(null);
 
@@ -145,6 +193,21 @@ export default function AdhdPanel({ onNavigate }) {
   const [closeout, setCloseout] = useState(null);
 
   useEffect(() => { load(); }, [load]);
+
+  // ⚠ Never allowed to fail the page: a cohort is a nicety and the session
+  // controls above it are not. A failed read simply renders nothing.
+  useEffect(() => {
+    let alive = true;
+    api('/api/current-work/while-here')
+      .then(d => { if (alive) setCohort(d); })
+      .catch(() => { if (alive) setCohort(null); });
+    const t = setInterval(() => {
+      api('/api/current-work/while-here')
+        .then(d => { if (alive) setCohort(d); })
+        .catch(() => {});
+    }, 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
 
   // A running session has a clock on it, so the card has to move. One minute is
   // the right granularity: a second-by-second timer on a page for low executive
@@ -555,6 +618,8 @@ export default function AdhdPanel({ onNavigate }) {
           )}
         </section>
       )}
+
+      <WhileHere data={cohort} onNavigate={onNavigate} />
 
       {/* ── The one thing ──
           Canonical attention, rendered by the shared card so the five actions

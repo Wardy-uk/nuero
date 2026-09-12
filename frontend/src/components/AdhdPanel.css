@@ -580,3 +580,82 @@
   font-size: 0.8rem;
   color: var(--text-muted);
 }
+
+/* ── "While you're in here" ───────────────────────────────────────────────────
+   The cohort band: more work sharing the context already loaded. Sits under the
+   session card and above "Right now", because it is about the work he is IN —
+   and deliberately quieter than both, since it is a nicety and they are not. */
+.adhd__cohort {
+  margin: 0.75rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.adhd__cohort-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.62;
+}
+
+/* The premise, in his own terms. Small, because it explains rather than asks. */
+.adhd__cohort-why {
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.8;
+}
+
+.adhd__cohort-lead {
+  margin: 0.35rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.adhd__cohort-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.adhd__cohort-task {
+  display: flex;
+  gap: 0.55rem;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.4rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.adhd__cohort-task:hover { background: rgba(255, 255, 255, 0.06); }
+
+/* The id is the thing he can quote to SARA or put in a commit — same reasoning
+   as the task-id chip on a TodoPanel card. */
+.adhd__cohort-id {
+  flex: 0 0 auto;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.adhd__cohort-text {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adhd__cohort-more {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  opacity: 0.6;
+}
