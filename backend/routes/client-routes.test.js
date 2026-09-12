@@ -43,16 +43,30 @@ const REPO = path.resolve(__dirname, '..', '..');
 // ── reading the server's own mount table ────────────────────────────────────
 
 function mountTable(serverFile, routesDir) {
-  const src = fs.readFileSync(serverFile, 'utf8');
+  // ⚠ COMMENTS STRIPPED HERE TOO, and this one was found by MUTATION rather than
+  // by reading — the third time in this file that "a name in a comment counts".
+  // Commenting a mount out is how a route gets retired (`sara/backend`'s
+  // `/api/email` and `/api/jira` went that way on 11 Sep, and the commented
+  // lines are still there explaining why). Reading them as live means the table
+  // still contains a mount that no longer exists, so a caller left behind by
+  // that retirement resolves happily and this guard says nothing — which is
+  // precisely the bug it was written to catch, hiding inside the catcher.
+  const src = stripComments(fs.readFileSync(serverFile, 'utf8'));
   const mounts = new Map(); // first segment (or 'a/b') -> router file name | null
 
-  const useRe = /app\.use\('\/api\/([a-zA-Z0-9-]+)(?:\/([a-zA-Z0-9-]+))?',\s*(?:require\('\.\/routes\/([a-zA-Z0-9-]+)'\)|([a-zA-Z0-9_]+))\)/g;
+  // ⚠ `./routes/` OR `./src/routes/`, and camelCase file names. NEURO mounts
+  // from `./routes/state-of-play`; `sara/backend` mounts from
+  // `./src/routes/neuroAuth`. One reader for both, or the kiosk cannot be
+  // checked at all — and the kiosk is the surface whose dead routes are
+  // invisible from everywhere else, because the phone renders the same views
+  // against NEURO directly and is fine.
+  const useRe = /app\.use\('\/api\/([a-zA-Z0-9-]+)(?:\/([a-zA-Z0-9-]+))?',\s*(?:require\('\.(?:\/src)?\/routes\/([a-zA-Z0-9_-]+)'\)|([a-zA-Z0-9_]+))\)/g;
   for (const m of src.matchAll(useRe)) {
     const seg = m[2] ? `${m[1]}/${m[2]}` : m[1];
     let file = m[3] || null;
     if (!file && m[4]) {
       // `app.use('/api/x', fooRoutes)` — find what fooRoutes was required from.
-      const re = new RegExp(`(?:const|let|var)\\s+${m[4]}\\s*=\\s*require\\('\\./routes/([a-zA-Z0-9-]+)'\\)`);
+      const re = new RegExp(`(?:const|let|var)\\s+${m[4]}\\s*=\\s*require\\('\\.(?:/src)?/routes/([a-zA-Z0-9_-]+)'\\)`);
       const hit = src.match(re);
       file = hit ? hit[1] : null;
     }
@@ -90,12 +104,64 @@ function walk(dir, acc = []) {
   return acc;
 }
 
+/**
+ * Source with comments removed, strings left intact.
+ *
+ * ⚠ A PATH IN A COMMENT IS NOT A CALLER, and this is not a nicety: the whole
+ * value of this guard is that a failure means something real. Without it,
+ * `mcp-server/index.js` fails on the comment that EXPLAINS why `/api/queue` was
+ * removed, and `sara/frontend`'s `saraState.jsx` fails on the note recording
+ * that `/api/actions/focus/done` used to be called. Both are exactly the
+ * documentation you want people writing, and a test that punishes it gets
+ * switched off — which costs the real catches too.
+ *
+ * It is the same mistake the DOORS parser in this file made on its first pass
+ * (a name inside a comment counted as an open door), and there it survived a
+ * mutation check only after being fixed.
+ *
+ * Strings are walked rather than stripped, so `'https://x'` does not read as the
+ * start of a comment and a quote inside a comment does not swallow the file.
+ */
+function stripComments(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '/') {
+      while (i < n && src[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      const quote = c;
+      out += c;
+      i++;
+      while (i < n && src[i] !== quote) {
+        if (src[i] === '\\') { out += src[i]; i++; }
+        if (i < n) { out += src[i]; i++; }
+      }
+      out += quote;
+      i++;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 /** Every `/api/...` literal in these directories, with the file that holds it. */
 function clientPaths(dirs) {
   const found = new Map();
   for (const d of dirs) {
     for (const file of walk(path.join(REPO, d))) {
-      const src = fs.readFileSync(file, 'utf8');
+      const src = stripComments(fs.readFileSync(file, 'utf8'));
       for (const m of src.matchAll(/['"`](\/api\/[A-Za-z0-9/_${}().:%-]*)['"`]/g)) {
         const raw = m[1];
         if (!found.has(raw)) found.set(raw, path.relative(REPO, file).split(path.sep).join('/'));
@@ -170,6 +236,7 @@ const NEURO_CLIENTS = {
   'NEURO desktop': ['frontend/src'],
   'SARA phone PWA': ['sara/app/src'],
   'SARA shared views': ['sara/shared-ui'],
+  'MCP server': ['mcp-server'],
 };
 
 test('every NEURO web client path resolves to a route that exists', () => {
@@ -232,19 +299,23 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
  */
 const CLOSED_ON_PURPOSE = new Set(['health']);
 
-test('every segment the shared SARA views call is a kiosk door, or declared closed', () => {
+/**
+ * The kiosk's allowlist, read from `neuroProxy.js`.
+ *
+ * ⚠ COMMENTS ARE NOT DOORS, and this is not pedantry: commenting a line out is
+ * exactly how a door gets CLOSED in that file (`journal`, `vault`,
+ * `vault-hygiene` and `plaud` went that way on 11 Sep). A scan that reads the
+ * whole block as one string still finds the name inside the comment, so the test
+ * passes over a door that no longer exists — caught by MUTATION, not by reading.
+ * Take the code half of each line, and only a name that OPENS it.
+ */
+function kioskDoors() {
   const proxy = fs.readFileSync(
     path.join(REPO, 'sara', 'backend', 'src', 'routes', 'neuroProxy.js'), 'utf8',
   );
   const block = proxy.match(/const DOORS = new Set\(\[([\s\S]*?)\]\)/);
   assert.ok(block, 'could not read the DOORS allowlist — the scan is broken, not the doors');
 
-  // ⚠ COMMENTS ARE NOT DOORS, and this is not pedantry: commenting a line out is
-  // exactly how a door gets CLOSED in that file (`journal`, `vault`,
-  // `vault-hygiene` and `plaud` went that way on 11 Sep). A scan that reads the
-  // whole block as one string still finds the name inside the comment, so the
-  // test passes over a door that no longer exists — caught by mutation, not by
-  // reading. Take the code half of each line, and only a name that OPENS it.
   const doors = new Set();
   for (const line of block[1].split('\n')) {
     const code = line.split('//')[0].trim();
@@ -252,6 +323,11 @@ test('every segment the shared SARA views call is a kiosk door, or declared clos
     if (m) doors.add(m[1]);
   }
   assert.ok(doors.size > 5, 'DOORS parsed suspiciously small — positive control on the parse');
+  return doors;
+}
+
+test('every segment the shared SARA views call is a kiosk door, or declared closed', () => {
+  const doors = kioskDoors();
 
   const saraServer = fs.readFileSync(path.join(REPO, 'sara', 'backend', 'server.js'), 'utf8');
   const named = new Set(
@@ -272,3 +348,65 @@ test('every segment the shared SARA views call is a kiosk door, or declared clos
     'A shared view calls something the kiosk cannot reach:\n  ' + stranded.join('\n  '),
   );
 });
+
+// -- 3. the kiosk SHELL, whose own calls go nowhere near NEURO ---------------
+
+test('every path the kiosk shell calls resolves — on sara/backend or through a door', () => {
+  const neuro = mountTable(
+    path.join(REPO, 'backend', 'server.js'),
+    path.join(REPO, 'backend', 'routes'),
+  );
+  const sara = mountTable(
+    path.join(REPO, 'sara', 'backend', 'server.js'),
+    path.join(REPO, 'sara', 'backend', 'src', 'routes'),
+  );
+  assert.ok(sara.mounts.size > 8, 'sara/backend mounts parsed suspiciously small');
+
+  const doors = kioskDoors();
+  const dead = [];
+
+  for (const [raw, where] of clientPaths(['sara/frontend/src'])) {
+    // Its OWN backend first — every named door in `sara/backend/server.js` is
+    // mounted AHEAD of the proxy, so those win.
+    if (!unresolved(raw, sara)) continue;
+    // Otherwise it can only be reaching NEURO through the allowlist, which
+    // means it must be a door AND resolve on the far side.
+    const seg = knownPrefix(raw)[0];
+    if (!seg) continue;
+    if (!doors.has(seg)) {
+      dead.push(`${raw} — not a sara/backend route and '${seg}' is not a door (${where})`);
+      continue;
+    }
+    const why = unresolved(raw, neuro);
+    if (why) dead.push(`${raw} — through the door, but ${why} (${where})`);
+  }
+
+  assert.deepStrictEqual(
+    dead,
+    [],
+    'The kiosk shell calls something nothing answers:\n  ' + dead.join('\n  '),
+  );
+});
+
+test('POSITIVE CONTROL: a path in a COMMENT is not a caller', () => {
+  // ⚠ THE FALSE POSITIVE THAT WOULD HAVE KILLED THIS GUARD. Both
+  // `mcp-server/index.js` and `sara/frontend`'s `saraState.jsx` carry comments
+  // naming routes that were REMOVED — which is exactly the documentation you
+  // want, and a test that fails on it gets switched off, costing the real
+  // catches too.
+  const src = [
+    '// it called `/api/queue`, which never existed',
+    '/* used to POST /api/actions/focus/done */',
+    "const live = '/api/friction';",
+    "const url = 'https://example.test/api/not-a-comment';",
+  ].join('\n');
+
+  const stripped = stripComments(src);
+  assert.ok(!stripped.includes('/api/queue'), 'a line comment survived stripping');
+  assert.ok(!stripped.includes('focus/done'), 'a block comment survived stripping');
+  // ⚠ And the control in the other direction: real calls and URLs containing
+  // `//` must SURVIVE, or the stripper passes by deleting everything.
+  assert.ok(stripped.includes("'/api/friction'"), 'a real call was stripped');
+  assert.ok(stripped.includes('example.test'), 'a URL was mistaken for a comment');
+});
+
