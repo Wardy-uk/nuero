@@ -293,6 +293,11 @@ function InitiationSection({ signals }) {
  */
 function FrictionSection({ refreshKey }) {
   const [state, setState] = useState({ loading: true, error: null, notHere: false, data: null });
+  const [busy, setBusy] = useState(null);
+  const [failed, setFailed] = useState(null);
+  // Bumped by a successful "Noted" so the section re-reads without touching the
+  // page's own refresh — noting one line must not re-fetch the whole dashboard.
+  const [localKey, setLocalKey] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -308,7 +313,40 @@ function FrictionSection({ refreshKey }) {
       }
     })();
     return () => { live = false; };
-  }, [refreshKey]);
+  }, [refreshKey, localKey]);
+
+  /**
+   * "Noted" — he has taken the line on board.
+   *
+   * ⚠ IT ANSWERS THE LINE, NOT THE WORK. It does not tick anything, does not
+   * un-record the evidence, and the server holds it only while the SIGNATURE is
+   * unchanged — a third shrink on the same task raises the observation again.
+   * That is why the signature he was looking at is sent rather than just the id.
+   *
+   * ⚠ IT EXISTED ON THE DESKTOP ONLY UNTIL NOW, and SARA already honoured the
+   * result: the filter is server-side, so a line noted at the desk was already
+   * gone from here. What was missing was pressing it FROM here — a line you can
+   * read on your phone and only dismiss at your desk, in the one panel whose
+   * whole purpose is removing friction.
+   */
+  async function note(ins) {
+    if (!ins?.id || busy) return;
+    setBusy(ins.id);
+    setFailed(null);
+    try {
+      const r = await readJson('/api/friction/note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: ins.id, signature: ins.signature }),
+      });
+      if (!r.ok) throw new Error(errorOf(r));
+      setLocalKey((k) => k + 1);
+    } catch (e) {
+      // Said out loud. A button that silently does nothing is worse than none.
+      setFailed(e.message);
+    }
+    setBusy(null);
+  }
 
   const { loading, error, notHere, data } = state;
   if (loading) return null;
@@ -332,6 +370,12 @@ function FrictionSection({ refreshKey }) {
 
   const insights = data?.insights || [];
   const gaps = data?.gaps || [];
+  // ⚠ STILL NOTHING WHEN THERE IS NOTHING, and deliberately NOT widened to
+  // include `noted`. The desktop shows its "N noted already" line unconditionally
+  // because it has the room; here that would mount a whole section whose only
+  // content is a reminder that he dismissed some things, which is noise on the
+  // surface he opens at a bad moment. The line rides ALONGSIDE real observations
+  // or not at all.
   if (insights.length === 0 && gaps.length === 0) return null;
 
   return (
@@ -341,8 +385,27 @@ function FrictionSection({ refreshKey }) {
         <div className="today__friction-item" key={ins.id || i}>
           <p className="today__friction-text">{ins.text}</p>
           {ins.because && <p className="today__because">Based on {ins.because}.</p>}
+          {/* ⚠ No id, no button — never one that guesses which line it answers. */}
+          {ins.id && (
+            <button
+              type="button"
+              className="today__small-btn"
+              disabled={busy === ins.id}
+              onClick={() => note(ins)}
+            >
+              {busy === ins.id ? '…' : 'Noted'}
+            </button>
+          )}
         </div>
       ))}
+      {failed && <p className="today__gap">Couldn&rsquo;t note that — {failed}.</p>}
+      {/* Held back, not gone. A section that quietly shrank would look like one
+          that had stopped working. Same wording as the desktop's. */}
+      {data?.noted > 0 && (
+        <p className="today__quiet">
+          {data.noted} noted already — back if the evidence grows.
+        </p>
+      )}
       {gaps.length > 0 && (
         <p className="today__gap">
           Couldn&rsquo;t read: {gaps.map((g) => g.source).join(', ')}.
