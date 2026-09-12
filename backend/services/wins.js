@@ -108,7 +108,15 @@ const ACTION_LABELS = new Map([
 
 const KNOWN_GAPS = Object.freeze([
   'Jira resolutions — jira.js never writes jira_tickets_cache, so there is no status transition to detect',
-  'emails dealt with — dismissInboxItem stores no reason, so "done" and "not relevant" are indistinguishable (replies are counted, via sent_replies)',
+  // ⚠ CORRECTED 12 Sep 2026. This said "dismissInboxItem stores no reason,
+  // so done and not-relevant are indistinguishable" — and BOTH halves had
+  // stopped being true: `dismissEmail` has recorded done / not-relevant /
+  // replied since 16 Aug (#70), and `dismissInboxItem` belonged to the
+  // `inbox_items` table DELETED on 26 Aug, so it named a function that no
+  // longer exists. It went unnoticed because `momentum.knownGaps` carries this
+  // list onto /api/adhd and no client reads it — a stale explanation protected
+  // from correction by having no reader.
+  'emails dealt with — uncounted by CHOICE rather than by limitation: clearing one IS distinguishable now (dismissEmail records done / not-relevant / replied), so whether that counts as a win is a decision nobody has taken, not a missing signal. Replies are already counted, via sent_replies',
   'vault writes — 2,229 in 30 days, overwhelmingly Syncthing and the import pipeline rather than Nick',
 ]);
 
