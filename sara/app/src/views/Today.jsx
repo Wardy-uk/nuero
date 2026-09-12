@@ -133,6 +133,27 @@ export default function Today({ onNavigate }) {
               <span>{w.text}</span>
             </div>
           ))}
+          {/* ── What this cannot count ────────────────────────────────────────
+              ⚠ HERE, AND NOT ON THE CARD FACE. `momentum.knownGaps` has been on
+              /api/adhd since the ledger shipped and was read by nothing — but
+              three PERMANENT lines under the count every day would be the
+              `PushStatusLine` mistake: a warning he learns to scroll past, which
+              is how the next real one gets missed. Opening this list IS the
+              moment he is asking "what did I actually do?", so it is the one
+              moment "and here is what I can't see" informs rather than nags.
+
+              ⚠ The number needs this to be trustworthy. The card once read 4
+              completions in a month he shipped 271 commits in, and looked
+              perfectly correct doing so — a count that cannot say what it
+              failed to see is the bug this ledger was built to remove. */}
+          {momentum.knownGaps?.length > 0 && (
+            <div className="today__wins-gaps">
+              <div className="today__because">What this can’t count</div>
+              {momentum.knownGaps.map((g, i) => (
+                <div className="today__because" key={i}>{g}</div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

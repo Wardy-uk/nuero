@@ -333,3 +333,77 @@ test("a NEURO task's own completion still keys on the activity row", () => {
     'line 0 is a real line — not falsy-checked away'
   );
 });
+
+// ── The known gaps must stay TRUE ───────────────────────────────────────────
+//
+// ⚠ WHY THIS EXISTS. On 12 Sep 2026 `KNOWN_GAPS[1]` was found to be confidently
+// false and to have been so for four weeks: it claimed emails-dealt-with were
+// indistinguishable because "dismissInboxItem stores no reason", when
+// `dismissEmail` had recorded done / not-relevant / replied since 16 Aug and
+// `dismissInboxItem` had been DELETED with the `inbox_items` table on 26 Aug.
+//
+// It rotted because `momentum.knownGaps` is carried onto /api/adhd and was read
+// by nothing — a wrong explanation nobody can see is one nobody corrects. Making
+// it visible is half the fix; this is the half that matters, because a VISIBLE
+// gaps list nobody verifies is worse than an invisible one: it turns a quiet
+// staleness into a confident one.
+//
+// Same shape as `action-presenter.test.js` parsing `executeAction`'s cases so a
+// new action type cannot ship without a presenter.
+//
+// ⚠ ONLY TWO OF THE THREE ARE ASSERTABLE. The third — "vault writes, 2,229 in 30
+// days, overwhelmingly Syncthing and the import pipeline" — is a MEASUREMENT at a
+// point in time, not a claim about code, and there is no honest scan for it. A
+// fake assertion over it would be worse than none, so it is named here as
+// deliberately unpinned rather than quietly skipped.
+
+const fsGaps = require('fs');
+const pathGaps = require('path');
+const BACKEND = pathGaps.join(__dirname, '..');
+
+test('the Jira gap is still true — nothing writes jira_tickets_cache', () => {
+  const gaps = wins._internals ? wins._internals.KNOWN_GAPS : null;
+  const text = (gaps || []).join(' ') || fsGaps.readFileSync(
+    pathGaps.join(BACKEND, 'services', 'wins.js'), 'utf8');
+  assert.match(text, /jira_tickets_cache/,
+    'positive control: the Jira gap must still be stated somewhere');
+
+  // Any write to that table anywhere in backend code falsifies the claim.
+  const files = [];
+  const walk = (d) => {
+    for (const e of fsGaps.readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules') continue;
+      const f = pathGaps.join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else if (e.name.endsWith('.js') && !e.name.includes('.test.')) files.push(f);
+    }
+  };
+  walk(pathGaps.join(BACKEND, 'services'));
+  walk(pathGaps.join(BACKEND, 'routes'));
+  walk(pathGaps.join(BACKEND, 'db'));
+
+  const writers = files.filter((f) => {
+    const src = fsGaps.readFileSync(f, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')       // block comments
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1');  // line comments, sparing https://
+    return /(INSERT|REPLACE|UPDATE)[\s\S]{0,80}jira_tickets_cache/i.test(src);
+  });
+
+  assert.deepEqual(writers.map((f) => pathGaps.relative(BACKEND, f)), [],
+    'something writes jira_tickets_cache now, so the stated gap is out of date — rewrite KNOWN_GAPS');
+});
+
+test('the email gap is still true — a dismissal still records WHICH reason', () => {
+  const triage = fsGaps.readFileSync(
+    pathGaps.join(BACKEND, 'services', 'email-triage.js'), 'utf8');
+  const decl = triage.match(/const DISMISS_REASONS = new Set\(\[([^\]]*)\]\)/);
+  assert.ok(decl, 'positive control: DISMISS_REASONS must be findable');
+
+  // The corrected gap text says clearing one IS distinguishable. If these
+  // reasons ever collapse back to a single value, that sentence becomes a lie
+  // in the other direction and must be rewritten.
+  for (const reason of ['done', 'not-relevant', 'replied']) {
+    assert.match(decl[1], new RegExp(`'${reason}'`),
+      `DISMISS_REASONS no longer records '${reason}' — the emails gap text is now wrong`);
+  }
+});
