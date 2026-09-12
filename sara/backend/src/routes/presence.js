@@ -62,6 +62,18 @@ const router = express.Router();
 // time someone forgets to set it. When it IS set, it is enforced.
 const SENSOR_TOKEN = (process.env.SARA_SENSOR_TOKEN || '').trim();
 
+// Rooms that are NOT in the house — a desk at work, say. Their screens ignore the
+// home geofence (being "away from home" is the normal state at an office) and never
+// name a room in the house. Read per request so adding one needs no code change.
+//   SARA_OFFSITE_ROOMS=work-office
+function isOffsite(room) {
+  return String(process.env.SARA_OFFSITE_ROOMS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .includes(room);
+}
+
 // Which room won last time, for the arbitration's hysteresis. In-memory like
 // the readings themselves; a restart simply means the next poll picks the
 // loudest room outright, which is the correct cold-start answer.
@@ -319,7 +331,7 @@ router.get('/display', (req, res) => {
   inferredSince = clock.since;
   const sustained = clock.sustained;
 
-  const display = displayState(room, arbitration, home, inferredNow, sustained);
+  const display = displayState(room, arbitration, home, inferredNow, sustained, { offsite: isOffsite(room) });
 
   if (lastDisplay.get(room) !== display.state) {
     history.note('display:' + room, lastDisplay.get(room) || null, display.state,

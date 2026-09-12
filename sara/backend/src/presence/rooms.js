@@ -177,7 +177,54 @@ function resolveRoom(reports = {}, now = new Date(), {
  * `home` is `homePresence()`'s shape: `{ away: true|false|null }`. Only a
  * literal `true` — HA read a zone and it was not home — can lock.
  */
-function displayState(thisRoom, arbitration, home, inferred = null, sustained = null) {
+/**
+ * What a screen that is NOT in the house should show.
+ *
+ * Nick, 12 Sep 2026, putting a SARA screen on his desk at work: "amend SARA's
+ * rules to accommodate it — lock the home devices, not the office."
+ *
+ * ⚠ THE HOME GEOFENCE IS MEANINGLESS HERE, AND BACKWARDS. `home.away === true` is
+ * the normal, correct state for a man at his office — so the rule that blanks a
+ * screen when he leaves the house would blank this one exactly while he sits in
+ * front of it, all day, every working day.
+ *
+ * ⚠ AND IT MUST NEVER NAME A ROOM IN HIS HOUSE. The clock state says "In the
+ * bedroom." so that a home screen explains itself; on a desk in an open-plan
+ * office that same line tells everyone walking past where he is. An offsite
+ * screen says nothing about the house — the ONLY thing it may report is whether
+ * he is at THIS desk.
+ *
+ * So an offsite screen is decided by one question: is the watch in this room?
+ * Its own sensor answers, and the fingerprint is ignored — that is trained on
+ * the house and has nothing to say about a desk twenty miles away.
+ */
+function offsiteDisplayState(thisRoom, arbitration) {
+  const own = arbitration && arbitration.rooms
+    ? arbitration.rooms.find(r => r.room === thisRoom)
+    : null;
+
+  if (!own || !own.readable) {
+    // Its own sensor could not answer. FAIL TOWARDS THE CLOCK rather than towards
+    // SARA: this screen is in a room other people walk through, so an unreadable
+    // sensor must not leave his day on display. The opposite choice to a home
+    // screen, and the reason is the room, not the rule.
+    return {
+      state: 'clock',
+      reason: 'desk-sensor-unreadable',
+      say: null,
+      decidedBy: 'offsite',
+    };
+  }
+  if (own.inRoom === true) {
+    return { state: 'full', reason: 'watch-at-this-desk', say: null, decidedBy: 'offsite' };
+  }
+  return { state: 'clock', reason: 'not-at-this-desk', say: null, decidedBy: 'offsite' };
+}
+
+function displayState(thisRoom, arbitration, home, inferred = null, sustained = null, { offsite = false } = {}) {
+  // ⚠ FIRST, and before every rule below — all of which are about a house.
+  if (offsite) return offsiteDisplayState(thisRoom, arbitration);
+
   // ⚠ Settled in the bedroom = gone to bed, and that outranks everything below,
   // including the "audible watch refuses a lock" rule. That rule exists to stop
   // a bad GEOFENCE blanking a screen he is sitting at; here the watch is the
@@ -309,6 +356,6 @@ function displayState(thisRoom, arbitration, home, inferred = null, sustained = 
 }
 
 module.exports = {
-  resolveRoom, displayState,
+  resolveRoom, displayState, offsiteDisplayState,
   SENSOR_STALE_MS, SWITCH_MARGIN_DB, SLEEP_ROOM, SLEEP_LOCK_MS,
 };
