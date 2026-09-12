@@ -137,4 +137,7 @@ app.listen(PORT, () => {
   // Greet Nick when he walks into a room that can speak. Off (and says so) unless
   // SARA_GREET_SPEAKERS names the rooms.
   require('./src/greeting/greeter').createGreeter().start();
+  // Hold a wall-powered phone/tablet between sensible charge levels via an HA socket.
+  // Off (and says so) unless SARA_CHARGE_KEEPERS names the rooms.
+  require('./src/power/chargeKeeper').createKeeper().start();
 });

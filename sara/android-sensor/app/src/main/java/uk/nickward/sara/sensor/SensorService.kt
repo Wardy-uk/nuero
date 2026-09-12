@@ -21,6 +21,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.LocationManager
 import android.net.wifi.WifiManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -232,6 +233,14 @@ class SensorService : Service() {
             val now = SystemClock.elapsedRealtime()
             val fault = currentFault()
             val reading = presence.reading(now, scope, Instant.now().toString(), fault)
+            // Its own battery, so pi5 can keep a wall-powered device between sensible
+            // charge levels through a smart socket (an old phone held at 100% for months
+            // is how a battery swells). Null when unreadable — never a guessed number,
+            // because "I could not read it" must not look like "it is fine".
+            battery()?.let { (pct, charging) ->
+                reading["batteryPct"] = pct
+                reading["charging"] = charging
+            }
             lastReading = reading
             push(reading)
             watchdog(now, reading)
@@ -315,6 +324,17 @@ class SensorService : Service() {
                 pushing.set(false)
             }
         }
+    }
+
+    /** Battery percentage and whether it is charging, or null if either is unreadable. */
+    private fun battery(): Pair<Int, Boolean>? {
+        val i = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return null
+        val level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        if (level < 0 || scale <= 0) return null
+        val status = i.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        return (level * 100 / scale) to charging
     }
 
     /** Speak the greeting in a reading's reply, once per id. Never fails the push. */

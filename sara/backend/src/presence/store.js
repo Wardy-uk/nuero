@@ -48,6 +48,12 @@ function record(body, now = new Date()) {
     rssiMedian: Number.isFinite(body.rssiMedian) ? body.rssiMedian : null,
     backgroundDevices: Number.isFinite(body.backgroundDevices) ? body.backgroundDevices : null,
     why: typeof body.why === 'string' ? body.why : null,
+    // A phone or tablet sensor reports its own battery so the charge keeper can hold
+    // it between sensible levels. Null for a mains-powered Pi, and null for a device
+    // that could not read it — never a guessed number.
+    batteryPct: Number.isFinite(body.batteryPct) && body.batteryPct >= 0 && body.batteryPct <= 100
+      ? Math.round(body.batteryPct) : null,
+    charging: body.charging === true ? true : body.charging === false ? false : null,
     // ⚠ The RECEIVED time, not the sensor's own. A sensor with a wrong clock
     // would otherwise be permanently stale or permanently fresh, and the thing
     // being measured here is "did this Pi speak to us recently", which is ours
