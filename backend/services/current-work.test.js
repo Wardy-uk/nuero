@@ -154,3 +154,40 @@ test('every answer carries a reason in words', () => {
     assert.ok(typeof r.why === 'string' && r.why.length > 0, JSON.stringify(c));
   }
 });
+
+// ── The WIRING, which the pure tests above cannot see ────────────────────────
+//
+// ⚠ These exist because `resolve()` was exhaustively pinned and `current()` was
+// not, and the bug was entirely in the join: `runAcross(now)` passed a Date
+// into the parameter that takes per-host sample BUCKETS, so it read as an empty
+// object and answered "the laptop has never reported" while the agent had 400
+// samples and a live 14-minute run. A well-formed wrong answer, thrown by
+// nothing, invisible to every test of the pure half.
+
+test('⚠ current() reads the laptop through the STATEFUL accessor', () => {
+  const da = require('./desktop-activity');
+  const realRun = da.run;
+  let sawArgs = null;
+  da.run = (...args) => { sawArgs = args; return { known: true, app: 'Code', host: 'DESKTOP-8LGF9RR', minutes: 14, why: null }; };
+  try {
+    const r = cw.current(new Date(NOW));
+    assert.equal(r.kind, 'app', 'a live run in Code is an answer, not a shrug');
+    assert.equal(r.app, 'Code');
+    assert.equal(sawArgs.length, 1, 'run(now) takes the clock and nothing else');
+    assert.ok(sawArgs[0] instanceof Date || typeof sawArgs[0] === 'number');
+  } finally {
+    da.run = realRun;
+  }
+});
+
+test('⚠ a laptop that genuinely has not reported still says so', () => {
+  const da = require('./desktop-activity');
+  const realRun = da.run;
+  da.run = () => ({ known: false, app: null, host: null, why: 'the laptop has never reported' });
+  try {
+    const r = cw.current(new Date(NOW));
+    assert.notEqual(r.kind, 'app');
+  } finally {
+    da.run = realRun;
+  }
+});

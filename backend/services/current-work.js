@@ -196,11 +196,25 @@ function current(now = new Date()) {
   }
 
   try {
+    // ⚠ `run(now)` is the STATEFUL accessor. `runAcross(buckets, now)` is the
+    // PURE one and takes the per-host sample buckets FIRST — calling it as
+    // `runAcross(now)` passes a Date where the buckets go, which reads as an
+    // empty object and answers "the laptop has never reported". That is exactly
+    // what shipped on 12 Sep 2026: the agent had 400 samples and a live 14-minute
+    // run in Code, and this said it could not tell. Nothing threw, because the
+    // wrong answer is a perfectly well-formed one. Nick found it by asking what
+    // the screen would show him while he was sitting there coding.
     const da = require('./desktop-activity');
-    const run = da.runAcross ? da.runAcross(now) : null;
-    desktop = run
-      ? { app: run.app || null, host: run.host || null, active: run.active !== false, known: run.known !== false }
-      : { app: null, host: null, active: false, known: false };
+    const r = da.run(now);
+    desktop = {
+      app: r.app || null,
+      host: r.host || null,
+      // "At the laptop and using it" is `present().at`, which is exactly
+      // `app != null` — there is no `active` field on a run.
+      active: r.app != null,
+      known: r.known !== false,
+      why: r.why || null,
+    };
   } catch {
     readable.desktop = false;
   }

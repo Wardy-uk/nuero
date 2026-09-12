@@ -29,6 +29,7 @@
 //   answer depend on the order rows came back in.
 
 const cohort = require('./task-cohort');
+const taskLinks = require('../../shared/task-links.cjs');
 const currentWork = require('./current-work');
 
 /** Open tasks in the shape `task-cohort` reads, with Jira keys folded in. */
@@ -106,6 +107,26 @@ function whileHere({ now = new Date() } = {}) {
   }
 
   const cohorts = [...merged.values()].sort((a, b) => a.strength - b.strength || a.count - b.count);
+
+  // ⚠ Links are attached UNFILTERED, carrying their `desktopOnly` flag, and the
+  // CLIENT decides what to show. Whether `obsidian://` can be opened is a fact
+  // about the surface doing the rendering — the desktop app runs in a browser on
+  // the machine with Obsidian on it, the phone does not — and the server cannot
+  // know which one is asking. Filtering here would either hide the note link on
+  // the desktop or offer a dead one on the phone.
+  const opts = { jiraBaseUrl: process.env.JIRA_BASE_URL || null };
+  if (process.env.OBSIDIAN_VAULT_NAME) opts.vaultName = process.env.OBSIDIAN_VAULT_NAME;
+  for (const c of cohorts) {
+    for (const t of c.tasks) {
+      const row = byId.get(t.id);
+      const { links, refused } = taskLinks.linksFor(row, opts);
+      t.links = links;
+      // Named rather than dropped: "this came from an email and cannot be
+      // linked" is worth saying, and is not the same as having no provenance.
+      if (refused.length) t.noLink = refused[0].why;
+    }
+  }
+
   return { working, cohorts, best: cohorts[0] || null, gaps };
 }
 

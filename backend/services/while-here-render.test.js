@@ -104,3 +104,51 @@ test('a truncated cohort says how many it did not list', () => {
   const big = { ...PAYLOAD, best: { ...PAYLOAD.best, count: 8, more: 4 } };
   assert.match(render({ data: big }), /and 4 more/);
 });
+
+// ── Opening the thing the task is about ──────────────────────────────────────
+
+const WITH_LINKS = {
+  working: { known: true, kind: 'session', why: 'you started a session on this' },
+  best: {
+    kind: 'jira', label: 'Jira tickets', count: 3, more: 0,
+    tasks: [
+      { id: 243, text: 'NT-27530: ESCALATION', links: [{ kind: 'jira', href: 'https://nurturtech.atlassian.net/browse/NT-27530', label: 'Open the ticket', desktopOnly: false }] },
+      { id: 251, text: 'A meeting commitment', links: [{ kind: 'note', href: 'obsidian://open?vault=Nicks%20knowledge%20base&file=Meetings%2Fx', label: 'Open the note', desktopOnly: true }] },
+      { id: 252, text: 'Something from an email', links: [], noLink: 'this came from an email, and the id Microsoft gave it cannot be turned into a link' },
+    ],
+  },
+  cohorts: [], gaps: [],
+};
+
+test('a Jira row offers a link straight to the ticket', () => {
+  const html = render({ data: WITH_LINKS });
+  assert.match(html, /href="https:\/\/nurturtech\.atlassian\.net\/browse\/NT-27530"/);
+  assert.match(html, />Ticket</);
+});
+
+test('the desktop panel DOES show the obsidian note link', () => {
+  // This panel only renders on the machine Obsidian is installed on, so it
+  // passes atDesktop: true. The phone renders a different surface.
+  const html = render({ data: WITH_LINKS });
+  assert.match(html, /obsidian:\/\/open/);
+  assert.match(html, />Note</);
+});
+
+test('⚠ NEGATIVE: an email-sourced row gets NO button, not a dead one', () => {
+  const html = render({ data: WITH_LINKS });
+  // Three rows, exactly two openable.
+  const opens = (html.match(/adhd__cohort-open/g) || []).length;
+  assert.equal(opens, 2, 'the email row is not given something to click');
+});
+
+test('⚠ NEGATIVE: the opaque email id never reaches the page', () => {
+  const html = render({ data: WITH_LINKS });
+  assert.doesNotMatch(html, /AAMk/);
+});
+
+test('a row with no links at all still renders its text', () => {
+  const bare = { ...WITH_LINKS, best: { ...WITH_LINKS.best, tasks: [{ id: 9, text: 'Plain task' }] } };
+  const html = render({ data: bare });
+  assert.match(html, /Plain task/);
+  assert.doesNotMatch(html, /adhd__cohort-open/);
+});

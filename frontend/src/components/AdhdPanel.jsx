@@ -3,6 +3,7 @@ import { apiFetch } from '../api';
 import useAttention from '../useAttention';
 import AttentionCard from './AttentionCard';
 import FrictionSection from './FrictionSection';
+import { showable } from '../../../shared/task-links.cjs';
 import './AdhdPanel.css';
 
 // apiFetch hands back a raw Response and sets no Content-Type, so every JSON
@@ -48,10 +49,22 @@ export function WhileHere({ data, onNavigate }) {
       <ul className="adhd__cohort-list">
         {best.tasks.map(t => (
           <li key={t.id}>
-            <button type="button" className="adhd__cohort-task" onClick={() => onNavigate && onNavigate('todos')}>
-              <span className="adhd__cohort-id">#{t.id}</span>
-              <span className="adhd__cohort-text">{t.text}</span>
-            </button>
+            <div className="adhd__cohort-row">
+              <button type="button" className="adhd__cohort-task" onClick={() => onNavigate && onNavigate('todos')}>
+                <span className="adhd__cohort-id">#{t.id}</span>
+                <span className="adhd__cohort-text">{t.text}</span>
+              </button>
+              {/* ⚠ `atDesktop` is TRUE here and that is not a guess: this panel
+                  only ever renders in the desktop app, which runs in a browser
+                  on the machine Obsidian is installed on. The phone renders a
+                  different surface and passes false, so a note link is hidden
+                  there rather than offered dead. */}
+              {showable(t.links, true).map(l => (
+                <a key={l.kind} className="adhd__cohort-open" href={l.href} target="_blank" rel="noreferrer">
+                  {l.kind === 'jira' ? 'Ticket' : 'Note'}
+                </a>
+              ))}
+            </div>
           </li>
         ))}
       </ul>

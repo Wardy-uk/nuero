@@ -659,3 +659,24 @@
   font-size: 0.82rem;
   opacity: 0.6;
 }
+
+/* A row is the task plus whatever can actually be opened for it. */
+.adhd__cohort-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Quiet, because it is a shortcut rather than a decision. */
+.adhd__cohort-open {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.78rem;
+  text-decoration: none;
+  color: inherit;
+  opacity: 0.75;
+}
+
+.adhd__cohort-open:hover { opacity: 1; background: rgba(255, 255, 255, 0.07); }
