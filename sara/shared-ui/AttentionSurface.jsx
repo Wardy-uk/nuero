@@ -89,6 +89,10 @@ export default function AttentionSurface({
   rootClassName = 'surface',
   onOpen,
   onAct,
+  // Answer a room offer: `(key, 'accept' | 'decline')`. Omitted on a surface
+  // that cannot reach `/api/rooms`, in which case the offer is rendered as a
+  // statement and no button is shown — never a control that fails when tapped.
+  onRoomAct = null,
   onNavigate,
   // What Nick could SAY next. Each utterance carries a structured intent, so no
   // shell ever parses language — see `backend/services/sara-surface.js`.
@@ -127,6 +131,10 @@ export default function AttentionSurface({
   const {
     context, primary, secondary = [], dropped = [], quiet,
     rationale, poolAvailable, gaps = [], transition = null, ambient = null,
+    // Lights and heating in the room presence says he is standing in. Composed
+    // by `backend/services/rooms.js`, carried beside `ambient` on the payload,
+    // and rendered below. Null renders nothing, which is the normal case.
+    rooms = null,
     dashboard = null, utterances = [], covered = null,
     // ⚠ WHY THIS PANEL IS THE ONE ON SCREEN. `sara-surface` has composed it
     // since the ask flow shipped, `attention` carries it, four tests pin it —
@@ -493,6 +501,51 @@ export default function AttentionSurface({
               </li>
             ))}
           </ul>
+        )}
+
+        {/* ── The room he is standing in ────────────────────────────────────
+            Lights and heating, offered only where presence says he IS.
+
+            ⚠ ABOVE ambient and BELOW the pool, deliberately. These are
+            actionable, so they outrank a passive observation — and they are
+            about right now, so they must never reach the primary slot ahead of
+            a breaching escalation.
+
+            ⚠ SHE ASKS; SHE DOES NOT ACT. Every offer here is a question, and
+            `act` on the payload says only whether this KIND is rated to act
+            unattended one day. Nothing on this screen switches anything on
+            without a press.
+
+            ⚠ NO `onRoomAct`, NO BUTTONS. A surface that cannot perform the
+            action renders the offer as a statement rather than a control that
+            fails when tapped — the same rule the action row below already
+            follows.
+
+            ⚠ Presence tracks the WATCH, not Nick, so the subject is named
+            rather than assumed. A watch on the arm of the sofa is, to this,
+            Nick on the sofa. */}
+        {!hideSecondary && rooms?.offers?.length > 0 && (
+          <ul className="surface__rooms">
+            {rooms.offers.map((o) => (
+              <li key={o.key} className="surface__room">
+                <span className="surface__roomsay">{o.say}</span>
+                {onRoomAct ? (
+                  <span className="surface__roomacts">
+                    <button type="button" className="surface__roombtn surface__roombtn--yes"
+                      onClick={() => onRoomAct(o.key, 'accept')}>Yes</button>
+                    <button type="button" className="surface__roombtn"
+                      onClick={() => onRoomAct(o.key, 'decline')}>Not now</button>
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        {/* "I could not see the room" is not "the room is fine". */}
+        {!hideSecondary && rooms && rooms.known === false && (
+          <p className="surface__aside surface__aside--warn">
+            I can&rsquo;t see the house right now.
+          </p>
         )}
 
         {/* ── What she has noticed ──────────────────────────────────────────

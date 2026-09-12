@@ -469,3 +469,67 @@
 .surface__say-btn--quiet { color: #78899a; border-style: dashed; }
 .surface__say-btn--quiet::before,
 .surface__say-btn--quiet::after { content: ''; }
+
+/* ── Room offers ─────────────────────────────────────────────────────────────
+   Lights and heating in the room he is standing in. Sits between the pool and
+   the ambient observations: actionable, so above a passive observation; about
+   right now, so never in the primary slot.
+
+   Deliberately quiet styling. This is SARA asking a small question about the
+   room, not an alert — anything louder competes with the work above it, which
+   is the one thing this block must never do. */
+.surface__rooms {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.surface__room {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.surface__roomsay {
+  flex: 1 1 12rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  opacity: 0.92;
+}
+
+.surface__roomacts {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+/* Touch targets: the kiosk is a 7in panel operated with a thumb, and the phone
+   is a phone. Neither gets a mouse. */
+.surface__roombtn {
+  min-height: 2.25rem;
+  padding: 0 0.9rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.surface__roombtn:active { transform: translateY(1px); }
+
+/* "Yes" is the affirmative but NOT the loud one — declining must not feel like
+   the awkward choice, or the yes/no record stops being evidence of anything. */
+.surface__roombtn--yes {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.09);
+}

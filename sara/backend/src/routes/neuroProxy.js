@@ -70,6 +70,19 @@ const DOORS = new Set([
                      // unchanged, and nothing about it leaves the building —
                      // which is the test this list applies. It ticks nothing and
                      // un-records nothing.
+  'rooms',           // lights + heating in the room he is standing in.
+                     // ⚠ This is the ONLY door that changes the physical house,
+                     //   so the reasoning is written down. The kiosk is a screen
+                     //   IN the living room: anyone who can touch it can already
+                     //   touch the light switch on the wall, so this grants no
+                     //   power the room did not already give. And the write is a
+                     //   NAMED DOOR twice over — the client sends an offer KEY and
+                     //   nothing else, NEURO re-derives from a fresh read what it
+                     //   meant, and `ha-rooms` exposes only `light.turn_on` and
+                     //   `climate.set_temperature`. So the worst this reaches is
+                     //   accepting an offer SARA independently decided to make.
+                     //   It cannot name an entity, unlock anything, or reach a
+                     //   switch — sockets are deliberately not readable here.
   'signals',         // where he is for the top bar (room / zone / town) + sense
                      // health. GET-only router: no writes, no credentials, no body data.
                      // ⚠ The town is a place name, never the geocoded ADDRESS.

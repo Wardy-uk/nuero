@@ -237,6 +237,27 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
    * case against a backend that has not been deployed yet. A phone in Nick's
    * pocket running an older bundle must not lose the ability to clear a card.
    */
+  // Answer a room offer — lights or heating in the room presence says he is in.
+  //
+  // ⚠ THE KEY IS ALL THAT TRAVELS. The server re-derives from a fresh read what
+  //   that key actually meant, so this cannot name an entity and a stale screen
+  //   cannot switch something on that has stopped being a sensible offer.
+  //
+  // ⚠ Refetch after either answer, including a decline: the offer has to leave
+  //   the screen or a press looks like it did nothing, which is how a control
+  //   stops being trusted.
+  async function roomAct(key, decision) {
+    const path = decision === 'accept' ? 'accept' : 'decline';
+    try {
+      await apiFetch(`/api/rooms/${encodeURIComponent(key)}/${path}`, { method: 'POST' });
+    } catch (e) {
+      // Never allowed to take the surface down. The refetch below will show
+      // whether anything actually changed.
+      console.warn('[surface] room offer failed:', e.message);
+    }
+    load();
+  }
+
   async function act(card, action, opts = {}) {
     if (!card || card.kind !== 'item') return undefined;
     // ⚠ `complete` NEVER takes the legacy route. A dismissal is not a completion,
@@ -427,6 +448,7 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       rootClassName="surface"
       onOpen={open}
       onAct={act}
+      onRoomAct={roomAct}
       onSay={onSay}
       onNavigate={(tab) => onNavigate?.(tab)}
       hideSecondary={Boolean(exchange)}

@@ -233,6 +233,9 @@ app.use('/api/state-of-play', require('./routes/state-of-play'));
 // The ambient feed both SARA surfaces render — one primary thing, in context.
 app.use('/api/attention', require('./routes/attention'));
 app.use('/api/ambient', require('./routes/ambient'));
+// What SARA would do in the room he is in — lights, heating. Rides BESIDE the
+// attention pool, never in it.
+app.use('/api/rooms', require('./routes/rooms'));
 app.use('/api/desktop', require('./routes/desktop'));
 app.use('/api/rescuetime', require('./routes/rescuetime'));
 app.use('/api/signals', require('./routes/signals'));

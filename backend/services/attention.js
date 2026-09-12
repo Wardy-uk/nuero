@@ -957,6 +957,23 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     gaps.push({ input: 'ambient', why: e.message });
   }
 
+  // The room he is in — lights and heating where presence says he is
+  // standing. Composed BESIDE the pool exactly as `ambient` is, and for the
+  // same reason: an offer about right now must never compete with a breaching
+  // escalation for the primary slot. It adds no candidates and re-ranks
+  // nothing.
+  //
+  // ⚠ Never allowed to fail the payload, and the read is cached inside the
+  //   service — several surfaces poll this endpoint and Home Assistant should
+  //   not be asked four times in four seconds about a house that changes on
+  //   the scale of a room being walked into.
+  let rooms = null;
+  try {
+    rooms = await require('./rooms').snapshot({ now });
+  } catch (e) {
+    gaps.push({ input: 'rooms', why: e.message });
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   //
   // The gated feed is reconciled against durable records so a card can be
@@ -1171,6 +1188,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     readiness,
     transition,
     ambient,
+    rooms,
     ...gated,
     // ── What she SHOWS, and what he could SAY ────────────────────────────
     // Nick, 31 Aug 2026: SARA is a manifestation, not a menu — "a series of
