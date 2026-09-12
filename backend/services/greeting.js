@@ -41,21 +41,25 @@ const WORK_END_MINUTES = 18 * 60;
 // ⚠ Every opener uses his name (Nick, 11 Sep 2026, after "Welcome back." on the
 // first live test: "it didn't use my name"). A greeting without it reads as an
 // announcement to the room rather than SARA speaking to him. Pinned by a test.
+// ⚠ NATURAL, CASUAL, FRIENDLY (Nick, 12 Sep 2026) — the first cut read like an
+// announcement rather than a person. Still SARA's register, not a cheerful assistant's:
+// no exclamation marks, no "great to see you", nothing that fakes delight. Warm and dry,
+// the way somebody in the room would actually say it. Pinned by tests.
 const OPENERS = {
-  morning: ['Morning, Nick.', 'Good morning, Nick.', 'Morning, Nick. Here we go.'],
-  afternoon: ['Afternoon, Nick.', 'Good afternoon, Nick.', 'Hey, Nick.'],
-  evening: ['Evening, Nick.', 'Good evening, Nick.', 'Hey, Nick.'],
-  any: ['Hi, Nick.', 'There you are, Nick.'],
+  morning: ['Morning, Nick.', 'Morning, Nick. You\'re up.', 'Morning, Nick. Right then.', 'Morning, Nick. How\'d you sleep?'],
+  afternoon: ['Afternoon, Nick.', 'Hey, Nick.', 'Afternoon, Nick. How\'s it going?', 'Hey Nick. Afternoon.'],
+  evening: ['Evening, Nick.', 'Hey, Nick.', 'Evening, Nick. Long day?', 'Evening, Nick. Still at it?'],
+  any: ['Hi, Nick.', 'There you are, Nick.', 'Hey there, Nick.', 'Oh, hello Nick.'],
   // Only once he has already been greeted today — "welcome back" to the first
   // arrival of the day is a small lie, and small lies are what make a voice grate.
-  again: ['Welcome back, Nick.', 'Hello again, Nick.', 'Back again, Nick.'],
+  again: ['Welcome back, Nick.', 'Back again, Nick.', 'That was quick, Nick.', 'Hello again, Nick.'],
 };
 
 const ROOM_OPENERS = {
-  study: ['Back at the desk, Nick.'],
+  study: ['Back at the desk, Nick.', 'Desk time, Nick.'],
 };
 
-const LEADS = ['Top of the list:', 'First thing worth knowing:', 'Most pressing:', 'One thing:', 'Heads up:'];
+const LEADS = ['While you\'re here —', 'One for you —', 'Worth knowing —', 'Heads up —', 'Top of the pile —'];
 
 function dayPart(now) {
   const h = now.getHours();

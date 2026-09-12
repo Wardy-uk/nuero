@@ -76,6 +76,21 @@ test('every opener uses his name', () => {
   for (const o of all) assert.match(o, /\bNick\b/, `"${o}" does not say his name`);
 });
 
+// Nick, 12 Sep 2026: "more natural, casual and friendly" — but SARA's register, which
+// is warm and dry. A line that fakes delight is the one that gets the speaker muted.
+test('nothing shouts, gushes or fakes delight', () => {
+  const all = [...Object.values(g.OPENERS).flat(), ...Object.values(g.ROOM_OPENERS).flat(), ...g.LEADS];
+  for (const line of all) {
+    assert.doesNotMatch(line, /!/, `"${line}" shouts`);
+    assert.doesNotMatch(line, /great|lovely|wonderful|awesome|excited|delight|😊|🎉/i, `"${line}" gushes`);
+  }
+});
+
+test('a work-hours greeting reads as one spoken sentence', () => {
+  const w = g.compose({ now: at(10), room: 'study', workHours: true, workTitle: '21 emails need action', rng: seq(0) });
+  assert.match(w.text, /^[A-Z][^|]+ — 21 emails need action\.$/, w.text);
+});
+
 test('work hours are a working day, 08:00 to 18:00', () => {
   assert.equal(g.isWorkHours(at(7, 59), true), false);
   assert.equal(g.isWorkHours(at(8, 0), true), true);
