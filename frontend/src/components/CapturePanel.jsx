@@ -409,9 +409,6 @@ export default function CapturePanel() {
         </button>
       </div>
 
-      {/* Escalation section */}
-      <EscalateSection />
-
       {/* Location capture */}
       <LocationCapture />
 
@@ -436,82 +433,6 @@ export default function CapturePanel() {
               </div>
             ))}
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Escalate ticket (collapsible) ─────────────────────────────────────────
-
-function EscalateSection() {
-  const [open, setOpen] = useState(false);
-  const [key, setKey] = useState('');
-  const [note, setNote] = useState('');
-  const [status, setStatus] = useState(null); // null | 'ok' | 'error'
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async () => {
-    const k = key.trim().toUpperCase();
-    if (!k.match(/^[A-Z]+-\d+$/)) {
-      setStatus('error');
-      setMessage('Enter a valid ticket key e.g. NT-12345');
-      return;
-    }
-    setSubmitting(true);
-    setStatus(null);
-    try {
-      const res = await fetch(apiUrl(`/api/jira/flagged/${k}`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: note.trim() || null })
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Failed');
-      setStatus('ok');
-      setMessage(`${k} flagged`);
-      setKey('');
-      setNote('');
-      setTimeout(() => setStatus(null), 2500);
-    } catch (e) {
-      setStatus('error');
-      setMessage(e.message);
-    }
-    setSubmitting(false);
-  };
-
-  return (
-    <div className="capture-escalate-section">
-      <button className="capture-escalate-toggle" onClick={() => setOpen(o => !o)}>
-        {open ? '▾' : '▸'} Flag Escalation
-      </button>
-      {open && (
-        <div className="capture-escalate-form">
-          <input
-            className="capture-input capture-escalate-key"
-            type="text"
-            placeholder="Ticket key e.g. NT-12345"
-            value={key}
-            onChange={e => { setKey(e.target.value.toUpperCase()); setStatus(null); }}
-            onKeyDown={e => e.key === 'Enter' && !submitting && submit()}
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <input
-            className="capture-input"
-            type="text"
-            placeholder="Note (optional)"
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !submitting && submit()}
-          />
-          {status === 'ok' && <div className="capture-escalate-ok">{message}</div>}
-          {status === 'error' && <div className="capture-escalate-error">{message}</div>}
-          <button className="review-action-btn" onClick={submit} disabled={submitting || !key.trim()}>
-            {submitting ? 'Flagging...' : 'Flag'}
-          </button>
         </div>
       )}
     </div>
@@ -583,12 +504,12 @@ function LocationCapture() {
   };
 
   return (
-    <div className="capture-escalate-section">
-      <button className="capture-escalate-toggle" onClick={() => setOpen(o => !o)}>
+    <div className="capture-collapsible">
+      <button className="capture-collapsible-toggle" onClick={() => setOpen(o => !o)}>
         {open ? '▾' : '▸'} Save Location
       </button>
       {open && (
-        <div className="capture-escalate-form">
+        <div className="capture-collapsible-form">
           <div className="capture-location-hint">Save your current GPS position with a name</div>
           <input
             className="capture-input"
@@ -598,7 +519,7 @@ function LocationCapture() {
             onChange={e => setName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && savePlace()}
           />
-          {saved && <div className="capture-escalate-ok">Saved</div>}
+          {saved && <div className="capture-collapsible-ok">Saved</div>}
           <button className="review-action-btn" onClick={savePlace} disabled={saving || gettingLoc || !name.trim()}>
             {gettingLoc ? 'Getting location...' : saving ? 'Saving...' : 'Save this location'}
           </button>

@@ -371,26 +371,6 @@
   font-family: var(--font-mono);
 }
 
-.capture-escalate-ok {
-  font-size: 12px;
-  color: #22c55e;
-  font-family: var(--font-mono);
-  padding: 4px 0;
-}
-
-.capture-escalate-error {
-  font-size: 12px;
-  color: #ef4444;
-  font-family: var(--font-mono);
-  padding: 4px 0;
-}
-
-.capture-escalate-key {
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
 /* Simplified capture additions */
 .capture-actions {
   display: flex;
@@ -487,14 +467,18 @@
   margin-bottom: 8px;
 }
 
-/* Escalate section */
-.capture-escalate-section {
+/* A collapsible sub-section. ⚠ These rules were named `capture-escalate-*` and
+   were shared with the Jira-flagging control removed on 12 Sep 2026 — deleting
+   them with it left "Save Location" unstyled, which NOTHING CATCHES: a CSS class
+   is not checked at build time and the build passed. Renamed for what they are,
+   so the next deletion cannot take a live feature's styling with it. */
+.capture-collapsible {
   margin-top: 12px;
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
 
-.capture-escalate-toggle {
+.capture-collapsible-toggle {
   background: none;
   border: none;
   font-family: var(--font-mono);
@@ -504,13 +488,20 @@
   padding: 0;
 }
 
-.capture-escalate-toggle:hover { color: var(--text-secondary); }
+.capture-collapsible-toggle:hover { color: var(--text-secondary); }
 
-.capture-escalate-form {
+.capture-collapsible-form {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 8px;
+}
+
+.capture-collapsible-ok {
+  font-size: 12px;
+  color: #22c55e;
+  font-family: var(--font-mono);
+  padding: 4px 0;
 }
 
 /* Location capture */

@@ -892,15 +892,36 @@ test('an aged-out email is NOT a verdict — it stays out of the feedback score'
 
 test('purge applies the rule, and dryRun changes nothing', () => {
   seed([info({ id: 'p1' }), info({ id: 'p2', received: before(2) })]);
-  const preview = emailTriage.purgeAgedInformational({ dryRun: true });
+  // ⚠ THE ANCHOR IS PASSED. Without it this read the wall clock while every
+  // other call in the file was pinned to NOW, so `p2` — written as "two days
+  // before the anchor" — aged out too the moment real time drew level with it.
+  // It passed for five days and failed at 12:00 UTC on 12 Sep 2026, which is a
+  // suite breaking on a date rollover rather than on a code change.
+  const preview = emailTriage.purgeAgedInformational({ dryRun: true, now: NOW });
   assert.equal(preview.aged, 1);
   assert.equal(emailTriage.getStoredTriage().filter(e => e.dismissed).length, 0);
 
-  const done = emailTriage.purgeAgedInformational();
+  const done = emailTriage.purgeAgedInformational({ now: NOW });
   assert.equal(done.aged, 1);
   const stored = emailTriage.getStoredTriage();
   assert.equal(stored.filter(e => e.dismissed).length, 1);
   assert.equal(stored.filter(e => !e.dismissed)[0].id, 'p2');
+});
+
+test('purge HONOURS the anchor rather than resolving its own clock', () => {
+  // ⚠ The guard the fix needs, and the one `outcomes.recent`/`trend` already
+  // carry: a silent revert to `new Date()` inside `purgeAgedInformational` must
+  // fail HERE, in the week it is written, not on some future afternoon.
+  //
+  // Both entries sit comfortably inside the window relative to NOW, and both
+  // are far outside it relative to any real clock after Sep 2026. Reading the
+  // wall clock ages both; honouring the anchor ages neither.
+  seed([
+    info({ id: 'a1', received: before(1) }),
+    info({ id: 'a2', received: before(3) }),
+  ]);
+  const out = emailTriage.purgeAgedInformational({ dryRun: true, now: NOW });
+  assert.equal(out.aged, 0, 'the anchor was ignored — this resolved the real clock');
 });
 
 // ── "Clear all" on the FYI section (7 Sep 2026) ─────────────────────────────

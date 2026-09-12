@@ -564,10 +564,28 @@ function clearFyiSection({ dryRun = false } = {}) {
 /**
  * Apply the rule to the stored blob now. The scheduled triage does this on
  * every pass; this is the manual press and the preview behind it.
+ *
+ * ⚠ IT TAKES AN ANCHOR, and the reason is a real failure rather than tidiness.
+ * `ageOutInformational` has always accepted `now`; this did not pass it, so it
+ * resolved the wall clock while its own tests pinned every other call to a fixed
+ * `NOW`. That half-pinned the module: the purge tests passed for five days and
+ * then failed at 12:00 UTC on 12 Sep 2026 — the moment real time drew level with
+ * a fixture written as "two days before the anchor" — and would have failed on
+ * every run after. A date-dependent suite that breaks on a date rollover rather
+ * than on a code change is one nobody can trust, and it blocks every deploy
+ * behind it.
+ *
+ * The rule this follows is already written down for `outcomes.recent`/`trend`:
+ * a function a pinned test calls must take the anchor, and a test must assert
+ * the anchor is HONOURED, so a silent revert to `new Date()` fails in the week
+ * it is written rather than months later.
  */
-function purgeAgedInformational({ dryRun = false, days = AGE_OUT_DAYS } = {}) {
+// ⚠ `Date.now()`, matching `ageOutInformational`'s own default rather than a
+// `Date` object. Both of its uses happen to coerce, so a mismatch here would
+// work today and become a real bug the moment either one stops coercing.
+function purgeAgedInformational({ dryRun = false, days = AGE_OUT_DAYS, now = Date.now() } = {}) {
   const stored = getStoredTriage();
-  const { entries, aged } = ageOutInformational(stored, { days });
+  const { entries, aged } = ageOutInformational(stored, { days, now });
   if (aged && !dryRun) storeTriage(entries);
   return { ok: true, aged, dryRun, days, remaining: entries.filter(e => !e.dismissed).length };
 }

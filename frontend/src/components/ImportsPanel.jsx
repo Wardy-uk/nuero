@@ -3,48 +3,6 @@ import { apiUrl } from '../api';
 import useCachedFetch from '../useCachedFetch';
 import './ImportsPanel.css';
 
-function extractJiraKey(text) {
-  const match = (text || '').match(/\b([A-Za-z]{2,10}-\d+)\b/);
-  return match ? match[1].toUpperCase() : null;
-}
-
-function EscalateButton({ ticketKey, onDone }) {
-  const [state, setState] = useState('idle');
-
-  const handleEscalate = async () => {
-    setState('loading');
-    try {
-      const res = await fetch(apiUrl(`/api/jira/flagged/${ticketKey}`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: 'Flagged from Imports panel' })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setState('done');
-        if (onDone) onDone();
-      } else {
-        setState('error');
-      }
-    } catch {
-      setState('error');
-    }
-  };
-
-  if (state === 'done') return <span className="btn-escalate-done">Flagged</span>;
-
-  return (
-    <button
-      className="btn btn-escalate"
-      onClick={handleEscalate}
-      disabled={state === 'loading'}
-      title={`Flag ${ticketKey} as informal escalation`}
-    >
-      {state === 'loading' ? 'Flagging...' : `Flag ${ticketKey}`}
-    </button>
-  );
-}
-
 const VAULT_FOLDERS = [
   { label: 'Meetings', destination: 'Meetings/' },
   { label: 'Calls', destination: 'Calls/' },
@@ -475,11 +433,6 @@ export default function ImportsPanel() {
                       Dismiss
                     </button>
                   )}
-
-                  {(() => {
-                    const jiraKey = extractJiraKey(file.preview) || extractJiraKey(file.fileName);
-                    return jiraKey ? <EscalateButton ticketKey={jiraKey} onDone={() => fetchPending()} /> : null;
-                  })()}
 
                   <button
                     className="btn btn-delete"
