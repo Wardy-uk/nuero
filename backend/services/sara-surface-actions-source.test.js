@@ -79,3 +79,52 @@ test('Chat never renders tool arguments', () => {
   assert.doesNotMatch(chatSrc, /\.input\b/, 'a tool\'s input can hold private content');
   assert.doesNotMatch(chatSrc, /\.args\b|\.arguments\b/, 'nor its arguments by another name');
 });
+
+// ── (3) The dashboard says WHY it is the one on screen ───────────────────────
+//
+// `askedSurface` was written by `sara-surface`, carried by `attention`, pinned by
+// four tests — and read by NO client, web or iOS, from the day the ask flow
+// shipped. So the honesty it exists for did not exist: the panel moved under him
+// with nothing saying whether that was the day changing or his own question, and
+// the comment above the Dashboard mount stated the distinction while showing
+// neither half.
+//
+// A source scan because there is no runtime assertion that can see a field
+// nobody destructured, and because the RENDERED line cannot be driven from here
+// (it needs a question asked on a device).
+
+test('AttentionSurface reads askedSurface and renders a reason', () => {
+  assert.match(surfaceSrc, /askedSurface\s*=\s*null,/,
+    'askedSurface is no longer destructured — the panel is back to moving silently');
+  assert.match(surfaceSrc, /\{askedSurface && \(/,
+    'nothing is rendered from askedSurface');
+  assert.match(surfaceSrc, /because you asked/,
+    'the reason line is gone');
+});
+
+test('the reason line is BELOW her words and ABOVE the panel it explains', () => {
+  // It explains what he is about to read; underneath, it is a footnote to a
+  // screen he has already tried to make sense of.
+  const line = surfaceSrc.indexOf('because you asked');
+  const panel = surfaceSrc.indexOf('<Dashboard dashboard={dashboard}');
+  assert.ok(line > 0 && panel > 0, 'positive control: both anchors must be present');
+  assert.ok(line < panel, 'the reason must come before the dashboard it describes');
+});
+
+test('its class is hardcoded, like every other child class in the file', () => {
+  // ⚠ `rootClassName` is for the ROOT element only and the stylesheet targets
+  // `.surface__*` literally, so an interpolated child class would be the one
+  // that loses its styling the day a shell passes a different root. Caught in
+  // review rather than by the build, which is perfectly happy either way.
+  assert.match(surfaceSrc, /className="surface__because"/,
+    'the reason line no longer uses the literal class the stylesheet targets');
+  assert.doesNotMatch(surfaceSrc, /\$\{rootClassName\}__because/,
+    'the reason line interpolates rootClassName — the stylesheet will not match it');
+});
+
+test('and the stylesheet actually defines it', () => {
+  // A class with no rule renders as unstyled body text, which on this surface
+  // reads as her speaking rather than as a note about the panel.
+  const css = fs.readFileSync(path.join(SARA, 'shared-ui', 'AttentionSurface.css'), 'utf8');
+  assert.match(css, /\.surface__because\s*\{/, 'surface__because has no rule');
+});
