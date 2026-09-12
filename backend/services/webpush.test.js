@@ -77,3 +77,41 @@ test('governor state survives a restart — the budget is not reset by a redeplo
   const afterRestart = reloaded._governor('Nudge 4', 'body', { type: 'todo' });
   assert.equal(afterRestart.allowed, false, 'a restart must not hand back a fresh quota');
 });
+
+// ── The VAPID contact is the CONFIGURED one ─────────────────────────────────
+//
+// ⚠ `VAPID_SUBJECT` was set in the Pi's .env and read by nothing: the subject was
+// hardcoded to a different address from the configured one. Nothing broke, since
+// no push service verifies it — which is exactly why it could be wrong for
+// months. RFC 8292's `sub` is how a push service reaches the sender when their
+// traffic causes a problem, so it is the one field whose only job is to be
+// reachable.
+//
+// Source scan with a positive control, because the value is only observable
+// inside `webpush.setVapidDetails` at init.
+
+test('the VAPID subject comes from the environment, not a literal', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'webpush.js'), 'utf8');
+
+  const call = src.match(/setVapidDetails\(([\s\S]*?)\)/);
+  assert.ok(call, 'positive control: setVapidDetails must be findable');
+
+  assert.match(call[1], /process\.env\.VAPID_SUBJECT/,
+    'the subject is hardcoded again — the configured VAPID_SUBJECT does nothing');
+});
+
+test('and the fallback is not an email address in a public repo', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'webpush.js'), 'utf8');
+  const call = src.match(/setVapidDetails\(([\s\S]*?)\)/)[1];
+
+  // ⚠ This repo is public — that is how the PIN leaked in July. An `https:`
+  // origin satisfies RFC 8292 just as well as a mailto: and leaks nothing.
+  assert.doesNotMatch(call, /mailto:/,
+    'a mailto: fallback puts a real address in a public repo');
+  assert.doesNotMatch(call, /nurtur/,
+    'the employer domain is back in the VAPID subject');
+});

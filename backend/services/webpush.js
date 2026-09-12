@@ -11,8 +11,25 @@ function init() {
     console.log('[WebPush] Not configured — VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY required');
     return;
   }
+  // ⚠ `VAPID_SUBJECT` WAS SET ON THE PI AND READ BY NOTHING. The subject was
+  // hardcoded here as `mailto:nick.ward@nurtur.tech` — a DIFFERENT address from
+  // the one actually configured (`mailto:nickw@nurtur.tech`), and probably not a
+  // real mailbox. Nothing broke, because a push service does not verify the
+  // address; but RFC 8292's `sub` claim is precisely how that service reaches
+  // the sender when their pushes cause a problem, so the one contact detail
+  // whose whole job is to be reachable was wrong, and editing the variable that
+  // looked like it controlled it did nothing.
+  //
+  // ⚠ THE FALLBACK IS DELIBERATELY NOT AN EMAIL. This repo is PUBLIC — that is
+  // how the PIN leaked in July — and an employer address does not belong in it.
+  // It is also the instinct the Keychain namespace was renamed for: "nurtur is
+  // his employer and has nothing to do with this". An `https:` origin is equally
+  // valid per RFC 8292, and this one is already all over the repo.
+  //
+  // Changing the subject cannot invalidate existing subscriptions: it is a
+  // per-request JWT claim, and a subscription is bound to the KEY PAIR.
   webpush.setVapidDetails(
-    'mailto:nick.ward@nurtur.tech',
+    process.env.VAPID_SUBJECT || 'https://nuero.nickward.co.uk',
     process.env.VAPID_PUBLIC_KEY,
     process.env.VAPID_PRIVATE_KEY
   );
