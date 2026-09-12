@@ -297,7 +297,15 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
  * there rather than failing. It is listed rather than silently tolerated, so
  * closing a second door is a visible decision — the `push-types.test.js` shape.
  */
-const CLOSED_ON_PURPOSE = new Set(['health']);
+/**
+ * ⚠ `desktop` is a DELIBERATELY CLOSED DOOR (12 Sep 2026). It ends in a
+ * PROGRAM STARTING on Nick's work laptop, and the kiosk is an unauthenticated
+ * touchscreen in a family room: anyone who walks past it could open a terminal
+ * on his machine. The shared Surface therefore offers the row only where it can
+ * reach the route, and hides it permanently on a 401/403 — capability, not
+ * device, the same way the mic is gated.
+ */
+const CLOSED_ON_PURPOSE = new Set(['health', 'desktop']);
 
 /**
  * The kiosk's allowlist, read from `neuroProxy.js`.

@@ -93,6 +93,12 @@ export default function AttentionSurface({
   // that cannot reach `/api/rooms`, in which case the offer is rendered as a
   // statement and no button is shown — never a control that fails when tapped.
   onRoomAct = null,
+  // Ask for something to be opened on the laptop: `(appId) => {}`. Omitted on a
+  // surface that cannot reach the route, in which case nothing is offered —
+  // never a button that fails when tapped.
+  onDeskOpen = null,
+  // Per-app outcome: waiting | claimed | opened | failed | expired.
+  deskStates = {},
   onNavigate,
   // What Nick could SAY next. Each utterance carries a structured intent, so no
   // shell ever parses language — see `backend/services/sara-surface.js`.
@@ -135,6 +141,10 @@ export default function AttentionSurface({
     // by `backend/services/rooms.js`, carried beside `ambient` on the payload,
     // and rendered below. Null renders nothing, which is the normal case.
     rooms = null,
+    // What he is working on, and whether he is at the laptop. Only the second
+    // half is used here, and only to decide whether offering to open something
+    // there is honest.
+    work = null,
     dashboard = null, utterances = [], covered = null,
     // ⚠ WHY THIS PANEL IS THE ONE ON SCREEN. `sara-surface` has composed it
     // since the ask flow shipped, `attention` carries it, four tests pin it —
@@ -501,6 +511,38 @@ export default function AttentionSurface({
               </li>
             ))}
           </ul>
+        )}
+
+        {/* ── Open it on the desk ────────────────────────────────────────────
+            The button half of the desk-intent pull channel.
+
+            ⚠ ONLY WHEN HE IS AT THE LAPTOP. An intent expires in about one
+            agent poll, so offering this while the machine is asleep queues
+            something that dies unclaimed and reads as broken. `atDesk` is
+            carried on every answer for exactly this.
+
+            ⚠ "I can't see your laptop" and "you're not at it" are different
+            facts and send him to different fixes, so the unknown case SAYS so
+            rather than rendering nothing.
+
+            ⚠ It reports the real outcome and never the word "sent" — `claimed`
+            means the laptop took it, which is not the same as it working. */}
+        {!hideSecondary && onDeskOpen && work && work.deskKnown === false && (
+          <p className="surface__aside">I can&rsquo;t see your laptop, so I can&rsquo;t open anything on it.</p>
+        )}
+        {!hideSecondary && onDeskOpen && work && work.atDesk && (
+          <div className="surface__desk">
+            <span className="surface__desklabel">Open on your desk</span>
+            {[['music', 'Music'], ['code', 'VS Code'], ['terminal', 'Terminal'], ['browser', 'Browser']].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className="surface__deskbtn"
+                disabled={deskStates[id] === 'waiting' || deskStates[id] === 'claimed'}
+                onClick={() => onDeskOpen(id)}
+              >{label}{deskStates[id] ? <span className="surface__deskstate"> · {deskStates[id]}</span> : null}</button>
+            ))}
+          </div>
         )}
 
         {/* ── The room he is standing in ────────────────────────────────────

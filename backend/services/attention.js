@@ -974,6 +974,19 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     gaps.push({ input: 'rooms', why: e.message });
   }
 
+  // What he is working on, and whether he is AT THE LAPTOP. The second half is
+  // what lets SARA offer to open something there — an intent expires in about
+  // one agent poll, so offering it when the machine is asleep queues something
+  // that dies unclaimed and reads as broken.
+  //
+  // ⚠ Never allowed to fail the payload.
+  let work = null;
+  try {
+    work = require('./current-work').current(now);
+  } catch (e) {
+    gaps.push({ input: 'current-work', why: e.message });
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   //
   // The gated feed is reconciled against durable records so a card can be
@@ -1189,6 +1202,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     transition,
     ambient,
     rooms,
+    work,
     ...gated,
     // ── What she SHOWS, and what he could SAY ────────────────────────────
     // Nick, 31 Aug 2026: SARA is a manifestation, not a menu — "a series of

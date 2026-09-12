@@ -246,6 +246,38 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   // ⚠ Refetch after either answer, including a decline: the offer has to leave
   //   the screen or a press looks like it did nothing, which is how a control
   //   stops being trusted.
+  // Ask for something to be opened on the laptop, then FOLLOW IT until the
+  // machine says what happened. Without the follow-up this could only claim to
+  // have sent something, which is the weaker of the two things it could say.
+  const [deskStates, setDeskStates] = useState({});
+  // null = not yet known, false = this surface cannot reach the route.
+  const [deskReachable, setDeskReachable] = useState(null);
+  async function deskOpen(app) {
+    setDeskStates(s => ({ ...s, [app]: 'waiting' }));
+    let id = null;
+    try {
+      const r = await apiFetch('/api/desktop/intents', {
+        method: 'POST',
+        body: JSON.stringify({ app, host: state.data?.work?.host || null }),
+      });
+      if (!r || !r.ok) throw new Error((r && r.reason) || 'refused');
+      id = r.intent.id;
+    } catch (e) {
+      setDeskStates(s => ({ ...s, [app]: 'failed' }));
+      return;
+    }
+    // The agent polls every two minutes and the intent dies at two minutes, so
+    // there is nothing to learn by watching longer than that.
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      try {
+        const st = await apiFetch('/api/desktop/intents/' + encodeURIComponent(id));
+        setDeskStates(s => ({ ...s, [app]: st.state }));
+        if (['opened', 'failed', 'expired'].includes(st.state)) return;
+      } catch { /* a failed poll is not an outcome — keep watching */ }
+    }
+  }
+
   async function roomAct(key, decision) {
     const path = decision === 'accept' ? 'accept' : 'decline';
     try {
@@ -449,6 +481,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       onOpen={open}
       onAct={act}
       onRoomAct={roomAct}
+      onDeskOpen={deskReachable === false ? null : deskOpen}
+      deskStates={deskStates}
       onSay={onSay}
       onNavigate={(tab) => onNavigate?.(tab)}
       hideSecondary={Boolean(exchange)}

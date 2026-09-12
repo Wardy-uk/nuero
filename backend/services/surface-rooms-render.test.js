@@ -158,3 +158,50 @@ test('⚠ every offer is rendered — a second one cannot be silently dropped', 
   assert.match(html, /Want the living room lights on\?/);
   assert.match(html, /Warm it up\?/);
 });
+
+// ── Open on your desk, on SARA's own surface ─────────────────────────────────
+//
+// ⚠ This lives on the SHARED surface, so it renders on the phone, the kiosk and
+// the desktop Electron window from one file. The kiosk reaches NEURO through an
+// ALLOWLIST proxy and `desktop` is deliberately NOT a door — an unauthenticated
+// touchscreen in a family room must not be able to start programs on a work
+// laptop — so that shell hides the row rather than offering a 403.
+
+const AT_DESK = { atDesk: true, deskKnown: true, host: 'DESKTOP-8LGF9RR' };
+
+test('at the laptop, SARA offers to open things there', () => {
+  const html = render({ data: { ...payload(null), work: AT_DESK }, onDeskOpen: () => {} });
+  for (const l of ['Music', 'VS Code', 'Terminal', 'Browser']) assert.match(html, new RegExp(l));
+  assert.match(html, /Open on your desk/);
+});
+
+test('⚠ NOT at the laptop offers nothing — an intent would expire unclaimed', () => {
+  const html = render({ data: { ...payload(null), work: { atDesk: false, deskKnown: true } }, onDeskOpen: () => {} });
+  assert.doesNotMatch(html, /surface__desk/);
+});
+
+test('⚠ a laptop that has not reported SAYS so, rather than going quiet', () => {
+  const html = render({ data: { ...payload(null), work: { atDesk: false, deskKnown: false } }, onDeskOpen: () => {} });
+  assert.match(html, /can.{0,8}t see your laptop/i);
+});
+
+test('⚠ a surface that cannot reach the route offers NOTHING', () => {
+  // No handler passed — the kiosk's case once it has been refused.
+  const html = render({ data: { ...payload(null), work: AT_DESK } });
+  assert.doesNotMatch(html, /surface__deskbtn/);
+});
+
+test('⚠ it reports the real outcome, and never the word "sent"', () => {
+  const html = render({
+    data: { ...payload(null), work: AT_DESK },
+    onDeskOpen: () => {},
+    deskStates: { music: 'claimed', code: 'opened' },
+  });
+  assert.match(html, /claimed/);
+  assert.match(html, /opened/);
+  assert.doesNotMatch(html, /\bsent\b/i);
+});
+
+test('no work reading at all renders no desk row', () => {
+  assert.doesNotMatch(render({ data: payload(null), onDeskOpen: () => {} }), /surface__desk/);
+});

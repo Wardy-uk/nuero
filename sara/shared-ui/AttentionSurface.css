@@ -533,3 +533,42 @@
   border-color: rgba(255, 255, 255, 0.34);
   background: rgba(255, 255, 255, 0.09);
 }
+
+/* ── Open on your desk ────────────────────────────────────────────────────────
+   Only rendered when he is actually at the laptop, so this is never a row of
+   controls that quietly do nothing. Quiet styling: it is a shortcut, not a
+   decision, and it must not compete with the work above it. */
+.surface__desk {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.7rem 0 0;
+}
+
+.surface__desklabel {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-right: 0.1rem;
+}
+
+.surface__deskbtn {
+  min-height: 2.1rem;
+  padding: 0 0.75rem;
+  border-radius: 0.42rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.surface__deskbtn:disabled { opacity: 0.6; cursor: default; }
+.surface__deskbtn:active:not(:disabled) { transform: translateY(1px); }
+
+/* The system's own word for what happened — never "sent". */
+.surface__deskstate { opacity: 0.62; font-size: 0.78rem; }
