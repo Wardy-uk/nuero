@@ -14,6 +14,7 @@ CREATE INDEX IF NOT EXISTS idx_conversations_conv_id
 -- the rows it left behind were removed on 27 Aug — see the note in
 -- db/database.js. Nothing reads or writes this table.
 --
+-- @inert - nothing may read or write this table. Enforced by db/inert-tables.test.js.
 -- Left defined and empty deliberately, following `inbox_items`: dropping it is a
 -- destructive migration that buys nothing, and the twelve rows still in it are
 -- the only surviving evidence of what the queue looked like on 3 July.
@@ -201,6 +202,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
 
 CREATE INDEX IF NOT EXISTS idx_activity_date ON activity_log(date_key, event_type);
 
+-- @inert - nothing may read or write this table. Enforced by db/inert-tables.test.js.
 -- RETIRED 26 Aug 2026. Written by nothing since `inbox-scanner.js` was removed:
 -- it was a second inbox triage nothing reconciled with the one the panel shows,
 -- and with no dismiss path reaching it, it only grew. Inbox state now lives in
