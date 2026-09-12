@@ -215,10 +215,40 @@ function snapshot() {
                   WHERE created_at >= date('now','-13 day') GROUP BY d ORDER BY d`),
   };
 
-  const inbox = {
-    open: scalar("SELECT COUNT(*) c FROM inbox_items WHERE dismissed=0"),
-    byUrgency: tally(rows("SELECT urgency k, COUNT(*) c FROM inbox_items WHERE dismissed=0 GROUP BY k"), 'k'),
-  };
+  // ⚠ THIS READ WAS DEAD, AND THE PANEL RENDERED IT AS A FACT. It counted
+  // `inbox_items`, the table whose writer (`inbox-scanner.js`) was DELETED on
+  // 26 Aug 2026 when the two competing inbox triages were consolidated into one.
+  // That cleanup removed the scanner's six `db` helpers — but this queried the
+  // table with RAW SQL, so removing the helpers never touched it. The result was
+  // a permanent `{open: 0, byUrgency: {}}` shown as "Inbox 0 · 0 high" at the top
+  // of the sidebar, on the panel that exists BECAUSE "the Jira cache had been
+  // stale since 3 July and nothing anywhere said so".
+  //
+  // It read 0 on the day it was found because there genuinely were no urgent
+  // emails. It would have read 0 with thirty-seven.
+  //
+  // ⚠ `getUrgentEmails()` is THE ONE PREDICATE (`lane === 'urgent' &&
+  // !dismissed`), asked for rather than re-derived here — the same rule that
+  // keeps the panel, the nudge and the Inbox screen agreeing on what "urgent"
+  // means. Re-implementing the filter is how the count on this panel comes to
+  // disagree with the heading on that one.
+  //
+  // ⚠ AND AN UNREADABLE TRIAGE IS `null`, NEVER 0 — this panel's own rule, in
+  // its own words: "null, never 0 ... I could not look". A zero here is a
+  // positive claim that the inbox is clear, which is the most reassuring thing
+  // this surface can say wrongly.
+  let inbox;
+  try {
+    const urgent = require('./email-triage').getUrgentEmails();
+    const byUrgency = {};
+    for (const e of urgent) {
+      const k = e.urgency || 'unknown';
+      byUrgency[k] = (byUrgency[k] || 0) + 1;
+    }
+    inbox = { open: urgent.length, byUrgency, known: true };
+  } catch (e) {
+    inbox = { open: null, byUrgency: {}, known: false, why: e.message };
+  }
 
   // 21 days is three weeks of habit — long enough to show a pattern, short
   // enough to fit a row of cells without scrolling on a phone.

@@ -262,3 +262,45 @@ test('an unrelated event does not count as a ritual', () => {
   assert.equal(r.days[0].standup_done, 0);
   assert.equal(r.days[0].eod_done, 0);
 });
+
+// ── The inbox stat reads the LIVE predicate ─────────────────────────────────
+//
+// ⚠ It counted `inbox_items` — the table whose writer (`inbox-scanner.js`) was
+// deleted on 26 Aug 2026 when the two competing inbox triages were consolidated.
+// That cleanup removed the scanner's six `db` helpers, but this queried the table
+// with RAW SQL, so removing the helpers never touched it. The panel showed a
+// permanent "Inbox 0 · 0 high" — on the surface that exists because "the Jira
+// cache had been stale since 3 July and nothing anywhere said so".
+//
+// It read 0 the day it was found because there genuinely were no urgent emails.
+// It would have read 0 with thirty-seven.
+
+test('the inbox stat no longer reads the dead table', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'state-of-play.js'), 'utf8');
+
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  assert.ok(!/FROM\s+inbox_items/i.test(code),
+    'state-of-play queries inbox_items again — that table has had no writer since 26 Aug');
+  assert.ok(/getUrgentEmails\(\)/.test(code),
+    'the inbox stat no longer asks email-triage for the one predicate');
+});
+
+test('an unreadable triage is null, never a clear inbox', () => {
+  // ⚠ This panel's own rule, in its own words: "null, never 0 — I could not
+  // look". A zero is a positive claim that the inbox is clear, and that is the
+  // most reassuring thing this surface can say wrongly.
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'state-of-play.js'), 'utf8');
+
+  assert.ok(/inbox = \{ open: null, byUrgency: \{\}, known: false/.test(src),
+    'the failure path no longer reports null/known:false — it is claiming a clear inbox');
+
+  // And the panel must be able to tell the two apart.
+  const panel = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'frontend', 'src', 'components', 'StateOfPlay.jsx'), 'utf8');
+  assert.ok(/inbox\.known === false/.test(panel),
+    'the panel renders inbox.open without checking `known` — an unreadable triage shows as 0');
+});

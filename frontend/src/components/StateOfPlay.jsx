@@ -191,8 +191,18 @@ export default function StateOfPlay({ onNavigate }) {
               tone={approvals.pending > 0 ? 'warn' : 'good'} onClick={() => go('actions')} />
         <Stat label="Owed to you" value={commitments.open} sub={`${commitments.people} people`}
               tone={commitments.open > 100 ? 'warn' : 'neutral'} onClick={() => go('people')} />
-        <Stat label="Inbox" value={inbox.open} sub={`${inbox.byUrgency.high || 0} high`}
-              tone={(inbox.byUrgency.high || 0) > 0 ? 'warn' : 'neutral'} onClick={() => go('inbox')} />
+        {/* ⚠ `known === false` MUST NOT RENDER AS ZERO. This stat spent weeks
+            counting `inbox_items`, a table whose writer was deleted on 26 Aug, so
+            it read "Inbox 0 · 0 high" permanently — on the panel that exists
+            because a stale cache went unnoticed for seven weeks. It now reads the
+            one live predicate, and an unreadable triage says so rather than
+            claiming a clear inbox, which is the most reassuring thing this
+            surface can say wrongly. Same rule the ritual strip already applies. */}
+        <Stat label="Inbox"
+              value={inbox.known === false ? '—' : inbox.open}
+              sub={inbox.known === false ? "couldn't read" : `${inbox.byUrgency.high || 0} high`}
+              tone={inbox.known === false ? 'warn' : ((inbox.byUrgency.high || 0) > 0 ? 'warn' : 'neutral')}
+              onClick={() => go('inbox')} />
         <Stat label="Jobs healthy" value={`${okJobs}/${jobs.length}`}
               tone={okJobs === jobs.length ? 'good' : 'danger'} />
       </div>
