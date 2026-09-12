@@ -152,3 +152,63 @@ test('a row with no links at all still renders its text', () => {
   assert.match(html, /Plain task/);
   assert.doesNotMatch(html, /adhd__cohort-open/);
 });
+
+// ── Open on your desk ────────────────────────────────────────────────────────
+
+let DeskLaunch;
+test('the desk row is exported and mountable', async () => {
+  const out = await esbuild.build({
+    entryPoints: [PANEL], bundle: true, write: false, format: 'cjs', platform: 'node',
+    jsx: 'automatic', external: ['react', 'react-dom'], logLevel: 'silent',
+    plugins: [{
+      name: 'stub',
+      setup(build) {
+        build.onResolve({ filter: /\.css$/ }, a => ({ path: a.path, namespace: 'css' }));
+        build.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
+        build.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
+        build.onResolve({ filter: /useAttention$/ }, () => ({ path: 'attention', namespace: 'stub' }));
+        build.onResolve({ filter: /(AttentionCard|FrictionSection)$/ }, () => ({ path: 'card', namespace: 'stub' }));
+        build.onLoad({ filter: /.*/, namespace: 'stub' }, a => ({ contents: STUBS[a.path], loader: 'js' }));
+      },
+    }],
+  });
+  const mod = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
+  DeskLaunch = mod.exports.DeskLaunch;
+  assert.ok(DeskLaunch);
+});
+
+const desk = props => renderToString(React.createElement(DeskLaunch, { onOpen: () => {}, states: {}, ...props })).split('<!-- -->').join('');
+
+test('at the laptop, the four openable things are offered', () => {
+  const html = desk({ work: { atDesk: true, deskKnown: true, host: 'PC' } });
+  for (const l of ['Music', 'VS Code', 'Terminal', 'Browser']) assert.match(html, new RegExp(l));
+});
+
+test('⚠ NOT at the laptop renders NOTHING — never a button that dies unclaimed', () => {
+  // An intent expires in two minutes. Offering this when he is on the sofa
+  // queues something that never fires and reads as broken.
+  assert.equal(desk({ work: { atDesk: false, deskKnown: true } }), '');
+});
+
+test('⚠ a laptop that has not reported SAYS so — that is a different fact', () => {
+  const html = desk({ work: { atDesk: false, deskKnown: false } });
+  assert.match(html, /can.{0,8}t see your laptop/i);
+});
+
+test('no reading at all renders nothing', () => {
+  assert.equal(desk({ work: null }), '');
+});
+
+test('⚠ the state shown is the real one, and "claimed" is not "opened"', () => {
+  const html = desk({ work: { atDesk: true, deskKnown: true }, states: { music: 'claimed', code: 'opened' } });
+  assert.match(html, /claimed/);
+  assert.match(html, /opened/);
+  assert.doesNotMatch(html, /\bsent\b/i, 'never claims delivery it cannot confirm');
+});
+
+test('a request in flight disables its own button', () => {
+  const html = desk({ work: { atDesk: true, deskKnown: true }, states: { music: 'waiting' } });
+  assert.match(html, /disabled/);
+});

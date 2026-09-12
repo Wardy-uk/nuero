@@ -73,6 +73,50 @@ export function WhileHere({ data, onNavigate }) {
   );
 }
 
+// "Open it on my desk" — the button half of the desk-intent pull channel.
+//
+// ⚠ IT ONLY APPEARS WHEN HE IS AT THE LAPTOP. An intent expires in two minutes
+//   (about one agent poll), so offering this when the machine is asleep or he is
+//   on the sofa queues something that dies unclaimed and reads as broken. The
+//   resolver already knows: `atDesk`, carried on every answer.
+//
+// ⚠ DESK-KNOWN AND NOT-AT-DESK ARE DIFFERENT FACTS. When the laptop has not
+//   reported at all it says so, rather than silently showing nothing — "I cannot
+//   see your laptop" and "you are not at it" send him to different fixes.
+//
+// ⚠ IT REPORTS WHAT ACTUALLY HAPPENED, never "sent". `claimed` means the laptop
+//   took it and is NOT the same as `opened`; that distinction is what surfaced a
+//   real bug on the day this shipped.
+export function DeskLaunch({ work, onOpen, states }) {
+  if (!work) return null;
+  if (work.deskKnown === false) {
+    return <p className="adhd__desk-note">I can&rsquo;t see your laptop, so I can&rsquo;t open anything on it.</p>;
+  }
+  if (!work.atDesk) return null;
+  const apps = [['music', 'Music'], ['code', 'VS Code'], ['terminal', 'Terminal'], ['browser', 'Browser']];
+  return (
+    <section className="adhd__desk">
+      <div className="adhd__desk-label">Open on your desk</div>
+      <div className="adhd__desk-row">
+        {apps.map(([id, label]) => {
+          const st = states[id];
+          return (
+            <button
+              key={id}
+              type="button"
+              className="adhd__desk-btn"
+              disabled={st === 'waiting' || st === 'claimed'}
+              onClick={() => onOpen(id)}
+            >
+              {label}{st ? <span className="adhd__desk-state"> · {st}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 // `Now` — the execution surface, and the desktop's default view.
 //
 // This was the ADHD "Today" dashboard, sitting four clicks deep under MORE. It
@@ -190,6 +234,13 @@ export default function AdhdPanel({ onNavigate }) {
     }
   }, []);
 
+  // What he is working on — also carries whether he is at the laptop, which is
+  // what gates the open-on-desk row below.
+  const [work, setWork] = useState(null);
+  // Per-app: waiting | claimed | opened | failed | expired. Five different
+  // facts, and "claimed" is deliberately not "opened".
+  const [deskStates, setDeskStates] = useState({});
+
   // "While you're in here" — the cohort band. Its own fetch rather than a field
   // on /api/adhd, because it is a different question (what is he ON) answered
   // from different sources, and folding it in would make one slow read of three.
@@ -206,6 +257,42 @@ export default function AdhdPanel({ onNavigate }) {
   const [closeout, setCloseout] = useState(null);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    let alive = true;
+    const read = () => api('/api/current-work')
+      .then(d => { if (alive) setWork(d); })
+      .catch(() => { if (alive) setWork(null); });
+    read();
+    const t = setInterval(read, 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  // Ask for something to be opened, then FOLLOW IT until the laptop says what
+  // happened. Without the follow-up the button could only ever claim to have
+  // sent something, which is the weaker of the two things it could say.
+  const openOnDesk = useCallback(async (app) => {
+    setDeskStates(s0 => ({ ...s0, [app]: 'waiting' }));
+    let id = null;
+    try {
+      const r = await api('/api/desktop/intents', { method: 'POST', body: JSON.stringify({ app, host: work?.host || null }) });
+      if (!r.ok) throw new Error(r.reason || 'refused');
+      id = r.intent.id;
+    } catch {
+      setDeskStates(s0 => ({ ...s0, [app]: 'failed' }));
+      return;
+    }
+    // The agent polls every two minutes, and the intent dies at two minutes, so
+    // there is no point watching for longer than that.
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      try {
+        const s1 = await api('/api/desktop/intents/' + encodeURIComponent(id));
+        setDeskStates(s0 => ({ ...s0, [app]: s1.state }));
+        if (['opened', 'failed', 'expired'].includes(s1.state)) return;
+      } catch { /* keep watching; a failed poll is not an outcome */ }
+    }
+  }, [work]);
 
   // ⚠ Never allowed to fail the page: a cohort is a nicety and the session
   // controls above it are not. A failed read simply renders nothing.
@@ -633,6 +720,7 @@ export default function AdhdPanel({ onNavigate }) {
       )}
 
       <WhileHere data={cohort} onNavigate={onNavigate} />
+      <DeskLaunch work={work} onOpen={openOnDesk} states={deskStates} />
 
       {/* ── The one thing ──
           Canonical attention, rendered by the shared card so the five actions

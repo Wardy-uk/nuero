@@ -191,3 +191,38 @@ test('⚠ a laptop that genuinely has not reported still says so', () => {
     da.run = realRun;
   }
 });
+
+// ── At the laptop is a separate fact from what he is doing ───────────────────
+//
+// ⚠ A running session wins the `kind`, but he is still sitting at the machine.
+// Anything offering to OPEN something there needs to know — otherwise it queues
+// an intent that expires unclaimed two minutes later and looks broken.
+
+test('⚠ atDesk travels on EVERY answer, not just the app branch', () => {
+  const withDesk = { ...DESKTOP };
+  const cases = [
+    { session: SESSION, blocks: [], desktop: withDesk },
+    { session: null, blocks: [BLOCK], desktop: withDesk },
+    { session: null, blocks: [], desktop: withDesk },
+    { session: { ...SESSION, paused: true }, blocks: [], desktop: withDesk },
+  ];
+  for (const c of cases) {
+    const r = cw.resolve({ ...c, readable: ALL_READ }, NOW);
+    assert.equal(r.atDesk, true, 'kind=' + r.kind);
+    assert.equal(r.host, 'DESKTOP-8LGF9RR');
+  }
+});
+
+test('not at the laptop is atDesk:false but deskKnown:true', () => {
+  const r = cw.resolve({ session: null, blocks: [], desktop: { app: null, active: false, known: true }, readable: ALL_READ }, NOW);
+  assert.equal(r.atDesk, false);
+  assert.equal(r.deskKnown, true, 'we looked');
+});
+
+test('⚠ a laptop that has not reported is deskKnown:FALSE, not "not at the desk"', () => {
+  // The two license different behaviour: one means do not offer, the other
+  // means say you cannot tell.
+  const r = cw.resolve({ session: null, blocks: [], desktop: { known: false }, readable: ALL_READ }, NOW);
+  assert.equal(r.atDesk, false);
+  assert.equal(r.deskKnown, false);
+});

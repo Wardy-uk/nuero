@@ -58,6 +58,16 @@ function toMs(v) {
   return null;
 }
 
+// ⚠ AT THE LAPTOP is a separate fact from WHAT HE IS DOING, and it has to
+// travel on every answer. A running focus session wins the `kind`, but he is
+// still sitting at the machine — and anything that offers to OPEN something
+// there needs to know that, or it queues an intent that expires unclaimed two
+// minutes later and looks broken.
+function deskFrom(desktop) {
+  if (!desktop || desktop.known === false) return { atDesk: false, deskKnown: false, host: null };
+  return { atDesk: Boolean(desktop.app), deskKnown: true, host: desktop.host || null };
+}
+
 function nothing(why, extra = {}) {
   return {
     known: true,
@@ -84,13 +94,14 @@ function resolve(inputs = {}, now = Date.now()) {
   const nowMs = toMs(now);
   const readable = inputs.readable || {};
   const paused = pausedFrom(inputs.session);
+  const desk = deskFrom(inputs.desktop);
 
   // ⚠ Nothing readable at all is UNKNOWN, not "he is doing nothing".
   const anyRead = readable.session !== false || readable.blocks !== false || readable.desktop !== false;
   if (!anyRead) {
     return {
       known: false, kind: null, task: null, taskIds: [], app: null,
-      confidence: null, source: null, paused,
+      confidence: null, source: null, paused, ...desk,
       why: 'none of the three sources could be read',
     };
   }
@@ -107,6 +118,7 @@ function resolve(inputs = {}, now = Date.now()) {
       confidence: CONFIDENCE.session,
       source: 'focus-session',
       paused,
+      ...desk,
       why: 'you started a session on this',
     };
   }
@@ -134,6 +146,7 @@ function resolve(inputs = {}, now = Date.now()) {
       confidence: CONFIDENCE.block,
       source: 'task-block',
       paused,
+      ...desk,
       why: ids.length === 1
         ? 'this is blocked out in your diary right now'
         : ids.length + ' tasks are blocked out in your diary right now',
@@ -153,15 +166,16 @@ function resolve(inputs = {}, now = Date.now()) {
       confidence: CONFIDENCE.app,
       source: 'desktop-activity',
       paused,
+      ...desk,
       why: 'you are at the laptop in ' + d.app + ' — which says nothing about which task',
     };
   }
 
   // Nothing positive. Say which kind of nothing.
-  if (paused) return nothing('you paused a session and have not picked it back up', { paused });
-  if (d && d.known === false) return nothing('the laptop has not reported recently, so I cannot tell', { paused });
-  if (d && d.active === false) return nothing('you are not at the laptop and nothing is running or blocked', { paused });
-  return nothing('nothing started, nothing blocked, and the laptop is quiet', { paused });
+  if (paused) return nothing('you paused a session and have not picked it back up', { paused, ...desk });
+  if (d && d.known === false) return nothing('the laptop has not reported recently, so I cannot tell', { paused, ...desk });
+  if (d && d.active === false) return nothing('you are not at the laptop and nothing is running or blocked', { paused, ...desk });
+  return nothing('nothing started, nothing blocked, and the laptop is quiet', { paused, ...desk });
 }
 
 /** A paused session, reported alongside — never AS — current work. */
@@ -258,4 +272,4 @@ function hhmmToMs(dayStr, hhmm) {
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 }
 
-module.exports = { resolve, current, liveBlocks, pausedFrom, CONFIDENCE };
+module.exports = { resolve, current, liveBlocks, pausedFrom, deskFrom, CONFIDENCE };

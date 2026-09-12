@@ -701,3 +701,38 @@
 }
 
 .adhd__cohort-open:hover { opacity: 1; background: rgba(255, 255, 255, 0.07); }
+
+/* ── Open on your desk ────────────────────────────────────────────────────────
+   Only rendered when he is actually at the laptop, so this is never a row of
+   buttons that quietly do nothing. */
+.adhd__desk { margin: 0.6rem 0 0; }
+
+.adhd__desk-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: 0.35rem;
+}
+
+.adhd__desk-row { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+.adhd__desk-btn {
+  min-height: 2rem;
+  padding: 0 0.7rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.adhd__desk-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); }
+.adhd__desk-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* The outcome, in the system's own words — never "sent". */
+.adhd__desk-state { opacity: 0.6; font-size: 0.78rem; }
+
+.adhd__desk-note { margin: 0.6rem 0 0; font-size: 0.82rem; opacity: 0.6; }
