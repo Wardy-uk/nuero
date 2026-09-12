@@ -28,7 +28,22 @@ router.post('/activity', (req, res) => {
     if (batch.length > 60) return res.status(400).json({ error: 'at most 60 samples per call' });
 
     const stored = batch.map(s => desktop.record(s));
-    res.json({ ok: true, stored: stored.length, sample: stored[stored.length - 1] });
+
+    // ⚠ THE PULL. The agent is outbound-only and stays that way: anything it
+    // should do comes back on the RESPONSE to a connection it opened itself.
+    // Nothing listens on the laptop and nothing on the network can reach it.
+    // What travels is an id from a fixed vocabulary — never a path, never an
+    // argument — and the agent refuses an unknown one locally before anything
+    // runs. A failure here must never cost the sample that was just stored.
+    let intents = [];
+    try {
+      const host = (batch[batch.length - 1] || {}).host || null;
+      intents = require('../services/desk-intents').claim({ host }).intents;
+    } catch (e) {
+      console.warn('[Desktop] could not read desk intents:', e.message);
+    }
+
+    res.json({ ok: true, stored: stored.length, sample: stored[stored.length - 1], intents });
   } catch (e) {
     console.error('[Desktop] record failed:', e.message);
     res.status(500).json({ error: e.message });
@@ -89,6 +104,45 @@ router.post('/daily/sync', (req, res) => {
     res.json(require('../services/desktop-daily').sync());
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ── Opening something on the laptop ───────────────────────────────────
+//
+// ⚠ QUEUEING IS A HUMAN ACT AND MUST STAY ONE. This route is reachable from a
+//   button and from nothing else — no rule, no scheduler, no model tool calls
+//   it. An assistant that could decide on its own to run programs on his work
+//   machine is a different product with a different risk.
+
+// POST /api/desktop/intents { app, host? } — ask for something to be opened.
+router.post('/intents', (req, res) => {
+  try {
+    const { app, host, why } = req.body || {};
+    res.json(require('../services/desk-intents').queue(app, { host: host || null, why: why || null }));
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/desktop/intents/:id — what happened to it. `waiting` / `claimed` /
+// `opened` / `failed` / `expired` are five different facts and stay apart.
+router.get('/intents/:id', (req, res) => {
+  try {
+    res.json(require('../services/desk-intents').status(req.params.id));
+  } catch (e) {
+    res.status(500).json({ known: false, error: e.message });
+  }
+});
+
+// POST /api/desktop/intents/:id/done { ok, detail } — the agent reporting back,
+// so a surface can say "opened" rather than "sent, hopefully".
+router.post('/intents/:id/done', (req, res) => {
+  try {
+    const { ok, detail } = req.body || {};
+    res.json(require('../services/desk-intents').record(req.params.id, ok, detail || null));
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

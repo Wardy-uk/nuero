@@ -132,6 +132,88 @@ function Send-Sample($sample) {
     -ContentType 'application/json' -Body $body -TimeoutSec 10
 }
 
+
+# -- Opening something, when NEURO is asked to ---------------------------------
+#
+# WARNING  THIS AGENT STAYS OUTBOUND-ONLY. Nothing listens here and nothing on
+#   the network can reach this machine. Anything to be done arrives on the
+#   RESPONSE to the POST above - a connection this script opened itself.
+#
+# WARNING  THE SERVER SENDS AN ID, NEVER A COMMAND. The mapping from id to an
+#   actual program lives HERE, on this laptop, in $AppCommands. The Pi cannot
+#   name a path, cannot pass arguments, and cannot invent a new app by sending
+#   a different string: an id that is not a key below is refused locally,
+#   before anything runs, and reported as refused. Adding a program is a
+#   deliberate edit on THIS machine.
+#
+# WARNING  NO ARGUMENTS ARE EVER PASSED. Start-Process is called with the
+#   command and nothing else. The moment a caller can supply an argument, an
+#   allowlist of programs stops being a meaningful boundary - 'browser' plus
+#   an arbitrary URL, or 'terminal' plus a command, is arbitrary execution
+#   wearing an allowlist's clothes.
+
+$AppCommands = @{
+  music    = 'iTunes'
+  code     = 'code'
+  terminal = 'wt'
+  browser  = 'msedge'
+}
+
+# Overrides live beside the token, so the real paths on this machine are not
+# in a repo. Same file, same permissions, same reasoning.
+$AppOverridePath = Join-Path $env:LOCALAPPDATA 'neuro-agent\apps.json'
+if (Test-Path $AppOverridePath) {
+  try {
+    $o = Get-Content -Raw $AppOverridePath | ConvertFrom-Json
+    foreach ($k in $AppCommands.Keys.Clone()) {
+      if ($o.PSObject.Properties.Name -contains $k -and $o.$k) { $AppCommands[$k] = [string]$o.$k }
+    }
+  } catch {
+    Write-Warning "could not read $AppOverridePath - using built-in app commands"
+  }
+}
+
+function Report-Intent($id, $ok, $detail) {
+  try {
+    $b = @{ ok = [bool]$ok; detail = $detail } | ConvertTo-Json -Compress
+    Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/desktop/intents/$id/done" `
+      -Headers @{ 'X-NEURO-API-TOKEN' = $Token } `
+      -ContentType 'application/json' -Body $b -TimeoutSec 10 | Out-Null
+  } catch {
+    # Best effort. A lost receipt leaves the request reading 'claimed', which
+    # is honest - it says the laptop took it, not that it worked.
+    Write-Warning "could not report intent ${id}: $($_.Exception.Message)"
+  }
+}
+
+function Invoke-DeskIntent($intent) {
+  $id = $intent.id
+  $app = [string]$intent.app
+  if (-not $AppCommands.ContainsKey($app)) {
+    # Refused HERE, independently of the server's own refusal. Two locks.
+    Write-Warning "refused unknown app id '$app'"
+    Report-Intent $id $false "this machine has no '$app'"
+    return
+  }
+  $cmd = $AppCommands[$app]
+  try {
+    Start-Process -FilePath $cmd -ErrorAction Stop
+    Write-Host "opened $app ($cmd)"
+    Report-Intent $id $true $cmd
+  } catch {
+    Write-Warning "could not open ${app}: $($_.Exception.Message)"
+    Report-Intent $id $false $_.Exception.Message
+  }
+}
+
+function Invoke-DeskIntents($response) {
+  if (-not $response) { return }
+  $intents = $response.intents
+  if (-not $intents) { return }
+  foreach ($i in @($intents)) {
+    if ($i -and $i.id -and $i.app) { Invoke-DeskIntent $i }
+  }
+}
 if ($Once) {
   $s = Get-Sample
   # Printed so the installer can show what would be sent BEFORE it is sent —
@@ -145,7 +227,10 @@ if ($Once) {
 Write-Host "NEURO desktop agent -> $BaseUrl, every ${IntervalSeconds}s. Ctrl+C to stop."
 while ($true) {
   try {
-    Send-Sample (Get-Sample) | Out-Null
+    # The response is no longer discarded: it is how this machine learns it
+    # has been asked to open something.
+    $resp = Send-Sample (Get-Sample)
+    Invoke-DeskIntents $resp
   } catch {
     # Dropped, never queued. This answers "what is he doing NOW", and a sample
     # delivered an hour late answers a question nobody is asking.
