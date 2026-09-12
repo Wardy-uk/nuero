@@ -10,9 +10,18 @@ const express = require('express');
 const router = express.Router();
 const signals = require('../services/signals');
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    res.json(signals.snapshot());
+    // The room sensors live on SARA (:3005). Read ONCE here and hand the result to
+    // the snapshot, which judges it purely — rather than a network call per row.
+    // A failure is passed through as a failed read, never as "no sensors".
+    let rooms = { ok: false, why: 'the room sensors were not read', sensors: [] };
+    try {
+      rooms = await require('../services/room-presence').sensors(new Date());
+    } catch (e) {
+      rooms = { ok: false, why: e.message, sensors: [] };
+    }
+    res.json(signals.snapshot(new Date(), { rooms }));
   } catch (e) {
     console.error('[Signals] snapshot failed:', e.message);
     // An error is NOT a healthy set of senses. A 200 with an empty list here

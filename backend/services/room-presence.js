@@ -108,8 +108,54 @@ function cached() {
   return _cache.value;
 }
 
-function _reset() {
-  _cache = { at: 0, value: null };
+let _sensorCache = { at: 0, value: null };
+
+/**
+ * Every room SENSOR's own last report — for the health page, which asks a
+ * different question from `read()`: not "which room is he in" but "is each
+ * device still talking, and what is its battery doing".
+ *
+ * ⚠ Unreachable SARA is `ok: false` with the reason, never an empty list: a
+ * house with no sensors and a house whose hub cannot be reached look identical
+ * in a bare array, and only one of them is a fault.
+ */
+async function sensors(now = new Date()) {
+  if (!isConfigured()) return { ok: false, why: 'SARA base URL not configured', sensors: [] };
+  if (_sensorCache.value && now.getTime() - _sensorCache.at < CACHE_MS) return _sensorCache.value;
+
+  let out;
+  try {
+    const res = await fetch(`${SARA_URL}/api/presence/room`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    const readings = d && typeof d.readings === 'object' && d.readings ? d.readings : null;
+    if (!readings) {
+      // An older SARA has no `readings`. Say so rather than reporting no sensors.
+      out = { ok: false, why: 'SARA did not report per-sensor readings', sensors: [] };
+    } else {
+      out = {
+        ok: true,
+        at: d.checkedAt || now.toISOString(),
+        room: d.room || null,
+        confidence: typeof d.confidence === 'string' ? d.confidence : null,
+        sensors: Object.values(readings),
+      };
+    }
+  } catch (e) {
+    out = {
+      ok: false,
+      why: e.name === 'TimeoutError' ? 'SARA did not answer in time' : `could not reach SARA: ${e.message}`,
+      sensors: [],
+    };
+  }
+
+  _sensorCache = { at: now.getTime(), value: out };
+  return out;
 }
 
-module.exports = { read, cached, isConfigured, _reset, SARA_URL };
+function _reset() {
+  _cache = { at: 0, value: null };
+  _sensorCache = { at: 0, value: null };
+}
+
+module.exports = { read, cached, sensors, isConfigured, _reset, SARA_URL };

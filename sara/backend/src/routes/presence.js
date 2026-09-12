@@ -216,6 +216,11 @@ router.get('/room', (_req, res) => {
     scores: inferred.scores,
     sensors: arbitration.rooms,
     unreadable: arbitration.unreadable,
+    // The raw last reading per sensor, so NEURO's health page can show each
+    // DEVICE — its own freshness, and the battery a phone or tablet reports.
+    // `sensors` above is the arbitration's view (is he in that room); this is
+    // the sensor's own report, and the two answer different questions.
+    readings: store.all(),
     checkedAt: now.toISOString(),
   });
 });

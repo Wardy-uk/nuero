@@ -79,6 +79,86 @@ function age(minutes) {
   return `${Math.round(hours / 24)}d`;
 }
 
+/** "living-room" is a sensor id; a person reads "Living Room". */
+function roomLabel(room) {
+  return String(room || '')
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/**
+ * A row per ROOM SENSOR — the Pis, the study tablet, the bedroom phone. PURE.
+ *
+ * Nick, 12 Sep 2026, after the tablet and phone joined the house. They are senses
+ * like any other, and they fail the way senses fail: quietly. A sensor that stops
+ * reporting takes its room's screen and its greeting with it, and nothing else on
+ * any screen would say so.
+ *
+ * ⚠ A DEAF SENSOR IS NOT AN EMPTY ROOM. `healthy` is the sensor's own "I can hear
+ * the background" flag — the rule the Pi sensors are built on — so a radio that
+ * has gone deaf reads `error` here rather than a clean "he is not in there".
+ *
+ * ⚠ THE CADENCE IS THE SENSOR'S, NOT A SHARED ONE. They report every ~3s, so
+ * anything past 30s is a fault, not a quiet patch. That is the same bar SARA's own
+ * arbitration uses to call a reading stale.
+ *
+ * @param {{ok, why, sensors}} payload from room-presence.sensors()
+ */
+function sensorRows(payload, now = new Date()) {
+  const what = 'which room you are in, for SARA’s screens and greetings';
+  if (!payload || !payload.ok) {
+    return [{
+      id: 'rooms',
+      label: 'Room sensors',
+      what,
+      state: 'error',
+      ageMinutes: null,
+      why: (payload && payload.why) || 'the room sensors could not be read',
+    }];
+  }
+  const list = Array.isArray(payload.sensors) ? payload.sensors : [];
+  if (!list.length) {
+    // Reachable and reporting nothing is a real, different fact from unreachable.
+    return [{ id: 'rooms', label: 'Room sensors', what, state: 'never', ageMinutes: null, why: 'no sensor has reported yet' }];
+  }
+
+  return list.map((s) => {
+    const room = String(s.room || 'unknown');
+    const ageMs = s.at ? now.getTime() - new Date(s.at).getTime() : NaN;
+    const ageMinutes = Number.isFinite(ageMs) ? Math.max(0, Math.round(ageMs / 60000)) : null;
+    const bits = [];
+    if (Number.isFinite(s.rssiMedian)) bits.push(`watch ${s.rssiMedian} dBm`);
+    if (Number.isFinite(s.batteryPct)) bits.push(`battery ${s.batteryPct}%${s.charging === false ? ' (not charging)' : ''}`);
+
+    if (!Number.isFinite(ageMs)) {
+      return { id: `room-${room}`, label: `${roomLabel(room)} sensor`, what, state: 'error', ageMinutes: null, why: 'no timestamp on its last report' };
+    }
+    if (ageMs > 30000) {
+      return {
+        id: `room-${room}`, label: `${roomLabel(room)} sensor`, what,
+        state: 'stale', ageMinutes,
+        why: 'it has stopped reporting — this room has no screen verdict or greeting',
+        detail: bits.join(' · ') || undefined,
+      };
+    }
+    if (s.healthy === false) {
+      return {
+        id: `room-${room}`, label: `${roomLabel(room)} sensor`, what,
+        state: 'error', ageMinutes,
+        why: s.why || 'its radio hears nothing at all — deaf, not an empty room',
+        detail: bits.join(' · ') || undefined,
+      };
+    }
+    return {
+      id: `room-${room}`, label: `${roomLabel(room)} sensor`, what,
+      state: 'live', ageMinutes,
+      detail: bits.join(' · ') || undefined,
+    };
+  });
+}
+
 /** Worst state present, for the headline. `off` is NOT a fault and cannot win. */
 function overallOf(signals = []) {
   const order = ['error', 'stale', 'never', 'live', 'off'];
@@ -105,7 +185,7 @@ function _latestSample(metric) {
  * becomes `error` for that ROW and never takes the page down, because a status
  * page that cannot render is worse than any single red light on it.
  */
-function snapshot(now = new Date()) {
+function snapshot(now = new Date(), { rooms = null } = {}) {
   const signals = [];
   const add = (s) => signals.push(s);
   const guard = (id, label, what, fn) => {
@@ -314,6 +394,13 @@ function snapshot(now = new Date()) {
     return { ...rate(newest, 24 * 60, now, { staleAfter: 5 * 24 * 60 }), detail: 'via Syncthing' };
   });
 
+  // ── Room sensors ──────────────────────────────────────────────────────────
+  //
+  // Passed IN rather than fetched here: they live on SARA (:3005) behind a network
+  // call, and this page must not add a round trip per row. The route awaits one
+  // read and hands it over; `sensorRows` is pure and does the judging.
+  if (rooms !== null) for (const row of sensorRows(rooms, now)) add(row);
+
   // ── Deliberately NOT a row: Location ─────────────────────────────────────
   //
   // `location.lastSource()` is IN-MEMORY and resets on every backend restart,
@@ -331,4 +418,4 @@ function snapshot(now = new Date()) {
   };
 }
 
-module.exports = { rate, age, overallOf, snapshot };
+module.exports = { rate, age, overallOf, snapshot, sensorRows, roomLabel };
