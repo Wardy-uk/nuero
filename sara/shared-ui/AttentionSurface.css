@@ -189,6 +189,16 @@
   margin: 0;
   text-wrap: balance;
 }
+/* Why this panel is the one on screen. Quiet and above the dashboard — it
+   explains what he is about to read, so it must not compete with her sentence
+   higher up. Renders only when he ASKED; the situation changing is what this
+   surface does, and labelling that would be noise on every read. */
+.surface__because {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0.6rem 0 -0.2rem;
+}
+
 .surface__saysub {
   font-family: Newsreader, Georgia, "Times New Roman", serif;
   font-weight: 300;

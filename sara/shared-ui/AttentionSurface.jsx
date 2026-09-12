@@ -128,6 +128,16 @@ export default function AttentionSurface({
     context, primary, secondary = [], dropped = [], quiet,
     rationale, poolAvailable, gaps = [], transition = null, ambient = null,
     dashboard = null, utterances = [], covered = null,
+    // ⚠ WHY THIS PANEL IS THE ONE ON SCREEN. `sara-surface` has composed it
+    // since the ask flow shipped, `attention` carries it, four tests pin it —
+    // and NO client read it, web or iOS. So the honesty it exists to provide
+    // did not exist: the dashboard moved under him with nothing saying whether
+    // that was the day changing or his own question. The comment above the
+    // Dashboard mount states the distinction and then showed neither half.
+    //
+    // Null is the normal case and renders nothing — the situation changing is
+    // what this surface DOES, and annotating that would be noise on every read.
+    askedSurface = null,
   } = data;
 
   // ── Saying it ONCE ─────────────────────────────────────────────────────────
@@ -420,7 +430,28 @@ export default function AttentionSurface({
 
             ⚠ BELOW her words, always. The sentence is the product; this is what
             the sentence is about. */}
-        {!hideSecondary && dashboard && <Dashboard dashboard={dashboard} />}
+        {!hideSecondary && dashboard && (
+          <>
+            {/* ⚠ SAID BEFORE THE PANEL, not after it. It explains what he is
+                about to read; underneath, it would be a footnote to a screen he
+                has already tried to make sense of.
+
+                ⚠ And it is NOT gated on the question still being on screen. The
+                ephemeral exchange clears, the moved dashboard does not — so a
+                panel that outlives its question is exactly the case that needs
+                the label, not the case that can do without it.
+
+                ⚠ Hardcoded `surface__`, like every other CHILD class in this
+                file — `rootClassName` is for the root element only and the
+                stylesheet targets `.surface__*` literally, so interpolating it
+                here would make this the one child that loses its styling the day
+                a shell passes a different root. */}
+            {askedSurface && (
+              <p className="surface__because">Showing this because you asked.</p>
+            )}
+            <Dashboard dashboard={dashboard} />
+          </>
+        )}
 
         {/* ── What he could say ─────────────────────────────────────────────
             ⚠ EVERY ONE OF THESE IS A SENTENCE HE COULD HAVE SAID OUT LOUD, and
