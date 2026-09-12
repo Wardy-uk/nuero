@@ -77,6 +77,8 @@ class SensorService : Service() {
     private var scanFault: String? = null
     private var consecutiveFailures = 0
     private var deafSince: Long? = null
+    private var deafRestarts = 0
+    private var healthySince: Long? = null
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -265,15 +267,28 @@ class SensorService : Service() {
     /** A healthy house is never silent: deaf for a whole health window restarts the scan. */
     private fun watchdog(now: Long, reading: Map<String, Any?>) {
         if (reading["healthy"] == true || scanFault != null || !scanning) {
+            // ⚠ The backoff is only cleared once it has been healthy for a WHILE.
+            // Clearing it on the first good reading is what let the loop run: a
+            // restart yields a few adverts, the counter resets, silence returns,
+            // and the next restart comes straight away.
+            if (reading["healthy"] == true) {
+                val well = healthySince ?: now.also { healthySince = it }
+                if (now - well > DEAF_RECOVERED_MS) deafRestarts = 0
+            } else {
+                healthySince = null
+            }
             deafSince = null
             return
         }
+        healthySince = null
         // With the screen off only Apple devices are audible, and silence there is
         // plausible (he is out with his phone). Restarting would not help.
         if (scope == Presence.SCOPE_APPLE) return
         val since = deafSince ?: now.also { deafSince = it }
-        if (now - since > DEAF_RESTART_MS) {
-            Log.w(TAG, "deaf - restarting scan")
+        val wait = deafWaitMs(deafRestarts)
+        if (now - since > wait) {
+            deafRestarts += 1
+            Log.w(TAG, "deaf for ${(now - since) / 1000}s - restarting scan (attempt $deafRestarts)")
             presence.resets++
             deafSince = null
             restartScan("deaf")
@@ -421,10 +436,29 @@ class SensorService : Service() {
         const val APPLE_COMPANY_ID = 0x004C
         const val REPORT_MS = 3_000L
         const val RETRY_MS = 10_000L
-        const val MIN_START_GAP_MS = 7_000L
+        // ⚠ RESTARTING IS EXPENSIVE, NOT FREE. Android throttles an app that starts
+        // more than 5 scans in 30s by silently returning NO RESULTS — which reads
+        // here as a deaf radio, which used to trigger another restart. Measured on
+        // the bedroom P30 (12 Sep 2026): 101 restarts, the sensor permanently
+        // "still filling the first window", and a room with no usable verdict.
+        // The gap and the backoff below exist to make that loop impossible.
+        const val MIN_START_GAP_MS = 15_000L
         const val REFRESH_MS = 25 * 60_000L
-        const val DEAF_RESTART_MS = 45_000L
+        // Deaf for this long before the first restart. Longer than it was (45s),
+        // because a restart that cannot help is worse than waiting.
+        const val DEAF_RESTART_MS = 90_000L
+        // Each further restart that does not fix it waits twice as long, so a
+        // genuinely wedged radio is still recovered while a throttled one is left
+        // alone long enough for the throttle to lift.
+        const val DEAF_BACKOFF_MAX_MS = 10 * 60_000L
+        // Hearing the background again for this long means the last restart worked,
+        // so the backoff goes back to the start.
+        const val DEAF_RECOVERED_MS = 2 * 60_000L
         const val HARD_RESET_AFTER = 3
+
+        /** How long to stay deaf before the next restart attempt. PURE, so it pins. */
+        fun deafWaitMs(restartsSoFar: Int): Long =
+            minOf(DEAF_RESTART_MS shl minOf(maxOf(restartsSoFar, 0), 8), DEAF_BACKOFF_MAX_MS)
 
         /** Read by the setup screen. Never contains the IRK. */
         @Volatile var lastReading: Map<String, Any?>? = null
