@@ -166,3 +166,57 @@ test('PROBE_TYPES is NOT a second ALWAYS_DELIVER — real work stays gated', () 
       `${real} is in PROBE_TYPES — real work must never skip the attention gate`);
   }
 });
+
+// ── It must actually RUN, all the way to the payload ──────────────────
+//
+// ⚠ THE SOURCE SCANS PASSED OVER A REFERENCE ERROR. Exempting a probe from gate 1
+// meant wrapping that block in an `if`, which scoped `const record` to it — and
+// `_enrichData(data, record)` reads it much further down. The first REAL send
+// answered `{"error":"record is not defined"}` with 3,124 tests green, because
+// every one of them checked the SHAPE of the code rather than running it.
+//
+// ⚠ IT TOOK THREE GOES TO WRITE A TEST THAT CATCHES IT, and each failure is worth
+// knowing, because all three were GREEN and useless:
+//   1. No subscriptions — `sendToAll` returns at `no subscriptions`, which is
+//      BEFORE the send loop where `_enrichData` lives.
+//   2. A fake subscription — still returns at the very first check, because
+//      `isConfigured()` is false in a test env: no VAPID keys.
+//   3. This one: a REAL keypair from `generateVAPIDKeys()` plus a subscription
+//      pointing at an unroutable host. Nothing is delivered and nothing needs to
+//      be; the request fails at DNS and is handled. The point is that execution
+//      reaches the payload, which is the only place the bug lived.
+//
+// The general lesson: a scan proves shape, `node --check` proves syntax, and
+// NEITHER can see a scope error. One executing test is worth more here than any
+// number of the other two.
+
+test('sendToAll reaches the payload on both paths', async () => {
+  const realWebPush = require('web-push');
+  const keys = realWebPush.generateVAPIDKeys();
+  const prevPub = process.env.VAPID_PUBLIC_KEY;
+  const prevPriv = process.env.VAPID_PRIVATE_KEY;
+  process.env.VAPID_PUBLIC_KEY = keys.publicKey;
+  process.env.VAPID_PRIVATE_KEY = keys.privateKey;
+  webpush.init();
+
+  db.setState('push_governor', '{}');
+  const endpoint = 'https://example.invalid/push/whatever';
+  db.savePushSubscription({ endpoint, keys: { p256dh: keys.publicKey, auth: 'aaaaaaaaaaaaaaaaaaaaaa' } });
+
+  try {
+    await assert.doesNotReject(
+      () => webpush.sendToAll('Test from NEURO', 'probe body', { type: 'test' }),
+      'the PROBE path threw — this is exactly where `record is not defined` lived',
+    );
+    await assert.doesNotReject(
+      () => webpush.sendToAll('An ordinary nudge', 'body', { type: 'todo' }),
+      'the attention-gated path threw',
+    );
+  } finally {
+    db.removePushSubscription(endpoint);
+    if (prevPub === undefined) delete process.env.VAPID_PUBLIC_KEY;
+    else process.env.VAPID_PUBLIC_KEY = prevPub;
+    if (prevPriv === undefined) delete process.env.VAPID_PRIVATE_KEY;
+    else process.env.VAPID_PRIVATE_KEY = prevPriv;
+  }
+});

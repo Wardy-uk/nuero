@@ -309,8 +309,20 @@ async function sendToAll(title, body, data = {}) {
   // ⚠ It is a NAMED set rather than a reuse of `ALWAYS_DELIVER`. That set means
   // "must arrive even in quiet hours" and is full of real work — an escalation
   // must never skip this gate.
+  // ⚠ DECLARED OUT HERE, not inside the block below. `_enrichData(data, record)`
+  // reads it much further down to put `attentionRecordId` and `tab` on the
+  // payload, so a block-scoped `const` threw `record is not defined` at RUNTIME
+  // the first time a push was actually sent. The source-scan tests could not see
+  // it: they verify the SHAPE of the exemption, and 3,124 of them passed over a
+  // reference error. It took a real send to find.
+  //
+  // For a probe it stays null, which is exactly `_enrichData`'s documented
+  // no-record path: the data passes through untouched. A probe has no attention
+  // record by design, so there is nothing to enrich it with.
+  let record = null;
   if (!PROBE_TYPES.has(data?.type)) {
-    const { lifecycle, row: record, why: recordWhy } = _attentionFor(title, body, data);
+    const { lifecycle, row, why: recordWhy } = _attentionFor(title, body, data);
+    record = row;
     if (lifecycle && record) {
       const settings = require('./attention-settings').read();
       const verdict = lifecycle.shouldNotify(record, settings, {
