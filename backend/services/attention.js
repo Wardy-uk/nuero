@@ -793,19 +793,26 @@ async function gather(now = new Date()) {
     phone = null;
   }
 
+  // ⚠ THE GAP IS DECIDED AFTER THE FALLBACK, NOT HERE (12 Sep 2026). This used to
+  // push "OwnTracks recorded no dwell today" the moment the dwell list was empty —
+  // and then Home Assistant answered "home" a few lines below, leaving a gap nobody
+  // withdrew. SARA rendered it as "couldn't read location" while knowing exactly
+  // where Nick was. An empty dwell list is NOT blindness: a dwell needs 20 minutes
+  // inside 200m, so a morning spent moving about has none by construction.
   inputs.location = { known: false };
+  let locationWhy = null;
   try {
     const location = require('./location');
     if (!location.isConfigured()) {
-      gaps.push({ input: 'location', why: 'OwnTracks not configured' });
+      locationWhy = 'no location feed configured';
     } else {
       const dwells = await location.getCachedDwells();
       const last = Array.isArray(dwells) && dwells.length ? dwells[dwells.length - 1] : null;
       if (last) inputs.location = { known: true, place: last.name || last.label || 'unknown', source: 'owntracks' };
-      else gaps.push({ input: 'location', why: 'OwnTracks recorded no dwell today' });
+      else locationWhy = 'no stay of 20 minutes or more recorded yet today';
     }
   } catch (e) {
-    gaps.push({ input: 'location', why: e.message });
+    locationWhy = e.message;
   }
 
   // Which ROOM, from the BLE fingerprint. Read as a sensor feed, never as a
@@ -842,6 +849,11 @@ async function gather(now = new Date()) {
       : p === 'not_home' ? (phone.geocodedLocation || 'away')
       : phone.presence;
     inputs.location = { known: true, place, source: 'home-assistant' };
+  }
+
+  // Only now is "we do not know where he is" a true statement.
+  if (!inputs.location.known) {
+    gaps.push({ input: 'location', why: locationWhy || 'no location signal' });
   }
 
   try {
