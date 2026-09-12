@@ -25,6 +25,11 @@ function commitmentKey(text) {
     .substring(0, 60);
 }
 
+// Written by standup-session onto a daily-note line that stands for a NEURO
+// task, so the line and the task are one item rather than two. Read here and by
+// obsidian.parseTaskLine, which suppresses the line from the task list.
+const TASK_MARKER_RE = /<!--task:(\d+)-->/;
+
 function cleanTaskText(raw) {
   return raw
     .replace(/<!--.*?-->/g, '')
@@ -81,7 +86,10 @@ function parseDailyNote(content) {
     if (!m) continue;
     const text = cleanTaskText(m[2]);
     if (!text || /^none$/i.test(text)) continue;
-    const item = { text, key: commitmentKey(text), done: m[1].toLowerCase() === 'x' };
+    // The NEURO task this line IS, when the standup linked one (11 Sep 2026).
+    // cleanTaskText strips the comment, so the key is unchanged by the marker.
+    const link = m[2].match(TASK_MARKER_RE);
+    const item = { text, key: commitmentKey(text), done: m[1].toLowerCase() === 'x', taskId: link ? Number(link[1]) : null };
     (section === 'focus' ? focus : carry).push(item);
   }
 
@@ -181,6 +189,8 @@ function buildAccountability({ lookbackDays = 14 } = {}) {
       const entry = tracked.get(item.key) || { text: item.text, dates: [], lastDone: false };
       entry.text = item.text; // keep the most recent wording
       entry.lastDone = item.done;
+      // A link, once made, is not lost because a later line forgot to carry it.
+      if (item.taskId) entry.taskId = item.taskId;
       if (!item.done) entry.dates.push(day.date);
       tracked.set(item.key, entry);
     }
@@ -205,6 +215,7 @@ function buildAccountability({ lookbackDays = 14 } = {}) {
       firstSeen: entry.dates[0],
       lastSeen: entry.dates[entry.dates.length - 1],
       reportedDoneOn: eodReported.get(key) || null,
+      taskId: entry.taskId || null,
     });
   }
   openCommitments.sort((a, b) => b.daysCarried - a.daysCarried);
@@ -297,4 +308,4 @@ function buildAccountability({ lookbackDays = 14 } = {}) {
   };
 }
 
-module.exports = { buildAccountability, commitmentKey, parseDailyNote, standupDoneIn };
+module.exports = { buildAccountability, commitmentKey, parseDailyNote, standupDoneIn, TASK_MARKER_RE };

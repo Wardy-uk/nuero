@@ -961,10 +961,13 @@ function openBlocksWithTask(taskId) {
  * `ignoreBlockId`. Pure of side effects, and used by `plan` to refuse.
  */
 function blockedElsewhere(tasks, ignoreBlockId = null) {
+  // One id (reschedule) or several (scheduleMoving, which gathers tasks out of
+  // more than one old block into a single new one).
+  const ignored = new Set([].concat(ignoreBlockId ?? []).map(Number));
   const clashes = [];
   for (const task of tasks) {
     const other = openBlocksWithTask(task.id)
-      .find(b => Number(b.id) !== Number(ignoreBlockId));
+      .find(b => !ignored.has(Number(b.id)));
     if (!other) continue;
     clashes.push({
       taskId: task.id,
@@ -1764,8 +1767,29 @@ async function reschedule(blockId, {
   }
 
   // ── Then detach, and only then ────────────────────────────────────────────
+  const oldBlock = await detachFromBlock(block, items, movers);
+
+  console.log(`[TaskBlocks] Block #${blockId} → #${created.blockId}: `
+    + `${movers.length} moved, ${items.length - movers.length} stayed (${oldBlock.action})`);
+
+  return {
+    ok: true,
+    from: { blockId, ...oldBlock, ticked: ticked.length },
+    to: created,
+    moved: movers.map(i => ({ taskId: i.task_id, text: i.text })),
+  };
+}
+
+/**
+ * Take `movers` out of `block`, AFTER their new block exists. Shared by
+ * `reschedule` and `scheduleMoving` — two copies of "what happens to the window
+ * they left" would be two answers about whether its event survives.
+ */
+async function detachFromBlock(block, items, movers) {
+  const blockId = block.id;
+  const ticked = items.filter(i => i.awaiting);
   const movingAll = movers.length === items.length;
-  let oldBlock = { action: null };
+  const oldBlock = { action: null };
 
   if (movingAll) {
     // `removeTask` refuses to empty a block, which is right for its own button
@@ -1818,15 +1842,84 @@ async function reschedule(blockId, {
     oldBlock.stillOwedWriteUp = ticked.length;
   }
 
-  console.log(`[TaskBlocks] Block #${blockId} → #${created.blockId}: `
-    + `${movers.length} moved, ${items.length - movers.length} stayed (${oldBlock.action})`);
+  return oldBlock;
+}
 
-  return {
-    ok: true,
-    from: { blockId, ...oldBlock, ticked: ticked.length },
-    to: created,
-    moved: movers.map(i => ({ taskId: i.task_id, text: i.text })),
-  };
+/**
+ * Put these tasks in ONE new block, taking each out of whatever open block holds
+ * it now. The standup's "put it in 14:30 to 16:00" (11 Sep 2026).
+ *
+ * `schedule` refuses a task that is already blocked — one task, one window — and
+ * that is right for a button pressed on a task card. It is wrong for the standup,
+ * where the commonest case is exactly a task whose earlier window came and went
+ * unworked: the Krista task sat in a 9 Sep 12:35 block for two days, so booking
+ * it again meant either refusing Nick or putting it in two live blocks.
+ *
+ * Same rules as `reschedule`, because it is the same act gathered from several
+ * blocks at once: a TICKED task never moves (it is owed its write-up where it
+ * was done, and the call is refused by name), the new block is created FIRST,
+ * and only then are the tasks detached from where they were.
+ *
+ * Asking again for the slot they are already in folds to `already:true` — a
+ * retried tool call must not read as a clash with its own first attempt.
+ */
+async function scheduleMoving(taskIds, { date = null, startTime = null, minutes = null, now = new Date() } = {}) {
+  const resolved = resolveTasks(taskIds);
+  if (resolved.error) return { ok: false, error: resolved.error };
+  const ids = resolved.tasks.map(t => t.id);
+
+  const holders = new Map(); // blockId → { block, moverIds }
+  for (const id of ids) {
+    for (const b of openBlocksWithTask(id)) {
+      const entry = holders.get(b.id) || { block: b, moverIds: [] };
+      entry.moverIds.push(id);
+      holders.set(b.id, entry);
+    }
+  }
+
+  if (date && startTime && holders.size === 1) {
+    const [only] = holders.values();
+    if (only.block.date_key === date && only.block.start_time === startTime && only.moverIds.length === ids.length) {
+      return { ok: true, already: true, blockId: only.block.id, slot: { date, startTime, endTime: only.block.end_time }, movedFrom: [] };
+    }
+  }
+
+  const tickedElsewhere = [];
+  for (const { block, moverIds } of holders.values()) {
+    for (const item of db.listTaskBlockItems(block.id)) {
+      if (item.awaiting && moverIds.includes(item.task_id)) {
+        tickedElsewhere.push({ taskId: item.task_id, date: block.date_key, startTime: block.start_time });
+      }
+    }
+  }
+  if (tickedElsewhere.length) {
+    return {
+      ok: false,
+      tickedElsewhere,
+      error: 'Already ticked, so they stay where they were done and are owed a write-up: '
+        + tickedElsewhere.map(t => `#${t.taskId} (${t.date} ${t.startTime})`).join(', '),
+    };
+  }
+
+  const created = await schedule(ids, { date, startTime, minutes, now, ignoreBlockId: [...holders.keys()] });
+  // A block row whose Outlook event was refused still HOLDS the tasks, so they
+  // are detached all the same — leaving them in the old block too would be two
+  // live holds. The Outlook failure is still returned as the failure it is.
+  if (!created.ok && !created.blockId) return created;
+
+  const movedFrom = [];
+  for (const { block, moverIds } of holders.values()) {
+    const items = db.listTaskBlockItems(block.id);
+    const movers = items.filter(i => moverIds.includes(i.task_id));
+    if (!movers.length) continue;
+    const detached = await detachFromBlock(block, items, movers);
+    movedFrom.push({ blockId: block.id, date: block.date_key, startTime: block.start_time, taskIds: moverIds, ...detached });
+  }
+  if (movedFrom.length) {
+    console.log(`[TaskBlocks] Block #${created.blockId} took ${movedFrom.map(m => m.taskIds.map(id => `#${id}`).join(',') + ` from #${m.blockId}`).join('; ')}`);
+  }
+
+  return { ...created, movedFrom };
 }
 
 /**
@@ -2155,6 +2248,7 @@ module.exports = {
   blockedTaskIds,
   plan,
   schedule,
+  scheduleMoving,
   checkHold,
   createNote,
   readNoteForEdit,

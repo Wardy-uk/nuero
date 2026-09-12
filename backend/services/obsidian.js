@@ -513,9 +513,16 @@ function parseVaultTodos(options = {}) {
       const dbTasks = [...taskStore.activeTodos(), ...taskStore.doneTodos()];
       if (dbTasks.length) {
         const owned = new Set(dbTasks.map(t => taskStore.dedupeKey(t.text)));
+        const ownedIds = new Set(dbTasks.map(t => Number(t.task_id)));
         const fileBacked = allTasks.filter(t => {
           const fromMergeable = t.filePath === masterPath || String(t.source || '').startsWith('Daily');
-          return !(fromMergeable && owned.has(taskStore.dedupeKey(t.text)));
+          if (!fromMergeable) return true;
+          // The standup's own wording of a task it linked — "Review the Krista
+          // issue and respond to Maria's details" for #30 — never matches on
+          // text, so the link is what folds it. Only when that task still
+          // exists: a line pointing at nothing is kept, not lost.
+          if (t.linkedTaskId && ownedIds.has(t.linkedTaskId)) return false;
+          return !owned.has(taskStore.dedupeKey(t.text));
         });
         // The Microsoft half a linked row now stands for. Attached here because
         // this is the only point that has both — and it is REFERENCED, never
@@ -681,6 +688,11 @@ function parseTaskLine(line) {
   const recMatch = rawText.match(/<!--rec:(.*?)-->/);
   const recurrence = recMatch ? recMatch[1].trim() || null : null;
 
+  // A daily-note line the standup tied to a NEURO task. The line is that task,
+  // not a second one — parseVaultTodos drops it when the task exists.
+  const taskLinkMatch = rawText.match(/<!--task:(\d+)-->/);
+  const linkedTaskId = taskLinkMatch ? Number(taskLinkMatch[1]) : null;
+
   // Clean up display text
   let text = rawText
     .replace(/<!--nuero-meta:\{.*?\}-->/g, '')            // Remove embedded task metadata
@@ -689,7 +701,10 @@ function parseTaskLine(line) {
     .replace(/due::\d{4}-\d{2}-\d{2}/g, '')         // Remove due:: tags
     .replace(/📅\s*\d{4}-\d{2}-\d{2}/g, '')         // Remove 📅 dates
     .replace(/🕑\s*\d{2}:\d{2}/g, '')               // Remove time tags
-    .replace(/#\w+/g, '')                            // Remove hashtags
+    // Hyphens included: `#\w+` stopped at the hyphen in `#carried-2d` and left
+    // "-2d" on the text, so each day's copy of one carried line read as a
+    // different task and the list showed it once per daily note (11 Sep 2026).
+    .replace(/#[\w-]+/g, '')                         // Remove hashtags
     .replace(/\*\(.*?\)\*/g, '')                     // Remove italic parenthetical refs like *(Outcome 1)*
     .replace(/\s{2,}/g, ' ')                         // Collapse whitespace
     .replace(/\s*—\s*$/, '')                         // Trailing dashes
@@ -718,6 +733,7 @@ function parseTaskLine(line) {
     due_date,
     ms_id,
     recurrence,
+    linkedTaskId,
     mustdo,
     source: null,
     meta,

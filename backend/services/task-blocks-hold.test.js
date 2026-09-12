@@ -1363,3 +1363,72 @@ test('an unreadable block list plans NOTHING rather than planning blind', () => 
     db.listTaskBlockRows = real;
   }
 });
+
+// ── scheduleMoving — the standup's "put it in 14:30 to 16:00" (11 Sep 2026) ─────
+//
+// A task whose earlier window came and went unworked is the COMMON case when
+// Nick commits to it again at a standup. `schedule` correctly refuses it (one
+// task, one window), so this gathers tasks out of wherever they sit into ONE new
+// block — under reschedule's rules, because it is the same act.
+
+test('scheduleMoving takes a task out of its dead block and into the new one', async () => {
+  const stale = blockedTasks(['Review the Krista issue'], { dateKey: '2026-10-01', startTime: '12:35' });
+  db.updateTaskBlockRow(stale.blockId, { event_id: 'evt-krista-old' });
+  const { id: fresh } = taskStore.createTask({ text: 'NDC data fixes', source: 'manual', skipExport: true });
+
+  const res = await withGraph(async (deleted) => {
+    const r = await taskBlocks.scheduleMoving([stale.taskId, fresh], { date: '2026-10-03', startTime: '14:30', minutes: 90 });
+    assert.deepEqual(deleted, ['evt-krista-old'], 'the emptied old block should not leave its event behind');
+    return r;
+  });
+
+  assert.equal(res.ok, true, res.error);
+  assert.deepEqual(db.listTaskBlockItems(res.blockId).map(i => i.task_id).sort(), [stale.taskId, fresh].sort());
+  assert.equal(db.listTaskBlockItems(stale.blockId).length, 0, 'still in the old block = two live holds');
+  assert.equal(db.getTaskBlockRow(stale.blockId).status, 'dropped');
+  assert.equal(res.movedFrom.length, 1);
+  assert.equal(res.movedFrom[0].blockId, stale.blockId);
+});
+
+test('scheduleMoving leaves the rest of a shared old block where it was', async () => {
+  const old = blockedTasks(['Move me', 'Leave me'], { dateKey: '2026-10-04', startTime: '10:00' });
+  const res = await withGraph(() => taskBlocks.scheduleMoving([old.taskIds[0]], { date: '2026-10-05', startTime: '14:30', minutes: 60 }));
+
+  assert.equal(res.ok, true, res.error);
+  assert.deepEqual(db.listTaskBlockItems(old.blockId).map(i => i.task_id), [old.taskIds[1]]);
+  assert.equal(db.getTaskBlockRow(old.blockId).status, 'scheduled');
+  assert.equal(res.movedFrom[0].action, 'kept');
+});
+
+test('scheduleMoving never moves a TICKED task, and says which', async () => {
+  const old = blockedTasks(['Done in its own window'], { dateKey: '2026-10-06', startTime: '09:00' });
+  taskStore.updateTask(old.taskId, { status: 'done' }); // held, awaiting write-up
+
+  const res = await withGraph(() => taskBlocks.scheduleMoving([old.taskId], { date: '2026-10-07', startTime: '14:30', minutes: 60 }));
+
+  assert.equal(res.ok, false);
+  assert.match(res.error, new RegExp(`#${old.taskId}`));
+  assert.equal(db.listTaskBlockItems(old.blockId).length, 1, 'a refused move must touch nothing');
+  assert.equal(db.listTaskBlockRows({ taskId: old.taskId, openOnly: true }).length, 1);
+});
+
+test('scheduleMoving asked again for the slot it already filled folds, rather than clashing with itself', async () => {
+  const { id } = taskStore.createTask({ text: 'Retry-safe standup booking', source: 'manual', skipExport: true });
+  const first = await withGraph(() => taskBlocks.scheduleMoving([id], { date: '2026-10-08', startTime: '14:30', minutes: 60 }));
+  assert.equal(first.ok, true, first.error);
+
+  const again = await withGraph(() => taskBlocks.scheduleMoving([id], { date: '2026-10-08', startTime: '14:30', minutes: 60 }));
+  assert.equal(again.ok, true, again.error);
+  assert.equal(again.already, true);
+  assert.equal(again.blockId, first.blockId);
+  assert.equal(db.getTaskBlockRow(first.blockId).status, 'scheduled', 'the retry must not drop the block it is already in');
+});
+
+test('scheduleMoving with Outlook refusing still leaves ONE hold, not two', async () => {
+  const old = blockedTasks(['Graph is down today'], { dateKey: '2026-10-09', startTime: '09:00' });
+  const res = await withoutGraph(() => taskBlocks.scheduleMoving([old.taskId], { date: '2026-10-10', startTime: '14:30', minutes: 60 }));
+
+  assert.equal(res.ok, false, 'an Outlook refusal is still reported as one');
+  assert.ok(res.blockId);
+  assert.equal(db.listTaskBlockRows({ taskId: old.taskId, openOnly: true }).length, 1);
+});

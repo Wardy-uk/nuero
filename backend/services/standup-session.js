@@ -268,7 +268,43 @@ async function buildContext(kind) {
     ctx.musts = [];
   }
 
+  try {
+    _linkCommitments(ctx.accountability?.openCommitments);
+  } catch (e) {
+    // Context, not a gate: an unlinked commitment is the old behaviour.
+    console.warn('[StandupSession] Commitment→task link failed:', e.message);
+  }
+
   return ctx;
+}
+
+// A carried commitment and the NEURO task it is. Until 11 Sep 2026 nothing
+// joined them: the note held "Review the Krista issue and respond to Maria's
+// details", the store held #30 "Review the "Krista" issue first thing after
+// Maria sends details", and the standup could only ever treat the note line as a
+// thing of its own — so committing to it put a second copy on the list instead
+// of putting #30 in the diary.
+//
+// MEASURED, on every Focus/Carry line in the daily notes since 12 Aug against
+// the 94 open tasks: the Krista pair scores 0.796 and the best WRONG match 0.427
+// ("Prep admin work for the weekend" → a weekend-cover task). 0.6 sits in that
+// gap. It is a small sample (one true pair in 30 lines), which is why a match is
+// only a HINT the model names out loud — a line already carrying a
+// `<!--task:N-->` marker is a link, and outranks it.
+const LINK_HINT_SCORE = 0.6;
+
+function _linkCommitments(open) {
+  if (!open?.length) return;
+  const taskStore = require('./task-store');
+  for (const c of open) {
+    if (c.taskId) {
+      const row = taskStore.getTask(c.taskId);
+      c.task = row ? { id: row.id, text: row.text, status: row.status, linked: true } : null;
+      continue;
+    }
+    const hit = taskStore.findSimilar(c.text, { minScore: LINK_HINT_SCORE });
+    if (hit) c.task = { id: hit.id, text: hit.text, status: hit.status, linked: false, score: hit.score };
+  }
 }
 
 function _renderContext(ctx) {
@@ -370,7 +406,15 @@ function _renderContext(ctx) {
       const said = c.reportedDoneOn
         ? ` — HE REPORTED THIS DONE AT EOD ON ${c.reportedDoneOn}; confirm and close it rather than chasing it`
         : '';
-      parts.push(`  - "${c.text}" — carried ${c.daysCarried} day${c.daysCarried === 1 ? '' : 's'}${said} [key: ${c.key}]`);
+      let task = '';
+      if (c.task && (c.task.status === 'done' || c.task.status === 'dropped')) {
+        task = ` — THIS IS TASK #${c.task.id}, ALREADY ${c.task.status.toUpperCase()} IN NEURO; confirm and close it rather than chasing it`;
+      } else if (c.task) {
+        task = c.task.linked
+          ? ` [task #${c.task.id}]`
+          : ` [likely task #${c.task.id} "${c.task.text}"]`;
+      }
+      parts.push(`  - "${c.text}" — carried ${c.daysCarried} day${c.daysCarried === 1 ? '' : 's'}${said}${task} [key: ${c.key}]`);
     }
   }
 
@@ -428,6 +472,9 @@ Run it roughly like this, adapting to his answers:
 - Challenge vague commitments ONCE, then accept what he gives you and move on. Pushing twice is nagging, and nagging is what makes him close the tab.
 - If he says he is struggling, drop the process. Ask what is in the way. The ritual matters less than the answer.
 - Never guess a commitment key or task id — use the ones in the context.
+- A carried line marked [task #N] or [likely task #N] IS that task, not a new one. Pass its task_id to resolve_commitment, and name the task in passing ("that's #30, the Krista one") so he can say if it is not. If he says it is not, resolve it without task_id. Never call create_task for work that is already a task.
+- When he gives a time for work ("put it in 14:30 to 16:00"), call block_time with the task ids of everything going in that window — the existing tasks, not copies of them. Only if something has no task at all, call create_task first and use the id it returns. If he names no start time, ask once; if he still does not, do not book it.
+- Never say something is booked, blocked or in the diary unless block_time came back ok. If it refused, tell him why in plain words.
 - Do not write the daily note yourself. When the focus is agreed, call set_focus; the system writes the note.
 - Keep every message under about 60 words.
 - If the context says today is not a working day, he has chosen to do this on his day off. Keep it short, do not chase carried work, and do not build him a full day's plan.`;
@@ -507,8 +554,23 @@ const SESSION_TOOLS = [
         decision: { type: 'string', enum: ['today', 'scheduled', 'dropped', 'done', 'carry'], description: 'today = doing it today; scheduled = has a real date now; dropped = not doing it; done = already finished; carry = rolling again.' },
         due_date: { type: 'string', description: 'YYYY-MM-DD, required when decision is "scheduled".' },
         note: { type: 'string', description: 'Short reason, in his words where possible.' },
+        task_id: { type: 'integer', description: 'The NEURO task this commitment is, from [task #N] or [likely task #N] in the context. Omit if it has none, or he said it is not that task.' },
       },
       required: ['key', 'decision'],
+    },
+  },
+  {
+    name: 'block_time',
+    description: 'Put tasks into ONE time block in his calendar, when he has named a time for them. Takes existing task ids — a task already sitting in an earlier block is moved into this one, not copied. Only say it is booked if this returns ok.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        task_ids: { type: 'array', items: { type: 'integer' }, description: 'Every task going into this window.' },
+        start: { type: 'string', description: 'HH:MM, 24-hour.' },
+        end: { type: 'string', description: 'HH:MM, 24-hour, if he gave one.' },
+        date: { type: 'string', description: 'YYYY-MM-DD. Omit for today.' },
+      },
+      required: ['task_ids', 'start'],
     },
   },
   {
@@ -576,6 +638,7 @@ const SESSION_TOOLS = [
         text: { type: 'string', description: 'The action, phrased as something to do.' },
         moscow: { type: 'string', enum: ['must', 'should', 'could'], description: 'How firm the commitment sounded.' },
         due_date: { type: 'string', description: 'YYYY-MM-DD if he gave a date.' },
+        force: { type: 'boolean', description: 'Only true when this refused because a similar task exists AND he has said this one is different.' },
       },
       required: ['text'],
     },
@@ -621,25 +684,90 @@ async function _executeTool(session, name, input = {}) {
   switch (name) {
     case 'resolve_commitment': {
       if (!input.key) return { ok: false, error: 'key is required' };
+      const taskStore = require('./task-store');
+      const carried = (session.context?.accountability?.openCommitments || []).find(c => c.key === input.key);
+      let taskId = null;
+      if (input.task_id != null) {
+        const row = taskStore.getTask(Number(input.task_id));
+        if (!row) return { ok: false, error: `No task #${input.task_id}. Use an id from the context, or leave task_id out.` };
+        taskId = row.id;
+      }
       session.outcome.commitments = session.outcome.commitments.filter(c => c.key !== input.key);
       session.outcome.commitments.push({
         key: input.key,
         decision: input.decision,
         due_date: input.due_date || null,
         note: input.note || null,
+        task_id: taskId,
       });
+      if (taskId) _noteLink(session, carried?.text || input.key, taskId);
       // "Scheduled" is only real if it becomes a dated task — otherwise it is a
       // carry wearing a different word, which is the exact failure this replaces.
+      // ⚠ When the commitment already IS a task, that task gets the date. And a
+      // new one takes the commitment's own words: it used to take `note`, the
+      // model's one-line REASON, so the task list gained "Blocked until Maria
+      // replies" as a thing to do.
       if (input.decision === 'scheduled' && input.due_date) {
         try {
-          require('./task-store').createTask({
-            text: input.note || input.key,
-            due_date: input.due_date,
-            source: 'standup-session',
-          });
-        } catch {}
+          if (taskId) {
+            taskStore.updateTask(taskId, { due_date: input.due_date });
+          } else {
+            const created = taskStore.createTask({
+              text: carried?.text || input.key,
+              due_date: input.due_date,
+              source: 'standup-session',
+            });
+            if (created?.id) _noteLink(session, carried?.text || input.key, created.id);
+          }
+        } catch (e) {
+          console.warn(`[StandupSession] Could not date "${input.key}": ${e.message}`);
+        }
       }
-      return { ok: true, recorded: input.decision };
+      return { ok: true, recorded: input.decision, task_id: taskId };
+    }
+
+    case 'block_time': {
+      const ids = [...new Set((input.task_ids || []).map(Number).filter(Number.isInteger))];
+      if (!ids.length) return { ok: false, error: 'task_ids is required. For work with no task yet, call create_task first and use its id.' };
+      const toMin = (s) => {
+        const m = String(s || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+        return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? Number(m[1]) * 60 + Number(m[2]) : null;
+      };
+      const start = toMin(input.start);
+      if (start == null) return { ok: false, error: 'start must be HH:MM, 24-hour.' };
+      let minutes = null;
+      if (input.end) {
+        const end = toMin(input.end);
+        if (end == null || end <= start) return { ok: false, error: 'end must be HH:MM and after start.' };
+        minutes = end - start;
+      }
+      const date = input.date || session.dateKey;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: 'date must be YYYY-MM-DD.' };
+      const startTime = `${String(Math.floor(start / 60)).padStart(2, '0')}:${String(start % 60).padStart(2, '0')}`;
+
+      const res = await require('./task-blocks').scheduleMoving(ids, { date, startTime, minutes });
+      // A block row exists even when Outlook refused the event, so the link
+      // is real either way — the note line should still point at the task.
+      if (res.ok || res.blockId) {
+        const taskStore = require('./task-store');
+        for (const id of ids) {
+          const row = taskStore.getTask(id);
+          if (row) _noteLink(session, row.text, id);
+        }
+      }
+      if (!res.ok) {
+        return { ok: false, error: res.error, inNeuroButNotOutlook: Boolean(res.blockId) };
+      }
+      const slot = res.slot || {};
+      return {
+        ok: true,
+        already: Boolean(res.already),
+        booked: `${slot.date || date} ${slot.startTime || startTime}${slot.endTime ? `-${slot.endTime}` : ''}`,
+        tasks: (res.tasks || []).map(t => `#${t.id} ${t.text}`),
+        movedFrom: (res.movedFrom || []).map(m => `${m.taskIds.map(id => `#${id}`).join(', ')} out of the ${m.date} ${m.startTime} block`),
+        deadlinesPushedLater: (res.dueUpdates || []).filter(d => d.later).map(d => `#${d.taskId} was due ${d.from}`),
+        note: 'Booked. Say the time, and anything moved out of an older block, in one sentence.',
+      };
     }
 
     case 'set_focus': {
@@ -692,13 +820,40 @@ async function _executeTool(session, name, input = {}) {
       };
     }
 
-    case 'create_task':
+    case 'create_task': {
+      // "It's adding new tasks when I commit to doing things" (11 Sep 2026). In
+      // chat, a similar match is only REPORTED because nobody is there to ask;
+      // in a standup Nick is right there, so a likely existing task stops the
+      // create and the model asks — `force` is the way through once he has.
+      if (!input.force) {
+        const similar = require('./task-store').findSimilar(String(input.text || ''), { minScore: LINK_HINT_SCORE });
+        if (similar) {
+          return {
+            ok: false,
+            existing: { id: similar.id, text: similar.text },
+            error: `Already a task: #${similar.id} "${similar.text}". Use #${similar.id} instead of making a copy. Only if he says this is different, call create_task again with force: true.`,
+          };
+        }
+      }
+      const created = await chatTools.execute(name, input);
+      if (created?.ok && created.task_id) _noteLink(session, created.text || input.text, created.task_id);
+      return created;
+    }
+
     case 'complete_task':
       return chatTools.execute(name, input);
 
     default:
       return { ok: false, error: `Unknown tool: ${name}` };
   }
+}
+
+/** Remember that `text` is task #taskId, so the note line can say so. One entry per task. */
+function _noteLink(session, text, taskId) {
+  const links = (session.outcome.taskLinks = session.outcome.taskLinks || []);
+  const found = links.find(l => l.taskId === taskId);
+  if (found) { if (text && !found.texts.includes(text)) found.texts.push(text); return; }
+  links.push({ taskId, texts: text ? [text] : [] });
 }
 
 // ── Turn loop ────────────────────────────────────────────────────────────────
@@ -712,7 +867,7 @@ function _emptySession(kind, ctx) {
     updatedAt: new Date().toISOString(),
     messages: [],
     context: ctx,
-    outcome: { commitments: [], focus: [], done: [] },
+    outcome: { commitments: [], focus: [], done: [], taskLinks: [] },
   };
 }
 
@@ -919,39 +1074,58 @@ function _renderDailyNote(session) {
   // The carried version WINS on a match, because `#carried-Nd` is the useful
   // half — it is the only thing on the line that says how long this has been
   // rolling, and that age is what the day-3 decision rule keys on.
+  // ⚠ A line that IS a NEURO task says so (11 Sep 2026). Without the marker
+  // the note's wording and the task's wording are two items on the task list —
+  // the Krista task showed as #30 AND as the standup's own copy of it — and
+  // tomorrow's standup cannot tell the line has a task to put in a block. The
+  // marker is an HTML comment, so the carry key is unchanged by it.
+  const links = o.taskLinks || [];
+  const taskForText = (text) => {
+    for (const l of links) if (_findDuplicate(text, l.texts || []) !== -1) return l.taskId;
+    return null;
+  };
+  const marker = (id) => (id ? ` <!--task:${id}-->` : '');
+
   const seen = [];
-  const focusLines = [];
-  const addFocus = (text, suffix) => {
+  const focus = [];
+  const addFocus = (text, suffix, taskId = null) => {
     const dupIndex = _findDuplicate(text, seen);
     if (dupIndex !== -1) {
-      // Same job, said twice. Keep whichever line carries the provenance.
-      if (suffix.includes('#carried')) focusLines[dupIndex] = `- [ ] ${text} ${suffix}`;
+      // Same job, said twice. Keep whichever line carries the provenance, and
+      // whichever of the two knew its task.
+      const cur = focus[dupIndex];
+      if (suffix.includes('#carried')) { cur.text = text; cur.suffix = suffix; }
+      cur.taskId = cur.taskId || taskId;
       return;
     }
     seen.push(text);
-    focusLines.push(`- [ ] ${text} ${suffix}`);
+    focus.push({ text, suffix, taskId });
   };
 
-  for (const text of (o.focus || [])) addFocus(text, '#focus');
+  for (const text of (o.focus || [])) addFocus(text, '#focus', taskForText(text));
 
   const carried = [];
   const dropped = [];
   for (const c of (acc?.openCommitments || [])) {
     const decision = byKey.get(c.key);
     const tag = `#carried-${c.daysCarried}d`;
+    // A likely match (`c.task`, unconfirmed) is NOT a link — only a marker
+    // already on the line, or a task_id the standup recorded, is.
+    const taskId = decision?.task_id || c.taskId || null;
     if (!decision) {
       // Not decided this morning — but if today's focus already covers it, it
       // must NOT also sit in Carry-Overs, or tomorrow reads one job as two.
-      if (_findDuplicate(c.text, seen) === -1) carried.push(`- [ ] ${c.text} ${tag}`);
+      if (_findDuplicate(c.text, seen) === -1) carried.push(`- [ ] ${c.text} ${tag}${marker(taskId)}`);
       continue;
     }
-    if (decision.decision === 'today') addFocus(c.text, `#focus ${tag}`);
+    if (decision.decision === 'today') addFocus(c.text, `#focus ${tag}`, taskId);
     else if (decision.decision === 'dropped') dropped.push(`- ~~${c.text}~~ (dropped after ${c.daysCarried} days)`);
     else if (decision.decision === 'scheduled') dropped.push(`- ${c.text} → scheduled for ${decision.due_date || 'a date'}`);
     else if (decision.decision === 'done') dropped.push(`- ~~${c.text}~~ (already done)`);
-    else if (_findDuplicate(c.text, seen) === -1) carried.push(`- [ ] ${c.text} ${tag}`);
+    else if (_findDuplicate(c.text, seen) === -1) carried.push(`- [ ] ${c.text} ${tag}${marker(taskId)}`);
   }
 
+  const focusLines = focus.map(f => `- [ ] ${f.text} ${f.suffix}${marker(f.taskId)}`);
   if (!focusLines.length) focusLines.push('- [ ] (no focus agreed) #focus');
 
   return `---
@@ -1045,4 +1219,5 @@ module.exports = {
   executeTool,
   _renderContext,
   _emptySession,
+  _linkCommitments,
 };
