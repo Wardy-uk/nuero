@@ -115,3 +115,54 @@ test('and the fallback is not an email address in a public repo', () => {
   assert.doesNotMatch(call, /nurtur/,
     'the employer domain is back in the VAPID subject');
 });
+
+// ── A probe must be repeatable ──────────────────────────────────────────────
+//
+// ⚠ THE TEST BUTTON WAS SINGLE-USE. `_attentionFor` gives every push an
+// attention record; a `test` push always carries the same title, so it always
+// resolved to the same record, and its `notify_signature` (`critical|1`) could
+// never change — so `shouldNotify` answered "already notified, nothing changed"
+// for ever. The live push_log shows it exactly: sent 28 Aug, sent 10 Sep, and
+// refused on every attempt after. It only became visible when the route started
+// reporting its outcome truthfully on 11 Sep instead of an unconditional ok.
+//
+// Source scans, because the gates run inside `sendToAll` against a real
+// subscription list and a database, and what must hold is the SHAPE of the
+// exemption rather than one outcome.
+
+test('a probe skips the attention gate', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'webpush.js'), 'utf8');
+
+  assert.match(src, /const PROBE_TYPES = new Set\(\[\s*'test'\s*\]\)/,
+    'PROBE_TYPES no longer names test');
+  assert.match(src, /if \(!PROBE_TYPES\.has\(data\?\.type\)\) \{[\s\S]*_attentionFor/,
+    'the attention gate no longer exempts a probe — the test button is single-use again');
+});
+
+test('a probe skips the 30-minute dedupe too', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'webpush.js'), 'utf8');
+  // Without this the fix stops at a 30-minute wall one gate along.
+  assert.match(src, /if \(!PROBE_TYPES\.has\(type\) && state\.recent\[fp\]\)/,
+    'the dedupe no longer exempts a probe');
+});
+
+test('PROBE_TYPES is NOT a second ALWAYS_DELIVER — real work stays gated', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'webpush.js'), 'utf8');
+  const probes = src.match(/const PROBE_TYPES = new Set\(\[([^\]]*)\]\)/)[1];
+
+  // ⚠ The dangerous regression is someone "tidying" these two sets together.
+  // ALWAYS_DELIVER means "must arrive even in quiet hours" and is full of real
+  // work; an escalation that skipped the attention gate would notify on every
+  // pass, which is the countdown-spam bug that gate was built to stop.
+  for (const real of ['escalation_alert', 'meeting_alert', 'meeting_prep',
+                      'system_alert', 'capture_failed', 'weekly_risk']) {
+    assert.ok(!probes.includes(real),
+      `${real} is in PROBE_TYPES — real work must never skip the attention gate`);
+  }
+});

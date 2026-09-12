@@ -52,6 +52,14 @@ const GOVERNOR_KEY = 'push_governor';
 const DEDUPE_WINDOW_MS = 30 * 60 * 1000;
 const HOURLY_CAP = parseInt(process.env.PUSH_HOURLY_CAP, 10) || 6;
 
+// Pushes that exist to PROVE THE TRANSPORT rather than to say something about
+// Nick's work. They skip the attention gate and the dedupe, because their
+// payload is identical by design and being repeatable is their only purpose.
+//
+// ⚠ Deliberately NOT `ALWAYS_DELIVER`, which means "must arrive even in quiet
+// hours" and is full of real work. An escalation must never skip those gates.
+const PROBE_TYPES = new Set(['test']);
+
 // Things that must arrive whatever else is going on: something is on fire, or
 // about to start, or the system itself is broken. Everything else can wait.
 // ⚠ These are the strings production actually SENDS, not a tidy vocabulary.
@@ -143,8 +151,14 @@ function _governor(title, body, data) {
 
   // Dedupe applies to critical items too — the same escalation arriving from the
   // nudge path and the alert path is still one escalation.
+  // ⚠ A probe is exempt here as well. Without this the fix stops at a
+  // 30-minute wall: press Test twice to check something you just changed and the
+  // second press reports "duplicate", which is the same dead end one gate along.
+  // The reasoning that makes dedupe right for everything else - "the same
+  // escalation arriving from the nudge path and the alert path is still one
+  // escalation" - has no analogue for a button a human pressed twice on purpose.
   const fp = _fingerprint(title, body, type);
-  if (state.recent[fp]) {
+  if (!PROBE_TYPES.has(type) && state.recent[fp]) {
     _writeGovernor(state);
     return { allowed: false, reason: 'duplicate within 30 min' };
   }
@@ -277,23 +291,43 @@ async function sendToAll(title, body, data = {}) {
   // This is the gate that can tell a countdown from a state change. The governor
   // below deduped on a fingerprint of the TEXT, so "in 25 min" and "in 10 min"
   // were different notifications to it and both went out.
-  const { lifecycle, row: record, why: recordWhy } = _attentionFor(title, body, data);
-  if (lifecycle && record) {
-    const settings = require('./attention-settings').read();
-    const verdict = lifecycle.shouldNotify(record, settings, {
-      now: new Date(),
-      critical: ALWAYS_DELIVER.has(data?.type),
-    });
-    lifecycle.recordNotification(record.id, { ...verdict, now: new Date() });
-    if (!verdict.allowed) {
-      console.log(`[WebPush] Held by attention (${verdict.reason}): "${title}"`);
-      _record(title, data, 'suppressed', verdict.reason);
-      return;
+  //
+  // ⚠ A PROBE IS NOT A NOTIFICATION ABOUT WORK, and this gate made the test
+  // button SINGLE-USE. `_attentionFor` gives every push a record; a `test` push
+  // always carries the same title, so it always resolves to the same record, and
+  // its `notify_signature` (`critical|1`) can never change — so `shouldNotify`
+  // answered "already notified, nothing changed" for ever. The live log shows it
+  // exactly: sent 28 Aug, sent 10 Sep, and refused on every attempt since.
+  //
+  // Every other type SHOULD be gated here — that is the whole point, and it is
+  // what stopped a meeting countdown notifying three times. But `test` exists
+  // only to prove the transport still works, its payload is identical BY DESIGN,
+  // and there is no "arrived twice by accident" case to protect against because
+  // a human pressed a button. A probe that cannot be repeated cannot diagnose
+  // anything, which is the one job it has.
+  //
+  // ⚠ It is a NAMED set rather than a reuse of `ALWAYS_DELIVER`. That set means
+  // "must arrive even in quiet hours" and is full of real work — an escalation
+  // must never skip this gate.
+  if (!PROBE_TYPES.has(data?.type)) {
+    const { lifecycle, row: record, why: recordWhy } = _attentionFor(title, body, data);
+    if (lifecycle && record) {
+      const settings = require('./attention-settings').read();
+      const verdict = lifecycle.shouldNotify(record, settings, {
+        now: new Date(),
+        critical: ALWAYS_DELIVER.has(data?.type),
+      });
+      lifecycle.recordNotification(record.id, { ...verdict, now: new Date() });
+      if (!verdict.allowed) {
+        console.log(`[WebPush] Held by attention (${verdict.reason}): "${title}"`);
+        _record(title, data, 'suppressed', verdict.reason);
+        return;
+      }
+    } else if (recordWhy) {
+      // Loud, and in the log — a send with no record behind it is a contract
+      // violation we are choosing to make rather than one we failed to notice.
+      console.warn(`[WebPush] No attention record (${recordWhy}) — sending anyway: "${title}"`);
     }
-  } else if (recordWhy) {
-    // Loud, and in the log — a send with no record behind it is a contract
-    // violation we are choosing to make rather than one we failed to notice.
-    console.warn(`[WebPush] No attention record (${recordWhy}) — sending anyway: "${title}"`);
   }
 
   const verdict = _governor(title, body, data);
