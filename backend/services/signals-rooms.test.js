@@ -66,6 +66,26 @@ test('one row per sensor, each named for its room', () => {
   assert.deepEqual(rows.map((r) => r.id), ['room-study', 'room-bedroom', 'room-living-room', 'room-kitchen']);
 });
 
+// ⚠ The one that nearly shipped wrong (12 Sep 2026): rows built only from what
+// reported meant a sensor that had stopped had NO ROW — invisible, which is the
+// blindness this whole page exists to remove. Caught live, when the bedroom phone
+// had not yet pushed after a restart and simply was not on the page.
+test('a taught room whose sensor is silent still gets a row, and it is red', () => {
+  const rows = sensorRows({ ok: true, sensors: [sensor({ room: 'study' })], expected: ['study', 'bedroom', 'kitchen'] }, NOW);
+  const bedroom = rows.find((r) => r.id === 'room-bedroom');
+  assert.ok(bedroom, 'a silent sensor must still appear');
+  assert.equal(bedroom.state, 'stale');
+  assert.match(bedroom.why, /has not reported at all/);
+  assert.equal(rows.find((r) => r.id === 'room-kitchen').state, 'stale');
+  assert.equal(rows.find((r) => r.id === 'room-study').state, 'live');
+});
+
+test('an older SARA with no expected list still renders what is reporting', () => {
+  const rows = sensorRows({ ok: true, sensors: [sensor({ room: 'study' })] }, NOW);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].state, 'live');
+});
+
 test('room ids read as places', () => {
   assert.equal(roomLabel('living-room'), 'Living Room');
   assert.equal(roomLabel(''), '');

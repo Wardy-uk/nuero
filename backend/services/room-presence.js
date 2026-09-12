@@ -139,6 +139,10 @@ async function sensors(now = new Date()) {
         room: d.room || null,
         confidence: typeof d.confidence === 'string' ? d.confidence : null,
         sensors: Object.values(readings),
+        // What SHOULD be reporting, from the calibration. A sensor missing from
+        // `sensors` but present here has stopped — the case that would otherwise
+        // be invisible.
+        expected: Array.isArray(d.expected) ? d.expected : [],
       };
     }
   } catch (e) {

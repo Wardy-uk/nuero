@@ -119,10 +119,25 @@ function sensorRows(payload, now = new Date()) {
     }];
   }
   const list = Array.isArray(payload.sensors) ? payload.sensors : [];
-  if (!list.length) {
+  const expected = Array.isArray(payload.expected) ? payload.expected : [];
+  if (!list.length && !expected.length) {
     // Reachable and reporting nothing is a real, different fact from unreachable.
     return [{ id: 'rooms', label: 'Room sensors', what, state: 'never', ageMinutes: null, why: 'no sensor has reported yet' }];
   }
+
+  // ⚠ A SENSOR THAT HAS STOPPED IS ABSENT FROM THE READINGS, NOT PRESENT AND RED.
+  // Rows built only from what reported would render a dead sensor as nothing at
+  // all — the precise blindness this page exists to remove. The calibration knows
+  // which sensors the house has, so a taught room that is silent gets a row.
+  const reporting = new Set(list.map((s) => String(s.room || '')));
+  const silent = expected.filter((room) => !reporting.has(String(room))).map((room) => ({
+    id: `room-${room}`,
+    label: `${roomLabel(room)} sensor`,
+    what,
+    state: 'stale',
+    ageMinutes: null,
+    why: 'it has not reported at all — this room has no screen verdict or greeting',
+  }));
 
   return list.map((s) => {
     const room = String(s.room || 'unknown');
@@ -156,7 +171,7 @@ function sensorRows(payload, now = new Date()) {
       state: 'live', ageMinutes,
       detail: bits.join(' · ') || undefined,
     };
-  });
+  }).concat(silent);
 }
 
 /** Worst state present, for the headline. `off` is NOT a fault and cannot win. */

@@ -221,6 +221,11 @@ router.get('/room', (_req, res) => {
     // `sensors` above is the arbitration's view (is he in that room); this is
     // the sensor's own report, and the two answer different questions.
     readings: store.all(),
+    // Every sensor the calibration knows about — so a consumer can tell a sensor
+    // that has STOPPED from one that was never there. Without it a dead sensor is
+    // simply absent from `readings`, which renders as nothing at all.
+    expected: [...new Set(Object.values(profiles.all())
+      .flatMap((p) => Object.keys((p && p.sensors) || {})))].sort(),
     checkedAt: now.toISOString(),
   });
 });
