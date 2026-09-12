@@ -37,8 +37,12 @@ router.post('/activity', (req, res) => {
     // runs. A failure here must never cost the sample that was just stored.
     let intents = [];
     try {
-      const host = (batch[batch.length - 1] || {}).host || null;
-      intents = require('../services/desk-intents').claim({ host }).intents;
+      const last = batch[batch.length - 1] || {};
+      const host = last.host || null;
+      // What this agent says it can act on. Absent = an older agent = nothing
+      // is handed over, and the intent waits rather than being eaten.
+      const canOpen = Array.isArray(last.canOpen) ? last.canOpen : null;
+      intents = require('../services/desk-intents').claim({ host, canOpen }).intents;
     } catch (e) {
       console.warn('[Desktop] could not read desk intents:', e.message);
     }

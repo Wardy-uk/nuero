@@ -49,7 +49,7 @@ async function get(p) {
   return { status: res.status, body: await res.json() };
 }
 function sample(over = {}) {
-  return { at: new Date().toISOString(), app: 'Code', idleSeconds: 2, locked: false, host: HOST, ...over };
+  return { at: new Date().toISOString(), app: 'Code', idleSeconds: 2, locked: false, host: HOST, canOpen: ['music', 'code', 'terminal', 'browser'], ...over };
 }
 function reset() { db.setState(di.STATE_KEY, ''); }
 

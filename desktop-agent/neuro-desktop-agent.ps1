@@ -113,26 +113,6 @@ function Get-ForegroundProcessName {
   return $proc.ProcessName
 }
 
-function Get-Sample {
-  $locked = Test-SessionLocked
-  [pscustomobject]@{
-    at          = (Get-Date).ToUniversalTime().ToString('o')
-    # A locked session sends no app at all, not even a stripped one.
-    app         = if ($locked) { $null } else { Get-ForegroundProcessName }
-    idleSeconds = Get-IdleSeconds
-    locked      = $locked
-    host        = $env:COMPUTERNAME
-  }
-}
-
-function Send-Sample($sample) {
-  $body = $sample | ConvertTo-Json -Compress
-  Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/desktop/activity" `
-    -Headers @{ 'X-NEURO-API-TOKEN' = $Token } `
-    -ContentType 'application/json' -Body $body -TimeoutSec 10
-}
-
-
 # -- Opening something, when NEURO is asked to ---------------------------------
 #
 # WARNING  THIS AGENT STAYS OUTBOUND-ONLY. Nothing listens here and nothing on
@@ -214,6 +194,35 @@ function Invoke-DeskIntents($response) {
     if ($i -and $i.id -and $i.app) { Invoke-DeskIntent $i }
   }
 }
+function Get-Sample {
+  $locked = Test-SessionLocked
+  [pscustomobject]@{
+    at          = (Get-Date).ToUniversalTime().ToString('o')
+    # A locked session sends no app at all, not even a stripped one.
+    app         = if ($locked) { $null } else { Get-ForegroundProcessName }
+    idleSeconds = Get-IdleSeconds
+    locked      = $locked
+    host        = $env:COMPUTERNAME
+    # WARNING  THE AGENT DECLARES WHAT IT UNDERSTANDS. Claiming an intent is a
+    #   SERVER-side act, so a version of this script that knows nothing about
+    #   intents would still cause one to be claimed - and would then discard it
+    #   with the response, losing it silently. Nick would have pressed a button
+    #   and nothing would ever happen. So the server only hands intents to an
+    #   agent that says it can act on them. Same rule as refusing a NOVA bridge
+    #   that predates a field: a reader older than its writer must announce
+    #   itself rather than be assumed capable.
+    canOpen     = @($AppCommands.Keys | Sort-Object)
+  }
+}
+
+function Send-Sample($sample) {
+  $body = $sample | ConvertTo-Json -Compress
+  Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/desktop/activity" `
+    -Headers @{ 'X-NEURO-API-TOKEN' = $Token } `
+    -ContentType 'application/json' -Body $body -TimeoutSec 10
+}
+
+
 if ($Once) {
   $s = Get-Sample
   # Printed so the installer can show what would be sent BEFORE it is sent —
@@ -221,6 +230,9 @@ if ($Once) {
   Write-Host "Sample: $($s | ConvertTo-Json -Compress)"
   $result = Send-Sample $s
   Write-Host "NEURO stored: $($result | ConvertTo-Json -Compress)"
+  # WARNING  -Once runs intents too. A check mode that skips the interesting
+  #   half is a check that proves the boring half.
+  Invoke-DeskIntents $result
   return
 }
 

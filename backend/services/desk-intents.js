@@ -130,14 +130,30 @@ function queue(app, { host = null, why = null } = {}) {
  * Handed to the agent on its next POST. Claiming REMOVES them, so a retry
  * cannot launch the same thing twice.
  */
-function claim({ host = null, now = Date.now() } = {}) {
+/**
+ * @param {object} opts
+ *   canOpen  what the AGENT says it understands. \u26a0 REQUIRED in practice:
+ *            claiming is a server-side act, so an agent that knows nothing
+ *            about intents would still cause one to be claimed and would then
+ *            discard it with the response \u2014 Nick presses a button and nothing
+ *            ever happens, silently. An agent that does not announce the
+ *            capability is handed NOTHING and the intent stays queued for one
+ *            that does. Same rule as refusing a NOVA bridge that predates a
+ *            field rather than reading its absence as an empty answer.
+ */
+function claim({ host = null, now = Date.now(), canOpen = null } = {}) {
   const state = _load();
   if (!state) return { intents: [], gaps: ['could not read the intent queue'] };
 
   const live = claimable(state.pending, now);
   // ⚠ Host-scoped when the intent named one: "open it on the laptop I am at"
   // must not fire on a different machine that happens to poll first.
-  const mine = live.filter(i => !i.host || !host || i.host === host);
+  const able = Array.isArray(canOpen) ? new Set(canOpen) : null;
+  const mine = live.filter(i =>
+    (!i.host || !host || i.host === host)
+    // \u26a0 An agent that did not say it can open things gets nothing, and the
+    //   intent is LEFT QUEUED rather than consumed.
+    && able !== null && able.has(i.app));
   if (!mine.length) {
     if (state.pending.length !== live.length) { state.pending = live; _save(state); }
     return { intents: [], gaps: [] };
