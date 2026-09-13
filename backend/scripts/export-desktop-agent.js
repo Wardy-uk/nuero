@@ -34,8 +34,29 @@ const crypto = require('crypto');
 const REPO = path.resolve(__dirname, '..', '..');
 const SRC_DIR = path.join(REPO, 'desktop-agent');
 // Sibling checkout. Absent on the Pi and on CI, which is not an error.
-const IOS = path.resolve(REPO, '..', 'nuero-ios');
-const OUT_DIR = path.join(IOS, 'desktop-agent');
+//
+// ⚠ THE FOLDER IS NOT ALWAYS NAMED AFTER THE REMOTE. The GitHub repo is
+// `nuero-ios`, but the Mac checkout is `neuro-ios` — so a single hardcoded name
+// missed it, `fs.existsSync` was happy anyway because an unrelated `nuero-ios`
+// directory existed beside it, and the export wrote into a folder no repo was
+// tracking. The sync test then failed for a reason ("never been exported") that
+// pointed at the copy rather than at the path.
+//
+// Both spellings are tried, and a candidate only counts if it actually LOOKS
+// like the checkout — a `desktop-agent` directory or a `.git` — so an empty
+// folder of the right name cannot swallow the write again.
+function findIOSCheckout() {
+  for (const name of ['neuro-ios', 'nuero-ios']) {
+    const dir = path.resolve(REPO, '..', name);
+    if (!fs.existsSync(dir)) continue;
+    if (fs.existsSync(path.join(dir, '.git')) ||
+        fs.existsSync(path.join(dir, 'desktop-agent'))) return dir;
+  }
+  return null;
+}
+
+const IOS = findIOSCheckout();
+const OUT_DIR = IOS ? path.join(IOS, 'desktop-agent') : null;
 
 /** The files that cross. Windows' agent stays put — it installs from here. */
 const FILES = ['neuro-desktop-agent.sh', 'install.sh'];
@@ -102,8 +123,8 @@ function main() {
   const check = process.argv.includes('--check');
   const generated = generate();
 
-  if (!fs.existsSync(IOS)) {
-    console.log('[desktop-agent] no nuero-ios checkout beside this repo — nothing to write');
+  if (!IOS) {
+    console.log('[desktop-agent] no iOS checkout beside this repo — nothing to write');
     return;
   }
 
@@ -116,6 +137,11 @@ function main() {
     if (!check) {
       fs.mkdirSync(OUT_DIR, { recursive: true });
       fs.writeFileSync(target, text, 'utf8');
+      // ⚠ EXECUTABLE, because the install line is `./install.sh`. A generated
+      // copy written 0644 fails with "Permission denied" on a fresh clone, and
+      // chmodding it by hand in the other repo is an edit the next export
+      // silently reverts — so the bit belongs here, with the content.
+      fs.chmodSync(target, 0o755);
     }
   }
 
