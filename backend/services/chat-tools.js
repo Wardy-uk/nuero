@@ -154,6 +154,25 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_home_state',
+    tier: 'read',
+    description:
+      'Read the house: every room\'s temperature (Celsius), whether its lights are on, '
+      + 'where the watch is, and whether anyone else is home. Use this for ANY question '
+      + 'about the house - temperature, heating, lights, is anyone in. It only READS; '
+      + 'turning lights on or changing a radiator is offered by SARA in the room, not here.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        room: {
+          type: 'string',
+          description: 'Optional room name to narrow to, e.g. "living room". Omit for the whole house.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'get_urgent_emails',
     tier: 'read',
     description: 'Get emails triaged as needing action or a reply, with their ids. Use before draft_email_reply.',
@@ -420,6 +439,68 @@ const HANDLERS = {
     if (!text || !String(text).trim()) return { ok: false, error: 'text is required' };
     require('./obsidian').appendToDailyNote(`${String(text).trim()}\n`);
     return { ok: true, appended: true };
+  },
+
+  /**
+   * The house.
+   *
+   * WARNING  THIS TOOL EXISTS BECAUSE SHE WAS SAYING SOMETHING UNTRUE. Asked
+   *   "what is the living room temperature" the day she became the voice agent,
+   *   SARA answered *"I don't have access to your smart home system or
+   *   temperature sensors"* - while `ha-rooms` had been reading every room for
+   *   weeks. The capability existed; the tools did not expose it. A system that
+   *   denies a capability it has is worse than one that lacks it, because he
+   *   stops asking.
+   *
+   * WARNING  READ ONLY, and that is the tier, not a comment. `ha-rooms`'s only
+   *   write doors are `turnOnLights` and `setClimateTarget`, and neither is
+   *   reachable from chat: acting on the house is OFFERED in the room, where
+   *   `rooms.act()` re-derives the offer from a fresh read and a person
+   *   accepts it. A model that could switch the heating on from a sentence is
+   *   a different product with a different risk.
+   *
+   * WARNING  AN UNREADABLE HOUSE IS SAID, never returned as an empty one - the
+   *   model must be able to tell "I could not look" from "everything is off".
+   */
+  async get_home_state({ room = null } = {}) {
+    const house = await require('./ha-rooms').readHouse();
+    const state = require('./home-state').describeHouse(house);
+
+    if (!state.known) {
+      return {
+        ok: false,
+        error: 'I could not read the house: ' + (state.gaps[0] || 'Home Assistant did not answer')
+          + '. Say that you could not look, rather than that nothing is on.',
+      };
+    }
+
+    // Narrowing is a CONVENIENCE, never a filter that hides a miss: a room name
+    // that matches nothing returns the whole house and says so, rather than an
+    // empty answer the model would read as "that room has nothing in it".
+    let rooms = state.rooms;
+    let narrowed = null;
+    if (room && String(room).trim()) {
+      const want = String(room).trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const hit = state.rooms.filter(r =>
+        String(r.room || '').toLowerCase().replace(/[^a-z0-9]+/g, '') === want);
+      if (hit.length) { rooms = hit; narrowed = room; }
+    }
+
+    return {
+      ok: true,
+      rooms,
+      asked_for: narrowed,
+      room_not_found: room && !narrowed ? String(room) : null,
+      // Where the WATCH is. Never promoted to "where Nick is".
+      watch_in_room: state.whereHeIs,
+      // Three-valued. `null` is "the sensor could not be read" and must never
+      // be spoken as "nobody else is home".
+      others_home: state.othersHome,
+      who_else_is_home: state.who,
+      // Named, never counted.
+      could_not_read: state.gaps,
+      note: 'Temperatures are Celsius. Lights marked unreachable are switched off at the wall, not off.',
+    };
   },
 
   get_urgent_emails() {
