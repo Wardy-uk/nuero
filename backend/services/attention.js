@@ -996,6 +996,45 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     gaps.push({ input: 'weather', why: e.message });
   }
 
+  // Last night's sleep, and what he actually got done.
+  //
+  // WARNING  THESE ARE THE ONLY GENUINELY PERSONAL THINGS NEURO HOLDS. Measured
+  //   13 Sep 2026 while answering "what about the off-work screens?": 93 of 93
+  //   open tasks are `domain: work` with `household: 0`, the kitchen catalogue
+  //   exists and is EMPTY, and there are no Strava rows. An off-work screen is
+  //   thin because nothing personal has ever been put in, not because the
+  //   surface is badly built. Sleep and the wins ledger are the exceptions -
+  //   both are real, both are his, and neither is work.
+  //
+  // WARNING  Never allowed to fail the payload, and each failure is its own gap.
+  let lastNight = null;
+  try {
+    const days = require('./health-daily').recentDays(3, { completeOnly: true });
+    const latest = Array.isArray(days) && days.length ? days[0] : null;
+    // WARNING  A PARTIAL DAY IS NOT A NIGHT. `completeOnly` is what stops today's
+    //   half-written row being read as a short night all morning - the same rule
+    //   `health-daily` applies to every average it computes.
+    lastNight = latest && Number.isFinite(latest.asleepHours)
+      ? { known: true, day: latest.day, asleepHours: latest.asleepHours, source: latest.sleepSource || null }
+      : { known: false, why: 'no complete night recorded yet' };
+  } catch (e) {
+    gaps.push({ input: 'sleep', why: e.message });
+  }
+
+  let didRecently = null;
+  try {
+    const wins = require('./wins');
+    const summary = wins.summary();
+    // WARNING  `headline()` RETURNS NULL ON ZERO, deliberately - there is no
+    //   encouraging version of an empty day, and a fabricated cheerful line is
+    //   the register `sara-voice` rejects. Phrased ONCE here, server-side, so
+    //   every surface says it the same way.
+    didRecently = { known: true, headline: wins.headline(summary) || null };
+  } catch (e) {
+    gaps.push({ input: 'wins', why: e.message });
+    didRecently = { known: false };
+  }
+
   // Who the meeting about to start is with, and what they are owed.
   //
   // WARNING  COMPUTED ONLY IN THE PREP WINDOW. `/api/attention` is polled by
@@ -1232,6 +1271,8 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
       //   Same species as the `/api/todos` whitelist that swallowed `jiraKey`.
       weather,
       meetingWith,
+      lastNight,
+      didRecently,
       ...gated,
       agenda: agendaFor(inputs.calendar, now, 4, _tomorrowEvents(), {
         personal: context.duty ? context.duty.onDuty === false : false,

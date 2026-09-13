@@ -696,6 +696,27 @@ function dashOffDuty(payload, now) {
     }
   }
 
+  // --- How he slept -----------------------------------------------------
+  // WARNING  IT STATES AND NEVER DIAGNOSES. Apple Health cannot separate a late
+  //   night from illness from a hard week, and `readiness` carries that caveat
+  //   for exactly this reason. "You slept 8h25" is a fact; "you're tired" is a
+  //   verdict this has no standing to give.
+  const sleep = payload.lastNight;
+  if (isObj(sleep) && sleep.known && Number.isFinite(sleep.asleepHours)) {
+    const h = Math.floor(sleep.asleepHours);
+    const m = Math.round((sleep.asleepHours - h) * 60);
+    rows.push(row('slept', h + 'h' + String(m).padStart(2, '0')));
+  }
+
+  // --- What he actually did ---------------------------------------------
+  // WARNING  Phrased ONCE, server-side, by `wins.headline` - and it returns null
+  //   on an empty day on purpose. There is no encouraging version of "nothing",
+  //   and inventing one is the register sara-voice rejects.
+  const did = payload.didRecently;
+  if (isObj(did) && did.known && did.headline) {
+    rows.push(row('did', did.headline));
+  }
+
   // --- What he finished -------------------------------------------------
   // ⚠ FOUR states, and keeping them apart is the whole point of
   //   weekly-target: `unset` is NOT a target of zero, `unknown` is not a bad

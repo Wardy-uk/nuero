@@ -1120,3 +1120,50 @@ test('an unreadable diary still outranks the roster note', () => {
   const d = preMeeting({ agenda: { known: false, events: [] }, meetingWith: { known: false, people: [] } });
   assert.match(d.note || '', /couldn.{0,3}t read your diary/i);
 });
+
+// ── The off-work screen (13 Sep 2026) ────────────────────────────────────────
+//
+// Nick: "but what about the off-work screens?" Measured before building:
+// 93 of 93 open tasks are `domain: work` with `household: 0`, the kitchen
+// catalogue exists and is EMPTY, and there are no Strava rows. NEURO holds
+// almost nothing personal, so an off-work screen is thin because of a DATA gap
+// rather than a surface one.
+//
+// The two exceptions are real, his, and not work: how he slept, and what he
+// actually got done.
+
+test('off work says how he slept', () => {
+  const d = offDuty({ lastNight: { known: true, day: '2026-09-12', asleepHours: 8.41 } });
+  const r = d.rows.find(x => x.when === 'slept');
+  assert.ok(r);
+  assert.equal(r.what, '8h25');
+});
+
+test('⚠ it STATES the hours and never diagnoses', () => {
+  // Apple Health cannot separate a late night from illness from a hard week.
+  const d = offDuty({ lastNight: { known: true, asleepHours: 4.5 } });
+  const r = d.rows.find(x => x.when === 'slept');
+  assert.equal(r.what, '4h30');
+  assert.doesNotMatch(JSON.stringify(d.rows), /tired|exhaust|poor|bad night/i);
+});
+
+test('⚠ no complete night is SILENT, not a zero', () => {
+  const d = offDuty({ lastNight: { known: false, why: 'no complete night recorded yet' } });
+  assert.equal(d.rows.some(x => x.when === 'slept'), false);
+});
+
+test('off work says what he actually did', () => {
+  const d = offDuty({ didRecently: { known: true, headline: '33 commits to nuero' } });
+  assert.ok(d.rows.some(x => x.when === 'did' && /33 commits/.test(x.what)));
+});
+
+test('⚠ an empty day gets NO encouraging line — headline is null by design', () => {
+  const d = offDuty({ didRecently: { known: true, headline: null } });
+  assert.equal(d.rows.some(x => x.when === 'did'), false);
+  assert.doesNotMatch(JSON.stringify(d.rows), /well done|great|keep going/i);
+});
+
+test('an unreadable wins ledger renders nothing rather than claiming a quiet day', () => {
+  const d = offDuty({ didRecently: { known: false } });
+  assert.equal(d.rows.some(x => x.when === 'did'), false);
+});
