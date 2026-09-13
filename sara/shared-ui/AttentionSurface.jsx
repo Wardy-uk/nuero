@@ -206,12 +206,17 @@ export default function AttentionSurface({
       });
     }
     (dashboard?.rows || []).forEach((r, i) => {
-      const iso = typeof r.note === 'string' && ISO_AT.test(r.note) ? r.note : null;
+      // ⚠ MIDNIGHT IS AN ALL-DAY EVENT, NOT AN HOUR. `2026-09-13T00:00:00` is
+      // how an all-day entry arrives, and showing it as "00:00" states a time
+      // nobody set — the one thing this corridor must never do. It keeps its
+      // place in the order and is given no hour at all.
+      const stamp = typeof r.note === 'string' && ISO_AT.test(r.note) ? r.note : null;
+      const iso = stamp && stamp.slice(11, 16) !== '00:00' ? stamp : null;
       out.push({
         id: `dash-${i}`,
         tag: r.when || '',
         title: r.what,
-        say: iso ? null : (r.note || null),
+        say: stamp ? null : (r.note || null),
         atLabel: r.countdown || (iso ? iso.slice(11, 16) : null) || r.meta || null,
         at: iso,
         urgency: r.level === 'warn' ? 'high' : r.level === 'critical' ? 'critical' : 'normal',

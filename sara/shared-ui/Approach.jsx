@@ -56,8 +56,8 @@ export function pullOf(card, index) {
 }
 
 // Lanes. Deterministic from position so a card does not hop about between polls.
-const LANES = [0.18, -1.02, 1, 0.08, -0.84, 0.96, -0.6, 0.7];
-const ROWS = [-0.55, 0.34, -0.2, 0.6, 0.95, 0.68, -0.05, 0.9];
+const LANES = [0.05, -1.15, 1.1, -0.5, 0.85, -1.0, 0.45, -0.7];
+const ROWS = [-0.62, 0.28, -0.12, 0.82, 0.52, -0.42, 1.05, 0.05];
 
 export default function Approach({
   cards = [],

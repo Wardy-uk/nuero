@@ -266,3 +266,45 @@
   .surface--approach .dash { width: 60%; }
   .surface--approach .surface__why { max-width: 92%; }
 }
+
+/* ── Nothing on top of anything else ───────────────────────────────────────
+ * Found on the living-room panel rather than by reading: the utterance chips
+ * sat on her name, the held-back line sat on her sentence, and the tab bar ate
+ * the shelf. Every region gets a home and a ceiling. */
+
+.surface--approach .surface__says {
+  position: absolute;
+  left: 4%;
+  right: 38%;
+  top: calc(4% + 2.4em);
+  z-index: 8;
+  margin: 0;
+  justify-content: flex-start;
+}
+
+/* Her sentence, then what was held back beneath it — in that order, never on
+   top of one another. The foot is part of the block, not a separate corner. */
+.surface--approach .surface__say { bottom: 13%; }
+.surface--approach .surface__foot {
+  left: 4%;
+  bottom: 8%;
+  max-width: min(52%, 620px);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+/* The shelf clears the tab bar the shells mount below it. */
+.surface--approach .surface__desk { bottom: 13%; }
+.surface--approach .surface__rooms { bottom: 25%; }
+.surface--approach .surface__ambient { bottom: 36%; max-height: 20%; }
+
+/* The week's figure, top-right, sized to its box rather than the old column. */
+.surface--approach .dash { width: min(26%, 330px); }
+.surface--approach .dash__meter { max-width: 100%; }
+
+/* Cards are further apart than the first cut: two at similar depth landed on
+   top of each other on the real panel, which is the collision the vertical lane
+   exists to prevent and it was not wide enough. */
+.approach__card { width: clamp(150px, 24cqw, 330px); }
