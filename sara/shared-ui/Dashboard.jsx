@@ -82,10 +82,15 @@ function Figure({ figure }) {
   );
 }
 
-export default function Dashboard({ dashboard }) {
+export default function Dashboard({ dashboard, hideRows = false }) {
+  // ⚠ `hideRows` suppresses the ROW LIST ONLY. In the Approach layout the rows
+  // are placed in the corridor instead, and everything else here still has to
+  // render: the figure, the note that keeps an empty dashboard from being
+  // silent, and the named gaps. Dropping the whole panel to avoid showing rows
+  // twice would take those with it, which is the honesty this file exists for.
   if (!dashboard) return null;
   const { kind, label, rows = [], figure = null, note = null, gaps = [], now = null } = dashboard;
-  const bare = rows.length === 0 && !figure && !now;
+  const bare = (hideRows || rows.length === 0) && !figure && !now;
 
   return (
     <section className={`dash dash--${kind}${bare ? ' dash--bare' : ''}`} aria-label={label}>
@@ -97,7 +102,7 @@ export default function Dashboard({ dashboard }) {
 
       {figure && <Figure figure={figure} />}
 
-      {rows.length > 0 && (
+      {!hideRows && rows.length > 0 && (
         <ul className="dash__rows">
           {rows.map((r, i) => <Row key={`${r.what}-${i}`} row={r} />)}
         </ul>

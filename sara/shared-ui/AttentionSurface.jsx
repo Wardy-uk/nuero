@@ -118,7 +118,10 @@ export default function AttentionSurface({
   // ⚠ A prop rather than a rewrite, deliberately. This is a working ambient
   // surface on four devices; a look that cannot be put back is one nobody can
   // afford to try. Each shell opts in when it has been SEEN on that device.
-  layout = 'list',
+  // ⚠ 'approach' is SARA's screen (Nick, 13 Sep 2026). `?look=list` is the way
+  // back and is the reason this is still a prop: a look with no way out of it is
+  // one that needs a deploy to undo, on devices that are on a wall.
+  layout = 'approach',
   hideSecondary = false,
 }) {
   const [showWhy, setShowWhy] = useState(false);
@@ -178,6 +181,45 @@ export default function AttentionSurface({
   // out here — three renderers each matching titles their own way is the drift
   // that `say` and `tab` are composed server-side to avoid. This only decides
   // what to DO about it, which is a rendering decision and belongs here.
+  // ── What the corridor places ───────────────────────────────────────────────
+  //
+  // ⚠ THE DASHBOARD ROWS ARE THE FEED, not just `rest`. What is on this screen
+  // on a normal day is the panel the composer filled — here, outside, next,
+  // slept, did — and `rest` is often empty. A corridor fed only from `rest`
+  // renders nothing on exactly the days there is something to show.
+  //
+  // ⚠ Nothing is re-ranked and nothing is re-worded: the order is the order the
+  // composer sent, and every string is its own.
+  //
+  // ⚠ An ISO stamp is a TIME, not a note. The row carries `2026-09-13T13:55:00`
+  // in `note`, which the list renders raw under the title — so the corridor
+  // reads it as the hour the card belongs to and shows the clock time instead
+  // of the stamp. That is the same fix the list still needs.
+  const ISO_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+  const corridorCards = (() => {
+    if (layout !== 'approach') return [];
+    const out = [];
+    if (dashboard?.now) {
+      out.push({
+        id: 'now', tag: 'now', title: dashboard.now.what,
+        say: dashboard.now.meta || null, urgency: 'high',
+      });
+    }
+    (dashboard?.rows || []).forEach((r, i) => {
+      const iso = typeof r.note === 'string' && ISO_AT.test(r.note) ? r.note : null;
+      out.push({
+        id: `dash-${i}`,
+        tag: r.when || '',
+        title: r.what,
+        say: iso ? null : (r.note || null),
+        atLabel: r.countdown || (iso ? iso.slice(11, 16) : null) || r.meta || null,
+        at: iso,
+        urgency: r.level === 'warn' ? 'high' : r.level === 'critical' ? 'critical' : 'normal',
+      });
+    });
+    return out;
+  })();
+
   const coveredIds = new Set(Array.isArray(covered?.cardIds) ? covered.cardIds : []);
   const rest = secondary.filter((c) => c && !coveredIds.has(c.id));
 
@@ -232,8 +274,13 @@ export default function AttentionSurface({
   // pulsing all day, and a signal that is always on is one nobody sees.
   const pressing = isPressing(primary);
 
+  const nowMinutes = (() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  })();
+
   return (
-    <div className={rootClassName}>
+    <div className={`${rootClassName}${layout === 'approach' ? ' surface--approach' : ''}`}>
       {/* The coherence on screen is the coherence of the READ — informative
           before a word is read, which is what keeps this from being a
           screensaver. */}
@@ -456,6 +503,19 @@ export default function AttentionSurface({
 
             ⚠ BELOW her words, always. The sentence is the product; this is what
             the sentence is about. */}
+        {/* The corridor. Full-bleed behind her words, placing what the
+            dashboard would have listed plus anything else in the feed. */}
+        {!hideSecondary && layout === 'approach' && (corridorCards.length > 0 || rest.length > 0) && (
+          <Approach
+            cards={[...corridorCards, ...rest.map((c) => ({ ...c, tag: '' }))]}
+            nowMinutes={nowMinutes}
+            tone={!poolAvailable ? 'unresolved'
+              : pressing || context?.activity === 'firefighting' ? 'crit'
+                : context?.activity === 'pre-meeting' ? 'warm' : 'calm'}
+            onOpen={(card) => { if (card && card.recordId && onOpen) onOpen(card); }}
+          />
+        )}
+
         {!hideSecondary && dashboard && (
           <>
             {/* ⚠ SAID BEFORE THE PANEL, not after it. It explains what he is
@@ -475,7 +535,7 @@ export default function AttentionSurface({
             {askedSurface && (
               <p className="surface__because">Showing this because you asked.</p>
             )}
-            <Dashboard dashboard={dashboard} />
+            <Dashboard dashboard={dashboard} hideRows={layout === 'approach'} />
           </>
         )}
 
@@ -509,20 +569,10 @@ export default function AttentionSurface({
             not listed again. Nothing has been dropped from the FEED: the pool
             reaches every other consumer whole, and `covered` is advisory. */}
         {!hideSecondary && rest.length > 0 && (
-          layout === 'approach' ? (
+          layout === 'approach' ? null : (
             /* ⚠ The SAME `rest` the list renders, in the same order, with the
                same `covered` already applied. The corridor places what it is
                handed and judges nothing — see the header of Approach.jsx. */
-            <Approach
-              cards={rest}
-              nowLabel={data.now?.at || null}
-              tone={!poolAvailable ? 'unresolved'
-                : pressing ? 'crit'
-                  : context?.activity === 'firefighting' ? 'crit'
-                    : context?.activity === 'pre-meeting' ? 'warm' : 'calm'}
-              onOpen={(card) => onOpen && onOpen(card)}
-            />
-          ) : (
             <ul className="surface__rest">
               {rest.map((card) => (
                 <li key={card.id}>

@@ -61,7 +61,10 @@ const ROWS = [-0.55, 0.34, -0.2, 0.6, 0.95, 0.68, -0.05, 0.9];
 
 export default function Approach({
   cards = [],
-  nowLabel = null,
+  // Minutes past local midnight. The DEVICE's clock, which is a fact about the
+  // device and not a claim about the payload — the corridor is annotated with
+  // it, and no card is ever given an hour it did not arrive with.
+  nowMinutes = null,
   portrait = false,
   tone = 'calm',
   onOpen = null,
@@ -93,9 +96,8 @@ export default function Approach({
   // placed by pull alone and carries no tether.
   const placed = cards.map((card, i) => {
     const at = minutesOf(card.at);
-    const now = minutesOf(nowLabel);
-    const trueZ = (at != null && now != null)
-      ? -Math.max(-60, at - now) / DAY_MINUTES * DEPTH
+    const trueZ = (at != null && nowMinutes != null)
+      ? -Math.max(-60, at - nowMinutes) / DAY_MINUTES * DEPTH
       : -(220 + i * 190);
     const pull = pullOf(card, i);
     const z = trueZ * (1 - pull);
@@ -139,7 +141,7 @@ export default function Approach({
     const style = getComputedStyle(cv);
     const col = (style.getPropertyValue('--approach-rgb') || '74,127,212').trim();
 
-    const now = minutesOf(nowLabel);
+    const now = nowMinutes;
     const fs = Math.max(9, Math.min(13, box.w / 125));
     ctx.font = `500 ${fs.toFixed(1)}px "JetBrains Mono", ui-monospace, monospace`;
 
@@ -182,7 +184,7 @@ export default function Approach({
       ctx.fillStyle = `rgba(${col},0.5)`;
       ctx.beginPath(); ctx.arc(from.x, from.y, 2.2, 0, Math.PI * 2); ctx.fill();
     });
-  }, [box.w, box.h, cx, portrait, nowLabel, cards, tilt.x, tilt.y]);
+  }, [box.w, box.h, cx, portrait, nowMinutes, cards, tilt.x, tilt.y]);
 
   if (!cards.length) return null;
 
@@ -201,7 +203,11 @@ export default function Approach({
     >
       <canvas className="approach__rig" ref={rigRef} aria-hidden="true" />
       <div className="approach__nowline" aria-hidden="true" />
-      {nowLabel && <span className="approach__now">{nowLabel.slice(11, 16) || nowLabel} · now</span>}
+      {nowMinutes != null && (
+        <span className="approach__now">
+          {String(Math.floor(nowMinutes / 60)).padStart(2, '0')}:{String(nowMinutes % 60).padStart(2, '0')} · now
+        </span>
+      )}
       <div className="approach__track" style={{ perspectiveOrigin: `${cx * 100}% 44%` }}>
         <div
           className="approach__world"
@@ -222,7 +228,7 @@ export default function Approach({
               tabIndex={p.depth > 0.8 ? -1 : 0}
             >
               <span className="approach__lab">
-                <span>{p.card.lane || p.card.kindLabel || ''}</span>
+                <span>{p.card.tag || ''}</span>
                 {/* Only ever the hour the payload carried. */}
                 {p.card.atLabel && <u>{p.card.atLabel}</u>}
               </span>

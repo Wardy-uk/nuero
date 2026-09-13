@@ -150,3 +150,119 @@
 @media (prefers-reduced-motion: reduce) {
   .approach__world { transition-duration: 0.001s; }
 }
+
+/* ── The surface, composed rather than stacked ──────────────────────────────
+ *
+ * In the list layout the surface is a column you scroll. Approach is a SCENE:
+ * her words bottom-left, the corridor full-bleed behind them, her name and
+ * place top-left, the hardware shelf bottom-right. Nothing here changes what is
+ * rendered — only where it sits — so every honesty rule above it still holds.
+ *
+ * ⚠ Scoped to `.surface--approach` throughout. The same component serves the
+ * list layout on devices that have not taken this yet, and a bare `.surface__*`
+ * rule here would reach them too. */
+
+.surface--approach {
+  position: relative;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.surface--approach .surface__content {
+  position: absolute;
+  inset: 0;
+  display: block;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  max-width: none;
+}
+
+/* Her name and the state she is in. */
+.surface--approach .surface__crown {
+  position: absolute;
+  left: 4%;
+  top: 4%;
+  z-index: 9;
+  margin: 0;
+}
+
+.surface--approach .surface__why {
+  position: absolute;
+  left: 4%;
+  top: 12%;
+  z-index: 9;
+  max-width: min(42%, 460px);
+}
+
+/* The corridor, behind everything she says. */
+.surface--approach .approach {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+/* Her sentence is the product; it sits where the eye lands last. */
+.surface--approach .surface__say {
+  position: absolute;
+  left: 4%;
+  bottom: 5%;
+  z-index: 8;
+  max-width: min(52%, 620px);
+  margin: 0;
+}
+.surface--approach .surface__because { display: none; }
+
+/* The hardware shelf: what she can reach right now. It has no hour, so it never
+   rides the track — and it never goes empty. */
+.surface--approach .surface__desk,
+.surface--approach .surface__rooms,
+.surface--approach .surface__ambient {
+  position: absolute;
+  right: 4%;
+  z-index: 8;
+  max-width: min(42%, 520px);
+  margin: 0;
+}
+.surface--approach .surface__desk { bottom: 5%; }
+.surface--approach .surface__rooms { bottom: 17%; }
+.surface--approach .surface__ambient { bottom: 30%; max-height: 26%; overflow: hidden; }
+
+/* The dashboard keeps its figure, its note and its named gaps — the corridor
+   took only the rows. Top-right, out of the corridor's way. */
+.surface--approach .dash {
+  position: absolute;
+  right: 4%;
+  top: 4%;
+  z-index: 8;
+  width: min(30%, 380px);
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+/* What the gate held back, and what could not be read. Never hidden. */
+.surface--approach .surface__foot {
+  position: absolute;
+  left: 4%;
+  bottom: 1.5%;
+  z-index: 8;
+  margin: 0;
+  max-width: 52%;
+}
+
+/* Portrait narrows the corridor rather than shortening it — the rule from the
+   MANIFESTATION. The furniture stacks; the depth does not change. */
+@media (max-aspect-ratio: 3/4) {
+  .surface--approach .surface__say { max-width: 92%; bottom: 14%; }
+  .surface--approach .surface__desk,
+  .surface--approach .surface__rooms,
+  .surface--approach .surface__ambient { right: 4%; left: 4%; max-width: none; }
+  .surface--approach .surface__desk { bottom: 5%; }
+  .surface--approach .surface__rooms { bottom: 11%; }
+  .surface--approach .surface__ambient { display: none; }
+  .surface--approach .dash { width: 60%; }
+  .surface--approach .surface__why { max-width: 92%; }
+}
