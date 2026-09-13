@@ -501,9 +501,14 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   // are started at a fixed address, so `?look=approach` there turns the corridor
   // on for that screen and nothing else. Never persisted — a look a device
   // cannot be talked out of by changing its start URL needs a deploy to undo.
+  // ⚠ APPROACH IS THE DEFAULT, and `?look=list` is the way back. It is written
+  // this way round on purpose: the first cut asked for `?look=approach` and
+  // ALSO set the default on the component, so the explicit prop passed from
+  // here beat the default and every device kept the old stack — a switch that
+  // looked thrown and was not. An explicit value always beats a default.
   const look = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('look') === 'approach'
-    ? 'approach' : 'list';
+    && new URLSearchParams(window.location.search).get('look') === 'list'
+    ? 'list' : 'approach';
 
   return (
     <AttentionSurface
