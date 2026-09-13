@@ -4,6 +4,23 @@ import { completeTask } from '../completeTask';
 import DueControl from '../components/DueControl';
 import { msPlanBadge } from '../../../../shared/ms-task.cjs';
 import { domainBadge } from '../../../../shared/task-domain.cjs';
+import { Lit } from '../../../shared-ui/Lit.jsx';
+
+/**
+ * What a priority NUMBER is called.
+ *
+ * ⚠ ONE VOCABULARY, and iOS's. `TaskEdit.priorityLabel` in NeuroKit says High
+ * / Normal / Low; this screen said "P1 P2 P3" with the direction in a tooltip a
+ * phone cannot show — and the scale runs backwards from the usual convention,
+ * so the natural guess was wrong.
+ *
+ * ⚠ The numbers are still what the store keeps and what is sent. Only the
+ * label changed: sending the words would be two vocabularies for one field,
+ * which is the reason iOS kept the numbers on the wire too.
+ */
+function priorityLabel(p) {
+  return p === 3 ? 'High' : p === 2 ? 'Normal' : p === 1 ? 'Low' : `P${p}`;
+}
 import './Tasks.css';
 
 // Tasks = the list you can actually work from on the phone.
@@ -381,6 +398,17 @@ function TaskFieldEditor({ taskId, row, ranked, onSaved }) {
         ))}
       </div>
 
+      {/* ⚠⚠ IT SAID "P1 P2 P3" AND THE SCALE RUNS BACKWARDS. P3 is the MOST
+          pressing, the opposite of the usual convention, and the only thing
+          that said so was a `title` — which a phone cannot show. So on the one
+          device this app is for there was no way to tell which end was which,
+          and the natural guess was wrong.
+
+          ⚠ iOS HAD ALREADY SOLVED IT, and better: `TaskEdit.priorityLabel`
+          renders High / Normal / Low, so the direction is not something to be
+          explained at all. The words are taken verbatim rather than captioning
+          the numbers — one vocabulary, and nothing left to get backwards. The
+          NUMBERS are still what is stored and sent; only the label changed. */}
       <div className="tasks__group">
         <span className="tasks__label">Priority</span>
         {PRIORITY_OPTIONS.map((p) => (
@@ -389,9 +417,8 @@ function TaskFieldEditor({ taskId, row, ranked, onSaved }) {
             type="button"
             className={`tasks__btn${draft.priority === p ? ' tasks__btn--on' : ''}`}
             disabled={saving}
-            title={p === 3 ? 'Most pressing' : p === 1 ? 'Least pressing' : 'Middle'}
             onClick={() => edit({ priority: draft.priority === p ? null : p })}
-          >P{p}</button>
+          >{priorityLabel(p)}</button>
         ))}
       </div>
 
@@ -602,10 +629,10 @@ export default function Tasks() {
       </form>
 
       {addNote && (
-        <div className={`card tasks__addnote tasks__addnote--${addNote.tone}`}>
+        <Lit tone="statement" className={`tasks__addnote tasks__addnote--${addNote.tone}`}>
           <span>{addNote.text}</span>
           <button type="button" className="tasks__btn tasks__btn--quiet" onClick={() => setAddNote(null)} aria-label="Dismiss">✕</button>
-        </div>
+        </Lit>
       )}
 
       {/*
@@ -616,12 +643,12 @@ export default function Tasks() {
         celebration: the voice spec rejects that register and an empty day gets
         no line at all rather than an encouraging one.
       */}
-      {headline && <div className="card tasks__headline">{headline}</div>}
+      {headline && <Lit tone="statement" className="tasks__headline">{headline}</Lit>}
 
       {/* Held back, never silently dropped — a lane that is simply shorter is
           indistinguishable from one that found less work. */}
       {lane.held.length > 0 && (
-        <div className="card tasks__held">
+        <Lit tone="statement" className="tasks__held">
           <div className="tasks__label">Not today ({lane.held.length})</div>
           {lane.held.map((row) => (
             <div className="tasks__heldrow" key={ownerKey(row) || row.text}>
@@ -629,25 +656,30 @@ export default function Tasks() {
               <button type="button" className="tasks__btn" onClick={() => bringBack(row)}>Bring it back</button>
             </div>
           ))}
-        </div>
+        </Lit>
       )}
       {lane.gaps.length > 0 && (
         <div className="tasks__hint">Couldn't check what you've put off, so nothing is being held back.</div>
       )}
 
-      {loading && <div className="card">Asking the brain…</div>}
+      {loading && <Lit tone="statement">Asking the brain…</Lit>}
 
       {error && (
-        <div className="card err">
+        /* ⚠ THE ONE THING ON THIS SCREEN THAT IS A FAULT. Everything else — an
+            empty filter, a held-back row, "asking the brain" — is a statement,
+            and only something genuinely broken gets the alarm treatment. That
+            separation is the whole reason a named gap is never painted like an
+            error. */
+        <Lit className="tasks__fault err">
           {error}
           <div className="tasks__hint">Check you're on Tailscale and the PIN is right, or that the NEURO backend is up.</div>
-        </div>
+        </Lit>
       )}
 
       {data && items.length === 0 && (
-        <div className="card tasks__clear">
+        <Lit tone="statement" className="tasks__clear">
           {filter === 'overdue' ? 'Nothing overdue.' : filter === 'today' ? 'Nothing due today.' : 'No open tasks.'}
-        </div>
+        </Lit>
       )}
 
       {items.map((item) => {
@@ -667,7 +699,17 @@ export default function Tasks() {
         const hasPanel = Boolean(identity) && Boolean(item.task_id || item.ms_id || laneRow || heldRow);
         const isOpen = open === identity && hasPanel;
         return (
-        <div className={`card tasks__item${done[item.id] ? ' tasks__item--done' : ''}`} key={item.id}>
+        /* ⚠ `row`, NOT `normal`, and NOT `lead` on any of them. A card is a
+           thing you pick up and one glow says so; sixty of them down a task list
+           is haze rather than hierarchy. MANIFESTATION.md: a list is a list —
+           its job is to be scanned, and a hero on it just makes one row
+           arbitrarily loud. This screen spends NO lead at all, which is the
+           direct counterpart of Now spending exactly one. */
+        <Lit
+          tone="row"
+          className={`tasks__item${done[item.id] ? ' tasks__item--done' : ''}`}
+          key={item.id}
+        >
           <div className="tasks__row">
             <button
               className="tasks__tick"
@@ -720,7 +762,7 @@ export default function Tasks() {
               onChanged={load}
             />
           )}
-        </div>
+        </Lit>
         );
       })}
 

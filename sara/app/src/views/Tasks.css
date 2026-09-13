@@ -28,9 +28,14 @@
   font-size: 0.85rem;
   cursor: pointer;
 }
+/* ⚠ HER colour, not `var(--accent)`. That token is the fixed system blue, so
+   a screen using it asserts a state she may not be in — nine rules on this one
+   screen did, each individually harmless, which is how "two products" happens.
+   Selection is still shown by edge AND fill, so it does not rest on hue alone;
+   that matters more now the hue MOVES. */
 .tasks__filter--on {
-  border-color: var(--accent);
-  background: var(--accent-dim);
+  border-color: rgba(var(--sara-rgb, 114, 150, 211), 0.5);
+  background: rgba(var(--sara-rgb, 114, 150, 211), 0.16);
   color: inherit;
 }
 
@@ -47,8 +52,8 @@
   font-size: 0.95rem;
 }
 .tasks__add-btn {
-  background: var(--accent-dim);
-  border: 1px solid var(--accent);
+  background: rgba(var(--sara-rgb, 114, 150, 211), 0.16);
+  border: 1px solid rgba(var(--sara-rgb, 114, 150, 211), 0.45);
   color: inherit;
   border-radius: 10px;
   width: 2.9rem;
@@ -59,6 +64,9 @@
 
 .tasks__clear { text-align: center; color: var(--muted); }
 
+/* ⚠ The padding and margin are `.lit`'s, not this screen's — they came with
+   `.card` and moved into the primitive that replaced it, so there is one place
+   that decides how big a card is rather than one per screen. */
 .tasks__item { display: block; }
 .tasks__row { display: flex; align-items: flex-start; gap: 0.7rem; }
 .tasks__item--done { opacity: 0.5; }
@@ -75,7 +83,7 @@
   background: transparent;
   border: 2px solid var(--line);
   border-radius: 7px;
-  color: var(--accent);
+  color: rgb(var(--sara-rgb, 114, 150, 211));
   font-size: 0.95rem;
   line-height: 1;
   cursor: pointer;
@@ -173,7 +181,8 @@
   border: 1px solid var(--line);
   white-space: nowrap;
 }
-.tasks__wip { border-color: var(--accent); color: inherit; }
+/* "Working on it" is a live state, so it is lit. */
+.tasks__wip { border-color: rgba(var(--sara-rgb, 114, 150, 211), 0.55); color: inherit; }
 
 /* The open row. One control group per line, label in a fixed left column, so a
    group never runs on from the one before it with nothing but a gap between. */
@@ -211,7 +220,7 @@
   font-size: 0.8rem;
   cursor: pointer;
 }
-.tasks__btn--on { border-color: var(--accent); background: var(--accent-dim); }
+.tasks__btn--on { border-color: rgba(var(--sara-rgb, 114, 150, 211), 0.5); background: rgba(var(--sara-rgb, 114, 150, 211), 0.16); }
 .tasks__btn--quiet { color: var(--muted); }
 .tasks__btn:disabled { opacity: 0.5; cursor: default; }
 .tasks__mins {
@@ -236,7 +245,7 @@
   font-size: 0.85rem;
 }
 .tasks__addnote--warn { border-left: 3px solid #ffd79d; }
-.tasks__addnote--info { border-left: 3px solid var(--accent, #7aa2f7); }
+.tasks__addnote--info { border-left: 3px solid rgb(var(--sara-rgb, 114, 150, 211)); }
 
 .tasks__held { display: flex; flex-direction: column; gap: 0.45rem; }
 /* A column parent would read the label's basis as a HEIGHT. */
@@ -248,6 +257,22 @@
    fact, not a celebration. */
 .tasks__headline {
   font-size: 0.9rem;
-  color: var(--accent, #7aa2f7);
-  border-left: 3px solid var(--accent, #7aa2f7);
+  color: rgb(var(--sara-rgb, 114, 150, 211));
+  border-left: 3px solid rgb(var(--sara-rgb, 114, 150, 211));
+}
+
+/* ⚠ THE ONE FAULT TREATMENT ON THIS SCREEN, and it is deliberately the only
+   place an alarm colour appears. Everything else that is "not the happy path"
+   here — an empty filter, a held-back row, a pending read — is a STATEMENT.
+   Collapsing the two is how he learns to ignore the real one. */
+.tasks__fault {
+  border-color: rgba(224, 84, 58, 0.55);
+  background: rgba(224, 84, 58, 0.1);
+}
+
+/* Said once, beside the control, rather than three times in tooltips a phone
+   cannot show. */
+.tasks__hint--inline {
+  margin-left: 0.35rem;
+  white-space: nowrap;
 }

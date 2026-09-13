@@ -59,12 +59,36 @@
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.028);
   box-shadow: var(--lit-glow);
+  /* ⚠ THE BOX, NOT ONLY THE LIGHT. This replaces `.card`, which carried these
+     two — and a primitive that lights a card without also BEING one leaves
+     every caller to remember the padding. The first screen converted did not,
+     so fifteen cards came out flush against their own text. Found by reading
+     the stylesheet it replaced, which is exactly the check a screenshot would
+     have made unnecessary. */
+  padding: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 /* ⚠ ONE per screen, or it is not a lead. */
 .lit--lead {
   border-color: var(--lit-lead-border);
   box-shadow: var(--lit-lead-glow);
+}
+
+/* A ROW IN A DENSE LIST — lit, and carrying no glow at all.
+ *
+ * ⚠ THE GLOW IS WHAT DOES NOT SCALE. A card is a thing you pick up and one
+ * glow says so; sixty of them down a task list is not hierarchy, it is haze,
+ * and every row shouting equally is the scatter of equal boxes with a light
+ * behind it. MANIFESTATION.md is explicit that a list is a list — its job is to
+ * be scanned — so what a row needs is to belong to her, not to float.
+ *
+ * ⚠ It is deliberately NOT `statement`: a row is something he can act on and a
+ * statement is a fact he cannot, and collapsing the two would make every task
+ * look as inert as "Nothing open". */
+.lit--row {
+  border-color: var(--lit-shelf-border);
+  box-shadow: none;
 }
 
 /* ── The three light states a control can be in ─────────────────────────────

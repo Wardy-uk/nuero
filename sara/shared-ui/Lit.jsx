@@ -48,18 +48,20 @@ export function LitScope({ drive, className = '', style, children, ...rest }) {
 /**
  * A card she is holding.
  *
- * @param {'lead'|'normal'|'statement'|'unreachable'} tone
+ * @param {'lead'|'normal'|'row'|'statement'|'unreachable'} tone
  *   ⚠ A MEANING, never a colour. `lead` is the one brightest thing on the
- *   screen and there is at most one; `statement` is a fact with no affordance;
- *   `unreachable` is a route that does not exist, which renders DASHED rather
- *   than missing — a control NEURO would refuse is worse than no control, and
- *   an absent one teaches nothing at all.
+ *   screen and there is at most one; `row` is one line of a dense list, lit but
+ *   with NO glow, because sixty glowing boxes is haze rather than hierarchy;
+ *   `statement` is a fact with no affordance; `unreachable` is a route that
+ *   does not exist, which renders DASHED rather than missing — a control NEURO
+ *   would refuse is worse than no control, and an absent one teaches nothing.
  */
 export function Lit({ as: Tag = 'div', tone = 'normal', className = '', children, ...rest }) {
   const mod = tone === 'lead' ? ' lit--lead'
-    : tone === 'statement' ? ' lit--quiet'
-      : tone === 'unreachable' ? ' lit--off'
-        : '';
+    : tone === 'row' ? ' lit--row'
+      : tone === 'statement' ? ' lit--quiet'
+        : tone === 'unreachable' ? ' lit--off'
+          : '';
   return (
     <Tag className={`lit${mod} ${className}`.trim()} {...rest}>
       {children}
