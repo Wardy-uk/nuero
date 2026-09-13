@@ -209,6 +209,9 @@ export default function AttentionSurface({
   // reads it as the hour the card belongs to and shows the clock time instead
   // of the stamp. That is the same fix the list still needs.
   const ISO_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+  // The working day an all-day entry is taken to occupy.
+  const ALL_DAY_FROM_LABEL = '09:00';
+  const ALL_DAY_TO = 17 * 60;
   const corridorCards = (() => {
     if (layout !== 'approach') return [];
     const out = [];
@@ -236,7 +239,17 @@ export default function AttentionSurface({
       // nobody set — the one thing this corridor must never do. It keeps its
       // place in the order and is given no hour at all.
       const stamp = typeof r.note === 'string' && ISO_AT.test(r.note) ? r.note : null;
-      const iso = stamp && stamp.slice(11, 16) !== '00:00' ? stamp : null;
+      // ⚠ AN ALL-DAY ENTRY RUNS 09:00 TO 17:00 (Nick, 13 Sep 2026). It arrives
+      // as `...T00:00:00`, which is not an hour anybody set — but treating it as
+      // having NO hour left "hiking" sitting on the screen at seven in the
+      // evening still labelled "next · today", hours after it was over.
+      //
+      // ⚠ The working day is used for PLACEMENT and for deciding whether it has
+      // FINISHED, and never for the label: the card still reads "all day",
+      // because 09:00 is a rule about the day rather than a time this entry
+      // carried. Printing it would be the invented clock this surface refuses.
+      const isAllDay = stamp != null && stamp.slice(11, 16) === '00:00';
+      const iso = isAllDay ? `${stamp.slice(0, 11)}${ALL_DAY_FROM_LABEL}:00` : stamp;
       // ⚠ A FINISHED APPOINTMENT IS NOT NEWS. Nick, 13 Sep 2026: "do I really
       // care about past appointments". No — an hour that has gone cannot be
       // acted on and cannot be prepared for, so it takes a slot on a small
@@ -246,7 +259,11 @@ export default function AttentionSurface({
       // passed and stays all day, which is the whole of what "all day" means;
       // and everything without a time — how he slept, what he finished — is a
       // fact about today rather than a moment in it, so none of that is touched.
-      if (iso) {
+      // A timed entry is finished once its hour has gone; an all-day one is
+      // finished at the end of the working day.
+      if (isAllDay) {
+        if (nowMinutes >= ALL_DAY_TO) return;
+      } else if (iso) {
         const mm = iso.match(/T(\d{2}):(\d{2})/);
         const at = mm ? Number(mm[1]) * 60 + Number(mm[2]) : null;
         if (at != null && at < nowMinutes) return;
@@ -256,7 +273,7 @@ export default function AttentionSurface({
         tag: r.when || '',
         title: r.what,
         say: stamp ? null : (r.note || null),
-        atLabel: r.countdown || (iso ? iso.slice(11, 16) : null) || r.meta || null,
+        atLabel: r.countdown || (isAllDay ? 'all day' : iso ? iso.slice(11, 16) : null) || r.meta || null,
         at: iso,
         // ⚠ THE WORD IS `crit`. `sara-surface` emits `level: 'crit'` — on the
         // `now` row above all, which is the PRIMARY — and this tested for
