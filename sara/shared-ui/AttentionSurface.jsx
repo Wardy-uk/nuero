@@ -186,6 +186,14 @@ export default function AttentionSurface({
   // out here — three renderers each matching titles their own way is the drift
   // that `say` and `tab` are composed server-side to avoid. This only decides
   // what to DO about it, which is a rendering decision and belongs here.
+  // The device's clock. A fact about the device, never a claim about the
+  // payload — declared HERE because the card builder below reads it, and a
+  // `const` used above its declaration is a temporal dead zone, not a warning.
+  const nowMinutes = (() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  })();
+
   // ── What the corridor places ───────────────────────────────────────────────
   //
   // ⚠ THE DASHBOARD ROWS ARE THE FEED, not just `rest`. What is on this screen
@@ -229,6 +237,20 @@ export default function AttentionSurface({
       // place in the order and is given no hour at all.
       const stamp = typeof r.note === 'string' && ISO_AT.test(r.note) ? r.note : null;
       const iso = stamp && stamp.slice(11, 16) !== '00:00' ? stamp : null;
+      // ⚠ A FINISHED APPOINTMENT IS NOT NEWS. Nick, 13 Sep 2026: "do I really
+      // care about past appointments". No — an hour that has gone cannot be
+      // acted on and cannot be prepared for, so it takes a slot on a small
+      // screen and gives nothing back.
+      //
+      // ⚠ Scoped to entries with an HOUR. An all-day entry has no hour to have
+      // passed and stays all day, which is the whole of what "all day" means;
+      // and everything without a time — how he slept, what he finished — is a
+      // fact about today rather than a moment in it, so none of that is touched.
+      if (iso) {
+        const mm = iso.match(/T(\d{2}):(\d{2})/);
+        const at = mm ? Number(mm[1]) * 60 + Number(mm[2]) : null;
+        if (at != null && at < nowMinutes) return;
+      }
       out.push({
         id: `dash-${i}`,
         tag: r.when || '',
@@ -316,11 +338,6 @@ export default function AttentionSurface({
     : pressing || context?.activity === 'firefighting' ? '224, 84, 58'
       : context?.activity === 'pre-meeting' ? '217, 138, 58'
         : '74, 127, 212';
-
-  const nowMinutes = (() => {
-    const d = new Date();
-    return d.getHours() * 60 + d.getMinutes();
-  })();
 
   return (
     <div
