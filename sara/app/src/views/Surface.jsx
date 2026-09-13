@@ -263,6 +263,22 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       if (!r || !r.ok) throw new Error((r && r.reason) || 'refused');
       id = r.intent.id;
     } catch (e) {
+      // ⚠ A SURFACE THAT CANNOT REACH THE ROUTE STOPS OFFERING THE BUTTONS.
+      //   `setDeskReachable` was DECLARED AND NEVER CALLED, so `deskReachable`
+      //   stayed null for ever, the guard below could never fire, and the
+      //   buttons rendered on every surface - including the kiosk and the
+      //   desktop Electron window, which reach NEURO through a proxy where
+      //   `desktop` is not a door. Every press there failed instantly, which
+      //   is what Nick reported on 13 Sep 2026. A reader with no writer, the
+      //   species this codebase keeps finding.
+      //
+      // ⚠ Only a TRANSPORT failure hides them. A refusal NEURO actually sent
+      //   (an unknown app, a full queue) is an ANSWER, and withdrawing the
+      //   control because one press was declined would be the surface drawing
+      //   a conclusion from a single no.
+      if (e && /not found|404|unreachable|failed to fetch/i.test(e.message || '')) {
+        setDeskReachable(false);
+      }
       setDeskStates(s => ({ ...s, [app]: 'failed' }));
       return;
     }
