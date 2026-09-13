@@ -229,7 +229,16 @@ export default function AttentionSurface({
         say: stamp ? null : (r.note || null),
         atLabel: r.countdown || (iso ? iso.slice(11, 16) : null) || r.meta || null,
         at: iso,
-        urgency: r.level === 'warn' ? 'high' : r.level === 'critical' ? 'critical' : 'normal',
+        // ⚠ THE WORD IS `crit`. `sara-surface` emits `level: 'crit'` — on the
+        // `now` row above all, which is the PRIMARY — and this tested for
+        // 'critical', a string nothing has ever sent. So the most important card
+        // on the screen scored `normal` and was not pulled forward at all: the
+        // corridor's one job, failing silently on its most important input.
+        // Found by the iOS port reading both sides. Both spellings accepted, so
+        // a composer that tidies the word later cannot break this again.
+        urgency: r.level === 'warn' ? 'high'
+          : (r.level === 'crit' || r.level === 'critical') ? 'critical'
+            : 'normal',
       });
     });
     return out;
