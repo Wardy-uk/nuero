@@ -110,3 +110,31 @@ export function nodeColour(rgb) {
 }
 
 export const rgbText = (rgb) => rgb.map((c) => Math.round(c)).join(',');
+
+// ── The one function a SCREEN asks ─────────────────────────────────────
+//
+// ⚠⚠ IT EXISTS BECAUSE THE CARDS AND THE FIELD DISAGREED, ON THE SAME SCREEN.
+// `AttentionSurface` picked its own four stops and its own ladder
+// (`pressing || firefighting ? red : pre-meeting ? amber : blue`) under a
+// comment claiming there was "one place that decides and no component picks its
+// own". Measured 14 Sep 2026, on an ordinary steady high-confidence day: the
+// canvas behind her drew 240,134,60 — ORANGE — while every card on top of it
+// drew 74,127,212, blue. Two answers about her state, two feet apart, and the
+// two ladders did not even agree on which states were distinguishable
+// (`pre-meeting` and `steady` are one colour to the field and two to the cards).
+//
+// That is the readiness bug wearing different clothes: a second ladder, written
+// from a premise about the first, drifting quietly because both halves looked
+// plausible on their own.
+//
+// So a screen asks THIS, never `drive()` and a palette of its own. Nick's call,
+// 14 Sep 2026: the cards follow the field, exactly — which does mean an ordinary
+// well-read day is orange rather than blue, and that is the honest consequence
+// of there being one light source rather than two.
+//
+// Returns "r, g, b" — the CSS custom-property form, so the caller writes
+// `{ '--sara-rgb': surfaceRgb(state) }` and everything downstream inherits.
+export function surfaceRgb(state) {
+  const d = drive(state);
+  return rgbText(colour(d.intensity, d.unresolved));
+}

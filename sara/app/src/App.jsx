@@ -8,6 +8,8 @@ import { startAutoFlush } from './mobile/outbox';
 import actionSurfaces from '../../../shared/action-surfaces.cjs';
 import Field from '../../shared-ui/Field';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
+import { surfaceRgb } from '../../shared-ui/fieldDrive.mjs';
+import '../../shared-ui/Lit.css';
 import { PRIMARY, SECONDARY, TABS, VALID_TABS, DEFAULT_TAB, revealsSecondary } from '../../shared-ui/tabs';
 import { speechRecognitionCtor } from './speechRecognition';
 import Whereabouts from '../../shared-ui/Whereabouts';
@@ -235,18 +237,29 @@ export default function App() {
 
   if (!authed) return <LockScreen onUnlock={() => setAuthed(true)} />;
 
+  // ⚠⚠ HER COLOUR, SET ONCE, FOR THE WHOLE APP. MANIFESTATION.md's finding of
+  // 13 Sep: "the secondary screens are not lit by her at all — their own cards
+  // and rows use flat borders and the system accent, so the app looks like two
+  // products." The shell already holds the drive for the field; the cards on top
+  // of it now read the SAME state through the SAME function, so when she goes
+  // amber every screen goes with her.
+  //
+  // ⚠ On the root rather than a wrapper: an extra div would sit between `.app`
+  // and its children and quietly change the layout of every screen.
   return (
-    <div className="app">
+    <div className="app lit-scope" style={{ '--sara-rgb': surfaceRgb(fieldDrive) }}>
       {/* ⚠ SARA's substrate is present on EVERY screen (Nick, 31 Aug 2026), not
           only on her own. It sits behind the whole shell rather than being
           re-mounted per view, so switching tabs does not tear the field down
           and rebuild it — the substrate would flicker on every tap.
 
-          It is driven `quiet`: dim and near-still. That is deliberate and it is
-          the honesty rule, not a look. The field's whole claim is that the
-          coherence on screen is the coherence of the READ, and the shell reads
-          nothing — only the Surface polls `/api/attention`. A confident settle
-          out here would be the field asserting a read that never happened.
+          ⚠ It is driven by `useFieldDrive`, which polls slowly — this comment
+          used to say "driven `quiet`: dim and near-still … the shell reads
+          nothing", which stopped being true on 31 Aug 2026 and went on being
+          read as the reason not to light anything out here. A stale premise
+          left in place is the readiness bug's exact shape. It starts DEGRADED,
+          because before the first read she genuinely cannot see anything, and a
+          settled field there would assert a read that never happened.
 
           Hence it is also SUPPRESSED on the Surface, which mounts its own,
           driven by the real payload. Two stacked fields would double the

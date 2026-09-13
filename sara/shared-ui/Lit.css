@@ -1,0 +1,174 @@
+/* Lit — the primitives every SARA screen is built from. Contract: sara/MANIFESTATION.md
+ *
+ * Step 1 of the design build order, and first on purpose: everything after it
+ * becomes a five-line change rather than a rewrite, and nine screens each
+ * inventing their own lit card is how an app ends up with nine palettes.
+ *
+ * ⚠⚠ ONE LIGHT SOURCE, AND IT IS HERS. Every colour here resolves from
+ * `--sara-rgb`, set ONCE on the app shell from `fieldDrive.surfaceRgb()` and
+ * inherited by everything below it. When she goes amber the whole app goes with
+ * her, and no card can hold a second opinion about what state she is in.
+ *
+ * The fallback is the blue end of her own ramp rather than a fifth invented
+ * stop, so a subtree that somehow renders outside the provider still looks like
+ * her — and a screen that has genuinely never been told is not a reason to
+ * paint something a colour that means nothing.
+ *
+ * ⚠ WHAT THIS IS NOT. It is not the corridor and it is not the centrepiece.
+ * MANIFESTATION.md is explicit that the scene does not export: depth is time,
+ * and a task list or a settings page has no hours. These are the RULES made
+ * reusable — light, hierarchy, and the three states a control can be in. A
+ * destination screen stays quiet, scannable and utilitarian; it is simply lit
+ * by her rather than by a flat border and the system accent. */
+
+.lit-scope {
+  --sara-rgb: 114, 150, 211;
+}
+
+/* ── Hierarchy by LIGHT, not by decoration ──────────────────────────────────
+ *
+ * Three strengths, and the gap between them is the information. Equal light
+ * everywhere is the scatter of equal boxes wearing a glow.
+ *
+ * These are the numbers the Approach corridor already settled on by eye and by
+ * photograph on the real 1024px panel; they live here now so the corridor and
+ * every later screen cannot drift apart, and so "a third of the hero" is one
+ * number rather than a thing each stylesheet re-guesses. */
+.lit-scope {
+  /* The one brightest thing: a full border and a deep glow. */
+  --lit-lead-border: rgba(var(--sara-rgb), 1);
+  --lit-lead-glow:
+    0 26px 70px -22px rgba(var(--sara-rgb), 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* Everything else she is holding: about a third of it. */
+  --lit-border: rgba(var(--sara-rgb), 0.3);
+  --lit-glow:
+    0 14px 40px -22px rgba(var(--sara-rgb), 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+
+  /* Hardware rather than content — present, reachable, not competing. */
+  --lit-shelf-border: rgba(var(--sara-rgb), 0.24);
+  --lit-shelf-glow: 0 8px 22px -18px rgba(var(--sara-rgb), 0.5);
+}
+
+/* ── A card ────────────────────────────────────────────────────────────────── */
+
+.lit {
+  border: 1px solid var(--lit-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.028);
+  box-shadow: var(--lit-glow);
+}
+
+/* ⚠ ONE per screen, or it is not a lead. */
+.lit--lead {
+  border-color: var(--lit-lead-border);
+  box-shadow: var(--lit-lead-glow);
+}
+
+/* ── The three light states a control can be in ─────────────────────────────
+ *
+ * ⚠ THREE, NOT TWO. This is the rooms rule — `off` means she can help,
+ * `unavailable` means she cannot reach it — generalised: a control NEURO would
+ * refuse must not look as available as one that works, and it must not be
+ * MISSING either, because an absent control teaches nothing and a failing one
+ * teaches the wrong thing. */
+
+/* Unreachable: dashed, dim, and it gains NO glow. */
+.lit--off {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+  opacity: 0.72;
+}
+
+/* ⚠ A STATEMENT IS NOT A CONTROL. A room reading, a count, a fact she is
+   telling him — lit faintly so it belongs to her, but carrying no glow and no
+   affordance, because anything that looks pressable and is not is a worse
+   answer than plain text. */
+.lit--quiet {
+  border-color: rgba(var(--sara-rgb), 0.12);
+  box-shadow: none;
+  background: transparent;
+}
+
+/* ── A chip ─────────────────────────────────────────────────────────────────
+ *
+ * The small pill that carries a state word. ⚠ Its tone is a MEANING, never a
+ * colour a caller liked — `NeuroUI`'s rule, which is why there is no
+ * `.lit-chip--blue`. */
+.lit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--lit-shelf-border);
+  border-radius: 999px;
+  background: rgba(var(--sara-rgb), 0.09);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.78em;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/* ⚠ THE ONLY AMBER, and it is not an error colour. "I couldn't read the diary"
+ * is her being honest, not something failing — MANIFESTATION.md: a named gap is
+ * never styled as a fault. Muted, so it reads as information; never the
+ * warning orange, which would make the two indistinguishable and teach him to
+ * ignore both. And never a COUNT: "2 gaps" is a number he cannot act on. */
+.lit-chip--gap {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Something genuinely wrong, which is a different claim from a gap and is
+   deliberately the only place a real alarm colour appears. */
+.lit-chip--fault {
+  border-color: rgba(224, 84, 58, 0.55);
+  background: rgba(224, 84, 58, 0.12);
+  color: rgba(255, 186, 176, 0.95);
+}
+
+/* ── A section label ────────────────────────────────────────────────────────
+ *
+ * Lit, because it is her naming the section rather than a form heading. Small
+ * and wide-tracked so it reads as a label and never competes with the content
+ * under it — hierarchy by light means the label is the DIMMEST thing on the
+ * screen, not another bright box. */
+.lit-label {
+  display: block;
+  margin: 0 0 6px;
+  color: rgba(var(--sara-rgb), 0.92);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* ⚠ Keyboard focus stays visible and stays HER colour. The kiosk has no
+   keyboard, the phone has no hover, and the Electron window has both. */
+.lit:focus-visible,
+.lit-chip:focus-visible {
+  outline: 2px solid rgb(var(--sara-rgb));
+  outline-offset: 2px;
+}
+
+/* ⚠ Her colour moves when the read moves, so the transition is what stops the
+   whole app snapping between states on a poll. Slow, because a fast one reads
+   as a flash of alarm. Honoured only where motion is welcome. */
+.lit,
+.lit-chip,
+.lit-label {
+  transition: border-color 1.2s ease, box-shadow 1.2s ease, color 1.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lit,
+  .lit-chip,
+  .lit-label {
+    transition: none;
+  }
+}

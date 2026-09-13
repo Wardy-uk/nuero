@@ -12,6 +12,8 @@ const canShowTab = (t) => t.id !== 'voice' || Boolean(speechRecognitionCtor());
 import Field from '../../shared-ui/Field';
 import { FieldCover } from '../../shared-ui/FieldCover';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
+import { surfaceRgb } from '../../shared-ui/fieldDrive.mjs';
+import '../../shared-ui/Lit.css';
 import ExitButton from './components/ExitButton';
 import LockScreen from './components/LockScreen';
 import ClockScreen from './components/ClockScreen';
@@ -119,8 +121,12 @@ function AppShell() {
     if (PRIMARY.some((t) => t.id === tab)) setNavOpen(false);
   }
 
+  // ⚠⚠ HER COLOUR, SET ONCE, FOR THE WHOLE SHELL — see `sara/app/src/App.jsx`,
+  // which does the same on the same root. The kiosk mounts the same screens, so
+  // a colour set on one and not the other is the two-products finding with a
+  // wall display in it.
   return (
-    <div className="app">
+    <div className="app lit-scope" style={{ '--sara-rgb': surfaceRgb(fieldDrive) }}>
       {/* Her substrate, behind the whole shell — present on every screen, not
           only on her own (Nick, 31 Aug 2026). Suppressed on the Surface, which
           mounts its own driven by the real attention payload; two stacked

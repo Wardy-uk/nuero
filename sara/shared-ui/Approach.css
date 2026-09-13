@@ -3,20 +3,29 @@
  * Depth is time, pull is urgency, every pulled card keeps its tether, and
  * portrait narrows the corridor rather than shortening it.
  *
- * ⚠ The colour here is the FIELD's colour, handed down as --approach-rgb by the
- * surface. It is never picked locally: two answers about what state she is in,
- * on one screen, is the drift `fieldDrive` exists to stop. */
+ * ⚠ The colour here is the FIELD's colour, handed down as --sara-rgb by the
+ * shell and aliased below. It is never picked locally: two answers about what
+ * state she is in, on one screen, is the drift `fieldDrive` exists to stop — and
+ * that drift was REAL until 14 Sep 2026, when the surface was still choosing its
+ * own four stops and an ordinary day drew an orange field under blue cards. */
 
 .approach {
   position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
-  --approach-rgb: 74, 127, 212;
+
+  /* ⚠ AN ALIAS, NOT A SECOND SOURCE. `--sara-rgb` is set once on the shell
+     from `fieldDrive.surfaceRgb()`; this name is kept so the ~15 rules below
+     did not all have to churn, and it can only ever be what she is. The
+     fallback is the blue end of her own ramp, not a fifth invented stop. */
+  --approach-rgb: var(--sara-rgb, 114, 150, 211);
 }
-.approach--warm { --approach-rgb: 217, 138, 58; }
-.approach--crit { --approach-rgb: 224, 84, 58; }
-.approach--unresolved { --approach-rgb: 107, 116, 128; }
+
+/* ⚠ `.approach--warm`, `--crit` and `--unresolved` were DELETED here, 14 Sep
+   2026. Nothing applied them — a fourth copy of the palette, unreferenced,
+   sitting under a comment saying the colour is never picked locally. A dead
+   stop is how the next person learns the wrong rule. */
 
 .approach__rig {
   position: absolute;
@@ -541,7 +550,13 @@
 .surface--approach .surface__foot { bottom: 4%; }
 .surface--approach .surface__shelf { bottom: 4%; }
 
-/* ── One light source ───────────────────────────────────────────────────────
+/* ── One light source ────────────────────────────────────────────────
+ *
+ * ⚠ THE NUMBERS MOVED TO `Lit.css` (14 Sep 2026) and are read from there, so
+ * the corridor and every screen built after it are lit to the same three
+ * strengths. They were settled here by eye against photographs of the real
+ * 1024px panel — what changed is where they live, not what they are.
+ *───────
  *
  * Nick, 13 Sep 2026: every card shares the blue backlight, less intense than
  * the centrepiece. Lit only on the hero, the rest of the screen read as a
@@ -558,10 +573,8 @@
  * scatter of equal boxes all over again, in light rather than in layout. */
 .approach__card,
 .approach__fact {
-  border-color: rgba(var(--approach-rgb), 0.3);
-  box-shadow:
-    0 14px 40px -22px rgba(var(--approach-rgb), 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  border-color: var(--lit-border);
+  box-shadow: var(--lit-glow);
 }
 
 /* The shelf is hardware rather than content, so it is lit less again — present,
@@ -569,8 +582,8 @@
 .surface--approach .shelf__btn,
 .surface--approach .shelf__wx,
 .surface--approach .shelf__offer {
-  border-color: rgba(var(--approach-rgb), 0.24);
-  box-shadow: 0 8px 22px -18px rgba(var(--approach-rgb), 0.5);
+  border-color: var(--lit-shelf-border);
+  box-shadow: var(--lit-shelf-glow);
 }
 
 /* ⚠ Unreachable keeps its dashed dimness and gains NO glow. A control that

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNickNow, stampFor } from '../mobile/useNickNow';
 import { apiFetch } from '../api';
 import Readiness from '../../../shared-ui/Readiness.jsx';
+import { Lit } from '../../../shared-ui/Lit.jsx';
 import { enqueue, flush, outcomeFor, pending as pendingOps, subscribe } from '../mobile/outbox';
 import Freshness from '../components/Freshness';
 import './Now.css';
@@ -764,11 +765,17 @@ export default function Now({ onNavigate }) {
           apps cannot disagree about whether an ordinary Tuesday earns a card.
           Five renderers drew it unconditionally, which meant the most common
           possible reading — "Balanced" — held a permanent slot on all five.
-          That is the 29 Aug rule about the morning brief, one surface along. */}
+          That is the 29 Aug rule about the morning brief, one surface along.
+
+          ⚠ AND IT IS THE FIRST USE OF THE LIT PRIMITIVE, deliberately a real
+          one. A component nobody mounts is the reader-with-no-writer shape this
+          repo keeps finding: it looks finished, nothing exercises it, and it
+          rots. `Lit` is `.card` lit by HER rather than by a flat border, which
+          is the whole point of step 1 of the design build order. */}
       {readiness?.notable === true && (
-        <div className="card now__readiness">
+        <Lit className="now__readiness">
           <Readiness readiness={readiness} offDuty={offDuty} />
-        </div>
+        </Lit>
       )}
 
       <Freshness

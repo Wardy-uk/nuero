@@ -4,6 +4,7 @@ import Dashboard from './Dashboard';
 import Approach from './Approach';
 import Shelf from './Shelf';
 import { isPressing } from './useFieldDrive';
+import { surfaceRgb } from './fieldDrive.mjs';
 import './AttentionSurface.css';
 
 // AttentionSurface — the attention feed, rendered.
@@ -354,10 +355,16 @@ export default function AttentionSurface({
   // field, which is a second answer about her state on one screen — the drift
   // `fieldDrive` exists to stop. It is set HERE and inherited, so there is one
   // place that decides and no component picks its own.
-  const toneRgb = !poolAvailable ? '107, 116, 128'
-    : pressing || context?.activity === 'firefighting' ? '224, 84, 58'
-      : context?.activity === 'pre-meeting' ? '217, 138, 58'
-        : '74, 127, 212';
+  // ⚠ DERIVED, NEVER PICKED. This was four hand-written stops and a ladder of
+  // its own, and it disagreed with the field it was sitting on — see
+  // `fieldDrive.surfaceRgb`, which is now the single answer both halves read.
+  const toneRgb = surfaceRgb({
+    degraded: !poolAvailable,
+    confidenceLevel: context?.confidence?.level,
+    quiet,
+    activity: context?.activity,
+    pressing,
+  });
 
   return (
     <div
