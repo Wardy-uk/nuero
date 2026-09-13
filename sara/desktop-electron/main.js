@@ -11,6 +11,11 @@ const { app, BrowserWindow, ipcMain, powerMonitor } = require('electron');
 const lockAdapter = require('./lock');
 
 const SARA_URL = process.env.SARA_URL || 'http://localhost:3005/';
+// How old the page may be before focusing the window refetches it. Ten minutes
+// is long enough that alt-tabbing about does not reload anything, and short
+// enough that a deploy reaches the desk the next time he looks at her.
+const STALE_AFTER_MS = 10 * 60 * 1000;
+let lastLoadedAt = 0;
 const FULLSCREEN = process.env.SARA_FULLSCREEN === '1';
 
 async function createWindow() {
@@ -40,6 +45,25 @@ async function createWindow() {
     storages: ['serviceworkers', 'cachestorage'],
   }).catch(() => {});
   win.loadURL(SARA_URL);
+  lastLoadedAt = Date.now();
+
+  // ⚠ THE DESKTOP WINDOW NEVER UPDATED ITSELF. The kiosk gets its browser
+  // restarted by `lwrespawn` and the phone reloads whenever it is opened; this
+  // window is long-lived on a laptop, so a page loaded on Sunday was still on
+  // screen on Monday showing a build from the previous evening — and Nick read
+  // that as the deploy having failed, which it had not. The cache and the
+  // service worker were both innocent; nothing had asked for the page again.
+  //
+  // Reloaded when the window is FOCUSED and the page is older than
+  // `STALE_AFTER_MS`. Focus is the right trigger because it is the moment he is
+  // about to read it and the moment he is not reading anything else; a timer
+  // would reload the page out from under him mid-sentence.
+  win.on('focus', () => {
+    if (win.isDestroyed()) return;
+    if (Date.now() - lastLoadedAt < STALE_AFTER_MS) return;
+    lastLoadedAt = Date.now();
+    win.webContents.reload();
+  });
   return win;
 }
 
