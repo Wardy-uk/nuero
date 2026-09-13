@@ -594,6 +594,49 @@ function deleteTodo(id) {
 }
 
 // Calendar cache helpers
+/**
+ * Keep what the rolling cache is about to forget.
+ *
+ * WARNING  APPEND-ONLY AND IDEMPOTENT. Every sync offers everything it can see
+ *   and `UNIQUE(event_id, start_time)` folds the repeats, so this can be called
+ *   on every pass without growing duplicates and without needing to know which
+ *   rows are about to roll out. Nothing here is ever deleted by a sync - that
+ *   is the entire point of it existing beside a cache that is.
+ *
+ * WARNING  `first_seen` IS WHEN WE FIRST SAW IT, not when it was created. It is
+ *   only meaningful as 'this row has existed since at least here', and must not
+ *   be read as the moment the meeting was booked.
+ *
+ * @returns the number of rows this call actually added.
+ */
+function archiveCalendarEvents(rows, seenAt = new Date().toISOString()) {
+  if (!Array.isArray(rows) || !rows.length) return 0;
+  let added = 0;
+  for (const r of rows) {
+    if (!r || !r.event_id || !r.start_time) continue;
+    const res = run(`
+      INSERT OR IGNORE INTO calendar_history
+        (event_id, start_time, end_time, subject, is_all_day, show_as, attendees_other, organizer, source, first_seen)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [r.event_id, r.start_time, r.end_time || null, r.subject || null,
+        r.is_all_day ? 1 : 0, r.show_as || null,
+        r.attendees_other === null || r.attendees_other === undefined ? null : (r.attendees_other ? 1 : 0),
+        r.organizer || null, r.source || null, seenAt]);
+    if (res && res.changes) added += res.changes;
+  }
+  return added;
+}
+
+/** Archived occurrences, oldest first. For `rhythm` and nothing else yet. */
+function getCalendarHistory({ sinceDays = 365, limit = 5000 } = {}) {
+  return all(`
+    SELECT event_id, start_time, end_time, subject, is_all_day, show_as, attendees_other, source
+    FROM calendar_history
+    WHERE start_time >= datetime('now', ?)
+    ORDER BY start_time ASC
+    LIMIT ?
+  `, [`-${Number(sinceDays) || 365} days`, Number(limit) || 5000]);
+}
 function upsertCalendarEvent(event) {
   // attendees_other is deliberately three-valued. `event.attendeesOther` is
   // true/false when the caller could judge it and undefined when it could not,
@@ -643,6 +686,16 @@ function clearCalendarWindow(source, fromIso, toIso) {
   );
 }
 
+/**
+ * Every row currently in the cache, in RAW column shape.
+ *
+ * ⚠ Raw on purpose: `archiveCalendarEvents` writes the same column names, and
+ *   a mapped shape (`startTime` vs `start_time`) would archive a table of nulls
+ *   while reporting success — the camelCase trap this repo has hit three times.
+ */
+function getAllCalendarEvents() {
+  return all('SELECT event_id, start_time, end_time, subject, is_all_day, show_as, attendees_other, organizer, source FROM calendar_cache');
+}
 function getCalendarEvents(startDate, endDate) {
   return all(
     'SELECT * FROM calendar_cache WHERE start_time >= ? AND start_time <= ? ORDER BY start_time ASC',
@@ -2271,9 +2324,12 @@ module.exports = {
   completeTodo,
   deleteTodo,
   upsertCalendarEvent,
+  archiveCalendarEvents,
+  getCalendarHistory,
   clearCalendarCache,
   clearCalendarWindow,
   getCalendarEvents,
+  getAllCalendarEvents,
   savePushSubscription,
   getAllPushSubscriptions,
   removePushSubscription,

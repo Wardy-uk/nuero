@@ -1230,3 +1230,38 @@ CREATE TABLE IF NOT EXISTS rescuetime_daily (
   complete      INTEGER NOT NULL DEFAULT 0,
   fetched_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Calendar HISTORY, as opposed to the cache above (13 Sep 2026).
+--
+-- calendar_cache is a ROLLING WINDOW: calendar-sync replaces it per source
+-- per window, so an event drops out a few weeks after it happens and is gone.
+-- Measured on the day this was added: 105 events spanning 29 Aug -> 25 Sep,
+-- and nothing older anywhere.
+--
+-- That made every question about the SHAPE of his weeks unanswerable: when
+-- his day really starts, which meetings actually happen, how often the 10am
+-- slips. `rhythm` needs exactly that, and none of it is recoverable
+-- retrospectively - which is the whole argument for starting to keep it.
+--
+-- Append-only and idempotent: every sync offers what it can see and the
+-- UNIQUE key folds a repeat. Nothing here is ever deleted by a sync.
+CREATE TABLE IF NOT EXISTS calendar_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- The occurrence, not the series: a recurring meeting is one row per
+  -- instance, because 'does the Tuesday standup actually happen' is a
+  -- question about instances.
+  event_id TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT,
+  subject TEXT,
+  is_all_day INTEGER DEFAULT 0,
+  show_as TEXT,
+  -- Three-valued, exactly as in the cache. NULL is 'we could not tell' and
+  -- must never be read as 'solo block'.
+  attendees_other INTEGER,
+  organizer TEXT,
+  source TEXT,
+  first_seen TEXT NOT NULL,
+  UNIQUE(event_id, start_time)
+);
+CREATE INDEX IF NOT EXISTS idx_calhist_start ON calendar_history(start_time);

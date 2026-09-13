@@ -93,6 +93,27 @@ async function sync({ days = 14, checkArrivals = true } = {}) {
   const newEventIds = [];
   try {
     db.batchSaves(() => {
+      // ⚠ KEEP WHAT THE CACHE IS ABOUT TO FORGET. This table is a ROLLING
+      //   WINDOW, so an event drops out a few weeks after it happens and is
+      //   gone — measured 13 Sep 2026: 105 events, 29 Aug to 25 Sep, and nothing
+      //   older anywhere. That made every question about the SHAPE of his weeks
+      //   unanswerable (when his day really starts, which meetings actually
+      //   happen, how often the 10am slips), and NONE of it is recoverable
+      //   retrospectively.
+      //
+      //   Archived BEFORE the clear, because after it the departing rows are
+      //   already gone. Append-only and idempotent, so running it on every pass
+      //   costs a fold rather than a duplicate.
+      //
+      // ⚠ Never allowed to fail the sync: keeping history is worth less than
+      //   having a current calendar, and this runs every few minutes.
+      try {
+        const n = db.archiveCalendarEvents(db.getAllCalendarEvents());
+        if (n) console.log(`[CalendarSync] archived ${n} new occurrence(s) to history`);
+      } catch (e) {
+        console.warn('[CalendarSync] could not archive history:', e.message);
+      }
+
       // Graph rows ONLY. This is replace-by-window across the whole table, and
       // scoping it is what stops a Graph sync — which runs every few minutes —
       // from deleting every Apple event a few minutes after the phone pushed it.
