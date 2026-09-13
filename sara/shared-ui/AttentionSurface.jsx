@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Field from './Field';
 import Dashboard from './Dashboard';
 import Approach from './Approach';
+import Shelf from './Shelf';
 import { isPressing } from './useFieldDrive';
 import './AttentionSurface.css';
 
@@ -157,6 +158,10 @@ export default function AttentionSurface({
     // there is honest.
     work = null,
     dashboard = null, utterances = [], covered = null,
+    // The sky. A top-level block (`{known, condition, tempC, unit, rain}`), read
+    // here for the shelf — `known: false` is an unread sky, which is a different
+    // fact from a clear one and is printed as such.
+    weather = null,
     // ⚠ WHY THIS PANEL IS THE ONE ON SCREEN. `sara-surface` has composed it
     // since the ask flow shipped, `attention` carries it, four tests pin it —
     // and NO client read it, web or iOS. So the honesty it exists to provide
@@ -508,6 +513,27 @@ export default function AttentionSurface({
 
             ⚠ BELOW her words, always. The sentence is the product; this is what
             the sentence is about. */}
+        {/* ── The shelf ─────────────────────────────────────────────────────
+            Hardware, not content: what she can reach right now. It has no hour
+            so it never rides the corridor, and it never goes empty — a blank
+            corner and a broken screen look identical.
+
+            ⚠ It REPLACES the desk row in this layout rather than sitting beside
+            it; two places offering to open the same laptop is the "same thing
+            twice" this surface keeps removing. */}
+        {!hideSecondary && layout === 'approach' && (
+          <div className="surface__shelf">
+            <Shelf
+              weather={weather}
+              rooms={rooms}
+              work={work}
+              deskStates={deskStates}
+              onDeskOpen={onDeskOpen}
+              onRoomAct={onRoomAct}
+            />
+          </div>
+        )}
+
         {/* The corridor. Full-bleed behind her words, placing what the
             dashboard would have listed plus anything else in the feed. */}
         {!hideSecondary && layout === 'approach' && (corridorCards.length > 0 || rest.length > 0) && (
@@ -605,7 +631,7 @@ export default function AttentionSurface({
 
             ⚠ It reports the real outcome and never the word "sent" — `claimed`
             means the laptop took it, which is not the same as it working. */}
-        {!hideSecondary && onDeskOpen && work && work.deskKnown === false && (
+        {!hideSecondary && layout !== 'approach' && onDeskOpen && work && work.deskKnown === false && (
           <p className="surface__aside">I can&rsquo;t see your laptop, so I can&rsquo;t open anything on it.</p>
         )}
         {/* ⚠ WHAT IS OFFERED IS THE MACHINE'S OWN ANSWER, composed server-side
@@ -618,7 +644,7 @@ export default function AttentionSurface({
             ⚠ A machine that has not said what it can open gets NO buttons and
             a stated reason. Offering everything and hoping is what made the
             row untrustworthy in the first place. */}
-        {!hideSecondary && onDeskOpen && work && work.atDesk && work.deskOffer
+        {!hideSecondary && layout !== 'approach' && onDeskOpen && work && work.atDesk && work.deskOffer
           && work.deskOffer.apps && work.deskOffer.apps.length > 0 && (
           <div className="surface__desk">
             <span className="surface__desklabel">
@@ -664,7 +690,7 @@ export default function AttentionSurface({
             ⚠ Presence tracks the WATCH, not Nick, so the subject is named
             rather than assumed. A watch on the arm of the sofa is, to this,
             Nick on the sofa. */}
-        {!hideSecondary && rooms?.offers?.length > 0 && (
+        {!hideSecondary && layout !== 'approach' && rooms?.offers?.length > 0 && (
           <ul className="surface__rooms">
             {rooms.offers.map((o) => (
               <li key={o.key} className="surface__room">
