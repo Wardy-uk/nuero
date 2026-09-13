@@ -278,6 +278,16 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
     if (c.state === 'under') {
       return { state: 'stale', why: c.why, detail: `missed ${c.days.slice(0, 3).join(', ')}` };
     }
+    // ⚠ AGREEING IS NOT THE SAME AS HAVING BEEN CHECKED. RescueTime's total is
+    // account-wide and its API exposes no per-device breakdown, while the agent
+    // measures one machine — so once RescueTime runs somewhere the agent does
+    // not (the Mac, from 13 Sep 2026), the surplus cannot be refereed and the
+    // ratio can only inflate past a floor that only fires BELOW it. Still
+    // `live`, because it is reporting; the caveat says what the green does not
+    // cover, rather than letting the row claim more than it knows.
+    if (c.caveat) {
+      return { state: 'live', why: c.caveat, detail: `agrees on ${c.judged - (c.uncheckable || 0)} of ${c.judged} measured days` };
+    }
     return { state: 'live', detail: `agrees on ${c.judged} measured days` };
   });
 

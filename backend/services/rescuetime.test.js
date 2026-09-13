@@ -298,3 +298,60 @@ test('an empty day never overwrites a day that had hours', () => {
   assert.equal(rt.shouldStore(stored, 10).write, true, 'a smaller but real figure is a correction, not a loss');
   assert.equal(rt.shouldStore(null, 0).write, true, 'a genuinely empty new day is fine to record');
 });
+
+// ---------------------------------------------------------------------------
+// The surplus nothing can referee (13 Sep 2026)
+//
+// RescueTime went onto the Mac and NEURO's agent did not. RescueTime's API has
+// NO per-device breakdown, so `reported` is the whole account while `measured`
+// is one machine — the ratio can then only inflate, and the check fires only
+// BELOW the floor. RescueTime could go blind on the laptop and still clear it on
+// Mac hours alone: the exact failure this audit exists to catch, passing green.
+// ---------------------------------------------------------------------------
+
+const oneHost = (minutes) => ([{
+  host: 'DESKTOP-8LGF9RR', day: '2026-09-13',
+  active_minutes: minutes, present_minutes: minutes + 60,
+  sample_count: 200, complete: 1,
+}]);
+
+test('a like-for-like day carries no caveat', () => {
+  const v = rt.assessDay({ day: '2026-09-13', total_minutes: 54 }, oneHost(60));
+  assert.equal(v.state, 'agree');
+  assert.equal(v.caveat, null);
+});
+
+test('a surplus is named, and is never a fault', () => {
+  // Six hours reported against one measured — the two-machine signature.
+  const v = rt.assessDay({ day: '2026-09-13', total_minutes: 360 }, oneHost(60));
+  assert.equal(v.state, 'agree');          // NOT `under`, and not a fault
+  assert.ok(v.caveat, 'the surplus must be named');
+  assert.match(v.caveat, /cannot be checked/);
+  assert.ok(!/under-report|fault|wrong/i.test(v.caveat), v.caveat);
+});
+
+test('under-reporting is still caught, caveat or not', () => {
+  const v = rt.assessDay({ day: '2026-09-13', total_minutes: 10 }, oneHost(500));
+  assert.equal(v.state, 'under');
+  assert.equal(v.caveat, undefined);       // the under branch carries `why`
+});
+
+test('the roll-up says how many days were agreement by default', () => {
+  const pairs = [
+    { day: 'a', state: 'agree', caveat: 'x' },
+    { day: 'b', state: 'agree', caveat: 'x' },
+    ...Array.from({ length: 6 }, (_, i) => ({ day: `c${i}`, state: 'agree', caveat: null })),
+  ];
+  const c = rt.coverage(pairs);
+  assert.equal(c.state, 'agree');
+  assert.equal(c.uncheckable, 2);
+  assert.match(c.caveat, /2 of 8/);
+  assert.match(c.caveat, /agreement by default rather than by check/);
+});
+
+test('a clean week says nothing extra', () => {
+  const pairs = Array.from({ length: 8 }, (_, i) => ({ day: `d${i}`, state: 'agree', caveat: null }));
+  const c = rt.coverage(pairs);
+  assert.equal(c.uncheckable, 0);
+  assert.equal(c.caveat, null);
+});

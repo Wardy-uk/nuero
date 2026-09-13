@@ -68,6 +68,27 @@ const SYNC_WINDOW_DAYS = 14;
 // something — see `coverage()`.
 const AGREEMENT_FLOOR = 0.4;
 
+/**
+ * Above this, RescueTime is reporting substantially MORE than the agent measured.
+ *
+ * ⚠ NOT A FAULT — RescueTime legitimately records more, and flagging "over"
+ * would be a permanent false alarm on a working feed. It is a CAVEAT on the
+ * agreement: the surplus is activity the agent cannot see, so nothing here can
+ * referee it.
+ *
+ * ⚠ WHY IT MATTERS FROM 13 Sep 2026: RescueTime is installed on the Mac, and
+ * NEURO's own agent is NOT — `desktop_daily` has one host. RescueTime's API
+ * exposes NO per-device breakdown, so `reported` is the whole account while
+ * `measured` is a single machine. The ratio can then only inflate, and the check
+ * only fires BELOW the floor — so RescueTime could go blind on the laptop and
+ * still clear it on Mac hours alone. That is precisely the failure this audit was
+ * built to catch (nine blind weekdays; 0.16h reported against 8.21h measured),
+ * and it would pass silently green. Saying so does not restore the check — only
+ * an agent on the Mac does that — but it stops the row claiming more than it
+ * knows.
+ */
+const OVER_CAVEAT_RATIO = 1.5;
+
 // Until this many comparable days exist, the check reports `calibrating` rather
 // than a verdict. Same idiom as stress-score, and for the same reason: a
 // threshold applied to three days of data is a coin toss wearing a number.
@@ -336,7 +357,14 @@ function assessDay(rtDay, deskDays = []) {
       why: `RescueTime logged ${(reported / 60).toFixed(1)}h against ${(measured / 60).toFixed(1)}h measured at ${busiest.host}`,
     };
   }
-  return { state: 'agree', ratio, host: busiest.host, why: null };
+  // ⚠ Agreement, with the surplus named where there is one. `caveat` is not a
+  // fault and never makes the day `under`; it says which part of the comparison
+  // could not be refereed.
+  const caveat = ratio > OVER_CAVEAT_RATIO
+    ? `RescueTime logged ${(reported / 60).toFixed(1)}h against ${(measured / 60).toFixed(1)}h measured at `
+      + `${busiest.host} — the surplus is activity the agent does not cover, and cannot be checked`
+    : null;
+  return { state: 'agree', ratio, host: busiest.host, why: null, caveat };
 }
 
 /**
@@ -391,7 +419,21 @@ function coverage(pairs = []) {
       why: `RescueTime under-reported on ${under.length} of the last ${judged.length} measured days`,
     };
   }
-  return { state: 'agree', judged: judged.length, under: 0, unknown, why: null };
+  // ⚠ Carried onto the clean verdict rather than dropped. A green row over days
+  // whose surplus nothing could referee is a row claiming more than it knows.
+  const uncheckable = judged.filter(p => p.caveat).length;
+  return {
+    state: 'agree',
+    judged: judged.length,
+    under: 0,
+    unknown,
+    uncheckable,
+    why: null,
+    caveat: uncheckable
+      ? `on ${uncheckable} of ${judged.length} days RescueTime reported well above what the agent could measure — `
+        + 'it is seeing a machine the agent is not on, so those days are agreement by default rather than by check'
+      : null,
+  };
 }
 
 // ── Network ──────────────────────────────────────────────────────────────────
@@ -560,6 +602,7 @@ function coverageReport(days = 30) {
 }
 
 module.exports = {
+  OVER_CAVEAT_RATIO,
   // credential
   key,
   isConfigured,
