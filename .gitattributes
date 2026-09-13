@@ -1,0 +1,18 @@
+# ⚠ SHELL SCRIPTS MUST CHECK OUT WITH LF, ALWAYS.
+#
+# This repo is developed on Windows, where git's autocrlf normalises text files
+# to CRLF in the working tree. That is harmless for JS and markdown and FATAL for
+# a shell script: a `.sh` checked out with CRLF has a carriage return on the end
+# of its shebang, so macOS answers
+#
+#     /bin/bash^M: bad interpreter: No such file or directory
+#
+# ...and every line after it is wrong too. `desktop-agent/install.sh` and
+# `neuro-desktop-agent.sh` are written here and RUN ON THE MAC, so they cross
+# exactly that boundary. Same species as the byte-for-byte drift test that could
+# never pass because one side was LF and the other CRLF — a difference invisible
+# on the machine that created it.
+*.sh text eol=lf
+
+# The Pi runs these too.
+*.bash text eol=lf
