@@ -1,0 +1,46 @@
+/* "What she's noticed" — passive, under the work.
+   Quieter than everything around it ON PURPOSE: these are facts about right now,
+   not things to decide about, and anything louder would compete with the card
+   Nick actually came to the page for. */
+.ambient {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.ambient__h {
+  margin: 0 0 0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.ambient__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.ambient__item {
+  display: grid;
+  gap: 0.15rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--border);
+}
+
+/* A level is the service's word, not a decoration. `warn` is the only one that
+   raises its voice, and it still sits below the work. */
+.ambient__item--warn { border-left-color: var(--warning); }
+
+.ambient__text { font-size: 0.82rem; color: var(--text-primary); }
+.ambient__detail { font-size: 0.72rem; color: var(--text-secondary); }
+.ambient__suggest { font-size: 0.72rem; color: var(--accent); }
+
+/* ⚠ Legible, not hidden. The caveat is what stops a reading being read as a
+   diagnosis, so it may be quiet but it must not be decorative. */
+.ambient__caveat { font-size: 0.7rem; color: var(--text-muted); font-style: italic; }

@@ -3,6 +3,7 @@ import { apiFetch } from '../api';
 import useAttention from '../useAttention';
 import AttentionCard from './AttentionCard';
 import FrictionSection from './FrictionSection';
+import AmbientSection from './AmbientSection';
 import { showable } from '../../../shared/task-links.cjs';
 import './AdhdPanel.css';
 
@@ -793,6 +794,13 @@ export default function AdhdPanel({ onNavigate }) {
       {/* ── Friction noticed ──
           Evidence only, and BELOW the work rather than above it. */}
       <FrictionSection onNavigate={onNavigate} />
+
+      {/* ── What she has noticed ──
+          Ported from iOS, where it has been on Now since ambient shipped. The
+          desktop had no mention of it at all, so the screen he sits in front of
+          all day was the one that could not see his body. Passive and below the
+          work: a sitting-down prompt must never outrank a breaching escalation. */}
+      <AmbientSection />
 
       {/*
         Momentum is full width and alone. It used to share a two-column grid
