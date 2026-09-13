@@ -992,6 +992,16 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   let weather = null;
   try {
     weather = await require('./ha-rooms').readWeather();
+    // The words, composed once, server-side — so the phone, the kiosk and the
+    // desktop cannot phrase the same forecast three ways.
+    if (weather && weather.known) {
+      const { outlook } = require('../../shared/weather-outlook.cjs');
+      const o = outlook(weather, weather.hours, now);
+      weather.outlook = o.lines;
+      weather.rain = o.rain;
+      // The raw hours are not shipped to clients: 48 entries no surface reads.
+      delete weather.hours;
+    }
   } catch (e) {
     gaps.push({ input: 'weather', why: e.message });
   }

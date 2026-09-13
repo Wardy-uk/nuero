@@ -641,7 +641,12 @@ function contextRows(payload) {
   const w = payload.weather;
   if (isObj(w) && w.known && w.condition) {
     const temp = Number.isFinite(w.tempC) ? Math.round(w.tempC) + '°' : null;
-    out.push(row('outside', temp ? temp + ', ' + w.condition : String(w.condition)));
+    // ⚠ THE OUTLOOK IS THE USEFUL HALF. Nick, 13 Sep 2026: "is it going to rain
+    //   in 30 mins? tell me. what's the temp going to be?" — the current sky is
+    //   the thing he can see out of the window. `outlook` composes the words ONCE
+    //   and says NOTHING when nothing changes, so the line does not become noise.
+    const note = Array.isArray(w.outlook) && w.outlook.length ? w.outlook.join(' · ') : null;
+    out.push(row('outside', temp ? temp + ', ' + w.condition : String(w.condition), { note }));
   }
   return out;
 }

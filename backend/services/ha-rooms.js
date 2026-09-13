@@ -280,8 +280,33 @@ async function readWeather() {
     if (!e || !e.state || e.state === 'unavailable' || e.state === 'unknown') {
       return { known: false, why: 'the weather entity is ' + ((e && e.state) || 'missing') };
     }
+    // ⚠ THE FORECAST IS A SERVICE CALL, not an attribute. Home Assistant moved
+    //   it out of `weather.*` attributes, so `get_forecasts` with
+    //   `?return_response` is the only way to it — 48 hourly entries here.
+    //   Current conditions he can get by looking out of the window; the next
+    //   three hours he cannot.
+    let hours = [];
+    try {
+      const res = await fetch(HA_URL + '/api/services/weather/get_forecasts?return_response', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + HA_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_id: id, type: 'hourly' }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (res.ok) {
+        const body = await res.json();
+        const one = ((body || {}).service_response || {})[id];
+        hours = Array.isArray(one && one.forecast) ? one.forecast : [];
+      }
+    } catch {
+      // ⚠ A missing forecast costs the outlook and nothing else — the current
+      //   conditions below are still a real answer.
+      hours = [];
+    }
+
     return {
       known: true,
+      hours,
       condition: e.state,
       tempC: typeof a.temperature === 'number' ? a.temperature : null,
       unit: a.temperature_unit || null,
