@@ -701,10 +701,50 @@ function syncPeopleNotes({ apply = false } = {}) {
   return { ok: true, apply, changes, scanned: index.scanned, skippedPrep: index.skippedPrep, tracker };
 }
 
+/**
+ * What a cadence state SAYS, phrased once.
+ *
+ * ⚠ MOVED HERE FROM `one-to-one-tracker.js` (13 Sep 2026) rather than copied.
+ * The tracker owned the only wording, so a second surface — the iOS People
+ * screen — would have been a second phrasing of one state, which is exactly the
+ * drift `cadenceState` itself exists to prevent: tracker, board and nudge must
+ * not disagree about what "overdue" means OR about how it reads.
+ *
+ * ⚠ `unwritten` is NEVER phrased as "met". A booking is a SCHEDULE, and nothing
+ * here knows whether the meeting happened — which is the whole reason that state
+ * exists rather than folding into `ok`.
+ */
+const CADENCE_LABEL = {
+  booked: (s) => `📅 Booked ${s.booked}`,
+  unwritten: (s) => `✍️ Held ${s.booked}, not written up`,
+  overdue: (s) => `⚠️ Overdue by ${s.daysOverdue}d`,
+  'due-soon': (s) => `⏳ Due in ${s.daysUntil}d`,
+  ok: (s) => (s.nextDue ? `✅ Due ${s.nextDue}` : '—'),
+};
+
+function cadenceLabel(state) {
+  if (!state || !state.state) return '—';
+  return (CADENCE_LABEL[state.state] || CADENCE_LABEL.ok)(state);
+}
+
+/**
+ * Worst first: overdue (longest), then unwritten, due-soon, booked, ok.
+ *
+ * Exported for the same reason as the label — two surfaces ordering one list
+ * differently is a disagreement about who needs attention most.
+ */
+const CADENCE_RANK = { overdue: 0, unwritten: 1, 'due-soon': 2, booked: 3, ok: 4 };
+
+function cadenceRank(state) {
+  return CADENCE_RANK[state && state.state] ?? 9;
+}
+
 module.exports = {
   CADENCES,
   cadenceDays,
   cadenceState,
+  cadenceLabel,
+  cadenceRank,
   effectiveCadenceFields,
   foldDetected,
   isoDateOrNull,

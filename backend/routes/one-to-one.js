@@ -41,6 +41,74 @@ router.get('/recent', (req, res) => {
   }
 });
 
+// GET /api/1to1/cadence — every report, with the state of their 1-2-1 and the
+// words for it, worst first.
+//
+// ⚠ THE STATE IS COMPOSED HERE, NOT ON THE CLIENT. `PeopleBoard` computes it in
+// the browser because it already holds the frontmatter; a phone does not, and a
+// second implementation in Swift would be a fourth copy of a rule this codebase
+// keeps in one place precisely so the tracker, the board and the nudge cannot
+// disagree about what "overdue" means.
+//
+// ⚠ THE DETECTED NOTE IS FOLDED IN AT READ TIME (`effectiveCadenceFields`), or
+// every report reads months stale for the whole of the day a 1-2-1 is written
+// up — `syncPeopleNotes` only runs at 22:00. That fold recomputes the due date
+// too, or the stamp trades "no note" for a spurious "overdue by 98d".
+router.get('/cadence', (req, res) => {
+  try {
+    const roster = require('../services/team-roster');
+    const people = roster.directReports();
+    const rows = people.map((p) => {
+      // The vault's own words, with today's note folded in.
+      const folded = detect.effectiveCadenceFields(p.name, {
+        'last-1-2-1': p.last121 || '',
+        'next-1-2-1-due': p.next121Due || '',
+        '1-2-1-booked': p.booked121 || '',
+      });
+      const cadence = String(p.cadence || '').toLowerCase();
+      const bookable = Boolean(p.cadence) && cadence !== 'none' && cadence !== 'n/a';
+      const state = detect.cadenceState({
+        lastHeld: folded['last-1-2-1'] || null,
+        nextDue: folded['next-1-2-1-due'] || null,
+        booked: folded['1-2-1-booked'] || null,
+        bookable,
+      });
+      return {
+        name: p.name,
+        role: p.role || null,
+        team: p.team || null,
+        cadence: p.cadence || null,
+        bookable,
+        // ⚠ A person with no cadence is not "ok" — nobody has said how often
+        // they should be seen, which is a different fact from being up to date.
+        state: state.state,
+        label: bookable ? detect.cadenceLabel(state) : null,
+        why: bookable ? null : (p.status || 'no cadence set'),
+        lastHeld: folded['last-1-2-1'] || null,
+        nextDue: folded['next-1-2-1-due'] || null,
+        booked: folded['1-2-1-booked'] || null,
+        daysOverdue: state.daysOverdue ?? null,
+        daysUntil: state.daysUntil ?? null,
+      };
+    });
+
+    // Worst first, shared with the tracker so the two cannot order one list
+    // differently.
+    rows.sort((a, b) => {
+      const r = detect.cadenceRank({ state: a.state }) - detect.cadenceRank({ state: b.state });
+      if (r !== 0) return r;
+      if (a.state === 'overdue') return (b.daysOverdue || 0) - (a.daysOverdue || 0);
+      return a.name.localeCompare(b.name);
+    });
+
+    res.json({ ok: true, people: rows });
+  } catch (e) {
+    console.error('[1to1/cadence]', e);
+    // ⚠ A failed read is NOT an empty team.
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Write detected dates back into People frontmatter. Dry-run unless apply=true.
 router.post('/sync', (req, res) => {
   try {

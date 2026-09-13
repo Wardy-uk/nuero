@@ -52,13 +52,9 @@ function todayStr(d = new Date()) {
 // What each cadenceState means to a human reading the table. The words come
 // from the state machine rather than being re-derived, so the tracker, the
 // board and the nudge cannot drift apart on what "overdue" means.
-const STATE_LABEL = {
-  booked: (s) => `📅 Booked ${s.booked}`,
-  unwritten: (s) => `✍️ Held ${s.booked}, not written up`,
-  overdue: (s) => `⚠️ Overdue by ${s.daysOverdue}d`,
-  'due-soon': (s) => `⏳ Due in ${s.daysUntil}d`,
-  ok: (s) => (s.nextDue ? `✅ Due ${s.nextDue}` : '—'),
-};
+// ⚠ The wording MOVED to `one-to-one-detect.cadenceLabel` (13 Sep 2026) so the
+// tracker, the API and the iOS People screen cannot phrase one state three
+// ways. The strings are unchanged, so the rendered table is byte-identical.
 
 function _escapeCell(v) {
   // A role or note containing a pipe would silently break the table row.
@@ -87,9 +83,8 @@ function buildTable(people, today = todayStr()) {
   });
 
   // Worst first: overdue (longest), then unwritten, due-soon, booked, ok.
-  const RANK = { overdue: 0, unwritten: 1, 'due-soon': 2, booked: 3, ok: 4 };
   rows.sort((a, b) => {
-    const r = (RANK[a.state.state] ?? 9) - (RANK[b.state.state] ?? 9);
+    const r = detect.cadenceRank(a.state) - detect.cadenceRank(b.state);
     if (r !== 0) return r;
     if (a.state.state === 'overdue') return (b.state.daysOverdue || 0) - (a.state.daysOverdue || 0);
     return a.person.name.localeCompare(b.person.name);
@@ -101,7 +96,7 @@ function buildTable(people, today = todayStr()) {
   ];
   for (const { person, state, bookable } of rows) {
     const label = bookable
-      ? (STATE_LABEL[state.state] || STATE_LABEL.ok)(state)
+      ? detect.cadenceLabel(state)
       : `— ${_escapeCell(person.status) || 'no cadence'}`;
     lines.push([
       `[[People/${person.name}\\|${person.name}]]`,
