@@ -401,3 +401,84 @@
 /* Her sentence carries the screen, so it is sized like it. */
 .surface--approach .surface__saylead { font-size: clamp(22px, 3.6cqw, 44px); }
 .surface--approach .surface__saysub { font-size: clamp(13px, 1.7cqw, 21px); }
+
+/* ══ A · CENTRE STAGE ═══════════════════════════════════════════════════════
+ * Nick chose this off the mockup. The rule: THE CENTREPIECE IS NEVER EMPTY. It
+ * holds what she would say if you asked "so, now?" — the pressing thing when
+ * something presses, the next thing when something is coming, and her own
+ * sentence when the honest answer is that the day is done.
+ *
+ * ⚠ Removing the hero because nothing was approaching is what turned the screen
+ * into a scatter of equal boxes. Nothing approaching is a reason to drop the
+ * CORRIDOR, never the focal point. */
+
+.surface--approach .surface__say {
+  left: 6%;
+  top: 22%;
+  bottom: auto;
+  width: min(52%, 700px);
+  max-width: none;
+  z-index: 60;
+  padding: clamp(11px, 1.7cqw, 26px) clamp(13px, 2cqw, 30px);
+  border: 1px solid rgb(var(--approach-rgb));
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(13, 20, 30, 0.96), rgba(6, 10, 16, 0.9));
+  box-shadow:
+    0 26px 70px -22px rgb(var(--approach-rgb)),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.surface--approach .surface__saylead { margin: 0; }
+.surface--approach .surface__saysub { margin: 7px 0 0; }
+
+/* What he can say back lives INSIDE the box — it is one object. */
+.surface--approach .surface__say .surface__says {
+  position: static;
+  margin: clamp(8px, 1.2cqw, 15px) 0 0;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: none;
+}
+
+/* The four facts, flat and equal, beneath the centrepiece. */
+.approach--quiet { position: absolute; inset: 0; z-index: 40; pointer-events: none; }
+.approach--quiet .approach__row {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 63%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: clamp(6px, 0.9cqw, 14px);
+  pointer-events: auto;
+}
+.approach__fact {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(11, 17, 25, 0.82), rgba(5, 9, 14, 0.66));
+  padding: clamp(6px, 0.95cqw, 14px) clamp(8px, 1.15cqw, 18px);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  min-width: 0;
+}
+.approach__fact:focus-visible { outline: 2px solid rgb(var(--approach-rgb)); outline-offset: 2px; }
+.approach__fact .approach__val { font-size: clamp(11px, 1.75cqw, 22px); }
+.approach__fact .approach__sub { font-size: clamp(8.5px, 1.15cqw, 14px); }
+.approach__fact .approach__lab { color: rgba(255, 255, 255, 0.26); }
+.approach__fact .approach__lab u { color: var(--muted, #63728a); }
+
+/* The held-back line sits under the facts, not under her sentence. */
+.surface--approach .surface__foot { bottom: 11.5%; }
+
+@media (max-aspect-ratio: 3/4) {
+  .surface--approach .surface__say { left: 4%; width: 92%; top: 14%; }
+  .approach--quiet .approach__row {
+    left: 4%; right: 4%; top: auto; bottom: 34%;
+    grid-template-columns: 1fr 1fr;
+  }
+}

@@ -69,6 +69,10 @@ export default function Approach({
   // it, and no card is ever given an hour it did not arrive with.
   nowMinutes = null,
   portrait = false,
+  // Nothing ahead: no hour marks, no now-line, and the cards laid flat and
+  // equal rather than at depth. A time axis over a finished day is a picture
+  // that lies, and depth with nothing to encode is decoration.
+  quiet = false,
   onOpen = null,
 }) {
   const stageRef = useRef(null);
@@ -238,9 +242,39 @@ export default function Approach({
 
   if (!cards.length) return null;
 
+  // ── A finished day: flat, equal, no depth ──────────────────────────────────
+  //
+  // ⚠ The facts are laid out EQUAL because they genuinely are equal. Depth here
+  // would rank them, and there is nothing to rank by: how he slept, what he
+  // finished and what was on today are simply four true things about a day that
+  // is over. The centrepiece carries the answer; these carry the detail.
+  if (quiet) {
+    return (
+      <div className="approach approach--quiet" ref={stageRef}>
+        <div className="approach__row">
+          {cards.slice(0, 4).map((card, i) => (
+            <button
+              type="button"
+              key={card.id || `q${i}`}
+              className="approach__fact"
+              onClick={() => onOpen && onOpen(card)}
+            >
+              <span className="approach__lab">
+                <span>{card.tag || ''}</span>
+                {card.atLabel && <u>{card.atLabel}</u>}
+              </span>
+              <span className="approach__val">{card.title}</span>
+              {card.say && <span className="approach__sub">{card.say}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`approach${portrait ? ' approach--portrait' : ''}`}
+      className={`approach${portrait ? ' approach--portrait' : ''}${quiet ? ' approach--quiet' : ''}`}
       ref={stageRef}
       onPointerMove={(e) => {
         const r = stageRef.current.getBoundingClientRect();

@@ -537,6 +537,25 @@ export default function AttentionSurface({
               )}
             </>
           ))}
+          {/* ⚠ INSIDE the centrepiece in this layout, not below it. What she said
+              and what he can say back are one object — the box IS the answer and
+              the answers to it. Rendered as a separate row underneath, the box
+              read as a statement with some buttons loose beneath it. */}
+          {speaks && layout === 'approach' && (
+            <div className="surface__says">
+              {utterances.map((u, i) => (
+                <button
+                  key={`${u.say}-${i}`}
+                  type="button"
+                  className={`surface__say-btn${u.intent && u.intent.kind === 'reveal' ? ' surface__say-btn--quiet' : ''}`}
+                  disabled={busy}
+                  onClick={() => sayIt(u)}
+                >
+                  {u.say}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── What she's showing ────────────────────────────────────────────
@@ -576,6 +595,14 @@ export default function AttentionSurface({
           <Approach
             cards={[...corridorCards, ...rest.map((c) => ({ ...c, tag: '' }))]}
             nowMinutes={nowMinutes}
+            // ⚠ Nothing ahead means no corridor: the facts lie flat and equal,
+            // which is what a finished day actually looks like. The centrepiece
+            // is there either way — that is what was missing.
+            quiet={!corridorCards.some((c) => {
+              if (typeof c.at !== 'string') return false;
+              const m = c.at.match(/T(\d{2}):(\d{2})/);
+              return m ? Number(m[1]) * 60 + Number(m[2]) >= nowMinutes : false;
+            })}
             onOpen={(card) => { if (card && card.recordId && onOpen) onOpen(card); }}
           />
         )}
@@ -613,7 +640,7 @@ export default function AttentionSurface({
             The escape hatch is always the last of them and is never dropped —
             an ambient surface that is sometimes wrong must always have a way
             round it. */}
-        {speaks && (
+        {speaks && layout !== 'approach' && (
           <div className="surface__says">
             {utterances.map((u, i) => (
               <button
