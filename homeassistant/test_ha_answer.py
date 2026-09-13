@@ -12,7 +12,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components", "sara"))
 
-from ha_answer import NOT_THE_HOUSE, ha_answer_stands  # noqa: E402
+from ha_answer import NOT_THE_HOUSE, PEOPLE_DOMAINS, ha_answer_stands  # noqa: E402
 
 
 class TheHouse(unittest.TestCase):
@@ -69,6 +69,56 @@ class TheShapeOfTheRule(unittest.TestCase):
         # and forgetting would send working device control to a language model.
         self.assertEqual(NOT_THE_HOUSE, frozenset({"HassGetCurrentDate", "HassGetCurrentTime"}))
         self.assertTrue(ha_answer_stands("action_done", None, "HassSomeBrandNewDeviceIntent"))
+
+
+class PeopleAreNotTheHouse(unittest.TestCase):
+    """Home Assistant is authoritative about DEVICES, not about people.
+
+    ⚠⚠ LIVE FIXTURE, 13 Sep 2026. Asked "is anyone else home" Home Assistant
+    answered **"No"**, matching exactly one entity — `person.nick` — while
+    Helen and Isaac were both in. That is the shape of this house rather than a
+    bug: HA holds ONE person entity, and the household truth lives in
+    `binary_sensor.household_others_home`, built from Life360 for WHO and the
+    router's associated-client list for WHETHER, because the phone reports home
+    ~90m out over Wi-Fi positioning.
+    """
+
+    def test_a_presence_answer_falls_through(self):
+        self.assertFalse(
+            ha_answer_stands("query_answer", None, "HassGetState", ["person.nick"])
+        )
+
+    def test_a_tracker_answer_falls_through_too(self):
+        self.assertFalse(
+            ha_answer_stands("query_answer", None, "HassGetState", ["device_tracker.helen_s24"])
+        )
+
+    def test_the_house_still_answers_for_itself(self):
+        # The whole point of asking HA first: instant, local, free, offline.
+        self.assertTrue(
+            ha_answer_stands("query_answer", None, "HassGetState", ["light.a", "light.b"])
+        )
+        self.assertTrue(
+            ha_answer_stands("action_done", None, "HassTurnOn", ["light.living_room"])
+        )
+
+    def test_ALL_not_ANY(self):
+        # ⚠ A question that touched a light as well as a person is still partly
+        #   about the house, and HA's answer about the light beats a guess.
+        self.assertTrue(
+            ha_answer_stands("query_answer", None, "HassGetState", ["person.nick", "light.a"])
+        )
+
+    def test_no_targets_means_this_rule_says_nothing(self):
+        # An answer we cannot inspect is decided by the other rules, not
+        # silently handed on by this one.
+        self.assertTrue(ha_answer_stands("action_done", None, "HassTurnOn", []))
+        self.assertTrue(ha_answer_stands("action_done", None, "HassTurnOn", None))
+        self.assertTrue(ha_answer_stands("action_done", None, "HassTurnOn", [None, ""]))
+
+    def test_the_domain_set_stays_small_and_deliberate(self):
+        self.assertEqual(PEOPLE_DOMAINS, frozenset({"person", "device_tracker"}))
+
 
 
 if __name__ == "__main__":

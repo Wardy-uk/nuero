@@ -48,6 +48,22 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _targets_of(response: Any) -> list[str]:
+    """The entity ids an answer was about, so the rule can see WHAT it answered.
+
+    ⚠ Read defensively. These are populated on a successful query and absent on
+      an error, and a shape we cannot read must leave the decision to the other
+      rules rather than being treated as "no targets, therefore fine".
+    """
+    out: list[str] = []
+    for attr in ("success_results", "failed_results"):
+        for item in getattr(response, attr, None) or []:
+            ident = getattr(item, "id", None)
+            if isinstance(ident, str) and ident:
+                out.append(ident)
+    return out
+
+
 def _value(item: Any) -> str | None:
     """A StrEnum, a str or None, as a plain string — so the pure rule stays pure."""
     if item is None:
@@ -140,19 +156,22 @@ class SaraConversationEntity(conversation.ConversationEntity):
         # `intent` is None on an error response, so it is read defensively —
         # an unreadable field must fall through rather than be trusted.
         matched = getattr(getattr(response, "intent", None), "intent_type", None)
+        targets = _targets_of(response)
         if ha_answer_stands(
             _value(response.response_type),
             _value(response.error_code),
             _value(matched),
+            targets,
         ):
             return result
 
         _LOGGER.debug(
-            "Home Assistant did not answer %r (type=%s code=%s intent=%s); asking NEURO",
+            "Home Assistant did not answer %r (type=%s code=%s intent=%s targets=%s); asking NEURO",
             user_input.text,
             _value(response.response_type),
             _value(response.error_code),
             _value(matched),
+            targets,
         )
         return None
 

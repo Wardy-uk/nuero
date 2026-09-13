@@ -50,10 +50,47 @@ NOT_THE_HOUSE = frozenset(
 _FALL_THROUGH_CODES = frozenset({"no_intent_match", "no_valid_targets"})
 
 
+# Entity domains Home Assistant is NOT the authority on in this house.
+#
+# ⚠⚠ MEASURED, 13 Sep 2026. Asked "is anyone else home" Home Assistant answered
+#   **"No"**, matching exactly one entity: `person.nick`. Helen and Isaac were
+#   both in.
+#
+#   That is not a bug in Home Assistant, it is the shape of this house: HA holds
+#   ONE `person` entity, and the household truth lives in
+#   `binary_sensor.household_others_home`, built from Life360 (for WHO) and the
+#   router's associated-client list (for WHETHER anyone is indoors). The router
+#   is there precisely because the phone reports home ~90m out over Wi-Fi
+#   positioning, which makes the GPS geofence useless at home.
+#
+#   So when HA answers about people it is answering from the weakest source in
+#   the building, and NEURO — which reads that sensor — is the one that knows.
+#   Lights, radiators and sockets stay HA's, instantly and offline.
+PEOPLE_DOMAINS = frozenset({"person", "device_tracker"})
+
+
+def _all_targets_are_people(targets) -> bool:
+    """True when every entity the answer was about is a person or a tracker.
+
+    ⚠ ALL, not ANY. A question that touched a light as well as a person is
+      still partly about the house, and HA's answer about the light is worth
+      more than a language model's guess. Only a PURELY presence answer is
+      handed on.
+
+    ⚠ NO TARGETS MEANS THIS RULE SAYS NOTHING. An answer we cannot inspect is
+      decided by the rules above, not silently handed on by this one.
+    """
+    ids = [str(t) for t in (targets or []) if t]
+    if not ids:
+        return False
+    return all(i.split(".")[0].lower() in PEOPLE_DOMAINS for i in ids)
+
+
 def ha_answer_stands(
     response_type: str | None,
     error_code: str | None = None,
     intent_type: str | None = None,
+    targets=None,
 ) -> bool:
     """True when Home Assistant's answer should be used as-is.
 
@@ -74,6 +111,10 @@ def ha_answer_stands(
 
     # A real answer, but only if it was about the house.
     if intent_type and str(intent_type) in NOT_THE_HOUSE:
+        return False
+
+    # ⚠ …and only if it was about the house's DEVICES rather than its people.
+    if _all_targets_are_people(targets):
         return False
 
     return True

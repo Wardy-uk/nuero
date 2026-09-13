@@ -48,6 +48,22 @@ The rule for step 1 is `ha_answer.py`, and both of its fall-throughs were
   entity exists. The first draft of the rule deliberately kept that error as a
   "precise local fact"; the live wording shows it is not precise at all.
 
+A third fall-through was added the same day, and it is the sharpest:
+
+* *"is anyone else home"* → Home Assistant answered **"No"**, matching exactly
+  one entity, `person.nick`, while Helen and Isaac were both in.
+
+⚠⚠ **Home Assistant is authoritative about DEVICES, not about PEOPLE** — and
+that is the shape of this house rather than a bug. HA holds ONE `person`
+entity; the household truth lives in `binary_sensor.household_others_home`,
+built from Life360 (for WHO) and the router's associated-client list (for
+WHETHER anyone is indoors), because the phone reports home ~90m out over
+Wi-Fi positioning and the GPS geofence is useless at home. So an answer whose
+targets are **all** `person.*` or `device_tracker.*` falls through to NEURO,
+which reads that sensor. ⚠ **ALL, not ANY**: a question that touched a light
+as well as a person is still partly about the house, and HA's answer about
+the light beats a guess.
+
 ⚠ It is a **deny list, not an allow list**. An allow list of house intents
 would need extending every time HA adds a device capability, and forgetting
 would silently send working device control to a language model — slow, costly
