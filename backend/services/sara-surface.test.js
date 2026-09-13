@@ -1199,3 +1199,97 @@ test('⚠ no habit yet means NO line — not "about normal"', () => {
   assert.equal(r.note, null);
   assert.equal(r.what, '8h25', 'the night itself is still shown');
 });
+
+// ── The ritual screen: two different ends of one day ────────────────────
+//
+// It rendered the same four carried-over cards at 08:30 and at 17:30. A
+// morning ritual decides what the day is FOR; an evening one closes it.
+
+const RITUAL_BASE = {
+  primary: { kind: 'item', title: 'Finish the risk assessment', urgency: 'high', say: 'Still open.' },
+  secondary: [{ kind: 'item', title: 'Chase Naomi', urgency: 'open' }],
+  agenda: {
+    known: true,
+    scope: 'today',
+    events: [{ subject: 'Team Standup', at: '10:00', start: '2026-09-15T10:00', minutesAway: 90, attendeesOther: true }],
+  },
+  weeklyTarget: { state: 'on-track', done: 12, target: 20 },
+  lastNight: { known: true, asleepHours: 7.25, usualLine: 'usually 7h47 on a Tuesday' },
+  didRecently: { known: true, headline: '4 finished today' },
+  gaps: [],
+};
+
+const ritual = (over = {}) => surface._internals.dashRitual(
+  { ...RITUAL_BASE, ...over },
+  new Date('2026-09-15T08:30:00'),
+);
+
+test('a STANDUP leads with the night and the shape of the day', () => {
+  const d = ritual({ context: { ritual: 'standup' } });
+  assert.equal(d.label, 'your standup');
+  assert.equal(d.rows[0].when, 'slept');
+  assert.equal(d.rows[0].what, '7h15');
+  assert.equal(d.rows[0].note, 'usually 7h47 on a Tuesday', 'the habit is what makes the number mean anything');
+  const json = JSON.stringify(d);
+  assert.match(json, /Team Standup/, 'and what the day holds');
+  assert.match(json, /risk assessment/, 'and what is already owed');
+});
+
+test('an EOD leads with what he DID, and never with what he slept', () => {
+  const d = ritual({ context: { ritual: 'eod' } });
+  assert.equal(d.label, 'wrapping up');
+  assert.equal(d.rows[0].when, 'did');
+  assert.equal(d.rows[0].what, '4 finished today');
+  assert.doesNotMatch(JSON.stringify(d), /slept|7h15/, 'last night is a morning fact');
+});
+
+test('⚠ the two ends of the day do NOT render the same screen', () => {
+  // The whole complaint, as an assertion.
+  const am = JSON.stringify(ritual({ context: { ritual: 'standup' } }));
+  const pm = JSON.stringify(ritual({ context: { ritual: 'eod' } }));
+  assert.notEqual(am, pm);
+});
+
+test('⚠ it switches on the STRUCTURED flag, never on the wording of the label', () => {
+  // A reworded label must not silently change which screen renders.
+  const d = surface._internals.dashRitual(
+    { ...RITUAL_BASE, context: { ritual: 'eod', label: 'Standup outstanding' } },
+    new Date('2026-09-15T17:30:00'),
+  );
+  assert.equal(d.label, 'wrapping up', 'the flag won, not the prose');
+});
+
+test('⚠ NEGATIVE: an unknown ritual falls back to what is carried and guesses NOTHING', () => {
+  for (const ctx of [undefined, {}, { ritual: null }, { ritual: 'brunch' }, { label: 'Standup outstanding' }]) {
+    const d = ritual({ context: ctx });
+    assert.equal(d.label, 'carried over', JSON.stringify(ctx));
+    assert.equal(d.figure, null, 'and claims no week it was not asked about');
+    assert.doesNotMatch(JSON.stringify(d), /slept/, 'a morning screen at the wrong end of the day is worse than a neutral one');
+  }
+});
+
+test('⚠ an unreadable diary SAYS so, and is never an empty day', () => {
+  const d = ritual({ context: { ritual: 'standup' }, agenda: { known: false } });
+  assert.match(d.note, /couldn/i);
+  assert.doesNotMatch(d.note, /nothing/i, '"I could not look" and "there is nothing" license opposite things');
+});
+
+test('a read-but-EMPTY diary says THAT instead', () => {
+  const d = ritual({ context: { ritual: 'standup' }, agenda: { known: true, scope: 'today', events: [] } });
+  assert.match(d.note, /Nothing in the diary/);
+});
+
+test('⚠ an unset weekly target is NOT a target of zero', () => {
+  const d = ritual({ context: { ritual: 'eod' }, weeklyTarget: { state: 'unset', done: 12 } });
+  assert.equal(d.figure, null, 'a full empty bar would say he did none of the nothing he set');
+});
+
+test('⚠ NEGATIVE: the ritual screen never GRADES the day', () => {
+  const json = [
+    JSON.stringify(ritual({ context: { ritual: 'standup' } })),
+    JSON.stringify(ritual({ context: { ritual: 'eod' } })),
+  ].join(' ');
+  for (const verdict of [/good day/i, /bad day/i, /well done/i, /behind/i, /streak/i, /score/i, /you should/i, /productive/i]) {
+    assert.doesNotMatch(json, verdict, String(verdict));
+  }
+});

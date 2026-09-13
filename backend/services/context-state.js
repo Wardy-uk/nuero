@@ -446,6 +446,15 @@ function resolveContext(inputs = {}, now = new Date()) {
   let label;
   let summary;
   let quiet = false;
+  // WHICH ritual is outstanding, as a STRUCTURED value rather than a word in
+  // `label`. A surface that wants to show a different screen for a standup
+  // than for an EOD has to ask something; matching /standup/i against prose
+  // means rewording the label silently changes which dashboard renders - the
+  // rule `readinessSentence` already draws, one layer up.
+  //
+  // WARNING  null is 'no ritual outstanding', and is the answer in every other
+  //   activity. It is never a default of 'standup'.
+  let ritual = null;
 
   // ── Priority resolution ────────────────────────────────────────────────────
   // Most-committed signal wins. "Committed" rather than "urgent": being in a
@@ -488,12 +497,14 @@ function resolveContext(inputs = {}, now = new Date()) {
   } else if (isWorkingDay && known(src.rituals) && src.rituals.standupOutstanding && hour < MORNING_ENDS_HOUR) {
     activity = ACTIVITY.RITUAL;
     label = 'Standup outstanding';
+    ritual = 'standup';
     summary = "The standup hasn't been done yet.";
     reasons.push(`It is before ${MORNING_ENDS_HOUR}:00 and the standup is still outstanding.`);
     derivedFrom.push('rituals');
   } else if (isWorkingDay && known(src.rituals) && src.rituals.eodOutstanding && hour >= LATE_DAY_STARTS_HOUR) {
     activity = ACTIVITY.RITUAL;
     label = 'EOD outstanding';
+    ritual = 'eod';
     summary = "The end-of-day wrap hasn't been done yet.";
     reasons.push(`It is after ${LATE_DAY_STARTS_HOUR}:00 and the EOD is still outstanding.`);
     derivedFrom.push('rituals');
@@ -530,6 +541,7 @@ function resolveContext(inputs = {}, now = new Date()) {
   return {
     activity,
     label,
+    ritual,
     summary,
     place,
     quiet,

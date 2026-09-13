@@ -168,6 +168,21 @@ test('standup only counts in the morning, EOD only late', () => {
   assert.equal(resolveContext(calm({ rituals }), TUE_1700).label, 'EOD outstanding');
 });
 
+test('⚠ it says WHICH ritual, as a value rather than a word in the label', () => {
+  // A surface showing a different screen for a standup than for an EOD has to
+  // ask something. Matching /standup/i against `label` means a reworded label
+  // silently changes which dashboard renders - the rule `readinessSentence`
+  // draws one layer up.
+  const rituals = { known: true, standupOutstanding: true, eodOutstanding: true };
+  assert.equal(resolveContext(calm({ rituals }), TUE_0930).ritual, 'standup');
+  assert.equal(resolveContext(calm({ rituals }), TUE_1700).ritual, 'eod');
+});
+
+test('⚠ NEGATIVE: no ritual outstanding is NULL, never a default of standup', () => {
+  assert.equal(resolveContext(calm(), TUE_0930).ritual, null, 'a calm morning');
+  const rituals = { known: true, standupOutstanding: true, eodOutstanding: true };
+  assert.equal(resolveContext(calm({ rituals }), TUE_1430).ritual, null, 'and mid-afternoon, between the windows');
+});
 test('a ritual is never chased on a non-working day', () => {
   const c = resolveContext(
     calm({

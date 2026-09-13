@@ -535,15 +535,113 @@ function dashSession(payload, session) {
   };
 }
 
-function dashRitual(payload) {
-  const cards = [payload.primary, ...(Array.isArray(payload.secondary) ? payload.secondary : [])]
+/**
+ * The standup and the EOD are DIFFERENT SCREENS (13 Sep 2026).
+ *
+ * ⚠⚠ This rendered the same four carried-over cards at 08:30 and at 17:30,
+ *   which is Nick's complaint in miniature - the screen always looked more or
+ *   less the same. A morning ritual decides what the day is FOR; an evening
+ *   one closes it. They want opposite halves of the payload, and both halves
+ *   were already on it and being thrown away.
+ *
+ * ⚠ IT SWITCHES ON `context.ritual`, A STRUCTURED VALUE, never on the wording
+ *   of `context.label`. Matching /standup/i against prose means a reworded
+ *   label silently changes which screen renders - the rule
+ *   `readinessSentence` already draws one layer up.
+ *
+ * ⚠ AN UNKNOWN RITUAL FALLS BACK TO WHAT IS CARRIED, and never guesses. A
+ *   morning screen shown at the end of the day is worse than a neutral one.
+ *
+ * ⚠ NOTHING HERE IS A SCORE. It states what was slept, what is in the diary
+ *   and what is still open - never how well the day went. `initiation-signals`
+ *   and `wins` both refuse to grade, and the ritual screen is the single most
+ *   tempting place in the system to start.
+ */
+function dashRitual(payload, now) {
+  const ctx = payload.context;
+  const which = isObj(ctx) && (ctx.ritual === 'standup' || ctx.ritual === 'eod') ? ctx.ritual : null;
+
+  const carried = [payload.primary, ...(Array.isArray(payload.secondary) ? payload.secondary : [])]
     .filter((c) => c && c.kind === 'item');
+  const carriedRows = (limit) => carried.slice(0, limit).map(
+    (c) => row(c.urgency || 'open', c.title, { note: c.say || null })
+  );
+
+  if (which === null) {
+    // The brain says a ritual is outstanding and did not say which. Show what
+    // is open - true at either end of the day - rather than picking one.
+    return {
+      kind: SURFACES.RITUAL,
+      label: 'carried over',
+      rows: carriedRows(4),
+      figure: null,
+      note: null,
+    };
+  }
+
+  const agenda = payload.agenda;
+  const diaryKnown = isObj(agenda) && agenda.known === true;
+  // ⚠ The CANONICAL agenda renderer, shared with the steady and pre-meeting
+  //   screens: it drops the running event (that is the `now` slot's job) and
+  //   suppresses a countdown the transition is already speaking.
+  const diary = agendaRows(agenda, which === 'standup' ? 3 : 2, {
+    countdownHandledFor: transitionSubject(payload),
+  });
+
+  const rows = [];
+
+  if (which === 'standup') {
+    // --- How the night went ------------------------------------------
+    // WARNING  IT STATES AND NEVER DIAGNOSES. 7h14 against a usual 7h47 Tuesday
+    //   is a comparison he can check against his own data. "You look tired" is
+    //   a verdict nothing here has the standing to give - `health-daily`'s
+    //   line, inherited rather than re-decided.
+    const sleep = payload.lastNight;
+    if (isObj(sleep) && sleep.known && Number.isFinite(sleep.asleepHours)) {
+      const h = Math.floor(sleep.asleepHours);
+      const m = Math.round((sleep.asleepHours - h) * 60);
+      rows.push(row('slept', h + 'h' + String(m).padStart(2, '0'), { note: sleep.usualLine || null }));
+    }
+    // --- What the day is shaped like ---------------------------------
+    rows.push(...diary);
+    // --- What is already owed ----------------------------------------
+    rows.push(...carriedRows(3));
+  } else {
+    // --- What he actually did ----------------------------------------
+    // WARNING  `wins.headline` returns NULL on an empty day on purpose. There
+    //   is no encouraging version of nothing, and inventing one is the
+    //   register sara-voice rejects - so the row is simply absent.
+    const did = payload.didRecently;
+    if (isObj(did) && did.known && did.headline) rows.push(row('did', did.headline));
+    // --- What is still open ------------------------------------------
+    rows.push(...carriedRows(3));
+    // --- What is coming ----------------------------------------------
+    // ⚠ `agendaFor` has already rolled forward past an empty tomorrow and
+    //   `scope` names the day it landed on - on a Friday evening, Monday.
+    rows.push(...diary);
+  }
+
   return {
     kind: SURFACES.RITUAL,
-    label: 'carried over',
-    rows: cards.slice(0, 4).map((c) => row(c.urgency || 'open', c.title, { note: c.say || null })),
-    figure: null,
-    note: null,
+    label: which === 'standup' ? 'your standup' : 'wrapping up',
+    // The brain's own word for which day the diary rows belong to, rendered
+    // verbatim - a client deciding 'today' vs 'tomorrow' for itself is a
+    // second opinion about the one thing an agenda is for.
+    now: nowSlot(agenda),
+    rows,
+    // ⚠ FOUR states, and `unset` is NOT a target of zero - which renders as a
+    //   full empty bar saying he did none of the nothing he set. One builder,
+    //   shared with the steady and evening screens, so no two of them can
+    //   disagree about the week.
+    figure: weekFigure(payload.weeklyTarget),
+    // ⚠ THREE DISTINCT FACTS and only the last two are good news: "I couldn't
+    //   see your diary", "nothing left", "here is what's left". Collapsing the
+    //   first into either of the others is the failure the provenance model
+    //   exists to prevent.
+    note: !diaryKnown ? 'I couldn’t read your diary, so this isn’t the whole day.'
+      : diary.length === 0
+        ? (which === 'standup' ? 'Nothing in the diary today.' : 'Nothing else in the diary.')
+        : null,
   };
 }
 
@@ -1117,7 +1215,7 @@ function compose(payload, opts = {}) {
     case SURFACES.FIREFIGHTING: dashboard = dashFirefighting(safe); break;
     case SURFACES.PRE_MEETING: dashboard = dashPreMeeting(safe); break;
     case SURFACES.SESSION: dashboard = dashSession(safe, session); break;
-    case SURFACES.RITUAL: dashboard = dashRitual(safe); break;
+    case SURFACES.RITUAL: dashboard = dashRitual(safe, now); break;
     case SURFACES.OFF_DUTY: dashboard = dashOffDuty(safe, now); break;
     case SURFACES.INBOX: dashboard = dashInbox(safe); break;
     default: dashboard = dashSteady(safe); break;
@@ -1155,7 +1253,7 @@ module.exports = {
   // Exported for the tests, which drive each dashboard directly rather than
   // through eight payload fixtures.
   _internals: {
-    dashSteady, dashSession, dashOffDuty, dashBlind, dashFirefighting, dashPreMeeting, dashInMeeting,
+    dashSteady, dashSession, dashOffDuty, dashRitual, dashBlind, dashFirefighting, dashPreMeeting, dashInMeeting,
     utterancesFor, timeOf, endTimeOf, nowSlot, agendaRows, coveredBy, countdownFor,
     COUNTDOWN_MINUTES,
   },
