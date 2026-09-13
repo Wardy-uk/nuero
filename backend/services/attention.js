@@ -1176,6 +1176,11 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     const draft = {
       context,
       weeklyTarget,
+      // ⚠ This is a WHITELIST, and a field left out is dropped in silence.
+      //   `weather` was on the payload and absent here, so the off-duty
+      //   dashboard rendered no weather while the value sat one object away.
+      //   Same species as the `/api/todos` whitelist that swallowed `jiraKey`.
+      weather,
       ...gated,
       agenda: agendaFor(inputs.calendar, now, 4, _tomorrowEvents(), {
         personal: context.duty ? context.duty.onDuty === false : false,

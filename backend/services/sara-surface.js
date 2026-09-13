@@ -507,6 +507,28 @@ function dashRitual(payload) {
   };
 }
 
+/**
+ * Where he is, in words a person would use.
+ *
+ * ⚠ `context.place` IS AN OBJECT, not a string: `{known, name, source, room,
+ *   roomSubject}`. Interpolating it renders the literal text `[object Object]`,
+ *   which is what shipped for about four minutes on 13 Sep 2026 and is exactly
+ *   why the real payload gets looked at rather than assumed.
+ *
+ * ⚠ `name` is the ZONE ('Home', 'Office') and reads `unknown` when he is in no
+ *   named zone; `room` is SARA's own BLE classification. The room is the more
+ *   useful of the two indoors, and the zone is the honest answer when there is
+ *   no room. Neither is invented — no place, no row.
+ */
+function placeLabel(place) {
+  if (!isObj(place)) return null;
+  const room = typeof place.room === 'string' && place.room && place.room !== 'unclear' ? place.room : null;
+  if (room) return room.replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
+  const name = typeof place.name === 'string' ? place.name.trim() : '';
+  if (name && name.toLowerCase() !== 'unknown') return name;
+  return null;
+}
+
 function dashOffDuty(payload) {
   const wt = payload.weeklyTarget;
   const rows = [];
@@ -532,9 +554,8 @@ function dashOffDuty(payload) {
 
   // --- Where he is -----------------------------------------------------
   const ctx = payload.context;
-  if (isObj(ctx) && ctx.place) {
-    rows.push(row('here', ctx.place, { note: ctx.label || null }));
-  }
+  const where = isObj(ctx) ? placeLabel(ctx.place) : null;
+  if (where) rows.push(row('here', where, { note: ctx.label || null }));
 
   // --- What it is doing outside ----------------------------------------
   const w = payload.weather;
@@ -990,6 +1011,7 @@ function compose(payload, opts = {}) {
 }
 
 module.exports = {
+  placeLabel,
   compose,
   surfaceFor,
   surfaceForQuestion,

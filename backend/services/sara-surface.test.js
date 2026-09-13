@@ -884,7 +884,10 @@ test('⚠ an EMPTY firefighting panel still says something', () => {
 
 function offDuty(over = {}) {
   return compose(payload({
-    context: { activity: 'off', place: 'Home', label: 'Off duty' },
+    // ⚠ The REAL shape, taken off the live payload. A string here is what let
+    // `[object Object]` ship: a fixture in the wrong shape passes for the
+    // wrong reason.
+    context: { activity: 'off', place: { known: true, name: 'unknown', room: 'living-room', source: 'owntracks' }, label: 'Off duty' },
     weather: { known: true, condition: 'cloudy', tempC: 18.2 },
     agenda: { known: true, scope: 'monday', events: [{ subject: 'Tech Leadership', at: '09:30' }] },
     weeklyTarget: { state: 'on-track', done: 29, target: 30 },
@@ -893,7 +896,7 @@ function offDuty(over = {}) {
 }
 
 test('off duty says where he is', () => {
-  assert.ok(offDuty().rows.some(r => /Home/.test(r.what)));
+  assert.ok(offDuty().rows.some(r => /Living room/.test(r.what)));
 });
 
 test('off duty says what it is doing outside', () => {
@@ -943,4 +946,29 @@ test('⚠ the laptop being off is NOT worth a word off duty', () => {
   // about itself. Off duty, a laptop that is off is the normal case.
   const d = offDuty({ work: { known: true, atDesk: false, deskKnown: false } });
   assert.doesNotMatch(JSON.stringify(d.rows), /laptop/i);
+});
+
+// ── `context.place` is an OBJECT (13 Sep 2026) ───────────────────────────────
+//
+// ⚠ Interpolating it renders the literal text `[object Object]`, which is what
+// shipped for about four minutes — caught by looking at the real payload rather
+// than trusting the shape I assumed. `{known, name, source, room, roomSubject}`.
+
+test('⚠ NEGATIVE: the place object never reaches the screen as [object Object]', () => {
+  const d = offDuty({ context: { activity: 'off', place: { known: true, name: 'unknown', room: 'living-room', source: 'owntracks' } } });
+  assert.doesNotMatch(JSON.stringify(d.rows), /\[object Object\]/);
+  assert.ok(d.rows.some(r => r.what === 'Living room'));
+});
+
+test('the ROOM is preferred indoors, and the zone is the fallback', () => {
+  assert.equal(surface.placeLabel({ room: 'living-room', name: 'unknown' }), 'Living room');
+  assert.equal(surface.placeLabel({ room: null, name: 'Office' }), 'Office');
+});
+
+test('⚠ no place is NO ROW — never a guessed one', () => {
+  for (const p of [{ room: 'unclear', name: 'unknown' }, null, {}, { name: '   ' }]) {
+    assert.equal(surface.placeLabel(p), null, JSON.stringify(p));
+  }
+  const d = offDuty({ context: { activity: 'off', place: { room: 'unclear', name: 'unknown' } } });
+  assert.equal(d.rows.some(r => r.when === 'here'), false);
 });
