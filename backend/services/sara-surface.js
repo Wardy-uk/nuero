@@ -1193,6 +1193,51 @@ function coveredBy(payload, dashboard) {
  * @param {object} [opts.session]  the active focus session projection, if any
  * @returns {{surface: string, dashboard: object, utterances: Array}}
  */
+
+// ── When there is nothing to put in front of him ────────────────────────────
+//
+// THREE SILENCES, kept apart, and only the last is good news:
+//
+//   * BLIND      — "I can't see your work", which is NOT an all-clear.
+//   * QUIET      — she is deliberately staying out of the way.
+//   * CLEAR      — she looked, and there is genuinely nothing pending.
+//
+// ⚠ COMPOSED HERE BECAUSE IT WAS BEING COMPOSED FOUR TIMES. Every client wrote
+// its own wording for these — and they drifted, which is exactly what they were
+// always going to do: on 13 Sep 2026 the wall said "Not a working day / It's
+// the weekend" while the phone, two feet away, said "It's the weekend /
+// Nothing here needs you" about the same moment. One brain, one sentence, three
+// renderers is the rule every other line on this payload already follows
+// (`say`, `speech`, `tab`, the transition wording); the silences were simply
+// never brought inside it.
+//
+// ⚠ `context.summary` WINS for the quiet case where the brain has one. It is
+// the situation in her own words — "Not a working day", "You're in X" — and is
+// more specific than anything that can be written here.
+//
+// ⚠ It is only ever a FALLBACK for a client that cannot render it, never a
+// replacement for the primary: where there IS something pending this returns
+// null, because a silence composed over a full feed is a lie about the day.
+function silenceFor(payload) {
+  const p = isObj(payload) ? payload : {};
+  if (p.primary) return null;
+
+  if (p.poolAvailable === false) {
+    return {
+      kind: 'blind',
+      lead: 'I can’t see your work right now.',
+      sub: 'So don’t read this as an all-clear.',
+    };
+  }
+  if (p.quiet === true) {
+    const summary = typeof p.context?.summary === 'string' && p.context.summary.trim()
+      ? p.context.summary.trim()
+      : 'Staying out of the way.';
+    return { kind: 'quiet', lead: summary, sub: 'Nothing here needs you.' };
+  }
+  return { kind: 'clear', lead: 'Nothing pressing.', sub: 'Everything’s where it should be.' };
+}
+
 function compose(payload, opts = {}) {
   const safe = isObj(payload) ? payload : {};
   // The clock, for anything that needs to name the time of day. Passed in
@@ -1239,10 +1284,14 @@ function compose(payload, opts = {}) {
     utterances: utterancesFor(safe, surface, session),
     // Advisory only — see `coveredBy`. Nothing has been removed from the pool.
     covered: coveredBy(safe, dashboard),
+    // What she says when there is nothing to put in front of him — one wording
+    // for every surface. Null whenever there IS a primary.
+    silence: silenceFor(safe),
   };
 }
 
 module.exports = {
+  silenceFor,
   partOfDay,
   placeLabel,
   compose,

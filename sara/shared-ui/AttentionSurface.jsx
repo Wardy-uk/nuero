@@ -162,6 +162,9 @@ export default function AttentionSurface({
     // here for the shelf — `known: false` is an unread sky, which is a different
     // fact from a clear one and is printed as such.
     weather = null,
+    // What she says when there is nothing to put in front of him, composed once
+    // by `sara-surface` so four renderers cannot word it four ways.
+    silence = null,
     // ⚠ WHY THIS PANEL IS THE ONE ON SCREEN. `sara-surface` has composed it
     // since the ask flow shipped, `attention` carries it, four tests pin it —
     // and NO client read it, web or iOS. So the honesty it exists to provide
@@ -553,22 +556,29 @@ export default function AttentionSurface({
           ) : (
             // ⚠ THREE genuinely different facts, and only the last is good news.
             <>
-              {!poolAvailable ? (
-                <>
-                  <p className="surface__saylead">I can&rsquo;t see your work right now.</p>
-                  <p className="surface__saysub">So don&rsquo;t read this as an all-clear.</p>
-                </>
-              ) : quiet ? (
-                <>
-                  <p className="surface__saylead">{context?.summary || 'Staying out of the way.'}</p>
-                  <p className="surface__saysub">Nothing here needs you.</p>
-                </>
-              ) : (
-                <>
-                  <p className="surface__saylead">Nothing pressing.</p>
-                  <p className="surface__saysub">Everything&rsquo;s where it should be.</p>
-                </>
-              )}
+              {/* ⚠ THE BRAIN'S WORDING, RENDERED VERBATIM. These three were
+                  written out here AND on iOS AND in the widget, and they drifted
+                  exactly as four copies of one sentence always do: on 13 Sep
+                  2026 the wall said "Not a working day / It's the weekend" while
+                  the phone two feet away said "It's the weekend / Nothing here
+                  needs you" about the same moment. `silence` is composed once,
+                  beside `say` and `speech`.
+
+                  ⚠ The local wording survives ONLY as the fallback for a payload
+                  too old to carry it — a screen with no sentence at all is worse
+                  than two screens with slightly different ones. */}
+              <p className="surface__saylead">
+                {silence?.lead
+                  || (!poolAvailable ? 'I can’t see your work right now.'
+                    : quiet ? (context?.summary || 'Staying out of the way.')
+                      : 'Nothing pressing.')}
+              </p>
+              <p className="surface__saysub">
+                {silence?.sub
+                  || (!poolAvailable ? 'So don’t read this as an all-clear.'
+                    : quiet ? 'Nothing here needs you.'
+                      : 'Everything’s where it should be.')}
+              </p>
             </>
           ))}
           {/* ⚠ INSIDE the centrepiece in this layout, not below it. What she said

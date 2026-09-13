@@ -1293,3 +1293,41 @@ test('⚠ NEGATIVE: the ritual screen never GRADES the day', () => {
     assert.doesNotMatch(json, verdict, String(verdict));
   }
 });
+
+// ── One wording for the silences, on every surface ─────────────────────────
+test('the three silences are composed once, and stay three', () => {
+  const blind = surface.silenceFor({ poolAvailable: false });
+  const quiet = surface.silenceFor({ quiet: true, context: { summary: 'Not a working day' } });
+  const clear = surface.silenceFor({});
+
+  // ⚠ THREE DIFFERENT FACTS AND ONLY THE LAST IS GOOD NEWS. Conflating them is
+  // how a broken feed comes to look like a calm day.
+  assert.equal(blind.kind, 'blind');
+  assert.equal(quiet.kind, 'quiet');
+  assert.equal(clear.kind, 'clear');
+  assert.notEqual(blind.lead, clear.lead);
+  assert.notEqual(quiet.lead, clear.lead);
+
+  // ⚠ THE BLIND ONE MUST REFUSE TO READ AS AN ALL-CLEAR, in words.
+  assert.match(blind.lead + ' ' + blind.sub, /all-clear/i);
+
+  // ⚠ The situation in HER words wins where the brain has them: "Not a working
+  // day" is more specific than anything that can be written here.
+  assert.equal(quiet.lead, 'Not a working day');
+  assert.equal(surface.silenceFor({ quiet: true }).lead, 'Staying out of the way.');
+});
+
+test('a silence is never composed over a day that has something in it', () => {
+  // ⚠ It is what she says INSTEAD of a primary. Carried alongside one it would
+  // be a second, quieter answer contradicting the first.
+  assert.equal(surface.silenceFor({ primary: { title: 'NT-27530' } }), null);
+  assert.equal(surface.silenceFor({ primary: { title: 'x' }, poolAvailable: false }), null);
+  // Positive control: with no primary there IS one.
+  assert.ok(surface.silenceFor({}));
+});
+
+test('the composed payload carries the silence beside say and speech', () => {
+  const out = surface.compose({ quiet: true, context: { summary: 'In a meeting' } });
+  assert.equal(out.silence.kind, 'quiet');
+  assert.equal(out.silence.lead, 'In a meeting');
+});

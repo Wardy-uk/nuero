@@ -510,6 +510,11 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     && new URLSearchParams(window.location.search).get('look') === 'list'
     ? 'list' : 'approach';
 
+  // Does the brain's own sentence list already carry the way out?
+  const hasRevealUtterance = Boolean(onSay)
+    && Array.isArray(data?.utterances)
+    && data.utterances.some((u) => u && u.intent && u.intent.kind === 'reveal');
+
   return (
     <AttentionSurface
       layout={look}
@@ -569,7 +574,18 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
               {listening ? 'Listening — tap to send' : '🎤 Talk to me'}
             </button>
           )}
-          <button type="button" className="surface__all" onClick={() => onShowAll?.()}>Show me everything</button>
+          {/* ⚠ THE ESCAPE HATCH, ONCE. The composer already ends every utterance
+              list with "Show me everything" (`kind: reveal`, always last, never
+              dropped), so where the sentences are on screen this button printed
+              it a SECOND time — on the wall it read twice, a foot apart.
+
+              ⚠ Hidden only where the sentence exists AND this shell can act on
+              one. Either missing and the button comes back: the one screen with
+              no menu must always have a way round it, and a hatch that vanishes
+              because a composition failed is the failure that strands him. */}
+          {!hasRevealUtterance && (
+            <button type="button" className="surface__all" onClick={() => onShowAll?.()}>Show me everything</button>
+          )}
         </div>
       )}
     />
