@@ -119,7 +119,6 @@ export default function Approach({
     return {
       card,
       key: card.id || `c${i}`,
-      lead: i === 0,
       at,
       tethered: at != null && !past && pull > 0.12,
       z,
@@ -132,6 +131,14 @@ export default function Approach({
       row,
     };
   });
+
+  // ⚠ THE LEAD IS THE NEAREST CARD, NOT THE FIRST ONE. Marking index 0 the hero
+  // gave the treatment to whatever the composer happened to list first — on a
+  // quiet Sunday that was "home / Not a working day", the least informative row
+  // on the screen, rendered larger than anything else. Depth is the whole
+  // argument of this layout: the thing at the front IS the lead, by definition.
+  const nearest = placed.reduce((best, p) => (best == null || p.z > best.z ? p : best), null);
+  placed.forEach((p) => { p.lead = nearest != null && p === nearest; });
 
   // Hour marks and tethers, drawn once per layout change. Deliberately a canvas
   // and not a hundred absolutely-positioned divs: this redraws on every resize

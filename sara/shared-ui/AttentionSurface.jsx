@@ -215,7 +215,14 @@ export default function AttentionSurface({
       // being placed by pull alone in the middle of the corridor while the
       // shelf printed the same reading — the same thing twice, on one screen,
       // which is the duplication this surface keeps removing.
-      if (String(r.when || '').toLowerCase() === 'outside') return;
+      const when = String(r.when || '').toLowerCase();
+      if (when === 'outside') return;
+      // ⚠ `here` IS HER SENTENCE AGAIN. The row reads "home / Not a working day"
+      // while she says "Not a working day" underneath and the shell's header
+      // already prints the room — the same fact three times, which is the
+      // duplication this whole layout exists to remove. Where he is belongs to
+      // the place line, not the track.
+      if (when === 'here') return;
       // ⚠ MIDNIGHT IS AN ALL-DAY EVENT, NOT AN HOUR. `2026-09-13T00:00:00` is
       // how an all-day entry arrives, and showing it as "00:00" states a time
       // nobody set — the one thing this corridor must never do. It keeps its
