@@ -49,7 +49,16 @@ test('states come from cadenceState, not from a second interpretation', () => {
   assert.match(out, /Booked Person.*📅 Booked 2026-08-20/);
   // A booking whose date has passed with no note is "not written up" — NOT
   // "book one", which is what keeps a cancelled 1-2-1 visible.
-  assert.match(out, /Unwritten Person.*✍️ Held 2026-08-10, not written up/);
+  //
+  // ⚠ The STATE is unchanged; the WORDS changed on 13 Sep 2026. This line used
+  // to pin "✍️ Held 2026-08-10, not written up" — and the table this builds is
+  // written into the vault, so that string put a claim in Nick's second brain
+  // that a 1-2-1 had taken place when `cadenceState`'s own comment says nothing
+  // here can know that. A test pinning the exact wording is what made the claim
+  // look deliberate.
+  assert.match(out, /Unwritten Person.*📅 Scheduled 2026-08-10 — no note/);
+  // ⚠ And it must not assert attendance in any form, whatever it is reworded to.
+  assert.ok(!/\bHeld\b|\bMet\b|\bAttended\b/i.test(out), out);
   assert.match(out, /Overdue Person.*⚠️ Overdue by 16d/);
   assert.match(out, /Soon Person.*⏳ Due in 1d/);
 });

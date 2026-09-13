@@ -716,7 +716,24 @@ function syncPeopleNotes({ apply = false } = {}) {
  */
 const CADENCE_LABEL = {
   booked: (s) => `📅 Booked ${s.booked}`,
-  unwritten: (s) => `✍️ Held ${s.booked}, not written up`,
+  // ⚠ "SCHEDULED", NEVER "HELD". `cadenceState` says of this exact state that
+  // "a booking is a SCHEDULE, never evidence of attendance — nothing here knows
+  // whether the meeting took place", and then the label two hundred lines below
+  // it asserted the meeting happened. Live on 13 Sep 2026 it read "✍️ Held
+  // 2026-09-07, not written up" about Sebastian Broome — the very person whose
+  // comment up there records a stale booking hiding a 48-day gap — and the same
+  // string is WRITTEN INTO THE VAULT by `one-to-one-tracker`, so a note in Nick's
+  // own second brain stated a 1-2-1 had been held that nothing could know about.
+  // `PeopleBoard.get121Status` had this right ("Scheduled", never "Met") and the
+  // server copy did not: the BROWSER copy was the one carrying the correction.
+  //
+  // ⚠ IT ALSO SWALLOWED THE OVERDUE FACT. `cadenceState` computes `daysOverdue`
+  // on this state precisely so a stale booking cannot mask a genuinely overdue
+  // 1-2-1, and the label dropped it — so the number was carried, correct, and
+  // said by nobody. The suffix is ABSENT rather than "0d" when the cadence date
+  // has not passed, which is the ordinary seen-last-week-not-written-up case.
+  unwritten: (s) => `📅 Scheduled ${s.booked} — no note`
+    + (s.daysOverdue ? ` · overdue by ${s.daysOverdue}d` : ''),
   overdue: (s) => `⚠️ Overdue by ${s.daysOverdue}d`,
   'due-soon': (s) => `⏳ Due in ${s.daysUntil}d`,
   ok: (s) => (s.nextDue ? `✅ Due ${s.nextDue}` : '—'),

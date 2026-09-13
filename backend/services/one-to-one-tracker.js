@@ -54,7 +54,13 @@ function todayStr(d = new Date()) {
 // board and the nudge cannot drift apart on what "overdue" means.
 // ⚠ The wording MOVED to `one-to-one-detect.cadenceLabel` (13 Sep 2026) so the
 // tracker, the API and the iOS People screen cannot phrase one state three
-// ways. The strings are unchanged, so the rendered table is byte-identical.
+// ways. ⚠ This line used to add "the strings are unchanged, so the rendered
+// table is byte-identical", and LATER THE SAME DAY one of them changed: the
+// `unwritten` label read "Held <date>, not written up", which asserts a meeting
+// took place — the one claim `cadenceState` documents that nothing here can
+// make — and this function writes it into the vault. The table is NOT
+// byte-identical to the pre-move version any more, and that is the point of
+// having moved it: one correction reached all three surfaces.
 
 function _escapeCell(v) {
   // A role or note containing a pipe would silently break the table row.

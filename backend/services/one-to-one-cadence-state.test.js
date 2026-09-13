@@ -152,3 +152,53 @@ test('a detected note carries a person who was never stamped at all', () => {
   assert.equal(f.lastHeld, '2026-08-20');
   assert.equal(f.nextDue, '2026-08-27');
 });
+
+// ---------------------------------------------------------------------------
+// The WORDS, not just the state (13 Sep 2026)
+//
+// Found by comparing the server rule against `PeopleBoard.get121Status`, the
+// browser copy kept for consolidation: the two agreed on every state and
+// DISAGREED on what to call one of them. `cadenceState` says of `unwritten`
+// that "a booking is a SCHEDULE, never evidence of attendance - nothing here
+// knows whether the meeting took place", and the label two hundred lines below
+// it read "Held <date>, not written up". Live that rendered against Sebastian
+// Broome, the exact person the comment names, and the same string is WRITTEN
+// INTO THE VAULT by one-to-one-tracker.
+// ---------------------------------------------------------------------------
+
+const { cadenceLabel } = require('./one-to-one-detect');
+
+test('a booking is never described as a meeting that happened', () => {
+  for (const days of [null, 48]) {
+    const label = cadenceLabel({ state: 'unwritten', booked: '2026-09-07', daysOverdue: days });
+    // The forbidden claim, in every form the wording has taken.
+    assert.ok(!/held/i.test(label), `label claims attendance: ${label}`);
+    assert.ok(!/met/i.test(label), `label claims attendance: ${label}`);
+    assert.ok(!/attended/i.test(label), `label claims attendance: ${label}`);
+    // Positive control: it still says the useful half.
+    assert.match(label, /2026-09-07/);
+    assert.match(label, /no note/i);
+  }
+});
+
+test('a stale booking cannot hide an overdue 1-2-1', () => {
+  // `cadenceState` computes daysOverdue on this state precisely so a booking
+  // that has been and gone does not mask a real gap - and the label dropped it,
+  // so the number was carried, correct, and said by nobody.
+  const label = cadenceLabel({ state: 'unwritten', booked: '2026-09-07', daysOverdue: 48 });
+  assert.match(label, /overdue by 48d/);
+});
+
+test('the ordinary not-written-up-yet case carries no overdue suffix', () => {
+  // Seen last week, note not written. ABSENT rather than "0d": a zero there
+  // reads as a deadline that has just passed rather than one that has not.
+  const label = cadenceLabel({ state: 'unwritten', booked: '2026-09-07', daysOverdue: null });
+  assert.ok(!/overdue/i.test(label), label);
+});
+
+test('positive control - the other labels still render', () => {
+  assert.match(cadenceLabel({ state: 'overdue', daysOverdue: 12 }), /Overdue by 12d/);
+  assert.match(cadenceLabel({ state: 'booked', booked: '2026-09-17' }), /Booked 2026-09-17/);
+  assert.match(cadenceLabel({ state: 'due-soon', daysUntil: 2 }), /Due in 2d/);
+  assert.equal(cadenceLabel(null), '—');
+});
