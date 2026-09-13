@@ -987,6 +987,15 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     gaps.push({ input: 'current-work', why: e.message });
   }
 
+  // What it is doing outside. Not work, which is precisely why an off-duty
+  // screen wants it — and it costs one local read of a value HA already holds.
+  let weather = null;
+  try {
+    weather = await require('./ha-rooms').readWeather();
+  } catch (e) {
+    gaps.push({ input: 'weather', why: e.message });
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   //
   // The gated feed is reconciled against durable records so a card can be
@@ -1203,6 +1212,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     ambient,
     rooms,
     work,
+    weather,
     ...gated,
     // ── What she SHOWS, and what he could SAY ────────────────────────────
     // Nick, 31 Aug 2026: SARA is a manifestation, not a menu — "a series of

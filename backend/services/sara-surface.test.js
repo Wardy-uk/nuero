@@ -545,7 +545,10 @@ test('⚠ an unset weekly target is NOT a target of zero', () => {
   // A target of zero renders as "you did none of the nothing you set".
   const unset = compose(payload({ context: { activity: 'off' }, weeklyTarget: { state: 'unset' } }));
   assert.equal(unset.dashboard.figure, null);
-  assert.match(unset.dashboard.rows[0].what, /No target set/i);
+  // ⚠ Found by ROW, not by index. The off-duty dashboard gained where-he-is,
+  // weather and the diary on 13 Sep 2026, so position is no longer stable — and
+  // this test is about the RULE (unset is not zero), never about the order.
+  assert.ok(unset.dashboard.rows.some(r => /No target set/i.test(r.what)));
 
   // And "I couldn't count" is a third state, not a bad week.
   const unknown = compose(payload({
@@ -553,7 +556,7 @@ test('⚠ an unset weekly target is NOT a target of zero', () => {
     weeklyTarget: { state: 'unknown', reason: 'ledger unreadable' },
   }));
   assert.equal(unknown.dashboard.figure, null);
-  assert.equal(unknown.dashboard.rows[0].level, 'warn');
+  assert.ok(unknown.dashboard.rows.some(r => r.level === 'warn' && /couldn/i.test(r.what)));
 });
 
 // ── Utterances ──────────────────────────────────────────────────────────────
@@ -865,4 +868,79 @@ test('⚠ an EMPTY firefighting panel still says something', () => {
     escalations: { known: false, items: [] },
   }), { ask: 'anything escalating?' });
   assert.doesNotMatch(unread.dashboard.note, /Nothing escalating/i);
+});
+
+// ── Off duty is an EVENING, not a scoreboard (13 Sep 2026) ───────────────────
+//
+// Nick: "the screen still always looks more or less the same" and, of the
+// laptop being off, "that's really missing the point — where am I? what's
+// useful to me right now? weather? my calendar?"
+//
+// He was right. This dashboard emitted one figure and an empty `rows`, so eight
+// different surfaces all rendered as a headline and a number — while where he
+// is, the weather and the diary were ALREADY ON THE PAYLOAD and thrown away.
+//
+// ⚠ None of them is "what he owes", so none of them breaches the off-duty rule.
+
+function offDuty(over = {}) {
+  return compose(payload({
+    context: { activity: 'off', place: 'Home', label: 'Off duty' },
+    weather: { known: true, condition: 'cloudy', tempC: 18.2 },
+    agenda: { known: true, scope: 'monday', events: [{ subject: 'Tech Leadership', at: '09:30' }] },
+    weeklyTarget: { state: 'on-track', done: 29, target: 30 },
+    ...over,
+  })).dashboard;
+}
+
+test('off duty says where he is', () => {
+  assert.ok(offDuty().rows.some(r => /Home/.test(r.what)));
+});
+
+test('off duty says what it is doing outside', () => {
+  const rows = offDuty().rows;
+  assert.ok(rows.some(r => /cloudy/i.test(r.what) && /18/.test(r.what)));
+});
+
+test("off duty says what is next in the diary, and names WHICH day", () => {
+  const rows = offDuty().rows;
+  const ev = rows.find(r => /Tech Leadership/.test(r.what));
+  assert.ok(ev);
+  assert.match(ev.when || '', /monday/, 'the scope is rendered verbatim, not re-derived');
+});
+
+test('⚠ a read-but-empty diary SAYS so — blank and unread look identical', () => {
+  const rows = offDuty({ agenda: { known: true, scope: 'tomorrow', events: [] } }).rows;
+  assert.ok(rows.some(r => /Nothing in the diary/i.test(r.what)));
+});
+
+test('⚠ an UNREADABLE diary is a warning, never "nothing on"', () => {
+  const rows = offDuty({ agenda: { known: false, events: [] } }).rows;
+  const r = rows.find(x => /can.{0,3}t see your calendar/i.test(x.what));
+  assert.ok(r);
+  assert.equal(r.level, 'warn');
+});
+
+test('⚠ unreadable weather is SILENT, not a cheerful default', () => {
+  const rows = offDuty({ weather: { known: false, why: 'HA down' } }).rows;
+  assert.equal(rows.some(r => /cloudy|°/.test(r.what)), false);
+  assert.ok(rows.length > 0, 'and the rest of the evening still renders');
+});
+
+test('⚠ it still shows what he DID and never what he owes', () => {
+  const d = offDuty();
+  assert.equal(d.figure.value, 29, 'the week he had');
+  // No task titles, no pool — the off-duty rule is intact.
+  assert.doesNotMatch(JSON.stringify(d.rows), /overdue|must|owe/i);
+});
+
+test('a breaching escalation is still the documented exception', () => {
+  const d = offDuty({ primary: { kind: 'item', urgency: 'critical', title: 'NT-14855 breaching', say: 'nine days' } });
+  assert.ok(d.rows.some(r => /NT-14855/.test(r.what) && r.level === 'crit'));
+});
+
+test('⚠ the laptop being off is NOT worth a word off duty', () => {
+  // "I can't see your laptop" as the content of a screen is the system talking
+  // about itself. Off duty, a laptop that is off is the normal case.
+  const d = offDuty({ work: { known: true, atDesk: false, deskKnown: false } });
+  assert.doesNotMatch(JSON.stringify(d.rows), /laptop/i);
 });

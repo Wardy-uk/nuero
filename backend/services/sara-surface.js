@@ -512,8 +512,65 @@ function dashOffDuty(payload) {
   const rows = [];
   let figure = null;
 
-  // ⚠ FOUR states, and keeping them apart is the whole point of weekly-target:
-  // `unset` is NOT a target of zero, and `unknown` is not a bad week.
+  // ⚠ OFF DUTY SHOWS WHAT HE DID, NEVER WHAT HE OWES. That is the distinction
+  // `resolveDuty` exists to draw, and putting the work pool here would undo it.
+  //
+  // ⚠⚠ BUT THAT RULE WAS READ FAR TOO NARROWLY, and Nick said so on 13 Sep
+  //   2026: "the screen still always looks more or less the same", and, of the
+  //   laptop being off, "that's really missing the point — where am I? what's
+  //   useful to me right now? weather? my calendar?" He was right. This
+  //   dashboard emitted ONE figure and an empty `rows`, so eight different
+  //   surfaces all rendered as a headline and a number.
+  //
+  //   Where he is, what it is doing outside, and what the diary holds NEXT are
+  //   none of them things he owes anybody — so none of them breach the rule.
+  //   Every one was already on the payload and simply thrown away.
+  //
+  // ⚠ AND A MISSING SIGNAL IS NOT AN APOLOGY. "I can't see your laptop" as the
+  //   whole content of a screen is the system talking about ITSELF. Off duty,
+  //   the laptop being off is the NORMAL case and is not worth a word.
+
+  // --- Where he is -----------------------------------------------------
+  const ctx = payload.context;
+  if (isObj(ctx) && ctx.place) {
+    rows.push(row('here', ctx.place, { note: ctx.label || null }));
+  }
+
+  // --- What it is doing outside ----------------------------------------
+  const w = payload.weather;
+  if (isObj(w) && w.known && w.condition) {
+    const temp = Number.isFinite(w.tempC) ? Math.round(w.tempC) + '°' : null;
+    rows.push(row('outside', temp ? temp + ', ' + w.condition : String(w.condition)));
+  }
+
+  // --- What the diary holds next ---------------------------------------
+  // ⚠ `agendaFor` has already decided WHICH day this is and rolls forward to
+  //   the first day that has anything — on a Saturday night, tomorrow is
+  //   usually empty and Monday is the useful answer. `scope` is rendered
+  //   verbatim so no client is a second opinion about which day these are.
+  const agenda = payload.agenda;
+  if (isObj(agenda)) {
+    if (agenda.known === false) {
+      rows.push(row('diary', 'I can’t see your calendar', { level: 'warn' }));
+    } else {
+      const evs = Array.isArray(agenda.events) ? agenda.events : [];
+      if (evs.length) {
+        const label = agenda.scope ? 'next · ' + agenda.scope : 'next';
+        for (const e of evs.slice(0, 2)) {
+          rows.push(row(label, e.subject || 'Something in the diary', { note: e.at || e.start || null }));
+        }
+      } else {
+        // ⚠ A read-but-empty diary SAYS so. A blank space and an unread
+        //   calendar look identical, and only one of them is good news.
+        rows.push(row('diary', 'Nothing in the diary'));
+      }
+    }
+  }
+
+  // --- What he finished -------------------------------------------------
+  // ⚠ FOUR states, and keeping them apart is the whole point of
+  //   weekly-target: `unset` is NOT a target of zero, `unknown` is not a bad
+  //   week.
   if (isObj(wt)) {
     if (wt.state === 'unset') {
       rows.push(row(null, 'No target set for this week', { note: 'Ask me to set one.' }));
@@ -532,19 +589,16 @@ function dashOffDuty(payload) {
     }
   }
 
-  // ⚠ OFF DUTY SHOWS WHAT HE DID, NEVER WHAT HE OWES. That is the entire
-  // distinction `resolveDuty` exists to draw, and putting the pool here would
-  // undo it. A CRITICAL item is the documented exception — hiding a breaching
-  // escalation because it is Saturday is the wrong failure — and the brain has
-  // already decided that by leaving it as `primary`.
+  // --- The one exception to showing no work -----------------------------
+  // Hiding a breaching escalation because it is Saturday is the wrong failure,
+  // and the brain has already decided that by leaving it as `primary`.
   const p = payload.primary;
   if (p && p.kind === 'item' && p.urgency === 'critical') {
     rows.push(row('now', p.title, { note: p.say || null, level: 'crit' }));
   }
 
-  return { kind: SURFACES.OFF_DUTY, label: 'this week', rows, figure, note: null };
+  return { kind: SURFACES.OFF_DUTY, label: 'this evening', rows, figure, note: null };
 }
-
 function dashInbox(payload) {
   const box = payload.inbox;
   if (!isObj(box) || box.known !== true) {

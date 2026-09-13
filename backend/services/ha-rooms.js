@@ -260,8 +260,40 @@ async function setClimateTarget(entityId, celsius) {
   }
 }
 
+/**
+ * What it is doing outside. Read from Home Assistant's own weather entity, so
+ * there is no second API, no key and no network call to anyone else.
+ *
+ * ⚠ Not work, and that is exactly why it belongs on an OFF-DUTY screen. The
+ *   rule there is "show what he DID, never what he owes" — read narrowly it
+ *   left the screen as a single number, when weather, the diary and where he is
+ *   are none of them things he owes anybody.
+ *
+ * ⚠ Unreadable is null with a REASON, never a cheerful default.
+ */
+async function readWeather() {
+  if (!isConfigured()) return { known: false, why: 'Home Assistant is not configured' };
+  const id = process.env.HA_WEATHER_ENTITY || 'weather.forecast_home';
+  try {
+    const e = await haGet('/api/states/' + encodeURIComponent(id));
+    const a = (e && e.attributes) || {};
+    if (!e || !e.state || e.state === 'unavailable' || e.state === 'unknown') {
+      return { known: false, why: 'the weather entity is ' + ((e && e.state) || 'missing') };
+    }
+    return {
+      known: true,
+      condition: e.state,
+      tempC: typeof a.temperature === 'number' ? a.temperature : null,
+      unit: a.temperature_unit || null,
+      entity: id,
+    };
+  } catch (err) {
+    return { known: false, why: err.message };
+  }
+}
 module.exports = {
   readHouse,
+  readWeather,
   turnOnLights,
   setClimateTarget,
   isConfigured,
