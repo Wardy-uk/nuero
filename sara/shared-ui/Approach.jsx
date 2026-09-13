@@ -160,12 +160,18 @@ export default function Approach({
       // ⚠ Labelled only where the clock is KNOWN. With no `nowLabel` the
       // corridor still draws — the shape of the day is true either way — but it
       // is not annotated with hours nobody measured.
+      // ⚠ Labelled on the LEFT end of the line. Drawn at the right they sit
+      // exactly where the cards do — the wall photo had the clock written
+      // through `hiking` — and the corridor's centre is off to the right, so
+      // its left end is empty by construction.
       if (now != null && m % 120 === 0 && depth < 0.92) {
         const t = (now + m) % 1440;
         const hh = String(Math.floor(t / 60)).padStart(2, '0');
         const mm = String(t % 60).padStart(2, '0');
         ctx.fillStyle = `rgba(${col},${(0.42 * (1 - depth)).toFixed(3)})`;
-        ctx.fillText(`${hh}:${mm}`, a.x + half + 8, a.y + fs * 0.35);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${hh}:${mm}`, a.x - half - 8, a.y + fs * 0.35);
+        ctx.textAlign = 'left';
       }
     }
 

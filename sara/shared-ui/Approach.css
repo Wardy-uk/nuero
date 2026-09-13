@@ -348,3 +348,8 @@
 /* Cards stay inside the hour labels, which are drawn out at the corridor's
    edge — a lane wide enough to reach them puts a card on top of the clock. */
 .approach__card { width: clamp(150px, 22cqw, 300px); }
+
+/* The week's figure is a chip in the corner, not a full-width bar: its meter
+   was running off the right edge of the panel. */
+.surface--approach .dash { width: min(22%, 290px); box-sizing: border-box; }
+.surface--approach .dash__meter { width: 100%; box-sizing: border-box; }

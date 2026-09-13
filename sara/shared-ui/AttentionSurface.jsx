@@ -211,6 +211,11 @@ export default function AttentionSurface({
       });
     }
     (dashboard?.rows || []).forEach((r, i) => {
+      // ⚠ THE SKY IS ON THE SHELF, NOT THE TRACK. It has no hour, so it was
+      // being placed by pull alone in the middle of the corridor while the
+      // shelf printed the same reading — the same thing twice, on one screen,
+      // which is the duplication this surface keeps removing.
+      if (String(r.when || '').toLowerCase() === 'outside') return;
       // ⚠ MIDNIGHT IS AN ALL-DAY EVENT, NOT AN HOUR. `2026-09-13T00:00:00` is
       // how an all-day entry arrives, and showing it as "00:00" states a time
       // nobody set — the one thing this corridor must never do. It keeps its
