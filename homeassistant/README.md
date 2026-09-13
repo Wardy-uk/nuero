@@ -126,9 +126,28 @@ fail a normal question about half the time. It is a ceiling, not a target; the
 honest thing to do about a slow brain is to say it was slow, which the agent
 does, and the latency is logged so it can be measured from real use.
 
-## Known gap
+## The gap that was here, and how it closed
 
-Asked *"what is the living room temperature"*, NEURO replies that it has no
-access to the smart home. That is honest but wrong in spirit — `ha-rooms.js`
-reads Home Assistant perfectly well, the **chat tools** simply do not expose
-it. A `get_home_state` chat tool would close it.
+This section used to read: *asked "what is the living room temperature",
+NEURO replies that it has no access to the smart home* — which was honest and
+wrong in spirit, because `ha-rooms.js` had been reading every room for weeks
+and only the **chat tools** did not expose it.
+
+`get_home_state` closes it, and the closing took three goes, which is the
+part worth keeping:
+
+1. **The tool.** Read-only; the house's only write doors stay in the room,
+   where a person accepts an offer.
+2. **The prompt rule was not enough.** *"Never state a queue figure, task,
+   calendar entry or vault fact from memory"* is an ENUMERATION, and the model
+   followed it literally — the house was not in the list. Naming it fixed the
+   temperature phrasings and did nothing for *"is anyone else home"*, which
+   was answered **"No"** with no tool call at all.
+3. **So the house is READ BEFORE THE MODEL.** A deterministic router
+   (`looksLikeHouseQuestion`) puts the reading in front of it, removing the
+   opportunity to invent rather than asking it not to — `checkSaraGrounding`'s
+   lesson, and `event-parser`'s regex-first rule.
+
+And then the fault MOVED: with chat answering correctly, the agent was still
+saying "No", because Home Assistant was matching the question first. That is
+the people rule above.
