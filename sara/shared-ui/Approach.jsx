@@ -69,7 +69,6 @@ export default function Approach({
   // it, and no card is ever given an hour it did not arrive with.
   nowMinutes = null,
   portrait = false,
-  tone = 'calm',
   onOpen = null,
 }) {
   const stageRef = useRef(null);
@@ -199,7 +198,7 @@ export default function Approach({
 
   return (
     <div
-      className={`approach${portrait ? ' approach--portrait' : ''} approach--${tone}`}
+      className={`approach${portrait ? ' approach--portrait' : ''}`}
       ref={stageRef}
       onPointerMove={(e) => {
         const r = stageRef.current.getBoundingClientRect();

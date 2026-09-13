@@ -353,3 +353,34 @@
    was running off the right edge of the panel. */
 .surface--approach .dash { width: min(22%, 290px); box-sizing: border-box; }
 .surface--approach .dash__meter { width: 100%; box-sizing: border-box; }
+
+/* ── The week's figure, in her colour ───────────────────────────────────────
+ * It arrived wearing the dashboard's bright teal, which against a blue field is
+ * a second answer about her state on one screen. It takes the inherited tone
+ * like everything else, and reads as a chip rather than a panel. */
+.surface--approach .dash__label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.3);
+}
+.surface--approach .dash__fignum b {
+  color: var(--ink, #eef3fa);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.surface--approach .dash__fignum span { color: var(--muted, #63728a); }
+.surface--approach .dash__meter {
+  background: rgba(255, 255, 255, 0.07);
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.surface--approach .dash__meter i {
+  background: rgb(var(--approach-rgb));
+  box-shadow: none;
+  opacity: 0.85;
+}
+.surface--approach .dash__meter--over i { background: rgb(var(--approach-rgb)); }
+.surface--approach .dash__note,
+.surface--approach .dash__gaps { color: var(--muted, #63728a); }

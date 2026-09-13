@@ -289,13 +289,28 @@ export default function AttentionSurface({
   // pulsing all day, and a signal that is always on is one nobody sees.
   const pressing = isPressing(primary);
 
+  // ── Her colour, once, for the whole surface ────────────────────────────────
+  //
+  // ⚠ The corridor, the shelf and the week's figure must all be the same blue.
+  // The figure was still wearing the old panel's bright teal against a blue
+  // field, which is a second answer about her state on one screen — the drift
+  // `fieldDrive` exists to stop. It is set HERE and inherited, so there is one
+  // place that decides and no component picks its own.
+  const toneRgb = !poolAvailable ? '107, 116, 128'
+    : pressing || context?.activity === 'firefighting' ? '224, 84, 58'
+      : context?.activity === 'pre-meeting' ? '217, 138, 58'
+        : '74, 127, 212';
+
   const nowMinutes = (() => {
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
   })();
 
   return (
-    <div className={`${rootClassName}${layout === 'approach' ? ' surface--approach' : ''}`}>
+    <div
+      className={`${rootClassName}${layout === 'approach' ? ' surface--approach' : ''}`}
+      style={layout === 'approach' ? { '--approach-rgb': toneRgb } : undefined}
+    >
       {/* The coherence on screen is the coherence of the READ — informative
           before a word is read, which is what keeps this from being a
           screensaver. */}
@@ -545,9 +560,6 @@ export default function AttentionSurface({
           <Approach
             cards={[...corridorCards, ...rest.map((c) => ({ ...c, tag: '' }))]}
             nowMinutes={nowMinutes}
-            tone={!poolAvailable ? 'unresolved'
-              : pressing || context?.activity === 'firefighting' ? 'crit'
-                : context?.activity === 'pre-meeting' ? 'warm' : 'calm'}
             onOpen={(card) => { if (card && card.recordId && onOpen) onOpen(card); }}
           />
         )}
