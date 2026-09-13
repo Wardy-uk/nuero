@@ -327,7 +327,14 @@ function gapsOf(payload) {
 function dashSteady(payload) {
   const agenda = payload.agenda;
   const known = isObj(agenda) && agenda.known === true;
-  const rows = agendaRows(agenda, 4, { countdownHandledFor: transitionSubject(payload) });
+  // ⚠ The two ambient facts come FIRST and the diary after, because "where am
+  //   I and what is it doing outside" is the frame and the diary is the
+  //   content. Shared with the evening screen so the two cannot drift.
+  const rows = [
+    ...contextRows(payload),
+    ...agendaRows(agenda, 4, { countdownHandledFor: transitionSubject(payload) }),
+  ];
+  const diaryRows = agendaRows(agenda, 4, { countdownHandledFor: transitionSubject(payload) });
 
   // ⚠ THE PRIMARY IS NOT REPEATED HERE. It used to be appended as an `open`
   // row — the same title and the same `say` that the headline two lines above
@@ -344,13 +351,16 @@ function dashSteady(payload) {
     label: !known ? 'your day' : agenda.scope === 'today' ? 'the rest of your day' : `${agenda.scope}`,
     now: nowSlot(agenda),
     rows,
-    figure: null,
+    // ⚠ The week's tally is the same number the evening screen shows, from the
+    //   same place. A second count is how two screens come to disagree about
+    //   the week. `unset` stays NULL rather than rendering as a target of zero.
+    figure: weekFigure(payload.weeklyTarget),
     // ⚠ Three distinct facts, and only the last two are good news: "I couldn't
     // see your diary", "nothing left today", "here is what's left". Collapsing
     // the first into either of the others is the failure the whole provenance
     // model exists to prevent.
     note: !known ? 'I couldn’t read your diary, so this isn’t the whole day.'
-      : rows.length === 0 ? 'Nothing else in the diary.'
+      : diaryRows.length === 0 ? 'Nothing else in the diary.'
         : null,
   };
 }
@@ -529,6 +539,58 @@ function placeLabel(place) {
   return null;
 }
 
+/**
+ * Where he is and what it is doing outside — the two facts that are true on
+ * every surface and belong to none of them.
+ *
+ * ⚠ ONE implementation, used by every dashboard that wants them. Two copies
+ *   is how the evening screen and the working-day screen come to disagree
+ *   about which room he is in.
+ *
+ * ⚠ NEITHER IS "WHAT HE OWES", which is what makes them safe on an off-duty
+ *   screen. Nick, 13 Sep 2026: "where am I? what's useful to me right now?
+ *   weather?" — the answer was on the payload all along.
+ *
+ * ⚠ Unreadable is SILENT, never a cheerful default. No place, no row; no
+ *   weather, no row. A screen that invents 'sunny' is worse than one that
+ *   says nothing about the sky.
+ */
+/**
+ * The week's tally, or null.
+ *
+ * ⚠ FOUR states and they are not interchangeable: `unset` is NOT a target of
+ *   zero (which renders as "you did none of the nothing you set"), and
+ *   `unknown` is not a bad week. Both yield NO FIGURE; only a real count
+ *   becomes one.
+ */
+function weekFigure(wt) {
+  if (!isObj(wt) || !Number.isFinite(wt.done)) return null;
+  if (wt.state === 'unset' || wt.state === 'unknown') return null;
+  return {
+    value: wt.done,
+    unit: Number.isFinite(wt.target) ? `of ${wt.target} this week` : 'done this week',
+    of: Number.isFinite(wt.target) ? wt.target : null,
+    ofLabel: null,
+    pct: Number.isFinite(wt.target) && wt.target > 0
+      ? Math.min(100, Math.round((wt.done / wt.target) * 100)) : null,
+    overrun: false,
+  };
+}
+
+function contextRows(payload) {
+  const out = [];
+  const ctx = payload.context;
+  const where = isObj(ctx) ? placeLabel(ctx.place) : null;
+  if (where) out.push(row('here', where, { note: isObj(ctx) ? (ctx.label || null) : null }));
+
+  const w = payload.weather;
+  if (isObj(w) && w.known && w.condition) {
+    const temp = Number.isFinite(w.tempC) ? Math.round(w.tempC) + '°' : null;
+    out.push(row('outside', temp ? temp + ', ' + w.condition : String(w.condition)));
+  }
+  return out;
+}
+
 function dashOffDuty(payload) {
   const wt = payload.weeklyTarget;
   const rows = [];
@@ -553,16 +615,7 @@ function dashOffDuty(payload) {
   //   the laptop being off is the NORMAL case and is not worth a word.
 
   // --- Where he is -----------------------------------------------------
-  const ctx = payload.context;
-  const where = isObj(ctx) ? placeLabel(ctx.place) : null;
-  if (where) rows.push(row('here', where, { note: ctx.label || null }));
-
-  // --- What it is doing outside ----------------------------------------
-  const w = payload.weather;
-  if (isObj(w) && w.known && w.condition) {
-    const temp = Number.isFinite(w.tempC) ? Math.round(w.tempC) + '°' : null;
-    rows.push(row('outside', temp ? temp + ', ' + w.condition : String(w.condition)));
-  }
+  rows.push(...contextRows(payload));
 
   // --- What the diary holds next ---------------------------------------
   // ⚠ `agendaFor` has already decided WHICH day this is and rolls forward to
@@ -597,16 +650,9 @@ function dashOffDuty(payload) {
       rows.push(row(null, 'No target set for this week', { note: 'Ask me to set one.' }));
     } else if (wt.state === 'unknown') {
       rows.push(row(null, 'I couldn’t count this week', { note: wt.reason || null, level: 'warn' }));
-    } else if (Number.isFinite(wt.done)) {
-      figure = {
-        value: wt.done,
-        unit: Number.isFinite(wt.target) ? `of ${wt.target} this week` : 'done this week',
-        of: Number.isFinite(wt.target) ? wt.target : null,
-        ofLabel: null,
-        pct: Number.isFinite(wt.target) && wt.target > 0
-          ? Math.min(100, Math.round((wt.done / wt.target) * 100)) : null,
-        overrun: false,
-      };
+    } else {
+      // One builder, both screens — a second count is how they come to disagree.
+      figure = weekFigure(wt);
     }
   }
 

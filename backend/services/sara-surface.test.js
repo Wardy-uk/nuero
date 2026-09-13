@@ -972,3 +972,80 @@ test('⚠ no place is NO ROW — never a guessed one', () => {
   const d = offDuty({ context: { activity: 'off', place: { room: 'unclear', name: 'unknown' } } });
   assert.equal(d.rows.some(r => r.when === 'here'), false);
 });
+
+// ── A working day is a screen too (13 Sep 2026) ──────────────────────────────
+//
+// `steady` is the surface he sees most, and it rendered the diary and nothing
+// else. Where he is and what it is doing outside are true on every surface and
+// belong to none of them, so they are shared — two copies is how the evening
+// screen and the working-day screen come to disagree about which room he is in.
+
+function steady(over = {}) {
+  return compose(payload({
+    context: { activity: 'steady', place: { known: true, name: 'unknown', room: 'office' }, label: 'Working' },
+    weather: { known: true, condition: 'cloudy', tempC: 18.2 },
+    agenda: { known: true, scope: 'today', events: [{ subject: 'Tech Leadership', at: '09:30' }] },
+    weeklyTarget: { state: 'on-track', done: 29, target: 30 },
+    ...over,
+  })).dashboard;
+}
+
+test('a working day shows where he is and the weather, like the evening does', () => {
+  const rows = steady().rows;
+  assert.ok(rows.some(r => /Office/.test(r.what)), 'the room');
+  assert.ok(rows.some(r => /cloudy/i.test(r.what)), 'the sky');
+});
+
+test('the frame comes before the content — place and weather, then the diary', () => {
+  const rows = steady().rows;
+  const iHere = rows.findIndex(r => r.when === 'here');
+  const iEvent = rows.findIndex(r => /Tech Leadership/.test(r.what));
+  assert.ok(iHere >= 0 && iEvent > iHere, 'the diary follows the frame');
+});
+
+test('a working day carries the week figure, from the SAME builder as the evening', () => {
+  assert.equal(steady().figure.value, 29);
+  assert.equal(steady().figure.of, 30);
+});
+
+test('⚠ an unset target is NO FIGURE on either screen, never a zero', () => {
+  assert.equal(steady({ weeklyTarget: { state: 'unset' } }).figure, null);
+  assert.equal(offDuty({ weeklyTarget: { state: 'unset' } }).figure, null);
+});
+
+test('⚠ "nothing else in the diary" counts DIARY rows, not the weather', () => {
+  // The bug this guards: ambient rows make `rows` non-empty, so a note keyed on
+  // rows.length would vanish the moment the weather became readable — and an
+  // empty diary would stop being stated at all.
+  const d = steady({ agenda: { known: true, scope: 'today', events: [] } });
+  assert.ok(d.rows.length > 0, 'the frame still renders');
+  assert.match(d.note || '', /Nothing else in the diary/i);
+});
+
+test('⚠ an unreadable diary still says so, with the frame around it', () => {
+  const d = steady({ agenda: { known: false, events: [] } });
+  assert.match(d.note || '', /couldn.{0,3}t read your diary/i);
+  assert.ok(d.rows.some(r => r.when === 'here'), 'and he is still told where he is');
+});
+
+test('⚠ the two screens cannot drift about where he is', () => {
+  // Same place object, same rendering, because it is one function.
+  const place = { known: true, name: 'unknown', room: 'living-room' };
+  const a = steady({ context: { activity: 'steady', place, label: 'Working' } }).rows.find(r => r.when === 'here');
+  const b = offDuty({ context: { activity: 'off', place, label: 'Off duty' } }).rows.find(r => r.when === 'here');
+  assert.equal(a.what, b.what);
+});
+
+test('⚠ the unset guard is load-bearing ON ITS OWN, not shadowed by the done check', () => {
+  // Mutation-checking on 13 Sep 2026 showed removing the state check failed NO
+  // test: `Number.isFinite(wt.done)` runs first, and the fixtures for `unset`
+  // carried no `done`. It is not decoration — an unset target that DOES carry a
+  // count would otherwise render as "0 of nothing", which is precisely the
+  // "you did none of the nothing you set" failure weekly-target exists to stop.
+  const withCount = { state: 'unset', done: 0, target: null };
+  assert.equal(steady({ weeklyTarget: withCount }).figure, null);
+  assert.equal(offDuty({ weeklyTarget: withCount }).figure, null);
+
+  // And `unknown` is not a bad week either.
+  assert.equal(steady({ weeklyTarget: { state: 'unknown', done: 0, reason: 'ledger unreadable' } }).figure, null);
+});
