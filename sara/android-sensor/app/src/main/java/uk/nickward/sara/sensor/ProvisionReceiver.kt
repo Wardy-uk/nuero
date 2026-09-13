@@ -26,6 +26,9 @@ class ProvisionReceiver : BroadcastReceiver() {
         val start = intent.getBooleanExtra("start", false) && r.errors.isEmpty()
         if (start) {
             settings.enabled = true
+            // The backstop that brings it back after a reboot or a kill, whether or not
+            // a broadcast arrives.
+            KeepAlive.schedule(context)
             // Restarting re-reads settings, so an edit applies to a running sensor too.
             SensorService.start(context)
         }

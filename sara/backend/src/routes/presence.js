@@ -233,11 +233,19 @@ router.get('/room', (_req, res) => {
     // `sensors` above is the arbitration's view (is he in that room); this is
     // the sensor's own report, and the two answer different questions.
     readings: store.all(),
-    // Every sensor the calibration knows about — so a consumer can tell a sensor
-    // that has STOPPED from one that was never there. Without it a dead sensor is
-    // simply absent from `readings`, which renders as nothing at all.
-    expected: [...new Set(Object.values(profiles.all())
-      .flatMap((p) => Object.keys((p && p.sensors) || {})))].sort(),
+    // Every sensor we know about — so a consumer can tell a sensor that has STOPPED
+    // from one that was never there. Without it a dead sensor is simply absent from
+    // `readings`, which renders as nothing at all.
+    //
+    // ⚠ The calibrated rooms are NOT the whole list. An offsite room (the desk at
+    // work) is deliberately never calibrated — the fingerprint is trained on the
+    // house — so it would be missing here, and a work sensor that died would be
+    // invisible on the health page. Found when the work Fire went flat overnight
+    // (13 Sep 2026) and showed no row at all.
+    expected: [...new Set([
+      ...Object.values(profiles.all()).flatMap((p) => Object.keys((p && p.sensors) || {})),
+      ...String(process.env.SARA_OFFSITE_ROOMS || '').split(',').map(s => s.trim()).filter(Boolean),
+    ])].sort(),
     checkedAt: now.toISOString(),
   });
 });

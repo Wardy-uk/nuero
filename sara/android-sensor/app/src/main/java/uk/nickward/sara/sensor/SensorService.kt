@@ -109,6 +109,7 @@ class SensorService : Service() {
         presence = Presence(room = settings.room, inRoomRssi = settings.inRoomRssi)
         rpa = Rpa.fromHex(settings.irkHex)
         acquireLocks()
+        KeepAlive.schedule(this)
         registerScreenReceiver()
         handler.removeCallbacksAndMessages(null)
         handler.post { restartScan("service start") }
