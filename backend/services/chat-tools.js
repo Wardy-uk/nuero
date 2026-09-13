@@ -173,6 +173,33 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_weather',
+    tier: 'read',
+    description:
+      'The weather here: what it is doing now and what changes in the next few hours '
+      + '- when rain starts or stops, and where the temperature is going. Use it for '
+      + 'any question about the weather, rain, or whether he needs a coat.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'get_health',
+    tier: 'read',
+    description:
+      'How he slept last night and how his body is doing, from Apple Health - plus '
+      + 'anything that has CHANGED (a trend, or a sensor that went quiet). '
+      + 'STATE what it says and never diagnose: this cannot tell exercise from '
+      + 'illness from a hard week, and saying what a number MEANS is not yours to do.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'get_wins',
+    tier: 'read',
+    description:
+      'What he has actually finished - today, this week, and how that compares with '
+      + 'his own typical day. Use it for "what have I got done", and at the end of a day.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
     name: 'get_urgent_emails',
     tier: 'read',
     description: 'Get emails triaged as needing action or a reply, with their ids. Use before draft_email_reply.',
@@ -500,6 +527,128 @@ const HANDLERS = {
       // Named, never counted.
       could_not_read: state.gaps,
       note: 'Temperatures are Celsius. Lights marked unreachable are switched off at the wall, not off.',
+    };
+  },
+
+  /**
+   * The sky.
+   *
+   * WARNING  THE WORDS ARE `weather-outlook`'S, verbatim. It already decided
+   *   what is worth mentioning - 0.2mm is drizzle nobody needs warning about,
+   *   and a live forecast calling itself `rainy` at 0.01mm is pinned as a
+   *   NEGATIVE test there - and phrased it once so the dashboard, the greeting
+   *   at the door and this all say the same thing.
+   *
+   * WARNING  AN UNREADABLE SKY SAYS SO. 'I could not look' and 'it is fine' are
+   *   different facts and only one of them sends him out without a coat.
+   */
+  async get_weather() {
+    const w = await require('./ha-rooms').readWeather();
+    if (!w || w.known !== true) {
+      return { ok: false, error: 'I could not read the weather: ' + ((w && w.why) || 'no answer')
+        + '. Say you could not look, rather than that it is fine.' };
+    }
+    const { outlook } = require('../../shared/weather-outlook.cjs');
+    const look = outlook({ condition: w.condition, tempC: w.tempC }, w.hours || [], new Date());
+    return {
+      ok: true,
+      now: { condition: w.condition, temperatureC: w.tempC },
+      // Null means nothing notable in the horizon - which IS an answer, and a
+      // different one from 'I could not see the forecast'.
+      rain: look.rain || null,
+      temperature_ahead: look.temp || null,
+      forecast_readable: look.known === true,
+      lines: look.lines || [],
+      note: 'Celsius. `lines` are already phrased - prefer them to re-wording the numbers.',
+    };
+  },
+
+  /**
+   * His body.
+   *
+   * WARNING-WARNING  IT STATES AND NEVER DIAGNOSES. Apple Health cannot separate
+   *   exercise from illness from alcohol from a hard week - `stress-score` said
+   *   so first and `health-daily.readiness` inherits it rather than quietly
+   *   dropping it. "Your HRV is down" is a reading; "take it easy today" is
+   *   advice drawn from three numbers by something that cannot see him.
+   *
+   * WARNING  NO BASELINE MEANS NO SCORE - never a cheerful middling number. A
+   *   missing input is REPORTED rather than counted as a good one.
+   */
+  get_health() {
+    const out = { ok: true, caveat: 'State what these say. Do NOT diagnose, advise or reassure.' };
+
+    try {
+      const hd = require('./health-daily');
+      const days = hd.recentDays(3) || [];
+      // Sleep is stamped to the WAKE date, so last night is today's row - and
+      // today is never 'complete'. A row with no sleep figure is skipped, so a
+      // night he has not woken from cannot read as zero.
+      const night = days.find(d => d && Number.isFinite(d.asleepHours)) || null;
+      if (night) {
+        const rr = require('./rhythm-read');
+        out.last_night = {
+          day: night.day,
+          hours: night.asleepHours,
+          source: night.sleepSource || null,
+          // The comparison, not a verdict - and null when there is no habit yet.
+          usually: rr.lineFor(night.day),
+        };
+      } else {
+        out.last_night = null;
+        out.last_night_why = 'no night recorded yet';
+      }
+
+      const r = hd.readiness();
+      out.readiness = r && r.known === true
+        ? { state: r.state, score: r.score, sentence: hd.readinessSentence ? hd.readinessSentence(r) : null }
+        : { known: false, why: (r && r.reason) || 'not enough to judge' };
+    } catch (e) {
+      out.health_unreadable = e.message;
+    }
+
+    try {
+      const snap = require('./health-signals').snapshot();
+      const findings = (snap && snap.findings) || [];
+      out.whats_changed = findings.slice(0, 5).map(f => ({
+        what: f.title || f.id,
+        detail: f.detail || null,
+        // WARNING  THE CAVEAT TRAVELS WITH THE FINDING, never dropped on the way.
+        caveat: f.caveat || null,
+      }));
+      out.all_clear = snap ? snap.allClear === true : null;
+    } catch (e) {
+      out.signals_unreadable = e.message;
+    }
+
+    return out;
+  },
+
+  /**
+   * What he has actually finished.
+   *
+   * WARNING  A WIN IS DETECTED, NEVER DECLARED, and a failed source is a NAMED
+   *   GAP rather than a zero - a count that silently reads 0 while the work is
+   *   happening IS the bug the ledger was built to remove.
+   *
+   * WARNING  NO SCORE AND NO STREAK LANGUAGE. The comparison is against his own
+   *   typical day, which is `wins.typicalDay`'s call, not a league table.
+   */
+  get_wins() {
+    const w = require('./wins');
+    const s = w.summary();
+    if (!s) return { ok: false, error: 'the wins ledger could not be read - say so rather than saying nothing was done' };
+    return {
+      ok: true,
+      finished_today: s.doneToday,
+      finished_this_week: s.doneThisWeek,
+      week_started: s.weekStart,
+      his_typical_day: s.typical,
+      headline: w.headline ? w.headline(s) : null,
+      // Named, never counted - and what is KNOWN not to be counted at all.
+      could_not_read: s.gaps || [],
+      not_counted: w.KNOWN_GAPS || [],
+      note: 'Compare against his own typical day if useful. No scores, no streaks.',
     };
   },
 
