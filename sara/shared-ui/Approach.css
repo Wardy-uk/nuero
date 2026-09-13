@@ -482,3 +482,14 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* ── The vertical budget, measured on the panel ─────────────────────────────
+ * The facts row was landing on the held-back line and on the shelf. On the
+ * Fire the usable height is ~546px once the shell's tab bar is out, and the
+ * centrepiece is taller than I allowed for because the sentences wrap. Four
+ * bands, in order, with nothing sharing a row. */
+.surface--approach .surface__say { width: min(48%, 640px); top: 21%; }
+.approach--quiet .approach__row { top: 62%; }
+.approach__fact { padding: clamp(5px, 0.8cqw, 12px) clamp(8px, 1.1cqw, 16px); }
+.surface--approach .surface__foot { bottom: 5%; }
+.surface--approach .surface__shelf { bottom: 5%; }
