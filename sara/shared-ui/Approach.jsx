@@ -56,8 +56,11 @@ export function pullOf(card, index) {
 }
 
 // Lanes. Deterministic from position so a card does not hop about between polls.
-const LANES = [0.05, -1.15, 1.1, -0.5, 0.85, -1.0, 0.45, -0.7];
-const ROWS = [-0.62, 0.28, -0.12, 0.82, 0.52, -0.42, 1.05, 0.05];
+// ⚠ Kept inside the hour labels, which are drawn at the corridor's edge: a lane
+// wide enough to reach them puts a card on top of the clock, which the wall
+// photo showed and the source could not.
+const LANES = [0.0, -0.82, 0.8, -0.4, 0.62, -0.72, 0.34, -0.55];
+const ROWS = [-0.68, 0.3, -0.1, 0.88, 0.55, -0.45, 1.1, 0.08];
 
 export default function Approach({
   cards = [],
@@ -98,7 +101,7 @@ export default function Approach({
     const at = minutesOf(card.at);
     const trueZ = (at != null && nowMinutes != null)
       ? -Math.max(-60, at - nowMinutes) / DAY_MINUTES * DEPTH
-      : -(220 + i * 190);
+      : -(260 + i * 240);
     const pull = pullOf(card, i);
     const z = trueZ * (1 - pull);
     const depth = Math.min(1, Math.abs(z) / DEPTH);

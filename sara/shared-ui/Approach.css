@@ -325,3 +325,26 @@
   .surface--approach .shelf__row { justify-content: flex-start; }
   .surface--approach .surface__say { bottom: 22%; }
 }
+
+/* ── What the wall photo showed ─────────────────────────────────────────────
+ * Two SARAs, her sentence written over the held-back line, and cards colliding
+ * with the hour labels. All three are furniture, not corridor. */
+
+/* Both shells already print her name and the room in their own header, so the
+   surface's inner mark was a second "SARA" directly under the first. The STATE
+   stays — it is the one thing the header does not carry. */
+.surface--approach .surface__mark { display: none; }
+.surface--approach .surface__crown { top: 3%; }
+
+/* Her sentence, and only then what was held back. The foot carries the mic and
+   the way out on the kiosk, so it needs its own room rather than a few pixels. */
+.surface--approach .surface__say { bottom: 19%; }
+.surface--approach .surface__foot {
+  bottom: 6.5%;
+  max-width: min(48%, 560px);
+  align-items: center;
+}
+
+/* Cards stay inside the hour labels, which are drawn out at the corridor's
+   edge — a lane wide enough to reach them puts a card on top of the clock. */
+.approach__card { width: clamp(150px, 22cqw, 300px); }
