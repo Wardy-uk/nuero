@@ -42,6 +42,11 @@ const HA_TOKEN = process.env.HA_TOKEN || '';
 // configuration.yaml, which reads SARA's own classifier — HA does no
 // classifying and neither does this.
 const ROOM_SENSOR = process.env.HA_ROOM_SENSOR || 'sensor.nick_room';
+// Is anyone OTHER than Nick at home? Built in HA on 13 Sep 2026 from Life360
+// (who) + the ASUS router's associated-client list (whether, indoors) — see the
+// Household presence block in configuration.yaml. Before it, HA knew exactly one
+// human and "never act when someone else is home" was unbuildable.
+const HOUSEHOLD_SENSOR = process.env.HA_HOUSEHOLD_SENSOR || 'binary_sensor.household_others_home';
 
 const TIMEOUT_MS = Number(process.env.HA_ROOMS_TIMEOUT_MS) || 6000;
 
@@ -148,6 +153,45 @@ function shapePresence(state) {
   };
 }
 
+/**
+ * Who else is in the house — THREE-VALUED, and the third value is the point.
+ *
+ * ⚠ `known:false` is NOT "nobody else is home". The HA sensor deliberately goes
+ *   `unavailable` rather than `off` whenever a resident could not be read, so
+ *   that "I could not tell" never arrives here dressed as an all-clear. Reading
+ *   a missing or unavailable sensor as an empty house is precisely the mistake
+ *   the sensor was shaped to prevent, and it would be made on the one signal
+ *   that licenses acting unattended.
+ *
+ * ⚠ A sensor that does not EXIST is `known:false` too, not a quiet `false` —
+ *   an older HA, a renamed entity or a typo'd `HA_HOUSEHOLD_SENSOR` must read as
+ *   "I cannot see the household", never as "the house is empty".
+ */
+function shapeHousehold(state) {
+  if (!state) {
+    return { known: false, othersHome: null, who: [], why: 'no ' + HOUSEHOLD_SENSOR + ' in Home Assistant' };
+  }
+  const raw = String(state.state || '');
+  const at = state.attributes || {};
+  if (raw !== 'on' && raw !== 'off') {
+    return {
+      known: false,
+      othersHome: null,
+      who: [],
+      why: 'household sensor is ' + (raw || 'empty') +
+           (Array.isArray(at.unreadable) && at.unreadable.length
+             ? ' (could not read: ' + at.unreadable.join(', ') + ')'
+             : ''),
+    };
+  }
+  return {
+    known: true,
+    othersHome: raw === 'on',
+    who: Array.isArray(at.who_is_home) ? at.who_is_home : [],
+    why: null,
+  };
+}
+
 function shapeSun(state) {
   const at = (state && state.attributes) || {};
   return {
@@ -160,12 +204,12 @@ function shapeSun(state) {
 // --- The read ---------------------------------------------------------------
 
 /**
- * @returns {{ known:boolean, rooms:Array|null, presence:object|null, sun:object, gaps:string[] }}
+ * @returns {{ known:boolean, rooms:Array|null, presence:object|null, sun:object, household:object, gaps:string[] }}
  */
 async function readHouse() {
   const gaps = [];
   if (!isConfigured()) {
-    return { known: false, rooms: null, presence: null, sun: {}, gaps: ['Home Assistant is not configured (HA_URL / HA_TOKEN)'] };
+    return { known: false, rooms: null, presence: null, sun: {}, household: shapeHousehold(null), gaps: ['Home Assistant is not configured (HA_URL / HA_TOKEN)'] };
   }
 
   let areas = null;
@@ -185,7 +229,7 @@ async function readHouse() {
   // ⚠ Either half missing means the house was NOT read. Returning the half we
   // got would present a partial house as a whole one.
   if (!Array.isArray(areas) || !Array.isArray(states)) {
-    return { known: false, rooms: null, presence: null, sun: {}, gaps };
+    return { known: false, rooms: null, presence: null, sun: {}, household: shapeHousehold(null), gaps };
   }
 
   const byId = new Map(states.map(s => [s.entity_id, s]));
@@ -193,10 +237,12 @@ async function readHouse() {
   if (!byId.has(ROOM_SENSOR)) {
     gaps.push('no room-presence sensor (' + ROOM_SENSOR + ') in Home Assistant');
   }
+  const household = shapeHousehold(byId.get(HOUSEHOLD_SENSOR));
+  if (!household.known) gaps.push('household presence unreadable: ' + household.why);
   const sun = shapeSun(byId.get('sun.sun'));
   if (!sun.nextSetting && !sun.nextRising) gaps.push('sun.sun carries no sunrise/sunset times');
 
-  return { known: true, rooms: shapeRooms(areas, states), presence, sun, gaps };
+  return { known: true, rooms: shapeRooms(areas, states), presence, sun, household, gaps };
 }
 
 // --- Writing (the only writes NEURO makes to the house) ----------------------
@@ -326,6 +372,8 @@ module.exports = {
   shapeRooms,
   shapePresence,
   shapeSun,
+  shapeHousehold,
   AREA_TEMPLATE,
   ROOM_SENSOR,
+  HOUSEHOLD_SENSOR,
 };

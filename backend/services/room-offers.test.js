@@ -49,11 +49,15 @@ function room(over = {}) {
 
 const SURE = { room: 'Living Room', confidence: 'sure', subject: 'watch', since: '2026-09-12T18:00:00Z' };
 
+// Nobody else in: the only state in which anything may act unattended.
+const HOUSE_EMPTY = { known: true, othersHome: false, who: [], why: null };
+
 function run(over = {}) {
   return ro.assess({
     rooms: [room(over.room || {})],
     presence: over.presence === undefined ? SURE : over.presence,
     sun: over.sun === undefined ? SUN : over.sun,
+    household: over.household === undefined ? HOUSE_EMPTY : over.household,
     now: over.now || AT('2026-09-12T18:20:00Z'),
     options: over.options,
   });
@@ -159,7 +163,8 @@ test('a cool room in Celsius earns a warm-up offer', () => {
   const warm = out.offers.find(o => o.kind === 'warm-room');
   assert.ok(warm);
   assert.equal(warm.currentC, 17.2);
-  assert.equal(warm.act, true, 'heating may act — wrong costs pennies and is invisible');
+  assert.equal(warm.actRating, true, 'heating is RATED to act — wrong costs pennies and is invisible');
+  assert.equal(warm.act, true, 'and with the house empty it actually may');
 });
 
 test('a warm room earns nothing', () => {
@@ -333,4 +338,67 @@ test('the few seconds either side of the rollover are tolerated', () => {
 test('⚠ sun up with no sunset time is unknown, not daylight', () => {
   const d = ro.isDark({ state: 'above_horizon', nextSetting: null, nextRising: null }, AT('2026-09-12T12:00:00Z'));
   assert.equal(d.known, false);
+});
+
+
+// ── Never act when someone else is home (13 Sep 2026) ────────────────────────
+//
+// The rule promotion-to-acting was blocked on until HA could see more than one
+// human. Every case below is about the UNATTENDED path; an explicit accept is
+// attended by definition and is not gated here (see rooms.js).
+
+const COLD = { climate: [{ entity_id: 'climate.living_room_rad', state: 'heat', currentC: 17.2, targetC: 12.0 }] };
+
+test('⚠ someone else home: heating is still OFFERED, but may not act', () => {
+  const out = run({ room: COLD, household: { known: true, othersHome: true, who: ['Helen', 'Isaac'] } });
+  const warm = out.offers.find(o => o.kind === 'warm-room');
+  assert.ok(warm, 'the offer is still made — asking is always allowed');
+  assert.equal(warm.act, false);
+  assert.equal(warm.actRating, true, 'the KIND is still rated to act');
+  assert.equal(warm.actWhy, 'Helen and Isaac are home');
+});
+
+test('⚠ FAILS CLOSED: an unreadable household may not act', () => {
+  const out = run({ room: COLD, household: { known: false, othersHome: null, who: [], why: 'sensor unavailable' } });
+  const warm = out.offers.find(o => o.kind === 'warm-room');
+  assert.equal(warm.act, false, 'unreadable is NOT an empty house');
+  assert.match(warm.actWhy, /unreadable/);
+});
+
+test('⚠ FAILS CLOSED: a household key that was never passed may not act', () => {
+  // Deliberately NOT via run(), which defaults to an empty house — this is the
+  // caller that has not been updated to read the household at all, and it must
+  // get the safe answer rather than inheriting the test helper's optimism.
+  const out = ro.assess({
+    rooms: [room({ climate: [{ entity_id: 'climate.living_room_rad', state: 'heat', currentC: 17.2 }] })],
+    presence: SURE,
+    sun: SUN,
+    now: AT('2026-09-12T18:20:00Z'),
+  });
+  const warm = out.offers.find(o => o.kind === 'warm-room');
+  assert.ok(warm, 'still offered');
+  assert.equal(warm.act, false, 'but never acts unasked');
+});
+
+test('an empty house may act', () => {
+  const out = run({ room: COLD, household: { known: true, othersHome: false, who: [] } });
+  const warm = out.offers.find(o => o.kind === 'warm-room');
+  assert.equal(warm.act, true);
+  assert.equal(warm.actWhy, null);
+});
+
+test('⚠ lights NEVER act, even in an empty house', () => {
+  const out = run({ household: { known: true, othersHome: false, who: [] } });
+  const light = out.offers.find(o => o.kind === 'lights-on');
+  assert.ok(light);
+  assert.equal(light.act, false);
+  assert.equal(light.actRating, false, 'lights are not rated to act at all — the household is not what stops them');
+});
+
+test('householdPermitsActing is pure and names its reason', () => {
+  assert.equal(ro.householdPermitsActing({ known: true, othersHome: false, who: [] }).permitted, true);
+  assert.equal(ro.householdPermitsActing({ known: true, othersHome: true, who: [] }).why, 'someone else is home');
+  assert.equal(ro.householdPermitsActing({ known: true, othersHome: true, who: ['Helen'] }).why, 'Helen is home');
+  assert.equal(ro.householdPermitsActing({ known: true, othersHome: true, who: ['Helen', 'Isaac'] }).why, 'Helen and Isaac are home');
+  assert.equal(ro.householdPermitsActing(null).permitted, false);
 });

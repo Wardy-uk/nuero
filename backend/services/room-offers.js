@@ -263,12 +263,52 @@ function offerKey(kind, area) {
  *   rooms    [{ area, lights, climate }]            — as read from HA
  *   presence { room, confidence, subject, since }   — sensor.nick_room
  *   sun      { nextSetting, nextRising }            — sun.sun attributes
+ *   household { known, othersHome, who }            — binary_sensor.household_others_home
  *   now      Date
  *   gaps     string[]                               — what the READER could not read
  * @returns { offers, gaps, considered }
  */
+// --- May this act without being asked? ---------------------------------------
+//
+// Nick's rule, and the one thing promotion to acting was blocked on: NEVER ACT
+// WHEN SOMEONE ELSE IS HOME. Until 13 Sep 2026 HA knew exactly one human, so it
+// was unbuildable; `binary_sensor.household_others_home` is the signal.
+//
+// ⚠ THIS GATES THE UNATTENDED PATH ONLY, NEVER AN EXPLICIT PRESS. `rooms.act()`
+//   has one caller — POST /:key/accept — and a press is attended by definition:
+//   if Nick taps "yes" while Helen is in the room, he has asked, and refusing
+//   him because a family member is in the house would be the feature arguing
+//   with the person using it. What must never happen is the house acting on its
+//   own around other people.
+//
+// ⚠ IT FAILS CLOSED, like the decision memory and unlike `attention.gate`. An
+//   unreadable household is NOT an empty one. Between withholding an automatic
+//   action and taking one around someone who is actually there, the expensive
+//   failure is obvious, and it is the one direction that cannot be undone by
+//   asking.
+//
+// ⚠ `act` IS THE EFFECTIVE PERMISSION AND `actRating` IS THE KIND'S OWN RATING.
+//   Deliberately this way round: a caller that reads `act` and knows nothing
+//   about households still gets the safe answer. Keeping `act` as the rating and
+//   adding a separate permission would make the unsafe reading the shorter one,
+//   which is how a gate comes to be walked past.
+function householdPermitsActing(household) {
+  if (!household || household.known !== true) {
+    return { permitted: false, why: 'household presence unreadable — ' + ((household && household.why) || 'no reading') };
+  }
+  if (household.othersHome) {
+    const names = Array.isArray(household.who) ? household.who.filter(Boolean) : [];
+    if (!names.length) return { permitted: false, why: 'someone else is home' };
+    const who = names.length === 1
+      ? names[0]
+      : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+    return { permitted: false, why: who + (names.length === 1 ? ' is' : ' are') + ' home' };
+  }
+  return { permitted: true, why: null };
+}
+
 function assess(input = {}) {
-  const { rooms, presence, sun, now } = input;
+  const { rooms, presence, sun, now, household } = input;
   const options = input.options || {};
   const gaps = Array.isArray(input.gaps) ? [...input.gaps] : [];
   const offers = [];
@@ -298,6 +338,8 @@ function assess(input = {}) {
     return { offers, gaps, considered };
   }
 
+  const mayAct = householdPermitsActing(household);
+
   const dark = isDark(sun, now, options);
   const lights = lightsState(here.lights);
   const temp = temperatureReading(here.climate);
@@ -314,6 +356,8 @@ function assess(input = {}) {
         key: offerKey('lights-on', here.area),
         area: here.area,
         act: false,
+        actRating: false,
+        actWhy: 'lights always ask',
         subject,
         episode: (presence && presence.since) || null,
         entities: lights.off,
@@ -338,7 +382,9 @@ function assess(input = {}) {
         kind: 'warm-room',
         key: offerKey('warm-room', here.area),
         area: here.area,
-        act: true,
+        act: mayAct.permitted,
+        actRating: true,
+        actWhy: mayAct.why,
         subject,
         episode: (presence && presence.since) || null,
         entities: [temp.reading.entity_id],
@@ -369,6 +415,7 @@ module.exports = {
   readingLooksFahrenheit,
   offerKey,
   slugEq,
+  householdPermitsActing,
   // constants
   DARK_BEFORE_SUNSET_MIN,
   DARK_BEFORE_SUNRISE_MIN,
