@@ -1049,3 +1049,74 @@ test('⚠ the unset guard is load-bearing ON ITS OWN, not shadowed by the done c
   // And `unknown` is not a bad week either.
   assert.equal(steady({ weeklyTarget: { state: 'unknown', done: 0, reason: 'ledger unreadable' } }).figure, null);
 });
+
+// ── Walking into a meeting (13 Sep 2026) ─────────────────────────────────────
+//
+// The ten minutes before he walks into a room with somebody. The diary is the
+// LEAST useful thing on screen then — he knows he has a meeting, that is why he
+// is looking. What he cannot hold in his head is what they are still owed.
+//
+// ⚠ The attendee list is not available at all: `calendar_cache` stores no names
+// and `agendaFor` carries only `attendeesOther`. The SUBJECT is matched against
+// the roster, so a meeting naming nobody is normal rather than a failure.
+
+function preMeeting(over = {}) {
+  return compose(payload({
+    context: { activity: 'pre-meeting', place: { known: true, room: 'office' } },
+    agenda: { known: true, scope: 'today', events: [{ subject: '1-2-1 Hope Goodall', at: '11:00' }] },
+    meetingWith: {
+      known: true, group: false, subject: '1-2-1 Hope Goodall',
+      people: [{ name: 'Hope Goodall', owes: 3, oldestDays: 41 }],
+    },
+    ...over,
+  })).dashboard;
+}
+
+test('it leads with WHO it is with, before the diary', () => {
+  const rows = preMeeting().rows;
+  assert.equal(rows[0].when, 'with');
+  assert.match(rows[0].what, /Hope Goodall/);
+});
+
+test('it says what they are still owed, and how old', () => {
+  assert.match(preMeeting().rows[0].note, /3 outstanding.*41d/);
+});
+
+test('⚠ nothing outstanding is stated, not left blank', () => {
+  const d = preMeeting({ meetingWith: { known: true, group: false, people: [{ name: 'Hope Goodall', owes: 0, oldestDays: null }] } });
+  assert.match(d.rows[0].note, /nothing outstanding/i);
+});
+
+test('⚠ NEGATIVE: "I could not check" is NOT rendered as "nothing outstanding"', () => {
+  // Walking into a 1-2-1 believing it is clear, when nobody looked, is the
+  // expensive direction — and it is a claim about a named colleague.
+  const d = preMeeting({ meetingWith: { known: true, group: false, people: [{ name: 'Hope Goodall', owes: null, oldestDays: null }] } });
+  assert.match(d.rows[0].note, /couldn.{0,3}t check/i);
+  assert.equal(d.rows[0].level, 'warn');
+  assert.doesNotMatch(d.rows[0].note, /nothing outstanding/i);
+});
+
+test('a group meeting lists everyone in it', () => {
+  const d = preMeeting({ meetingWith: {
+    known: true, group: true,
+    people: [{ name: 'Hope Goodall', owes: 3, oldestDays: 41 }, { name: 'Chris Smith', owes: 0, oldestDays: null }],
+  } });
+  assert.equal(d.rows.filter(r => r.when === 'with').length, 2);
+});
+
+test('⚠ a meeting naming nobody is NORMAL and earns no apology', () => {
+  const d = preMeeting({ meetingWith: { known: true, group: false, people: [] } });
+  assert.equal(d.rows.some(r => r.when === 'with'), false);
+  assert.equal(d.note, null, 'the roster was read; this meeting just names no colleague');
+});
+
+test('⚠ an unreadable ROSTER is the one case worth a word', () => {
+  // "nobody" and "no idea" are different, and only the second needs saying.
+  const d = preMeeting({ meetingWith: { known: false, group: false, people: [] } });
+  assert.match(d.note || '', /couldn.{0,3}t read your people notes/i);
+});
+
+test('an unreadable diary still outranks the roster note', () => {
+  const d = preMeeting({ agenda: { known: false, events: [] }, meetingWith: { known: false, people: [] } });
+  assert.match(d.note || '', /couldn.{0,3}t read your diary/i);
+});

@@ -367,14 +367,44 @@ function dashSteady(payload) {
 
 function dashPreMeeting(payload) {
   const known = isObj(payload.agenda) && payload.agenda.known === true;
-  const rows = agendaRows(payload.agenda, 3, { countdownHandledFor: transitionSubject(payload) });
+  const rows = [];
+
+  // WARNING  WHO IT IS WITH COMES FIRST. This is the ten minutes before he walks
+  //   into a room with somebody, and the diary is the least useful thing on the
+  //   screen at that moment - he already knows he has a meeting, that is why he
+  //   is looking. What he cannot hold in his head is what they are still owed.
+  const mw = payload.meetingWith;
+  if (isObj(mw) && Array.isArray(mw.people) && mw.people.length) {
+    for (const p of mw.people) {
+      // WARNING  THREE DIFFERENT FACTS, and they must not collapse. `null` is 'I
+      //   could not read what they owe'; `0` is 'nothing outstanding'; a number
+      //   is a list he can raise. Rendering the first as the second walks him
+      //   into a 1-2-1 believing it is clear when nobody looked.
+      const note = p.owes === null ? 'I couldn’t check what’s outstanding'
+        : p.owes === 0 ? 'nothing outstanding'
+          : p.owes + ' outstanding' + (Number.isFinite(p.oldestDays) ? ', oldest ' + p.oldestDays + 'd' : '');
+      rows.push(row('with', p.name, { note, level: p.owes === null ? 'warn' : null }));
+    }
+  }
+
+  rows.push(...agendaRows(payload.agenda, 3, { countdownHandledFor: transitionSubject(payload) }));
+
+  // WARNING  A MEETING NAMING NOBODY IS NORMAL, not a failure. The attendee list
+  //   is not available at all - `calendar_cache` stores no names - so the
+  //   SUBJECT is matched against the roster, and plenty of real meetings
+  //   ('Quarterly planning') name no colleague. Only an unreadable ROSTER is
+  //   worth a word, because that is the difference between nobody and no idea.
+  const rosterBlind = isObj(mw) && mw.known === false;
+
   return {
     kind: SURFACES.PRE_MEETING,
     label: 'what’s coming',
     now: nowSlot(payload.agenda),
     rows,
     figure: null,
-    note: known ? null : 'I couldn’t read your diary.',
+    note: !known ? 'I couldn’t read your diary.'
+      : rosterBlind ? 'I couldn’t read your people notes, so I can’t say who this is with.'
+        : null,
   };
 }
 
@@ -563,6 +593,31 @@ function placeLabel(place) {
  *   `unknown` is not a bad week. Both yield NO FIGURE; only a real count
  *   becomes one.
  */
+/**
+ * "this morning" / "this afternoon" / "this evening".
+ *
+ * ⚠ PURE, and it takes the clock rather than reading one — `sara-surface` has
+ *   no clock of its own and is not about to grow one.
+ *
+ * ⚠ It exists because the off-duty label was the hardcoded string 'this
+ *   evening', so at 10:16 on a Sunday MORNING the screen said "this evening".
+ *   Nick spotted it by telling me the time. A label that is right for one part
+ *   of the day and wrong for the rest is worse than a neutral one, because it
+ *   reads as the system having an opinion about when it is.
+ *
+ * ⚠ An unreadable clock yields NULL, and the caller falls back to a word that
+ *   is true at any hour. Guessing 'morning' would be inventing the time of day.
+ */
+function partOfDay(now) {
+  const d = now instanceof Date ? now : (typeof now === 'number' || typeof now === 'string' ? new Date(now) : null);
+  if (!d || Number.isNaN(d.getTime())) return null;
+  const h = d.getHours();
+  if (h < 5) return 'tonight';
+  if (h < 12) return 'this morning';
+  if (h < 18) return 'this afternoon';
+  return 'this evening';
+}
+
 function weekFigure(wt) {
   if (!isObj(wt) || !Number.isFinite(wt.done)) return null;
   if (wt.state === 'unset' || wt.state === 'unknown') return null;
@@ -591,7 +646,7 @@ function contextRows(payload) {
   return out;
 }
 
-function dashOffDuty(payload) {
+function dashOffDuty(payload, now) {
   const wt = payload.weeklyTarget;
   const rows = [];
   let figure = null;
@@ -664,7 +719,7 @@ function dashOffDuty(payload) {
     rows.push(row('now', p.title, { note: p.say || null, level: 'crit' }));
   }
 
-  return { kind: SURFACES.OFF_DUTY, label: 'this evening', rows, figure, note: null };
+  return { kind: SURFACES.OFF_DUTY, label: partOfDay(now) || 'off duty', rows, figure, note: null };
 }
 function dashInbox(payload) {
   const box = payload.inbox;
@@ -1012,6 +1067,9 @@ function coveredBy(payload, dashboard) {
  */
 function compose(payload, opts = {}) {
   const safe = isObj(payload) ? payload : {};
+  // The clock, for anything that needs to name the time of day. Passed in
+  // rather than read, so this file stays pure and pins without one.
+  const now = opts.now instanceof Date ? opts.now : new Date();
   const session = isObj(opts.session) ? opts.session : null;
 
   // ⚠ A QUESTION can move the dashboard, but it can never move it off `blind`.
@@ -1030,7 +1088,7 @@ function compose(payload, opts = {}) {
     case SURFACES.PRE_MEETING: dashboard = dashPreMeeting(safe); break;
     case SURFACES.SESSION: dashboard = dashSession(safe, session); break;
     case SURFACES.RITUAL: dashboard = dashRitual(safe); break;
-    case SURFACES.OFF_DUTY: dashboard = dashOffDuty(safe); break;
+    case SURFACES.OFF_DUTY: dashboard = dashOffDuty(safe, now); break;
     case SURFACES.INBOX: dashboard = dashInbox(safe); break;
     default: dashboard = dashSteady(safe); break;
   }
@@ -1057,6 +1115,7 @@ function compose(payload, opts = {}) {
 }
 
 module.exports = {
+  partOfDay,
   placeLabel,
   compose,
   surfaceFor,

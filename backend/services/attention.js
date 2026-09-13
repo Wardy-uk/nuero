@@ -996,6 +996,56 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     gaps.push({ input: 'weather', why: e.message });
   }
 
+  // Who the meeting about to start is with, and what they are owed.
+  //
+  // WARNING  COMPUTED ONLY IN THE PREP WINDOW. `/api/attention` is polled by
+  //   several surfaces all day; this reads the roster and the waiting-on table,
+  //   and there is no reason to pay for that except in the ten minutes before a
+  //   meeting with other people in it. `context.activity` has already decided
+  //   that, so this rides on the decision rather than making a second one.
+  //
+  // WARNING  The ATTENDEE LIST IS NOT AVAILABLE - `calendar_cache` stores no
+  //   names and `agendaFor` carries only the three-valued `attendeesOther`. The
+  //   SUBJECT is what there is, matched against the roster under the four-Lucys
+  //   rule. That is why a meeting can legitimately name nobody.
+  let meetingWith = null;
+  if (context && context.activity === 'pre-meeting') {
+    try {
+      const { matchPeopleInSubject } = require('../../shared/meeting-people.cjs');
+      const roster = await require('./entities').getRoster();
+      const subject = (transition && transition.subject) || null;
+      const matched = matchPeopleInSubject(subject, roster);
+      let owed = [];
+      try {
+        owed = require('./waiting-on').byPerson();
+      } catch (e) {
+        gaps.push({ input: 'waiting-on', why: e.message });
+        owed = null;
+      }
+      meetingWith = {
+        known: matched.known,
+        subject,
+        people: matched.people.map((name) => {
+          // WARNING  `waiting_on` stores a FIRST name, and matching on it alone is
+          //   exactly the bug that gave one Lucy's commitments to four Lucys. The
+          //   roster has already told us this full name is unambiguous, so its
+          //   first name is safe to key on HERE and nowhere else.
+          const first = String(name).split(/\s+/)[0];
+          const row = Array.isArray(owed) ? owed.find(o => o.person === first) : null;
+          return {
+            name,
+            // WARNING  null is 'I could not look', 0 is 'they owe nothing'.
+            owes: owed === null ? null : (row ? row.count : 0),
+            oldestDays: row ? row.oldestDays : null,
+          };
+        }),
+        group: matched.group,
+      };
+    } catch (e) {
+      gaps.push({ input: 'meeting-with', why: e.message });
+    }
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   //
   // The gated feed is reconciled against durable records so a card can be
@@ -1181,6 +1231,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
       //   dashboard rendered no weather while the value sat one object away.
       //   Same species as the `/api/todos` whitelist that swallowed `jiraKey`.
       weather,
+      meetingWith,
       ...gated,
       agenda: agendaFor(inputs.calendar, now, 4, _tomorrowEvents(), {
         personal: context.duty ? context.duty.onDuty === false : false,
