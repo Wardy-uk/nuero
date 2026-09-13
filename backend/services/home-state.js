@@ -161,4 +161,78 @@ function describeHouse(house) {
   };
 }
 
-module.exports = { describeHouse, describeRoom, countLights, roomSentence };
+/**
+ * Is this a question about the HOUSE? PURE, deterministic, no model call.
+ *
+ * WARNING-WARNING  THIS EXISTS BECAUSE THE PROMPT RULE WAS NOT ENOUGH. Asked
+ *   "is anyone else home", SARA answered **"No"** with NO TOOL CALL AT ALL -
+ *   measured against the backend log on 13 Sep 2026, while
+ *   `binary_sensor.household_others_home` read `on` with
+ *   `who_is_home: ['Helen','Isaac']`. A fabricated answer about his own house,
+ *   spoken aloud in the room, seconds after a correct one about the same
+ *   house. Naming the house in the no-guessing rule fixed the temperature
+ *   phrasings and did nothing for this one.
+ *
+ *   That is `checkSaraGrounding`'s lesson repeating: a prompt instruction is
+ *   NECESSARY AND NOT SUFFICIENT, because a model asked for an answer can
+ *   always produce one. So the house is READ BEFORE THE MODEL on a question
+ *   like this and put in front of it - `event-parser`'s regex-first rule and
+ *   `surfaceForQuestion`'s: instant, free, identical every time, and it works
+ *   with the Pi's models offline.
+ *
+ * WARNING  IT ERRS TOWARDS READING. A false positive costs one local Home
+ *   Assistant call and a few tokens of context; a false negative is a
+ *   confident wrong answer said out loud to someone standing next to the
+ *   radiator.
+ */
+const HOUSE_NOUNS =
+  /\b(temperature|thermostat|radiator|heating|heater|warm|cold|chilly|freezing|degrees|lights?|lamp|lit)\b/i;
+
+// WARNING  'home' and 'house' are the ambiguous ones and are matched NARROWLY.
+//   "I'm working from home" and "on my way home" are not questions about the
+//   house, and injecting a room-by-room reading into those would have SARA
+//   answering a question nobody asked.
+const PRESENCE_ASK = /\b(any\s?(one|body)|who|is\s+\w+)\b[^?]*\b(home|in|downstairs|upstairs)\b/i;
+const HOUSE_ASK = /\b(the\s+)?(house|flat|downstairs|upstairs)\b/i;
+const ASKING = /\b(is|are|how|what|whats|any)\b/i;
+
+function looksLikeHouseQuestion(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (HOUSE_NOUNS.test(t)) return true;
+  // A house word on its own ('the house') only counts alongside asking about it.
+  if (HOUSE_ASK.test(t) && ASKING.test(t)) return true;
+  return PRESENCE_ASK.test(t);
+}
+
+/**
+ * The house as a short block to put in front of the model.
+ *
+ * WARNING  AN UNREADABLE HOUSE STILL PRODUCES A BLOCK, saying so. Silence would
+ *   leave the model free to fall back on exactly the invention this exists to
+ *   stop.
+ */
+function houseBriefing(state) {
+  if (!state || state.known !== true) {
+    const why = (state && state.gaps && state.gaps[0]) || 'Home Assistant did not answer';
+    return 'THE HOUSE RIGHT NOW: could not be read - ' + why
+      + '. Say you could not look. Do NOT say anything is on, off, warm or cold.';
+  }
+  const lines = state.rooms.map(r => '- ' + r.summary);
+  const others = state.othersHome === true
+    ? 'Others home: yes' + (state.who.length ? ' (' + state.who.join(', ') + ')' : '')
+    : state.othersHome === false
+      ? 'Others home: no'
+      : 'Others home: COULD NOT BE READ - do not say nobody is home';
+  const head = 'THE HOUSE RIGHT NOW (read just now, Celsius):';
+  return [head].concat(lines).concat([others]).join(String.fromCharCode(10));
+}
+
+module.exports = {
+  describeHouse,
+  describeRoom,
+  countLights,
+  roomSentence,
+  looksLikeHouseQuestion,
+  houseBriefing,
+};

@@ -19,7 +19,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { describeHouse, describeRoom, countLights, roomSentence } = require('./home-state');
+const { describeHouse, describeRoom, countLights, roomSentence,
+        looksLikeHouseQuestion, houseBriefing } = require('./home-state');
 
 const HOUSE = {
   known: true,
@@ -134,4 +135,91 @@ test('it is PURE — the same house twice gives the same answer, and is not muta
   const before = JSON.stringify(HOUSE);
   assert.deepEqual(describeHouse(HOUSE), describeHouse(HOUSE));
   assert.equal(JSON.stringify(HOUSE), before);
+});
+
+// -- Asking about the house -------------------------------------------------
+//
+// WARNING-WARNING  THE ROUTER EXISTS BECAUSE THE PROMPT RULE WAS NOT ENOUGH.
+//   Asked "is anyone else home", SARA answered "No" with NO TOOL CALL AT ALL,
+//   measured against the backend log on 13 Sep 2026, while the household
+//   sensor read `on` with Helen and Isaac in it. Every phrasing below that is
+//   marked LIVE was actually said to her that day.
+
+test('the phrasings she got WRONG are routed to a read', () => {
+  // LIVE: answered "No" with no tool call, twice, while two people were in.
+  assert.equal(looksLikeHouseQuestion('is anyone else home'), true);
+  assert.equal(looksLikeHouseQuestion('is anyone else home, and are any lights on downstairs'), true);
+});
+
+test('the ordinary house phrasings are routed too', () => {
+  for (const q of [
+    'what is the living room temperature',
+    'how warm is the house',
+    'is the house cold',
+    'are any lights on',
+    'is the heating on in the living room',
+    'whats the bedroom temperature',
+    'is Helen home',
+    'is anybody in',
+  ]) {
+    assert.equal(looksLikeHouseQuestion(q), true, q);
+  }
+});
+
+test('WARNING NEGATIVE: it does not fire on sentences that merely say home', () => {
+  // Injecting a room-by-room reading into these would have SARA answering a
+  // question nobody asked.
+  for (const q of [
+    'I am working from home today',
+    'on my way home',
+    'what did I finish this week',
+    'book me a meeting with Chris',
+    'add a todo buy cat food',
+    '',
+    null,
+  ]) {
+    assert.equal(looksLikeHouseQuestion(q), false, JSON.stringify(q));
+  }
+});
+
+// -- What is put in front of the model --------------------------------------
+
+test('the briefing carries the rooms and who is in', () => {
+  const text = houseBriefing(describeHouse(HOUSE));
+  assert.match(text, /Living room: 20.4/);
+  assert.match(text, /Others home: yes \(Helen\)/);
+});
+
+test('WARNING-WARNING an UNREADABLE house still produces a block, and forbids inventing', () => {
+  // Silence here would leave the model free to do exactly what this exists to
+  // stop - the block has to be present AND has to say it could not look.
+  const text = houseBriefing(describeHouse(null));
+  assert.match(text, /could not be read/);
+  assert.match(text, /Do NOT say anything is on, off, warm or cold/);
+});
+
+test('WARNING an unreadable HOUSEHOLD is never rendered as nobody home', () => {
+  const text = houseBriefing(describeHouse({
+    ...HOUSE,
+    household: { known: false, othersHome: null, who: [] },
+  }));
+  assert.match(text, /COULD NOT BE READ/);
+  assert.doesNotMatch(text, /Others home: no/);
+});
+
+test('WARNING the briefing leaks no entity ids either', () => {
+  const text = houseBriefing(describeHouse(HOUSE));
+  assert.doesNotMatch(text, /climate\./);
+  assert.doesNotMatch(text, /light\./);
+});
+
+test('WARNING the house is read BEFORE the model, in claude.js', () => {
+  // The router is only useful if something calls it. This is the join, and the
+  // join is where this kind of work breaks - `canOpen` was stored, returned
+  // and then not copied, hours before this was written.
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'claude.js'), 'utf8');
+  assert.match(src, /TOOL_PROMPT/, 'positive control: wrong file');
+  assert.match(src, /looksLikeHouseQuestion\(userMessage\)/,
+    'the prompt builder must route the question');
+  assert.match(src, /houseBriefing/, 'and put the reading in front of the model');
 });

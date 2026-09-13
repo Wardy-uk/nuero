@@ -710,6 +710,11 @@ You have tools. Use them rather than guessing or describing what you would do.
 - draft_email_reply and schedule_focus_block only QUEUE work for approval. They send and book nothing. Say so plainly: tell him it's waiting for his approval, don't imply it's done.
 - Act, then report in one or two sentences. Don't narrate each tool call.`;
 
+
+/** Join with real newlines without writing an escape that a pipeline can eat. */
+function nlJoin(parts) {
+  return parts.join(String.fromCharCode(10));
+}
 /**
  * Build the system prompt with context.
  */
@@ -717,7 +722,37 @@ async function _buildChatPrompt(userMessage, mode, withTools = false) {
   const weekend = isWeekend();
   const basePrompt = weekend ? WEEKEND_SYSTEM_PROMPT : SYSTEM_PROMPT;
   const { systemContext } = await buildChatContext(userMessage, { mode });
-  return `${basePrompt}${withTools ? TOOL_PROMPT : ''}\n\n---\nCONTEXT:\n${systemContext}`;
+  // THE HOUSE IS READ BEFORE THE MODEL, on a question about the house.
+  //
+  // WARNING-WARNING  A PROMPT RULE WAS NOT ENOUGH. Asked "is anyone else home",
+  //   SARA answered "No" with NO TOOL CALL AT ALL, while the household sensor
+  //   read `on` with Helen and Isaac in it - measured against the backend log,
+  //   13 Sep 2026, and reproduced. Naming the house in the no-guessing rule
+  //   fixed the temperature phrasings and did nothing for that one.
+  //
+  //   `checkSaraGrounding` learned the same thing one surface along: a model
+  //   asked for an answer can always produce one, so the fix cannot be the
+  //   instruction alone. Putting the reading IN FRONT of it removes the
+  //   opportunity rather than asking it not to take it. The tool stays for
+  //   follow-ups and for anything the router does not catch.
+  //
+  // WARNING  NEVER ALLOWED TO FAIL THE TURN. An unreadable house still produces
+  //   a block, and that block SAYS it could not be read - silence would leave
+  //   the model free to invent, which is the whole failure.
+  let houseBlock = '';
+  try {
+    const homeState = require('./home-state');
+    if (homeState.looksLikeHouseQuestion(userMessage)) {
+      const house = await require('./ha-rooms').readHouse();
+      houseBlock = nlJoin(['', homeState.houseBriefing(homeState.describeHouse(house))]);
+    }
+  } catch (e) {
+    console.warn('[Chat] could not read the house for this turn:', e.message);
+    houseBlock = nlJoin(['', 'THE HOUSE RIGHT NOW: could not be read - ' + e.message
+      + '. Say you could not look.']);
+  }
+
+  return `${basePrompt}${withTools ? TOOL_PROMPT : ''}\n\n---\nCONTEXT:\n${systemContext}${houseBlock}`;
 }
 
 /**
