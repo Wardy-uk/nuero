@@ -711,6 +711,51 @@ You have tools. Use them rather than guessing or describing what you would do.
 - Act, then report in one or two sentences. Don't narrate each tool call.`;
 
 
+
+/**
+ * What day it is. The one fact every other answer rests on.
+ *
+ * WARNING-WARNING  NOTHING IN THE CHAT PROMPT CARRIED IT. Asked what he had
+ *   got done today, SARA answered "...but it's Saturday, so that's fine" - on
+ *   a SUNDAY. Every question about 'today', 'this week', 'tomorrow' or the
+ *   diary rests on a fact she was guessing, and a wrong day makes a correct
+ *   answer wrong.
+ *
+ * WARNING  LOCAL TIME, NEVER `toISOString()`. The Pi may run UTC, and building
+ *   a date string out of UTC getters is how every BST event read an hour early
+ *   in three separate places in this repo.
+ *
+ * WARNING  A WORKING DAY IS `working-days`' CALL, not Monday-to-Friday. It
+ *   knows about bank holidays, and a second opinion here is how one part of
+ *   the system comes to disagree with the thing that books meetings.
+ */
+function rightNowBlock(now = new Date()) {
+  const zone = process.env.NEURO_TIMEZONE || 'Europe/London';
+  let stamp;
+  try {
+    stamp = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone,
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(now);
+  } catch {
+    // A bad zone must not cost the whole prompt.
+    stamp = now.toString();
+  }
+
+  let working = null;
+  try {
+    working = require('./working-days').isWorkingDay(now);
+  } catch { /* unknown stays unknown */ }
+
+  const lines = ['RIGHT NOW: ' + stamp + ' (' + zone + ').'];
+  if (working === true) lines.push('It is a working day.');
+  else if (working === false) lines.push('It is NOT a working day (weekend or bank holiday).');
+  // WARNING  Unknown is SILENT rather than guessed. Saying nothing about the
+  //   working day is honest; calling a bank holiday a Tuesday is not.
+  lines.push('Use this for anything about today, tomorrow, this week or the time. Never guess the day.');
+  return lines.join(String.fromCharCode(10));
+}
 /** Join with real newlines without writing an escape that a pipeline can eat. */
 function nlJoin(parts) {
   return parts.join(String.fromCharCode(10));
@@ -752,7 +797,7 @@ async function _buildChatPrompt(userMessage, mode, withTools = false) {
       + '. Say you could not look.']);
   }
 
-  return `${basePrompt}${withTools ? TOOL_PROMPT : ''}\n\n---\nCONTEXT:\n${systemContext}${houseBlock}`;
+  return `${basePrompt}${withTools ? TOOL_PROMPT : ''}\n\n---\n${rightNowBlock()}\n\nCONTEXT:\n${systemContext}${houseBlock}`;
 }
 
 /**
@@ -968,5 +1013,5 @@ module.exports = {
   isConfigured,
   streamChat,
   syncChat,
-  _internals: { parseDecisions },
+  _internals: { parseDecisions, rightNowBlock },
 };
