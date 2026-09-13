@@ -1,13 +1,10 @@
 .now__sec { margin-bottom: 1.25rem; }
 
-.now__sech {
-  margin: 0 0 0.5rem;
-  font-size: 0.75rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-weight: 600;
-}
+/* ⚠ The type is `LitLabel`'s now — size, tracking, case and weight all live in
+   `shared-ui/Lit.css` so every screen's section labels are one thing. What is
+   left here is only the spacing this screen wants. Its COLOUR was
+   `var(--muted)`, a flat grey that said nothing about her state. */
+.now__sech { margin: 0 0 0.5rem; }
 
 .now__unread {
   color: #f0d6a6;
@@ -24,7 +21,8 @@
 
 .now__focus-label {
   font-size: 0.75rem;
-  color: var(--accent);
+  /* ⚠ Hers, for the same reason as the edge above. */
+  color: rgba(var(--sara-rgb, 114, 150, 211), 0.92);
   margin-bottom: 0.3rem;
 }
 
@@ -69,7 +67,9 @@
   white-space: nowrap;
 }
 
-.now__when--live { color: var(--accent); }
+/* "on now" is a live fact about this minute, so it is the one thing in a
+   diary row that is lit. */
+.now__when--live { color: rgb(var(--sara-rgb, 114, 150, 211)); }
 
 .now__task {
   display: flex;
@@ -91,13 +91,16 @@
   cursor: pointer;
 }
 
-.now__tick:disabled { opacity: 0.35; cursor: default; }
+/* ⚠ Was `opacity: 0.35`, which greys the only mark on the row and reads as
+   broken. The card is DASHED and the reason is printed beside it now, so this
+   only has to stop being pressable. */
+.now__tick:disabled { opacity: 0.6; cursor: default; }
 
 .now__go {
   margin-top: 0.55rem;
-  background: var(--accent-dim);
+  background: rgba(var(--sara-rgb, 114, 150, 211), 0.16);
   color: var(--text);
-  border: 1px solid var(--line);
+  border: 1px solid rgba(var(--sara-rgb, 114, 150, 211), 0.34);
   border-radius: 8px;
   padding: 0.35rem 0.7rem;
   font-size: 0.82rem;
@@ -132,7 +135,7 @@
 .now__flash {
   margin-bottom: 0.85rem;
   font-size: 0.85rem;
-  color: var(--accent);
+  color: rgb(var(--sara-rgb, 114, 150, 211));
 }
 
 .now__flash.err { color: #ff8a8a; }
@@ -143,8 +146,9 @@
   font-size: 0.8rem;
 }
 
-.now__gaps summary { cursor: pointer; }
-.now__gaps ul { margin: 0.5rem 0 0; padding-left: 1.1rem; line-height: 1.5; }
+/* ⚠ No `summary` and no `<details>` any more: a gap collapsed behind a count
+   is a gap nobody reads. Each one is named, on its own line, at a glance. */
+.now__gap { line-height: 1.5; padding: 0.15rem 0; }
 .now__gaps strong { color: var(--text); }
 
 /* ── The focus session's controls (Gate 3) ─────────────────────────────────
@@ -170,9 +174,10 @@
   /* A phone, one-handed. */
   min-height: 44px;
 }
+/* The one action in a row that carries on rather than backs out. */
 .now__sess-btn--go {
-  background: var(--accent-dim, #2b3d57);
-  border-color: var(--accent, #4c9aff);
+  background: rgba(var(--sara-rgb, 114, 150, 211), 0.16);
+  border-color: rgba(var(--sara-rgb, 114, 150, 211), 0.45);
 }
 .now__sess-btn:disabled { opacity: 0.5; }
 
@@ -223,8 +228,15 @@
 
 /* ── The way back, the start, and the close-out ────────────────────────────── */
 
-/* The return prompt leads the screen, so it carries the accent edge. */
-.now__return { border-left: 3px solid var(--accent, #4c9aff); margin-bottom: 0.85rem; }
+/* The return prompt leads the screen, so it carries the brightest edge.
+   ⚠ HER colour, not `var(--accent)`. That was the fixed system blue, which is
+   a second opinion about what state she is in — on a day she has gone red, an
+   accent-blue edge on the most important card on the screen is the two-products
+   finding in one rule. `--sara-rgb` is set on the shell. */
+.now__return {
+  border-left: 3px solid rgb(var(--sara-rgb, 114, 150, 211));
+  margin-bottom: 0.85rem;
+}
 
 .now__closeout { margin-bottom: 0.85rem; }
 
@@ -252,10 +264,12 @@
 }
 .now__start-opt .now__meta { margin-top: 0; }
 
-/* Selected is shown by edge AND fill, so it does not rest on colour alone. */
+/* Selected is shown by edge AND fill, so it does not rest on colour alone —
+   which matters more now the colour MOVES: the same picked state is blue on a
+   quiet morning and red in a fire, and the shape has to say it either way. */
 .now__start-opt[aria-pressed="true"],
 .now__sess-btn[aria-pressed="true"] {
-  background: var(--accent-dim, #2b3d57);
-  border-color: var(--accent, #4c9aff);
-  box-shadow: inset 3px 0 0 var(--accent, #4c9aff);
+  background: rgba(var(--sara-rgb, 114, 150, 211), 0.16);
+  border-color: rgba(var(--sara-rgb, 114, 150, 211), 0.5);
+  box-shadow: inset 3px 0 0 rgb(var(--sara-rgb, 114, 150, 211));
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNickNow, stampFor } from '../mobile/useNickNow';
 import { apiFetch } from '../api';
 import Readiness from '../../../shared-ui/Readiness.jsx';
-import { Lit } from '../../../shared-ui/Lit.jsx';
+import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import { enqueue, flush, outcomeFor, pending as pendingOps, subscribe } from '../mobile/outbox';
 import Freshness from '../components/Freshness';
 import './Now.css';
@@ -85,7 +85,7 @@ function SessionCard({ session, onChanged, onFinished }) {
   const banked = session.status === 'paused' || session.status === 'interrupted' || stuck;
 
   return (
-    <div className="card now__focus">
+    <Lit className="now__focus">
       <div className="now__focus-label">
         {stuck
           ? 'Stuck on how big this is'
@@ -290,7 +290,7 @@ function SessionCard({ session, onChanged, onFinished }) {
       {stuck && !asking && (
         <div className="now__meta">No smaller step named yet — that is fine, it is the next thing to work out.</div>
       )}
-    </div>
+    </Lit>
   );
 }
 
@@ -344,7 +344,12 @@ function ReturnCard({ recovery, onChanged, onFinished }) {
   }
 
   return (
-    <div className="card now__focus now__return">
+    // ⚠ THE ONE LEAD ON THIS SCREEN, and the exception MANIFESTATION.md names:
+    // the centrepiece does NOT export to a list, but it does belong on a screen
+    // that genuinely has ONE answer, and an unclosed session is that. The cost
+    // of an interruption is the failure to come back, so nothing outranks it —
+    // and spending the lead twice would mean spending it nowhere.
+    <Lit tone="lead" className="now__focus now__return">
       <div className="now__focus-label">
         {settle ? 'Left open' : recovery.kind === 'shrink' ? 'Stuck on how big this is' : 'Coming back to this'}
       </div>
@@ -440,7 +445,7 @@ function ReturnCard({ recovery, onChanged, onFinished }) {
           </button>
         </div>
       )}
-    </div>
+    </Lit>
   );
 }
 
@@ -519,7 +524,7 @@ function StartCard({ tasks, assumedMinutes, onStarted }) {
   }
 
   return (
-    <div className="card now__focus now__start">
+    <Lit className="now__focus now__start">
       <div className="now__focus-label">Start one thing</div>
 
       {tasks === null ? (
@@ -591,19 +596,26 @@ function StartCard({ tasks, assumedMinutes, onStarted }) {
           <button type="button" className="now__sess-btn" disabled={busy} onClick={reset}>Cancel</button>
         </div>
       )}
-    </div>
+    </Lit>
   );
 }
 
 function Section({ title, state, children }) {
+  // ⚠ A NAMED GAP IS NOT AN ERROR. It is her being honest rather than something
+  // failing, so the unread branch is a STATEMENT — no glow, no affordance, and
+  // never a fault colour. Dressing it as a fault is how he learns to ignore the
+  // real one too.
   return (
     <section className="now__sec">
-      <h2 className="now__sech">{title}</h2>
+      {/* ⚠ HER label, and deliberately the DIMMEST thing in the section.
+          Hierarchy by light means the word naming a section never competes with
+          the content under it — a bright heading is another bright box. */}
+      <LitLabel as="h2" className="now__sech">{title}</LitLabel>
       {state && state.known === false ? (
-        <div className="card now__unread">
+        <Lit tone="statement" className="now__unread">
           I couldn&rsquo;t read this{state.why ? ` — ${state.why}` : ''}.
           <span className="now__unread-note"> That isn&rsquo;t the same as nothing being there.</span>
-        </div>
+        </Lit>
       ) : children}
     </section>
   );
@@ -738,13 +750,13 @@ export default function Now({ onNavigate }) {
       </p>
 
       {closeout && (
-        <div className="card now__focus now__closeout">
+        <Lit className="now__focus now__closeout">
           <div className="now__focus-label">Finished{closeout.text ? ` — ${closeout.text}` : ''}</div>
           {closeout.say
             ? <div className="now__focus-text">{closeout.say}</div>
             : <div className="now__meta">The time on it didn&rsquo;t come back, so there is nothing to compare it with.</div>}
           <button type="button" className="now__go" onClick={() => setCloseout(null)}>Close</button>
-        </div>
+        </Lit>
       )}
 
       {/* The return prompt leads the screen: the cost of an interruption is the
@@ -798,7 +810,7 @@ export default function Now({ onNavigate }) {
       {flash && <div className={`now__flash${flash.ok ? '' : ' err'}`}>{flash.msg}</div>}
 
       {!s && freshness !== 'loading' && (
-        <div className="card now__unread">Nothing to show yet.</div>
+        <Lit tone="statement" className="now__unread">Nothing to show yet.</Lit>
       )}
 
       {s && (
@@ -809,11 +821,11 @@ export default function Now({ onNavigate }) {
               // Said once: the return prompt above already owns this session and
               // its controls, and two cards with two "Back to it" buttons for one
               // thread is how a screen starts to argue with itself.
-              <div className="card now__calm">That session is waiting at the top of the screen.</div>
+              <Lit tone="statement" className="now__calm">That session is waiting at the top of the screen.</Lit>
             ) : session ? (
               <SessionCard session={session} onChanged={sessionChanged} onFinished={finished} />
             ) : s.focus.item ? (
-              <div className="card now__focus">
+              <Lit className="now__focus">
                 <div className="now__focus-text">{s.focus.item.title}</div>
                 {s.focus.nextStep && <div className="now__next">{s.focus.nextStep}</div>}
                 {s.focus.item.tab && onNavigate && (
@@ -821,13 +833,13 @@ export default function Now({ onNavigate }) {
                     Open →
                   </button>
                 )}
-              </div>
+              </Lit>
             ) : (
-              <div className="card now__calm">
+              <Lit tone="statement" className="now__calm">
                 {s.poolAvailable
                   ? 'Nothing pending. That is the real answer, not a blank screen.'
                   : "I couldn't read what needs doing — this is NOT an all-clear."}
-              </div>
+              </Lit>
             )}
             {/* Offered only when NEURO has actually said nothing is running. If
                 the live read failed, a Start button would fail the same way. */}
@@ -848,16 +860,16 @@ export default function Now({ onNavigate }) {
           {/* ── The next transition ─────────────────────────────────────── */}
           <Section title={s.agenda.known && s.agenda.scope !== 'today' ? `Next — ${s.agenda.scope}` : 'Next'} state={s.agenda}>
             {s.agenda.items.length === 0 ? (
-              <div className="card now__calm">Nothing left in the diary.</div>
+              <Lit tone="statement" className="now__calm">Nothing left in the diary.</Lit>
             ) : (
               s.agenda.items.map((e) => (
-                <div className="card now__event" key={e.id}>
+                <Lit className="now__event" key={e.id}>
                   <div className="now__event-top">
                     <span className="now__event-title">{e.title}</span>
                     <Countdown minutesAway={e.minutesAway} running={e.running} allDay={e.allDay} />
                   </div>
                   {e.withOthers === true && <div className="now__meta">with other people</div>}
-                </div>
+                </Lit>
               ))
             )}
           </Section>
@@ -865,18 +877,18 @@ export default function Now({ onNavigate }) {
           {/* ── Follow-ups ──────────────────────────────────────────────── */}
           <Section title="Needs a decision" state={s.followUps}>
             {s.followUps.items.length === 0 ? (
-              <div className="card now__calm">
+              <Lit tone="statement" className="now__calm">
                 {s.followUps.quiet ? 'Quiet — nothing worth interrupting you for.' : 'Nothing pending.'}
-              </div>
+              </Lit>
             ) : (
               s.followUps.items.map((f) => (
-                <div className="card now__item" key={f.id}>
+                <Lit className="now__item" key={f.id}>
                   <div className="now__item-title">{f.title}</div>
                   {f.say && <div className="now__item-say">{f.say}</div>}
                   {f.tab && onNavigate && (
                     <button type="button" className="now__go" onClick={() => onNavigate(f.tab)}>Open →</button>
                   )}
-                </div>
+                </Lit>
               ))
             )}
             {s.followUps.known && s.followUps.dropped > 0 && (
@@ -887,18 +899,21 @@ export default function Now({ onNavigate }) {
           {/* ── The bounded task set ────────────────────────────────────── */}
           <Section title="Tasks" state={s.tasks}>
             {s.tasks.items.length === 0 ? (
-              <div className="card now__calm">Nothing open.</div>
+              <Lit tone="statement" className="now__calm">Nothing open.</Lit>
             ) : (
               <>
                 {s.tasks.items.map((t) => (
-                  <div className="card now__task" key={t.id}>
+                  <Lit
+                    className="now__task"
+                    tone={t.completableOffline ? 'normal' : 'unreachable'}
+                    key={t.id}
+                  >
                     <button
                       type="button"
                       className="now__tick"
                       onClick={() => tick(t)}
                       disabled={!t.completableOffline || ticking === t.id}
                       aria-label={`Complete ${t.text}`}
-                      title={t.completableOffline ? 'Complete' : 'Owned elsewhere — open it online to tick it'}
                     >{ticking === t.id ? '…' : '○'}</button>
                     <div className="now__task-body">
                       <div className="now__task-text">{t.text}</div>
@@ -907,8 +922,23 @@ export default function Now({ onNavigate }) {
                         {t.moscow ? ` · ${t.moscow}` : ''}
                         {t.estimateMinutes ? ` · ${t.estimateMinutes}m` : ''}
                       </div>
+                      {/* ⚠ SAID, NOT HIDDEN IN A `title`. A phone has no hover,
+                          so the tooltip this replaced was invisible on the one
+                          device this screen is for — and a greyed circle with no
+                          reason reads as broken rather than as not-ours.
+
+                          ⚠ AND IT DOES NOT NAME THE OWNER, because nothing here
+                          knows it. `completableOffline` is `Number.isInteger(task_id)`
+                          — false means the row has no NEURO id, which is a
+                          Microsoft mirror OR a daily-note line. "Microsoft owns
+                          this one" was a plausible guess and would be wrong on
+                          the vault rows. This is iOS's wording, verbatim, so the
+                          two surfaces cannot phrase one refusal two ways. */}
+                      {!t.completableOffline && (
+                        <div className="now__meta">Owned elsewhere — open it online to tick it.</div>
+                      )}
                     </div>
-                  </div>
+                  </Lit>
                 ))}
                 {s.tasks.total > s.tasks.items.length && (
                   <div className="now__meta">
@@ -920,15 +950,26 @@ export default function Now({ onNavigate }) {
           </Section>
 
           {/* Everything NEURO could not see, named rather than swallowed. */}
+          {/* ⚠⚠ NAMED GAPS, NEVER COUNTED — MANIFESTATION.md, and this screen was
+              breaking it. "3 things I couldn't read" is a number he cannot act
+              on, and it was COLLAPSED behind a `<details>`, so the one thing
+              that makes a gap useful — WHICH source went dark — took a tap to
+              reach and was invisible at a glance. "I couldn't read the diary"
+              and "I couldn't read your tasks" send him to different places.
+
+              ⚠ And it is a STATEMENT, not an error: her being honest is not
+              something failing, and painting it as a fault is how he learns to
+              ignore the real one. The amber it keeps is `Palette.gap`'s fixed
+              meaning — unread — which is a different colour and a different
+              claim from danger. */}
           {s.gaps && s.gaps.length > 0 && (
-            <details className="now__gaps">
-              <summary>{s.gaps.length} thing{s.gaps.length === 1 ? '' : 's'} I couldn&rsquo;t read</summary>
-              <ul>
-                {s.gaps.map((g, i) => (
-                  <li key={`${g.input}-${i}`}><strong>{g.input}</strong> — {g.why}</li>
-                ))}
-              </ul>
-            </details>
+            <div className="now__gaps">
+              {s.gaps.map((g, i) => (
+                <div className="now__gap" key={`${g.input}-${i}`}>
+                  <strong>{g.input}</strong> — {g.why}
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}
