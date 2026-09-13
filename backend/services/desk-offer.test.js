@@ -115,3 +115,31 @@ test('⚠ NEGATIVE: it never invents a vocabulary of its own', () => {
   const o = offer({ ...AT_DESK, canOpen: Object.keys(APPS) });
   assert.deepEqual(o.apps.map(a => a.id).sort(), Object.keys(APPS).sort());
 });
+
+// ── The JOIN, which is where this actually broke ──────────────────────
+//
+// ⚠⚠ `canOpen` was stored correctly, `run()` returned it correctly, and it
+//   still arrived at the surface as null — because `current-work.current()`
+//   rebuilds its `desktop` input as an explicit WHITELIST and the field was
+//   not named in it. Every piece was right and the seam was not, which is the
+//   same shape as `runAcross(now)` and as the attention draft dropping
+//   `weather`. The pure suites could not see it: they supply the input
+//   themselves.
+
+test('⚠ the whitelist that builds the desk input NAMES canOpen', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'current-work.js'), 'utf8');
+  assert.match(src, /active: r\.app != null/, 'positive control: wrong file or rewritten');
+  assert.match(src, /canOpen: Array\.isArray\(r\.canOpen\)/,
+    'a field produced upstream and not copied here reaches the surface as null');
+});
+
+test('deskFrom carries it, and keeps null apart from empty', () => {
+  const { _internals } = require('./current-work');
+  if (!_internals || !_internals.deskFrom) return; // not exported; the scan above is the pin
+  const { deskFrom } = _internals;
+  assert.deepEqual(deskFrom({ app: 'Code', host: 'PC', known: true, canOpen: ['music'] }).canOpen, ['music']);
+  assert.equal(deskFrom({ app: 'Code', host: 'PC', known: true }).canOpen, null, 'not said');
+  assert.deepEqual(deskFrom({ app: 'Code', host: 'PC', known: true, canOpen: [] }).canOpen, [], 'said nothing');
+});

@@ -237,6 +237,13 @@ function current(now = new Date()) {
       // "At the laptop and using it" is `present().at`, which is exactly
       // `app != null` — there is no `active` field on a run.
       active: r.app != null,
+      // ⚠ THIS OBJECT IS A WHITELIST, and that is how a field gets lost one
+      //   object away from the thing that reads it. `canOpen` was stored, was
+      //   returned by `run()`, and arrived at the surface as null because it
+      //   was simply not copied here — the same species as the attention
+      //   draft dropping `weather` on 13 Sep 2026. Anything a surface needs
+      //   has to be named HERE, not merely produced upstream.
+      canOpen: Array.isArray(r.canOpen) ? r.canOpen : null,
       known: r.known !== false,
       why: r.why || null,
     };
