@@ -282,10 +282,17 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       setDeskStates(s => ({ ...s, [app]: 'failed' }));
       return;
     }
-    // The agent polls every two minutes and the intent dies at two minutes, so
-    // there is nothing to learn by watching longer than that.
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 5000));
+    // Watch fast, then patiently. The agent claims on its OWN 5s poll now, so
+    // the normal case settles in about two seconds and a 5s first tick would
+    // make a working button look slow. After that the deadline is what
+    // matters: the watch runs PAST it, so the server's own `expired` is
+    // always seen rather than the button being left on 'waiting' for ever.
+    //
+    // ⚠ A FAILED POLL IS NOT AN OUTCOME — it is a poll that failed, so the
+    //   watch continues rather than painting a verdict over a request that
+    //   may well be about to open. Only the route's own words end it.
+    for (let i = 0; i < 45; i++) {
+      await new Promise(r => setTimeout(r, i < 15 ? 2000 : 10000));
       try {
         const st = await apiFetch('/api/desktop/intents/' + encodeURIComponent(id));
         setDeskStates(s => ({ ...s, [app]: st.state }));
