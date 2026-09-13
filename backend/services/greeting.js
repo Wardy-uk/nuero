@@ -33,6 +33,16 @@ const db = require('../db/database');
 
 const LEDGER_KEY = 'sara_greetings';
 const COOLDOWN_MINUTES = 90;
+
+// How close a meeting has to be before it is worth saying at the door. Wide
+// enough to be useful walking in, short enough that it is still true by the
+// time he sits down.
+const MEETING_SOON_MINUTES = 15;
+
+// How many recent brief kinds to remember. ONE, deliberately: it stops her
+// repeating herself on the way back in without making a fact unsayable for the
+// rest of the day.
+const BRIEF_KEEP = 1;
 const RECENT_KEEP = 4;
 // Work hours for the WORDS, not for duty: on a working day, 08:00–18:00.
 const WORK_START_MINUTES = 8 * 60;
@@ -108,6 +118,120 @@ function terminate(s) {
 }
 
 /**
+ * THE ONE THING WORTH SAYING AS HE WALKS IN. PURE.
+ *
+ * Nick, 13 Sep 2026: *"take JARVIS as a concept and build it into SARA."* The
+ * greeting already had the hard parts - she notices him arrive, she owns a
+ * cooldown, and NEURO decides the words while SARA only delivers them. What
+ * it said was a greeting plus the top task, which is the same sentence
+ * whatever is actually happening.
+ *
+ * WARNING  ONE LINE, NEVER A LIST. A briefing at the door is noise; JARVIS is
+ *   terse. Everything here competes for a single slot and the ranking IS the
+ *   product - what earns an interruption at the moment of walking in.
+ *
+ * WARNING  IT ADDS NO NEW REASON TO SPEAK. Every guard above still decides
+ *   WHETHER she speaks - quiet hours, paused, in a meeting, the cooldown, the
+ *   room having a speaker. This only chooses the words once that is settled.
+ *
+ * WARNING  EVERY FACT IS ALREADY ON THE PAYLOAD, and an unreadable one simply
+ *   drops out of the ranking. Nothing here fetches, nothing here infers, and a
+ *   missing input can only ever make her say LESS.
+ *
+ * @returns {{ kind, line }|null}  null means fall through to the work line.
+ */
+function briefLine({
+  now,
+  room = null,
+  workHours = false,
+  firstToday = false,
+  agenda = null,
+  primary = null,
+  rooms = null,
+  weather = null,
+  lastNight = null,
+  recentKinds = [],
+} = {}) {
+  const said = new Set(Array.isArray(recentKinds) ? recentKinds : []);
+  const fresh = (kind, line) => (line && !said.has(kind) ? { kind, line } : null);
+
+  // 1. A MEETING ABOUT TO START. The most time-bound thing there is, and the
+  //    one he would be annoyed to be told about afterwards.
+  //
+  // WARNING  A REAL MEETING ONLY - `attendeesOther` must be exactly TRUE. Half
+  //   his diary is solo focus blocks, and announcing one as a meeting is the
+  //   three-valued trap `isRealMeeting` exists for.
+  const events = (agenda && agenda.known === true && Array.isArray(agenda.events)) ? agenda.events : [];
+  const next = events.find(e => e
+    && e.attendeesOther === true
+    && Number.isFinite(e.minutesAway)
+    && e.minutesAway >= 0
+    && e.minutesAway <= MEETING_SOON_MINUTES);
+  if (next) {
+    const who = String(next.subject || '').trim();
+    const mins = next.minutesAway;
+    const when = mins <= 1 ? 'now' : `in ${mins} minutes`;
+    const hit = fresh('meeting', who ? `${terminate(who)} ${when}.` : `Something in the diary ${when}.`);
+    if (hit) return hit;
+  }
+
+  // 2. SOMETHING BREACHING. The one class of work that outranks the room he is
+  //    standing in, and the documented exception to staying off work talk.
+  if (primary && primary.kind === 'item' && primary.urgency === 'critical' && primary.title) {
+    const hit = fresh('critical', terminate(String(primary.title).trim()));
+    if (hit) return hit;
+  }
+
+  // 3. THE ROOM HE JUST WALKED INTO IS COLD.
+  //
+  // WARNING  IT READS THE OFFER, never a raw temperature it judged itself.
+  //   `room-offers` already decided what counts as cold (19C, Nick's number),
+  //   refused a Fahrenheit-looking reading, and scoped it to the room he is
+  //   actually in. A second opinion here is how two parts of one system come to
+  //   disagree about whether the living room is cold.
+  const offers = (rooms && rooms.known === true && Array.isArray(rooms.offers)) ? rooms.offers : [];
+  // WARNING  THE KIND IS `warm-room`, WHICH IS WHAT `room-offers` EMITS. The
+  //   first cut guessed `heating` and matched nothing - silently, because a
+  //   find() that returns undefined is indistinguishable from a warm house.
+  //   Pinned against the producer in the tests.
+  const cold = offers.find(o => o && o.kind === 'warm-room' && Number.isFinite(o.currentC));
+  if (cold) {
+    const hit = fresh('cold', `It's ${Math.round(cold.currentC)} in here.`);
+    if (hit) return hit;
+  }
+
+  // 4. WEATHER THAT IS ABOUT TO MATTER.
+  //
+  // WARNING  THE WORDS ARE `weather-outlook`'S, taken verbatim. It already
+  //   decided what is worth mentioning (0.2mm is drizzle nobody needs warning
+  //   about) and phrased it once so every surface says it the same way.
+  const lines = (weather && weather.known === true && Array.isArray(weather.outlook)) ? weather.outlook : [];
+  if (lines.length) {
+    const hit = fresh('weather', terminate(String(lines[0]).trim()));
+    if (hit) return hit;
+  }
+
+  // 5. HOW HE SLEPT - once, on the first greeting of the day, and only when it
+  //    was out of the ordinary FOR THAT WEEKDAY.
+  //
+  // WARNING  IT STATES AND NEVER DIAGNOSES. "Nine and a half, well above your
+  //   usual Sunday" is checkable against his own data; "you must be tired" is a
+  //   verdict nothing here has standing to give - `health-daily`'s line,
+  //   inherited rather than re-decided.
+  if (firstToday && lastNight && lastNight.known === true && lastNight.notable === true
+      && Number.isFinite(lastNight.asleepHours) && lastNight.usualLine) {
+    const h = Math.floor(lastNight.asleepHours);
+    const m = Math.round((lastNight.asleepHours - h) * 60);
+    const hit = fresh('sleep', `You slept ${h}h${String(m).padStart(2, '0')} - ${lastNight.usualLine}.`);
+    if (hit) return hit;
+  }
+
+  // Nothing earned the slot. The work line below is the fallback, and off duty
+  // there is no line at all - which is the correct answer most of the time.
+  return null;
+}
+
+/**
  * The words. PURE.
  * @param {object} o
  * @param {Date} o.now
@@ -117,7 +241,7 @@ function terminate(s) {
  * @param {object} o.ledger          for recent openers/leads and "already greeted today"
  * @param {function} [o.rng]
  */
-function compose({ now, room, workHours, workTitle, ledger = {}, rng = Math.random }) {
+function compose({ now, room, workHours, workTitle, brief = null, ledger = {}, rng = Math.random }) {
   const greetedToday = ledger.lastAnyAt && dateKey(new Date(ledger.lastAnyAt)) === dateKey(now);
   const pool = [
     ...OPENERS[dayPart(now)],
@@ -126,6 +250,14 @@ function compose({ now, room, workHours, workTitle, ledger = {}, rng = Math.rand
     ...(ROOM_OPENERS[room] || []),
   ];
   const opener = pick(pool, ledger.recentOpeners, rng);
+
+  // WARNING  THE BRIEF WINS. It is chosen for the moment - a meeting about to
+  //   start, a breach, a cold room, rain coming - and the work line is the
+  //   fallback for when nothing has earned the slot. Putting both in would make
+  //   a briefing out of a greeting, which is the thing JARVIS never does.
+  if (brief && brief.line) {
+    return { text: `${opener} ${brief.line}`, opener, lead: null, briefKind: brief.kind || null };
+  }
 
   const title = workHours && workTitle ? String(workTitle).trim() : '';
   if (!title) return { text: opener, opener, lead: null };
@@ -143,7 +275,7 @@ function readLedger() {
   }
 }
 
-function recordGreeting(ledger, { room, now, opener, lead }) {
+function recordGreeting(ledger, { room, now, opener, lead, briefKind = null }) {
   const next = {
     rooms: { ...(ledger.rooms || {}), [room]: now.toISOString() },
     lastAnyAt: now.toISOString(),
@@ -151,6 +283,13 @@ function recordGreeting(ledger, { room, now, opener, lead }) {
     recentLeads: lead
       ? [lead, ...(ledger.recentLeads || []).filter((l) => l !== lead)].slice(0, RECENT_KEEP)
       : (ledger.recentLeads || []),
+    // WARNING  WHICH KINDS she has just used, so she does not mention the
+    //   weather twice running. Kept SHORT on purpose: it is a variety rule, not
+    //   a suppression - a meeting about to start must be sayable again tomorrow,
+    //   and a cold room again this evening.
+    recentKinds: briefKind
+      ? [briefKind, ...(ledger.recentKinds || []).filter((k) => k !== briefKind)].slice(0, BRIEF_KEEP)
+      : (ledger.recentKinds || []),
   };
   return next;
 }
@@ -187,19 +326,44 @@ async function claim({ room, now = new Date(), preview = false } = {}) {
   } catch { /* unknown: treat as not a working day, so the greeting is just a greeting */ }
   const workHours = isWorkHours(now, workingDay);
 
+  // THE FACTS SHE COULD MENTION, read ONCE.
+  //
+  // WARNING  THE PAYLOAD IS READ WHATEVER THE HOUR NOW. It used to be fetched
+  //   only during work hours, because the only thing taken from it was the top
+  //   task - but a meeting about to start, a cold room and rain in half an hour
+  //   all matter at the weekend, and that is most of what makes her useful at
+  //   the door. It is one read per ARRIVAL, and arrivals are capped by a
+  //   90-minute cooldown.
+  //
+  // WARNING  A FAILED FEED COSTS THE LINE, NEVER THE GREETING. She still says
+  //   hello; she just has nothing to add, which is the honest outcome.
   let workTitle = null;
-  if (workHours) {
-    try {
-      const payload = await require('./attention').build({ now });
-      const p = payload && payload.primary;
-      if (p && p.kind === 'item' && p.title) workTitle = p.title;
-    } catch (e) {
-      // A failed feed costs the work line, never the greeting.
-      console.warn('[Greeting] attention unavailable:', e.message);
-    }
+  let brief = null;
+  try {
+    const payload = await require('./attention').build({ now });
+    const p = payload && payload.primary;
+    if (workHours && p && p.kind === 'item' && p.title) workTitle = p.title;
+    brief = briefLine({
+      now,
+      room,
+      workHours,
+      // Once a day for the sleep line: the first time she speaks to him.
+      firstToday: !(ledger.lastAnyAt && dateKey(new Date(ledger.lastAnyAt)) === dateKey(now)),
+      agenda: payload && payload.agenda,
+      primary: p,
+      rooms: payload && payload.rooms,
+      weather: payload && payload.weather,
+      lastNight: payload && payload.lastNight,
+      // WARNING  SHE DOES NOT SAY THE SAME KIND OF THING TWICE RUNNING. Told
+      //   about the weather on the way in, she finds something else next time
+      //   or says nothing - the rule the opener and lead pools already follow.
+      recentKinds: Array.isArray(ledger.recentKinds) ? ledger.recentKinds : [],
+    });
+  } catch (e) {
+    console.warn('[Greeting] attention unavailable:', e.message);
   }
 
-  const words = compose({ now, room, workHours, workTitle, ledger });
+  const words = compose({ now, room, workHours, workTitle, brief, ledger });
   if (!preview) {
     try {
       db.setState(LEDGER_KEY, JSON.stringify(recordGreeting(ledger, { room, now, ...words })));
@@ -218,5 +382,6 @@ async function claim({ room, now = new Date(), preview = false } = {}) {
 
 module.exports = {
   claim, decide, compose, isWorkHours, dayPart, recordGreeting, pick,
+  briefLine, MEETING_SOON_MINUTES,
   OPENERS, LEADS, ROOM_OPENERS, COOLDOWN_MINUTES, LEDGER_KEY,
 };

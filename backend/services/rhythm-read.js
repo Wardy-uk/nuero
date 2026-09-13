@@ -80,6 +80,49 @@ function sleepVsUsual({ days = SLEEP_DAYS } = {}) {
   };
 }
 
+/**
+ * The usual night for the weekday of a GIVEN day, excluding that day.
+ *
+ * WARNING  `sleepVsUsual()` picks the latest COMPLETE day, which is right for
+ *   "the last night I can fully judge" and WRONG for "last night" - sleep is
+ *   stamped to the WAKE DATE, so the night that just ended is TODAY's row, and
+ *   today is never complete. Measured 13 Sep 2026: the row said 9.62h and the
+ *   screen said 8h25, which was the night before last.
+ *
+ * WARNING  THE NIGHT BEING JUDGED IS STILL EXCLUDED FROM ITS OWN BASELINE.
+ *   Including it drags the median towards itself and every comparison
+ *   understates.
+ */
+function usualFor(dayStr, { days = SLEEP_DAYS } = {}) {
+  const weekday = rhythm.weekdayOf(dayStr);
+  if (weekday === null) return { known: false, why: 'unreadable date' };
+  let rows;
+  try {
+    rows = require('./health-daily').recentDays(days, { completeOnly: true });
+  } catch (e) {
+    return { known: false, why: 'could not read your sleep history: ' + e.message };
+  }
+  if (!Array.isArray(rows)) return { known: false, why: 'no sleep history yet' };
+  const sameWeekday = rows
+    .filter(r => r.day !== dayStr && rhythm.weekdayOf(r.day) === weekday)
+    .map(r => r.asleepHours);
+  const pattern = rhythm.typical(sameWeekday);
+  return {
+    known: pattern.known,
+    weekday,
+    usual: pattern.known ? pattern.typical : null,
+    samples: pattern.n,
+    why: pattern.known ? null : pattern.why,
+  };
+}
+
+/** The line for a specific night, or null when there is no habit yet. */
+function lineFor(dayStr) {
+  const p = usualFor(dayStr);
+  if (!p.known || !Number.isFinite(p.usual)) return null;
+  return sleepLine({ known: true, weekday: p.weekday, usual: p.usual });
+}
+
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /**
@@ -98,4 +141,4 @@ function sleepLine(read) {
   return `usually ${hhmm(read.usual)} on a ${name}`;
 }
 
-module.exports = { sleepVsUsual, sleepLine, SLEEP_DAYS, DAY_NAMES };
+module.exports = { sleepVsUsual, sleepLine, usualFor, lineFor, SLEEP_DAYS, DAY_NAMES };

@@ -1030,11 +1030,20 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   // WARNING  Never allowed to fail the payload, and each failure is its own gap.
   let lastNight = null;
   try {
-    const days = require('./health-daily').recentDays(3, { completeOnly: true });
-    const latest = Array.isArray(days) && days.length ? days[0] : null;
-    // WARNING  A PARTIAL DAY IS NOT A NIGHT. `completeOnly` is what stops today's
-    //   half-written row being read as a short night all morning - the same rule
-    //   `health-daily` applies to every average it computes.
+    // WARNING-WARNING  LAST NIGHT IS TODAY'S ROW. Sleep is stamped to the WAKE
+    //   DATE, so the night that just ended belongs to today - and today is never
+    //   'complete', because steps and energy accrue until midnight. Reading only
+    //   complete days therefore showed the night BEFORE last: measured 13 Sep
+    //   2026, the row held 9.62h and the screen said 8h25.
+    //
+    // WARNING  `completeOnly` IS STILL RIGHT FOR AVERAGES and is untouched
+    //   everywhere else. It is wrong for the one metric that finishes when he
+    //   wakes up, which is why this reads the raw days and asks only whether
+    //   there is a SLEEP figure - a row with no sleep in it is skipped, so a
+    //   night he has not woken from yet cannot read as zero.
+    const days = require('./health-daily').recentDays(3);
+    const latest = (Array.isArray(days) ? days : [])
+      .find(d => d && Number.isFinite(d.asleepHours)) || null;
     lastNight = latest && Number.isFinite(latest.asleepHours)
       ? {
         known: true, day: latest.day, asleepHours: latest.asleepHours,
@@ -1044,9 +1053,17 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
         //   here has standing to make.
         ...(() => {
           try {
+            // WARNING  COMPARED AGAINST THE USUAL FOR *THAT NIGHT'S* WEEKDAY.
+            //   `sleepVsUsual()` picks the latest complete day and would compare
+            //   a different night from the one on screen - two numbers about two
+            //   nights, read as one.
             const rr = require('./rhythm-read');
-            const read = rr.sleepVsUsual();
-            return { usual: read.known ? read.usual : null, usualLine: rr.sleepLine(read), notable: read.notable === true };
+            const p = rr.usualFor(latest.day);
+            const rhythmPure = require('../../shared/rhythm.cjs');
+            const cmp = p.known
+              ? rhythmPure.compare(latest.asleepHours, { known: true, typical: p.usual, spread: null, n: p.samples })
+              : { notable: false };
+            return { usual: p.known ? p.usual : null, usualLine: rr.lineFor(latest.day), notable: cmp.notable === true };
           } catch { return {}; }
         })(),
       }
