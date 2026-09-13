@@ -703,7 +703,8 @@ const TOOL_PROMPT = `
 
 ## Tools
 You have tools. Use them rather than guessing or describing what you would do.
-- Never state a queue figure, task, calendar entry or vault fact from memory — read it with a tool first.
+- Never state a task, calendar entry, vault fact, email or anything about the HOUSE from memory — read it with a tool first.
+- Anything about the house (a temperature, a radiator, lights, whether anyone is in) comes from get_home_state, EVERY time. It is cheap and local. If you have not called it, you have not looked, and you say so rather than answering.
 - Never invent a task id. Call get_tasks before complete_task.
 - When Nick commits to something, call create_task. Do NOT use the [ADD TODO: ...] marker while you have tools — it would create the task twice.
 - draft_email_reply and schedule_focus_block only QUEUE work for approval. They send and book nothing. Say so plainly: tell him it's waiting for his approval, don't imply it's done.
