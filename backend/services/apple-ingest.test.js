@@ -452,3 +452,63 @@ test('a push that lands events reports access as ok', () => {
   assert.equal(st.access, 'ok');
   assert.equal(st.visibleCalendars, 2);
 });
+
+// ── Local wall-clock, never UTC ──────────────────────────────────────────────
+//
+// The BST bug, third repo. Live on 13 Sep 2026 the moment the native client
+// first got permission: a 13:55 appointment stored `12:55Z` and rendered 12:55,
+// and that day's all-day event stored `2026-09-12T23:00:00Z` — filed under
+// yesterday and absent from today's agenda. Everything downstream SLICES the
+// time out of this string, so a `Z` is not a harmless extra.
+
+test('a UTC stamp is converted to local wall-clock, and loses the Z', () => {
+  assert.equal(apple.toLocalWallClock('2026-09-13T12:55:00.000Z'), '2026-09-13T13:55:00');
+});
+
+test('an all-day event lands on the right DAY, not the one before', () => {
+  // Midnight BST is 23:00Z the previous day. Stored raw, the event is filed
+  // under yesterday and drops out of today's agenda entirely — which is how a
+  // busy day reads as free, the worst direction for this table.
+  assert.equal(apple.toLocalWallClock('2026-09-12T23:00:00.000Z'), '2026-09-13T00:00:00');
+});
+
+test('a WINTER stamp does not move — this is a conversion, not a blind +1', () => {
+  // The test that tells a real timezone conversion from a hardcoded offset.
+  assert.equal(apple.toLocalWallClock('2026-01-15T09:00:00Z'), '2026-01-15T09:00:00');
+});
+
+test('a wall-clock string is left exactly alone', () => {
+  // The Scriptable client sent these deliberately. Re-reading one as UTC is the
+  // same bug running in the other direction.
+  assert.equal(apple.toLocalWallClock('2026-09-05T09:00:00'), '2026-09-05T09:00:00');
+});
+
+test('an explicit offset is honoured too', () => {
+  assert.equal(apple.toLocalWallClock('2026-09-13T13:55:00+01:00'), '2026-09-13T13:55:00');
+});
+
+test('an unreadable time is returned unchanged, never guessed', () => {
+  // A time nobody can read is not an invitation to invent one.
+  assert.equal(apple.toLocalWallClock('not a date'), 'not a date');
+  assert.equal(apple.toLocalWallClock(''), '');
+});
+
+test('an ingested event is STORED as wall-clock, all the way to the row', () => {
+  // The pure function is not the promise — the row is. This is the assertion
+  // that would have caught it: the live payload, end to end.
+  const from = '2026-09-13T00:00:00';
+  const to = '2026-09-14T00:00:00';
+  apple.ingestCalendar({
+    from, to, calendars: ['ward.nickj@gmail.com'],
+    events: [{
+      id: 'tz-1', title: 'Appointment', calendar: 'ward.nickj@gmail.com',
+      start: '2026-09-13T12:55:00.000Z', end: '2026-09-13T13:55:00.000Z',
+    }],
+  });
+
+  const row = db.getCalendarEvents(from, to).find((e) => e.subject === 'Appointment');
+  assert.ok(row, 'the event should be stored');
+  assert.equal(row.start_time, '2026-09-13T13:55:00');
+  assert.equal(row.end_time, '2026-09-13T14:55:00');
+  assert.ok(!/Z$/.test(row.start_time), 'no zone marker may reach the row');
+});

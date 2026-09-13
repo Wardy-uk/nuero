@@ -190,10 +190,61 @@ function listIsIngested(listName) {
  * event with no start is worse than a missing one, because every consumer reads
  * the cache as the truth about the diary.
  */
+/**
+ * A calendar time, as NEURO stores them: LOCAL WALL-CLOCK, no zone marker.
+ *
+ * ⚠ THE BST BUG, THIRD REPO. Everything downstream — the agenda, the
+ * dashboards, `time-fit`, the widget — SLICES the time out of this string and
+ * converts nothing, so a `Z` on the end is not a harmless extra: it renders an
+ * hour early all summer, and an all-day event beginning at midnight BST is
+ * `23:00Z` on the PREVIOUS DAY, which files it under yesterday and drops it out
+ * of today's agenda altogether. Both were live on 13 Sep 2026: a 13:55
+ * appointment showing 12:55, and that day's all-day event missing entirely.
+ *
+ * The Scriptable client sent local wall-clock deliberately and said why; the
+ * Swift rewrite that replaced it used `ISO8601.string(from:)`, which is UTC,
+ * and nothing in between noticed. ⚠ Least of all the countdown —
+ * `minutesAway` does real date arithmetic and stayed CORRECT, so the clock face
+ * lied while the "in 62 minutes" beside it did not.
+ *
+ * Fixed at the INGEST BOUNDARY rather than in one client: this is NEURO's
+ * storage contract, so it belongs where NEURO's storage begins, and it then
+ * holds for every client including the two that already disagree.
+ *
+ * ⚠ Converted against `NEURO_TIMEZONE`, never the host clock — the Pi runs
+ * UTC, which would make this a silent no-op there and a working fix on a laptop.
+ * `parseIcsDate`'s rule, reused rather than re-derived.
+ *
+ * ⚠ An unparseable value is returned UNCHANGED. A time nobody can read is not
+ * an invitation to invent one, and a wrong hour is worse than an odd string.
+ */
+function toLocalWallClock(value) {
+  const raw = String(value);
+  // No zone marker means the client already sent wall-clock (the Scriptable
+  // path). Leave it exactly alone — re-interpreting it as UTC is this same bug
+  // running in the other direction.
+  const zoned = /(Z|[+-]\d{2}:?\d{2})$/.test(raw);
+  if (!zoned) return raw;
+
+  const at = new Date(raw);
+  if (Number.isNaN(at.getTime())) return raw;
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: process.env.NEURO_TIMEZONE || 'Europe/London',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(at);
+  const part = (type) => (parts.find((p) => p.type === type) || {}).value;
+  const y = part('year'); const mo = part('month'); const d = part('day');
+  const hh = part('hour'); const mm = part('minute'); const ss = part('second');
+  if (!y || !mo || !d || !hh || !mm || !ss) return raw;
+  return `${y}-${mo}-${d}T${hh}:${mm}:${ss}`;
+}
+
 function normaliseEvent(raw) {
   if (!raw || !raw.id || !raw.start) return null;
-  const start = String(raw.start);
-  const end = raw.end ? String(raw.end) : start;
+  const start = toLocalWallClock(raw.start);
+  const end = raw.end ? toLocalWallClock(raw.end) : start;
 
   return {
     // Namespaced so an Apple identifier can never collide with a Graph one in
@@ -518,5 +569,6 @@ module.exports = {
   PUSH_STATE_KEY,
   // pure, exported for tests
   normaliseEvent,
+  toLocalWallClock,
   domainForList,
 };
