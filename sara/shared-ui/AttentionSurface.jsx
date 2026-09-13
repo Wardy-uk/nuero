@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Field from './Field';
 import Dashboard from './Dashboard';
+import Approach from './Approach';
 import { isPressing } from './useFieldDrive';
 import './AttentionSurface.css';
 
@@ -111,6 +112,13 @@ export default function AttentionSurface({
   sayOverride = null,
   footAside = null,
   footExtra = null,
+  // How the feed is ARRANGED. 'list' is the original stack of rows; 'approach'
+  // is the corridor — depth is time, pull is urgency, see sara/MANIFESTATION.md.
+  //
+  // ⚠ A prop rather than a rewrite, deliberately. This is a working ambient
+  // surface on four devices; a look that cannot be put back is one nobody can
+  // afford to try. Each shell opts in when it has been SEEN on that device.
+  layout = 'list',
   hideSecondary = false,
 }) {
   const [showWhy, setShowWhy] = useState(false);
@@ -501,16 +509,31 @@ export default function AttentionSurface({
             not listed again. Nothing has been dropped from the FEED: the pool
             reaches every other consumer whole, and `covered` is advisory. */}
         {!hideSecondary && rest.length > 0 && (
-          <ul className="surface__rest">
-            {rest.map((card) => (
-              <li key={card.id}>
-                <button type="button" className="surface__row" onClick={() => onOpen && onOpen(card)}>
-                  <span className="surface__rowtitle">{card.title}</span>
-                  {card.say && <span className="surface__rowsay">{card.say}</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
+          layout === 'approach' ? (
+            /* ⚠ The SAME `rest` the list renders, in the same order, with the
+               same `covered` already applied. The corridor places what it is
+               handed and judges nothing — see the header of Approach.jsx. */
+            <Approach
+              cards={rest}
+              nowLabel={data.now?.at || null}
+              tone={!poolAvailable ? 'unresolved'
+                : pressing ? 'crit'
+                  : context?.activity === 'firefighting' ? 'crit'
+                    : context?.activity === 'pre-meeting' ? 'warm' : 'calm'}
+              onOpen={(card) => onOpen && onOpen(card)}
+            />
+          ) : (
+            <ul className="surface__rest">
+              {rest.map((card) => (
+                <li key={card.id}>
+                  <button type="button" className="surface__row" onClick={() => onOpen && onOpen(card)}>
+                    <span className="surface__rowtitle">{card.title}</span>
+                    {card.say && <span className="surface__rowsay">{card.say}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )
         )}
 
         {/* ── Open it on the desk ────────────────────────────────────────────

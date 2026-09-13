@@ -495,8 +495,19 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   //
   // The rules are shared so the two surfaces cannot drift; the chrome is not,
   // because a kiosk carrying a mic it cannot use is worse than one without.
+  // Which arrangement this DEVICE gets. One component serves the phone, the
+  // kiosk and the Electron window, so there is no per-build switch to throw.
+  // The opt-in is the URL, which IS per device: the tablets and the wall panel
+  // are started at a fixed address, so `?look=approach` there turns the corridor
+  // on for that screen and nothing else. Never persisted — a look a device
+  // cannot be talked out of by changing its start URL needs a deploy to undo.
+  const look = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('look') === 'approach'
+    ? 'approach' : 'list';
+
   return (
     <AttentionSurface
+      layout={look}
       data={data}
       error={error}
       busy={busy}

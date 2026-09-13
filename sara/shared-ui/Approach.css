@@ -1,0 +1,152 @@
+/* Approach — the corridor. Contract: sara/MANIFESTATION.md
+ *
+ * Depth is time, pull is urgency, every pulled card keeps its tether, and
+ * portrait narrows the corridor rather than shortening it.
+ *
+ * ⚠ The colour here is the FIELD's colour, handed down as --approach-rgb by the
+ * surface. It is never picked locally: two answers about what state she is in,
+ * on one screen, is the drift `fieldDrive` exists to stop. */
+
+.approach {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  --approach-rgb: 74, 127, 212;
+}
+.approach--warm { --approach-rgb: 217, 138, 58; }
+.approach--crit { --approach-rgb: 224, 84, 58; }
+.approach--unresolved { --approach-rgb: 107, 116, 128; }
+
+.approach__rig {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.approach__nowline {
+  position: absolute;
+  left: 0; right: 0; top: 44%;
+  height: 1px;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+}
+
+.approach__now {
+  position: absolute;
+  left: 0; top: 44%;
+  transform: translateY(-50%);
+  z-index: 3;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: clamp(8px, 0.86cqw, 15px);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink, #eef3fa);
+  background: rgba(4, 6, 10, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 4px 10px;
+  pointer-events: none;
+}
+
+.approach__track {
+  position: absolute;
+  inset: 0;
+  perspective: 900px;
+  z-index: 2;
+}
+.approach__world {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.approach__card {
+  position: absolute;
+  left: 60%;
+  top: 44%;
+  transform-style: preserve-3d;
+  width: clamp(152px, 29cqw, 448px);
+  padding: clamp(7px, 1.05cqw, 19px) clamp(9px, 1.25cqw, 23px);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(11, 17, 25, 0.9), rgba(5, 9, 14, 0.74));
+  backdrop-filter: blur(3px);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  will-change: transform, opacity, filter;
+}
+.approach--portrait .approach__card { left: 50%; }
+.approach__card:focus-visible {
+  outline: 2px solid rgb(var(--approach-rgb));
+  outline-offset: 3px;
+}
+
+.approach__lab {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: clamp(7px, 0.66cqw, 13.5px);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.28);
+  margin-bottom: 6px;
+}
+.approach__lab u {
+  text-decoration: none;
+  color: rgb(var(--approach-rgb));
+}
+.approach__lab:empty { display: none; }
+
+.approach__val {
+  display: block;
+  font-size: clamp(11px, 1.3cqw, 25px);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.approach__sub {
+  display: block;
+  margin-top: 4px;
+  font-weight: 400;
+  font-size: clamp(9px, 0.98cqw, 17.5px);
+  line-height: 1.4;
+  color: var(--muted, #63728a);
+}
+
+.approach__card--lead {
+  border-color: rgb(var(--approach-rgb));
+  box-shadow:
+    0 18px 50px -18px rgb(var(--approach-rgb)),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+.approach__card--lead .approach__val {
+  font-size: clamp(14px, 2cqw, 40px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+/* Rule 2, made visible on the card itself as well as by where it sits. */
+.approach__card--pulled::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  border-radius: 9px 0 0 9px;
+  background: rgb(var(--approach-rgb));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .approach__world { transition-duration: 0.001s; }
+}
