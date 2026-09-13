@@ -119,6 +119,44 @@ router.post('/daily/sync', (req, res) => {
 //   it. An assistant that could decide on its own to run programs on his work
 //   machine is a different product with a different risk.
 
+// POST /api/desktop/intents/claim { host?, canOpen[] } — the agent asking
+// whether anything is waiting for it.
+//
+// ⚠⚠ THIS EXISTS BECAUSE A BUTTON MUST FEEL LIKE A BUTTON. Claiming used to
+//   happen ONLY on the back of a full activity sample, and that sample is
+//   deliberately infrequent (120s — it answers "what is he doing", which does
+//   not need to be asked often). Measured live on 13 Sep 2026, a press took
+//   **111 seconds** to open Chrome, and the next one EXPIRED without firing.
+//   Tying an interactive request to a background sampler's cadence is the
+//   mistake; they are two different questions and now have two cadences.
+//
+// ⚠ IT RECORDS NOTHING. No sample is stored, so this cannot be used to inject
+//   desk activity — which is exactly why the whole `desktop` segment is not a
+//   kiosk proxy door, and why this narrow route can be one.
+//
+// ⚠ `canOpen` IS STILL REQUIRED, unchanged: an agent that does not say what it
+//   understands is handed nothing, and the intent waits for one that does
+//   rather than being silently eaten.
+//
+// ⚠ Registered ABOVE `/intents/:id`-shaped routes. They differ by method and
+//   by segment count today, so nothing currently shadows it — but a literal
+//   path sitting under a parameterised sibling is a bug this repo has shipped
+//   before, and the order costs nothing.
+router.post('/intents/claim', (req, res) => {
+  try {
+    const body = req.body || {};
+    const canOpen = Array.isArray(body.canOpen) ? body.canOpen : null;
+    const out = require('../services/desk-intents').claim({
+      host: body.host || null,
+      canOpen,
+    });
+    res.json({ ok: true, intents: out.intents });
+  } catch (e) {
+    console.error('[Desktop] claim failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/desktop/intents { app, host? } — ask for something to be opened.
 router.post('/intents', (req, res) => {
   try {

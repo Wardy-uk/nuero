@@ -49,6 +49,15 @@ param(
   [string]$BaseUrl = $env:NEURO_BASE_URL,
   [string]$Token = $env:NEURO_API_TOKEN,
   [int]$IntervalSeconds = 120,
+  # How often to ASK whether a button has been pressed.
+  #
+  # WARNING  THIS IS NOT THE SAMPLE INTERVAL AND MUST NOT BE FOLDED INTO IT.
+  #   Sampling answers "what is he doing", which does not need asking often.
+  #   A launch button answers "do this now", and at the sample cadence it
+  #   measured 111 seconds to open Chrome, with the next press expiring
+  #   unfired. Two different questions, two cadences. The claim call stores
+  #   nothing and carries no sample, so asking often is cheap.
+  [int]$ClaimSeconds = 5,
   [switch]$Once
 )
 
@@ -186,6 +195,25 @@ function Invoke-DeskIntent($intent) {
   }
 }
 
+function Get-DeskIntents {
+  # Ask whether anything is waiting. Outbound-only, exactly like the sample
+  # post: this machine opens the connection and the answer comes back on it.
+  #
+  # WARNING  `canOpen` travels here TOO. The server refuses to hand an intent
+  #   to an agent that has not said what it understands, and this route is no
+  #   exception - a claim without it would be a way round the guard.
+  try {
+    $b = @{ host = $env:COMPUTERNAME; canOpen = @($AppCommands.Keys | Sort-Object) } | ConvertTo-Json -Compress
+    return Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/desktop/intents/claim" `
+      -Headers @{ 'X-NEURO-API-TOKEN' = $Token } `
+      -ContentType 'application/json' -Body $b -TimeoutSec 10
+  } catch {
+    # Silent by design: this runs every few seconds, and a warning per failure
+    # would fill the log with one outage. The sample post still reports.
+    return $null
+  }
+}
+
 function Invoke-DeskIntents($response) {
   if (-not $response) { return }
   $intents = $response.intents
@@ -236,17 +264,26 @@ if ($Once) {
   return
 }
 
-Write-Host "NEURO desktop agent -> $BaseUrl, every ${IntervalSeconds}s. Ctrl+C to stop."
+Write-Host "NEURO desktop agent -> $BaseUrl. Sampling every ${IntervalSeconds}s, checking for launches every ${ClaimSeconds}s. Ctrl+C to stop."
+$nextSample = [datetime]::MinValue
 while ($true) {
-  try {
-    # The response is no longer discarded: it is how this machine learns it
-    # has been asked to open something.
-    $resp = Send-Sample (Get-Sample)
-    Invoke-DeskIntents $resp
-  } catch {
-    # Dropped, never queued. This answers "what is he doing NOW", and a sample
-    # delivered an hour late answers a question nobody is asking.
-    Write-Warning "post failed: $($_.Exception.Message)"
+  # The SAMPLE, on its own slow clock.
+  if ((Get-Date) -ge $nextSample) {
+    try {
+      # The response is still read: a sample post can also carry an intent,
+      # so a press is never lost even if the claim poll is failing.
+      $resp = Send-Sample (Get-Sample)
+      Invoke-DeskIntents $resp
+    } catch {
+      # Dropped, never queued. This answers "what is he doing NOW", and a
+      # sample delivered an hour late answers a question nobody is asking.
+      Write-Warning "post failed: $($_.Exception.Message)"
+    }
+    $nextSample = (Get-Date).AddSeconds($IntervalSeconds)
   }
-  Start-Sleep -Seconds $IntervalSeconds
+
+  # The BUTTON, on its own fast one.
+  Invoke-DeskIntents (Get-DeskIntents)
+
+  Start-Sleep -Seconds $ClaimSeconds
 }

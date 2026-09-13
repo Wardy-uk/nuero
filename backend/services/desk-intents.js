@@ -31,10 +31,24 @@
 //   work machine is a different product with a different risk, and the room
 //   work has already established that acting unattended is earned, not assumed.
 //
-// ⚠ AN INTENT EXPIRES. `TTL_MS` is two minutes — about one agent poll. If he is
-//   not at the machine the moment he asks, the request dies rather than firing
-//   an hour later when he has walked away or somebody else is using it. A
-//   queued action with no deadline is how "open my music" becomes a surprise.
+// ⚠ AN INTENT EXPIRES. If he is not at the machine the moment he asks, the
+//   request dies rather than firing an hour later when he has walked away or
+//   somebody else is using it. A queued action with no deadline is how "open
+//   my music" becomes a surprise.
+//
+// ⚠⚠ `TTL_MS` WAS TWO MINUTES, DESCRIBED AS "about one agent poll" — and the
+//   agent's sample interval is ALSO 120s, so the deadline and the poll were
+//   the same number. Measured live on 13 Sep 2026: a browser intent took
+//   **111 seconds** to open, and a music intent queued moments later EXPIRED
+//   unfired. A press therefore either crawled or died, which is what "the
+//   launch buttons all failed" actually was.
+//
+//   Two things fix it and both are needed. The agent now claims intents on a
+//   SEPARATE, CHEAP poll (`POST /intents/claim`, every few seconds) rather
+//   than only when it posts a sample — so a press is acted on in seconds.
+//   And the deadline is no longer sized to one poll: a missed poll must not
+//   be able to eat the request, so it is comfortably wider than the claim
+//   cadence while still being far too short to fire at somebody who has left.
 //
 // ⚠ SINGLE USE, AND THE AGENT SAYS WHAT HAPPENED. Claimed intents are removed
 //   on handover, so a retried poll cannot launch twice; the agent reports the
@@ -56,7 +70,7 @@ const APPS = {
   browser: 'your browser',
 };
 
-const TTL_MS = 2 * 60 * 1000;
+const TTL_MS = 5 * 60 * 1000;
 
 // Bounded: this is a hand-off queue, not a log. More than a couple pending means
 // something is wrong, and the cap stops a stuck agent growing the blob.
