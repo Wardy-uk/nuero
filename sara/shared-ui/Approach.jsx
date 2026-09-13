@@ -98,8 +98,18 @@ export default function Approach({
   // placed by pull alone and carries no tether.
   const placed = cards.map((card, i) => {
     const at = minutesOf(card.at);
-    const trueZ = (at != null && nowMinutes != null)
-      ? -Math.max(-60, at - nowMinutes) / DAY_MINUTES * DEPTH
+    // ⚠ NOTHING IS EVER IN FRONT OF NOW. The first cut clamped a past hour to
+    // sixty minutes ago, which makes `-Math.max(-60, …)` POSITIVE — so a 13:55
+    // appointment at 17:28 was projected nearer than the now-plane, scaled up,
+    // and sat on top of the card beside it. That is the corridor saying an
+    // appointment three and a half hours gone is the closest thing to him.
+    //
+    // A past hour is not approaching, so it is placed like a card with no hour
+    // at all — by its rank — and KEEPS its clock time, because when it was is
+    // still true and is not for this file to hide.
+    const past = at != null && nowMinutes != null && at < nowMinutes;
+    const trueZ = (at != null && nowMinutes != null && !past)
+      ? -(at - nowMinutes) / DAY_MINUTES * DEPTH
       : -(260 + i * 240);
     const pull = pullOf(card, i);
     const z = trueZ * (1 - pull);
@@ -111,12 +121,12 @@ export default function Approach({
       key: card.id || `c${i}`,
       lead: i === 0,
       at,
-      tethered: at != null && pull > 0.12,
+      tethered: at != null && !past && pull > 0.12,
       z,
       trueZ,
       depth,
       x: lane * laneWidth * (1 - depth * 0.45),
-      y: -22 + depth * box.h * 0.34 + row * box.h * 0.17 * (1 - depth * 0.35),
+      y: -22 + depth * box.h * 0.34 + row * box.h * 0.24 * (1 - depth * 0.3),
       trueX: lane * laneWidth,
       lane,
       row,
@@ -180,7 +190,7 @@ export default function Approach({
       const dT = Math.abs(p.trueZ) / DEPTH;
       const from = project(
         p.trueX * (1 - dT * 0.45),
-        -22 + dT * box.h * 0.34 + p.row * box.h * 0.17 * (1 - dT * 0.35),
+        -22 + dT * box.h * 0.34 + p.row * box.h * 0.24 * (1 - dT * 0.3),
         p.trueZ,
       );
       const to = project(p.x, p.y, p.z);
