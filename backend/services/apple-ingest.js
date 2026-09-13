@@ -54,6 +54,36 @@ const { domainOrDefault } = require('../../shared/task-domain.cjs');
 
 const SOURCE = 'apple';
 
+// Where the last PUSH ATTEMPT is recorded, which is a different fact from the
+// rows it produced. Freshness used to be read from `calendar_cache.fetched_at`
+// alone, so a phone pushing faithfully every few minutes and storing nothing
+// was indistinguishable from a phone that had stopped — and the senses row
+// said "the Shortcut on your phone has stopped pushing" over an app that was
+// running perfectly and simply had no permission. An attempt has to leave a
+// trace even when it stores nothing, or the diagnosis names the wrong thing.
+const PUSH_STATE_KEY = 'apple_last_push';
+
+// Never allowed to fail the ingest: the events have landed, and a bookkeeping
+// error must not be reported as a failed push.
+function _recordPush(record) {
+  try {
+    db.setState(PUSH_STATE_KEY, JSON.stringify(record));
+  } catch (e) {
+    console.warn('[Apple] could not record the push attempt:', e.message);
+  }
+}
+
+function _lastPush() {
+  try {
+    const raw = db.getState(PUSH_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 // Reminders live in lists, and the LIST is the evidence for the domain — the
 // same rule as the capture link's token. A list named here is work; everything
 // else on a personal iCloud account is personal, which is the safe default
@@ -236,6 +266,41 @@ function ingestCalendar({ from, to, events, calendars } = {}) {
   }
   console.log(`[Apple] ${events.length} event(s) in window ${from} → ${to}: ${JSON.stringify(byCalendar)}`);
 
+  // ⚠ A PHONE THAT CAN SEE NO CALENDARS HAS NOT READ AN EMPTY DIARY.
+  //
+  // The write below is replace-by-window: it clears the range and re-inserts.
+  // An unauthorised client sends a perfectly well-formed payload — a real
+  // window, `events: []` — because EventKit hands it zero calendars rather
+  // than an error, so the push would DELETE the range and answer ok. Measured
+  // 13 Sep 2026: the native app pushed `0 calendar(s) visible` 323 times while
+  // Nick's personal diary was simply absent from NEURO, and both halves
+  // reported success. That is "I could not look" stored as "there is nothing
+  // there", in the one table that answers whether he is free.
+  //
+  // The three cases stay distinct, and only the middle one is refused:
+  //   • `visible` is a non-empty list — the phone looked. `events: []` is then
+  //     a REAL empty window and must still clear, or a cancelled event lingers.
+  //   • `visible` is an EMPTY list — the phone could not look. Refuse.
+  //   • `visible` is null — a client too old to report them. Unknown, and
+  //     lenient, because that client's pushes have always worked.
+  //
+  // Refused only when `events` is empty too: a payload carrying real events
+  // from a client that also claims no calendars is incoherent, and between
+  // losing those events and storing them the codebase's own asymmetry says a
+  // missing event is the expensive failure.
+  if (visible && visible.length === 0 && events.length === 0) {
+    console.warn('[Apple] REFUSED: the phone reports it can see no calendars — window left alone');
+    _recordPush({ at: new Date().toISOString(), visibleCalendars: 0, events: 0, stored: 0, refused: 'no-calendar-access' });
+    return {
+      ok: false,
+      error: 'the phone can see no calendars — grant NEURO calendar access on the device',
+      reason: 'no-calendar-access',
+      window: { from, to },
+      visibleCalendars: visible,
+      cleared: false,
+    };
+  }
+
   // Artefact calendars — holiday feed duplicates, app-written calendars. Counted
   // per calendar rather than totalled, so a newly-noisy calendar is identifiable
   // rather than just a number going up.
@@ -292,6 +357,14 @@ function ingestCalendar({ from, to, events, calendars } = {}) {
   db.batchSaves(() => {
     db.clearCalendarWindow(SOURCE, String(from), String(to));
     for (const row of rows) db.upsertCalendarEvent(row);
+  });
+
+  _recordPush({
+    at: new Date().toISOString(),
+    visibleCalendars: visible ? visible.length : null,
+    events: events.length,
+    stored: rows.length,
+    refused: null,
   });
 
   return {
@@ -393,14 +466,44 @@ function status(now = new Date()) {
     );
     const last = row && row.last ? new Date(`${String(row.last).replace(' ', 'T')}Z`) : null;
     const ageHours = last ? Math.round((now - last) / 36e5 * 10) / 10 : null;
+
+    // ⚠ THE ATTEMPT AND THE ROWS ARE SEPARATE FACTS, and conflating them is
+    // what made this report the wrong cause for two days. `lastPushAt` is when
+    // an event last LANDED; `lastAttemptAt` is when the phone last CALLED. A
+    // phone with no permission calls constantly and lands nothing, which reads
+    // on the first number alone as a phone that has gone away — and sends the
+    // reader to fix a Shortcut that was retired on 11 Sep 2026.
+    const push = _lastPush();
+    const attempt = push && push.at ? new Date(push.at) : null;
+    const attemptAgeHours = attempt && !Number.isNaN(attempt.getTime())
+      ? Math.round((now - attempt) / 36e5 * 10) / 10
+      : null;
+
+    // Three-valued on purpose. `unknown` covers both a phone that has never
+    // called and a client too old to report its calendars; neither is evidence
+    // that access was refused, and saying so would send Nick to Settings to fix
+    // something that is not broken.
+    let access = 'unknown';
+    if (push) {
+      if (push.refused === 'no-calendar-access' || push.visibleCalendars === 0) access = 'none';
+      else if (typeof push.visibleCalendars === 'number' && push.visibleCalendars > 0) access = 'ok';
+    }
+
     return {
       known: true,
       events: (row && row.n) || 0,
       lastPushAt: row ? row.last : null,
       ageHours,
       // Named rather than left for a caller to re-derive. The phone is meant to
-      // push a few times a day; a day of silence means the Shortcut has stopped.
+      // push a few times a day; a day of silence means it has stopped calling.
       stale: ageHours === null ? true : ageHours > 24,
+      lastAttemptAt: push ? push.at || null : null,
+      attemptAgeHours,
+      // ⚠ Silence and refusal are different faults with different fixes:
+      // 'none' is answered in iOS Settings, a stale attempt clock is answered by
+      // opening the app at all.
+      access,
+      visibleCalendars: push && push.visibleCalendars !== undefined ? push.visibleCalendars : null,
     };
   } catch (e) {
     return { known: false, why: e.message };
@@ -412,6 +515,7 @@ module.exports = {
   ingestReminders,
   status,
   SOURCE,
+  PUSH_STATE_KEY,
   // pure, exported for tests
   normaliseEvent,
   domainForList,

@@ -82,3 +82,59 @@ test('a stale phone reaches the page headline', () => {
   assert.equal(snap.signals.some((s) => s.id === 'apple'), true);
   assert.ok(['stale', 'error'].includes(snap.overall), `overall was ${snap.overall}`);
 });
+
+// ── Silence and refusal are different faults ─────────────────────────────────
+//
+// Measured 13 Sep 2026. The native app had replaced the Scriptable script on
+// 11 Sep and was pushing every few minutes; EventKit handed it zero calendars
+// because access had never been granted, so nothing landed and this row went
+// on judging the ROW timestamp alone. It read "the Shortcut on your phone has
+// stopped pushing" — a retired client, and the wrong cause — and sent the
+// reader to the one place the fix was not.
+
+test('a phone pushing with no calendar access is an ERROR that names the fix', () => {
+  const row = withStatus({
+    known: true,
+    events: 4,
+    lastPushAt: '2026-09-07 09:51:39',
+    ageHours: 145.2,
+    stale: true,
+    lastAttemptAt: '2026-09-13T10:21:55Z',
+    attemptAgeHours: 0.5,
+    access: 'none',
+    visibleCalendars: 0,
+  }, appleRow);
+
+  assert.equal(row.state, 'error');
+  assert.match(row.why, /can see no calendars/);
+  assert.match(row.detail, /iOS Settings/);
+  // The clock shown is how long since it CALLED, not since something landed —
+  // the app is half a minute old, not six days.
+  assert.equal(row.ageMinutes, 30);
+});
+
+test('a refused push never reads as a phone that has gone away', () => {
+  // Same status object. The stale row timestamp is real and must NOT be the
+  // verdict, because acting on it means hunting a client that is running fine.
+  const row = withStatus({
+    known: true, events: 4, lastPushAt: '2026-09-07 09:51:39', ageHours: 145.2,
+    stale: true, lastAttemptAt: '2026-09-13T10:21:55Z', attemptAgeHours: 0.5,
+    access: 'none', visibleCalendars: 0,
+  }, appleRow);
+
+  assert.notEqual(row.state, 'stale');
+  assert.doesNotMatch(row.why, /stopped pushing/);
+  // And never the retired client, on any row.
+  assert.doesNotMatch(`${row.why} ${row.detail || ''}`, /Shortcut/);
+});
+
+test('unknown access is not an accusation', () => {
+  // A client too old to report its calendars, pushing happily. Saying "no
+  // access" here sends Nick to Settings to fix something that is not broken.
+  const row = withStatus({
+    known: true, events: 12, lastPushAt: '2026-09-03 08:00:00', ageHours: 2,
+    stale: false, lastAttemptAt: '2026-09-03T08:00:00Z', attemptAgeHours: 2,
+    access: 'unknown', visibleCalendars: null,
+  }, appleRow);
+  assert.equal(row.state, 'live');
+});

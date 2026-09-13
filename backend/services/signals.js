@@ -318,20 +318,38 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
   // `apple-ingest.status()` already names it, and two places deciding what
   // "stale" means for one source is how a panel comes to disagree with the
   // endpoint it renders.
-  guard('apple', 'Apple Reminders', 'reminders and calendar pushed from your phone', () => {
+  guard('apple', 'Apple Calendar & Reminders', 'your personal diary and reminders, pushed from your phone', () => {
     const st = require('./apple-ingest').status(now);
     if (!st.known) return { state: 'error', why: st.why || 'the ingest could not be read' };
-    if (!st.lastPushAt) {
-      // Configured or not, we cannot tell from here — the Shortcut lives on the
+
+    // ⚠ A REFUSED PUSH OUTRANKS A STALE CLOCK, because it is the cause of it.
+    // This row used to judge on the row timestamp alone and so said "the
+    // Shortcut on your phone has stopped pushing" — over an app that was
+    // pushing every few minutes and being handed nothing by EventKit, and over
+    // a Shortcut retired on 11 Sep 2026. Both halves of that sentence were
+    // wrong, and it sent the reader to the one place the fix was not. Named
+    // first, with the fix in it: this one is answered in iOS Settings.
+    if (st.access === 'none') {
+      return {
+        state: 'error',
+        why: 'the app can see no calendars — it is pushing, and being given nothing',
+        detail: 'grant NEURO full access to Calendars and Reminders in iOS Settings',
+        ageMinutes: st.attemptAgeHours == null ? null : Math.round(st.attemptAgeHours * 60),
+      };
+    }
+
+    if (!st.lastPushAt && !st.lastAttemptAt) {
+      // Configured or not, we cannot tell from here — the client lives on the
       // phone. "It has never pushed" is the honest statement, and it is not the
       // same as "it is broken".
-      return { state: 'never', why: 'the phone has never pushed', detail: 'the Shortcut may not be installed' };
+      return { state: 'never', why: 'the phone has never pushed', detail: 'the NEURO app may not be installed or signed in' };
     }
+
     const ageMinutes = st.ageHours == null ? null : Math.round(st.ageHours * 60);
     return {
       state: st.stale ? 'stale' : 'live',
       ageMinutes,
-      why: st.stale ? 'the Shortcut on your phone has stopped pushing' : undefined,
+      why: st.stale ? 'the app on your phone has stopped pushing' : undefined,
       detail: `${st.events} event(s) cached`,
     };
   });

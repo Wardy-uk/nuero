@@ -372,3 +372,83 @@ test('a phone that stopped pushing is visibly stale', () => {
   assert.ok('stale' in s);
   assert.ok('ageHours' in s);
 });
+
+// ── "I could not look" is not "there is nothing there" ───────────────────────
+//
+// Measured 13 Sep 2026: the native app pushed `0 calendar(s) visible` 323 times
+// with no EventKit permission, and every one of those was a well-formed payload
+// that would have CLEARED the window and answered ok. The three cases below are
+// the whole rule, and the middle one is the only refusal.
+
+test('a push from a phone that can see no calendars is refused, and clears nothing', () => {
+  const from = '2026-10-01T00:00:00';
+  const to = '2026-10-02T00:00:00';
+  apple.ingestCalendar({
+    from, to, calendars: ['Home'],
+    events: [{ id: 'keep-1', title: 'Dentist', start: '2026-10-01T09:00:00', end: '2026-10-01T09:30:00', calendar: 'Home' }],
+  });
+  const dentists = () => db.getCalendarEvents(from, to).filter((e) => e.subject === 'Dentist');
+  assert.equal(dentists().length, 1, 'setup: the event should be stored');
+
+  const res = apple.ingestCalendar({ from, to, calendars: [], events: [] });
+
+  assert.equal(res.ok, false, 'a phone that can see nothing has not read an empty diary');
+  assert.equal(res.reason, 'no-calendar-access');
+  assert.equal(res.cleared, false);
+  assert.equal(
+    dentists().length, 1,
+    'the window must survive a push that could not look',
+  );
+});
+
+test('a phone that CAN look and finds nothing still clears the window', () => {
+  const from = '2026-10-03T00:00:00';
+  const to = '2026-10-04T00:00:00';
+  apple.ingestCalendar({
+    from, to, calendars: ['Home'],
+    events: [{ id: 'gone-1', title: 'Cancelled thing', start: '2026-10-03T09:00:00', end: '2026-10-03T09:30:00', calendar: 'Home' }],
+  });
+  const cancelled = () => db.getCalendarEvents(from, to).filter((e) => e.subject === 'Cancelled thing');
+  assert.equal(cancelled().length, 1, 'setup');
+
+  // A real empty answer. Refusing this would leave a cancelled event in the
+  // diary for ever, which is the failure in the other direction.
+  const res = apple.ingestCalendar({ from, to, calendars: ['Home'], events: [] });
+
+  assert.equal(res.ok, true);
+  assert.equal(cancelled().length, 0, 'a real empty window must clear');
+});
+
+test('a client too old to report its calendars is not accused of having no access', () => {
+  const from = '2026-10-05T00:00:00';
+  const to = '2026-10-06T00:00:00';
+  // `calendars` absent entirely — unknown, and not evidence of a refusal.
+  const res = apple.ingestCalendar({ from, to, events: [] });
+  assert.equal(res.ok, true, 'unknown must stay lenient');
+  assert.equal(apple.status().access, 'unknown');
+});
+
+// ── The attempt and the rows are separate facts ──────────────────────────────
+
+test('status tells a refused push apart from a phone that has gone quiet', () => {
+  apple.ingestCalendar({
+    from: '2026-10-07T00:00:00', to: '2026-10-08T00:00:00',
+    calendars: [], events: [],
+  });
+  const st = apple.status();
+
+  assert.equal(st.access, 'none', 'the cause is permission, not silence');
+  assert.ok(st.lastAttemptAt, 'a push that stored nothing still left a trace');
+  assert.equal(st.visibleCalendars, 0);
+});
+
+test('a push that lands events reports access as ok', () => {
+  apple.ingestCalendar({
+    from: '2026-10-09T00:00:00', to: '2026-10-10T00:00:00',
+    calendars: ['Home', 'Birthdays'],
+    events: [{ id: 'ok-1', title: 'Swim', start: '2026-10-09T07:00:00', end: '2026-10-09T08:00:00', calendar: 'Home' }],
+  });
+  const st = apple.status();
+  assert.equal(st.access, 'ok');
+  assert.equal(st.visibleCalendars, 2);
+});
