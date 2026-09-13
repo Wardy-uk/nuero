@@ -493,3 +493,31 @@
 .approach__fact { padding: clamp(5px, 0.8cqw, 12px) clamp(8px, 1.1cqw, 16px); }
 .surface--approach .surface__foot { bottom: 5%; }
 .surface--approach .surface__shelf { bottom: 5%; }
+
+/* ── Anchored from the bottom, so the bands cannot collide ──────────────────
+ *
+ * ⚠ The lower half was positioned from the TOP (`top: 62%`) while the things
+ * beneath it were positioned from the BOTTOM. Any difference in the real
+ * viewport height — and there is one, which is why a framebuffer screenshot
+ * looked right while the panel on the wall did not — closes the gap between
+ * them and they write over each other.
+ *
+ * Everything below the centrepiece now hangs off the BOTTOM edge in a fixed
+ * order: shelf and foot on the last line, the facts on the line above it. The
+ * gap between them no longer depends on how tall the screen turns out to be. */
+.surface--approach .surface__shelf { bottom: 3%; top: auto; }
+.surface--approach .surface__foot { bottom: 3%; top: auto; max-width: min(40%, 440px); }
+.approach--quiet .approach__row {
+  top: auto;
+  bottom: 15%;
+  left: 4%;
+  right: 4%;
+}
+
+/* The centrepiece hangs off the top and is capped, so a long sentence cannot
+   grow down into the facts. */
+.surface--approach .surface__say {
+  top: 17%;
+  max-height: 46%;
+  overflow: hidden;
+}
