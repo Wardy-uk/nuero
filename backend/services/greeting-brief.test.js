@@ -164,3 +164,27 @@ test('WARNING-WARNING the cold-room kind matches what room-offers ACTUALLY emits
   const brief = require('fs').readFileSync(require('path').join(__dirname, 'greeting.js'), 'utf8');
   assert.match(brief, /o\.kind === 'warm-room'/, 'and the brief looks for the same string');
 });
+
+test('WARNING-WARNING the sleep line needs lastNight ON THE PAYLOAD, not just the draft', () => {
+  // It was fed to the dashboard composer and left off the RETURNED payload, so
+  // the Surface rendered "slept 8h25" while the greeting at the door - and the
+  // widget, and iOS - saw undefined. The value sat one object away from the
+  // thing that needed it: the whitelist trap, three separate times in one day
+  // (`weather`, `canOpen`, and this).
+  //
+  // WARNING  Asserted with plain string work rather than a regex. Three
+  //   backslashes have failed to survive a shell pipeline today; the fix is to
+  //   write checks that need none, which is the call `sara/widget` made.
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'attention.js'), 'utf8');
+
+  const returned = src.slice(src.lastIndexOf('generatedAt: now.toISOString()'));
+  assert.ok(returned.length > 200, 'positive control: found the returned payload');
+  assert.ok(returned.includes('lastNight,'),
+    'lastNight must be on the returned payload, not only on the draft');
+
+  // And the draft keeps it too - the dashboard reads it from there.
+  const draft = src.slice(src.indexOf('const draft = {'), src.lastIndexOf('generatedAt: now.toISOString()'));
+  assert.ok(draft.includes('lastNight,'), 'the dashboard still gets it');
+});

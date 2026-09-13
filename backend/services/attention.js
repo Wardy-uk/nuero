@@ -1361,6 +1361,13 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     rooms,
     work,
     weather,
+    // WARNING  ON THE PAYLOAD AS WELL AS THE DRAFT. It was fed to the dashboard
+    //   composer and left off the returned payload, so the Surface could render
+    //   "slept 8h25" while every OTHER consumer - the greeting she says at the
+    //   door, the widget, iOS - saw `undefined`. A value one object away from
+    //   the thing that needs it, which is the whitelist trap three times over
+    //   today (`weather`, `canOpen`, this).
+    lastNight,
     ...gated,
     // ── What she SHOWS, and what he could SAY ────────────────────────────
     // Nick, 31 Aug 2026: SARA is a manifestation, not a menu — "a series of
