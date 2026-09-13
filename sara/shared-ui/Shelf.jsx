@@ -91,11 +91,11 @@ export default function Shelf({
     apps.forEach(({ id, label }) => {
       items.push({ key: `app-${id}`, text: label, off: true });
     });
-  } else if (onDeskOpen && offer && offer.why) {
-    // It is at the desk and the machine offered nothing — which fact that is
-    // matters, so it is printed rather than left as an absence.
-    items.push({ key: 'app-why', text: offer.why, quiet: true });
   }
+  // ⚠ `why` is the CAPTION, never a chip. Rendered as one it sat beside a
+  // caption already saying the same thing — "DESKTOP-8LGF9RR is asleep" next to
+  // "you're not at the laptop" — which is the duplication this layout keeps
+  // removing, in miniature.
 
   // ── The house ─────────────────────────────────────────────────────────────
   //
@@ -128,11 +128,15 @@ export default function Shelf({
   });
 
   // ── What the shelf says about itself ──────────────────────────────────────
+  // ⚠ WHICH FACT IT IS, in the machine's own words where it gave them. "I
+  // cannot see it", "it is asleep" and "it had nothing to offer" are three
+  // different states and only the first is a fault.
   const caption = host && work && work.atDesk ? `open on ${host}`
     : work && work.deskKnown === false ? 'I can’t see your laptop'
-      : host ? `${host} is asleep`
-        : rooms && rooms.known === false ? 'I couldn’t read the house'
-          : 'in the house';
+      : offer && offer.why ? offer.why
+        : host ? `${host} is asleep`
+          : rooms && rooms.known === false ? 'I couldn’t read the house'
+            : 'in the house';
 
   const wx = weather && weather.known === false
     ? { lead: 'Weather unread', sub: 'not an all-clear' }

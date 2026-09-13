@@ -120,6 +120,7 @@ export default function Approach({
       card,
       key: card.id || `c${i}`,
       at,
+      past,
       tethered: at != null && !past && pull > 0.12,
       z,
       trueZ,
@@ -137,8 +138,27 @@ export default function Approach({
   // quiet Sunday that was "home / Not a working day", the least informative row
   // on the screen, rendered larger than anything else. Depth is the whole
   // argument of this layout: the thing at the front IS the lead, by definition.
-  const nearest = placed.reduce((best, p) => (best == null || p.z > best.z ? p : best), null);
-  placed.forEach((p) => { p.lead = nearest != null && p === nearest; });
+  // ── When nothing is coming, there is no corridor ──────────────────────────
+  //
+  // ⚠ THE TIME AXIS IS ONLY HONEST IF THERE IS TIME IN IT. On a Sunday evening
+  // the day is done: a finished appointment, an all-day entry, how he slept, how
+  // many he finished. Not one of them is APPROACHING — so drawing hours receding
+  // to a horizon says "here is what is coming at you" over a day with nothing
+  // left in it, and then hands the hero treatment to whichever card happened to
+  // land nearest. That is the picture being wrong, not the spacing.
+  //
+  // With no future hour anywhere the corridor STANDS DOWN: no hour marks, no
+  // now-line, no hero. The cards are just quietly there, which is what a
+  // finished day actually looks like.
+  const hasFuture = placed.some((p) => p.at != null && !p.past);
+  placed.forEach((p) => { p.lead = false; });
+  if (hasFuture) {
+    // ⚠ The lead is the NEAREST card — depth is this layout's whole argument, so
+    // the thing at the front IS the lead — but only where something is genuinely
+    // coming. A hero on a quiet evening is emphasis with nothing to emphasise.
+    const nearest = placed.reduce((best, p) => (best == null || p.z > best.z ? p : best), null);
+    if (nearest) nearest.lead = true;
+  }
 
   // Hour marks and tethers, drawn once per layout change. Deliberately a canvas
   // and not a hundred absolutely-positioned divs: this redraws on every resize
@@ -160,6 +180,11 @@ export default function Approach({
     const style = getComputedStyle(cv);
     const col = (style.getPropertyValue('--approach-rgb') || '74,127,212').trim();
 
+    // Nothing ahead means no hours to draw — see the stand-down rule above.
+    if (!cards.some((c) => {
+      const m = minutesOf(c.at);
+      return m != null && nowMinutes != null && m >= nowMinutes;
+    })) return;
     const now = nowMinutes;
     const fs = Math.max(9, Math.min(13, box.w / 125));
     ctx.font = `500 ${fs.toFixed(1)}px "JetBrains Mono", ui-monospace, monospace`;
