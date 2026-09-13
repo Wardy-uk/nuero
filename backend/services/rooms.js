@@ -115,13 +115,17 @@ async function snapshot({ now = new Date() } = {}) {
   const visit = _advanceEpisode(house.presence, now);
 
   if (!house.known) {
-    return { known: false, room: null, episode: null, offers: [], decided: [], gaps, considered: [] };
+    return { known: false, room: null, episode: null, offers: [], decided: [], household: house.household || null, gaps, considered: [] };
   }
 
   const judged = offers.assess({
     rooms: house.rooms,
     presence: house.presence,
     sun: house.sun,
+    // ⚠ Without this the gate sits permanently CLOSED — safe, and indistinguishable
+    // from being wired. Caught live, not by the unit tests, because `assess()` is
+    // pure and its own suite supplies the household itself.
+    household: house.household,
     now,
     gaps,
   });
@@ -138,6 +142,7 @@ async function snapshot({ now = new Date() } = {}) {
       episode: visit.episode,
       offers: [],
       decided: [],
+      household: house.household,
       gaps: [...judged.gaps, 'could not read what you have already answered — holding off rather than asking again'],
       considered: judged.considered,
     };
@@ -161,6 +166,7 @@ async function snapshot({ now = new Date() } = {}) {
     episode: visit.episode,
     offers: open,
     decided,
+    household: house.household,
     gaps: judged.gaps,
     considered: judged.considered,
   };

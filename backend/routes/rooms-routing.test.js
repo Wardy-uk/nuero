@@ -209,3 +209,55 @@ test('the history endpoint carries the decisions as a learning set', async () =>
   assert.equal(entry.context.kind, 'lights-on');
   assert.ok(entry.context.why, 'including WHY it was offered - the learning signal');
 });
+
+
+// ── The household gate, over real HTTP (13 Sep 2026) ─────────────────────────
+//
+// ⚠ THIS SUITE EXISTS BECAUSE THE UNIT TESTS COULD NOT SEE THE BUG. `assess()`
+//   is pure and its own suite hands it a household, so it passed while
+//   `rooms.js` was not forwarding `house.household` at all — the gate sat
+//   permanently CLOSED, which is safe and utterly indistinguishable from being
+//   wired. Caught by calling the live API, not by a test. These pin the wire.
+
+async function readRooms() {
+  const res = await fetch(base + '/api/rooms');
+  return res.json();
+}
+
+test('the composed response carries the household reading', async () => {
+  freshVisit();
+  house.household = { known: true, othersHome: false, who: [], why: null };
+  const out = await readRooms();
+  assert.deepEqual(out.household, { known: true, othersHome: false, who: [], why: null });
+});
+
+test('an empty house lets the heating offer act', async () => {
+  freshVisit();
+  house.household = { known: true, othersHome: false, who: [], why: null };
+  const warm = (await readRooms()).offers.find(o => o.kind === 'warm-room');
+  assert.ok(warm);
+  assert.equal(warm.act, true);
+  assert.equal(warm.actRating, true);
+});
+
+test('⚠ someone else home: still offered, but may not act', async () => {
+  freshVisit();
+  house.household = { known: true, othersHome: true, who: ['Helen', 'Isaac'], why: null };
+  const warm = (await readRooms()).offers.find(o => o.kind === 'warm-room');
+  assert.ok(warm, 'asking is always allowed');
+  assert.equal(warm.act, false);
+  assert.equal(warm.actWhy, 'Helen and Isaac are home');
+});
+
+test('⚠ REGRESSION: a house read carrying NO household may not act', async () => {
+  // This is the exact shape of the bug: the reader returns a house, the
+  // composer forgets to forward the household, and everything looks fine.
+  freshVisit();
+  delete house.household;
+  const out = await readRooms();
+  const warm = out.offers.find(o => o.kind === 'warm-room');
+  assert.ok(warm, 'the offer is still made');
+  assert.equal(warm.act, false, 'but it must never act on a household nobody read');
+  assert.match(warm.actWhy, /unreadable/);
+  house.household = { known: true, othersHome: false, who: [], why: null };
+});
