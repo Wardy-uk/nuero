@@ -153,6 +153,26 @@ function build(tokens, sourceHash) {
   return lines.join('\n');
 }
 
+/**
+ * Same text, whatever git did to the newlines on the way through.
+ *
+ * ⚠ NEWLINES ARE NOT DRIFT. The iOS checkout is on Windows with git normalising
+ * to CRLF, and this writes LF — so a byte comparison reports the file stale on
+ * EVERY run, for ever. A check that fails for a reason unrelated to what it is
+ * checking is one that gets switched off, and it takes the real catch with it.
+ *
+ * ⚠ Built with `String.split`/`join` rather than a regex literal: this function
+ * was first written through a shell heredoc, which ate the backslashes and left
+ * raw newlines inside `/\r\n/g` — a syntax error that took the whole file down.
+ * Third time that pipeline has bitten in this repo.
+ */
+function sameIgnoringNewlines(a, b) {
+  if (a == null || b == null) return false;
+  const lf = (s) => s.split(String.fromCharCode(13) + String.fromCharCode(10))
+    .join(String.fromCharCode(10));
+  return lf(a) === lf(b);
+}
+
 function generate() {
   const css = fs.readFileSync(CSS, 'utf8');
   const tokens = readTokens(css);
@@ -172,7 +192,12 @@ function main() {
   }
 
   const current = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : null;
-  if (current === source) {
+  // ⚠ LINE ENDINGS ARE NOT DRIFT. The iOS checkout is on Windows with git
+  // normalising to CRLF, and this writes LF — so a byte comparison reports the
+  // file as stale on every single run, for ever. That is the email-triage time
+  // bomb wearing different clothes: a check that fails for a reason unrelated to
+  // what it is checking gets switched off, and takes the real catch with it.
+  if (sameIgnoringNewlines(current, source)) {
     console.log('[design-tokens] Theme.swift is current');
     return;
   }
@@ -188,4 +213,5 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { readTokens, swiftColour, camel, px, build, generate, CSS, OUT };
+module.exports = { readTokens, swiftColour, camel, px, build, generate,
+                   sameIgnoringNewlines, CSS, OUT };

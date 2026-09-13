@@ -69,7 +69,13 @@ test('Theme.swift is CURRENT — re-run the exporter if this fails', (t) => {
   }
   const { source } = tokens.generate();
   const onDisk = fs.readFileSync(tokens.OUT, 'utf8');
-  assert.equal(onDisk, source,
+  // ⚠ NEWLINES ARE NOT DRIFT, and this test failed for that reason within an
+  // hour of being written: the iOS checkout is on Windows with git normalising
+  // to CRLF while the exporter writes LF, so a byte comparison reports the file
+  // stale on EVERY run, for ever. A check that fails for a reason unrelated to
+  // what it is checking is one that gets switched off — and it takes the real
+  // catch with it. Same species as the email-triage wall-clock bomb.
+  assert.ok(tokens.sameIgnoringNewlines(onDisk, source),
     'Theme.swift is behind index.css — run: node backend/scripts/export-design-tokens.js');
 });
 
