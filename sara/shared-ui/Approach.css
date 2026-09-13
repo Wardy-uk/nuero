@@ -540,3 +540,47 @@
 .approach--quiet .approach__row { bottom: 24%; gap: clamp(8px, 1.1cqw, 16px); }
 .surface--approach .surface__foot { bottom: 4%; }
 .surface--approach .surface__shelf { bottom: 4%; }
+
+/* ── One light source ───────────────────────────────────────────────────────
+ *
+ * Nick, 13 Sep 2026: every card shares the blue backlight, less intense than
+ * the centrepiece. Lit only on the hero, the rest of the screen read as a
+ * different material sitting in front of her rather than as things she is
+ * holding — she is the light in the room and everything on it should be lit by
+ * her.
+ *
+ * ⚠ HER COLOUR, INHERITED. `--approach-rgb` is set once on the surface root, so
+ * when she goes amber or red the whole screen goes with her and no card can
+ * disagree about what state she is in.
+ *
+ * ⚠ THE HIERARCHY IS THE POINT: the centrepiece keeps a full-strength border
+ * and a deep glow, these get about a third of it. Matching them would be the
+ * scatter of equal boxes all over again, in light rather than in layout. */
+.approach__card,
+.approach__fact {
+  border-color: rgba(var(--approach-rgb), 0.3);
+  box-shadow:
+    0 14px 40px -22px rgba(var(--approach-rgb), 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+/* The shelf is hardware rather than content, so it is lit less again — present,
+   reachable, and not competing with anything on the track. */
+.surface--approach .shelf__btn,
+.surface--approach .shelf__wx,
+.surface--approach .shelf__offer {
+  border-color: rgba(var(--approach-rgb), 0.24);
+  box-shadow: 0 8px 22px -18px rgba(var(--approach-rgb), 0.5);
+}
+
+/* ⚠ Unreachable keeps its dashed dimness and gains NO glow. A control that
+   would fail on the tap must not look as available as one that works. */
+.surface--approach .shelf__btn--off {
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+/* A room reading is a statement, not a control, so it stays unlit too. */
+.surface--approach .shelf__btn--quiet {
+  border-color: rgba(var(--approach-rgb), 0.12);
+  box-shadow: none;
+}
