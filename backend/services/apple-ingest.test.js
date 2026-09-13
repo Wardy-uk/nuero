@@ -512,3 +512,68 @@ test('an ingested event is STORED as wall-clock, all the way to the row', () => 
   assert.equal(row.end_time, '2026-09-13T14:55:00');
   assert.ok(!/Z$/.test(row.start_time), 'no zone marker may reach the row');
 });
+
+// ── Which app pushed ─────────────────────────────────────────────────────────
+//
+// Both apps read ONE EventKit store on one device, so they stay under a single
+// `apple` source — splitting them would put every event in the diary twice.
+// What the tag buys is attributability: with iOS 17 partial access the two can
+// legitimately see different calendars, and a count flipping between 23 and 3
+// must name who reported which.
+
+test('the pushing app is recorded and reported', () => {
+  apple.ingestCalendar({
+    from: '2026-11-01T00:00:00', to: '2026-11-02T00:00:00',
+    calendars: ['Home'], client: 'sara',
+    events: [{ id: 'c-1', title: 'Swim', calendar: 'Home', start: '2026-11-01T07:00:00', end: '2026-11-01T08:00:00' }],
+  });
+  assert.equal(apple.status().client, 'sara');
+
+  apple.ingestCalendar({
+    from: '2026-11-03T00:00:00', to: '2026-11-04T00:00:00',
+    calendars: ['Home'], client: 'neuro', events: [],
+  });
+  assert.equal(apple.status().client, 'neuro');
+});
+
+test('a refused push still says who was refused', () => {
+  // The case this exists for: one app has access and the other does not, and
+  // "something pushed blind" is useless without knowing which.
+  apple.ingestCalendar({
+    from: '2026-11-05T00:00:00', to: '2026-11-06T00:00:00',
+    calendars: [], events: [], client: 'sara',
+  });
+  const st = apple.status();
+  assert.equal(st.access, 'none');
+  assert.equal(st.client, 'sara');
+});
+
+test('an unnamed or junk client is null, never a guess', () => {
+  // A client that did not say is UNKNOWN. Defaulting to whichever app seems
+  // likely would put a name on a push nobody can trace.
+  apple.ingestCalendar({
+    from: '2026-11-07T00:00:00', to: '2026-11-08T00:00:00',
+    calendars: ['Home'], events: [],
+  });
+  assert.equal(apple.status().client, null);
+
+  apple.ingestCalendar({
+    from: '2026-11-09T00:00:00', to: '2026-11-10T00:00:00',
+    calendars: ['Home'], events: [], client: '../../etc/passwd',
+  });
+  assert.equal(apple.status().client, null, 'a junk tag is refused, not stored');
+});
+
+test('two apps pushing the same diary do not double it', () => {
+  // The whole safety argument for sharing the sensor: same store, same device,
+  // same row key, replace-by-window. Two syncers cost a repeated read.
+  const from = '2026-11-11T00:00:00';
+  const to = '2026-11-12T00:00:00';
+  const event = { id: 'dup-1', title: 'Dentist', calendar: 'Home', start: '2026-11-11T09:00:00', end: '2026-11-11T09:30:00' };
+
+  apple.ingestCalendar({ from, to, calendars: ['Home'], events: [event], client: 'neuro' });
+  apple.ingestCalendar({ from, to, calendars: ['Home'], events: [event], client: 'sara' });
+
+  const rows = db.getCalendarEvents(from, to).filter((e) => e.subject === 'Dentist');
+  assert.equal(rows.length, 1, 'one diary, one row, whichever app pushed it');
+});

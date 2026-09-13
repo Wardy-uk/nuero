@@ -293,7 +293,7 @@ function normaliseEvent(raw) {
  * the shape a broken client sends, and honouring it would silently empty the
  * personal calendar.
  */
-function ingestCalendar({ from, to, events, calendars } = {}) {
+function ingestCalendar({ from, to, events, calendars, client } = {}) {
   if (!from || !to) return { ok: false, error: 'a from/to window is required' };
   if (!Array.isArray(events)) return { ok: false, error: 'events must be an array' };
 
@@ -312,8 +312,15 @@ function ingestCalendar({ from, to, events, calendars } = {}) {
     byCalendar[name] = (byCalendar[name] || 0) + 1;
   }
   const visible = Array.isArray(calendars) ? calendars.map(String) : null;
+  // ⚠ WHICH APP PUSHED — diagnostics, and NOT a second source. Both apps read
+  // ONE EventKit store on one device, so they are two readers of one diary and
+  // the rows stay under a single `apple` source; splitting them would put every
+  // event in the diary twice. What this buys is attributability: with iOS 17
+  // partial access the two apps can legitimately see DIFFERENT calendars, and a
+  // count that flips between 23 and 3 needs to name who reported which.
+  const who = typeof client === 'string' && /^[a-z0-9_-]{1,20}$/i.test(client) ? client : null;
   if (visible) {
-    console.log(`[Apple] ${visible.length} calendar(s) visible: ${visible.join(', ')}`);
+    console.log(`[Apple] ${who || 'unknown client'}: ${visible.length} calendar(s) visible: ${visible.join(', ')}`);
   }
   console.log(`[Apple] ${events.length} event(s) in window ${from} → ${to}: ${JSON.stringify(byCalendar)}`);
 
@@ -341,7 +348,7 @@ function ingestCalendar({ from, to, events, calendars } = {}) {
   // missing event is the expensive failure.
   if (visible && visible.length === 0 && events.length === 0) {
     console.warn('[Apple] REFUSED: the phone reports it can see no calendars — window left alone');
-    _recordPush({ at: new Date().toISOString(), visibleCalendars: 0, events: 0, stored: 0, refused: 'no-calendar-access' });
+    _recordPush({ at: new Date().toISOString(), client: who, visibleCalendars: 0, events: 0, stored: 0, refused: 'no-calendar-access' });
     return {
       ok: false,
       error: 'the phone can see no calendars — grant NEURO calendar access on the device',
@@ -412,6 +419,7 @@ function ingestCalendar({ from, to, events, calendars } = {}) {
 
   _recordPush({
     at: new Date().toISOString(),
+    client: who,
     visibleCalendars: visible ? visible.length : null,
     events: events.length,
     stored: rows.length,
@@ -555,6 +563,9 @@ function status(now = new Date()) {
       // opening the app at all.
       access,
       visibleCalendars: push && push.visibleCalendars !== undefined ? push.visibleCalendars : null,
+      // Which app last pushed. `null` is a client that did not say — unknown,
+      // never a guess at whichever app happens to be installed.
+      client: push && push.client ? push.client : null,
     };
   } catch (e) {
     return { known: false, why: e.message };
