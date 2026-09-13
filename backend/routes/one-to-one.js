@@ -60,17 +60,26 @@ router.get('/cadence', (req, res) => {
     const people = roster.directReports();
     const rows = people.map((p) => {
       // The vault's own words, with today's note folded in.
+      // ⚠ `cadence` MUST be passed: `foldDetected` recomputes the due date as
+      // last + cadenceDays(fm.cadence), so omitting it dates everyone off the
+      // default rather than their own rhythm.
       const folded = detect.effectiveCadenceFields(p.name, {
         'last-1-2-1': p.last121 || '',
         'next-1-2-1-due': p.next121Due || '',
         '1-2-1-booked': p.booked121 || '',
+        cadence: p.cadence || '',
       });
       const cadence = String(p.cadence || '').toLowerCase();
       const bookable = Boolean(p.cadence) && cadence !== 'none' && cadence !== 'n/a';
+      // ⚠ `foldDetected` answers in ITS OWN vocabulary — `{lastHeld, nextDue,
+      // booked}`, NOT the frontmatter key names. Reading the frontmatter names
+      // back yields undefined for all three, and the failure is silent: every
+      // report comes back "ok" with no date, which reads as a team that is
+      // perfectly up to date. Caught live, against the vault, not by a test.
       const state = detect.cadenceState({
-        lastHeld: folded['last-1-2-1'] || null,
-        nextDue: folded['next-1-2-1-due'] || null,
-        booked: folded['1-2-1-booked'] || null,
+        lastHeld: folded.lastHeld || null,
+        nextDue: folded.nextDue || null,
+        booked: folded.booked || null,
         bookable,
       });
       return {
@@ -81,12 +90,17 @@ router.get('/cadence', (req, res) => {
         bookable,
         // ⚠ A person with no cadence is not "ok" — nobody has said how often
         // they should be seen, which is a different fact from being up to date.
-        state: state.state,
+        // ⚠ NOT 'ok' when there is no cadence. `cadenceState` short-circuits
+        // non-bookable people to 'ok', which is right for a screen that only
+        // asks "is a booking owed" and wrong here: nobody has said how often
+        // this person should be seen, and that is a different fact from being
+        // up to date.
+        state: bookable ? state.state : 'no-cadence',
         label: bookable ? detect.cadenceLabel(state) : null,
         why: bookable ? null : (p.status || 'no cadence set'),
-        lastHeld: folded['last-1-2-1'] || null,
-        nextDue: folded['next-1-2-1-due'] || null,
-        booked: folded['1-2-1-booked'] || null,
+        lastHeld: folded.lastHeld || null,
+        nextDue: folded.nextDue || null,
+        booked: folded.booked || null,
         daysOverdue: state.daysOverdue ?? null,
         daysUntil: state.daysUntil ?? null,
       };
