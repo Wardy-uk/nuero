@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SARA",
+        "description": "Where NEURO is, and how to authenticate to it. The token is stored and never shown back.",
+        "data": {
+          "base_url": "NEURO base URL",
+          "token": "NEURO API token",
+          "timeout": "Seconds to wait for an answer"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "SARA is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SARA",
+        "description": "How long to wait before saying the answer was too slow.",
+        "data": {
+          "timeout": "Seconds to wait for an answer"
+        }
+      }
+    }
+  }
+}
