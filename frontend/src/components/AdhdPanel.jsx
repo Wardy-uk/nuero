@@ -94,12 +94,22 @@ export function DeskLaunch({ work, onOpen, states }) {
     return <p className="adhd__desk-note">I can&rsquo;t see your laptop, so I can&rsquo;t open anything on it.</p>;
   }
   if (!work.atDesk) return null;
-  const apps = [['music', 'Music'], ['code', 'VS Code'], ['terminal', 'Terminal'], ['browser', 'Browser']];
+  // ⚠ THE MACHINE'S OWN ANSWER, composed server-side as `work.deskOffer` — not
+  //   a hardcoded four offered to whatever happens to be listening. A machine
+  //   that has not said what it can open gets NO buttons and a stated reason:
+  //   offering everything and hoping is what made this row untrustworthy.
+  const offer = work.deskOffer || null;
+  const apps = offer && Array.isArray(offer.apps) ? offer.apps : [];
+  if (!apps.length) {
+    return offer && offer.why
+      ? <p className="adhd__desk-note">Nothing to open — {offer.why}.</p>
+      : null;
+  }
   return (
     <section className="adhd__desk">
-      <div className="adhd__desk-label">Open on your desk</div>
+      <div className="adhd__desk-label">Open on {offer.host || 'your desk'}</div>
       <div className="adhd__desk-row">
-        {apps.map(([id, label]) => {
+        {apps.map(({ id, label }) => {
           const st = states[id];
           return (
             <button

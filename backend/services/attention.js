@@ -983,6 +983,17 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   let work = null;
   try {
     work = require('./current-work').current(now);
+    // WHAT THAT MACHINE CAN ACTUALLY BE ASKED TO OPEN, composed ONCE here.
+    //
+    // ⚠ Every surface used to render the SAME hardcoded four apps, so a
+    //   button could name a program the target machine does not have - or act
+    //   on a laptop in another room. Four clients each filtering for
+    //   themselves is four chances to disagree about one machine, which is
+    //   the rule `say`/`speech`/`tab` already follow.
+    //
+    // ⚠ It NAMES THE HOST, and an unreadable or silent machine yields NO apps
+    //   and a stated reason rather than a hopeful list.
+    work = { ...work, deskOffer: require('./desk-intents').offer(work) };
   } catch (e) {
     gaps.push({ input: 'current-work', why: e.message });
   }

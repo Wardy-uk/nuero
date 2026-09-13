@@ -167,12 +167,45 @@ test('⚠ every offer is rendered — a second one cannot be silently dropped', 
 // touchscreen in a family room must not be able to start programs on a work
 // laptop — so that shell hides the row rather than offering a 403.
 
-const AT_DESK = { atDesk: true, deskKnown: true, host: 'DESKTOP-8LGF9RR' };
+// ⚠ THE ROW IS NOW DEVICE-AWARE (13 Sep 2026): what it offers is what the
+//   TARGET MACHINE said it can open, composed server-side as `work.deskOffer`.
+//   These fixtures therefore carry one — a `work` without it is a machine that
+//   has not said, which correctly offers nothing, and is its own test below.
+const AT_DESK = { atDesk: true, deskKnown: true, host: 'DESKTOP-8LGF9RR', deskOffer: { known: true, host: 'DESKTOP-8LGF9RR', why: null, apps: [{ id: 'music', label: 'Music' }, { id: 'code', label: 'VS Code' }, { id: 'terminal', label: 'Terminal' }, { id: 'browser', label: 'Browser' }] } };
 
-test('at the laptop, SARA offers to open things there', () => {
+test('at the laptop, SARA offers what THAT MACHINE said it can open', () => {
   const html = render({ data: { ...payload(null), work: AT_DESK }, onDeskOpen: () => {} });
   for (const l of ['Music', 'VS Code', 'Terminal', 'Browser']) assert.match(html, new RegExp(l));
-  assert.match(html, /Open on your desk/);
+  // ⚠ IT NAMES THE MACHINE. A press acts on one laptop, and a row reading
+  //   "your desk" cannot say which — half the point of device awareness is not
+  //   silently opening something on a machine in another room.
+  assert.match(html, /DESKTOP-8LGF9RR/);
+});
+
+test('⚠ NEGATIVE: only what the machine OFFERED is rendered', () => {
+  // The list used to be four hardcoded buttons shown to whatever was
+  // listening, so a button could name a program the target machine lacks.
+  const work = {
+    ...AT_DESK,
+    deskOffer: { known: true, host: 'MAC', why: null, apps: [{ id: 'browser', label: 'Browser' }] },
+  };
+  const html = render({ data: { ...payload(null), work }, onDeskOpen: () => {} });
+  assert.match(html, /Browser/);
+  for (const gone of ['Music', 'VS Code', 'Terminal']) {
+    assert.doesNotMatch(html, new RegExp(gone), `${gone} was not offered by that machine`);
+  }
+});
+
+test('⚠ a machine that has NOT SAID offers nothing, and says why', () => {
+  // ⚠ `null` is "it has not told me" — NOT "offer everything and hope", which
+  //   is what made this row untrustworthy in the first place.
+  const work = {
+    ...AT_DESK,
+    deskOffer: { known: false, host: 'PC', apps: [], why: 'that machine hasn’t said what it can open' },
+  };
+  const html = render({ data: { ...payload(null), work }, onDeskOpen: () => {} });
+  assert.doesNotMatch(html, /surface__deskbtn/, 'no buttons');
+  assert.match(html, /hasn.t said what it can open/, 'but it says why');
 });
 
 test('⚠ NOT at the laptop offers nothing — an intent would expire unclaimed', () => {

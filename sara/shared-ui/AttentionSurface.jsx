@@ -530,10 +530,23 @@ export default function AttentionSurface({
         {!hideSecondary && onDeskOpen && work && work.deskKnown === false && (
           <p className="surface__aside">I can&rsquo;t see your laptop, so I can&rsquo;t open anything on it.</p>
         )}
-        {!hideSecondary && onDeskOpen && work && work.atDesk && (
+        {/* ⚠ WHAT IS OFFERED IS THE MACHINE'S OWN ANSWER, composed server-side
+            as `work.deskOffer`. Every surface used to render the same
+            hardcoded four, so a button could name a program the target
+            machine does not have. Four clients each filtering for themselves
+            is four chances to disagree about one laptop — the rule
+            `say`/`speech`/`tab` already follow.
+
+            ⚠ A machine that has not said what it can open gets NO buttons and
+            a stated reason. Offering everything and hoping is what made the
+            row untrustworthy in the first place. */}
+        {!hideSecondary && onDeskOpen && work && work.atDesk && work.deskOffer
+          && work.deskOffer.apps && work.deskOffer.apps.length > 0 && (
           <div className="surface__desk">
-            <span className="surface__desklabel">Open on your desk</span>
-            {[['music', 'Music'], ['code', 'VS Code'], ['terminal', 'Terminal'], ['browser', 'Browser']].map(([id, label]) => (
+            <span className="surface__desklabel">
+              Open on {work.deskOffer.host || 'your desk'}
+            </span>
+            {work.deskOffer.apps.map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
@@ -543,6 +556,13 @@ export default function AttentionSurface({
               >{label}{deskStates[id] ? <span className="surface__deskstate"> · {deskStates[id]}</span> : null}</button>
             ))}
           </div>
+        )}
+        {/* It is at the desk and the machine offered nothing — say which fact
+            that is, rather than leaving a gap where the row was. */}
+        {!hideSecondary && onDeskOpen && work && work.atDesk && work.deskOffer
+          && (!work.deskOffer.apps || work.deskOffer.apps.length === 0)
+          && work.deskOffer.why && (
+          <p className="surface__aside">Nothing to open — {work.deskOffer.why}.</p>
         )}
 
         {/* ── The room he is standing in ────────────────────────────────────

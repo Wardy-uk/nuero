@@ -55,6 +55,67 @@
 //   outcome back on its next POST so a surface can say "opened" rather than
 //   "sent, hopefully".
 
+/**
+ * WHAT THIS MACHINE MAY BE ASKED TO OPEN. PURE.
+ *
+ * Nick, 13 Sep 2026: *"there needs to be a degree of device awareness"* — every
+ * surface offered the SAME hardcoded four apps to whatever happened to be
+ * listening, so a button could name a program the target machine does not have,
+ * or act on a laptop in another room.
+ *
+ * ⚠⚠ NOTHING NEW HAD TO BE SENSED. The agent has declared `canOpen` on every
+ *   sample since the pull channel shipped; the route read it to decide a claim
+ *   and NOTHING STORED IT, so no surface could know what a given machine could
+ *   do. Device awareness was a field already arriving and being thrown away.
+ *
+ * ⚠ A MACHINE THAT HAS NOT SAID GETS NO BUTTONS, and the reason is said out
+ *   loud. `canOpen: null` is 'it has not told me', NOT 'it can open nothing'
+ *   and NOT 'offer everything and hope' — and the third is what produced the
+ *   failing buttons in the first place. Offering nothing costs a feature on a
+ *   stale agent; offering everything costs a button that fails, which is worse
+ *   because it teaches him the whole row is unreliable.
+ *
+ * ⚠ IT IS INTERSECTED WITH `APPS`, NEVER TRUSTED WHOLE. The list arrives from
+ *   the laptop, so an agent naming something this server does not understand
+ *   must not be able to put an unknown id on a button.
+ *
+ * ⚠ THE HOST TRAVELS WITH THE OFFER. A press has to be able to say WHICH
+ *   machine it will act on — half the point of device awareness is not silently
+ *   opening iTunes on a laptop upstairs.
+ *
+ * @returns {{ known, host, apps: [{id,label}], why }}
+ */
+function offer({ canOpen = null, atDesk = false, deskKnown = true, host = null } = {}) {
+  if (deskKnown === false) {
+    return { known: false, host: null, apps: [], why: 'I can’t see your laptop' };
+  }
+  if (!atDesk) {
+    // An intent has a deadline, so offering while nothing is at the machine
+    // queues work that dies unclaimed and reads as a broken button.
+    return { known: true, host: host || null, apps: [], why: 'you’re not at the laptop' };
+  }
+  if (!Array.isArray(canOpen)) {
+    return {
+      known: false,
+      host: host || null,
+      apps: [],
+      why: 'that machine hasn’t said what it can open',
+    };
+  }
+
+  const apps = canOpen
+    .map(a => String(a || '').trim().toLowerCase())
+    .filter(a => Object.prototype.hasOwnProperty.call(APPS, a))
+    .map(a => ({ id: a, label: BUTTON_LABELS[a] || APPS[a] }));
+
+  if (!apps.length) {
+    // It SPOKE and named nothing this server understands. A real answer, and a
+    // different fact from silence.
+    return { known: true, host: host || null, apps: [], why: 'nothing it can open is set up here' };
+  }
+  return { known: true, host: host || null, apps, why: null };
+}
+
 const db = require('../db/database');
 
 const STATE_KEY = 'desk_intents';
@@ -68,6 +129,21 @@ const APPS = {
   code: 'VS Code',
   terminal: 'a terminal',
   browser: 'your browser',
+};
+
+// ⚠ TWO LABELS PER APP, AND THEY ARE NOT INTERCHANGEABLE. `APPS` is PROSE, for
+//   sentences ("I'll open your music player"); these are BUTTON labels, which
+//   have to be short and read as a thing rather than a phrase. Rendering the
+//   prose on a button gives you one reading "your music player", which is how
+//   the first cut of the device-aware row shipped before this was split out.
+//
+// ⚠ BOTH LIVE HERE, so no surface invents its own. A second vocabulary is how
+//   one client comes to offer something the route refuses.
+const BUTTON_LABELS = {
+  music: 'Music',
+  code: 'VS Code',
+  terminal: 'Terminal',
+  browser: 'Browser',
 };
 
 const TTL_MS = 5 * 60 * 1000;
@@ -204,4 +280,4 @@ function status(id) {
   return { known: true, state: 'claimed', detail: 'the laptop has taken it' };
 }
 
-module.exports = { queue, claim, record, status, isExpired, claimable, APPS, TTL_MS, MAX_PENDING, STATE_KEY };
+module.exports = { queue, claim, record, status, isExpired, claimable, offer, APPS, BUTTON_LABELS, TTL_MS, MAX_PENDING, STATE_KEY };

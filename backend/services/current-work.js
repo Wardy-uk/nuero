@@ -64,8 +64,19 @@ function toMs(v) {
 // there needs to know that, or it queues an intent that expires unclaimed two
 // minutes later and looks broken.
 function deskFrom(desktop) {
-  if (!desktop || desktop.known === false) return { atDesk: false, deskKnown: false, host: null };
-  return { atDesk: Boolean(desktop.app), deskKnown: true, host: desktop.host || null };
+  if (!desktop || desktop.known === false) {
+    return { atDesk: false, deskKnown: false, host: null, canOpen: null };
+  }
+  return {
+    atDesk: Boolean(desktop.app),
+    deskKnown: true,
+    host: desktop.host || null,
+    // ⚠ WHAT THAT MACHINE SAID IT CAN OPEN, carried so a surface offers what
+    //   this laptop actually has rather than a fixed list. `null` is 'it has
+    //   not said' and is NOT an empty list - `desk-intents.offer` keeps the
+    //   two apart, because one of them means show nothing and say why.
+    canOpen: Array.isArray(desktop.canOpen) ? desktop.canOpen : null,
+  };
 }
 
 function nothing(why, extra = {}) {

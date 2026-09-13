@@ -229,12 +229,13 @@ function isActive(sample) {
  * about the man. So the run starts after the last moment another machine saw
  * real use, and says which one interrupted it.
  */
-function runAcross(buckets = {}, now = new Date()) {
+function runAcross(buckets = {}, now = new Date(), opts = {}) {
   const entries = Object.entries(buckets || {}).filter(([, s]) => Array.isArray(s) && s.length);
   if (!entries.length) {
     return {
       known: false, app: null, label: null, minutes: 0,
-      why: 'the laptop has never reported', host: null, hosts: [], otherHostsActive: [],
+      why: 'the laptop has never reported', host: null, canOpen: null,
+      hosts: [], otherHostsActive: [],
     };
   }
 
@@ -248,7 +249,14 @@ function runAcross(buckets = {}, now = new Date()) {
   const primary = runs[0];
 
   const hosts = runs.map(r => ({ host: r.host, at: r.newest.at, known: r.run.known, active: !!r.run.app }));
-  const base = { ...primary.run, host: primary.host, hosts, otherHostsActive: [] };
+  // WARNING  THE CAPABILITY BELONGS TO THE PRIMARY HOST, not to the estate.
+  //   Merging what two machines can open would offer a button that opens on
+  //   whichever one happens to claim it — a program starting on a laptop in
+  //   another room. `capabilities` is keyed by host and passed in by the
+  //   caller, so this stays pure.
+  const caps = (opts && opts.capabilities) || {};
+  const canOpen = Array.isArray(caps[primary.host]) ? caps[primary.host] : null;
+  const base = { ...primary.run, host: primary.host, canOpen, hosts, otherHostsActive: [] };
   if (!primary.run.known || !primary.run.app) return base;
 
   const nowMs = now instanceof Date ? now.getTime() : Date.parse(now);
@@ -355,7 +363,7 @@ function _hostKey(host) {
 }
 
 function _blankBucket() {
-  return { samples: [], mentioned: {} };
+  return { samples: [], mentioned: {}, canOpen: null, canOpenAt: null };
 }
 
 function _load() {
@@ -370,6 +378,11 @@ function _load() {
         hosts[h] = {
           samples: Array.isArray(b && b.samples) ? b.samples : [],
           mentioned: b && b.mentioned && typeof b.mentioned === 'object' ? b.mentioned : {},
+          // WARNING  NULL IS 'THIS MACHINE HAS NOT SAID', which is not the same
+          //   as 'it can open nothing'. The first offers nothing and says why;
+          //   the second would be a claim about a machine that never spoke.
+          canOpen: Array.isArray(b && b.canOpen) ? b.canOpen : null,
+          canOpenAt: (b && typeof b.canOpenAt === 'string') ? b.canOpenAt : null,
         };
       }
       return { hosts };
@@ -412,9 +425,23 @@ function _prune(state) {
 function _save(state) {
   const hosts = {};
   for (const [h, b] of Object.entries(state.hosts || {})) {
-    hosts[h] = { samples: (b.samples || []).slice(0, MAX_SAMPLES), mentioned: b.mentioned || {} };
+    hosts[h] = {
+      samples: (b.samples || []).slice(0, MAX_SAMPLES),
+      mentioned: b.mentioned || {},
+      canOpen: Array.isArray(b.canOpen) ? b.canOpen : null,
+      canOpenAt: b.canOpenAt || null,
+    };
   }
   db.setState(STATE_KEY, JSON.stringify({ hosts }));
+}
+
+/** `{ [host]: canOpen[]|null }` — the capability half of what the pure read takes. */
+function _caps(state) {
+  const out = {};
+  for (const [h, b] of Object.entries(state.hosts || {})) {
+    out[h] = Array.isArray(b.canOpen) ? b.canOpen : null;
+  }
+  return out;
 }
 
 /** `{ [host]: samples[] }` — what the pure functions take. */
@@ -429,7 +456,7 @@ function _buckets(state) {
  * sanitiser agreed with it — a reporter that thinks it sent an app name and had
  * it stripped should be able to tell.
  */
-function record({ app = null, idleSeconds = 0, locked = false, host = null, at = null } = {}) {
+function record({ app = null, idleSeconds = 0, locked = false, host = null, at = null, canOpen = null } = {}) {
   const state = _load();
   const key = _hostKey(host);
 
@@ -448,6 +475,29 @@ function record({ app = null, idleSeconds = 0, locked = false, host = null, at =
 
   if (!state.hosts[key]) state.hosts[key] = _blankBucket();
   const bucket = state.hosts[key];
+
+  // WHAT THIS MACHINE CAN OPEN, kept per host.
+  //
+  // WARNING  IT WAS ALREADY BEING SENT ON EVERY SAMPLE AND THROWN AWAY. The
+  //   route read it off the raw body to decide a claim and nothing stored it,
+  //   so no surface could know what a given machine was actually able to do —
+  //   which is why every surface offered the same hardcoded four apps to
+  //   whatever was listening. Device awareness needed no new sensor, only
+  //   keeping a field that was already arriving.
+  //
+  // WARNING  A SAMPLE THAT OMITS IT NEVER WIPES A KNOWN LIST. An older or
+  //   partial reporter is not a machine that has lost its programs, and
+  //   treating silence as a retraction would make the buttons flicker away
+  //   on one bad post.
+  if (Array.isArray(canOpen)) {
+    const clean = canOpen
+      .filter(a => typeof a === 'string')
+      .map(a => a.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 16);
+    bucket.canOpen = Array.from(new Set(clean)).sort();
+    bucket.canOpenAt = stamp;
+  }
   // Newest first, and out-of-order arrivals are placed rather than assumed — a
   // reporter catching up after a sleep can post a batch.
   bucket.samples.unshift(sample);
@@ -474,6 +524,22 @@ function samples({ host = null } = {}) {
     .sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
+/**
+ * What each machine said it can OPEN, keyed by host.
+ *
+ * WARNING  A host absent from this map, or carrying null, has NOT SAID - which
+ *   is not the same as saying it can open nothing. The offer treats the two
+ *   differently and must be able to tell them apart.
+ */
+function capabilities() {
+  const state = _load();
+  const out = {};
+  for (const [host, b] of Object.entries(state.hosts || {})) {
+    out[host] = Array.isArray(b.canOpen) ? b.canOpen.slice() : null;
+  }
+  return out;
+}
+
 /** What each machine last said. Read-only, and the basis of the senses row. */
 function hosts() {
   const state = _load();
@@ -486,7 +552,8 @@ function hosts() {
 
 /** The current run, read from stored samples, across every machine. */
 function run(now = new Date()) {
-  return runAcross(_buckets(_load()), now);
+  const state = _load();
+  return runAcross(_buckets(state), now, { capabilities: _caps(state) });
 }
 
 /** Whether he is at a machine at all, and which one. */
@@ -505,7 +572,7 @@ function present(now = new Date()) {
  */
 function longRunObservation(now = new Date()) {
   const state = _load();
-  const r = runAcross(_buckets(state), now);
+  const r = runAcross(_buckets(state), now, { capabilities: _caps(state) });
   const bucket = r.host ? state.hosts[r.host] : null;
   const obs = assessDesk({ run: r, lastMentioned: (bucket && bucket.mentioned[r.app]) || null, now });
   if (obs && bucket) {
@@ -522,6 +589,7 @@ module.exports = {
   isActive,
   currentRun,
   runAcross,
+  capabilities,
   atLaptop,
   assessDesk,
   // stateful

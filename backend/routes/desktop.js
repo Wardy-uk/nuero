@@ -161,6 +161,33 @@ router.post('/intents/claim', (req, res) => {
 router.post('/intents', (req, res) => {
   try {
     const { app, host, why } = req.body || {};
+
+    // ⚠ DEVICE AWARENESS, AS A REFUSAL. If the target machine has SAID what it
+    //   can open and this is not on the list, say so NOW. `claim` already
+    //   declines to hand it over, which is correct and silent - the request
+    //   would simply sit there and expire five minutes later, which from the
+    //   button's side is indistinguishable from a laptop that is asleep.
+    //
+    // ⚠ SILENCE IS NOT A REFUSAL. A machine that has never declared its
+    //   capabilities is not one that lacks the program - it is one that has not
+    //   been asked yet (an older agent, or a first sample still to arrive), and
+    //   refusing on that would break the feature for a machine that works.
+    try {
+      const target = host || null;
+      const caps = require('../services/desktop-activity').capabilities();
+      const declared = target ? caps[target] : null;
+      if (Array.isArray(declared) && app && !declared.includes(String(app).toLowerCase())) {
+        return res.json({
+          ok: false,
+          reason: `${target} can’t open that`,
+        });
+      }
+    } catch (e) {
+      // Never allowed to cost the press. Not knowing falls through to the
+      // existing guards, which are the ones that actually keep it safe.
+      console.warn('[Desktop] capability check skipped:', e.message);
+    }
+
     res.json(require('../services/desk-intents').queue(app, { host: host || null, why: why || null }));
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

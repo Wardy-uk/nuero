@@ -182,7 +182,11 @@ test('the desk row is exported and mountable', async () => {
 const desk = props => renderToString(React.createElement(DeskLaunch, { onOpen: () => {}, states: {}, ...props })).split('<!-- -->').join('');
 
 test('at the laptop, the four openable things are offered', () => {
-  const html = desk({ work: { atDesk: true, deskKnown: true, host: 'PC' } });
+  // ⚠ THE ROW IS NOW DEVICE-AWARE (13 Sep 2026): what it offers is what the
+  //   TARGET MACHINE said it can open, composed server-side as `work.deskOffer`.
+  //   These fixtures therefore carry one — a `work` without it is a machine that
+  //   has not said, which correctly offers nothing, and is its own test below.
+  const html = desk({ work: { atDesk: true, deskKnown: true, host: 'PC', deskOffer: { known: true, host: 'PC', why: null, apps: [{ id: 'music', label: 'Music' }, { id: 'code', label: 'VS Code' }, { id: 'terminal', label: 'Terminal' }, { id: 'browser', label: 'Browser' }] } } });
   for (const l of ['Music', 'VS Code', 'Terminal', 'Browser']) assert.match(html, new RegExp(l));
 });
 
@@ -202,13 +206,13 @@ test('no reading at all renders nothing', () => {
 });
 
 test('⚠ the state shown is the real one, and "claimed" is not "opened"', () => {
-  const html = desk({ work: { atDesk: true, deskKnown: true }, states: { music: 'claimed', code: 'opened' } });
+  const html = desk({ work: { atDesk: true, deskKnown: true, deskOffer: { known: true, host: 'PC', why: null, apps: [{ id: 'music', label: 'Music' }, { id: 'code', label: 'VS Code' }] } }, states: { music: 'claimed', code: 'opened' } });
   assert.match(html, /claimed/);
   assert.match(html, /opened/);
   assert.doesNotMatch(html, /\bsent\b/i, 'never claims delivery it cannot confirm');
 });
 
 test('a request in flight disables its own button', () => {
-  const html = desk({ work: { atDesk: true, deskKnown: true }, states: { music: 'waiting' } });
+  const html = desk({ work: { atDesk: true, deskKnown: true, deskOffer: { known: true, host: 'PC', why: null, apps: [{ id: 'music', label: 'Music' }, { id: 'code', label: 'VS Code' }] } }, states: { music: 'waiting' } });
   assert.match(html, /disabled/);
 });
