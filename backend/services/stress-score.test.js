@@ -137,6 +137,60 @@ test('re-posting the same sample folds instead of skewing the baseline', () => {
   assert.equal(rows.length, 1);
 });
 
+// ─── Is it worth a slot? ─────────────────────────────────────────────────────
+//
+// ⚠ These pin a DECISION five surfaces gate on, so getting it wrong either
+// pads every screen with an ordinary day or hides a genuinely bad one.
+
+test('an ordinary day is NOT notable — "Balanced" is the whole point', () => {
+  assert.equal(stress.isNotable({ status: 'ok', score: 52, label: 'Balanced' }), false);
+});
+
+test('every band either side of Balanced IS notable', () => {
+  for (const [score, label] of [[80, 'High'], [62, 'Elevated'], [30, 'Low'], [10, 'Very low']]) {
+    assert.equal(stress.isNotable({ status: 'ok', score, label }), true, label);
+  }
+});
+
+test('the live 13 Sep reading — 62 Elevated — is notable', () => {
+  // The reading that started this: rendered as "62 ready" on two surfaces.
+  assert.equal(stress.isNotable({ status: 'ok', score: 62, label: 'Elevated' }), true);
+});
+
+test('calibrating and stale are not notable — there is nothing to be off', () => {
+  assert.equal(stress.isNotable({ status: 'calibrating', score: null, label: 'Calibrating' }), false);
+  assert.equal(stress.isNotable({ status: 'stale', score: null, label: 'No recent reading' }), false);
+});
+
+test('a caveat alone does not earn a slot', () => {
+  // "Heart rate is well above resting" is a fact about the last ten minutes,
+  // not about the day, and it rides WITH a score when one is shown.
+  assert.equal(
+    stress.isNotable({ status: 'ok', score: 50, label: 'Balanced', caveats: ['Heart rate is well above resting'] }),
+    false
+  );
+});
+
+test('nothing at all is not notable, and does not throw', () => {
+  assert.equal(stress.isNotable(null), false);
+  assert.equal(stress.isNotable({}), false);
+  assert.equal(stress.isNotable({ status: 'ok', score: null, label: 'High' }), false);
+});
+
+test('the labels isNotable reads are the ones computeStressScore emits', () => {
+  // ⚠ THE JOIN, not the halves. A renamed label would leave `isNotable`
+  // matching nothing and quietly make every day notable — this repo has
+  // shipped a whole feature reading an identifier nobody emits.
+  clearSamples();
+  seedBaseline();
+  db.insertHealthSample('hrv', 48, sqlUtc(Date.now() - 20 * 60000), 'test');
+  const r = stress.computeStressScore();
+  assert.equal(r.status, 'ok');
+  assert.ok(['High', 'Elevated', 'Balanced', 'Low', 'Very low'].includes(r.label),
+            `unexpected label ${r.label}`);
+  assert.equal(stress.isNotable(r), r.label !== 'Balanced');
+});
+
 test.after(() => {
   try { db.getDb().close(); } catch {}
   try { fs.rmSync(root, { recursive: true, force: true }); } catch {}

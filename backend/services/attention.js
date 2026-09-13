@@ -1264,9 +1264,16 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   // Both halves are optional and INDEPENDENT: the score is what the gauge
   // needs, the week of HRV only decorates it, so a failure in one must never
   // remove the other. That coupling was the second half of the bug.
-  let readiness = { known: false, why: 'not read' };
+  //
+  // ⚠ `notable` RIDES WITH IT AND IS THE BRAIN'S CALL, NOT A RENDERER'S. Five
+  // surfaces drew this dial unconditionally, so an ordinary "Balanced" day held
+  // a permanent slot on every one of them. Composing the decision here is the
+  // same rule as `say`, `speech` and `silence`: five clients each deciding when
+  // a body reading is worth showing is five answers free to drift.
+  let readiness = { known: false, why: 'not read', notable: false };
   try {
-    const score = require('./stress-score').computeStressScore();
+    const stressScore = require('./stress-score');
+    const score = stressScore.computeStressScore();
     let hrvWeek = [];
     try {
       hrvWeek = (require('./health-daily').recentDays(7) || [])
@@ -1276,9 +1283,11 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     } catch (e) {
       hrvWeek = [];
     }
-    readiness = { known: true, ...score, hrvWeek };
+    readiness = { known: true, ...score, hrvWeek, notable: stressScore.isNotable(score) };
   } catch (e) {
-    readiness = { known: false, why: e.message };
+    // ⚠ An unreadable body is NOT notable. "I could not look" is a gap, and it
+    // is reported as one — it is not a reason to put a dial on the screen.
+    readiness = { known: false, why: e.message, notable: false };
   }
 
   // The seam of the day, if this is one. PURE, composed server-side like `say`

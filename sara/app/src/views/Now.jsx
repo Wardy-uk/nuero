@@ -639,10 +639,19 @@ export default function Now({ onNavigate }) {
   // it away. Its own fetch, so a failure here cannot take the session card with
   // it: the two are independent facts about the same moment.
   const [readiness, setReadiness] = useState(null);
+  // ⚠ DUTY, NOT QUIET. Being in a meeting is not being off duty — `resolveDuty`
+  // is a separate read for exactly that reason — and the three screens that
+  // reached for `quiet` flipped the dial to its off-duty face whenever she
+  // decided not to interrupt. Unknown resolves to ON duty, the backend's rule.
+  const [offDuty, setOffDuty] = useState(false);
   useEffect(() => {
     let live = true;
     apiFetch('/api/attention')
-      .then((d) => { if (live) setReadiness(d?.readiness || null); })
+      .then((d) => {
+        if (!live) return;
+        setReadiness(d?.readiness || null);
+        setOffDuty(d?.context?.duty?.onDuty === false);
+      })
       // ⚠ Swallowed deliberately and ONLY here: Readiness renders nothing
       // without data, so a missing dial is the correct outcome of a failed
       // read. It never renders a zero.
@@ -747,10 +756,18 @@ export default function Now({ onNavigate }) {
           BELOW the return prompt and above the working set: how recovered he is
           informs what to take on, but it never outranks an unclosed session.
           Renders nothing at all without data — see Readiness.jsx, which refuses
-          to draw a dial for a number it does not have. */}
-      {readiness && (
+          to draw a dial for a number it does not have.
+
+          ⚠ AND ONLY WHEN THE DAY IS OFF HIS OWN BASELINE. `readiness.notable`
+          is the brain's call, taken once in `stress-score.isNotable`, so this
+          screen, SARA's Surface, the kiosk, the Electron window and both iOS
+          apps cannot disagree about whether an ordinary Tuesday earns a card.
+          Five renderers drew it unconditionally, which meant the most common
+          possible reading — "Balanced" — held a permanent slot on all five.
+          That is the 29 Aug rule about the morning brief, one surface along. */}
+      {readiness?.notable === true && (
         <div className="card now__readiness">
-          <Readiness readiness={readiness} />
+          <Readiness readiness={readiness} offDuty={offDuty} />
         </div>
       )}
 

@@ -9,11 +9,17 @@ import './Readiness.css';
  * for iOS and the web went on fading her for five days because the two halves
  * were separate.
  *
- * ⚠ `score` IS RECOVERY, NOT STRESS. `stress-score.js` returns a scale where
- * higher is better — 98 is fully recovered — and the dial fills UP as stress
- * rises, so it shows `100 - score`. Reading it the other way paints a good
- * morning as a crisis, which is why both implementations state it and both are
- * pinned by tests.
+ * ⚠⚠ `score` IS STRESS, NOT RECOVERY, and this file believed the opposite —
+ * word for word, as did `Readiness.swift`. `stress-score.js` computes
+ * `50 - 18z` on the HRV z-score, so BETTER recovery (higher HRV) gives a LOWER
+ * number, and its own labels say so: High >= 75 down to Very low. Two
+ * implementations stating the same wrong premise is not two witnesses; it is
+ * one mistake copied.
+ *
+ * What it cost, both directions: on 13 Sep 2026 a score of 62 — which the brain
+ * calls ELEVATED STRESS — rendered as "62 ready"; and a genuinely recovered day
+ * at 20 would have drawn `stress` 80, red, "Take it gently". The best morning of
+ * the month painted as the worst.
  *
  * ⚠ IT REFUSES TO DRAW A NUMBER IT DOES NOT HAVE. Calibrating, stale and
  * could-not-look each render as a sentence. A dial resting at zero because
@@ -27,22 +33,42 @@ import './Readiness.css';
 
 const DOTS = 28;
 
-/** Thresholds lifted from the Scriptable widget rather than re-picked. */
-function band(stress) {
+/**
+ * ⚠ READ OFF THE BRAIN'S OWN LABEL, not a second threshold ladder. These numbers
+ * were tuned against the inverted value, so they were wrong twice over — and two
+ * ladders for one reading is how a screen comes to disagree with the service
+ * about what kind of day it is. The fallback is the ladder `stress-score`
+ * itself publishes, for a payload carrying a score and no label.
+ */
+function band(label, stress) {
+  switch (String(label || '').toLowerCase()) {
+    case 'high': return 'critical';
+    case 'elevated': return 'high';
+    case 'balanced': return 'elevated';
+    case 'low':
+    case 'very low': return 'calm';
+    default: break;
+  }
   if (stress == null) return null;
-  if (stress >= 60) return 'critical';
-  if (stress >= 45) return 'high';
-  if (stress >= 30) return 'elevated';
+  if (stress >= 75) return 'critical';
+  if (stress >= 60) return 'high';
+  if (stress >= 40) return 'elevated';
   return 'calm';
 }
 
-/** What the state ALLOWS, never what to do about it. */
-function verdictFor(score, label) {
-  if (score == null) return label || null;
-  if (score >= 70) return 'Enough for a hard one';
-  if (score >= 40) return 'Enough for an easy one';
-  return 'Take it gently';
-}
+/*
+ * ⚠⚠ THE VERDICT LADDER IS DELETED, and not only because it was inverted.
+ *
+ * "Enough for a hard one" is ADVICE, and it is the exact advice this codebase
+ * refuses: readiness is deliberately NOT fed to the model because "take it easy
+ * today" is a recommendation drawn from three numbers by something that cannot
+ * tell exercise from illness from alcohol from a hard week — `stress-score`'s
+ * own caveat, which this then ignored. The comment above it claimed it never
+ * said what to do about it while saying exactly that.
+ *
+ * What is shown instead is the brain's own `label`, which states the reading
+ * and licenses nothing.
+ */
 
 /**
  * ⚠ SCALED TO THE WEEK, NOT TO ZERO. HRV sits in a narrow band well above zero,
@@ -63,7 +89,11 @@ export default function Readiness({ readiness, offDuty = false }) {
 
   const known = readiness.known === true;
   const score = Number.isFinite(Number(readiness.score)) ? Number(readiness.score) : null;
-  const stress = score == null ? null : Math.max(0, Math.min(100, 100 - score));
+  // The brain's number IS the stress number. Nothing to invert.
+  const stress = score;
+  // ⚠ The only subtraction in the file, next to the sentence explaining which
+  // way round the backend's number runs.
+  const recovered = score == null ? null : Math.max(0, Math.min(100, 100 - score));
 
   // ⚠ Calibrating, stale and blind are three different facts and none is zero.
   if (score == null) {
@@ -78,20 +108,31 @@ export default function Readiness({ readiness, offDuty = false }) {
     );
   }
 
-  const dialValue = offDuty ? score : stress;
-  const unit = offDuty ? 'ready' : 'stress';
-  // ⚠ Colour follows STRESS in BOTH modes, so a green "ready" and a green
+  // ⚠ Off duty the question is how much he has in the tank, so the dial shows
+  // `recovered`; at work it is how hard he is being pushed, so it shows stress.
+  // Both come from ONE number and the inversion lives in one place — it used to
+  // be up there, the wrong way round, which is how an elevated-stress reading
+  // came to be labelled "ready".
+  const dialValue = offDuty ? recovered : stress;
+  const unit = offDuty ? 'recovered' : 'stress';
+  // ⚠ Colour follows STRESS in BOTH modes, so a green "recovered" and a green
   // "stress" never mean opposite things on two screens.
-  const tone = band(stress);
+  const tone = band(readiness.label, stress);
   const filled = Math.round((stress / 100) * DOTS);
   const bars = weekBars(readiness.hrvWeek);
 
-  const hrv = Number(readiness.hrv);
-  const baseline = Number(readiness.baselineMs);
+  // ⚠ `Number(null)` is 0 AND `Number.isFinite(0)` is true, so coercing a
+  // missing baseline yields a perfectly plausible "vs 0 baseline" — the rule
+  // below stated, and the code walking straight past it. Caught by a render
+  // test, not by reading; the same coercion trap bit `isNotable` an hour
+  // earlier in the same change.
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const hrv = num(readiness.hrv);
+  const baseline = num(readiness.baselineMs);
   // ⚠ BOTH NUMBERS OR NEITHER. A current reading with no baseline is not a fact
   // about recovery, and showing it alone invites the comparison there is no
   // evidence for.
-  const comparison = Number.isFinite(hrv) && Number.isFinite(baseline)
+  const comparison = hrv !== null && baseline !== null
     ? `HRV ${Math.round(hrv * 10) / 10}ms vs ${Math.round(baseline)} baseline`
     : null;
 
@@ -111,7 +152,9 @@ export default function Readiness({ readiness, offDuty = false }) {
       </div>
 
       <div className="rdy__body">
-        <div className="rdy__verdict">{verdictFor(score, readiness.label)}</div>
+        {/* ⚠ The brain's label. There is no verdict any more — see above: it
+            was advice, and it was inverted. */}
+        <div className="rdy__verdict">{readiness.label || '—'}</div>
         {comparison && <div className="rdy__compare">{comparison}</div>}
         {bars.length > 0 && (
           <>

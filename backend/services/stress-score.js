@@ -181,8 +181,44 @@ function computeStressScore() {
   };
 }
 
+/**
+ * Is this reading worth putting on a screen at all?
+ *
+ * ⚠ ONE DECISION, TAKEN HERE, so every surface gates on the same answer. The
+ * phone, the kiosk, the Electron window and both iOS apps each rendered the
+ * dial unconditionally, which means the most common possible reading —
+ * "Balanced", i.e. a perfectly ordinary day — took a permanent slot on the
+ * screen. That is the 29 Aug rule about the morning brief, one surface along:
+ * "About normal today" appended every morning is padding, and padding is how
+ * the line above it stops being read.
+ *
+ * ⚠ THE LADDER IS THE ONE THIS FILE ALREADY PUBLISHES, not a new threshold.
+ * `Balanced` is the 40..59 band and is the only one that is not notable — a
+ * second set of numbers here is how a screen comes to disagree with the service
+ * about what kind of day it is.
+ *
+ * ⚠ CALIBRATING AND STALE ARE NOT NOTABLE. There is no reading to be off
+ * baseline, and a dial that appears whenever the watch has been on charge is
+ * one that appears for no reason.
+ *
+ * ⚠ A CAVEAT IS NOT A REASON TO SHOW IT. "Heart rate is well above resting"
+ * rides WITH a score when one is shown; on its own it is a fact about the last
+ * ten minutes, not about the day.
+ *
+ * Pure — takes the score object, no clock, no DB.
+ */
+function isNotable(read) {
+  if (!read || read.status !== 'ok') return false;
+  // ⚠ `Number(null)` is 0, which is finite — so coercing here would call a
+  // missing score a reading of zero and light the dial on a calibrating watch.
+  // Caught by a test, not by reading it.
+  if (typeof read.score !== 'number' || !Number.isFinite(read.score)) return false;
+  return read.label !== 'Balanced';
+}
+
 module.exports = {
   computeStressScore,
+  isNotable,
   // exported for tests / debugging the baseline without a score
   buildHrvBaseline
 };
