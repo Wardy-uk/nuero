@@ -125,3 +125,72 @@ Not every feature earns pixels. The design-token export and the iOS parity
 screens are about other surfaces; the route and payload audits are guards. A
 thing that has no moment at which Nick would want it in front of him does not go
 on this screen just because it was built.
+
+---
+
+## How this applies to the rest of SARA
+
+Approach is the ambient surface. Most of SARA is not that — Tasks, Ask, Prep,
+Capture, Review, Controls, the lock and clock screens, the widget, a
+notification. The question for each is **which half of this document applies**,
+and the answer is the same every time: **the rules export, the scene does not.**
+
+### What exports, everywhere
+
+* **One light source.** Every surface is lit by HER — one colour, taken from
+  `fieldDrive` and inherited, never picked locally. When she goes amber the
+  whole app goes with her. A screen with its own palette is a second opinion
+  about what state she is in.
+* **Hierarchy by light, not by decoration.** One thing is brightest; everything
+  else is a fraction of it. Equal weight everywhere is the scatter of equal
+  boxes, whatever the layout.
+* **Say it once.** Whatever the composer has already said is not said again
+  lower down. `covered` is the composer's call, never a renderer's.
+* **Never invent.** No time, no number, no name that did not arrive on the
+  payload. A missing value is absent or named, never a plausible default.
+* **Named gaps, never counted.** "I couldn't read the diary" is information;
+  "2 gaps" is a number he cannot act on. And it is never styled as an error —
+  it is her being honest, not something failing.
+* **A control only where a route exists**, and **unreachable renders dashed
+  rather than missing**. A button NEURO would refuse is worse than no button.
+* **One vocabulary, composed server-side and rendered verbatim.** Three
+  renderers of one decision, never three opinions.
+
+### What does NOT export
+
+* **The corridor.** Depth is time, and a screen with no time in it has no
+  corridor — that is why a finished day stands it down. A task list, a
+  settings page or a chat has no hours, and imposing a receding perspective on
+  one would be decoration wearing the costume of information. **Do not fit
+  Tasks or Review into a corridor.**
+* **The centrepiece, in most places.** It answers "so, now?", and only the
+  ambient surface is asking that. A list is a list: its job is to be scanned,
+  and a hero on it just makes one row arbitrarily loud. The exception is any
+  screen that genuinely has ONE answer — the return prompt, a meeting about to
+  start, a room offer.
+* **The shelf.** It is what she can reach FROM HERE, which is a fact about the
+  ambient surface and the device. A destination screen is already about one
+  thing and does not need a shelf beside it.
+
+### The rule that decides which
+
+Ask what the screen is FOR. **She comes to him** on the ambient surface, so it
+is composed, lit and answerable, and it holds one thing. **He goes to** the
+destinations — he arrived wanting something specific — so they are quiet,
+scannable and utilitarian, and they should NOT be dressed up as scenes. Making
+Tasks look like the Surface would be the menu SARA does not have, in costume.
+
+### Where the rest of SARA is currently short (13 Sep 2026)
+
+Written down as findings, not as a plan:
+
+* **The secondary screens are not lit by her at all.** The shell field is driven
+  behind them, but their own cards and rows use flat borders and the system
+  accent, so the app looks like two products. This is the one thing from
+  tonight that should genuinely be pushed everywhere.
+* **The widget** renders `say` and `speech` verbatim — correct — but takes no
+  colour from `fieldDrive`, so a red day and a quiet Sunday look identical on
+  the lock screen.
+* **iOS still writes some of its own wording** in places the web composes; every
+  one of those is a future drift. The silences were the worst and are fixed;
+  the rest should be audited the same way.
