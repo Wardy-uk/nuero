@@ -1025,7 +1025,20 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     //   half-written row being read as a short night all morning - the same rule
     //   `health-daily` applies to every average it computes.
     lastNight = latest && Number.isFinite(latest.asleepHours)
-      ? { known: true, day: latest.day, asleepHours: latest.asleepHours, source: latest.sleepSource || null }
+      ? {
+        known: true, day: latest.day, asleepHours: latest.asleepHours,
+        source: latest.sleepSource || null,
+        // ⚠ The COMPARISON, not a verdict. "usually 7h47 on a Saturday" is
+        //   checkable against his own data; "you're tired" is a claim nothing
+        //   here has standing to make.
+        ...(() => {
+          try {
+            const rr = require('./rhythm-read');
+            const read = rr.sleepVsUsual();
+            return { usual: read.known ? read.usual : null, usualLine: rr.sleepLine(read), notable: read.notable === true };
+          } catch { return {}; }
+        })(),
+      }
       : { known: false, why: 'no complete night recorded yet' };
   } catch (e) {
     gaps.push({ input: 'sleep', why: e.message });

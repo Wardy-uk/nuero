@@ -1167,3 +1167,35 @@ test('an unreadable wins ledger renders nothing rather than claiming a quiet day
   const d = offDuty({ didRecently: { known: false } });
   assert.equal(d.rows.some(x => x.when === 'did'), false);
 });
+
+// ── The habit beside the night (13 Sep 2026) ─────────────────────────────────
+//
+// ⚠ "8h25" alone says little. "8h25, usually 7h47 on a Saturday" is
+// information — and it is a COMPARISON he can check, never a verdict. Nothing
+// here may say "you're tired": Apple Health cannot separate a late night from
+// illness from a hard week, which is why health-daily refuses to diagnose.
+
+test('the night carries his usual for that weekday', () => {
+  const d = offDuty({ lastNight: { known: true, asleepHours: 8.41, usual: 7.78, usualLine: 'usually 7h47 on a Saturday' } });
+  const r = d.rows.find(x => x.when === 'slept');
+  assert.equal(r.what, '8h25');
+  assert.match(r.note, /usually 7h47 on a Saturday/);
+});
+
+test('⚠ NEGATIVE: it never says what the difference MEANS', () => {
+  const d = offDuty({ lastNight: { known: true, asleepHours: 4.2, usual: 7.78, usualLine: 'usually 7h47 on a Saturday', notable: true } });
+  const json = JSON.stringify(d.rows);
+  for (const verdict of [/tired/i, /exhaust/i, /you.{0,3}re not/i, /take it easy/i, /poor/i, /bad night/i, /should/i]) {
+    assert.doesNotMatch(json, verdict, String(verdict));
+  }
+  assert.match(d.rows.find(x => x.when === 'slept').what, /4h12/, 'the fact is still stated plainly');
+});
+
+test('⚠ no habit yet means NO line — not "about normal"', () => {
+  // Inventing a reassuring sentence about a pattern that does not exist is both
+  // a guess and the register sara-voice rejects.
+  const d = offDuty({ lastNight: { known: true, asleepHours: 8.41, usual: null, usualLine: null } });
+  const r = d.rows.find(x => x.when === 'slept');
+  assert.equal(r.note, null);
+  assert.equal(r.what, '8h25', 'the night itself is still shown');
+});

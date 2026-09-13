@@ -710,7 +710,11 @@ function dashOffDuty(payload, now) {
   if (isObj(sleep) && sleep.known && Number.isFinite(sleep.asleepHours)) {
     const h = Math.floor(sleep.asleepHours);
     const m = Math.round((sleep.asleepHours - h) * 60);
-    rows.push(row('slept', h + 'h' + String(m).padStart(2, '0')));
+    // ⚠ The habit is the CONTEXT that makes the number mean anything. "8h25"
+    //   alone says little; "8h25, usually 7h47 on a Saturday" is information.
+    //   Composed once server-side, and NULL when there is no habit yet — there
+    //   is no useful sentence about a pattern that does not exist.
+    rows.push(row('slept', h + 'h' + String(m).padStart(2, '0'), { note: sleep.usualLine || null }));
   }
 
   // --- What he actually did ---------------------------------------------
