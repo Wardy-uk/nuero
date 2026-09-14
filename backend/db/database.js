@@ -2102,6 +2102,25 @@ function listTaskBlockRows({ taskId = null, statuses = null, openOnly = false } 
   );
 }
 
+/**
+ * The OPEN block NEURO put in the calendar as this event, or null.
+ *
+ * `task_blocks.event_id` is the Graph event id, which is also what an attention
+ * record's `meeting:<id>` dedupe key carries — so a card that looks like a
+ * meeting can be recognised as NEURO's own task block without the engine having
+ * to carry a second copy of the link. Open only: a finished block is not
+ * something to act on from a reminder.
+ */
+function getTaskBlockByEventId(eventId) {
+  if (!eventId) return null;
+  return get(
+    `SELECT * FROM task_blocks
+      WHERE event_id = ? AND status IN ('scheduled', 'awaiting-writeup')
+      ORDER BY date_key DESC, start_time DESC LIMIT 1`,
+    [eventId],
+  ) || null;
+}
+
 /** Take a task out of a block. The task row itself is untouched. */
 function removeTaskBlockItem(blockId, taskId) {
   return run('DELETE FROM task_block_items WHERE block_id = ? AND task_id = ?', [blockId, taskId]).changes;
@@ -2451,6 +2470,7 @@ module.exports = {
   getTaskBlockRow,
   listTaskBlockItems,
   listTaskBlockRows,
+  getTaskBlockByEventId,
   removeTaskBlockItem,
   setTaskBlockItemAwaiting,
   updateTaskBlockRow,

@@ -155,6 +155,21 @@ function dedupeKeyForPush(type, ref) {
  * because of a bookkeeping gap is the worse error — but an interruption is a
  * claim that something is worth stopping for, and we have to be able to say what.
  */
+/**
+ * A wall-clock label for an instant, or null. PURE.
+ *
+ * ⚠ SLICED out of the string where it already looks like one, never parsed
+ * into a Date and re-rendered: the backend asked Graph for Europe/London
+ * wall-clock times, and re-parsing re-applies an offset and shows every BST
+ * event an hour out. That is the calendar's own bug and it is not being
+ * repeated on a card.
+ */
+function _clockRef(start) {
+  if (!start) return null;
+  const m = /T(\d{2}:\d{2})/.exec(String(start));
+  return m ? m[1] : null;
+}
+
 function evidenceFor(card, now = new Date()) {
   if (!card || typeof card !== 'object') return [];
   const meta = card.meta && typeof card.meta === 'object' ? card.meta : {};
@@ -177,7 +192,20 @@ function evidenceFor(card, now = new Date()) {
     }
     case 'meeting':
       if (meta.start) {
-        out.push({ source: 'calendar', ref: card.id, observedAt: meta.start, detail: meta.location || null });
+        // ⚠ `ref` is RENDERED on the card, so it may never be an opaque id.
+        // This was `card.id` — `cal-` plus a 150-character Graph event id, which
+        // identifies the meeting to Microsoft and to nobody else, printed as a
+        // wall of base64 under the word CALENDAR. Same species as the email id
+        // that reached the review queue as a label. The time is the fact Nick
+        // can actually use; the id stays available as `sourceId`, which no
+        // surface prints.
+        out.push({
+          source: 'calendar',
+          ref: _clockRef(meta.start) || 'time not recorded',
+          observedAt: meta.start,
+          detail: meta.location || null,
+          sourceId: card.id || null,
+        });
       }
       break;
     case 'todo':
@@ -193,11 +221,15 @@ function evidenceFor(card, now = new Date()) {
       break;
     case 'email':
       if (meta.emailId || meta.from) {
+        // ⚠ Same rule: the sender is the label, never the Graph message id.
+        // Where no sender was recorded it SAYS so rather than falling back to
+        // the blob — "an email, sender not recorded" is a fact Nick can act on.
         out.push({
           source: 'email',
-          ref: meta.emailId || null,
+          ref: meta.from || 'sender not recorded',
           observedAt: null,
-          detail: meta.subject || meta.from || null,
+          detail: meta.subject || null,
+          sourceId: meta.emailId || null,
         });
       }
       break;
@@ -701,6 +733,50 @@ function act(recordId, action, opts = {}) {
           }
         } catch (e) {
           taskWhy = e.message;
+        }
+      } else if (row.type === 'meeting') {
+        // ── "Why can't I mark this complete?" (Nick, 14 Sep 2026) ──────────
+        //
+        // `completionTargetFor` is right that a MEETING has nothing to close —
+        // but NEURO books its own task blocks into the same calendar, so they
+        // arrive here as meeting cards too, and the one kind of "meeting" with
+        // real tasks behind it was the one where Done could do nothing at all.
+        // The generic "nothing to complete" then read as a dead button rather
+        // than as an answer.
+        //
+        // ⚠ The link needs no new field on the card: `task_blocks.event_id` IS
+        // the Graph event id, and a meeting record's dedupe key already carries
+        // it. Looked up HERE rather than in `completionTargetFor`, which is pure
+        // and must stay that way.
+        const key = String(row.dedupe_key || '');
+        const eventId = key.startsWith('meeting:') ? key.slice('meeting:'.length) : null;
+        const block = eventId ? db.getTaskBlockByEventId(eventId) : null;
+        if (!block) {
+          // A real meeting. Say what it is instead of implying a failed write.
+          taskWhy = 'a meeting is not a task — there is nothing here to close';
+        } else {
+          const items = db.listTaskBlockItems(block.id).filter((i) => !i.awaiting);
+          if (items.length === 0) {
+            taskWhy = 'everything in this block is already ticked — it needs its write-up';
+          } else if (items.length > 1) {
+            // ⚠ REFUSED, and the count is named. One press cannot mean "finish
+            // all four": a batch of four routinely finishes three, and closing
+            // the fourth because a reminder was dismissed puts work in the wins
+            // ledger nobody did — the rule the write-up sweep already follows.
+            taskWhy = `this block holds ${items.length} tasks — tick them individually, on Todos`;
+          } else {
+            try {
+              const taskStore = require('./task-store');
+              const updated = taskStore.setStatus(items[0].task_id, 'done');
+              taskHeld = Boolean(updated && updated.held);
+              taskCompleted = !taskHeld;
+              taskWhy = taskCompleted
+                ? `task #${items[0].task_id} completed`
+                : `task #${items[0].task_id} is held — ${(updated && updated.held && updated.held.reason) || 'awaiting a write-up'}`;
+            } catch (e) {
+              taskWhy = e.message;
+            }
+          }
         }
       } else if (row.type === 'escalation') {
         // ⚠ Done on an escalation (Nick, 11 Sep 2026). The card is built from
