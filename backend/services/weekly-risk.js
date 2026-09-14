@@ -82,6 +82,17 @@ function weekCommencing(date = todayLocal()) {
   return todayLocal(dt);
 }
 
+/** The Mon-Sun span of one week, as the csat-summary route wants it. */
+function weekSpan(week) {
+  const [y, m, d] = week.split('-').map(Number);
+  return { from: week, to: todayLocal(new Date(y, m - 1, d + 6)) };
+}
+
+function csatQuery(week) {
+  const { from, to } = weekSpan(week);
+  return `/api/neuro-bridge/csat-summary?from=${from}&to=${to}`;
+}
+
 function previousWeek(week) {
   const [y, m, d] = week.split('-').map(Number);
   const dt = new Date(y, m - 1, d - 7);
@@ -329,7 +340,7 @@ async function pull(name, fn) {
 async function snapshot({ week = weekCommencing(), date } = {}) {
   const novaReady = nova.isConfigured();
 
-  const [kpi, trend, escalationStats, flow] = novaReady
+  const [kpi, trend, escalationStats, flow, csatNow, csatPrior] = novaReady
     ? await Promise.all([
       pull('kpi-snapshot', () => nova.call(`/api/neuro-bridge/kpi-snapshot${date ? `?date=${date}` : ''}`)),
       pull('kpi-trend', () => nova.call('/api/neuro-bridge/kpi-trend?weeks=6')),
@@ -343,12 +354,23 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
       // conversational call, and the first deploy of this had the whole
       // ticket-flow section render as absent because of it.
       pull('flow-signals', () => nova.call(`/api/neuro-bridge/flow-signals?days=${FLOW_WINDOW_DAYS}`, { timeoutMs: FLOW_TIMEOUT_MS })),
+      // CSAT is read from the RATINGS, never from `jira_kpi_daily."CSAT %"`.
+      // That column stores 0 on a day nobody rated anything (kpi-pipeline.ts:
+      // `csatCount > 0 ? avg*20 : 0`), and a rating is 1-5, so a genuine 0 is
+      // impossible — the zeros ARE the empty days. Averaging them dragged the
+      // live weekly figure to 14.3% off THREE ratings in 28 days, which reads
+      // to Chris as customers loathing the desk. Two calls, because the table
+      // is week-on-week and the two weeks are separate populations.
+      pull('csat-this-week', () => nova.call(csatQuery(week))),
+      pull('csat-last-week', () => nova.call(csatQuery(previousWeek(week)))),
     ])
     : [
       { name: 'kpi-snapshot', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'kpi-trend', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'escalation-stats', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'flow-signals', ok: false, error: 'NOVA bridge not configured', data: null },
+      { name: 'csat-this-week', ok: false, error: 'NOVA bridge not configured', data: null },
+      { name: 'csat-last-week', ok: false, error: 'NOVA bridge not configured', data: null },
     ];
 
   // Nick's own task position. Competency 4 is about overdue management actions,
@@ -367,11 +389,13 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     week,
     generatedAt: new Date().toISOString(),
     today: todayLocal(),
-    sources: [kpi, trend, escalationStats, flow].map(s => ({ name: s.name, ok: s.ok, error: s.error || null })),
+    sources: [kpi, trend, escalationStats, flow, csatNow, csatPrior]
+      .map(s => ({ name: s.name, ok: s.ok, error: s.error || null })),
     kpi: kpi.data,
     trend: trend.data,
     escalationStats: escalationStats.data,
     flow: flow.data,
+    csat: { now: csatNow.data, prior: csatPrior.data },
     jiraEscalations,
     tasks,
     management: managementLog.status(),
@@ -511,6 +535,49 @@ function buildTrend(trendData) {
   return out.sort((a, b) => a.kpi.localeCompare(b.kpi));
 }
 
+/** Days in a Mon-Sun week. Named, so the "1 of 7" denominator is not a literal
+ *  dropped into a template string. */
+const DAYS_IN_WEEK = 7;
+
+/**
+ * The two CSAT rows Nick asked for on 14 Sep 2026 — average score, and how many
+ * days actually received a rating. PURE.
+ *
+ * The second row is the one that matters. `CSAT %` has been reading 14% off a
+ * sample of three ratings in a month, and nothing on the page said how thin
+ * that sample was; a manager reading a compliance report cannot tell a bad
+ * score from no score. Put the denominator next to the number and the figure
+ * stops being a verdict on the team and becomes a verdict on the survey.
+ *
+ * Three refusals, each of which is the difference between a fact and a guess:
+ *   - A week NOBODY rated has `avgScore: null`, rendered "no ratings", NEVER 0
+ *     and never 0.0/5. That conflates "nobody told us" with "everybody hated
+ *     us" and is exactly the bug in the column this replaces.
+ *   - A week that could not be READ is `known: false` and renders as such. "I
+ *     could not look" and "nobody rated us" license opposite conclusions.
+ *   - Neither row carries a RAG. `days receiving a rating` has no 95% target to
+ *     be measured against, and NOVA's two definitions of the CSAT target
+ *     disagree (the registry says 95%, `jira_kpi_daily` says 80%) — so the
+ *     target is stated in the note rather than asserted as a colour.
+ */
+function buildCsat(csat) {
+  const read = (d) => {
+    if (!d) return { known: false };
+    return {
+      known: true,
+      ratings: num(d.ratings),
+      avgScore: d.avgScore === null || d.avgScore === undefined ? null : num(d.avgScore),
+      daysWithRating: num(d.daysWithRating),
+      // Carried so the note can say the native half is dated by a proxy, rather
+      // than the day count quietly mixing an exact and an estimated basis.
+      jiraDatedByProxy: num(d.jiraDatedByProxy) || 0,
+      complete: d.complete !== false,
+      error: d.jiraError || null,
+    };
+  };
+  return { now: read(csat?.now), prior: read(csat?.prior) };
+}
+
 /**
  * A compliance KPI below target for SLIDE_WEEKS consecutive weeks, ending now.
  * Counted from the most recent week backwards, so a bad patch that has since
@@ -538,6 +605,7 @@ function assess(snap) {
   const findings = [];
   const rows = snap?.kpi?.rows || [];
   const trend = buildTrend(snap?.trend);
+  const csat = buildCsat(snap?.csat);
   const failedSources = (snap?.sources || []).filter(s => !s.ok);
 
   // A source that did not answer is the first thing on the page. Not because it
@@ -919,6 +987,7 @@ function assess(snap) {
     snapshotAgeDays: ageDays,
     rag,
     trend,
+    csat,
     ageing,
     reasons,
     flow,
@@ -941,10 +1010,84 @@ function bullet(items, fn) {
   return (items || []).map(fn).join('\n');
 }
 
-function complianceTable(trend) {
+/** One CSAT cell. `known: false` is "I could not look"; a null score inside a
+ *  readable week is "nobody rated us". Two different facts, two different
+ *  words, and never the number 0 for either. */
+function csatScoreCell(w) {
+  if (!w || !w.known) return 'not read';
+  if (w.avgScore === null) return 'no ratings';
+  return `${w.avgScore.toFixed(1)} / 5`;
+}
+
+function csatDaysCell(w) {
+  if (!w || !w.known) return 'not read';
+  return `${w.daysWithRating} of ${DAYS_IN_WEEK} days`;
+}
+
+/** Arrow for a pair of numbers either of which may legitimately be missing. */
+function deltaArrow(now, was, { decimals = 0 } = {}) {
+  if (now === null || now === undefined || was === null || was === undefined) return '—';
+  const d = Math.round((now - was) * 10) / 10;
+  if (d === 0) return '– 0';
+  const v = decimals ? Math.abs(d).toFixed(decimals) : Math.abs(d);
+  return d > 0 ? `▲ +${v}` : `▼ -${v}`;
+}
+
+/**
+ * The CSAT rows, appended to the compliance table (Nick's ask, 14 Sep 2026).
+ *
+ * They sit in the same table because that is where he asked for them, but their
+ * `vs 95%` cell is deliberately EMPTY rather than a colour: an average out of 5
+ * and a count of days are not percentages, and painting them against a
+ * compliance target would be inventing a standard neither has. See buildCsat.
+ */
+function csatRows(csat) {
+  if (!csat) return [];
+  const now = csat.now;
+  const prior = csat.prior;
+  const scoreDelta = now?.known && prior?.known
+    ? deltaArrow(now.avgScore, prior.avgScore, { decimals: 1 })
+    : '—';
+  const daysDelta = now?.known && prior?.known
+    ? deltaArrow(now.daysWithRating, prior.daysWithRating)
+    : '—';
+  return [
+    `| CSAT average score | ${csatScoreCell(now)} | ${csatScoreCell(prior)} | ${scoreDelta} | — |`,
+    `| CSAT days receiving a rating | ${csatDaysCell(now)} | ${csatDaysCell(prior)} | ${daysDelta} | — |`,
+  ];
+}
+
+/**
+ * The note under the CSAT rows. It exists because the numbers above are
+ * meaningless without their sample size and their date basis, and a reader who
+ * has to ask is a reader who assumes.
+ */
+function csatNote(csat) {
+  const now = csat?.now;
+  if (!now) return '';
+  if (!now.known) {
+    return '\n\n_CSAT could not be read this week — these rows are absent, not zero._';
+  }
+  const bits = [`Pooled from both surveys (NOVA's portal survey and Jira's own Satisfaction field), `
+    + `**${now.ratings}** rating${now.ratings === 1 ? '' : 's'} this week. Target is 4.0 out of 5.`];
+  if (now.jiraDatedByProxy > 0) {
+    bits.push(`${now.jiraDatedByProxy} of them came from Jira's survey, which records no rating `
+      + 'timestamp — those are dated by the ticket\'s last update, so the day count is a close '
+      + 'estimate rather than an exact one.');
+  }
+  if (now.error) bits.push(`Jira ratings could not be included: ${now.error} The figures are a floor.`);
+  else if (!now.complete) bits.push('One source was incomplete, so the figures are a floor.');
+  if (now.ratings > 0 && now.daysWithRating < 3) {
+    bits.push('At this volume the percentage on NOVA\'s wallboard is noise rather than a score.');
+  }
+  return `\n\n_${bits.join(' ')}_`;
+}
+
+function complianceTable(trend, csat) {
   const rows = trend.filter(t => isComplianceKpi(t.kpi))
     .sort((a, b) => byComplianceOrder(a.kpi, b.kpi));
-  if (!rows.length) return '_No compliance KPIs in the trend window._';
+  const extra = csatRows(csat);
+  if (!rows.length && !extra.length) return '_No compliance KPIs in the trend window._';
   const header = '| KPI | This week | Last week | Δ | vs 95% |\n|---|---|---|---|---|';
   const body = rows.map(t => {
     const now = t.latest?.value;
@@ -953,8 +1096,8 @@ function complianceTable(trend) {
     const arrow = d === null ? '—' : d > 0 ? `▲ +${d}` : d < 0 ? `▼ ${d}` : '– 0';
     const rag = now === null || now === undefined ? '—' : now >= COMPLIANCE_TARGET ? '🟢' : now >= COMPLIANCE_TARGET - 20 ? '🟠' : '🔴';
     return `| ${t.kpi} | ${now === null || now === undefined ? '—' : Math.round(now)}% | ${was === null || was === undefined ? '—' : Math.round(was)}% | ${arrow} | ${rag} |`;
-  }).join('\n');
-  return `${header}\n${body}`;
+  }).concat(extra).join('\n');
+  return `${header}\n${body}${csatNote(csat)}`;
 }
 
 /**
@@ -1152,7 +1295,7 @@ function render(a) {
   lines.push('');
   lines.push('_Added at Chris\'s request, 12 Aug 2026 — a single week cannot distinguish "bad" from "getting worse"._');
   lines.push('');
-  lines.push(complianceTable(a.trend));
+  lines.push(complianceTable(a.trend, a.csat));
   lines.push('');
 
   lines.push('## 2. SLA / SLO due-date handling');
@@ -1878,6 +2021,7 @@ module.exports = {
   getManual, setManual, manualBlockers, emptyManual, carryForward,
   weekCommencing, previousWeek, buildTrend, consecutiveBelowTarget, ragBucket,
   QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder,
+  buildCsat, csatScoreCell, csatDaysCell, deltaArrow, DAYS_IN_WEEK,
   toEmailHtml, markdownToEmailHtml,
   COMPLIANCE_TARGET, SLIDE_WEEKS, UNKNOWN_REASON_ESCALATE_SHARE, SNAPSHOT_STALE_DAYS,
 };

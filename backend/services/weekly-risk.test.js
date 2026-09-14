@@ -1040,3 +1040,114 @@ test('the rendered table carries the rows in Nicks order', () => {
     assert.ok(order[i] > order[i - 1], `row ${i} is below row ${i - 1}`);
   }
 });
+
+// ── CSAT rows (Nick, 14 Sep 2026) ────────────────────────────────────────────
+// These exist because `jira_kpi_daily."CSAT %"` cannot answer either question.
+// kpi-pipeline.ts writes `csatCount > 0 ? avg*20 : 0`, so a day nobody rated is
+// stored as 0 — and a rating is 1-5, so a genuine 0 is impossible. Measured on
+// the live bridge over the 28 days to 14 Sep 2026: THREE days carried a rating
+// and twenty-five were stored as 0, dragging the weekly average to 14.3%. That
+// reads to Chris as customers loathing the desk; it means three ratings a month
+// averaging about 4.2 out of 5.
+
+function csatSnapshot(now, prior) {
+  return baseSnapshot({ csat: { now, prior } });
+}
+
+const RATED = { ratings: 2, avgScore: 4.5, daysWithRating: 2, jiraDatedByProxy: 0, complete: true, jiraError: null };
+const UNRATED = { ratings: 0, avgScore: null, daysWithRating: 0, jiraDatedByProxy: 0, complete: true, jiraError: null };
+
+test('a week nobody rated says so — it is NEVER a score of zero', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(UNRATED, UNRATED)));
+  assert.match(md, /\| CSAT average score \| no ratings \|/);
+  assert.doesNotMatch(md, /CSAT average score \|\s*0/, 'no zero score');
+  assert.doesNotMatch(md, /0\.0 \/ 5/, 'no 0.0 out of 5 anywhere');
+});
+
+test('an unread week is "not read", which is a different fact from "no ratings"', () => {
+  // "I could not look" and "nobody rated us" license opposite conclusions, and
+  // the column this replaces could express neither.
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(null, null)));
+  assert.match(md, /\| CSAT average score \| not read \| not read \|/);
+  assert.doesNotMatch(md, /CSAT average score \| no ratings/, 'unread is not reported as unrated');
+});
+
+test('the average renders out of 5, with the day count beside it', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(RATED, UNRATED)));
+  assert.match(md, /\| CSAT average score \| 4\.5 \/ 5 \| no ratings \|/);
+  assert.match(md, /\| CSAT days receiving a rating \| 2 of 7 days \| 0 of 7 days \| ▲ \+2 \|/);
+});
+
+test('neither CSAT row is RAGged against 95% — they are not percentages', () => {
+  // Painting an average out of 5 and a count of days against a compliance
+  // target would invent a standard neither has, and NOVA's own two definitions
+  // of the CSAT target disagree (registry 95%, jira_kpi_daily 80%).
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(RATED, RATED)));
+  for (const line of md.split('\n').filter(l => l.startsWith('| CSAT'))) {
+    assert.doesNotMatch(line, /🟢|🟠|🔴/, `no RAG on: ${line}`);
+    assert.match(line, /\| — \|$/, 'the vs-95% cell is empty, not coloured');
+  }
+});
+
+test('a delta needs both weeks — it is never computed against a blank', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(RATED, null)));
+  const row = md.split('\n').find(l => l.startsWith('| CSAT average score'));
+  assert.match(row, /\| — \| — \|$/, 'no delta against a week that was not read');
+});
+
+test('the note states the sample size — the number is worthless without it', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(RATED, UNRATED)));
+  assert.match(md, /\*\*2\*\* ratings this week/);
+  assert.match(md, /portal survey and Jira's own Satisfaction field/, 'says both surveys are pooled');
+});
+
+test('a Jira-dated rating is declared a PROXY, not passed off as measured', () => {
+  // The native survey records no rating timestamp at all, so those ratings can
+  // only be dated by the ticket's last update. Mixing an exact and an estimated
+  // basis into one integer without saying so is the thing being avoided.
+  const proxied = { ...RATED, jiraDatedByProxy: 1 };
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(proxied, UNRATED)));
+  assert.match(md, /records no rating timestamp/);
+  assert.match(md, /close estimate rather than an exact one/);
+  // And it is absent when nothing was proxy-dated, rather than a standing hedge.
+  const clean = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(RATED, UNRATED)));
+  assert.doesNotMatch(clean, /records no rating timestamp/);
+});
+
+test('an unreachable Jira makes the figures a FLOOR, and says so', () => {
+  const partial = { ...RATED, jiraError: 'Jira lookup failed.', complete: false };
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(partial, UNRATED)));
+  assert.match(md, /Jira ratings could not be included/);
+  assert.match(md, /floor/);
+});
+
+test('a thin sample is named as noise rather than reported as a score', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(RATED, UNRATED)));
+  assert.match(md, /noise rather than a score/);
+  // A healthy week does not carry the caveat.
+  const healthy = { ratings: 20, avgScore: 4.4, daysWithRating: 5, jiraDatedByProxy: 0, complete: true, jiraError: null };
+  assert.doesNotMatch(weeklyRisk.render(weeklyRisk.assess(csatSnapshot(healthy, RATED))), /noise rather than a score/);
+});
+
+test('buildCsat keeps unread and unrated apart at the data level too', () => {
+  const built = weeklyRisk.buildCsat({ now: UNRATED, prior: null });
+  assert.strictEqual(built.now.known, true);
+  assert.strictEqual(built.now.avgScore, null, 'unrated is null, never 0');
+  assert.strictEqual(built.prior.known, false);
+  assert.strictEqual(built.prior.avgScore, undefined, 'an unread week asserts no score at all');
+});
+
+test('a CSAT source that failed is reported at the top like any other', () => {
+  const snap = baseSnapshot({ csat: { now: null, prior: null } });
+  snap.sources = [...snap.sources, { name: 'csat-this-week', ok: false, error: 'bridge down' }];
+  const a = weeklyRisk.assess(snap);
+  assert.ok(a.findings.some(f => f.kind === 'source-unavailable' && f.title.includes('csat-this-week')));
+});
+
+test('the CSAT rows survive the markdown-to-email conversion', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(RATED, UNRATED)));
+  const html = weeklyRisk.markdownToEmailHtml(md);
+  assert.match(html, /CSAT average score/);
+  assert.match(html, /4\.5 \/ 5/);
+  assert.doesNotMatch(html, /\|\s*CSAT/, 'no pipe soup left');
+});
