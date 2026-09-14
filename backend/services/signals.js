@@ -283,8 +283,11 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
     if (a.state === 'degrading') {
       return { state: 'error', ageMinutes: a.ageMinutes, why: rh.headline(a), detail: 'thresholds still provisional' };
     }
+    // Reuse `age()` rather than a second formatter: rounding uptime to whole
+    // days renders "up 0d" for the whole of the day after every reboot — and
+    // with a weekly reboot now scheduled, that is one day in seven.
     const up = a.latest && a.latest.uptimeSec != null
-      ? `up ${Math.round(a.latest.uptimeSec / 86400)}d`
+      ? `up ${age(Math.round(a.latest.uptimeSec / 60))}`
       : null;
     return { state: 'live', ageMinutes: a.ageMinutes, detail: up };
   });
