@@ -50,6 +50,19 @@
   /* Hardware rather than content — present, reachable, not competing. */
   --lit-shelf-border: rgba(var(--sara-rgb), 0.24);
   --lit-shelf-glow: 0 8px 22px -18px rgba(var(--sara-rgb), 0.5);
+
+  /* ⚠⚠ HOW TALL A SHELF CARD IS — ONE NUMBER, HERE, because two things need it
+     and they are SIBLINGS. `Shelf.css` pads its cards with it and `Approach.css`
+     pads the FOOT with it, so the held-back line sits on the same middle as the
+     row of cards beside it rather than merely sharing a `bottom` edge with them
+     (Nick, 14 Sep 2026: "the 1 held etc should line up centrally with the
+     action cards").
+     ⚠ It cannot live on `.shelf`: a custom property inherits DOWN, and the foot
+     is the shelf's sibling, not its child. Defining it in both places is what
+     the first attempt did — and a measurement written twice is one that drifts
+     the next time either side is tuned, which is the whole reason this file
+     exists. The app scope is the nearest ancestor of both. */
+  --shelf-pad-y: clamp(5px, 0.62cqw, 11px);
 }
 
 /* ── A card ────────────────────────────────────────────────────────────────── */

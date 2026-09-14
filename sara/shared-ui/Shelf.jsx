@@ -59,6 +59,21 @@ export default function Shelf({
   deskStates = {},
   onDeskOpen = null,
   onRoomAct = null,
+  /**
+   * ⚠⚠ THE DEVICE'S OWN CONTROLS. The mic sat in the foot, styled like nothing
+   * else on the screen, and it belongs here: MANIFESTATION.md already says what
+   * this corner is — "the bottom-right corner is HARDWARE, not content: weather
+   * now-and-next, the desk-intent apps where the laptop answered, the house
+   * doors where the house answered." A microphone is exactly that, a capability
+   * of the thing he is holding, offered only where it exists.
+   *
+   * ⚠ A SLOT RATHER THAN A FIELD, because whether a mic exists is a fact about
+   * the DEVICE and the composer cannot know it. Nick, 14 Sep 2026: "talk to me
+   * is on the fire tablet, not the laptop" — Electron exposes
+   * `webkitSpeechRecognition` with no service behind it, so the shell decides
+   * and passes nothing here when it cannot listen.
+   */
+  device = null,
 }) {
   const items = [];
 
@@ -156,7 +171,12 @@ export default function Shelf({
     return (
       <div className="shelf">
         <span className="shelf__cap">{caption}</span>
-        <div className="shelf__row"><span className="shelf__none">Nothing I can reach from here.</span></div>
+        {/* ⚠ The shelf never goes empty — and a device control is something it
+            CAN reach even when nothing else answered, so it stays. */}
+        <div className="shelf__row">
+          {device}
+          <span className="shelf__none">Nothing I can reach from here.</span>
+        </div>
       </div>
     );
   }
@@ -165,6 +185,11 @@ export default function Shelf({
     <div className="shelf">
       <span className="shelf__cap">{caption}</span>
       <div className="shelf__row">
+        {/* ⚠ FIRST, because it is the one control here that is about HER rather
+            than about the world — and because this row WRAPS, so whatever is
+            last is what falls off the end. The way to speak to a surface with
+            no menu must not be the item that wraps away. */}
+        {device}
         {wx && (
           <div className="shelf__wx">
             <u>{wx.lead}</u>

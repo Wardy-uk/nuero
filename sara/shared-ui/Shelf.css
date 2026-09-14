@@ -23,11 +23,16 @@
   justify-content: flex-end;
 }
 
+/* ⚠ `--shelf-pad-y` is DEFINED IN `Lit.css`, on the app scope, because the FOOT
+   needs the same number and the foot is this shelf's sibling — a custom property
+   inherits down, not sideways. The fallback is that same value, for a shelf
+   mounted outside the scope; it is the one place a second copy is honest,
+   because without it the card has no padding at all. */
 .shelf__btn,
 .shelf__wx {
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 7px;
-  padding: clamp(5px, 0.62cqw, 11px) clamp(8px, 0.95cqw, 17px);
+  padding: var(--shelf-pad-y, clamp(5px, 0.62cqw, 11px)) clamp(8px, 0.95cqw, 17px);
   background: linear-gradient(180deg, rgba(11, 17, 25, 0.9), rgba(5, 9, 14, 0.74));
   backdrop-filter: blur(3px);
   white-space: nowrap;
@@ -105,4 +110,16 @@ button.shelf__btn:focus-visible { outline: 2px solid currentColor; outline-offse
 .shelf__offersay {
   font-size: clamp(9px, 0.95cqw, 15px);
   color: var(--ink, #eef3fa);
+}
+
+/* ⚠ THE MIC IS A CARD LIKE THE REST, and only this is its own: listening is a
+   state none of the others have, and it has to be readable across a room while
+   he is talking. Her colour, so it agrees with everything else on the screen.
+
+   ⚠ The BORDER carries it as well as the fill — the whole row is monospace caps
+   at 13px, and a fill alone at that size is a smudge rather than a signal. */
+button.shelf__btn--live {
+  border-color: rgb(var(--sara-rgb, 114, 150, 211));
+  background: rgba(var(--sara-rgb, 114, 150, 211), 0.2);
+  color: #e6edf3;
 }

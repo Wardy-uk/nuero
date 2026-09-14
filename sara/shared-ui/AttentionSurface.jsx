@@ -189,6 +189,9 @@ export default function AttentionSurface({
     // there is honest.
     work = null,
     dashboard = null, utterances = [], covered = null,
+    // ⚠ A control belonging to the DEVICE, not the payload — the mic. Passed
+    // through to the shelf, which is where hardware lives; see `Shelf.jsx`.
+    deviceSlot = null,
     // The sky. A top-level block (`{known, condition, tempC, unit, rain}`), read
     // here for the shelf — `known: false` is an unread sky, which is a different
     // fact from a clear one and is printed as such.
@@ -699,6 +702,7 @@ export default function AttentionSurface({
               deskStates={deskStates}
               onDeskOpen={onDeskOpen}
               onRoomAct={onRoomAct}
+              device={deviceSlot}
             />
           </div>
         )}

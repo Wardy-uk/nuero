@@ -515,6 +515,35 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     && Array.isArray(data?.utterances)
     && data.utterances.some((u) => u && u.intent && u.intent.kind === 'reveal');
 
+  // ⚠⚠ THE MIC IS SHELF HARDWARE, NOT FOOT FURNITURE. Nick, 14 Sep 2026: "talk
+  // to me should be part of the suggest cards, they should all look the same."
+  // It sat in the foot as a pill of its own, beside a row of cards it shared
+  // nothing with — while MANIFESTATION.md already says the bottom-right corner
+  // is HARDWARE: the weather, the apps where the laptop answered, the doors
+  // where the house answered. A microphone is a capability of the device,
+  // exactly like those.
+  //
+  // ⚠ It carries `shelf__btn` so it IS one of them rather than something that
+  // resembles one — a second definition of "a card on the shelf" is how the row
+  // comes to have two looks. Only `--live` is its own, because listening is a
+  // state none of the others have.
+  //
+  // ⚠ And it is offered only where it EXISTS: "talk to me is on the fire tablet,
+  // not the laptop" (Nick, same day). Electron exposes `webkitSpeechRecognition`
+  // with no service behind it, so `CAN_LISTEN` answers false there and the slot
+  // is empty rather than carrying a control that fails on the tap.
+  const micCard = CAN_LISTEN ? (
+    <button
+      type="button"
+      className={`shelf__btn${listening ? ' shelf__btn--live' : ''}`}
+      onClick={toggleMic}
+      aria-pressed={listening}
+      aria-label={listening ? 'Stop and send' : 'Talk to SARA'}
+    >
+      {listening ? 'LISTENING — TAP TO SEND' : 'TALK TO ME'}
+    </button>
+  ) : null;
+
   return (
     <AttentionSurface
       layout={look}
@@ -561,19 +590,9 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
         </>
       ) : null}
       footAside={voiceErr ? <p className="surface__aside surface__aside--warn">{voiceErr}</p> : null}
+      deviceSlot={micCard}
       footExtra={(
         <div className="surface__footrow">
-          {CAN_LISTEN && (
-            <button
-              type="button"
-              className={`surface__mic${listening ? ' surface__mic--live' : ''}`}
-              onClick={toggleMic}
-              aria-pressed={listening}
-              aria-label={listening ? 'Stop and send' : 'Talk to SARA'}
-            >
-              {listening ? 'Listening — tap to send' : '🎤 Talk to me'}
-            </button>
-          )}
           {/* ⚠ THE ESCAPE HATCH, ONCE. The composer already ends every utterance
               list with "Show me everything" (`kind: reveal`, always last, never
               dropped), so where the sentences are on screen this button printed

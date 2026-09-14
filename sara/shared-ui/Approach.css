@@ -723,7 +723,24 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.surface--approach .surface__foot { bottom: 4%; }
+/* ⚠⚠ THE FOOT SITS ON THE SAME LINE AS THE CARDS, and it did not. They shared
+   a `bottom` and nothing else, so a one-line aside ("1 held — blocked on
+   someone") and a padded card met at their bottom EDGES and nowhere near their
+   middles. Nick, 14 Sep 2026: "the 1 held etc should line up centrally with the
+   action cards."
+
+   ⚠ IT READS THE CARD'S OWN METRIC rather than repeating it. `--shelf-pad-y` is
+   defined once in `Lit.css` on the app scope — NOT on `.shelf`, because a custom
+   property inherits down and the foot is the shelf's sibling. The first attempt
+   here redefined the literal under a comment claiming it did not, which is the
+   drift it was written to prevent, one file along. */
+.surface--approach .surface__foot {
+  bottom: 4%;
+  /* The same box a card makes: its own padding, plus the border the card has
+     and this does not. */
+  padding-block: calc(var(--shelf-pad-y) + 1px);
+  justify-content: center;
+}
 .surface--approach .surface__shelf { bottom: 4%; }
 
 /* ── One light source ────────────────────────────────────────────────
