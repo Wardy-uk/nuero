@@ -62,6 +62,75 @@ export function pullOf(card, index) {
 const LANES = [0.0, -0.82, 0.8, -0.4, 0.62, -0.72, 0.34, -0.55];
 const ROWS = [-0.68, 0.3, -0.1, 0.88, 0.55, -0.45, 1.1, 0.08];
 
+// How much of a card's TITLE has to sit behind the centrepiece before the card
+// stops being one. Half is deliberate: half a title is still a name you can
+// read, and hiding a card that is merely grazed would cost information for
+// tidiness.
+const ECLIPSE = 0.5;
+
+// What fraction of `a` lies inside `b`. Pure, so the rule pins without a DOM.
+export function overlapRatio(a, b) {
+  if (!a || !b) return 0;
+  const aw = a.right - a.left; const ah = a.bottom - a.top;
+  if (!(aw > 0) || !(ah > 0)) return 0;
+  const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  if (w <= 0 || h <= 0) return 0;
+  return (w * h) / (aw * ah);
+}
+
+// ⚠ The centrepiece is found by SELECTOR rather than handed down as a prop, so
+// this stays in one file instead of plumbing a measured rect through
+// `AttentionSurface`. `.surface__say` is that component's centrepiece and is
+// pinned by a test; if it is ever renamed this finds nothing and nothing fades,
+// which is the old behaviour rather than a wrong one.
+function heroOf(stageRef) {
+  const stage = stageRef.current;
+  if (!stage || typeof stage.closest !== 'function') return null;
+  const host = stage.closest('.surface--approach');
+  return (host && host.querySelector('.surface__say')) || null;
+}
+
+function useEclipsed({ stageRef, cardRefs, placed, box, heroTick, setHeroTick, setEclipsed }) {
+  // Her sentence changes shape without a single card moving — a longer title
+  // wraps to another line and grows the box downwards — so the cards have to be
+  // re-measured when it does, not only when they move.
+  useLayoutEffect(() => {
+    const hero = heroOf(stageRef);
+    if (!hero || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setHeroTick((n) => n + 1));
+    ro.observe(hero);
+    return () => ro.disconnect();
+  }, [stageRef, setHeroTick]);
+
+  // ⚠ Keyed on a SIGNATURE, never run on every render. The stage re-renders on
+  // every pointer move (the tilt), and a getBoundingClientRect per card per
+  // frame is a synchronous layout read sixty times a second on a Pi 4 — the
+  // cost the FieldCover work went and removed from this same screen.
+  const sig = placed
+    .map((p) => `${p.key}:${Math.round(p.x)}:${Math.round(p.y)}:${Math.round(p.z)}`)
+    .join('|');
+
+  useLayoutEffect(() => {
+    const hero = heroOf(stageRef);
+    const rect = hero && hero.getBoundingClientRect();
+    const next = new Set();
+    // No centrepiece, or nothing laid out yet: fade NOTHING.
+    if (rect && rect.right > rect.left) {
+      cardRefs.current.forEach((el, key) => {
+        const title = el && el.querySelector('.approach__val');
+        if (!title) return;
+        if (overlapRatio(title.getBoundingClientRect(), rect) >= ECLIPSE) next.add(key);
+      });
+    }
+    // Returning the previous set when nothing changed is what stops this
+    // re-rendering itself for ever.
+    setEclipsed((prev) => (
+      prev.size === next.size && [...next].every((k) => prev.has(k)) ? prev : next
+    ));
+  }, [sig, box.w, box.h, heroTick, stageRef, cardRefs, setEclipsed]);
+}
+
 export default function Approach({
   cards = [],
   // Minutes past local midnight. The DEVICE's clock, which is a fact about the
@@ -79,6 +148,12 @@ export default function Approach({
   const rigRef = useRef(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
+
+  // Cards whose TITLE is behind the centrepiece, and the tick that re-measures
+  // when her sentence changes shape. See `useEclipsed` below.
+  const cardRefs = useRef(new Map());
+  const [eclipsed, setEclipsed] = useState(() => new Set());
+  const [heroTick, setHeroTick] = useState(0);
 
   // Measured, never assumed: the projection has to agree with the CSS
   // perspective or the tethers land somewhere the cards are not.
@@ -163,6 +238,32 @@ export default function Approach({
     const nearest = placed.reduce((best, p) => (best == null || p.z > best.z ? p : best), null);
     if (nearest) nearest.lead = true;
   }
+
+  // ── A card with its title behind her is not a card ─────────────────────────
+  //
+  // Photographed on the work Fire, 14 Sep 2026. The centrepiece is opaque and
+  // correctly in front — near occludes far, which is the corridor's whole
+  // argument — but two cards had their LABEL and TITLE covered and their
+  // subtitle showing below her, so the panel carried an orphaned
+  // "*Resolvable at previous tier · Insufficient information · …*" attached to
+  // nothing. A card cut at the waist reads as broken rather than as distant.
+  //
+  // ⚠ THIS DECIDES NOTHING ABOUT THE FEED. It is not a judgement about what is
+  // worth showing — the composer settled that and `covered` upstream already
+  // decides what repeats. This is a rendering fact: something opaque is in
+  // front of it, so the part still poking out is debris. Nothing is removed
+  // from the DOM, reordered, or reported differently.
+  //
+  // ⚠ IT ASKS ABOUT THE TITLE, NOT THE CARD. Coverage of the whole box is the
+  // obvious test and is the wrong one: a card 40% covered from the BOTTOM still
+  // reads perfectly (title showing, subtitle clipped), while one 40% covered
+  // from the TOP is exactly the broken case. The title is what names the thing,
+  // so the title is what gets asked about.
+  //
+  // ⚠ IT FAILS TO TODAY'S BEHAVIOUR. No centrepiece found, no ResizeObserver,
+  // no layout yet — nothing is faded and the screen is exactly as it was. A
+  // measurement that cannot be taken must never hide a card on a guess.
+  useEclipsed({ stageRef, cardRefs, placed, box, heroTick, setHeroTick, setEclipsed });
 
   // Hour marks and tethers, drawn once per layout change. Deliberately a canvas
   // and not a hundred absolutely-positioned divs: this redraws on every resize
@@ -297,19 +398,32 @@ export default function Approach({
           className="approach__world"
           style={{ transform: `rotateY(${(tilt.x * -3.2).toFixed(2)}deg) rotateX(${(tilt.y * 2.2).toFixed(2)}deg)` }}
         >
-          {placed.map((p) => (
+          {placed.map((p) => {
+          // Its title is behind her, so what was still poking out was debris.
+          // Hidden, never removed: the card stays in the DOM and in the feed.
+          const dark = eclipsed.has(p.key);
+          return (
             <button
               type="button"
               key={p.key}
+              ref={(el) => {
+                if (el) cardRefs.current.set(p.key, el);
+                else cardRefs.current.delete(p.key);
+              }}
               className={`approach__card${p.lead ? ' approach__card--lead' : ''}${p.tethered ? ' approach__card--pulled' : ''}`}
               style={{
                 transform: `translate(-50%,-50%) translate3d(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px,${p.z.toFixed(1)}px)`,
-                opacity: Math.max(0.14, 1 - p.depth * 1.05).toFixed(3),
+                opacity: dark ? '0' : Math.max(0.14, 1 - p.depth * 1.05).toFixed(3),
                 filter: `blur(${Math.min(3.2, p.depth * 3.6).toFixed(2)}px)`,
                 zIndex: String(200 - Math.round(p.depth * 180)),
+                // ⚠ A control you cannot see must not be tappable or reachable:
+                // an invisible button over the corridor is a trap, and on a
+                // touchscreen it would open something he never saw.
+                pointerEvents: dark ? 'none' : undefined,
               }}
+              aria-hidden={dark || undefined}
               onClick={() => onOpen && onOpen(p.card)}
-              tabIndex={p.depth > 0.8 ? -1 : 0}
+              tabIndex={dark || p.depth > 0.8 ? -1 : 0}
             >
               <span className="approach__lab">
                 <span>{p.card.tag || ''}</span>
@@ -319,7 +433,8 @@ export default function Approach({
               <span className="approach__val">{p.card.title}</span>
               {p.card.say && <span className="approach__sub">{p.card.say}</span>}
             </button>
-          ))}
+          );
+          })}
         </div>
       </div>
     </div>

@@ -1,0 +1,121 @@
+// A corridor card whose TITLE is behind her sentence is not a card.
+//
+// Photographed on the work Fire, 14 Sep 2026. The centrepiece is opaque and
+// correctly in front — near occludes far, which is the corridor's whole
+// argument — but two cards had their label and title covered and their subtitle
+// showing below her, so the panel carried an orphaned
+// "*Resolvable at previous tier · Insufficient information · …*" attached to
+// nothing. A card cut at the waist reads as broken rather than as distant.
+//
+// ⚠ THE TEST THAT MATTERS IS WHICH RECTANGLE IS ASKED ABOUT. Coverage of the
+// whole card is the obvious rule and is the wrong one, in a way that is
+// invisible until you see it on glass: a card 60% covered from the BOTTOM still
+// reads perfectly — its title is showing — while one 60% covered from the TOP is
+// exactly the broken case. So the rule asks about the TITLE, and these tests
+// pin both directions.
+//
+// `sara/frontend` has no test runner, so `overlapRatio` is exercised directly
+// and the wiring is a source scan with a positive control.
+//
+//   run: npm test   (from sara/backend)
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const srcPath = path.join(__dirname, '..', '..', 'shared-ui', 'Approach.jsx');
+const src = fs.readFileSync(srcPath, 'utf8');
+const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+// The pure half, lifted out so it can be run without a DOM or a bundler.
+const overlapRatio = (() => {
+  const at = src.indexOf('export function overlapRatio');
+  assert.ok(at >= 0, 'overlapRatio not found — every assertion below would be vacuous');
+  const body = src.slice(at, src.indexOf('\n}', at) + 2).replace('export ', '');
+  // eslint-disable-next-line no-new-func
+  return new Function(`${body}; return overlapRatio;`)();
+})();
+
+const rect = (left, top, right, bottom) => ({ left, top, right, bottom });
+
+test('positive control — the scan is reading the real component', () => {
+  assert.match(code, /useEclipsed/);
+  assert.match(code, /approach__val/);
+});
+
+test('a title fully behind her is fully covered', () => {
+  assert.equal(overlapRatio(rect(10, 10, 20, 20), rect(0, 0, 100, 100)), 1);
+});
+
+test('a title clear of her is not covered at all', () => {
+  assert.equal(overlapRatio(rect(200, 200, 300, 300), rect(0, 0, 100, 100)), 0);
+  // Touching edges is not overlapping.
+  assert.equal(overlapRatio(rect(100, 0, 200, 100), rect(0, 0, 100, 100)), 0);
+});
+
+test('half a title behind her is half covered — the threshold is a real edge', () => {
+  assert.equal(overlapRatio(rect(0, 0, 100, 100), rect(50, 0, 150, 100)), 0.5);
+});
+
+// ⚠ Degenerate input must be 0, never NaN: NaN >= ECLIPSE is false, which would
+// hide nothing, but NaN <= anything is also false and the next person to write
+// a rule on this would get a silent wrong answer.
+test('a zero-sized or missing rect is 0, never NaN', () => {
+  assert.equal(overlapRatio(rect(5, 5, 5, 5), rect(0, 0, 100, 100)), 0);
+    assert.equal(overlapRatio(null, rect(0, 0, 100, 100)), 0);
+  assert.equal(overlapRatio(rect(0, 0, 10, 10), null), 0);
+});
+
+test('it judges the TITLE, not the whole card', () => {
+  assert.match(code, /querySelector\('\.approach__val'\)/);
+  // The bottom-covered case must survive: a card whose subtitle is clipped but
+  // whose title is showing is a card.
+  const title = rect(0, 0, 100, 20);      // top of the card
+  const her = rect(0, 40, 100, 200);      // covering the bottom only
+  assert.equal(overlapRatio(title, her), 0);
+});
+
+test('the threshold is half, and it is named rather than inlined', () => {
+  assert.match(code, /const ECLIPSE = 0\.5;/);
+  assert.match(code, />= ECLIPSE/);
+});
+
+// ⚠ The failure mode of finding the centrepiece by selector is that a rename
+// silently stops the fading. That must fail SAFE — nothing faded, i.e. exactly
+// the behaviour before this existed — and never hide a card on a guess.
+test('no centrepiece, no layout, or no ResizeObserver fades nothing', () => {
+  assert.match(code, /if \(rect && rect\.right > rect\.left\)/);
+  assert.match(code, /typeof ResizeObserver === 'undefined'/);
+  assert.match(code, /const next = new Set\(\);/);
+});
+
+// The selector it reaches for has to still be what AttentionSurface renders.
+test('AttentionSurface still renders the centrepiece this looks for', () => {
+  const surface = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'AttentionSurface.jsx'), 'utf8');
+  assert.match(surface, /surface__say/);
+  assert.match(code, /querySelector\('\.surface__say'\)/);
+});
+
+// ⚠ An invisible button over the corridor is a trap on a touchscreen.
+test('an eclipsed card is untappable and unreachable, not merely transparent', () => {
+  assert.match(code, /pointerEvents: dark \? 'none' : undefined/);
+  assert.match(code, /tabIndex=\{dark \|\| p\.depth > 0\.8 \? -1 : 0\}/);
+  assert.match(code, /aria-hidden=\{dark \|\| undefined\}/);
+});
+
+// ⚠ It must not measure on every render: the stage re-renders on pointer move.
+test('measurement is keyed on a signature, not run every render', () => {
+  assert.match(code, /const sig = placed/);
+  assert.match(code, /\[sig, box\.w, box\.h, heroTick/);
+  // And the state update must be a no-op when nothing changed, or it re-renders
+  // itself for ever.
+  assert.match(code, /prev\.size === next\.size/);
+});
+
+// The card is hidden, never dropped — this file decides nothing about the feed.
+test('nothing is removed from the feed, only darkened', () => {
+  assert.doesNotMatch(code, /placed\s*\.filter/);
+  assert.match(code, /opacity: dark \? '0'/);
+});
