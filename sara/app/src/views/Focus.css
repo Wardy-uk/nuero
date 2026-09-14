@@ -17,12 +17,16 @@
 .focus__hint { margin-top: 0.5rem; color: var(--muted); font-size: 0.8rem; }
 
 .focus__briefing {
-  background: var(--accent-dim);
-  border-color: var(--accent);
+  background: rgba(var(--sara-rgb, 114, 150, 211), 0.16);
+  border-color: rgba(var(--sara-rgb, 114, 150, 211), 0.5);
   line-height: 1.45;
 }
 
-.focus__next { border-left: 3px solid var(--accent); }
+/* ⚠ The lead's edge is HERS. This is the one card on the screen that is the
+   answer rather than a candidate, so it moves with her state like the rest of
+   the app — `var(--accent)` was the fixed system blue asserting a state she
+   may not be in. */
+.focus__next { border-left: 3px solid rgb(var(--sara-rgb, 114, 150, 211)); }
 .focus__tap {
   width: 100%;
   text-align: left;
@@ -30,8 +34,11 @@
   font: inherit;
   cursor: pointer;
 }
+/* ⚠ Hers, not a hardcoded blue. `rgba(76, 154, 255)` is the system accent
+   under another name — a card that lights up in a colour she is not in, at the
+   moment he reaches for it. */
 .focus__tap:hover {
-  border-color: rgba(76, 154, 255, 0.38);
+  border-color: rgba(var(--sara-rgb, 114, 150, 211), 0.55);
 }
 .focus__next-label {
   font-size: 0.7rem;
@@ -68,7 +75,18 @@
 /* Left accent by urgency */
 .focus__u--critical { border-left: 3px solid #ff6b81; }
 .focus__u--high { border-left: 3px solid #ffb454; }
-.focus__u--medium { border-left: 3px solid var(--accent); }
+/* ⚠⚠ A FIXED BLUE, NOT HERS, and deliberately so. These three are a SEVERITY
+   ramp — red, amber, blue — describing how urgent an ITEM is, which is a
+   different claim from how the day is going. `var(--accent)` made the bottom of
+   that ramp the one rung that moved: on a day she has gone red, every `medium`
+   row would have carried a red edge and read as critical. The ramp has to be
+   self-consistent or it stops being a ramp, so this is the explicit blue that
+   matches its own badge (`.focus__badge--medium`) rather than a token that
+   belongs to something else.
+
+   Same call as MoSCoW on Tasks and the Personal badge beside it: item meaning
+   keeps its own colours; only HER state moves with her. */
+.focus__u--medium { border-left: 3px solid #8ad0ff; }
 
 .focus__dismiss {
   background: none;
@@ -79,3 +97,11 @@
   padding: 0.2rem;
 }
 .focus__dismiss:disabled { opacity: 0.4; }
+
+/* ⚠ The one FAULT on this screen, sharing the primitive's red rather than
+   inventing another. Everything else here that is not the happy path —
+   "Nothing pressing", "asking the brain" — is a statement. */
+.focus__fault {
+  border-color: rgba(224, 84, 58, 0.55);
+  background: rgba(224, 84, 58, 0.1);
+}

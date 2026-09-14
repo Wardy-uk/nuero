@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../api';
 import actionSurfaces from '../../../../shared/action-surfaces.cjs';
 import { speakIfEnabled, isAudioUnlocked } from '../voiceUtils';
+import { Lit } from '../../../shared-ui/Lit.jsx';
 import './Focus.css';
 
 // Focus = the single "what matters now" glance. Default view.
@@ -172,41 +173,56 @@ export default function Focus({ onNavigate, onActionIntent }) {
         <button className="focus__refresh" type="button" onClick={load} aria-label="Refresh" title="Refresh">↻</button>
       </div>
 
-      {loading && <div className="card">Asking the brain…</div>}
+      {loading && <Lit tone="statement">Asking the brain…</Lit>}
 
       {error && (
-        <div className="card err">
+        /* ⚠ The one FAULT on this screen. "Nothing pressing" and "asking the
+           brain" are statements; only a dead backend gets the alarm. */
+        <Lit className="focus__fault err">
           Couldn’t reach the brain: {error}
           <div className="focus__hint">Check you’re on Tailscale and the PIN is right, or that the NEURO backend is up.</div>
-        </div>
+        </Lit>
       )}
 
       {data && (
         <>
-          {data.sara?.briefing && <div className="focus__briefing card">{data.sara.briefing}</div>}
+          {/* ⚠ HER SENTENCE, composed server-side and rendered verbatim — so a
+              statement, not a control. It is the one thing on this screen she
+              actually said. */}
+          {data.sara?.briefing && <Lit tone="statement" className="focus__briefing">{data.sara.briefing}</Lit>}
 
           {data.nextAction && (
-            <button
+            /* ⚠ THE ONE LEAD, and the exception MANIFESTATION.md names: the
+               centrepiece does not export to a list, but it belongs on a screen
+               that genuinely has ONE answer — and "next action" is that answer
+               by definition. Spending it twice would mean spending it nowhere,
+               so the rows below are `row` and this is the only `lead` here. */
+            <Lit
+              as="button"
+              tone="lead"
               type="button"
-              className={`focus__next card focus__u--${data.nextAction.urgency || 'medium'} focus__tap`}
+              className={`focus__next focus__u--${data.nextAction.urgency || 'medium'} focus__tap`}
               onClick={() => handleNextAction(data.nextAction)}
             >
               <div className="focus__next-label">Next</div>
               <div className="focus__next-title">{data.nextAction.label}</div>
               {data.nextAction.reason && <div className="focus__next-reason">{data.nextAction.reason}</div>}
-            </button>
+            </Lit>
           )}
 
           {(!data.items || data.items.length === 0) && (
-            <div className="card focus__clear">Nothing pressing. You’re clear.</div>
+            <Lit tone="statement" className="focus__clear">Nothing pressing. You’re clear.</Lit>
           )}
 
           {(data.items || [])
             .slice()
             .sort((a, b) => URGENCY.indexOf(a.urgency) - URGENCY.indexOf(b.urgency) || (b.score || 0) - (a.score || 0))
             .map((item) => (
-              <div
-                className={`card focus__item focus__u--${item.urgency || 'low'} focus__tap`}
+              /* ⚠ `row`, not `normal`: this is a ranked list to be scanned, and
+                 a glow per line is haze rather than hierarchy (the Tasks rule). */
+              <Lit
+                tone="row"
+                className={`focus__item focus__u--${item.urgency || 'low'} focus__tap`}
                 key={item.id}
                 role="button"
                 tabIndex={0}
@@ -230,7 +246,7 @@ export default function Focus({ onNavigate, onActionIntent }) {
                   aria-label="Dismiss"
                   title="Dismiss"
                 >✕</button>
-              </div>
+              </Lit>
             ))}
         </>
       )}
