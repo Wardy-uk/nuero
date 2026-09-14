@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../api';
 import { enqueue, flush, discard, retry, outcomeFor, pending as pendingOps, subscribe } from '../mobile/outbox';
+import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import './Capture.css';
 import { speechRecognitionCtor } from '../speechRecognition';
 
@@ -85,7 +86,12 @@ export default function Capture({ autoRecord = false }) {
         // The words stay in the box. A feature idea is not queueable (the
         // tracker append has no idempotency key), so this is a real refusal and
         // must not look like a save.
-        setFlash({ ok: false, msg: `Not saved — the tracker needs a connection. ${err.message}` });
+        // ⚠ "NOT saved", in those letters. It is the contract's wording and the
+        // emphasis is the point — this is the one message on the screen that
+        // must not be skimmed past, and the other three failure paths here
+        // already shout it. One of four saying it quietly is the one that gets
+        // missed.
+        setFlash({ ok: false, msg: `NOT saved — the tracker needs a connection. ${err.message}` });
       } finally {
         setBusy(false);
       }
@@ -251,25 +257,50 @@ export default function Capture({ autoRecord = false }) {
         )}
       </form>
 
-      {flash && <div className={`cap__flash${flash.ok ? '' : ' err'}`}>{flash.msg}</div>}
+      {/* ⚠⚠ THE ONE MESSAGE ON THIS SCREEN THAT MUST NOT BE MISSED, and it
+          differed from "Saved to NEURO." by TEXT COLOUR ALONE — same box, same
+          border, no icon. "NOT saved — your words are still here; don't close
+          the app" is the sentence the whole capture path exists to be able to
+          say, and it was a slightly different shade of the same thing.
+
+          Now the SHAPE carries it too: a failure is the fault treatment with a
+          mark beside it, a success is a plain statement. Colour alone fails on
+          a phone in sunlight and for anyone who cannot separate the hues — the
+          same reason iOS's queued-vs-lost note gained an icon. */}
+      {flash && (
+        <Lit
+          tone={flash.ok ? 'statement' : 'normal'}
+          className={`cap__flash${flash.ok ? '' : ' cap__flash--fault err'}`}
+          role={flash.ok ? undefined : 'alert'}
+        >
+          <span className="cap__flash-mark" aria-hidden="true">{flash.ok ? '✓' : '⚠'}</span>
+          {flash.msg}
+        </Lit>
+      )}
 
       {(waiting.length > 0 || stuck.length > 0) && (
         <div className="cap__queue">
-          <div className="cap__queue-h">
+          <LitLabel className="cap__queue-h">
             Waiting on this device
             <button type="button" className="cap__queue-send" onClick={() => flush({ force: true })}>Send now</button>
-          </div>
+          </LitLabel>
           {waiting.map((o) => (
-            <div className="card cap__q" key={o.operationId}>
+            /* ⚠ A STATEMENT, not a warning. "Queued on this device" is the
+               offline path WORKING — the words are safe and on their way. The
+               same conflation was fixed on iOS's task note the day before: a
+               queued tick and a lost one must not look alike. */
+            <Lit tone="statement" className="cap__q" key={o.operationId}>
               <div className="cap__q-text">{previewOf(o)}</div>
               <div className="cap__q-meta">
                 Queued on this device — not in NEURO yet
                 {o.attempts > 0 ? ` · ${o.attempts} attempt${o.attempts === 1 ? '' : 's'}` : ''}
               </div>
-            </div>
+            </Lit>
           ))}
           {stuck.map((o) => (
-            <div className="card cap__q cap__q--stuck" key={o.operationId}>
+            /* The only fault treatment on this screen: NEURO refused it and
+               the words exist nowhere else. */
+            <Lit className="cap__q cap__q--stuck" key={o.operationId}>
               <div className="cap__q-text">{previewOf(o)}</div>
               <div className="cap__q-meta err">
                 NOT saved — {o.lastError || 'NEURO could not apply it'}
@@ -278,19 +309,21 @@ export default function Capture({ autoRecord = false }) {
                 <button type="button" onClick={() => retry(o.operationId)}>Try again</button>
                 <button type="button" onClick={() => discard(o.operationId)}>Discard</button>
               </div>
-            </div>
+            </Lit>
           ))}
         </div>
       )}
 
       {recent.length > 0 && (
         <div className="cap__recent">
-          <div className="cap__recent-h">Recent captures</div>
+          <LitLabel className="cap__recent-h">Recent captures</LitLabel>
           {recent.map((r) => (
-            <div className="card cap__recent-item" key={r.relativePath}>
+            /* Read-only — what already landed. Nothing to act on, so nothing
+               that looks pressable. */
+            <Lit tone="statement" className="cap__recent-item" key={r.relativePath}>
               <div className="cap__recent-title">{r.title || r.filename}</div>
               {r.preview && <div className="cap__recent-preview">{r.preview}</div>}
-            </div>
+            </Lit>
           ))}
         </div>
       )}
