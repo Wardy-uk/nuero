@@ -42,6 +42,10 @@ const SUPPRESSIBLE = new Set([
   // design rests on it respecting quiet hours, the dedupe and the hourly cap.
   // Anything here that ever needs to bypass those has stopped being ambient.
   'ambient',
+  // The router wedging. SUPPRESSIBLE deliberately: the failure takes ~18 days
+  // to build and a weekly reboot is the safety net, so there is nothing to be
+  // done about it at 03:00. It fires once per episode, not once per sample.
+  'router_health',
 ]);
 
 const ROOTS = ['services', 'routes'];

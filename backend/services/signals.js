@@ -255,6 +255,40 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
     };
   });
 
+  // ── Router ────────────────────────────────────────────────────────────────
+  //
+  // ⚠ THIS ROW IS NOT "IS THE INTERNET UP". The internet being up is exactly
+  // what the failure looks like: forwarding and DNS are kernel-side and keep
+  // working while the router's userspace dies, so every other device stays
+  // happy and only the next one needing a DHCP renewal falls off. It asks
+  // whether the box is HEALTHY, which is a different question and the only one
+  // that would have caught it.
+  //
+  // ⚠ And the states do not map onto this page's usual meaning of `stale`. A
+  // router that has stopped being WATCHED is `stale` here; a router that is
+  // actively wedging is `error`, because something is wrong with the thing
+  // itself rather than with our view of it.
+  guard('router', 'Home router', 'DHCP, so every device can get and keep an address', () => {
+    const rh = require('./router-health');
+    const a = rh.current(now);
+    if (a.state === 'unknown' && a.sampleCount === 0) {
+      return { state: 'off', why: 'the router watcher has never reported', detail: 'pi5:~/router-watch.sh' };
+    }
+    if (a.state === 'unknown') {
+      return { state: 'stale', ageMinutes: a.ageMinutes, why: a.why, detail: 'this says nothing about the router itself' };
+    }
+    if (a.state === 'wedged' || a.state === 'unreachable') {
+      return { state: 'error', ageMinutes: a.ageMinutes, why: rh.headline(a) };
+    }
+    if (a.state === 'degrading') {
+      return { state: 'error', ageMinutes: a.ageMinutes, why: rh.headline(a), detail: 'thresholds still provisional' };
+    }
+    const up = a.latest && a.latest.uptimeSec != null
+      ? `up ${Math.round(a.latest.uptimeSec / 86400)}d`
+      : null;
+    return { state: 'live', ageMinutes: a.ageMinutes, detail: up };
+  });
+
   // ── RescueTime ────────────────────────────────────────────────────────────
   //
   // ⚠ This row does NOT ask whether the API answered. That is what every

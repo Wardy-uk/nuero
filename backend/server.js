@@ -239,6 +239,7 @@ app.use('/api/rooms', require('./routes/rooms'));
 // What he is working on, and what else shares its context. Read-only.
 app.use('/api/current-work', require('./routes/current-work'));
 app.use('/api/desktop', require('./routes/desktop'));
+app.use('/api/router', require('./routes/router'));
 app.use('/api/rescuetime', require('./routes/rescuetime'));
 app.use('/api/signals', require('./routes/signals'));
 app.use('/api/greeting', require('./routes/greeting'));
