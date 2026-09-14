@@ -164,7 +164,10 @@ function createGreeter({ env = process.env, fetchImpl = (...a) => fetch(...a), l
 
   async function tick(nowMs = Date.now()) {
     const now = new Date(nowMs);
-    const arbitration = resolveRoom(store.all(), now, { previousRoom: st.lastRoom });
+    // ⚠ House sensors only. An office desk hearing the watch must not feed the house
+    // arbitration or the fingerprint — a greeting composed from that would be SARA
+    // welcoming him into a room he is twenty miles from.
+    const arbitration = resolveRoom(presence.houseOnly(store.all()), now, { previousRoom: st.lastRoom });
     if (arbitration.status === 'present') st.lastRoom = arbitration.room;
     else if (arbitration.status === 'absent') st.lastRoom = null;
 

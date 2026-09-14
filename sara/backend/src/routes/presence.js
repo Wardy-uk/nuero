@@ -39,7 +39,7 @@ const store = require('../presence/store');
 const history = require('../presence/history');
 const profiles = require('../presence/profiles');
 const { classify } = require('../presence/fingerprint');
-const { resolveRoom, displayState } = require('../presence/rooms');
+const { resolveRoom, displayState, offsiteDisplayState } = require('../presence/rooms');
 const pendingGreetings = require('../greeting/pending');
 
 profiles.load();
@@ -81,6 +81,22 @@ function isOffsite(room) {
     .map(s => s.trim())
     .filter(Boolean)
     .includes(room);
+}
+
+/**
+ * The readings from sensors IN THE HOUSE.
+ *
+ * ⚠ EVERY DECISION ABOUT THE HOUSE MUST BE MADE ON THESE ALONE. Measured 14 Sep 2026
+ * with Nick at his desk at work: his office sensor heard the watch, `displayState`
+ * asks "is the watch audible to ANY sensor" before it will let the geofence lock a
+ * screen — and a desk twenty miles away answered yes. The study screen showed SARA,
+ * to an empty room, with the contradiction line saying it was trusting the watch.
+ *
+ * The same reading is perfectly good evidence about the OFFICE. It is only evidence
+ * about the house that it can never be.
+ */
+function houseOnly(readings) {
+  return Object.fromEntries(Object.entries(readings || {}).filter(([room]) => !isOffsite(room)));
 }
 
 // Which room won last time, for the arbitration's hysteresis. In-memory like
@@ -224,7 +240,8 @@ router.delete('/calibrate/:room', (req, res) => {
 // automation that wants the answer rather than a screen's verdict.
 router.get('/room', (_req, res) => {
   const now = new Date();
-  const arbitration = resolveRoom(store.all(), now, { previousRoom: lastRoom });
+  const readings = store.all();
+  const arbitration = resolveRoom(houseOnly(readings), now, { previousRoom: lastRoom });
   let inferred = classify(liveVector(arbitration), profiles.all());
 
   // ⚠ AN OFFSITE SENSOR ANSWERS WHEN THE HOUSE CANNOT. The fingerprint knows only
@@ -236,9 +253,12 @@ router.get('/room', (_req, res) => {
   // ⚠ It NEVER overrides a house answer: only consulted when the fingerprint is not
   // sure, so being at home can never be overruled by a desk twenty miles away.
   if (inferred.confidence !== 'sure') {
-    const desk = (arbitration.rooms || []).find(r => r.readable && r.inRoom === true && isOffsite(r.room));
-    if (desk) {
-      inferred = { room: desk.room, confidence: 'sure', why: null, margin: null, scores: inferred.scores, offsite: true };
+    // Read from the raw readings, not the arbitration — the arbitration is
+    // house-only by construction, which is exactly why this has to look elsewhere.
+    const deskRoom = Object.keys(readings).find(r => isOffsite(r));
+    const desk = deskRoom ? resolveRoom({ [deskRoom]: readings[deskRoom] }, now).rooms[0] : null;
+    if (desk && desk.readable && desk.inRoom === true) {
+      inferred = { room: deskRoom, confidence: 'sure', why: null, margin: null, scores: inferred.scores, offsite: true };
     }
   }
 
@@ -340,11 +360,40 @@ router.get('/display', (req, res) => {
   if (!room) return res.status(400).json({ ok: false, reason: 'room is required' });
 
   const now = new Date();
+  const readings = store.all();
+
+  // An offsite screen is decided by ITS OWN sensor and nothing else, so it is given
+  // exactly that — not the house arbitration, which is about a different building.
+  if (isOffsite(room)) {
+    const deskOnly = resolveRoom(readings[room] ? { [room]: readings[room] } : {}, now);
+    const display = offsiteDisplayState(room, deskOnly);
+    if (lastDisplay.get(room) !== display.state) {
+      history.note('display:' + room, lastDisplay.get(room) || null, display.state, deskOnly.rooms, { why: display.reason });
+      lastDisplay.set(room, display.state);
+    }
+    return res.json({
+      room,
+      state: display.state,
+      reason: display.reason,
+      say: display.say,
+      contradiction: null,
+      inferred: { room: null, confidence: 'none', why: 'an offsite screen is decided by its own sensor', margin: null },
+      decidedBy: display.decidedBy,
+      sustained: null,
+      watch: {
+        status: deskOnly.status, room: deskOnly.room, rooms: deskOnly.rooms,
+        unreadable: deskOnly.unreadable, why: deskOnly.why,
+      },
+      home: null,
+      checkedAt: now.toISOString(),
+    });
+  }
+
   // The incumbent room, so the hysteresis has something to hold on to. Shared
   // across callers on purpose: which room Nick is in is one fact, and letting
   // each screen keep its own idea of it is how two surfaces come to disagree
   // about where he is standing.
-  const arbitration = resolveRoom(store.all(), now, { previousRoom: lastRoom });
+  const arbitration = resolveRoom(houseOnly(readings), now, { previousRoom: lastRoom });
   const wasRoom = lastRoom;
   if (arbitration.status === 'present') lastRoom = arbitration.room;
   // Only forget the incumbent once he is positively elsewhere. An unreadable
@@ -367,7 +416,7 @@ router.get('/display', (req, res) => {
   inferredSince = clock.since;
   const sustained = clock.sustained;
 
-  const display = displayState(room, arbitration, home, inferredNow, sustained, { offsite: isOffsite(room) });
+  const display = displayState(room, arbitration, home, inferredNow, sustained);
 
   if (lastDisplay.get(room) !== display.state) {
     history.note('display:' + room, lastDisplay.get(room) || null, display.state,
@@ -468,3 +517,5 @@ module.exports.homePresence = homePresence;
 module.exports.presenceSource = presenceSource;
 module.exports.sustainedClock = sustainedClock;
 module.exports.liveVector = liveVector;
+module.exports.houseOnly = houseOnly;
+module.exports.isOffsite = isOffsite;
