@@ -121,6 +121,20 @@ function classify(reading = {}, profiles = {}, {
     return { room: null, confidence: 'none', why: 'no sensor readings', scores: [] };
   }
 
+  // ⚠ NOBODY HEARS HIM IS NOT A ROOM. Measured 14 Sep 2026, with Nick at his desk
+  // twenty miles away: every house sensor reported `absent` with no RSSI at all, and
+  // this returned `study / sure` — because a vector of silence still scores against
+  // every profile through the RATE term, and study was the least bad. SARA then told
+  // him he was in the study, all afternoon.
+  //
+  // It is the same rule the file already states one level down ("least-bad is not a
+  // match"), applied to the reading rather than to the room: an RSSI is the only
+  // evidence that the watch is WITHIN EARSHOT, so without a single one there is
+  // nothing here to identify. Out of the house must come back unknown.
+  if (!live.some(([, v]) => typeof v.rssi === 'number')) {
+    return { room: null, confidence: 'none', why: 'no sensor can hear the watch', scores: [] };
+  }
+
   const scores = [];
   for (const name of names) {
     const profile = profiles[name];

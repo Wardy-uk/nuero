@@ -44,11 +44,20 @@ const pendingGreetings = require('../greeting/pending');
 
 profiles.load();
 
-/** The live feature vector: sensorRoom -> {rssi, rate}, readable sensors only. */
+/**
+ * The live feature vector: sensorRoom -> {rssi, rate}, readable HOUSE sensors only.
+ *
+ * ⚠ An OFFSITE sensor is excluded. The fingerprint is trained on the house and no
+ * profile contains the desk at work, so its reading can only ever be noise here —
+ * and worse, it is evidence that the watch is audible SOMEWHERE, which is exactly
+ * what the "nobody hears him is not a room" refusal keys on. Leaving it in would let
+ * a desk twenty miles away vouch for a reading of silence at home.
+ */
 function liveVector(arbitration) {
   const out = {};
   for (const r of (arbitration.rooms || [])) {
     if (!r.readable) continue;      // a stale or deaf sensor teaches nothing and matches nothing
+    if (isOffsite(r.room)) continue;
     out[r.room] = { rssi: r.rssi, rate: r.rate };
   }
   return out;
@@ -216,11 +225,30 @@ router.delete('/calibrate/:room', (req, res) => {
 router.get('/room', (_req, res) => {
   const now = new Date();
   const arbitration = resolveRoom(store.all(), now, { previousRoom: lastRoom });
-  const inferred = classify(liveVector(arbitration), profiles.all());
+  let inferred = classify(liveVector(arbitration), profiles.all());
+
+  // ⚠ AN OFFSITE SENSOR ANSWERS WHEN THE HOUSE CANNOT. The fingerprint knows only
+  // the house, so with Nick at his desk at work it now correctly says nothing — and
+  // "nothing" would leave every surface blank about a room that is plainly reporting
+  // him. Its own sensor is the whole rule for an offsite room (see
+  // `offsiteDisplayState`), so it is the whole rule here too.
+  //
+  // ⚠ It NEVER overrides a house answer: only consulted when the fingerprint is not
+  // sure, so being at home can never be overruled by a desk twenty miles away.
+  if (inferred.confidence !== 'sure') {
+    const desk = (arbitration.rooms || []).find(r => r.readable && r.inRoom === true && isOffsite(r.room));
+    if (desk) {
+      inferred = { room: desk.room, confidence: 'sure', why: null, margin: null, scores: inferred.scores, offsite: true };
+    }
+  }
+
   res.json({
     room: inferred.room,
     confidence: inferred.confidence,     // sure | unsure | none
     why: inferred.why,
+    // True when the answer came from a desk outside the house rather than the
+    // house fingerprint — carried so nothing downstream mistakes it for a room here.
+    offsite: inferred.offsite === true,
     // How far clear the winner was. Omitted here originally, which made a
     // decisive call and a hair's-breadth one look identical to any caller that
     // did not read the raw scores — the exact thing the log exists to expose.
