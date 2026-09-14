@@ -180,10 +180,20 @@ test('the vertical bands fit inside the panel with a gutter', () => {
   const rowBottom = last(/\.approach--quiet \.approach__row \{ bottom: (\d+)%/g);
   const rowCap = last(/\.approach--quiet \.approach__row \{\s*max-height: (\d+)%/g);
 
-  const herBottom = heroTop + heroCap;      // 54
-  const rowTop = 100 - rowBottom - rowCap;  // 56
+  const herBottom = heroTop + heroCap;      // 50
+  const rowTop = 100 - rowBottom - rowCap;  // 52
   assert.ok(herBottom < rowTop, `she reaches ${herBottom}% and the row starts at ${rowTop}%`);
   assert.ok(rowTop - herBottom >= 2, `gutter is only ${rowTop - herBottom}%`);
+
+  // ⚠ AND THE FOOT IS A BAND TOO, which the first two cuts forgot. Measured on
+  // the panel it is 92px of a 487px stage - 19% - because it carries the mic
+  // button as well as the held-back line, not the "two lines" it was budgeted
+  // as. It sits on a 4% offset, so it starts at 77% and the row must end above
+  // that. Measured, because its height is content and cannot be read off CSS.
+  const FOOT_BAND = 23;
+  const rowBottomEdge = 100 - rowBottom;
+  assert.ok(rowBottomEdge <= 100 - FOOT_BAND - 1,
+    `the row reaches ${rowBottomEdge}% and the foot starts at ${100 - FOOT_BAND}%`);
 });
 
 // ⚠ Scoped to the corridor. The phone reads the same payload in portrait, where
@@ -205,7 +215,7 @@ test('the flat row is capped and its titles clamped, so it cannot grow into her'
     path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '');
   const row = css.slice(css.lastIndexOf('.approach--quiet .approach__row {'));
-  assert.match(row.slice(0, row.indexOf('}')), /max-height: 25%/);
+  assert.match(row.slice(0, row.indexOf('}')), /max-height: 23%/);
   // Clamped rather than sliced: overflow alone cuts letters in half.
   assert.match(css, /\.approach__fact \.approach__val \{[^}]*line-clamp: 3/);
 });

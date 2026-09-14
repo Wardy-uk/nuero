@@ -619,7 +619,7 @@
  * below get real gaps rather than the few pixels left over. */
 .surface--approach .surface__say {
   width: min(42%, 545px);
-  top: 13%;
+  top: 11%;
   /* ⚠ THE BUDGET HAS TO ADD UP, AND IT DID NOT. Measured on the Fire: the stage
      is 487px, and the bands were committing 15% (before her) + 40% (her) + 24%
      (the flat row) + 24% (below the row) = 103%. Each cap was defensible alone
@@ -633,9 +633,15 @@
      rules down: top-anchored, an overflow can only cost the TAIL, and the tail
      is the utterance row ending in "Show me everything", the only way off a
      surface with no menu. Height came out of the LEAD-IN and out of the space
-     below the row instead, both of which were empty. 13 + 41 puts her bottom at
-     54%, and the row's ceiling puts its top at 56%. */
-  max-height: 41%;
+     below the row instead, both of which were empty.
+
+     ⚠ AND THE SECOND CUT UNDER-COUNTED THE FOOT. It was budgeted as "two lines"
+     and MEASURED 92px — 19% of the stage — because it carries the mic button as
+     well as the held-back line, so the row sat 19px INSIDE it. Every band is
+     measured now rather than eyeballed: 11 + 39 puts her bottom at 50%, the
+     row runs 52%-75%, and the foot's real 23% (19% of content on a 4% offset)
+     starts at 77%. */
+  max-height: 39%;
   padding: clamp(10px, 1.4cqw, 21px) clamp(11px, 1.6cqw, 24px);
 }
 
@@ -676,7 +682,7 @@
 .surface--approach .surface__say .surface__says { margin-top: clamp(7px, 1cqw, 13px); }
 
 /* The facts sit clear of the foot, which is two lines tall on the kiosk. */
-.approach--quiet .approach__row { bottom: 19%; gap: clamp(8px, 1.1cqw, 16px); }
+.approach--quiet .approach__row { bottom: 25%; gap: clamp(8px, 1.1cqw, 16px); }
 
 /* ── The flat row is the side that was unbounded ────────────────────────────
  *
@@ -700,7 +706,7 @@
  * cards through the middle of their letters. Three lines is a name you can
  * read; the live offender is a 170-character title that wanted eight. */
 .approach--quiet .approach__row {
-  max-height: 25%;
+  max-height: 23%;
   overflow: hidden;
 }
 .approach__fact .approach__val {
