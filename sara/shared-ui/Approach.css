@@ -790,3 +790,40 @@
   border-color: rgba(var(--approach-rgb), 0.12);
   box-shadow: none;
 }
+
+/* ══ What he can say back ═════════════════════════════════════════
+ *
+ * ⚠⚠ FIVE PILLS WILL NOT FIT ONE LINE AT ANY LEGIBLE SIZE — measured, not
+ * eyeballed. The live set ("Coming up" / "Not now — an hour" / "It's too big" /
+ * "Seen it" / Show me everything) needs about 668px including gaps; the box is
+ * min(42%, 545px) and gives about 505 inside its padding. A third short. No
+ * font tweak closes that, and widening the box far enough would put her
+ * sentence over the corridor.
+ *
+ * ⚠ THE FIFTH IS NOT THE SAME KIND OF THING. Four of them are ANSWERS —
+ * sentences he says back to her. "Show me everything" is the WAY OUT: the
+ * composer marks it `kind: reveal`, it is always last and never dropped,
+ * because the one screen with no menu must always have a way round it.
+ *
+ * So it takes its own line, deliberately, instead of the row wrapping by
+ * accident (Nick, 14 Sep 2026: "the suggestions are wrapping now"). The
+ * structure then reads as what it is — her sentence, what you can say, and the
+ * way out — rather than as a list that ran out of room. It is already dashed
+ * and unquoted, so it was always a different object; this stops pretending
+ * otherwise.
+ *
+ * ⚠ AND THE ANSWERS ARE TIGHTENED to hold one line with room to spare: four at
+ * the base size measure ~507px against ~505 available, which is not a fit, it
+ * is a coincidence waiting for a longer phrase. */
+.surface--approach .surface__say .surface__say-btn {
+  font-size: clamp(11px, 1.05cqw, 15px);
+  padding: 0.3rem 0.68rem;
+}
+
+/* ⚠ `flex-basis: 100%` rather than a wrapper element, so the composer still
+   returns ONE list and no renderer has to know which entry is the hatch — the
+   marking is the intent it already carries. */
+.surface--approach .surface__say .surface__say-btn--quiet {
+  flex: 0 0 100%;
+  margin-top: 2px;
+}
