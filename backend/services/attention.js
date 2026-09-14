@@ -205,7 +205,15 @@ function itemCard(item, now) {
     // for the same thing must not land on different tabs, and a client that
     // works it out itself is a copy free to drift. The home-screen widget is
     // the third renderer of this feed and gets the answer rather than a rule.
-    tab: resolveSaraLiteTab({ type: item.type }),
+    //
+    // ⚠ `meta` IS PART OF THE QUESTION and was being dropped. A nudge's type
+    // is the literal word `nudge` for all eight of them; which one it is lives
+    // in `meta.type`, so every nudge resolved to the fallback and the standup
+    // card said its home was the Surface — i.e. itself. The phone's own
+    // `tabFor` passes meta and got `standup`, so the button and this field
+    // disagreed about one card: exactly the drift the paragraph above forbids,
+    // two lines below it.
+    tab: resolveSaraLiteTab({ type: item.type, meta: item.meta }),
     // Carried so the lifecycle can BOUND the action set: an unsuppressable item
     // is exactly what the engine keeps on screen deliberately, and offering a
     // dismiss button it will refuse to honour is worse than not offering one.

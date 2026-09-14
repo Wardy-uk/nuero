@@ -45,6 +45,34 @@ const { resolveNueroNavigation } = actionSurfaces;
  * sends anything on Nick's behalf. Every one of these is a click.
  */
 
+// Where "Open context" actually goes, in words. The button has always been
+// correct and has always been mute about it: on a card reading "Do your standup
+// — 2 minutes, do it before anything else", the only thing offering to take
+// him there said `Open context`, and the one field that names the destination
+// (`actionHint`, "Open Standup") was composed server-side and read by SARA
+// alone.
+//
+// ⚠ IT IS NOT `card.actionHint`, deliberately. Those strings are prose written
+// for SARA's sentence-shaped surface and several of them are not navigations:
+// "Start here, then review the rest" on a button whose whole contract is that
+// it navigates and calls NOTHING, sat beside a "Start this" button that really
+// does start a session, is two buttons saying start and meaning different
+// things — the exact confusion the canonical label set exists to prevent.
+// The verb stays ours; only the destination comes from the resolver.
+//
+// ⚠ An unmapped view falls back to the generic label rather than guessing a
+// name from the view id — today's wording, never a worse one.
+const VIEW_LABELS = {
+  dashboard: 'Open queue',
+  'meeting-prep': 'Open prep',
+  todos: 'Open tasks',
+  standup: 'Open standup',
+  inbox: 'Open inbox',
+  imports: 'Open imports',
+  briefing: 'Open briefing',
+  chat: 'Open chat',
+};
+
 const LABELS = {
   open: 'Open context',
   acknowledge: 'Seen it',
@@ -95,10 +123,15 @@ export default function AttentionCard({
     setBusy(null);
   };
 
+  // Where this card goes, resolved once so the LABEL and the click cannot
+  // disagree about it — a button naming a destination it does not open is worse
+  // than the mute one it replaced.
+  const destination = resolveNueroNavigation({ type: card.type, meta: card.meta, id: card.id })
+    || (card.tab ? { view: card.tab } : null);
+  const openLabel = (destination && VIEW_LABELS[destination.view]) || LABELS.open;
+
   // Navigation only. No request, by design — see the header.
   const open = () => {
-    const destination = resolveNueroNavigation({ type: card.type, meta: card.meta, id: card.id })
-      || (card.tab ? { view: card.tab } : null);
     if (!destination) {
       setOutcome({ kind: 'error', text: 'Nothing to open for this one.' });
       return;
@@ -234,7 +267,7 @@ export default function AttentionCard({
 
       <div className="att-card__actions">
         {permitted.includes('open') && (
-          <button className="att-card__btn" type="button" onClick={open}>{LABELS.open}</button>
+          <button className="att-card__btn" type="button" onClick={open}>{openLabel}</button>
         )}
         {permitted.includes('acknowledge') && card.state !== 'acknowledged' && (
           <button className="att-card__btn" type="button" disabled={busy === 'acknowledge'} onClick={acknowledge}>

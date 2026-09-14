@@ -149,3 +149,38 @@ test('⚠ Done never claims a card was CLEARED when nothing was closed', () => {
   assert.ok(doneBody.includes('taskCompleted'), 'it must still distinguish the two outcomes');
   assert.ok(/come back|still open|where it lives/i.test(doneBody), 'and say the work is still open');
 });
+
+// ── The button names where it goes ────────────────────────────────────────
+//
+// Every card's open button read `Open context`, so on "Do your standup — 2
+// minutes, do it before anything else" nothing on screen offered to take him
+// there. The destination was known all along; the button was mute about it.
+
+test('every destination the resolver can return has a button label', () => {
+  const card = read('AttentionCard.jsx');
+  const block = card.slice(card.indexOf('const VIEW_LABELS'), card.indexOf('const LABELS'));
+  assert.ok(block.length > 0, 'positive control: the label map should be findable');
+
+  const { resolveNueroNavigation } = require('../../shared/action-surfaces.cjs');
+  // The kinds `resolveNueroNavigation` knows. A view it can send a card to and
+  // this map cannot name falls back to the generic wording — today's behaviour,
+  // never a worse one, but worth failing on so the map is kept honest.
+  const kinds = ['escalation', 'jira_ticket', 'meeting', 'todo', 'standup', 'eod', 'email', 'brain', 'journal', 'focus', 'capture'];
+  for (const kind of kinds) {
+    const destination = resolveNueroNavigation({ kind });
+    assert.ok(destination, `positive control: ${kind} should resolve somewhere`);
+    assert.ok(
+      block.includes(`'${destination.view}'`) || block.includes(`${destination.view}:`),
+      `${kind} opens ${destination.view}, which the button cannot name`
+    );
+  }
+});
+
+test('the open button renders the resolved label, not the fixed one', () => {
+  const card = read('AttentionCard.jsx');
+  assert.ok(card.includes('onClick={open}>{openLabel}'), 'the button must render the destination-aware label');
+  // ⚠ NOT `card.actionHint`: those are SARA's prose and several of them say
+  // "Start", which is a different button on this card with a different meaning.
+  const block = card.slice(card.indexOf('const destination ='), card.indexOf('const open = ()'));
+  assert.ok(!block.includes('actionHint'), 'the navigate label must not be taken from the prose hint');
+});

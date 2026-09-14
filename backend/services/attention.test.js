@@ -604,3 +604,30 @@ test('no session, or an unreadable card, matches nothing', () => {
   assert.equal(sessionMatchesCard({ text: 'x' }, null), false);
   assert.equal(sessionMatchesCard({ text: '' }, { title: '', meta: {} }), false);
 });
+
+// ── Where a card says it goes ─────────────────────────────────────────────
+//
+// The presenter resolves `tab` so a card and the notification for the same
+// thing cannot land on different places. It was resolving it from `type`
+// alone — and every nudge's type is the literal word `nudge`, so all eight
+// resolved to the Surface fallback and the standup card's stated home was the
+// screen it was already on. The phone's own `tabFor` passes meta and answered
+// `standup`, so the two disagreed about one card.
+
+test('a nudge names its own home — meta.type is part of the question', () => {
+  const g = gate(ctx(ACTIVITY.STEADY), [STANDUP]);
+  assert.equal(g.primary.tab, 'standup');
+});
+
+test('an eod nudge lands on the standup tab, not the Surface it is already on', () => {
+  const eod = item({ id: 'nudge-2', type: 'nudge', title: 'EOD', tier: 1, score: 90, meta: { type: 'eod' } });
+  const g = gate(ctx(ACTIVITY.STEADY), [eod]);
+  assert.equal(g.primary.tab, 'standup');
+});
+
+test('a nudge with no specific home still falls back to the Surface', () => {
+  const generic = item({ id: 'nudge-3', type: 'nudge', title: 'Something', tier: 2, score: 40, meta: { type: 'journal' } });
+  const g = gate(ctx(ACTIVITY.STEADY), [generic]);
+  // Positive control: the fallback is deliberate, not the bug above returning.
+  assert.equal(g.primary.tab, 'surface');
+});
