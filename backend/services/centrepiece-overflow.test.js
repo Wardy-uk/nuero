@@ -62,10 +62,24 @@ test('⚠ the stacked state gets the room it actually needs', () => {
 
   // The cap's PURPOSE stands — she must not grow down into the facts — so it is
   // raised for the one state that genuinely holds two things, not removed.
-  const base = css.match(/max-height:\s*40%/);
-  assert.ok(base, 'the one-sentence cap is gone');
+  //
+  // ⚠ THE BASE CAP IS READ, NOT HARDCODED. This asserted a literal `40%` and
+  // went red the moment 96aba23 took the height out of the empty bands instead
+  // of out of her sentence — a deliberate change, correctly made, failing a
+  // test that had pinned the NUMBER rather than the RULE. The rule is that the
+  // stacked cap exceeds whatever the one-sentence cap currently is, so that is
+  // what is compared. A cap of 40 pinned here again would only re-break on the
+  // next tune.
+  const sayRules = [...css.matchAll(/\.surface--approach \.surface__say \{([^}]*)\}/gs)];
+  const caps = sayRules
+    .map(r => [...r[1].matchAll(/max-height:\s*(\d+)%/g)].pop())
+    .filter(Boolean)
+    .map(m => Number(m[1]));
+  assert.ok(caps.length, 'the one-sentence cap is gone');
+  // Later declarations win, so the cap in force is the last one declared.
+  const base = caps[caps.length - 1];
   const raised = Number((stacked[1].match(/max-height:\s*(\d+)%/) || [])[1]);
-  assert.ok(raised > 40, `the stacked cap must exceed the base one, got ${raised}`);
+  assert.ok(raised > base, `the stacked cap must exceed the one-sentence cap ${base}%, got ${raised}`);
   // `top` comes up with it, so the extra height is taken from the empty upper
   // third rather than from the corridor.
   const top = Number((stacked[1].match(/top:\s*(\d+)%/) || [])[1]);
