@@ -889,7 +889,24 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
         text: payload.text,
         moscow: payload.metadata?.moscow || null,
         priority: payload.metadata?.priority || null,
-        due_date: payload.metadata?.dueDate || payload.dueDate || null,
+        // ⚠ A commitment out of a meeting note or an email arrived with NO DUE
+        // DATE AT ALL — `action-candidates` hard-codes `dueDate: null` on every
+        // candidate it raises, so however plainly the sentence named a deadline,
+        // the promoted task carried none. Nick's rule (14 Sep 2026): read the
+        // date the sentence states, and where it states none, give it ten days.
+        //
+        // ⚠ Resolved HERE, at approval, and deliberately not stored on the
+        // candidate when it is raised. These sit pending for weeks — 926 of them
+        // at one point — and a default baked in at extraction time would have a
+        // task arrive ALREADY OVERDUE, which is the one thing this must not
+        // manufacture: overdue commitments are what the weekly risk report
+        // counts. The default is ten days from the moment it becomes work.
+        //
+        // An explicit date on the payload still wins over both; nothing sets one
+        // today, but a future extractor that does must not be second-guessed.
+        due_date: payload.metadata?.dueDate
+          || payload.dueDate
+          || require('./commitment-due').resolveDueDate(payload.text).date,
         // ⚠ The payload's own source wins. This was a hardcoded
         // 'meeting-promotion' from when a note was the only thing that could
         // raise one of these; an email-sourced candidate promoted under that
