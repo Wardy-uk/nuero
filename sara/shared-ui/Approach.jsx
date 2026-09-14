@@ -62,10 +62,16 @@ export function pullOf(card, index) {
 const LANES = [0.0, -0.82, 0.8, -0.4, 0.62, -0.72, 0.34, -0.55];
 const ROWS = [-0.68, 0.3, -0.1, 0.88, 0.55, -0.45, 1.1, 0.08];
 
-// How much of a card's TITLE has to sit behind the centrepiece before the card
-// stops being one. Half is deliberate: half a title is still a name you can
-// read, and hiding a card that is merely grazed would cost information for
-// tidiness.
+// How much of a card's FIRST LINE has to sit behind the centrepiece before the
+// card stops being one.
+//
+// ⚠ THE FIRST LINE, NOT THE WHOLE TITLE, and that correction came off the panel
+// rather than out of the source. Averaged over the whole title the live offender
+// measured 0.46 — under any sane threshold — because its title runs to three
+// lines and only the top one was behind her. So the card kept its opacity and
+// went on showing two lines of a sentence whose beginning was hidden, which is
+// precisely the debris this exists to remove. What makes a card unreadable is
+// not how much of it is covered; it is that you cannot see where it STARTS.
 const ECLIPSE = 0.5;
 
 // What fraction of `a` lies inside `b`. Pure, so the rule pins without a DOM.
@@ -84,6 +90,27 @@ export function overlapRatio(a, b) {
 // `AttentionSurface`. `.surface__say` is that component's centrepiece and is
 // pinned by a test; if it is ever renamed this finds nothing and nothing fades,
 // which is the old behaviour rather than a wrong one.
+// The rect of a title's FIRST LINE.
+//
+// ⚠ A Range over the contents, NOT `getBoundingClientRect` on the element —
+// which returns one box round every line and so answers a question about the
+// average. `getClientRects` on a range gives one rect PER LINE BOX whatever the
+// element's display is, so this works on the flex child `.approach__val`
+// actually is. Falls back to the element's own box where a Range is not
+// available or the element is empty, which is the old behaviour rather than a
+// wrong one.
+function firstLineOf(el) {
+  try {
+    if (typeof document !== 'undefined' && document.createRange) {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const lines = r.getClientRects();
+      if (lines && lines.length > 0) return lines[0];
+    }
+  } catch { /* fall through to the whole box */ }
+  return el.getBoundingClientRect();
+}
+
 function heroOf(stageRef) {
   const stage = stageRef.current;
   if (!stage || typeof stage.closest !== 'function') return null;
@@ -120,7 +147,7 @@ function useEclipsed({ stageRef, cardRefs, placed, box, heroTick, setHeroTick, s
       cardRefs.current.forEach((el, key) => {
         const title = el && el.querySelector('.approach__val');
         if (!title) return;
-        if (overlapRatio(title.getBoundingClientRect(), rect) >= ECLIPSE) next.add(key);
+        if (overlapRatio(firstLineOf(title), rect) >= ECLIPSE) next.add(key);
       });
     }
     // Returning the previous set when nothing changed is what stops this

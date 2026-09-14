@@ -76,6 +76,23 @@ test('it judges the TITLE, not the whole card', () => {
   assert.equal(overlapRatio(title, her), 0);
 });
 
+// ⚠ THE CORRECTION THAT CAME OFF THE PANEL. Averaged over a three-line title the
+// live offender measured 0.46 and was left alone, so it went on showing two
+// lines of a sentence whose beginning was hidden. Asking about the FIRST LINE
+// calls the same card at 0.92.
+test('the rule asks about the first line, not the whole title', () => {
+  assert.match(code, /firstLineOf\(title\)/);
+  assert.match(code, /getClientRects\(\)/);
+
+  const her = rect(62, 115, 490, 310);
+  // The real card, measured off the 14 Sep photograph: three lines, x 45..265,
+  // y 235..385, with only the top line behind her.
+  const wholeTitle = rect(45, 235, 265, 385);
+  assert.ok(overlapRatio(wholeTitle, her) < 0.5, 'the averaged rule let this through');
+  const firstLine = rect(45, 235, 265, 285);
+  assert.ok(overlapRatio(firstLine, her) >= 0.5, 'the first-line rule must catch it');
+});
+
 test('the threshold is half, and it is named rather than inlined', () => {
   assert.match(code, /const ECLIPSE = 0\.5;/);
   assert.match(code, />= ECLIPSE/);
@@ -118,4 +135,39 @@ test('measurement is keyed on a signature, not run every render', () => {
 test('nothing is removed from the feed, only darkened', () => {
   assert.doesNotMatch(code, /placed\s*\.filter/);
   assert.match(code, /opacity: dark \? '0'/);
+});
+
+// ── A long title buys WIDTH, not HEIGHT ────────────────────────────────────
+// Nick, 14 Sep 2026: "the primary card could be made 50% wider when the task is
+// big enough, meaning it doesn't have to be so high." Height is the expensive
+// dimension on a 600px panel — it is what pushes her into the corridor's band —
+// and the space to the right of her above the track is empty.
+test('a long title widens the centrepiece and LOWERS its cap', () => {
+  const surface = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'AttentionSurface.jsx'), 'utf8');
+  const css = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+
+  assert.match(surface, /const WIDE_TITLE_CHARS = 60;/);
+  // Judged on the TITLE — the line that wraps — never on the whole payload.
+  assert.match(surface, /primary && primary\.title[\s\S]{0,80}WIDE_TITLE_CHARS/);
+  assert.match(surface, /surface__say--wide/);
+
+  // ⚠ Widening WITHOUT lowering the cap is the worst of both: a very long title
+  // would keep its height and spend the width as well.
+  const wide = css.slice(css.indexOf('.surface--approach .surface__say--wide {'));
+  const body = wide.slice(0, wide.indexOf('}'));
+  assert.match(body, /width: min\(63%/);
+  assert.match(body, /max-height: 34%/);
+});
+
+// ⚠ Scoped to the corridor. The phone reads the same payload in portrait, where
+// the box is already 92% wide and this must change nothing.
+test('the wide rule never reaches the phone', () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8');
+  for (const m of css.matchAll(/^(.*surface__say--wide.*)\{/gm)) {
+    assert.match(m[1], /\.surface--approach/, `unscoped rule: ${m[1].trim()}`);
+  }
 });

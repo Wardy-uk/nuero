@@ -592,6 +592,28 @@
   top: 9%;
   max-height: 52%;
 }
+
+/* ⚠ A LONG TITLE BUYS WIDTH, NOT HEIGHT. Nick, 14 Sep 2026: "the primary card
+   could be made 50% wider when the task is big enough, meaning it doesn't have
+   to be so high."
+
+   On a 600px panel height is the expensive dimension — it is what pushes her
+   down into the band the corridor's cards ride in — and the right-hand third
+   above the track is empty. A 90-character title takes four lines at 42% and
+   three at 63%, so the same words cost one line less and the box stops reaching
+   the cards.
+
+   ⚠ The cap comes DOWN with the width, deliberately. Widening only would let a
+   very long title keep the height it had and spend the width as well, which is
+   the worst of both; 34% is a line shallower than the 40% it replaces, which is
+   exactly what the extra width pays for. */
+.surface--approach .surface__say--wide {
+  width: min(63%, 820px);
+  max-height: 34%;
+}
+.surface--approach .surface__say--wide.surface__say--stacked {
+  max-height: 46%;
+}
 .surface--approach .surface__saylead { font-size: clamp(19px, 2.9cqw, 36px); }
 .surface--approach .surface__saysub { font-size: clamp(12px, 1.5cqw, 18px); margin-top: 6px; }
 .surface--approach .surface__say .surface__says { margin-top: clamp(7px, 1cqw, 13px); }

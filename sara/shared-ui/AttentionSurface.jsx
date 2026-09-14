@@ -85,6 +85,15 @@ export function describeCompletion(res) {
   return { tone: 'partial', lead: 'Card cleared — no task was closed.', sub: why };
 }
 
+// Where a title stops fitting the narrow centrepiece and starts making it tall.
+//
+// ⚠ MEASURED, not picked. At the narrow width a line holds roughly 26-30
+// characters on the 1024px panel, so 60 is the point past which a title is
+// certainly onto a third line and heading for a fourth; the live offender is 90.
+// Below it the box is already only two lines and widening would buy nothing
+// while covering more of the corridor.
+const WIDE_TITLE_CHARS = 60;
+
 export default function AttentionSurface({
   data,
   error = null,
@@ -426,7 +435,30 @@ export default function AttentionSurface({
             headline, a second sub-line and two more buttons, which is roughly
             double. See Approach.css — this class is what stops that state
             overflowing a box that cannot grow. */}
-        <div className={`surface__say${transitionShown ? ' surface__say--stacked' : ''}`}>
+        {/* ⚠ `--wide` WHEN THE THING SHE IS NAMING IS LONG. Nick, 14 Sep 2026:
+            "the primary card could be made 50% wider when the task is big
+            enough, meaning it doesn't have to be so high."
+
+            That is the cause rather than the symptom. A 90-character task title
+            wraps to four lines in a 42% box and the centrepiece grows DOWN into
+            the band the corridor's cards ride in; widened, the same words take
+            three lines and it takes the room from the empty right-hand side
+            instead. Height is the expensive dimension on a 600px panel and
+            width is the cheap one.
+
+            ⚠ Measured on the TITLE, which is the line that wraps — not on the
+            whole payload. The sub-line is one short sentence and the buttons are
+            a fixed row; neither is what makes the box tall.
+
+            ⚠ It is a layout decision and so it is taken here, not composed
+            server-side: the same payload is read on a phone in portrait, where
+            the box is 92% wide already and this must change nothing. The CSS is
+            scoped to `.surface--approach`, so it does. */}
+        <div
+          className={`surface__say${transitionShown ? ' surface__say--stacked' : ''}${
+            String((primary && primary.title) || '').length >= WIDE_TITLE_CHARS ? ' surface__say--wide' : ''
+          }`}
+        >
           {/* What the last "that's done" did. Tap to clear — it stays until read,
               because a note that fades on its own is one he may never see. */}
           {outcome && !sayOverride && (
