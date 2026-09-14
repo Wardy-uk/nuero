@@ -48,6 +48,12 @@
 
 const { resolveContext, ACTIVITY, isRealMeeting } = require('./context-state');
 const { resolveSaraLiteTab } = require('../../shared/action-surfaces.cjs');
+const { describeDeferral } = require('../../shared/deferral-line.cjs');
+
+// ⚠ The zone the SCREEN is in, never the host's. The Pi may run in UTC, and a
+// held line printed in UTC beside a diary printed in London is an hour out
+// through the whole of BST — the calendar has been bitten by exactly this twice.
+const DEFERRAL_TZ = process.env.NEURO_TIMEZONE || 'Europe/London';
 
 const SECONDARY_MAX = 3;
 
@@ -927,7 +933,18 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
         snoozed.push({
           id: item.id,
           type: item.type,
-          why: `you put this off (${entry.reason})${entry.until ? ` until ${entry.until}` : ''}`,
+          // ⚠⚠ IT USED TO INTERPOLATE THE STORED INSTANT RAW, and rendered
+          // "you put this off (waiting-on-someone) until
+          // 2026-09-15T12:38:41.575Z" on the desk tablet. An identifier is
+          // never a label; it was UTC beside a screen of London times; and at
+          // seventy-five characters it WRAPPED, pushing the foot up into the
+          // flat row — the "overlap" that had been chased through six commits
+          // of band-height rebalancing. The bands were being budgeted to fit a
+          // string that should never have been that long.
+          //
+          // ⚠ Composed once, server-side, in the words Tasks already used for
+          // the same fact. See `shared/deferral-line.cjs`.
+          why: describeDeferral(entry.reason, entry.until, { now, timeZone: DEFERRAL_TZ }),
         });
         return false;
       });

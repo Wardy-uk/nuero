@@ -113,6 +113,25 @@ function AppShell() {
   // on mount.
   useEffect(() => startAutoFlush(), []);
 
+
+  // ⚠⚠ THE MENU MINIMISES ITSELF WHEN SHE IS BACK ON SCREEN. `navOpen` was only
+  // ever cleared by `goTab` when the chosen tab was in PRIMARY — and the Surface
+  // is NOT in PRIMARY, so tapping SARA left the whole secondary strip open
+  // underneath her. Photographed on the desk tablet: two full rows of nav under
+  // the ambient surface, permanently.
+  //
+  // That is the menu SARA does not have, restored by accident. The 25 Aug rule
+  // is that the strip stays revealed while he is OFF the Surface — because the
+  // one screen with no menu must not also be the only way back — and this is the
+  // other half of that sentence, which was never written.
+  //
+  // ⚠ It keys on `active`, so it fires on ARRIVING somewhere, never on the More
+  // button itself. Opening the menu does not change the tab, so the menu opens
+  // and stays; choosing a screen that does not reveal it closes it.
+  useEffect(() => {
+    if (!revealsSecondary(active)) setNavOpen(false);
+  }, [active]);
+
   const isSecondary = revealsSecondary(active);
   const moreVisible = navOpen || isSecondary;
 
