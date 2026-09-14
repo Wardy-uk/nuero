@@ -93,6 +93,34 @@ function csatQuery(week) {
   return `/api/neuro-bridge/csat-summary?from=${from}&to=${to}`;
 }
 
+/**
+ * Does a NOVA trend bucket belong to this Mon-Sun week?
+ *
+ * MEASURED, not inferred from the SQL. `kpi-trend` labels each bucket
+ * `DATEADD(WEEK, DATEDIFF(WEEK, 0, DATEADD(DAY, -1, CreatedAt)), 1)`, which
+ * lands on the MONDAY PLUS ONE DAY — proved on 14 Sep 2026 by averaging the
+ * daily snapshots for Mon 7 to Sun 13 Sep (82, 83, 83, 85, 86, 87, 87 → 84.7143)
+ * against the bucket labelled `2026-09-08`, which returned 84.7 over 7 samples.
+ *
+ * It is matched by SPAN rather than by reconstructing that arithmetic, so the
+ * label may sit anywhere inside its own week without this breaking. A label that
+ * ever moved OUTSIDE the span would match nothing and the row would read "not
+ * measured" — absent rather than wrong, which is the safe direction.
+ */
+function periodInWeek(period, week) {
+  if (!period || !week) return false;
+  const { from, to } = weekSpan(week);
+  return period >= from && period <= to;
+}
+
+/** "13 Sep" — a column header has no room for the year. */
+function shortUk(date) {
+  if (!date) return '—';
+  const [, m, d] = date.split('-').map(Number);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${d} ${months[m - 1]}`;
+}
+
 function previousWeek(week) {
   const [y, m, d] = week.split('-').map(Number);
   const dt = new Date(y, m - 1, d - 7);
@@ -339,6 +367,10 @@ async function pull(name, fn) {
  */
 async function snapshot({ week = weekCommencing(), date } = {}) {
   const novaReady = nova.isConfigured();
+  // The completed Monday-to-Sunday this report covers. Derived here as well as
+  // in assess() because the CSAT calls must ask for the same weeks the
+  // compliance rows are anchored to.
+  const reportWeek = previousWeek(week);
 
   const [kpi, trend, escalationStats, flow, csatNow, csatPrior] = novaReady
     ? await Promise.all([
@@ -361,16 +393,24 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
       // live weekly figure to 14.3% off THREE ratings in 28 days, which reads
       // to Chris as customers loathing the desk. Two calls, because the table
       // is week-on-week and the two weeks are separate populations.
-      pull('csat-this-week', () => nova.call(csatQuery(week))),
-      pull('csat-last-week', () => nova.call(csatQuery(previousWeek(week)))),
+      //
+      // ⚠ THE WEEKS ARE THE COMPLIANCE TABLE'S WEEKS, not this week and last.
+      // The first cut asked for `week` — the week the report is FILED under,
+      // which on a Monday 07:30 build is a single day — and so reproduced, in
+      // the rows added to fix a measurement bug, the very bug that made the
+      // compliance rows above them wrong. `reportWeek` is the completed
+      // Monday-to-Sunday the report covers, so a CSAT row and a compliance row
+      // on the same line of the same table describe the same seven days.
+      pull('csat-reported', () => nova.call(csatQuery(reportWeek))),
+      pull('csat-compare', () => nova.call(csatQuery(previousWeek(reportWeek)))),
     ])
     : [
       { name: 'kpi-snapshot', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'kpi-trend', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'escalation-stats', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'flow-signals', ok: false, error: 'NOVA bridge not configured', data: null },
-      { name: 'csat-this-week', ok: false, error: 'NOVA bridge not configured', data: null },
-      { name: 'csat-last-week', ok: false, error: 'NOVA bridge not configured', data: null },
+      { name: 'csat-reported', ok: false, error: 'NOVA bridge not configured', data: null },
+      { name: 'csat-compare', ok: false, error: 'NOVA bridge not configured', data: null },
     ];
 
   // Nick's own task position. Competency 4 is about overdue management actions,
@@ -507,8 +547,37 @@ function ragBucket(rag) {
  * 12 Aug 1:1 — a single week's snapshot cannot tell "bad" from "getting worse",
  * and the Tier 2 slide was only visible because Nick had hand-carried five
  * weeks of numbers into the first edition.
+ *
+ * ⚠⚠ THE TWO COLUMNS ARE CALENDAR WEEKS, NOT THE LAST TWO SAMPLES.
+ *
+ * It used to take `series[last]` and `series[last-1]`, which is wrong twice over
+ * and was wrong in the live report on 14 Sep 2026.
+ *
+ * Wrong once because the report is built at 07:30 on a MONDAY, so the current
+ * week's bucket held a single day — or nothing at all — and a one-day reading
+ * was printed under "This week" against a full seven-day average. That is not a
+ * like-for-like comparison and its delta is noise. The report's own task section
+ * had this right all along: "Closed last week is the PREVIOUS Monday-to-Sunday,
+ * not a rolling 7 days... the one thing a figure sent to a manager must not do."
+ * The same document was using two definitions of its own reporting period.
+ *
+ * Wrong twice because a positional read CANNOT TELL A CURRENT SAMPLE FROM A
+ * STALE ONE. 39 KPIs stopped landing on 5 Sep 2026 (weekday runs went 113 rows
+ * to 74), and every one of them went on rendering its last surviving value under
+ * the words "This week" — Tier 2's "44%, down 25.4" was w/c 1 Sep against w/c
+ * 25 Aug, a fortnight old, with nothing on the page saying so. Ten of the
+ * fourteen rows were in that state.
+ *
+ * So each row is now looked up BY WEEK. A KPI with no bucket in the reporting
+ * week is `measured: false` and renders as not measured, which is a fact Chris
+ * can act on; the alternative is a number that looks current and is not.
+ *
+ * `reportWeek` is the COMPLETED Monday-to-Sunday the report covers — the caller
+ * passes `previousWeek(week)`, matching taskCounts exactly. Omitting it measures
+ * nothing rather than silently falling back to the positional read, because that
+ * fallback is the bug.
  */
-function buildTrend(trendData) {
+function buildTrend(trendData, reportWeek = null) {
   const rows = trendData?.rows || [];
   const byKpi = new Map();
   for (const r of rows) {
@@ -522,15 +591,30 @@ function buildTrend(trendData) {
       group: r.KPIGroup || null,
     });
   }
+  const compareWeek = reportWeek ? previousWeek(reportWeek) : null;
   const out = [];
   for (const [kpi, series] of byKpi) {
     series.sort((a, b) => a.period.localeCompare(b.period));
-    const latest = series[series.length - 1] || null;
-    const prior = series[series.length - 2] || null;
-    const delta = latest && prior && latest.value !== null && prior.value !== null
-      ? Math.round((latest.value - prior.value) * 10) / 10
+    const reported = series.find(x => periodInWeek(x.period, reportWeek)) || null;
+    const compare = series.find(x => periodInWeek(x.period, compareWeek)) || null;
+    const delta = reported && compare && reported.value !== null && compare.value !== null
+      ? Math.round((reported.value - compare.value) * 10) / 10
       : null;
-    out.push({ kpi, group: latest?.group ?? null, series, latest, prior, delta });
+    // The last bucket of any age, kept ONLY so an unmeasured row can say when it
+    // was last seen. It is never rendered as a current figure.
+    const lastSeen = series[series.length - 1] || null;
+    out.push({
+      kpi,
+      group: lastSeen?.group ?? null,
+      series,
+      reported,
+      compare,
+      delta,
+      measured: Boolean(reported),
+      lastSeen,
+      reportWeek,
+      compareWeek,
+    });
   }
   return out.sort((a, b) => a.kpi.localeCompare(b.kpi));
 }
@@ -604,7 +688,11 @@ function consecutiveBelowTarget(series, target) {
 function assess(snap) {
   const findings = [];
   const rows = snap?.kpi?.rows || [];
-  const trend = buildTrend(snap?.trend);
+  // The week the report COVERS: the completed Monday-to-Sunday before the week
+  // it is filed under. Same rule as taskCounts, deliberately — the two sections
+  // disagreeing about the reporting period is the defect being fixed.
+  const reportWeek = snap?.week ? previousWeek(snap.week) : null;
+  const trend = buildTrend(snap?.trend, reportWeek);
   const csat = buildCsat(snap?.csat);
   const failedSources = (snap?.sources || []).filter(s => !s.ok);
 
@@ -646,9 +734,15 @@ function assess(snap) {
   // Sustained compliance slides.
   for (const t of trend) {
     if (!isComplianceKpi(t.kpi)) continue;
-    const weeks = consecutiveBelowTarget(t.series, COMPLIANCE_TARGET);
+    // ⚠ A SLIDE IS A CLAIM ABOUT NOW, so it cannot be made from a series that
+    // stopped. An unmeasured KPI gets the `kpi-unmeasured` finding below instead
+    // — "Tier 2 has been below target for three straight weeks" read off data
+    // that ends a fortnight ago is a stale fact asserted as a current one.
+    if (!t.measured) continue;
+    const upTo = t.series.filter(x => x.period <= t.reported.period);
+    const weeks = consecutiveBelowTarget(upTo, COMPLIANCE_TARGET);
     if (weeks < SLIDE_WEEKS) continue;
-    const history = t.series.slice(-6).map(s => `${Math.round(s.value)}%`).join(' → ');
+    const history = upTo.slice(-6).map(s => `${Math.round(s.value)}%`).join(' → ');
     findings.push({
       severity: 'escalate',
       kind: 'compliance-slide',
@@ -656,6 +750,36 @@ function assess(snap) {
       detail: `${history} (last ${Math.min(t.series.length, 6)} weeks). Needs a root-cause look — capacity vs process vs ticket mix.`,
       kpi: t.kpi,
       weeks,
+    });
+  }
+
+  // ⚠ A COMPLIANCE KPI THAT STOPPED BEING PRODUCED IS A REPORTING DEFECT, and
+  // it outranks the numbers that DID arrive — the report's own principle is that
+  // a measurement you cannot trust makes every other figure unfalsifiable.
+  //
+  // Found live on 14 Sep 2026: 39 KPIs stopped landing on 5 Sep (weekday runs
+  // 113 rows to 74), including every per-tier FRT and Resolution row. Nothing
+  // said so, because the table read their last surviving value as current.
+  //
+  // ONE finding naming them all, not one per KPI: ten separate escalations for
+  // a single pipeline stage failing is a page nobody finishes reading.
+  const unmeasured = trend.filter(t => isComplianceKpi(t.kpi) && !t.measured);
+  if (unmeasured.length && reportWeek) {
+    const named = unmeasured.map(t => t.kpi).sort();
+    const lastSeen = unmeasured
+      .map(t => t.lastSeen?.period)
+      .filter(Boolean)
+      .sort()
+      .pop() || null;
+    findings.push({
+      severity: 'escalate',
+      kind: 'kpi-unmeasured',
+      title: `${named.length} compliance KPI${named.length === 1 ? '' : 's'} not measured in the reporting week`,
+      detail: `${named.join(', ')}. `
+        + (lastSeen ? `Last produced w/c ${formatUk(lastSeen)}. ` : 'Never produced in the trend window. ')
+        + 'These are ABSENT, not passing — the pipeline stopped writing them, so nothing on this page '
+        + 'can say how those queues performed. Fix the KPI run before reading the rest of the table as complete.',
+      kpis: named,
     });
   }
 
@@ -987,6 +1111,7 @@ function assess(snap) {
     snapshotAgeDays: ageDays,
     rag,
     trend,
+    reportWeek,
     csat,
     ageing,
     reasons,
@@ -1083,21 +1208,58 @@ function csatNote(csat) {
   return `\n\n_${bits.join(' ')}_`;
 }
 
-function complianceTable(trend, csat) {
+/**
+ * The compliance table.
+ *
+ * ⚠ THE COLUMNS ARE DATED. They read "This week / Last week" over figures that
+ * were neither: on a Monday build the first column held a single day, and a KPI
+ * the pipeline had stopped writing held a fortnight-old value under the same
+ * words. Naming the Sunday each column ends on is what makes that unrepeatable
+ * — a dated header cannot quietly come to mean something else.
+ *
+ * ⚠ AN UNMEASURED ROW IS SHOWN, NOT DROPPED, and says when it was last seen.
+ * Dropping it would hide that the KPI exists at all, which is how a stopped
+ * measurement reads as a queue with nothing to report.
+ */
+function complianceTable(trend, csat, reportWeek) {
   const rows = trend.filter(t => isComplianceKpi(t.kpi))
     .sort((a, b) => byComplianceOrder(a.kpi, b.kpi));
   const extra = csatRows(csat);
   if (!rows.length && !extra.length) return '_No compliance KPIs in the trend window._';
-  const header = '| KPI | This week | Last week | Δ | vs 95% |\n|---|---|---|---|---|';
+
+  const compareWeek = reportWeek ? previousWeek(reportWeek) : null;
+  const endOf = (w) => (w ? shortUk(weekSpan(w).to) : null);
+  const colNow = endOf(reportWeek) ? `Week to ${endOf(reportWeek)}` : 'Reporting week';
+  const colWas = endOf(compareWeek) ? `Week to ${endOf(compareWeek)}` : 'Week before';
+
+  const header = `| KPI | ${colNow} | ${colWas} | Δ | vs 95% |\n|---|---|---|---|---|`;
+  const pct = (v) => (v === null || v === undefined ? '—' : `${Math.round(v)}%`);
   const body = rows.map(t => {
-    const now = t.latest?.value;
-    const was = t.prior?.value;
+    if (!t.measured) {
+      const seen = t.lastSeen?.period ? ` (last ${shortUk(t.lastSeen.period)})` : '';
+      return `| ${t.kpi} | not measured${seen} | ${pct(t.compare?.value)} | — | — |`;
+    }
+    const now = t.reported?.value;
+    const was = t.compare?.value;
     const d = t.delta;
     const arrow = d === null ? '—' : d > 0 ? `▲ +${d}` : d < 0 ? `▼ ${d}` : '– 0';
     const rag = now === null || now === undefined ? '—' : now >= COMPLIANCE_TARGET ? '🟢' : now >= COMPLIANCE_TARGET - 20 ? '🟠' : '🔴';
-    return `| ${t.kpi} | ${now === null || now === undefined ? '—' : Math.round(now)}% | ${was === null || was === undefined ? '—' : Math.round(was)}% | ${arrow} | ${rag} |`;
+    return `| ${t.kpi} | ${pct(now)} | ${pct(was)} | ${arrow} | ${rag} |`;
   }).concat(extra).join('\n');
-  return `${header}\n${body}${csatNote(csat)}`;
+
+  const notes = [];
+  if (reportWeek) {
+    notes.push(`Complete Monday-to-Sunday weeks. ${colNow} is the week this report covers; `
+      + 'a partial current week is never shown, because a one-day reading against a seven-day '
+      + 'average is not a comparison.');
+  }
+  const missing = rows.filter(t => !t.measured);
+  if (missing.length) {
+    notes.push(`**${missing.length} of ${rows.length} rows were not produced this week** and are `
+      + 'blank rather than carried forward. See the escalations above.');
+  }
+  const note = notes.length ? `\n\n_${notes.join(' ')}_` : '';
+  return `${header}\n${body}${note}${csatNote(csat)}`;
 }
 
 /**
@@ -1295,7 +1457,7 @@ function render(a) {
   lines.push('');
   lines.push('_Added at Chris\'s request, 12 Aug 2026 — a single week cannot distinguish "bad" from "getting worse"._');
   lines.push('');
-  lines.push(complianceTable(a.trend, a.csat));
+  lines.push(complianceTable(a.trend, a.csat, a.reportWeek));
   lines.push('');
 
   lines.push('## 2. SLA / SLO due-date handling');
@@ -2021,6 +2183,7 @@ module.exports = {
   getManual, setManual, manualBlockers, emptyManual, carryForward,
   weekCommencing, previousWeek, buildTrend, consecutiveBelowTarget, ragBucket,
   QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder,
+  weekSpan, periodInWeek, shortUk,
   buildCsat, csatScoreCell, csatDaysCell, deltaArrow, DAYS_IN_WEEK,
   toEmailHtml, markdownToEmailHtml,
   COMPLIANCE_TARGET, SLIDE_WEEKS, UNKNOWN_REASON_ESCALATE_SHARE, SNAPSHOT_STALE_DAYS,

@@ -143,13 +143,17 @@ test('week-on-week delta is computed per KPI from the trend rows', () => {
   const a = weeklyRisk.assess(snap);
   const t = a.trend.find(x => x.kpi.includes('Tier 2'));
   assert.equal(t.delta, 23);
-  assert.equal(t.latest.value, 47);
-  assert.equal(t.prior.value, 24);
+  // The two columns are the reporting week (w/c 10 Aug) and the one before it,
+  // looked up BY WEEK — never "the last two samples, whenever they happened".
+  assert.equal(t.reported.value, 47);
+  assert.equal(t.compare.value, 24);
+  assert.equal(t.measured, true);
 });
 
 test('a compliance KPI below target for 3+ consecutive weeks is an escalation', () => {
-  const rows = [30, 40, 45].map((v, i) => ({
-    period: `2026-08-0${i + 1}`, KPI: 'Resolution Compliance % (Tier 2)', avgValue: v, samples: 5,
+  // Three consecutive WEEK buckets ending in the reporting week (w/c 10 Aug).
+  const rows = ['2026-07-27', '2026-08-03', '2026-08-10'].map((period, i) => ({
+    period, KPI: 'Resolution Compliance % (Tier 2)', avgValue: [30, 40, 45][i], samples: 5,
   }));
   const a = weeklyRisk.assess(baseSnapshot({ trend: { rows } }));
   const f = a.findings.find(x => x.kind === 'compliance-slide');
@@ -1139,9 +1143,9 @@ test('buildCsat keeps unread and unrated apart at the data level too', () => {
 
 test('a CSAT source that failed is reported at the top like any other', () => {
   const snap = baseSnapshot({ csat: { now: null, prior: null } });
-  snap.sources = [...snap.sources, { name: 'csat-this-week', ok: false, error: 'bridge down' }];
+  snap.sources = [...snap.sources, { name: 'csat-reported', ok: false, error: 'bridge down' }];
   const a = weeklyRisk.assess(snap);
-  assert.ok(a.findings.some(f => f.kind === 'source-unavailable' && f.title.includes('csat-this-week')));
+  assert.ok(a.findings.some(f => f.kind === 'source-unavailable' && f.title.includes('csat-reported')));
 });
 
 test('the CSAT rows survive the markdown-to-email conversion', () => {
@@ -1150,4 +1154,172 @@ test('the CSAT rows survive the markdown-to-email conversion', () => {
   assert.match(html, /CSAT average score/);
   assert.match(html, /4\.5 \/ 5/);
   assert.doesNotMatch(html, /\|\s*CSAT/, 'no pipe soup left');
+});
+
+// ── The reporting period is a COMPLETE week (Nick, 14 Sep 2026) ──────────────
+// The table read "This week / Last week" off `series[last]` and `series[last-1]`,
+// which is wrong twice. On a Monday 07:30 build the first column held a SINGLE
+// DAY against a seven-day average; and a positional read cannot tell a current
+// sample from a stale one, so the 39 KPIs that stopped landing on 5 Sep 2026
+// went on rendering a fortnight-old value under the word "week". The report's
+// own task section already had the rule: the previous Monday-to-Sunday, never a
+// rolling window.
+//
+// baseSnapshot is filed under w/c 2026-08-17 (a Monday), so it COVERS
+// w/c 2026-08-10 and compares against w/c 2026-08-03.
+
+function trendRow(period, KPI, avgValue, samples = 5) {
+  return { period, KPI, avgValue, samples };
+}
+
+test('the reporting week is the COMPLETE week before the one the report is filed under', () => {
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Open Queue)', 88)] },
+  }));
+  assert.strictEqual(a.reportWeek, '2026-08-10');
+  // Same rule taskCounts uses for "closed last week" — the two sections of one
+  // document must not disagree about their own reporting period.
+  assert.strictEqual(a.reportWeek, weeklyRisk.previousWeek('2026-08-17'));
+});
+
+test('⚠ a PARTIAL current week is never shown — that was the Monday-morning bug', () => {
+  // w/c 17 Aug is the week the report is FILED under, and on a Monday build it
+  // holds one day. It must not reach the table.
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: {
+      rows: [
+        trendRow('2026-08-03', 'FRT Compliance % (Open Queue)', 70),
+        trendRow('2026-08-10', 'FRT Compliance % (Open Queue)', 80),
+        trendRow('2026-08-18', 'FRT Compliance % (Open Queue)', 99, 1), // the partial week
+      ],
+    },
+  }));
+  const t = a.trend.find(x => x.kpi.includes('Open Queue'));
+  assert.strictEqual(t.reported.value, 80, 'the completed week, not the partial one');
+  assert.strictEqual(t.compare.value, 70);
+  const md = weeklyRisk.render(a);
+  assert.doesNotMatch(md, /\| 99% \|/, 'the one-day figure must not appear in the table');
+});
+
+test('⚠ a KPI the pipeline STOPPED writing reads "not measured", never its last value', () => {
+  // Tier 2 last landed w/c 3 Aug. The old positional read printed 44% under
+  // "This week" for a fortnight.
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: {
+      rows: [
+        trendRow('2026-07-27', 'FRT Compliance % (Tier 2)', 61),
+        trendRow('2026-08-03', 'FRT Compliance % (Tier 2)', 44),
+      ],
+    },
+  }));
+  const t = a.trend.find(x => x.kpi.includes('Tier 2'));
+  assert.strictEqual(t.measured, false);
+  assert.strictEqual(t.reported, null);
+  const md = weeklyRisk.render(a);
+  assert.match(md, /\| FRT Compliance % \(Tier 2\) \| not measured/);
+  assert.doesNotMatch(md, /\| FRT Compliance % \(Tier 2\) \| 44%/, 'the stale value must not render as current');
+});
+
+test('an unmeasured row is SHOWN and says when it was last seen', () => {
+  // Dropping it hides that the KPI exists, which reads as a queue with nothing
+  // to report rather than a measurement that stopped.
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({
+    trend: { rows: [trendRow('2026-08-03', 'FRT Compliance % (Tier 2)', 44)] },
+  })));
+  assert.match(md, /FRT Compliance % \(Tier 2\)/, 'the row is still there');
+  assert.match(md, /last 3 Aug/, 'and it dates its last sighting');
+});
+
+test('⚠ compliance KPIs that stopped being produced are ONE escalation, naming them', () => {
+  const rows = ['Tier 2', 'Tier 3', 'Production'].map(q =>
+    trendRow('2026-08-03', `FRT Compliance % (${q})`, 40));
+  rows.push(trendRow('2026-08-10', 'FRT Compliance % (Open Queue)', 88));
+  const a = weeklyRisk.assess(baseSnapshot({ trend: { rows } }));
+  const f = a.findings.filter(x => x.kind === 'kpi-unmeasured');
+  assert.strictEqual(f.length, 1, 'one finding, not one per KPI');
+  assert.strictEqual(f[0].severity, 'escalate');
+  assert.match(f[0].title, /3 compliance KPIs not measured/);
+  assert.match(f[0].detail, /ABSENT, not passing/);
+  for (const q of ['Tier 2', 'Tier 3', 'Production']) assert.match(f[0].detail, new RegExp(q));
+  assert.doesNotMatch(f[0].detail, /Open Queue/, 'a measured KPI is not accused');
+});
+
+test('⚠ a SLIDE is never claimed from a series that stopped', () => {
+  // "below target for 3 straight weeks" is a claim about NOW. Read off data that
+  // ends a fortnight ago it is a stale fact asserted as a current one.
+  const stopped = ['2026-07-20', '2026-07-27', '2026-08-03'].map((p, i) =>
+    trendRow(p, 'Resolution Compliance % (Tier 2)', [30, 40, 45][i]));
+  const a = weeklyRisk.assess(baseSnapshot({ trend: { rows: stopped } }));
+  assert.strictEqual(a.findings.find(x => x.kind === 'compliance-slide'), undefined,
+                     'no slide from an unmeasured KPI');
+  assert.ok(a.findings.some(x => x.kind === 'kpi-unmeasured'), 'it is reported as unmeasured instead');
+});
+
+test('a slide still fires when the KPI IS current, and counts back from the reporting week', () => {
+  const rows = ['2026-07-27', '2026-08-03', '2026-08-10'].map((p, i) =>
+    trendRow(p, 'Resolution Compliance % (Tier 2)', [30, 40, 45][i]));
+  // A later, partial week that happens to look fine must not end the count.
+  rows.push(trendRow('2026-08-18', 'Resolution Compliance % (Tier 2)', 99, 1));
+  const f = weeklyRisk.assess(baseSnapshot({ trend: { rows } }))
+    .findings.find(x => x.kind === 'compliance-slide');
+  assert.ok(f, 'expected a slide');
+  assert.strictEqual(f.weeks, 3);
+  assert.doesNotMatch(f.detail, /99%/, 'the partial week is not in the history either');
+});
+
+test('the column headers are DATED, so they cannot come to mean something else', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({
+    trend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Open Queue)', 88)] },
+  })));
+  assert.match(md, /\| Week to 16 Aug \| Week to 9 Aug \|/, 'both columns name the Sunday they end on');
+  assert.doesNotMatch(md, /\| This week \| Last week \|/, 'the ambiguous headers are gone');
+  assert.match(md, /Complete Monday-to-Sunday weeks/);
+});
+
+test('the bucket label is matched by SPAN, not by reconstructing NOVA\'s arithmetic', () => {
+  // Measured 14 Sep 2026: kpi-trend labels each bucket on the MONDAY PLUS ONE
+  // DAY. Matching the whole Mon-Sun span means the label may sit anywhere inside
+  // its own week; one that moved outside would match nothing and read "not
+  // measured" — absent rather than wrong.
+  assert.strictEqual(weeklyRisk.periodInWeek('2026-08-11', '2026-08-10'), true, 'Monday+1, the live shape');
+  assert.strictEqual(weeklyRisk.periodInWeek('2026-08-10', '2026-08-10'), true, 'the Monday itself');
+  assert.strictEqual(weeklyRisk.periodInWeek('2026-08-16', '2026-08-10'), true, 'the Sunday');
+  assert.strictEqual(weeklyRisk.periodInWeek('2026-08-09', '2026-08-10'), false, 'the week before');
+  assert.strictEqual(weeklyRisk.periodInWeek('2026-08-17', '2026-08-10'), false, 'the week after');
+});
+
+test('with no anchor NOTHING is measured — it never falls back to the positional read', () => {
+  // That fallback IS the bug, so it must not survive as a default.
+  const built = weeklyRisk.buildTrend({ rows: [
+    trendRow('2026-08-03', 'FRT Compliance % (Tier 2)', 44),
+    trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 47),
+  ] });
+  assert.strictEqual(built[0].measured, false);
+  assert.strictEqual(built[0].reported, null);
+  assert.strictEqual(built[0].delta, null);
+});
+
+test('the panel and the document read the SAME fields, so they cannot disagree', () => {
+  // WeeklyRiskPanel is what Nick reads before pressing send; it renders
+  // t.reported / t.compare / t.measured off this exact payload.
+  const src = require('fs').readFileSync(
+    require('path').resolve(__dirname, '../../frontend/src/components/WeeklyRiskPanel.jsx'), 'utf8');
+  assert.match(src, /t\.reported\?\.value/, 'the panel reads the anchored week');
+  assert.match(src, /t\.compare\?\.value/);
+  assert.match(src, /!t\.measured \? 'not measured'/, 'and renders an unmeasured KPI as such');
+  assert.doesNotMatch(src, /t\.latest\?\.value/, 'the positional read is gone from the panel too');
+  assert.doesNotMatch(src, /<th>This week<\/th>/, 'and so is the misleading header');
+});
+
+test('⚠ the CSAT rows ask for the SAME weeks the compliance rows are anchored to', () => {
+  // The first cut asked for `week` — the week the report is filed under, which
+  // on a Monday build is a single day — and so reproduced, inside the rows
+  // added to fix a measurement bug, the bug that made the rows above them
+  // wrong. A CSAT row and a compliance row on one line must describe one week.
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'weekly-risk.js'), 'utf8');
+  assert.match(src, /pull\('csat-reported', \(\) => nova\.call\(csatQuery\(reportWeek\)\)\)/);
+  assert.match(src, /pull\('csat-compare', \(\) => nova\.call\(csatQuery\(previousWeek\(reportWeek\)\)\)\)/);
+  // Anchored to the CALL, not the bare text — `function csatQuery(week)` is the
+  // declaration and matching it would fail for the wrong reason.
+  assert.doesNotMatch(src, /nova\.call\(csatQuery\(week\)\)/, 'never the filed-under week');
 });

@@ -831,16 +831,24 @@ export default function WeeklyRiskPanel({ onNavigate }) {
           : (
             <table className="wr-table">
               <thead>
-                <tr><th>KPI</th><th>This week</th><th>Last week</th><th>Change</th></tr>
+                {/* ⚠ The columns are COMPLETE Monday-to-Sunday weeks, matching the
+                    document exactly. This is what Nick reads before pressing send,
+                    so a heading here that disagrees with the note he is signing is
+                    the whole failure — it used to say "This week" over a figure
+                    that, on a Monday build, was a single day. */}
+                <tr><th>KPI</th><th>Reporting week</th><th>Week before</th><th>Change</th></tr>
               </thead>
               <tbody>
                 {trend.map(t => (
                   <tr key={t.kpi}>
                     <td>{t.kpi}</td>
-                    <td className={t.latest?.value < 95 ? 'wr-bad' : 'wr-good'}>
-                      {t.latest?.value == null ? '—' : `${Math.round(t.latest.value)}%`}
+                    {/* ⚠ "not measured" is never rendered as a value, and never as a
+                        pass — the pipeline stopped writing 39 KPIs on 5 Sep 2026 and
+                        the old table carried their last surviving figure forward. */}
+                    <td className={!t.measured ? 'wr-muted' : t.reported?.value < 95 ? 'wr-bad' : 'wr-good'}>
+                      {!t.measured ? 'not measured' : t.reported?.value == null ? '—' : `${Math.round(t.reported.value)}%`}
                     </td>
-                    <td>{t.prior?.value == null ? '—' : `${Math.round(t.prior.value)}%`}</td>
+                    <td>{t.compare?.value == null ? '—' : `${Math.round(t.compare.value)}%`}</td>
                     <td><Delta value={t.delta} /></td>
                   </tr>
                 ))}
