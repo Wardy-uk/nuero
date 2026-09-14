@@ -1454,3 +1454,75 @@ test('the panel judges against the same per-KPI target the document does', () =>
   assert.match(src, /no target set/, 'and it renders an unstated target as such');
   assert.match(src, /<th>vs target<\/th>/);
 });
+
+// ── The ORDER and the CSAT ROWS live on the PAYLOAD (14 Sep 2026) ────────────
+// Both were built inside complianceTable(), so the markdown Chris reads had
+// them and `assess().trend` did not — and WeeklyRiskPanel, which renders the
+// same array, went on showing Customer Care, Development, Open Queue… with no
+// CSAT at all. Two surfaces disagreeing about one decision.
+
+test('⚠ assess().trend is ALREADY in Nicks order — not just the markdown', () => {
+  const rows = ['Tier 3', 'Development', 'Customer Care', 'Open Queue', 'Production', 'Tier 2', 'Resolved Today']
+    .map(q => trendRow('2026-08-10', `FRT Compliance % (${q})`, 80));
+  const a = weeklyRisk.assess(baseSnapshot({ trend: { rows } }));
+  assert.deepStrictEqual(a.trend.map(t => weeklyRisk.queueOf(t.kpi)), [
+    'Open Queue', 'Resolved Today', 'Customer Care', 'Production', 'Tier 2', 'Tier 3', 'Development',
+  ]);
+});
+
+test('compliance KPIs sort ABOVE everything else on the payload', () => {
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: {
+      rows: [
+        trendRow('2026-08-10', 'Open Tickets', 391),
+        trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 80),
+        trendRow('2026-08-10', 'AI Resolution Rate %', 0),
+        trendRow('2026-08-10', 'FRT Compliance % (Open Queue)', 85),
+      ],
+    },
+  }));
+  assert.deepStrictEqual(a.trend.map(t => t.kpi), [
+    'FRT Compliance % (Open Queue)',
+    'FRT Compliance % (Tier 2)',
+    'AI Resolution Rate %',
+    'Open Tickets',
+  ]);
+});
+
+test('⚠ the CSAT rows are on the payload, so BOTH surfaces can render them', () => {
+  const a = weeklyRisk.assess(baseSnapshot({
+    csat: {
+      now:   { ratings: 5, avgScore: 4.2, daysWithRating: 4, jiraDatedByProxy: 0, complete: true, jiraError: null },
+      prior: { ratings: 1, avgScore: 5,   daysWithRating: 1, jiraDatedByProxy: 0, complete: true, jiraError: null },
+    },
+  }));
+  assert.strictEqual(a.csatRows.length, 2);
+  assert.deepStrictEqual(a.csatRows.map(r => r.label),
+                         ['CSAT average score', 'CSAT days receiving a rating']);
+  assert.strictEqual(a.csatRows[0].now, '4.2 / 5');
+  assert.strictEqual(a.csatRows[1].now, '4 of 7 days');
+  assert.strictEqual(a.csatRows[0].delta, '▼ -0.8');
+});
+
+test('one composer, two renderers — the markdown is built from the same rows', () => {
+  const csat = {
+    now:   { known: true, ratings: 5, avgScore: 4.2, daysWithRating: 4, jiraDatedByProxy: 0, complete: true, error: null },
+    prior: { known: true, ratings: 1, avgScore: 5,   daysWithRating: 1, jiraDatedByProxy: 0, complete: true, error: null },
+  };
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({
+    csat: { now: { ...csat.now }, prior: { ...csat.prior } },
+  })));
+  for (const r of weeklyRisk.csatSummaryRows(csat)) {
+    assert.ok(md.includes(`| ${r.label} | ${r.now} | ${r.was} |`),
+              `the document must carry the composed row: ${r.label}`);
+  }
+});
+
+test('the panel renders the payload rows rather than composing its own', () => {
+  const src = require('fs').readFileSync(
+    require('path').resolve(__dirname, '../../frontend/src/components/WeeklyRiskPanel.jsx'), 'utf8');
+  assert.match(src, /report\.csatRows \|\| \[\]/, 'the panel reads the composed rows');
+  assert.match(src, /\{r\.label\}/, 'and renders them verbatim');
+  // It must not re-derive the order either — filter preserves the payload's.
+  assert.doesNotMatch(src, /\.sort\(/, 'the panel never re-sorts the trend');
+});

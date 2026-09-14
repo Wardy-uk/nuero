@@ -537,6 +537,25 @@ function byComplianceOrder(a, b) {
 }
 
 /**
+ * The order for the WHOLE trend array, compliance KPIs first.
+ *
+ * ⚠⚠ THE ORDER IS A PROPERTY OF THE PAYLOAD, NOT OF ONE RENDERER. The first
+ * cut sorted inside `complianceTable()`, so the markdown Chris reads came out
+ * in Nick's order while `assess().trend` stayed alphabetical — and
+ * `WeeklyRiskPanel`, which renders the same array, went on showing Customer
+ * Care, Development, Open Queue… That is two surfaces disagreeing about one
+ * decision, which is the failure this codebase names everywhere else. Sorting
+ * once here means every consumer inherits it, including any written later.
+ */
+function byTrendOrder(a, b) {
+  const ca = isComplianceKpi(a.kpi) ? 0 : 1;
+  const cb = isComplianceKpi(b.kpi) ? 0 : 1;
+  if (ca !== cb) return ca - cb;
+  if (ca === 0) return byComplianceOrder(a.kpi, b.kpi);
+  return String(a.kpi).localeCompare(String(b.kpi));
+}
+
+/**
  * RAG → bucket.
  *
  * `jira_kpi_daily.rag` is **numeric**: 1 green, 2 amber, 3 red. Verified
@@ -663,7 +682,7 @@ function buildTrend(trendData, reportWeek = null) {
       ...targetOf(reported),
     });
   }
-  return out.sort((a, b) => a.kpi.localeCompare(b.kpi));
+  return out.sort(byTrendOrder);
 }
 
 /** Days in a Mon-Sun week. Named, so the "1 of 7" denominator is not a literal
@@ -1165,6 +1184,9 @@ function assess(snap) {
     trend,
     reportWeek,
     csat,
+    // The rendered CSAT rows, so the panel and the document show the same two
+    // lines in the same words rather than each composing their own.
+    csatRows: csatSummaryRows(csat),
     ageing,
     reasons,
     flow,
@@ -1218,20 +1240,42 @@ function deltaArrow(now, was, { decimals = 0 } = {}) {
  * and a count of days are not percentages, and painting them against a
  * compliance target would be inventing a standard neither has. See buildCsat.
  */
-function csatRows(csat) {
+/**
+ * The two CSAT rows as DATA, composed once.
+ *
+ * ⚠⚠ COMPOSED ON THE PAYLOAD, NOT IN THE MARKDOWN. The first cut built these
+ * as pipe-delimited strings inside `complianceTable()`, so they existed only in
+ * the document and `WeeklyRiskPanel` had no CSAT at all — Nick asked for two
+ * rows and got them in one of the two places that show this table. The cells
+ * are phrased HERE so the screen he checks before pressing send and the note he
+ * signs cannot word the same fact differently.
+ */
+function csatSummaryRows(csat) {
   if (!csat) return [];
   const now = csat.now;
   const prior = csat.prior;
-  const scoreDelta = now?.known && prior?.known
-    ? deltaArrow(now.avgScore, prior.avgScore, { decimals: 1 })
-    : '—';
-  const daysDelta = now?.known && prior?.known
-    ? deltaArrow(now.daysWithRating, prior.daysWithRating)
-    : '—';
+  const both = Boolean(now?.known && prior?.known);
   return [
-    `| CSAT average score | ${csatScoreCell(now)} | ${csatScoreCell(prior)} | ${scoreDelta} | — |`,
-    `| CSAT days receiving a rating | ${csatDaysCell(now)} | ${csatDaysCell(prior)} | ${daysDelta} | — |`,
+    {
+      key: 'csat-score',
+      label: 'CSAT average score',
+      now: csatScoreCell(now),
+      was: csatScoreCell(prior),
+      delta: both ? deltaArrow(now.avgScore, prior.avgScore, { decimals: 1 }) : '—',
+    },
+    {
+      key: 'csat-days',
+      label: 'CSAT days receiving a rating',
+      now: csatDaysCell(now),
+      was: csatDaysCell(prior),
+      delta: both ? deltaArrow(now.daysWithRating, prior.daysWithRating) : '—',
+    },
   ];
+}
+
+/** The same rows as markdown, so there is one composer and two renderers. */
+function csatRows(csat) {
+  return csatSummaryRows(csat).map(r => `| ${r.label} | ${r.now} | ${r.was} | ${r.delta} | — |`);
 }
 
 /**
@@ -1301,6 +1345,9 @@ function ragCell(t) {
  * measurement reads as a queue with nothing to report.
  */
 function complianceTable(trend, csat, reportWeek) {
+  // Already ordered by buildTrend; re-applied because a table that depends on
+  // its caller having sorted is one that renders wrongly the day somebody
+  // filters it first.
   const rows = trend.filter(t => isComplianceKpi(t.kpi))
     .sort((a, b) => byComplianceOrder(a.kpi, b.kpi));
   const extra = csatRows(csat);
@@ -2265,7 +2312,8 @@ module.exports = {
   markSent, recordExternalSend, sentRecord, sentSummary, isLocked, reopen,
   getManual, setManual, manualBlockers, emptyManual, carryForward,
   weekCommencing, previousWeek, buildTrend, consecutiveBelowTarget, ragBucket,
-  QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder,
+  QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder, byTrendOrder,
+  csatSummaryRows,
   weekSpan, periodInWeek, shortUk, targetOf, ragCell, AMBER_BAND,
   buildCsat, csatScoreCell, csatDaysCell, deltaArrow, DAYS_IN_WEEK,
   toEmailHtml, markdownToEmailHtml,

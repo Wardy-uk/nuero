@@ -863,6 +863,21 @@ export default function WeeklyRiskPanel({ onNavigate }) {
                     </td>
                   </tr>
                 ))}
+                {/* ⚠ The CSAT rows are composed on the PAYLOAD (assessed.csatRows),
+                    not here. They were built inside the markdown renderer at first,
+                    so the document had them and this panel had none — two surfaces
+                    showing the same table, one of them missing the rows Nick asked
+                    for. Neither row carries a target: an average out of 5 and a
+                    count of days are not percentages. */}
+                {(report.csatRows || []).map(r => (
+                  <tr key={r.key}>
+                    <td>{r.label}</td>
+                    <td>{r.now}</td>
+                    <td>{r.was}</td>
+                    <td>{r.delta}</td>
+                    <td className="wr-muted">—</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
