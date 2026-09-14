@@ -85,14 +85,26 @@ export function describeCompletion(res) {
   return { tone: 'partial', lead: 'Card cleared — no task was closed.', sub: why };
 }
 
-// Where a title stops fitting the narrow centrepiece and starts making it tall.
+// Everything she is saying in the centrepiece, measured for length.
+//
+// ⚠ THE TITLE ALONE WAS THE WRONG MEASURE, found on the panel: "In a focus
+// session" is eighteen characters and its sub-line ran to a hundred and fifty,
+// so the box hit its cap on content the title knew nothing about. What makes it
+// tall is the whole of what she says.
+function sayLength(primary) {
+  const p = primary || {};
+  return String(p.title || '').length + String(p.say || '').length;
+}
+
+// Where what she is saying stops fitting the narrow centrepiece and starts
+// making it tall.
 //
 // ⚠ MEASURED, not picked. At the narrow width a line holds roughly 26-30
-// characters on the 1024px panel, so 60 is the point past which a title is
-// certainly onto a third line and heading for a fourth; the live offender is 90.
-// Below it the box is already only two lines and widening would buy nothing
-// while covering more of the corridor.
-const WIDE_TITLE_CHARS = 60;
+// characters of title or ~45 of sub-line on the 1024px panel, so 90 is the point
+// past which she is certainly onto a fourth line. Both live offenders clear it
+// comfortably (90 + 40, and 18 + 150). Below it the box is short anyway and
+// widening would buy nothing while covering more of the screen.
+const WIDE_SAY_CHARS = 90;
 
 export default function AttentionSurface({
   data,
@@ -456,7 +468,7 @@ export default function AttentionSurface({
             scoped to `.surface--approach`, so it does. */}
         <div
           className={`surface__say${transitionShown ? ' surface__say--stacked' : ''}${
-            String((primary && primary.title) || '').length >= WIDE_TITLE_CHARS ? ' surface__say--wide' : ''
+            sayLength(primary) >= WIDE_SAY_CHARS ? ' surface__say--wide' : ''
           }`}
         >
           {/* What the last "that's done" did. Tap to clear — it stays until read,

@@ -573,8 +573,23 @@
  * below get real gaps rather than the few pixels left over. */
 .surface--approach .surface__say {
   width: min(42%, 545px);
-  top: 15%;
-  max-height: 40%;
+  top: 13%;
+  /* ⚠ THE BUDGET HAS TO ADD UP, AND IT DID NOT. Measured on the Fire: the stage
+     is 487px, and the bands were committing 15% (before her) + 40% (her) + 24%
+     (the flat row) + 24% (below the row) = 103%. Each cap was defensible alone
+     and together they guaranteed a collision whenever BOTH the centrepiece and
+     the row were full — which is exactly the state Nick photographed, and why
+     it looked intermittent.
+
+     ⚠ AND THE FIRST REBALANCE TOOK IT OUT OF THE WRONG BAND. Capping her at 38%
+     made the centrepiece CLIP — measured on the panel, scrollHeight 186 against
+     clientHeight 164 — which is the failure this file already warns about two
+     rules down: top-anchored, an overflow can only cost the TAIL, and the tail
+     is the utterance row ending in "Show me everything", the only way off a
+     surface with no menu. Height came out of the LEAD-IN and out of the space
+     below the row instead, both of which were empty. 13 + 41 puts her bottom at
+     54%, and the row's ceiling puts its top at 56%. */
+  max-height: 41%;
   padding: clamp(10px, 1.4cqw, 21px) clamp(11px, 1.6cqw, 24px);
 }
 
@@ -590,7 +605,7 @@
    and it is not rare: it happens after every meeting. */
 .surface--approach .surface__say--stacked {
   top: 9%;
-  max-height: 52%;
+  max-height: 44%;
 }
 
 /* ⚠ A LONG TITLE BUYS WIDTH, NOT HEIGHT. Nick, 14 Sep 2026: "the primary card
@@ -609,17 +624,13 @@
    exactly what the extra width pays for. */
 .surface--approach .surface__say--wide {
   width: min(63%, 820px);
-  max-height: 34%;
-}
-.surface--approach .surface__say--wide.surface__say--stacked {
-  max-height: 46%;
 }
 .surface--approach .surface__saylead { font-size: clamp(19px, 2.9cqw, 36px); }
 .surface--approach .surface__saysub { font-size: clamp(12px, 1.5cqw, 18px); margin-top: 6px; }
 .surface--approach .surface__say .surface__says { margin-top: clamp(7px, 1cqw, 13px); }
 
 /* The facts sit clear of the foot, which is two lines tall on the kiosk. */
-.approach--quiet .approach__row { bottom: 24%; gap: clamp(8px, 1.1cqw, 16px); }
+.approach--quiet .approach__row { bottom: 19%; gap: clamp(8px, 1.1cqw, 16px); }
 
 /* ── The flat row is the side that was unbounded ────────────────────────────
  *
@@ -643,7 +654,7 @@
  * cards through the middle of their letters. Three lines is a name you can
  * read; the live offender is a 170-character title that wanted eight. */
 .approach--quiet .approach__row {
-  max-height: 24%;
+  max-height: 25%;
   overflow: hidden;
 }
 .approach__fact .approach__val {

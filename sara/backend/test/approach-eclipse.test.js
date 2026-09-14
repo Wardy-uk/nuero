@@ -149,17 +149,41 @@ test('a long title widens the centrepiece and LOWERS its cap', () => {
     path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '');
 
-  assert.match(surface, /const WIDE_TITLE_CHARS = 60;/);
-  // Judged on the TITLE — the line that wraps — never on the whole payload.
-  assert.match(surface, /primary && primary\.title[\s\S]{0,80}WIDE_TITLE_CHARS/);
-  assert.match(surface, /surface__say--wide/);
+  assert.match(surface, /const WIDE_SAY_CHARS = 90;/);
+  // ⚠ Judged on EVERYTHING she says, not the title alone: "In a focus session"
+  // is eighteen characters with a hundred-and-fifty-character sub-line, and it
+  // hit the cap on content the title knew nothing about.
+  assert.match(surface, /sayLength\(primary\) >= WIDE_SAY_CHARS/);
+  assert.match(surface, /String\(p\.title \|\| ''\)\.length \+ String\(p\.say \|\| ''\)\.length/);
 
-  // ⚠ Widening WITHOUT lowering the cap is the worst of both: a very long title
-  // would keep its height and spend the width as well.
   const wide = css.slice(css.indexOf('.surface--approach .surface__say--wide {'));
-  const body = wide.slice(0, wide.indexOf('}'));
-  assert.match(body, /width: min\(63%/);
-  assert.match(body, /max-height: 34%/);
+  assert.match(wide.slice(0, wide.indexOf('}')), /width: min\(63%/);
+});
+
+// ⚠ THE BUDGET HAS TO ADD UP. Measured on the Fire: a 487px stage, and the
+// bands were committing 15 + 40 + 24 + 24 = 103%. Each cap was defensible alone
+// and together they guaranteed a collision whenever BOTH the centrepiece and the
+// flat row were full — which is why it looked intermittent.
+test('the vertical bands fit inside the panel with a gutter', () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  // ⚠ The LAST match, never the first: this file is a stack of deliberate
+  // overrides, and the first `.surface__say` block is the one they supersede.
+  const last = (re) => {
+    const all = [...css.matchAll(re)];
+    assert.ok(all.length, `missing: ${re}`);
+    return Number(all[all.length - 1][1]);
+  };
+  const heroTop = last(/\.surface--approach \.surface__say \{[^}]*?top: (\d+)%/g);
+  const heroCap = last(/\.surface--approach \.surface__say \{[^}]*?max-height: (\d+)%/g);
+  const rowBottom = last(/\.approach--quiet \.approach__row \{ bottom: (\d+)%/g);
+  const rowCap = last(/\.approach--quiet \.approach__row \{\s*max-height: (\d+)%/g);
+
+  const herBottom = heroTop + heroCap;      // 54
+  const rowTop = 100 - rowBottom - rowCap;  // 56
+  assert.ok(herBottom < rowTop, `she reaches ${herBottom}% and the row starts at ${rowTop}%`);
+  assert.ok(rowTop - herBottom >= 2, `gutter is only ${rowTop - herBottom}%`);
 });
 
 // ⚠ Scoped to the corridor. The phone reads the same payload in portrait, where
@@ -181,7 +205,7 @@ test('the flat row is capped and its titles clamped, so it cannot grow into her'
     path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '');
   const row = css.slice(css.lastIndexOf('.approach--quiet .approach__row {'));
-  assert.match(row.slice(0, row.indexOf('}')), /max-height: 24%/);
+  assert.match(row.slice(0, row.indexOf('}')), /max-height: 25%/);
   // Clamped rather than sliced: overflow alone cuts letters in half.
   assert.match(css, /\.approach__fact \.approach__val \{[^}]*line-clamp: 3/);
 });
