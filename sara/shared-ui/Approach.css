@@ -620,6 +620,46 @@
 
 /* The facts sit clear of the foot, which is two lines tall on the kiosk. */
 .approach--quiet .approach__row { bottom: 24%; gap: clamp(8px, 1.1cqw, 16px); }
+
+/* ── The flat row is the side that was unbounded ────────────────────────────
+ *
+ * ⚠ THIS IS THE OVERLAP NICK PHOTOGRAPHED, and it is the QUIET layout rather
+ * than the corridor — measured over DevTools on the Fire, 14 Sep 2026: zero
+ * `.approach__card`, one `.approach__fact`. The screen had been laying itself
+ * out flat, so every fix aimed at the corridor's cards was aimed at elements
+ * that were not on it.
+ *
+ * The centrepiece hangs off the TOP and is capped. This row hangs off the
+ * BOTTOM and was capped by nothing, so it grew UPWARDS as its cards got wordier
+ * until it reached her — which is the same "the gap depends on how tall the
+ * content turns out to be" failure the bottom-anchoring above was introduced to
+ * end, surviving on the one band that never got a ceiling.
+ *
+ * 24% from a bottom of 24% puts its top at 52%, and the centrepiece's cap puts
+ * her bottom at 49%. The gutter no longer depends on what either of them says.
+ *
+ * ⚠ The titles are CLAMPED so the row meets its ceiling by wrapping less rather
+ * than by being sliced: `overflow: hidden` alone would cut the bottom row of
+ * cards through the middle of their letters. Three lines is a name you can
+ * read; the live offender is a 170-character title that wanted eight. */
+.approach--quiet .approach__row {
+  max-height: 24%;
+  overflow: hidden;
+}
+.approach__fact .approach__val {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.approach__fact .approach__sub {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .surface--approach .surface__foot { bottom: 4%; }
 .surface--approach .surface__shelf { bottom: 4%; }
 

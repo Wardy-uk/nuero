@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Field from './Field';
 import Dashboard from './Dashboard';
-import Approach from './Approach';
+import Approach, { minutesOf } from './Approach';
 import Shelf from './Shelf';
 import { isPressing } from './useFieldDrive';
 import { surfaceRgb } from './fieldDrive.mjs';
@@ -691,10 +691,25 @@ export default function AttentionSurface({
             // ⚠ Nothing ahead means no corridor: the facts lie flat and equal,
             // which is what a finished day actually looks like. The centrepiece
             // is there either way — that is what was missing.
-            quiet={!corridorCards.some((c) => {
-              if (typeof c.at !== 'string') return false;
-              const m = c.at.match(/T(\d{2}):(\d{2})/);
-              return m ? Number(m[1]) * 60 + Number(m[2]) >= nowMinutes : false;
+            //
+            // ⚠ ASKED OF THE CARDS IT IS ACTUALLY HANDED, and that is a fix
+            // (14 Sep 2026). It read `corridorCards` alone while the line above
+            // renders `[...corridorCards, ...rest]` — so a timed card arriving
+            // via `rest` put a future hour on the screen and the corridor still
+            // stood down, laying the whole thing out flat. Deciding on a
+            // different list from the one you render is how a layout comes to
+            // disagree with its own contents.
+            //
+            // ⚠ And it re-implemented the time parser, NARROWER than the one
+            // `Approach` itself uses to place the cards: this matched only
+            // `T00:00` while `minutesOf` also accepts a bare `HH:MM`. Two
+            // parsers for one field, and the stricter one deciding the layout,
+            // means a card the corridor would happily place reads here as
+            // having no hour at all. One parser now, imported from the file that
+            // does the placing.
+            quiet={![...corridorCards, ...rest].some((c) => {
+              const at = minutesOf(c.at);
+              return at != null && at >= nowMinutes;
             })}
             onOpen={(card) => { if (card && card.recordId && onOpen) onOpen(card); }}
           />

@@ -171,3 +171,46 @@ test('the wide rule never reaches the phone', () => {
     assert.match(m[1], /\.surface--approach/, `unscoped rule: ${m[1].trim()}`);
   }
 });
+
+// ── The quiet layout is the one that was actually on screen ────────────────
+// Measured over DevTools on the Fire, 14 Sep 2026: zero `.approach__card`, one
+// `.approach__fact`. The overlap Nick photographed is the FLAT row, not the
+// corridor — so the bands, not the cards, are what had to be bounded.
+test('the flat row is capped and its titles clamped, so it cannot grow into her', () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const row = css.slice(css.lastIndexOf('.approach--quiet .approach__row {'));
+  assert.match(row.slice(0, row.indexOf('}')), /max-height: 24%/);
+  // Clamped rather than sliced: overflow alone cuts letters in half.
+  assert.match(css, /\.approach__fact \.approach__val \{[^}]*line-clamp: 3/);
+});
+
+// ⚠ Decided on the cards it RENDERS, with the SAME parser that places them.
+// It read `corridorCards` alone while rendering `[...corridorCards, ...rest]`,
+// and re-implemented a narrower time parser than `minutesOf` — so a timed card
+// arriving via `rest`, or carrying a bare HH:MM, left the corridor stood down
+// with a future hour on the screen.
+test('quiet is judged on every card handed to the corridor, via one parser', () => {
+  const surface = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'AttentionSurface.jsx'), 'utf8');
+  assert.match(surface, /import Approach, \{ minutesOf \} from '\.\/Approach'/);
+  assert.match(surface, /quiet=\{!\[\.\.\.corridorCards, \.\.\.rest\]\.some/);
+  assert.match(surface, /const at = minutesOf\(c\.at\)/);
+  // The narrower inline copy must be gone, or the two can disagree again.
+  assert.doesNotMatch(surface, /c\.at\.match\(\/T\(\d\{2\}\)/);
+});
+
+// `minutesOf` is the one parser, and it takes both shapes.
+test('minutesOf accepts an ISO stamp and a bare clock time', () => {
+  const approach = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.jsx'), 'utf8');
+  const at = approach.indexOf('export function minutesOf');
+  const body = approach.slice(at, approach.indexOf('\n}', at) + 2).replace('export ', '');
+  // eslint-disable-next-line no-new-func
+  const minutesOf = new Function(`${body}; return minutesOf;`)();
+  assert.equal(minutesOf('2026-09-14T15:30:00+01:00'), 15 * 60 + 30);
+  assert.equal(minutesOf('15:30'), 15 * 60 + 30);
+  assert.equal(minutesOf('not a time'), null);
+  assert.equal(minutesOf(null), null);
+});
