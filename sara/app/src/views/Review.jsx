@@ -4,6 +4,7 @@ import { useNickNow, stampFor } from '../mobile/useNickNow';
 import { describeStorage, clearLocalData, SCHEMA_VERSION } from '../mobile/localStore';
 import { pending as pendingOps, subscribe, flush } from '../mobile/outbox';
 import Freshness from '../components/Freshness';
+import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import './Review.css';
 
 // REVIEW — morning orientation, shutdown, and the weekly reset.
@@ -98,24 +99,40 @@ export default function Review() {
 
       {s && mode === 'morning' && (
         <>
-          <h2 className="rev__h">The shape of today</h2>
+          <LitLabel as="h2" className="rev__h">The shape of today</LitLabel>
           {s.agenda.known === false ? (
-            <div className="card rev__unread">I couldn&rsquo;t read the diary — {s.agenda.why}.</div>
+            <Lit tone="statement" className="rev__unread">I couldn&rsquo;t read the diary — {s.agenda.why}.</Lit>
           ) : s.agenda.items.length === 0 ? (
-            <div className="card rev__calm">Nothing in the diary{s.agenda.scope !== 'today' ? ` until ${s.agenda.scope}` : ''}.</div>
+            <Lit tone="statement" className="rev__calm">Nothing in the diary{s.agenda.scope !== 'today' ? ` until ${s.agenda.scope}` : ''}.</Lit>
           ) : (
             s.agenda.items.map((e) => (
-              <div className="card rev__row" key={e.id}>
+              <Lit tone="row" className="rev__row" key={e.id}>
                 <span className="rev__row-title">{e.title}</span>
                 <span className="rev__row-meta">{e.allDay ? 'all day' : String(e.start || '').slice(11, 16)}</span>
-              </div>
+              </Lit>
             ))
           )}
 
-          <h2 className="rev__h">Where your body is</h2>
+          <LitLabel as="h2" className="rev__h">Where your body is</LitLabel>
           {s.readiness && s.readiness.known ? (
-            <div className="card">
-              <div className="rev__big">{s.readiness.score ?? '—'}</div>
+            <Lit tone="statement">
+              {/* ⚠⚠ THE BARE NUMBER SAID NOTHING ABOUT WHICH WAY IT RUNS. Same
+                  defect fixed on iOS's Review on 13 Sep and missed here: a 34pt
+                  "62" over the word "ok", where 62 is ELEVATED STRESS —
+                  `stress-score` computes `50 - 18z`, so better recovery gives a
+                  LOWER number. Read as recovery it is a decent day; read
+                  correctly it is a poor one, and nothing on the card said which.
+
+                  `status` was never the field for that job: it only says "ok",
+                  "calibrating" or "stale". The brain's own `label` IS the
+                  reading, and it licenses nothing — which is why the advice
+                  ladder was deleted rather than relabelled. */}
+              <div className="rev__bigrow">
+                <span className="rev__big">{s.readiness.score ?? '—'}</span>
+                <span className="rev__bigunit">
+                  {s.readiness.label ? `${s.readiness.label} stress` : 'stress'}
+                </span>
+              </div>
               <div className="rev__row-meta">
                 {s.readiness.status || 'no reading'}
                 {/* stress-score's caveats are inherited, never quietly dropped. */}
@@ -123,58 +140,64 @@ export default function Review() {
                   <> · {s.readiness.caveats.join(' · ')}</>
                 )}
               </div>
-            </div>
+            </Lit>
           ) : (
-            <div className="card rev__unread">
+            <Lit tone="statement" className="rev__unread">
               No reading{s.readiness && s.readiness.why ? ` — ${s.readiness.why}` : ''}.
-            </div>
+            </Lit>
           )}
         </>
       )}
 
       {s && mode === 'shutdown' && (
         <>
-          <h2 className="rev__h">Still open</h2>
+          <LitLabel as="h2" className="rev__h">Still open</LitLabel>
           {s.tasks.known === false ? (
-            <div className="card rev__unread">I couldn&rsquo;t read your tasks — {s.tasks.why}.</div>
+            <Lit tone="statement" className="rev__unread">I couldn&rsquo;t read your tasks — {s.tasks.why}.</Lit>
           ) : (
-            <div className="card">
+            <Lit tone="statement">
               <div className="rev__big">{s.tasks.total}</div>
               <div className="rev__row-meta">open task{s.tasks.total === 1 ? '' : 's'} in NEURO</div>
-            </div>
+            </Lit>
           )}
 
-          <h2 className="rev__h">Captured today</h2>
+          <LitLabel as="h2" className="rev__h">Captured today</LitLabel>
           {s.captures.known === false ? (
-            <div className="card rev__unread">I couldn&rsquo;t read your captures — {s.captures.why}.</div>
+            <Lit tone="statement" className="rev__unread">I couldn&rsquo;t read your captures — {s.captures.why}.</Lit>
           ) : s.captures.items.length === 0 ? (
-            <div className="card rev__calm">Nothing captured recently.</div>
+            <Lit tone="statement" className="rev__calm">Nothing captured recently.</Lit>
           ) : (
             s.captures.items.slice(0, 5).map((c) => (
-              <div className="card rev__row" key={c.id}>
+              <Lit tone="row" className="rev__row" key={c.id}>
                 <span className="rev__row-title">{c.title || c.preview || c.path}</span>
                 <span className="rev__row-meta">{stampFor(c.updatedAt)}</span>
-              </div>
+              </Lit>
             ))
           )}
 
-          <h2 className="rev__h">Anything still on this device</h2>
+          <LitLabel as="h2" className="rev__h">Anything still on this device</LitLabel>
           {unsent === 0 ? (
-            <div className="card rev__calm">Nothing waiting — everything reached NEURO.</div>
+            <Lit tone="statement" className="rev__calm">Nothing waiting — everything reached NEURO.</Lit>
           ) : (
-            <div className="card rev__unread">
+            /* ⚠ NOT A GAP. `rev__unread` means "I couldn't read this"; this is
+               something NEURO has not been TOLD yet — she can see it perfectly
+               well and he can act on it, there is a button right there.
+               Amber-means-unread is the one colour whose meaning is fixed across
+               both apps, and spending it on a thing that is merely pending is
+               how it stops meaning anything. Her colour, like any live state. */
+            <Lit className="rev__pending">
               {unsent} item{unsent === 1 ? '' : 's'} still on this device.
               <button type="button" className="rev__btn" onClick={() => flush({ force: true })}>Send now</button>
-            </div>
+            </Lit>
           )}
         </>
       )}
 
       {s && mode === 'week' && (
         <>
-          <h2 className="rev__h">This week</h2>
+          <LitLabel as="h2" className="rev__h">This week</LitLabel>
           {s.weeklyTarget ? (
-            <div className="card">
+            <Lit tone="statement">
               {/* Four states, kept apart on purpose: `unset` is not a target of
                   zero, and `unknown` is not a target that was missed. */}
               <div className="rev__big">
@@ -182,31 +205,31 @@ export default function Review() {
                 {s.weeklyTarget.target ? ` / ${s.weeklyTarget.target}` : ''}
               </div>
               <div className="rev__row-meta">{s.weeklyTarget.say || s.weeklyTarget.state}</div>
-            </div>
+            </Lit>
           ) : (
-            <div className="card rev__unread">No weekly target reading.</div>
+            <Lit tone="statement" className="rev__unread">No weekly target reading.</Lit>
           )}
           <WeeklyTargetSetter onSet={() => refresh()} />
 
-          <h2 className="rev__h">People in the diary</h2>
+          <LitLabel as="h2" className="rev__h">People in the diary</LitLabel>
           {s.people.known === false ? (
-            <div className="card rev__unread">I couldn&rsquo;t read this — {s.people.why}.</div>
+            <Lit tone="statement" className="rev__unread">I couldn&rsquo;t read this — {s.people.why}.</Lit>
           ) : s.people.items.length === 0 ? (
-            <div className="card rev__calm">Nobody matched.</div>
+            <Lit tone="statement" className="rev__calm">Nobody matched.</Lit>
           ) : (
             s.people.items.map((p) => (
-              <div className="card rev__row" key={p.id}>
+              <Lit tone="row" className="rev__row" key={p.id}>
                 <span className="rev__row-title">{p.name}</span>
                 <span className="rev__row-meta">{p.meeting}</span>
-              </div>
+              </Lit>
             ))
           )}
         </>
       )}
 
       {/* ── This device ───────────────────────────────────────────────────── */}
-      <h2 className="rev__h">This device</h2>
-      <div className="card rev__storage">
+      <LitLabel as="h2" className="rev__h">This device</LitLabel>
+      <Lit tone="statement" className="rev__storage">
         <p className="rev__note">
           This app keeps a small working set in its own browser storage, on this device only, so
           it still works with no connection. <strong>It is not encrypted</strong>, and the browser
@@ -240,7 +263,7 @@ export default function Review() {
           and indexes those, and this app syncs only the derived working set above.
           Nothing is sent in the background &mdash; the queue goes when this app is open.
         </p>
-      </div>
+      </Lit>
     </section>
   );
 }
@@ -310,8 +333,8 @@ function WeeklyTargetSetter({ onSet }) {
 
   const { loading, error, notHere, data } = state;
   if (loading) return null;
-  if (notHere) return <div className="card rev__calm">Setting the weekly target isn&rsquo;t available on this screen.</div>;
-  if (error) return <div className="card rev__unread">Couldn&rsquo;t check the weekly target &mdash; {error}.</div>;
+  if (notHere) return <Lit tone="statement" className="rev__calm">Setting the weekly target isn&rsquo;t available on this screen.</Lit>;
+  if (error) return <Lit tone="statement" className="rev__unread">Couldn&rsquo;t check the weekly target &mdash; {error}.</Lit>;
   if (!data) return null;
 
   const isSet = data.target != null;
@@ -328,7 +351,7 @@ function WeeklyTargetSetter({ onSet }) {
   const suggestion = data.suggestion;
 
   return (
-    <form className="card rev__target" onSubmit={submit}>
+    <Lit as="form" className="rev__target" onSubmit={submit}>
       <div className="rev__row-title">
         {isSet ? 'Change this week’s target' : 'No target set for this week'}
       </div>
@@ -371,6 +394,6 @@ function WeeklyTargetSetter({ onSet }) {
         )}
       </div>
       {refusal && <p className="err rev__note">Not set &mdash; {refusal}</p>}
-    </form>
+    </Lit>
   );
 }
