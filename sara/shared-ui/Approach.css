@@ -529,6 +529,24 @@
   top: 17%;
   max-height: 46%;
   overflow: hidden;
+
+  /* ⚠⚠ TOP-ANCHORED, NEVER CENTRED. `AttentionSurface.css` makes this a flex
+     column with `justify-content: center`, which is right when the content
+     fits and catastrophic when it does not: a CENTRED column that overflows
+     spills EQUALLY AT BOTH ENDS, and `overflow: hidden` then clips both.
+     Photographed on the desktop window, 14 Sep 2026 — "Team Standup just
+     finished." sliced through the middle of its own letters, and the utterance
+     row cut off at the bottom.
+
+     Two things make that worse than a layout wobble. The line it cut is HER
+     OPENING SENTENCE, which is the product. And the row it cut off the bottom
+     ends in "Show me everything" — the escape hatch MANIFESTATION.md calls
+     "always last and never dropped", because it is the only way off a surface
+     with no menu. Silently hiding it is the menu-less surface losing its way
+     back.
+
+     Anchored to the top, an overflow can only ever cost the TAIL. */
+  justify-content: flex-start;
 }
 
 /* ── Less shouty, more room ─────────────────────────────────────────────────
@@ -540,6 +558,21 @@
   top: 15%;
   max-height: 40%;
   padding: clamp(10px, 1.4cqw, 21px) clamp(11px, 1.6cqw, 24px);
+}
+
+/* ⚠ A TRANSITION MAKES THE CENTREPIECE HOLD TWO THINGS, so the cap tuned for
+   one is wrong for it: a second headline, a second sub-line and two more
+   buttons is roughly double the content. The cap's purpose stands — she must
+   not grow down into the facts — so it is RAISED for the state that genuinely
+   needs the room rather than removed, and the band below it starts at 55%.
+   `top` comes up with it so the extra height is taken from the empty upper
+   third rather than from the corridor.
+
+   ⚠ This is the one state where the centrepiece legitimately says two things,
+   and it is not rare: it happens after every meeting. */
+.surface--approach .surface__say--stacked {
+  top: 9%;
+  max-height: 52%;
 }
 .surface--approach .surface__saylead { font-size: clamp(19px, 2.9cqw, 36px); }
 .surface--approach .surface__saysub { font-size: clamp(12px, 1.5cqw, 18px); margin-top: 6px; }

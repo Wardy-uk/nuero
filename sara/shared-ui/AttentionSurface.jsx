@@ -416,7 +416,12 @@ export default function AttentionSurface({
 
         {beforeSay}
 
-        <div className="surface__say">
+        {/* ⚠ `--stacked` WHEN THE TRANSITION IS ALSO HERE. The cap below was
+            sized for ONE sentence and its buttons; a transition adds a second
+            headline, a second sub-line and two more buttons, which is roughly
+            double. See Approach.css — this class is what stops that state
+            overflowing a box that cannot grow. */}
+        <div className={`surface__say${transitionShown ? ' surface__say--stacked' : ''}`}>
           {/* What the last "that's done" did. Tap to clear — it stays until read,
               because a note that fades on its own is one he may never see. */}
           {outcome && !sayOverride && (
