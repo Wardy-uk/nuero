@@ -397,6 +397,58 @@ function isComplianceKpi(name) {
 }
 
 /**
+ * Reading order for the compliance table, Nick's call (14 Sep 2026):
+ * Customer Care > Production > Tier 2 > Tier 3 > Development.
+ *
+ * It replaces an alphabetical sort, which is an ordering nobody asked for and
+ * which put Development — the queue furthest from Nick's team — second. This is
+ * the ESCALATION PATH: a ticket arrives in Customer Care and moves outward, so
+ * reading down the table follows the ticket.
+ *
+ * The two cross-queue KPIs lead, because they are the only ones that describe
+ * the whole desk and — since 5 Sep 2026 — the only two the pipeline still
+ * writes every day. A queue this list does not know sorts to the END rather
+ * than vanishing: a KPI added in NOVA must appear here unannounced rather than
+ * be silently dropped from a compliance report.
+ */
+const QUEUE_ORDER = [
+  'Open Queue',
+  'Resolved Today',
+  'Customer Care',
+  'Production',
+  'Tier 2',
+  'Tier 3',
+  'Development',
+];
+
+/** The bracketed queue in a KPI name, or null when it carries none. */
+function queueOf(name) {
+  const m = /\(([^)]+)\)\s*$/.exec(name || '');
+  return m ? m[1].trim() : null;
+}
+
+/**
+ * Sort key for one compliance KPI: metric block first (FRT above Resolution,
+ * as the table has always read), then the queue order above.
+ *
+ * PURE, so the ordering pins without a NOVA call.
+ */
+function complianceSortKey(name) {
+  const metric = /^FRT/i.test(name || '') ? 0 : 1;
+  const q = queueOf(name);
+  const i = QUEUE_ORDER.indexOf(q);
+  return [metric, i === -1 ? QUEUE_ORDER.length : i, name || ''];
+}
+
+function byComplianceOrder(a, b) {
+  const ka = complianceSortKey(a);
+  const kb = complianceSortKey(b);
+  if (ka[0] !== kb[0]) return ka[0] - kb[0];
+  if (ka[1] !== kb[1]) return ka[1] - kb[1];
+  return ka[2].localeCompare(kb[2]);
+}
+
+/**
  * RAG → bucket.
  *
  * `jira_kpi_daily.rag` is **numeric**: 1 green, 2 amber, 3 red. Verified
@@ -890,7 +942,8 @@ function bullet(items, fn) {
 }
 
 function complianceTable(trend) {
-  const rows = trend.filter(t => isComplianceKpi(t.kpi));
+  const rows = trend.filter(t => isComplianceKpi(t.kpi))
+    .sort((a, b) => byComplianceOrder(a.kpi, b.kpi));
   if (!rows.length) return '_No compliance KPIs in the trend window._';
   const header = '| KPI | This week | Last week | Δ | vs 95% |\n|---|---|---|---|---|';
   const body = rows.map(t => {
@@ -1824,6 +1877,7 @@ module.exports = {
   markSent, recordExternalSend, sentRecord, sentSummary, isLocked, reopen,
   getManual, setManual, manualBlockers, emptyManual, carryForward,
   weekCommencing, previousWeek, buildTrend, consecutiveBelowTarget, ragBucket,
+  QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder,
   toEmailHtml, markdownToEmailHtml,
   COMPLIANCE_TARGET, SLIDE_WEEKS, UNKNOWN_REASON_ESCALATE_SHARE, SNAPSHOT_STALE_DAYS,
 };

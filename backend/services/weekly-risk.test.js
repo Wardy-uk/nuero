@@ -971,3 +971,72 @@ test('queueSend dedupes on the week — a second press returns the SAME action',
 
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
 });
+
+// ── Compliance table ordering (Nick, 14 Sep 2026) ────────────────────────────
+// The table used to sort alphabetically, which is an order nobody chose and
+// which read Customer Care > Development > Open Queue > Production > Resolved
+// Today > Tier 2 > Tier 3 — Development, the queue furthest from Nick's team,
+// second. His order follows the escalation path a ticket actually takes.
+
+test('compliance rows follow the escalation path, cross-queue KPIs first', () => {
+  const names = [
+    'FRT Compliance % (Tier 3)',
+    'FRT Compliance % (Development)',
+    'FRT Compliance % (Customer Care)',
+    'FRT Compliance % (Open Queue)',
+    'FRT Compliance % (Production)',
+    'FRT Compliance % (Resolved Today)',
+    'FRT Compliance % (Tier 2)',
+  ];
+  const sorted = [...names].sort(weeklyRisk.byComplianceOrder).map(weeklyRisk.queueOf);
+  assert.deepStrictEqual(sorted, [
+    'Open Queue', 'Resolved Today', 'Customer Care', 'Production', 'Tier 2', 'Tier 3', 'Development',
+  ]);
+});
+
+test('FRT stays above Resolution — the metric block is the outer sort', () => {
+  const sorted = [
+    'Resolution Compliance % (Customer Care)',
+    'FRT Compliance % (Development)',
+    'Resolution Compliance % (Open Queue)',
+    'FRT Compliance % (Open Queue)',
+  ].sort(weeklyRisk.byComplianceOrder);
+  assert.deepStrictEqual(sorted, [
+    'FRT Compliance % (Open Queue)',
+    'FRT Compliance % (Development)',
+    'Resolution Compliance % (Open Queue)',
+    'Resolution Compliance % (Customer Care)',
+  ]);
+});
+
+test('a queue the order does not know sorts LAST, never out of the report', () => {
+  // The failure this guards is silent: a KPI added in NOVA that this list has
+  // never heard of must arrive on the page unannounced rather than be dropped
+  // from a compliance report Chris reads.
+  const names = ['FRT Compliance % (Tier 4)', 'FRT Compliance % (Open Queue)', 'FRT Compliance % (Tier 2)'];
+  const sorted = [...names].sort(weeklyRisk.byComplianceOrder);
+  assert.strictEqual(sorted.length, 3, 'nothing is dropped');
+  assert.strictEqual(weeklyRisk.queueOf(sorted[2]), 'Tier 4', 'the unknown queue is last');
+});
+
+test('a KPI carrying no bracketed queue is still ordered, not crashed on', () => {
+  assert.strictEqual(weeklyRisk.queueOf('SLA Breached'), null);
+  const sorted = ['Resolution Compliance %', 'FRT Compliance % (Open Queue)'].sort(weeklyRisk.byComplianceOrder);
+  assert.strictEqual(sorted[0], 'FRT Compliance % (Open Queue)');
+});
+
+test('the rendered table carries the rows in Nicks order', () => {
+  const rows = [];
+  for (const q of ['Tier 3', 'Development', 'Customer Care', 'Open Queue', 'Production', 'Tier 2']) {
+    for (const p of ['2026-09-01', '2026-09-08']) {
+      rows.push({ period: p, KPI: `FRT Compliance % (${q})`, avgValue: 80, samples: 5 });
+    }
+  }
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({ trend: { rows } })));
+  const order = ['Open Queue', 'Customer Care', 'Production', 'Tier 2', 'Tier 3', 'Development']
+    .map(q => md.indexOf(`| FRT Compliance % (${q}) |`));
+  assert.ok(order.every(i => i >= 0), 'every row rendered');
+  for (let i = 1; i < order.length; i += 1) {
+    assert.ok(order[i] > order[i - 1], `row ${i} is below row ${i - 1}`);
+  }
+});
