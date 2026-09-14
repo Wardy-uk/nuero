@@ -25,13 +25,15 @@ import { useEffect, useState } from 'react';
 // already has a live read and mounts its own field from it.
 const SHELL_POLL_MS = 150_000;
 
-/** The one definition of "pressing", shared with AttentionSurface. */
-export function isPressing(primary) {
-  return Boolean(
-    primary && primary.kind === 'item'
-    && (primary.urgency === 'critical' || primary.urgency === 'high')
-  );
-}
+/**
+ * The one definition of "pressing", shared with AttentionSurface — and now with
+ * the BACKEND, which composes her colour onto the payload for the widget.
+ *
+ * ⚠ Re-exported rather than moved-and-left-behind: this file imports React, so
+ * the server cannot read it, and every existing importer here keeps working.
+ */
+export { isPressing } from './fieldDrive.mjs';
+import { isPressing } from './fieldDrive.mjs';
 
 /**
  * @param {function} fetchAttention  returns the parsed /api/attention payload.

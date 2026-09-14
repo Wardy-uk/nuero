@@ -1385,6 +1385,53 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     framed = null;
   }
 
+  // ── Her colour, decided ONCE ─────────────────────────────────────
+  //
+  // ⚠⚠ THE LOCK-SCREEN WIDGET TAKES NO COLOUR AT ALL. It draws the same nebulous
+  // field every other surface does and hard-codes it blue, so a day with a
+  // breaching escalation and a quiet Sunday are the SAME PICTURE on the one
+  // surface Nick sees without deciding to look at anything. The field is her
+  // state channel everywhere else; on the widget it was decoration.
+  //
+  // ⚠ Composed HERE rather than ported into the widget, because the widget
+  // cannot import anything — it reaches its runtime by being pasted as text —
+  // so a local copy of the drive would be a THIRD implementation, and this file
+  // already records what happened when there were two ladders two feet apart.
+  // The server imports the WEB'S OWN module, so there is no new copy at all.
+  //
+  // ⚠ The inputs are exactly `useFieldDrive`'s, deliberately — including
+  // `degraded` meaning the pool could not be read, and `pressing` meaning the
+  // primary is an ITEM of critical or high urgency. A second opinion about what
+  // makes her press is how the field and the cards came to disagree before.
+  let field = null;
+  try {
+    const fd = await import('../../sara/shared-ui/fieldDrive.mjs');
+    const state = {
+      activity: context && context.activity,
+      confidenceLevel: (context && context.confidence && context.confidence.level) || 'low',
+      quiet: gated.quiet === true,
+      degraded: gated.poolAvailable === false,
+      pressing: fd.isPressing
+        ? fd.isPressing(gated.primary)
+        : Boolean(gated.primary && gated.primary.kind === 'item'
+                  && (gated.primary.urgency === 'critical' || gated.primary.urgency === 'high')),
+    };
+    const d = fd.drive(state);
+    field = {
+      rgb: fd.rgbText(fd.colour(d.intensity, d.unresolved)),
+      intensity: d.intensity,
+      // ⚠ Carried separately, never inferred from the colour: grey is NOT a
+      // point on the blue→orange→red ramp, and a consumer that guessed
+      // "unresolved" from a dull rgb would call a quiet afternoon an outage.
+      unresolved: d.unresolved === true,
+    };
+  } catch (e) {
+    // ⚠ Never allowed to fail the feed, and null means "render it the way you
+    // did before this existed" — the same contract `surface` has.
+    console.warn('[Attention] field drive failed:', e.message);
+    field = null;
+  }
+
   return {
     generatedAt: now.toISOString(),
     context,
@@ -1413,6 +1460,9 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     // ⚠ ADDITIVE. Every field this payload returned before is unchanged, so the
     // Scriptable widget — which reads `say`/`speech`/`tab` and nothing else —
     // keeps working untouched.
+    // Her colour, resolved once above — see the note there. Additive and
+    // nullable, so every existing consumer is untouched.
+    field,
     surface: framed ? framed.surface : null,
     dashboard: framed ? framed.dashboard : null,
     // Non-null when the DASHBOARD moved because he asked, rather than because

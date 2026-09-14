@@ -148,10 +148,21 @@ test('⚠ ONE definition of "pressing", shared by the surface and the shell', ()
   const surface = read(SURFACE);
   assert.match(surface, /import \{ isPressing \}/,
     'AttentionSurface restates the pressing rule instead of importing it');
+  // ⚠ IT MOVED, and the reason is worth keeping: the BACKEND now needs this
+  // rule too, to compose her colour onto the payload for the lock-screen widget
+  // (which cannot import anything at all). `useFieldDrive.js` imports React, so
+  // the server could not read it — and the alternative was a second definition.
+  // It lives in the pure module now and is re-exported here, so every importer
+  // on this side is unchanged and there is still exactly one.
   const hook = read(path.join(SHARED, 'useFieldDrive.js'));
-  assert.match(hook, /export function isPressing/);
-  assert.match(hook, /critical/);
-  assert.match(hook, /high/);
+  assert.match(hook, /export \{ isPressing \} from '\.\/fieldDrive\.mjs'/);
+  assert.doesNotMatch(hook, /export function isPressing/,
+    'a second definition of pressing is back beside the re-export');
+
+  const pure = read(path.join(SHARED, 'fieldDrive.mjs'));
+  assert.match(pure, /export function isPressing/);
+  assert.match(pure, /critical/);
+  assert.match(pure, /high/);
 });
 
 test('⚠ dimming the field must not DELETE its edges', () => {

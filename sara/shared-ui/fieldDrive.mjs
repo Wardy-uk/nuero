@@ -111,6 +111,22 @@ export function nodeColour(rgb) {
 
 export const rgbText = (rgb) => rgb.map((c) => Math.round(c)).join(',');
 
+/**
+ * The ONE definition of "pressing".
+ *
+ * ⚠ It lives HERE, in the pure module, rather than in `useFieldDrive` — which
+ * imports React and so cannot be read by the backend. When the server began
+ * composing her colour onto the payload it needed this rule, and the choice was
+ * between importing it and writing a second copy. This file's own header
+ * records what a second ladder costs.
+ */
+export function isPressing(primary) {
+  return Boolean(
+    primary && primary.kind === 'item'
+    && (primary.urgency === 'critical' || primary.urgency === 'high')
+  );
+}
+
 // ── The one function a SCREEN asks ─────────────────────────────────────
 //
 // ⚠⚠ IT EXISTS BECAUSE THE CARDS AND THE FIELD DISAGREED, ON THE SAME SCREEN.

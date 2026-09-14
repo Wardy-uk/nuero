@@ -740,6 +740,9 @@ function field(width, height, drive) {
 
     const depth = Math.max(0, Math.min(1, drive.depth));
     const dim = Math.max(0, Math.min(1, drive.dim));
+    // Her colour, or the old fixed blue where the brain did not say.
+    const edgeHex = drive.edge || '#78aaeb';
+    const nodeHex = drive.node || '#96bef0';
 
     // Seeds land freely rather than on a grid: an even scatter reads as
     // wallpaper, the lumpy one reads as a mind.
@@ -771,7 +774,7 @@ function field(width, height, drive) {
           const d2 = dx * dx + dy * dy;
           if (d2 >= EDGE_DIST_SQ) continue;
           const near = 1 - d2 / EDGE_DIST_SQ;
-          dc.setStrokeColor(new Color('#78aaeb', EDGE_ALPHA * near * depth * dim));
+          dc.setStrokeColor(new Color(edgeHex, EDGE_ALPHA * near * depth * dim));
           const p = new Path();
           p.move(new Point(nodes[a].x, nodes[a].y));
           p.addLine(new Point(nodes[b].x, nodes[b].y));
@@ -782,7 +785,7 @@ function field(width, height, drive) {
     }
 
     for (const n of nodes) {
-      dc.setFillColor(new Color('#96bef0', (NODE_BASE + NODE_GAIN * depth) * dim));
+      dc.setFillColor(new Color(nodeHex, (NODE_BASE + NODE_GAIN * depth) * dim));
       dc.fillEllipse(new Rect(n.x - 1, n.y - 1, 2, 2));
     }
     return dc.getImage();
@@ -792,20 +795,72 @@ function field(width, height, drive) {
 }
 
 /**
+ * "r, g, b" to "#rrggbb", because Scriptable's Color takes a hex string.
+ *
+ * No backslashes anywhere, like the rest of this file: it reaches its runtime by
+ * being pasted as text, and a backslash does not survive that trip.
+ */
+function lighten(text) {
+  const parts = String(text || '').split(',').map(function (p) { return Number(p.trim()); });
+  if (parts.length !== 3) return text;
+  return parts.map(function (n) { return Math.min(255, n + 30.6); }).join(',');
+}
+
+function hexFromRgbText(text, fallback) {
+  try {
+    const parts = String(text || '').split(',').map(function (p) { return Number(p.trim()); });
+    if (parts.length !== 3) return fallback;
+    for (const n of parts) { if (!isFinite(n)) return fallback; }
+    return '#' + parts.map(function (n) {
+      const v = Math.max(0, Math.min(255, Math.round(n)));
+      return (v < 16 ? '0' : '') + v.toString(16);
+    }).join('');
+  } catch (e) {
+    return fallback;
+  }
+}
+
+/**
  * How the read becomes a picture. Lifted from Field.jsx's `drive()` rather than
  * re-invented, so the phone and the widget cannot disagree about what a given
  * state looks like.
+ *
+ * WARNING - THE COLOUR IS THE BRAIN'S, NOT THIS FILE'S. Every other surface
+ * paints the field on a blue-orange-red ramp driven by the read; this widget
+ * hard-coded one blue, so a day with a breaching escalation and a quiet Sunday
+ * were the SAME PICTURE on the one surface Nick sees without deciding to look
+ * at anything. The field is her state channel everywhere else and was
+ * decoration here.
+ *
+ * The ramp is NOT ported into this file. It cannot import anything, so a local
+ * copy would be a third implementation of a rule that has already been wrong
+ * once when there were two. The server composes `field` onto the payload from
+ * the web's own module and this reads it.
+ *
+ * An older server sends no `field`, and the old fixed blue is what that renders
+ * as - unchanged, rather than blank.
  */
 function fieldDrive(d, res) {
-  if (res.error || d.poolAvailable === false) return { depth: 0, dim: 0.85 };
+  const f = d && d.field ? d.field : null;
+  // Nodes sit slightly lighter than their edges, matching every other surface.
+  const edge = f ? hexFromRgbText(f.rgb, null) : null;
+  const node = f ? hexFromRgbText(lighten(f.rgb), null) : null;
+  const tint = edge ? { edge: edge, node: node || edge } : {};
+
+  if (res.error || d.poolAvailable === false) {
+    // She could not see: grey, and never a point on the ramp. A dulled blue
+    // would read as a calm afternoon.
+    return Object.assign({ depth: 0, dim: 0.85 }, tint,
+      { edge: '#9aa0aa', node: '#b4b9c2' });
+  }
   const ctx = d.context || {};
   // 0.7, not Field.jsx's 0.45 — see the alpha note above. The DEPTH is
   // unchanged, so a quiet read still settles less than a confident one; only
   // its visibility floor moved.
-  if (d.quiet === true) return { depth: 0.35, dim: 0.7 };
+  if (d.quiet === true) return Object.assign({ depth: 0.35, dim: 0.7 }, tint);
   const level = ctx.confidence ? ctx.confidence.level : null;
   const depth = level === 'high' ? 1 : level === 'moderate' ? 0.7 : 0.34;
-  return { depth, dim: 1 };
+  return Object.assign({ depth: depth, dim: 1 }, tint);
 }
 
 /**
