@@ -1,0 +1,71 @@
+/* Refresh — in the bottom nav beside Exit, and built the same way.
+   The BUTTON is a plain `.navbtn` (the phone's own class, not a copy of it), so
+   it cannot drift from the tabs it sits beside; only the panel is this file's. */
+
+.refreshnav {
+  /* Matches a tab's share of the row, so the bar stays evenly divided. */
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  /* Anchors the panel above the bar. */
+  position: relative;
+}
+
+.refreshnav > .navbtn { width: 100%; }
+
+/* Above the bar, not inside it — a tab-width slot cannot hold a build label and
+   two actions, and shrinking it to fit is how the label stops being readable
+   from a metre away, which is the distance these screens are read from. */
+.refreshnav__panel {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0.75rem;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #182029;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+.refreshnav__build {
+  font-size: 0.82rem;
+  color: #e6edf3;
+  font-variant-numeric: tabular-nums;
+}
+
+.refreshnav__acts { display: flex; gap: 0.4rem; }
+
+.refreshnav__act {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #b7c2d0;
+  cursor: pointer;
+}
+.refreshnav__act[disabled] { opacity: 0.6; cursor: default; }
+
+/* Unlike Exit, the ACTION is the wider one: reloading costs nothing but a
+   flicker, so the easy answer here is the one he came to press. */
+.refreshnav__act--yes {
+  flex: 1;
+  border-color: rgba(122, 162, 247, 0.5);
+  color: #7aa2f7;
+}
+.refreshnav__act--yes:hover { background: rgba(122, 162, 247, 0.14); }
+
+/* Matches the tabs at the same breakpoint — the shared shell stops stretching
+   `.navbtn` on a wide window, and without this the chrome controls swell to
+   fill the gap. */
+@media (min-width: 900px) {
+  .refreshnav {
+    flex: 0 1 8rem;
+  }
+}

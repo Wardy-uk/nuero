@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -6,7 +7,31 @@ import { VitePWA } from 'vite-plugin-pwa';
 // to the SARA backend. Prod: `vite build` emits dist/, which the backend serves.
 const BACKEND = process.env.SARA_BACKEND_URL || 'http://localhost:3005';
 
+// Which build is this screen running? (14 Sep 2026)
+//
+// The phone has answered this since #110 and the kiosks never could — which is
+// the surface where it matters MORE, because a tablet is opened once and left
+// for days, so "is this the new deploy?" is a question about a page that may
+// have been loaded last week. `RefreshButton` renders it, and it is what turns
+// a press from a flicker into something with a before and an after.
+//
+// Derived per build, never a constant: the same label on every build cannot
+// answer the question it exists for (the `.env.production` mistake, one app
+// along). Built on the Pi, so the git SHA is the useful value.
+function resolveBuildLabel() {
+  if (process.env.VITE_BUILD_LABEL) return process.env.VITE_BUILD_LABEL;
+  if (process.env.COMMIT_REF) return process.env.COMMIT_REF.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'dev';
+  }
+}
+
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_BUILD_LABEL': JSON.stringify(resolveBuildLabel()),
+  },
   plugins: [
     react(),
     // PWA: makes SARA installable on iPad / iPhone (and any device). autoUpdate keeps a

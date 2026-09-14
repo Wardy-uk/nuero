@@ -15,6 +15,7 @@ import { useFieldDrive } from '../../shared-ui/useFieldDrive';
 import { surfaceRgb } from '../../shared-ui/fieldDrive.mjs';
 import '../../shared-ui/Lit.css';
 import ExitButton from './components/ExitButton';
+import RefreshButton from './components/RefreshButton';
 import LockScreen from './components/LockScreen';
 import ClockScreen from './components/ClockScreen';
 import ConnectionStatus from './components/ConnectionStatus';
@@ -195,6 +196,11 @@ function AppShell() {
             <span className="navbtn__icon" aria-hidden="true">⋯</span>
             <span className="navbtn__label">More</span>
           </button>
+          {/* ⚠ On the KIOSK chrome, not in the shared tab registry, and that is
+              the point: these are the screens nobody ever reloads, so they are
+              the only ones that can get stuck on a build. The phone reloads
+              every time it is opened. */}
+          <RefreshButton buildLabel={import.meta.env.VITE_BUILD_LABEL} />
           {/* ⚠ In the nav rather than the top bar (Nick, 31 Aug 2026), and LAST —
               it is the only way out of a keyboardless kiosk, so it must be
               findable, but it is not somewhere to go. Its two-step confirm is
