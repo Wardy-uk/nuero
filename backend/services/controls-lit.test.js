@@ -134,7 +134,7 @@ test('⚠ the honesty that was already here is still here', () => {
 
 test('⚠ iOS makes the same four distinctions', () => {
   // ⚠ SKIPPED, never failed, where the sibling checkout is absent.
-  const ios = path.resolve(ROOT, '..', 'nuero-ios');
+  const ios = require('./ios-checkout').findIOSCheckout();
   if (!fs.existsSync(ios)) return;
 
   const src = read(ios, 'Sara', 'SaraControlsView.swift');

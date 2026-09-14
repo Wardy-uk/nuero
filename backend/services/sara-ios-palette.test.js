@@ -34,7 +34,10 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const IOS = path.resolve(__dirname, '..', '..', '..', 'nuero-ios');
+// ⚠ RESOLVED, not hardcoded — the checkout is `neuro-ios` while the remote
+// is `nuero-ios`, and this file found neither. See ios-checkout.js.
+const { findIOSCheckout } = require('./ios-checkout');
+const IOS = findIOSCheckout();
 const present = () => fs.existsSync(IOS);
 
 /** Every Swift file under the SARA app, its widgets and the shared kit. */

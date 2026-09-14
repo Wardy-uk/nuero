@@ -118,7 +118,7 @@ test('⚠ iOS makes the same two distinctions', () => {
   // ⚠ SKIPPED, never failed, where the sibling checkout is absent — a test that
   // fails on a machine that simply does not have the other repo is one that gets
   // deleted, taking the drift check with it.
-  const ios = path.resolve(__dirname, '..', '..', '..', 'nuero-ios',
+  const ios = path.resolve(require('./ios-checkout').findIOSCheckout() || '',
                            'Sara', 'SaraPrepView.swift');
   if (!fs.existsSync(ios)) return;
   const swift = fs.readFileSync(ios, 'utf8');
