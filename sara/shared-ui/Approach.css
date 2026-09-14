@@ -714,11 +714,26 @@
  * ⚠ The titles are CLAMPED so the row meets its ceiling by wrapping less rather
  * than by being sliced: `overflow: hidden` alone would cut the bottom row of
  * cards through the middle of their letters. Three lines is a name you can
- * read; the live offender is a 170-character title that wanted eight. */
-.approach--quiet .approach__row {
-  max-height: 23%;
-  overflow: hidden;
-}
+ * read; the live offender is a 170-character title that wanted eight.
+ *
+ * ⚠⚠ AND THAT IS EXACTLY WHAT HAPPENED, because the clamp and the cap were TWO
+ * NUMBERS THAT HAD TO AGREE AND DID NOT. A fully clamped card is three title
+ * lines at 1.2 plus two sub lines at 1.4 plus its own padding — taller than the
+ * 23% the row was capped at — so `overflow: hidden` sliced the bottoms off the
+ * cards on the Fire tablet (photographed 14 Sep 2026: "the bottom of the cards
+ * are missing"). The comment above predicted the failure and the number under it
+ * caused it.
+ *
+ * ⚠ SO THERE IS ONE MECHANISM NOW, NOT TWO. The clamps bound each card's height
+ * deterministically, which bounds the row — that is what stops it growing into
+ * her sentence, and it was already doing the work. A second ceiling on top could
+ * only ever be redundant (when it is loose) or destructive (when it is tight),
+ * and it was tight. If a card ever escapes, the fix belongs at the CLAMP, where
+ * the height is actually decided, rather than in a guard that hides the symptom
+ * by cutting letters in half.
+ *
+ * Pinned by `approach-row-clamp.test.js`: the clamps are now the only bound, so
+ * removing them is what must fail. */
 .approach__fact .approach__val {
   display: -webkit-box;
   -webkit-line-clamp: 3;
