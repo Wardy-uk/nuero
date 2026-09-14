@@ -88,6 +88,16 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState(null); // 'api' | 'local'
+  // ⚠ THREE-VALUED: null = we have not been told (a server older than this, or
+  // no turn yet), true = she has hands, false = she can talk and cannot record.
+  // Only an explicit false says anything on screen — unknown is never an
+  // accusation, and a banner that fires on a missing field is one nobody reads.
+  const [canAct, setCanAct] = useState(null);
+  // ⚠⚠ A TRANSPORT FAILURE IS NOT SOMETHING SHE SAID. This screen IS the
+  // conversation, so pushing "Couldn't reach the brain" into an assistant bubble
+  // put NEURO's words in her mouth and made a dead Pi indistinguishable from a
+  // reply. It is a fault row of its own now, outside the thread.
+  const [fault, setFault] = useState(null);
   const [voiceOut, setVoiceOut] = useState(isVoiceOutEnabled);
   const [listening, setListening] = useState(false);
   const [voiceErr, setVoiceErr] = useState('');
@@ -257,6 +267,7 @@ export default function Chat() {
     if (!text || busyRef.current) return;
     busyRef.current = true;
     dictatedRef.current = '';
+    setFault(null);
 
     setMessages((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
     setInput('');
@@ -273,6 +284,11 @@ export default function Chat() {
         copy[copy.length - 1] = { ...last, role: 'assistant', content: last.content + chunk };
         return copy;
       });
+    // Used when a turn produced no words at all.
+    const dropEmptyTurn = () =>
+      setMessages((m) => (m.length && m[m.length - 1].role === 'assistant' && !m[m.length - 1].content
+        ? m.slice(0, -1)
+        : m));
     const addToolToLast = (name) =>
       setMessages((m) => {
         const copy = m.slice();
@@ -284,10 +300,18 @@ export default function Chat() {
     try {
       let got = false;
       await chatStream(body, {
-        onMode: setMode,
+        onMode: (m, act) => {
+          setMode(m);
+          // Passed through as given: undefined leaves the last known answer
+          // alone rather than resetting it to "unknown" every turn.
+          if (typeof act === 'boolean') setCanAct(act);
+        },
         onChunk: (c) => { got = true; appendToLast(c); },
         onTool: (name) => { if (name) addToolToLast(name); },
-        onError: (msg) => appendToLast(got ? '' : `⚠️ ${msg}`),
+        // ⚠ A stream that failed MID-REPLY keeps what arrived — those words are
+        // really hers — and the reason goes to the fault row beside it, never
+        // appended to her sentence.
+        onError: (msg) => { setFault(msg); if (!got) dropEmptyTurn(); },
       });
     } catch {
       // Streaming unavailable — fall back to the sync endpoint.
@@ -295,6 +319,7 @@ export default function Chat() {
         const res = await apiFetch('/api/chat/sync', { method: 'POST', body: JSON.stringify(body) });
         convRef.current = res.conversationId || convRef.current;
         setMode(res.mode || null);
+        if (typeof res.canAct === 'boolean') setCanAct(res.canAct);
         setMessages((m) => {
           const copy = m.slice();
           const tools = toolNamesFrom(res);
@@ -306,11 +331,10 @@ export default function Chat() {
           return copy;
         });
       } catch (err) {
-        setMessages((m) => {
-          const copy = m.slice();
-          copy[copy.length - 1] = { role: 'assistant', content: `⚠️ Couldn’t reach the brain: ${err.message}` };
-          return copy;
-        });
+        // ⚠ The empty placeholder goes with it. Leaving a blank assistant bubble
+        // above the fault reads as her having answered with nothing.
+        dropEmptyTurn();
+        setFault(`Couldn’t reach the brain — ${err.message}`);
       }
     } finally {
       busyRef.current = false;
@@ -364,6 +388,16 @@ export default function Chat() {
         </div>
       )}
 
+      {/* ⚠ A GAP, not a fault: she is working, and one part of her job is out of
+          reach. The same sentence the standup has shown since it shipped — the
+          screen where the tools actually LIVE was the one that never said it. */}
+      {canAct === false && (
+        <div className="chat__banner">
+          Running without tools — I can talk this through but can’t create tasks or
+          book anything from here.
+        </div>
+      )}
+
       <div className="chat__thread">
         {messages.length === 0 && (
           <div className="chat__empty">Ask anything — the brain has your vault, queue and calendar in context.</div>
@@ -388,13 +422,20 @@ export default function Chat() {
         <div ref={endRef} />
       </div>
 
+      {/* ⚠ Outside the thread, in the app's fault red — NEURO failing to answer
+          is not a turn in the conversation. */}
+      {fault && <div className="chat__fault">{fault}</div>}
+
       {(voiceErr || listening || speaking) && (
         <div className={`chat__voice-note${voiceErr ? ' chat__voice-note--err' : ''}`}>
           {voiceErr || (listening ? 'Listening… tap ⏺ to send.' : 'Speaking…')}
         </div>
       )}
+      {/* ⚠ A GAP, not a fault. This browser has no speech recognition — nothing
+          is broken, a route simply does not exist here, which is the same amber
+          the banner above uses. */}
       {!SpeechRecognition && (
-        <div className="chat__voice-note chat__voice-note--err">
+        <div className="chat__voice-note chat__voice-note--gap">
           {noMicReason()}
         </div>
       )}

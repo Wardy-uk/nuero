@@ -883,7 +883,21 @@ async function streamChat(conversationId, userMessage, res, location = null) {
 
   // Send mode indicator to frontend
   if (!res.writableEnded) {
-    res.write(`data: ${JSON.stringify({ type: 'mode', mode: chatMode })}\n\n`);
+    // ⚠⚠ CAN SHE ACT? `_toolsAvailable()` has shaped the prompt on both chat
+    // paths since tools shipped and was RETURNED TO NOBODY — so the one screen
+    // where the tools actually live could not say when she has no hands, while
+    // the standup, which has fewer of them, has shown a banner all along.
+    //
+    // ⚠ It rides the SAME event as `mode` deliberately: they are two halves of
+    // one fact (a local model has no function-calling API at all), and a client
+    // that could get one without the other would render a confident "local"
+    // chip over a turn that silently could not create the task he just asked for.
+    //
+    // ⚠ THREE-VALUED. Absent means a server older than this change — UNKNOWN,
+    // which renders nothing, exactly today's behaviour. Only an explicit `false`
+    // says she cannot act, because a banner that shows whenever a field is
+    // missing is a banner nobody reads by week two.
+    res.write(`data: ${JSON.stringify({ type: 'mode', mode: chatMode, canAct: useTools })}\n\n`);
   }
 
   // Tool-enabled turn first. Tools can't stream (the loop has to see each full
@@ -978,6 +992,8 @@ async function syncChat(conversationId, userMessage, location = null) {
           message: toolResult.text,
           provider: 'anthropic',
           mode: chatMode,
+          // She ran a tool turn, so she demonstrably has hands.
+          canAct: true,
           tools: (toolResult.toolCalls || []).map(c => c.name),
         };
       }
@@ -1006,6 +1022,11 @@ async function syncChat(conversationId, userMessage, location = null) {
     message: fullResponse,
     provider: result.provider,
     mode: chatMode,
+    // ⚠ The plain path is reached BOTH because no tool provider exists AND
+    // because a tool turn threw. `useTools` is the CAPABILITY, which is what the
+    // screen is asking about — a tool loop that failed once is not the same fact
+    // as a model that can never call one, and the catch above logs that.
+    canAct: useTools,
   };
 }
 

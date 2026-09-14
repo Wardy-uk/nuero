@@ -112,7 +112,10 @@ export async function chatStream(body, { onMode, onChunk, onDone, onError, onToo
       if (!payload) continue;
       let evt;
       try { evt = JSON.parse(payload); } catch { continue; }
-      if (evt.type === 'mode') onMode?.(evt.mode);
+      // ⚠ `canAct` rides the mode event — one fact, two halves. It is passed
+      // through as given, so `undefined` (a server older than this) stays
+      // distinct from `false` (she genuinely has no tools this turn).
+      if (evt.type === 'mode') onMode?.(evt.mode, evt.canAct);
       else if (evt.type === 'text' || evt.type === 'chunk') onChunk?.(evt.content);
       else if (evt.type === 'tool') onTool?.(evt.name);
       else if (evt.type === 'done') onDone?.(evt.provider);
