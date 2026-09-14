@@ -890,3 +890,41 @@
   flex: 0 0 100%;
   margin-top: 2px;
 }
+
+/* ══ Her headline on a SHORT landscape screen ═════════════════════════════
+ *
+ * ⚠⚠ IT IS A HEIGHT PROBLEM, NOT A LENGTH ONE, which is why every attempt to
+ * fix it by shortening the words was aimed at the wrong thing. The type scales
+ * with WIDTH (`cqw`), so the desktop and the Fire tablet render nearly the same
+ * line-length — but `max-height: 40%` of an 1186px-tall desktop is ~436px and of
+ * an 800px-tall tablet is ~276px. Same words, same size, half the room.
+ *
+ * On the phone the squeeze happens to land exactly on a line boundary, so
+ * WebKit draws its ellipsis and the result is clean: "NT-24162 — Survey West
+ * Hants Responses not showi…", with the card below carrying the whole thing. On
+ * the tablet it lands MID-LINE, so the last partial line is drawn and then
+ * clipped — a headline cut horizontally through its own letters.
+ *
+ * So the fix is to make the cut land on a line boundary there too. Two lines is
+ * what fits on a short landscape screen; the ellipsis is then WebKit's, and the
+ * corridor card underneath completes the sentence exactly as it does on the
+ * phone.
+ *
+ * ⚠ NOT A CONTENT CHANGE, deliberately. Nick, 14 Sep 2026, looking at the
+ * desktop: "see, on the PC it's useful lol." He is right — the key AND what is
+ * actually wrong, in two clean lines, is the most useful thing on that screen.
+ * The proposal it replaced was to compose a bounded sentence instead ("the
+ * escalation for NT-24162 has gone 67 days without a reply"), which would have
+ * said LESS on the one surface where the current wording works best. A fix
+ * aimed at the worst case that degrades the best case is the wrong fix.
+ *
+ * ⚠ BOTH NUMBERS MEAN SOMETHING. 900px is "a short landscape screen" — the Fire
+ * is 800 and the laptop 1186, so it separates them on the thing that actually
+ * differs. `min-aspect-ratio: 1/1` keeps the phone out of it: portrait already
+ * behaves correctly and has its own budget. */
+@media (max-height: 900px) and (min-aspect-ratio: 1/1) {
+  .surface--approach .surface__saylead {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+}
