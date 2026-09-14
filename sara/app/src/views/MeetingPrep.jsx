@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
+import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import './MeetingPrep.css';
 
 // Meeting prep / calendar = glance at what's next and its prep before you walk in.
@@ -40,13 +41,25 @@ export default function MeetingPrep() {
       <h1 className="view__title">Prep</h1>
       <p className="view__lede">What’s next, and what you need for it.</p>
 
-      {loading && <div className="card">Checking your calendar…</div>}
-      {error && <div className="card err">Couldn’t reach the brain: {error}</div>}
+      {loading && <Lit tone="statement">Checking your calendar…</Lit>}
+      {/* The one FAULT here. An empty diary and an unread one are both
+          statements; only a dead backend gets the alarm. */}
+      {error && <Lit className="mp__fault err">Couldn’t reach the brain: {error}</Lit>}
 
-      {data && !meeting && <div className="card mp__none">{data.message || 'No meetings coming up. 🎉'}</div>}
+      {/* ⚠ NO CELEBRATION. `sara-voice` rejects the "celebrate this small win"
+          register outright, and CLAUDE.md records the two 🎉 empty states in
+          this app being removed — this was a third, and it survived because it
+          is a FALLBACK: it only renders when the server sent no message, so it
+          is absent from the common case and from anyone reading the payload.
+          An empty diary is a fact, said plainly. */}
+      {data && !meeting && (
+        <Lit tone="statement" className="mp__none">{data.message || 'Nothing else in the diary.'}</Lit>
+      )}
 
+      {/* The one thing this screen is about — the meeting he is walking into.
+          MANIFESTATION's named exception: a screen with ONE answer. */}
       {meeting && (
-        <div className="card mp__meeting">
+        <Lit tone="lead" className="mp__meeting">
           <div className="mp__when">
             {meeting.startFormatted}{meeting.endFormatted ? `–${meeting.endFormatted}` : ''} · {fromNow(meeting.minutesAway)}
           </div>
@@ -55,7 +68,7 @@ export default function MeetingPrep() {
 
           {prep?.attendees?.length > 0 && (
             <div className="mp__block">
-              <div className="mp__h">Attendees</div>
+              <LitLabel className="mp__h">Attendees</LitLabel>
               {/* ⚠ Leave, from People HR — not Graph's accepted/declined, which
                   is usually weeks stale. Three facts kept apart: booked off,
                   checked and nothing booked (silent), and COULD NOT CHECK. The
@@ -145,7 +158,7 @@ export default function MeetingPrep() {
 
           {prep?.suggestedTopics?.length > 0 && (
             <div className="mp__block">
-              <div className="mp__h">Topics</div>
+              <LitLabel className="mp__h">Topics</LitLabel>
               <ul className="mp__list">{prep.suggestedTopics.map((t, i) => <li key={i}>{t}</li>)}</ul>
             </div>
           )}
@@ -156,7 +169,7 @@ export default function MeetingPrep() {
               walks in believing everything is clear. */}
           {prep?.gaps?.length > 0 && (
             <div className="mp__block mp__block--gaps">
-              <div className="mp__h">Couldn&rsquo;t check</div>
+              <LitLabel className="mp__h">Couldn&rsquo;t check</LitLabel>
               <ul className="mp__list">
                 {prep.gaps.map((g, i) => <li key={i}>{g.input}{g.why ? ` — ${g.why}` : ''}</li>)}
               </ul>
@@ -166,30 +179,30 @@ export default function MeetingPrep() {
 
           {prep?.checklist?.length > 0 && (
             <div className="mp__block">
-              <div className="mp__h">Checklist</div>
+              <LitLabel className="mp__h">Checklist</LitLabel>
               <ul className="mp__list">{prep.checklist.map((t, i) => <li key={i}>{t}</li>)}</ul>
             </div>
           )}
 
           {prep?.recentDecisions?.length > 0 && (
             <div className="mp__block">
-              <div className="mp__h">Recent decisions</div>
+              <LitLabel className="mp__h">Recent decisions</LitLabel>
               {prep.recentDecisions.map((d, i) => (
                 <div className="mp__decision" key={i}>{d.text}</div>
               ))}
             </div>
           )}
-        </div>
+        </Lit>
       )}
 
       {data?.laterToday?.length > 0 && (
         <div className="mp__later">
-          <div className="mp__h">Later today</div>
+          <LitLabel className="mp__h">Later today</LitLabel>
           {data.laterToday.map((m, i) => (
-            <div className="card mp__later-item" key={i}>
+            <Lit tone="row" className="mp__later-item" key={i}>
               <span className="mp__later-time">{new Date(m.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               <span className="mp__later-subject">{m.subject}</span>
-            </div>
+            </Lit>
           ))}
         </div>
       )}
