@@ -396,10 +396,21 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
   // compliance rows are anchored to.
   const reportWeek = previousWeek(week);
 
-  const [kpi, trend, escalationStats, flow, csatNow, csatPrior] = novaReady
+  const [kpi, trend, orgTrend, escalationStats, flow, csatNow, csatPrior] = novaReady
     ? await Promise.all([
       pull('kpi-snapshot', () => nova.call(`/api/neuro-bridge/kpi-snapshot${date ? `?date=${date}` : ''}`)),
       pull('kpi-trend', () => nova.call('/api/neuro-bridge/kpi-trend?weeks=6')),
+      // ⚠⚠ THE LIVE TABLE. `kpi-trend` reads `jira_kpi_daily`, the LEGACY
+      // n8n-written one, which stopped producing 39 KPIs on 5 Sep 2026 — weekday
+      // runs went 113 rows to 74, taking every per-tier FRT and Resolution
+      // compliance row with them. NOVA's own screens never noticed because they
+      // read `kpi_org_daily`, written daily by its `kpi-org-capture` job with
+      // the same KPIs under the same labels. So this report rendered "not
+      // measured" over eight rows NOVA had all along: it was reading a dead
+      // table. `kpi-org-daily` is also the better number — NOVA's own
+      // `kpi-org/backfill.ts` says of the legacy values "those were inflated
+      // 2-3x".
+      pull('kpi-org-trend', () => nova.call('/api/neuro-bridge/kpi-org-trend?weeks=6')),
       pull('escalation-stats', () => nova.call('/api/neuro-bridge/escalation-stats?days=30')),
       // How tickets MOVE. The Support Review was written from these five facts
       // and every one was computable from NOVA on the day it was written — so
@@ -431,6 +442,7 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     : [
       { name: 'kpi-snapshot', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'kpi-trend', ok: false, error: 'NOVA bridge not configured', data: null },
+      { name: 'kpi-org-trend', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'escalation-stats', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'flow-signals', ok: false, error: 'NOVA bridge not configured', data: null },
       { name: 'csat-reported', ok: false, error: 'NOVA bridge not configured', data: null },
@@ -453,10 +465,11 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     week,
     generatedAt: new Date().toISOString(),
     today: todayLocal(),
-    sources: [kpi, trend, escalationStats, flow, csatNow, csatPrior]
+    sources: [kpi, trend, orgTrend, escalationStats, flow, csatNow, csatPrior]
       .map(s => ({ name: s.name, ok: s.ok, error: s.error || null })),
     kpi: kpi.data,
     trend: trend.data,
+    orgTrend: orgTrend.data,
     escalationStats: escalationStats.data,
     flow: flow.data,
     csat: { now: csatNow.data, prior: csatPrior.data },
@@ -637,13 +650,28 @@ function targetOf(entry) {
   return { target: lo, targetMoved: false };
 }
 
-function buildTrend(trendData, reportWeek = null) {
-  const rows = trendData?.rows || [];
+function buildTrend(trendData, reportWeek = null, orgTrendData = null) {
+  // ⚠⚠ PREFERRED PER KPI, NEVER PER WEEK. The two tables do not agree on
+  // value — NOVA's own `kpi-org/backfill.ts` says the legacy figures "were
+  // inflated 2-3x" — so taking week A from one and week B from the other would
+  // manufacture a trend out of a change of source. A KPI the live table knows
+  // is read ENTIRELY from the live table; one it does not know falls back to
+  // the legacy table ENTIRELY, and every row says which answered.
+  const liveRows = orgTrendData?.rows || [];
+  const liveKpis = new Set(liveRows.map(r => r.KPI).filter(Boolean));
+  const legacyRows = (trendData?.rows || []).filter(r => r.KPI && !liveKpis.has(r.KPI));
+  const rows = [
+    ...liveRows.map(r => ({ ...r, _src: 'kpi_org_daily' })),
+    ...legacyRows.map(r => ({ ...r, _src: 'jira_kpi_daily' })),
+  ];
+
   const byKpi = new Map();
+  const sourceOf = new Map();
   for (const r of rows) {
     const key = r.KPI;
     if (!key) continue;
     if (!byKpi.has(key)) byKpi.set(key, []);
+    sourceOf.set(key, r._src);
     byKpi.get(key).push({
       period: String(r.period || '').slice(0, 10),
       value: num(r.avgValue),
@@ -679,6 +707,7 @@ function buildTrend(trendData, reportWeek = null) {
       lastSeen,
       reportWeek,
       compareWeek,
+      source: sourceOf.get(kpi) || null,
       ...targetOf(reported),
     });
   }
@@ -758,7 +787,7 @@ function assess(snap) {
   // it is filed under. Same rule as taskCounts, deliberately — the two sections
   // disagreeing about the reporting period is the defect being fixed.
   const reportWeek = snap?.week ? previousWeek(snap.week) : null;
-  const trend = buildTrend(snap?.trend, reportWeek);
+  const trend = buildTrend(snap?.trend, reportWeek, snap?.orgTrend);
   const csat = buildCsat(snap?.csat);
   const failedSources = (snap?.sources || []).filter(s => !s.ok);
 
@@ -1383,6 +1412,18 @@ function complianceTable(trend, csat, reportWeek) {
     notes.push(`Targets differ by queue (${targets.sort((x, y) => x - y).join('% and ')}%), so each row `
       + 'states the one it was judged against.');
   }
+  // ⚠ SAY WHICH TABLE ANSWERED. The legacy figures are, by NOVA's own account,
+  // inflated 2-3x against the live ones, so a reader comparing this week to a
+  // month-old edition needs to know the source moved under it.
+  const srcs = [...new Set(rows.filter(t => t.measured && t.source).map(t => t.source))];
+  if (srcs.length === 1 && srcs[0] === 'jira_kpi_daily') {
+    notes.push("Read from NOVA's legacy `jira_kpi_daily`; the live `kpi_org_daily` could not be "
+      + 'reached, and its figures are the more accurate of the two.');
+  } else if (srcs.length > 1) {
+    notes.push("Rows marked below come from NOVA's legacy `jira_kpi_daily` where the live "
+      + '`kpi_org_daily` does not carry that KPI; the two tables do not agree on value, so no '
+      + 'single row ever mixes them.');
+  }
   const missing = rows.filter(t => !t.measured);
   if (missing.length) {
     notes.push(`**${missing.length} of ${rows.length} rows were not produced this week** and are `
@@ -1535,7 +1576,14 @@ function render(a) {
   lines.push('manager: Chris Middleton');
   lines.push('purpose: PIP competency 2 (proactive oversight) — standing 1:1 agenda item');
   lines.push(`week_commencing: ${week}`);
-  lines.push(`data_source: NOVA jira_kpi_daily as at ${a.snapshotDate || 'unavailable'}`);
+  // ⚠ NAME THE TABLE THAT ACTUALLY ANSWERED. This said `jira_kpi_daily`
+  // unconditionally, so once the compliance rows started coming from NOVA's
+  // live `kpi_org_daily` the document's own provenance line was wrong — and a
+  // provenance line nobody can trust is worse than none, because it is the
+  // first thing a reader checks when a figure looks off.
+  const trendSources = [...new Set((a.trend || []).filter(t => t.measured && t.source).map(t => t.source))].sort();
+  const sourceLabel = trendSources.length ? trendSources.join(' + ') : 'jira_kpi_daily';
+  lines.push(`data_source: NOVA ${sourceLabel} as at ${a.snapshotDate || 'unavailable'}`);
   lines.push('generated_by: NEURO weekly-risk');
   lines.push('tags: [HR, PIP, SLA, risk, weekly]');
   lines.push(`updated: ${todayLocal()}`);

@@ -1526,3 +1526,72 @@ test('the panel renders the payload rows rather than composing its own', () => {
   // It must not re-derive the order either — filter preserves the payload's.
   assert.doesNotMatch(src, /\.sort\(/, 'the panel never re-sorts the trend');
 });
+
+// ── The LIVE table wins, per KPI (14 Sep 2026) ───────────────────────────────
+// `kpi-trend` reads jira_kpi_daily, the legacy n8n table, which stopped
+// producing 39 KPIs on 5 Sep. NOVA's screens never noticed because they read
+// kpi_org_daily. So the report rendered "not measured" over data NOVA had.
+
+test('⚠ a KPI the LIVE table knows is read from the live table', () => {
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 44)] },
+    orgTrend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 88)] },
+  }));
+  const t = a.trend[0];
+  assert.strictEqual(t.reported.value, 88, 'the live value, not the legacy one');
+  assert.strictEqual(t.source, 'kpi_org_daily');
+});
+
+test('⚠ preference is PER KPI, never per week — the tables disagree on value', () => {
+  // NOVA's own backfill.ts says the legacy figures "were inflated 2-3x", so
+  // taking one week from each would manufacture a trend out of a source change.
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: {
+      rows: [
+        trendRow('2026-08-03', 'FRT Compliance % (Tier 2)', 90),
+        trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 44),
+      ],
+    },
+    // The live table has only the reporting week for this KPI.
+    orgTrend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 88)] },
+  }));
+  const t = a.trend[0];
+  assert.strictEqual(t.reported.value, 88);
+  assert.strictEqual(t.compare, null, 'the legacy week is NOT borrowed to fill the gap');
+  assert.strictEqual(t.delta, null, 'and no delta is invented across the two tables');
+});
+
+test('a KPI the live table does not carry falls back to legacy, and says so', () => {
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Tier 3)', 70)] },
+    orgTrend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Open Queue)', 88)] },
+  }));
+  const t3 = a.trend.find(x => x.kpi.includes('Tier 3'));
+  assert.strictEqual(t3.reported.value, 70);
+  assert.strictEqual(t3.source, 'jira_kpi_daily');
+  assert.match(weeklyRisk.render(a), /legacy `jira_kpi_daily`/);
+});
+
+test('an unreachable live table degrades to legacy and NAMES the degradation', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({
+    trend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 44)] },
+    orgTrend: null,
+  })));
+  assert.match(md, /\| FRT Compliance % \(Tier 2\) \| 44% \|/, 'the legacy figure still shows');
+  assert.match(md, /could not be reached/);
+});
+
+test('a healthy live-only read carries no source caveat, and declares the right table', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({
+    trend: { rows: [] },
+    orgTrend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 88)] },
+  })));
+  const table = md.slice(md.indexOf('## 1.'), md.indexOf('## 2.'));
+  assert.doesNotMatch(table, /jira_kpi_daily/, 'no standing hedge on a clean read');
+  // ⚠ And the frontmatter names the table that ANSWERED. It said
+  // `jira_kpi_daily` unconditionally, so the document's own provenance line was
+  // wrong the moment the live table started answering — and provenance is the
+  // first thing a reader checks when a figure looks off.
+  assert.match(md, /data_source: NOVA kpi_org_daily as at/);
+  assert.doesNotMatch(md, /data_source: NOVA jira_kpi_daily/);
+});
