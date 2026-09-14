@@ -90,7 +90,12 @@ export default function Dashboard({ dashboard, hideRows = false }) {
   // twice would take those with it, which is the honesty this file exists for.
   if (!dashboard) return null;
   const { kind, label, rows = [], figure = null, note = null, gaps = [], now = null } = dashboard;
-  const bare = (hideRows || rows.length === 0) && !figure && !now;
+  // ⚠ `bare` MUST AGREE WITH WHAT IS ACTUALLY DRAWN. `now` is suppressed under
+  // `hideRows` (see below), so counting it here would leave the approach layout
+  // rendering a full-chrome panel with nothing inside it — a box that looks like
+  // a section that failed to load rather than one deliberately standing down.
+  const showsNow = Boolean(now) && !hideRows;
+  const bare = (hideRows || rows.length === 0) && !figure && !showsNow;
 
   return (
     <section className={`dash dash--${kind}${bare ? ' dash--bare' : ''}`} aria-label={label}>
@@ -98,7 +103,17 @@ export default function Dashboard({ dashboard, hideRows = false }) {
 
       {/* Above the list, because "what am I in" is a different question from
           "what is coming" and it is the one being asked first. */}
-      {now && <Now now={now} />}
+      {/* ⚠⚠ `hideRows` MEANS THE CORRIDOR IS CARRYING THE FEED — AND `now` IS
+          PART OF THE FEED. This sat outside the rows block, so in the approach
+          layout the rows were hidden and `now` was not, while `AttentionSurface`
+          pushed the very same `now` in as the corridor's lead card. The result
+          was "Nothing in the diary / free until 14:00" in the band top-right and
+          again, word for word, as the first card on the track.
+
+          It belongs on the TRACK: `now` has an hour, and the corridor is where
+          things with hours live — the band beside it is labelled "the rest of
+          your day", which `now` is not. */}
+      {showsNow && <Now now={now} />}
 
       {figure && <Figure figure={figure} />}
 

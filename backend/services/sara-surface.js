@@ -1151,6 +1151,8 @@ function finish(list, payload) {
  * twice, which is the state we are already in. The asymmetry decides it.
  */
 function coveredBy(payload, dashboard) {
+  const t = payload.transition;
+  const p = payload.primary;
   const shown = new Set();
   for (const r of (dashboard && Array.isArray(dashboard.rows) ? dashboard.rows : [])) {
     const t = normTitle(r && r.what);
@@ -1171,18 +1173,44 @@ function coveredBy(payload, dashboard) {
     if (t && shown.has(t)) cardIds.push(c.id);
   }
 
+  // ⚠⚠ AND THE OTHER DIRECTION, WHICH WAS NOT COVERED AT ALL. The block above
+  // asks "which SECONDARY cards repeat the dashboard". It never asked the
+  // reverse — which dashboard ROWS repeat the CENTREPIECE — so a task that was
+  // both the primary and a row on the track rendered twice, as the headline and
+  // as a card directly behind it, overlapping.
+  //
+  // Photographed on the desk tablet, 14 Sep 2026: "Task block: Convert Jira
+  // Rejection Reason from free text to select list" as the centrepiece, with the
+  // same words in a corridor card underneath it, each half-legible through the
+  // other. Not an edge case — the primary is very often a thing with an hour,
+  // and a thing with an hour is exactly what the corridor carries.
+  //
+  // ⚠ The TRANSITION's subject counts too: when a transition is showing it is
+  // the loudest thing on the screen, and it names its own meeting.
+  const centre = new Set();
+  const primaryTitle = normTitle(p && p.kind === 'item' ? p.title : null);
+  if (primaryTitle) centre.add(primaryTitle);
+  const transitionSubject = isObj(t) && isObj(t.meta) ? normTitle(t.meta.subject) : null;
+  if (transitionSubject) centre.add(transitionSubject);
+
+  const rowIndexes = [];
+  (dashboard && Array.isArray(dashboard.rows) ? dashboard.rows : []).forEach((r, i) => {
+    const rt = normTitle(r && r.what);
+    if (rt && centre.has(rt)) rowIndexes.push(i);
+  });
+
   // ⚠ Reported as a FACT ("these name the same thing"), never as an
   // instruction to hide the primary. The transition can be dismissed on the
   // client, and a rule that hid the headline unconditionally would leave the
   // screen with no lead at all the moment he pressed "not now".
-  const t = payload.transition;
-  const p = payload.primary;
   const transitionIsPrimary = Boolean(
     isObj(t) && isObj(t.meta) && p && p.kind === 'item'
     && normTitle(t.meta.subject) && normTitle(t.meta.subject) === normTitle(p.title)
   );
 
-  return { cardIds, transitionIsPrimary };
+  // ⚠ `rowIndexes` is advisory like everything else here: a renderer that
+  // ignores it shows the overlapping screen, never a wrong one.
+  return { cardIds, rowIndexes, transitionIsPrimary };
 }
 
 /**

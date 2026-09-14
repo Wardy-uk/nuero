@@ -225,7 +225,12 @@ export default function AttentionSurface({
         say: dashboard.now.meta || null, urgency: 'high',
       });
     }
+    // ⚠ WHAT THE CENTREPIECE IS ALREADY SAYING. The composer's call, never
+    // worked out here — see `coveredBy`. Without it a task that is both the
+    // primary and a row on the track draws twice, overlapping itself.
+    const coveredRows = new Set(Array.isArray(covered?.rowIndexes) ? covered.rowIndexes : []);
     (dashboard?.rows || []).forEach((r, i) => {
+      if (coveredRows.has(i)) return;
       // ⚠ THE SKY IS ON THE SHELF, NOT THE TRACK. It has no hour, so it was
       // being placed by pull alone in the middle of the corridor while the
       // shelf printed the same reading — the same thing twice, on one screen,
