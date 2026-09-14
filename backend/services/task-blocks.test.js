@@ -27,6 +27,7 @@ const {
   HUB_OPEN, HUB_CLOSE, OUTCOME_HUB,
   renderChecklist, parseChecklist, syncChecklistInNote, LIST_OPEN, LIST_CLOSE,
   MIN_OUTCOME_CHARS, DAY_START_MIN, DAY_END_MIN, SEARCH_DAYS, latestEndFor, blockSubject, liveBlock,
+  blockWindow, isStale, holdsNow, STALE_AFTER_MS,
 } = require('./task-blocks');
 
 const TASK = { id: 58, text: 'Build succession plan — cover for HoTS and emerging team leads' };
@@ -612,4 +613,74 @@ test('the hub is a hub, never the day — a future block must not invent a broke
   // and one of the live orphans was dated a week into the future.
   const raw = renderStub(TASK, { ...BLOCK, date_key: '2026-09-15' });
   assert.ok(!raw.includes('[[2026-09-15]]'), 'must not link a daily note that may not exist');
+});
+
+// ── When a block may hold a tick (14 Sep 2026) ───────────────────────────────
+//
+// The hold had no time bounds at all: `openOnly` is `scheduled` OR
+// `awaiting-writeup`, so EVERY block the day planner had ever booked went on
+// refusing to let its tasks close, for ever, in both directions — a slot later
+// this afternoon and a slot abandoned last week were treated exactly like the
+// hour Nick had just worked. Measured on the live Pi the day this was found:
+// 12 open blocks across six days holding 18 open tasks, four of them already
+// ticked and stranded at 'in-progress' with nothing able to move them.
+//
+// Pure, so the rule pins without a vault, a database or a clock.
+
+const HELD_BLOCK = { id: 1, date_key: '2026-09-14', start_time: '10:00', end_time: '11:00' };
+const onDay = (h, m = 0) => new Date(2026, 8, 14, h, m, 0, 0);
+
+test('the window is built from the parts, in local time', () => {
+  // ⚠ NOT `new Date('2026-09-14')`, which parses as UTC and lands an hour out
+  // through BST — the calendar's own bug, which is not being repeated here.
+  const win = blockWindow(HELD_BLOCK);
+  assert.equal(win.start.getHours(), 10);
+  assert.equal(win.end.getHours(), 11);
+  assert.equal(win.start.getDate(), 14);
+});
+
+test('a block that has not started does NOT hold', () => {
+  // The premise of the hold is that Nick sat down and worked, and the evidence
+  // is the note he writes afterwards. At 09:00 there is no sitting yet to write
+  // up, so a 10:00 block has nothing to hold a tick against. This is the case
+  // that made a task un-tickable from the moment the planner booked it.
+  assert.equal(holdsNow(HELD_BLOCK, onDay(9)), false);
+  assert.equal(holdsNow(HELD_BLOCK, onDay(9, 59)), false);
+});
+
+test('a block holds inside its window and for a day after', () => {
+  assert.equal(holdsNow(HELD_BLOCK, onDay(10, 30)), true, 'mid-window');
+  assert.equal(holdsNow(HELD_BLOCK, onDay(12)), true, 'just finished');
+  assert.equal(holdsNow(HELD_BLOCK, new Date(2026, 8, 15, 10, 0)), true, '23h later, still owed');
+});
+
+test('a block a day past its window stops holding', () => {
+  // Nothing had ever aged one out, so an abandoned window locked its tasks for
+  // good — and because a held tick parks the task at 'in-progress', the only
+  // visible symptom was a checkbox that would not stick.
+  assert.equal(isStale(HELD_BLOCK, new Date(2026, 8, 15, 11, 1)), true);
+  assert.equal(holdsNow(HELD_BLOCK, new Date(2026, 8, 15, 11, 1)), false);
+  assert.equal(isStale(HELD_BLOCK, new Date(2026, 8, 15, 10, 59)), false, 'a minute short is not stale');
+});
+
+test('the band is a day, and both edges are the same number', () => {
+  assert.equal(STALE_AFTER_MS, 24 * 60 * 60 * 1000);
+});
+
+test('an unreadable window holds NOTHING, and is not stale either', () => {
+  // Fails OPEN, like the vault check beside it: a block whose time cannot be
+  // parsed can never be aged out, so holding on one would wedge its tasks
+  // permanently with nothing on earth able to move them. It is not stale,
+  // because expiring on a guess would close a block that may still be owed.
+  for (const bad of [
+    null,
+    { id: 2 },
+    { id: 3, date_key: 'soon', start_time: '10:00', end_time: '11:00' },
+    { id: 4, date_key: '2026-09-14', start_time: null, end_time: '11:00' },
+    { id: 5, date_key: '2026-09-14', start_time: '10:00', end_time: 'later' },
+  ]) {
+    assert.equal(blockWindow(bad), null, `window read from ${JSON.stringify(bad)}`);
+    assert.equal(holdsNow(bad, onDay(12)), false, `held on ${JSON.stringify(bad)}`);
+    assert.equal(isStale(bad, onDay(12)), false, `aged out ${JSON.stringify(bad)}`);
+  }
 });

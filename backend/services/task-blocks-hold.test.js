@@ -38,15 +38,51 @@ test.before(async () => { await db.init(); });
 // now, because a block holds many tasks and the thing to prevent is two events
 // landing on top of each other.
 let slotSeq = 0;
-function nextSlot() {
-  const start = 9 * 60 + (slotSeq++ * 15);
-  const p = n => String(n).padStart(2, '0');
-  return `${p(Math.floor(start / 60))}:${p(start % 60)}`;
+const pad = n => String(n).padStart(2, '0');
+
+/**
+ * A window that has already STARTED and is not yet a day old.
+ *
+ * ⚠ These used to be fixed dates in August, and the suite only passed because
+ * nothing aged a block out: the hold applied to any open block at any distance.
+ * Since 14 Sep 2026 it applies only inside that band, so a fixture dated weeks
+ * ago is a block that has correctly expired — the test would have been asserting
+ * the opposite of the rule. Deriving the window from the clock also takes the
+ * date bomb out of the file: nothing here can start failing because a real date
+ * rolled past a literal, which this repo has been bitten by twice.
+ *
+ * Each call steps a quarter-hour further back, so every fixture gets its own
+ * (date_key, start_time) — crossing midnight is fine and still inside the day.
+ */
+function recentSlot() {
+  // Steps FORWARD from eight hours ago, so a fixture created later also sits
+  // later in the day: `listTaskBlockRows` orders by (date, start) descending and
+  // the tests about "the most recent block" mean the one worked most recently,
+  // not the one inserted last.
+  // ⚠ The step is sized against the number of fixtures in this file (74 at the
+  // time of writing) so the last one still lands in the PAST: at 10 minutes a
+  // pass is 12 hours long and the tail of the file books itself into the future,
+  // where a block correctly does not hold and half the suite fails for a reason
+  // that has nothing to do with the rule under test.
+  const at = new Date(Date.now() - (8 * 60 - (slotSeq++ * 5)) * 60000);
+  // Keep the window inside one day: an end that wrapped past midnight would
+  // parse as EARLIER than its start and read as ancient.
+  if (at.getHours() === 23 && at.getMinutes() > 55) at.setMinutes(55);
+  const startMin = at.getHours() * 60 + at.getMinutes();
+  const hhmm = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+  return {
+    dateKey: `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`,
+    startTime: hhmm(startMin),
+    endTime: hhmm(startMin + 4),
+  };
 }
 
 /** Tasks with a block already scheduled, and its stub on disk. */
-function blockedTasks(texts, { dateKey = '2026-08-19', startTime = null } = {}) {
-  startTime = startTime || nextSlot();
+function blockedTasks(texts, { dateKey = null, startTime = null, endTime = null } = {}) {
+  const slot = recentSlot();
+  dateKey = dateKey || slot.dateKey;
+  startTime = startTime || slot.startTime;
+  endTime = endTime || (startTime === slot.startTime ? slot.endTime : '15:00');
   const list = Array.isArray(texts) ? texts : [texts];
   const tasks = list.map(text => {
     const { id } = taskStore.createTask({ text, source: 'manual', skipExport: true });
@@ -56,7 +92,7 @@ function blockedTasks(texts, { dateKey = '2026-08-19', startTime = null } = {}) 
   const blockId = db.createTaskBlockRow({
     date_key: dateKey,
     start_time: startTime,
-    end_time: '15:00',
+    end_time: endTime,
     minutes: 60,
     minutes_assumed: 1,
     note_path: notePath,
@@ -305,10 +341,10 @@ test('releasing a batch closes the block without completing untouched work', () 
 });
 
 test('the outstanding list names every task in the block and which are ticked', () => {
-  const { taskIds, blockId } = blockedTasks(['Ticked job', 'Untouched job'], { dateKey: '2026-01-05' });
+  const { taskIds, blockId } = blockedTasks(['Ticked job', 'Untouched job']);
   taskStore.updateTask(taskIds[0], { status: 'done' });
 
-  const { rows } = taskBlocks.listOutstanding({ now: new Date(2026, 0, 5, 18, 0) });
+  const { rows } = taskBlocks.listOutstanding({ now: new Date() });
   const row = rows.find(r => r.blockId === blockId);
   assert.ok(row, 'a passed block owing a write-up must be listed');
   assert.equal(row.tasks.length, 2);
@@ -421,7 +457,7 @@ test('removing a task that is not in the block says so', async () => {
 test('an upcoming block is listed, so a batch does not vanish when you make it', () => {
   // The earlier cut hid future blocks as "not outstanding yet", which meant the
   // batch Nick had just created disappeared from the screen he created it on.
-  const { blockId } = blockedTasks(['Later today one', 'Later today two'], { dateKey: '2099-03-04' });
+  const { blockId } = blockedTasks(['Later today one', 'Later today two'], { dateKey: '2099-03-04', startTime: '14:00' });
   const { rows } = taskBlocks.listOutstanding({ now: new Date(2099, 2, 4, 8, 0) });
 
   const row = rows.find(r => r.blockId === blockId);
@@ -688,9 +724,11 @@ test('a task already done shows ticked, even though it never held', () => {
 
 // ── Several blocks at once ───────────────────────────────────────────────────
 
-test('blocks on different days stay independent', () => {
-  const a = blockedTasks(['Day one, job one', 'Day one, job two'], { dateKey: '2026-06-01' });
-  const b = blockedTasks(['Day two, job one', 'Day two, job two'], { dateKey: '2026-06-02' });
+test('separate blocks stay independent', () => {
+  // Separated by slot rather than by day: a block days old has expired and no
+  // longer holds, so two live blocks necessarily share a date (14 Sep 2026).
+  const a = blockedTasks(['Day one, job one', 'Day one, job two']);
+  const b = blockedTasks(['Day two, job one', 'Day two, job two']);
 
   taskStore.updateTask(a.taskIds[0], { status: 'done' });
   taskStore.updateTask(b.taskIds[1], { status: 'done' });
@@ -722,8 +760,8 @@ test('two blocks on the same day get their own notes', () => {
 test('a task in two open blocks is held by the most recent, and reported honestly', () => {
   // Legitimate: work that did not finish gets blocked again. The newer block is
   // the one being worked, so it is the one that holds.
-  const first = blockedTasks(['Carried over', 'Only in the first'], { dateKey: '2026-06-04' });
-  const second = blockedTasks(['Only in the second'], { dateKey: '2026-06-05' });
+  const first = blockedTasks(['Carried over', 'Only in the first']);
+  const second = blockedTasks(['Only in the second']);
   db.addTaskBlockItem(second.blockId, first.taskIds[0], null);
 
   const held = taskStore.updateTask(first.taskIds[0], { status: 'done' }).held;
@@ -746,9 +784,9 @@ test('a task in two open blocks is held by the most recent, and reported honestl
 });
 
 test('the sweep handles several blocks in one pass', () => {
-  const a = blockedTasks(['Swept A'], { dateKey: '2026-06-06' });
-  const b = blockedTasks(['Swept B'], { dateKey: '2026-06-07' });
-  const c = blockedTasks(['Not written up'], { dateKey: '2026-06-08' });
+  const a = blockedTasks(['Swept A']);
+  const b = blockedTasks(['Swept B']);
+  const c = blockedTasks(['Not written up']);
 
   for (const x of [a, b, c]) taskStore.updateTask(x.taskIds[0], { status: 'done' });
   writeUp(a.full);
@@ -769,8 +807,8 @@ test('ticking a task ticks it in every block that holds it', () => {
   // discussing in the block that's closing it."
   // Both blocks hold more than one task, which is when a note carries a
   // checklist at all — a single-task block has nothing to tick.
-  const first = blockedTasks(['Carried over', 'Only in the first'], { dateKey: '2026-07-01' });
-  const second = blockedTasks(['Second block A', 'Second block B'], { dateKey: '2026-07-02' });
+  const first = blockedTasks(['Carried over', 'Only in the first']);
+  const second = blockedTasks(['Second block A', 'Second block B']);
   db.addTaskBlockItem(second.blockId, first.taskIds[0], null);
   taskBlocks.writeChecklistToNote(second.blockId);
 
@@ -784,8 +822,8 @@ test('ticking a task ticks it in every block that holds it', () => {
 });
 
 test('closing it in one block stops the other asking for a write-up', () => {
-  const first = blockedTasks(['Shared task'], { dateKey: '2026-07-03' });
-  const second = blockedTasks(['Something else'], { dateKey: '2026-07-04' });
+  const first = blockedTasks(['Shared task']);
+  const second = blockedTasks(['Something else']);
   db.addTaskBlockItem(second.blockId, first.taskIds[0], null);
   taskBlocks.writeChecklistToNote(second.blockId);
 
@@ -806,8 +844,8 @@ test('closing it in one block stops the other asking for a write-up', () => {
 
 test('a block with its OWN unfinished ticks keeps owing one', () => {
   // The settle must be per task, not "this block is done now".
-  const first = blockedTasks(['Shared again', 'Its own work'], { dateKey: '2026-07-05' });
-  const second = blockedTasks(['Elsewhere'], { dateKey: '2026-07-06' });
+  const first = blockedTasks(['Shared again', 'Its own work']);
+  const second = blockedTasks(['Elsewhere']);
   db.addTaskBlockItem(second.blockId, first.taskIds[0], null);
 
   taskStore.updateTask(first.taskIds[0], { status: 'done' });
@@ -823,8 +861,8 @@ test('a block with its OWN unfinished ticks keeps owing one', () => {
 });
 
 test('unticking a task unticks it everywhere too', () => {
-  const first = blockedTasks(['On the fence'], { dateKey: '2026-07-07' });
-  const second = blockedTasks(['Other work'], { dateKey: '2026-07-08' });
+  const first = blockedTasks(['On the fence']);
+  const second = blockedTasks(['Other work']);
   db.addTaskBlockItem(second.blockId, first.taskIds[0], null);
   taskBlocks.writeChecklistToNote(second.blockId);
 
@@ -1017,7 +1055,7 @@ test('a TICKED task never moves — it stays, owed a write-up', async () => {
 });
 
 test('asking to move a ticked task is REFUSED, not quietly skipped', async () => {
-  const { taskIds, blockId } = blockedTasks(['Done already', 'Outstanding'], { dateKey: '2026-09-01' });
+  const { taskIds, blockId } = blockedTasks(['Done already', 'Outstanding']);
   taskStore.updateTask(taskIds[0], { status: 'done' });
 
   const res = await withGraph(() => taskBlocks.reschedule(blockId, {
@@ -1431,4 +1469,95 @@ test('scheduleMoving with Outlook refusing still leaves ONE hold, not two', asyn
   assert.equal(res.ok, false, 'an Outlook refusal is still reported as one');
   assert.ok(res.blockId);
   assert.equal(db.listTaskBlockRows({ taskId: old.taskId, openOnly: true }).length, 1);
+});
+
+// ── Ageing a block out (14 Sep 2026) ─────────────────────────────────────────
+//
+// These go through the real DB, the real vault and the real sweep, because the
+// bug was never in the judgement — `isStale` is pinned pure next door — it was
+// that nothing ever ASKED. Twelve blocks sat open across six days holding 18
+// open tasks, and the only symptom Nick could see was a checkbox that would not
+// stick.
+
+/**
+ * A block whose window closed `hoursAgo` hours ago, with its stub on disk.
+ *
+ * Each call steps a few minutes further back so two fixtures asking for the same
+ * age do not collide on the (date_key, start_time) uniqueness guard.
+ */
+let agedSeq = 0;
+function agedBlock(texts, hoursAgo) {
+  const at = new Date(Date.now() - hoursAgo * 3600000 - (agedSeq++ * 7) * 60000);
+  const p2 = n => String(n).padStart(2, '0');
+  const startMin = Math.max(0, at.getHours() * 60 + at.getMinutes() - 30);
+  const hhmm = m => `${p2(Math.floor(m / 60))}:${p2(m % 60)}`;
+  return blockedTasks(texts, {
+    dateKey: `${at.getFullYear()}-${p2(at.getMonth() + 1)}-${p2(at.getDate())}`,
+    startTime: hhmm(startMin),
+    endTime: hhmm(startMin + 20),
+  });
+}
+
+test('a future block does not hold a tick — there is no sitting to write up yet', () => {
+  // openOnly includes 'scheduled', which is every block the day planner books on
+  // a timer, so before this a task was un-tickable from the moment it was
+  // planned. This is the case Nick actually hit.
+  const { taskId } = blockedTasks(['Booked for later today'], { dateKey: '2099-05-05', startTime: '15:30' });
+  const result = taskStore.updateTask(taskId, { status: 'done' });
+  assert.equal(result.held, undefined, 'a slot that has not happened cannot hold a tick');
+  assert.equal(result.status, 'done');
+});
+
+test('a block a day past its window stops holding, and the sweep closes it', () => {
+  const { taskId, blockId } = agedBlock(['Worked on it, never wrote it up'], 30);
+
+  // Still held-looking on the block, but the tick must now go straight through.
+  const result = taskStore.updateTask(taskId, { status: 'done' });
+  assert.equal(result.held, undefined, 'a block a day old has stopped owing a note');
+  assert.equal(result.status, 'done');
+
+  const swept = taskBlocks.sweep();
+  assert.ok(swept.expired.some(e => e.blockId === blockId), 'the stale block must be aged out');
+  const row = db.getTaskBlockRow(blockId);
+  assert.equal(row.status, 'released');
+  assert.match(row.release_reason, /aged out by neuro/i,
+    'the reason is the only thing separating this from a close Nick made himself');
+});
+
+test('ageing out completes what was TICKED and leaves the rest open', () => {
+  // The same rule the write-up follows: closing the block is not a claim that
+  // everything in the window got done. But a tick WAS a real statement, and the
+  // hold was only ever deferring it pending evidence that is no longer coming —
+  // leaving it at 'in-progress' for ever is the bug, not a safe default.
+  const { taskIds, blockId } = agedBlock(['Ticked before it went stale', 'Never touched'], 2);
+  const held = taskStore.updateTask(taskIds[0], { status: 'done' }).held;
+  assert.ok(held, 'a two-hour-old block should still hold');
+  assert.equal(db.getTaskRow(taskIds[0]).status, 'in-progress');
+
+  // A day later, the write-up is not coming.
+  const swept = taskBlocks.sweep({ now: new Date(Date.now() + 30 * 3600000) });
+  assert.ok(swept.expired.some(e => e.blockId === blockId));
+  assert.equal(db.getTaskRow(taskIds[0]).status, 'done', 'the tick he made must not be lost');
+  assert.equal(db.getTaskRow(taskIds[1]).status, 'open', 'nobody did this one');
+});
+
+test('a write-up BEATS the clock — a stale block that was written up completes properly', () => {
+  // Order matters: a note landing on a three-day-old block must still close it
+  // as a completion rather than losing the race to the ageing pass.
+  const { taskIds, blockId, full } = agedBlock(['Written up late'], 2);
+  taskStore.updateTask(taskIds[0], { status: 'done' });
+  writeUp(full);
+
+  const swept = taskBlocks.sweep({ now: new Date(Date.now() + 72 * 3600000) });
+  assert.ok(swept.completed.some(c => c.blockId === blockId), 'the write-up must win');
+  assert.ok(!swept.expired.some(e => e.blockId === blockId));
+  assert.equal(db.getTaskBlockRow(blockId).status, 'complete',
+    'complete and released are different facts — only one of them earned its note');
+});
+
+test('a dry-run sweep ages nothing out', () => {
+  const { blockId } = agedBlock(['Left alone by the dry run'], 30);
+  const swept = taskBlocks.sweep({ dryRun: true });
+  assert.ok(swept.expired.some(e => e.blockId === blockId), 'it must still be REPORTED');
+  assert.equal(db.getTaskBlockRow(blockId).status, 'scheduled', 'but not written');
 });

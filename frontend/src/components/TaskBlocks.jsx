@@ -1203,8 +1203,10 @@ export default function TaskBlocks() {
       <p className="blocks-explain">
         A block in the diary is a plan, not finished work — the same rule a meeting
         follows, where the Plaud note is the evidence. Nothing records a solo block,
-        so the note you write is the evidence. These tasks stay open until there is
-        one.
+        so the note you write is the evidence. A task here stays open until there is
+        one — but only while the block is under way or finished within the last day.
+        A slot still ahead of you holds nothing, and one that came and went a day ago
+        stops asking and closes itself.
       </p>
 
       <BatchComposer onCreated={load} allocated={allocated} />

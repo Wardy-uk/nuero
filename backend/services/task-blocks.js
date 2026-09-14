@@ -886,6 +886,84 @@ async function schedule(taskIds, {
   };
 }
 
+// ── When a block's window was ─────────────────────────────────────
+
+// How long after a block's window closes it stops owing a write-up (Nick,
+// 14 Sep 2026). A block that came and went unworked used to hold its tasks for
+// ever: nothing ages one out, so 12 blocks across six days had silently locked
+// 18 open tasks out of being ticked. A day is long enough to write the note up
+// the next morning and short enough that an abandoned window stops mattering.
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+// What an aged-out block records as its release reason. A constant because it
+// is the one thing separating "NEURO closed this on a timer" from "Nick closed
+// it and said why", and a screen reading it must not have to guess.
+const AGED_OUT_REASON = 'Aged out by NEURO — no write-up a day after the window closed';
+
+/**
+ * The block's window as real instants, or null where it cannot be read.
+ *
+ * LOCAL time, built from the parts, never `new Date(string)` — `date_key` is a
+ * bare `YYYY-MM-DD`, which parses as UTC and lands an hour out through BST.
+ * That is the calendar's own bug and it is not being repeated here.
+ *
+ * Pure: no DB, no clock. `null` is "I cannot tell when this was", which the
+ * callers below treat as a reason to stop holding rather than a reason to guess.
+ */
+function blockWindow(block) {
+  if (!block || !block.date_key) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(block.date_key));
+  if (!m) return null;
+  const startMin = toMin(block.start_time);
+  const endMin = toMin(block.end_time);
+  if (startMin == null || endMin == null) return null;
+  const [, y, mo, d] = m;
+  const at = (min) => new Date(Number(y), Number(mo) - 1, Number(d), Math.floor(min / 60), min % 60, 0, 0);
+  return { start: at(startMin), end: at(endMin) };
+}
+
+/**
+ * Has this block's window closed more than a day ago with nothing written up?
+ *
+ * Pure, and `now` is passed rather than read, so the rule pins without a clock.
+ * An unreadable window is NOT stale — it is unknown, and expiring on a guess
+ * would close a block that might still be owed.
+ */
+function isStale(block, now = new Date()) {
+  const win = blockWindow(block);
+  if (!win) return false;
+  return now.getTime() - win.end.getTime() > STALE_AFTER_MS;
+}
+
+/**
+ * May this block hold a tick right now?
+ *
+ * Two refusals, both added 14 Sep 2026 after the hold had quietly become the
+ * reason tasks would not close.
+ *
+ * ⚠ **A window that has not STARTED never holds.** The hold's whole premise is
+ * that Nick sat down and worked, and the evidence of that is the note he writes
+ * afterwards — so a block at 15:30 cannot hold a tick made at midday, because
+ * there is no sitting yet to write up. `openOnly` includes `scheduled`, which is
+ * every future block the day planner books on a timer, so before this a task was
+ * un-tickable from the moment it was planned.
+ *
+ * ⚠ **A window a day past never holds either.** See `STALE_AFTER_MS`.
+ *
+ * ⚠ An unreadable window fails OPEN, like the vault check below it: a block
+ * whose time cannot be parsed can never be aged out either, so holding on one
+ * would wedge its tasks permanently with nothing able to move them.
+ */
+function holdsNow(block, now = new Date()) {
+  const win = blockWindow(block);
+  if (!win) {
+    console.warn(`[TaskBlocks] Block #${block && block.id} has an unreadable window, not holding`);
+    return false;
+  }
+  if (now < win.start) return false;
+  return !isStale(block, now);
+}
+
 // ── The hold ─────────────────────────────────────────────────────────────────
 
 /**
@@ -902,7 +980,7 @@ async function schedule(taskIds, {
  * uses to find what he owes. The evidence rule is worth enforcing against
  * forgetfulness; it is not worth enforcing against a mount point.
  */
-function checkHold(taskId) {
+function checkHold(taskId, now = new Date()) {
   let blocks;
   try {
     blocks = db.listTaskBlockRows({ taskId, openOnly: true });
@@ -912,7 +990,15 @@ function checkHold(taskId) {
   }
   if (!blocks.length) return null;
 
-  for (const block of blocks) {
+  // Only a window that has started and has not gone stale gets to hold a tick.
+  // Filtering BEFORE the note check matters twice: an unstarted block must not
+  // be able to refuse a completion, and the block finally held must be chosen
+  // from the ones entitled to hold rather than from `blocks[0]`, which after
+  // this filter is routinely a future slot.
+  const holding = blocks.filter((b) => holdsNow(b, now));
+  if (!holding.length) return null;
+
+  for (const block of holding) {
     const note = readOutcomeNote(block);
     if (note.error) {
       console.warn(`[TaskBlocks] Vault unreadable, not holding task #${taskId}: ${note.error}`);
@@ -923,7 +1009,7 @@ function checkHold(taskId) {
   }
 
   // Hold on the most recent one — that is the block Nick just worked.
-  return { ...blocks[0], holdReason: isOutcomeWritten(readOutcomeNote(blocks[0]).raw).reason };
+  return { ...holding[0], holdReason: isOutcomeWritten(readOutcomeNote(holding[0]).raw).reason };
 }
 
 /**
@@ -1977,7 +2063,7 @@ function drop(blockId) {
  * exists to stop, so an unreadable vault is a NAMED GAP, never a quiet zero.
  */
 function sweep({ now = new Date(), dryRun = false } = {}) {
-  const result = { checked: 0, completed: [], stillOpen: 0, gaps: [] };
+  const result = { checked: 0, completed: [], expired: [], stillOpen: 0, gaps: [] };
 
   let blocks;
   try {
@@ -1996,7 +2082,51 @@ function sweep({ now = new Date(), dryRun = false } = {}) {
     }
 
     const verdict = isOutcomeWritten(note.raw);
-    if (!verdict.written) { result.stillOpen++; continue; }
+    if (!verdict.written) {
+      // ── A window that came and went stops owing a note ─────────────────
+      //
+      // Nothing had ever aged a block out, so an abandoned one held its tasks
+      // for ever — and because a held tick parks the task at 'in-progress', the
+      // only visible symptom was a checkbox that would not stick. Measured on
+      // 14 Sep 2026: 12 open blocks across six days, 18 open tasks locked, four
+      // of them already ticked and stranded mid-status.
+      //
+      // ⚠ The write-up check runs FIRST, above: a note landing on a three-day-old
+      // block still completes it properly, and must never lose that race to the
+      // clock.
+      //
+      // ⚠ What was TICKED is completed, exactly as `release()` does it. The tick
+      // was a real statement about the work and the hold was only ever deferring
+      // it pending evidence; a day past the window that evidence is not coming,
+      // and leaving the task at 'in-progress' for ever is the bug being fixed,
+      // not a safe default. What was NOT ticked is left alone — expiry closes
+      // the BLOCK, never the work, the same rule that stops a written-up batch
+      // completing the tasks nobody did.
+      if (isStale(block, now)) {
+        if (dryRun) { result.expired.push({ blockId: block.id, taskIds: [] }); continue; }
+        // ⚠ It goes through `release()` rather than writing a status of its own.
+        // An `expired` word would read better — Nick decided nothing here, which
+        // is `navigationExpiry`'s distinction — but `status` carries a CHECK
+        // constraint, SQLite cannot widen one via ALTER TABLE, and a table
+        // rebuild on a live DB is the migration `tasks.domain` already refused
+        // to make for a stronger reason than a nicer noun. Releasing is also
+        // EXACTLY what this does: close a block with no write-up, completing
+        // what was ticked and nothing else. Reusing the one function that
+        // already does it means the two cannot drift, and the reason string is
+        // what says NEURO closed this rather than Nick — it is shown wherever a
+        // release reason is shown.
+        const outcome = release(block.id, AGED_OUT_REASON);
+        if (!outcome.ok) { result.gaps.push(`block #${block.id} ageing out: ${outcome.error}`); continue; }
+        // Loud, because this is NEURO closing something on a timer. A block that
+        // quietly vanished from the panel having completed a task would be
+        // indistinguishable from one Nick closed himself.
+        console.log(`[TaskBlocks] Block #${block.id} (${block.date_key} ${block.start_time}) aged out — no write-up${outcome.completedTaskIds.length ? `, completed ticked task(s) ${outcome.completedTaskIds.join(', ')}` : ', nothing was ticked'}`);
+        result.expired.push({ blockId: block.id, taskIds: outcome.completedTaskIds });
+        continue;
+      }
+      result.stillOpen++;
+      continue;
+    }
 
     if (dryRun) { result.completed.push({ blockId: block.id, taskId: block.task_id }); continue; }
 
@@ -2047,8 +2177,8 @@ function sweep({ now = new Date(), dryRun = false } = {}) {
     }
   }
 
-  if (result.completed.length || result.gaps.length) {
-    console.log(`[TaskBlocks] Sweep: ${result.completed.length} completed, ${result.stillOpen} still open${result.gaps.length ? `, ${result.gaps.length} gap(s)` : ''}`);
+  if (result.completed.length || result.expired.length || result.gaps.length) {
+    console.log(`[TaskBlocks] Sweep: ${result.completed.length} completed, ${result.expired.length} aged out, ${result.stillOpen} still open${result.gaps.length ? `, ${result.gaps.length} gap(s)` : ''}`);
   }
   return result;
 }
@@ -2250,6 +2380,13 @@ module.exports = {
   schedule,
   scheduleMoving,
   checkHold,
+  // Pure, and exported so the two rules that decide whether a tick is held pin
+  // without a vault, a database or a clock — the `pi-health.assess()` split.
+  STALE_AFTER_MS,
+  AGED_OUT_REASON,
+  blockWindow,
+  isStale,
+  holdsNow,
   createNote,
   readNoteForEdit,
   saveNote,
