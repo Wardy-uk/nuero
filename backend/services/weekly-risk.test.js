@@ -154,6 +154,7 @@ test('a compliance KPI below target for 3+ consecutive weeks is an escalation', 
   // Three consecutive WEEK buckets ending in the reporting week (w/c 10 Aug).
   const rows = ['2026-07-27', '2026-08-03', '2026-08-10'].map((period, i) => ({
     period, KPI: 'Resolution Compliance % (Tier 2)', avgValue: [30, 40, 45][i], samples: 5,
+    targetMin: 95, targetMax: 95,
   }));
   const a = weeklyRisk.assess(baseSnapshot({ trend: { rows } }));
   const f = a.findings.find(x => x.kind === 'compliance-slide');
@@ -1168,8 +1169,10 @@ test('the CSAT rows survive the markdown-to-email conversion', () => {
 // baseSnapshot is filed under w/c 2026-08-17 (a Monday), so it COVERS
 // w/c 2026-08-10 and compares against w/c 2026-08-03.
 
-function trendRow(period, KPI, avgValue, samples = 5) {
-  return { period, KPI, avgValue, samples };
+function trendRow(period, KPI, avgValue, samples = 5, target = 95) {
+  // ⚠ A target is part of a trend row now. NOVA states it per KPI (cross-queue
+  // KPIs 90, per-tier 95) and a row without one is deliberately unjudgeable.
+  return { period, KPI, avgValue, samples, targetMin: target, targetMax: target };
 }
 
 test('the reporting week is the COMPLETE week before the one the report is filed under', () => {
@@ -1322,4 +1325,132 @@ test('⚠ the CSAT rows ask for the SAME weeks the compliance rows are anchored 
   // Anchored to the CALL, not the bare text — `function csatQuery(week)` is the
   // declaration and matching it would fail for the wrong reason.
   assert.doesNotMatch(src, /nova\.call\(csatQuery\(week\)\)/, 'never the filed-under week');
+});
+
+// ── Each KPI is judged against its OWN target (Nick, 14 Sep 2026) ────────────
+// The column read "vs 95%" and every row was measured against it. Measured on
+// the live snapshot for 2 Sep 2026, compliance targets are NOT uniform: the two
+// cross-queue KPIs (Open Queue, Resolved Today) are 90 and the five per-tier
+// ones 95. So 95 miscoloured four of fourteen rows and 90 would miscolour ten —
+// no single header could have been right.
+
+test('⚠ a mixed-target table judges each row against its own number', () => {
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: {
+      rows: [
+        // 91% — passing against 90, failing against the old flat 95.
+        trendRow('2026-08-10', 'FRT Compliance % (Open Queue)', 91, 7, 90),
+        trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 91, 5, 95),
+      ],
+    },
+  }));
+  const md = weeklyRisk.render(a);
+  assert.match(md, /\| FRT Compliance % \(Open Queue\) \| 91% \|.*\| 🟢 90% \|/, 'passes against 90');
+  assert.match(md, /\| FRT Compliance % \(Tier 2\) \| 91% \|.*\| 🟠 95% \|/, 'and is amber against 95');
+  assert.doesNotMatch(md, /vs 95%/, 'the fixed header is gone');
+  assert.match(md, /\| vs target \|/);
+});
+
+test('the table says once that its targets differ, so a mixed column needs no key', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({
+    trend: {
+      rows: [
+        trendRow('2026-08-10', 'FRT Compliance % (Open Queue)', 91, 7, 90),
+        trendRow('2026-08-10', 'FRT Compliance % (Tier 2)', 91, 5, 95),
+      ],
+    },
+  })));
+  assert.match(md, /Targets differ by queue \(90% and 95%\)/);
+  // A uniform table does not carry the explanation.
+  const uniform = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({
+    trend: { rows: [trendRow('2026-08-10', 'FRT Compliance % (Open Queue)', 91, 7, 90)] },
+  })));
+  assert.doesNotMatch(uniform, /Targets differ by queue/);
+});
+
+test('⚠ NO TARGET STATED means NO COLOUR — never a fallback to 95', () => {
+  // Judging a queue against a number nobody set is the same invention as
+  // reading a stale figure as current.
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: { rows: [{ period: '2026-08-10', KPI: 'FRT Compliance % (Tier 2)', avgValue: 40, samples: 5 }] },
+  }));
+  const t = a.trend[0];
+  assert.strictEqual(t.target, null);
+  const md = weeklyRisk.render(a);
+  assert.match(md, /no target set/);
+  assert.doesNotMatch(md, /🔴|🟠|🟢/, 'no colour is asserted');
+});
+
+test('⚠ a target that MOVED inside the week is reported, not flattened to one end', () => {
+  const a = weeklyRisk.assess(baseSnapshot({
+    trend: {
+      rows: [{ period: '2026-08-10', KPI: 'FRT Compliance % (Tier 2)', avgValue: 92, samples: 5,
+               targetMin: 90, targetMax: 95 }],
+    },
+  }));
+  assert.strictEqual(a.trend[0].targetMoved, true);
+  assert.strictEqual(a.trend[0].target, null, 'no single target can be stated');
+  // 92 passes 90 and fails 95, so picking either end would assert a colour the
+  // week does not support.
+  const md = weeklyRisk.render(a);
+  assert.match(md, /target moved 90–95%/);
+  assert.doesNotMatch(md, /🔴|🟠|🟢/);
+});
+
+test('⚠ a SLIDE is measured against the KPI\'s own target', () => {
+  // Against a flat 95 these three weeks at 91-93 would escalate to Chris as a
+  // three-week slide — over a KPI that was passing all three weeks.
+  const passing = ['2026-07-27', '2026-08-03', '2026-08-10'].map((p, i) =>
+    trendRow(p, 'FRT Compliance % (Open Queue)', [91, 92, 93][i], 7, 90));
+  const a = weeklyRisk.assess(baseSnapshot({ trend: { rows: passing } }));
+  assert.strictEqual(a.findings.find(x => x.kind === 'compliance-slide'), undefined,
+                     'passing its own target is not a slide');
+
+  // The same shape against a 95 target IS one, and the title names 95.
+  const failing = ['2026-07-27', '2026-08-03', '2026-08-10'].map((p, i) =>
+    trendRow(p, 'FRT Compliance % (Tier 2)', [91, 92, 93][i], 5, 95));
+  const f = weeklyRisk.assess(baseSnapshot({ trend: { rows: failing } }))
+    .findings.find(x => x.kind === 'compliance-slide');
+  assert.ok(f, 'expected a slide against 95');
+  assert.match(f.title, /below 95% for 3 straight weeks/);
+});
+
+test('a KPI with no target raises no slide either', () => {
+  const rows = ['2026-07-27', '2026-08-03', '2026-08-10'].map((period, i) => ({
+    period, KPI: 'FRT Compliance % (Tier 2)', avgValue: [10, 11, 12][i], samples: 5,
+  }));
+  const a = weeklyRisk.assess(baseSnapshot({ trend: { rows } }));
+  assert.strictEqual(a.findings.find(x => x.kind === 'compliance-slide'), undefined);
+});
+
+test('targetOf is pure and keeps its three answers apart', () => {
+  assert.deepStrictEqual(weeklyRisk.targetOf({ targetMin: 90, targetMax: 90 }),
+                         { target: 90, targetMoved: false });
+  assert.deepStrictEqual(weeklyRisk.targetOf({ targetMin: null, targetMax: null }),
+                         { target: null, targetMoved: false }, 'an older bridge states nothing');
+  const moved = weeklyRisk.targetOf({ targetMin: 90, targetMax: 95 });
+  assert.strictEqual(moved.target, null);
+  assert.strictEqual(moved.targetMoved, true);
+  assert.deepStrictEqual(moved.targetRange, [90, 95]);
+  assert.deepStrictEqual(weeklyRisk.targetOf(null), { target: null, targetMoved: false });
+});
+
+test('the amber band is relative to the target, and is NEURO\'s rule not NOVA\'s', () => {
+  // NOVA's own amberMin is not exposed over the bridge, so this must not claim
+  // to agree with it — but it must at least scale with the target rather than
+  // sitting at a fixed 75.
+  const at90 = weeklyRisk.ragCell({ measured: true, reported: { value: 71 }, target: 90, targetMoved: false });
+  const at95 = weeklyRisk.ragCell({ measured: true, reported: { value: 71 }, target: 95, targetMoved: false });
+  assert.match(at90, /🟠/, '71 is within 20 of 90');
+  assert.match(at95, /🔴/, 'and outside 20 of 95');
+  assert.strictEqual(weeklyRisk.AMBER_BAND, 20);
+});
+
+test('the panel judges against the same per-KPI target the document does', () => {
+  const src = require('fs').readFileSync(
+    require('path').resolve(__dirname, '../../frontend/src/components/WeeklyRiskPanel.jsx'), 'utf8');
+  assert.match(src, /t\.reported\?\.value < t\.target/, 'the panel uses the KPI target');
+  assert.doesNotMatch(src, /t\.reported\?\.value < 95/, 'the flat 95 is gone from the panel');
+  assert.match(src, /no target set/, 'and it renders an unstated target as such');
+  assert.match(src, /<th>vs target<\/th>/);
 });

@@ -836,7 +836,7 @@ export default function WeeklyRiskPanel({ onNavigate }) {
                     so a heading here that disagrees with the note he is signing is
                     the whole failure — it used to say "This week" over a figure
                     that, on a Monday build, was a single day. */}
-                <tr><th>KPI</th><th>Reporting week</th><th>Week before</th><th>Change</th></tr>
+                <tr><th>KPI</th><th>Reporting week</th><th>Week before</th><th>Change</th><th>vs target</th></tr>
               </thead>
               <tbody>
                 {trend.map(t => (
@@ -845,11 +845,22 @@ export default function WeeklyRiskPanel({ onNavigate }) {
                     {/* ⚠ "not measured" is never rendered as a value, and never as a
                         pass — the pipeline stopped writing 39 KPIs on 5 Sep 2026 and
                         the old table carried their last surviving figure forward. */}
-                    <td className={!t.measured ? 'wr-muted' : t.reported?.value < 95 ? 'wr-bad' : 'wr-good'}>
+                    {/* ⚠ Judged against the KPI'S OWN target, never a flat 95. Targets
+                        are not uniform — cross-queue KPIs are 90, per-tier ones 95 —
+                        so a fixed threshold miscolours four of fourteen rows. No
+                        target stated means no colour, not a guessed one. */}
+                    <td className={!t.measured ? 'wr-muted'
+                      : t.target == null ? ''
+                        : t.reported?.value < t.target ? 'wr-bad' : 'wr-good'}>
                       {!t.measured ? 'not measured' : t.reported?.value == null ? '—' : `${Math.round(t.reported.value)}%`}
                     </td>
                     <td>{t.compare?.value == null ? '—' : `${Math.round(t.compare.value)}%`}</td>
                     <td><Delta value={t.delta} /></td>
+                    <td className="wr-muted">
+                      {!t.measured ? '—'
+                        : t.targetMoved ? `target moved ${(t.targetRange || []).join('–')}%`
+                          : t.target == null ? 'no target set' : `${t.target}%`}
+                    </td>
                   </tr>
                 ))}
               </tbody>

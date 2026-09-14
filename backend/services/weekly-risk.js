@@ -38,8 +38,32 @@ const nova = require('./nova-client');
 const managementLog = require('./management-log');
 const overtime = require('./overtime');
 
-/** Compliance KPIs are measured against this unless NOVA says otherwise. */
+/**
+ * The target a compliance KPI is measured against when NOVA states none.
+ *
+ * ⚠⚠ THIS IS A LAST RESORT, NOT THE TARGET. Its comment used to read
+ * "unless NOVA says otherwise" and nothing ever asked NOVA — every row was
+ * RAGged against 95 and the column header said so. Measured on the live
+ * snapshot for 2 Sep 2026, compliance targets are NOT UNIFORM: the two
+ * cross-queue KPIs (Open Queue, Resolved Today) are measured against **90**
+ * and the five per-tier ones (Customer Care, Production, Tier 2, Tier 3,
+ * Development) against **95**. So 95 was wrong for four rows and 90 would be
+ * wrong for ten — no single number works, which is why the target now travels
+ * per KPI on `kpi-trend`.
+ *
+ * A row NOVA states no target for gets NO RAG and NO slide finding rather than
+ * falling back to this, because judging a queue against a number nobody set is
+ * the same species of invention as reading a stale figure as current. It is
+ * kept, exported and pinned so the ONE place it could still apply is visible.
+ */
 const COMPLIANCE_TARGET = 95;
+/**
+ * How far below its own target a KPI may sit and still read amber rather than
+ * red. NEURO's rule, applied RELATIVE to whatever target NOVA states — NOVA's
+ * own amber thresholds (`registry.rag.amberMin`) are not exposed over the
+ * bridge, so this is not presented as agreeing with them.
+ */
+const AMBER_BAND = 20;
 /** A reason-code vocabulary is broken past this share of `unknown`. */
 const UNKNOWN_REASON_ESCALATE_SHARE = 0.5;
 /** Consecutive weeks below target before a slide is an escalation, not a blip. */
@@ -577,6 +601,23 @@ function ragBucket(rag) {
  * nothing rather than silently falling back to the positional read, because that
  * fallback is the bug.
  */
+/**
+ * The target for one week's bucket, and whether it can be stated at all.
+ *
+ * PURE. Three answers, deliberately: a number, `null` because NOVA did not say
+ * (an older bridge, or a KPI with no target set), and `null` WITH
+ * `targetMoved` because it changed mid-week — the last is a fact about the
+ * week and must not be flattened to whichever end reads better.
+ */
+function targetOf(entry) {
+  if (!entry) return { target: null, targetMoved: false };
+  const lo = entry.targetMin;
+  const hi = entry.targetMax;
+  if (lo === null || hi === null) return { target: null, targetMoved: false };
+  if (lo !== hi) return { target: null, targetMoved: true, targetRange: [lo, hi] };
+  return { target: lo, targetMoved: false };
+}
+
 function buildTrend(trendData, reportWeek = null) {
   const rows = trendData?.rows || [];
   const byKpi = new Map();
@@ -589,6 +630,11 @@ function buildTrend(trendData, reportWeek = null) {
       value: num(r.avgValue),
       samples: num(r.samples),
       group: r.KPIGroup || null,
+      // ⚠ A target that MOVED inside the week is a real fact about the week, so
+      // both ends travel and a disagreement is reported rather than averaged
+      // away. An older NOVA sends neither, which reads as "not stated".
+      targetMin: num(r.targetMin),
+      targetMax: num(r.targetMax),
     });
   }
   const compareWeek = reportWeek ? previousWeek(reportWeek) : null;
@@ -614,6 +660,7 @@ function buildTrend(trendData, reportWeek = null) {
       lastSeen,
       reportWeek,
       compareWeek,
+      ...targetOf(reported),
     });
   }
   return out.sort((a, b) => a.kpi.localeCompare(b.kpi));
@@ -739,14 +786,19 @@ function assess(snap) {
     // — "Tier 2 has been below target for three straight weeks" read off data
     // that ends a fortnight ago is a stale fact asserted as a current one.
     if (!t.measured) continue;
+    // ⚠ A SLIDE IS MEASURED AGAINST THE KPI'S OWN TARGET. Against a flat 95,
+    // the cross-queue rows (target 90) would be called a slide at 91% — a
+    // three-week escalation to Chris over a KPI that was passing all three
+    // weeks. Where NOVA states no target there is no slide to claim.
+    if (t.target === null) continue;
     const upTo = t.series.filter(x => x.period <= t.reported.period);
-    const weeks = consecutiveBelowTarget(upTo, COMPLIANCE_TARGET);
+    const weeks = consecutiveBelowTarget(upTo, t.target);
     if (weeks < SLIDE_WEEKS) continue;
     const history = upTo.slice(-6).map(s => `${Math.round(s.value)}%`).join(' → ');
     findings.push({
       severity: 'escalate',
       kind: 'compliance-slide',
-      title: `${t.kpi} below ${COMPLIANCE_TARGET}% for ${weeks} straight weeks`,
+      title: `${t.kpi} below ${t.target}% for ${weeks} straight weeks`,
       detail: `${history} (last ${Math.min(t.series.length, 6)} weeks). Needs a root-cause look — capacity vs process vs ticket mix.`,
       kpi: t.kpi,
       weeks,
@@ -1209,6 +1261,33 @@ function csatNote(csat) {
 }
 
 /**
+ * The RAG cell, which STATES THE TARGET IT JUDGED AGAINST.
+ *
+ * ⚠ The column used to be headed "vs 95%" and every row was measured against
+ * that. Compliance targets are not uniform — cross-queue KPIs are 90 and
+ * per-tier ones 95 — so the colour was wrong for four of fourteen rows and no
+ * single header could have been right. Printing the target beside the colour
+ * is what makes a mixed table readable without a key.
+ *
+ * ⚠ NO TARGET MEANS NO COLOUR. A queue judged against a number nobody set is
+ * the same invention as a stale figure read as current, so it says why instead.
+ * The amber band stays RELATIVE to whatever the target is (NOVA's own amber
+ * thresholds are not exposed over the bridge, so this remains NEURO's rule and
+ * is not presented as NOVA's).
+ */
+function ragCell(t) {
+  const v = t.reported?.value;
+  if (v === null || v === undefined) return '—';
+  if (t.targetMoved) {
+    const [lo, hi] = t.targetRange || [];
+    return `— target moved ${lo}–${hi}%`;
+  }
+  if (t.target === null) return '— no target set';
+  const light = v >= t.target ? '🟢' : v >= t.target - AMBER_BAND ? '🟠' : '🔴';
+  return `${light} ${t.target}%`;
+}
+
+/**
  * The compliance table.
  *
  * ⚠ THE COLUMNS ARE DATED. They read "This week / Last week" over figures that
@@ -1232,7 +1311,7 @@ function complianceTable(trend, csat, reportWeek) {
   const colNow = endOf(reportWeek) ? `Week to ${endOf(reportWeek)}` : 'Reporting week';
   const colWas = endOf(compareWeek) ? `Week to ${endOf(compareWeek)}` : 'Week before';
 
-  const header = `| KPI | ${colNow} | ${colWas} | Δ | vs 95% |\n|---|---|---|---|---|`;
+  const header = `| KPI | ${colNow} | ${colWas} | Δ | vs target |\n|---|---|---|---|---|`;
   const pct = (v) => (v === null || v === undefined ? '—' : `${Math.round(v)}%`);
   const body = rows.map(t => {
     if (!t.measured) {
@@ -1243,8 +1322,7 @@ function complianceTable(trend, csat, reportWeek) {
     const was = t.compare?.value;
     const d = t.delta;
     const arrow = d === null ? '—' : d > 0 ? `▲ +${d}` : d < 0 ? `▼ ${d}` : '– 0';
-    const rag = now === null || now === undefined ? '—' : now >= COMPLIANCE_TARGET ? '🟢' : now >= COMPLIANCE_TARGET - 20 ? '🟠' : '🔴';
-    return `| ${t.kpi} | ${pct(now)} | ${pct(was)} | ${arrow} | ${rag} |`;
+    return `| ${t.kpi} | ${pct(now)} | ${pct(was)} | ${arrow} | ${ragCell(t)} |`;
   }).concat(extra).join('\n');
 
   const notes = [];
@@ -1252,6 +1330,11 @@ function complianceTable(trend, csat, reportWeek) {
     notes.push(`Complete Monday-to-Sunday weeks. ${colNow} is the week this report covers; `
       + 'a partial current week is never shown, because a one-day reading against a seven-day '
       + 'average is not a comparison.');
+  }
+  const targets = [...new Set(rows.filter(t => t.measured && t.target !== null).map(t => t.target))];
+  if (targets.length > 1) {
+    notes.push(`Targets differ by queue (${targets.sort((x, y) => x - y).join('% and ')}%), so each row `
+      + 'states the one it was judged against.');
   }
   const missing = rows.filter(t => !t.measured);
   if (missing.length) {
@@ -2183,7 +2266,7 @@ module.exports = {
   getManual, setManual, manualBlockers, emptyManual, carryForward,
   weekCommencing, previousWeek, buildTrend, consecutiveBelowTarget, ragBucket,
   QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder,
-  weekSpan, periodInWeek, shortUk,
+  weekSpan, periodInWeek, shortUk, targetOf, ragCell, AMBER_BAND,
   buildCsat, csatScoreCell, csatDaysCell, deltaArrow, DAYS_IN_WEEK,
   toEmailHtml, markdownToEmailHtml,
   COMPLIANCE_TARGET, SLIDE_WEEKS, UNKNOWN_REASON_ESCALATE_SHARE, SNAPSHOT_STALE_DAYS,
