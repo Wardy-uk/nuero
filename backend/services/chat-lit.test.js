@@ -115,13 +115,16 @@ test('⚠⚠ listening is not a fault, and a missing mic is not one either', () 
             'a live microphone wears the alarm red again');
   assert.match(micOn[1], /--sara-rgb/, 'she is not the one attending any more');
 
-  // "This browser has no speech recognition" is a route that does not exist —
-  // amber, the one gap ink, never the red beside it.
-  const gap = sheet.match(/\.chat__voice-note--gap \{([^}]*)\}/);
-  assert.ok(gap, 'the no-mic gap style is gone');
-  assert.match(gap[1], /#f0d6a6/, 'the gap is not wearing the app gap ink');
-  assert.match(strip(jsx()), /chat__voice-note--gap/,
-               'the unsupported-mic line is painted as a fault again');
+  // ⚠ "This browser has no speech recognition" was painted AMBER here on step 9
+  // and that was wrong: the kiosk and the Electron window both mount this
+  // screen, so it would have sat lit for ever over a device working exactly as
+  // it always will. It is a STATEMENT — see the vocabulary in Lit.css, and the
+  // fuller note in controls-lit.test.js, which is where it was caught.
+  assert.ok(!/chat__voice-note--gap/.test(sheet), 'the dead gap style is back');
+  assert.ok(!/chat__voice-note--gap/.test(strip(jsx())),
+            'the unsupported-mic line is amber again — it would never go out');
+  // A mic that was ASKED FOR and failed is still a fault.
+  assert.match(strip(jsx()), /chat__voice-note--err/);
 });
 
 test('⚠ the light on this screen is hers', () => {

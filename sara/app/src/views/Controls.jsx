@@ -210,7 +210,9 @@ export default function Controls() {
     return (
       <div className="controls">
         <h2 className="controls__title">SARA Controls</h2>
-        <p className="controls__error">I couldn't reach NEURO, so I can't show you what's set — {error}</p>
+        {/* ⚠ A FAULT, not a gap: nothing loaded, so there is no partial picture
+            to be mistaken for a complete one, and the fix is a different one. */}
+        <p className="controls__fault">I couldn't reach NEURO, so I can't show you what's set — {error}</p>
         <button className="controls__btn" onClick={load}>Try again</button>
       </div>
     );
@@ -223,7 +225,8 @@ export default function Controls() {
   return (
     <div className="controls">
       <h2 className="controls__title">SARA Controls</h2>
-      {error && <p className="controls__error">Last change didn't save — {error}</p>}
+      {/* ⚠ A FAULT: he pressed something and it did not happen. */}
+      {error && <p className="controls__fault">Last change didn't save — {error}</p>}
 
       {/* Permission. Deliberately a button and never an automatic prompt: the
           browser asks once, and a denial is close to permanent on iOS. */}
@@ -240,7 +243,11 @@ export default function Controls() {
               Turn notifications on
             </button>
           )}
-          {permissionNote && <p className="controls__error">{permissionNote}</p>}
+          {/* ⚠ NOT A FAULT. This is either a permanent fact about the device or
+              a decision Nick made — and the browser will not ask twice, so
+              painting his own "no" in alarm red is the screen telling him off
+              for an answer it asked for. */}
+          {permissionNote && <p className="controls__muted">{permissionNote}</p>}
         </section>
       )}
       {!pushSupported() && (
@@ -358,7 +365,11 @@ export default function Controls() {
         </p>
         {mutedError && (
           <>
-            <p className="controls__error">I couldn't read what's muted, so this is not a clean list — {mutedError}</p>
+            {/* ⚠ A GAP, and the only one on this screen: every other section is
+                answering, so the danger is that this one reads as "nothing is
+                muted" — which would tell him prompts can reach him when they
+                cannot. That is what the amber is for. */}
+            <p className="controls__gap">I couldn't read what's muted, so this is not a clean list — {mutedError}</p>
             <button className="controls__btn" onClick={loadMuted}>Try again</button>
           </>
         )}

@@ -431,11 +431,13 @@ export default function Chat() {
           {voiceErr || (listening ? 'Listening… tap ⏺ to send.' : 'Speaking…')}
         </div>
       )}
-      {/* ⚠ A GAP, not a fault. This browser has no speech recognition — nothing
-          is broken, a route simply does not exist here, which is the same amber
-          the banner above uses. */}
+      {/* ⚠ A STATEMENT, not a gap and certainly not a fault. This browser has no
+          speech recognition and never will — the kiosk and the Electron window
+          both mount this screen — so amber here would sit lit for ever over a
+          device working exactly as it always will, which is how a warning stops
+          being read. It is a plain fact about where he is standing. */}
       {!SpeechRecognition && (
-        <div className="chat__voice-note chat__voice-note--gap">
+        <div className="chat__voice-note">
           {noMicReason()}
         </div>
       )}

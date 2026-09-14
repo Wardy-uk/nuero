@@ -33,11 +33,39 @@
 /* Touch targets stay at 44px — this screen is used one-handed on a phone, and a
    mis-tap here changes whether SARA is allowed to speak at all. */
 .controls__row input[type='checkbox'],
-.controls__row input[type='radio'] { width: 22px; height: 22px; min-width: 22px; accent-color: var(--accent); }
+.controls__row input[type='radio'] { width: 22px; height: 22px; min-width: 22px; accent-color: rgb(var(--sara-rgb, 114, 150, 211)); }
 
 .controls__hint { color: var(--muted); font-size: 0.75rem; font-style: normal; }
 .controls__muted { color: var(--muted); font-size: 0.8rem; margin: 0.4rem 0 0; }
-.controls__error { color: #ff9d9d; font-size: 0.82rem; margin: 0.4rem 0; }
+/* ⚠⚠ ONE RED WAS CARRYING THREE DIFFERENT FACTS on this screen: a dead
+   backend, a save that did not land, and a SECTION that could not be read —
+   plus, at one point, a notification permission Nick had declined, which is his
+   own decision rendered as an alarm. See the vocabulary in Lit.css.
+
+   This is the FAULT: something broke and he can retry it. In the app's one red,
+   not a fifth mix of it (#ff9d9d was this screen's own). */
+.controls__fault {
+  color: #ffb4b4;
+  background: rgba(224, 84, 58, 0.12);
+  border: 1px solid rgba(224, 84, 58, 0.55);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  margin: 0.4rem 0;
+}
+
+/* ⚠ A GAP: this page is answering, and one part of it could not be read. The
+   danger is precisely that everything around it looks complete — which is why
+   it is coloured at all, in the app's ONE gap ink. */
+.controls__gap {
+  color: #f0d6a6;
+  background: rgba(240, 214, 166, 0.09);
+  border: 1px solid rgba(240, 214, 166, 0.3);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  margin: 0.4rem 0;
+}
 
 .controls__chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .controls__chip,
@@ -52,8 +80,11 @@
   cursor: pointer;
   min-height: 40px;
 }
-.controls__chip--on { border-color: var(--accent); color: var(--accent); }
-.controls__btn--primary { background: var(--accent-dim); border-color: var(--accent); }
+.controls__chip--on { border-color: rgb(var(--sara-rgb, 114, 150, 211)); color: rgb(var(--sara-rgb, 114, 150, 211)); }
+.controls__btn--primary {
+  background: rgba(var(--sara-rgb, 114, 150, 211), 0.18);
+  border-color: rgb(var(--sara-rgb, 114, 150, 211));
+}
 .controls__chip:disabled, .controls__btn:disabled { opacity: 0.5; }
 
 /* ── Records ─────────────────────────────────────────────────────────────── */
@@ -76,7 +107,7 @@
   padding: 0.1rem 0.35rem;
   color: var(--muted);
 }
-.controls__state--active { border-color: var(--accent); color: var(--accent); }
+.controls__state--active { border-color: rgb(var(--sara-rgb, 114, 150, 211)); color: rgb(var(--sara-rgb, 114, 150, 211)); }
 .controls__state--deferred { border-style: dashed; }
 .controls__state--suppressed, .controls__state--expired { opacity: 0.6; }
 

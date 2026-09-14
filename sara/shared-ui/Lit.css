@@ -161,6 +161,30 @@
   color: rgba(255, 255, 255, 0.55);
 }
 
+/* ⚠⚠ THE TEST, because this judgement has now been made on seven screens and
+   was written down on none of them. Three outcomes, and the middle one is the
+   one that keeps getting painted as one of the others:
+
+     FAULT (red)      — something BROKE. A write that did not land, an action
+                        that failed, or no answer at all. Nick can retry it.
+     GAP (amber)      — a HOLE in an answer that is otherwise being given. A
+                        source that could not be read THIS TIME and might be read
+                        next time. The danger is that the rest of the page looks
+                        complete, which is the whole reason it is coloured.
+     STATEMENT (muted) — a permanent fact about this device, or a decision Nick
+                        made. Neither broken nor unread, and nothing to act on.
+
+   ⚠ The third exists because of a mistake made on Chat and caught on Controls:
+   "this browser has no speech recognition" was painted AMBER, and the kiosk and
+   the Electron window both mount that screen — so it would have sat amber for
+   ever over a device that is working exactly as it always will. A warning that
+   is always on is a warning nobody reads, and it costs the real one. Same for a
+   notification permission Nick DECLINED: rendering his own decision as a fault
+   is the screen telling him off.
+
+   ⚠ A total failure to reach NEURO is a FAULT, not a gap — there is no partial
+   picture to be misread, and the fix is a different one. */
+
 /* Something genuinely wrong, which is a different claim from a gap and is
    deliberately the only place a real alarm colour appears. */
 .lit-chip--fault {
