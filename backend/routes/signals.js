@@ -69,4 +69,39 @@ router.get('/room', async (req, res) => {
   }
 });
 
+// GET /api/signals/meeting — is he in one, and when is it due to end?
+//
+// Hung here for the same reason `/room` is: it belongs to "what can she sense", and
+// it must be CHEAP. `attention.currentMeetingEvent` reads the local calendar cache
+// and nothing else — no Graph call, no gather — because the office screen asks this
+// while Nick is away from his desk.
+//
+// ⚠ A REAL MEETING ONLY. `isRealMeeting` requires `attendeesOther === true`, so a
+// solo focus block never becomes "back at 14:30" — half his diary is those.
+//
+// ⚠ "Due to end", never "back at" as a promise: the scheduled end is a fact about
+// the diary, not about when a man will return to his chair.
+router.get('/meeting', (req, res) => {
+  try {
+    const attention = require('../services/attention');
+    const now = new Date();
+    const event = attention.currentMeetingEvent(now);
+    if (!event) return res.json({ known: true, inMeeting: false, endsAt: null });
+    const endsAt = event.end || event.end_time || null;
+    return res.json({
+      known: true,
+      inMeeting: true,
+      // The subject is deliberately NOT returned: this feeds a screen on a desk in
+      // an open-plan office, and a customer's name on it is the VESTA redaction
+      // rule one building along.
+      endsAt,
+      minutesLeft: endsAt ? Math.round((new Date(endsAt).getTime() - now.getTime()) / 60000) : null,
+    });
+  } catch (e) {
+    // Not knowing is its own answer — the screen then says he is away from the desk
+    // and stops, rather than inventing a return time.
+    res.status(200).json({ known: false, why: e.message });
+  }
+});
+
 module.exports = router;

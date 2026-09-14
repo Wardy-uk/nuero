@@ -39,6 +39,8 @@ from collections import deque
 from ctypes import wintypes
 from datetime import datetime, timezone
 
+import urllib.request
+
 from bleak import BleakScanner
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -48,6 +50,13 @@ APP_DIR = os.path.dirname(
 )
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 STATUS_FILE = os.environ.get("WATCH_STATUS_FILE", os.path.join(APP_DIR, "presence.json"))
+
+# Reporting this laptop to SARA as a MOBILE sensor. Unset = off, and the local
+# presence file (the screen lock) works exactly as before — this is additive.
+SENSOR_URL = os.environ.get("SARA_SENSOR_URL", "").strip()
+SENSOR_ROOM = os.environ.get("SARA_SENSOR_ROOM", "laptop").strip() or "laptop"
+SENSOR_TOKEN = os.environ.get("SARA_SENSOR_TOKEN", "").strip()
+_push_warned = False
 
 DEFAULTS = {
     "irk_hex": "2dbfa199fa42d060551738470e010f2e",
@@ -207,6 +216,58 @@ class Reporter:
         # else: hold current status
         return age
 
+    def sensor_reading(self, age):
+        """This laptop as a SARA sensor — the same shape the Pi room sensors push.
+
+        ⚠ MOBILE, AND IT SAYS SO. Every other sensor answers "is he in MY ROOM",
+        which only works because it never moves. A laptop goes to meetings, so its
+        honest claim is "he is near ME, wherever I am" — hence `mobile: true`, which
+        keeps it out of the house arbitration and the room fingerprint entirely.
+        With the fixed desk sensor it makes one distinction nothing else can:
+        desk hears him = at his desk; only the laptop hears him = at work, away from
+        the desk (in a meeting, with the laptop).
+
+        ⚠ `inRoom` carries the reporter's OWN verdict, which already fuses the
+        rolling RSSI window with keyboard and mouse input — deliberately not a raw
+        threshold here, or the laptop would answer a question it has already
+        answered better.
+        """
+        return {
+            "room": SENSOR_ROOM,
+            "mobile": True,
+            "status": "present" if self.status == "present" else ("absent" if self.status == "away" else "unknown"),
+            "inRoom": True if self.status == "present" else (False if self.status == "away" else None),
+            # The radio is demonstrably alive whenever it has ever heard the watch;
+            # this reporter filters to the watch alone, so it has no background count
+            # to offer and must not pretend otherwise.
+            "healthy": self.hits > 0,
+            "rssiMedian": self.last_rssi,
+            "rate": None,
+            "lastSeenS": round(age, 1) if age is not None else None,
+            "why": None if self.status != "unknown" else "still filling the first window",
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def push_status(self, age):
+        """Report to SARA. Never allowed to affect the lock: a failed push is logged
+        and dropped, because this laptop's own screen lock must not depend on a Pi."""
+        if not SENSOR_URL:
+            return
+        try:
+            body = json.dumps(self.sensor_reading(age)).encode("utf-8")
+            req = urllib.request.Request(SENSOR_URL, data=body, method="POST",
+                                         headers={"Content-Type": "application/json"})
+            if SENSOR_TOKEN:
+                req.add_header("X-Sara-Sensor-Token", SENSOR_TOKEN)
+            with urllib.request.urlopen(req, timeout=4) as r:
+                if r.status >= 400:
+                    log(f"sensor push rejected {r.status}")
+        except Exception as e:  # noqa: BLE001 — a sensor that cannot report is not a broken laptop
+            global _push_warned
+            if not _push_warned:
+                log(f"sensor push failed ({type(e).__name__}: {e}); will keep trying quietly")
+                _push_warned = True
+
     def write_status(self, age):
         payload = {
             "status": self.status,
@@ -269,6 +330,7 @@ async def main():
             # freshness check (WATCH_STALE_MS, default 30s) always sees a live file.
             if rep.status != last_written or ticks % 3 == 0:
                 rep.write_status(age)
+                rep.push_status(age)
                 if rep.status != last_written:
                     log(f"-> {rep.status} (hits={rep.hits}, rssi={rep.last_rssi}, "
                         f"last_seen_s={round(age,1) if age is not None else None})")

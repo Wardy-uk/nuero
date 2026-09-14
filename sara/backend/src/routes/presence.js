@@ -41,6 +41,7 @@ const profiles = require('../presence/profiles');
 const { classify } = require('../presence/fingerprint');
 const { resolveRoom, displayState, offsiteDisplayState } = require('../presence/rooms');
 const pendingGreetings = require('../greeting/pending');
+const neuroConfig = require('../integrations/neuroConfig');
 
 profiles.load();
 
@@ -96,7 +97,50 @@ function isOffsite(room) {
  * about the house that it can never be.
  */
 function houseOnly(readings) {
-  return Object.fromEntries(Object.entries(readings || {}).filter(([room]) => !isOffsite(room)));
+  return Object.fromEntries(Object.entries(readings || {})
+    // ⚠ A MOBILE sensor is excluded for the same reason and then some: it names no
+    // room at all. A laptop that goes to meetings cannot be evidence about which
+    // room of the house he is standing in.
+    .filter(([room, r]) => !isOffsite(room) && !(r && r.mobile === true)));
+}
+
+/**
+ * "Is he in a meeting, and when does it end" — from NEURO, which owns the calendar.
+ *
+ * ⚠ FETCHED ONLY WHILE IT MATTERS, and cached. The office screen polls every four
+ * seconds; asking NEURO on every poll for a fact that changes on the hour would put
+ * a network call on a screen refresh forever. It is refreshed only while he is
+ * away from his desk, at most once a minute.
+ *
+ * ⚠ A FAILED READ CLEARS NOTHING AND INVENTS NOTHING. The last answer stands until
+ * it ages out, and with no answer at all the screen simply says he is away from the
+ * desk — never a guessed return time.
+ */
+const MEETING_TTL_MS = 60_000;
+const meetingCache = { at: 0, value: null, inFlight: false };
+
+function refreshMeeting(now = new Date()) {
+  if (meetingCache.inFlight || now.getTime() - meetingCache.at < MEETING_TTL_MS) return;
+  meetingCache.inFlight = true;
+  const env = process.env;
+  const ready = neuroConfig.readiness(env);
+  if (!ready.ready) { meetingCache.inFlight = false; return; }
+  fetch(`${neuroConfig.getBaseUrl(env)}/api/signals/meeting`, {
+    headers: { accept: 'application/json', ...neuroConfig.authHeaders(env) },
+    signal: AbortSignal.timeout(4000),
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (d && d.known === true) meetingCache.value = { known: true, endsAt: d.inMeeting ? d.endsAt : null };
+      meetingCache.at = Date.now();
+    })
+    .catch(() => { meetingCache.at = Date.now(); })
+    .finally(() => { meetingCache.inFlight = false; });
+}
+
+/** The mobile sensors' readings — the laptop. Never part of any room. */
+function mobileOnly(readings) {
+  return Object.entries(readings || {}).filter(([, r]) => r && r.mobile === true).map(([, r]) => r);
 }
 
 // Which room won last time, for the arbitration's hysteresis. In-memory like
@@ -366,7 +410,14 @@ router.get('/display', (req, res) => {
   // exactly that — not the house arbitration, which is about a different building.
   if (isOffsite(room)) {
     const deskOnly = resolveRoom(readings[room] ? { [room]: readings[room] } : {}, now);
-    const display = offsiteDisplayState(room, deskOnly);
+    const display = offsiteDisplayState(room, deskOnly, {
+      mobile: mobileOnly(readings),
+      // Cached, and only fetched while he is actually away from the desk — see
+      // `meetingCache` below.
+      meeting: meetingCache.value,
+    });
+    // Ask NEURO for the meeting only when it would change what this screen says.
+    if (display.reason === 'away-from-desk') refreshMeeting(now);
     if (lastDisplay.get(room) !== display.state) {
       history.note('display:' + room, lastDisplay.get(room) || null, display.state, deskOnly.rooms, { why: display.reason });
       lastDisplay.set(room, display.state);
@@ -518,4 +569,5 @@ module.exports.presenceSource = presenceSource;
 module.exports.sustainedClock = sustainedClock;
 module.exports.liveVector = liveVector;
 module.exports.houseOnly = houseOnly;
+module.exports.mobileOnly = mobileOnly;
 module.exports.isOffsite = isOffsite;

@@ -198,10 +198,36 @@ function resolveRoom(reports = {}, now = new Date(), {
  * Its own sensor answers, and the fingerprint is ignored — that is trained on
  * the house and has nothing to say about a desk twenty miles away.
  */
-function offsiteDisplayState(thisRoom, arbitration) {
+/**
+ * "Back at 14:30" — said only when something actually knows. PURE.
+ *
+ * ⚠ IT NEVER GUESSES A RETURN TIME. A meeting's scheduled end is the only fact
+ * here; without one the screen says he is away from his desk and stops, because a
+ * made-up "back soon" on a screen his colleagues walk past is a promise SARA has no
+ * business making on his behalf.
+ *
+ * ⚠ The end is SLICED out of the string, never parsed into a Date — the rule the
+ * calendar learned once already, when re-parsing an instant shifted every BST event
+ * by an hour.
+ */
+function dueBackLine(meeting) {
+  if (!meeting || meeting.known !== true) return null;
+  const end = typeof meeting.endsAt === 'string' ? meeting.endsAt : null;
+  if (!end) return null;
+  const at = end.slice(11, 16);
+  if (!/^\d{2}:\d{2}$/.test(at)) return null;
+  return `Away from the desk — back at ${at}.`;
+}
+
+function offsiteDisplayState(thisRoom, arbitration, { mobile = [], meeting = null } = {}) {
   const own = arbitration && arbitration.rooms
     ? arbitration.rooms.find(r => r.room === thisRoom)
     : null;
+
+  // ⚠ THE LAPTOP ONLY EVER SOFTENS THE CLOCK, never shows SARA. It knows he is
+  // nearby, not that he is at this desk — and this screen is in a room other people
+  // walk through, so "near the building" is not a reason to put his day on display.
+  const withLaptop = mobile.some(m => m && m.readable !== false && m.inRoom === true);
 
   if (!own || !own.readable) {
     // Its own sensor could not answer. FAIL TOWARDS THE CLOCK rather than towards
@@ -217,6 +243,17 @@ function offsiteDisplayState(thisRoom, arbitration) {
   }
   if (own.inRoom === true) {
     return { state: 'full', reason: 'watch-at-this-desk', say: null, decidedBy: 'offsite' };
+  }
+  if (withLaptop) {
+    // He is about, with the laptop — in a meeting, or standing somewhere else. The
+    // clock either way; the words are the only difference, and they are the whole
+    // point of a second sensor.
+    return {
+      state: 'clock',
+      reason: 'away-from-desk',
+      say: dueBackLine(meeting) || 'Away from the desk.',
+      decidedBy: 'offsite',
+    };
   }
   return { state: 'clock', reason: 'not-at-this-desk', say: null, decidedBy: 'offsite' };
 }
@@ -356,6 +393,6 @@ function displayState(thisRoom, arbitration, home, inferred = null, sustained = 
 }
 
 module.exports = {
-  resolveRoom, displayState, offsiteDisplayState,
+  resolveRoom, displayState, offsiteDisplayState, dueBackLine,
   SENSOR_STALE_MS, SWITCH_MARGIN_DB, SLEEP_ROOM, SLEEP_LOCK_MS,
 };

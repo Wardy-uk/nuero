@@ -54,6 +54,11 @@ function record(body, now = new Date()) {
     batteryPct: Number.isFinite(body.batteryPct) && body.batteryPct >= 0 && body.batteryPct <= 100
       ? Math.round(body.batteryPct) : null,
     charging: body.charging === true ? true : body.charging === false ? false : null,
+    // ⚠ A MOBILE sensor (the laptop) names no room — it answers "he is near ME",
+    // and ME moves. It must never reach the house arbitration or the fingerprint,
+    // both of which assume a sensor's room is fixed. Its one job is the distinction
+    // a fixed sensor cannot make: at the desk, or away from it but with the laptop.
+    mobile: body.mobile === true,
     // ⚠ The RECEIVED time, not the sensor's own. A sensor with a wrong clock
     // would otherwise be permanently stale or permanently fresh, and the thing
     // being measured here is "did this Pi speak to us recently", which is ours
