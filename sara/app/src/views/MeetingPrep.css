@@ -31,7 +31,7 @@
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #ffd08a;
+  color: #f0d6a6;
   margin-bottom: 0.3rem;
 }
 .mp__owes-item {
@@ -48,7 +48,7 @@
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.mp__owes-age.stale { color: #ffd08a; }
+.mp__owes-age.stale { color: #f0d6a6; }
 
 .mp__list { margin: 0; padding-left: 1.1rem; }
 .mp__list li { margin: 0.2rem 0; font-size: 0.9rem; }
@@ -90,8 +90,8 @@
 .mp__away {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #ffd08a;
-  border: 1px solid #ffd08a;
+  color: #f0d6a6;
+  border: 1px solid #f0d6a6;
   border-radius: 6px;
   padding: 0 0.3rem;
   margin-left: 0.35rem;
@@ -107,7 +107,7 @@
   margin-left: 0.35rem;
   white-space: nowrap;
 }
-.mp__away-sum { font-size: 0.84rem; color: #ffd08a; margin-bottom: 0.3rem; }
+.mp__away-sum { font-size: 0.84rem; color: #f0d6a6; margin-bottom: 0.3rem; }
 .mp__away-unknown-sum { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; }
 
 /* ⚠ The one FAULT on this screen, sharing the primitive's red rather than

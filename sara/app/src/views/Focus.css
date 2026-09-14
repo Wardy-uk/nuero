@@ -24,7 +24,7 @@
 
 /* ⚠ The lead's edge is HERS. This is the one card on the screen that is the
    answer rather than a candidate, so it moves with her state like the rest of
-   the app — `var(--accent)` was the fixed system blue asserting a state she
+   the app — `rgb(var(--sara-rgb, 114, 150, 211))` was the fixed system blue asserting a state she
    may not be in. */
 .focus__next { border-left: 3px solid rgb(var(--sara-rgb, 114, 150, 211)); }
 .focus__tap {
@@ -73,11 +73,11 @@
 .focus__score { color: var(--muted); font-size: 0.75rem; margin-left: auto; }
 
 /* Left accent by urgency */
-.focus__u--critical { border-left: 3px solid #ff6b81; }
-.focus__u--high { border-left: 3px solid #ffb454; }
+.focus__u--critical { border-left: 3px solid #ff6b8a; }
+.focus__u--high { border-left: 3px solid #ffb45c; }
 /* ⚠⚠ A FIXED BLUE, NOT HERS, and deliberately so. These three are a SEVERITY
    ramp — red, amber, blue — describing how urgent an ITEM is, which is a
-   different claim from how the day is going. `var(--accent)` made the bottom of
+   different claim from how the day is going. `rgb(var(--sara-rgb, 114, 150, 211))` made the bottom of
    that ramp the one rung that moved: on a day she has gone red, every `medium`
    row would have carried a red edge and read as critical. The ramp has to be
    self-consistent or it stops being a ramp, so this is the explicit blue that

@@ -99,8 +99,11 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.dash__row--warn .dash__when { color: #e0a850; }
-.dash__row--crit .dash__when { color: #e0726a; }
+/* ⚠ SEVERITY, and it had mixed a THIRD pair of its own (#e0a850 / #e0726a)
+   beside Focus's and Today's. An item's urgency keeps its own colours — see
+   Lit.css — but it has to be ONE set of them. */
+.dash__row--warn .dash__when { color: #ffcf8a; }
+.dash__row--crit .dash__when { color: #ff9db0; }
 
 .dash__what {
   color: #e6edf3;
@@ -179,12 +182,12 @@
 }
 /* Over the planned time is not an error — it is a fact worth seeing. Amber
    states it without the bar having to lie about its own scale. */
-.dash__meter--over i { background: #e0a850; }
+.dash__meter--over i { background: #f0d6a6; }
 
 /* ── Gaps ─────────────────────────────────────────────────────────────────
    Named, never counted. */
 .dash__gaps {
   margin: 0;
   font-size: 0.75rem;
-  color: #e0a850;
+  color: #f0d6a6;
 }

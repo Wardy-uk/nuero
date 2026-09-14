@@ -123,7 +123,7 @@
   width: 100%;
   background: rgba(28, 37, 48, 0.7);
   border: 1px solid var(--line);
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid rgb(var(--sara-rgb, 114, 150, 211));
   border-radius: 8px;
   padding: 0.5rem 0.65rem;
   color: inherit;
@@ -165,7 +165,7 @@
 }
 .surface__whyline { color: var(--muted); font-size: 0.76rem; line-height: 1.5; margin: 0; }
 .surface__whyline--lead { color: var(--text); }
-.surface__whyline--warn { color: #e0c97e; }
+.surface__whyline--warn { color: #f0d6a6; }
 
 /* ── Her voice ─────────────────────────────────────────────────────────────
  * The one thing, given real room. `justify-content: center` inside a bounded
@@ -255,9 +255,9 @@
 }
 .surface__outcome--done { border-left-color: rgba(76, 154, 255, 0.7); }
 .surface__outcome--partial,
-.surface__outcome--warn { border-left-color: #e0c97e; }
+.surface__outcome--warn { border-left-color: #f0d6a6; }
 .surface__outcomelead { font-size: 0.86rem; }
-.surface__outcome--warn .surface__outcomelead { color: #e0c97e; }
+.surface__outcome--warn .surface__outcomelead { color: #f0d6a6; }
 .surface__outcomesub { color: var(--muted); font-size: 0.76rem; line-height: 1.45; }
 
 /* ── Everything else, quieter ──────────────────────────────────────────────
@@ -301,8 +301,8 @@
   font-size: 0.86rem;
   opacity: 0.75;
 }
-.surface__aside--warn { color: #e0c97e; }
-.surface__saysub--warn { color: #e0c97e; }
+.surface__aside--warn { color: #f0d6a6; }
+.surface__saysub--warn { color: #f0d6a6; }
 .surface__saysub--onit { color: #7fcf9c; }
 
 .surface__footrow {

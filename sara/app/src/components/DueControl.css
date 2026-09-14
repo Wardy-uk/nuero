@@ -14,7 +14,7 @@
 /* A set date reads as committed; an unset one reads as an invitation. */
 .due__btn:not(:empty) { border-style: solid; }
 .due__btn--over { color: #ff9db0; border-color: #ff9db0; }
-.due__btn--today { color: var(--accent); border-color: var(--accent); }
+.due__btn--today { color: rgb(var(--sara-rgb, 114, 150, 211)); border-color: rgb(var(--sara-rgb, 114, 150, 211)); }
 
 /* The tap target is bigger than the pill — this sits in a dense list and gets
    used one-handed. */
@@ -51,7 +51,7 @@
   border-radius: 7px;
   cursor: pointer;
 }
-.due__opt:hover:not(:disabled) { background: var(--accent-dim); }
+.due__opt:hover:not(:disabled) { background: rgba(var(--sara-rgb, 114, 150, 211), 0.18); }
 .due__opt:disabled { opacity: 0.5; cursor: default; }
 .due__opt--clear { color: var(--muted); border-top: 1px solid var(--line); border-radius: 0 0 7px 7px; }
 

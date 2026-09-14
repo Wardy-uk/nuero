@@ -5,8 +5,11 @@
   --line: #26313f;
   --text: #e6edf3;
   --muted: #8b98a8;
-  --accent: #4c9aff;
-  --accent-dim: #2b3d57;
+  /* ⚠ `--accent` and `--accent-dim` are GONE. They were the fixed system
+     blue, and a screen painted with them stays blue on a red day — which is
+     the whole thing the lit pass removed. Her light comes from
+     `--sara-rgb`, set once on the shell from the live read. Deleted rather
+     than left defined, so it cannot come back by autocomplete. */
 }
 
 * { box-sizing: border-box; }
@@ -84,7 +87,7 @@ body {
 /* Lit = screen actively held awake. Dimmed-but-on = armed, waiting for the tap
    iOS needs before it will grant the lock. */
 .app__wake--on {
-  color: var(--accent, #4f9cf9);
+  color: rgb(var(--sara-rgb, 114, 150, 211));
 }
 .app__refresh:disabled,
 .app__lock:disabled {
@@ -133,7 +136,7 @@ body {
   cursor: pointer;
 }
 
-.navbtn--on { color: var(--accent); }
+.navbtn--on { color: rgb(var(--sara-rgb, 114, 150, 211)); }
 .navbtn__icon { font-size: 1.25rem; }
 .navbtn__label {
   max-width: 100%;
@@ -158,9 +161,12 @@ body {
   border-style: dashed;
   color: var(--muted);
 }
-.stub code { color: var(--accent); background: var(--panel-2); padding: 0.1rem 0.35rem; border-radius: 5px; }
+.stub code { color: rgb(var(--sara-rgb, 114, 150, 211)); background: var(--panel-2); padding: 0.1rem 0.35rem; border-radius: 5px; }
 
-.err { color: #ff8a8a; }
+/* ⚠ The app's ONE fault red. Five values meant "broken" across these
+   screens (#ff8a8a, #ff9d9d, #f2b8b8, #f0a0ab, #6f3d46) — a reader cannot
+   learn what red means when each screen mixes its own. */
+.err { color: #ffb4b4; }
 
 .deploy-guard {
   min-height: 100dvh;
@@ -173,14 +179,14 @@ body {
 .deploy-guard__card {
   width: min(100%, 34rem);
   background: var(--panel);
-  border: 1px solid #6f3d46;
+  border: 1px solid rgba(224, 84, 58, 0.55);
   border-radius: 18px;
   padding: 1.25rem;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
 }
 
 .deploy-guard__eyebrow {
-  color: #f0a0ab;
+  color: #ffb4b4;
   font-size: 0.72rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -217,7 +223,7 @@ body {
   margin-bottom: 0.9rem;
   padding: 0.7rem 1rem;
   border-radius: 999px;
-  background: var(--accent);
+  background: rgb(var(--sara-rgb, 114, 150, 211));
   color: white;
   text-decoration: none;
   font-weight: 600;

@@ -18,7 +18,7 @@
 .today__hint { margin-top: 0.5rem; color: var(--muted); font-size: 0.8rem; }
 
 /* ── The one thing. Biggest thing on the screen, by a distance. ── */
-.today__now { border-left: 3px solid var(--accent); }
+.today__now { border-left: 3px solid rgb(var(--sara-rgb, 114, 150, 211)); }
 .today__now--critical { border-left-color: #ff6b8a; }
 .today__now--high { border-left-color: #ffb45c; }
 .today__now--none { border-left-color: #5ad18f; }
@@ -36,7 +36,7 @@
 .today__now-actions { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
 .today__do {
   flex: 1;
-  background: var(--accent);
+  background: rgb(var(--sara-rgb, 114, 150, 211));
   border: none;
   color: #fff;
   border-radius: 10px;
@@ -77,7 +77,7 @@
   color: #5ad18f;
 }
 .today__count-label { flex: 1; color: var(--muted); font-size: 0.85rem; }
-.today__streak { display: block; color: var(--accent); font-size: 0.75rem; margin-top: 0.1rem; }
+.today__streak { display: block; color: rgb(var(--sara-rgb, 114, 150, 211)); font-size: 0.75rem; margin-top: 0.1rem; }
 .today__rituals { display: flex; gap: 0.4rem; color: var(--muted); font-size: 0.95rem; }
 .today__rituals .on { color: #5ad18f; }
 
@@ -109,7 +109,7 @@
   background: transparent;
   border: 2px solid var(--line);
   border-radius: 7px;
-  color: var(--accent);
+  color: rgb(var(--sara-rgb, 114, 150, 211));
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
@@ -126,8 +126,8 @@
 /* The running total after a tick — understated on purpose. */
 .today__headline {
   font-size: 0.9rem;
-  color: var(--accent, #7aa2f7);
-  border-left: 3px solid var(--accent, #7aa2f7);
+  color: rgb(var(--sara-rgb, 114, 150, 211));
+  border-left: 3px solid rgb(var(--sara-rgb, 114, 150, 211));
 }
 
 /* ── Parity sections: getting started, got in the way, body ──
@@ -142,8 +142,8 @@
 
 .today__init-stats { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; font-size: 0.88rem; color: var(--muted); }
 .today__init-stats strong { color: var(--text, inherit); font-size: 1.05rem; margin-right: 0.2rem; }
-.today__init-note { display: block; font-style: normal; color: var(--accent); font-size: 0.72rem; }
-.today__init-live { color: var(--accent); font-size: 0.78rem; margin-top: 0.4rem; }
+.today__init-note { display: block; font-style: normal; color: rgb(var(--sara-rgb, 114, 150, 211)); font-size: 0.72rem; }
+.today__init-live { color: rgb(var(--sara-rgb, 114, 150, 211)); font-size: 0.78rem; margin-top: 0.4rem; }
 .today__init-ladder { margin: 0.55rem 0 0; padding-left: 1rem; font-size: 0.82rem; line-height: 1.45; }
 .today__init-from { color: var(--muted); }
 .today__init-est { color: var(--muted); font-size: 0.78rem; line-height: 1.45; margin: 0.5rem 0 0; }

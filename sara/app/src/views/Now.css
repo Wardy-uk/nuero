@@ -138,7 +138,7 @@
   color: rgb(var(--sara-rgb, 114, 150, 211));
 }
 
-.now__flash.err { color: #ff8a8a; }
+.now__flash.err { color: #ffb4b4; }
 
 .now__gaps {
   margin-top: 1.25rem;
@@ -212,7 +212,7 @@
 .now__sess-err {
   margin-top: 0.5rem;
   font-size: 0.8rem;
-  color: #ff9d9d;
+  color: #ffb4b4;
 }
 
 /* The check-in. Sits inline rather than as a modal — it is a passing question,
@@ -229,7 +229,7 @@
 /* ── The way back, the start, and the close-out ────────────────────────────── */
 
 /* The return prompt leads the screen, so it carries the brightest edge.
-   ⚠ HER colour, not `var(--accent)`. That was the fixed system blue, which is
+   ⚠ HER colour, not `rgb(var(--sara-rgb, 114, 150, 211))`. That was the fixed system blue, which is
    a second opinion about what state she is in — on a day she has gone red, an
    accent-blue edge on the most important card on the screen is the two-products
    finding in one rule. `--sara-rgb` is set on the shell. */

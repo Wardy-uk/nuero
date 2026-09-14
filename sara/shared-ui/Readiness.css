@@ -108,4 +108,7 @@
 }
 
 /* "I could not look" is not "nothing to report", and must not read as calm. */
-.rdy--blind .rdy__none-text { color: #e0c97e; }
+/* ⚠ Blind is a GAP — she could not read it — so it takes the app's one gap
+   ink. The four-step tone ramp above is SEVERITY and keeps its own scale;
+   see Lit.css. */
+.rdy--blind .rdy__none-text { color: #f0d6a6; }

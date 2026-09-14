@@ -28,7 +28,7 @@
   font-size: 0.85rem;
   cursor: pointer;
 }
-/* ⚠ HER colour, not `var(--accent)`. That token is the fixed system blue, so
+/* ⚠ HER colour, not `rgb(var(--sara-rgb, 114, 150, 211))`. That token is the fixed system blue, so
    a screen using it asserts a state she may not be in — nine rules on this one
    screen did, each individually harmless, which is how "two products" happens.
    Selection is still shown by edge AND fill, so it does not rest on hue alone;

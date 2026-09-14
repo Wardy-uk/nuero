@@ -13,7 +13,7 @@
 }
 
 .notif__eyebrow {
-  color: var(--accent);
+  color: rgb(var(--sara-rgb, 114, 150, 211));
   font-size: 0.72rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -89,8 +89,8 @@
 }
 
 .notif__btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: rgb(var(--sara-rgb, 114, 150, 211));
+  border-color: rgb(var(--sara-rgb, 114, 150, 211));
   color: #09111a;
   font-weight: 700;
 }
@@ -131,8 +131,8 @@
 }
 
 .notif__pill--warn {
-  color: #ffd08a;
-  border-color: rgba(255, 208, 138, 0.35);
+  color: #f0d6a6;
+  border-color: rgba(240, 214, 166, 0.35);
 }
 
 .notif__bullet {
@@ -149,7 +149,7 @@
   width: 0.32rem;
   height: 0.32rem;
   border-radius: 999px;
-  background: var(--accent);
+  background: rgb(var(--sara-rgb, 114, 150, 211));
 }
 
 .notif__grid {

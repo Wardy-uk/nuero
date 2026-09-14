@@ -54,9 +54,13 @@
   font-size: 1.1rem;
   cursor: pointer;
 }
+/* ⚠⚠ LISTENING IS NOT A FAULT — the same bug Chat had, on the screen where
+   the microphone matters most. A live mic wore the alarm red AND pulsed, so
+   the most ordinary thing capture does looked like a breakage. She is
+   attending, which is what her colour means everywhere else. */
 .cap__mic--on {
-  background: #5a1f1f;
-  border-color: #ff8a8a;
+  background: rgba(var(--sara-rgb, 114, 150, 211), 0.22);
+  border-color: rgb(var(--sara-rgb, 114, 150, 211));
   animation: cap-pulse 1.2s ease-in-out infinite;
 }
 @keyframes cap-pulse { 50% { opacity: 0.55; } }
