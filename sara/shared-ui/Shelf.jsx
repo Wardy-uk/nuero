@@ -126,19 +126,37 @@ export default function Shelf({
     items.push({ key: `offer-${o.key}`, text: o.say, ask: onRoomAct ? o.key : null, lead: true });
   });
 
+  // ⚠⚠ ONE CARD PER ROOM, NOT ONE PER FACT. This pushed a separate card for the
+  // temperature and another for the lights, so a single room took two slots and
+  // the row grew by TWO for every area she is considering — which is how the
+  // bottom-right corner came to wrap, with "3 off" orphaned onto a line of its
+  // own under "office 21°" (photographed 14 Sep 2026).
+  //
+  // They are two readings of ONE ROOM. Grouping them is what they already are,
+  // and it is the fix that survives a third room being added — widening the box
+  // only moves the wrap to whenever the house gets busier.
   (rooms?.considered || []).forEach((area) => {
+    const facts = [];
     const t = temp(area?.temperature?.reading?.currentC);
-    if (t) items.push({ key: `t-${area.area}`, text: `${area.area} ${t}`, quiet: true });
+    if (t) facts.push(t);
     const lights = area?.lights;
+    let unreachable = 0;
     if (lights && Number.isFinite(lights.total) && lights.total > 0) {
       const on = (lights.on || []).length;
       const off = (lights.off || []).length;
-      if (on > 0) items.push({ key: `l-${area.area}`, text: `${on} on`, quiet: true });
-      else if (off > 0) items.push({ key: `l-${area.area}`, text: `${off} off`, quiet: true });
-      // ⚠ Off at the wall — she cannot reach it, and the dash says so rather
-      // than the bulb simply being absent from the shelf.
-      const un = (lights.unreachable || []).length;
-      if (un > 0) items.push({ key: `u-${area.area}`, text: `${un} at the wall`, off: true });
+      if (on > 0) facts.push(`${on} on`);
+      else if (off > 0) facts.push(`${off} off`);
+      unreachable = (lights.unreachable || []).length;
+    }
+    if (facts.length > 0) {
+      items.push({ key: `room-${area.area}`, text: `${area.area} ${facts.join(' · ')}`, quiet: true });
+    }
+    // ⚠ STILL ITS OWN CARD, and still dashed. Off at the wall means she CANNOT
+    // REACH IT, which is the third light state — folding it in beside a reading
+    // she can act on would make an unreachable bulb look like a live one, and
+    // the dash is the only thing saying otherwise.
+    if (unreachable > 0) {
+      items.push({ key: `u-${area.area}`, text: `${unreachable} at the wall`, off: true });
     }
   });
 
