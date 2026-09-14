@@ -1595,3 +1595,61 @@ test('a healthy live-only read carries no source caveat, and declares the right 
   assert.match(md, /data_source: NOVA kpi_org_daily as at/);
   assert.doesNotMatch(md, /data_source: NOVA jira_kpi_daily/);
 });
+
+// ── The Δ column is coloured in the mail too (Nick, 14 Sep 2026) ─────────────
+// The desktop panel colours a rise green and a fall red (wr-delta-up /
+// wr-delta-down) and the email rendered both in plain black — so one table said
+// two different things depending on where it was read, and the mail is the copy
+// that reaches Chris.
+
+test('a rise is green and a fall is red in the email', () => {
+  const md = '| KPI | Week | Δ |\n|---|---|---|\n| Up | 85% | ▲ +3 |\n| Down | 70% | ▼ -14.3 |\n';
+  const html = weeklyRisk.markdownToEmailHtml(md);
+  assert.match(html, /color:#1a7f37[^"]*">▲ \+3</, 'a rise is green');
+  assert.match(html, /color:#b42318[^"]*">▼ -14\.3</, 'a fall is red');
+});
+
+test('a flat delta and an ordinary cell are NOT coloured', () => {
+  const html = weeklyRisk.markdownToEmailHtml(
+    '| KPI | Week | Δ |\n|---|---|---|\n| Flat | 50% | – 0 |\n| None | 60% | — |\n');
+  assert.doesNotMatch(html, /color:#1a7f37/, 'nothing green');
+  assert.doesNotMatch(html, /color:#b42318/, 'nothing red');
+});
+
+test('⚠ the ARROW still carries the meaning — colour is only ever added on top', () => {
+  // A client that strips inline styles, a printed copy and a colour-blind
+  // reader all lose the hue; none of them may lose the fact.
+  const html = weeklyRisk.markdownToEmailHtml(
+    '| KPI | Week | Δ |\n|---|---|---|\n| Up | 85% | ▲ +3 |\n| Down | 70% | ▼ -14.3 |\n');
+  const stripped = html.replace(/ style="[^"]*"/g, '');
+  assert.match(stripped, /▲ \+3/, 'the rise survives with no styling at all');
+  assert.match(stripped, /▼ -14\.3/, 'and so does the fall');
+});
+
+test('⚠ ONLY an arrow-led cell is coloured — a stray sign colours nothing', () => {
+  // Guards the tempting substring implementation (`includes('+')` /
+  // `includes('-')`), which would paint a negative VALUE or a hyphenated KPI
+  // name as though it were a trend.
+  const html = weeklyRisk.markdownToEmailHtml(
+    '| KPI | Week | Δ |\n|---|---|---|\n'
+    + '| Re-opened rate | -5% | — |\n'
+    + '| Net change | +12% | — |\n');
+  assert.doesNotMatch(html, /color:#1a7f37/, 'a bare + is not a rise');
+  assert.doesNotMatch(html, /color:#b42318/, 'a bare - is not a fall');
+});
+
+test('the Δ cell is found by its ARROW, not by a column index', () => {
+  // A column index would be silently wrong the day a column is added — which is
+  // exactly the change this table has just had (vs target).
+  const html = weeklyRisk.markdownToEmailHtml(
+    '| KPI | A | B | C | D | Δ |\n|---|---|---|---|---|---|\n| x | 1 | 2 | 3 | 4 | ▲ +9 |\n');
+  assert.match(html, /color:#1a7f37[^"]*">▲ \+9</);
+});
+
+test('the real report colours its deltas end to end', () => {
+  const rows = ['2026-08-03', '2026-08-10'].map((p, i) =>
+    trendRow(p, 'FRT Compliance % (Open Queue)', [80, 85][i], 7, 90));
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({ trend: { rows } })));
+  const html = weeklyRisk.markdownToEmailHtml(md);
+  assert.match(html, /color:#1a7f37/, 'the rendered report reaches the mail coloured');
+});

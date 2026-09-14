@@ -1861,6 +1861,28 @@ function render(a) {
 
 const TD = 'padding:6px 10px;border:1px solid #dfe3e8;font-size:13px;vertical-align:top';
 const TH = `${TD};background:#f4f6f8;font-weight:600;text-align:left`;
+/**
+ * Colours for the Δ column in the mail.
+ *
+ * ⚠ The desktop panel colours a rise green and a fall red (`wr-delta-up` /
+ * `wr-delta-down`) and the email rendered both in plain black, so the same
+ * table said two different things depending on where Nick read it — and the
+ * mail is the copy that reaches Chris.
+ *
+ * ⚠ THE ARROW STILL CARRIES THE MEANING. The colour is added on top of a
+ * glyph that already says which way the number went, never in place of it: a
+ * client that strips inline styles, a printed copy and a colour-blind reader
+ * all lose the hue and none of them lose the fact. Hex rather than a CSS
+ * variable, because a mail client resolves neither a variable nor a stylesheet.
+ *
+ * ⚠ Every KPI in this table is HIGHER-IS-BETTER (compliance percentages, a
+ * CSAT average, a count of days that received a rating), which is what makes
+ * "up is green" honest here. A lower-is-better row would need its direction to
+ * decide the colour, not its arrow — so this reads the arrow and nothing else,
+ * and must be revisited rather than extended if such a row is ever added.
+ */
+const DELTA_UP = '#1a7f37';
+const DELTA_DOWN = '#b42318';
 
 function esc(s) {
   return String(s)
@@ -1893,6 +1915,19 @@ function splitRow(line) {
   return line.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
 }
 
+/**
+ * A cell's style. Only the Δ column differs, and it is recognised by the arrow
+ * the cell starts with rather than by its position — a column index would be
+ * silently wrong the day a column is added, which is exactly the kind of
+ * change this table has just had.
+ */
+function cellStyle(cell) {
+  const c = String(cell).trim();
+  if (c.startsWith('▲')) return `${TD};color:${DELTA_UP};font-weight:600`;
+  if (c.startsWith('▼')) return `${TD};color:${DELTA_DOWN};font-weight:600`;
+  return TD;
+}
+
 function markdownToEmailHtml(md) {
   // Frontmatter is vault metadata. It is the first thing in the note and the
   // first thing in the mail, and it means nothing to a reader in Outlook.
@@ -1919,7 +1954,7 @@ function markdownToEmailHtml(md) {
       out.push(
         `<table style="border-collapse:collapse;width:100%;margin:10px 0">`
         + `<thead><tr>${head.map(h => `<th style="${TH}">${inline(h)}</th>`).join('')}</tr></thead>`
-        + `<tbody>${rows.map(r => `<tr>${r.map(c => `<td style="${TD}">${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody>`
+        + `<tbody>${rows.map(r => `<tr>${r.map(c => `<td style="${cellStyle(c)}">${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody>`
         + `</table>`,
       );
       continue;
