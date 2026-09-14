@@ -431,7 +431,25 @@
   padding: clamp(11px, 1.7cqw, 26px) clamp(13px, 2cqw, 30px);
   border: 1px solid rgb(var(--approach-rgb));
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(13, 20, 30, 0.96), rgba(6, 10, 16, 0.9));
+
+  /* ⚠ OPAQUE, AND THAT IS WHAT MAKES THIS A DEPTH SCENE RATHER THAN A PILE.
+     Photographed on the work Fire, 14 Sep 2026: two corridor cards legible
+     THROUGH her sentence, their words interleaved with hers.
+
+     It is not a stacking bug — `.approach` carries `z-index: 2` and so opens a
+     stacking context, which puts every card (z 20-200 inside it) below this at
+     60 whatever its depth. The cards were correctly behind. The trouble is
+     arithmetic: on a 1024px panel the corridor's lanes span x≈216-804 and this
+     box x≈61-491, so the FAR cards — the ones that converge on the vanishing
+     point — land squarely behind her, and 0.9 alpha is enough to read a task
+     title through.
+
+     Near objects occlude far ones; that is the whole argument of the corridor.
+     At 0.96/0.9 it was asserting depth and then failing to honour it, which
+     reads as overlap rather than as in-front-of. There is no width at which a
+     42% centrepiece and a full-width corridor of 30cqw cards do not share space
+     on a panel this size, so occlusion is the answer and not more tuning. */
+  background: linear-gradient(180deg, #0d141e, #060a10);
   box-shadow:
     0 26px 70px -22px rgb(var(--approach-rgb)),
     0 0 0 1px rgba(255, 255, 255, 0.05),
