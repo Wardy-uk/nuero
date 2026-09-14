@@ -458,6 +458,37 @@
 .surface--approach .surface__saylead { margin: 0; }
 .surface--approach .surface__saysub { margin: 7px 0 0; }
 
+/* ⚠ THE UTTERANCE ROW MAY NEVER BE CLIPPED, AND A CHARACTER COUNT CANNOT
+   PROMISE THAT. Measured on the Fire, 14 Sep 2026: a centrepiece needing 256px
+   in a 198px box, with `saysBottomVisible: false` — the row cut off at the
+   bottom ends in "Show me everything", which MANIFESTATION.md calls "always last
+   and never dropped" because it is the only way off a surface with no menu.
+
+   The box is a capped flex column, so the fix is structural rather than another
+   tuned number: the buttons refuse to shrink, and an overflow is taken out of
+   what she SAYS instead — clamped, with an ellipsis, so it reads as a sentence
+   continuing rather than as one sliced through its letters. Losing the tail of a
+   sentence is recoverable; losing the way back is not. */
+.surface--approach .surface__say .surface__says { flex: 0 0 auto; }
+.surface--approach .surface__saylead {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.surface--approach .surface__saysub {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* What he can say back lives INSIDE the box — it is one object. */
 .surface--approach .surface__say .surface__says {
   position: static;

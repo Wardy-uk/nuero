@@ -100,11 +100,20 @@ function sayLength(primary) {
 // making it tall.
 //
 // ⚠ MEASURED, not picked. At the narrow width a line holds roughly 26-30
-// characters of title or ~45 of sub-line on the 1024px panel, so 90 is the point
-// past which she is certainly onto a fourth line. Both live offenders clear it
-// comfortably (90 + 40, and 18 + 150). Below it the box is short anyway and
-// widening would buy nothing while covering more of the screen.
-const WIDE_SAY_CHARS = 90;
+// characters of title or ~45 of sub-line on the 1024px panel, so past ~55 she is
+// already onto a third line and heading for a fourth.
+//
+// ⚠ IT WAS 90 AND THAT WAS MEASURABLY TOO HIGH: the live centrepiece came to 87
+// (a 74-character title, a 13-character sub) and stayed narrow, where its
+// content needed 256px against a 198px box and the UTTERANCE ROW WAS CUT OFF.
+// Missing by three characters is the sign of a proxy set too fine, so it is set
+// where a title certainly wraps rather than where it only just might.
+//
+// ⚠ AND A CHARACTER COUNT IS A PROXY, so it is not the guarantee. The rule that
+// the buttons survive is structural — see `.surface__says { flex: 0 0 auto }` in
+// Approach.css — because a proxy can always be wrong about a font, a language or
+// a longer word, and what it would cost is the only way off this surface.
+const WIDE_SAY_CHARS = 55;
 
 export default function AttentionSurface({
   data,

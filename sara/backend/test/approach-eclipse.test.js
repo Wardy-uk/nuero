@@ -142,14 +142,14 @@ test('nothing is removed from the feed, only darkened', () => {
 // big enough, meaning it doesn't have to be so high." Height is the expensive
 // dimension on a 600px panel — it is what pushes her into the corridor's band —
 // and the space to the right of her above the track is empty.
-test('a long title widens the centrepiece and LOWERS its cap', () => {
+test('long content widens the centrepiece', () => {
   const surface = fs.readFileSync(
     path.join(__dirname, '..', '..', 'shared-ui', 'AttentionSurface.jsx'), 'utf8');
   const css = fs.readFileSync(
     path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '');
 
-  assert.match(surface, /const WIDE_SAY_CHARS = 90;/);
+  assert.match(surface, /const WIDE_SAY_CHARS = 55;/);
   // ⚠ Judged on EVERYTHING she says, not the title alone: "In a focus session"
   // is eighteen characters with a hundred-and-fifty-character sub-line, and it
   // hit the cap on content the title knew nothing about.
@@ -237,4 +237,20 @@ test('minutesOf accepts an ISO stamp and a bare clock time', () => {
   assert.equal(minutesOf('15:30'), 15 * 60 + 30);
   assert.equal(minutesOf('not a time'), null);
   assert.equal(minutesOf(null), null);
+});
+
+// ⚠ THE WAY BACK IS NOT PROTECTED BY A CHARACTER COUNT. Measured on the Fire: a
+// centrepiece needing 256px in a 198px box, with the utterance row cut off at
+// the bottom — and that row ends in "Show me everything", which MANIFESTATION.md
+// calls "always last and never dropped" because it is the only way off a surface
+// with no menu. The width proxy missed by three characters; the guarantee has to
+// be structural.
+test('the utterance row refuses to shrink, and the overflow comes out of the words', () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\.surface--approach \.surface__say \.surface__says \{ flex: 0 0 auto; \}/);
+  // Her sentence clamps instead — legible as "continues", not sliced.
+  assert.match(css, /\.surface--approach \.surface__saylead \{[^}]*line-clamp: 4/);
+  assert.match(css, /\.surface--approach \.surface__saysub \{[^}]*line-clamp: 3/);
 });
