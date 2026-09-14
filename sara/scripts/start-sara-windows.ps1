@@ -44,6 +44,13 @@ if (-not $reporter) {
   $env:WATCH_RSSI_NEEDED = '2'
   $env:WATCH_INPUT_GRACE_S = '5'
   $env:WATCH_TICK_S      = '1'
+  # Report this laptop to SARA as a MOBILE sensor (14 Sep 2026). With the fixed desk
+  # tablet it makes the one distinction a fixed sensor cannot: the tablet hearing the
+  # watch means he is AT his desk; only the laptop hearing it means he is about, with
+  # the laptop — in a meeting. Unset it and the local screen lock behaves exactly as
+  # before; this is additive and never allowed to affect the lock.
+  if (-not $env:SARA_SENSOR_URL) { $env:SARA_SENSOR_URL = 'http://100.100.28.58:3005/api/presence/sensor' }
+  if (-not $env:SARA_SENSOR_ROOM) { $env:SARA_SENSOR_ROOM = 'laptop' }
   Start-Process -FilePath (Join-Path $root 'windows-watch-lock\venv\Scripts\python.exe') `
     -ArgumentList 'watch-presence-reporter.py' `
     -WorkingDirectory (Join-Path $root 'windows-watch-lock') `
