@@ -81,7 +81,7 @@ async function main() {
         AND origin = 'commitment'
         AND (due_date IS NULL OR due_date = '')
       ORDER BY created_at ASC, id ASC`,
-    {},
+    [],
   );
 
   if (!rows.length) {
