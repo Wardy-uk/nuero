@@ -80,6 +80,20 @@ test('⚠ the stacked state gets the room it actually needs', () => {
   const base = caps[caps.length - 1];
   const raised = Number((stacked[1].match(/max-height:\s*(\d+)%/) || [])[1]);
   assert.ok(raised > base, `the stacked cap must exceed the one-sentence cap ${base}%, got ${raised}`);
+
+  // ⚠⚠ A FLOOR, NOT JUST A CEILING. This test had only an upper bound — and the
+  // failure that bit TWICE was the cap being too SMALL: 52% when the state was
+  // introduced, retuned to 44% by another session rebalancing the bands, while
+  // in between the way-out gained a line of its own. Each change defensible
+  // alone; nobody re-measured the box they shared, and the answers ended up
+  // sliced through the middle of their letters.
+  //
+  // ⚠ EXPRESSED AS A RELATIONSHIP, not a number — pinning "56" here would be the
+  // mistake 4cd42ff already corrected in this file. The stacked box holds a
+  // transition prompt AND its own buttons AND the answers AND the way out, so
+  // it needs MEANINGFULLY more than the one-sentence cap, not four points more.
+  assert.ok(raised >= base * 1.35,
+            `the stacked cap must be meaningfully larger than ${base}%, got ${raised}%`);
   // `top` comes up with it, so the extra height is taken from the empty upper
   // third rather than from the corridor.
   const top = Number((stacked[1].match(/top:\s*(\d+)%/) || [])[1]);
@@ -102,4 +116,27 @@ test('⚠ the escape hatch is the last utterance and must not be clipped away', 
   const composer = fs.readFileSync(
     path.resolve(__dirname, 'sara-surface.js'), 'utf8');
   assert.match(composer, /Show me everything/, 'the escape hatch is gone from the composer');
+});
+
+test('⚠⚠ PROSE YIELDS BEFORE CONTROLS — the row of answers never gives up height', () => {
+  const css = code(read('Approach.css'));
+
+  // Top-anchoring decides WHICH end an overflow costs. It cannot decide that
+  // nothing is cut. This decides what is cut FIRST, and that question went
+  // unasked until the utterance row was photographed sliced through the middle
+  // of its own letters (14 Sep 2026) — the answers, with "Show me everything"
+  // under them: the only way off a surface with no menu.
+  const says = css.match(/\.surface--approach \.surface__say \.surface__says \{([^}]*)\}/s);
+  assert.ok(says, 'the utterance row rule is gone');
+  assert.match(says[1], /flex:\s*0 0 auto/,
+               'the answers can shrink again — they must be the one thing that cannot');
+
+  // ⚠ THE WRAPPER IS WHY IT BROKE. `saylead` and `saysub` could already shrink,
+  // but in the stacked state they sit inside `surface__transition`, and a flex
+  // item's `min-height: auto` refuses to go under its content size — so the
+  // column overflowed and the LAST child fell past the clip line.
+  const trans = css.match(/\.surface--approach \.surface__say \.surface__transition \{([^}]*)\}/s);
+  assert.ok(trans, 'the transition cannot shrink — it will push the answers out again');
+  assert.match(trans[1], /min-height:\s*0/);
+  assert.match(trans[1], /flex:\s*0 1 auto/);
 });

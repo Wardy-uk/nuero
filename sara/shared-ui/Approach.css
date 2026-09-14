@@ -666,8 +666,46 @@
    ⚠ This is the one state where the centrepiece legitimately says two things,
    and it is not rare: it happens after every meeting. */
 .surface--approach .surface__say--stacked {
-  top: 9%;
-  max-height: 44%;
+  /* ⚠ 6%, NOT 8%: the room comes from ABOVE, because below it is the flat row
+     and the test that pins their gutter is right to refuse. The crown sits at
+     top 3% and is one short line, so it ends around 5.5% — this starts under it
+     rather than over it. */
+  top: 6%;
+  /* ⚠ MEASURED AGAINST WHAT IS ACTUALLY IN IT. The stacked box holds a
+     two-line transition lead (~83px), its question (~22), its two buttons
+     (~44), the rule (~16), the utterance row AND the way-out row (~70), and its
+     own padding (~40): about 275px. At 44% of the stage it had 216.
+
+     ⚠ TWO SESSIONS RETUNED THIS NUMBER AND NEITHER MEASURED THE CONTENT — I set
+     52% when I introduced the state, the other session took it to 44% while
+     rebalancing the bands, and in between the way-out gained a line of its own.
+     Three changes, each defensible alone, to a box nobody re-measured. */
+  max-height: 56%;
+}
+
+/* ⚠⚠ AND WHEN IT IS STILL SHORT, PROSE GOES BEFORE CONTROLS.
+ *
+ * `surface__saylead` and `surface__saysub` can already shrink — but in the
+ * stacked state they sit inside `surface__transition`, which could NOT, because
+ * a flex item's `min-height: auto` refuses to go under its content size. So the
+ * column overflowed and the child that fell past the clip line was the LAST
+ * one: the utterance row. Photographed 14 Sep 2026 — "Join / prep now", "Not
+ * now — an hour", "It's too big", "Seen it", all cut through the middle of
+ * their letters at the bottom edge of the box.
+ *
+ * ⚠ THAT IS THE WORST THING THIS LAYOUT CAN CUT: those are the answers, and the
+ * row under them is "Show me everything", the only way off a surface with no
+ * menu. Top-anchoring (fixed this morning) decides WHICH end gets cut. It
+ * cannot decide that nothing does. This decides what gets cut FIRST — the
+ * question neither change asked — and the answer is her prose, never her
+ * controls.
+ *
+ * The utterance row keeps `flex: 0 0 auto`, so it is the one thing in the
+ * column that never gives up height. */
+.surface--approach .surface__say .surface__transition {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ⚠ A LONG TITLE BUYS WIDTH, NOT HEIGHT. Nick, 14 Sep 2026: "the primary card
