@@ -508,7 +508,22 @@
   right: 6%;
   top: 63%;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  /* ⚠ FOUR FIXED COLUMNS, NOT `auto-fit`. Nick, 14 Sep 2026: "the secondary row
+     of cards are now full width, rather than the 1/4 width we agreed on —
+     allowing 4 cards."
+
+     `auto-fit` sizes the track count to the CONTENT, so the row was a quarter
+     each with four cards and one full-bleed slab with one — and which of those
+     you got depended on how many things the gate happened to be holding back.
+     A band whose card width changes with the day is one you cannot read at a
+     glance from a metre away, which is the whole job of this row.
+
+     Safe as a fixed count because the quiet branch renders `cards.slice(0, 4)`,
+     so there is never a fifth to wrap onto a second row and be clipped. Fewer
+     than four leaves the tail columns empty, which is the point: a single card
+     is a quarter of the row and looks like one of four, not like an
+     announcement. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: clamp(6px, 0.9cqw, 14px);
   pointer-events: auto;
 }

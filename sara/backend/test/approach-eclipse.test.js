@@ -254,3 +254,29 @@ test('the utterance row refuses to shrink, and the overflow comes out of the wor
   assert.match(css, /\.surface--approach \.surface__saylead \{[^}]*line-clamp: 4/);
   assert.match(css, /\.surface--approach \.surface__saysub \{[^}]*line-clamp: 3/);
 });
+
+// ⚠ THE ROW IS FOUR FIXED COLUMNS. Nick, 14 Sep 2026: "the secondary row of
+// cards are now full width, rather than the 1/4 width we agreed on — allowing 4
+// cards." `auto-fit` sizes the track count to the content, so the same band was
+// a quarter each with four cards and one full-bleed slab with one — and which
+// you got depended on how many things the gate was holding back that minute.
+test('the flat row is four fixed columns, so one card is a quarter and not a slab', () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const row = css.slice(css.indexOf('.approach--quiet .approach__row {'));
+  const body = row.slice(0, row.indexOf('}'));
+  assert.match(body, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(body, /auto-fit/);
+
+  // Portrait still stacks two-up — a quarter of a phone is not a card.
+  assert.match(css, /max-aspect-ratio[\s\S]*?grid-template-columns: 1fr 1fr/);
+});
+
+// ⚠ Fixed columns are only safe because nothing can render a fifth card onto a
+// second row, where the band's ceiling would clip it.
+test('the quiet branch renders at most four, so the row can never wrap', () => {
+  const approach = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.jsx'), 'utf8');
+  assert.match(approach, /cards\.slice\(0, 4\)\.map/);
+});
