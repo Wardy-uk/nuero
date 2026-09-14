@@ -591,7 +591,18 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       ) : null}
       footAside={voiceErr ? <p className="surface__aside surface__aside--warn">{voiceErr}</p> : null}
       deviceSlot={micCard}
-      footExtra={(
+      footExtra={/* ⚠⚠ NOTHING, NOT AN EMPTY ROW. This rendered a flex row with
+          `padding-top: 0.5rem` whether or not the hatch inside it was showing —
+          and it usually is not, because the composer already ends the utterances
+          with "Show me everything". So the foot reserved ~22px of nothing below
+          its text and, being bottom-anchored, pushed the held line that far
+          ABOVE the middle of the shelf cards beside it (photographed 14 Sep
+          2026: "the alignment here doesn't look right").
+
+          Same shape as `Dashboard`'s `bare` earlier the same day: a container
+          drawn for content it does not have. A box with nothing in it is
+          invisible and still takes the room. */
+        !hasRevealUtterance ? (
         <div className="surface__footrow">
           {/* ⚠ THE ESCAPE HATCH, ONCE. The composer already ends every utterance
               list with "Show me everything" (`kind: reveal`, always last, never
@@ -602,11 +613,9 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
               one. Either missing and the button comes back: the one screen with
               no menu must always have a way round it, and a hatch that vanishes
               because a composition failed is the failure that strands him. */}
-          {!hasRevealUtterance && (
-            <button type="button" className="surface__all" onClick={() => onShowAll?.()}>Show me everything</button>
-          )}
+          <button type="button" className="surface__all" onClick={() => onShowAll?.()}>Show me everything</button>
         </div>
-      )}
+      ) : null}
     />
   );
 }
