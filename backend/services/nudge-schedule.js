@@ -33,6 +33,17 @@ const db = require('../db/database');
 /** Mon–Fri, in the ISO sense the clients use (1 = Monday). */
 const WEEKDAYS = [1, 2, 3, 4, 5];
 
+function journalTime() {
+  // ⚠ CONFIGURABLE, like the standup hour — `journal_nudge_time` is an
+  // "HH:MM" state and defaults to 21:00. A time compiled into the app would
+  // disagree the first time he moved it.
+  const raw = db.getState('journal_nudge_time') || '21:00';
+  const [h, m] = String(raw).split(':').map(n => parseInt(n, 10));
+  const hour = Number.isInteger(h) && h >= 0 && h <= 23 ? h : 21;
+  const minute = Number.isInteger(m) && m >= 0 && m <= 59 ? m : 0;
+  return { hour, minute };
+}
+
 function standupHour() {
   // ⚠ Falls back to 9 rather than throwing: an unset state is the default
   // start, not a broken schedule.
@@ -52,6 +63,7 @@ function standupHour() {
  */
 function ritualSchedule() {
   const hour = standupHour();
+  const journal = journalTime();
   return [
     {
       key: 'standup',
@@ -71,6 +83,42 @@ function ritualSchedule() {
       hour: 20,
       minute: 0,
       weekdays: null, // every day
+      tab: 'surface',
+    },
+    {
+      key: 'todo',
+      title: 'Today',
+      body: 'Your list is ready.',
+      hour,
+      minute: 0,
+      weekdays: WEEKDAYS,
+      tab: 'surface',
+    },
+    {
+      key: 'plan-milestone',
+      title: 'The plan',
+      body: 'A milestone wants a look.',
+      hour: 9,
+      minute: 5,
+      weekdays: WEEKDAYS,
+      tab: 'surface',
+    },
+    {
+      key: '121',
+      title: 'One to ones',
+      body: 'Worth a check before the day fills.',
+      hour: 9,
+      minute: 10,
+      weekdays: WEEKDAYS,
+      tab: 'surface',
+    },
+    {
+      key: 'journal',
+      title: 'Journal',
+      body: 'A few lines, if you have them.',
+      hour: journal.hour,
+      minute: journal.minute,
+      weekdays: null,
       tab: 'surface',
     },
     {
