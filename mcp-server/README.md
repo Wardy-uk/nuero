@@ -14,7 +14,7 @@ NEURO's Express backend runs on port 3001. It already provides vault retrieval a
 
 Repository infrastructure references Tailscale, Syncthing, Netlify and existing public hostnames. `CLAUDE.md` documents Pi Funnel exposure and warns that loopback requests can originate from the public internet. No deployable MCP reverse-proxy or Docker configuration existed in `mcp-server`. These repository references are not verification of the currently deployed ingress.
 
-`nuero-ios` contains Swift sensor clients and an offline outbox feeding the same NEURO backend. It does not host the MCP server. No native app changes are needed to give external ChatGPT/Claude clients access to this gateway. The active SARA → SAiM migration has widespread staged/unstaged changes, including `mcp-server/index.js`; this implementation leaves that entry point and the iOS repository untouched.
+`nuero-ios` contains Swift sensor clients and an offline outbox feeding the same NEURO backend. It does not host the MCP server. No native app changes are needed to give external ChatGPT/Claude clients access to this gateway. The active SARA → SAiM migration has widespread uncommitted changes across the shared working tree. ⚠ `mcp-server/index.js` **is** in commit `02c68bc`: the rename sweep had already edited it in the working tree when the gateway was staged, so seven `saim` references travelled with it. The content is correct — `/api/focus` emits `saim` (`routes/focus.js:191`) — and the commit message says so, but the earlier claim that this implementation left that entry point untouched was wrong and is corrected here. The iOS repository is genuinely untouched. Coordinated with the session holding the rename (`nuero-9f`), which stays off `mcp-server/**`.
 
 ```text
 ChatGPT / Claude cloud clients
@@ -303,7 +303,7 @@ These live writes create real data; only run them intentionally. Test empty/stal
 
 ## Results and troubleshooting
 
-Local results: **11 tests passed, 0 failed**, covering unauthorized access, signed JWT checks, SDK initialization/discovery, all tools, representative reads/writes, malformed input, traversal, scopes, upstream failure/timeout/oversized or invalid response, secret-safe outputs/logs, health, Host/Origin checks, rate limiting, bounded partial context, retrieval coverage and existing stdio discovery. `npm audit` reports **0 vulnerabilities** after lockfile remediation. Compose configuration validates. Docker engine is unavailable on this workstation, so image build/container runtime are **not tested**. No live OAuth login, public deployment, real-backend smoke or ChatGPT/Claude client acceptance test has been performed.
+Local results: **23 tests passed, 0 failed**, covering unauthorized access, signed JWT checks, SDK initialization/discovery, all tools, representative reads/writes, malformed input, traversal, scopes, upstream failure/timeout/oversized or invalid response, secret-safe outputs/logs, health, Host/Origin checks, rate limiting, bounded partial context, retrieval coverage and existing stdio discovery. `npm audit` reports **0 vulnerabilities** after lockfile remediation. Compose configuration validates. Docker engine is unavailable on this Windows workstation, so image build/container runtime are **not tested** here — but the workstation is not the deploy target, and pi5 has Docker 26.1.5 and Compose 2.26.1 installed (see *Measured on pi5*). No live OAuth login, public deployment, real-backend smoke or ChatGPT/Claude client acceptance test has been performed.
 
 | Symptom | Check |
 |---|---|
