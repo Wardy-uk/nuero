@@ -267,7 +267,7 @@ Official guidance checked 15 September 2026. Labels and availability can vary by
 1. Open **Settings → Security and login → Developer mode** where available.
 2. Open **Plugins**, select **+**, enter `NEURO / SAiM`, and use the public MCP URL `https://pi5.tailecb90f.ts.net/mcp`.
 3. Choose/configure OAuth and supply the provider client ID/secret if the setup UI requests predefined credentials. Complete provider login as Nick and consent to read access, plus write access only if wanted.
-4. Review the discovered 18 tools. In a new conversation, select the connection from the tools menu. Ask for current SAiM context, then an intentional test capture.
+4. Review the discovered **17 tools** (11 named + neuro_capabilities, neuro_result_get, neuro_read, neuro_write, neuro_action, neuro_admin). Those 17 front all 513 operations — the dispatch tools take an operation name from neuro_capabilities rather than exposing 513 separate tools, which no client would accept. In a new conversation, select the connection from the tools menu. Ask for current SAiM context, then an intentional test capture.
 5. After schema changes, refresh the connection metadata and start a new conversation. [Current OpenAI connection instructions](https://developers.openai.com/plugins/deploy/connect-chatgpt).
 
 ### ChatGPT Desktop and iOS
