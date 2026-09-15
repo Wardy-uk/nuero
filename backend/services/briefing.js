@@ -239,7 +239,8 @@ async function buildAndDeliver(opts = {}) {
     ? `${synthesis}\n${readiness.sentence}`
     : synthesis;
   try {
-    await webpush.sendToAll(pushTitle, pushBody, { type: 'brief', ts: brief.ts });
+    // Keyed on the brief's own timestamp: one morning brief is not the next.
+    await webpush.sendToAll(pushTitle, pushBody, { type: 'brief', ts: brief.ts, key: `brief:${brief.ts}` });
     console.log('[Briefing] Push sent');
   } catch (e) {
     console.error('[Briefing] Push failed:', e.message);
@@ -393,10 +394,21 @@ async function checkMeetingAlerts() {
       if (seen.includes(id)) continue;
 
       console.log(`[Briefing] Meeting alert: ${event.subject} in ~10min`);
+      // ⚠ `key` NAMES THE MEETING. Without it `sendToAll` falls back to the
+      // TITLE for identity, and this title is the constant "Starting in 10 min"
+      // -- so every meeting collapsed into ONE attention record, the first one
+      // notified, and every meeting afterwards was refused as "already
+      // notified, nothing changed". Measured on the live log: 27 meeting_alert
+      // suppressed, 0 sent. The title fallback is right for a watchdog alert (a
+      // reworded disk warning IS the same interruption) and wrong for an event,
+      // where each instance is a different thing.
+      // ⚠ Keep this comment ABOVE the call: push-types.test.js scans a window
+      // after `sendToAll(` for the type literal, and a comment inside the
+      // argument list pushes it out of range and reports the type as unsent.
       await webpush.sendToAll(
         `📅 Starting in 10 min`,
         event.subject || 'Meeting',
-        { type: 'meeting_alert', eventId: id }
+        { type: 'meeting_alert', eventId: id, key: `meeting_alert:${id}` }
       );
       seen.push(id);
     }

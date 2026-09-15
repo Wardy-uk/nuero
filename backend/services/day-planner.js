@@ -680,7 +680,7 @@ async function run(windowKey, { now = new Date(), apply = false, force = false }
     releaseLock();
   }
 
-  if (created.length) await announce(window, created, mult, capacity);
+  if (created.length) await announce(window, created, mult, capacity, dateKey);
 
   return { ...result, applied: true, created, failed };
 }
@@ -701,7 +701,7 @@ function nonWorkingSet() {
  * Tell him. This is the half `task-blocks` never had, and the reason it was
  * never used: a block nobody is told about is a calendar entry, not a driver.
  */
-async function announce(window, created, mult, capacity) {
+async function announce(window, created, mult, capacity, dateKey) {
   try {
     const webpush = require('./webpush');
     const lines = created.map(c => {
@@ -712,10 +712,17 @@ async function announce(window, created, mult, capacity) {
     // A lighter plan says it is lighter. Silently planning less is
     // indistinguishable from a planner that has stopped finding gaps.
     const lighter = capacity && capacity.reduced ? `\nKept it ${capacity.note}.` : '';
+    // ⚠ Keyed on the DATE and the half-day. The title is "Planned this morning"
+    // every single morning, and identity falls back to the title, so without
+    // this every day plan Nick has ever been sent was one record -- notified
+    // once, silent ever after (live log: 9 suppressed, 0 sent).
+    // ⚠ Comment stays ABOVE the call: push-types.test.js scans a window after
+    // `sendToAll(` for the type literal, and a comment inside the argument list
+    // pushes it out of range and falsely reports the type as never sent.
     await webpush.sendToAll(
       `Planned ${window.label}`,
       `${lines.join('\n')}${caveat}${lighter}`,
-      { type: 'day_plan', tab: 'todos' }
+      { type: 'day_plan', tab: 'todos', key: `day_plan:${dateKey}:${window.key}` }
     );
   } catch (e) {
     // A failed notification must never fail the plan — the blocks are already
