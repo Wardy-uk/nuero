@@ -125,9 +125,31 @@ test('backend failure, timeout, malformed JSON and oversized responses have safe
   f.mode('failure');
   assert.equal((await fetch(f.url + '/health/ready', { headers: { Authorization: `Bearer ${f.accessToken}` } })).status, 503);
 });
-test('origin, malformed bodies and body limits enforced', async t => {
+test('browser clients are served, and a bearer API needs no origin wall', async t => {
   const f = await fixture(t);
-  assert.equal((await fetch(f.url + '/mcp', { headers: { Origin: 'https://evil.example' } })).status, 403);
+  // A foreign Origin must now reach authentication rather than being refused
+  // before it: this is the exact request ChatGPT Web makes, and 403 here meant
+  // the connector never saw the 401 that begins the OAuth flow.
+  const cross = await fetch(f.url + '/mcp', { headers: { Origin: 'https://chatgpt.com' } });
+  assert.equal(cross.status, 401);
+  assert.equal(cross.headers.get('access-control-allow-origin'), 'https://chatgpt.com');
+  assert.match(cross.headers.get('access-control-expose-headers') || '', /WWW-Authenticate/i);
+  // The load-bearing security assertion. Reflecting an origin is only safe while
+  // no ambient credential can ride along; if this ever becomes true, a hostile
+  // page can make authenticated calls and the Origin wall we removed was load
+  // bearing after all.
+  assert.equal(cross.headers.get('access-control-allow-credentials'), null);
+  // Preflight must succeed WITHOUT a token, or the browser never sends the real
+  // request and the failure looks like a dead endpoint.
+  const pre = await fetch(f.url + '/mcp', { method: 'OPTIONS', headers: { Origin: 'https://chatgpt.com', 'Access-Control-Request-Method': 'POST' } });
+  assert.equal(pre.status, 204);
+  assert.match(pre.headers.get('access-control-allow-methods') || '', /POST/);
+  assert.match(pre.headers.get('access-control-allow-headers') || '', /authorization/i);
+  // Claude Code's path is a Node process with no Origin header at all: it must
+  // behave exactly as before, and gain no CORS header it never asked for.
+  const noOrigin = await fetch(f.url + '/mcp');
+  assert.equal(noOrigin.status, 401);
+  assert.equal(noOrigin.headers.get('access-control-allow-origin'), null);
   const hostileStatus = await new Promise((resolve, reject) => {
     http.get(f.url + '/health', { headers: { Host: 'evil.example' } }, res => { res.resume(); resolve(res.statusCode); }).on('error', reject);
   });

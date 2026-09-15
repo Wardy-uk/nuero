@@ -28,7 +28,41 @@ export function createApp(config, { verify = createVerifier(config), api = creat
     if (host !== publicUrl.hostname && !localHosts.includes(host)) return res.status(403).json({ error: 'host_denied' });
     // HTTP is allowed only at the private origin. The ingress MUST redirect HTTP
     // to HTTPS. Never expose this listener to the internet.
-    if (req.headers.origin && req.headers.origin !== publicUrl.origin) return res.status(403).json({ error: 'origin_denied' });
+    //
+    // ⚠ CROSS-ORIGIN IS ALLOWED, AND THE HOST CHECK ABOVE IS WHY THAT IS SAFE.
+    // This API authenticates with a Bearer token and nothing else: no cookie, no
+    // session, and Access-Control-Allow-Credentials is NEVER sent, so a browser
+    // attaches no ambient credential to a cross-origin call. A hostile page gets
+    // the same 401 as anyone holding no token, and Origin buys nothing against a
+    // caller that HAS one. The DNS-rebinding guard that does matter is Host,
+    // which the browser sets and script cannot forge.
+    //
+    // Refusing cross-origin broke ChatGPT Web while leaving Claude Code working,
+    // and the asymmetry is the whole diagnosis: Claude Code is a Node process and
+    // sends no Origin at all, so it never met this line. ChatGPT is browser-based
+    // and sends Origin: https://chatgpt.com, which 403'd BEFORE authentication
+    // ran -- so the connector could not even reach the 401 that starts OAuth.
+    // Measured against the live gateway, 15 Sep 2026.
+    const origin = req.headers.origin;
+    if (origin) res.set({
+      'Access-Control-Allow-Origin': origin,
+      Vary: 'Origin',
+      // Without Expose-Headers a browser HIDES WWW-Authenticate from the client,
+      // so it can never read the challenge and never discovers the authorization
+      // server. The 401 arrives looking like an unexplained failure, which is
+      // exactly how "couldn't connect" reads on screen.
+      'Access-Control-Expose-Headers': 'WWW-Authenticate, Mcp-Session-Id, X-Request-Id',
+    });
+    // A preflight carries no Authorization header by definition, so it must be
+    // answered here rather than 401'd by the auth middleware below.
+    if (req.method === 'OPTIONS') {
+      res.set({
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'authorization, content-type, mcp-protocol-version, mcp-session-id, last-event-id',
+        'Access-Control-Max-Age': '600',
+      });
+      return res.status(204).end();
+    }
     next();
   });
   app.use(rateLimit({ windowMs: 60000, limit: config.MCP_RATE_LIMIT, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'rate_limited' } }));
