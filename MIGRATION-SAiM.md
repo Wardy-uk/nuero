@@ -138,9 +138,23 @@ one). Netlify keeps serving the last good build, so nothing breaks at the moment
 it breaks at the NEXT PUSH, possibly days later and attributed to whatever was pushed then. This is
 the one item on the list that fails silently in the future rather than now.
 
+**Done already (15 Sep, via the Netlify MCP):** the site is renamed `sara-nickward` →
+**`saim-nickward`**, and it was confirmed to have **no UI environment variables**, so the committed
+`.env.production` really is the single source of truth its comment claims. Only this one site is
+affected — `nuero-app` (base `frontend`) and `vesta-nickward` (base `vesta`) sit on paths the rename
+never touched.
+
+**Left for you, and it genuinely cannot be automated:**
+
 1. Site settings → Build & deploy → **Base directory** → `saim/app`.
-2. Optionally rename the site to `saim-nickward`.
-3. Optionally add `saim.nickward.co.uk` as a domain and make it primary.
+2. Optionally add `saim.nickward.co.uk` as a domain and make it primary (needs the DNS record first).
+
+⚠ **Why the base directory is not done for you.** Two independent reasons, both checked rather
+than assumed: the Netlify MCP exposes six write operations — project name, env vars, forms, visitor
+access, create-project and deploy-site — and **build settings are not among them**; and it cannot go
+in the repo's root `netlify.toml` either, because that file is **shared by several sites** and says
+so in its own comment (`nuero-app → base: frontend | saim-nickward → base: saim/app`). Setting
+`base` there would repoint `nuero-app` at the wrong directory.
 
 Until you do 2 and 3, the old hostnames are still in `VITE_ALLOWED_HOSTS`, so the installed PWA keeps
 loading. **Take the three `sara.*` entries out of `.env.production` once the move is done** — leaving
