@@ -71,12 +71,21 @@ export function createApp(config, { verify = createVerifier(config), api = creat
     resource: config.MCP_PUBLIC_URL, authorization_servers: [config.MCP_AUTH_ISSUER], scopes_supported: ['neuro:read', 'neuro:write', 'neuro:action', 'neuro:admin'], bearer_methods_supported: ['header'],
   }));
   const authorize = async (req, res, next) => {
+    // The match is read OUTSIDE the try so "no Authorization header at all" can
+    // be told apart from "a token that failed verification". That distinction is
+    // the whole diagnosis when a client silently declines to start OAuth: a
+    // client sending nothing is waiting to be challenged, while one sending a
+    // stale token thinks it is already authenticated and never will be.
+    const match = /^Bearer ([^\s]+)$/i.exec(req.headers.authorization || '');
     try {
-      const match = /^Bearer ([^\s]+)$/i.exec(req.headers.authorization || '');
-      if (!match || match[1].length > 16000) throw new Error('Unauthorized');
+      if (!match) throw Object.assign(new Error('Unauthorized'), { reason: 'no_bearer_header' });
+      if (match[1].length > 16000) throw Object.assign(new Error('Unauthorized'), { reason: 'token_too_large' });
       req.neuroAuth = await verify(match[1]); next();
-    } catch {
-      log('authentication_failure', { request_id: req.requestId });
+    } catch (error) {
+      // jose reports a failed claim in `code`; ours arrive as `reason`. Neither
+      // carries a value, so this is safe to log.
+      const reason = error?.reason || error?.code || 'invalid_token';
+      log('authentication_failure', { request_id: req.requestId, reason });
       res.set('WWW-Authenticate', `Bearer resource_metadata="${metadataUrl}", scope="neuro:read", error="invalid_token"`);
       res.status(401).json({ error: 'unauthorized' });
     }
