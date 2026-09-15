@@ -4,7 +4,7 @@
  * NEURO MCP Server — exposes local brain/cortex to external chat clients.
  *
  * Connects to the NEURO backend API and exposes tools for:
- *   - Focus / SARA state
+ *   - Focus / SAiM state
  *   - Vault search and note reading
  *   - Queue / SLA status
  *   - Meeting prep
@@ -316,28 +316,28 @@ const server = new McpServer({
 });
 
 // ═══════════════════════════════════════════════════════
-// Tools: Focus / SARA
+// Tools: Focus / SAiM
 // ═══════════════════════════════════════════════════════
 
-server.tool('get_focus', 'Get current Focus — what matters now (prioritised items + SARA directive)', {}, async () => {
+server.tool('get_focus', 'Get current Focus — what matters now (prioritised items + SAiM directive)', {}, async () => {
   const data = await neuroApi('/api/focus?noai=true');
   const items = (data.items || []).map(i => `- [${i.type}] ${i.title}: ${i.reason}`).join('\n');
-  const sara = data.sara?.primary?.message || 'No directive';
+  const saim = data.saim?.primary?.message || 'No directive';
   return {
     content: [{
       type: 'text',
-      text: `## Focus (${data.returned} items, ${data.suppressed} suppressed)\n\nSARA: ${sara}\n${data.sara?.ignore || ''}\n\n${items}\n\nTone: ${data.tone}, Mode: ${data.mode}`,
+      text: `## Focus (${data.returned} items, ${data.suppressed} suppressed)\n\nSAiM: ${saim}\n${data.saim?.ignore || ''}\n\n${items}\n\nTone: ${data.tone}, Mode: ${data.mode}`,
     }],
   };
 });
 
-server.tool('get_suggestions', 'Get SARA action suggestions (pending)', {}, async () => {
+server.tool('get_suggestions', 'Get SAiM action suggestions (pending)', {}, async () => {
   const data = await neuroApi('/api/actions');
   const pending = (data.pending || []).map(a => `- [${a.id}] ${a.type}: ${a.reason}`).join('\n');
   return { content: [{ type: 'text', text: pending || 'No pending suggestions.' }] };
 });
 
-server.tool('approve_action', 'Approve a SARA suggested action', { actionId: z.number().describe('Action ID to approve') }, async ({ actionId }) => {
+server.tool('approve_action', 'Approve a SAiM suggested action', { actionId: z.number().describe('Action ID to approve') }, async ({ actionId }) => {
   const data = await neuroApi(`/api/actions/${actionId}/approve`, { method: 'POST' });
   return { content: [{ type: 'text', text: data.ok ? `Approved: ${data.detail}` : `Failed: ${data.error}` }] };
 });
