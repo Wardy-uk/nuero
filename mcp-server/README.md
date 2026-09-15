@@ -258,6 +258,78 @@ curl --fail https://pi5.tailecb90f.ts.net/.well-known/oauth-protected-resource/m
 
 With a short-lived OAuth access token in `MCP_SMOKE_ACCESS_TOKEN` and `MCP_PUBLIC_URL` set, run `npm run smoke`. It tests public HTTPS, auth rejection, initialization, discovery and a presence read without printing personal results. Use authenticated `/health/ready` privately to check NEURO, vault and SAiM API reachability. Liveness alone is not a backend health check. Readiness indicates endpoint availability, not that every sensor is fresh or every integration is configured.
 
+## Why ChatGPT failed while Claude Code worked (15 September 2026)
+
+Two defects, both invisible from Claude Code, and the asymmetry between the two
+clients is what identified them.
+
+⚠ **1. The Origin wall refused every browser client.** `app.js` refused any
+request whose `Origin` was not the gateway's own, with **403 before
+authentication ran**. Claude Code is a Node process and sends no `Origin` at
+all, so it never met the check; ChatGPT Web is browser-based and sends
+`Origin: https://chatgpt.com`. Measured against the live gateway:
+
+```text
+OPTIONS /mcp   Origin: https://chatgpt.com   403 origin_denied
+POST    /mcp   Origin: https://chatgpt.com   403 origin_denied
+POST    /mcp   no Origin                     401   ← Claude Code
+```
+
+The 403 arrives *before* the 401, so the connector never receives the
+`WWW-Authenticate` challenge that begins OAuth — which is why it reads on
+screen as "couldn't connect" rather than "needs authentication".
+
+**Cross-origin is now allowed, and the Host check is why that is safe.** This
+API authenticates with a Bearer token and nothing else: no cookie, no session,
+and `Access-Control-Allow-Credentials` is **never** sent, so a browser attaches
+no ambient credential to a cross-origin call. A hostile page therefore receives
+the same 401 as any caller with no token, and `Origin` buys nothing against one
+that has a token. The DNS-rebinding guard that does matter is **Host**, which a
+browser sets and script cannot forge — untouched.
+
+⚠ `Access-Control-Expose-Headers` is the half that is easy to miss. Without it
+a browser **hides** `WWW-Authenticate` from the client, so it can never read the
+challenge and never discovers the authorization server — a correct 401 that
+presents as an unexplained failure.
+
+⚠ Preflight is answered **before** the auth middleware. An `OPTIONS` request
+carries no `Authorization` header by definition, so authenticating it 401s the
+preflight, after which the browser never sends the real request at all.
+
+⚠ **2. `/.well-known/oauth-authorization-server` returned 200 with the NEURO
+PWA's HTML.** Only `/mcp` and the two protected-resource paths were routed to
+the gateway, so every other `.well-known` path fell through the Funnel's `/`
+rule to the NEURO backend, whose **SPA fallback serves `index.html` for any
+non-API route**. A client probing the resource origin for authorization-server
+metadata got `200 text/html`, not a 404.
+
+**A 404 is the correct answer and 200-with-HTML is the damaging one**: a 404
+tells the client to fall back to `authorization_servers` in the
+protected-resource document, whereas a 200 invites it to parse a web page as
+JSON. Note the gateway must NOT serve authorization-server metadata itself —
+the authorization server is Auth0, and RFC 8414 requires `issuer` to match the
+URL the document was fetched from, so a document served here claiming Auth0's
+issuer would be correctly rejected.
+
+Fixed at the ingress by routing the whole subtree, so a future `.well-known`
+path cannot reappear as HTML:
+
+```bash
+tailscale funnel --bg --set-path=/.well-known http://127.0.0.1:3100/.well-known
+```
+
+Verified live after both fixes:
+
+```text
+OPTIONS /mcp (chatgpt.com)                  204
+POST    /mcp (chatgpt.com)                  401 + Allow-Origin + Expose-Headers
+POST    /mcp (no Origin)                    401, no CORS headers   ← unchanged
+/.well-known/oauth-authorization-server     404 application/json
+/.well-known/openid-configuration           404 application/json
+/.well-known/oauth-protected-resource/mcp   200 application/json
+/ , /quest , /vantage                       200 200 200
+```
+
 ## Connect ChatGPT and Claude
 
 Official guidance checked 15 September 2026. Labels and availability can vary by account/workspace; server compatibility does not override client policy.
