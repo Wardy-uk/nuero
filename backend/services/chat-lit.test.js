@@ -152,7 +152,7 @@ test('⚠ iOS makes the same distinctions', () => {
   // ⚠ SKIPPED, never failed, where the sibling checkout is absent — a test that
   // fails on a machine without the other repo is one that gets deleted, taking
   // the drift check with it.
-  const ios = path.resolve(ROOT, '..', 'nuero-ios');
+  const ios = require('./ios-checkout').findIOSCheckout();
   if (!fs.existsSync(ios)) return;
 
   const ask = read(ios, 'Saim', 'AskView.swift');

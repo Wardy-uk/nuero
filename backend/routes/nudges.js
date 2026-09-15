@@ -3,6 +3,21 @@ const router = express.Router();
 const db = require('../db/database');
 const nudges = require('../services/nudges');
 
+// GET /api/nudges/schedule — WHEN the fixed rituals fire.
+//
+// ⚠ FOR A CLIENT THAT CANNOT BE PUSHED TO. A personal-team iOS build gets no
+// APNs, and its background wake ran once in two days against 51 requests — so a
+// closed app nudged Nick approximately never. A LOCAL notification scheduled
+// ahead needs no wake, no network and no Pi. This is the times it should use.
+//
+// ⚠ Declared by the server because `standup_nudge_hour` MOVES — `activity.js`
+// adjusts it when his real start time drifts, and a copy compiled into the app
+// would disagree the first time it did.
+router.get('/schedule', (req, res) => {
+  const { ritualSchedule } = require('../services/nudge-schedule');
+  res.json({ ok: true, rituals: ritualSchedule() });
+});
+
 // GET /api/nudges — active nudges + snooze state + why nothing is nudging
 router.get('/', (req, res) => {
   const active = db.getActiveNudges();
