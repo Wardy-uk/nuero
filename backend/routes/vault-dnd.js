@@ -34,6 +34,22 @@ function joinScope(relPath) {
   return `${DND_ROOT}/${normal}`;
 }
 
+/**
+ * The vault root as the FILESYSTEM sees it, not as the env var spells it.
+ *
+ * ⚠ `safeScopedPath` already resolves symlinks before deciding containment, so
+ * every path it returns — and every path the search walk builds from one — is
+ * real. Relativising those against the RAW `VAULT_PATH` mixes the two: on macOS
+ * `os.tmpdir()` is `/var/...` while its real path is `/private/var/...`, and
+ * `path.relative` then walks six levels out and returns an absolute-ish string
+ * where a vault-relative one was promised. Anywhere the vault sits behind a
+ * symlink — a mounted share, a junction — the same thing happens in production.
+ */
+function realVaultRoot() {
+  if (!VAULT_PATH) return null;
+  try { return fs.realpathSync(path.resolve(VAULT_PATH)); } catch { return null; }
+}
+
 function safeScopedPath(relPath) {
   if (!VAULT_PATH || typeof relPath !== 'string' || relPath.includes('\0')) return null;
   const scoped = joinScope(relPath);
@@ -148,6 +164,8 @@ router.get('/search', (req, res) => {
 
   const searchDir = safeScopedPath(req.query.dir || '');
   if (!searchDir) return res.status(400).json({ error: 'Invalid path' });
+  const searchRoot = realVaultRoot();
+  if (!searchRoot) return res.status(503).json({ error: 'Vault not configured' });
 
   const results = [];
   const maxResults = 20;
@@ -169,7 +187,7 @@ router.get('/search', (req, res) => {
         const content = fs.readFileSync(fullPath, 'utf-8');
         if (!content.toLowerCase().includes(lowered)) continue;
 
-        const relPath = stripScopePrefix(path.relative(VAULT_PATH, fullPath).replace(/\\/g, '/'));
+        const relPath = stripScopePrefix(path.relative(searchRoot, fullPath).replace(/\\/g, '/'));
         const lines = content.split('\n');
         const matches = [];
         for (let i = 0; i < lines.length && matches.length < 3; i++) {
@@ -193,6 +211,8 @@ router.get('/search/temporal', (req, res) => {
   const fromDate = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const toDate = req.query.to ? new Date(req.query.to) : new Date();
   const limit = parseInt(req.query.limit, 10) || 5;
+  const searchRoot = realVaultRoot();
+  if (!searchRoot) return res.status(503).json({ error: 'Vault not configured' });
   const results = [];
   const lowered = query.toLowerCase();
 
@@ -214,7 +234,7 @@ router.get('/search/temporal', (req, res) => {
         const content = fs.readFileSync(fullPath, 'utf-8');
         if (!content.toLowerCase().includes(lowered)) continue;
 
-        const relPath = stripScopePrefix(path.relative(VAULT_PATH, fullPath).replace(/\\/g, '/'));
+        const relPath = stripScopePrefix(path.relative(searchRoot, fullPath).replace(/\\/g, '/'));
         const body = content.replace(/^---[\s\S]*?---\n*/, '');
         const lines = body.split('\n');
         const excerpts = [];
