@@ -15,9 +15,26 @@ import { apiFetch } from '../api';
  * notifications on deliberately.
  *
  * The automatic half still runs, because it costs nothing and cannot prompt:
- * a device that has ALREADY granted permission and holds a subscription
- * re-registers it, so a brain that lost its copy of the subscription starts
- * working again without Nick having to do anything.
+ * a device that has ALREADY granted permission re-registers, so a brain that
+ * lost its copy of the subscription starts working again without Nick having to
+ * do anything.
+ *
+ * ⚠ IT ALSO MINTS ONE WHEN THE DEVICE ITSELF HAS LOST IT, and that case is
+ * the one that cost weeks of silence. This hook originally returned early when
+ * `getSubscription()` came back null -- it was written for "the BRAIN lost its
+ * copy" and did nothing for "the DEVICE lost its copy", which is what happens
+ * when iOS evicts a subscription or the PWA is reinstalled. Combined with the
+ * Controls screen, which reports `Notification.permission` and therefore said
+ * "On for this device", and with `enableNotifications()` being reachable only
+ * from a button that renders when permission is NOT granted, the app could
+ * never re-subscribe again BY CONSTRUCTION: each half deferred to the other and
+ * neither told the truth. Live on 15 Sep 2026 there was ONE subscription for
+ * four surfaces, and a test push logged `sent` that never arrived.
+ *
+ * ⚠ `subscribe()` DOES NOT PROMPT once permission is granted, which is what
+ * makes this safe here. The launch-prompt rule is untouched: the FIRST guard is
+ * still `Notification.permission !== 'granted'`, and `requestPermission()` is
+ * still reachable only from `enableNotifications()`.
  */
 
 function _urlBase64ToUint8Array(base64String) {
@@ -117,16 +134,31 @@ export function usePushSubscription(authed) {
     (async () => {
       try {
         const registration = await navigator.serviceWorker.ready;
-        const existing = await registration.pushManager.getSubscription();
-        if (!existing || cancelled) return;
+        let subscription = await registration.pushManager.getSubscription();
+        if (cancelled) return;
+
+        if (!subscription) {
+          // The device has no subscription. Mint one -- permission is already
+          // granted, so this is silent. Returning here instead is what left the
+          // app permanently unable to receive anything.
+          const { publicKey } = await apiFetch('/api/push/vapid-public-key');
+          if (!publicKey || cancelled) return;
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: _urlBase64ToUint8Array(publicKey),
+          });
+          if (cancelled) return;
+          console.log('[Push] Device had no subscription — minted a new one.');
+        }
+
         await apiFetch('/api/push/subscribe', {
           method: 'POST',
-          body: JSON.stringify(existing.toJSON()),
+          body: JSON.stringify(subscription.toJSON()),
         });
       } catch (e) {
-        // Brain unreachable, or the subscription is gone. Neither is worth
-        // interrupting anyone about; the Controls screen reports the real state.
-        console.warn('[Push] Re-registration skipped:', e.message);
+        // A failure here must never interrupt anyone, but it must not be
+        // invisible either: silence is this feature's whole failure mode.
+        console.warn('[Push] Registration failed:', e.message);
       }
     })();
 

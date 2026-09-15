@@ -259,8 +259,15 @@ export default function Controls() {
       {pushSupported() && permission === 'granted' && (
         <section className="controls__section">
           <h3 className="controls__heading">Notifications</h3>
+          {/* ⚠ This line reports iOS PERMISSION, not whether NEURO holds a live
+              subscription for this device -- so it can read "On" while nothing
+              can actually be delivered. The hook self-heals that on launch; this
+              button is the way back when the self-heal could not run (brain
+              unreachable at the time, service worker not ready yet). Without
+              one, a granted permission made re-subscribing impossible. */}
           <p className="controls__muted">On for this device.</p>
           <button className="controls__btn" onClick={sendTest}>Send a test</button>
+          <button className="controls__btn" onClick={turnOn}>Re-register this device</button>
           {testNote && <p className="controls__muted">{testNote}</p>}
         </section>
       )}
