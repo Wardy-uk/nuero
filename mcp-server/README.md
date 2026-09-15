@@ -1,6 +1,10 @@
 # NEURO / SAiM remote MCP gateway
 
-Status: implemented and locally tested; **not deployed or linked to a live OAuth provider**. Proposed public resource: `https://neuro.nickward.co.uk/mcp`. Nick supplied `neuro.nickward.co.uk`, `sara.nickward.co.uk` and the in-progress `saim.nickward.co.uk` on 15 September 2026. DNS, ingress ownership and provider credentials still require deployment-time verification.
+Status: implemented and locally tested; **not deployed or linked to a live OAuth provider**. Public resource: `https://pi5.tailecb90f.ts.net/mcp`.
+
+⚠ **The originally proposed `neuro.nickward.co.uk` does not exist** — NXDOMAIN on public DNS, checked 15 September 2026. The live spelling is `nuero.nickward.co.uk` (the repo's historical typo), and that host is **Netlify static hosting, not a reverse proxy to the Pi**. `saim.nickward.co.uk` does not exist either; DNS still carries `sara.`. Both were taken from the brief rather than resolved.
+
+This matters more than a typo normally would: the resource URL **is the OAuth audience**, and it must match byte for byte on the gateway, at the provider and in both clients. Getting it wrong is not a redirect — it is a full redo of the provider API and every client registration. It is therefore pinned to the one endpoint that is already public with valid TLS and proven path routing: **pi5's Tailscale Funnel**. Moving later to a custom domain means changing `MCP_PUBLIC_URL`, the provider identifier and both clients together.
 
 ## Architecture audit
 
@@ -119,12 +123,14 @@ The gateway is an OAuth **resource server**. A managed authorization server owns
 
 1. Create/select an Auth0 tenant and your user account. Enable MFA for the account.
 2. In tenant **Settings → Advanced**, enable **Resource Parameter Compatibility Profile** and **Include Issuer in Authorization Responses**. This makes MCP's `resource` parameter select the correct API audience. [Auth0 instructions](https://auth0.com/ai/docs/mcp/guides/resource-param-compatibility-profile).
-3. Create an API named `NEURO MCP`, identifier exactly `https://neuro.nickward.co.uk/mcp`, signing algorithm RS256. Add `neuro:read` and `neuro:write` permissions. Enable RBAC; assign only the permissions Nick should use to his role/account. Configure access-token lifetime to 900 seconds (or another short period below the gateway maximum). Ensure granted permissions appear in the OAuth `scope` claim; a `permissions` array alone is insufficient.
+3. Create an API named `NEURO MCP`, identifier exactly `https://pi5.tailecb90f.ts.net/mcp`, signing algorithm RS256. Add **all four** permissions: `neuro:read`, `neuro:write`, `neuro:action`, `neuro:admin`. Enable RBAC; assign only the permissions Nick should use to his role/account. Configure access-token lifetime to 900 seconds (or another short period below the gateway maximum). Ensure granted permissions appear in the OAuth `scope` claim; a `permissions` array alone is insufficient.
+
+   ⚠ **All four, not two.** Classifying the live inventory gives **218 read, 52 write, 212 action, 30 admin**. `scopesFor` requires a kind's own scope on top of read/write, so creating only `neuro:read` and `neuro:write` leaves **242 of 512 operations — 47% — permanently unreachable**: the tools still appear in discovery and refuse every call. `neuro:action` is not an exotic edge case; POST defaults to `action` unless its domain is a local-write domain, so it carries the largest share after plain reads. Create all four at the API, then grant Nick only the ones he wants live — that is the decision point, not the API definition.
 4. Register OAuth clients for ChatGPT, Claude and Inspector using each client's provided callback URL; use exact redirect matching, authorization-code flow and S256 PKCE. Use a predefined OAuth client with client ID/secret where the connecting UI supports it; otherwise enable your provider's supported MCP DCR/CIMD flow. Do not register wildcard callbacks or accept arbitrary client redirect URLs in this gateway. Provider-specific client registration must be verified in the actual tenant. [OpenAI authentication contract](https://developers.openai.com/plugins/build/auth).
 5. Set `MCP_AUTH_ISSUER` to the exact `issuer` from the provider's `/.well-known/openid-configuration`, and `MCP_AUTH_JWKS_URL` to its `jwks_uri`. Set `MCP_AUTH_SUBJECT` to Nick's immutable user ID, not his email. Set backend credentials independently.
 6. Run `npm run check:auth`. It checks OIDC discovery, HTTPS endpoints, advertised S256 and signing-key availability without logging secrets. Then complete an interactive OAuth flow in MCP Inspector to test client registration, consent, resource audience and scope grants. This live provider login has not been performed in this checkout.
 
-Unauthenticated `/mcp` responds 401 with the protected-resource metadata URL in `WWW-Authenticate`. Discovery documents are public; tools, schemas and readiness are protected. Every MCP request checks the JWT signature, approved algorithm, exact issuer, public resource audience, subject, expiry, issue time, maximum age and `neuro:read`. Writes additionally need `neuro:write`; insufficient-scope tool errors include a reauthorization challenge. Incoming OAuth tokens are never forwarded to NEURO.
+Unauthenticated `/mcp` responds 401 with the protected-resource metadata URL in `WWW-Authenticate`. Discovery documents are public; tools, schemas and readiness are protected. Every MCP request checks the JWT signature, approved algorithm, exact issuer, public resource audience, subject, expiry, issue time, maximum age and `neuro:read`. Writes additionally need `neuro:write`; external/cascading operations need `neuro:action` and administrative ones `neuro:admin`, each on top of read and write. Insufficient-scope tool errors include a reauthorization challenge. Incoming OAuth tokens are never forwarded to NEURO.
 
 Rotation: rotate backend credentials in NEURO and the gateway environment, then recreate the gateway. Rotate OAuth signing keys at the provider; JWKS refresh is handled by `jose`. Disable/revoke the client grant or refresh token at the provider on compromise. Already-issued JWTs may remain valid until expiry/maximum age; for immediate cut-off, stop the gateway or change its allowed subject before restart. Do not assume refresh-token revocation instantly invalidates existing access tokens.
 
@@ -141,9 +147,44 @@ docker compose logs --tail=50 gateway
 curl --fail http://127.0.0.1:3100/health
 ```
 
-### Preferred: extend the existing HTTPS reverse proxy
+### Measured on pi5, 15 September 2026
 
-Route exactly these paths on `neuro.nickward.co.uk` to private `http://127.0.0.1:3100`:
+Checked rather than assumed, so the deploy is one step instead of a reconnaissance:
+
+| Fact | Value | Consequence |
+|---|---|---|
+| Docker / Compose | 26.1.5 / 2.26.1, installed | The compose path above works **on the Pi**. A stopped Docker Desktop on the Windows workstation is irrelevant — it is not the deploy target. |
+| `node:24-bookworm-slim` | multi-arch | Covers the Pi 5's arm64; no image change needed. |
+| NEURO backend | listening on `0.0.0.0:3001` | Reachable from the Docker bridge, so `NEURO_API_URL=http://host.docker.internal:3001` is the correct value here. This is **not** the loopback-only case described above. |
+| Port 3100 | free | No conflict. |
+| Tailscale | 1.102.2, `--set-path` supported | The Funnel commands below run as written. |
+| `/mnt/data/nuero` | has no `mcp-server/remote` yet | The gateway must be pushed and pulled onto the Pi before any of this runs. |
+
+⚠ **If you run the gateway directly rather than in Docker, the default `node` is the wrong one.** `/usr/bin/node` on pi5 is **v20.19.2**, while `package.json` requires `>=22`; Node 22 exists only under nvm. npm will refuse on `engines`, and forcing past it runs express 5 and jose 6 on an unsupported runtime. Use the explicit path:
+
+```bash
+/home/nickw/.nvm/versions/node/v22.22.2/bin/node --env-file=remote/.env remote/index.js
+```
+
+The container does not have this problem — it pins its own Node.
+
+### Preferred: extend the existing Tailscale Funnel on pi5
+
+pi5 already serves `https://pi5.tailecb90f.ts.net` over Funnel with a valid certificate, and already does path routing on it (`/`, `/quest`, `/vantage`), so this needs no DNS record, no certificate and no new party in the path of a bearer token:
+
+```bash
+# on pi5
+tailscale serve --bg --set-path /mcp 3100
+tailscale serve --bg --set-path /.well-known/oauth-protected-resource/mcp 3100
+tailscale serve --bg --set-path /.well-known/oauth-protected-resource 3100
+tailscale serve status        # confirm the existing / , /quest and /vantage rules survived
+```
+
+⚠ **Funnel proxies public traffic from loopback.** A guard that trusts `127.0.0.1` is therefore a guard that trusts the internet. The gateway does not make that mistake — `/mcp` and `/health/ready` require a verified OAuth token regardless of source address — but anything added here later must hold the same line. `/health` is deliberately public and returns only `{"status":"running"}`.
+
+⚠ The existing `/` rule already exposes the NEURO backend (port 3001) publicly behind its PIN. That is pre-existing, not introduced here, but it is the reason the MCP paths are mounted as siblings rather than the gateway being given the root.
+
+Whichever ingress is used, route exactly these paths to private `http://127.0.0.1:3100`:
 
 ```text
 /mcp
@@ -153,7 +194,9 @@ Route exactly these paths on `neuro.nickward.co.uk` to private `http://127.0.0.1
 /health/ready           optional, gateway still requires OAuth
 ```
 
-For an existing Nginx installation, add these exact locations inside its **existing TLS server block**, keeping the existing certificate and site routes:
+### Alternative: an HTTPS reverse proxy
+
+Only needed if the endpoint moves to a custom domain. For an existing Nginx installation, add these exact locations inside its **existing TLS server block**, keeping the existing certificate and site routes:
 
 ```nginx
 location = /mcp {
@@ -192,10 +235,10 @@ Enable HTTPS-only access/HTTP-to-HTTPS redirect at Cloudflare and bypass caching
 ### Deployment verification
 
 ```bash
-curl -i -X POST https://neuro.nickward.co.uk/mcp
+curl -i -X POST https://pi5.tailecb90f.ts.net/mcp
 # Expected: 401 and WWW-Authenticate, not a website/redirect/Cloudflare login page.
-curl --fail https://neuro.nickward.co.uk/.well-known/oauth-protected-resource/mcp
-# Expected: resource exactly https://neuro.nickward.co.uk/mcp.
+curl --fail https://pi5.tailecb90f.ts.net/.well-known/oauth-protected-resource/mcp
+# Expected: resource exactly https://pi5.tailecb90f.ts.net/mcp.
 ```
 
 With a short-lived OAuth access token in `MCP_SMOKE_ACCESS_TOKEN` and `MCP_PUBLIC_URL` set, run `npm run smoke`. It tests public HTTPS, auth rejection, initialization, discovery and a presence read without printing personal results. Use authenticated `/health/ready` privately to check NEURO, vault and SAiM API reachability. Liveness alone is not a backend health check. Readiness indicates endpoint availability, not that every sensor is fresh or every integration is configured.
@@ -207,7 +250,7 @@ Official guidance checked 15 September 2026. Labels and availability can vary by
 ### ChatGPT Web
 
 1. Open **Settings → Security and login → Developer mode** where available.
-2. Open **Plugins**, select **+**, enter `NEURO / SAiM`, and use the public MCP URL `https://neuro.nickward.co.uk/mcp`.
+2. Open **Plugins**, select **+**, enter `NEURO / SAiM`, and use the public MCP URL `https://pi5.tailecb90f.ts.net/mcp`.
 3. Choose/configure OAuth and supply the provider client ID/secret if the setup UI requests predefined credentials. Complete provider login as Nick and consent to read access, plus write access only if wanted.
 4. Review the discovered 18 tools. In a new conversation, select the connection from the tools menu. Ask for current SAiM context, then an intentional test capture.
 5. After schema changes, refresh the connection metadata and start a new conversation. [Current OpenAI connection instructions](https://developers.openai.com/plugins/deploy/connect-chatgpt).
@@ -223,7 +266,7 @@ Add a custom remote connector from **Settings → Connectors** on Claude Web/Des
 ### Claude Code
 
 ```bash
-claude mcp add --transport http --scope user neuro-remote https://neuro.nickward.co.uk/mcp
+claude mcp add --transport http --scope user neuro-remote https://pi5.tailecb90f.ts.net/mcp
 # Open Claude Code and run /mcp to complete OAuth authentication.
 ```
 
