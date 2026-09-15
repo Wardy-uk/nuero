@@ -1,6 +1,8 @@
 # NEURO / SAiM remote MCP gateway
 
-Status: implemented and locally tested; **not deployed or linked to a live OAuth provider**. Public resource: `https://pi5.tailecb90f.ts.net/mcp`.
+Status: **deployed and live on pi5 since 15 September 2026**, against a live Auth0 tenant (`nickward-neuro.uk.auth0.com`, UK-1). Public resource: `https://pi5.tailecb90f.ts.net/mcp`.
+
+Verified from the open internet: `POST /mcp` answers **401 with a `WWW-Authenticate` challenge**, and `/.well-known/oauth-protected-resource/mcp` returns `resource` exactly matching the Auth0 API identifier. Container is healthy with `restart: unless-stopped`; docker and tailscaled are both enabled at boot, so it survives a reboot. The pre-existing `/`, `/quest` and `/vantage` Funnel routes were confirmed still serving 200 afterwards. **Still untested: an interactive OAuth login**, which is the only thing that exercises audience, subject and scope grants — and therefore client acceptance in ChatGPT and Claude.
 
 ⚠ **The originally proposed `neuro.nickward.co.uk` does not exist** — NXDOMAIN on public DNS, checked 15 September 2026. The live spelling is `nuero.nickward.co.uk` (the repo's historical typo), and that host is **Netlify static hosting, not a reverse proxy to the Pi**. `saim.nickward.co.uk` does not exist either; DNS still carries `sara.`. Both were taken from the brief rather than resolved.
 
@@ -173,12 +175,25 @@ The container does not have this problem — it pins its own Node.
 pi5 already serves `https://pi5.tailecb90f.ts.net` over Funnel with a valid certificate, and already does path routing on it (`/`, `/quest`, `/vantage`), so this needs no DNS record, no certificate and no new party in the path of a bearer token:
 
 ```bash
-# on pi5
-tailscale serve --bg --set-path /mcp 3100
-tailscale serve --bg --set-path /.well-known/oauth-protected-resource/mcp 3100
-tailscale serve --bg --set-path /.well-known/oauth-protected-resource 3100
-tailscale serve status        # confirm the existing / , /quest and /vantage rules survived
+# on pi5 — note the TARGET CARRIES THE PATH, and it is `funnel`, not `serve`
+tailscale funnel --bg --set-path=/mcp http://127.0.0.1:3100/mcp
+tailscale funnel --bg --set-path=/.well-known/oauth-protected-resource/mcp \
+  http://127.0.0.1:3100/.well-known/oauth-protected-resource/mcp
+tailscale funnel --bg --set-path=/.well-known/oauth-protected-resource \
+  http://127.0.0.1:3100/.well-known/oauth-protected-resource
+tailscale serve status        # confirm / , /quest and /vantage survived
 ```
+
+⚠ **`--set-path=/mcp 3100` STRIPS THE PREFIX and is wrong.** A bare port target mounts the proxy at that
+path and forwards `/` to the backend, so the gateway receives `/` and answers its own catch-all
+`{"error":"not_found"}` with a 404. That 404 is the trap: it carries the gateway's `X-Request-Id` and
+`Ratelimit` headers, so the request genuinely reached the gateway and the routing looks correct — it is
+indistinguishable from a missing route unless you read the headers. Give the target the full path
+(`http://127.0.0.1:3100/mcp`) and the prefix is preserved. Found live on 15 Sep 2026, after the first
+attempt returned exactly that 404.
+
+⚠ **Back the serve config up first**: `tailscale serve status --json > /tmp/serve-backup.json`. This host
+already carries three live routes, one of which is the NEURO backend itself.
 
 ⚠ **Funnel proxies public traffic from loopback.** A guard that trusts `127.0.0.1` is therefore a guard that trusts the internet. The gateway does not make that mistake — `/mcp` and `/health/ready` require a verified OAuth token regardless of source address — but anything added here later must hold the same line. `/health` is deliberately public and returns only `{"status":"running"}`.
 
