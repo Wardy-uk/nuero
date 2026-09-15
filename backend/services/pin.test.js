@@ -206,7 +206,7 @@ test('every consumer names an action', () => {
     assert.ok(c.action && c.action.length > 10, `consumer ${c.id} says what to do`);
   }
   const ids = pin.consumers().map(c => c.id);
-  for (const required of ['watch-siri', 'sara-pwa', 'sara-kiosk', 'mcp', 'n8n']) {
+  for (const required of ['watch-siri', 'saim-pwa', 'saim-kiosk', 'mcp', 'n8n']) {
     assert.ok(ids.includes(required), `${required} is listed`);
   }
 });

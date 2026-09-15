@@ -9,7 +9,7 @@
  * The two halves are pinned separately elsewhere — the device store keeps the
  * queue across a reopen (`mobile-store.test.js`), and the server applies a
  * replayed operation once (`mobile-sync.test.js`). This drives the GLUE, which
- * is where a promise like that usually breaks: `sara/app/src/mobile/outbox.js`
+ * is where a promise like that usually breaks: `saim/app/src/mobile/outbox.js`
  * against a real HTTP NEURO and a real (fake-backed) IndexedDB.
  *
  * The only shims are the two things a browser supplies and node does not:
@@ -33,7 +33,7 @@ process.env.OBSIDIAN_VAULT_PATH = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-e
 
 const db = require('../db/database');
 
-const APP_SRC = path.join(__dirname, '..', '..', 'sara', 'app', 'src');
+const APP_SRC = path.join(__dirname, '..', '..', 'saim', 'app', 'src');
 const OUTBOX = path.join(APP_SRC, 'mobile', 'outbox.js');
 const STORE = path.join(APP_SRC, 'mobile', 'localStore.js');
 

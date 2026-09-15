@@ -3,7 +3,7 @@
 /**
  * Acting on a nudge from the outbox.
  *
- * SARA's loop is that she comes to Nick; the answer has to survive being given
+ * SAiM's loop is that she comes to Nick; the answer has to survive being given
  * on a watch in a lift and replayed later. Two operations, and they fail in
  * opposite directions — a dismissal for a nudge that has gone is fine, and a
  * snooze that has expired must NOT be applied.

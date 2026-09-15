@@ -1,0 +1,275 @@
+.now__sec { margin-bottom: 1.25rem; }
+
+/* ⚠ The type is `LitLabel`'s now — size, tracking, case and weight all live in
+   `shared-ui/Lit.css` so every screen's section labels are one thing. What is
+   left here is only the spacing this screen wants. Its COLOUR was
+   `var(--muted)`, a flat grey that said nothing about her state. */
+.now__sech { margin: 0 0 0.5rem; }
+
+.now__unread {
+  color: #f0d6a6;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.now__unread-note { color: var(--muted); }
+
+.now__calm {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.now__focus-label {
+  font-size: 0.75rem;
+  /* ⚠ Hers, for the same reason as the edge above. */
+  color: rgba(var(--saim-rgb, 114, 150, 211), 0.92);
+  margin-bottom: 0.3rem;
+}
+
+.now__focus-text,
+.now__item-title,
+.now__event-title,
+.now__task-text {
+  font-size: 0.98rem;
+  line-height: 1.4;
+}
+
+.now__next {
+  margin-top: 0.4rem;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.now__item-say {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.now__meta {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.now__event-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  justify-content: space-between;
+}
+
+.now__when {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* "on now" is a live fact about this minute, so it is the one thing in a
+   diary row that is lit. */
+.now__when--live { color: rgb(var(--saim-rgb, 114, 150, 211)); }
+
+.now__task {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.now__task-body { flex: 1 1 auto; min-width: 0; }
+
+.now__tick {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+/* ⚠ Was `opacity: 0.35`, which greys the only mark on the row and reads as
+   broken. The card is DASHED and the reason is printed beside it now, so this
+   only has to stop being pressable. */
+.now__tick:disabled { opacity: 0.6; cursor: default; }
+
+.now__go {
+  margin-top: 0.55rem;
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.16);
+  color: var(--text);
+  border: 1px solid rgba(var(--saim-rgb, 114, 150, 211), 0.34);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.now__outbox {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.now__outbox-btn {
+  margin-left: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.now__flash {
+  margin-bottom: 0.85rem;
+  font-size: 0.85rem;
+  color: rgb(var(--saim-rgb, 114, 150, 211));
+}
+
+.now__flash.err { color: #ffb4b4; }
+
+.now__gaps {
+  margin-top: 1.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* ⚠ No `summary` and no `<details>` any more: a gap collapsed behind a count
+   is a gap nobody reads. Each one is named, on its own line, at a glance. */
+.now__gap { line-height: 1.5; padding: 0.15rem 0; }
+.now__gaps strong { color: var(--text); }
+
+/* ── The focus session's controls (Gate 3) ─────────────────────────────────
+   "Make it smaller" leads, because it is the only control here that lowers the
+   barrier rather than raising awareness. Everything else answers "when". */
+
+.now__sess-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.now__sess-btn {
+  background: var(--panel-2, #1c2530);
+  border: 1px solid var(--line, #26313f);
+  color: var(--text, #e6edf3);
+  border-radius: 10px;
+  padding: 0.5rem 0.8rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  /* A phone, one-handed. */
+  min-height: 44px;
+}
+/* The one action in a row that carries on rather than backs out. */
+.now__sess-btn--go {
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.16);
+  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.45);
+}
+.now__sess-btn:disabled { opacity: 0.5; }
+
+.now__sess-shrink { margin-top: 0.6rem; }
+/* The assumption note doubles as the way to replace it: text first, control
+   second. */
+.now__est-link {
+  background: none; border: 0; padding: 0; font: inherit; color: inherit;
+  text-decoration: underline dotted; cursor: pointer;
+}
+.now__sess-input.now__est-input { width: 7rem; flex: 0 0 auto; }
+.now__sess-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted, #8b98a8);
+  margin-bottom: 0.35rem;
+}
+.now__sess-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg, #0b0f14);
+  border: 1px solid var(--line, #26313f);
+  color: var(--text, #e6edf3);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  /* 16px+ so iOS does not zoom the viewport on focus. */
+  min-height: 44px;
+}
+
+.now__sess-err {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #ffb4b4;
+}
+
+/* The check-in. Sits inline rather than as a modal — it is a passing question,
+   not an event, and a dialog would make being asked feel like being caught. */
+.now__sess-checkin {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+.now__sess-checkin .now__sess-label { margin-bottom: 0; }
+
+/* ── The way back, the start, and the close-out ────────────────────────────── */
+
+/* The return prompt leads the screen, so it carries the brightest edge.
+   ⚠ HER colour, not `rgb(var(--saim-rgb, 114, 150, 211))`. That was the fixed system blue, which is
+   a second opinion about what state she is in — on a day she has gone red, an
+   accent-blue edge on the most important card on the screen is the two-products
+   finding in one rule. `--saim-rgb` is set on the shell. */
+.now__return {
+  border-left: 3px solid rgb(var(--saim-rgb, 114, 150, 211));
+  margin-bottom: 0.85rem;
+}
+
+.now__closeout { margin-bottom: 0.85rem; }
+
+.now__start { margin-top: 0.6rem; }
+
+.now__start-label { margin-top: 0.7rem; }
+
+/* A pickable task. One-handed, so a full-width target, never a small radio. */
+.now__start-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  margin-top: 0.4rem;
+  background: var(--panel-2, #1c2530);
+  border: 1px solid var(--line, #26313f);
+  color: var(--text, #e6edf3);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+  min-height: 44px;
+}
+.now__start-opt .now__meta { margin-top: 0; }
+
+/* Selected is shown by edge AND fill, so it does not rest on colour alone —
+   which matters more now the colour MOVES: the same picked state is blue on a
+   quiet morning and red in a fire, and the shape has to say it either way. */
+.now__start-opt[aria-pressed="true"],
+.now__sess-btn[aria-pressed="true"] {
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.16);
+  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.5);
+  box-shadow: inset 3px 0 0 rgb(var(--saim-rgb, 114, 150, 211));
+}

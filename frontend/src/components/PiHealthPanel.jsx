@@ -172,7 +172,7 @@ function assessAi(ai, ollamaReachable) {
 }
 
 /**
- * Every sense SARA has, and whether it is actually working.
+ * Every sense SAiM has, and whether it is actually working.
  *
  * This panel used to be the Pi's vitals alone. It is NEURO Health now because
  * the machine being healthy has never been the interesting question — three

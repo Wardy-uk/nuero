@@ -56,7 +56,7 @@ function _parseData(row) {
  * Reads `services/wins` rather than counting activity_log directly. It used to
  * do the latter, over a six-event set that only `task_done` and the two rituals
  * ever actually fired — and MEASURED on the live DB, that came to four
- * completions in thirty days, against 271 commits and 57 executed SARA actions.
+ * completions in thirty days, against 271 commits and 57 executed SAiM actions.
  * This card was opened nine times in that window and showed 0 with no streak on
  * every one of them. It was not wrong about the events; it was wrong about what
  * counts as evidence that Nick did something, because the only thing feeding it

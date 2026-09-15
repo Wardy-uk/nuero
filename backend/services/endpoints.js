@@ -7,7 +7,7 @@
 //
 // Nick's ask was "launch iTunes on my laptop, or the HomePod, or my phone,
 // depending where I am", and then: *"think wider — anticipate my
-// requirements."* The wider thing is that EVERY action SARA takes has an
+// requirements."* The wider thing is that EVERY action SAiM takes has an
 // intent and an ENDPOINT, and he should never have to name the endpoint. Music
 // is one case. Speaking, notifying, showing and playing are the same problem.
 //

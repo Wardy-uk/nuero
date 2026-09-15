@@ -1,5 +1,5 @@
-/* ── SARA team assessment ── */
-.team-sara {
+/* ── SAiM team assessment ── */
+.team-saim {
   margin-bottom: 16px;
   padding: 14px 16px;
   background: var(--bg-secondary);
@@ -13,11 +13,11 @@
   flex-wrap: wrap;
 }
 
-.team-sara-main {
+.team-saim-main {
   min-width: 0;
 }
 
-.team-sara-book-all {
+.team-saim-book-all {
   flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -30,11 +30,11 @@
   white-space: nowrap;
 }
 
-.team-sara-book-all:hover {
+.team-saim-book-all:hover {
   background: rgba(96, 165, 250, 0.12);
 }
 
-.team-sara-label {
+.team-saim-label {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
@@ -45,7 +45,7 @@
   margin-bottom: 6px;
 }
 
-.team-sara-line {
+.team-saim-line {
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;
@@ -53,8 +53,8 @@
   line-height: 1.5;
 }
 
-/* ── SARA status badge on cards ── */
-.sara-status-badge {
+/* ── SAiM status badge on cards ── */
+.saim-status-badge {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
@@ -64,34 +64,34 @@
   border-radius: 3px;
 }
 
-.sara-status-badge.sara-status-ok {
+.saim-status-badge.saim-status-ok {
   color: var(--success);
   background: rgba(64, 201, 122, 0.1);
 }
-.sara-status-badge.sara-status-warning {
+.saim-status-badge.saim-status-warning {
   color: var(--warning);
   background: rgba(240, 160, 64, 0.1);
 }
-.sara-status-badge.sara-status-danger {
+.saim-status-badge.saim-status-danger {
   color: var(--danger);
   background: rgba(224, 85, 85, 0.12);
 }
 
-.sara-status-reason {
+.saim-status-reason {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
   margin-top: 2px;
 }
 
-/* Card border by SARA status */
-.person-card.sara-status-danger {
+/* Card border by SAiM status */
+.person-card.saim-status-danger {
   border-left: 3px solid var(--danger);
 }
-.person-card.sara-status-warning {
+.person-card.saim-status-warning {
   border-left: 3px solid var(--warning);
 }
-.person-card.sara-status-ok {
+.person-card.saim-status-ok {
   border-left: 3px solid rgba(64, 201, 122, 0.3);
 }
 
@@ -172,7 +172,7 @@
   gap: 4px;
 }
 
-/* Legacy status classes removed — now using .sara-status-* */
+/* Legacy status classes removed — now using .saim-status-* */
 
 .person-header {
   display: flex;

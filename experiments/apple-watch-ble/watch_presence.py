@@ -104,7 +104,7 @@ async def main():
             age = (now - state["last_seen"]) if state["last_seen"] else 9999
             new = "present" if age < PRESENT_WINDOW else ("away" if age >= AWAY_TIMEOUT else state["status"])
             if new != state["status"] and new in ("present", "away"):
-                arrow = "🟢 PRESENT" if new == "present" else "🔴 AWAY  (SARA would lock)"
+                arrow = "🟢 PRESENT" if new == "present" else "🔴 AWAY  (SAiM would lock)"
                 print(f"  >>> STATE CHANGE -> {arrow}   (after {age:.0f}s unseen)" if new == "away"
                       else f"  >>> STATE CHANGE -> {arrow}", flush=True)
                 state["status"] = new

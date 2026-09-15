@@ -1,6 +1,6 @@
 'use strict';
 
-// Room offers — what SARA would do in the room Nick is in.
+// Room offers — what SAiM would do in the room Nick is in.
 //
 // ⚠ ROUTE ORDER: the literal paths (`/history`) are registered ABOVE anything
 //   parameterised. This router has `/:key/accept` and `/:key/decline`, and this

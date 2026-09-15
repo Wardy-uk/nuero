@@ -280,7 +280,7 @@ async function chatWithTools(systemPrompt, messages, tools, runTool, options = {
     // anywhere says so. Measured on Nick's standup of 11 Sep 2026: 400 tokens,
     // five resolve_commitment calls, the fifth arriving as `{}`, and the
     // `set_weekly_target` he had just been asked for never emitted at all — so
-    // the number he gave was silently dropped and SARA asked again.
+    // the number he gave was silently dropped and SAiM asked again.
     const cutOff = data.choices?.[0]?.finish_reason === 'length';
 
     // A tool loop can fail over mid-conversation, so the served model is read

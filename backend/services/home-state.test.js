@@ -3,7 +3,7 @@
 /**
  * The house, in words a model can answer with.
  *
- * ⚠⚠ WHY THIS EXISTS. The day SARA became the voice agent in the living room,
+ * ⚠⚠ WHY THIS EXISTS. The day SAiM became the voice agent in the living room,
  * the most obvious thing to say to her was the one thing she could not answer:
  *
  *     "what is the living room temperature"
@@ -140,7 +140,7 @@ test('it is PURE — the same house twice gives the same answer, and is not muta
 // -- Asking about the house -------------------------------------------------
 //
 // WARNING-WARNING  THE ROUTER EXISTS BECAUSE THE PROMPT RULE WAS NOT ENOUGH.
-//   Asked "is anyone else home", SARA answered "No" with NO TOOL CALL AT ALL,
+//   Asked "is anyone else home", SAiM answered "No" with NO TOOL CALL AT ALL,
 //   measured against the backend log on 13 Sep 2026, while the household
 //   sensor read `on` with Helen and Isaac in it. Every phrasing below that is
 //   marked LIVE was actually said to her that day.
@@ -167,7 +167,7 @@ test('the ordinary house phrasings are routed too', () => {
 });
 
 test('WARNING NEGATIVE: it does not fire on sentences that merely say home', () => {
-  // Injecting a room-by-room reading into these would have SARA answering a
+  // Injecting a room-by-room reading into these would have SAiM answering a
   // question nobody asked.
   for (const q of [
     'I am working from home today',

@@ -49,11 +49,11 @@ const { resolveNueroNavigation } = actionSurfaces;
 // correct and has always been mute about it: on a card reading "Do your standup
 // — 2 minutes, do it before anything else", the only thing offering to take
 // him there said `Open context`, and the one field that names the destination
-// (`actionHint`, "Open Standup") was composed server-side and read by SARA
+// (`actionHint`, "Open Standup") was composed server-side and read by SAiM
 // alone.
 //
 // ⚠ IT IS NOT `card.actionHint`, deliberately. Those strings are prose written
-// for SARA's sentence-shaped surface and several of them are not navigations:
+// for SAiM's sentence-shaped surface and several of them are not navigations:
 // "Start here, then review the rest" on a button whose whole contract is that
 // it navigates and calls NOTHING, sat beside a "Start this" button that really
 // does start a session, is two buttons saying start and meaning different
@@ -227,7 +227,7 @@ export default function AttentionCard({
       </header>
 
       <h3 className="att-card__title">{card.title}</h3>
-      {/* `say` is SARA's sentence, composed server-side. `reason` is the raw
+      {/* `say` is SAiM's sentence, composed server-side. `reason` is the raw
           field dump behind it and is the fallback, never the preference. */}
       <p className="att-card__say">{card.say || card.reason}</p>
 

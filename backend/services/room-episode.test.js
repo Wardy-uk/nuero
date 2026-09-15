@@ -6,14 +6,14 @@
  * What is under test is the product: "ask once per visit" is only worth having
  * if a visit survives the presence feed blinking, and only honest if walking
  * out and coming back later counts as a new one. Both directions are cheap to
- * get wrong and expensive to live with — too eager and SARA re-asks ten times
+ * get wrong and expensive to live with — too eager and SAiM re-asks ten times
  * an evening, too sticky and she never asks again after one "no".
  */
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const ep = require('./room-episode');
-const greeter = require('../../sara/backend/src/greeting/greeter');
+const greeter = require('../../saim/backend/src/greeting/greeter');
 
 const T0 = Date.parse('2026-09-12T18:00:00Z');
 const at = ms => new Date(T0 + ms);

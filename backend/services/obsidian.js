@@ -1856,7 +1856,7 @@ function toWikiLink(relativePath) {
   return `[[${clean}|${label}]]`;
 }
 
-// Kept for its callers (capture route, chat, SARA suggestion approval) but it no
+// Kept for its callers (capture route, chat, SAiM suggestion approval) but it no
 // longer appends markdown: since 13 Aug 2026 every capture path writes to the tasks
 // table and the vault gets a regenerated export note. That also retires the `📥 Inbox`
 // heading fragility — the 28 items that landed under `## Links` came from this

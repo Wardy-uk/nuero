@@ -1,7 +1,7 @@
 # The attention contract
 
 **One NEURO-owned attention decision.** Neuro Mobile, the Scriptable widget, the
-SARA kiosk and every push notification CONSUME this. None of them rerank work,
+SAiM kiosk and every push notification CONSUME this. None of them rerank work,
 invent urgency, or phrase the same state differently.
 
 Version `v1`. Phase 3, Gate 1 — 30 Aug 2026.
@@ -58,7 +58,7 @@ brief requires, and where each comes from:
 | `type` | `todo` / `meeting` / `escalation` / `email` / `nudge` / … | decision-engine |
 | `state` | lifecycle, below | this layer |
 | `title`, `say`, `reason` | user-facing wording | composed by NEURO, never by a client |
-| `tab` | where tapping it goes | `resolveSaraLiteTab` — the one resolver |
+| `tab` | where tapping it goes | `resolveSaimLiteTab` — the one resolver |
 | `urgency`, `tier`, `score` | priority | decision-engine |
 | `confidence` | `{level, why}` — explicit uncertainty | `context-state`, capped by coverage |
 | `evidence` | `[{source, ref, observedAt, detail}]` | `evidenceFor(item)` — pure, never invented |
@@ -147,7 +147,7 @@ has actually happened here.
    `notify_signature` is `urgency|tier` — deliberately **not** the text. A
    countdown re-rendering is not a state change; an item going `medium` →
    `critical` is.
-5. **Notifications are enabled, it is not quiet hours, and SARA is not paused.**
+5. **Notifications are enabled, it is not quiet hours, and SAiM is not paused.**
 6. **It clears the interruption level** — see controls.
 
 Critical items bypass 5 (quiet hours, pause, cap) and **only** by the explicit
@@ -165,7 +165,7 @@ from Neuro Mobile.
 | `enabled` | `true` | master switch |
 | `quietHours` | `22:00-07:00` | mirrors `PUSH_QUIET_HOURS`; the setting wins when present |
 | `interruptionLevel` | `normal` | `all` / `normal` / `critical-only` |
-| `pausedUntil` | `null` | "pause SARA for 2 hours" |
+| `pausedUntil` | `null` | "pause SAiM for 2 hours" |
 | `domains` | `{work: true, personal: true}` | uses the existing `meta.domain` split |
 
 **Permission is never requested on first launch.** The browser prompt is raised

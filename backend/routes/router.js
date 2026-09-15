@@ -42,7 +42,7 @@ router.post('/sample', (req, res) => {
           // building more.
           require('../services/webpush').sendToAll({
             type: 'router_health',
-            title: 'SARA — Router',
+            title: 'SAiM — Router',
             body: line,
           });
           announced = true;

@@ -149,7 +149,7 @@
 
 /* ⚠ The left edge is the safety model, at a glance: a job that only reads is
    unmarked, a job that edits the vault is amber, one that reaches an external
-   service is blue. In SARA these were all the same grey button. */
+   service is blue. In SAiM these were all the same grey button. */
 .brain__job--write { border-left-color: var(--warning); }
 .brain__job--fetch { border-left-color: var(--accent); }
 

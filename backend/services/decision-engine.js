@@ -279,7 +279,7 @@ function collectPlanClosure(ctx) {
 /**
  * Which system can actually close this task. PURE.
  *
- * The three owners a tick can have, in the order `sara/app`'s `completeTask.js`
+ * The three owners a tick can have, in the order `saim/app`'s `completeTask.js`
  * already uses — deliberately reused rather than re-decided, so a card and the
  * phone cannot disagree about who closes what.
  *
@@ -483,7 +483,7 @@ function collectUrgentEmails(ctx) {
 }
 
 // A nudge type is a slug, not a sentence. Interpolating it raw produced cards
-// reading "121 reminder" and "Complete journal" — SARA naming her own internals
+// reading "121 reminder" and "Complete journal" — SAiM naming her own internals
 // at Nick rather than naming the thing he has to do.
 const NUDGE_LABELS = {
   standup: { title: 'Do your standup', hint: 'Open Standup' },

@@ -28,7 +28,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const VIEWS = path.resolve(__dirname, '..', '..', 'sara', 'app', 'src', 'views');
+const VIEWS = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'views');
 const jsx = () => fs.readFileSync(path.join(VIEWS, 'Now.jsx'), 'utf8');
 
 /**
@@ -133,7 +133,7 @@ test('⚠ no screen-local palette — her colour or nothing', () => {
   // used it, each individually harmless.
   const accents = sheet.match(/var\(--accent[^)]*\)/g) || [];
   assert.deepEqual(accents, [], `Now.css still picks the system accent: ${accents.join(', ')}`);
-  assert.match(sheet, /rgb\(var\(--sara-rgb/, 'the return prompt must carry HER edge');
+  assert.match(sheet, /rgb\(var\(--saim-rgb/, 'the return prompt must carry HER edge');
 });
 
 test('the section label is the shared one, not a local re-invention', () => {

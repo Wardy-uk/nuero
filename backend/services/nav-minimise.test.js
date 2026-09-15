@@ -1,18 +1,18 @@
 'use strict';
 
 /**
- * The menu SARA does not have must not stay open under her.
+ * The menu SAiM does not have must not stay open under her.
  *
  * ⚠⚠ PHOTOGRAPHED ON THE DESK TABLET, 14 Sep 2026: TWO FULL ROWS of navigation
- * under the ambient surface — the secondary strip (SARA / Today / Focus / Tasks
+ * under the ambient surface — the secondary strip (SAiM / Today / Focus / Tasks
  * / Voice / Chat / Prep / Ritual / Controls) sitting permanently above the
  * primary one.
  *
  * `navOpen` was only ever cleared by `goTab` when the chosen tab was in
- * PRIMARY — and the Surface is NOT in PRIMARY. So tapping SARA left the whole
+ * PRIMARY — and the Surface is NOT in PRIMARY. So tapping SAiM left the whole
  * strip open underneath her, for good.
  *
- * ⚠ THAT IS THE MENU SARA DOES NOT HAVE, RESTORED BY ACCIDENT. The 25 Aug rule
+ * ⚠ THAT IS THE MENU SAiM DOES NOT HAVE, RESTORED BY ACCIDENT. The 25 Aug rule
  * is that the strip stays revealed while he is OFF the Surface — because the
  * one screen with no menu must not also be the only way back. This is the other
  * half of that sentence, which was never written down: it comes back DOWN when
@@ -28,7 +28,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.resolve(__dirname, '..', '..', 'sara');
+const ROOT = path.resolve(__dirname, '..', '..', 'saim');
 const shells = {
   phone: path.join(ROOT, 'app', 'src', 'App.jsx'),
   kiosk: path.join(ROOT, 'frontend', 'src', 'App.jsx'),

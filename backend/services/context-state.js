@@ -3,8 +3,8 @@
 /**
  * Context state — what NEURO believes Nick is doing RIGHT NOW.
  *
- * NEURO is the brain; SARA is the voice, ears and eyes. That division makes the
- * inference NEURO's job, not SARA's. `sara/backend/src/state/inference.js` had
+ * NEURO is the brain; SAiM is the voice, ears and eyes. That division makes the
+ * inference NEURO's job, not SAiM's. `saim/backend/src/state/inference.js` had
  * started to grow a second one — an activity enum, a confidence model and a
  * recommended-view map — but its inputs were SEEDED (`state/seed.js`), so it was
  * a second opinion assembled from data that did not exist. The rules and the
@@ -112,11 +112,11 @@ const ACTIVITY = {
   STEADY: 'steady',                   // we looked; nothing stood out
 };
 
-// Every input block SARA can feed the brain. Used to work out what was missing,
+// Every input block SAiM can feed the brain. Used to work out what was missing,
 // so "we could not see the calendar" is a fact the surface can state.
 const INPUT_BLOCKS = ['calendar', 'focusSession', 'queue', 'location', 'presence', 'rituals', 'workingDay'];
 
-// What a missing input MEANS, in SARA's words. The surface used to render this
+// What a missing input MEANS, in SAiM's words. The surface used to render this
 // as a badge reading "can't see 1", which is instrumentation: it told Nick a
 // number instead of a fact, in the most prominent position on the screen. She
 // says it instead, in a sentence, composed here so the phone and the kiosk
@@ -359,7 +359,7 @@ function deriveConfidence({ activity, knownCount, contradictions }) {
  * exactly what makes it visible — this reached the Surface as
  * `You're in "Nurtur - Micom (Commercials) ".` A blank subject falls back to the
  * unnamed wording rather than quoting an empty string, which reads as a meeting
- * with no name rather than as one SARA could not name.
+ * with no name rather than as one SAiM could not name.
  */
 function _quotedSubject(subject, lead, fallback) {
   const s = typeof subject === 'string' ? subject.trim() : '';
@@ -459,7 +459,7 @@ function resolveContext(inputs = {}, now = new Date()) {
   // ── Priority resolution ────────────────────────────────────────────────────
   // Most-committed signal wins. "Committed" rather than "urgent": being in a
   // room with people outranks a breaching queue not because it matters more but
-  // because it is the one state where SARA interrupting is actively wrong.
+  // because it is the one state where SAiM interrupting is actively wrong.
   if (meetings.current) {
     activity = ACTIVITY.IN_MEETING;
     label = 'In a meeting';
@@ -470,7 +470,7 @@ function resolveContext(inputs = {}, now = new Date()) {
     summary = _quotedSubject(meetings.current.subject, "You're in", "You're in a meeting.");
     quiet = true;
     reasons.push('A calendar event with other people in it is running now.');
-    reasons.push('SARA stays quiet in a meeting — this is the one state where speaking up is wrong by default.');
+    reasons.push('SAiM stays quiet in a meeting — this is the one state where speaking up is wrong by default.');
     derivedFrom.push('calendar');
   } else if (meetings.next) {
     activity = ACTIVITY.PRE_MEETING;

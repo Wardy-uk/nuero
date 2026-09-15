@@ -1,11 +1,11 @@
 'use strict';
 
 /**
- * SARA opens the End of Day.
+ * SAiM opens the End of Day.
  *
  * The old notification was an instruction — "End of day. Before you close the
  * laptop: one win, one thing that didn't go to plan... Standup tab → EOD." That
- * tells him a ritual is due; it is not SARA saying anything. Now the session is
+ * tells him a ritual is due; it is not SAiM saying anything. Now the session is
  * started server-side first so her actual opening line exists BEFORE the
  * notification does, and that line is what he reads.
  *
@@ -35,7 +35,7 @@ test.before(async () => { await db.init(); });
 
 test('the seeded opener is not Nick talking', () => {
   // `start()` pushes one synthetic user message to open the turn. Reading that
-  // as engagement would mean SARA never opens the EOD at all.
+  // as engagement would mean SAiM never opens the EOD at all.
   const justStarted = {
     messages: [
       { role: 'user', content: "Let's do my end of day." },
@@ -47,7 +47,7 @@ test('the seeded opener is not Nick talking', () => {
 
 test('a conversation already under way is NOT interrupted', () => {
   // He started the EOD himself at four. A push at five saying "how was your
-  // day?" into a chat he is already in reads as SARA not listening.
+  // day?" into a chat he is already in reads as SAiM not listening.
   const inFlight = {
     messages: [
       { role: 'user', content: "Let's do my end of day." },
@@ -146,7 +146,7 @@ test('⚠ an AI failure falls back to the old wording, never to silence', async 
 
   assert.equal(sent.length, 1, 'the prompt still went out');
   assert.match(sent[0].body, /End of day/, 'and it fell back to the wording that always worked');
-  assert.equal(sent[0].title, 'SARA');
+  assert.equal(sent[0].title, 'SAiM');
 });
 
 // ── 8pm daily, snooze to nine ────────────────────────────────────────────────

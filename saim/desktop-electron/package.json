@@ -1,0 +1,14 @@
+{
+  "name": "saim-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SAiM desktop shell (Electron) — cross-platform window + OS-level lock/wake adapter",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

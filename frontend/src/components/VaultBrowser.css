@@ -5,7 +5,7 @@
   height: 100%;
 }
 
-.vault-sara {
+.vault-saim {
   padding: 14px 16px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -13,7 +13,7 @@
   border-radius: var(--radius-sm);
   margin-bottom: 12px;
 }
-.vault-sara-label {
+.vault-saim-label {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
@@ -23,7 +23,7 @@
   display: block;
   margin-bottom: 4px;
 }
-.vault-sara-line {
+.vault-saim-line {
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;

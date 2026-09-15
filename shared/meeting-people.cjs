@@ -5,7 +5,7 @@
 // PURE and browser-safe. Takes a meeting subject and the roster, returns the
 // people it names. No vault, no DB, no network — the caller supplies both.
 //
-// It exists because `pre-meeting` is the moment SARA could most obviously earn
+// It exists because `pre-meeting` is the moment SAiM could most obviously earn
 // her keep — walking into a 1-2-1, showing who it is with and what they are
 // owed — and the dashboard rendered the diary and nothing else. The attendee
 // list is NOT available: `calendar_cache` stores no names, and `agendaFor`

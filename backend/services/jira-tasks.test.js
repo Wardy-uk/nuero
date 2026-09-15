@@ -118,7 +118,7 @@ test('a person cannot tick a Jira-linked task, and is told where the button is',
 });
 
 test('the refusal is in the store, so every completion path hits it', () => {
-  // The todos routes, the SARA funnel, the MCP tool and the chat tool all end
+  // The todos routes, the SAiM funnel, the MCP tool and the chat tool all end
   // up in `updateTask`. A guard in a route is one the other three walk past.
   const src = fs.readFileSync(path.join(__dirname, 'task-store.js'), 'utf-8');
   assert.match(src, /jira-tasks/);

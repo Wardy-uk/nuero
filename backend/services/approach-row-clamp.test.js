@@ -29,7 +29,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const CSS = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui', 'Approach.css');
+const CSS = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui', 'Approach.css');
 const css = () => fs.readFileSync(CSS, 'utf8');
 const code = () => css().replace(/\/\*[\s\S]*?\*\//g, '');
 

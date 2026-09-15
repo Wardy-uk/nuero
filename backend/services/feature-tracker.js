@@ -3,7 +3,7 @@
 /**
  * Feature capture — the backlog gets a front door.
  *
- * `Projects/NEURO/NEURO Feature Tracker.md` is where the NEURO/SARA/NOVA backlog
+ * `Projects/NEURO/NEURO Feature Tracker.md` is where the NEURO/SAiM/NOVA backlog
  * lives, and until now the only way into it was a Claude session editing the file
  * by hand. So an idea Nick had on the train either survived until the next session
  * or it didn't. Everything else he thinks of has a capture route; the backlog is
@@ -30,7 +30,7 @@ const SECTION_BLURB =
   'write them down. Unranked and unedited — triage moves them into the sections above.';
 const TABLE_HEAD = '| # | Feature | System | Status | Notes |\n|---|---|---|---|---|';
 
-const SYSTEMS = ['NEURO', 'SARA', 'NOVA', 'Both'];
+const SYSTEMS = ['NEURO', 'SAiM', 'NOVA', 'Both'];
 
 function trackerPath() {
   if (process.env.NEURO_TRACKER_PATH) return process.env.NEURO_TRACKER_PATH;

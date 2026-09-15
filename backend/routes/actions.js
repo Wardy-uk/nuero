@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * SARA Actions API — approve, reject, and list action suggestions.
+ * SAiM Actions API — approve, reject, and list action suggestions.
  *
  * GET  /api/actions         — list pending + recent actions
  * POST /api/actions/:id/approve — execute an approved action
@@ -17,7 +17,7 @@ const actionCandidates = require('../services/action-candidates');
 const actionPresenter = require('../services/action-presenter');
 const actionSnooze = require('../services/action-snooze');
 
-// getPendingSaraActions defaults to 10 and orders by confidence DESC. On an
+// getPendingSaimActions defaults to 10 and orders by confidence DESC. On an
 // approval list that is a silent cliff, not a page — and it was actively
 // lying: the queue reads 10 and is 930. Read all of them, then decide what to
 // send with the totals attached.
@@ -130,7 +130,7 @@ router.get('/', (req, res) => {
     // and the "is one already queued" checks all read it to decide whether to
     // create another, and hiding a snoozed card from THEM regenerates it. Sleep
     // is applied here, at the surface that asks "what needs me now".
-    const pool = db.getPendingSaraActions(READ_ALL).map(decorate);
+    const pool = db.getPendingSaimActions(READ_ALL).map(decorate);
     const { awake, asleep } = actionSnooze.partitionSnoozed(pool);
     const all = awake;
     all.sort((a, b) => {
@@ -153,10 +153,10 @@ router.get('/', (req, res) => {
       pendingByKind[k] = (pendingByKind[k] || 0) + 1;
     }
 
-    // getRecentSaraActions is every status, so it re-lists everything pending.
+    // getRecentSaimActions is every status, so it re-lists everything pending.
     // History means resolved: an executed or failed action is the outcome the
     // caller came here for, and a pending one is already above.
-    const recent = db.getRecentSaraActions(RECENT_LIMIT)
+    const recent = db.getRecentSaimActions(RECENT_LIMIT)
       .filter(a => a.status !== 'pending')
       .map(decorate);
 
@@ -199,7 +199,7 @@ router.get('/', (req, res) => {
 // Async since the real actuators (reply_email, complete_task, schedule_focus_block)
 // go out over Graph.
 async function approveAction(id) {
-  const action = db.getSaraAction(parseInt(id));
+  const action = db.getSaimAction(parseInt(id));
   if (!action) return { status: 404, body: { error: 'Action not found' } };
   if (action.status !== 'pending') {
     return { status: 400, body: { error: `Action is ${action.status}, not pending` } };
@@ -209,7 +209,7 @@ async function approveAction(id) {
   const result = await suggestionEngine.executeAction(action);
 
   // Update status
-  db.updateSaraActionStatus(action.id, result.ok ? 'executed' : 'failed');
+  db.updateSaimActionStatus(action.id, result.ok ? 'executed' : 'failed');
 
   // Log
   suggestionEngine.logActionExecution(action, result);
@@ -235,20 +235,20 @@ async function approveAction(id) {
 }
 
 function rejectAction(id) {
-  const action = db.getSaraAction(parseInt(id));
+  const action = db.getSaimAction(parseInt(id));
   if (!action) return { status: 404, body: { error: 'Action not found' } };
   if (action.status !== 'pending') {
     return { status: 400, body: { error: `Action is ${action.status}, not pending` } };
   }
 
-  db.updateSaraActionStatus(action.id, 'rejected');
+  db.updateSaimActionStatus(action.id, 'rejected');
   if (action.type === 'capture_todo') {
     actionCandidates.rememberReviewedAction(action, 'rejected');
   }
 
   // Log rejection to activity
   try {
-    db.logActivity('sara_action_rejected', {
+    db.logActivity('saim_action_rejected', {
       actionId: action.id,
       type: action.type,
       reason: action.reason,
@@ -271,7 +271,7 @@ function rejectAction(id) {
  * are stored exactly as sent. NEURO deliberately does not re-run the weighting:
  * the sending system knows why it thinks something matters, and a second
  * opinion computed here is how one question comes to have two answers that
- * disagree (`sara/backend`'s retired `inference.js`, one repo over).
+ * disagree (`saim/backend`'s retired `inference.js`, one repo over).
  *
  * ⚠ It creates a PENDING action and never executes one. Approval is a separate
  * call Nick makes, and this route cannot reach it.
@@ -297,7 +297,7 @@ router.post('/', (req, res) => {
       return res.status(400).json({ error: 'source is required — an unattributable suggestion cannot be judged' });
     }
 
-    const id = db.createSaraAction(
+    const id = db.createSaimAction(
       type,
       {
         ...(payload && typeof payload === 'object' ? payload : {}),
@@ -328,7 +328,7 @@ router.post('/', (req, res) => {
 router.post('/:id/snooze', (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const action = db.getSaraAction(id);
+    const action = db.getSaimAction(id);
     if (!action) return res.status(404).json({ ok: false, reason: 'no such action' });
     if (action.status !== 'pending') {
       // Already approved, rejected or expired: waking it later would put a
@@ -342,7 +342,7 @@ router.post('/:id/snooze', (req, res) => {
     const plan = actionSnooze.resolveSnooze(req.body?.minutes ?? req.query.minutes, { expiresAt });
     if (!plan.ok) return res.status(400).json(plan);
 
-    if (!db.snoozeSaraAction(id, plan.until)) {
+    if (!db.snoozeSaimAction(id, plan.until)) {
       return res.status(400).json({ ok: false, reason: 'it was not pending by the time we wrote' });
     }
     res.json({ ok: true, id, until: plan.until, minutes: plan.minutes });
@@ -356,10 +356,10 @@ router.post('/:id/snooze', (req, res) => {
 router.delete('/:id/snooze', (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const action = db.getSaraAction(id);
+    const action = db.getSaimAction(id);
     if (!action) return res.status(404).json({ ok: false, reason: 'no such action' });
     if (!action.snoozed_until) return res.status(400).json({ ok: false, reason: 'it is not snoozed' });
-    db.snoozeSaraAction(id, null);
+    db.snoozeSaimAction(id, null);
     res.json({ ok: true, id });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -370,7 +370,7 @@ router.post('/:id/approve', async (req, res) => {
   try {
     const { status, body } = await approveAction(req.params.id);
     // Invalidate working memory so focus fingerprint changes
-    workingMemory.invalidate('sara action approved');
+    workingMemory.invalidate('saim action approved');
     res.status(status).json(body);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -382,7 +382,7 @@ router.post('/:id/reject', (req, res) => {
   try {
     const { status, body } = rejectAction(req.params.id);
     // Invalidate working memory so focus fingerprint changes
-    workingMemory.invalidate('sara action rejected');
+    workingMemory.invalidate('saim action rejected');
     res.status(status).json(body);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -420,7 +420,7 @@ router.post('/batch', async (req, res) => {
       else failed.push({ id: Number(id), error: outcome.body.error || 'failed', status: outcome.status });
     }
 
-    workingMemory.invalidate(`sara actions batch ${verb}`);
+    workingMemory.invalidate(`saim actions batch ${verb}`);
 
     res.json({ ok: failed.length === 0, verb, succeeded, failed, total: ids.length });
   } catch (e) {
@@ -450,7 +450,7 @@ router.post('/bulk-reject', (req, res) => {
     }
 
     const decorate = (a) => ({ ...a, presentation: actionPresenter.describe(a) });
-    const matched = db.getPendingSaraActions(READ_ALL).map(decorate).filter(a => matchesFilter(a, filter));
+    const matched = db.getPendingSaimActions(READ_ALL).map(decorate).filter(a => matchesFilter(a, filter));
 
     const outbound = matched.filter(a => a.presentation.kind === 'outbound');
     if (outbound.length) {
@@ -473,7 +473,7 @@ router.post('/bulk-reject', (req, res) => {
       if (outcome.status === 200) rejected.push(a.id);
     }
 
-    workingMemory.invalidate('sara actions bulk reject');
+    workingMemory.invalidate('saim actions bulk reject');
     res.json({ ok: true, filter, rejected: rejected.length, ids: rejected });
   } catch (e) {
     res.status(500).json({ error: e.message });

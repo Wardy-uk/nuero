@@ -617,7 +617,7 @@ function updateTask(id, fields = {}) {
 
   // A task blocked into the calendar is not finished until it has been written
   // up (18 Aug 2026). The hold lives HERE rather than in the route because this
-  // is the only writer — the SARA completion funnel, the MCP tool, the chat tool
+  // is the only writer — the SAiM completion funnel, the MCP tool, the chat tool
   // and every route all arrive through this function, and a check in any one of
   // them would be a check the other three walk straight past.
   //
@@ -631,7 +631,7 @@ function updateTask(id, fields = {}) {
   // with NEURO's own fields, but there is no manual tick — completion follows
   // the ticket, so there is never two places to close one thing. The refusal
   // lives here rather than in a route because this is the only writer: the
-  // todos routes, the SARA completion funnel, the MCP tool and the chat tool
+  // todos routes, the SAiM completion funnel, the MCP tool and the chat tool
   // all arrive through this function, and a guard in any one of them is a guard
   // the other three walk past. (The same argument as the write-up hold below.)
   //

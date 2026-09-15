@@ -43,8 +43,8 @@ function urgentEmail(emailId = EMAIL, subject = 'Udemny') {
 
 function reset() {
   db.run ? null : null;
-  for (const row of db.getRecentSaraActions(500)) {
-    db.updateSaraActionStatus(row.id, 'superseded');
+  for (const row of db.getRecentSaimActions(500)) {
+    db.updateSaimActionStatus(row.id, 'superseded');
   }
 }
 
@@ -78,7 +78,7 @@ test('an EXECUTED draft is never offered again for the same email', () => {
   const [created] = engine.persistSuggestions(first);
 
   // Nick approves: the row leaves the pending set, and the email is still urgent.
-  db.updateSaraActionStatus(created.id, 'executed');
+  db.updateSaimActionStatus(created.id, 'executed');
 
   const again = engine.generateSuggestions([urgentEmail()]);
   assert.ok(!again.some(s => s.type === 'draft_reply'), 'the drafted reply came back');
@@ -87,14 +87,14 @@ test('an EXECUTED draft is never offered again for the same email', () => {
 test('a REJECTED draft is not offered again either', () => {
   reset();
   const [created] = engine.persistSuggestions(engine.generateSuggestions([urgentEmail()]));
-  db.updateSaraActionStatus(created.id, 'rejected');
+  db.updateSaimActionStatus(created.id, 'rejected');
   assert.ok(!engine.generateSuggestions([urgentEmail()]).some(s => s.type === 'draft_reply'));
 });
 
 test('a DIFFERENT email still gets its draft offered', () => {
   reset();
   const [created] = engine.persistSuggestions(engine.generateSuggestions([urgentEmail()]));
-  db.updateSaraActionStatus(created.id, 'executed');
+  db.updateSaimActionStatus(created.id, 'executed');
 
   const other = engine.generateSuggestions([urgentEmail(OTHER, 'Something else')]);
   assert.ok(other.some(s => s.type === 'draft_reply'), 'a decision on one email silenced another');
@@ -103,14 +103,14 @@ test('a DIFFERENT email still gets its draft offered', () => {
 test('a FAILED action is offered again — he approved it and it did not happen', () => {
   reset();
   const [created] = engine.persistSuggestions(engine.generateSuggestions([urgentEmail()]));
-  db.updateSaraActionStatus(created.id, 'failed');
+  db.updateSaimActionStatus(created.id, 'failed');
   assert.ok(engine.generateSuggestions([urgentEmail()]).some(s => s.type === 'draft_reply'));
 });
 
 test('superseded is not a decision — Nick chose nothing', () => {
   reset();
   const [created] = engine.persistSuggestions(engine.generateSuggestions([urgentEmail()]));
-  db.updateSaraActionStatus(created.id, 'superseded');
+  db.updateSaimActionStatus(created.id, 'superseded');
   assert.ok(engine.generateSuggestions([urgentEmail()]).some(s => s.type === 'draft_reply'));
 });
 
@@ -120,10 +120,10 @@ test('a decision buried behind a thousand superseded rows is still found', () =>
   // window cheap enough to run is small enough to miss every one of them, so
   // the status filter has to be in SQL.
   const [created] = engine.persistSuggestions(engine.generateSuggestions([urgentEmail()]));
-  db.updateSaraActionStatus(created.id, 'executed');
+  db.updateSaimActionStatus(created.id, 'executed');
   for (let i = 0; i < 1200; i++) {
-    const id = db.createSaraAction('draft_reply', { emailId: EMAIL }, 0.8, 'noise', 'email-urgent');
-    db.updateSaraActionStatus(id, 'superseded');
+    const id = db.createSaimAction('draft_reply', { emailId: EMAIL }, 0.8, 'noise', 'email-urgent');
+    db.updateSaimActionStatus(id, 'superseded');
   }
   assert.ok(!engine.generateSuggestions([urgentEmail()]).some(s => s.type === 'draft_reply'));
 });
@@ -133,7 +133,7 @@ test('navigation stays repeatable — a shortcut is always available', () => {
   const item = { id: 'todo-overdue-top', type: 'todo', title: 'Overdue', urgency: 'high', meta: {} };
   const [created] = engine.persistSuggestions(engine.generateSuggestions([item]));
   assert.equal(created.type, 'open_task');
-  db.updateSaraActionStatus(created.id, 'executed');
+  db.updateSaimActionStatus(created.id, 'executed');
   assert.ok(engine.generateSuggestions([item]).some(s => s.type === 'open_task'),
     'the "Do it" shortcut stopped being offered');
 });

@@ -65,7 +65,7 @@ test('absent and known:false are the same fact', () => {
 
 // ── Meetings: fails closed on anything it cannot judge ────────────────────────
 
-test('a meeting with other people wins, and SARA goes quiet', () => {
+test('a meeting with other people wins, and SAiM goes quiet', () => {
   const c = resolveContext(
     calm({ calendar: { known: true, events: [meeting('2026-08-18T09:00:00', '2026-08-18T10:00:00')] } }),
     TUE_0930,

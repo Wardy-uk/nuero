@@ -13,7 +13,7 @@
  * safety rule is one copy too many.
  *
  * Unlike the chat tool, submitting here is NOT queued for approval. The chat
- * tool queues because SARA is acting on an inferred intention; here Nick has
+ * tool queues because SAiM is acting on an inferred intention; here Nick has
  * typed the ticket key, read the detail back and pressed the button. A second
  * approval step for a form he just filled in is friction, not safety — so the
  * UI confirms what will change before it posts, and that confirmation IS the gate.

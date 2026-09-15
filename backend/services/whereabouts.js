@@ -145,7 +145,7 @@ function describe(room, zone, away = null) {
     room: null,
     subject: null,
     // The room reader's own words where it has them — it knows whether it was
-    // uncalibrated, unsure, or unable to reach SARA.
+    // uncalibrated, unsure, or unable to reach SAiM.
     why: (room && room.why) || 'no location signal',
   };
 }

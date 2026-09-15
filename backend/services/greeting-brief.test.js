@@ -3,9 +3,9 @@
 /**
  * The one thing worth saying as he walks in.
  *
- * Nick, 13 Sep 2026: *"take JARVIS as a concept and build it into SARA."* The
+ * Nick, 13 Sep 2026: *"take JARVIS as a concept and build it into SAiM."* The
  * greeting already had the hard parts - she notices him arrive, owns a
- * cooldown, and NEURO decides the words while SARA only delivers them. What it
+ * cooldown, and NEURO decides the words while SAiM only delivers them. What it
  * SAID was a greeting plus the top task: the same sentence whatever was
  * actually happening.
  *
@@ -174,7 +174,7 @@ test('WARNING-WARNING the sleep line needs lastNight ON THE PAYLOAD, not just th
   //
   // WARNING  Asserted with plain string work rather than a regex. Three
   //   backslashes have failed to survive a shell pipeline today; the fix is to
-  //   write checks that need none, which is the call `sara/widget` made.
+  //   write checks that need none, which is the call `saim/widget` made.
   const fs = require('fs');
   const path = require('path');
   const src = fs.readFileSync(path.join(__dirname, 'attention.js'), 'utf8');

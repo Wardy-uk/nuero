@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * SARA's Controls, against the rules — step 10 of the design build order, and
+ * SAiM's Controls, against the rules — step 10 of the design build order, and
  * the last numbered screen.
  *
  * ⚠⚠ THE FINDING IS ONE COLOUR CARRYING FOUR DIFFERENT CLAIMS. iOS had EIGHT raw
@@ -11,7 +11,7 @@
  *   a dead backend and a save that did not land        (BROKEN)
  *   three sections that could not be read              (UNREAD)
  *   notifications posted, accepted and never shown     (UNREACHABLE, fixable)
- *   "ritual nudges: suppressed"                        (SARA DOING AS TOLD)
+ *   "ritual nudges: suppressed"                        (SAiM DOING AS TOLD)
  *
  * The last one is the one that matters most: painting an instruction being
  * obeyed as a warning is exactly how a screen teaches Nick to ignore its
@@ -39,7 +39,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const APP = path.join(ROOT, 'sara', 'app', 'src');
+const APP = path.join(ROOT, 'saim', 'app', 'src');
 const read = (...p) => fs.readFileSync(path.join(...p), 'utf8');
 
 /** ⚠ A name inside a comment is not a use — every scan here strips first. */
@@ -54,7 +54,7 @@ const css = () => read(APP, 'views', 'Controls.css');
 test('⚠⚠ the three meanings are written down, once, where every screen can read it', () => {
   // Seven screens made this call and none of them recorded it. The vocabulary
   // lives with the primitives, not in one screen's comments.
-  const lit = read(ROOT, 'sara', 'shared-ui', 'Lit.css');
+  const lit = read(ROOT, 'saim', 'shared-ui', 'Lit.css');
   assert.match(lit, /lit-chip--gap/, 'could not read Lit.css');   // positive control
   for (const word of ['FAULT', 'GAP', 'STATEMENT']) {
     assert.ok(lit.includes(word), `the ${word} rule is gone from Lit.css`);
@@ -116,9 +116,9 @@ test('⚠ the light on this screen is hers', () => {
   const sheet = strip(css());
   assert.ok(!/var\(--accent\)|var\(--accent-dim\)/.test(sheet),
             'a screen-local accent is back — it does not move when she does');
-  assert.match(sheet, /--sara-rgb/);
+  assert.match(sheet, /--saim-rgb/);
   // Including the radio ticks, which are the most-touched control here.
-  assert.match(sheet, /accent-color: rgb\(var\(--sara-rgb/);
+  assert.match(sheet, /accent-color: rgb\(var\(--saim-rgb/);
 });
 
 test('⚠ the honesty that was already here is still here', () => {
@@ -137,10 +137,10 @@ test('⚠ iOS makes the same four distinctions', () => {
   const ios = path.resolve(ROOT, '..', 'nuero-ios');
   if (!fs.existsSync(ios)) return;
 
-  const src = read(ios, 'Sara', 'SaraControlsView.swift');
+  const src = read(ios, 'Saim', 'SaimControlsView.swift');
   const code = src.split('\n')
     .map((l) => (l.trim().startsWith('//') ? '' : l)).join('\n');
-  assert.match(src, /SaraControlsView/, 'could not read SaraControlsView.swift');  // positive control
+  assert.match(src, /SaimControlsView/, 'could not read SaimControlsView.swift');  // positive control
 
   assert.ok(!/\.orange/.test(code), 'a raw orange is back on iOS');
   assert.ok(!/AnyShapeStyle\(\.tint\)|foregroundStyle\(\.tint\)/.test(code),

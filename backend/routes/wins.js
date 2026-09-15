@@ -29,7 +29,7 @@ router.get('/', (req, res) => {
     res.json({
       ...summary,
       // One line stating what today came to, phrased on the SERVER so the tick
-      // acknowledgement in SARA and the EOD nudge cannot word it differently.
+      // acknowledgement in SAiM and the EOD nudge cannot word it differently.
       // Null on an empty day — there is no encouraging version of zero.
       headline: wins.headline(summary),
       today: wins.winsForDate(summary.dateKey),

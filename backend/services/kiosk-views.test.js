@@ -3,7 +3,7 @@
 /**
  * The Pi kiosk, guarded from the backend suite.
  *
- * `sara/frontend` has no test runner of its own, and on 30 Aug that showed:
+ * `saim/frontend` has no test runner of its own, and on 30 Aug that showed:
  * three real bugs in the Presence screen were caught by SSHing to the Pi,
  * screenshotting the DSI panel with `grim` and looking at the picture. That
  * worked, and it is not a gate — nobody will do it on the next change.
@@ -26,8 +26,8 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const KIOSK = path.join(__dirname, '..', '..', 'sara', 'frontend', 'src');
-const SHARED = path.join(__dirname, '..', '..', 'sara', 'shared-ui');
+const KIOSK = path.join(__dirname, '..', '..', 'saim', 'frontend', 'src');
+const SHARED = path.join(__dirname, '..', '..', 'saim', 'shared-ui');
 
 const APP = path.join(KIOSK, 'App.jsx');
 const KIOSK_CSS = path.join(KIOSK, 'App.css');
@@ -48,9 +48,9 @@ test('positive control — the kiosk shell parses and mounts the shared registry
   assert.match(src, /AppShell/);
 });
 
-test('⚠ the field renders in EVERY state SARA is seen in', () => {
+test('⚠ the field renders in EVERY state SAiM is seen in', () => {
   // Nick, 31 Aug 2026: "crucially the nebulous connected nodes must be present
-  // whenever I see SARA." They were not — `Field` was reachable only from
+  // whenever I see SAiM." They were not — `Field` was reachable only from
   // inside `AttentionSurface`, so it drew when the feed was good and vanished
   // in the states where the kiosk still says her name: the lock screen (which
   // drew a pulsing ORB, deprecated permanently by MANIFESTATION.md) and the

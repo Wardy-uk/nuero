@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * /api/ambient — what SARA can notice about Nick's body and his day, on its own.
+ * /api/ambient — what SAiM can notice about Nick's body and his day, on its own.
  *
  * The same block rides on `GET /api/attention`; this exists for a surface that
  * wants the observations without paying for a full decision-engine evaluation,

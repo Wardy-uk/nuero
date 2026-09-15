@@ -297,7 +297,7 @@ async function _haPhoneStatus(states) {
   // Sensors the Companion app has always reported and NEURO has never read.
   // `activity` is the CoreMotion classification — Still / Walking / Running /
   // Automotive / Cycling — the accelerometer-derived answer to "what is he
-  // physically doing", and the input half of what SARA needs to speak up at the
+  // physically doing", and the input half of what SAiM needs to speak up at the
   // right moment. Read here, consumed NOWHERE yet: plumbing first, behaviour as
   // its own decision, or this becomes a nudge machine on an unverified feed.
   const activity = pick(states, E('sensor', 'activity'));
@@ -306,7 +306,7 @@ async function _haPhoneStatus(states) {
   const floors = pick(states, E('sensor', 'floors_ascended'));
   const audioOutput = pick(states, E('sensor', 'audio_output'));
   // Focus mode — Nick has explicitly told the phone to leave him alone, which is
-  // stronger and more current than any inference SARA could make.
+  // stronger and more current than any inference SAiM could make.
   const focus = pick(states, E('binary_sensor', 'focus'));
 
   // How old the presence reading is. Reported, never enforced here — what
@@ -331,7 +331,7 @@ async function _haPhoneStatus(states) {
 
     // Motion and attention. Every one is null when absent rather than a
     // stand-in — "we did not read it" and "he is not moving" are opposite facts
-    // and only one of them licenses SARA to say anything.
+    // and only one of them licenses SAiM to say anything.
     activity: isUsable(activity) ? activity : null,
     activityUpdatedAt: pickUpdatedAt(states, E('sensor', 'activity')),
     steps: isUsable(steps) ? Number(steps) : null,

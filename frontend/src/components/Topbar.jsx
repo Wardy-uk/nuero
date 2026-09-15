@@ -6,7 +6,7 @@ import './Topbar.css';
 // Which room Nick is in, for the banner.
 //
 // ⚠ It shows a room ONLY when the fingerprint was sure. Every other answer -
-// uncalibrated, no match, too close to call, SARA unreachable - renders NOTHING
+// uncalibrated, no match, too close to call, SAiM unreachable - renders NOTHING
 // rather than a placeholder, because a banner that permanently reads "NEURO:
 // unknown" is one nobody reads by week two, and it would be sat next to the
 // logo on every screen. Silence is the honest empty state here.

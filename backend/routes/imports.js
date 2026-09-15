@@ -224,7 +224,7 @@ router.post('/notify-complete', async (req, res) => {
   try {
     const webpush = require('../services/webpush');
     await webpush.sendToAll(
-      'SARA — Classify complete',
+      'SAiM — Classify complete',
       body,
       { type: 'sweep_complete', url: '/imports' }
     );

@@ -187,8 +187,8 @@ router.get('/send-status', (req, res) => {
     const week = req.query.week || weeklyRisk.weekCommencing();
     const sent = weeklyRisk.sentSummary(weeklyRisk.sentRecord(week));
     const actionPresenter = require('../services/action-presenter');
-    const pending = (db.getPendingSaraActionsByType
-      ? db.getPendingSaraActionsByType('send_weekly_risk_report', 50)
+    const pending = (db.getPendingSaimActionsByType
+      ? db.getPendingSaimActionsByType('send_weekly_risk_report', 50)
       : []) || [];
 
     let queued = null;

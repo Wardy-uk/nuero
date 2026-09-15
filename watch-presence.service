@@ -1,12 +1,12 @@
 [Unit]
-Description=SARA Watch presence detector (BLE proximity via Apple Watch IRK)
+Description=SAiM Watch presence detector (BLE proximity via Apple Watch IRK)
 After=bluetooth.target network.target
 Wants=bluetooth.target
 
 [Service]
 Type=simple
-# IRK lives in a local-only file (NOT in git): /etc/sara-watch.env  ->  WATCH_IRK=<hex>
-EnvironmentFile=/etc/sara-watch.env
+# IRK lives in a local-only file (NOT in git): /etc/saim-watch.env  ->  WATCH_IRK=<hex>
+EnvironmentFile=/etc/saim-watch.env
 # RSSI threshold and flip-window tuned with Nick (desk -43..-61; -70 gives clean margin).
 Environment=WATCH_STATUS_FILE=/home/nickw/watch-irk/presence.json
 Environment=WATCH_RSSI_THRESHOLD=-70

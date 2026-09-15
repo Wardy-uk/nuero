@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * What SARA learns from whether her prompts helped.
+ * What SAiM learns from whether her prompts helped.
  *
  * The load-bearing test is `unmeasurable is not ignored`. Everything else here
  * is arithmetic; that one is the difference between a system that learns and a
@@ -36,7 +36,7 @@ test('UNMEASURABLE is not ignored — it counts for nothing, in either direction
 
 test('nothing judged yet is a NULL rate, never zero', () => {
   // "Nothing judged" and "judged and never worked" are opposite facts about
-  // whether SARA is allowed to have an opinion at all.
+  // whether SAiM is allowed to have an opinion at all.
   const stats = learning.rate(entries(['pending', 'unmeasurable']));
   assert.equal(stats.rate, null);
   assert.equal(learning.shouldMute('low-water', stats).mute, false);
@@ -101,7 +101,7 @@ test('a mute round-trips, and stops the push without hiding anything', () => {
   const listed = learning.mutedList();
   const water = listed.find(m => m.kind === 'low-water');
   assert.equal(water.why, 'it never changed anything');
-  assert.equal(water.by, 'sara');
+  assert.equal(water.by, 'saim');
 });
 
 test('⚠ unmuting CLEARS THE HISTORY, or his instruction lasts one night', () => {
@@ -110,7 +110,7 @@ test('⚠ unmuting CLEARS THE HISTORY, or his instruction lasts one night', () =
   // rule.
   db.setState('attention_learning', JSON.stringify({
     deliveries: Array.from({ length: 20 }, () => ({ kind: 'sedentary', at: '2026-08-01T10:00:00Z', outcome: 'no-change' })),
-    muted: { sedentary: { why: 'never worked', at: '2026-08-30T18:00:00Z', by: 'sara' } },
+    muted: { sedentary: { why: 'never worked', at: '2026-08-30T18:00:00Z', by: 'saim' } },
   }));
 
   assert.equal(learning.isMuted('sedentary'), true);

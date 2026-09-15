@@ -1,0 +1,112 @@
+/* LockScreen — full-screen privacy overlay (WS2-WP3).
+   Sits above everything (Exit button is z 1000) so no dashboard content leaks behind
+   it. Calm, on-brand with the Mission Control light aesthetic: heavy frosted blur over
+   whatever was on screen, centred SAiM mark + clock + tap-to-unlock. */
+
+.lock {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  /* ⚠ Was a frosted WHITE panel. The field is drawn on SAiM's own ground
+     (#0b0f14) and its scrim is dark, so on white it read as a grey smear. The
+     lock is now the same room she is in everywhere else. Still fully opaque —
+     this is a PRIVACY screen and nothing may leak behind it. */
+  background: #06080c;
+  animation: lock-in 0.18s ease;
+}
+@keyframes lock-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Above the field, which is `inset: 0` at z 0. */
+.lock__panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 56px;
+  text-align: center;
+}
+
+.lock__mark {
+  font-weight: 700;
+  letter-spacing: 6px;
+  font-size: 22px;
+  color: #8b98a8;
+}
+
+
+.lock__time {
+  font-size: 56px;
+  font-weight: 600;
+  color: #e6edf3;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.lock__reason {
+  font-size: 16px;
+  color: #8b98a8;
+}
+
+.lock__hint {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--accent-ink);
+}
+
+/* Manual lock trigger — lives at the foot of the left nav, next to the power button.
+   Pill shape; sizing/position handled by .app__sys in App.css. */
+.lockbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 8px 28px rgba(39, 44, 51, 0.08), 0 1px 2px rgba(39, 44, 51, 0.04);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  color: #55627f;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.08s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.lockbtn:hover {
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  box-shadow: 0 10px 30px rgba(94, 193, 202, 0.22);
+}
+.lockbtn:active {
+  transform: scale(0.94);
+}
+
+/* Auto-lock paused — amber so it's obvious at a glance that the privacy lock is off. */
+.lockbtn--paused {
+  color: #b9772a;
+  border-color: #e8a13a;
+  background: rgba(232, 161, 58, 0.16);
+  box-shadow: 0 8px 28px rgba(232, 161, 58, 0.22);
+}
+.lockbtn--paused:hover {
+  color: #a8661f;
+  border-color: #e8a13a;
+  box-shadow: 0 10px 30px rgba(232, 161, 58, 0.3);
+}

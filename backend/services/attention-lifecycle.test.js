@@ -68,7 +68,7 @@ test('an explicit dedupeKey wins, which is how a push names a pool item', () => 
 });
 
 test('a push about a nudge shares the pool card key; an ops alert does not', () => {
-  assert.equal(lifecycle.dedupeKeyForPush('standup', 'SARA'), 'nudge:standup');
+  assert.equal(lifecycle.dedupeKeyForPush('standup', 'SAiM'), 'nudge:standup');
   // An operational alert lands in its own namespace, so it can NEVER collide
   // with a real card — `{type:'todo'}` from a nudge push must not land on a
   // todo card's record by accident.
@@ -313,7 +313,7 @@ test('an operational sighting never flattens a pool record it happens to share',
   // The push path carries only what its caller passed. Touching the record here
   // would reset the escalation the nag tone is built on.
   lifecycle.upsert(
-    { dedupeKey: 'nudge:standup', id: 'push:standup', type: 'standup', title: 'SARA', urgency: 'medium', tier: 2 },
+    { dedupeKey: 'nudge:standup', id: 'push:standup', type: 'standup', title: 'SAiM', urgency: 'medium', tier: 2 },
     { operational: true, now: new Date('2026-09-03T08:30:00Z') }
   );
   assert.equal(db.getAttentionRecord(rec.id).urgency, 'high');
@@ -382,11 +382,11 @@ test('a caller\'s explicit tab is never overridden, and no record stamps nothing
 
 test('a record with no tab falls back to the SHARED resolver, not a guess', () => {
   const webpush = require('./webpush');
-  const { resolveSaraLiteTab } = require('../../shared/action-surfaces.cjs');
+  const { resolveSaimLiteTab } = require('../../shared/action-surfaces.cjs');
   // An operational record may carry no tab. The fallback must agree with the one
   // resolver every other surface uses, or a card and its notification land on
   // different screens — the invariant that rule exists to protect.
   const out = webpush._enrichData({ type: 'standup' }, { id: 'att_x3', tab: null });
-  assert.equal(out.tab, resolveSaraLiteTab({ type: 'standup' }));
+  assert.equal(out.tab, resolveSaimLiteTab({ type: 'standup' }));
   assert.equal(out.tab, 'standup');
 });

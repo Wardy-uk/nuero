@@ -24,7 +24,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const WIDGET_DIR = path.join(__dirname, '..', '..', 'sara', 'widget');
+const WIDGET_DIR = path.join(__dirname, '..', '..', 'saim', 'widget');
 const WIDGET = path.join(WIDGET_DIR, 'neuro-attention.js');
 
 function source() {
@@ -114,7 +114,7 @@ test('the token is never hardcoded in the widget', () => {
 });
 
 test('the field is informative, not decorative — its coherence tracks the read', () => {
-  // sara/app's Field.jsx rule, carried into the widget: THE COHERENCE ON SCREEN
+  // saim/app's Field.jsx rule, carried into the widget: THE COHERENCE ON SCREEN
   // IS THE COHERENCE OF THE READ. A widget cannot animate, so it renders one
   // frame — and that frame still has to be honest. If the pool is unreadable
   // there must be NO mesh at all, because a confident-looking picture over a
@@ -178,8 +178,8 @@ test('the field is informative, not decorative — its coherence tracks the read
 });
 
 test('the widget renders no orb, avatar or glyph', () => {
-  // MANIFESTATION.md deprecates every one of those permanently: SARA is not an
-  // object and there is no "where SARA is". I proposed three orbs before being
+  // MANIFESTATION.md deprecates every one of those permanently: SAiM is not an
+  // object and there is no "where SAiM is". I proposed three orbs before being
   // corrected, so this is here to stop the next attempt.
   //
   // ⚠ No regex here. The first version built one from a template literal, where
@@ -200,7 +200,7 @@ test('the widget renders no orb, avatar or glyph', () => {
 });
 
 test('quiet is dimmed, never invisible', () => {
-  // Nick: "we've lost SARA". She was being drawn the whole time, at 8% opacity
+  // Nick: "we've lost SAiM". She was being drawn the whole time, at 8% opacity
   // for the nodes and 5% for the edges, because Field.jsx's dim values were
   // lifted wholesale — and that canvas is full-screen, where a huge area of
   // very faint texture still reads. On a 330x350 tile against a near-black card

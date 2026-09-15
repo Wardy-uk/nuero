@@ -1,0 +1,200 @@
+.cap__modes {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Which system a captured feature belongs to — a second, quieter row of the same control. */
+.cap__modes--sub {
+  margin: 0 0 0.75rem;
+  font-size: 0.85em;
+}
+
+.cap__mode {
+  flex: 1;
+  padding: 0.5rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.cap__mode--on {
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.16);
+  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.5);
+  color: var(--text);
+}
+
+.cap__form { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.cap__title,
+.cap__text {
+  width: 100%;
+  padding: 0.7rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+}
+
+.cap__textwrap { position: relative; }
+.cap__text { resize: vertical; min-height: 7rem; }
+
+.cap__mic {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+/* ⚠⚠ LISTENING IS NOT A FAULT — the same bug Chat had, on the screen where
+   the microphone matters most. A live mic wore the alarm red AND pulsed, so
+   the most ordinary thing capture does looked like a breakage. She is
+   attending, which is what her colour means everywhere else. */
+.cap__mic--on {
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.22);
+  border-color: rgb(var(--saim-rgb, 114, 150, 211));
+  animation: cap-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cap-pulse { 50% { opacity: 0.55; } }
+
+.cap__prio {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.cap__submit {
+  padding: 0.8rem;
+  background: rgb(var(--saim-rgb, 114, 150, 211));
+  color: #04121f;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.cap__submit:disabled { opacity: 0.5; cursor: default; }
+
+.cap__flash {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  line-height: 1.45;
+}
+
+/* ⚠⚠ A FAILURE HERE IS THE MOST IMPORTANT THING THIS APP EVER SAYS, and it
+   used to differ from "Saved to NEURO." by TEXT COLOUR ALONE — same box, same
+   border, no mark. "NOT saved — your words are still here; don't close the app"
+   is the sentence the whole capture path exists to be able to say.
+
+   Three channels now, not one: the mark beside it, the border, and the ground.
+   Colour on its own fails on a phone in sunlight and for anyone who cannot
+   separate the hues — the same reason iOS's queued-vs-lost note gained an icon.
+
+   ⚠ It is the ONE alarm on this screen, and it shares `.lit-chip--fault`'s red
+   rather than inventing a second: the stuck-item border used to be
+   rgba(200, 70, 70) while the primitive's is rgba(224, 84, 58), which is two
+   reds for one meaning. */
+.cap__flash--fault {
+  border-color: rgba(224, 84, 58, 0.55);
+  background: rgba(224, 84, 58, 0.1);
+  font-weight: 600;
+}
+
+.cap__flash-mark { flex: none; }
+
+.cap__recent { margin-top: 1.5rem; }
+/* ⚠ Type and colour are `LitLabel`'s — one definition of a section label for
+   the whole app. Only the spacing is this screen's. */
+.cap__recent-h { margin-bottom: 0.5rem; }
+.cap__recent-item { padding: 0.7rem; }
+.cap__recent-title { font-size: 0.9rem; font-weight: 600; }
+.cap__recent-preview {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Outbox (Phase 2) ─────────────────────────────────────────────────────── */
+
+.cap__hint {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.cap__queue { margin-top: 1.25rem; }
+
+/* ⚠ NO `color` HERE. `LitLabel` gives it her colour, and this stylesheet is
+   imported AFTER Lit.css — so a `color: var(--muted)` left in place would win
+   the cascade and quietly keep the label grey while every other section label
+   in the app moved with her. The layout is this screen's (the "Send now" button
+   sits on the same line); the type and the colour are not. */
+.cap__queue-h {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.cap__queue-send {
+  margin-left: auto;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.72rem;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.cap__q-text {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.cap__q-meta {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* ⚠ The primitive's red, not a second one — see `.cap__flash--fault`. */
+.cap__q--stuck {
+  border-color: rgba(224, 84, 58, 0.55);
+  background: rgba(224, 84, 58, 0.08);
+}
+
+.cap__q-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}
+
+.cap__q-actions button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}

@@ -1,6 +1,6 @@
 'use strict';
 
-// What SARA offers to do in a room she thinks Nick is in (12 Sep 2026).
+// What SAiM offers to do in a room she thinks Nick is in (12 Sep 2026).
 //
 // PURE. No DB, no network, no clock — `now` is passed in, the way
 // `context-state`, `pi-health.assess()` and `pip-deliverables.assess()` are, so
@@ -36,7 +36,7 @@
 //
 // ⚠ THREE LIGHT STATES, NOT TWO. A smart bulb whose WALL SWITCH is off reads
 //   `unavailable`, not `off` — 7 of the 14 lights in this house were
-//   `unavailable` when probed. `off` means SARA can help and should offer;
+//   `unavailable` when probed. `off` means SAiM can help and should offer;
 //   `unavailable` means she CANNOT REACH IT, so she must stay quiet rather than
 //   offer something that will fail. Offering to light a room she cannot light
 //   is the fastest way to make her feel broken.
@@ -66,7 +66,7 @@ const DARK_BEFORE_SUNRISE_MIN = 15;
 
 // Below this, a room he is sitting in counts as cool. **19 is Nick's number**
 // (12 Sep 2026), not a derived one — comfort is a preference, and a threshold
-// SARA picked would be one he has no reason to agree with.
+// SAiM picked would be one he has no reason to agree with.
 //
 // ⚠ Judged against COMFORT, never against the TRV's own current target. The
 //   target is the thing an offer would CHANGE, so measuring against it makes

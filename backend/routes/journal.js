@@ -8,7 +8,7 @@ const path = require('path');
 const obsidian = require('../services/obsidian');
 const nudges = require('../services/nudges');
 const db = require('../db/database');
-const { VOICE_COMPACT } = require('../services/sara-voice');
+const { VOICE_COMPACT } = require('../services/saim-voice');
 
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
 
@@ -83,7 +83,7 @@ async function buildJournalContext() {
 
 // Generate prompts from context via the AI router.
 //
-// This is one of the three places SARA talks to Nick about his day, and it was
+// This is one of the three places SAiM talks to Nick about his day, and it was
 // the one with no voice at all — a task description that could have been written
 // for any assistant. The questions are hers, so she writes them as herself.
 async function generatePrompts(contextSummary) {

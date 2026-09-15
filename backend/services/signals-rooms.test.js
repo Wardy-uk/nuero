@@ -41,8 +41,8 @@ test('a deaf radio is an error, not a quiet room', () => {
   assert.match(row.why, /no BLE traffic/);
 });
 
-test('an unreachable SARA is one honest error row, never an empty house', () => {
-  const rows = sensorRows({ ok: false, why: 'could not reach SARA: ECONNREFUSED', sensors: [] }, NOW);
+test('an unreachable SAiM is one honest error row, never an empty house', () => {
+  const rows = sensorRows({ ok: false, why: 'could not reach SAiM: ECONNREFUSED', sensors: [] }, NOW);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].state, 'error');
   assert.match(rows[0].why, /ECONNREFUSED/);
@@ -80,7 +80,7 @@ test('a taught room whose sensor is silent still gets a row, and it is red', () 
   assert.equal(rows.find((r) => r.id === 'room-study').state, 'live');
 });
 
-test('an older SARA with no expected list still renders what is reporting', () => {
+test('an older SAiM with no expected list still renders what is reporting', () => {
   const rows = sensorRows({ ok: true, sensors: [sensor({ room: 'study' })] }, NOW);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].state, 'live');

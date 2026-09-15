@@ -33,7 +33,7 @@ let base;
 
 const iso = (ms) => new Date(ms).toISOString();
 
-// A meeting running RIGHT NOW, with other people in it — the only kind SARA
+// A meeting running RIGHT NOW, with other people in it — the only kind SAiM
 // goes quiet for, and so the only kind this button may release.
 function seedRunningMeeting(over = {}) {
   const now = Date.now();
@@ -120,7 +120,7 @@ test('⚠ a STALE key is refused — a polled screen can be holding the last mee
 });
 
 test('⚠ a SOLO block cannot be finished — there was no quiet state to release', async () => {
-  // Half Nick's diary is blocked-out work. SARA never went quiet for it, so a
+  // Half Nick's diary is blocked-out work. SAiM never went quiet for it, so a
   // button that appears to release something would be doing nothing at all.
   seedRunningMeeting({ attendeesOther: false });
   const res = await post('meeting/finished');

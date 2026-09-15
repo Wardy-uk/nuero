@@ -25,7 +25,7 @@ const RUNTIME_SETTINGS = {
   openrouter_daily_call_limit: { key: 'openrouter_daily_call_limit', env: 'OPENROUTER_DAILY_CALL_LIMIT', default: '100', type: 'number' },
   openrouter_daily_token_limit: { key: 'openrouter_daily_token_limit', env: 'OPENROUTER_DAILY_TOKEN_LIMIT', default: '100000', type: 'number' },
   openrouter_max_escalations_per_hour: { key: 'openrouter_max_escalations_per_hour', env: 'OPENROUTER_MAX_ESCALATIONS_PER_HOUR', default: '20', type: 'number' },
-  sara_mode: { key: 'sara_mode', env: 'SARA_MODE', default: 'suggest', options: ['suggest', 'off'] },
+  saim_mode: { key: 'saim_mode', env: 'SAIM_MODE', default: 'suggest', options: ['suggest', 'off'] },
   pi4_worker_enabled: { key: 'pi4_worker_enabled', env: 'PI4_WORKER_ENABLED', default: 'false', type: 'boolean' },
   pi4_worker_url: { key: 'pi4_worker_url', env: 'PI4_WORKER_URL', default: 'http://100.69.158.50:3002' },
 };

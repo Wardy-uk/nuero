@@ -12,7 +12,7 @@
  * is task #251: MUST, high priority, due today, unidentifiable.
  *
  * The sender and subject were never lost — they are on the `capture_todo`
- * sara_action the task was promoted from, under `payload.email`, which is
+ * saim_action the task was promoted from, under `payload.email`, which is
  * matched to the task by `payload.sourcePath === tasks.origin_path`. This walks
  * that join and writes what it finds into `origin_detail`.
  *
@@ -75,7 +75,7 @@ async function main() {
   const unrecoverable = [];
 
   for (const row of rows) {
-    const actions = db.getSaraActionsBySource(row.origin_path, 'capture_todo') || [];
+    const actions = db.getSaimActionsBySource(row.origin_path, 'capture_todo') || [];
     // Newest first: a commitment re-raised is the same email, and the latest
     // sighting is the one whose metadata is most likely to be complete.
     const withEmail = actions

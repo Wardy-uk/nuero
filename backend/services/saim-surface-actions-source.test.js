@@ -1,0 +1,130 @@
+'use strict';
+
+/**
+ * Two SAiM parity gaps that would regress silently.
+ *
+ * (1) "That's done" as a BUTTON on a card. It must go through the attention
+ *     record (`POST /api/attention/records/:id/act` with `action: 'complete'`) —
+ *     the only path that resolves and the only one that may close a task — and it
+ *     must be offered only where the shell can act AND the record allows it. The
+ *     Pi kiosk mounts the same shared component, so a button rendered without an
+ *     `onAct` would be one that silently does nothing.
+ *
+ * (2) Chat passing `onTool` to the stream. Without it every tool NEURO ran during
+ *     a reply is dropped on the floor, and nothing throws — the reply just looks
+ *     like a plain answer.
+ *
+ * Source scans, each with a positive control, because the absence of a callback
+ * has no runtime assertion that can see it.
+ */
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+
+const SAiM = path.join(__dirname, '..', '..', 'saim');
+const surfaceSrc = fs.readFileSync(path.join(SAiM, 'shared-ui', 'AttentionSurface.jsx'), 'utf8');
+const phoneSrc = fs.readFileSync(path.join(SAiM, 'app', 'src', 'views', 'Surface.jsx'), 'utf8');
+const chatSrc = fs.readFileSync(path.join(SAiM, 'app', 'src', 'views', 'Chat.jsx'), 'utf8');
+const apiSrc = fs.readFileSync(path.join(SAiM, 'app', 'src', 'api.js'), 'utf8');
+
+test('positive control: these are the files being scanned', () => {
+  assert.match(surfaceSrc, /export default function AttentionSurface/);
+  assert.match(phoneSrc, /export default function Surface/);
+  assert.match(chatSrc, /export default function Chat/);
+  // The existing buttons this change sits beside are still there.
+  assert.match(surfaceSrc, /act\(primary, 'acknowledge'\)/);
+  assert.match(surfaceSrc, /includes\('dismiss'\)/);
+});
+
+test('"that\'s done" posts complete through the record route', () => {
+  assert.match(surfaceSrc, /act\(primary, 'complete'\)/, 'the card must offer complete');
+  assert.match(
+    phoneSrc,
+    /\/api\/attention\/records\/\$\{card\.recordId\}\/act/,
+    'actions go to the attention record, not a suppression timer',
+  );
+  assert.match(phoneSrc, /JSON\.stringify\(\{ action, \.\.\.opts \}\)/, 'the action name travels verbatim');
+});
+
+test('complete is gated on onAct, a record, and the record allowing it', () => {
+  const gate = surfaceSrc.match(/const canComplete = \(card\) => Boolean\(([\s\S]*?)\);/);
+  assert.ok(gate, 'the gate must be a named, single predicate');
+  assert.match(gate[1], /onAct/, 'no button without a shell that can act');
+  assert.match(gate[1], /card\.recordId/, 'no button without a record to resolve');
+  assert.match(gate[1], /includes\('complete'\)/, 'no button the record does not allow');
+  assert.match(surfaceSrc, /canComplete\(primary\) &&/, 'the button must be rendered behind the gate');
+});
+
+test('complete never falls back to the legacy dismissal', () => {
+  // A dismissal is not a completion; substituting one for the other is the bug
+  // the attention contract removed.
+  assert.match(phoneSrc, /action === 'complete' && !card\.recordId/);
+});
+
+test('the result is described from the response, never implied', () => {
+  assert.match(surfaceSrc, /res\.taskCompleted === true/, 'task closed is read off the response');
+  assert.match(surfaceSrc, /res\.taskWhy/, 'the server\'s own reason is shown');
+  assert.match(surfaceSrc, /no task was closed/, 'a cleared card is not reported as finished work');
+});
+
+test('Chat passes onTool to the stream and reads the sync fallback\'s tools', () => {
+  assert.match(apiSrc, /evt\.type === 'tool'\) onTool\?\.\(evt\.name\)/, 'positive control: the helper emits tool names');
+  assert.match(chatSrc, /chatStream\(body, \{[\s\S]*?onTool:/, 'Chat must pass onTool');
+  assert.match(chatSrc, /res\?\.tools/, 'the sync fallback carries tools: [names]');
+});
+
+test('Chat never renders tool arguments', () => {
+  assert.doesNotMatch(chatSrc, /\.input\b/, 'a tool\'s input can hold private content');
+  assert.doesNotMatch(chatSrc, /\.args\b|\.arguments\b/, 'nor its arguments by another name');
+});
+
+// ── (3) The dashboard says WHY it is the one on screen ───────────────────────
+//
+// `askedSurface` was written by `saim-surface`, carried by `attention`, pinned by
+// four tests — and read by NO client, web or iOS, from the day the ask flow
+// shipped. So the honesty it exists for did not exist: the panel moved under him
+// with nothing saying whether that was the day changing or his own question, and
+// the comment above the Dashboard mount stated the distinction while showing
+// neither half.
+//
+// A source scan because there is no runtime assertion that can see a field
+// nobody destructured, and because the RENDERED line cannot be driven from here
+// (it needs a question asked on a device).
+
+test('AttentionSurface reads askedSurface and renders a reason', () => {
+  assert.match(surfaceSrc, /askedSurface\s*=\s*null,/,
+    'askedSurface is no longer destructured — the panel is back to moving silently');
+  assert.match(surfaceSrc, /\{askedSurface && \(/,
+    'nothing is rendered from askedSurface');
+  assert.match(surfaceSrc, /because you asked/,
+    'the reason line is gone');
+});
+
+test('the reason line is BELOW her words and ABOVE the panel it explains', () => {
+  // It explains what he is about to read; underneath, it is a footnote to a
+  // screen he has already tried to make sense of.
+  const line = surfaceSrc.indexOf('because you asked');
+  const panel = surfaceSrc.indexOf('<Dashboard dashboard={dashboard}');
+  assert.ok(line > 0 && panel > 0, 'positive control: both anchors must be present');
+  assert.ok(line < panel, 'the reason must come before the dashboard it describes');
+});
+
+test('its class is hardcoded, like every other child class in the file', () => {
+  // ⚠ `rootClassName` is for the ROOT element only and the stylesheet targets
+  // `.surface__*` literally, so an interpolated child class would be the one
+  // that loses its styling the day a shell passes a different root. Caught in
+  // review rather than by the build, which is perfectly happy either way.
+  assert.match(surfaceSrc, /className="surface__because"/,
+    'the reason line no longer uses the literal class the stylesheet targets');
+  assert.doesNotMatch(surfaceSrc, /\$\{rootClassName\}__because/,
+    'the reason line interpolates rootClassName — the stylesheet will not match it');
+});
+
+test('and the stylesheet actually defines it', () => {
+  // A class with no rule renders as unstyled body text, which on this surface
+  // reads as her speaking rather than as a note about the panel.
+  const css = fs.readFileSync(path.join(SAiM, 'shared-ui', 'AttentionSurface.css'), 'utf8');
+  assert.match(css, /\.surface__because\s*\{/, 'surface__because has no rule');
+});

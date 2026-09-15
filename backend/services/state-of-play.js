@@ -192,13 +192,13 @@ function snapshot() {
   // second approval. A dashboard claiming two things would leave the building
   // while the Actions panel says one is worse than no dashboard.
   //
-  // getPendingSaraActions defaults to limit 10; passing a real bound matters,
+  // getPendingSaimActions defaults to limit 10; passing a real bound matters,
   // since this queue has been 930 deep inside the last week.
   let pendingKinds = {};
   let pendingActions = [];
   try {
     const presenter = require('./action-presenter');
-    pendingActions = db.getPendingSaraActions(2000) || [];
+    pendingActions = db.getPendingSaimActions(2000) || [];
     for (const a of pendingActions) {
       const kind = presenter.describe(a)?.kind || 'unknown';
       pendingKinds[kind] = (pendingKinds[kind] || 0) + 1;
@@ -206,12 +206,12 @@ function snapshot() {
   } catch { pendingKinds = {}; }
 
   const approvals = {
-    pending: scalar("SELECT COUNT(*) c FROM sara_actions WHERE status='pending'"),
-    pendingByType: tally(rows("SELECT type k, COUNT(*) c FROM sara_actions WHERE status='pending' GROUP BY k"), 'k'),
+    pending: scalar("SELECT COUNT(*) c FROM saim_actions WHERE status='pending'"),
+    pendingByType: tally(rows("SELECT type k, COUNT(*) c FROM saim_actions WHERE status='pending' GROUP BY k"), 'k'),
     pendingByKind: pendingKinds,
     outbound: pendingKinds.outbound || 0,
-    lifetime: tally(rows("SELECT status k, COUNT(*) c FROM sara_actions GROUP BY k"), 'k'),
-    recent: rows(`SELECT date(created_at) d, COUNT(*) c FROM sara_actions
+    lifetime: tally(rows("SELECT status k, COUNT(*) c FROM saim_actions GROUP BY k"), 'k'),
+    recent: rows(`SELECT date(created_at) d, COUNT(*) c FROM saim_actions
                   WHERE created_at >= date('now','-13 day') GROUP BY d ORDER BY d`),
   };
 

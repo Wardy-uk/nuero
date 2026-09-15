@@ -29,7 +29,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_VAULT = 'C:\\Users\\NickW\\Documents\\Nicks knowledge base';
-const WIDGET_DIR = path.join(__dirname, '..', '..', 'sara', 'widget');
+const WIDGET_DIR = path.join(__dirname, '..', '..', 'saim', 'widget');
 
 /**
  * One entry per script.
@@ -43,10 +43,10 @@ const WIDGET_DIR = path.join(__dirname, '..', '..', 'sara', 'widget');
 const SCRIPTS = [
   {
     file: 'neuro-attention.js',
-    out: path.join('Scripts', 'SARA Widget (Scriptable).md'),
-    title: 'SARA Widget (Scriptable)',
+    out: path.join('Scripts', 'SAiM Widget (Scriptable).md'),
+    title: 'SAiM Widget (Scriptable)',
     scriptName: 'NEURO',
-    tags: '[neuro, sara, widget, scriptable]',
+    tags: '[neuro, saim, widget, scriptable]',
     blurb: [
       'The iOS home-screen and lock-screen widget for NEURO. It lives here so it can',
       'be copied straight into Scriptable on the phone, rather than going via a QR',
@@ -72,7 +72,7 @@ const SCRIPTS = [
     out: path.join('Scripts', 'NEURO Apple Sync (Scriptable).md'),
     title: 'NEURO Apple Sync (Scriptable)',
     scriptName: 'NEURO Sync',
-    tags: '[neuro, sara, scriptable, calendar, reminders]',
+    tags: '[neuro, saim, scriptable, calendar, reminders]',
     blurb: [
       'Pushes Apple Calendar events and Reminders into NEURO. NEURO cannot reach into',
       'iCloud — CalDAV needs an app password and is undocumented, EventKit needs a',

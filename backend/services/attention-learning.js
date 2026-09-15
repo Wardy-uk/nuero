@@ -1,11 +1,11 @@
 'use strict';
 
 /**
- * What SARA learns from whether her prompts actually helped.
+ * What SAiM learns from whether her prompts actually helped.
  *
- * Nick, 31 Aug 2026: *"SARA also needs to learn — what do I ignore, what do I
+ * Nick, 31 Aug 2026: *"SAiM also needs to learn — what do I ignore, what do I
  * respond to, how can she help me better."* Then, on what she should do about
- * it: *"I think she goes quiet — but I need to know somehow. Maybe SARA should
+ * it: *"I think she goes quiet — but I need to know somehow. Maybe SAiM should
  * initiate and run the End of Day routine — she can tell me there what I've
  * ignored and what she's muted, and I can ask her to resume any I want."*
  *
@@ -25,7 +25,7 @@
  * (`focus-session`), and `friction.js` refuses to read absence at all.
  *
  * So the question is never "did he respond". It is **did the world change** —
- * measured from sensors SARA already reads:
+ * measured from sensors SAiM already reads:
  *
  *   sedentary     did `apple_stand_time` appear in the next hour?      MEASURABLE
  *   no-exercise   did exercise minutes appear within two days?         MEASURABLE
@@ -113,7 +113,7 @@ function rate(entries = []) {
     unmeasured,
     pending,
     // null, not 0. "Nothing judged yet" and "judged and never worked" are
-    // opposite facts about whether SARA is allowed to have an opinion.
+    // opposite facts about whether SAiM is allowed to have an opinion.
     rate: judged.length ? Number((worked / judged.length).toFixed(2)) : null,
   };
 }
@@ -154,7 +154,7 @@ function _load() {
   } catch (e) {
     console.error('[AttentionLearning] Could not read:', e.message);
     // ⚠ UNREADABLE is not EMPTY. Returned as an empty store, the next `_save`
-    // wrote that emptiness over the real history and every mute Nick or SARA had
+    // wrote that emptiness over the real history and every mute Nick or SAiM had
     // made (the `triage-shadow._load` rule), and `mutedList` told the Controls
     // screen "nothing is muted". Readers that only need a yes/no (`isMuted`) still
     // get the permissive answer — an unreadable mute must not silence a prompt.
@@ -174,7 +174,7 @@ function _save(state) {
   }));
 }
 
-/** SARA said something. Recorded pending; the sweep decides whether it helped. */
+/** SAiM said something. Recorded pending; the sweep decides whether it helped. */
 function recordDelivery(kind, at = new Date().toISOString()) {
   const state = _load();
   state.deliveries.push({ kind, at, outcome: 'pending', judgeAfter: outcomeWindow(kind, at) });
@@ -187,6 +187,22 @@ function isMuted(kind) {
 }
 
 /** Everything muted, with why and when — what the EOD reads out. */
+/**
+ * Who muted this, under either spelling.
+ *
+ * ⚠ Mutes recorded before the SARA → SAiM rename (15 Sep 2026) are stored with
+ * `by: 'sara'`. Every consumer decides "did she mute herself, or did Nick?" by
+ * comparing against the current name, so left alone each of those old rows
+ * reads as NICK having muted it — attributing a decision to him that he never
+ * made, on the screen he uses to check what she has stopped telling him.
+ * Missing stays 'saim': the field was added after self-muting existed.
+ */
+function normaliseBy(by) {
+  const v = typeof by === 'string' ? by.trim().toLowerCase() : '';
+  if (!v || v === 'sara') return 'saim';
+  return by;
+}
+
 function mutedList() {
   const state = _load();
   if (state.unreadable) throw new Error('the mute store could not be read');
@@ -194,12 +210,12 @@ function mutedList() {
     kind,
     why: m.why || null,
     at: m.at || null,
-    by: m.by || 'sara',
+    by: normaliseBy(m.by),
     stats: rate(state.deliveries.filter(d => d.kind === kind)),
   }));
 }
 
-function mute(kind, why, by = 'sara') {
+function mute(kind, why, by = 'saim') {
   const state = _load();
   state.muted[kind] = { why: why || null, at: new Date().toISOString(), by };
   _save(state);
@@ -259,7 +275,7 @@ function sweep(now = new Date()) {
     const stats = rate(state.deliveries.filter(d => d.kind === kind));
     const verdict = shouldMute(kind, stats);
     if (verdict.mute) {
-      state.muted[kind] = { why: verdict.why, at: now.toISOString(), by: 'sara' };
+      state.muted[kind] = { why: verdict.why, at: now.toISOString(), by: 'saim' };
       muted.push({ kind, why: verdict.why });
       console.log(`[AttentionLearning] Muting "${kind}" — ${verdict.why}`);
     }

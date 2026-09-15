@@ -3,13 +3,13 @@
 /**
  * Next-Action Engine — Phase 6A
  *
- * Transforms SARA from "here are suggestions" into:
+ * Transforms SAiM from "here are suggestions" into:
  *   "Here is the next action" / "I already handled the safe bits" / "Approve me for the rest"
  *
  * Produces exactly:
  *   - primaryAction: the ONE thing to do right now (always present if items exist)
  *   - secondaryAction: optional fallback if primary is skipped
- *   - autoExecuted: list of safe actions SARA already performed this cycle
+ *   - autoExecuted: list of safe actions SAiM already performed this cycle
  *   - canWait: items that are tracked but don't need action now
  *
  * Decision flow:
@@ -21,11 +21,12 @@
 
 const db = require('../db/database');
 const actionSurfaces = require('../../shared/action-surfaces.cjs');
+const legacyNames = require('./legacy-names');
 
 const JIRA_BASE = process.env.JIRA_BASE_URL || '';
 const { decorateSurfaceSupport } = actionSurfaces;
 
-// ── Safe auto-actions: things SARA can do without asking ──
+// ── Safe auto-actions: things SAiM can do without asking ──
 // These are write-only, append-only, or read-only operations with no side effects.
 const SAFE_AUTO_ACTIONS = {
   // Log meeting prep to daily note when meeting is <15 min away
@@ -36,7 +37,7 @@ const SAFE_AUTO_ACTIONS = {
         const obsidian = require('./obsidian');
         const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
         const line = `- ${time} — Meeting prep: "${item.title}" in ${item.meta.minutesAway} min`;
-        _appendToDailySection(obsidian, '## SARA Actions', line);
+        _appendToDailySection(obsidian, '## SAiM Actions', line);
         return { type: 'meeting_prep_log', detail: `Logged prep for "${item.title}"` };
       } catch { return null; }
     },
@@ -55,8 +56,8 @@ const SAFE_AUTO_ACTIONS = {
         const obsidian = require('./obsidian');
         const obs = (ctx.observations || []).slice(0, 5);
         const lines = obs.map(o => `  - ${o.type}: ${o.detail || ''}`).join('\n');
-        const block = `- SARA observed today:\n${lines}`;
-        _appendToDailySection(obsidian, '## SARA Actions', block);
+        const block = `- SAiM observed today:\n${lines}`;
+        _appendToDailySection(obsidian, '## SAiM Actions', block);
         return { type: 'observation_log', detail: `Logged ${obs.length} observations` };
       } catch { return null; }
     },
@@ -287,11 +288,11 @@ function logOutcome(actionType, detail) {
     const obsidian = require('./obsidian');
     const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     const line = `- ${time} — Completed: ${detail}`;
-    _appendToDailySection(obsidian, '## SARA Actions', line);
+    _appendToDailySection(obsidian, '## SAiM Actions', line);
   } catch {}
 
   try {
-    db.logActivity('sara_outcome', { type: actionType, detail });
+    db.logActivity('saim_outcome', { type: actionType, detail });
   } catch {}
 }
 
@@ -300,7 +301,12 @@ function logOutcome(actionType, detail) {
 
 function _appendToDailySection(obsidian, section, content) {
   const daily = obsidian.readTodayDailyNote() || '';
-  if (daily.includes(section)) {
+  // ⚠ Today's note may already carry the PRE-RENAME heading (`## SARA Actions`),
+  // written this morning by the old code. Match on either spelling and append
+  // under whichever is there: heading-not-found would open a SECOND section on
+  // the same note, so one day's actions would read as two separate logs.
+  const present = legacyNames.headingAliases(section).find((h) => daily.includes(h));
+  if (present) {
     obsidian.appendToDailyNote(content + '\n');
   } else {
     obsidian.appendToDailyNote(`\n\n${section}\n${content}\n`);
@@ -309,7 +315,7 @@ function _appendToDailySection(obsidian, section, content) {
 
 function _logAutoAction(result) {
   try {
-    db.logActivity('sara_auto_action', {
+    db.logActivity('saim_auto_action', {
       type: result.type,
       detail: result.detail,
     });
@@ -318,7 +324,7 @@ function _logAutoAction(result) {
 
 function _logActionExecution(action) {
   try {
-    db.logActivity('sara_action', {
+    db.logActivity('saim_action', {
       type: action.type,
       target: action.target,
       label: action.label,
@@ -330,7 +336,7 @@ function _logActionExecution(action) {
     const obsidian = require('./obsidian');
     const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     const line = `- ${time} — ${action.label}: ${action.reason}`;
-    _appendToDailySection(obsidian, '## SARA Actions', line);
+    _appendToDailySection(obsidian, '## SAiM Actions', line);
   } catch {}
 }
 

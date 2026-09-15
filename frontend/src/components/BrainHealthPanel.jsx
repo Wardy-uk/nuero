@@ -3,17 +3,17 @@ import { apiFetch } from '../api';
 import './BrainHealthPanel.css';
 
 /**
- * Brain Health — vault-graph maintenance, moved out of SARA (31 Aug 2026).
+ * Brain Health — vault-graph maintenance, moved out of SAiM (31 Aug 2026).
  *
  * ── Why it lives here now ───────────────────────────────────────────────────
- * NEURO is the brain and the NEURO app is Nick's DIRECT access to it; SARA is
+ * NEURO is the brain and the NEURO app is Nick's DIRECT access to it; SAiM is
  * the layer that comes to him. Vault maintenance is neither ambient nor
- * something SARA should raise — it is a deliberate desk job you go and do,
+ * something SAiM should raise — it is a deliberate desk job you go and do,
  * with reports to read and consequences to weigh. It was on the phone as a
  * `brain` tab where the reports were unreadable and a button that rewrites
  * forty notes looked exactly like one that previews them.
  *
- * ── The two things the SARA version got wrong ───────────────────────────────
+ * ── The two things the SAiM version got wrong ───────────────────────────────
  * 1. ⚠ **Read and WRITE were the same grey "Run" button.** `Plan links` is
  *    read-only; `Connect orphans` and `Apply links` edit real notes in the
  *    vault, and `PLAUD repull` re-downloads recordings. One undifferentiated

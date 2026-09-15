@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Room offers — the rules about when SARA may speak up about a room.
+ * Room offers — the rules about when SAiM may speak up about a room.
  *
  * `assess()` is pure, so what is under test is the product: which moments count
  * as dark, what "the lights are off" is allowed to mean, and the things it
@@ -11,7 +11,7 @@
  *
  *   - a Fahrenheit temperature read as Celsius (the room is never cool, so the
  *     rule never fires and never errors), and
- *   - `unavailable` read as `off` (SARA offers to turn on a bulb she cannot
+ *   - `unavailable` read as `off` (SAiM offers to turn on a bulb she cannot
  *     reach, and the offer fails at the moment he accepts it).
  */
 

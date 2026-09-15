@@ -103,7 +103,7 @@ function _shape(row) {
 
 /**
  * Recent replies, newest first. `limit` is a real bound with a total beside it —
- * `getPendingSaraActions`'s silent default of 10 reported a queue of 930 as 10,
+ * `getPendingSaimActions`'s silent default of 10 reported a queue of 930 as 10,
  * so no count returned here is allowed to be the capped one.
  */
 function list({ limit = 50, offset = 0 } = {}) {

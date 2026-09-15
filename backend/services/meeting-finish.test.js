@@ -74,7 +74,7 @@ test('⚠ an unidentifiable event yields NO key, and is refused rather than stor
 // ── What it may and may not do ──────────────────────────────────────────────
 
 test('⚠ it can only ever move an end EARLIER, never later', () => {
-  // An override that could extend a meeting is a way to make SARA go quiet for
+  // An override that could extend a meeting is a way to make SAiM go quiet for
   // longer, which is the mute button this must never become.
   const e = ev();
   const late = { [keyFor(e)]: { at: '2026-09-08T18:00:00.000Z', scheduledEnd: e.end } };
@@ -150,7 +150,7 @@ function withStubbedStore(fn) {
   }
 }
 
-test('⚠ it REFUSES anything that is not a meeting SARA would have gone quiet for', () => {
+test('⚠ it REFUSES anything that is not a meeting SAiM would have gone quiet for', () => {
   // Releasing a state that was never set is a button that appears to do
   // something and does not. Exactly `true`, the same test `isRealMeeting`
   // makes — half Nick's diary is solo blocks.
@@ -170,7 +170,7 @@ test('⚠ it refuses a meeting that has not started, or is already over', () => 
 });
 
 test('finishing then resuming leaves nothing behind — the way back is real', () => {
-  // ⚠ NOT OPTIONAL. The cost of a wrong press is SARA speaking up in a real
+  // ⚠ NOT OPTIONAL. The cost of a wrong press is SAiM speaking up in a real
   // meeting, which is the exact failure the quiet state exists to prevent.
   withStubbedStore((read) => {
     const now = new Date(AT);
@@ -200,7 +200,7 @@ test('resuming something already resumed is a SUCCESS, not an error', () => {
 });
 
 test('⚠ an unreadable store overrides NOTHING, and stays quiet', () => {
-  // The safe direction: the diary's own word stands, so SARA keeps her mouth
+  // The safe direction: the diary's own word stands, so SAiM keeps her mouth
   // shut. The opposite failure — a corrupt blob making her speak up in a
   // meeting — is the one that costs something in front of other people.
   const path = require.resolve('../db/database');

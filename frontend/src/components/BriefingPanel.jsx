@@ -10,7 +10,7 @@ import './BriefingPanel.css';
  *
  * A SUPPORTING view now, not a second "what should I do?" surface: `Now` is
  * where work gets started, and this is where the day gets framed. It still owns
- * SARA's opening line, the tone and the day's context, because none of those
+ * SAiM's opening line, the tone and the day's context, because none of those
  * are in the attention contract.
  *
  * ⚠ THE BUG THIS FILE CARRIED. Clicking "Do it" POSTed
@@ -36,14 +36,14 @@ function timeAgo(dateStr) {
 }
 
 export default function BriefingPanel({ onNavigate }) {
-  // Read-only, and only for what the attention contract does not carry: SARA's
+  // Read-only, and only for what the attention contract does not carry: SAiM's
   // briefing prose, the tone, and whether the rituals are done.
   const focusFetch = useCachedFetch('/api/focus', { interval: 30000 });
   const todoFetch = useCachedFetch('/api/todos', { interval: 60000 });
   const qaFetch = useCachedFetch('/api/qa/summary', { interval: 300000 });
   const attention = useAttention({ interval: 30000 });
 
-  const sara = focusFetch.data?.sara || null;
+  const saim = focusFetch.data?.saim || null;
   const tone = focusFetch.data?.tone || 'focused';
   const context = focusFetch.data?.context || {};
 
@@ -56,27 +56,27 @@ export default function BriefingPanel({ onNavigate }) {
     ? `${Math.round(qaFetch.data.average)}%`
     : (qaFetch.data?.teamAverage != null ? `${Math.round(qaFetch.data.teamAverage)}%` : '-');
 
-  // Speak SARA's opening line once per briefing visit
+  // Speak SAiM's opening line once per briefing visit
   const spokenRef = useRef(null);
   useEffect(() => {
-    const msg = sara?.primary?.message;
+    const msg = saim?.primary?.message;
     if (!msg || msg === spokenRef.current) return;
     spokenRef.current = msg;
     speakIfEnabled(msg);
-  }, [sara?.primary?.message]);
+  }, [saim?.primary?.message]);
 
   return (
     <div className="briefing">
-      {/* SARA opening line */}
-      <div className={`briefing-sara briefing-tone-${tone}`}>
-        <span className="briefing-sara-label">SARA</span>
-        {sara?.primary?.message ? (
-          <p className="briefing-sara-line">{sara.primary.message}</p>
+      {/* SAiM opening line */}
+      <div className={`briefing-saim briefing-tone-${tone}`}>
+        <span className="briefing-saim-label">SAiM</span>
+        {saim?.primary?.message ? (
+          <p className="briefing-saim-line">{saim.primary.message}</p>
         ) : (
-          <p className="briefing-sara-line briefing-sara-loading">Assembling your briefing...</p>
+          <p className="briefing-saim-line briefing-saim-loading">Assembling your briefing...</p>
         )}
-        {sara?.primary?.action && (
-          <p className="briefing-sara-action">{sara.primary.action}</p>
+        {saim?.primary?.action && (
+          <p className="briefing-saim-action">{saim.primary.action}</p>
         )}
       </div>
 

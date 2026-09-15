@@ -277,7 +277,7 @@ test('a stopped sensor is an UNKNOWN, not an observation', () => {
   // September, diet in March — with three more dropped to the cap. Every one
   // would have rendered identically every day for ever, crowding out the trends
   // this feature exists to surface. They are not facts about today; they are
-  // things SARA can no longer see, which is what `unknowns` means.
+  // things SAiM can no longer see, which is what `unknowns` means.
   const r = ambient.assess({
     phone: livePhone({ activitySince: iso(5) }),
     signals: {
@@ -403,7 +403,7 @@ test('Focus mode vetoes the watch reading too', () => {
 });
 
 test('one hour sitting does not compete with the watch own stand reminder', () => {
-  // Apple nudges at 50 minutes past. Firing at one hour would be SARA repeating
+  // Apple nudges at 50 minutes past. Firing at one hour would be SAiM repeating
   // a notification he has already had, on a device he is already wearing.
   const r = ambient.assess({ standHours: hrs([{}, {}, { standMinutes: 5 }]) }, NOW);
   assert.equal(kinds(r).includes('sedentary'), false);

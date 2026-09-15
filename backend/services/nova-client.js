@@ -30,7 +30,7 @@ const TIMEOUT_MS = 15000;
  * Auth is the NEURO bridge's shared secret, NOT a NOVA login.
  *
  * The service-account route needed a password that turned out not to exist
- * anywhere, and it signed the internal Jira comment "Escalated by sara" — a
+ * anywhere, and it signed the internal Jira comment "Escalated by saim" — a
  * robot reaching into an assignee's ticket. The bridge NOVA already exposes for
  * the Microsoft integration is hardcoded to Nick and nobody else, which makes
  * it both simpler AND more honest: attribution is a property of the route

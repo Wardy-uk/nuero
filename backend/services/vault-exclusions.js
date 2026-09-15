@@ -25,6 +25,12 @@ const INFRA_DIRS = [
 // NEURO's own output. Indexing this is the system talking to itself.
 const GENERATED_DIRS = [
   'Vault Audit',
+  'SAiM Import Reports',
+  // ⚠ The pre-rename folder, and it is NOT dead weight. Reports written before
+  // 15 Sep 2026 are still sitting in the vault under the old name; drop this
+  // line and every one of them starts being indexed into embeddings and entity
+  // extraction — the system reading its own output back as content, which is
+  // exactly what this list exists to prevent. Remove only once the folder is.
   'SARA Import Reports',
   'Exports',
 ];

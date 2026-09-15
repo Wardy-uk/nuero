@@ -1,0 +1,21 @@
+{
+  "name": "saim-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "SAiM mobile — SAiM on the go. A lightweight, portable interface to the NEURO brain for capture, focus, chat, meeting prep, and brain management.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}

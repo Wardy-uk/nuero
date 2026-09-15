@@ -3,7 +3,7 @@
 /**
  * She knows what day it is.
  *
- * ⚠⚠ MEASURED, 13 Sep 2026. Asked "what have I got done today", SARA answered
+ * ⚠⚠ MEASURED, 13 Sep 2026. Asked "what have I got done today", SAiM answered
  * *"…but it's Saturday, so that's fine"* — on a SUNDAY. Nothing anywhere in the
  * chat prompt carried the date, the day or the time, so the single fact that
  * every answer about "today", "this week", "tomorrow" or the diary rests on was

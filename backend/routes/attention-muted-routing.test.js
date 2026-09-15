@@ -2,7 +2,7 @@
 
 /**
  * Muted prompts can be SEEN and turned back on from a screen, not only by asking
- * SARA in the standup. Real HTTP, scratch DB.
+ * SAiM in the standup. Real HTTP, scratch DB.
  */
 
 const test = require('node:test');
@@ -34,7 +34,7 @@ test.after(() => server && server.close());
 const call = (m, u) => fetch(base + u, { method: m }).then(async (r) => ({ status: r.status, json: await r.json() }));
 
 test('a muted kind is listed, and deleting it turns it back on', async () => {
-  learning.mute('low-water', 'ignored 9 of 10', 'sara');
+  learning.mute('low-water', 'ignored 9 of 10', 'saim');
   let res = await call('GET', '/api/attention/muted');
   assert.equal(res.status, 200);
   assert.deepEqual(res.json.muted.map((m) => m.kind), ['low-water']);

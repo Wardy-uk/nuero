@@ -20,7 +20,7 @@ passes). **BUT** the same files also contain unrelated in-flight WIP that is NOT
 
 - `backend/server.js` — someone is wiring `/api/queue` → untracked `backend/routes/queue.js`
 - `backend/services/decision-engine.js` — an edit to `_applyOverrides` (STANDUP FAILURE logic)
-- plus a large `sara/` subproject and email-triage changes elsewhere in the tree
+- plus a large `saim/` subproject and email-triage changes elsewhere in the tree
 
 **Do not blanket-commit.** Either (a) review my draft hunks in these files and commit only the
 NOVA-signals-related hunks alongside the untracked new files, or (b) reconcile with Nick's WIP

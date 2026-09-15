@@ -72,10 +72,13 @@ function looksLikeTodo(text) {
 // Feature ideas go to the NEURO Feature Tracker, not the task list — but only on an
 // EXPLICIT prefix. Everything here is guessed from prose, and guessing "that's a
 // feature" from a note would file thinking as backlog, which is the harder mistake
-// to notice. "feature: X", "idea: X", or "neuro:/sara:/nova: X" (which also picks
+// to notice. "feature: X", "idea: X", or "neuro:/saim:/nova: X" (which also picks
 // the system).
-const FEATURE_RE = /^(feature|idea|neuro|sara|nova)\s*:\s*/i;
-const FEATURE_SYSTEMS = { neuro: 'NEURO', sara: 'SARA', nova: 'NOVA' };
+const FEATURE_RE = /^(feature|idea|neuro|saim|nova)\s*:\s*/i;
+// `sara:` is kept as an alias for `saim:` — the prefix is something Nick TYPES
+// from muscle memory, and a prefix that silently stops routing files the
+// thought as a plain capture instead of into the feature tracker.
+const FEATURE_SYSTEMS = { neuro: 'NEURO', saim: 'SAiM', sara: 'SAiM', nova: 'NOVA' };
 
 function parseFeature(text) {
   const t = text.trim();
@@ -288,9 +291,9 @@ export default function CapturePanel() {
           nothing about whether any of them did. The line now claims only the
           thing that is actually guaranteed — it reaches the vault — and the
           result banner reports each step it can genuinely observe. */}
-      <div className="capture-sara">
-        <span className="capture-sara-label">SARA</span>
-        <span className="capture-sara-line">Get it out of your head. It goes to the vault.</span>
+      <div className="capture-saim">
+        <span className="capture-saim-label">SAiM</span>
+        <span className="capture-saim-line">Get it out of your head. It goes to the vault.</span>
       </div>
 
       {/* Honest progress, per step. A capture is two or three writes that can

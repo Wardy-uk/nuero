@@ -380,13 +380,13 @@ function syncNoteActionCandidates(relativePath) {
   // the same candidates every single night — 926 pending rows, 442 distinct.
   // The supersede loop below was blinded by exactly the same window, which is
   // why the older copies stayed pending instead of being retired.
-  const existing = db.getSaraActionsBySource(relativePath, 'capture_todo');
+  const existing = db.getSaimActionsBySource(relativePath, 'capture_todo');
 
   let superseded = 0;
   for (const action of existing) {
     if (action.status !== 'pending') continue;
     if (activeIds.has(action.focus_item_id)) continue;
-    db.updateSaraActionStatus(action.id, 'superseded');
+    db.updateSaimActionStatus(action.id, 'superseded');
     superseded += 1;
   }
 
@@ -442,7 +442,7 @@ function syncNoteActionCandidates(relativePath) {
       continue;
     }
 
-    const actionId = db.createSaraAction(
+    const actionId = db.createSaimAction(
       candidate.type,
       candidate.payload,
       candidate.confidence,
@@ -466,7 +466,7 @@ function syncNoteActionCandidates(relativePath) {
     // created to the pool means the second folds into the first instead of the
     // pair surviving together — the `seen` set above only catches them when the
     // text is byte-identical.
-    crossPool.add(db.getSaraAction(actionId));
+    crossPool.add(db.getSaimAction(actionId));
   }
 
   writeReviewState(relativePath, {
@@ -534,7 +534,7 @@ function loadCrossNotePool(relativePath) {
   const rows = [];
   if (dedupeEnabled()) {
     try {
-      const all = db.getPendingSaraActionsByType('capture_todo', CROSS_POOL_LIMIT);
+      const all = db.getPendingSaimActionsByType('capture_todo', CROSS_POOL_LIMIT);
       if (all.length === CROSS_POOL_LIMIT) {
         console.warn(`[ActionCandidates] Cross-note pool hit its ${CROSS_POOL_LIMIT} cap — folding may miss older duplicates`);
       }
@@ -586,7 +586,7 @@ function recordSighting(action, candidate, score) {
   });
   payload.sightings = sightings;
 
-  return db.updateSaraActionPayload(action.id, payload);
+  return db.updateSaimActionPayload(action.id, payload);
 }
 
 // ── Meeting action extraction (PLAUD "## Next Arrangements") ─────────────────

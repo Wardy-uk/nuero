@@ -2,7 +2,7 @@
 
 // The house, in words a model can answer with. PURE (13 Sep 2026).
 //
-// WHY IT EXISTS. The moment SARA became the voice agent in the living room, the
+// WHY IT EXISTS. The moment SAiM became the voice agent in the living room, the
 // most obvious thing to say to her became the one thing she could not answer:
 //
 //   "what is the living room temperature"
@@ -165,7 +165,7 @@ function describeHouse(house) {
  * Is this a question about the HOUSE? PURE, deterministic, no model call.
  *
  * WARNING-WARNING  THIS EXISTS BECAUSE THE PROMPT RULE WAS NOT ENOUGH. Asked
- *   "is anyone else home", SARA answered **"No"** with NO TOOL CALL AT ALL -
+ *   "is anyone else home", SAiM answered **"No"** with NO TOOL CALL AT ALL -
  *   measured against the backend log on 13 Sep 2026, while
  *   `binary_sensor.household_others_home` read `on` with
  *   `who_is_home: ['Helen','Isaac']`. A fabricated answer about his own house,
@@ -173,7 +173,7 @@ function describeHouse(house) {
  *   house. Naming the house in the no-guessing rule fixed the temperature
  *   phrasings and did nothing for this one.
  *
- *   That is `checkSaraGrounding`'s lesson repeating: a prompt instruction is
+ *   That is `checkSaimGrounding`'s lesson repeating: a prompt instruction is
  *   NECESSARY AND NOT SUFFICIENT, because a model asked for an answer can
  *   always produce one. So the house is READ BEFORE THE MODEL on a question
  *   like this and put in front of it - `event-parser`'s regex-first rule and
@@ -190,7 +190,7 @@ const HOUSE_NOUNS =
 
 // WARNING  'home' and 'house' are the ambiguous ones and are matched NARROWLY.
 //   "I'm working from home" and "on my way home" are not questions about the
-//   house, and injecting a room-by-room reading into those would have SARA
+//   house, and injecting a room-by-room reading into those would have SAiM
 //   answering a question nobody asked.
 const PRESENCE_ASK = /\b(any\s?(one|body)|who|is\s+\w+)\b[^?]*\b(home|in|downstairs|upstairs)\b/i;
 const HOUSE_ASK = /\b(the\s+)?(house|flat|downstairs|upstairs)\b/i;

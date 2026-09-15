@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=SAiM
+GenericName=SAiM Mission Control
+Comment=Open SAiM Mission Control full-screen
+# Adjust the path if SAiM is checked out somewhere other than /mnt/data/nuero.
+Exec=/mnt/data/nuero/saim/scripts/start-saim.sh
+Icon=/mnt/data/nuero/saim/desktop/saim.svg
+Terminal=false
+Categories=Utility;
+StartupNotify=true

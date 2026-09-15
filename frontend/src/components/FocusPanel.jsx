@@ -42,11 +42,11 @@ function timeAgo(dateStr) {
 }
 
 export default function FocusPanel({ onNavigate }) {
-  // Read-only: SARA's line and the tone are not in the attention contract.
+  // Read-only: SAiM's line and the tone are not in the attention contract.
   const { data: focusData, status } = useCachedFetch('/api/focus', { interval: 30000 });
   const attention = useAttention({ interval: 30000 });
 
-  const sara = focusData?.sara || null;
+  const saim = focusData?.saim || null;
   const tone = focusData?.tone || 'focused';
 
   const cards = attention.cards;
@@ -60,13 +60,13 @@ export default function FocusPanel({ onNavigate }) {
 
   return (
     <div className="focus-panel">
-      {/* SARA line */}
-      {sara?.primary && (
-        <div className={`focus-sara focus-sara-${tone}`}>
-          <span className="focus-sara-label">SARA</span>
-          <p className="focus-sara-line">{sara.primary.message}</p>
-          {sara.primary.action && (
-            <span className="focus-sara-action">{sara.primary.action}</span>
+      {/* SAiM line */}
+      {saim?.primary && (
+        <div className={`focus-saim focus-saim-${tone}`}>
+          <span className="focus-saim-label">SAiM</span>
+          <p className="focus-saim-line">{saim.primary.message}</p>
+          {saim.primary.action && (
+            <span className="focus-saim-action">{saim.primary.action}</span>
           )}
         </div>
       )}

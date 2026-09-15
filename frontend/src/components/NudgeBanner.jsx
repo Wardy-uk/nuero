@@ -182,7 +182,7 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos, onGoToJournal,
         return (
           <div key={i} className={`nudge-banner ${isEscalated ? 'escalated' : ''} ${nudge.type}`}>
             <div className="nudge-content">
-              <span className="nudge-sara-label">SARA</span>
+              <span className="nudge-saim-label">SAiM</span>
               <span className="nudge-type">
                 {nudge.type === 'standup' ? 'STANDUP'
                   : nudge.type === 'todo' ? 'TODOS'

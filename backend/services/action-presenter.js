@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * How to render a pending SARA action so it can be approved SAFELY.
+ * How to render a pending SAiM action so it can be approved SAFELY.
  *
  * This exists because the approval screen and the executor have to agree, and
  * the only way they stay agreed is if the description is derived on the server,

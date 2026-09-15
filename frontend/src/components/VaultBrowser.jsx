@@ -281,9 +281,9 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
   // Browser view
   return (
     <div className="vault-browser">
-      <div className="vault-sara">
-        <span className="vault-sara-label">SARA</span>
-        <span className="vault-sara-line">
+      <div className="vault-saim">
+        <span className="vault-saim-label">SAiM</span>
+        <span className="vault-saim-line">
           {searchError ? 'Search did not run.' :
            searchResults ? `${searchResults.length} result${searchResults.length !== 1 ? 's' : ''}${searchAssessment.state === 'incomplete' ? ' — from part of the vault.' : '.'}` :
            entries.length === 0 && !loading ? 'Empty directory.' :

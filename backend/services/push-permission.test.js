@@ -24,7 +24,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const HOOK = path.join(__dirname, '..', '..', 'sara', 'app', 'src', 'hooks', 'usePushSubscription.js');
+const HOOK = path.join(__dirname, '..', '..', 'saim', 'app', 'src', 'hooks', 'usePushSubscription.js');
 
 function source() {
   // This repo is Windows-authored and mixed CRLF/LF; normalise before any

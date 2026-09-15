@@ -180,7 +180,7 @@ export default function StandupEditor({ startWithEod = false }) {
           </div>
           {eodMode === 'guided'
             ? (
-              // Carries its own SARA header.
+              // Carries its own SAiM header.
               <StandupSession
                 kind="eod"
                 onDone={() => { setShowEod(false); setEodMode('quick'); }}
@@ -193,7 +193,7 @@ export default function StandupEditor({ startWithEod = false }) {
                     her asking — the screen should not go anonymous just
                     because the input got shorter. */}
                 <div className="ss__who">
-                  <span className="ss__who-name">SARA</span>
+                  <span className="ss__who-name">SAiM</span>
                   <span className="ss__who-what">End of day — the short version</span>
                 </div>
                 <EodCapture onDone={() => setShowEod(false)} />

@@ -1,11 +1,11 @@
 'use strict';
 
 /**
- * /api/profile — what SARA knows about Nick as a person.
+ * /api/profile — what SAiM knows about Nick as a person.
  *
  * Nick's design (31 Aug 2026): seed it from the memory Claude and ChatGPT have
  * already accumulated, enrich it with a one-time interview run from NEURO, then
- * let SARA add to it as she learns. So the only typing is a paste and one
+ * let SAiM add to it as she learns. So the only typing is a paste and one
  * conversation.
  *
  * ⚠ PRIVATE. This never reaches VESTA, a catalogue, or anything outside NEURO.
@@ -41,7 +41,7 @@ router.get('/block', (req, res) => {
  * ⚠ The model RESTRUCTURES and may not ADD. A profile that quietly acquires an
  * interest he does not have is worse than an empty one, because he would have no
  * reason to distrust it — so the prompt says so twice and everything lands
- * stamped `seed`, which SARA renders as "(mentioned)" rather than "(told me)".
+ * stamped `seed`, which SAiM renders as "(mentioned)" rather than "(told me)".
  *
  * ⚠ It PROPOSES by default. `apply: true` writes; without it he gets the list
  * back to look at first. This is a file about him, assembled by a model, from a
@@ -70,7 +70,7 @@ router.post('/seed', async (req, res) => {
 });
 
 /** POST /api/profile/facts — add facts directly. What the interview calls, and
- *  what SARA calls when he tells her something in passing. */
+ *  what SAiM calls when he tells her something in passing. */
 router.post('/facts', (req, res) => {
   const { facts, source = 'conversation' } = req.body || {};
   if (!Array.isArray(facts) || !facts.length) {

@@ -5,7 +5,7 @@
  *
  * ⚠ THE FINDING HERE IS A RAMP WITH ONE RUNG THAT MOVED. `focus__u--critical`
  * and `--high` are fixed red and amber; `--medium` was `var(--accent)`, the
- * system blue. Now that `--sara-rgb` drives the app, the bottom of a SEVERITY
+ * system blue. Now that `--saim-rgb` drives the app, the bottom of a SEVERITY
  * ramp would have moved with her state — so on a day she has gone red, every
  * `medium` row would carry a red edge and read as critical. A ramp has to be
  * self-consistent or it stops being a ramp.
@@ -22,7 +22,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const VIEWS = path.resolve(__dirname, '..', '..', 'sara', 'app', 'src', 'views');
+const VIEWS = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'views');
 const jsx = () => fs.readFileSync(path.join(VIEWS, 'Focus.jsx'), 'utf8');
 const css = () => fs.readFileSync(path.join(VIEWS, 'Focus.css'), 'utf8');
 // ⚠ A name inside a comment is not a use — seventh time.
@@ -38,7 +38,7 @@ test('⚠ the severity ramp is self-consistent — no rung moves with her', () =
     return m[1];
   });
   for (const rung of ramp) {
-    assert.ok(!/--sara-rgb/.test(rung), 'a severity rung moves with her state');
+    assert.ok(!/--saim-rgb/.test(rung), 'a severity rung moves with her state');
     assert.ok(!/var\(--accent/.test(rung), 'a severity rung uses the system accent');
   }
 });
@@ -50,7 +50,7 @@ test('⚠ but the LEAD does move with her', () => {
   // item, her colour describes the day.
   const next = sheet.match(/\.focus__next\s*\{([^}]*)\}/s);
   assert.ok(next, 'the lead edge is gone');
-  assert.match(next[1], /--sara-rgb/);
+  assert.match(next[1], /--saim-rgb/);
 });
 
 test('⚠ exactly ONE lead, and it is the next action', () => {

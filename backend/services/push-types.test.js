@@ -38,7 +38,7 @@ const SUPPRESSIBLE = new Set([
   'weekly_review', 'knowledge_reflection', 'vault_hygiene', 'sweep_complete',
   'plaud', 'plan_milestone', 'teams_mention', 'day_plan',
   // The ambient layer — water, sitting, exercise, a health trend. SUPPRESSIBLE
-  // by definition: it is the most interruptible thing SARA says, and the whole
+  // by definition: it is the most interruptible thing SAiM says, and the whole
   // design rests on it respecting quiet hours, the dedupe and the hourly cap.
   // Anything here that ever needs to bypass those has stopped being ambient.
   'ambient',

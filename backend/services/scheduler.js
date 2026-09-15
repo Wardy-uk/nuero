@@ -203,7 +203,7 @@ function start() {
     try {
       const result = require('./attention-learning').sweep();
       if (result.muted.length) {
-        console.log(`[Scheduler] SARA quietened: ${result.muted.map(m => m.kind).join(', ')}`);
+        console.log(`[Scheduler] SAiM quietened: ${result.muted.map(m => m.kind).join(', ')}`);
       }
     } catch (e) {
       console.warn('[Scheduler] Attention learning sweep failed:', e.message);
@@ -336,7 +336,7 @@ function start() {
     nudges.checkPlanMilestoneNudge();
   });
 
-  // 8pm, EVERY day — SARA opens the EOD.
+  // 8pm, EVERY day — SAiM opens the EOD.
   //
   // Moved from 5pm weekdays (Nick, 31 Aug 2026). Both halves of that follow from
   // what the EOD became earlier the same day: a reflection rather than a status
@@ -344,7 +344,7 @@ function start() {
   // ask how the day was; and a Saturday is still a day worth closing, so the
   // working-day suppression is deliberately not applied to this one nudge.
   cron.schedule('0 20 * * *', async () => {
-    console.log('[Scheduler] 8pm — SARA opens the EOD');
+    console.log('[Scheduler] 8pm — SAiM opens the EOD');
     // Awaited and caught: it starts a session and makes an AI call, so an
     // unhandled rejection here would be a silent evening with no notification
     // and nothing in the log to say why.
@@ -395,7 +395,7 @@ function start() {
       const obsidian = require('./obsidian');
       const result = obsidian.generateWeeklyReview();
       if (result && !result.skipped) {
-        require('./webpush').sendToAll('SARA — Weekly review',
+        require('./webpush').sendToAll('SAiM — Weekly review',
           `Your ${result.weekStr} review is ready in Reflections. Take 5 minutes to fill in wins, challenges, and how you're feeling.`,
           { type: 'weekly_review', url: '/vault' }).catch(() => {});
       }
@@ -415,7 +415,7 @@ function start() {
       // informational, and a second number on the banner is nudge noise (#17).
       console.log(`[Scheduler] Weekly hygiene: ${lintRes.broken.length} broken, ${lintRes.archivedTargets.length} into Archive, ${lintRes.orphans.length} orphans; ${planRes.total} link cards across ${planRes.notesTouched} notes.`);
       if (planRes.total > 0 || lintRes.broken.length > 0) {
-        require('./webpush').sendToAll('SARA — Vault hygiene',
+        require('./webpush').sendToAll('SAiM — Vault hygiene',
           `${lintRes.broken.length} broken links, ${lintRes.orphans.length} orphans, ${planRes.total} link cards to review in Vault Audit.`,
           { type: 'vault_hygiene', url: '/vault' }).catch(() => {});
       }
@@ -466,7 +466,7 @@ function start() {
       const result = require('./knowledge-memory').generateReflection({ write: true });
       if (result?.path) {
         require('./webpush').sendToAll(
-          'SARA — Knowledge reflection',
+          'SAiM — Knowledge reflection',
           'Your latest knowledge reflection is ready. Review what to promote before the week drifts.',
           { type: 'knowledge_reflection', url: '/insights' }
         ).catch(() => {});
@@ -494,7 +494,7 @@ function start() {
       const failed = report.sources.filter(s => !s.ok).length;
       if (failed) parts.push(`${failed} data source${failed === 1 ? '' : 's'} down`);
       await require('./webpush').sendToAll(
-        'SARA — Weekly risk report',
+        'SAiM — Weekly risk report',
         parts.length
           ? `Draft ready for Chris by midday: ${parts.join(', ')}.`
           : 'Draft ready for Chris by midday. Nothing flagged for escalation — confirm and send.',
@@ -657,7 +657,7 @@ function start() {
       console.log(`[Scheduler] Meeting actions: scanned ${scan.scanned}, created ${scan.created}, pending ${scan.pending}, superseded ${scan.superseded}` +
         (scan.novaOwned ? `, ${scan.novaOwned} left to NOVA` : ''));
       if (scan.pending > 0) {
-        require('./webpush').sendToAll('SARA — Actions to review',
+        require('./webpush').sendToAll('SAiM — Actions to review',
           `${scan.pending} new action${scan.pending === 1 ? '' : 's'} from your meetings need a yes/no.`,
           { type: 'todo', url: '/todos' }).catch(() => {});
       }
@@ -714,7 +714,7 @@ function start() {
       if (gap.status === 'ok') {
         console.log(`[Scheduler] People gap: ${gap.candidates.length} candidates, ${gap.belowThreshold.length} seen once`);
         if (gap.candidates.length > 0) {
-          require('./webpush').sendToAll('SARA — People notes',
+          require('./webpush').sendToAll('SAiM — People notes',
             `${gap.candidates.length} ${gap.candidates.length === 1 ? 'person has' : 'people have'} no People note. Review in Vault Audit.`,
             { type: 'vault_hygiene', url: '/people' }).catch(() => {});
         }
@@ -950,7 +950,7 @@ function start() {
       console.error('[Health] Capture system BROKEN:', issues.join(', '));
       try {
         require('./webpush').sendToAll(
-          'SARA — System alert',
+          'SAiM — System alert',
           `Capture is broken: ${issues.join(', ')}. Notes will not save.`,
           { type: 'system_alert' }
         ).catch(() => {});

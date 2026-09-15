@@ -104,7 +104,7 @@ function computeWeek(anchor = new Date()) {
     // than 200 actions — which, at ~460 candidates a night, it always did. An
     // approval rate that is wrong in the direction of "looks fine" is worse
     // than no approval rate.
-    const tally = db.countSaraActionsSince(from);
+    const tally = db.countSaimActionsSince(from);
     actions.executed = tally.executed || 0;
     actions.rejected = tally.rejected || 0;
     actions.pending = tally.pending || 0;

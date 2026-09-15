@@ -35,7 +35,7 @@ const TEAMS = {
   ],
 };
 
-function getSaraStatus(person, vaultData, summaries, detectedLast) {
+function getSaimStatus(person, vaultData, summaries, detectedLast) {
   const fm = vaultData?.frontmatter || {};
   const empStatus = (fm['employment-status'] || '').toLowerCase();
   const status = (fm.status || '').toLowerCase();
@@ -63,9 +63,9 @@ function getSaraStatus(person, vaultData, summaries, detectedLast) {
   return { word: 'solid', tone: 'ok', reason: '' };
 }
 
-function buildTeamSaraLine(teams, peopleData, personSummaries, oneToOnes) {
+function buildTeamSaimLine(teams, peopleData, personSummaries, oneToOnes) {
   const allPeople = Object.values(teams).flat();
-  const statuses = allPeople.map(p => getSaraStatus(p, peopleData[p.name], personSummaries, latest121(oneToOnes, p.name)));
+  const statuses = allPeople.map(p => getSaimStatus(p, peopleData[p.name], personSummaries, latest121(oneToOnes, p.name)));
   const overdue = statuses.filter(s => s.word === 'overdue' || s.word === 'slipping');
   const watching = statuses.filter(s => s.word === 'watch');
   const solid = statuses.filter(s => s.word === 'solid');
@@ -998,7 +998,7 @@ export default function PeopleBoard() {
       .catch(() => setOneToOnes({}));
   };
 
-  const saraLine = buildTeamSaraLine(TEAMS, peopleData, personSummaries, oneToOnes);
+  const saimLine = buildTeamSaimLine(TEAMS, peopleData, personSummaries, oneToOnes);
 
   // Everyone the board is currently showing an overdue 1-2-1 badge for. Driving
   // this off the same get121Status the cards use keeps the button honest — it
@@ -1009,15 +1009,15 @@ export default function PeopleBoard() {
 
   return (
     <div className="people-board">
-      {/* SARA team assessment */}
-      <div className="team-sara">
-        <div className="team-sara-main">
-          <span className="team-sara-label">SARA</span>
-          <p className="team-sara-line">{saraLine}</p>
+      {/* SAiM team assessment */}
+      <div className="team-saim">
+        <div className="team-saim-main">
+          <span className="team-saim-label">SAiM</span>
+          <p className="team-saim-line">{saimLine}</p>
         </div>
         {overdueNames.length > 0 && (
           <button
-            className="team-sara-book-all"
+            className="team-saim-book-all"
             onClick={() => setBookingAll(overdueNames)}
             title={`Plan 1-2-1s for: ${overdueNames.join(', ')}`}
           >
@@ -1117,16 +1117,16 @@ export default function PeopleBoard() {
               const vaultData = peopleData[person.name];
               const tags = vaultData?.tags || [];
               const fm = vaultData?.frontmatter || {};
-              const sara = getSaraStatus(person, vaultData, personSummaries, latest121(oneToOnes, person.name));
+              const saim = getSaimStatus(person, vaultData, personSummaries, latest121(oneToOnes, person.name));
 
               return (
-                <div key={person.id} className={`person-card sara-status-${sara.tone}`} data-person={person.name}>
+                <div key={person.id} className={`person-card saim-status-${saim.tone}`} data-person={person.name}>
                   <div className="person-header" onClick={() => setSelectedPerson(person.name)} style={{ cursor: 'pointer' }}>
                     <span className="person-name person-name-clickable">{person.name}</span>
-                    <span className={`sara-status-badge sara-status-${sara.tone}`}>{sara.word}</span>
+                    <span className={`saim-status-badge saim-status-${saim.tone}`}>{saim.word}</span>
                   </div>
                   <span className="person-role">{person.role}</span>
-                  {sara.reason && <span className="sara-status-reason">{sara.reason}</span>}
+                  {saim.reason && <span className="saim-status-reason">{saim.reason}</span>}
                   {(() => {
                     const s121 = get121Status(fm, latest121(oneToOnes, person.name));
                     if (!s121) return null;

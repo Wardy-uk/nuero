@@ -8,8 +8,8 @@
  * shared tasks and their state, his calendar with work redacted to "Busy", what
  * is in the fridge and freezer, and something to eat out of it.
  *
- * Named for the goddess of hearth and home, and it sits beside SARA rather than
- * inside her: SARA is Nick's, VESTA is the household's.
+ * Named for the goddess of hearth and home, and it sits beside SAiM rather than
+ * inside her: SAiM is Nick's, VESTA is the household's.
  *
  * ── The one rule everything here follows ────────────────────────────────────
  * ⚠ **REDACTION HAPPENS HERE, ON THE SERVER, NEVER IN THE PAGE.** If a work

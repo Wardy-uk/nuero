@@ -32,10 +32,10 @@
    (use Chrome/Edge, plug in the ESP32, Connect, choose Bluetooth Proxy, enter wifi).
 3. It auto-discovers in HA (Settings → Devices). HA now has a passive-capable scanner.
 4. Add Private BLE Device with IRK `2dbfa199fa42d0605517384738010e0f` → resolves the Watch.
-5. Tell Claude the new `sensor.<watch>_estimated_distance` entity id to wire SARA's lock:
-   - `SARA_HA_PROXIMITY_ENTITY=sensor.<watch>_estimated_distance`
-   - `SARA_HA_PROXIMITY_AWAY_M=5`
+5. Tell Claude the new `sensor.<watch>_estimated_distance` entity id to wire SAiM's lock:
+   - `SAIM_HA_PROXIMITY_ENTITY=sensor.<watch>_estimated_distance`
+   - `SAIM_HA_PROXIMITY_AWAY_M=5`
 
-## Current SARA state
+## Current SAiM state
 - Auto-lock works on the iPhone tracker (`device_tracker.nicks_iphone`). Unchanged and working.
 - PiHRM peripheral stopped; adapter restored to non-discoverable/non-pairable.

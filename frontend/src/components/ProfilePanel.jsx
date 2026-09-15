@@ -3,7 +3,7 @@ import { apiUrl } from '../api';
 import './ProfilePanel.css';
 
 /**
- * About Me — what SARA knows about Nick as a person, and the conversation that
+ * About Me — what SAiM knows about Nick as a person, and the conversation that
  * fills it in.
  *
  * The engine shipped without a door, which is the routable-but-unreachable hole
@@ -178,7 +178,7 @@ export default function ProfilePanel() {
         <div>
           <h1 className="prof-title">About me</h1>
           <p className="prof-sub">
-            What SARA knows about you as a person, rather than as Head of Technical Support.
+            What SAiM knows about you as a person, rather than as Head of Technical Support.
             She reads this; she doesn&rsquo;t own it — it&rsquo;s <code>Me/About Nick.md</code> in the vault, edit it freely.
           </p>
         </div>

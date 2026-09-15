@@ -636,7 +636,7 @@ function fixKey(fromRel, oldTarget) {
 function buildFixModel(root) {
   const config = loadConfig(root);
   const cfg = {
-    expectedOrphanDirs: config.expectedOrphanDirs || ['Daily', 'Documents/System/SARA Import Reports'],
+    expectedOrphanDirs: config.expectedOrphanDirs || ['Daily', 'Documents/System/SAiM Import Reports'],
     fuzzyModerate: config.fuzzyModerate || 0.85,
     fuzzyAggressive: config.fuzzyAggressive || 0.70,
   };
@@ -767,7 +767,7 @@ function writeFixPlanReport(root, p) {
   L.push('- **Conservative** — report only (leave links + Archive as-is).');
   L.push(`- **Moderate / Aggressive** — restore the **${s.archivedNotes}** archived notes behind **${s.archivedLinks}** links to their active folder.`);
   L.push(`  - e.g. ${ex(p.archived)}`, '');
-  L.push('## Action 3 — Expected orphans (Daily, SARA reports)');
+  L.push('## Action 3 — Expected orphans (Daily, SAiM reports)');
   L.push(`- **Moderate / Aggressive** — keep the **${s.expectedOrphans}** expected orphans suppressed from reports (config).`, '');
   L.push('## Action 4 — Orphan People notes');
   L.push(`- **${s.peopleOrphans}** People notes with no links — flagged for review (auto-link deferred).`, '');

@@ -22,7 +22,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const VIEWS = path.resolve(__dirname, '..', '..', 'sara', 'app', 'src', 'views');
+const VIEWS = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'views');
 const jsx = () => fs.readFileSync(path.join(VIEWS, 'Review.jsx'), 'utf8');
 const css = () => fs.readFileSync(path.join(VIEWS, 'Review.css'), 'utf8');
 // ⚠ A name inside a comment is not a use — sixth time.
@@ -85,7 +85,7 @@ test('⚠ no screen-local palette, and ONE red', () => {
 
   const accents = sheet.match(/var\(--accent[^)]*\)/g) || [];
   assert.deepEqual(accents, [], `Review.css still picks the system accent: ${accents.join(', ')}`);
-  assert.match(sheet, /var\(--sara-rgb/);
+  assert.match(sheet, /var\(--saim-rgb/);
   // `rgba(200, 70, 70)` against the primitive's `rgba(224, 84, 58)` is two reds
   // for one meaning — the same thing Capture had on its stuck item.
   assert.ok(!/200,\s*70,\s*70/.test(sheet), 'a second red is back');

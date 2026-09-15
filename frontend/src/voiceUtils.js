@@ -1,14 +1,21 @@
-// PAIRED FILE — keep in step with `sara/app/src/voiceUtils.js`.
+// PAIRED FILE — keep in step with `saim/app/src/voiceUtils.js`.
 //
-// #109: sara/app's copy started as a verbatim copy of this one and then diverged,
+// #109: saim/app's copy started as a verbatim copy of this one and then diverged,
 // because this version was only ever proven on desktop and three of its behaviours
 // are wrong on iOS. Those fixes are ported back here (they are harmless on desktop),
 // so the two files match again. Change one, change the other.
 
-const STORAGE_KEY = 'sara_voice_out';
+const STORAGE_KEY = 'saim_voice_out';
+// Pre-rename key. Speech-out is OFF by default, so a lost key reads as
+// "Nick never turned it on" — silently undoing a choice he made.
+const LEGACY_STORAGE_KEY = 'sara_voice_out';
 
 export function isVoiceOutEnabled() {
-  try { return localStorage.getItem(STORAGE_KEY) === 'true'; } catch { return false; }
+  try {
+    const v = localStorage.getItem(STORAGE_KEY);
+    if (v !== null) return v === 'true';
+    return localStorage.getItem(LEGACY_STORAGE_KEY) === 'true';
+  } catch { return false; }
 }
 
 export function setVoiceOutEnabled(enabled) {
@@ -61,8 +68,8 @@ function pickVoice() {
     || voices.find(v => /en-GB/i.test(v.lang) && !/male/i.test(v.name))
     || voices.find(v => /en-GB/i.test(v.lang))
     || null;
-  if (cachedVoice) console.log(`[SARA Voice] Selected: ${cachedVoice.name} (${cachedVoice.lang})`);
-  else console.warn('[SARA Voice] No suitable voice found', voices.map(v => `${v.name} [${v.lang}]`));
+  if (cachedVoice) console.log(`[SAiM Voice] Selected: ${cachedVoice.name} (${cachedVoice.lang})`);
+  else console.warn('[SAiM Voice] No suitable voice found', voices.map(v => `${v.name} [${v.lang}]`));
   return cachedVoice;
 }
 
@@ -76,7 +83,7 @@ function cleanText(text) {
 }
 
 // Returns the utterance so callers can watch onstart/onerror, or null if it bailed.
-export function speakSara(text) {
+export function speakSaim(text) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
   const synth = window.speechSynthesis;
   // Only cancel when there is something to cancel — an unconditional cancel() straight
@@ -97,5 +104,5 @@ export function speakSara(text) {
 }
 
 export function speakIfEnabled(text) {
-  if (isVoiceOutEnabled()) speakSara(text);
+  if (isVoiceOutEnabled()) speakSaim(text);
 }

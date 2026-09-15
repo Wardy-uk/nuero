@@ -178,11 +178,16 @@ const SOURCE_HOW = {
   'vantage-plan': 'From the VANTAGE improvement plan',
   vantage: 'Raised by VANTAGE',
   'jira-assigned': 'A Jira ticket assigned to you',
-  chat: 'You asked SARA to add it in chat',
-  'chat-marker': 'SARA picked it out of something you said in chat',
+  chat: 'You asked SAiM to add it in chat',
+  'chat-marker': 'SAiM picked it out of something you said in chat',
   'standup-session': 'Came out of a morning standup',
   'eod-session': 'Came out of an end-of-day session',
   capture: 'Captured on the Capture page',
+  'saim-capture': 'Captured on the Capture page',
+  // Pre-rename spelling. Rows written before 15 Sep 2026 carry it, and this
+  // repo renaming itself does not rewrite them. Without the alias those tasks
+  // lose their provenance line — and an unlabelled source is exactly the
+  // unreadable-provenance failure this file exists to prevent.
   'sara-capture': 'Captured on the Capture page',
   'obsidian-capture': 'Dropped into Tasks/Capture.md in Obsidian',
   'neuro-mobile': 'Captured on your phone',

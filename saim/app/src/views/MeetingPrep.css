@@ -1,0 +1,118 @@
+.mp__none { color: var(--muted); text-align: center; }
+
+.mp__meeting { border-left: 3px solid rgb(var(--saim-rgb, 114, 150, 211)); }
+.mp__when { color: rgb(var(--saim-rgb, 114, 150, 211)); font-size: 0.8rem; font-weight: 600; }
+.mp__subject { font-size: 1.15rem; font-weight: 600; margin-top: 0.2rem; }
+.mp__loc { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+
+.mp__block { margin-top: 1rem; }
+/* ⚠ Type and colour are `LitLabel`'s — one definition of a section label for
+   the whole app — and NO `color:` here, because this sheet loads after Lit.css
+   and would win the cascade. Fourth screen with that trap. */
+.mp__h {
+  margin-bottom: 0.4rem;
+}
+
+.mp__person { padding: 0.35rem 0; border-top: 1px solid var(--line); }
+.mp__person:first-of-type { border-top: none; }
+.mp__person-name { font-weight: 600; font-size: 0.92rem; }
+.mp__role { color: var(--muted); font-weight: 400; }
+.mp__person-notes { color: var(--muted); font-size: 0.82rem; margin-top: 0.15rem; }
+
+/* "Owes you" — the waiting-on items for this attendee. Read-only here; the
+   actions are on NEURO's People board because a chase needs approval first. */
+.mp__owes {
+  margin-top: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--panel-2);
+  border-radius: 8px;
+}
+.mp__owes-h {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #f0d6a6;
+  margin-bottom: 0.3rem;
+}
+.mp__owes-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.18rem 0;
+}
+.mp__owes-text { font-size: 0.84rem; min-width: 0; }
+.mp__owes-age {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.mp__owes-age.stale { color: #f0d6a6; }
+
+.mp__list { margin: 0; padding-left: 1.1rem; }
+.mp__list li { margin: 0.2rem 0; font-size: 0.9rem; }
+
+.mp__decision {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--panel-2);
+  border-radius: 8px;
+  margin-bottom: 0.35rem;
+}
+
+.mp__later { margin-top: 1.5rem; }
+.mp__later-item { display: flex; gap: 0.75rem; padding: 0.6rem 0.8rem; align-items: center; }
+.mp__later-time { color: rgb(var(--saim-rgb, 114, 150, 211)); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.mp__later-subject { font-size: 0.9rem; }
+
+/* The evidence line under a commitment. Quiet, but always present — an
+   unattributed row reads differently from a sourced one, which is the point. */
+.mp__owes-src {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
+/* What could not be read. Warm rather than red: this is not an error, it is an
+   incomplete picture, and it must not look like a failure to be dismissed. */
+/* ⚠ THE APP'S GAP INK, NOT A FIFTH AMBER. `#e0c97e` here against `#f0d6a6` on
+   Now and Review and `#ffd98a` on Ritual is three values for one meaning — the
+   same fragmentation the reds had, on the colour whose whole job is to be
+   recognised. Amber-means-unread only works if it is one amber. */
+.mp__block--gaps { border-left: 2px solid #f0d6a6; padding-left: 0.6rem; }
+.mp__gapnote { font-size: 0.72rem; color: #f0d6a6; margin-top: 0.3rem; }
+
+/* Leave. "Off" is a fact worth seeing before you prepare for a conversation that
+   will not happen; "not checked" is quieter but always present, because an
+   absent flag must only ever mean "nothing booked". */
+.mp__away {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #f0d6a6;
+  border: 1px solid #f0d6a6;
+  border-radius: 6px;
+  padding: 0 0.3rem;
+  margin-left: 0.35rem;
+  white-space: nowrap;
+}
+.mp__away-unknown {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 0 0.3rem;
+  margin-left: 0.35rem;
+  white-space: nowrap;
+}
+.mp__away-sum { font-size: 0.84rem; color: #f0d6a6; margin-bottom: 0.3rem; }
+.mp__away-unknown-sum { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; }
+
+/* ⚠ The one FAULT on this screen, sharing the primitive's red rather than
+   inventing yet another. */
+.mp__fault {
+  border-color: rgba(224, 84, 58, 0.55);
+  background: rgba(224, 84, 58, 0.1);
+}

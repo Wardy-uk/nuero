@@ -13,7 +13,7 @@
  * carrying the number Nick had given it one message earlier, was never emitted
  * at all.
  *
- * So the number was dropped in silence and SARA asked for it again — twice —
+ * So the number was dropped in silence and SAiM asked for it again — twice —
  * relaying the tool's own complaint to him in the tool's vocabulary. Nothing
  * logged, and the session transcript stores assistant TEXT only, so afterwards
  * there was no record that any call had been refused.

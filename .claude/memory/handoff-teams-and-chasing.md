@@ -5,7 +5,7 @@
 play** and now carries items **#96–#102** from this session. This handoff is only the
 "where the hands were" note.
 
-`handoff.md` belongs to a **concurrent session** doing SARA voice (#90) — do not overwrite
+`handoff.md` belongs to a **concurrent session** doing SAiM voice (#90) — do not overwrite
 it. Decisions live in `workstream-escalation-and-chasing.md`; **the BA is ANSWERED**. Do
 not re-litigate it, in particular the two Nick overruled: escalation also raises Priority,
 and all 8 urgency codes stay.
@@ -16,7 +16,7 @@ and all 8 urgency codes stay.
 
 - **Tracker #3, the chasing UI.** `frontend/src/components/WaitingOn.jsx` mounted on the
   People board, in the person overlay, and read-only in 1-2-1 prep
-  (`routes/meeting-prep-view._buildPrep` → `sara/app` MeetingPrep). 287 items / 29 people
+  (`routes/meeting-prep-view._buildPrep` → `saim/app` MeetingPrep). 287 items / 29 people
   / oldest 107d. Four row actions: chase / done / drop / snooze. Pull-only (Q14).
 - **The chase executor ran.** A real email sent and received: queue → stored draft +
   resolved address → manual recipient override → approve → Graph send → `markChased`.
@@ -83,8 +83,8 @@ closed tickets, shipping with the Q18 send audit log on day one.
 - **Pi deploy needs Node 22.22.2 in PATH** — 20 segfaults better-sqlite3.
   `export PATH=/home/nickw/.nvm/versions/node/v22.22.2/bin:$PATH && cd /mnt/data/nuero &&
   git pull && npm run build --workspace=frontend && pm2 restart neuro-backend --update-env`
-- **`sara/app` deploys itself** via Netlify on push to main (site `sara-nickward`,
-  sara.nickward.co.uk). No Pi step. NOVA does **not** self-deploy.
+- **`saim/app` deploys itself** via Netlify on push to main (site `saim-nickward`,
+  saim.nickward.co.uk). No Pi step. NOVA does **not** self-deploy.
 - **Mobile:** `.main-panel` is `display:flex`, so a panel that is a direct child and does
   not set `align-self: flex-start` gets stretched and clipped (fixed in `923c3b8`).
   `WaitingOn` is never a direct child, so it is unaffected — but the next new panel will be.

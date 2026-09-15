@@ -2,7 +2,7 @@
 
 // A location gap must mean "we do not know where he is" — not "no dwell yet".
 //
-// Nick, 12 Sep 2026: SARA reported "couldn't read location" while Home Assistant knew
+// Nick, 12 Sep 2026: SAiM reported "couldn't read location" while Home Assistant knew
 // he was home. `gather()` pushed the gap as soon as the dwell list came back empty,
 // and the HA fallback a few lines below then answered the question without withdrawing
 // it. An empty dwell list is normal by construction: a dwell needs 20 minutes inside

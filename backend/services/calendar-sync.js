@@ -69,7 +69,7 @@ async function sync({ days = 14, checkArrivals = true } = {}) {
   } catch {}
 
   // Does each event have OTHER PEOPLE in it? The cache dropped `attendees` on
-  // write, so everything reasoning off it — the ambient SARA surface most of all
+  // write, so everything reasoning off it — the ambient SAiM surface most of all
   // — could not tell a 1-2-1 from a solo focus block, and half Nick's diary is
   // solo blocks. Judged here, once, at the only point a live attendee list
   // exists, using plaud-admin-blocks' test rather than a second copy of it.

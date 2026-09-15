@@ -127,8 +127,8 @@ function consumers() {
   return [
     { id: 'neuro-web', label: 'This NEURO web app', action: 'Updated automatically — no action needed.', automatic: true },
     { id: 'watch-siri', label: 'Apple Watch / Siri shortcut', action: 'Edit the shortcut’s `X-Neuro-Pin` header.' },
-    { id: 'sara-pwa', label: 'SARA phone PWA (sara.nickward.co.uk)', action: 'Sign in again with the new PIN.' },
-    { id: 'sara-kiosk', label: 'SARA desk kiosk backend (Pi 4, :3005)', action: 'Set NEURO_PIN in sara/backend/.env and restart sara-backend.' },
+    { id: 'saim-pwa', label: 'SAiM phone PWA (saim.nickward.co.uk)', action: 'Sign in again with the new PIN.' },
+    { id: 'saim-kiosk', label: 'SAiM desk kiosk backend (Pi 4, :3005)', action: 'Set NEURO_PIN in saim/backend/.env and restart saim-backend.' },
     { id: 'mcp', label: 'MCP server (Claude Code / Desktop)', action: 'Update NEURO_PIN in the MCP config, then restart Claude.' },
     { id: 'n8n', label: 'n8n flows using the PIN', action: 'Only affects flows using X-NEURO-PIN; those on X-NEURO-API-TOKEN are unaffected.' },
   ];

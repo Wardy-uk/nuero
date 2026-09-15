@@ -2149,11 +2149,11 @@ async function queueSend({ week = weekCommencing(), to = null, force = false } =
   // twice. Deduping on the WEEK rather than on the body is deliberate: a rebuilt
   // report has different numbers but is still the same send, and two cards
   // differing only in a percentage is worse than one.
-  const existing = db.getPendingSaraActionsByType
-    ? db.getPendingSaraActionsByType('send_weekly_risk_report', 50)
+  const existing = db.getPendingSaimActionsByType
+    ? db.getPendingSaimActionsByType('send_weekly_risk_report', 50)
     : [];
   for (const action of existing || []) {
-    // getPendingSaraActionsByType ALREADY parses payload into an object. The
+    // getPendingSaimActionsByType ALREADY parses payload into an object. The
     // first cut called JSON.parse on it again, threw, and a defensive
     // `catch { continue }` swallowed the throw — so the dedupe skipped every
     // row and silently never fired. Accept either shape; never swallow.
@@ -2164,7 +2164,7 @@ async function queueSend({ week = weekCommencing(), to = null, force = false } =
     // Refresh the words and the address so the card is not stale, then hand
     // back the SAME action rather than minting a second one.
     try {
-      db.updateSaraActionPayload(action.id, {
+      db.updateSaimActionPayload(action.id, {
         ...payload, to: [recipient], subject, body: report.markdown,
         escalateCount: report.escalateCount, snapshotDate: report.snapshotDate,
         vaultPath: publishedAt(week)?.path || null,

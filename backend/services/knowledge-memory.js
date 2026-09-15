@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const aiRouting = require('./ai-routing');
+const legacy = require('./legacy-names');
 const db = require('../db/database');
 const obsidian = require('./obsidian');
 const importsService = require('./imports');
@@ -32,7 +33,7 @@ const RAW_FOLDERS = [
 ];
 const TRUSTED_ROOTS = ['Knowledge', 'Projects', 'Areas', 'People', 'Documents'];
 const REFLECTION_DIR = 'Reflections/Knowledge';
-const REPORT_DIR = 'Documents/System/SARA Import Reports';
+const REPORT_DIR = 'Documents/System/SAiM Import Reports';
 const VAULT_MODEL_DOC = 'Documents/System/Vault Operating Model.md';
 
 function isoNow() {
@@ -137,6 +138,21 @@ function extractMarkdownSection(content, heading) {
   return section.trim();
 }
 
+/**
+ * The AI insight section under EITHER spelling of its heading.
+ *
+ * ⚠ Not cosmetic: this value is ANDed with the source-hash skip check. Looking
+ * only for 'SAiM Insight' makes every note enriched before the rename read as
+ * un-enriched, and each is then re-enriched with a paid model call.
+ */
+function extractAiInsightSection(content) {
+  for (const heading of legacy.headingAliases('SAiM Insight')) {
+    const found = extractMarkdownSection(content, heading);
+    if (found) return found;
+  }
+  return '';
+}
+
 function removeMarkdownSection(content, heading) {
   const text = String(content || '');
   const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -236,7 +252,7 @@ function readNoteMeta(fullPath) {
     trusted,
     knowledgeState: knowledgeState || (trusted ? 'trusted' : 'raw'),
     promotedTo: fm.knowledge_promoted_to || '',
-    consolidatedTo: fm.sara_consolidated_to || '',
+    consolidatedTo: legacy.fmValue(fm, 'saim_consolidated_to') || '',
     excerpt: excerpt(content),
     content
   };
@@ -404,11 +420,11 @@ function getAiEnrichmentNotesForDate(dateKey = isoDate()) {
     } catch {
       continue;
     }
-    const enrichedAt = cleanQuoted(note.frontmatter.sara_ai_enriched_at || '');
+    const enrichedAt = cleanQuoted(legacy.fmValue(note.frontmatter, 'saim_ai_enriched_at') || '');
     if (!enrichedAt.startsWith(dateKey)) continue;
     matches.push({
       path: note.path,
-      provider: cleanQuoted(note.frontmatter.sara_ai_provider || 'unknown')
+      provider: cleanQuoted(legacy.fmValue(note.frontmatter, 'saim_ai_provider') || 'unknown')
     });
   }
   return matches;
@@ -563,19 +579,19 @@ async function buildAiInsight(item, targetPath, existingContent = '') {
 
   const sourceHash = hashItemSources(item);
   const existingFrontmatter = obsidian.parseFrontmatter(existingContent || '');
-  const existingInsight = extractMarkdownSection(existingContent, 'SARA Insight');
-  if (existingFrontmatter.sara_ai_source_hash === sourceHash && existingInsight) {
+  const existingInsight = extractAiInsightSection(existingContent);
+  if (legacy.fmValue(existingFrontmatter, 'saim_ai_source_hash') === sourceHash && existingInsight) {
     return {
       skipped: true,
       sourceHash,
-      provider: existingFrontmatter.sara_ai_provider || 'cached'
+      provider: legacy.fmValue(existingFrontmatter, 'saim_ai_provider') || 'cached'
     };
   }
 
   const note = item.summary || item.note;
   const transcriptInsight = item.transcriptInsight || null;
   const prompt = [
-    'You are SARA, curating an Obsidian second brain for operational leadership work.',
+    'You are SAiM, curating an Obsidian second brain for operational leadership work.',
     'Be concise. Return ONLY a JSON object with this shape:',
     '{',
     '  "summary": "1-2 sentence synthesis of the note",',
@@ -647,17 +663,17 @@ async function buildAiInsightForExistingNote(note) {
   if (aiRouting.getAIMode() === 'off') return null;
 
   const sourceHash = sourceHashForContent(note.path, note.content || '');
-  const existingInsight = extractMarkdownSection(note.content || '', 'SARA Insight');
-  if (note.frontmatter.sara_ai_source_hash === sourceHash && existingInsight) {
+  const existingInsight = extractAiInsightSection(note.content || '');
+  if (legacy.fmValue(note.frontmatter, 'saim_ai_source_hash') === sourceHash && existingInsight) {
     return {
       skipped: true,
       sourceHash,
-      provider: note.frontmatter.sara_ai_provider || 'cached'
+      provider: legacy.fmValue(note.frontmatter, 'saim_ai_provider') || 'cached'
     };
   }
 
   const prompt = [
-    'You are SARA, curating a trusted Obsidian second brain.',
+    'You are SAiM, curating a trusted Obsidian second brain.',
     'Be concise. Return ONLY a JSON object with this shape:',
     '{',
     '  "summary": "1-2 sentence synthesis",',
@@ -711,9 +727,9 @@ async function buildAiInsightForExistingNote(note) {
 function renderAiInsightSections(aiInsight) {
   if (!aiInsight || aiInsight.skipped) return '';
   const lines = [];
-  lines.push('## SARA Insight');
+  lines.push('## SAiM Insight');
   lines.push('');
-  lines.push(aiInsight.summary || 'SARA reviewed this note and found no stronger synthesis worth writing yet.');
+  lines.push(aiInsight.summary || 'SAiM reviewed this note and found no stronger synthesis worth writing yet.');
   lines.push('');
 
   if (aiInsight.durableInsights?.length) {
@@ -758,7 +774,11 @@ function renderAiInsightSections(aiInsight) {
 
 function stripExistingAiSections(content) {
   let next = String(content || '');
-  for (const heading of ['SARA Insight', 'Durable Insights', 'Open Loops', 'Promote Next', 'Suggested Links', 'Filing Note']) {
+  // ⚠ 'SARA Insight' is the PRE-RENAME heading and must stay in this list.
+  // Strip only the new spelling and a note enriched before 15 Sep 2026 keeps
+  // its old section, gains a new one beside it, and the note then carries two
+  // insights with nothing saying which is current.
+  for (const heading of ['SAiM Insight', 'SARA Insight', 'Durable Insights', 'Open Loops', 'Promote Next', 'Suggested Links', 'Filing Note']) {
     next = removeMarkdownSection(next, heading);
   }
   return next.trimEnd();
@@ -780,13 +800,13 @@ function insertAiSections(content, aiInsight) {
 function operatingModelMarkdown() {
   return `# Vault Operating Model
 
-_Managed by SARA / NUERO._
+_Managed by SAiM / NUERO._
 
 ## Core Principle
 
 Raw capture is not the same thing as durable knowledge.
 
-SARA uses a two-stage flow:
+SAiM uses a two-stage flow:
 
 1. Raw intake lands in staging locations such as \`Plaud/Summaries\`, \`Meetings/transcripts\`, and \`Imports/\`.
 2. Consolidated notes are written into the working vault in the folder that best matches the note's real purpose.
@@ -797,14 +817,14 @@ SARA uses a two-stage flow:
 - \`Imports/\`: raw external intake waiting for review, routing, or consolidation.
 - \`Meetings/\`: working meeting notes, including consolidated Plaud meeting notes.
 - \`Projects/\`, \`Areas/\`, \`People/\`, \`Ideas/\`, \`Reflections/\`: final working locations for consolidated notes.
-- \`Knowledge/\`: distilled durable knowledge that SARA should reuse as trusted context.
+- \`Knowledge/\`: distilled durable knowledge that SAiM should reuse as trusted context.
 - \`Documents/System/\`: system notes describing how the vault is operated.
 
-## What SARA Writes
+## What SAiM Writes
 
 - Consolidated notes from imports into relevant working folders.
 - Linking metadata back to raw source notes.
-- AI insight sections showing what SARA inferred, what to link, and what may be worth promoting.
+- AI insight sections showing what SAiM inferred, what to link, and what may be worth promoting.
 - Knowledge reflections in \`Reflections/Knowledge/\`.
 - Daily import activity reports in \`${REPORT_DIR}/\`.
 
@@ -813,7 +833,7 @@ SARA uses a two-stage flow:
 - Raw source notes remain the system of record for imports unless you intentionally archive or delete them.
 - Consolidated notes are the working notes you should read and use.
 - Each consolidated note links back to the raw source material.
-- Where possible, SARA links people, projects, and source notes automatically.
+- Where possible, SAiM links people, projects, and source notes automatically.
 
 ## Reading Order
 
@@ -825,7 +845,7 @@ When a new import arrives:
 
 ## Trusted Knowledge
 
-When a consolidated note contains something durable, promote it into \`Knowledge/\` so SARA can reuse it as trusted context rather than re-deriving it from raw imports.
+When a consolidated note contains something durable, promote it into \`Knowledge/\` so SAiM can reuse it as trusted context rather than re-deriving it from raw imports.
 `;
 }
 
@@ -868,7 +888,7 @@ ${source.excerpt || 'Promoted from raw memory for curation.'}
 
 ## Why This Matters
 
-- Add the durable point SARA should remember.
+- Add the durable point SAiM should remember.
 - Capture the decision, pattern, or principle here.
 
 ## Actions / Decisions
@@ -924,7 +944,7 @@ function promoteCandidate({ sourcePath, domain, title }) {
   try { vaultHooks.onVaultWrite(targetFull, 'knowledge-promotion'); } catch {}
   updateSourceFrontmatter(source, {
     knowledge_promoted_to: toRel(targetFull),
-    sara_consolidated_to: toRel(targetFull)
+    saim_consolidated_to: toRel(targetFull)
   });
 
   return {
@@ -1147,8 +1167,8 @@ function consolidatedFrontmatter(item, targetPath, aiInsight = null, sourceHash 
   const sourceNotes = item.notes.map((source) => source.path);
   const frontmatter = {
     type: item.type === 'plaud' ? 'meeting' : 'import-consolidated',
-    source: 'sara-import-consolidation',
-    managed_by: 'sara-knowledge-memory',
+    source: 'saim-import-consolidation',
+    managed_by: 'saim-knowledge-memory',
     knowledge_state: 'distilled',
     knowledge_domain: inferDomainFromSource(targetPath),
     consolidated_at: isoNow(),
@@ -1160,9 +1180,9 @@ function consolidatedFrontmatter(item, targetPath, aiInsight = null, sourceHash 
   if (item.type === 'plaud' && item.summary?.frontmatter.plaud_id) {
     frontmatter.plaud_id = normalizePlaudId(item.summary.frontmatter.plaud_id);
   }
-  if (sourceHash) frontmatter.sara_ai_source_hash = sourceHash;
-  if (aiInsight?.provider) frontmatter.sara_ai_provider = aiInsight.provider;
-  if (aiInsight?.generatedAt) frontmatter.sara_ai_enriched_at = aiInsight.generatedAt;
+  if (sourceHash) frontmatter.saim_ai_source_hash = sourceHash;
+  if (aiInsight?.provider) frontmatter.saim_ai_provider = aiInsight.provider;
+  if (aiInsight?.generatedAt) frontmatter.saim_ai_enriched_at = aiInsight.generatedAt;
   return renderFrontmatter(frontmatter);
 }
 
@@ -1231,9 +1251,9 @@ async function buildConsolidatedBody(item, targetPath, aiInsight = null) {
   }
 
   if (aiInsight && !aiInsight.skipped) {
-    body.push('## SARA Insight');
+    body.push('## SAiM Insight');
     body.push('');
-    body.push(aiInsight.summary || 'SARA reviewed the import and found no stronger synthesis worth writing yet.');
+    body.push(aiInsight.summary || 'SAiM reviewed the import and found no stronger synthesis worth writing yet.');
     body.push('');
 
     if (aiInsight.durableInsights?.length) {
@@ -1286,7 +1306,7 @@ async function buildConsolidatedBody(item, targetPath, aiInsight = null) {
   body.push('');
   body.push('## Manual Notes');
   body.push('');
-  body.push(preservedManualNotes || '_Add your own interpretation, decisions, and follow-up here. SARA will preserve this section on refresh._');
+  body.push(preservedManualNotes || '_Add your own interpretation, decisions, and follow-up here. SAiM will preserve this section on refresh._');
 
   return obsidian.autoLink(`${body.join('\n').trimEnd()}\n`);
 }
@@ -1328,7 +1348,7 @@ function logConsolidationActivity({ dateKey, item, targetPath, mode }) {
 function upsertSourceConsolidation(item, targetPath) {
   for (const source of item.notes) {
     updateSourceFrontmatter(source, {
-      sara_consolidated_to: targetPath,
+      saim_consolidated_to: targetPath,
       knowledge_promoted_to: targetPath,
       import_status: 'consolidated'
     });
@@ -1425,7 +1445,7 @@ function buildDailyImportReport(dateKey = isoDate()) {
       }));
 
   const lines = [];
-  lines.push(`# SARA Import Activity — ${dateKey}`);
+  lines.push(`# SAiM Import Activity — ${dateKey}`);
   lines.push('');
   lines.push(`_Generated ${isoNow()}._`);
   lines.push('');
@@ -1590,8 +1610,8 @@ async function enrichManagedNotes({ limit = 25 } = {}) {
     } catch {}
   }
   const candidates = allNotes
-    .filter((note) => cleanQuoted(note.frontmatter.managed_by).toLowerCase() === 'sara-knowledge-memory'
-      || cleanQuoted(note.frontmatter.source).toLowerCase() === 'sara-import-consolidation')
+    .filter((note) => legacy.matchesValue(cleanQuoted(note.frontmatter.managed_by), 'saim-knowledge-memory')
+      || legacy.matchesValue(cleanQuoted(note.frontmatter.source), 'saim-import-consolidation'))
     .filter((note) => !note.path.startsWith('Archive/'))
     .sort((a, b) => new Date(b.modified) - new Date(a.modified))
     .slice(0, limit);
@@ -1612,9 +1632,9 @@ async function enrichManagedNotes({ limit = 25 } = {}) {
     }
 
     let content = note.content;
-    content = upsertFrontmatterValue(content, 'sara_ai_source_hash', aiInsight.sourceHash);
-    content = upsertFrontmatterValue(content, 'sara_ai_provider', aiInsight.provider || 'unknown');
-    content = upsertFrontmatterValue(content, 'sara_ai_enriched_at', aiInsight.generatedAt || isoNow());
+    content = upsertFrontmatterValue(content, 'saim_ai_source_hash', aiInsight.sourceHash);
+    content = upsertFrontmatterValue(content, 'saim_ai_provider', aiInsight.provider || 'unknown');
+    content = upsertFrontmatterValue(content, 'saim_ai_enriched_at', aiInsight.generatedAt || isoNow());
     content = insertAiSections(content, aiInsight);
 
     const fullPath = path.join(vault, note.path);

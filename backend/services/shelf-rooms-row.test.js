@@ -31,7 +31,7 @@ const React = require('react');
 const { renderToString } = require('react-dom/server');
 const esbuild = require('esbuild');
 
-const SHELF = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui', 'Shelf.jsx');
+const SHELF = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui', 'Shelf.jsx');
 
 let Shelf;
 test.before(async () => {

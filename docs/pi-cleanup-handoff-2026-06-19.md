@@ -67,7 +67,7 @@ Current result:
 Confirmed services:
 
 - `neuro-backend` via PM2 on `:3001`
-- `sara-backend` via PM2 on `:3005`
+- `saim-backend` via PM2 on `:3005`
 - `tally` via PM2 on `:3003`
 - Ollama on `:11434`
 - Home Assistant on `:8123`
@@ -130,7 +130,7 @@ Keep on `pi5`:
 
 Move off `pi5`:
 
-- `sara-backend`
+- `saim-backend`
 - Chromium/kiosk UI
 - `tally`
 - optional non-core support services
@@ -139,7 +139,7 @@ Move off `pi5`:
 
 Target role:
 
-- SARA frontend / kiosk / browser UI
+- SAiM frontend / kiosk / browser UI
 - `neuro-worker`
 - `n8n`
 - OwnTracks recorder
@@ -186,7 +186,7 @@ Recommended direction:
 
 1. Confirm which backend is authoritative for live NUERO traffic
 2. Stop duplicate `neuro-backend` on `pi-dev` if Pi 5 is canonical
-3. Move `sara-backend` from `pi5` to `pi-dev`
+3. Move `saim-backend` from `pi5` to `pi-dev`
 4. Move `tally` from `pi5` to `pi-dev`
 5. Remove kiosk / Chromium UI load from `pi5`
 6. Re-check Ollama performance on `pi5`

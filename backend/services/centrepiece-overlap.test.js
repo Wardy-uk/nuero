@@ -31,7 +31,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const surface = require('./sara-surface');
+const surface = require('./saim-surface');
 
 const { coveredBy } = surface._internals || surface;
 
@@ -96,7 +96,7 @@ test('⚠ it still answers the question it always answered', () => {
 
 test('⚠ the corridor honours rowIndexes', () => {
   const src = fs.readFileSync(
-    path.resolve(__dirname, '..', '..', 'sara', 'shared-ui', 'AttentionSurface.jsx'), 'utf8');
+    path.resolve(__dirname, '..', '..', 'saim', 'shared-ui', 'AttentionSurface.jsx'), 'utf8');
   assert.match(src, /corridorCards/, 'could not read AttentionSurface.jsx');  // positive control
   assert.match(src, /covered\?\.rowIndexes/, 'the corridor ignores the composer');
   assert.match(src, /if \(coveredRows\.has\(i\)\) return;/);
@@ -104,7 +104,7 @@ test('⚠ the corridor honours rowIndexes', () => {
 
 test('⚠ the now band stands down when the corridor is carrying the feed', () => {
   const src = fs.readFileSync(
-    path.resolve(__dirname, '..', '..', 'sara', 'shared-ui', 'Dashboard.jsx'), 'utf8');
+    path.resolve(__dirname, '..', '..', 'saim', 'shared-ui', 'Dashboard.jsx'), 'utf8');
   assert.match(src, /hideRows/, 'could not read Dashboard.jsx');   // positive control
   assert.match(src, /const showsNow = Boolean\(now\) && !hideRows;/);
   assert.match(src, /\{showsNow && <Now now=\{now\} \/>\}/);

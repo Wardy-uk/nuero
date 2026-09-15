@@ -1,7 +1,7 @@
 name: tests
 
 # Runs the suites nobody was running. Both were green only when someone
-# remembered to type `npm test`, which is how sara/backend sat red without
+# remembered to type `npm test`, which is how saim/backend sat red without
 # anyone noticing.
 on:
   push:
@@ -29,22 +29,22 @@ jobs:
         working-directory: backend
         # MUST run from backend/. `node --test` with no path walks the whole
         # repo from the cwd, so running this at the root silently pulls in
-        # sara/backend's suite too and the result depends on where you stood.
+        # saim/backend's suite too and the result depends on where you stood.
         run: npm test
 
-  sara-backend:
+  saim-backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          # SARA's runtime is deliberately pinned to Node 20 on the Pi.
+          # SAiM's runtime is deliberately pinned to Node 20 on the Pi.
           node-version: '20'
 
-      - name: Install SARA deps
-        working-directory: sara/backend
+      - name: Install SAiM deps
+        working-directory: saim/backend
         run: npm ci || npm install
 
-      - name: Run SARA tests
-        working-directory: sara/backend
+      - name: Run SAiM tests
+        working-directory: saim/backend
         run: npm test

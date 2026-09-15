@@ -3,7 +3,7 @@ import { apiUrl } from '../api';
 import './ActionsPanel.css';
 
 /**
- * Pending actions — the approval surface for everything SARA has queued.
+ * Pending actions — the approval surface for everything SAiM has queued.
  *
  * A lot of machinery was built, works, and could not be reached: nothing in
  * either frontend read `GET /api/actions`. `TodoPanel` handled only the todo
@@ -109,7 +109,7 @@ function ActionCard({ action, busy, onResolve, onSnooze, presets }) {
 
       <div className="ap-summary">{p.summary}</div>
 
-      {/* The action's own reason for existing — why SARA raised it, as opposed
+      {/* The action's own reason for existing — why SAiM raised it, as opposed
           to what approving it does. */}
       {action.reason && <div className="ap-reason">{action.reason}</div>}
 

@@ -40,7 +40,7 @@ const KINDS = {
   CAPTURE_NOTE: 'capture.note',
   CAPTURE_TODO: 'capture.todo',
   TODO_COMPLETE: 'todo.complete',
-  // Acting on a nudge is SARA's whole loop — she comes to him, and the answer
+  // Acting on a nudge is SAiM's whole loop — she comes to him, and the answer
   // has to survive being given on a watch in a lift. Added 5 Sep 2026 for the
   // native apps; the PWA calls the routes directly and does not use the outbox.
   NUDGE_COMPLETE: 'nudge.complete',

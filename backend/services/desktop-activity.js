@@ -3,8 +3,8 @@
 /**
  * What the laptop is doing — the one signal NEURO could not get any other way.
  *
- * Nick, 31 Aug 2026: "not working on my laptop (can SARA detect that?) and not
- * in a meeting — suggest a task. Too long coding (can SARA detect I've been in
+ * Nick, 31 Aug 2026: "not working on my laptop (can SAiM detect that?) and not
+ * in a meeting — suggest a task. Too long coding (can SAiM detect I've been in
  * VS Code for 4 hours?) — suggest a task."
  *
  * Both answers are yes, and neither is reachable from anything NEURO already
@@ -189,7 +189,7 @@ function currentRun(samples = [], now = new Date()) {
 /**
  * Whether he is at the laptop at all. PURE, and separate from `currentRun`
  * because "is he working" and "what is he working on" are different questions
- * with different failure modes — the first is what decides whether SARA should
+ * with different failure modes — the first is what decides whether SAiM should
  * be surfacing work, and it must never answer "no" merely because the laptop is
  * off the network.
  */

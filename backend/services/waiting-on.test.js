@@ -133,7 +133,7 @@ test('chasing queues for approval and sends nothing', async () => {
   assert.equal(result.sent, false);
   assert.ok(result.queuedActionId);
 
-  const pending = db.getPendingSaraActions(50);
+  const pending = db.getPendingSaimActions(50);
   const queued = pending.find(a => a.id === result.queuedActionId);
   assert.ok(queued && queued.type === 'chase_commitment');
   // The words AND the address are stored at queue time, so the approval screen
@@ -161,9 +161,9 @@ test('the recipient can be retargeted before approval, and only before', async (
   // `manual` is what tells the executor this was chosen, not guessed — a guess
   // has to clear the `resolved` gate, a choice does not.
   assert.equal(ok.to.source, 'manual');
-  assert.equal(db.getSaraAction(id).payload.to.email, 'nickw@nurtur.tech');
+  assert.equal(db.getSaimAction(id).payload.to.email, 'nickw@nurtur.tech');
 
-  db.updateSaraActionStatus(id, 'executed');
+  db.updateSaimActionStatus(id, 'executed');
   assert.equal(waitingOn.setChaseRecipient(id, 'someone@nurtur.tech').ok, false);
 });
 

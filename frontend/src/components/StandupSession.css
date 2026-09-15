@@ -52,7 +52,7 @@
 
 /* ── Whose conversation this is ──
    Same treatment as ChatPanel's message labels (9px mono, uppercase, accent),
-   because SARA appearing in two visually unrelated ways reads as two
+   because SAiM appearing in two visually unrelated ways reads as two
    assistants. The bubble already says who is speaking by its side and colour;
    the label is what says it is HER. */
 .ss__who {

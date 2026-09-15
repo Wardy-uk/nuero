@@ -172,12 +172,12 @@ async function buildContext(kind) {
   // for closing the day, and being asked to commit to a number at 5pm is the
   // wrong moment. Failures leave it null, which renders as nothing rather than
   // as "no target set": we could not look, which is a different fact.
-  // What SARA has quietened, and how her prompts are doing. EOD ONLY — this is
+  // What SAiM has quietened, and how her prompts are doing. EOD ONLY — this is
   // her confession, and the morning is not the moment for it.
   //
   // ⚠ This is what makes going quiet SAFE. She mutes a prompt that is not
   // helping without asking, which is what Nick wanted, and the whole reason that
-  // is not just "SARA silently breaking" is that she says so here and he can
+  // is not just "SAiM silently breaking" is that she says so here and he can
   // turn any of it back on in the same breath.
   if (kind === 'eod') {
     try {
@@ -203,7 +203,7 @@ async function buildContext(kind) {
 
   // What actually got FINISHED. The task list below is the OPEN pool, so a task
   // closed yesterday leaves it and leaves no trace anywhere else in this
-  // context — which is how SARA came to chase a commitment Nick had already
+  // context — which is how SAiM came to chase a commitment Nick had already
   // ticked off and told her about at EOD the night before. The wins ledger is
   // the one place a completion is recorded independently of the daily note:
   // ticking a task in NEURO does not tick a note line.
@@ -441,11 +441,11 @@ function _renderContext(ctx) {
 
 // ── Prompts ──────────────────────────────────────────────────────────────────
 
-// The voice is SARA's, from the one place it is defined — this file used to
+// The voice is SAiM's, from the one place it is defined — this file used to
 // carry its own summary of her, which is how the ritual ended up sounding like
 // a different assistant from the one in chat. Only what is specific to running
 // a ritual is stated here.
-const { VOICE_FULL } = require('./sara-voice');
+const { VOICE_FULL } = require('./saim-voice');
 
 const SHARED_VOICE = `${VOICE_FULL}
 
@@ -592,7 +592,7 @@ const SESSION_TOOLS = [
   },
   {
     name: 'resume_prompt',
-    description: 'Turn a prompt back on that SARA had quietened. Use the exact kind from the muted list in the context. Only when Nick asks for it.',
+    description: 'Turn a prompt back on that SAiM had quietened. Use the exact kind from the muted list in the context. Only when Nick asks for it.',
     input_schema: {
       type: 'object',
       properties: {
@@ -904,7 +904,7 @@ async function _turn(session) {
         // several at once. Measured on 11 Sep 2026: the closing turn emitted
         // five resolve_commitment calls, ran out at 400, delivered the fifth as
         // `{}` and never reached the `set_weekly_target` carrying the number
-        // Nick had just given — so his target was dropped in silence and SARA
+        // Nick had just given — so his target was dropped in silence and SAiM
         // asked him for it again. The providers now refuse a cut-off call
         // rather than running it, which makes the failure loud; this is what
         // stops it happening in the first place.
@@ -1065,7 +1065,7 @@ function _renderDailyNote(session) {
   // It compounds, which is what made it worth chasing rather than tidying:
   // today's Focus Today is what standup-accountability parses as tomorrow's
   // carry source, so every duplicate is re-read as another distinct open
-  // commitment the next morning. That is why SARA opened the standup insisting
+  // commitment the next morning. That is why SAiM opened the standup insisting
   // on "four escalations" Nick had no memory of and could not find in his
   // calendar, then contradicted herself about which day they came from. She was
   // not malfunctioning; she was reasoning faithfully over a list that had been

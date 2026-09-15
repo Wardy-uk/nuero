@@ -1,14 +1,14 @@
 'use strict';
 
 /**
- * What SARA says when Nick walks into a room that can speak.
+ * What SAiM says when Nick walks into a room that can speak.
  *
- * Nick, 11 Sep 2026: "if when I walked into a room where speech was enabled, SARA
+ * Nick, 11 Sep 2026: "if when I walked into a room where speech was enabled, SAiM
  * could actually greet me" — "it should vary the greeting so we don't get bored.
  * If it's work hours, work related; if not, doesn't need to say anything other than
  * the greeting."
  *
- * The ARRIVAL is decided in sara/backend (the room sensors live there); this module
+ * The ARRIVAL is decided in saim/backend (the room sensors live there); this module
  * decides whether to speak and what the words are, so every speaker — the HomePod,
  * the study tablet, anything added later — says one thing one way.
  *
@@ -31,7 +31,7 @@
 
 const db = require('../db/database');
 
-const LEDGER_KEY = 'sara_greetings';
+const LEDGER_KEY = 'saim_greetings';
 const COOLDOWN_MINUTES = 90;
 
 // How close a meeting has to be before it is worth saying at the door. Wide
@@ -50,9 +50,9 @@ const WORK_END_MINUTES = 18 * 60;
 
 // ⚠ Every opener uses his name (Nick, 11 Sep 2026, after "Welcome back." on the
 // first live test: "it didn't use my name"). A greeting without it reads as an
-// announcement to the room rather than SARA speaking to him. Pinned by a test.
+// announcement to the room rather than SAiM speaking to him. Pinned by a test.
 // ⚠ NATURAL, CASUAL, FRIENDLY (Nick, 12 Sep 2026) — the first cut read like an
-// announcement rather than a person. Still SARA's register, not a cheerful assistant's:
+// announcement rather than a person. Still SAiM's register, not a cheerful assistant's:
 // no exclamation marks, no "great to see you", nothing that fakes delight. Warm and dry,
 // the way somebody in the room would actually say it. Pinned by tests.
 const OPENERS = {
@@ -90,7 +90,7 @@ function isWorkHours(now, isWorkingDay) {
 }
 
 /**
- * Should SARA speak at all? PURE.
+ * Should SAiM speak at all? PURE.
  * @returns {{speak: boolean, why: string|null}}
  */
 function decide({ room, now, quiet, inMeeting, ledger, cooldownMinutes = COOLDOWN_MINUTES }) {
@@ -120,9 +120,9 @@ function terminate(s) {
 /**
  * THE ONE THING WORTH SAYING AS HE WALKS IN. PURE.
  *
- * Nick, 13 Sep 2026: *"take JARVIS as a concept and build it into SARA."* The
+ * Nick, 13 Sep 2026: *"take JARVIS as a concept and build it into SAiM."* The
  * greeting already had the hard parts - she notices him arrive, she owns a
- * cooldown, and NEURO decides the words while SARA only delivers them. What
+ * cooldown, and NEURO decides the words while SAiM only delivers them. What
  * it said was a greeting plus the top task, which is the same sentence
  * whatever is actually happening.
  *
@@ -307,7 +307,7 @@ async function claim({ room, now = new Date(), preview = false } = {}) {
   try {
     const settings = require('./attention-settings');
     const s = settings.read();
-    // SARA paused counts as quiet too — Nick told her to stop.
+    // SAiM paused counts as quiet too — Nick told her to stop.
     quiet = settings.isQuietAt(s, now) || settings.isPaused(s, now) || s.enabled === false;
   } catch { /* unreadable settings: fall through to the other gates */ }
 

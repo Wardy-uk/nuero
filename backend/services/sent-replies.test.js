@@ -86,7 +86,7 @@ test('recording never throws — the mail has already been sent', () => {
 });
 
 test('list is newest first and its total is not the capped count', () => {
-  // getPendingSaraActions defaulted to 10 and reported a queue of 930 as 10.
+  // getPendingSaimActions defaulted to 10 and reported a queue of 930 as 10.
   const total = sentReplies.count();
   const page = sentReplies.list({ limit: 1 });
   assert.equal(page.replies.length, 1);

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * SARA's presence: colour carries her state, visibility does not.
+ * SAiM's presence: colour carries her state, visibility does not.
  *
  * Nick, 6 Sep 2026: "she should always be visible — it should be the colour of
  * her presence that changes, not the visibility." The iOS app (Wardy-uk/nuero-ios,
@@ -12,7 +12,7 @@
  * mirror the Swift suite's assertions, plus a source scan so a pure module
  * nothing renders cannot pass for a shipped one.
  *
- * `sara/shared-ui` is ESM and this suite is CommonJS, so the module is pulled in
+ * `saim/shared-ui` is ESM and this suite is CommonJS, so the module is pulled in
  * with a dynamic import (the vault-browser-health pattern).
  */
 
@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const SHARED = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui');
+const SHARED = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui');
 const MODULE_URL = pathToFileURL(path.join(SHARED, 'fieldDrive.mjs')).href;
 
 let m;

@@ -96,7 +96,7 @@ test('outward-facing tools queue for approval and send nothing', async () => {
   assert.equal(booking.ok, true);
   assert.equal(booking.booked, false);
 
-  const pending = db.getPendingSaraActions(20);
+  const pending = db.getPendingSaimActions(20);
   assert.ok(pending.some(a => a.id === reply.queued_action_id && a.type === 'draft_reply'));
   assert.ok(pending.some(a => a.id === booking.queued_action_id && a.type === 'schedule_focus_block'));
 });
@@ -117,7 +117,7 @@ test('escalate_ticket queues and escalates nothing', async () => {
   assert.equal(res.escalated, false, 'chat must never escalate directly');
   assert.ok(res.queued_action_id);
 
-  const queued = db.getPendingSaraActions(20).find(a => a.id === res.queued_action_id);
+  const queued = db.getPendingSaimActions(20).find(a => a.id === res.queued_action_id);
   assert.equal(queued.type, 'escalate_ticket');
   const payload = typeof queued.payload === 'string' ? JSON.parse(queued.payload) : queued.payload;
   assert.equal(payload.ticketKey, 'NT-28061', 'ticket key is normalised to upper case');

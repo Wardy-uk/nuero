@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * /api/signals — every sense SARA has, and whether it is actually working.
+ * /api/signals — every sense SAiM has, and whether it is actually working.
  *
  * READ-ONLY. This page must never be the reason something changed.
  */
@@ -12,7 +12,7 @@ const signals = require('../services/signals');
 
 router.get('/', async (req, res) => {
   try {
-    // The room sensors live on SARA (:3005). Read ONCE here and hand the result to
+    // The room sensors live on SAiM (:3005). Read ONCE here and hand the result to
     // the snapshot, which judges it purely — rather than a network call per row.
     // A failure is passed through as a failed read, never as "no sensors".
     let rooms = { ok: false, why: 'the room sensors were not read', sensors: [] };

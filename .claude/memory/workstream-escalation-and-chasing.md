@@ -67,7 +67,7 @@ customer, or emailing a direct report something that reads as surveillance.
   forbidden list, but **writes need explicit confirmation from Nick**. Read
   `daypilot/CLAUDE.md` before touching NOVA.
 - Every outbound action in NEURO is approval-gated (`queueAction` → pending
-  `sara_action` → `/api/actions/:id/approve`). Keep that.
+  `saim_action` → `/api/actions/:id/approve`). Keep that.
 
 ---
 
@@ -90,7 +90,7 @@ customer, including by a caller passing the wrong boolean.
 applying to capability reasons only.
 
 **Q3. Who can escalate → Nick only in v1, but built for more.**
-No NOVA UI in v1; reached from NEURO chat and the SARA mobile route. **`escalated_by`
+No NOVA UI in v1; reached from NEURO chat and the SAiM mobile route. **`escalated_by`
 comes from the JWT, never hardcoded**, so a NOVA AM-facing UI in v2 is purely additive.
 
 **Q4. What the escalation writes → `duedate` + internal comment + Priority.**
@@ -207,19 +207,19 @@ escalation and first-drafts are **the NT support queue**. They only share a word
 **STATUS 15 Aug 18:20 — steps 1–5 code-complete. Resume at step 6, escalation
 first-drafts Phase A.** Steps 1–4 are live and proven. Step 5's code is deployed
 but both Teams paths are dark pending two things only Nick can do — see step 5. Escalation reaches NOVA over the
-**NEURO bridge**, not the `@sara` service account — that account's password did
+**NEURO bridge**, not the `@saim` service account — that account's password did
 not exist anywhere, and the bridge is hardcoded to Nick so attribution is honest.
 Verified end to end on NT-28075.
 
 Step 4's UI shipped as `components/WaitingOn.jsx` on the People board and in
-PersonDetail, plus read-only enrichment in `_buildPrep` rendered by `sara/app`
+PersonDetail, plus read-only enrichment in `_buildPrep` rendered by `saim/app`
 MeetingPrep. Verified on the running Pi at 390×844: 287/29/107d, no horizontal
 overflow, every 1-2-1 in the week carries the right person's list.
 
 **The chase executor RAN and the email arrived — verified live 15 Aug**, on a
 chase queued against Naomi's 107-day item and retargeted to Nick's own address.
 Full chain proven: `queueChase` (resolves + stores the address and the words) →
-pending `sara_action` → manual recipient override → approve →
+pending `saim_action` → manual recipient override → approve →
 `email-sender.sendMail` over Graph → `markChased`. Nothing in this workstream is
 now built-but-unproven.
 
@@ -234,7 +234,7 @@ refused. That is why the recipient is editable; an override is stamped
 2. **`POST /escalation/manual`** — log row, internal-only comment, `duedate` tighten-only,
    Priority raise-only-to-Critical. **Verify editmeta on a real ticket before the first
    write** (createmeta is not proof). Notification behind the Q8/Q9 email-first path.
-3. **NEURO capture surface** — a chat tool and a SARA mobile route calling NOVA directly
+3. **NEURO capture surface** — a chat tool and a SAiM mobile route calling NOVA directly
    (decided: direct, not via n8n). NEURO needs a service identity; NOVA's routes are
    JWT-guarded by role, and `escalated_by` reads from that token.
 4. ~~**waiting-on KV→table migration** (Q13) — then the **People board + 1-2-1 prep UI**

@@ -4,7 +4,7 @@
  * "That's finished" — a meeting that ended early.
  *
  * ⚠ WHY. Nick, 8 Sep 2026: *"we should probably add a 'done' button for when a
- * meeting ends early ;)"*. Being in a meeting is the ONE state where SARA
+ * meeting ends early ;)"*. Being in a meeting is the ONE state where SAiM
  * interrupting is actively wrong, so `context-state` sets `quiet` and
  * `attention.gate()` holds everything back — correctly, and entirely off the
  * CALENDAR's word. A meeting scheduled to 14:30 that broke up at 14:10 therefore
@@ -16,7 +16,7 @@
  *
  * ⚠ IT RELEASES A STATE AND CAN NEVER CREATE ONE. There is deliberately no way
  *   to declare yourself INTO a meeting: the calendar decides that, and a manual
- *   way to make SARA go quiet is a mute button wearing a meeting's clothes.
+ *   way to make SAiM go quiet is a mute button wearing a meeting's clothes.
  *
  * ⚠ IT IS KEYED TO THE OCCURRENCE, NEVER A BOOLEAN. A flag reading "not in a
  *   meeting" would silence the state for the NEXT meeting too — a different
@@ -33,7 +33,7 @@
  *   records where HE is, not when the meeting ended, and `scheduledEnd` keeps
  *   the diary's own fact intact beside it.
  *
- * ⚠ THERE IS A WAY BACK (`resume`), because the cost of a wrong press is SARA
+ * ⚠ THERE IS A WAY BACK (`resume`), because the cost of a wrong press is SAiM
  *   speaking up in a real meeting — the exact failure being guarded. Every other
  *   reversible decision in this codebase has one (`restore`, `unmerge`,
  *   `unlink`, `forget`, `undefer`) and this is the one where the wrong direction
@@ -118,7 +118,7 @@ function prune(entries, now = new Date()) {
  * Apply the overrides to a calendar input. PURE.
  *
  * ⚠ It only ever moves an end EARLIER, and never before the start. An override
- * that could extend a meeting would be a way to make SARA go quiet for longer,
+ * that could extend a meeting would be a way to make SAiM go quiet for longer,
  * which rule one forbids; a negative-length event would break every consumer
  * that subtracts two times.
  *

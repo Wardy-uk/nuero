@@ -83,7 +83,7 @@ test('a duplicate number keeps both rows, in file order', () => {
   const dupes = CAPTURED.replace(
     '| 119 | **npm test writes to the real vault** | NEURO | **Captured 16 Aug** | note two |',
     '| 114 | **First of the pair** | NEURO | **Captured 16 Aug** | a |\n' +
-    '| 114 | **Second of the pair** | SARA | **Captured 16 Aug** | b |'
+    '| 114 | **Second of the pair** | SAiM | **Captured 16 Aug** | b |'
   );
   withTracker(`${RANKED}\n${dupes}`, () => {
     const r = tracker.listCaptured({ limit: 50 });
@@ -134,12 +134,12 @@ test('limit is bounded, and nonsense falls back to the default', () => {
 
 test('a captured row survives a round trip through captureFeature', () => {
   withTracker(RANKED, () => {
-    const w = tracker.captureFeature({ title: 'A thing on the train', system: 'SARA', notes: 'why' });
+    const w = tracker.captureFeature({ title: 'A thing on the train', system: 'SAiM', notes: 'why' });
     assert.strictEqual(w.ok, true);
     const r = tracker.listCaptured({});
     assert.strictEqual(r.total, 1);
     assert.strictEqual(r.items[0].number, w.number);
     assert.strictEqual(r.items[0].title, 'A thing on the train');
-    assert.strictEqual(r.items[0].system, 'SARA');
+    assert.strictEqual(r.items[0].system, 'SAiM');
   });
 });

@@ -1,11 +1,11 @@
 'use strict';
 
 /**
- * Attention — the one thing SARA should surface right now.
+ * Attention — the one thing SAiM should surface right now.
  *
- * NEURO is the brain: it collates and directs. SARA is the voice, ears and eyes,
+ * NEURO is the brain: it collates and directs. SAiM is the voice, ears and eyes,
  * and comes to Nick rather than waiting to be navigated. That makes THIS the
- * feed both SARA surfaces render — one primary thing, its spoken form, and the
+ * feed both SAiM surfaces render — one primary thing, its spoken form, and the
  * honest reason it won.
  *
  * ── The rule that keeps this from becoming a second decision engine ──────────
@@ -16,14 +16,14 @@
  *
  * The one exception is deliberate and is not a candidate: when the context
  * itself is the answer ("you're in a meeting", "you're in a focus session"),
- * the primary is a CONTEXT card. It carries no work and claims none; it is SARA
+ * the primary is a CONTEXT card. It carries no work and claims none; it is SAiM
  * describing the frame, not proposing a job. `kind` distinguishes the two so no
  * consumer can mistake one for the other.
  *
  * ── Silence is a correct answer ─────────────────────────────────────────────
  * An ambient surface that always has something to say is a nudge machine, and
  * nudge volume is the one signal allowed to argue against building more. In a
- * meeting SARA says nothing. `primary: null` is a valid result, not a failure.
+ * meeting SAiM says nothing. `primary: null` is a valid result, not a failure.
  *
  * ── Confidence decides how much we are allowed to HIDE ───────────────────────
  * Two different powers, two different bars:
@@ -47,7 +47,7 @@
  */
 
 const { resolveContext, ACTIVITY, isRealMeeting } = require('./context-state');
-const { resolveSaraLiteTab } = require('../../shared/action-surfaces.cjs');
+const { resolveSaimLiteTab } = require('../../shared/action-surfaces.cjs');
 const { describeDeferral } = require('../../shared/deferral-line.cjs');
 
 // ⚠ The zone the SCREEN is in, never the host's. The Pi may run in UTC, and a
@@ -92,7 +92,7 @@ function contextCard(id, title, reason) {
  * The card's reason, said as a sentence instead of listed as fields.
  *
  * `decision-engine` builds `reason` as dot-joined fragments — "Marked high
- * priority · 1 day overdue · 34 other overdue" — which is a data dump, not SARA
+ * priority · 1 day overdue · 34 other overdue" — which is a data dump, not SAiM
  * talking. This composes the same facts from the item's own `meta` into one
  * line in her register: direct, no hedging, no cheerleading.
  *
@@ -118,7 +118,7 @@ function sayLine(item, now = new Date()) {
       const rest = Number(meta.overdueCount) - 1;
       if (rest <= 0) return `${over}.`;
       // The verb agrees with the count, not just the noun — "1 other are
-      // behind it" is the kind of sentence that stops SARA sounding like a
+      // behind it" is the kind of sentence that stops SAiM sounding like a
       // person the moment the pile drops to two.
       const tail = rest === 1 ? '1 other is behind it' : `${rest} others are behind it`;
       return `${over}, and ${tail}.`;
@@ -199,7 +199,7 @@ function itemCard(item, now) {
     type: item.type,
     title: item.title,
     reason: item.reason || null,
-    // What SARA actually says about it. `reason` is kept alongside so nothing
+    // What SAiM actually says about it. `reason` is kept alongside so nothing
     // that wants the raw fields loses them.
     say: sayLine(item, now),
     urgency: item.urgency || null,
@@ -219,7 +219,7 @@ function itemCard(item, now) {
     // `tabFor` passes meta and got `standup`, so the button and this field
     // disagreed about one card: exactly the drift the paragraph above forbids,
     // two lines below it.
-    tab: resolveSaraLiteTab({ type: item.type, meta: item.meta }),
+    tab: resolveSaimLiteTab({ type: item.type, meta: item.meta }),
     // Carried so the lifecycle can BOUND the action set: an unsuppressable item
     // is exactly what the engine keeps on screen deliberately, and offering a
     // dismiss button it will refuse to honour is worse than not offering one.
@@ -229,7 +229,7 @@ function itemCard(item, now) {
 }
 
 /**
- * Decide what SARA surfaces, given a context and the decision-engine pool.
+ * Decide what SAiM surfaces, given a context and the decision-engine pool.
  *
  * PURE — no DB, no clock, no I/O. The gating IS the product, so it pins without
  * a Pi or a vault (the `pi-health.assess()` / `state-of-play.assess()` split).
@@ -278,7 +278,7 @@ function gate(context, items, now = new Date()) {
       // The one state where speaking up is wrong by default. Nothing is
       // surfaced; nothing is lost — it is all in `dropped` and the pool is
       // unchanged underneath.
-      drop(() => false, 'in a meeting — SARA stays out of the way');
+      drop(() => false, 'in a meeting — SAiM stays out of the way');
       primary = contextCard('context-in-meeting', ctx.label, ctx.summary);
       rationale = 'In a meeting, so nothing is surfaced and nothing is spoken.';
       break;
@@ -336,7 +336,7 @@ function gate(context, items, now = new Date()) {
       // `speech` and `quiet:false` — the layer built to stop NEURO asserting
       // things it had not checked, asserting something it had not checked.
       // Away must not be quiet: presence means "not at home", the phone is in
-      // his pocket, and being out is precisely when SARA coming to him is the
+      // his pocket, and being out is precisely when SAiM coming to him is the
       // whole point. Being away is also not a reason to decide the work matters
       // less than it did a minute ago.
       primary = kept.length ? itemCard(kept.shift(), now) : null;
@@ -433,7 +433,7 @@ function _calendarInput(gaps) {
       return require('./meeting-finish').applyTo(calendar, require('./meeting-finish').list(now), now);
     } catch (e) {
       // An unreadable override overrides nothing — the diary's own word stands,
-      // which is the status quo and the safe direction (SARA stays quiet).
+      // which is the status quo and the safe direction (SAiM stays quiet).
       console.warn('[Attention] meeting overrides unavailable:', e.message);
       return calendar;
     }
@@ -493,7 +493,7 @@ function _currentMeeting(calendar, now) {
  *
  * ⚠ The route uses this INSTEAD OF the request body. A client posting its own
  * start and end times is a client that can silence any meeting it likes,
- * including one it invented — all it may send is the key SARA gave it, for the
+ * including one it invented — all it may send is the key SAiM gave it, for the
  * server to check against what is actually running.
  */
 function currentMeetingEvent(now = new Date()) {
@@ -682,7 +682,7 @@ async function gather(now = new Date()) {
     const active = session && session.status === 'active' && !session.stale ? session : null;
     inputs.focusSession = {
       known: true,
-      // ⚠ Widened for the session DASHBOARD (`sara-surface.js`). `current()`
+      // ⚠ Widened for the session DASHBOARD (`saim-surface.js`). `current()`
       // already computed every one of these, so this is a projection, not a
       // second calculation — the elapsed figure in particular must stay the
       // one focus-session owns, because it is FOCUS time with paused stretches
@@ -739,7 +739,7 @@ async function gather(now = new Date()) {
   //
   // ⚠ These add NO CANDIDATES and change no ranking. `decision-engine` stays the
   // one place something becomes worth surfacing; these are read purely so
-  // `sara-surface` can render a dashboard with something in it rather than a
+  // `saim-surface` can render a dashboard with something in it rather than a
   // heading over the generic pool. Both are LOCAL reads (a `agent_state` blob
   // and the triage blob), so neither puts a network call on a path polled every
   // minute by three surfaces.
@@ -810,7 +810,7 @@ async function gather(now = new Date()) {
   // ⚠ THE GAP IS DECIDED AFTER THE FALLBACK, NOT HERE (12 Sep 2026). This used to
   // push "OwnTracks recorded no dwell today" the moment the dwell list was empty —
   // and then Home Assistant answered "home" a few lines below, leaving a gap nobody
-  // withdrew. SARA rendered it as "couldn't read location" while knowing exactly
+  // withdrew. SAiM rendered it as "couldn't read location" while knowing exactly
   // where Nick was. An empty dwell list is NOT blindness: a dwell needs 20 minutes
   // inside 200m, so a morning spent moving about has none by construction.
   inputs.location = { known: false };
@@ -887,7 +887,7 @@ async function gather(now = new Date()) {
 }
 
 /**
- * Build the attention feed. This is what both SARA surfaces render.
+ * Build the attention feed. This is what both SAiM surfaces render.
  */
 async function build({ now = new Date(), view = null, ask = null } = {}) {
   const { inputs, gaps } = await gather(now);
@@ -958,7 +958,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
 
   // ── Ambient observations ──────────────────────────────────────────────────
   //
-  // What SARA can notice about Nick's body and his day: sat still a long time,
+  // What SAiM can notice about Nick's body and his day: sat still a long time,
   // no exercise for three days, a health trend against his own baseline, nothing
   // logged for food when he normally logs it.
   //
@@ -969,7 +969,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   // "you've been sitting for two hours" compete with a breaching escalation for
   // the primary slot.
   //
-  // ⚠ NOTHING HERE NOTIFIES. Pull only. Six new interruption sources is how SARA
+  // ⚠ NOTHING HERE NOTIFIES. Pull only. Six new interruption sources is how SAiM
   // becomes a pest and gets muted, and nudge volume is the one budget allowed to
   // argue against building more. It is rendered where he is already looking.
   //
@@ -1000,7 +1000,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   }
 
   // What he is working on, and whether he is AT THE LAPTOP. The second half is
-  // what lets SARA offer to open something there — an intent expires in about
+  // what lets SAiM offer to open something there — an intent expires in about
   // one agent poll, so offering it when the machine is asleep queues something
   // that dies unclaimed and reads as broken.
   //
@@ -1103,7 +1103,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     const summary = wins.summary();
     // WARNING  `headline()` RETURNS NULL ON ZERO, deliberately - there is no
     //   encouraging version of an empty day, and a fabricated cheerful line is
-    //   the register `sara-voice` rejects. Phrased ONCE here, server-side, so
+    //   the register `saim-voice` rejects. Phrased ONCE here, server-side, so
     //   every surface says it the same way.
     didRecently = { known: true, headline: wins.headline(summary) || null };
   } catch (e) {
@@ -1340,8 +1340,8 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   }
 
   // ⚠ Composed LAST, from the payload this function has just assembled, and
-  // deliberately never allowed to fail the feed. SARA showing the wrong
-  // dashboard is a bad afternoon; SARA showing nothing is the outage the whole
+  // deliberately never allowed to fail the feed. SAiM showing the wrong
+  // dashboard is a bad afternoon; SAiM showing nothing is the outage the whole
   // honesty model exists to make visible, and a framing layer must not be able
   // to cause one. A null `surface` reads to every client as "render the feed the
   // way you did before this existed", which is exactly the right degradation.
@@ -1376,7 +1376,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
       // The meeting he is in, addressable — see `_currentMeeting`.
       meeting: _currentMeeting(inputs.calendar, now),
     };
-    framed = require('./sara-surface').compose(draft, {
+    framed = require('./saim-surface').compose(draft, {
       session: inputs.focusSession && inputs.focusSession.active ? inputs.focusSession.active : null,
       ask,
     });
@@ -1405,7 +1405,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   // makes her press is how the field and the cards came to disagree before.
   let field = null;
   try {
-    const fd = await import('../../sara/shared-ui/fieldDrive.mjs');
+    const fd = await import('../../saim/shared-ui/fieldDrive.mjs');
     const state = {
       activity: context && context.activity,
       confidenceLevel: (context && context.confidence && context.confidence.level) || 'low',
@@ -1451,7 +1451,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     lastNight,
     ...gated,
     // ── What she SHOWS, and what he could SAY ────────────────────────────
-    // Nick, 31 Aug 2026: SARA is a manifestation, not a menu — "a series of
+    // Nick, 31 Aug 2026: SAiM is a manifestation, not a menu — "a series of
     // dashboards, and everything she can do should be achievable
     // conversationally". Both halves are composed server-side beside `say`,
     // `speech` and `tab`, for the same reason those are: three surfaces render

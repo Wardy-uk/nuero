@@ -936,7 +936,7 @@ test('a CONFIRMED People HR gap does reach the report, and says it is confirmed'
  * Behaviour, not source text.
  *
  * The first version of this test asserted that queueSend's SOURCE contained
- * `getPendingSaraActionsByType` and `alreadyQueued`. It did — and the dedupe was
+ * `getPendingSaimActionsByType` and `alreadyQueued`. It did — and the dedupe was
  * broken anyway, because the payload was double-parsed and a defensive catch
  * swallowed the throw. A test that reads the code cannot catch the code being
  * wrong, so this one drives the real thing against a scratch DB.
@@ -959,7 +959,7 @@ test('queueSend dedupes on the week — a second press returns the SAME action',
   const payload = { week, to: [{ email: 'chris@nurtur.tech' }], subject: 's', body: 'b' };
   const first = engine.queueAction('send_weekly_risk_report', payload, 'test');
 
-  const pending = db.getPendingSaraActionsByType('send_weekly_risk_report', 50);
+  const pending = db.getPendingSaimActionsByType('send_weekly_risk_report', 50);
   assert.equal(pending.length, 1);
   assert.equal(typeof pending[0].payload, 'object',
     'the db helper parses payload — re-parsing it is what broke the dedupe');

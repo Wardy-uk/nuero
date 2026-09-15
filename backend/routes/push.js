@@ -38,7 +38,7 @@ router.post('/subscribe', (req, res) => {
 router.post('/test', async (req, res) => {
   try {
     const before = (db.getPushLog(1)[0] || {}).id || 0;
-    await webpush.sendToAll('SARA', 'Push notifications are working.', { type: 'test' });
+    await webpush.sendToAll('SAiM', 'Push notifications are working.', { type: 'test' });
     const row = db.getPushLog(20).find((r) => r.id > before && r.type === 'test');
     if (!row) return res.json({ ok: false, outcome: 'unknown', reason: 'NEURO recorded no outcome for the test' });
     const sent = row.outcome === 'sent' && row.sent_count > 0;
@@ -112,7 +112,7 @@ router.delete('/subscriptions', (req, res) => {
 
 // ── APNs, for the native apps ────────────────────────────────────────────────
 //
-// ⚠ Web Push cannot reach a native iOS app, so without these SARA has no way to
+// ⚠ Web Push cannot reach a native iOS app, so without these SAiM has no way to
 // COME TO NICK — which is her whole premise. This is the REGISTRY half; the
 // sender needs an APNs signing key and therefore a paid Apple Developer
 // account. See `services/apns.js` for why stopping here is deliberate.

@@ -35,7 +35,7 @@ test('⚠ NEGATIVE: an app outside the vocabulary is REFUSED, not queued', () =>
   for (const bad of ['powershell', 'cmd', 'rm -rf /', '', null, 'MUSIC', '../../evil']) {
     const r = di.queue(bad);
     assert.equal(r.ok, false, JSON.stringify(bad));
-    assert.match(r.reason, /not something SARA can open/);
+    assert.match(r.reason, /not something SAiM can open/);
   }
   assert.deepEqual(di.claim({ canOpen: ABLE }).intents, [], 'and nothing reached the queue');
 });

@@ -1,7 +1,7 @@
-# SARA as Home Assistant's conversation agent
+# SAiM as Home Assistant's conversation agent
 
-`custom_components/sara/` makes NEURO's brain the thing that answers when Nick
-talks to a voice satellite — so "SARA instead of Alexa" is one agent rather
+`custom_components/saim/` makes NEURO's brain the thing that answers when Nick
+talks to a voice satellite — so "SAiM instead of Alexa" is one agent rather
 than a list of memorised phrases.
 
 ## Why it is a custom component and not `intent_script`
@@ -20,7 +20,7 @@ bridge was never broken; the response simply cannot reach a speech template.
 
 Consequences, both confirmed live before this was built:
 
-* every "ask SARA …" answered **"Nothing came back from the bridge to NEURO."**
+* every "ask SAiM …" answered **"Nothing came back from the bridge to NEURO."**
 * every voice capture answered **"I cannot say whether that saved"** — even
   when the save had worked, which is provable because the underlying
   `rest_command` creates the task fine.
@@ -86,17 +86,17 @@ around it is plumbing.
 ## Deploying
 
 ```bash
-tar -czf /tmp/sara-cc.tgz -C homeassistant/custom_components sara
-scp /tmp/sara-cc.tgz nickw@100.100.28.58:/tmp/
+tar -czf /tmp/saim-cc.tgz -C homeassistant/custom_components saim
+scp /tmp/saim-cc.tgz nickw@100.100.28.58:/tmp/
 ssh nickw@100.100.28.58 '
   cd /mnt/data/homeassistant/config/custom_components
-  sudo rm -rf sara/__pycache__ && sudo tar -xzf /tmp/sara-cc.tgz && sudo chown -R root:root sara
-  docker exec homeassistant python3 -m compileall -q /config/custom_components/sara
+  sudo rm -rf saim/__pycache__ && sudo tar -xzf /tmp/saim-cc.tgz && sudo chown -R root:root saim
+  docker exec homeassistant python3 -m compileall -q /config/custom_components/saim
 '
 # then restart Home Assistant
 ```
 
-Setup is a normal config flow (Settings → Devices & Services → Add → SARA),
+Setup is a normal config flow (Settings → Devices & Services → Add → SAiM),
 asking for the NEURO base URL, an API token and a timeout.
 
 ⚠ **The token lives in the config entry, never in this repo** — the repo is
@@ -104,7 +104,7 @@ public, which is how the PIN leaked in July.
 
 ## Live configuration on the Pi (13 Sep 2026)
 
-* `conversation.sara` entity exists and is the agent for the **SARA watch**
+* `conversation.saim` entity exists and is the agent for the **SAiM watch**
   pipeline (faster-whisper + piper), which is what
   `select.living_room_assistant` is set to.
 * The bare **Home Assistant** pipeline is deliberately left on HA's own agent:
@@ -112,7 +112,7 @@ public, which is how the PIN leaked in July.
   agent that is definitely Home Assistant's own is the way back.
 * `custom_sentences/en/neuro.yaml` and the three `Neuro*` entries in
   `intent_script.yaml` are **retired** (backed up alongside). ⚠ Leaving them
-  was not neutral: `"Sara {text}"` is a catch-all matching almost any sentence
+  was not neutral: `"Saim {text}"` is a catch-all matching almost any sentence
   beginning with her name, and HA is asked first — so every one of those would
   still be answered by the path that cannot work.
 * `rest_command.yaml` is **kept**: `neuro_watchdog_note` is used by a live
@@ -145,7 +145,7 @@ part worth keeping:
    was answered **"No"** with no tool call at all.
 3. **So the house is READ BEFORE THE MODEL.** A deterministic router
    (`looksLikeHouseQuestion`) puts the reading in front of it, removing the
-   opportunity to invent rather than asking it not to — `checkSaraGrounding`'s
+   opportunity to invent rather than asking it not to — `checkSaimGrounding`'s
    lesson, and `event-parser`'s regex-first rule.
 
 And then the fault MOVED: with chat answering correctly, the agent was still

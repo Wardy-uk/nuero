@@ -4,7 +4,7 @@
  * mobile-snapshot — "Nick Now", the compact working set Neuro Mobile renders.
  *
  * This is a NEURO-OWNED CONTRACT, deliberately defined here rather than allowed
- * to become "whatever SARA's presentation model happens to be this week". The
+ * to become "whatever SAiM's presentation model happens to be this week". The
  * phone caches it and shows it offline, so its shape is a promise.
  *
  * Three rules run through the whole thing, and they are the same three that run

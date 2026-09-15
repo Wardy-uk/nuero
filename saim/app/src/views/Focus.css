@@ -1,0 +1,107 @@
+.focus__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.focus__refresh {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 10px;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.focus__hint { margin-top: 0.5rem; color: var(--muted); font-size: 0.8rem; }
+
+.focus__briefing {
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.16);
+  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.5);
+  line-height: 1.45;
+}
+
+/* ⚠ The lead's edge is HERS. This is the one card on the screen that is the
+   answer rather than a candidate, so it moves with her state like the rest of
+   the app — `rgb(var(--saim-rgb, 114, 150, 211))` was the fixed system blue asserting a state she
+   may not be in. */
+.focus__next { border-left: 3px solid rgb(var(--saim-rgb, 114, 150, 211)); }
+.focus__tap {
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+/* ⚠ Hers, not a hardcoded blue. `rgba(76, 154, 255)` is the system accent
+   under another name — a card that lights up in a colour she is not in, at the
+   moment he reaches for it. */
+.focus__tap:hover {
+  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.55);
+}
+.focus__next-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.focus__next-title { font-size: 1.1rem; font-weight: 600; margin-top: 0.2rem; }
+.focus__next-reason { color: var(--muted); font-size: 0.85rem; margin-top: 0.3rem; }
+
+.focus__clear { text-align: center; color: var(--muted); }
+
+.focus__item { display: flex; align-items: flex-start; gap: 0.6rem; }
+.focus__item-main { flex: 1; min-width: 0; }
+.focus__item-title { font-weight: 600; }
+.focus__item-reason { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+
+.focus__item-meta { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+.focus__badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.focus__badge--critical { background: #4a1420; color: #ff9db0; }
+.focus__badge--high { background: #4a2f14; color: #ffcf8a; }
+.focus__badge--medium { background: #14324a; color: #8ad0ff; }
+.focus__badge--low { background: var(--panel-2); color: var(--muted); }
+
+.focus__type { color: var(--muted); font-size: 0.75rem; }
+.focus__score { color: var(--muted); font-size: 0.75rem; margin-left: auto; }
+
+/* Left accent by urgency */
+.focus__u--critical { border-left: 3px solid #ff6b8a; }
+.focus__u--high { border-left: 3px solid #ffb45c; }
+/* ⚠⚠ A FIXED BLUE, NOT HERS, and deliberately so. These three are a SEVERITY
+   ramp — red, amber, blue — describing how urgent an ITEM is, which is a
+   different claim from how the day is going. `rgb(var(--saim-rgb, 114, 150, 211))` made the bottom of
+   that ramp the one rung that moved: on a day she has gone red, every `medium`
+   row would have carried a red edge and read as critical. The ramp has to be
+   self-consistent or it stops being a ramp, so this is the explicit blue that
+   matches its own badge (`.focus__badge--medium`) rather than a token that
+   belongs to something else.
+
+   Same call as MoSCoW on Tasks and the Personal badge beside it: item meaning
+   keeps its own colours; only HER state moves with her. */
+.focus__u--medium { border-left: 3px solid #8ad0ff; }
+
+.focus__dismiss {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.2rem;
+}
+.focus__dismiss:disabled { opacity: 0.4; }
+
+/* ⚠ The one FAULT on this screen, sharing the primitive's red rather than
+   inventing another. Everything else here that is not the happy path —
+   "Nothing pressing", "asking the brain" — is a statement. */
+.focus__fault {
+  border-color: rgba(224, 84, 58, 0.55);
+  background: rgba(224, 84, 58, 0.1);
+}

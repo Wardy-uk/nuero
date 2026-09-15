@@ -21,7 +21,7 @@
  * Plauds a solo work block. So the evidence is an outcome note Nick writes, and
  * until one lands the task **holds at `awaiting-writeup` rather than going
  * done** (Nick's call, 18 Aug). That hold is enforced in `task-store.updateTask`,
- * the single writer, so it cannot be walked around by the SARA completion
+ * the single writer, so it cannot be walked around by the SAiM completion
  * funnel, the MCP tool, the chat tool or the route.
  *
  * Three refusals carry the design:
@@ -971,7 +971,7 @@ function holdsNow(block, now = new Date()) {
  *
  * Returns the blocking row, or null. Called by `task-store.updateTask` on the
  * transition to 'done' — the one place every completion path funnels through,
- * which is why the hold cannot be walked around by the SARA funnel, the MCP
+ * which is why the hold cannot be walked around by the SAiM funnel, the MCP
  * tool, the chat tool or the route.
  *
  * **A vault that cannot be read does NOT hold the task.** That is deliberate and

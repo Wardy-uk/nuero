@@ -10,7 +10,7 @@
  *
  * The tone rule is the same one the nudges follow: state the fact, name what it
  * suggests, never imply a verdict about Nick. "Snoozes up 40%" is useful. "You
- * ignored SARA 40% more this week" is the sentence that gets the review closed.
+ * ignored SAiM 40% more this week" is the sentence that gets the review closed.
  */
 
 const outcomes = require('./outcomes');
@@ -52,7 +52,7 @@ function buildSection(anchor = new Date()) {
     lines.push(`- **Task list:** ${week.tasks.open} open`);
   }
   if (week.suggestions.approvalRate != null) {
-    lines.push(`- **SARA suggestions:** ${week.suggestions.executed} approved, ${week.suggestions.rejected} rejected (${week.suggestions.approvalRate}% approved)`);
+    lines.push(`- **SAiM suggestions:** ${week.suggestions.executed} approved, ${week.suggestions.rejected} rejected (${week.suggestions.approvalRate}% approved)`);
     if (week.suggestions.approvalRate < 50) {
       lines.push(`  - Under half approved — the suggestions are probably wrong more often than they are useful.`);
     }

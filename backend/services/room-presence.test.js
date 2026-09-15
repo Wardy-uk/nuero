@@ -1,6 +1,6 @@
 'use strict';
 
-// Reading the room from SARA. The tests that matter are the refusals: this is
+// Reading the room from SAiM. The tests that matter are the refusals: this is
 // meant to feed automation, and a confident wrong room turns lights on above
 // someone who is not there.
 const { test } = require('node:test');
@@ -43,7 +43,7 @@ test('none is not a location', async () => {
   });
 });
 
-test('an unreachable SARA is unknown, never a room', async () => {
+test('an unreachable SAiM is unknown, never a room', async () => {
   await withFetch(async () => { throw new Error('ECONNREFUSED'); }, async () => {
     const r = await rp.read();
     assert.equal(r.known, false);
@@ -70,7 +70,7 @@ test('a non-200 is unknown', async () => {
   });
 });
 
-test('the answer is cached, so polling surfaces do not hammer SARA', async () => {
+test('the answer is cached, so polling surfaces do not hammer SAiM', async () => {
   let calls = 0;
   await withFetch(async () => { calls += 1; return { ok: true, status: 200, json: async () => ({ room: 'kitchen', confidence: 'sure' }) }; }, async () => {
     await rp.read(); await rp.read(); await rp.read();

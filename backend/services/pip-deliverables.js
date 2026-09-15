@@ -88,7 +88,7 @@ const WEEKLY_OWED_FROM = '2026-08-10';
  * 12:43. Both reports NEURO has actually sent went BEFORE it — w/c 17 Aug on
  * 17 Aug, and w/c 31 Aug at 11:31 on 1 Sep, seventy-two minutes before the
  * recorder was deployed. Both are evidenced by executed `send_weekly_risk_report`
- * actions in `sara_actions`; neither could have left a send record, because
+ * actions in `saim_actions`; neither could have left a send record, because
  * nothing was writing one.
  *
  * So for those weeks "no send recorded" is not a fact about Nick, it is a fact

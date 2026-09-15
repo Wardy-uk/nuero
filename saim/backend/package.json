@@ -1,0 +1,15 @@
+{
+  "name": "saim-backend",
+  "version": "0.0.1",
+  "private": true,
+  "description": "SAiM runtime backend (WS0 foundation). CommonJS, matches NEURO convention.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

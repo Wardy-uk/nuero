@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * What SARA knows about Nick as a person.
+ * What SAiM knows about Nick as a person.
  *
  * ── The measurement that made this necessary ────────────────────────────────
  * Taken 31 Aug 2026, across ~6,000 vault notes:
@@ -27,12 +27,12 @@
  *
  * Nick's own design (31 Aug): seed it from the memory Claude and ChatGPT have
  * already accumulated, enrich it with a one-time interview run from NEURO, and
- * let SARA add to it as she learns. So the only typing is a paste and one
+ * let SAiM add to it as she learns. So the only typing is a paste and one
  * conversation, and after that it grows by being used.
  *
  * ── The rules ───────────────────────────────────────────────────────────────
  * ⚠ **EVERY FACT CARRIES ITS SOURCE.** A line from a ChatGPT memory dump is
- * weaker evidence than something he said last Tuesday, and SARA must be able to
+ * weaker evidence than something he said last Tuesday, and SAiM must be able to
  * tell — "I think you mentioned" is a different sentence from "you told me".
  * Nothing goes in unattributed.
  *
@@ -78,7 +78,7 @@ const SECTIONS = [
   'Preferences',
 ];
 
-// How a fact got here, weakest first. The wording SARA uses depends on it.
+// How a fact got here, weakest first. The wording SAiM uses depends on it.
 const SOURCES = ['seed', 'interview', 'conversation', 'observed', 'nick'];
 
 const MAX_FACT = 300;
@@ -91,7 +91,7 @@ const MAX_FACT = 300;
 // The stability test compares the rendered TEXT, because comparing parsed fields
 // is blind to it.
 const INTRO = [
-  '> What SARA knows about Nick as a person, as opposed to as Head of Technical',
+  '> What SAiM knows about Nick as a person, as opposed to as Head of Technical',
   '> Support. Every line says where it came from. Edit or delete anything —',
   '> she reads this file, she does not own it.',
 ];
@@ -205,7 +205,7 @@ function count(profile) {
 }
 
 /**
- * The block injected into SARA's context. PURE.
+ * The block injected into SAiM's context. PURE.
  *
  * ⚠ Provenance travels WITH it, because it changes the sentence she is entitled
  * to say. Something he told her in an interview she may state; something
@@ -353,7 +353,7 @@ function block(opts) {
  * is the one thing that would make this feature harmful: a profile that quietly
  * acquires an interest he does not have is worse than an empty one, since he
  * would have no reason to distrust it. Everything lands stamped `seed`, which
- * SARA renders as "(mentioned)" rather than "(told me)".
+ * SAiM renders as "(mentioned)" rather than "(told me)".
  *
  * ⚠ Anything about WORK is dropped. The vault already has 263 meeting notes and
  * 417 Plaud recordings; this file exists for the half that is missing, and

@@ -51,7 +51,7 @@
  * invents calls Nick never made. Setting it by hand is the decision, and the
  * flag comes off.
  *
- * Pure, browser-safe, no DB and no network — TodoPanel and sara/app both render
+ * Pure, browser-safe, no DB and no network — TodoPanel and saim/app both render
  * the badge, and three copies of a vocabulary is how six hardcoded rosters
  * drifted apart before it.
  */

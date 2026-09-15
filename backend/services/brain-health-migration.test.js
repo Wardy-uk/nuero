@@ -1,19 +1,19 @@
 'use strict';
 
 /**
- * Brain Health lives in NEURO, not SARA (31 Aug 2026).
+ * Brain Health lives in NEURO, not SAiM (31 Aug 2026).
  *
- * NEURO is the brain and the NEURO app is Nick's DIRECT access to it; SARA is
+ * NEURO is the brain and the NEURO app is Nick's DIRECT access to it; SAiM is
  * the layer that comes to him. Vault maintenance is neither ambient nor
- * something SARA should raise — it is a deliberate desk job with reports to
+ * something SAiM should raise — it is a deliberate desk job with reports to
  * read and writes to weigh. On the phone it was a `brain` tab where the reports
  * were unreadable and a button that rewrites forty notes looked exactly like
  * one that previews them.
  *
- * ⚠ Removing a SARA tab is never only a deletion: a tab id missing from
- * `SARA_LITE_TABS` routes its notifications to Focus IN SILENCE. The kind
+ * ⚠ Removing a SAiM tab is never only a deletion: a tab id missing from
+ * `SAIM_LITE_TABS` routes its notifications to Focus IN SILENCE. The kind
  * `brain` is deliberately kept (the desktop still routes it to Imports); only
- * its SARA destination is gone, so it now falls through to the Surface like
+ * its SAiM destination is gone, so it now falls through to the Surface like
  * everything else with no dedicated tab.
  *
  * Source scans, because the alternative is booting three frontends. Each has a
@@ -28,37 +28,37 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf-8');
 
-// ── It is gone from SARA ────────────────────────────────────────────────────
+// ── It is gone from SAiM ────────────────────────────────────────────────────
 
-test('the SARA tab registry no longer mounts a brain screen', () => {
-  const tabs = read('sara', 'shared-ui', 'tabs.jsx');
+test('the SAiM tab registry no longer mounts a brain screen', () => {
+  const tabs = read('saim', 'shared-ui', 'tabs.jsx');
   // Positive control: the registry still exists and still has real tabs.
   assert.match(tabs, /id: 'capture'/, 'positive control — the registry is intact');
   assert.ok(!tabs.includes('BrainManagement'), 'the component is no longer imported');
   assert.ok(!/id: 'brain'/.test(tabs), 'the brain tab is gone');
 });
 
-test('the SARA component files are gone, and nothing still imports them', () => {
-  assert.equal(fs.existsSync(path.join(ROOT, 'sara/app/src/views/BrainManagement.jsx')), false);
-  assert.equal(fs.existsSync(path.join(ROOT, 'sara/app/src/views/BrainManagement.css')), false);
+test('the SAiM component files are gone, and nothing still imports them', () => {
+  assert.equal(fs.existsSync(path.join(ROOT, 'saim/app/src/views/BrainManagement.jsx')), false);
+  assert.equal(fs.existsSync(path.join(ROOT, 'saim/app/src/views/BrainManagement.css')), false);
 });
 
 // ── Routing survived the removal ────────────────────────────────────────────
 
 /**
- * `SARA_LITE_TABS` is module-private, so it is read from SOURCE — the same way
+ * `SAIM_LITE_TABS` is module-private, so it is read from SOURCE — the same way
  * `action-surfaces.test.js` reads the tab registry. Asserting on the exported
  * behaviour alone would miss a stale id sitting in the set.
  */
-function saraLiteTabIds() {
+function saimLiteTabIds() {
   const src = read('shared', 'action-surfaces.cjs');
-  const m = src.match(/const SARA_LITE_TABS = new Set\(\[([^\]]*)\]\)/);
+  const m = src.match(/const SAIM_LITE_TABS = new Set\(\[([^\]]*)\]\)/);
   assert.ok(m, 'positive control — the tab set must still be findable in source');
   return m[1].split(',').map(x => x.trim().replace(/^'|'$/g, '')).filter(Boolean);
 }
 
-test('brain is no longer a SARA tab id', () => {
-  const ids = saraLiteTabIds();
+test('brain is no longer a SAiM tab id', () => {
+  const ids = saimLiteTabIds();
   assert.ok(!ids.includes('brain'), `brain must be gone, saw: ${ids.join(', ')}`);
   // Positive control: the set is still populated with real tabs.
   assert.ok(ids.includes('capture'));
@@ -67,14 +67,14 @@ test('brain is no longer a SARA tab id', () => {
 
 test('a vault-hygiene notification still resolves — to the Surface, not silently to Focus', () => {
   const surfaces = require('../../shared/action-surfaces.cjs');
-  // ⚠ The KIND is unchanged. Only its SARA destination moved.
+  // ⚠ The KIND is unchanged. Only its SAiM destination moved.
   assert.equal(surfaces.resolveActionKind({ type: 'vault_hygiene' }), 'brain');
-  const tab = surfaces.resolveSaraLiteTab({ type: 'vault_hygiene' });
-  assert.equal(tab, 'surface', 'no dedicated tab means SARA, where she is');
+  const tab = surfaces.resolveSaimLiteTab({ type: 'vault_hygiene' });
+  assert.equal(tab, 'surface', 'no dedicated tab means SAiM, where she is');
   // ⚠ The whole risk of removing a tab: an id with no home falls back to Focus
   // in silence, and nothing anywhere errors.
   assert.notEqual(tab, 'focus');
-  assert.ok(saraLiteTabIds().includes(tab), 'and it must be a tab that actually exists');
+  assert.ok(saimLiteTabIds().includes(tab), 'and it must be a tab that actually exists');
 });
 
 test('the desktop destination for a brain notification is unchanged', () => {
@@ -112,7 +112,7 @@ test('every job names what it changes and what it will not do', () => {
 
 test('anything that writes to the vault is two-step and separately marked', () => {
   const panel = read('frontend', 'src', 'components', 'BrainHealthPanel.jsx');
-  // ⚠ The SARA screen had one grey Run button for previews and for writes
+  // ⚠ The SAiM screen had one grey Run button for previews and for writes
   // alike. A write must declare itself and must confirm.
   assert.match(panel, /effect: 'write'/);
   assert.match(panel, /confirm: true/);

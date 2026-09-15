@@ -30,12 +30,12 @@ test.beforeEach(() => { db.run('DELETE FROM apns_tokens', []); });
 // ── Validation (pure) ────────────────────────────────────────────────────────
 
 test('a well-formed registration is accepted and normalised', () => {
-  const r = apns.validate({ token: TOKEN.toUpperCase(), app: 'SARA', environment: 'Production', deviceId: 'ios-abc' });
+  const r = apns.validate({ token: TOKEN.toUpperCase(), app: 'SAiM', environment: 'Production', deviceId: 'ios-abc' });
   assert.equal(r.ok, true);
   // Lower-cased, because APNs tokens are hex and a case difference would store
   // the same device twice under two rows.
   assert.equal(r.registration.token, TOKEN);
-  assert.equal(r.registration.app, 'sara');
+  assert.equal(r.registration.app, 'saim');
   assert.equal(r.registration.environment, 'production');
 });
 
@@ -93,11 +93,11 @@ test('re-registration CLEARS a previous failure', () => {
 });
 
 test('two apps on one phone are two tokens', () => {
-  // NEURO and SARA are separate apps and APNs issues a token per app.
+  // NEURO and SAiM are separate apps and APNs issues a token per app.
   apns.register(apns.validate({ token: 'a'.repeat(64), app: 'neuro', deviceId: 'ios-1' }).registration);
-  apns.register(apns.validate({ token: 'c'.repeat(64), app: 'sara', deviceId: 'ios-1' }).registration);
+  apns.register(apns.validate({ token: 'c'.repeat(64), app: 'saim', deviceId: 'ios-1' }).registration);
   assert.equal(db.get('SELECT COUNT(*) AS n FROM apns_tokens').n, 2);
-  assert.equal(db.getApnsTokens('sara').length, 1);
+  assert.equal(db.getApnsTokens('saim').length, 1);
 });
 
 test('the listing never returns a sendable token', () => {

@@ -6,13 +6,13 @@
  * Two separate silent failures are pinned here, because neither one throws and
  * neither one is visible in a green suite that only exercises services:
  *
- *  1. REGISTRATION. A tab id in App.jsx with no entry in SARA_LITE_TABS makes
+ *  1. REGISTRATION. A tab id in App.jsx with no entry in SAIM_LITE_TABS makes
  *     notification routing fall through to Focus with no error. An id in
- *     SARA_LITE_TABS with no tab in App.jsx sends a notification to a screen
+ *     SAIM_LITE_TABS with no tab in App.jsx sends a notification to a screen
  *     that does not exist. Both directions are asserted.
  *
- *  2. ORDERING. resolveSaraLitePlan checks the 'sheet' list BEFORE the 'tab'
- *     list, so adding 'standup' to SARA_LITE_TABS while leaving it in the sheet
+ *  2. ORDERING. resolveSaimLitePlan checks the 'sheet' list BEFORE the 'tab'
+ *     list, so adding 'standup' to SAIM_LITE_TABS while leaving it in the sheet
  *     branch is a no-op that looks like a completed change — the card keeps
  *     rendering and App never switches tabs. That branch also covers journal,
  *     meeting and brain, so this asserts those three are STILL sheets: the
@@ -25,13 +25,13 @@ const fs = require('fs');
 const path = require('path');
 
 const surfaces = require('../../shared/action-surfaces.cjs');
-const { resolveSaraLitePlan, resolveSaraLiteTab } = surfaces;
+const { resolveSaimLitePlan, resolveSaimLiteTab } = surfaces;
 
-// ⚠ The registry MOVED out of App.jsx on 31 Aug 2026 into `sara/shared-ui`,
+// ⚠ The registry MOVED out of App.jsx on 31 Aug 2026 into `saim/shared-ui`,
 // where the Pi kiosk mounts the same list. Reading it here rather than in
 // App.jsx is what keeps this test covering BOTH shells: a tab id missing from
-// SARA_LITE_TABS is exactly as silent on the kiosk as on the phone.
-const TABS_JSX = path.join(__dirname, '..', '..', 'sara', 'shared-ui', 'tabs.jsx');
+// SAIM_LITE_TABS is exactly as silent on the kiosk as on the phone.
+const TABS_JSX = path.join(__dirname, '..', '..', 'saim', 'shared-ui', 'tabs.jsx');
 
 // Pull the tab ids straight out of the TABS array literal. Reading the source
 // is the point — a test that re-declared the list would agree with itself
@@ -42,7 +42,7 @@ function tabIdsFromApp() {
   const src = fs.readFileSync(TABS_JSX, 'utf8').replace(/\r\n/g, '\n');
   // Phase 2 split the single TABS literal into PRIMARY (the three modes always
   // on screen) and SECONDARY (everything else, behind "More"). Both are read:
-  // a notification routes to either, so an id missing from SARA_LITE_TABS is
+  // a notification routes to either, so an id missing from SAIM_LITE_TABS is
   // just as silent in one as in the other.
   const ids = [];
   for (const name of ['const PRIMARY = [', 'const SECONDARY = [']) {
@@ -70,38 +70,38 @@ function codeOnly(file) {
     .replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
-// SARA_LITE_TABS is not exported. Probe it through the one behaviour that
-// depends on it: resolveSaraLiteTab returns an explicit tab verbatim only when
+// SAIM_LITE_TABS is not exported. Probe it through the one behaviour that
+// depends on it: resolveSaimLiteTab returns an explicit tab verbatim only when
 // the set contains it, otherwise it resolves by kind.
 function isRegisteredTab(id) {
-  return resolveSaraLiteTab({ tab: id }) === id;
+  return resolveSaimLiteTab({ tab: id }) === id;
 }
 
-test('every tab in the shared registry is registered in SARA_LITE_TABS', () => {
+test('every tab in the shared registry is registered in SAIM_LITE_TABS', () => {
   for (const id of tabIdsFromApp()) {
     assert.ok(
       isRegisteredTab(id),
-      `tab '${id}' exists in the shared tab registry but not in SARA_LITE_TABS — notifications for it fall back to Focus silently`
+      `tab '${id}' exists in the shared tab registry but not in SAIM_LITE_TABS — notifications for it fall back to Focus silently`
     );
   }
 });
 
-test('every id SARA_LITE_TABS accepts has a tab in the shared registry', () => {
+test('every id SAIM_LITE_TABS accepts has a tab in the shared registry', () => {
   const ids = tabIdsFromApp();
   // The set is private, so drive the check from the other side: anything the
   // resolver hands back as a tab must be mountable.
   const candidates = new Set(ids.concat(['standup', 'eod', 'journal', 'meeting', 'brain', 'todo', 'chat', 'capture']));
   for (const candidate of candidates) {
-    const resolved = resolveSaraLiteTab({ tab: candidate });
+    const resolved = resolveSaimLiteTab({ tab: candidate });
     assert.ok(
       ids.includes(resolved),
-      `resolveSaraLiteTab('${candidate}') returned '${resolved}', which the shared tab registry cannot mount`
+      `resolveSaimLiteTab('${candidate}') returned '${resolved}', which the shared tab registry cannot mount`
     );
   }
 });
 
 test('a standup nudge opens the Ritual tab, not the notification sheet', () => {
-  const plan = resolveSaraLitePlan({ type: 'nudge', meta: { type: 'standup' } });
+  const plan = resolveSaimLitePlan({ type: 'nudge', meta: { type: 'standup' } });
   assert.equal(plan.kind, 'standup');
   assert.equal(plan.tab, 'standup');
   // 'sheet' here means the retired /api/standup/submit-guided stepper.
@@ -109,7 +109,7 @@ test('a standup nudge opens the Ritual tab, not the notification sheet', () => {
 });
 
 test('an EOD nudge opens the same tab but keeps its kind', () => {
-  const plan = resolveSaraLitePlan({ type: 'nudge', meta: { type: 'eod' } });
+  const plan = resolveSaimLitePlan({ type: 'nudge', meta: { type: 'eod' } });
   // The tab is shared; the kind is what tells the view to open EOD rather than
   // the morning standup, and App threads it through as intentKind.
   assert.equal(plan.kind, 'eod');
@@ -122,12 +122,12 @@ test('an EOD nudge opens the same tab but keeps its kind', () => {
 // resolve inbound, because normalisePath reduces it to '/'. That is pre-existing
 // and harmless: nothing sends it to the phone.)
 test('the real standup and EOD push payloads both route to the tab', () => {
-  const standup = resolveSaraLitePlan({ type: 'standup', url: '/standup' });
+  const standup = resolveSaimLitePlan({ type: 'standup', url: '/standup' });
   assert.equal(standup.kind, 'standup');
   assert.equal(standup.tab, 'standup');
   assert.equal(standup.presentation, 'tab');
 
-  const eod = resolveSaraLitePlan({ type: 'eod', url: '/standup' });
+  const eod = resolveSaimLitePlan({ type: 'eod', url: '/standup' });
   assert.equal(eod.kind, 'eod', 'the EOD nudge must not be flattened into a standup');
   assert.equal(eod.tab, 'standup');
   assert.equal(eod.presentation, 'tab');
@@ -140,7 +140,7 @@ test('journal, meeting and brain are still sheets', () => {
     [{ type: 'meeting_alert' }, 'meeting'],
     [{ type: 'vault_hygiene' }, 'brain'],
   ]) {
-    const plan = resolveSaraLitePlan(raw);
+    const plan = resolveSaimLitePlan(raw);
     assert.equal(plan.kind, kind);
     assert.equal(plan.presentation, 'sheet', `${kind} should still open as a sheet`);
   }
@@ -150,7 +150,7 @@ test('NotificationActionCard no longer calls the retired stepper', () => {
   // The card is what the sheet renders. If a standup arm survives there, the
   // phone has two standup flows again, and they disagree about today.
   const card = codeOnly(
-    path.join(__dirname, '..', '..', 'sara', 'app', 'src', 'components', 'NotificationActionCard.jsx')
+    path.join(__dirname, '..', '..', 'saim', 'app', 'src', 'components', 'NotificationActionCard.jsx')
   );
   assert.ok(!card.includes('/api/standup/questions'), 'card still fetches the retired standup questions');
   assert.ok(!card.includes('submit-guided'), 'card still posts to the retired submit-guided endpoint');
@@ -158,7 +158,7 @@ test('NotificationActionCard no longer calls the retired stepper', () => {
 
 test('the phone view talks to the session API and preserves the retry contract', () => {
   const view = codeOnly(
-    path.join(__dirname, '..', '..', 'sara', 'app', 'src', 'views', 'Standup.jsx')
+    path.join(__dirname, '..', '..', 'saim', 'app', 'src', 'views', 'Standup.jsx')
   );
   assert.ok(view.includes('/api/standup-session/'), 'Standup view must drive the session API');
   assert.ok(!view.includes('submit-guided'), 'Standup view must not use the retired stepper');

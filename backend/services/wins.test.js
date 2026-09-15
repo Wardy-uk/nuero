@@ -104,14 +104,14 @@ test('detected work becomes wins, and syncing twice adds nothing', () => {
   db.logActivity('task_done', { text: 'Send the weekly risk report' }, '2026-08-17');
   db.logActivity('standup_done', { hour: 9 }, '2026-08-17');
   db.run(
-    `INSERT INTO sara_actions (type, payload, status, created_at, resolved_at)
+    `INSERT INTO saim_actions (type, payload, status, created_at, resolved_at)
      VALUES ('reply_email', ?, 'executed', '2026-08-17 09:00:00', '2026-08-17 09:05:00')`,
     [JSON.stringify({ subject: 'Integration Partner Escalation' })]
   );
   // Excluded on purpose: approving one CREATES a task, it finishes nothing, and
   // it is bulk-generated nightly in the hundreds.
   db.run(
-    `INSERT INTO sara_actions (type, payload, status, created_at, resolved_at)
+    `INSERT INTO saim_actions (type, payload, status, created_at, resolved_at)
      VALUES ('capture_todo', '{}', 'executed', '2026-08-17 09:00:00', '2026-08-17 09:06:00')`
   );
 
@@ -252,7 +252,7 @@ test('1-2-1s that cannot be read are a NAMED gap, not a silent zero', () => {
 
 test('the headline states the day, and says nothing at all about zero', () => {
   // Pure — a summary in, a string out. Shared by the tick acknowledgement in
-  // SARA and the EOD nudge so the two cannot word it differently.
+  // SAiM and the EOD nudge so the two cannot word it differently.
   assert.equal(wins.headline({ doneToday: 13, typical: 4 }), '13 finished today — double your usual');
   assert.equal(wins.headline({ doneToday: 6, typical: 4 }), '6 finished today — above your usual 4');
   // An ordinary day is stated plainly. Dressing it up is how the line stops
@@ -303,7 +303,7 @@ test('the feed formats local time itself, so no caller has to', () => {
 });
 
 test('a Microsoft or vault completion is one win however often the box is ticked', () => {
-  // The bug: task-store owns ONE of the three things SARA can complete, and it
+  // The bug: task-store owns ONE of the three things SAiM can complete, and it
   // was the only one logging `task_done`. The other two now do — and a vault
   // checkbox can be unticked and ticked again, which keyed on the activity row
   // would read as two finished tasks.

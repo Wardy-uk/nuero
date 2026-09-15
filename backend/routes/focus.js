@@ -56,12 +56,12 @@ function _buildFingerprint(ctx) {
     ctx.snoozeCount || 0,
     ctx.dismissCount || 0,
     engine.getSuppressionFingerprint(),
-    // SARA actions state (changes when action approved/rejected)
+    // SAiM actions state (changes when action approved/rejected)
     // Explicit limit: the default is 10, so an unlimited-looking .length
     // saturates and the fingerprint stops changing once an 11th action is
     // queued — the focus context then goes stale exactly when there is most
     // waiting on it.
-    (() => { try { return require('../db/database').getPendingSaraActions(1000).length; } catch { return 0; } })(),
+    (() => { try { return require('../db/database').getPendingSaimActions(1000).length; } catch { return 0; } })(),
   ];
 
   return crypto.createHash('md5').update(parts.join('|')).digest('hex').substring(0, 12);
@@ -111,20 +111,20 @@ router.get('/', async (req, res) => {
       }
     } catch (e) { /* briefing service not available */ }
 
-    // ── SARA block (always present) ──
-    let sara = null;
+    // ── SAiM block (always present) ──
+    let saim = null;
     if (!showAll && result.items.length > 0) {
       const hash = _itemsHash(result.items);
       const now = Date.now();
 
       // Check AI cache first
       if (!noAi && _aiCache.hash === hash && _aiCache.data && (now - _aiCache.at) < AI_CACHE_TTL) {
-        sara = _aiCache.data;
+        saim = _aiCache.data;
       }
 
       // If no cached AI result, use deterministic fallback (always instant)
-      if (!sara) {
-        sara = aiProvider.buildDeterministicSara(result.items, tone);
+      if (!saim) {
+        saim = aiProvider.buildDeterministicSaim(result.items, tone);
       }
 
       // Trigger async AI pre-generation for NEXT request (non-blocking)
@@ -134,10 +134,10 @@ router.get('/', async (req, res) => {
           context: ctx,
           tone,
           primaryItem: result.primaryItem,
-        }).then(aiSara => {
-          if (aiSara) {
-            _aiCache = { hash, data: aiSara, at: Date.now() };
-            console.log(`[Focus] AI SARA pre-generated (${aiSara.provider})`);
+        }).then(aiSaim => {
+          if (aiSaim) {
+            _aiCache = { hash, data: aiSaim, at: Date.now() };
+            console.log(`[Focus] AI SAiM pre-generated (${aiSaim.provider})`);
           }
         }).catch(e => {
           console.warn('[Focus] Async AI pre-generation failed:', e.message);
@@ -165,7 +165,7 @@ router.get('/', async (req, res) => {
         // rather than on the default limit of 10, or two sleeping cards at the
         // top of the confidence order would leave the screen empty.
         suggestions = require('../services/action-snooze')
-          .partitionSnoozed(db.getPendingSaraActions(200)).awake.slice(0, 2);
+          .partitionSnoozed(db.getPendingSaimActions(200)).awake.slice(0, 2);
       } catch (e) {
         console.warn('[Focus] Suggestion generation failed:', e.message);
       }
@@ -188,8 +188,8 @@ router.get('/', async (req, res) => {
       mode: result.mode,
       tone,
       primaryItem: result.primaryItem || null,
-      sara: sara
-        ? { ...sara, briefing: storedBrief?.synthesis || sara.briefing }
+      saim: saim
+        ? { ...saim, briefing: storedBrief?.synthesis || saim.briefing }
         : storedBrief ? { briefing: storedBrief.synthesis } : null,
       // Phase 6A: next-action data
       nextAction: nextActions.primaryAction,
@@ -207,7 +207,7 @@ router.get('/', async (req, res) => {
     if (!showAll) {
       const fingerprint = _buildFingerprint(ctx);
       _responseCache = { fingerprint, response, at: Date.now() };
-      console.log(`[Focus] Built in ${Date.now() - t0}ms (fp=${fingerprint.substring(0, 6)}, items=${result.items.length}, sara=${sara ? 'yes' : 'no'}, action=${nextActions.primaryAction?.label || 'none'})`);
+      console.log(`[Focus] Built in ${Date.now() - t0}ms (fp=${fingerprint.substring(0, 6)}, items=${result.items.length}, saim=${saim ? 'yes' : 'no'}, action=${nextActions.primaryAction?.label || 'none'})`);
     }
 
     res.json(response);

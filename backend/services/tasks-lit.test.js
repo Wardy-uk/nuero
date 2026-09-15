@@ -17,8 +17,8 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const VIEWS = path.resolve(__dirname, '..', '..', 'sara', 'app', 'src', 'views');
-const SHARED = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui');
+const VIEWS = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'views');
+const SHARED = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui');
 const jsx = () => fs.readFileSync(path.join(VIEWS, 'Tasks.jsx'), 'utf8');
 const css = () => fs.readFileSync(path.join(VIEWS, 'Tasks.css'), 'utf8');
 // ⚠ Comments stripped: the rule below would otherwise fail on the comment
@@ -82,7 +82,7 @@ test('⚠ no screen-local palette — her colour or nothing', () => {
 
   const accents = sheet.match(/var\(--accent[^)]*\)/g) || [];
   assert.deepEqual(accents, [], `Tasks.css still picks the system accent: ${accents.join(', ')}`);
-  assert.match(sheet, /var\(--sara-rgb/, 'the screen must carry HER colour');
+  assert.match(sheet, /var\(--saim-rgb/, 'the screen must carry HER colour');
 });
 
 test('⚠ MoSCoW and domain keep THEIR colours — those are not her state', () => {

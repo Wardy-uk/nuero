@@ -384,7 +384,7 @@ function _parse(json, fallback) {
  * a verdict and a REASON out.
  *
  * A refusal always names itself, because the whole point of the control surface
- * is that Nick can see why SARA went quiet. A silent system and a working one
+ * is that Nick can see why SAiM went quiet. A silent system and a working one
  * look identical, which is the failure the push log was added to end.
  *
  * @param {object} record   an attention_records row
@@ -428,7 +428,7 @@ function shouldNotify(record, settings, opts = {}) {
       return { allowed: false, reason: 'notifications are off' };
     }
     if (settingsStore.isPaused(settings, now)) {
-      return { allowed: false, reason: `SARA is paused until ${settings.pausedUntil}` };
+      return { allowed: false, reason: `SAiM is paused until ${settings.pausedUntil}` };
     }
     if (settingsStore.isQuietAt(settings, now)) {
       return { allowed: false, reason: 'quiet hours' };

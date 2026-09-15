@@ -1,6 +1,6 @@
 # Vault Operating Model
 
-SARA/NUERO treats the vault as a layered system rather than a flat dumping ground.
+SAiM/NUERO treats the vault as a layered system rather than a flat dumping ground.
 
 ## Layers
 
@@ -27,9 +27,9 @@ System notes:
 ## Rule
 
 Raw capture stays raw.
-SARA consolidates it into a working note in the folder where it actually belongs.
+SAiM consolidates it into a working note in the folder where it actually belongs.
 
-## What SARA Does
+## What SAiM Does
 
 1. Ingests raw notes from Plaud and other imports.
 2. Links those notes back to their source material.

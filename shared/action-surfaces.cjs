@@ -1,6 +1,6 @@
 'use strict';
 
-// Must stay in step with TABS in sara/app/src/App.jsx — an id here with no tab
+// Must stay in step with TABS in saim/app/src/App.jsx — an id here with no tab
 // there routes to a screen that does not exist, and a tab there missing from
 // here silently falls back to Focus. Pinned in both directions by
 // backend/services/action-surfaces.test.js, because neither half errors.
@@ -11,11 +11,11 @@
 // directions.
 // 'brain' was REMOVED on 31 Aug 2026: vault maintenance moved to NEURO's own
 // Brain Health panel, because it is a deliberate desk job with reports to read
-// and writes to weigh, not something SARA should come to Nick about. The
+// and writes to weigh, not something SAiM should come to Nick about. The
 // notification KIND 'brain' is unchanged and still routes the desktop to
-// Imports; only its SARA destination is gone, so it now lands on the Surface
+// Imports; only its SAiM destination is gone, so it now lands on the Surface
 // like everything else with no dedicated tab.
-const SARA_LITE_TABS = new Set(['surface', 'now', 'review', 'today', 'focus', 'tasks', 'capture', 'voice', 'chat', 'prep', 'standup', 'controls']);
+const SAIM_LITE_TABS = new Set(['surface', 'now', 'review', 'today', 'focus', 'tasks', 'capture', 'voice', 'chat', 'prep', 'standup', 'controls']);
 
 function lower(value) {
   return String(value || '').trim().toLowerCase();
@@ -71,9 +71,9 @@ function resolveActionKind(raw = {}) {
   return 'unsupported';
 }
 
-function resolveSaraLiteTab(raw = {}) {
+function resolveSaimLiteTab(raw = {}) {
   const tab = lower(raw.tab);
-  if (SARA_LITE_TABS.has(tab)) return tab;
+  if (SAIM_LITE_TABS.has(tab)) return tab;
 
   const kind = resolveActionKind(raw);
   if (['standup', 'eod'].includes(kind)) return 'standup';
@@ -81,8 +81,8 @@ function resolveSaraLiteTab(raw = {}) {
   if (kind === 'capture') return 'capture';
   if (kind === 'chat') return 'chat';
   if (kind === 'todo') return 'tasks';
-  // Everything with no specific home lands on SARA (25 Aug 2026). It used to
-  // fall through to Focus, which meant the ONE path where SARA genuinely comes
+  // Everything with no specific home lands on SAiM (25 Aug 2026). It used to
+  // fall through to Focus, which meant the ONE path where SAiM genuinely comes
   // to Nick — a push he taps — routed straight past her to the old list-shaped
   // surface. An escalation notification is exactly the case: no dedicated tab,
   // so it went to Focus. It now arrives where she is, with the thing that
@@ -90,16 +90,16 @@ function resolveSaraLiteTab(raw = {}) {
   return 'surface';
 }
 
-function resolveSaraLitePlan(raw = {}) {
+function resolveSaimLitePlan(raw = {}) {
   const kind = resolveActionKind(raw);
   const hasExternalUrl = !!raw.url;
 
   if (hasExternalUrl && /^https?:/i.test(String(raw.url))) {
-    return { kind, canHandle: true, presentation: 'external', tab: resolveSaraLiteTab(raw) };
+    return { kind, canHandle: true, presentation: 'external', tab: resolveSaimLiteTab(raw) };
   }
 
   if (['journal', 'meeting', 'brain'].includes(kind)) {
-    return { kind, canHandle: true, presentation: 'sheet', tab: resolveSaraLiteTab(raw) };
+    return { kind, canHandle: true, presentation: 'sheet', tab: resolveSaimLiteTab(raw) };
   }
 
   // 'todo' used to be a sheet because there was nowhere to send it. It has a real
@@ -116,10 +116,10 @@ function resolveSaraLitePlan(raw = {}) {
   // the original file for a reason: the sheet list is checked first, so leaving
   // the ids in both would have kept the sheet and made adding the tab a no-op.
   if (['capture', 'chat', 'todo', 'standup', 'eod'].includes(kind)) {
-    return { kind, canHandle: true, presentation: 'tab', tab: resolveSaraLiteTab(raw) };
+    return { kind, canHandle: true, presentation: 'tab', tab: resolveSaimLiteTab(raw) };
   }
 
-  return { kind, canHandle: false, presentation: 'handoff', tab: resolveSaraLiteTab(raw) };
+  return { kind, canHandle: false, presentation: 'handoff', tab: resolveSaimLiteTab(raw) };
 }
 
 function resolveNueroNavigation(raw = {}) {
@@ -183,17 +183,17 @@ function resolveNueroUrl(raw = {}, baseUrl) {
 }
 
 function decorateSurfaceSupport(raw = {}) {
-  const saraLite = resolveSaraLitePlan(raw);
+  const saimLite = resolveSaimLitePlan(raw);
   return {
     kind: resolveActionKind(raw),
     surfaces: {
-      saraLite,
+      saimLite,
       nuero: {
         canHandle: !!resolveNueroNavigation(raw),
         navigation: resolveNueroNavigation(raw),
         path: resolveNueroPath(raw),
       },
-      sara: {
+      saim: {
         canHandle: true,
       },
     },
@@ -207,6 +207,6 @@ module.exports = {
   resolveNueroNavigation,
   resolveNueroPath,
   resolveNueroUrl,
-  resolveSaraLitePlan,
-  resolveSaraLiteTab,
+  resolveSaimLitePlan,
+  resolveSaimLiteTab,
 };

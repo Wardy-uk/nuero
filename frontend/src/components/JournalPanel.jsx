@@ -147,9 +147,9 @@ export default function JournalPanel() {
 
   return (
     <div className="journal-panel">
-      <div className="journal-sara">
-        <span className="journal-sara-label">SARA</span>
-        <span className="journal-sara-line">Three questions. Two minutes. Then you're done.</span>
+      <div className="journal-saim">
+        <span className="journal-saim-label">SAiM</span>
+        <span className="journal-saim-line">Three questions. Two minutes. Then you're done.</span>
       </div>
       <div className="journal-header">
         <h2>Journal</h2>

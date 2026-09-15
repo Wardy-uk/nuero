@@ -1,0 +1,574 @@
+/* Surface — SAiM without a menu.
+ *
+ * Two type roles, and the split carries meaning: what SAiM SAYS is set in a
+ * reading face, what the SYSTEM reports is set in the UI face. You can tell her
+ * apart from her instruments without reading a word — and if a screen ever ends
+ * up all UI face, she has gone again.
+ *
+ * Newsreader is loaded from Google Fonts in index.html; Georgia is the fallback
+ * and is present on iOS, so a cold or offline start still gets a reading face
+ * rather than dropping to the system sans.
+ */
+
+/* ⚠ The ROOT box is deliberately NOT here.
+   
+   Everything below styles the INSIDE of the surface and is shared verbatim by
+   the phone and the Pi kiosk. The outer box is not shareable: the phone has to
+   cancel `.app__view`'s 1rem padding so the field bleeds to the screen edge,
+   while the kiosk sits in a panel below a banner and must bound its height
+   instead. Each shell owns its own root rule and passes the class in as
+   `rootClassName`.
+
+   Getting that wrong is not hypothetical — `min-height: 100vh` copied from the
+   phone to the kiosk overflowed its container, grew a scrollbar and pushed
+   SAiM's words below the fold, so the field drew and not one sentence did. */
+
+/* The field bleeds edge to edge; the WORDS do not. Without a column the
+   sentences ran the full width of a desktop window at ~180 characters a line,
+   which is unreadable and made the vertical space look empty by comparison. */
+.surface__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 1.15rem;
+  padding: 0.25rem 0.15rem 0;
+  width: 100%;
+  max-width: 34rem;
+  margin: 0 auto;
+}
+
+/* ── On a desk-sized window ─────────────────────────────────────────────────
+   Nick, 1 Sep 2026: "she still wants to be wider — fill 75% of the available
+   width."
+
+   The 34rem measure above is right in the hand and right at a metre on the Pi
+   panel, but on a 2500px monitor it leaves her sitting in a narrow column with
+   the field doing all the work either side. 75% is his call and it is a
+   reasonable one for a screen read from further away than a phone.
+
+   ⚠ It goes in THIS file, not in either shell's App.css, for two reasons. The
+   base rule is in here, so putting the override anywhere else makes the result
+   depend on CSS import order — which is exactly how the kiosk's retired 248px
+   sidebar came to beat the phone's bottom bar on the real panel. And the desk
+   kiosk wants the same treatment for the same reason, so one rule serves both
+   rather than two rules drifting.
+
+   ⚠ The upper bound is deliberate, not timidity. At 75% of a 3440px ultrawide a
+   sentence is ~2400px, which is roughly 300 characters a line — past about 90
+   the eye loses its place returning to the left margin, and her one line is the
+   product. 75% up to a ceiling gives Nick the width he asked for on every
+   monitor he actually uses, and stops only where the line would stop being
+   readable at all. */
+@media (min-width: 900px) {
+  .surface__content {
+    max-width: 75%;
+  }
+}
+
+@media (min-width: 1800px) {
+  .surface__content {
+    max-width: min(75%, 88rem);
+  }
+}
+
+/* ── Crown ─────────────────────────────────────────────────────────────────
+ * Small and wordless about its own certainty. The state is one lowercase word;
+ * the reasoning is a tap away. The previous version put "MODERATE CONFIDENCE"
+ * and "can't see 1" here — instrumentation in the most prominent position on
+ * the screen. */
+.surface__crown {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+.surface__mark {
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.24em;
+}
+.surface__state {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.74rem;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 1px dotted rgba(139, 152, 168, 0.5);
+}
+
+/* Speech-out. Stays OFF by default — a PWA that talks unprompted on a train
+   gets deleted — so this is the switch, sitting where she is rather than in a
+   settings screen. */
+.surface__ear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0 0 0 0.5rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  opacity: 0.45;
+}
+.surface__ear--on { opacity: 1; }
+
+/* Why he's here, when he arrived by tapping a notification. */
+.surface__arrival {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-align: left;
+  width: 100%;
+  background: rgba(28, 37, 48, 0.7);
+  border: 1px solid var(--line);
+  border-left: 2px solid rgb(var(--saim-rgb, 114, 150, 211));
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.surface__arrivallabel {
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.surface__arrivalbody {
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+/* His question, quoted back before her answer — so a spoken exchange has a
+   record of what she actually heard. Mis-hearing is the commonest dictation
+   failure and it is invisible without this. */
+.surface__asked {
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 0.95rem;
+  color: var(--muted);
+  margin: 0 0 0.2rem;
+}
+
+.surface__why {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.7rem 0.75rem;
+  background: rgba(20, 27, 36, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.surface__whyline { color: var(--muted); font-size: 0.76rem; line-height: 1.5; margin: 0; }
+.surface__whyline--lead { color: var(--text); }
+.surface__whyline--warn { color: #f0d6a6; }
+
+/* ── Her voice ─────────────────────────────────────────────────────────────
+ * The one thing, given real room. `justify-content: center` inside a bounded
+ * block rather than a bare `flex:1` on the card — the first cut centred one
+ * card in the whole viewport and left two dead voids that read as broken. */
+.surface__say {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 1.5rem 0;
+  min-height: 0;
+}
+.surface__saylead {
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-weight: 300;
+  font-size: 1.72rem;
+  line-height: 1.22;
+  letter-spacing: -0.012em;
+  margin: 0;
+  text-wrap: balance;
+}
+/* Why this panel is the one on screen. Quiet and above the dashboard — it
+   explains what he is about to read, so it must not compete with her sentence
+   higher up. Renders only when he ASKED; the situation changing is what this
+   surface does, and labelling that would be noise on every read. */
+.surface__because {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0.6rem 0 -0.2rem;
+}
+
+.surface__saysub {
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-weight: 300;
+  font-size: 1.06rem;
+  line-height: 1.42;
+  color: var(--muted);
+  margin: 0;
+}
+
+.surface__acts { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.35rem; }
+.surface__btn {
+  background: rgba(20, 27, 36, 0.9);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.62rem 0.95rem;
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+.surface__btn--go { background: rgba(43, 61, 87, 0.92); border-color: rgba(76, 154, 255, 0.55); }
+.surface__btn:disabled { opacity: 0.5; }
+
+/* The deferral row. Quieter and tighter than the two buttons above it: this is
+   a second-level choice Nick has already opted into, and giving it the same
+   weight would make four things compete with the one thing — the failure this
+   whole screen exists to fix. Still 40px tall, because it is a phone. */
+.surface__acts--defer { margin-top: 0.4rem; gap: 0.35rem; }
+.surface__btn--small {
+  padding: 0.42rem 0.7rem;
+  font-size: 0.78rem;
+  background: rgba(20, 27, 36, 0.6);
+  min-height: 40px;
+}
+
+/* What "that's done" actually did. A hairline on the left rather than a filled
+   box — it is a note about the last thing, not a new thing competing with the
+   headline. Amber when no task was closed, because "the card went away" and
+   "the work is finished" must never look alike. */
+.surface__outcome {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid var(--line);
+  color: var(--text);
+  padding: 0.2rem 0 0.2rem 0.65rem;
+  margin: 0 0 0.75rem;
+  font: inherit;
+  cursor: pointer;
+}
+.surface__outcome--done { border-left-color: rgba(76, 154, 255, 0.7); }
+.surface__outcome--partial,
+.surface__outcome--warn { border-left-color: #f0d6a6; }
+.surface__outcomelead { font-size: 0.86rem; }
+.surface__outcome--warn .surface__outcomelead { color: #f0d6a6; }
+.surface__outcomesub { color: var(--muted); font-size: 0.76rem; line-height: 1.45; }
+
+/* ── Everything else, quieter ──────────────────────────────────────────────
+ * Hairlines rather than filled cards. Boxes here would make three more things
+ * compete with the one thing, which is the whole failure being fixed. */
+.surface__rest { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; flex-shrink: 0; }
+.surface__row {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(38, 49, 63, 0.75);
+  padding: 0.6rem 0.1rem;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.surface__rowtitle { font-size: 0.88rem; }
+.surface__rowsay {
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-size: 0.83rem;
+  color: var(--muted);
+}
+
+/* ── Foot ──────────────────────────────────────────────────────────────── */
+.surface__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.9rem 0 0.4rem;
+  flex-shrink: 0;
+}
+.surface__aside { color: var(--muted); font-size: 0.74rem; margin: 0; }
+/* Her admission of a gap is HER speaking, so it takes her face. */
+.surface__aside--her {
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 0.86rem;
+  opacity: 0.75;
+}
+.surface__aside--warn { color: #f0d6a6; }
+.surface__saysub--warn { color: #f0d6a6; }
+.surface__saysub--onit { color: #7fcf9c; }
+
+.surface__footrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+/* Her ears. Given real weight — it is the primary way to reach her from the one
+   screen that has no menu, so it must not read as a secondary affordance. */
+.surface__mic {
+  background: rgba(20, 27, 36, 0.9);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.6rem 1rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.surface__mic--live {
+  border-color: rgba(76, 154, 255, 0.7);
+  background: rgba(43, 61, 87, 0.92);
+  animation: surface-listening 1.8s ease-in-out infinite;
+}
+@keyframes surface-listening {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 154, 255, 0.28); }
+  50%      { box-shadow: 0 0 0 6px rgba(76, 154, 255, 0); }
+}
+
+.surface__all {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.35rem 0;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surface__mic--live { animation: none; }
+}
+
+/* ── Bare states ───────────────────────────────────────────────────────── */
+.surface--bare {
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+.surface--bare .surface__saylead,
+.surface--bare .surface__bareline,
+.surface--bare .surface__whyline,
+.surface--bare .surface__btn { position: relative; z-index: 1; }
+.surface__bareline {
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+/* The seam of the day. Set apart from the ambient card below it with a hairline
+   rather than a box: it is time-critical and should read first, but boxing it
+   would make two things compete on a screen whose whole point is one thing. */
+.surface__transition {
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(76, 154, 255, 0.35);
+}
+
+/* ── Ambient observations ─────────────────────────────────────────────────
+   Sat still a long time, no exercise for three days, a health trend. Rendered
+   BELOW the pool and visibly quieter than it: these are things she noticed,
+   not things he has to decide about, and typographic weight is what keeps that
+   distinction without a label saying so. */
+.surface__ambient {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--surface-rule, rgba(255,255,255,0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.surface__amb {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.surface__ambtext {
+  color: var(--surface-text, #e8e9ee);
+  opacity: 0.85;
+}
+
+/* A health trend earns a little more presence than a glass of water. */
+.surface__amb--notice .surface__ambtext {
+  opacity: 1;
+  font-weight: 500;
+}
+
+.surface__ambdetail,
+.surface__ambsuggest {
+  color: var(--surface-dim, #9aa0b0);
+  font-size: 0.8rem;
+}
+
+/* The caveat is never dropped and never hidden behind a tap. Apple Health
+   cannot separate exercise, illness, alcohol and a hard week, and the finding
+   is only honest while it is carrying that sentence. */
+.surface__ambcaveat {
+  color: var(--surface-dim, #9aa0b0);
+  font-size: 0.74rem;
+  opacity: 0.75;
+  font-style: italic;
+}
+
+/* ── The sentences ─────────────────────────────────────────────────────────
+   Nick, 31 Aug 2026: "everything she can do should be achievable
+   conversationally... she isn't a click here to do this interface. We should
+   allow that when I can't speak to her."
+
+   So these are styled as SPEECH, not as controls — quotation marks, a pill
+   rather than a button face. They are the same words he would say, and looking
+   like a toolbar is how the fallback quietly becomes the primary. */
+.surface__says {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.surface__say-btn {
+  font: inherit;
+  font-size: 0.87rem;
+  color: #b7c2d0;
+  background: rgba(255, 255, 255, 0.062);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 0.34rem 0.85rem;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.surface__say-btn::before { content: '\201C'; color: #5d6b7a; }
+.surface__say-btn::after  { content: '\201D'; color: #5d6b7a; }
+
+.surface__say-btn:hover:not(:disabled) {
+  color: #e6edf3;
+  border-color: #5ec1ca;
+  background: rgba(94, 193, 202, 0.13);
+}
+.surface__say-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* The escape hatch is always available and never the loudest thing on screen —
+   it is the way round, not the way. */
+.surface__say-btn--quiet { color: #78899a; border-style: dashed; }
+.surface__say-btn--quiet::before,
+.surface__say-btn--quiet::after { content: ''; }
+
+/* ── Room offers ─────────────────────────────────────────────────────────────
+   Lights and heating in the room he is standing in. Sits between the pool and
+   the ambient observations: actionable, so above a passive observation; about
+   right now, so never in the primary slot.
+
+   Deliberately quiet styling. This is SAiM asking a small question about the
+   room, not an alert — anything louder competes with the work above it, which
+   is the one thing this block must never do. */
+.surface__rooms {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.surface__room {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.surface__roomsay {
+  flex: 1 1 12rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  opacity: 0.92;
+}
+
+.surface__roomacts {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+/* Touch targets: the kiosk is a 7in panel operated with a thumb, and the phone
+   is a phone. Neither gets a mouse. */
+.surface__roombtn {
+  min-height: 2.25rem;
+  padding: 0 0.9rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.surface__roombtn:active { transform: translateY(1px); }
+
+/* "Yes" is the affirmative but NOT the loud one — declining must not feel like
+   the awkward choice, or the yes/no record stops being evidence of anything. */
+.surface__roombtn--yes {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+/* ── Open on your desk ────────────────────────────────────────────────────────
+   Only rendered when he is actually at the laptop, so this is never a row of
+   controls that quietly do nothing. Quiet styling: it is a shortcut, not a
+   decision, and it must not compete with the work above it. */
+.surface__desk {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.7rem 0 0;
+}
+
+.surface__desklabel {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-right: 0.1rem;
+}
+
+.surface__deskbtn {
+  min-height: 2.1rem;
+  padding: 0 0.75rem;
+  border-radius: 0.42rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.surface__deskbtn:disabled { opacity: 0.6; cursor: default; }
+.surface__deskbtn:active:not(:disabled) { transform: translateY(1px); }
+
+/* The system's own word for what happened — never "sent". */
+.surface__deskstate { opacity: 0.62; font-size: 0.78rem; }

@@ -482,7 +482,7 @@ function triggerStandupNudge() {
   db.createNudge('standup', msg, dateKey);
   console.log('[Nudge] Standup nudge created for', dateKey);
   broadcast({ type: 'nudge', nudge_type: 'standup', message: msg, nag_count: 0 });
-  webpush.sendToAll('SARA', msg, { type: 'standup', url: '/standup' }).catch(() => {});
+  webpush.sendToAll('SAiM', msg, { type: 'standup', url: '/standup' }).catch(() => {});
 }
 
 function triggerTodoNudge() {
@@ -500,7 +500,7 @@ function triggerTodoNudge() {
   db.createNudge('todo', msg, dateKey);
   console.log('[Nudge] Todo nudge created for', dateKey);
   broadcast({ type: 'nudge', nudge_type: 'todo', message: msg, nag_count: 0 });
-  webpush.sendToAll('SARA', msg, { type: 'todo', url: '/todos' }).catch(() => {});
+  webpush.sendToAll('SAiM', msg, { type: 'todo', url: '/todos' }).catch(() => {});
 }
 
 // ── Escalations and urgent email ─────────────────────────────────────────────
@@ -582,11 +582,11 @@ function syncFactNudge(type, message, pushTitle, url) {
 }
 
 function triggerEscalationNudge() {
-  syncFactNudge('escalation', buildEscalationMessage(getUnseenEscalations()), 'SARA — Escalation', '/focus');
+  syncFactNudge('escalation', buildEscalationMessage(getUnseenEscalations()), 'SAiM — Escalation', '/focus');
 }
 
 function triggerUrgentEmailNudge() {
-  syncFactNudge('email', buildEmailMessage(getUrgentEmails()), 'SARA — Urgent email', '/inbox');
+  syncFactNudge('email', buildEmailMessage(getUrgentEmails()), 'SAiM — Urgent email', '/inbox');
 }
 
 // Called every 15 min — escalates existing nudges
@@ -701,7 +701,7 @@ function nagCheck() {
       : nudge.type === 'escalation' ? '/focus'
       : nudge.type === 'email' ? '/inbox'
       : '/todos';
-    webpush.sendToAll('SARA', msg, { type: nudge.type, url }).catch(() => {});
+    webpush.sendToAll('SAiM', msg, { type: nudge.type, url }).catch(() => {});
   }
 }
 
@@ -779,7 +779,7 @@ function checkPlanMilestoneNudge() {
     console.log('[Nudge] Plan milestone nudge firing');
     broadcast({ type: 'nudge', nudge_type: 'plan_milestone', message: msg, nag_count: 0 });
     webpush.sendToAll(
-      `SARA`,
+      `SAiM`,
       msg,
       { type: 'plan_milestone', url: '/plan' }
     ).catch(() => {});
@@ -829,7 +829,7 @@ function check121Nudges() {
     db.setState(stateKey, new Date().toISOString());
     console.log('[Nudge] 1-2-1 nudge:', msg);
     broadcast({ type: 'nudge', nudge_type: '121', message: msg, nag_count: 0 });
-    webpush.sendToAll('SARA', msg, { type: '121', url: '/people' }).catch(() => {});
+    webpush.sendToAll('SAiM', msg, { type: '121', url: '/people' }).catch(() => {});
   } catch (e) {
     console.error('[Nudge] 1-2-1 check failed:', e.message);
   }
@@ -839,12 +839,12 @@ function check121Nudges() {
 /**
  * The first line is HERS, and she says it before he asks.
  *
- * Nick, 31 Aug 2026, on what would make SARA feel less reactive: she should
+ * Nick, 31 Aug 2026, on what would make SAiM feel less reactive: she should
  * INITIATE the End of Day rather than NEURO announcing that it is time for one.
  *
  * The old notification was an instruction — *"End of day. Before you close the
  * laptop: one win, one thing that didn't go to plan... Standup tab → EOD."* That
- * is a label and a set of homework. It tells him a ritual is due; it is not SARA
+ * is a label and a set of homework. It tells him a ritual is due; it is not SAiM
  * saying anything.
  *
  * So the session is STARTED SERVER-SIDE first, which runs a turn and produces
@@ -861,7 +861,7 @@ function check121Nudges() {
  * ⚠ IT DOES NOT INTERRUPT A CONVERSATION ALREADY HAPPENING. If he started the
  * EOD himself at four o'clock and is mid-flow, `start()` returns that session
  * untouched and this sends nothing — a push at 5pm saying "how was your day?"
- * into a chat he is already in reads as SARA not listening.
+ * into a chat he is already in reads as SAiM not listening.
  */
 async function triggerEodNudge({ retry = false } = {}) {
   // ⚠ THE EOD IS EXEMPT FROM THE WORKING-DAY CHECK, and only the EOD is.
@@ -914,7 +914,7 @@ async function triggerEodNudge({ retry = false } = {}) {
   } catch (e) {
     // Loud, because this is the path that makes her feel present and its failure
     // is otherwise invisible — the fallback below looks exactly like success.
-    console.warn('[Nudge] SARA could not open the EOD, falling back:', e.message);
+    console.warn('[Nudge] SAiM could not open the EOD, falling back:', e.message);
   }
 
   if (!msg) {
@@ -934,7 +934,7 @@ async function triggerEodNudge({ retry = false } = {}) {
   }
 
   broadcast({ type: 'nudge', nudge_type: 'eod', message: msg, nag_count: 0, snoozeUntil: retry ? null : 'nine' });
-  webpush.sendToAll('SARA', msg, {
+  webpush.sendToAll('SAiM', msg, {
     type: 'eod',
     url: '/standup',
     // The client offers "Not now — ask me at nine" on the first ask only. A
@@ -1034,7 +1034,7 @@ function triggerJournalNudge() {
 
   console.log('[Nudge] Journal nudge triggered');
   broadcast({ type: 'nudge', nudge_type: 'journal', message: msg, nag_count: 0 });
-  webpush.sendToAll('SARA', msg, { type: 'journal', url: '/journal' }).catch(() => {});
+  webpush.sendToAll('SAiM', msg, { type: 'journal', url: '/journal' }).catch(() => {});
 }
 
 function markJournalDone() {

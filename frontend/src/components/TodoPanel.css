@@ -2,7 +2,7 @@
   max-width: 800px;
 }
 
-.todo-sara {
+.todo-saim {
   padding: 14px 16px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -10,7 +10,7 @@
   border-radius: var(--radius-sm);
   margin-bottom: 16px;
 }
-.todo-sara-label {
+.todo-saim-label {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
@@ -20,7 +20,7 @@
   display: block;
   margin-bottom: 4px;
 }
-.todo-sara-line {
+.todo-saim-line {
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;

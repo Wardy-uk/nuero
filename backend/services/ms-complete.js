@@ -56,7 +56,7 @@ const REASONS = {
  * finishing either moved no number anywhere: Momentum, "Done today" and the
  * weekly-target ring were all blind to two thirds of what Nick can tick.
  *
- * ⚠ It must not double-count a LINKED task. `sara/app`'s completeTask calls
+ * ⚠ It must not double-count a LINKED task. `saim/app`'s completeTask calls
  * `/api/tasks/:id/complete` AND the Microsoft path for a row carrying both ids
  * (task-dedupe links them, NEURO leading), so task-store has already logged that
  * completion by the time this runs. `tasks.ms_id` is the single answer to "is

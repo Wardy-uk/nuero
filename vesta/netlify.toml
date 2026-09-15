@@ -1,7 +1,7 @@
 # Netlify config for VESTA.
 #
 # Set the site's *Base directory* to `vesta` — Netlify then reads THIS file and
-# the paths below are relative to that base, exactly as `sara/app` does. A stray
+# the paths below are relative to that base, exactly as `saim/app` does. A stray
 # netlify.toml at the repo root would win over this one.
 #
 # Domain: vesta.nickward.co.uk

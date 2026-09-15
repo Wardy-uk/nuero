@@ -1,4 +1,4 @@
-// SARA / NEURO Service Worker — offline shell caching + push notifications
+// SAiM / NEURO Service Worker — offline shell caching + push notifications
 // Version — bump this string to force cache invalidation on next deploy
 // v8 — purges entries poisoned by the SPA fallback serving index.html (200) for
 // missing hashed chunks. Those were cached under the chunk's own URL, so the bad
@@ -104,10 +104,10 @@ self.addEventListener('push', (event) => {
     data: data.data || {},
     vibrate: [200, 100, 200],
     requireInteraction: true,
-    tag: data.data?.type || 'sara-notification'
+    tag: data.data?.type || 'saim-notification'
   };
   event.waitUntil(
-    self.registration.showNotification(data.title || 'SARA', options)
+    self.registration.showNotification(data.title || 'SAiM', options)
   );
 });
 

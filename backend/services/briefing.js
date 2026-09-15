@@ -13,7 +13,7 @@ const db = require('../db/database');
 const webpush = require('./webpush');
 const emailSender = require('./email-sender');
 const teams = require('./teams');
-const { VOICE_COMPACT } = require('./sara-voice');
+const { VOICE_COMPACT } = require('./saim-voice');
 // The briefing is delivered through Nurtur's tenant — see _collectFocusItems.
 const { mayLeaveTheBuilding } = require('../../shared/task-domain.cjs');
 
@@ -229,7 +229,7 @@ async function buildAndDeliver(opts = {}) {
   // Push notification
   const pushTitle = brief.doNow.length
     ? `${brief.doNow.length} thing${brief.doNow.length > 1 ? 's' : ''} need you`
-    : 'SARA Brief';
+    : 'SAiM Brief';
   // ⚠ Only when it is NEWS. "About normal today" is true, cheap to compute and
   // worth having on the screen — and appended to a push every single morning it
   // is padding, which is how the line above it stops being read. So the brief
@@ -249,7 +249,7 @@ async function buildAndDeliver(opts = {}) {
   try {
     const now = new Date();
     const timeLabel = now.toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
-    const subject = `SARA ${label === 'morning' ? 'Morning' : label === 'midday' ? 'Midday' : ''} Brief — ${timeLabel}`;
+    const subject = `SAiM ${label === 'morning' ? 'Morning' : label === 'midday' ? 'Midday' : ''} Brief — ${timeLabel}`;
     const html = emailSender.briefToHtml(brief);
     const emailResult = await emailSender.sendBriefEmail(subject, html);
     if (!emailResult.sent) {

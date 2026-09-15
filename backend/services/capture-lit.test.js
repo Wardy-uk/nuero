@@ -26,7 +26,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const VIEWS = path.resolve(__dirname, '..', '..', 'sara', 'app', 'src', 'views');
+const VIEWS = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'views');
 const jsx = () => fs.readFileSync(path.join(VIEWS, 'Capture.jsx'), 'utf8');
 const css = () => fs.readFileSync(path.join(VIEWS, 'Capture.css'), 'utf8');
 // ⚠ A name inside a comment is not a use — fifth time.
@@ -78,7 +78,7 @@ test('⚠ no screen-local palette', () => {
   assert.ok(sheet.length < css().length, 'comment stripping removed nothing');
   const accents = sheet.match(/var\(--accent[^)]*\)/g) || [];
   assert.deepEqual(accents, [], `Capture.css still picks the system accent: ${accents.join(', ')}`);
-  assert.match(sheet, /var\(--sara-rgb/);
+  assert.match(sheet, /var\(--saim-rgb/);
 });
 
 test('⚠ the section labels are shared, and nothing overrides their colour', () => {

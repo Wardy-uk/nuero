@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 r"""
-SARA Watch-presence REPORTER (Windows / ARM64) — headless sensor, no lock of its own.
+SAiM Watch-presence REPORTER (Windows / ARM64) — headless sensor, no lock of its own.
 
 This is the laptop twin of the Pi's watch-presence-service.py. It does ONE thing:
 passively detect the Apple Watch over BLE (via its IRK) and write a small presence.json
-that the SARA backend reads (GET /api/presence). SARA — not this script — owns the lock
+that the SAiM backend reads (GET /api/presence). SAiM — not this script — owns the lock
 decision. Keeping the sensor and the decision separate is the charter seam: the same
-SARA lock logic runs on the Pi and the laptop, fed by whichever reporter is local.
+SAiM lock logic runs on the Pi and the laptop, fed by whichever reporter is local.
 
 Engine reused from watch_lock.py (proven on this ARM64 box: IRK self-test PASS, ~23
 adverts/25s). DETECTION-based present/away, NOT RSSI: on Windows a wall barely dents the
@@ -16,11 +16,11 @@ STOPPING, not getting weaker.
 Detection rule (config.json, shared with watch_lock.py):
   - present : the Watch's resolvable address was seen within present_window_s (default 15s)
   - away    : not seen for away_timeout_s (default 25s) -- but ONLY once we've been present
-              at least once. Before the first sighting we stay "unknown" (SARA ignores
+              at least once. Before the first sighting we stay "unknown" (SAiM ignores
               "unknown" and uses its fallback), so starting this with the Watch off-wrist
               can never blind-lock you.
 
-presence.json (atomic write) matches the schema SARA's presence.js expects:
+presence.json (atomic write) matches the schema SAiM's presence.js expects:
   status, away, present, rssi, last_seen_s, hits, updated, source.
 
 Run:  windows-watch-lock\venv\Scripts\python.exe watch-presence-reporter.py
@@ -51,11 +51,11 @@ APP_DIR = os.path.dirname(
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 STATUS_FILE = os.environ.get("WATCH_STATUS_FILE", os.path.join(APP_DIR, "presence.json"))
 
-# Reporting this laptop to SARA as a MOBILE sensor. Unset = off, and the local
+# Reporting this laptop to SAiM as a MOBILE sensor. Unset = off, and the local
 # presence file (the screen lock) works exactly as before — this is additive.
-SENSOR_URL = os.environ.get("SARA_SENSOR_URL", "").strip()
-SENSOR_ROOM = os.environ.get("SARA_SENSOR_ROOM", "laptop").strip() or "laptop"
-SENSOR_TOKEN = os.environ.get("SARA_SENSOR_TOKEN", "").strip()
+SENSOR_URL = os.environ.get("SAIM_SENSOR_URL", "").strip()
+SENSOR_ROOM = os.environ.get("SAIM_SENSOR_ROOM", "laptop").strip() or "laptop"
+SENSOR_TOKEN = os.environ.get("SAIM_SENSOR_TOKEN", "").strip()
 _push_warned = False
 
 DEFAULTS = {
@@ -217,7 +217,7 @@ class Reporter:
         return age
 
     def sensor_reading(self, age):
-        """This laptop as a SARA sensor — the same shape the Pi room sensors push.
+        """This laptop as a SAiM sensor — the same shape the Pi room sensors push.
 
         ⚠ MOBILE, AND IT SAYS SO. Every other sensor answers "is he in MY ROOM",
         which only works because it never moves. A laptop goes to meetings, so its
@@ -249,7 +249,7 @@ class Reporter:
         }
 
     def push_status(self, age):
-        """Report to SARA. Never allowed to affect the lock: a failed push is logged
+        """Report to SAiM. Never allowed to affect the lock: a failed push is logged
         and dropped, because this laptop's own screen lock must not depend on a Pi."""
         if not SENSOR_URL:
             return
@@ -258,7 +258,7 @@ class Reporter:
             req = urllib.request.Request(SENSOR_URL, data=body, method="POST",
                                          headers={"Content-Type": "application/json"})
             if SENSOR_TOKEN:
-                req.add_header("X-Sara-Sensor-Token", SENSOR_TOKEN)
+                req.add_header("X-Saim-Sensor-Token", SENSOR_TOKEN)
             with urllib.request.urlopen(req, timeout=4) as r:
                 if r.status >= 400:
                     log(f"sensor push rejected {r.status}")
@@ -285,7 +285,7 @@ class Reporter:
         tmp = STATUS_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f)
-        # atomic — SARA never reads a half-written file.
+        # atomic — SAiM never reads a half-written file.
         # ⚠ On Windows the replace is REFUSED (WinError 5) while any other process
         # holds the target open, even for a moment's read. That killed this
         # reporter on 4 Sep 2026 and nothing restarted it, so the Watch lock was
@@ -326,7 +326,7 @@ async def main():
                     f"age={('%.1f' % age) if age is not None else '  -'}s "
                     f"idle={('%.1f' % rep.last_idle) if rep.last_idle is not None else '  -'}s "
                     f"rssi={rep.last_rssi}")
-            # Write on every transition, and otherwise heartbeat ~every 6s so SARA's
+            # Write on every transition, and otherwise heartbeat ~every 6s so SAiM's
             # freshness check (WATCH_STALE_MS, default 30s) always sees a live file.
             if rep.status != last_written or ticks % 3 == 0:
                 rep.write_status(age)

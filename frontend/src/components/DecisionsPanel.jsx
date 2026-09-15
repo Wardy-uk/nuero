@@ -80,7 +80,7 @@ export default function DecisionsPanel() {
         <div className="decisions-empty">
           <strong>No decisions logged yet.</strong>
           <span>
-            Ask SARA to record one, or say so in chat — anything she marks with
+            Ask SAiM to record one, or say so in chat — anything she marks with
             {' '}<code>[DECISION: …]</code> lands here and in the vault.
           </span>
         </div>

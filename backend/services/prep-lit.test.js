@@ -15,7 +15,7 @@
  * Ritual — three values for one meaning, on the colour whose entire job is to be
  * RECOGNISED. Amber-means-unread only works if it is one amber.
  *
- * ⚠ AND THE LAST CELEBRATION EMOJI IN THE APP. `sara-voice` rejects the
+ * ⚠ AND THE LAST CELEBRATION EMOJI IN THE APP. `saim-voice` rejects the
  * "celebrate this small win" register outright, and CLAUDE.md records the two 🎉
  * empty states in this app being removed. This was a third — and it survived
  * because it is a FALLBACK, rendered only when the server sent no message, so it
@@ -27,7 +27,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const APP = path.resolve(__dirname, '..', '..', 'sara', 'app', 'src');
+const APP = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src');
 const VIEWS = path.join(APP, 'views');
 const jsx = () => fs.readFileSync(path.join(VIEWS, 'MeetingPrep.jsx'), 'utf8');
 
@@ -57,7 +57,7 @@ test('⚠ ONE amber across the app, because recognition is its whole job', () =>
   assert.match(sheet, /#f0d6a6/, 'the gap ink is gone');
 });
 
-test('⚠ SARA does not celebrate', () => {
+test('⚠ SAiM does not celebrate', () => {
   // The last one in the app, and a fallback — which is why it outlived a
   // cleanup that recorded itself as finished.
   assert.match(jsx(), /mp__none/, 'could not read MeetingPrep.jsx');   // positive control
@@ -69,7 +69,7 @@ test('⚠ SARA does not celebrate', () => {
   assert.match(src, /Nothing else in the diary\./);
 });
 
-test('⚠ no celebration anywhere else in SARA either', () => {
+test('⚠ no celebration anywhere else in SAiM either', () => {
   // ⚠ Scanned across the app, because the one that survived did so by being in
   // a branch nobody looks at. A per-screen check would have missed it too.
   const roots = [VIEWS, path.resolve(APP, '..', '..', 'shared-ui')];
@@ -119,11 +119,11 @@ test('⚠ iOS makes the same two distinctions', () => {
   // fails on a machine that simply does not have the other repo is one that gets
   // deleted, taking the drift check with it.
   const ios = path.resolve(__dirname, '..', '..', '..', 'nuero-ios',
-                           'Sara', 'SaraPrepView.swift');
+                           'Saim', 'SaimPrepView.swift');
   if (!fs.existsSync(ios)) return;
   const swift = fs.readFileSync(ios, 'utf8');
 
-  assert.match(swift, /private func gaps\(/, 'could not read SaraPrepView.swift');  // positive control
+  assert.match(swift, /private func gaps\(/, 'could not read SaimPrepView.swift');  // positive control
 
   // The screen's whole register, on both surfaces.
   assert.match(swift, /Noted as outstanding/,

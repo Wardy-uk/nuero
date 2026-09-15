@@ -660,7 +660,7 @@
 
 .adhd__cohort-task:hover { background: rgba(255, 255, 255, 0.06); }
 
-/* The id is the thing he can quote to SARA or put in a commit — same reasoning
+/* The id is the thing he can quote to SAiM or put in a commit — same reasoning
    as the task-id chip on a TodoPanel card. */
 .adhd__cohort-id {
   flex: 0 0 auto;

@@ -5,7 +5,7 @@
  * takes DHCP down with it.
  *
  * Nick, 14 Sep 2026, after the Sky box reported "no ethernet connection":
- * *"can we build alerting/early warning into NEURO/SARA same way as we do for
+ * *"can we build alerting/early warning into NEURO/SAiM same way as we do for
  * smart devices?"*
  *
  * ── What actually fails ─────────────────────────────────────────────────────

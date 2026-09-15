@@ -48,7 +48,7 @@ function getTone(ctx) {
   return 'focused';
 }
 
-// SARA's four registers. Written in second person on purpose — these end up in
+// SAiM's four registers. Written in second person on purpose — these end up in
 // a prompt, and "the user is overwhelmed" is how a model starts narrating Nick
 // in the third person on a card he is reading himself.
 const TONE_INSTRUCTIONS = {
@@ -63,7 +63,7 @@ const TONE_INSTRUCTIONS = {
 // Focus Enhancement (primary directive + item guidance)
 // ═══════════════════════════════════════════════════════
 
-// ── SARA's opening line must be about the day she was actually shown ────────
+// ── SAiM's opening line must be about the day she was actually shown ────────
 //
 // 7 Sep 2026. Live, at the top of the briefing, spoken aloud: "Avoid the
 // meeting. / Stay focused on tasks." — and on the next refresh, "Start the
@@ -89,7 +89,7 @@ const TONE_INSTRUCTIONS = {
 // write a directive can always invent. So the output is CHECKED against the
 // items it was given, and a line that drifts is discarded rather than shown.
 // Returning null is already the "AI unavailable" path, so the caller falls back
-// to `buildDeterministicSara` with no new branch.
+// to `buildDeterministicSaim` with no new branch.
 //
 // ⚠ The asymmetry is deliberate and the check is tuned to it: a false REJECT
 // costs a generic-but-true line, a false ACCEPT puts fiction at the top of the
@@ -114,7 +114,7 @@ const TYPE_WORDS = {
 };
 
 // A directive directs. "Avoid the meeting" is not a smaller first move, it is
-// permission — which is the one thing SARA must never hand the person whose
+// permission — which is the one thing SAiM must never hand the person whose
 // failure mode is avoidance. Checked on `message` and `action` only: the
 // `ignore` line's whole job is to say what can wait.
 const NON_DIRECTIVES = [
@@ -141,7 +141,7 @@ function _mentions(haystack, word) {
  * indistinguishable from the model being offline, and a model drifting on every
  * pass is something Nick should be able to find out about.
  */
-function checkSaraGrounding(line, items) {
+function checkSaimGrounding(line, items) {
   const message = line?.primary?.message || '';
   const action = line?.primary?.action || '';
   const ignore = line?.ignore || '';
@@ -216,7 +216,7 @@ async function enhanceFocus({ items, context, tone, primaryItem }) {
   //
   // The added cost is PROMPT tokens, which the Pi reads far faster than it
   // writes, and nothing waits on this call — it pre-generates for the next one.
-  const systemPrompt = `SARA: decisive chief of staff. JSON only. Tone: ${tone}. ${toneGuide}
+  const systemPrompt = `SAiM: decisive chief of staff. JSON only. Tone: ${tone}. ${toneGuide}
 Write only about the numbered items given. Never mention anything not in that list. Never tell him to avoid, skip or ignore the top item.`;
 
   const userMessage = `${ctxStr}
@@ -237,7 +237,7 @@ JSON only:`;
       // burned the full 14s, aborted, and then paid OpenRouter for the same
       // answer. Nothing waits on this: enhanceFocus is fire-and-forget
       // pre-generation for the NEXT request and the current one always renders
-      // buildDeterministicSara instantly, so the old "must fit the route's 15s
+      // buildDeterministicSaim instantly, so the old "must fit the route's 15s
       // timeout" was never true. Sized above p95 to let the local model finish.
     }, { timeout: 25000 });
 
@@ -265,9 +265,9 @@ JSON only:`;
     // renders the deterministic line with no new branch. Logged with the
     // reason: a silent fallback is indistinguishable from the model being
     // offline, and a model drifting on every pass is worth knowing about.
-    const grounded = checkSaraGrounding(line, items);
+    const grounded = checkSaimGrounding(line, items);
     if (!grounded.ok) {
-      console.warn(`[AIProvider] Discarded SARA line — ${grounded.reason}: "${line.primary.message}"`);
+      console.warn(`[AIProvider] Discarded SAiM line — ${grounded.reason}: "${line.primary.message}"`);
       return null;
     }
 
@@ -295,15 +295,15 @@ function _parseJSON(text) {
 
 
 // ═══════════════════════════════════════════════════════
-// Deterministic SARA Fallback (Phase 4B)
+// Deterministic SAiM Fallback (Phase 4B)
 // Always available, no AI required.
 // ═══════════════════════════════════════════════════════
 
 /**
- * Build a SARA block from deterministic decision-engine output.
- * Used when AI is unavailable — ensures SARA block is always present.
+ * Build a SAiM block from deterministic decision-engine output.
+ * Used when AI is unavailable — ensures SAiM block is always present.
  */
-function buildDeterministicSara(items, tone) {
+function buildDeterministicSaim(items, tone) {
   if (!items || items.length === 0) return null;
 
   const top = items[0];
@@ -406,9 +406,9 @@ function getStatus() {
 module.exports = {
   getTone,
   enhanceFocus,
-  buildDeterministicSara,
+  buildDeterministicSaim,
   // Pure, so the grounding rules pin without a model, a DB or a clock.
-  checkSaraGrounding,
+  checkSaimGrounding,
   generateDrilldownFraming,
   streamChat,
   classifyImport,

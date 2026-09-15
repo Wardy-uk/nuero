@@ -28,7 +28,7 @@ const path = require('path');
 const { renderToString } = require('react-dom/server');
 const esbuild = require('esbuild');
 
-const COMPONENT = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui', 'Readiness.jsx');
+const COMPONENT = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui', 'Readiness.jsx');
 
 function stubCss() {
   return {

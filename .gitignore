@@ -27,14 +27,14 @@ __pycache__/
 *.bak-*
 
 # Runtime logs & local-only dirs
-sara/logs/
+saim/logs/
 /Private
 
 # Machine-local Claude Code overrides (keep memory/skills tracked)
 .claude/settings.local.json
 
 # One-off migration staging blob (patch + tarball)
-/_incoming-daypilot-sara/
+/_incoming-daypilot-saim/
 
 # Core dumps. `/proc/sys/kernel/core_pattern` is the bare string `core`, so a
 # dump lands in the process's CWD — which for the backend is this working tree.

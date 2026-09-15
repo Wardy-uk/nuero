@@ -4,7 +4,7 @@
 # We already own the Watch's IRK. Apple Watches broadcast a rotating Resolvable
 # Private Address (RPA); the IRK lets us recognise it. This continuously active-scans
 # BLE, resolves every advert against the IRK, and reports when OUR watch is seen + its
-# RSSI (signal strength → rough distance). That's everything SARA's auto-lock needs:
+# RSSI (signal strength → rough distance). That's everything SAiM's auto-lock needs:
 # "seen recently & close = present; not seen for N s = walked away".
 #
 # Uses HA's own proven resolver (bluetooth_data_tools) so the IRK math is byte-for-byte

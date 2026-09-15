@@ -1,6 +1,6 @@
 'use strict';
 
-// What SARA says on arrival, and when she stays quiet. Pure halves only.
+// What SAiM says on arrival, and when she stays quiet. Pure halves only.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -76,7 +76,7 @@ test('every opener uses his name', () => {
   for (const o of all) assert.match(o, /\bNick\b/, `"${o}" does not say his name`);
 });
 
-// Nick, 12 Sep 2026: "more natural, casual and friendly" — but SARA's register, which
+// Nick, 12 Sep 2026: "more natural, casual and friendly" — but SAiM's register, which
 // is warm and dry. A line that fakes delight is the one that gets the speaker muted.
 test('nothing shouts, gushes or fakes delight', () => {
   const all = [...Object.values(g.OPENERS).flat(), ...Object.values(g.ROOM_OPENERS).flat(), ...g.LEADS];

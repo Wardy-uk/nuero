@@ -24,7 +24,7 @@ const React = require('react');
 const { renderToString } = require('react-dom/server');
 const esbuild = require('esbuild');
 
-const SURFACE = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui', 'AttentionSurface.jsx');
+const SURFACE = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui', 'AttentionSurface.jsx');
 
 // The field paints to a canvas and knows nothing about offers; stubbing it
 // keeps this a test of the surface rather than of a renderer.
@@ -159,7 +159,7 @@ test('⚠ every offer is rendered — a second one cannot be silently dropped', 
   assert.match(html, /Warm it up\?/);
 });
 
-// ── Open on your desk, on SARA's own surface ─────────────────────────────────
+// ── Open on your desk, on SAiM's own surface ─────────────────────────────────
 //
 // ⚠ This lives on the SHARED surface, so it renders on the phone, the kiosk and
 // the desktop Electron window from one file. The kiosk reaches NEURO through an
@@ -173,7 +173,7 @@ test('⚠ every offer is rendered — a second one cannot be silently dropped', 
 //   has not said, which correctly offers nothing, and is its own test below.
 const AT_DESK = { atDesk: true, deskKnown: true, host: 'DESKTOP-8LGF9RR', deskOffer: { known: true, host: 'DESKTOP-8LGF9RR', why: null, apps: [{ id: 'music', label: 'Music' }, { id: 'code', label: 'VS Code' }, { id: 'terminal', label: 'Terminal' }, { id: 'browser', label: 'Browser' }] } };
 
-test('at the laptop, SARA offers what THAT MACHINE said it can open', () => {
+test('at the laptop, SAiM offers what THAT MACHINE said it can open', () => {
   const html = render({ data: { ...payload(null), work: AT_DESK }, onDeskOpen: () => {} });
   for (const l of ['Music', 'VS Code', 'Terminal', 'Browser']) assert.match(html, new RegExp(l));
   // ⚠ IT NAMES THE MACHINE. A press acts on one laptop, and a row reading

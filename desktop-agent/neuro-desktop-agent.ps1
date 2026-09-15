@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Reports what the laptop is doing to NEURO, so SARA can tell working from
+  Reports what the laptop is doing to NEURO, so SAiM can tell working from
   not-working and four hours of one job from four hours of twelve.
 
 .DESCRIPTION

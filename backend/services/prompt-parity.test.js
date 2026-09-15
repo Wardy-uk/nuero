@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const voice = require('./sara-voice');
+const voice = require('./saim-voice');
 
 // #112 — the weekday and weekend system prompts were two independent literals,
 // and they had already drifted in the way that matters: the weekend personality
@@ -16,10 +16,10 @@ const voice = require('./sara-voice');
 //
 // 16 Aug 2026 — the same drift was loose across the whole system. Chat had a
 // carefully written personality; the standup carried its own copy, the briefing
-// had a one-line "you are SARA, an executive AI assistant", and the journal had
-// no voice at all. The three surfaces where SARA talks to Nick about his day
+// had a one-line "you are SAiM, an executive AI assistant", and the journal had
+// no voice at all. The three surfaces where SAiM talks to Nick about his day
 // were the three furthest from who she is supposed to be. The blocks now live in
-// sara-voice.js and these tests pin every consumer to them.
+// saim-voice.js and these tests pin every consumer to them.
 
 const HERE = __dirname;
 const src = f => fs.readFileSync(path.join(HERE, f), 'utf8');
@@ -42,8 +42,8 @@ test('both chat prompts are composed from the shared blocks, not re-typed', () =
 
   assert.match(
     claude,
-    /require\('\.\/sara-voice'\)/,
-    'claude.js must take the blocks from sara-voice, not declare its own'
+    /require\('\.\/saim-voice'\)/,
+    'claude.js must take the blocks from saim-voice, not declare its own'
   );
 });
 
@@ -77,7 +77,7 @@ test('the voice rules that must never differ live in one place', () => {
   assert.match(voice.CORE_RULES, /Feel free to/);
   assert.match(voice.CORE_RULES, /Answer first/i, 'conclusion-first is the structure Nick asked for');
   assert.match(voice.CORE_RULES, /One question at a time/i);
-  assert.match(voice.CORE_RULES, /No life-coaching/i, 'SARA is supportive through usefulness, not affirmations');
+  assert.match(voice.CORE_RULES, /No life-coaching/i, 'SAiM is supportive through usefulness, not affirmations');
   assert.match(voice.CORE_RULES, /Never invent/i, 'truthfulness outranks appearing helpful');
 });
 
@@ -120,7 +120,7 @@ test('the weekend prompt still says what makes it a weekend', () => {
   assert.match(weekend, /noticing him, not his queue/);
 });
 
-test('the compact voice is compact, and is still SARA', () => {
+test('the compact voice is compact, and is still SAiM', () => {
   // The surfaces using it emit a sentence or two, sometimes on a 1.5b local
   // model with a 2048-token context. If this grows into a full spec it crowds
   // out the task and the output gets worse, not more characterful.
@@ -128,17 +128,17 @@ test('the compact voice is compact, and is still SARA', () => {
     voice.VOICE_COMPACT.length < 900,
     'VOICE_COMPACT must stay short enough to sit in front of a small-model task'
   );
-  assert.match(voice.VOICE_COMPACT, /You are SARA/);
+  assert.match(voice.VOICE_COMPACT, /You are SAiM/);
   assert.match(voice.VOICE_COMPACT, /second person/i);
   assert.match(voice.VOICE_COMPACT, /life-coaching/i);
 });
 
-test('a push notification is always from SARA, never from NEURO', () => {
-  // NEURO is the brain; SARA is the half that COMES to Nick. A push is by
+test('a push notification is always from SAiM, never from NEURO', () => {
+  // NEURO is the brain; SAiM is the half that COMES to Nick. A push is by
   // definition her arriving, so the sender is her name — the scheduler's six
   // jobs and the import pipeline all said "NEURO — ...", which put two different
   // senders on the same phone for the same system. Titles are display-only in
-  // both service workers (they fall back to 'SARA'), so this is copy, not routing.
+  // both service workers (they fall back to 'SAiM'), so this is copy, not routing.
   const dirs = [path.join(HERE), path.join(HERE, '..', 'routes')];
   const offenders = [];
   for (const dir of dirs) {
@@ -153,8 +153,8 @@ test('a push notification is always from SARA, never from NEURO', () => {
   assert.deepEqual(offenders, [], 'these pushes introduce themselves as NEURO');
 });
 
-test('every surface where SARA speaks takes its voice from the one module', () => {
-  // The list IS the point. A new surface that writes its own "You are SARA,
+test('every surface where SAiM speaks takes its voice from the one module', () => {
+  // The list IS the point. A new surface that writes its own "You are SAiM,
   // a helpful assistant" is the drift this module exists to stop, and it is
   // invisible until someone reads the output and finds it lifeless.
   const consumers = [
@@ -162,14 +162,14 @@ test('every surface where SARA speaks takes its voice from the one module', () =
     'standup-session.js',        // morning ritual + EOD
     'briefing.js',               // the push Nick reads first
     '../routes/journal.js',      // evening journal prompts
-    '../routes/standup.js',      // legacy question generation (SARA app cards)
+    '../routes/standup.js',      // legacy question generation (SAiM app cards)
   ];
 
   for (const f of consumers) {
     assert.match(
       src(f),
-      /require\((['"])(\.\.\/services\/|\.\/)sara-voice\1\)/,
-      `${f} talks to Nick — it must take its voice from sara-voice.js`
+      /require\((['"])(\.\.\/services\/|\.\/)saim-voice\1\)/,
+      `${f} talks to Nick — it must take its voice from saim-voice.js`
     );
   }
 });
@@ -177,14 +177,14 @@ test('every surface where SARA speaks takes its voice from the one module', () =
 
 // ── Nick's own spec, merged 31 Aug 2026 ──────────────────────────────────────
 //
-// These pin the half that came from "SARA — Core Personality & Behaviour
+// These pin the half that came from "SAiM — Core Personality & Behaviour
 // Prompt" (archived in the vault). They are here for the same reason the
 // #112 pins are: every one of them is a GENERATIVE instruction, and generative
 // instructions are what get quietly compressed away when someone tidies a
 // prompt — leaving a technically-compliant ban list and a lifeless assistant.
 
 test('the humour is licensed, not merely permitted', () => {
-  // "Slight playfulness, dry and occasional" produced a SARA who never actually
+  // "Slight playfulness, dry and occasional" produced a SAiM who never actually
   // made a joke. Nick's spec is explicit that she may take the piss, and that
   // the target is the humour of two people who know each other well.
   assert.match(voice.CORE_TRAITS, /take the piss/i);
@@ -222,7 +222,7 @@ test('a memory is never invented, and a gap is a complete answer', () => {
 });
 
 test('REGISTERS exists and covers work, building, personal and stuck', () => {
-  // The block that stopped SARA being only a work assistant. Everything else in
+  // The block that stopped SAiM being only a work assistant. Everything else in
   // this module was written for the queue and the calendar, so with no work to
   // do she was accurate and lifeless — the #112 symptom arriving by a different
   // route.
@@ -267,7 +267,7 @@ test('the self-check rides on the full voice, not just in a comment', () => {
 // ── From Nick's ChatGPT memory export, 31 Aug 2026 ───────────────────────────
 //
 // He spotted the split himself: a large part of that dump was not FACTS about
-// him but INSTRUCTIONS for how SARA should behave. Those belong in the voice,
+// him but INSTRUCTIONS for how SAiM should behave. Those belong in the voice,
 // not in a profile she reads as facts. Three were genuinely new, and all three
 // describe a specific way of being annoying that he has evidently met before.
 

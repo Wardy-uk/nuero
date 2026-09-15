@@ -298,8 +298,8 @@
   gap: 8px;
 }
 
-/* SARA line in guided flow */
-.guided-sara-line {
+/* SAiM line in guided flow */
+.guided-saim-line {
   padding: 12px 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -307,7 +307,7 @@
   border-radius: var(--radius-sm);
   margin-bottom: 12px;
 }
-.guided-sara-label {
+.guided-saim-label {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
@@ -317,7 +317,7 @@
   display: block;
   margin-bottom: 4px;
 }
-.guided-sara-text {
+.guided-saim-text {
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;

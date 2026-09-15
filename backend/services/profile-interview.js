@@ -6,7 +6,7 @@
  * Nick's design (31 Aug 2026): seed the profile from the memory Claude and
  * ChatGPT already hold, *"then enrich that from a 'get to know me' session run
  * directly from NEURO — a one time conversation where it asks questions and I
- * answer — from there, SARA/NEURO adds to it as it learns."*
+ * answer — from there, SAiM/NEURO adds to it as it learns."*
  *
  * The seed did the easy half and was deliberately conservative: 29 facts, and it
  * left out most of the SPECIFICS. It knows he has an aquarium; it does not know
@@ -46,7 +46,7 @@
 
 const db = require('../db/database');
 const profile = require('./profile');
-const { VOICE_FULL } = require('./sara-voice');
+const { VOICE_FULL } = require('./saim-voice');
 
 const STATE_KEY = 'profile_interview';
 

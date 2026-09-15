@@ -150,7 +150,7 @@ async function checkEvents(eventIds, { dryRun = false, now = new Date() } = {}) 
     // a day — and this set is what stops a second email going to the same
     // organiser about the same meeting.
     seen = new Set(
-      db.getSaraActionsByType('chase_agenda')
+      db.getSaimActionsByType('chase_agenda')
         .filter(a => a.status !== 'rejected')
         .map(a => a.payload?.eventId)
         .filter(Boolean)

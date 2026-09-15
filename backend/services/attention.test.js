@@ -173,7 +173,7 @@ test('a low-confidence day off still hides nothing', () => {
 test('away changes nothing — not the ranking, and not the speech', () => {
   // Caught live: the rationale claimed "nothing is spoken" in the same payload
   // as a populated `speech` and `quiet:false`. Presence means "not at home",
-  // the phone is in his pocket, and being out is exactly when SARA coming to
+  // the phone is in his pocket, and being out is exactly when SAiM coming to
   // him is the point — so away must speak.
   const items = [item({ id: 'a', score: 70 }), item({ id: 'b', score: 60 })];
   const away = gate(ctx(ACTIVITY.AWAY), items);

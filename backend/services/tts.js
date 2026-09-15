@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * TTS — spoken audio for SARA's replies.
+ * TTS — spoken audio for SAiM's replies.
  *
  * Why this exists: iOS drops `speechSynthesis` in an installed standalone PWA. The call
  * is accepted and nothing plays, with no error, even from inside a user gesture. Browser
@@ -16,7 +16,7 @@
  *      the result in a WAV header before sending it on.
  *   2. It is a CONVERSATIONAL model, not a TTS engine. Asked plainly to read text it
  *      answers it instead — "Queue is at twelve…" came back as "Understood. The queue is
- *      at twelve… I'll confirm next steps shortly", inventing a commitment SARA never
+ *      at twelve… I'll confirm next steps shortly", inventing a commitment SAiM never
  *      made. A system prompt alone does NOT fix this; a one-shot echo exchange does,
  *      pinning it to verbatim. Don't remove ECHO_SHOT.
  */
@@ -25,7 +25,7 @@ const crypto = require('crypto');
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = process.env.TTS_MODEL || 'openai/gpt-audio-mini';
-// ballad is one of the MASCULINE voices and was a bad default for SARA. Feminine options
+// ballad is one of the MASCULINE voices and was a bad default for SAiM. Feminine options
 // on this model: coral, shimmer, sage, marin, nova (alloy is neutral). All nine names in
 // VOICES are accepted by the API and keep verbatim delivery — the client picks.
 const VOICE = process.env.TTS_VOICE || 'coral';
@@ -40,8 +40,8 @@ const MAX_CHARS = 1200;    // a spoken reply beyond this is a monologue, not a c
 // Accent first, and stated repeatedly. The underlying voices are American-trained, so a
 // single clause about being British loses to the verbatim rules that surround it. Whether
 // these voices can hold RP at all is a limitation of the model, not of the prompt —
-// ElevenLabs is the route to a genuinely British SARA if this isn't convincing.
-const SYSTEM = 'You are SARA, a British woman from England, reading a line aloud in your own '
+// ElevenLabs is the route to a genuinely British SAiM if this isn't convincing.
+const SYSTEM = 'You are SAiM, a British woman from England, reading a line aloud in your own '
   + 'voice. ACCENT: British English (Received Pronunciation, southern England). This is not '
   + 'optional — you are English, and you must never sound American. British vowels, British '
   + 'rhythm, non-rhotic Rs (drop the R in "car", "further", "order"). Say "shedule" not '

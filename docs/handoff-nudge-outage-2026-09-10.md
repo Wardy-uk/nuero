@@ -3,7 +3,7 @@
 ## The live problem
 
 Nick, this evening: *"no notifications are working now"* and *"health sync still
-not working on neuro or sara"*.
+not working on neuro or saim"*.
 
 **`GET /api/nudges` is returning an empty `nudges` array.** That is the finding
 to start from. Everything else below is either ruled out or already fixed.

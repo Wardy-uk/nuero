@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const obsidian = require('./obsidian');
+const legacyNames = require('./legacy-names');
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
@@ -429,8 +430,8 @@ function isLegacyPlaudCleanupPath(relativePath) {
 }
 
 function isKnowledgeMemoryGenerated(frontmatter) {
-  return cleanQuoted(frontmatter.managed_by).toLowerCase() === 'sara-knowledge-memory'
-    || cleanQuoted(frontmatter.source).toLowerCase() === 'sara-import-consolidation';
+  return legacyNames.matchesValue(cleanQuoted(frontmatter.managed_by), 'saim-knowledge-memory')
+    || legacyNames.matchesValue(cleanQuoted(frontmatter.source), 'saim-import-consolidation');
 }
 
 function readMarkdownNote(fullPath) {
@@ -1001,7 +1002,7 @@ function chooseCanonicalPlaudNote(notes) {
 }
 
 function ensurePlaudCleanupReportDir() {
-  const dir = path.join(getVaultPath(), 'Documents', 'System', 'SARA Import Reports');
+  const dir = path.join(getVaultPath(), 'Documents', 'System', 'SAiM Import Reports');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -1380,14 +1381,14 @@ async function autoClassify() {
                   });
                   const webpush = require('./webpush');
                   webpush.sendToAll(
-                    'SARA — Transcript processed',
+                    'SAiM — Transcript processed',
                     parts.join(' ') || `Transcript filed to ${cls.destination}.`,
                     { type: 'plaud', url: '/imports' }
                   ).catch(() => {});
                 } else {
                   const webpush = require('./webpush');
                   webpush.sendToAll(
-                    'SARA — Transcript ready',
+                    'SAiM — Transcript ready',
                     `Transcript filed to ${cls.destination}. Ready to review.`,
                     { type: 'plaud', url: '/vault' }
                   ).catch(() => {});
@@ -1396,7 +1397,7 @@ async function autoClassify() {
                 console.error('[Imports] Transcript processing error:', tpErr.message);
                 const webpush = require('./webpush');
                 webpush.sendToAll(
-                  'SARA — Transcript ready',
+                  'SAiM — Transcript ready',
                   `Transcript filed to ${cls.destination}. Ready to review.`,
                   { type: 'plaud', url: '/vault' }
                 ).catch(() => {});

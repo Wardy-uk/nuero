@@ -12,9 +12,9 @@
 
 | | |
 |---|---|
-| **Should ambient observations ever notify?** | `services/ambient.js` is **pull-only** by design. Six new interruption sources is how SARA becomes a pest and gets muted, and nudge volume is the one budget allowed to argue against building more. My read: the health trends earn a push, the water one never does. His call. |
+| **Should ambient observations ever notify?** | `services/ambient.js` is **pull-only** by design. Six new interruption sources is how SAiM becomes a pest and gets muted, and nudge volume is the one budget allowed to argue against building more. My read: the health trends earn a push, the water one never does. His call. |
 | **`NEVER_MENTION` in `desktop-activity.js` is deliberately empty** | Is four hours in Teams or Excel the same finding as four hours in VS Code? Inventing that list would be inventing his preferences. |
-| **Personal context in the vault** | The biggest single lever left, and he has said he wants to think about it first. SARA now has eyes on his body, his diary and his laptop, and almost nothing on what he cares about doing with his time. `WHO_IS_NICK` in `sara-voice.js` says so explicitly and tells her to ask rather than invent. |
+| **Personal context in the vault** | The biggest single lever left, and he has said he wants to think about it first. SAiM now has eyes on his body, his diary and his laptop, and almost nothing on what he cares about doing with his time. `WHO_IS_NICK` in `saim-voice.js` says so explicitly and tells her to ask rather than invent. |
 | **Plaud consolidation sees 2 of 222 recordings** | `groupPlaudNotes` filters `path.startsWith('Plaud/')`, but summaries now route to `Meetings/YYYY/MM/` where **222 notes carry a `plaud_id`**. Keying the group on `plaud_id` wherever the note lives switches a dormant pipeline back on and writes ~222 consolidated notes (30/run, hourly). That is a decision, not a bug fix. |
 | **63 core dumps, 3.0 GB, in `/mnt/data/nuero/backend/`** | From a pm2 restart loop on 28 Aug 20:04–20:05: something ran `server.js` under `/usr/bin/node` (v20), and better-sqlite3's prebuild is Node 22 ABI. Harmless now (403 GB free) but they land in the **repo working tree**, which per the deploy notes can block `--ff-only` pulls. Also worth setting `ulimit -c 0` for the pm2 service so it cannot recur. |
 
@@ -70,7 +70,7 @@ All deployed and verified live. Each is documented at length in `CLAUDE.md`.
 - **`services/ambient.js`** — sedentary (Apple Watch stand data), exercise gaps, health trends, food/water. ⚠ Its governing rule: **not logged is not not done.**
 - **`services/desktop-activity.js` + `desktop-agent/`** — installed and running on Nick's Windows box. ⚠ Sends the **foreground process name only**, never window titles.
 - **`services/signals.js` + NEURO Health** — one row per sensor, five states. `off` must never render like `stale`.
-- **`sara-voice.js`** — merged with Nick's own personality spec, now with REGISTERS (work / building / personal / stuck). Spec archived at `Projects/NEURO/SARA — Personality Spec` in the vault.
+- **`saim-voice.js`** — merged with Nick's own personality spec, now with REGISTERS (work / building / personal / stuck). Spec archived at `Projects/NEURO/SARA — Personality Spec` in the vault.
 
 ---
 

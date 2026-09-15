@@ -8,7 +8,7 @@
  * heading and `parseVaultTodos` reads it back onto the task as `msPlan`.
  *
  * Pure, and in `shared/` rather than in either frontend, because three surfaces
- * render task cards (NEURO's TodoPanel, SARA's Tasks and Focus) and three copies
+ * render task cards (NEURO's TodoPanel, SAiM's Tasks and Focus) and three copies
  * of "how do we word this" is how they come to disagree about the same task.
  *
  * UNKNOWN IS SILENCE, NEVER A GUESS. A plan that could not be read is null all

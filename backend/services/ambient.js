@@ -3,7 +3,7 @@
 const { storedDate } = require('./stored-time');
 
 /**
- * Ambient observations — what SARA can notice about Nick's body and his day.
+ * Ambient observations — what SAiM can notice about Nick's body and his day.
  *
  * ── Why this exists ─────────────────────────────────────────────────────────
  * Nick, 31 Aug 2026: she should behave like J.A.R.V.I.S. — sat down at home on a
@@ -30,11 +30,11 @@ const { storedDate } = require('./stored-time');
  * OBSERVATIONS — things that are true about right now — and hands them over.
  * `decision-engine` stays the one place something becomes worth surfacing and
  * `attention.gate()` the one place it is filtered, exactly as `attention.js`
- * says. This is a sensor, not a second brain; `sara/backend/state/inference.js`
+ * says. This is a sensor, not a second brain; `saim/backend/state/inference.js`
  * was retired for being the latter.
  *
  * ⚠ NOTHING HERE NOTIFIES. Pull only, first release. Six new interruption
- * sources is precisely how SARA becomes a pest and gets muted, after which none
+ * sources is precisely how SAiM becomes a pest and gets muted, after which none
  * of the rest matters — nudge volume is the one budget allowed to argue against
  * building more. Earn the push once the observations have been read for a while
  * and found to be right.
@@ -97,7 +97,7 @@ const WATER_TARGET_ML = 1500;
 //
 // ⚠ RAW ACCELEROMETER IS NOT AVAILABLE and never will be from here. HealthKit
 // exposes no raw motion type; the Watch's CoreMotion stream is reachable only by
-// an app running ON the watch and is never written to Health. So "can SARA read
+// an app running ON the watch and is never written to Health. So "can SAiM read
 // the accelerometer" is no — but Apple has already done the processing, and
 // `apple_stand_time` IS the accelerometer-derived answer to the question that
 // was actually being asked.
@@ -147,7 +147,7 @@ function _phrase(minutes) {
  * `LOGGING_DAYS_REQUIRED` of the trailing window carry a reading. Returns the
  * reason when it does not, because "he has not logged food since March" and
  * "he has not eaten today" are completely different statements and only one of
- * them is SARA's business.
+ * them is SAiM's business.
  */
 function loggingHabit(days = [], { required = LOGGING_DAYS_REQUIRED, label = 'this' } = {}) {
   const logged = days.filter(d => d && Number(d.value) > 0);
@@ -386,7 +386,7 @@ function assess(input = {}, now = new Date()) {
   //
   // ⚠ The habit check comes FIRST and is the point. Without it this says "you
   // haven't eaten" every lunchtime for as long as he is not logging, which is
-  // both wrong and the fastest possible way to get SARA muted.
+  // both wrong and the fastest possible way to get SAiM muted.
   const dietEnergy = Array.isArray(input.dietEnergy) ? input.dietEnergy : [];
   const foodHabit = loggingHabit(dietEnergy.slice(0, DIET_WINDOW_DAYS), { label: 'food' });
   if (!foodHabit.live) {

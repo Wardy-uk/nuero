@@ -105,7 +105,7 @@ function update(patch = {}) {
 }
 
 /**
- * Is SARA paused right now? PURE — takes the settings and the clock.
+ * Is SAiM paused right now? PURE — takes the settings and the clock.
  *
  * An unparseable `pausedUntil` reads as NOT paused: a corrupt value must not be
  * able to silence NEURO indefinitely with no way for Nick to see why.

@@ -11,7 +11,7 @@
  * This matters beyond tidiness because today's `## Focus Today` is what
  * standup-accountability parses tomorrow as the carry source. Every duplicate is
  * re-read the next morning as another distinct open commitment, so the list
- * breeds — which is how SARA came to open a standup insisting on "four
+ * breeds — which is how SAiM came to open a standup insisting on "four
  * escalations" Nick had never committed to and could not find in his calendar.
  */
 

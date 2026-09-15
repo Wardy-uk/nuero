@@ -6,8 +6,8 @@
   gap: 16px;
 }
 
-/* ── SARA line ── */
-.focus-sara {
+/* ── SAiM line ── */
+.focus-saim {
   padding: 14px 16px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -15,7 +15,7 @@
   border-radius: var(--radius-sm);
 }
 
-.focus-sara-label {
+.focus-saim-label {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
@@ -26,7 +26,7 @@
   margin-bottom: 6px;
 }
 
-.focus-sara-line {
+.focus-saim-line {
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;
@@ -35,7 +35,7 @@
   margin: 0;
 }
 
-.focus-sara-action {
+.focus-saim-action {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--accent);
@@ -43,12 +43,12 @@
   margin-top: 6px;
 }
 
-.focus-sara-critical { border-left-color: var(--danger); }
-.focus-sara-critical .focus-sara-label { color: var(--danger); }
-.focus-sara-assertive { border-left-color: var(--warning); }
-.focus-sara-assertive .focus-sara-label { color: var(--warning); }
-.focus-sara-calm { border-left-color: var(--success); }
-.focus-sara-calm .focus-sara-label { color: var(--success); }
+.focus-saim-critical { border-left-color: var(--danger); }
+.focus-saim-critical .focus-saim-label { color: var(--danger); }
+.focus-saim-assertive { border-left-color: var(--warning); }
+.focus-saim-assertive .focus-saim-label { color: var(--warning); }
+.focus-saim-calm { border-left-color: var(--success); }
+.focus-saim-calm .focus-saim-label { color: var(--success); }
 
 /* ── Defer feedback overlay ── */
 .focus-defer-feedback {

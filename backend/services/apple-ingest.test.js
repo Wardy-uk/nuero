@@ -524,10 +524,10 @@ test('an ingested event is STORED as wall-clock, all the way to the row', () => 
 test('the pushing app is recorded and reported', () => {
   apple.ingestCalendar({
     from: '2026-11-01T00:00:00', to: '2026-11-02T00:00:00',
-    calendars: ['Home'], client: 'sara',
+    calendars: ['Home'], client: 'saim',
     events: [{ id: 'c-1', title: 'Swim', calendar: 'Home', start: '2026-11-01T07:00:00', end: '2026-11-01T08:00:00' }],
   });
-  assert.equal(apple.status().client, 'sara');
+  assert.equal(apple.status().client, 'saim');
 
   apple.ingestCalendar({
     from: '2026-11-03T00:00:00', to: '2026-11-04T00:00:00',
@@ -541,11 +541,11 @@ test('a refused push still says who was refused', () => {
   // "something pushed blind" is useless without knowing which.
   apple.ingestCalendar({
     from: '2026-11-05T00:00:00', to: '2026-11-06T00:00:00',
-    calendars: [], events: [], client: 'sara',
+    calendars: [], events: [], client: 'saim',
   });
   const st = apple.status();
   assert.equal(st.access, 'none');
-  assert.equal(st.client, 'sara');
+  assert.equal(st.client, 'saim');
 });
 
 test('an unnamed or junk client is null, never a guess', () => {
@@ -572,7 +572,7 @@ test('two apps pushing the same diary do not double it', () => {
   const event = { id: 'dup-1', title: 'Dentist', calendar: 'Home', start: '2026-11-11T09:00:00', end: '2026-11-11T09:30:00' };
 
   apple.ingestCalendar({ from, to, calendars: ['Home'], events: [event], client: 'neuro' });
-  apple.ingestCalendar({ from, to, calendars: ['Home'], events: [event], client: 'sara' });
+  apple.ingestCalendar({ from, to, calendars: ['Home'], events: [event], client: 'saim' });
 
   const rows = db.getCalendarEvents(from, to).filter((e) => e.subject === 'Dentist');
   assert.equal(rows.length, 1, 'one diary, one row, whichever app pushed it');

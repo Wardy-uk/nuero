@@ -28,22 +28,22 @@ process.env.NEURO_DB_PATH = path.join(root, 'pending.db');
 const db = require('./database');
 
 test.before(async () => { await db.init(); });
-test.beforeEach(() => { db.run('DELETE FROM sara_actions', []); });
+test.beforeEach(() => { db.run('DELETE FROM saim_actions', []); });
 
 test('a bound on one type is not spent on the others', () => {
   // Bury one capture_todo under high-confidence noise of other types. The old
   // read sorted across every type, so the noise outranks it.
   for (let i = 0; i < 300; i++) {
-    db.createSaraAction('open_task', { i }, 0.99, 'noise', `noise-${i}`);
+    db.createSaimAction('open_task', { i }, 0.99, 'noise', `noise-${i}`);
   }
-  const wanted = db.createSaraAction(
+  const wanted = db.createSaimAction(
     'capture_todo', { text: 'Confirm the field mapping' }, 0.10, 'low confidence but real', 'wanted'
   );
 
-  const viaGlobalCap = db.getPendingSaraActions(100).filter(a => a.type === 'capture_todo');
+  const viaGlobalCap = db.getPendingSaimActions(100).filter(a => a.type === 'capture_todo');
   assert.equal(viaGlobalCap.length, 0, 'precondition: a global cap spends itself on other types');
 
-  const scoped = db.getPendingSaraActionsByType('capture_todo', 100);
+  const scoped = db.getPendingSaimActionsByType('capture_todo', 100);
   assert.equal(scoped.length, 1, 'a typed bound only ever holds rows of that type');
   assert.equal(scoped[0].id, wanted);
 });
@@ -53,25 +53,25 @@ test('the count is of what is pending, not of what was returned', () => {
   // count of what is waiting. Reporting that length as the total is the mistake
   // that had /api/actions claiming 10 pending against a real queue of 930.
   for (let i = 0; i < 250; i++) {
-    db.createSaraAction('capture_todo', { text: `task ${i}` }, 0.5, 'bulk', `bulk-${i}`);
+    db.createSaimAction('capture_todo', { text: `task ${i}` }, 0.5, 'bulk', `bulk-${i}`);
   }
-  db.createSaraAction('reply_email', { to: 'someone@example.com' }, 0.9, 'other type', 'other');
+  db.createSaimAction('reply_email', { to: 'someone@example.com' }, 0.9, 'other type', 'other');
 
-  assert.equal(db.getPendingSaraActionsByType('capture_todo', 200).length, 200, 'the cap holds');
-  assert.equal(db.countPendingSaraActionsByType('capture_todo'), 250, 'the count ignores the cap');
-  assert.equal(db.countPendingSaraActionsByType('reply_email'), 1, 'and is scoped to the type');
+  assert.equal(db.getPendingSaimActionsByType('capture_todo', 200).length, 200, 'the cap holds');
+  assert.equal(db.countPendingSaimActionsByType('capture_todo'), 250, 'the count ignores the cap');
+  assert.equal(db.countPendingSaimActionsByType('reply_email'), 1, 'and is scoped to the type');
 });
 
 test('only pending rows count — an approved one is not still waiting', () => {
-  const id = db.createSaraAction('capture_todo', { text: 'done with' }, 0.5, 'x', 'dedupe-1');
-  db.createSaraAction('capture_todo', { text: 'still open' }, 0.5, 'x', 'dedupe-2');
-  db.run('UPDATE sara_actions SET status = ? WHERE id = ?', ['executed', id]);
+  const id = db.createSaimAction('capture_todo', { text: 'done with' }, 0.5, 'x', 'dedupe-1');
+  db.createSaimAction('capture_todo', { text: 'still open' }, 0.5, 'x', 'dedupe-2');
+  db.run('UPDATE saim_actions SET status = ? WHERE id = ?', ['executed', id]);
 
-  assert.equal(db.countPendingSaraActionsByType('capture_todo'), 1);
-  assert.equal(db.getPendingSaraActionsByType('capture_todo', 100).length, 1);
+  assert.equal(db.countPendingSaimActionsByType('capture_todo'), 1);
+  assert.equal(db.getPendingSaimActionsByType('capture_todo', 100).length, 1);
 });
 
 test('a type nobody has queued is zero, not an error', () => {
-  assert.equal(db.countPendingSaraActionsByType('chase_commitment'), 0);
-  assert.deepEqual(db.getPendingSaraActionsByType('chase_commitment', 100), []);
+  assert.equal(db.countPendingSaimActionsByType('chase_commitment'), 0);
+  assert.deepEqual(db.getPendingSaimActionsByType('chase_commitment', 100), []);
 });

@@ -4,7 +4,7 @@
  * THE LOCK SCREEN TAKES HER COLOUR — the last item on the design build order.
  *
  * ⚠⚠ THE WIDGET TOOK NO COLOUR AT ALL. It draws the same nebulous field every
- * other SARA surface draws, and hard-coded it `#78aaeb` — so a day with a
+ * other SAiM surface draws, and hard-coded it `#78aaeb` — so a day with a
  * breaching escalation and a quiet Sunday were THE SAME PICTURE, on the one
  * surface Nick sees without deciding to look at anything. Everywhere else the
  * field is her state channel; here it was decoration.
@@ -29,10 +29,10 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const widget = () => fs.readFileSync(
-  path.join(ROOT, 'sara', 'widget', 'neuro-attention.js'), 'utf8');
+  path.join(ROOT, 'saim', 'widget', 'neuro-attention.js'), 'utf8');
 
 const loadDrive = () => import(
-  'file://' + path.join(ROOT, 'sara', 'shared-ui', 'fieldDrive.mjs').replace(/\\/g, '/'));
+  'file://' + path.join(ROOT, 'saim', 'shared-ui', 'fieldDrive.mjs').replace(/\\/g, '/'));
 
 test('⚠⚠ a quiet Sunday and a red day are different pictures', async () => {
   const fd = await loadDrive();
@@ -94,7 +94,7 @@ test('⚠ the server composes it from the web\'s module, not a copy of it', () =
   const code = attention.replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n').map((l) => (l.trim().startsWith('//') ? '' : l)).join('\n');
 
-  assert.match(code, /import\('\.\.\/\.\.\/sara\/shared-ui\/fieldDrive\.mjs'\)/,
+  assert.match(code, /import\('\.\.\/\.\.\/saim\/shared-ui\/fieldDrive\.mjs'\)/,
                'the backend stopped sharing the drive and is deciding for itself');
   assert.match(code, /fd\.rgbText\(fd\.colour\(/);
 
@@ -117,7 +117,7 @@ test('⚠ one definition of "pressing", now that the server needs it too', async
 
   // And the hook re-exports it rather than keeping a second copy.
   const hook = fs.readFileSync(
-    path.join(ROOT, 'sara', 'shared-ui', 'useFieldDrive.js'), 'utf8');
+    path.join(ROOT, 'saim', 'shared-ui', 'useFieldDrive.js'), 'utf8');
   assert.match(hook, /export \{ isPressing \} from '\.\/fieldDrive\.mjs'/);
   assert.ok(!/export function isPressing/.test(hook),
             'a second definition of pressing is back');

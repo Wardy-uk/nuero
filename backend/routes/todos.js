@@ -179,9 +179,9 @@ router.get('/', (req, res) => {
     // cross-note fold in `action-candidates` reads pending to decide whether a
     // repeated commitment is already captured, and hiding one from it would
     // create a second row for the same thing.
-    const rawPending = db.getPendingSaraActionsByType('capture_todo', SUGGESTION_CAP);
+    const rawPending = db.getPendingSaimActionsByType('capture_todo', SUGGESTION_CAP);
     const pending = require('../services/action-snooze').partitionSnoozed(rawPending).awake;
-    const pendingTotal = db.countPendingSaraActionsByType('capture_todo');
+    const pendingTotal = db.countPendingSaimActionsByType('capture_todo');
     if (pending.length >= SUGGESTION_CAP) {
       // Loud, because a capped list looks exactly like a complete one.
       console.warn(`[Todos] Suggestion list capped at ${SUGGESTION_CAP} of ${pendingTotal} pending `

@@ -19,7 +19,7 @@
  * ordinary well-read day is orange. `surfaceRgb` is the one function; these
  * pin that nothing else picks.
  *
- * `sara/shared-ui` is ESM and this suite is CommonJS, so the module comes in by
+ * `saim/shared-ui` is ESM and this suite is CommonJS, so the module comes in by
  * dynamic import (the field-drive / vault-browser-health pattern).
  */
 
@@ -29,7 +29,7 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const SHARED = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui');
+const SHARED = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui');
 const read = (f) => fs.readFileSync(path.join(SHARED, f), 'utf8');
 
 let m;
@@ -103,7 +103,7 @@ test('⚠ AttentionSurface DERIVES its colour and holds no stops of its own', ()
 
 test('⚠ the dead palette copy in Approach.css is gone and stays gone', () => {
   const css = read('Approach.css');
-  assert.match(css, /--approach-rgb: var\(--sara-rgb/, 'the alias must read the shell value');
+  assert.match(css, /--approach-rgb: var\(--saim-rgb/, 'the alias must read the shell value');
   // `.approach--warm/--crit/--unresolved` were a FOURTH copy of the palette
   // that nothing applied, sitting under a comment saying the colour is never
   // picked locally. A dead stop teaches the next reader the wrong rule.
@@ -123,9 +123,9 @@ test('⚠ the corridor reads the SHARED light levels, not its own numbers', () =
 
 // ── The primitives ──────────────────────────────────────────────────────────
 
-test('Lit.css resolves every colour from --sara-rgb', () => {
+test('Lit.css resolves every colour from --saim-rgb', () => {
   const css = read('Lit.css');
-  assert.match(css, /--sara-rgb/, 'could not read Lit.css');
+  assert.match(css, /--saim-rgb/, 'could not read Lit.css');
 
   // ⚠ ONE exemption, and it is a BLOCK rather than a list of literals: the
   // fault chip is deliberately the single place a real alarm colour appears, so
@@ -149,7 +149,7 @@ test('Lit.css resolves every colour from --sara-rgb', () => {
 test('⚠ hierarchy by LIGHT — the lead really is brighter than the rest', () => {
   const css = read('Lit.css');
   const alpha = (name) => {
-    const block = css.match(new RegExp(`--${name}:\\s*rgba\\(var\\(--sara-rgb\\),\\s*([\\d.]+)\\)`));
+    const block = css.match(new RegExp(`--${name}:\\s*rgba\\(var\\(--saim-rgb\\),\\s*([\\d.]+)\\)`));
     assert.ok(block, `--${name} must be an alpha on her colour`);
     return Number(block[1]);
   };
@@ -191,7 +191,7 @@ test('⚠ both shells light the whole app, not just the Surface', () => {
     const src = fs.readFileSync(file, 'utf8');
     assert.match(src, /useFieldDrive/, `could not read ${file}`);   // positive control
     assert.match(src, /className="app lit-scope"/, `${file} does not light the shell`);
-    assert.match(src, /'--sara-rgb': surfaceRgb\(fieldDrive\)/, `${file} must derive, not pick`);
+    assert.match(src, /'--saim-rgb': surfaceRgb\(fieldDrive\)/, `${file} must derive, not pick`);
   }
 });
 
@@ -228,7 +228,7 @@ test('⚠ the primitive renders, and the scope carries her colour', async () => 
   const scoped = renderToString(
     h(LitScope, { drive: { degraded: true } }, h(Lit, null, 'x'))
   );
-  assert.match(scoped, /--sara-rgb:\s*150,160,170/, 'blind must be grey, from the one function');
+  assert.match(scoped, /--saim-rgb:\s*150,160,170/, 'blind must be grey, from the one function');
   assert.match(scoped, /class="lit-scope"/);
 
   // Tones are MEANINGS and each has its own class.

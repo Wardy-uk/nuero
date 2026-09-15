@@ -49,7 +49,7 @@ test('nothing in this file can reach the task store', () => {
   // And it must not execute an action either — approving is Nick's.
   assert.doesNotMatch(src, /executeAction/);
   // Positive control: the scan is looking at real code, not an empty string.
-  assert.match(src, /createSaraAction/);
+  assert.match(src, /createSaimAction/);
 });
 
 // ---------------------------------------------------------------------------

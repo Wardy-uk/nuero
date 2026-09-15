@@ -14,7 +14,7 @@
  * outliving its writer (the Jira queue cache, frozen and stated as current fact
  * for seven weeks; `jira_last_sync` with no writer since the same commit), and a
  * CALLER outliving its route (the MCP `get_queue` tool calling `/api/queue`, a
- * path that never existed; `sara/backend`'s `/focus/done`; `setScopes` shipped
+ * path that never existed; `saim/backend`'s `/focus/done`; `setScopes` shipped
  * with no route at all). Every one was invisible from the outside.
  *
  * ⚠ WHAT IT CAN AND CANNOT PROVE. A path built from an interpolated verb —
@@ -45,7 +45,7 @@ const REPO = path.resolve(__dirname, '..', '..');
 function mountTable(serverFile, routesDir) {
   // ⚠ COMMENTS STRIPPED HERE TOO, and this one was found by MUTATION rather than
   // by reading — the third time in this file that "a name in a comment counts".
-  // Commenting a mount out is how a route gets retired (`sara/backend`'s
+  // Commenting a mount out is how a route gets retired (`saim/backend`'s
   // `/api/email` and `/api/jira` went that way on 11 Sep, and the commented
   // lines are still there explaining why). Reading them as live means the table
   // still contains a mount that no longer exists, so a caller left behind by
@@ -55,7 +55,7 @@ function mountTable(serverFile, routesDir) {
   const mounts = new Map(); // first segment (or 'a/b') -> router file name | null
 
   // ⚠ `./routes/` OR `./src/routes/`, and camelCase file names. NEURO mounts
-  // from `./routes/state-of-play`; `sara/backend` mounts from
+  // from `./routes/state-of-play`; `saim/backend` mounts from
   // `./src/routes/neuroAuth`. One reader for both, or the kiosk cannot be
   // checked at all — and the kiosk is the surface whose dead routes are
   // invisible from everywhere else, because the phone renders the same views
@@ -110,7 +110,7 @@ function walk(dir, acc = []) {
  * ⚠ A PATH IN A COMMENT IS NOT A CALLER, and this is not a nicety: the whole
  * value of this guard is that a failure means something real. Without it,
  * `mcp-server/index.js` fails on the comment that EXPLAINS why `/api/queue` was
- * removed, and `sara/frontend`'s `saraState.jsx` fails on the note recording
+ * removed, and `saim/frontend`'s `saimState.jsx` fails on the note recording
  * that `/api/actions/focus/done` used to be called. Both are exactly the
  * documentation you want people writing, and a test that punishes it gets
  * switched off — which costs the real catches too.
@@ -234,8 +234,8 @@ function unresolved(raw, { mounts, inline, routesOf }) {
 
 const NEURO_CLIENTS = {
   'NEURO desktop': ['frontend/src'],
-  'SARA phone PWA': ['sara/app/src'],
-  'SARA shared views': ['sara/shared-ui'],
+  'SAiM phone PWA': ['saim/app/src'],
+  'SAiM shared views': ['saim/shared-ui'],
   'MCP server': ['mcp-server'],
 };
 
@@ -287,8 +287,8 @@ test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () 
 // ── 2. the kiosk, whose screens are shared and whose doors are not ──────────
 
 /**
- * The shared SARA views run on the phone (direct to NEURO) AND on the Pi kiosk
- * (through `sara/backend`'s allowlist). A segment the views call that is not a
+ * The shared SAiM views run on the phone (direct to NEURO) AND on the Pi kiosk
+ * (through `saim/backend`'s allowlist). A segment the views call that is not a
  * door is a screen that 404s on the kiosk only — which is invisible from here,
  * because the phone is fine.
  *
@@ -319,7 +319,7 @@ const CLOSED_ON_PURPOSE = new Set(['health', 'desktop']);
  */
 function kioskDoors() {
   const proxy = fs.readFileSync(
-    path.join(REPO, 'sara', 'backend', 'src', 'routes', 'neuroProxy.js'), 'utf8',
+    path.join(REPO, 'saim', 'backend', 'src', 'routes', 'neuroProxy.js'), 'utf8',
   );
   const block = proxy.match(/const DOORS = new Set\(\[([\s\S]*?)\]\)/);
   assert.ok(block, 'could not read the DOORS allowlist — the scan is broken, not the doors');
@@ -334,16 +334,16 @@ function kioskDoors() {
   return doors;
 }
 
-test('every segment the shared SARA views call is a kiosk door, or declared closed', () => {
+test('every segment the shared SAiM views call is a kiosk door, or declared closed', () => {
   const doors = kioskDoors();
 
-  const saraServer = fs.readFileSync(path.join(REPO, 'sara', 'backend', 'server.js'), 'utf8');
+  const saimServer = fs.readFileSync(path.join(REPO, 'saim', 'backend', 'server.js'), 'utf8');
   const named = new Set(
-    [...saraServer.matchAll(/app\.use\('\/api\/([a-z0-9-]+)'/g)].map((m) => m[1]),
+    [...saimServer.matchAll(/app\.use\('\/api\/([a-z0-9-]+)'/g)].map((m) => m[1]),
   );
 
   const stranded = [];
-  for (const [raw, where] of clientPaths(['sara/app/src/views', 'sara/shared-ui'])) {
+  for (const [raw, where] of clientPaths(['saim/app/src/views', 'saim/shared-ui'])) {
     const seg = knownPrefix(raw)[0];
     if (!seg) continue;
     if (doors.has(seg) || named.has(seg) || CLOSED_ON_PURPOSE.has(seg)) continue;
@@ -359,30 +359,30 @@ test('every segment the shared SARA views call is a kiosk door, or declared clos
 
 // -- 3. the kiosk SHELL, whose own calls go nowhere near NEURO ---------------
 
-test('every path the kiosk shell calls resolves — on sara/backend or through a door', () => {
+test('every path the kiosk shell calls resolves — on saim/backend or through a door', () => {
   const neuro = mountTable(
     path.join(REPO, 'backend', 'server.js'),
     path.join(REPO, 'backend', 'routes'),
   );
-  const sara = mountTable(
-    path.join(REPO, 'sara', 'backend', 'server.js'),
-    path.join(REPO, 'sara', 'backend', 'src', 'routes'),
+  const saim = mountTable(
+    path.join(REPO, 'saim', 'backend', 'server.js'),
+    path.join(REPO, 'saim', 'backend', 'src', 'routes'),
   );
-  assert.ok(sara.mounts.size > 8, 'sara/backend mounts parsed suspiciously small');
+  assert.ok(saim.mounts.size > 8, 'saim/backend mounts parsed suspiciously small');
 
   const doors = kioskDoors();
   const dead = [];
 
-  for (const [raw, where] of clientPaths(['sara/frontend/src'])) {
-    // Its OWN backend first — every named door in `sara/backend/server.js` is
+  for (const [raw, where] of clientPaths(['saim/frontend/src'])) {
+    // Its OWN backend first — every named door in `saim/backend/server.js` is
     // mounted AHEAD of the proxy, so those win.
-    if (!unresolved(raw, sara)) continue;
+    if (!unresolved(raw, saim)) continue;
     // Otherwise it can only be reaching NEURO through the allowlist, which
     // means it must be a door AND resolve on the far side.
     const seg = knownPrefix(raw)[0];
     if (!seg) continue;
     if (!doors.has(seg)) {
-      dead.push(`${raw} — not a sara/backend route and '${seg}' is not a door (${where})`);
+      dead.push(`${raw} — not a saim/backend route and '${seg}' is not a door (${where})`);
       continue;
     }
     const why = unresolved(raw, neuro);
@@ -398,7 +398,7 @@ test('every path the kiosk shell calls resolves — on sara/backend or through a
 
 test('POSITIVE CONTROL: a path in a COMMENT is not a caller', () => {
   // ⚠ THE FALSE POSITIVE THAT WOULD HAVE KILLED THIS GUARD. Both
-  // `mcp-server/index.js` and `sara/frontend`'s `saraState.jsx` carry comments
+  // `mcp-server/index.js` and `saim/frontend`'s `saimState.jsx` carry comments
   // naming routes that were REMOVED — which is exactly the documentation you
   // want, and a test that fails on it gets switched off, costing the real
   // catches too.

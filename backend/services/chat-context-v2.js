@@ -30,7 +30,7 @@ const CTX_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 // counts, every active task, the 90-day plan and a vault similarity search on the word
 // "hello" — so a hello came back as a status readout. The whole message must be the
 // greeting: "morning, what's at risk?" is a real question and keeps the full context.
-const GREETING_RE = /^\s*(hi+|hey+|hello|hiya|yo|sup|howdy|alright|morning|afternoon|evening|good\s+(morning|afternoon|evening|day))(\s+(there|sara|mate))?[\s!.,?]*$/i;
+const GREETING_RE = /^\s*(hi+|hey+|hello|hiya|yo|sup|howdy|alright|morning|afternoon|evening|good\s+(morning|afternoon|evening|day))(\s+(there|saim|mate))?[\s!.,?]*$/i;
 
 async function buildChatContext(userMessage, options = {}) {
   const mode = options.mode || 'api';

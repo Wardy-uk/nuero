@@ -50,7 +50,7 @@ test('⚠ a send that could not be delivered is NOT reported as working', async 
 
 test('positive control — a recorded delivery IS reported as sent, with the counts', async () => {
   const real = webpush.sendToAll;
-  webpush.sendToAll = async () => db.logPushOutcome({ type: 'test', title: 'SARA', outcome: 'sent', reason: null, sentCount: 2, failedCount: 1 });
+  webpush.sendToAll = async () => db.logPushOutcome({ type: 'test', title: 'SAiM', outcome: 'sent', reason: null, sentCount: 2, failedCount: 1 });
   try {
     const res = await post('/api/push/test');
     assert.equal(res.json.ok, true);

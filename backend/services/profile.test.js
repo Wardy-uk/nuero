@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * What SARA knows about Nick as a person.
+ * What SAiM knows about Nick as a person.
  *
  * Two tests carry this file. `provenance survives into the context block`,
  * because a fact recovered from a ChatGPT memory dump entitles her to a

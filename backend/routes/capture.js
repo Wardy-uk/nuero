@@ -46,7 +46,7 @@ router.post('/note', (req, res) => {
       console.error(`[Capture] VERIFICATION FAILED — file not found after write: ${filePath}`);
       try {
         require('../services/webpush').sendToAll(
-          'SARA — Capture failed',
+          'SAiM — Capture failed',
           `Note "${(title || content.substring(0, 30))}" did not save. Check vault path.`,
           { type: 'capture_failed' }
         ).catch(() => {});
@@ -74,7 +74,7 @@ router.post('/note', (req, res) => {
 router.post('/siri-note', (req, res) => {
   const note = (req.body.note || req.body.content || req.body.text || '').trim();
   const title = (req.body.title || '').trim() || 'Watch note';
-  const source = 'sara-watch-siri';
+  const source = 'saim-watch-siri';
 
   if (!note) {
     return res.status(400).json({
@@ -96,7 +96,7 @@ router.post('/siri-note', (req, res) => {
       ok: true,
       filename,
       path: filePath,
-      spokenText: 'Saved to SARA.',
+      spokenText: 'Saved to SAiM.',
       preview: note.slice(0, 120)
     });
 
@@ -107,7 +107,7 @@ router.post('/siri-note', (req, res) => {
     res.status(500).json({
       ok: false,
       error: e.message,
-      spokenText: 'I could not save that note to SARA.'
+      spokenText: 'I could not save that note to SAiM.'
     });
   }
 });
@@ -213,7 +213,7 @@ router.post('/todo', (req, res) => {
   }
 });
 
-// POST /api/capture/feature — a NEURO/SARA/NOVA idea straight into the backlog.
+// POST /api/capture/feature — a NEURO/SAiM/NOVA idea straight into the backlog.
 // Deliberately NOT a todo: the tracker is where the backlog is ranked and triaged,
 // and a feature idea sitting in the task list is one nobody reads next to the other 92.
 router.post('/feature', (req, res) => {

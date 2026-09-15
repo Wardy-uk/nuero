@@ -1,4 +1,7 @@
 require('dotenv').config();
+// Pre-rename SARA_* variables still in a deployed .env are carried over to
+// SAIM_* here, BEFORE any module reads them. See shared/legacy-env.cjs.
+require('../shared/legacy-env.cjs').applyLegacyEnv();
 
 // Prevent EPIPE errors from crashing the process
 process.on('uncaughtException', (err) => {
@@ -230,10 +233,10 @@ app.use('/api/kb-article', require('./routes/kb-article'));
 app.use('/api/email', require('./routes/email-triage'));
 app.use('/api/pi-health', require('./routes/pi-health'));
 app.use('/api/state-of-play', require('./routes/state-of-play'));
-// The ambient feed both SARA surfaces render — one primary thing, in context.
+// The ambient feed both SAiM surfaces render — one primary thing, in context.
 app.use('/api/attention', require('./routes/attention'));
 app.use('/api/ambient', require('./routes/ambient'));
-// What SARA would do in the room he is in — lights, heating. Rides BESIDE the
+// What SAiM would do in the room he is in — lights, heating. Rides BESIDE the
 // attention pool, never in it.
 app.use('/api/rooms', require('./routes/rooms'));
 // What he is working on, and what else shares its context. Read-only.
@@ -444,7 +447,7 @@ async function start() {
   webpushService.init();
 
   // inbox-scanner retired 26 Aug 2026 — it was a second, unreconciled triage
-  // over the same mailbox, and the pile it built is what SARA was counting.
+  // over the same mailbox, and the pile it built is what SAiM was counting.
   // `email-triage` (scheduler-driven) is the only inbox scan now.
 
   scheduler.start();
@@ -456,7 +459,7 @@ async function start() {
   // ── Keep-alive: a thinking pause is not an idle connection ──────────────────
   // Node closes an idle keep-alive socket after 5s by default. That is fine for
   // a polled GET and wrong for the one interaction in NEURO built around Nick
-  // pausing to think: the standup. He reads SARA's question, types for thirty
+  // pausing to think: the standup. He reads SAiM's question, types for thirty
   // seconds, presses send — and the browser writes the POST into a socket the
   // server closed twenty-five seconds ago. The request never arrives, so it
   // never reaches a handler, is never logged, and the message is never saved;

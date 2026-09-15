@@ -3,7 +3,7 @@
 Locks Windows when your Apple Watch leaves the room and wakes the screen when it
 returns, so **Windows Hello** logs you straight back in — hands-free.
 
-It reuses the BLE presence engine from the SARA work (`../watch_presence.py`): it
+It reuses the BLE presence engine from the SAiM work (`../watch_presence.py`): it
 resolves the Watch's rotating BLE address against your captured **IRK** and treats
 "detections stopped" — not RSSI — as the "you've left" signal.
 

@@ -521,7 +521,7 @@ function assess({ history = [], live = null, triage = [], anchor = new Date(), g
     gaps,
     // An empty read with no gaps is a true "nothing yet"; with gaps it is "I
     // could not look". Those license opposite things to say, so they are never
-    // conflated — the distinction VESTA, SARA and the Surface all hold.
+    // conflated — the distinction VESTA, SAiM and the Surface all hold.
     known: gaps.length === 0,
   };
 }

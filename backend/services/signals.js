@@ -3,7 +3,7 @@
 const { parseStoredUtc } = require('./stored-time');
 
 /**
- * Every sense SARA has, and whether it is actually working.
+ * Every sense SAiM has, and whether it is actually working.
  *
  * Nick, 31 Aug 2026: *"we should add something in NEURO … that shows all these
  * signals, and whether they are red or green."*
@@ -101,13 +101,13 @@ function roomLabel(room) {
  * has gone deaf reads `error` here rather than a clean "he is not in there".
  *
  * ⚠ THE CADENCE IS THE SENSOR'S, NOT A SHARED ONE. They report every ~3s, so
- * anything past 30s is a fault, not a quiet patch. That is the same bar SARA's own
+ * anything past 30s is a fault, not a quiet patch. That is the same bar SAiM's own
  * arbitration uses to call a reading stale.
  *
  * @param {{ok, why, sensors}} payload from room-presence.sensors()
  */
 function sensorRows(payload, now = new Date()) {
-  const what = 'which room you are in, for SARA’s screens and greetings';
+  const what = 'which room you are in, for SAiM’s screens and greetings';
   if (!payload || !payload.ok) {
     return [{
       id: 'rooms',
@@ -347,7 +347,7 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
     if (!last) return { state: 'off', why: 'nothing logged in the last 30 days', detail: 'MyFitnessPal writes into Apple Health' };
     const r = rate(last, 24 * 60, now, { staleAfter: 3 * 24 * 60 });
     return r.state === 'stale'
-      ? { state: 'off', ageMinutes: r.ageMinutes, why: 'you have stopped logging', detail: 'not a fault — SARA stays quiet about food until it resumes' }
+      ? { state: 'off', ageMinutes: r.ageMinutes, why: 'you have stopped logging', detail: 'not a fault — SAiM stays quiet about food until it resumes' }
       : r;
   });
 
@@ -476,7 +476,7 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
 
   // ── Room sensors ──────────────────────────────────────────────────────────
   //
-  // Passed IN rather than fetched here: they live on SARA (:3005) behind a network
+  // Passed IN rather than fetched here: they live on SAiM (:3005) behind a network
   // call, and this page must not add a round trip per row. The route awaits one
   // read and hands it over; `sensorRows` is pure and does the judging.
   if (rooms !== null) for (const row of sensorRows(rooms, now)) add(row);

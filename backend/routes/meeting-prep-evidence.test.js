@@ -86,7 +86,7 @@ test('sending still requires confirmation — prep drafts nothing outbound', () 
   const s = source();
   // Gate 4's hard rule: drafting is allowed, sending is not, and this file must
   // not acquire a send path by accident. `waiting-on.queueChase` remains the
-  // only route to a chase, and it queues a sara_action for approval.
+  // only route to a chase, and it queues a saim_action for approval.
   for (const name of ['sendMail(', 'sendDm(', 'graphWrite(']) {
     assert.ok(!s.includes(name), `meeting prep must not call ${name} — sending needs explicit approval`);
   }

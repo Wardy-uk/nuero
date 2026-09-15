@@ -23,7 +23,22 @@
  */
 
 /** Which app a token belongs to. A closed set — see the `mobile-sync` rule. */
-const APPS = new Set(['neuro', 'sara']);
+const APPS = new Set(['neuro', 'saim']);
+
+/**
+ * Names that were the truth before the SARA → SAiM rename (15 Sep 2026), mapped
+ * to what they are now.
+ *
+ * ⚠ THIS IS NOT TIDINESS — it is the only thing keeping the phone reachable.
+ * The iOS build is rebuilt on the Mac, not here, so the INSTALLED app goes on
+ * sending `app: 'sara'` on every launch until then. Reject that and the
+ * registration 400s, no token is stored, and the device stops receiving pushes
+ * — silently, because a phone that is not sent to looks exactly like a quiet
+ * day. Normalising is what makes the rename survivable in the gap.
+ *
+ * Safe to delete once the rebuilt app has registered from every device.
+ */
+const LEGACY_APPS = new Map([['sara', 'saim']]);
 
 /** APNs gateways. A token is only valid against the one that minted it. */
 const ENVIRONMENTS = new Set(['development', 'production']);
@@ -54,7 +69,8 @@ function validate(body) {
     return { ok: false, reason: 'token must be hex, 64 characters or more' };
   }
 
-  const app = typeof body.app === 'string' ? body.app.trim().toLowerCase() : 'neuro';
+  const rawApp = typeof body.app === 'string' ? body.app.trim().toLowerCase() : 'neuro';
+  const app = LEGACY_APPS.get(rawApp) || rawApp;
   if (!APPS.has(app)) {
     return { ok: false, reason: `app must be one of ${[...APPS].join(', ')}` };
   }

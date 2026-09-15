@@ -1,6 +1,6 @@
 'use strict';
 
-// SARA in a room: read, judge, offer, remember, act (12 Sep 2026).
+// SAiM in a room: read, judge, offer, remember, act (12 Sep 2026).
 //
 // The composer. `ha-rooms` reads, `room-offers` judges, `room-episode` decides
 // what counts as one visit, and this file joins them, remembers what Nick said,
@@ -104,7 +104,7 @@ function _advanceEpisode(presence, now) {
 }
 
 /**
- * What SARA would say about the room Nick is in, right now.
+ * What SAiM would say about the room Nick is in, right now.
  *
  * @returns {{ known, room, episode, offers, decided, gaps, considered }}
  */
@@ -133,7 +133,7 @@ async function snapshot({ now = new Date() } = {}) {
   const decisions = _loadDecisions();
   if (decisions === null) {
     // ⚠ Fails CLOSED, unlike the attention gate. There, hiding work on a failed
-    // read is the expensive direction; here the failure mode is SARA asking the
+    // read is the expensive direction; here the failure mode is SAiM asking the
     // same question repeatedly, and an unreadable memory is exactly the state in
     // which she cannot know she has already asked.
     return {
@@ -196,7 +196,7 @@ function record(key, decision, context = null) {
  * ⚠ The offer is re-derived from a FRESH read and matched on key. So: an offer
  * that is no longer true cannot be executed (the lights went on some other way,
  * he left the room, dawn arrived), and nothing a client names can be acted on
- * unless SARA independently decided to offer it.
+ * unless SAiM independently decided to offer it.
  */
 async function act(key, { now = new Date() } = {}) {
   _cache = { at: 0, house: null }; // never act on a cached view of the house

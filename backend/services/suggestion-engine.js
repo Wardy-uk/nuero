@@ -29,8 +29,9 @@ const db = require('../db/database');
 // Only for its `kind` classification — the presenter does not require this file
 // back (its test reads the source as text), so there is no cycle here.
 const actionPresenter = require('./action-presenter');
+const legacyNames = require('./legacy-names');
 
-const SARA_MODE = process.env.SARA_MODE || 'suggest';
+const SAIM_MODE = process.env.SAIM_MODE || 'suggest';
 const JIRA_BASE = process.env.JIRA_BASE_URL || '';
 
 // ── Signal type → execution action mapping ──
@@ -239,12 +240,12 @@ function decidedIdentities(type) {
   const keys = new Set();
   let rows;
   try {
-    rows = db.getDecidedSaraActionsByType(type);
+    rows = db.getDecidedSaimActionsByType(type);
   } catch (e) {
     // Not knowing must never cost the suggestion — a failed read falls back to
     // the old pending-only behaviour, which is a duplicate card rather than a
     // missing one.
-    console.warn(`[SARA] Could not read decided ${type} actions:`, e.message);
+    console.warn(`[SAiM] Could not read decided ${type} actions:`, e.message);
     return keys;
   }
   for (const row of rows) {
@@ -260,7 +261,7 @@ function decidedIdentities(type) {
  * Deduplicates against today's actions.
  */
 function generateSuggestions(focusItems) {
-  if (SARA_MODE === 'off') return [];
+  if (SAIM_MODE === 'off') return [];
 
   // Before the dedupe read, not after: a spent shortcut left pending would also
   // block today's fresh one for the same focus item.
@@ -273,12 +274,12 @@ function generateSuggestions(focusItems) {
   // Navigation actions (open_ticket, open_task, etc.) are repeatable —
   // the user should always have a "Do it" option available.
   //
-  // The limit is explicit and large because getPendingSaraActions defaults to
+  // The limit is explicit and large because getPendingSaimActions defaults to
   // TEN. Once more than ten actions were pending, the ones being generated fell
   // outside the dedupe window and were re-queued on every /api/focus call —
   // which is hit by every Focus load, every agent loop and every briefing. That
   // compounded to 15,605 pending rows, most of them the same handful repeated.
-  const pendingActions = db.getPendingSaraActions(1000);
+  const pendingActions = db.getPendingSaimActions(1000);
   const pendingKeys = new Set(
     pendingActions.map(a => `${a.type}:${a.focus_item_id}`)
   );
@@ -325,12 +326,12 @@ function generateSuggestions(focusItems) {
 /**
  * Queue a single action for approval and return its id.
  *
- * This is the front door for anything that wants SARA to *do* something without
+ * This is the front door for anything that wants SAiM to *do* something without
  * doing it itself — chat tools especially. Nothing here executes; the action sits
  * pending until it is approved through /api/actions/:id/approve.
  */
 function queueAction(type, payload, reason, confidence = 0.9, focusItemId = null) {
-  return db.createSaraAction(type, payload || {}, confidence, reason || type, focusItemId);
+  return db.createSaimAction(type, payload || {}, confidence, reason || type, focusItemId);
 }
 
 /**
@@ -342,13 +343,13 @@ function persistSuggestions(suggestions) {
   // depends on reading a complete pending set; this one cannot be defeated by a
   // limit, a race between two /api/focus calls, or a future caller that forgets.
   const existing = new Set(
-    db.getPendingSaraActions(1000).map(a => `${a.type}:${a.focus_item_id}`)
+    db.getPendingSaimActions(1000).map(a => `${a.type}:${a.focus_item_id}`)
   );
   for (const s of suggestions) {
     const key = `${s.type}:${s.focusItemId}`;
     if (existing.has(key)) continue;
     existing.add(key);
-    const id = db.createSaraAction(s.type, s.payload, s.confidence, s.reason, s.focusItemId);
+    const id = db.createSaimAction(s.type, s.payload, s.confidence, s.reason, s.focusItemId);
     created.push({ ...s, id, status: 'pending' });
   }
   return created;
@@ -446,10 +447,10 @@ function expiryMomentFor(action, now = new Date()) {
 function expireStaleNavigation(now = new Date()) {
   const expired = [];
   try {
-    for (const action of db.getPendingSaraActions(NAV_READ_ALL)) {
+    for (const action of db.getPendingSaimActions(NAV_READ_ALL)) {
       const reason = navigationExpiry(action, now);
       if (!reason) continue;
-      db.updateSaraActionStatus(action.id, 'expired');
+      db.updateSaimActionStatus(action.id, 'expired');
       expired.push({ id: action.id, type: action.type, reason });
     }
   } catch (e) {
@@ -520,7 +521,7 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
       }
       if (!draft) return { ok: false, detail: 'Could not draft a reply — open the composer instead' };
 
-      const replyId = db.createSaraAction(
+      const replyId = db.createSaimAction(
         'reply_email',
         { emailId, body: draft, subject: payload.subject || null, to: payload.to || null },
         0.9,
@@ -567,7 +568,7 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
 
     // The weekly risk report going to Chris. Gate 2 of 2 — the report was built
     // and the recipient resolved at queue time; this is the approval that
-    // actually releases it. Deliberately NOT written in SARA's voice: this mail
+    // actually releases it. Deliberately NOT written in SAiM's voice: this mail
     // sends under Nick's name to the manager assessing his PIP, and the same
     // rule holds here as for chase messages and 1-2-1 invites.
     case 'send_weekly_risk_report': {
@@ -614,7 +615,7 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
           body: String(payload.body),
         });
       } catch (e) {
-        console.warn('[SARA] Weekly risk send recorded nowhere:', e.message);
+        console.warn('[SAiM] Weekly risk send recorded nowhere:', e.message);
       }
 
       // Close the log row that tracks the Monday cadence, so the commitment
@@ -989,7 +990,7 @@ function _graphLocalTime(date) {
  */
 function logActionExecution(action, result) {
   try {
-    db.logActivity('sara_action', {
+    db.logActivity('saim_action', {
       actionId: action.id,
       type: action.type,
       status: result.ok ? 'executed' : 'failed',
@@ -1004,10 +1005,12 @@ function logActionExecution(action, result) {
       const line = `- ${time} — ${action.reason || action.type}`;
 
       const daily = obsidian.readTodayDailyNote() || '';
-      if (daily.includes('## SARA Actions')) {
+      // Either spelling — see `_appendToDailySection`. A note written this
+      // morning still says `## SARA Actions`.
+      if (legacyNames.headingAliases('## SAiM Actions').some((h) => daily.includes(h))) {
         obsidian.appendToDailyNote(line + '\n');
       } else {
-        obsidian.appendToDailyNote(`\n\n## SARA Actions\n${line}\n`);
+        obsidian.appendToDailyNote(`\n\n## SAiM Actions\n${line}\n`);
       }
     } catch {}
   }

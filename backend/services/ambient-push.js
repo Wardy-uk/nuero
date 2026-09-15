@@ -18,7 +18,7 @@
  *
  * ⚠ Note "hiking" needs no special case, and that is the test of the design: if
  * he is walking, `atDesk` is already false and the steps are climbing. A moment
- * described honestly out of the signals SARA already has does not need a list of
+ * described honestly out of the signals SAiM already has does not need a list of
  * activities to exclude.
  *
  * ── What this file does NOT do ──────────────────────────────────────────────
@@ -83,7 +83,7 @@ function momentFrom({ context = null, phone = null, desktop = null, now = new Da
     atLaptop,
     atDesk: atLaptop || stillSomewhere,
     inFocusSession: context ? context.activity === 'in-focus-session' : false,
-    // Kinds SARA has quietened, or Nick has. Passed IN rather than read here so
+    // Kinds SAiM has quietened, or Nick has. Passed IN rather than read here so
     // `worthInterrupting` stays pure.
     muted: Array.isArray(muted) ? muted : [],
   };
@@ -103,28 +103,28 @@ const RULES = {
   'low-water': {
     when: m => m.atDesk && !m.moving,
     urgency: 'low',
-    say: () => ({ title: 'SARA', body: 'You have not logged a drink in a while. Worth getting one.' }),
+    say: () => ({ title: 'SAiM', body: 'You have not logged a drink in a while. Worth getting one.' }),
   },
 
   'not-eaten': {
     // Not while he is moving — he may well be on his way to get lunch.
     when: m => !m.moving,
     urgency: 'low',
-    say: () => ({ title: 'SARA', body: 'Nothing logged for food today. Worth eating something.' }),
+    say: () => ({ title: 'SAiM', body: 'Nothing logged for food today. Worth eating something.' }),
   },
 
   sedentary: {
     // Only worth saying if he is actually still there to hear it.
     when: m => m.atDesk,
     urgency: 'low',
-    say: o => ({ title: 'SARA', body: `${o.text} ${o.suggestion || ''}`.trim() }),
+    say: o => ({ title: 'SAiM', body: `${o.text} ${o.suggestion || ''}`.trim() }),
   },
 
   'long-focus': {
     // He is at the laptop by definition, or the observation could not exist.
     when: m => m.atLaptop,
     urgency: 'low',
-    say: o => ({ title: 'SARA', body: `${o.text} ${o.suggestion || ''}`.trim() }),
+    say: o => ({ title: 'SAiM', body: `${o.text} ${o.suggestion || ''}`.trim() }),
   },
 
   'no-exercise': {
@@ -133,7 +133,7 @@ const RULES = {
     // cannot act on is the fastest way to teach him to ignore the channel.
     when: m => !m.onDuty || m.now.getHours() >= 17,
     urgency: 'low',
-    say: o => ({ title: 'SARA', body: `${o.text} ${o.suggestion || ''}`.trim() }),
+    say: o => ({ title: 'SAiM', body: `${o.text} ${o.suggestion || ''}`.trim() }),
   },
 
   'health-signal': {
@@ -142,7 +142,7 @@ const RULES = {
     when: () => true,
     urgency: 'normal',
     say: o => ({
-      title: 'SARA',
+      title: 'SAiM',
       // The caveat travels with it. Apple Health cannot separate exercise,
       // illness, alcohol and a hard week, and a push that drops the caveat is a
       // reading turned into a diagnosis on a lock screen.
@@ -166,7 +166,7 @@ function worthInterrupting(observation, moment) {
   // ⚠ MUTED stops the PUSH and nothing else. The observation still renders on
   // the Surface, the widget and Now — muting is about interruption, not about
   // hiding, which is `attention-lifecycle`'s acknowledged rule. And it is
-  // confessed in the EOD, where Nick can turn it back on: SARA going quiet is
+  // confessed in the EOD, where Nick can turn it back on: SAiM going quiet is
   // only safe because there is a place she says she has.
   if (moment.muted && moment.muted.includes(observation.kind)) {
     return { push: false, why: 'muted — it was not making a difference' };

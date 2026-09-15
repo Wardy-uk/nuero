@@ -238,7 +238,7 @@ function buildCandidate(email, text) {
 
 /** Already queued for this email. */
 function alreadyRaised(candidate) {
-  const existing = db.getSaraActionsBySource(candidate.sourcePath, 'capture_todo');
+  const existing = db.getSaimActionsBySource(candidate.sourcePath, 'capture_todo');
   return existing.some((a) => a.focus_item_id === candidate.focusItemId
     || a.payload?.semanticSignature === candidate.semanticSignature);
 }
@@ -323,7 +323,7 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
         const handled = actionCandidates.reviewStatusFor(candidate.sourcePath, candidate.semanticSignature);
         if (handled === 'rejected' || handled === 'executed' || handled === 'ignored') return;
 
-        db.createSaraAction(
+        db.createSaimAction(
           candidate.type,
           candidate.payload,
           candidate.confidence,

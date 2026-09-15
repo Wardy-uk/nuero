@@ -36,7 +36,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const SHARED = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui');
+const SHARED = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui');
 const read = (f) => fs.readFileSync(path.join(SHARED, f), 'utf8');
 const code = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
 
@@ -114,7 +114,7 @@ test('⚠ the escape hatch is the last utterance and must not be clipped away', 
   // surface with no menu. This does not test the layout; it pins the reason the
   // layout matters, so a future cap change has the argument in front of it.
   const composer = fs.readFileSync(
-    path.resolve(__dirname, 'sara-surface.js'), 'utf8');
+    path.resolve(__dirname, 'saim-surface.js'), 'utf8');
   assert.match(composer, /Show me everything/, 'the escape hatch is gone from the composer');
 });
 

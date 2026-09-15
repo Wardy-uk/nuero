@@ -1,0 +1,17 @@
+/* The phone's root box for the shared AttentionSurface.
+   Everything INSIDE the surface is styled by `saim/shared-ui/AttentionSurface.css`,
+   which the component imports; only the outer box is per-app.
+
+   The field must bleed to the edges of the screen — a substrate with a 1rem
+   margin around it reads as a picture of a field, not as the room you are in.
+   `.app__view` pads by 1rem, so cancel it and re-apply inside: the negative
+   margin pulls the box out over that padding, and the height compensates by
+   exactly the 2rem it gained. */
+.surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin: -1rem;
+  padding: 1rem;
+  min-height: calc(100% + 2rem);
+}

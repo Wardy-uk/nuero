@@ -2,24 +2,24 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "sara",
+      "name": "saim",
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
-      "cwd": "sara/backend",
+      "cwd": "saim/backend",
       "port": 3005
     },
     {
-      "name": "sara-frontend",
+      "name": "saim-frontend",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--port", "5176"],
-      "cwd": "sara/frontend",
+      "cwd": "saim/frontend",
       "port": 5176
     },
     {
-      "name": "sara-app",
+      "name": "saim-app",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--port", "5175"],
-      "cwd": "sara/app",
+      "cwd": "saim/app",
       "port": 5175
     }
   ]

@@ -3,7 +3,7 @@
 /**
  * The Neuro Mobile local store, exercised for real.
  *
- * `sara/app/src/mobile/localStore.js` is browser ESM with NO imports of its own,
+ * `saim/app/src/mobile/localStore.js` is browser ESM with NO imports of its own,
  * so it can be dynamically imported here against a fake IndexedDB and driven
  * exactly as the phone drives it. That matters more than usual: the store holds
  * captures that have not reached NEURO yet, so its MIGRATION path is the one
@@ -19,7 +19,7 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const STORE_PATH = path.join(__dirname, '..', '..', 'sara', 'app', 'src', 'mobile', 'localStore.js');
+const STORE_PATH = path.join(__dirname, '..', '..', 'saim', 'app', 'src', 'mobile', 'localStore.js');
 
 async function freshStore() {
   // A brand-new fake IndexedDB per test, and a fresh module instance so the

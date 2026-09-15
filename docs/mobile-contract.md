@@ -228,7 +228,7 @@ text never appears in it.
 
 ## The device side
 
-`sara/app/src/mobile/localStore.js` · `outbox.js` · `useNickNow.js`
+`saim/app/src/mobile/localStore.js` · `outbox.js` · `useNickNow.js`
 
 ### What the local store is, accurately
 

@@ -682,19 +682,19 @@ function AiSettingsSection() {
         {saved === 'ai_mode' && <span className="ai-setting-saved">✓</span>}
       </div>
 
-      {/* SARA Mode */}
+      {/* SAiM Mode */}
       <div className="ai-setting-row">
-        <div className="ai-setting-label">SARA Suggestions</div>
+        <div className="ai-setting-label">SAiM Suggestions</div>
         <select
           className="ai-setting-select"
-          value={settings.sara_mode?.value || 'suggest'}
-          onChange={e => updateSetting('sara_mode', e.target.value)}
+          value={settings.saim_mode?.value || 'suggest'}
+          onChange={e => updateSetting('saim_mode', e.target.value)}
           disabled={saving}
         >
           <option value="suggest">Enabled</option>
           <option value="off">Off</option>
         </select>
-        {saved === 'sara_mode' && <span className="ai-setting-saved">✓</span>}
+        {saved === 'saim_mode' && <span className="ai-setting-saved">✓</span>}
       </div>
 
       {/* Anthropic */}
@@ -981,9 +981,9 @@ export default function AdminPanel({ pushState = {} }) {
 
   return (
     <div className="admin-container">
-      <div className="admin-sara">
-        <span className="admin-sara-label">SARA</span>
-        <span className="admin-sara-line">System configuration. Change what I connect to.</span>
+      <div className="admin-saim">
+        <span className="admin-saim-label">SAiM</span>
+        <span className="admin-saim-line">System configuration. Change what I connect to.</span>
       </div>
 
       <div className="admin-section">
@@ -1008,7 +1008,7 @@ export default function AdminPanel({ pushState = {} }) {
         <ChangePinSection />
       </div>
 
-      <CollapsibleSection title="AI & SARA">
+      <CollapsibleSection title="AI & SAiM">
         <AiSettingsSection />
       </CollapsibleSection>
 

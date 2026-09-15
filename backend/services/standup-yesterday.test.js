@@ -2,7 +2,7 @@
 
 // What yesterday actually came to, and whether the standup can see it.
 //
-// Three separate blindnesses, all of which let SARA chase a commitment Nick had
+// Three separate blindnesses, all of which let SAiM chase a commitment Nick had
 // closed and told her about at EOD the night before:
 //   1. the EOD **Done:** bullets were written into the daily note and parsed by
 //      nothing, so the only durable record of that conversation was discarded

@@ -130,11 +130,11 @@ the code for is how CLAUDE.md drifts, which is the thing it keeps getting caught
 by. That debt is still open and now needs a session that re-reads those changes.
 
 ## #123 — PIN ROTATED, history rewrite deliberately deferred
-**The leaked PIN is dead.** Rotated in `backend/.env` AND `sara/backend/.env`
+**The leaked PIN is dead.** Rotated in `backend/.env` AND `saim/backend/.env`
 (both held it), both services restarted, verified **new → 200, old → 401**.
 Backups at `/tmp/pin-rotate-20260817/` on the Pi.
 
-Also done: value out of `docs/sara-watch-siri-mvp.md` at HEAD (`13d38aa`,
+Also done: value out of `docs/saim-watch-siri-mvp.md` at HEAD (`13d38aa`,
 placeholder + a note that the real value lives only in `.env`); Windows MCP
 configs updated (`claude_desktop_config.json`, `.claude.json`); and the two other
 affected branches deleted — `origin/pi-local-snapshot-20260630` (held the PIN
@@ -185,8 +185,8 @@ Local **468** vs Pi 463 is still the other session's uncommitted `prompt-parity.
 ## ⚠ The second session is STILL uncommitted — third session running
 Same ~14 files, unchanged again: `CLAUDE.md`, `routes/{capture,imports,journal,standup}.js`,
 `services/{ai-provider,briefing,claude,decision-engine,imports,nudges,scheduler,
-standup-session}.js`, `prompt-parity.test.js`, `sara/app/src/views/{Focus,Tasks}.jsx`,
-`services/sara-voice.js`.
+standup-session}.js`, `prompt-parity.test.js`, `saim/app/src/views/{Focus,Tasks}.jsx`,
+`services/saim-voice.js`.
 
 **`CLAUDE.md` is OWED for a FOURTH session** — #26/#40/#41/#42, #119/#21/#38/#114/#59/
 #52/#107b, and now #122/#50. I did not write it, for the same reason as the last two:
@@ -309,8 +309,8 @@ Pi **457/457**, backend online, `unstable_restarts` 0, local at `163f760` = orig
 ## ⚠ The second session is STILL live and still uncommitted
 Same ~14 files as yesterday, unchanged: `CLAUDE.md`, `routes/{capture,imports,journal,
 standup}.js`, `services/{ai-provider,briefing,claude,decision-engine,imports,nudges,
-scheduler,standup-session}.js`, `prompt-parity.test.js`, `sara/app/src/views/{Focus,
-Tasks}.jsx`, `services/sara-voice.js`.
+scheduler,standup-session}.js`, `prompt-parity.test.js`, `saim/app/src/views/{Focus,
+Tasks}.jsx`, `services/saim-voice.js`.
 
 **`CLAUDE.md` is STILL OWED** — now for #26/#40/#42 *and* #119/#38/#114/#59/#52/#107b.
 I did not write it, for the second session running, because it is one of their modified
@@ -501,8 +501,8 @@ Pi suite **430/430**, backend online, `unstable_restarts` 0. Docs: `a0f612c`, `5
 The tree was CLEAN at session start and grew ~14 modified files I never touched:
 `CLAUDE.md`, `routes/{capture,imports,journal,standup}.js`,
 `services/{ai-provider,briefing,claude,decision-engine,imports,nudges,scheduler,standup-session}.js`,
-`prompt-parity.test.js`, `sara/app/src/views/{Focus,Tasks}.jsx`, plus a new
-`services/sara-voice.js`. **I diffed every file hunk-by-hunk before staging and
+`prompt-parity.test.js`, `saim/app/src/views/{Focus,Tasks}.jsx`, plus a new
+`services/saim-voice.js`. **I diffed every file hunk-by-hunk before staging and
 committed only my own.** Their work is still uncommitted — do the same.
 **`CLAUDE.md` is OWED for #26/#40/#42 and I deliberately did not write it**: it is
 one of their modified files, and editing it is exactly how the 16 Aug PeopleBoard
@@ -512,10 +512,10 @@ incident happened. Write it once their work lands.
 Not "add a tab". `NotificationActionCard` was calling the **retired** stepper
 (`/api/standup/questions` + `/submit-guided`), which holds answers in browser
 state until one final POST — the exact failure `standup-session.js` exists to end.
-Nick chose both halves: a **Ritual** tab (`sara/app/src/views/Standup.jsx`) driving
+Nick chose both halves: a **Ritual** tab (`saim/app/src/views/Standup.jsx`) driving
 `/api/standup-session/*`, and the standup/EOD arms **deleted** from the card.
-- **The trap was ordering, not registration**: `resolveSaraLitePlan` checks the
-  'sheet' list BEFORE the 'tab' list, so adding the id to `SARA_LITE_TABS` alone
+- **The trap was ordering, not registration**: `resolveSaimLitePlan` checks the
+  'sheet' list BEFORE the 'tab' list, so adding the id to `SAIM_LITE_TABS` alone
   would have been a no-op that looked finished. Only standup/eod moved;
   journal/meeting/brain are still sheets and a test asserts it.
 - `Standup.jsx` deliberately does **not** use `apiFetch` — it flattens a non-2xx
@@ -674,11 +674,11 @@ there is nothing half-done to inherit. The brief still stands in full:
   every turn**; a failure returns **503 `retryable:true` WITH the saved session**,
   so the client retries without Nick retyping.
 - **The trap is registration and it fails silently**: a new tab id must also exist
-  in `SARA_LITE_TABS` in `shared/action-surfaces.cjs`, or notification routing
+  in `SAIM_LITE_TABS` in `shared/action-surfaces.cjs`, or notification routing
   falls back to Focus with no error.
 - Tab ids do not always mount what their name suggests — `voice` mounts **Capture**
   with `autoRecord`, not Chat. **Read `App.jsx`, don't infer.**
-- Deploys via Netlify (`sara-nickward`, base `sara/app`). Verify against the LIVE
+- Deploys via Netlify (`saim-nickward`, base `saim/app`). Verify against the LIVE
   bundle and check `VITE_BUILD_LABEL` on screen — that is what #110 was for.
 
 ## Two things worth carrying
@@ -838,7 +838,7 @@ degraded / ok, plus a live count of unreachable rows and the remedy.
 Premise confirmed stale: **4 pending, not 929**. The real bug was that the route
 asked for 1,000 actions of *every* type and discarded all but `capture_todo`, so
 the bound was spent on rows it was about to throw away. Now typed
-(`getPendingSaraActionsByType`), capped at 200, **logs when it bites**, and the
+(`getPendingSaimActionsByType`), capped at 200, **logs when it bites**, and the
 payload carries `suggestedTotal`/`suggestedCapped` so no number on screen is the
 capped one. Live: `suggestedTotal 0`.
 
@@ -979,7 +979,7 @@ other 3 render exactly one (`Reopened` ×2, `Waiting on Development` ×1).
 
 **If I had sampled only the 6 open, priority reads "always Unset" and assignee "always
 Nick", and I would have deleted a field that carries a Critical.** Same species as the
-`getPendingSaraActions` limit-10 lesson: the sample the system hands you is not the
+`getPendingSaimActions` limit-10 lesson: the sample the system hands you is not the
 population.
 
 ## NEXT
@@ -1070,7 +1070,7 @@ No code changed this session — the two items were an API call and a file move.
   its "has never run" alerts for both `nightly-rollup` and `embeddings-rebuild`.
 - **#78 held.** Consecutive log lines: `scanned 205, created 463` (first-ever pass over
   unseen notes — the backfill, not a flood) then `scanned 206, created 0`. Newest
-  `sara_actions` row is 2026-08-15 16:16, so last night's rollup created **nothing**.
+  `saim_actions` row is 2026-08-15 16:16, so last night's rollup created **nothing**.
 - **#34 confirmed.** Hope's mentions are real meetings top to bottom; no `Master Todo`,
   no `NEURO Tasks (export)`, no `.backup-` worksheet.
 - **Re-index FINISHED** — 8,440 rows / 1,092 files / 7,348 multi-chunk, last write

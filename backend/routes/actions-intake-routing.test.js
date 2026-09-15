@@ -69,7 +69,7 @@ test('a machine client can queue a suggestion, and it arrives PENDING', async ()
   assert.equal(body.ok, true);
   assert.equal(body.status, 'pending');
 
-  const action = db.getSaraAction(body.id);
+  const action = db.getSaimAction(body.id);
   assert.equal(action.type, 'vantage_suggestion');
   assert.equal(action.status, 'pending');
   // Verbatim, both of them. NEURO records the claim and derives nothing.
@@ -135,7 +135,7 @@ test('an empty suggestion is refused', async () => {
 test('a missing criticality stays null and is never read as low', async () => {
   const res = await post('/api/actions', { ...SUGGESTION, text: 'Something nobody rated', criticality: undefined });
   const { id } = await res.json();
-  assert.equal(db.getSaraAction(id).payload.criticality, null);
+  assert.equal(db.getSaimAction(id).payload.criticality, null);
 });
 
 test('the intake cannot execute anything — approval is a separate call', async () => {
@@ -144,5 +144,5 @@ test('the intake cannot execute anything — approval is a separate call', async
   assert.doesNotMatch(intake, /executeAction/);
   assert.doesNotMatch(intake, /approveAction/);
   // Positive control: the slice really is the intake handler.
-  assert.match(intake, /createSaraAction/);
+  assert.match(intake, /createSaimAction/);
 });

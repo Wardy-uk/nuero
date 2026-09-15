@@ -25,10 +25,10 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const SHARED = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui');
+const SHARED = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui');
 const read = (f) => fs.readFileSync(path.join(SHARED, f), 'utf8');
 const code = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
-const surface = require('./sara-surface');
+const surface = require('./saim-surface');
 
 test('⚠ the way out takes its own line', () => {
   const css = code(read('Approach.css'));
@@ -53,7 +53,7 @@ test('⚠ the hatch is still LAST and still never dropped', () => {
   // The rule the layout above depends on: if the composer stopped putting it
   // last, a `flex-basis: 100%` in the middle of the row would break the line in
   // two for no reason — so the two are pinned together.
-  const composer = fs.readFileSync(path.resolve(__dirname, 'sara-surface.js'), 'utf8');
+  const composer = fs.readFileSync(path.resolve(__dirname, 'saim-surface.js'), 'utf8');
   assert.match(composer, /Show me everything/, 'the escape hatch is gone');
   assert.match(composer, /kind: 'reveal'/, 'the hatch lost the intent the CSS keys on');
 

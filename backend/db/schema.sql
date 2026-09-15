@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
 -- APNs device tokens, for the native apps.
 --
--- Web Push cannot reach a native iOS app, so SARA has no way to COME TO NICK —
+-- Web Push cannot reach a native iOS app, so SAiM has no way to COME TO NICK —
 -- which is her entire premise. This is the registry half; the sender needs an
 -- APNs key, which needs a paid Apple Developer account.
 --
@@ -341,8 +341,8 @@ CREATE TABLE IF NOT EXISTS daily_summary (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- SARA Action Suggestions (Phase 5A)
-CREATE TABLE IF NOT EXISTS sara_actions (
+-- SAiM Action Suggestions (Phase 5A)
+CREATE TABLE IF NOT EXISTS saim_actions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   type TEXT NOT NULL,
   payload TEXT NOT NULL,
@@ -357,12 +357,12 @@ CREATE TABLE IF NOT EXISTS sara_actions (
   snoozed_until TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_sara_actions_status ON sara_actions(status);
+CREATE INDEX IF NOT EXISTS idx_saim_actions_status ON saim_actions(status);
 -- #107(b) — the scoped dedupe reads filter on type and on the payload's
 -- sourcePath, and both were falling back to a full scan of 16k rows.
-CREATE INDEX IF NOT EXISTS idx_sara_actions_type ON sara_actions(type);
-CREATE INDEX IF NOT EXISTS idx_sara_actions_source_path
-  ON sara_actions(json_extract(payload, '$.sourcePath'));
+CREATE INDEX IF NOT EXISTS idx_saim_actions_type ON saim_actions(type);
+CREATE INDEX IF NOT EXISTS idx_saim_actions_source_path
+  ON saim_actions(json_extract(payload, '$.sourcePath'));
 
 -- Location visit history (Phase 5)
 CREATE TABLE IF NOT EXISTS location_visits (
@@ -921,7 +921,7 @@ CREATE TABLE IF NOT EXISTS working_time_profile (
 -- Wins — the derived ledger of finished work.
 --
 -- Measured before building: over 30 days NEURO recorded FOUR completions,
--- against 271 commits, 57 executed SARA actions and a full diary. The Momentum
+-- against 271 commits, 57 executed SAiM actions and a full diary. The Momentum
 -- card on the Today tab read 0 with no streak on every one of the nine visits
 -- it got. The reward surface existed and was starved, because the only thing
 -- feeding it was self-report — a tickbox — and self-report is the first thing
@@ -950,7 +950,7 @@ CREATE TABLE IF NOT EXISTS wins (
   source       TEXT NOT NULL,   -- git | action | reply | task | ritual | decision | one-to-one | manual
   kind         TEXT NOT NULL,   -- finer label within a source, e.g. 'reply_email'
   text         TEXT NOT NULL,
-  -- What proves it: a commit sha, a sara_action id, a task id, a note path.
+  -- What proves it: a commit sha, a saim_action id, a task id, a note path.
   -- A win with no evidence is an assertion, and an assertion is what the old
   -- tickbox already was. 'manual' is the one source allowed a null here.
   evidence     TEXT,
@@ -1078,7 +1078,7 @@ CREATE INDEX IF NOT EXISTS idx_task_block_items_block ON task_block_items(block_
 --
 -- Deliberately NO capture text is stored here: the payload lives in the vault or
 -- the tasks table, which are the canonical homes for it. A second copy in a
--- ledger is a second store, and SARA/mobile stores nothing.
+-- ledger is a second store, and SAiM/mobile stores nothing.
 CREATE TABLE IF NOT EXISTS mobile_sync_operations (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   device_id     TEXT NOT NULL,

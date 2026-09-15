@@ -35,7 +35,7 @@ function isOverdue(dueDate) {
 }
 
 // Overdue FOR NICK, which is the only question the count, the filter tab and
-// SARA's line are actually asking. A shared card he has finished his half of is
+// SAiM's line are actually asking. A shared card he has finished his half of is
 // still late on the board — it is just not late because of him, and counting it
 // as his makes the number he reads every morning wrong in the one direction
 // that reads as failure. The row itself never disappears.
@@ -149,7 +149,7 @@ const MOSCOW_OPTIONS = [
 ];
 
 // Which part of Nick's life a task belongs to. The vocabulary itself lives in
-// shared/task-domain.cjs so the backend, this panel, sara/app and the capture
+// shared/task-domain.cjs so the backend, this panel, saim/app and the capture
 // page cannot disagree about what the values are; only the wording of the
 // buttons is local.
 const DOMAIN_OPTIONS = [
@@ -1133,7 +1133,7 @@ function TaskProvenance({ todo, expanded }) {
  * The handle for a task, on the card.
  *
  * Nick asked for the id on every task card, and the reason is that a task you
- * can NAME is one you can talk to SARA about, quote in a commit, or point at in
+ * can NAME is one you can talk to SAiM about, quote in a commit, or point at in
  * a conversation — without it, referring to a task means retyping its wording
  * and hoping it matches.
  *
@@ -1213,7 +1213,7 @@ function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch, onRef
           {/* The task's own id, first, so the card can be NAMED. Absent on a
               row NEURO does not own — see taskIdBadge. */}
           {taskIdBadge(todo) && (
-            <span className="todo-task-id" title="NEURO task id — quote this to SARA or in a commit">{taskIdBadge(todo)}</span>
+            <span className="todo-task-id" title="NEURO task id — quote this to SAiM or in a commit">{taskIdBadge(todo)}</span>
           )}
           {todo.source && <span className={`todo-source ${sourceClass(todo.source)}`}>{todo.source}</span>}
           {/* NEURO's own state for a task Microsoft owns. First on the row,
@@ -1349,7 +1349,7 @@ function RefusalNotice({ notice, onDismiss }) {
   );
 }
 
-function buildTodoSaraLine(active, overdue) {
+function buildTodoSaimLine(active, overdue) {
   if (active.length === 0) return "No open tasks. Rare. Use it well.";
   if (overdue.length === 0) return `${active.length} open. Nothing overdue.`;
   if (overdue.length === 1) return `${active.length} open. 1 overdue — deal with it.`;
@@ -1552,13 +1552,13 @@ function MustMoveLane({ items, held, gaps, toggling, onToggle, onSetWip, onDefer
       <div className="todo-suggestions-header">
         <div>
           <div className="todo-suggestions-label">Must move today</div>
-          <div className="todo-suggestions-copy">These are the tasks SARA thinks most directly protect your day, your commitments, or your reputation.</div>
+          <div className="todo-suggestions-copy">These are the tasks SAiM thinks most directly protect your day, your commitments, or your reputation.</div>
         </div>
         <span className="todo-suggestions-count">{items.length} in lane</span>
       </div>
       <div className="todo-suggestions-list">
         {items.map((item) => {
-          // Same owner order as sara/app's completeTask: task_id, then the
+          // Same owner order as saim/app's completeTask: task_id, then the
           // file-backed line. A row with neither cannot be completed from here,
           // and the checkbox says so rather than failing on click.
           const toggleKey = item.task_id ? `task:${item.task_id}` : `${item.filePath}:${item.lineNumber}`;
@@ -1611,7 +1611,7 @@ function MustMoveLane({ items, held, gaps, toggling, onToggle, onSetWip, onDefer
                 {/* Same id as the list row below, so the same task reads the
                     same way in both places. */}
                 {taskIdBadge(item) && (
-                  <span className="todo-task-id" title="NEURO task id — quote this to SARA or in a commit">{taskIdBadge(item)}</span>
+                  <span className="todo-task-id" title="NEURO task id — quote this to SAiM or in a commit">{taskIdBadge(item)}</span>
                 )}
                 {/* WIP first, because it is the one tag that describes what is
                     happening now rather than how the task was filed. */}
@@ -2436,13 +2436,13 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     return <MoscowReview onClose={() => setShowMoscow(false)} />;
   }
 
-  const todoSaraLine = buildTodoSaraLine(activeTodos, overdueTodos);
+  const todoSaimLine = buildTodoSaimLine(activeTodos, overdueTodos);
 
   return (
     <div className="todo-container">
-      <div className="todo-sara">
-        <span className="todo-sara-label">SARA</span>
-        <span className="todo-sara-line">{todoSaraLine}</span>
+      <div className="todo-saim">
+        <span className="todo-saim-label">SAiM</span>
+        <span className="todo-saim-line">{todoSaimLine}</span>
       </div>
       {msPushWarning && (
         <div className="todo-ms-warning" onClick={() => setMsPushWarning(null)}>

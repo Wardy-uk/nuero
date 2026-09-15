@@ -1,6 +1,6 @@
 const webpush = require('web-push');
 const db = require('../db/database');
-const { resolveSaraLiteTab } = require('../../shared/action-surfaces.cjs');
+const { resolveSaimLiteTab } = require('../../shared/action-surfaces.cjs');
 
 function isConfigured() {
   return !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
@@ -235,7 +235,7 @@ function _attentionFor(title, body, data) {
         type,
         // Resolved through the shared resolver, never guessed here, so an
         // operational alert routes exactly like a pool card of the same kind.
-        tab: resolveSaraLiteTab({ type, url: data?.url }),
+        tab: resolveSaimLiteTab({ type, url: data?.url }),
         title,
         reason: String(body || '').slice(0, 200) || null,
         urgency: ALWAYS_DELIVER.has(type) ? 'critical' : 'medium',
@@ -272,15 +272,15 @@ function _enrichData(data, record) {
   if (!record) return out;
   out.attentionRecordId = record.id;
   if (!out.tab) {
-    out.tab = record.tab || resolveSaraLiteTab({ type: out.type, url: out.url });
+    out.tab = record.tab || resolveSaimLiteTab({ type: out.type, url: out.url });
   }
   return out;
 }
 
 async function sendToAll(title, body, data = {}) {
   // Both of the returns below were SILENT. A notification NEURO decided to send
-  // and could not deliver is a fact worth keeping — without it, "SARA has gone
-  // quiet" and "SARA has nothing to say" are the same observation.
+  // and could not deliver is a fact worth keeping — without it, "SAiM has gone
+  // quiet" and "SAiM has nothing to say" are the same observation.
   if (!isConfigured()) {
     console.warn(`[WebPush] Not configured — dropped: "${title}"`);
     _record(title, data, 'undeliverable', 'VAPID not configured');

@@ -5,9 +5,9 @@ const router = express.Router();
 const attention = require('../services/attention');
 
 /**
- * GET /api/attention — the one thing SARA should surface right now.
+ * GET /api/attention — the one thing SAiM should surface right now.
  *
- * This is the feed both SARA surfaces render. It is READ-ONLY and must stay so:
+ * This is the feed both SAiM surfaces render. It is READ-ONLY and must stay so:
  * an ambient screen polled every minute must never be the reason something
  * changed (`state-of-play`'s rule).
  *
@@ -26,7 +26,7 @@ router.get('/', async (req, res) => {
     const asked = String(req.query.view || '').toLowerCase();
     const view = ['work', 'personal', 'flip'].indexOf(asked) !== -1 ? asked : null;
     // ⚠ `ask` moves the DASHBOARD, never the pool. It is matched
-    // deterministically against a small route table (`sara-surface`), bounded
+    // deterministically against a small route table (`saim-surface`), bounded
     // here so a caller cannot push an unbounded string into the payload, and it
     // adds no candidates and re-ranks nothing — the answer to the question is
     // still streamed by chat. It also cannot move the surface off `blind`.
@@ -98,9 +98,9 @@ router.get('/history', (req, res) => {
 });
 
 /**
- * Prompts SARA has quietened, and the way to turn one back on.
+ * Prompts SAiM has quietened, and the way to turn one back on.
  *
- * ⚠ Before 11 Sep 2026 the ONLY way back was asking SARA in the standup
+ * ⚠ Before 11 Sep 2026 the ONLY way back was asking SAiM in the standup
  * (`resume_prompt`): `attention-learning` could mute a kind of prompt that kept
  * being ignored, and no screen could even SEE that it had. A mute nobody can
  * inspect is a feature quietly switched off. `unmute` also clears the evidence
@@ -253,7 +253,7 @@ router.post('/records/:id/act', async (req, res) => {
  *
  * ⚠ IT RELEASES THE QUIET STATE, IT DOES NOT CREATE ONE. There is deliberately
  * no route to declare yourself INTO a meeting: the calendar decides that, and a
- * manual way to make SARA go silent is a mute button wearing a meeting's
+ * manual way to make SAiM go silent is a mute button wearing a meeting's
  * clothes. See `services/meeting-finish.js` for the rest of the rules.
  *
  * ⚠ IT WRITES NOTHING TO THE CALENDAR. The meeting is not Nick's to shorten —
@@ -263,7 +263,7 @@ router.post('/records/:id/act', async (req, res) => {
  * ⚠ The event is taken from the LIVE FEED, never from the request body. A
  * client posting its own start/end times is a client that can silence any
  * meeting it likes, including one it has invented; all it may send is the key
- * SARA gave it, and a key that is not the meeting running now is refused.
+ * SAiM gave it, and a key that is not the meeting running now is refused.
  */
 router.post('/meeting/finished', async (req, res) => {
   try {
@@ -299,7 +299,7 @@ router.post('/meeting/finished', async (req, res) => {
 /**
  * The way back. Pressed by mistake, or it started up again.
  *
- * ⚠ NOT OPTIONAL. The cost of a wrong press is SARA speaking up in a real
+ * ⚠ NOT OPTIONAL. The cost of a wrong press is SAiM speaking up in a real
  * meeting — the exact failure the quiet state exists to prevent — so undoing it
  * has to be possible, and cheap. Clearing a key that was not there is a success:
  * it is already resumed, and an error would send him looking for a problem that

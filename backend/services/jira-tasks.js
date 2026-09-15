@@ -17,7 +17,7 @@
  * That is the whole design, and everything below follows from it:
  *
  *  - **The refusal lives in `task-store.updateTask`**, not in a route. Every
- *    completion path in the estate — the todos routes, the SARA funnel, the MCP
+ *    completion path in the estate — the todos routes, the SAiM funnel, the MCP
  *    tool, the chat tool — arrives through that one function, and a guard in any
  *    one of them is a guard the other three walk past. (The same argument the
  *    task-blocks write-up hold is built on.)

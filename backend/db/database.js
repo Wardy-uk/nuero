@@ -20,6 +20,90 @@ function quarantineDb(reason = 'corrupt') {
   return target;
 }
 
+/**
+ * One-shot rename of the on-disk artefacts that carried the old name.
+ *
+ * Deliberately NOT a general "rename anything containing sara" sweep — each
+ * item below is named, because the one thing a rename must never do is guess.
+ * Idempotent: every branch is guarded on the old artefact still existing, so a
+ * restart after a successful run is a no-op.
+ */
+function renameSaraArtefacts(db) {
+  const tableExists = (name) => !!db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name);
+
+  // ── sara_actions -> saim_actions ────────────────────────────────────────
+  try {
+    if (tableExists('sara_actions')) {
+      if (tableExists('saim_actions')) {
+        const n = db.prepare('SELECT count(*) AS n FROM saim_actions').get().n;
+        if (n > 0) {
+          // Two populated tables is a merge, and a merge is a decision. Refuse
+          // loudly rather than picking one and losing the other's queue.
+          console.error('[DB] sara_actions AND a non-empty saim_actions both exist — NOT renaming. Merge by hand.');
+        } else {
+          // Empty: minted by a schema run that beat this migration. Safe to drop.
+          db.exec('DROP TABLE saim_actions');
+        }
+      }
+      if (!tableExists('saim_actions')) {
+        // ALTER TABLE RENAME carries indexes across but keeps their old NAMES,
+        // and the source-path one is an EXPRESSION index — whose text must match
+        // the query exactly or SQLite ignores it in silence. Dropping them lets
+        // schema.sql recreate all three against the new table name; the indexed
+        // expression itself is unchanged, so the query still matches.
+        for (const idx of ['idx_sara_actions_status', 'idx_sara_actions_type', 'idx_sara_actions_source_path']) {
+          try { db.exec(`DROP INDEX IF EXISTS ${idx}`); } catch {}
+        }
+        db.exec('ALTER TABLE sara_actions RENAME TO saim_actions');
+        const n = db.prepare('SELECT count(*) AS n FROM saim_actions').get().n;
+        console.log(`[DB] sara_actions -> saim_actions (${n} rows carried over)`);
+      }
+    }
+  } catch (e) {
+    console.error('[DB] sara_actions rename failed:', e.message);
+  }
+
+  // ── agent_state keys ────────────────────────────────────────────────────
+  // COPY, never move: if this deploy is rolled back, the old key must still be
+  // there for the old code to read. The new key wins where both exist.
+  const STATE_KEYS = [
+    ['sara_greetings', 'saim_greetings'],           // greeting.js LEDGER_KEY
+    ['ai_setting_sara_mode', 'ai_setting_saim_mode'], // routes/ai-settings.js
+  ];
+  try {
+    if (tableExists('agent_state')) {
+      const get = db.prepare('SELECT value FROM agent_state WHERE key = ?');
+      const put = db.prepare(
+        'INSERT OR REPLACE INTO agent_state (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
+      for (const [oldKey, newKey] of STATE_KEYS) {
+        const oldRow = get.get(oldKey);
+        if (!oldRow) continue;
+        if (get.get(newKey)) continue;
+        put.run(newKey, oldRow.value);
+        console.log(`[DB] agent_state ${oldKey} -> ${newKey} (copied, old key left in place)`);
+      }
+    }
+  } catch (e) {
+    console.error('[DB] agent_state key rename failed:', e.message);
+  }
+
+  // ── apns_tokens.app ─────────────────────────────────────────────────────
+  // ⚠ The token itself is unchanged — only which app we believe it belongs to.
+  // Left as 'sara' the device drops out of `getApnsTokens('saim')` and the
+  // phone simply stops receiving pushes, with nothing anywhere reporting it.
+  // `apns.validate` also still ACCEPTS 'sara' and normalises it, because the
+  // INSTALLED iOS build goes on sending the old value until it is rebuilt.
+  try {
+    if (tableExists('apns_tokens')) {
+      const r = db.prepare("UPDATE apns_tokens SET app = 'saim' WHERE app = 'sara'").run();
+      if (r.changes) console.log(`[DB] apns_tokens: ${r.changes} token(s) moved from app 'sara' to 'saim'`);
+    }
+  } catch (e) {
+    console.error('[DB] apns_tokens app rename failed:', e.message);
+  }
+}
+
 // Kept async: callers await init(). Opening is synchronous now, but changing
 // the signature would ripple through server.js and the scripts.
 async function init() {
@@ -48,6 +132,16 @@ async function init() {
   db.pragma('journal_mode = WAL');
   db.pragma('synchronous = NORMAL');
   db.pragma('busy_timeout = 5000');
+
+  // ── SARA → SAiM rename (15 Sep 2026) ────────────────────────────────────────
+  // ⚠ THIS MUST RUN BEFORE schema.sql, and the order is the whole mechanism.
+  // schema.sql carries `CREATE TABLE IF NOT EXISTS saim_actions`. Run this
+  // after it and a live database ends up with an EMPTY saim_actions sitting
+  // beside a sara_actions holding every queued action — the rename then fails
+  // because the target exists, in silence, and the approval queue reads as
+  // nothing pending. A queue reporting nothing pending is indistinguishable
+  // from a quiet day, which is the failure this codebase names everywhere else.
+  renameSaraArtefacts(db);
 
   // Run migrations
   const schemaPath = path.join(__dirname, 'schema.sql');
@@ -322,7 +416,7 @@ async function init() {
     console.error('[DB] health_samples migration check failed:', e.message);
   }
 
-  // sara_actions.snoozed_until — "not now" for an approval card.
+  // saim_actions.snoozed_until — "not now" for an approval card.
   //
   // ⚠ A SNOOZE IS NOT A DECISION, so the STATUS stays 'pending'. That is the
   // load-bearing choice: the dedupe in `suggestion-engine`, the cross-note fold
@@ -335,13 +429,13 @@ async function init() {
   // So the column hides it from the SURFACES that ask "what needs me now", and
   // from nothing else.
   try {
-    const cols = db.prepare('PRAGMA table_info(sara_actions)').all().map(r => r.name);
+    const cols = db.prepare('PRAGMA table_info(saim_actions)').all().map(r => r.name);
     if (cols.length && !cols.includes('snoozed_until')) {
-      db.exec('ALTER TABLE sara_actions ADD COLUMN snoozed_until TEXT');
-      console.log('[DB] sara_actions.snoozed_until added');
+      db.exec('ALTER TABLE saim_actions ADD COLUMN snoozed_until TEXT');
+      console.log('[DB] saim_actions.snoozed_until added');
     }
   } catch (e) {
-    console.error('[DB] sara_actions migration check failed:', e.message);
+    console.error('[DB] saim_actions migration check failed:', e.message);
   }
 
   // management_log.task_id — added after the table shipped, so CREATE TABLE IF
@@ -403,11 +497,11 @@ async function init() {
     console.error('[DB] management_log migration check failed:', e.message);
   }
 
-  // #107(b) — sara_actions is scanned, not indexed.
+  // #107(b) — saim_actions is scanned, not indexed.
   //
   // The only index on a 16,282-row table was `status`, so the scoped reads added
   // in #103 ("has this note already been actioned?", "of this type") came out as
-  // SCAN sara_actions, confirmed by EXPLAIN QUERY PLAN. A full nightly sweep is
+  // SCAN saim_actions, confirmed by EXPLAIN QUERY PLAN. A full nightly sweep is
   // ~813ms across 206 notes today and the cost is rows x notes.
   //
   // Two indexes: `type`, and an EXPRESSION index on the payload's sourcePath —
@@ -421,11 +515,11 @@ async function init() {
   // write-side dedupe guard. So this is now ordinary debt rather than the
   // unbounded problem the ticket describes — worth having, not urgent.
   try {
-    db.exec('CREATE INDEX IF NOT EXISTS idx_sara_actions_type ON sara_actions(type)');
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_sara_actions_source_path
-             ON sara_actions(json_extract(payload, '$.sourcePath'))`);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_saim_actions_type ON saim_actions(type)');
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_saim_actions_source_path
+             ON saim_actions(json_extract(payload, '$.sourcePath'))`);
   } catch (e) {
-    console.error('[DB] sara_actions index migration failed:', e.message);
+    console.error('[DB] saim_actions index migration failed:', e.message);
   }
 
   console.log('[DB] Initialized');
@@ -2155,22 +2249,22 @@ function updateTaskBlockRow(id, fields) {
   return run(`UPDATE task_blocks SET ${sets.join(', ')} WHERE id = ?`, params).changes;
 }
 
-// ── SARA Actions ──
+// ── SAiM Actions ──
 
-function createSaraAction(type, payload, confidence, reason, focusItemId) {
+function createSaimAction(type, payload, confidence, reason, focusItemId) {
   // The old driver had to read last_insert_rowid() before saving, because
   // save() closed and reopened the connection. run() now returns it directly.
   const info = run(
-    `INSERT INTO sara_actions (type, payload, confidence, reason, focus_item_id)
+    `INSERT INTO saim_actions (type, payload, confidence, reason, focus_item_id)
      VALUES (?, ?, ?, ?, ?)`,
     [type, JSON.stringify(payload), confidence, reason, focusItemId || null]
   );
   return info.lastInsertRowid;
 }
 
-function getPendingSaraActions(limit = 10) {
+function getPendingSaimActions(limit = 10) {
   const rows = all(
-    'SELECT * FROM sara_actions WHERE status = ? ORDER BY confidence DESC, created_at DESC LIMIT ?',
+    'SELECT * FROM saim_actions WHERE status = ? ORDER BY confidence DESC, created_at DESC LIMIT ?',
     ['pending', limit]
   );
   for (const row of rows) row.payload = JSON.parse(row.payload || '{}');
@@ -2187,17 +2281,17 @@ function getPendingSaraActions(limit = 10) {
  * be pushed out by 900 actions the caller was about to discard. Asking for the
  * type means the bound is over the rows actually wanted.
  */
-function getPendingSaraActionsByType(type, limit = 100) {
+function getPendingSaimActionsByType(type, limit = 100) {
   const rows = all(
-    'SELECT * FROM sara_actions WHERE status = ? AND type = ? ORDER BY confidence DESC, created_at DESC LIMIT ?',
+    'SELECT * FROM saim_actions WHERE status = ? AND type = ? ORDER BY confidence DESC, created_at DESC LIMIT ?',
     ['pending', type, limit]
   );
   for (const row of rows) row.payload = JSON.parse(row.payload || '{}');
   return rows;
 }
 
-function countPendingSaraActionsByType(type) {
-  const row = get('SELECT COUNT(*) as count FROM sara_actions WHERE status = ? AND type = ?', ['pending', type]);
+function countPendingSaimActionsByType(type) {
+  const row = get('SELECT COUNT(*) as count FROM saim_actions WHERE status = ? AND type = ?', ['pending', type]);
   return row ? row.count : 0;
 }
 
@@ -2208,16 +2302,16 @@ function countPendingSaraActionsByType(type) {
  * would put a decided row back in front of Nick when it woke, and `resolved_at`
  * says the decision has already been made.
  */
-function snoozeSaraAction(id, untilIso) {
+function snoozeSaimAction(id, untilIso) {
   const r = run(
-    "UPDATE sara_actions SET snoozed_until = ? WHERE id = ? AND status = 'pending'",
+    "UPDATE saim_actions SET snoozed_until = ? WHERE id = ? AND status = 'pending'",
     [untilIso || null, id]
   );
   return r.changes > 0;
 }
 
-function getSaraAction(id) {
-  const row = get('SELECT * FROM sara_actions WHERE id = ?', [id]);
+function getSaimAction(id) {
+  const row = get('SELECT * FROM saim_actions WHERE id = ?', [id]);
   if (row) row.payload = JSON.parse(row.payload || '{}');
   return row;
 }
@@ -2227,27 +2321,27 @@ function getSaraAction(id) {
  * still pending — editing an action after it has executed would rewrite history
  * rather than the thing about to happen.
  */
-function updateSaraActionPayload(id, payload) {
+function updateSaimActionPayload(id, payload) {
   const info = run(
-    `UPDATE sara_actions SET payload = ? WHERE id = ? AND status = 'pending'`,
+    `UPDATE saim_actions SET payload = ? WHERE id = ? AND status = 'pending'`,
     [JSON.stringify(payload), id]
   );
   return info.changes > 0;
 }
 
-function updateSaraActionStatus(id, status) {
-  run(`UPDATE sara_actions SET status = ?, resolved_at = datetime('now') WHERE id = ?`, [status, id]);
+function updateSaimActionStatus(id, status) {
+  run(`UPDATE saim_actions SET status = ?, resolved_at = datetime('now') WHERE id = ?`, [status, id]);
 }
 
-function getRecentSaraActions(limit = 20) {
-  const rows = all('SELECT * FROM sara_actions ORDER BY created_at DESC LIMIT ?', [limit]);
+function getRecentSaimActions(limit = 20) {
+  const rows = all('SELECT * FROM saim_actions ORDER BY created_at DESC LIMIT ?', [limit]);
   for (const row of rows) row.payload = JSON.parse(row.payload || '{}');
   return rows;
 }
 
 /**
  * Scoped reads. These exist because callers kept asking "has this note/event
- * been actioned before?" by pulling `getRecentSaraActions(N)` and filtering it
+ * been actioned before?" by pulling `getRecentSaimActions(N)` and filtering it
  * — which is a GLOBAL recency window, not a scoped query. The table churns
  * thousands of rows a day (16,281 by 15 Aug), so the newest 500 spanned about
  * 21 hours: last night's actions for a note were already invisible, and the
@@ -2257,12 +2351,12 @@ function getRecentSaraActions(limit = 20) {
  * A LIMIT is a cliff, not a page. If the question is "for this note" or "of
  * this type", ask SQL that question.
  */
-function getSaraActionsBySource(sourcePath, type = null) {
+function getSaimActionsBySource(sourcePath, type = null) {
   const rows = type
-    ? all(`SELECT * FROM sara_actions
+    ? all(`SELECT * FROM saim_actions
              WHERE type = ? AND json_extract(payload, '$.sourcePath') = ?
              ORDER BY created_at DESC`, [type, sourcePath])
-    : all(`SELECT * FROM sara_actions
+    : all(`SELECT * FROM saim_actions
              WHERE json_extract(payload, '$.sourcePath') = ?
              ORDER BY created_at DESC`, [sourcePath]);
   for (const row of rows) row.payload = JSON.parse(row.payload || '{}');
@@ -2276,15 +2370,15 @@ function getSaraActionsBySource(sourcePath, type = null) {
  * the whole point: one `draft_reply` had 1,168 `superseded` rows in front of
  * its handful of decisions, so any recency window big enough to be cheap was
  * also small enough to miss every one of them. That is the cliff
- * `getSaraActionsBySource` was written for, one type along.
+ * `getSaimActionsBySource` was written for, one type along.
  *
  * `superseded`, `expired` and `pending` are deliberately NOT decisions — Nick
  * chose nothing. `failed` is not one either: he approved it and it did not
  * happen, so offering it again is correct.
  */
-function getDecidedSaraActionsByType(type, limit = 2000) {
+function getDecidedSaimActionsByType(type, limit = 2000) {
   const rows = all(
-    `SELECT * FROM sara_actions
+    `SELECT * FROM saim_actions
        WHERE type = ? AND status IN ('executed', 'rejected')
        ORDER BY created_at DESC LIMIT ?`,
     [type, limit]
@@ -2293,9 +2387,9 @@ function getDecidedSaraActionsByType(type, limit = 2000) {
   return rows;
 }
 
-function getSaraActionsByType(type, limit = 5000) {
+function getSaimActionsByType(type, limit = 5000) {
   const rows = all(
-    'SELECT * FROM sara_actions WHERE type = ? ORDER BY created_at DESC LIMIT ?',
+    'SELECT * FROM saim_actions WHERE type = ? ORDER BY created_at DESC LIMIT ?',
     [type, limit]
   );
   for (const row of rows) row.payload = JSON.parse(row.payload || '{}');
@@ -2303,9 +2397,9 @@ function getSaraActionsByType(type, limit = 5000) {
 }
 
 /** Status tally since an ISO timestamp — counted in SQL, so no window can clip it. */
-function countSaraActionsSince(since) {
+function countSaimActionsSince(since) {
   const rows = all(
-    'SELECT status, COUNT(*) n FROM sara_actions WHERE created_at >= ? GROUP BY status',
+    'SELECT status, COUNT(*) n FROM saim_actions WHERE created_at >= ? GROUP BY status',
     [since]
   );
   const out = {};
@@ -2481,18 +2575,18 @@ module.exports = {
   getTaskMoscow,
   getAllTaskMoscow,
   deleteTaskMoscow,
-  // SARA Actions
-  createSaraAction,
-  getPendingSaraActions,
-  getPendingSaraActionsByType,
-  snoozeSaraAction,
-  countPendingSaraActionsByType,
-  getSaraAction,
-  updateSaraActionStatus,
-  updateSaraActionPayload,
-  getRecentSaraActions,
-  getDecidedSaraActionsByType,
-  getSaraActionsBySource,
-  getSaraActionsByType,
-  countSaraActionsSince,
+  // SAiM Actions
+  createSaimAction,
+  getPendingSaimActions,
+  getPendingSaimActionsByType,
+  snoozeSaimAction,
+  countPendingSaimActionsByType,
+  getSaimAction,
+  updateSaimActionStatus,
+  updateSaimActionPayload,
+  getRecentSaimActions,
+  getDecidedSaimActionsByType,
+  getSaimActionsBySource,
+  getSaimActionsByType,
+  countSaimActionsSince,
 };

@@ -1,0 +1,231 @@
+.chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.chat__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.chat__head-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.chat__voice-toggle {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.chat__voice-toggle.is-on { opacity: 1; }
+
+.chat__mode {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+/* ⚠ WHICH MODEL ANSWERED IS A STATEMENT, NOT A STATE. It was the only lit-
+   looking thing on the screen — a hand-mixed blue chip (#14324a/#8ad0ff) that
+   is not her colour and not a meaning either, reading as "this is important"
+   above a whole conversation. Both modes are now quiet facts; what actually
+   matters about a local model — that she cannot act — is the BANNER, said in
+   words, because nobody learns that from a coloured pill. */
+.chat__mode--api,
+.chat__mode--local { background: var(--panel-2); color: var(--muted); }
+
+.chat__thread {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.5rem 0 1rem;
+}
+
+.chat__empty { color: var(--muted); font-size: 0.9rem; text-align: center; margin: auto 0; }
+
+/* A turn is the bubble plus anything said about it. The bubble keeps its own
+   max-width; the wrapper only carries the alignment the bubble used to. */
+.chat__turn { display: flex; flex-direction: column; gap: 0.25rem; }
+.chat__turn--user { align-items: flex-end; }
+.chat__turn--assistant { align-items: flex-start; }
+
+/* The tools a reply ran. Small and muted: this is provenance under the answer,
+   not a second answer. Names only — never the arguments. */
+.chat__tools {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-width: 85%;
+}
+.chat__tool { color: var(--muted); font-size: 0.74rem; line-height: 1.4; }
+.chat__toolname::before { content: '↳ '; }
+.chat__toolstate { margin-left: 0.4rem; opacity: 0.75; }
+.chat__toolstate::before { content: '· '; }
+
+.chat__msg {
+  max-width: 85%;
+  padding: 0.6rem 0.8rem;
+  border-radius: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* ⚠ His bubble is HER colour, the same call as Ritual: this screen is the one
+   that IS a conversation with her, and a fixed blue bubble on a red day would
+   be the last unlit thing on it. */
+.chat__msg--user {
+  align-self: flex-end;
+  background: rgb(var(--saim-rgb, 114, 150, 211));
+  color: #04121f;
+  border-bottom-right-radius: 4px;
+}
+.chat__msg--assistant {
+  align-self: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 4px;
+}
+.chat__typing { color: var(--muted); }
+
+.chat__composer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  background: var(--bg);
+}
+.chat__input {
+  flex: 1;
+  padding: 0.75rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font: inherit;
+}
+.chat__send {
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 50%;
+  border: none;
+  background: rgb(var(--saim-rgb, 114, 150, 211));
+  color: #04121f;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.chat__send:disabled { opacity: 0.45; cursor: default; }
+
+.chat__voice-pick {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.chat__voices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0;
+}
+.chat__voice-chip {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.chat__voice-chip.is-on {
+  background: rgb(var(--saim-rgb, 114, 150, 211));
+  color: #04121f;
+  border-color: rgb(var(--saim-rgb, 114, 150, 211));
+}
+.chat__voices-hint { font-size: 0.72rem; color: var(--muted); }
+
+.chat__voice-note {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--muted);
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+/* A real fault — the mic was asked for and refused or broke. The app's one red,
+   not a fourth mix of it (#3a1a1a was this screen's own). */
+.chat__voice-note--err {
+  color: #ffb4b4;
+  background: rgba(224, 84, 58, 0.12);
+  border: 1px solid rgba(224, 84, 58, 0.55);
+}
+
+.chat__mic {
+  flex: 0 0 auto;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+/* ⚠⚠ LISTENING IS NOT A FAULT. A live mic wore #5a1f1f on #ff8a8a — the app's
+   alarm red — so the single most normal thing this screen does looked like
+   something had gone wrong, and it PULSED, which is what the Surface reserves
+   for something pressing. It is hers now: she is attending, which is exactly
+   what her colour means everywhere else. */
+.chat__mic--on {
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.22);
+  border-color: rgb(var(--saim-rgb, 114, 150, 211));
+  animation: chat-pulse 1.2s ease-in-out infinite;
+}
+@keyframes chat-pulse { 50% { opacity: 0.55; } }
+
+/* ⚠ SHE IS WORKING AND ONE PART OF HER JOB IS OUT OF REACH — amber, the same
+   sentence and the same ink as the standup's banner, which had been saying this
+   since the session shipped while the screen holding the tools said nothing. */
+.chat__banner {
+  background: rgba(240, 214, 166, 0.09);
+  border: 1px solid rgba(240, 214, 166, 0.3);
+  color: #f0d6a6;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  margin-bottom: 0.6rem;
+}
+
+/* ⚠ NEURO could not be reached — BROKEN, and deliberately not a bubble. It sits
+   outside the thread because it is not a turn in the conversation, and it wears
+   the app's fault red rather than her voice. */
+.chat__fault {
+  background: rgba(224, 84, 58, 0.12);
+  border: 1px solid rgba(224, 84, 58, 0.55);
+  color: #ffb4b4;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  margin-bottom: 0.5rem;
+}

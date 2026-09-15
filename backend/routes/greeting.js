@@ -3,7 +3,7 @@
 /**
  * POST /api/greeting — claim a greeting for Nick arriving in a room.
  *
- * Called by sara/backend's arrival detector with the machine token. It is a POST
+ * Called by saim/backend's arrival detector with the machine token. It is a POST
  * because a real claim WRITES (the cooldown ledger); `preview: true` gates and
  * composes without recording, for checking the voice.
  *

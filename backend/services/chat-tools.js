@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Chat tools — the bridge that lets SARA *do* things during a conversation.
+ * Chat tools — the bridge that lets SAiM *do* things during a conversation.
  *
  * Until now chat was read-only RAG: context in, prose out. "Mark that done",
  * "book me an hour for it", "reply to Chris" were all impossible by construction,
@@ -13,7 +13,7 @@
  *   write    — reversible and internal (task store, daily note). Runs immediately;
  *              Nick can undo it in the UI in one tap.
  *   queued   — leaves the building (email, calendar invites). NEVER executed here.
- *              These queue a pending sara_action and return its id, so the send
+ *              These queue a pending saim_action and return its id, so the send
  *              happens only after an explicit approval through /api/actions.
  *
  * Tool calling needs a provider that supports it. Anthropic is Tier 1 in
@@ -129,13 +129,13 @@ const TOOLS = [
   {
     name: 'capture_feature',
     tier: 'write',
-    description: 'Add an idea, gap or improvement for NEURO, SARA or NOVA to the feature tracker in the vault. Use whenever Nick says something should be built, fixed or changed about the system itself — that belongs in the backlog, NOT in his task list. Not for ordinary work: use create_task for that.',
+    description: 'Add an idea, gap or improvement for NEURO, SAiM or NOVA to the feature tracker in the vault. Use whenever Nick says something should be built, fixed or changed about the system itself — that belongs in the backlog, NOT in his task list. Not for ordinary work: use create_task for that.',
     input_schema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'The idea in one line, as a thing to build or fix.' },
         notes: { type: 'string', description: 'Why it matters, what it would change, anything he said about it. Write it so it still makes sense in a month.' },
-        system: { type: 'string', enum: ['NEURO', 'SARA', 'NOVA', 'Both'], description: 'Which system it belongs to. Defaults to NEURO.' },
+        system: { type: 'string', enum: ['NEURO', 'SAiM', 'NOVA', 'Both'], description: 'Which system it belongs to. Defaults to NEURO.' },
       },
       required: ['title'],
     },
@@ -160,7 +160,7 @@ const TOOLS = [
       'Read the house: every room\'s temperature (Celsius), whether its lights are on, '
       + 'where the watch is, and whether anyone else is home. Use this for ANY question '
       + 'about the house - temperature, heating, lights, is anyone in. It only READS; '
-      + 'turning lights on or changing a radiator is offered by SARA in the room, not here.',
+      + 'turning lights on or changing a radiator is offered by SAiM in the room, not here.',
     input_schema: {
       type: 'object',
       properties: {
@@ -473,7 +473,7 @@ const HANDLERS = {
    *
    * WARNING  THIS TOOL EXISTS BECAUSE SHE WAS SAYING SOMETHING UNTRUE. Asked
    *   "what is the living room temperature" the day she became the voice agent,
-   *   SARA answered *"I don't have access to your smart home system or
+   *   SAiM answered *"I don't have access to your smart home system or
    *   temperature sensors"* - while `ha-rooms` had been reading every room for
    *   weeks. The capability existed; the tools did not expose it. A system that
    *   denies a capability it has is worse than one that lacks it, because he

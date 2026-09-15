@@ -15,10 +15,10 @@
  *
  * So this counts `kind = 'task_done'` and nothing else.
  *
- * ⚠ `task_done` specifically, and NOT also the `complete_task` SARA action.
+ * ⚠ `task_done` specifically, and NOT also the `complete_task` SAiM action.
  * Executing that action calls `task-store.updateTask`, which logs `task_done` —
  * so both land in the ledger for one closed task, and counting both would
- * silently inflate every task Nick closes through SARA. `task-store` is the ONE
+ * silently inflate every task Nick closes through SAiM. `task-store` is the ONE
  * writer of tasks, so every completion path (the phone, chat, MCP, a focus
  * session, an approved action) passes through it and is counted exactly once.
  *
@@ -291,7 +291,7 @@ function assess(input = {}) {
  *
  * Composed on the SERVER for the same reason `attention.sayLine` is: the ring,
  * the Surface and any later notification must not phrase the same fact three
- * ways. SARA's register — the fact and the move, no cheerleading, and no
+ * ways. SAiM's register — the fact and the move, no cheerleading, and no
  * encouraging version of a bad week.
  */
 function say(a) {

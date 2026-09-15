@@ -131,7 +131,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
  *
  * ⚠ Returns null when there is no habit to compare against. There is no useful
  * sentence to write about a pattern that does not exist yet, and inventing one
- * ("about normal!") is both a guess and the register sara-voice rejects.
+ * ("about normal!") is both a guess and the register saim-voice rejects.
  */
 function sleepLine(read) {
   if (!read || read.known !== true || !Number.isFinite(read.usual)) return null;

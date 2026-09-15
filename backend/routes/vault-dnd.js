@@ -35,13 +35,33 @@ function joinScope(relPath) {
 }
 
 function safeScopedPath(relPath) {
+  if (!VAULT_PATH || typeof relPath !== 'string' || relPath.includes('\0')) return null;
   const scoped = joinScope(relPath);
-  const resolved = path.resolve(VAULT_PATH, scoped);
-  const vaultRoot = path.resolve(VAULT_PATH);
-  const dndRoot = path.resolve(VAULT_PATH, DND_ROOT);
-  if (!resolved.startsWith(vaultRoot)) return null;
-  if (!resolved.startsWith(dndRoot)) return null;
-  return resolved;
+  const inside = (root, target) => {
+    const relative = path.relative(root, target);
+    return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
+  };
+  try {
+    const vaultRoot = fs.realpathSync(path.resolve(VAULT_PATH));
+    const dndRoot = path.resolve(vaultRoot, DND_ROOT);
+    const resolved = path.resolve(vaultRoot, scoped);
+    if (!inside(vaultRoot, dndRoot) || !inside(dndRoot, resolved)) return null;
+    // Existing links/junctions and the deepest existing parent of a new file
+    // must remain within the configured D&D root too.
+    let ancestor = resolved;
+    while (!fs.existsSync(ancestor)) {
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) return null;
+      ancestor = parent;
+    }
+    const realAncestor = fs.realpathSync(ancestor);
+    if (!inside(vaultRoot, realAncestor)) return null;
+    if (fs.existsSync(dndRoot)) {
+      const realDnd = fs.realpathSync(dndRoot);
+      if (!inside(vaultRoot, realDnd) || !inside(realDnd, realAncestor)) return null;
+    }
+    return resolved;
+  } catch { return null; }
 }
 
 function requireDndApiKey(req, res, next) {

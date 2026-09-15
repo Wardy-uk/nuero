@@ -135,11 +135,11 @@ function briefToHtml(brief) {
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333">
-  <h2 style="margin:0 0 4px">SARA Brief</h2>
+  <h2 style="margin:0 0 4px">SAiM Brief</h2>
   <p style="margin:0 0 20px;color:#888;font-size:14px">${ts}</p>
   ${body}
   <hr style="margin:24px 0;border:none;border-top:1px solid #eee">
-  <p style="font-size:12px;color:#aaa">Delivered by NEURO · <a href="https://sara.nickward.co.uk">Open SARA</a></p>
+  <p style="font-size:12px;color:#aaa">Delivered by NEURO · <a href="https://saim.nickward.co.uk">Open SAiM</a></p>
 </body>
 </html>`;
 }

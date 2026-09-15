@@ -112,7 +112,7 @@ test('an unrelated carried line is NOT offered a task — the measured wrong mat
   assert.equal(open[0].task, undefined, `0.427 in the measurement — got ${JSON.stringify(open[0].task)}`);
 });
 
-test('a line already linked to a FINISHED task tells SARA not to chase it', () => {
+test('a line already linked to a FINISHED task tells SAiM not to chase it', () => {
   const id = task('Send the Guild MI pack to finance this week');
   taskStore.updateTask(id, { status: 'dropped' });
   const open = [{ key: 'send the guild mi pack', text: 'Send the Guild MI pack', daysCarried: 2, taskId: id }];

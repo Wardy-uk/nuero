@@ -885,7 +885,7 @@ function linkedMsIds() {
  *
  * This exists for the capture_todo flood. Plaud writes several summary variants
  * of one recording, `action-candidates` extracts from each note independently,
- * and its only dedupe is `getSaraActionsBySource` — scoped to ONE note by
+ * and its only dedupe is `getSaimActionsBySource` — scoped to ONE note by
  * design, so fourteen notes describing one meeting produce fourteen copies of
  * every commitment in it. Measured on the live queue: 258 pending, 54 distinct.
  *

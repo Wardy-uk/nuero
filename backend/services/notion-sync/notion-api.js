@@ -52,7 +52,7 @@ function isConfigured() {
 /**
  * WHERE the credential came from — never what it is.
  *
- * The `/api/health` rule from the SARA bridge: report whether a credential is
+ * The `/api/health` rule from the SAiM bridge: report whether a credential is
  * set and which source answered, so "not configured" and "configured but wrong"
  * stay distinguishable, without the value ever leaving the server.
  */

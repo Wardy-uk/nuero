@@ -4,7 +4,7 @@ import SignIn from './views/SignIn.jsx';
 import Home from './views/Home.jsx';
 
 /**
- * VESTA — the shared home surface. Nick's is SARA; this one is the household's.
+ * VESTA — the shared home surface. Nick's is SAiM; this one is the household's.
  *
  * Two screens and no router: sign in, or home. There is nothing else to
  * navigate to, and a menu on a four-block fridge-door screen is furniture.

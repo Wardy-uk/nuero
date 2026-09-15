@@ -34,7 +34,7 @@ updated: 2026-01-01
 
 ## Related
 
-- [[NEURO & SARA — What They Are]]
+- [[NEURO & SAiM — What They Are]]
 `;
 
 test('numbering takes the max, not the count', () => {
@@ -54,7 +54,7 @@ test('first capture creates the section above Related', () => {
 
 test('later captures append to that table, not to the last table in the file', () => {
   const once = tracker.insertRow(HEAD, '| 104 | **A** | NEURO | **Captured** | n |');
-  const twice = tracker.insertRow(once, '| 105 | **B** | SARA | **Captured** | n |');
+  const twice = tracker.insertRow(once, '| 105 | **B** | SAiM | **Captured** | n |');
   const a = twice.indexOf('| 104 |');
   const b = twice.indexOf('| 105 |');
   assert.ok(a > 0 && b > a, 'B must follow A');
@@ -70,14 +70,14 @@ test('captureFeature writes a row, restamps updated, and is reachable end to end
     const res = tracker.captureFeature({
       title: 'Capture | with a pipe',
       notes: 'Two\nlines',
-      system: 'sara',
+      system: 'saim',
       source: 'chat',
     });
     assert.equal(res.ok, true);
     assert.equal(res.number, 104);
     const out = fs.readFileSync(file, 'utf8');
     // A raw pipe or newline in user text would split the row into nonsense.
-    assert.ok(out.includes('| 104 | **Capture \\| with a pipe** | SARA | **Captured'));
+    assert.ok(out.includes('| 104 | **Capture \\| with a pipe** | SAiM | **Captured'));
     assert.ok(out.includes('Two lines (via chat)'));
     assert.ok(/^updated: \d{4}-\d{2}-\d{2}$/m.test(out));
     assert.ok(!out.includes('updated: 2026-01-01'));

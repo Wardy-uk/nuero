@@ -115,19 +115,19 @@ function extractSearchTerms(message) {
  *
  * The 15 Aug fix restated the traits by hand, which left two copies to keep in
  * step and a comment asking the next person to remember. This is the structural
- * version: anything true of SARA in both modes lives here ONCE, and each prompt
+ * version: anything true of SAiM in both modes lives here ONCE, and each prompt
  * adds only what is genuinely mode-specific. Editing a trait now reaches both by
  * construction rather than by discipline.
  *
  * Where the two wordings differed only in punctuation, the weekday phrasing wins
  * — that is the prompt with the behaviour worth keeping.
  *
- * 16 Aug 2026 — the blocks themselves moved to services/sara-voice.js. Chat was
- * not the only place SARA speaks; the standup, the EOD and the journal each had
+ * 16 Aug 2026 — the blocks themselves moved to services/saim-voice.js. Chat was
+ * not the only place SAiM speaks; the standup, the EOD and the journal each had
  * their own idea of who she was, and the two rituals are where the personality
  * matters most. Same argument as #112, one level out.
  */
-const { IDENTITY, CORE_TRAITS, CORE_RULES, WHO_IS_NICK } = require('./sara-voice');
+const { IDENTITY, CORE_TRAITS, CORE_RULES, WHO_IS_NICK } = require('./saim-voice');
 
 const SYSTEM_PROMPT = `${IDENTITY} You are the directive and interaction layer of the NEURO personal operating system.
 
@@ -209,7 +209,7 @@ function isWeekend() {
 // from the same blocks, so the claim is structurally true instead of a promise
 // somebody has to keep by hand. Only the genuinely weekend-specific lines live
 // here; everything else comes from CORE_TRAITS / CORE_RULES above.
-const WEEKEND_SYSTEM_PROMPT = `${IDENTITY} It's the weekend. You are still SARA. Same voice, same directness, same rules. Just lighter.
+const WEEKEND_SYSTEM_PROMPT = `${IDENTITY} It's the weekend. You are still SAiM. Same voice, same directness, same rules. Just lighter.
 
 ## Your personality (unchanged)
 ${CORE_TRAITS}
@@ -247,7 +247,7 @@ function anthropicAvailable() {
 }
 
 /**
- * What SARA knows about Nick as a person, if anything.
+ * What SAiM knows about Nick as a person, if anything.
  *
  * ⚠ Never allowed to fail the context. A profile read that throws must not cost
  * him a chat turn — this is an enrichment, and the rest of the context is what
@@ -716,7 +716,7 @@ You have tools. Use them rather than guessing or describing what you would do.
  * What day it is. The one fact every other answer rests on.
  *
  * WARNING-WARNING  NOTHING IN THE CHAT PROMPT CARRIED IT. Asked what he had
- *   got done today, SARA answered "...but it's Saturday, so that's fine" - on
+ *   got done today, SAiM answered "...but it's Saturday, so that's fine" - on
  *   a SUNDAY. Every question about 'today', 'this week', 'tomorrow' or the
  *   diary rests on a fact she was guessing, and a wrong day makes a correct
  *   answer wrong.
@@ -770,12 +770,12 @@ async function _buildChatPrompt(userMessage, mode, withTools = false) {
   // THE HOUSE IS READ BEFORE THE MODEL, on a question about the house.
   //
   // WARNING-WARNING  A PROMPT RULE WAS NOT ENOUGH. Asked "is anyone else home",
-  //   SARA answered "No" with NO TOOL CALL AT ALL, while the household sensor
+  //   SAiM answered "No" with NO TOOL CALL AT ALL, while the household sensor
   //   read `on` with Helen and Isaac in it - measured against the backend log,
   //   13 Sep 2026, and reproduced. Naming the house in the no-guessing rule
   //   fixed the temperature phrasings and did nothing for that one.
   //
-  //   `checkSaraGrounding` learned the same thing one surface along: a model
+  //   `checkSaimGrounding` learned the same thing one surface along: a model
   //   asked for an answer can always produce one, so the fix cannot be the
   //   instruction alone. Putting the reading IN FRONT of it removes the
   //   opportunity rather than asking it not to take it. The tool stays for
@@ -902,7 +902,7 @@ async function streamChat(conversationId, userMessage, res, location = null) {
 
   // Tool-enabled turn first. Tools can't stream (the loop has to see each full
   // response before it can run anything), so the reply arrives as one chunk —
-  // which for a two-sentence SARA answer is barely different from streaming it.
+  // which for a two-sentence SAiM answer is barely different from streaming it.
   if (useTools) {
     try {
       const toolResult = await _runWithTools(systemPrompt, messages, chatMode);

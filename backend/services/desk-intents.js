@@ -199,7 +199,7 @@ function queue(app, { host = null, why = null } = {}) {
     // Refused HERE as well as on the laptop. Two independent refusals, because
     // this is the one path in the system that ends in code running on his
     // work machine.
-    return { ok: false, reason: 'not something SARA can open: "' + app + '"' };
+    return { ok: false, reason: 'not something SAiM can open: "' + app + '"' };
   }
   const state = _load();
   if (!state) return { ok: false, reason: 'could not read the intent queue' };

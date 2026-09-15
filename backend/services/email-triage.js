@@ -935,7 +935,7 @@ function getTriageByCategory() {
 // ever called the scanner's dismiss route, and the 24-hour purge was reachable
 // only from a manual endpoint — so that table was a write-only pile going back
 // twelve days, and the push notification counted it. Measured the morning it
-// was found: SARA said **37 urgent emails**, the panel showed 3, and all 114
+// was found: SAiM said **37 urgent emails**, the panel showed 3, and all 114
 // rows in the table had `dismissed = 0`. Two scanners were also paying the AI
 // to classify the same mailbox on two different schedules.
 //
@@ -949,7 +949,7 @@ function getUrgentEmails() {
 const URGENCY_RANK = { high: 0, medium: 1, low: 2 };
 
 /**
- * Everything triage is still holding, worst first — the chat and SARA context
+ * Everything triage is still holding, worst first — the chat and SAiM context
  * feed. Replaces `inbox-scanner.getFlaggedItems()` and keeps its shape so the
  * consumers did not have to learn a second vocabulary.
  *

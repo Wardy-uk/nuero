@@ -37,7 +37,7 @@
 //
 // ⚠ A STALE SESSION IS NOT CURRENT WORK EITHER. `focus-session` already marks
 //   a runaway or midnight-crossing session stale and ASKS rather than assuming;
-//   treating one as live would have SARA reasoning all morning about a task he
+//   treating one as live would have SAiM reasoning all morning about a task he
 //   abandoned last night.
 //
 // ⚠ `unknown` IS A FIRST-CLASS ANSWER WITH A REASON, and it is the normal one.

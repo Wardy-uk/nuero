@@ -1,0 +1,278 @@
+.tasks__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.tasks__refresh {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 10px;
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.tasks__hint { margin-top: 0.5rem; color: var(--muted); font-size: 0.8rem; }
+
+.tasks__filters { display: flex; gap: 0.4rem; margin: 0.75rem 0; }
+.tasks__filter {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 0.5rem 0;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+/* ⚠ HER colour, not `rgb(var(--saim-rgb, 114, 150, 211))`. That token is the fixed system blue, so
+   a screen using it asserts a state she may not be in — nine rules on this one
+   screen did, each individually harmless, which is how "two products" happens.
+   Selection is still shown by edge AND fill, so it does not rest on hue alone;
+   that matters more now the hue MOVES. */
+.tasks__filter--on {
+  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.5);
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.16);
+  color: inherit;
+}
+
+.tasks__add { display: flex; gap: 0.4rem; margin-bottom: 0.75rem; }
+.tasks__add-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: inherit;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+  font-size: 0.95rem;
+}
+.tasks__add-btn {
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.16);
+  border: 1px solid rgba(var(--saim-rgb, 114, 150, 211), 0.45);
+  color: inherit;
+  border-radius: 10px;
+  width: 2.9rem;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+.tasks__add-btn:disabled { opacity: 0.45; cursor: default; }
+
+.tasks__clear { text-align: center; color: var(--muted); }
+
+/* ⚠ The padding and margin are `.lit`'s, not this screen's — they came with
+   `.card` and moved into the primitive that replaced it, so there is one place
+   that decides how big a card is rather than one per screen. */
+.tasks__item { display: block; }
+.tasks__row { display: flex; align-items: flex-start; gap: 0.7rem; }
+.tasks__item--done { opacity: 0.5; }
+.tasks__item--done .tasks__text { text-decoration: line-through; }
+
+/* Deliberately oversized: this is the one control that has to work first time,
+   one-handed, on a phone, on a bad day. 44px is the minimum comfortable target. */
+.tasks__tick {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin: 0.15rem 0;
+  padding: 0;
+  background: transparent;
+  border: 2px solid var(--line);
+  border-radius: 7px;
+  color: rgb(var(--saim-rgb, 114, 150, 211));
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  position: relative;
+}
+.tasks__tick::after {
+  content: '';
+  position: absolute;
+  inset: -0.7rem;
+}
+.tasks__tick:disabled { cursor: default; }
+
+.tasks__body { flex: 1; min-width: 0; }
+.tasks__text { line-height: 1.35; }
+
+.tasks__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.tasks__moscow {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tasks__moscow--must { background: #4a1420; color: #ff9db0; }
+.tasks__moscow--should { background: #4a3a14; color: #ffd79d; }
+.tasks__moscow--could { background: #1c3348; color: #9dc8ff; }
+.tasks__moscow--wont { background: var(--panel); color: var(--muted); }
+
+.tasks__due--over { color: #ff9db0; }
+.tasks__source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+
+/* The Planner board / To Do list. Quieter than the source badge beside it —
+   it says where the work lives, not what to do about it. */
+.tasks__plan {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+  color: var(--muted);
+  border-left: 1px solid var(--line);
+  padding-left: 0.4rem;
+}
+
+/* Personal. Only ever rendered on the exception — see domainBadge — so it can
+   afford to be distinct without becoming noise. Deliberately NOT red or amber:
+   those already mean overdue and must-do on this row, and a third colour saying
+   "this is a different part of your life" must not read as a third urgency. */
+.tasks__domain {
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.14);
+  border-radius: 4px;
+  padding: 0 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tasks__domain { color: #5eead4; background: rgba(20, 184, 166, 0.18); }
+}
+
+.tasks__hidden {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 0.75rem;
+}
+
+/* The "more" toggle. Same generous hit area as the tick — it is the only way
+   into the row's controls. */
+.tasks__more {
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 8px;
+  width: 2rem;
+  height: 1.8rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tasks__wip,
+.tasks__lane {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+/* "Working on it" is a live state, so it is lit. */
+.tasks__wip { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.55); color: inherit; }
+
+/* The open row. One control group per line, label in a fixed left column, so a
+   group never runs on from the one before it with nothing but a gap between. */
+.tasks__panel {
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.tasks__editor { display: flex; flex-direction: column; gap: 0.55rem; }
+.tasks__group,
+.tasks__save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.tasks__label {
+  flex: 0 0 6.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tasks__note { font-size: 0.78rem; color: var(--muted); }
+.tasks__btn {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.tasks__btn--on { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.5); background: rgba(var(--saim-rgb, 114, 150, 211), 0.16); }
+.tasks__btn--quiet { color: var(--muted); }
+.tasks__btn:disabled { opacity: 0.5; cursor: default; }
+.tasks__mins {
+  width: 4.5rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  font: inherit;
+  font-size: 0.8rem;
+}
+.tasks__save { border-top: 1px dashed var(--line); padding-top: 0.5rem; }
+.tasks__rowerr { font-size: 0.8rem; color: #ff9db0; }
+
+/* After an add: a possible duplicate, a fold, or a half-landed capture. */
+.tasks__addnote {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+.tasks__addnote--warn { border-left: 3px solid #ffd79d; }
+.tasks__addnote--info { border-left: 3px solid rgb(var(--saim-rgb, 114, 150, 211)); }
+
+.tasks__held { display: flex; flex-direction: column; gap: 0.45rem; }
+/* A column parent would read the label's basis as a HEIGHT. */
+.tasks__held .tasks__label { flex: none; }
+.tasks__heldrow { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.tasks__heldtext { font-size: 0.85rem; min-width: 0; }
+
+/* The running total after a tick. Deliberately understated — a statement of
+   fact, not a celebration. */
+.tasks__headline {
+  font-size: 0.9rem;
+  color: rgb(var(--saim-rgb, 114, 150, 211));
+  border-left: 3px solid rgb(var(--saim-rgb, 114, 150, 211));
+}
+
+/* ⚠ THE ONE FAULT TREATMENT ON THIS SCREEN, and it is deliberately the only
+   place an alarm colour appears. Everything else that is "not the happy path"
+   here — an empty filter, a held-back row, a pending read — is a STATEMENT.
+   Collapsing the two is how he learns to ignore the real one. */
+.tasks__fault {
+  border-color: rgba(224, 84, 58, 0.55);
+  background: rgba(224, 84, 58, 0.1);
+}
+
+/* Said once, beside the control, rather than three times in tooltips a phone
+   cannot show. */
+.tasks__hint--inline {
+  margin-left: 0.35rem;
+  white-space: nowrap;
+}

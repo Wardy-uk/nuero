@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * SARA's Chat, against the rules — step 9 of the design build order.
+ * SAiM's Chat, against the rules — step 9 of the design build order.
  *
  * ⚠⚠ THE FINDING IS A PAYLOAD FIELD WITH NO READER, and it is the fifth this
  * week. `_toolsAvailable()` has been computed on BOTH chat paths since tools
@@ -31,7 +31,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const APP = path.join(ROOT, 'sara', 'app', 'src');
+const APP = path.join(ROOT, 'saim', 'app', 'src');
 
 const read = (...p) => fs.readFileSync(path.join(...p), 'utf8');
 const jsx = () => read(APP, 'views', 'Chat.jsx');
@@ -113,7 +113,7 @@ test('⚠⚠ listening is not a fault, and a missing mic is not one either', () 
   assert.ok(micOn, 'the live-mic rule is gone');
   assert.ok(!/#5a1f1f|#ff8a8a/.test(micOn[1]),
             'a live microphone wears the alarm red again');
-  assert.match(micOn[1], /--sara-rgb/, 'she is not the one attending any more');
+  assert.match(micOn[1], /--saim-rgb/, 'she is not the one attending any more');
 
   // ⚠ "This browser has no speech recognition" was painted AMBER here on step 9
   // and that was wrong: the kiosk and the Electron window both mount this
@@ -133,7 +133,7 @@ test('⚠ the light on this screen is hers', () => {
   // made, because this screen IS a conversation with her.
   assert.ok(!/var\(--accent\)/.test(sheet),
             'a screen-local accent is back — it does not move when she does');
-  assert.match(sheet, /--sara-rgb/);
+  assert.match(sheet, /--saim-rgb/);
 
   // ⚠ And the mode chip is a STATEMENT, not a state: its hand-mixed blue was the
   // only lit-looking thing on the page and meant nothing.
@@ -155,7 +155,7 @@ test('⚠ iOS makes the same distinctions', () => {
   const ios = path.resolve(ROOT, '..', 'nuero-ios');
   if (!fs.existsSync(ios)) return;
 
-  const ask = read(ios, 'Sara', 'AskView.swift');
+  const ask = read(ios, 'Saim', 'AskView.swift');
   const code = strip(ask);
   assert.match(ask, /private var transcript/, 'could not read AskView.swift');  // positive control
 

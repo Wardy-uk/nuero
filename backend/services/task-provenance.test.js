@@ -154,7 +154,7 @@ test('every live task source is described — measured against the store, not gu
   const live = [
     'master-todo-import', 'meeting-promotion', 'management-log', 'nova-121',
     'vantage-finding', 'chat', 'email-promotion', 'jira-assigned', 'manual',
-    'apple-reminders', 'eod-session', 'sara-capture', 'standup-session', 'vantage-plan',
+    'apple-reminders', 'eod-session', 'saim-capture', 'standup-session', 'vantage-plan',
   ];
   for (const s of live) {
     assert.ok(SOURCE_HOW[s], `no wording for a source that is actually in the store: ${s}`);

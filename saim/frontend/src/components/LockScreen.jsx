@@ -1,0 +1,60 @@
+import Field from '../../../shared-ui/Field';
+import './LockScreen.css';
+
+// LockScreen — privacy lock overlay for the Pi wall display (WS2-WP3).
+//
+// SAiM runs on an always-on touchscreen with no login, so "lock" here is a PRIVACY
+// screen, not authentication: it hides the dashboard when Nick is out of the house, so
+// nothing exposes his queue, people notes or calendar. It covers everything (above the
+// Exit button) so nothing leaks behind it.
+//
+// ⚠ THERE IS NOTHING TO TAP, AND IT MUST NOT PRETEND OTHERWISE. It used to say "tap to
+// unlock" and mean it — unlock was manual — so Nick came home from an evening out to a
+// locked screen that had to be touched before SAiM came back. It now clears itself the
+// moment NEURO says he is home, so an affordance inviting a tap would teach him this
+// screen needs dealing with when it does not.
+//
+// In practice he rarely sees this at all: the display agent takes the backlight to 0 in
+// the same state, so the panel is genuinely off. This is what is behind it when the light
+// returns a moment before the verdict does, and the belt-and-braces if that agent dies.
+// Keyed on the reasons NEURO actually sends. An unrecognised one falls back to
+// the bare word rather than rendering a stale explanation for a new state.
+const REASON_TEXT = {
+  'not-home': 'Away from home',
+  // Settled in the bedroom for half an hour. Saying "Away from home" here would
+  // be plainly wrong to anyone who walked past it, and the two locks are worth
+  // telling apart on the rare occasion someone is looking at the thing.
+  'in-bed': 'Goodnight',
+};
+
+function formatTime(date) {
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+export default function LockScreen({ reason, now }) {
+  return (
+    <div className="lock" aria-label="SAiM locked — away from home">
+      {/* ⚠ This replaces a pulsing ORB, which `MANIFESTATION.md` deprecates
+          permanently: SAiM is not an object and has no single bright point you
+          could call "where she is". The field is what she looks like everywhere
+          else, and the lock screen is a place Nick SEES her — so it is the
+          field here too, degraded, because in this state she genuinely cannot
+          see anything.
+
+          ⚠ STILL. This state takes the backlight to 0, so there is nobody to
+          animate for — and a browser cannot tell a dark panel from a lit one
+          (`document.hidden` is never set on a kiosk), so the field's own battery
+          guard never fires here. It painted at 12fps into an unlit screen for as
+          long as Nick was out. One static frame keeps her present for the case
+          this component exists for — the light returning before the verdict
+          does, or the display agent dying — and costs nothing while it does
+          not. */}
+      <Field confidenceLevel="low" degraded still />
+      <div className="lock__panel">
+        <span className="lock__mark">SAiM</span>
+        {now && <span className="lock__time">{formatTime(now)}</span>}
+        <span className="lock__reason">{REASON_TEXT[reason] || 'Locked'}</span>
+      </div>
+    </div>
+  );
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SARA Watch-presence service — always-on passive BLE presence for the auto-lock.
+# SAiM Watch-presence service — always-on passive BLE presence for the auto-lock.
 #
 # Proven this session: the Pi can passively detect the Apple Watch via its IRK
 # (~2.4 adverts/sec, screen off, on wrist) with RSSI. No pairing, no Home Assistant.
@@ -14,7 +14,7 @@
 # Measured bands: desk -52..-57; 2-3m -63..-76; doorway -69..-78. -60 cleanly splits
 # "at desk" from "left the desk".
 #
-# Writes a small JSON status file atomically for the SARA backend to read.
+# Writes a small JSON status file atomically for the SAiM backend to read.
 # Status file fields: status, away, present, rssi, near_count (of last 10),
 #   last_seen_s, hits, updated, source.
 #
@@ -33,10 +33,10 @@ from bleak import BleakScanner
 from bluetooth_data_tools import get_cipher_for_irk, resolve_private_address
 
 # IRK is a sensitive device key — never hardcoded. Read from WATCH_IRK env (set by the
-# systemd unit via a local-only EnvironmentFile, /etc/sara-watch.env, which is NOT in git).
+# systemd unit via a local-only EnvironmentFile, /etc/saim-watch.env, which is NOT in git).
 IRK_HEX = os.environ.get("WATCH_IRK", "").strip()
 if not IRK_HEX:
-    raise SystemExit("WATCH_IRK env var is required (set it in /etc/sara-watch.env)")
+    raise SystemExit("WATCH_IRK env var is required (set it in /etc/saim-watch.env)")
 IRK_BYTES = bytes.fromhex(IRK_HEX)
 
 RSSI_THRESHOLD = int(os.environ.get("WATCH_RSSI_THRESHOLD", "-60"))  # near if stronger
@@ -88,7 +88,7 @@ def write_status(rssi_now, near_count):
     tmp = STATUS_FILE + ".tmp"
     with open(tmp, "w") as f:
         json.dump(payload, f)
-    os.replace(tmp, STATUS_FILE)  # atomic — SARA never reads a half-written file
+    os.replace(tmp, STATUS_FILE)  # atomic — SAiM never reads a half-written file
 
 
 async def main():

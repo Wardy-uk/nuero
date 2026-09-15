@@ -24,7 +24,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const SURFACE = path.resolve(__dirname, '..', '..', 'sara', 'app', 'src', 'views', 'Surface.jsx');
+const SURFACE = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'views', 'Surface.jsx');
 const src = () => fs.readFileSync(SURFACE, 'utf8');
 
 test('⚠ the foot row renders NOTHING when it has nothing', () => {

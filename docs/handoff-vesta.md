@@ -28,7 +28,7 @@ Written 31 Aug 2026.
 
 ## What VESTA is
 
-A shared home surface for Nick and his partner, on its own subdomain, beside NEURO and SARA rather than inside them. Named for the goddess of hearth and home — SARA is Nick's, VESTA is the household's.
+A shared home surface for Nick and his partner, on its own subdomain, beside NEURO and SAiM rather than inside them. Named for the goddess of hearth and home — SAiM is Nick's, VESTA is the household's.
 
 It grew out of a standalone task-entry page for his partner that was designed but never built (`backend/routes/capture-link.js` exists; no page was ever written). Nick's words, 31 Aug: *"we probably need to evolve that to a more generalised capture/display page — so she can see specific info. A sort of NEURO lite."*
 
@@ -95,7 +95,7 @@ A calendar entry looks like `{ id, start, end, allDay, title, personal, location
 
 ### 1. The app — `vesta/` at the repo root
 
-React + Vite, same shape as `sara/app`. Deployed to Netlify on **`vesta.nickward.co.uk`**, exactly as `sara/app` → `sara.nickward.co.uk` (base dir `vesta`, build on push to main). The API is the Pi's public Funnel address, not the tailnet one.
+React + Vite, same shape as `saim/app`. Deployed to Netlify on **`vesta.nickward.co.uk`**, exactly as `saim/app` → `saim.nickward.co.uk` (base dir `vesta`, build on push to main). The API is the Pi's public Funnel address, not the tailnet one.
 
 Screens:
 

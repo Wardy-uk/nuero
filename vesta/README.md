@@ -1,6 +1,6 @@
 # VESTA
 
-The shared home surface. SARA is Nick's; VESTA is the household's.
+The shared home surface. SAiM is Nick's; VESTA is the household's.
 
 Four things: tasks she adds and what became of them, his diary with work
 redacted to "Busy", what is in the kitchen, and what can be cooked out of it.
@@ -17,10 +17,10 @@ npm run dev          # :5176, proxies /api → localhost:3001
 ## Deploying
 
 Netlify, base directory `vesta`, build on push to main → **vesta.nickward.co.uk**.
-Same arrangement as `sara/app` → sara.nickward.co.uk.
+Same arrangement as `saim/app` → saim.nickward.co.uk.
 
 ⚠ **`VITE_API_URL` must be the Pi's public Tailscale FUNNEL address, not the
-`.ts.net` tailnet one SARA uses.** Her phone is outside the house and has no
+`.ts.net` tailnet one SAiM uses.** Her phone is outside the house and has no
 Tailscale — that is the entire reason `/api/v` is exempt from the PIN.
 
 ## The one thing to understand before changing anything

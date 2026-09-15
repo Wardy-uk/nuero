@@ -179,7 +179,7 @@ test('every destination the resolver can return has a button label', () => {
 test('the open button renders the resolved label, not the fixed one', () => {
   const card = read('AttentionCard.jsx');
   assert.ok(card.includes('onClick={open}>{openLabel}'), 'the button must render the destination-aware label');
-  // ⚠ NOT `card.actionHint`: those are SARA's prose and several of them say
+  // ⚠ NOT `card.actionHint`: those are SAiM's prose and several of them say
   // "Start", which is a different button on this card with a different meaning.
   const block = card.slice(card.indexOf('const destination ='), card.indexOf('const open = ()'));
   assert.ok(!block.includes('actionHint'), 'the navigate label must not be taken from the prose hint');

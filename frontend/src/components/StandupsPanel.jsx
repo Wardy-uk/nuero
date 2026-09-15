@@ -24,7 +24,7 @@ export default function StandupsPanel() {
   // different from what it said. Named for what it actually is.
   const loggedCount = entries.filter(e => e.standup).length;
   const missCount = entries.filter(e => !e.standup).length;
-  const saraLine = missCount === 0
+  const saimLine = missCount === 0
     ? `${loggedCount} of ${entries.length} days logged.`
     : missCount === 1
     ? `${loggedCount} of ${entries.length} days logged. One miss.`
@@ -34,9 +34,9 @@ export default function StandupsPanel() {
 
   return (
     <div className="standups-panel">
-      <div className="standups-sara">
-        <span className="standups-sara-label">SARA</span>
-        <span className="standups-sara-line">{saraLine}</span>
+      <div className="standups-saim">
+        <span className="standups-saim-label">SAiM</span>
+        <span className="standups-saim-line">{saimLine}</span>
       </div>
       <div className="standups-header">
         <h2 className="standups-title">Standup</h2>

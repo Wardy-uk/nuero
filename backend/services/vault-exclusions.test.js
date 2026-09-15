@@ -15,7 +15,7 @@ test('the retrieval index does not read the bin', () => {
 test('NEURO does not index its own reports', () => {
   // The system citing its own hygiene logs as a source is a loop, not a search.
   assert.equal(ex.isExcludedPath('Documents/System/Vault Audit/lint-2026-08-14.md'), true);
-  assert.equal(ex.isExcludedPath('Documents/System/SARA Import Reports/2026-08-14.md'), true);
+  assert.equal(ex.isExcludedPath('Documents/System/SAiM Import Reports/2026-08-14.md'), true);
 });
 
 test('generated task lists are excluded by FILENAME, wherever they sit', () => {

@@ -1,0 +1,303 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { apiFetch, apiUrl } from '../api';
+import { completeTask } from '../completeTask';
+import actionSurfaces from '../../../../shared/action-surfaces.cjs';
+import { speakIfEnabled } from '../voiceUtils';
+import './NotificationActionCard.css';
+
+const { resolveNueroUrl, resolveSaimLitePlan } = actionSurfaces;
+
+// The kiosk reaches NEURO through saim/backend's allowlist, and `journal` and
+// `vault-hygiene` are deliberately NOT doors there (11 Sep 2026). Refused, it
+// answers 403 with `reason: "not-a-door"`. That is a decision about this screen,
+// not a fault, so it must not render as an error — and must not render as an
+// empty journal or a clean vault either. apiFetch flattens the body into the
+// message, so the reason is read back out of it.
+function isClosedDoor(error) {
+  const message = String(error?.message || '');
+  return message.startsWith('403 ') && message.includes('not-a-door');
+}
+
+function trimItems(list, limit) {
+  return Array.isArray(list) ? list.slice(0, limit) : [];
+}
+
+export default function NotificationActionCard({ intent, onDismiss, onNavigate }) {
+  const [state, setState] = useState({ loading: true, data: null, error: null, closed: false });
+  const [answers, setAnswers] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [doneIds, setDoneIds] = useState({});
+  const plan = useMemo(() => resolveSaimLitePlan(intent), [intent]);
+  // #111 — speak the nudge once per distinct message. Arriving here means Nick
+  // tapped the notification, so the iOS audio unlock has already happened and no
+  // retry dance is needed (unlike Focus, which can render before any gesture).
+  const spokenRef = useRef(null);
+  useEffect(() => {
+    const message = intent?.body;
+    if (!message || message === spokenRef.current) return;
+    spokenRef.current = message;
+    speakIfEnabled(message);
+  }, [intent?.body]);
+  const kind = plan.kind;
+  const nueroUrl = useMemo(() => resolveNueroUrl(intent, apiUrl('/')), [intent]);
+  const handledInSaim = plan.canHandle && plan.presentation !== 'handoff';
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      setState({ loading: true, data: null, error: null, closed: false });
+
+      if (!handledInSaim) {
+        if (!active) return;
+        setState({ loading: false, data: null, error: null, closed: false });
+        return;
+      }
+
+      try {
+        let data = null;
+
+        // #26 — standup/eod are no longer handled here. They resolve to
+        // presentation 'tab' now, so App never renders this card for them and
+        // the Ritual tab drives /api/standup-session/* instead of the retired
+        // /api/standup/questions + /submit-guided stepper this used to call.
+        if (kind === 'journal') data = await apiFetch('/api/journal/prompts');
+        else if (kind === 'todo') data = await apiFetch('/api/todos/focus?filter=overdue&limit=5');
+        else if (kind === 'meeting') {
+          const eventId = intent?.payload?.eventId;
+          data = eventId
+            ? await apiFetch(`/api/meeting-prep/${encodeURIComponent(eventId)}`)
+            : await apiFetch('/api/meeting-prep');
+        } else if (kind === 'brain') data = await apiFetch('/api/vault-hygiene/lint');
+
+        if (!active) return;
+
+        if (kind === 'journal') {
+          setAnswers((data.prompts || []).map(() => ''));
+        }
+
+        setState({ loading: false, data, error: null, closed: false });
+      } catch (error) {
+        if (!active) return;
+        if (isClosedDoor(error)) {
+          setState({ loading: false, data: null, error: null, closed: true });
+          return;
+        }
+        setState({ loading: false, data: null, error: error.message, closed: false });
+      }
+    }
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [handledInSaim, intent, kind]);
+
+  function openNuero() {
+    if (!nueroUrl) return;
+    window.open(nueroUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  async function submitGuided() {
+    setSaving(true);
+    try {
+      if (kind === 'journal') {
+        const entries = (state.data?.prompts || []).map((prompt, index) => ({
+          prompt,
+          response: answers[index] || '',
+        }));
+        await apiFetch('/api/journal/save', {
+          method: 'POST',
+          body: JSON.stringify({ entries, date: state.data?.date }),
+        });
+      }
+      setState((current) => ({
+        ...current,
+        data: { ...(current.data || {}), completed: true },
+      }));
+    } catch (error) {
+      setState((current) => ({ ...current, error: error.message }));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function completeTodo(item) {
+    if (!item) return;
+    setDoneIds((current) => ({ ...current, [item.id]: true }));
+    try {
+      // Shared with the Tasks view — this used to have no task_id branch, so a
+      // NEURO-owned task posted a null filePath to /toggle and never completed.
+      await completeTask(item);
+      setState((current) => ({
+        ...current,
+        data: {
+          ...(current.data || {}),
+          items: (current.data?.items || []).filter((entry) => entry.id !== item.id),
+        },
+      }));
+    } catch (error) {
+      setState((current) => ({ ...current, error: error.message }));
+      setDoneIds((current) => ({ ...current, [item.id]: false }));
+    }
+  }
+
+  const title = intent?.title || 'SAiM nudge';
+  const note = nueroUrl ? `${title} • ${nueroUrl}` : title;
+  const canSubmit = answers.some((entry) => String(entry || '').trim());
+  const nudgeText = intent?.body || null;
+
+  return (
+    <section className="notif card">
+      <div className="notif__top">
+        <div>
+          <div className="notif__eyebrow">Notification action</div>
+          <div className="notif__title">{note}</div>
+          {/* #111 — the words the nudge actually said. The title is only a label,
+              so without this the card dropped the entire message and Nick had to
+              remember what the notification read before he tapped it. */}
+          {nudgeText && <div className="notif__message">{nudgeText}</div>}
+        </div>
+        <button type="button" className="notif__close" onClick={onDismiss} aria-label="Dismiss notification panel">✕</button>
+      </div>
+
+      {state.loading && <div className="notif__status">Loading the next action…</div>}
+      {state.error && <div className="notif__status err">{state.error}</div>}
+
+      {!state.loading && !state.error && !handledInSaim && (
+        <div className="notif__body">
+          <p className="notif__lede">This one needs the full NUERO desktop companion rather than SAiM mobile.</p>
+          <div className="notif__actions">
+            {nueroUrl && (
+              <button type="button" className="notif__btn notif__btn--primary" onClick={openNuero}>
+                Open in NUERO
+              </button>
+            )}
+            <button type="button" className="notif__btn" onClick={onDismiss}>Dismiss</button>
+          </div>
+        </div>
+      )}
+
+      {/* #26 — the standup and EOD arms lived here and ran the retired
+          three-question stepper. Both kinds now resolve to presentation 'tab',
+          so App switches to the Ritual tab and never mounts this card for them.
+          Deleted rather than left dark: a second standup flow on the same phone
+          is how the two silently disagree about what today's standup was. */}
+
+      {!state.loading && state.closed && kind === 'journal' && (
+        <div className="notif__body">
+          <p className="notif__lede">Journal isn’t available on this screen — it doesn’t reach your vault. Open it on your phone.</p>
+        </div>
+      )}
+
+      {!state.loading && !state.error && !state.closed && handledInSaim && kind === 'journal' && (
+        <div className="notif__body">
+          <p className="notif__lede">Tonight’s reflection is ready here.</p>
+          {trimItems(state.data?.prompts, 3).map((prompt, index) => (
+            <label className="notif__field" key={prompt}>
+              <span>{prompt}</span>
+              <textarea
+                value={answers[index] || ''}
+                onChange={(event) => {
+                  const next = answers.slice();
+                  next[index] = event.target.value;
+                  setAnswers(next);
+                }}
+                rows={3}
+              />
+            </label>
+          ))}
+          <div className="notif__actions">
+            <button type="button" className="notif__btn notif__btn--primary" disabled={!canSubmit || saving} onClick={submitGuided}>
+              {saving ? 'Saving…' : state.data?.completed ? 'Saved' : 'Save journal'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!state.loading && !state.error && handledInSaim && kind === 'todo' && (
+        <div className="notif__body">
+          <p className="notif__lede">{state.data?.framing || 'Top overdue items ready to clear.'}</p>
+          {trimItems(state.data?.items, 5).map((item) => (
+            <div className="notif__list-item" key={item.id}>
+              <div>
+                <div className="notif__item-title">{item.text}</div>
+                <div className="notif__item-meta">{item.source || 'Vault'}{item.due_date ? ` • due ${item.due_date.split('T')[0]}` : ''}</div>
+              </div>
+              <button
+                type="button"
+                className="notif__btn notif__btn--small"
+                disabled={Boolean(doneIds[item.id])}
+                onClick={() => completeTodo(item)}
+              >
+                {doneIds[item.id] ? 'Done…' : 'Done'}
+              </button>
+            </div>
+          ))}
+          {trimItems(state.data?.items, 5).length === 0 && <div className="notif__status">No overdue items left.</div>}
+          <div className="notif__actions">
+            <button type="button" className="notif__btn" onClick={() => onNavigate('focus')}>Focus tab</button>
+            <button type="button" className="notif__btn" onClick={() => onNavigate('capture')}>Capture follow-up</button>
+          </div>
+        </div>
+      )}
+
+      {!state.loading && !state.error && handledInSaim && kind === 'meeting' && (
+        <div className="notif__body">
+          {state.data?.meeting ? (
+            <>
+              <div className="notif__item-title">{state.data.meeting.subject}</div>
+              <div className="notif__item-meta">
+                {state.data.meeting.startFormatted}{state.data.meeting.endFormatted ? `–${state.data.meeting.endFormatted}` : ''}
+                {typeof state.data.meeting.minutesAway === 'number' ? ` • in ${state.data.meeting.minutesAway}m` : ''}
+              </div>
+              {trimItems(state.data.meeting.prep?.suggestedTopics, 3).map((topic) => (
+                <div className="notif__bullet" key={topic}>{topic}</div>
+              ))}
+              {trimItems(state.data.meeting.prep?.checklist, 2).map((item) => (
+                <div className="notif__bullet" key={item}>{item}</div>
+              ))}
+            </>
+          ) : (
+            <div className="notif__status">No meeting prep found.</div>
+          )}
+          <div className="notif__actions">
+            <button type="button" className="notif__btn notif__btn--primary" onClick={() => onNavigate('prep')}>Open Prep</button>
+            <button type="button" className="notif__btn" onClick={() => onNavigate('capture')}>Capture note</button>
+          </div>
+        </div>
+      )}
+
+      {/* Vault maintenance moved to NEURO's Brain Health panel (31 Aug 2026) and
+          SAiM has no Brain tab any more — this used to navigate to 'brain', which
+          does not exist, so the tap silently landed on the Surface. It now says
+          where the work lives instead of pretending to take him there. */}
+      {!state.loading && !state.error && handledInSaim && kind === 'brain' && (
+        <div className="notif__body">
+          {state.closed ? (
+            <p className="notif__lede">Vault hygiene isn’t shown on this screen — it doesn’t reach your vault.</p>
+          ) : (
+            <>
+              <p className="notif__lede">Vault hygiene is ready for a quick pass.</p>
+              {/* A missing count is "not reported", never 0 — a clean-looking
+                  grid over a scan that said nothing is a false all-clear. */}
+              <div className="notif__grid">
+                <div><strong>{state.data?.counts?.broken ?? '—'}</strong><span>broken</span></div>
+                <div><strong>{state.data?.counts?.orphans ?? '—'}</strong><span>orphans</span></div>
+                <div><strong>{state.data?.counts?.stale ?? '—'}</strong><span>stale</span></div>
+              </div>
+            </>
+          )}
+          <p className="notif__status">The pass itself lives in NEURO → Brain Health, on the desktop.</p>
+          <div className="notif__actions">
+            <button type="button" className="notif__btn" onClick={() => onNavigate('capture')}>Capture note</button>
+          </div>
+        </div>
+      )}
+
+      {!state.loading && !state.error && !handledInSaim && !nueroUrl && (
+        <div className="notif__status">No linked NUERO destination was included with this notification.</div>
+      )}
+    </section>
+  );
+}

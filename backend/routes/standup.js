@@ -3,7 +3,7 @@ const router = express.Router();
 const obsidianService = require('../services/obsidian');
 const nudges = require('../services/nudges');
 const accountability = require('../services/standup-accountability');
-const { VOICE_COMPACT } = require('../services/sara-voice');
+const { VOICE_COMPACT } = require('../services/saim-voice');
 
 // ── Standup pre-warm cache ──────────────────────────────────────────────
 // Pre-generates the Phase 1 Ollama response before the user opens the standup,
@@ -369,7 +369,7 @@ const questionCache = {
 };
 
 // These are what Nick actually reads when every provider is down, so they are
-// SARA's words too — one question each, no stacking, no form-speak.
+// SAiM's words too — one question each, no stacking, no form-speak.
 const STANDUP_FALLBACK_QUESTIONS = [
   "What has to be true by tonight?",
   "What's in the way?",

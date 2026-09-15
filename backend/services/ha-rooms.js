@@ -38,8 +38,8 @@
 const HA_URL = (process.env.HA_URL || 'http://localhost:8123').replace(/\/$/, '');
 const HA_TOKEN = process.env.HA_TOKEN || '';
 
-// Which room NEURO/SARA thinks he is in. Written by the REST sensor in HA's
-// configuration.yaml, which reads SARA's own classifier — HA does no
+// Which room NEURO/SAiM thinks he is in. Written by the REST sensor in HA's
+// configuration.yaml, which reads SAiM's own classifier — HA does no
 // classifying and neither does this.
 const ROOM_SENSOR = process.env.HA_ROOM_SENSOR || 'sensor.nick_room';
 // Is anyone OTHER than Nick at home? Built in HA on 13 Sep 2026 from Life360
@@ -126,12 +126,12 @@ function shapeRooms(areas, states) {
 }
 
 /**
- * Presence, as SARA reported it.
+ * Presence, as SAiM reported it.
  *
  * ⚠ `subject` is hardcoded `watch` and that is not laziness — the sensor tracks
  * an Apple Watch, proven to sit on a bedroom surface reading `bedroom / sure`
  * for eight minutes while Nick showered. Nothing downstream may promote it.
- * ⚠ `unavailable` (SARA unreachable) is a FOURTH fact, distinct from `unclear`,
+ * ⚠ `unavailable` (SAiM unreachable) is a FOURTH fact, distinct from `unclear`,
  * and is NOT "he has left the room".
  */
 function shapePresence(state) {
@@ -252,7 +252,7 @@ async function readHouse() {
 //   or switch off a freezer, and every caller that ever touches it inherits that
 //   reach. These two functions are the entire write surface, they take entity
 //   ids and nothing else, and anything not expressible through them is not
-//   something NEURO can do. Same rule as `sara/backend`'s capture bridge being a
+//   something NEURO can do. Same rule as `saim/backend`'s capture bridge being a
 //   named door rather than a passthrough.
 //
 // ⚠ The CALLER must never pass an entity id it received from a client. The

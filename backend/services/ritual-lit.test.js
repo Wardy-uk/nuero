@@ -21,7 +21,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const VIEWS = path.resolve(__dirname, '..', '..', 'sara', 'app', 'src', 'views');
+const VIEWS = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src', 'views');
 const jsx = () => fs.readFileSync(path.join(VIEWS, 'Standup.jsx'), 'utf8');
 const css = () => fs.readFileSync(path.join(VIEWS, 'Standup.css'), 'utf8');
 // ⚠ A name inside a comment is not a use — eighth time.
@@ -38,7 +38,7 @@ test('⚠ no screen-local palette — the exchange is lit by her', () => {
   // ⚠ HIS OWN MESSAGE BUBBLE IS HERS TOO, deliberately. It is chrome on a
   // CONVERSATION WITH HER — the one screen that is entirely her talking — so a
   // fixed blue bubble on a red day would be the last unlit thing on it.
-  assert.match(sheet, /\.su__msg--user\s*\{[^}]*--sara-rgb/s);
+  assert.match(sheet, /\.su__msg--user\s*\{[^}]*--saim-rgb/s);
 });
 
 test('⚠ ONE red, and it is the primitive\'s', () => {

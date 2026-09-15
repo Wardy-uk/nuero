@@ -6,7 +6,7 @@
  * ── Why this exists ─────────────────────────────────────────────────────────
  *
  * Measured on the live DB before a line was written. Over thirty days NEURO
- * recorded FOUR completions. In the same window: 271 commits, 57 executed SARA
+ * recorded FOUR completions. In the same window: 271 commits, 57 executed SAiM
  * actions, a full diary, 2,229 vault writes. The `Momentum` card on the Today
  * tab — `doneToday`, `streakDays`, the seven-day sparkline, "Done today" — was
  * opened NINE times and showed 0, no streak, and "Nothing logged yet" on every
@@ -37,7 +37,7 @@
  *    which is false, and it is gameable by the one person it is meant to
  *    serve. The number has exactly one job: to be TRUE.
  *
- * 3. EVERY ROW NAMES ITS EVIDENCE. A commit sha, a sara_action id, an
+ * 3. EVERY ROW NAMES ITS EVIDENCE. A commit sha, a saim_action id, an
  *    activity_log id. A win without evidence is an assertion, and an assertion
  *    is what the tickbox already was. `manual` is the single source allowed a
  *    null, because "I had a hard conversation" has no artefact and excluding
@@ -90,7 +90,7 @@ const DONE_EVENTS = new Map([
 ]);
 
 /**
- * Executed SARA actions worth counting, with how each reads back.
+ * Executed SAiM actions worth counting, with how each reads back.
  *
  * `capture_todo` is excluded on purpose: approving one CREATES a task, it does
  * not finish anything, and it is bulk-generated nightly in the hundreds. It
@@ -361,11 +361,11 @@ function collect({ since, until } = {}) {
     gaps.push(`activity log unreadable — ${e.message}`);
   }
 
-  // 2. sara_actions that actually executed. Real outbound work, and currently
+  // 2. saim_actions that actually executed. Real outbound work, and currently
   //    invisible to every count in the system.
   try {
     const actions = db.all(
-      `SELECT id, type, payload, resolved_at FROM sara_actions
+      `SELECT id, type, payload, resolved_at FROM saim_actions
         WHERE status = 'executed' AND resolved_at IS NOT NULL
           AND date(resolved_at) BETWEEN ? AND ?`,
       [from, to]
@@ -390,7 +390,7 @@ function collect({ since, until } = {}) {
       });
     }
   } catch (e) {
-    gaps.push(`SARA actions unreadable — ${e.message}`);
+    gaps.push(`SAiM actions unreadable — ${e.message}`);
   }
 
   // 3. Sent replies. Already recorded since #69, never once counted.
@@ -740,7 +740,7 @@ function feed({ limit = 50, offset = 0, source = null, dateKey: onDate = null } 
  * definition after the fact.
  *
  * Returns null on a day with nothing in it. There is no encouraging version of
- * zero — SARA states the fact or says nothing, and a cheerful line over an empty
+ * zero — SAiM states the fact or says nothing, and a cheerful line over an empty
  * count is exactly the register the voice spec rejects. A quiet day is also the
  * one where an invented win would be most obviously false.
  */

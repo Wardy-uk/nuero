@@ -351,7 +351,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * plain approve, with no general "edit any pending action's payload" door.
  */
 function setChaseRecipient(actionId, email) {
-  const action = db.getSaraAction(parseInt(actionId, 10));
+  const action = db.getSaimAction(parseInt(actionId, 10));
   if (!action) return { ok: false, error: 'No such action' };
   if (action.type !== 'chase_commitment') return { ok: false, error: `That is a ${action.type}, not a chase` };
   if (action.status !== 'pending') return { ok: false, error: `Already ${action.status}` };
@@ -360,7 +360,7 @@ function setChaseRecipient(actionId, email) {
   if (!EMAIL_RE.test(clean)) return { ok: false, error: 'That does not look like an email address' };
 
   const payload = { ...action.payload, to: { email: clean, status: 'resolved', source: 'manual' } };
-  if (!db.updateSaraActionPayload(action.id, payload)) {
+  if (!db.updateSaimActionPayload(action.id, payload)) {
     return { ok: false, error: 'Could not update — it may have just been approved' };
   }
 
@@ -399,13 +399,13 @@ function setChaseChannel(actionId, channel) {
   const want = String(channel || '').toLowerCase();
   if (!['email', 'teams'].includes(want)) return { ok: false, error: 'channel must be email or teams' };
 
-  const action = db.getSaraAction(parseInt(actionId, 10));
+  const action = db.getSaimAction(parseInt(actionId, 10));
   if (!action) return { ok: false, error: 'No such action' };
   if (action.type !== 'chase_commitment') return { ok: false, error: `That is a ${action.type}, not a chase` };
   if (action.status !== 'pending') return { ok: false, error: `Already ${action.status}` };
 
   const payload = { ...action.payload, channel: want };
-  if (!db.updateSaraActionPayload(action.id, payload)) {
+  if (!db.updateSaimActionPayload(action.id, payload)) {
     return { ok: false, error: 'Could not update — it may have just been approved' };
   }
   return { ok: true, channel: want };

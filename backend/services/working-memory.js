@@ -82,7 +82,7 @@ async function refresh() {
 
     // Jira queue removed 27 Aug 2026 — see db/database.js. `queueSummary` is
     // kept in the returned shape as a permanent null so the six downstream
-    // readers (chat context, the SARA tone builder, Focus stats, claude.js's
+    // readers (chat context, the SAiM tone builder, Focus stats, claude.js's
     // context block, attention, standup-session) stay valid and silent rather
     // than throwing. Escalations reach these consumers via `unseenEscalations`,
     // which is live and unaffected.

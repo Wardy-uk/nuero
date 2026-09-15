@@ -39,7 +39,7 @@ test.before(async () => {
 test.after(() => server && server.close());
 
 function queue(type = 'capture_todo', payload = { text: 'Resend the risk assessment' }) {
-  return db.createSaraAction(type, payload, 0.8, 'test', null);
+  return db.createSaimAction(type, payload, 0.8, 'test', null);
 }
 
 const snooze = (id, minutes) =>
@@ -71,19 +71,19 @@ test('it leaves the screen and says where it went', async () => {
 // same card again immediately - a button meaning "leave me alone" causing more
 // cards, not fewer.
 test('it stays in the pending POOL, or the engine would build it again', () => {
-  const pool = db.getPendingSaraActions(1000);
+  const pool = db.getPendingSaimActions(1000);
   assert.equal(pool.length, 1, 'still pending as far as every dedupe pass is concerned');
   assert.equal(pool[0].status, 'pending', 'a snooze is not a decision');
   assert.ok(pool[0].snoozed_until);
 });
 
 test('snoozing is not a rejection, so nothing is resolved', () => {
-  const row = db.getSaraAction(db.getPendingSaraActions(1000)[0].id);
+  const row = db.getSaimAction(db.getPendingSaimActions(1000)[0].id);
   assert.equal(row.resolved_at, null, 'saying "later" must not read as a verdict');
 });
 
 test('there is a way back, and it puts the card straight back on the screen', async () => {
-  const id = db.getPendingSaraActions(1000)[0].id;
+  const id = db.getPendingSaimActions(1000)[0].id;
   const res = await fetch(`${base}/api/actions/${id}/snooze`, { method: 'DELETE' });
   assert.equal(res.status, 200);
   const json = await (await fetch(`${base}/api/actions`)).json();
@@ -92,7 +92,7 @@ test('there is a way back, and it puts the card straight back on the screen', as
 });
 
 test('nonsense minutes are refused, not defaulted', async () => {
-  const id = db.getPendingSaraActions(1000)[0].id;
+  const id = db.getPendingSaimActions(1000)[0].id;
   const res = await snooze(id, -5);
   assert.equal(res.status, 400);
   assert.equal((await res.json()).ok, false);
@@ -100,7 +100,7 @@ test('nonsense minutes are refused, not defaulted', async () => {
 
 test('an action that is already decided cannot be snoozed', async () => {
   const id = queue('draft_reply', { emailId: 'x' });
-  db.updateSaraActionStatus(id, 'rejected');
+  db.updateSaimActionStatus(id, 'rejected');
   const res = await snooze(id, 60);
   assert.equal(res.status, 400);
   assert.match((await res.json()).reason, /already rejected/);
@@ -112,7 +112,7 @@ test('an action that does not exist is a 404, not a silent no-op', async () => {
 });
 
 test('waking something that is not asleep is refused rather than reported done', async () => {
-  const id = db.getPendingSaraActions(1000).find(a => !a.snoozed_until).id;
+  const id = db.getPendingSaimActions(1000).find(a => !a.snoozed_until).id;
   const res = await fetch(`${base}/api/actions/${id}/snooze`, { method: 'DELETE' });
   assert.equal(res.status, 400);
   assert.match((await res.json()).reason, /not snoozed/);

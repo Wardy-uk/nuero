@@ -9,7 +9,7 @@
  * drink in hours, that should be called out — if I'm in a meeting, or hiking,
  * then not."*
  *
- * So the tests are moments, and most of them are moments where SARA should say
+ * So the tests are moments, and most of them are moments where SAiM should say
  * nothing.
  */
 
@@ -55,7 +55,7 @@ test('in a meeting — say nothing', () => {
 test('hiking — say nothing, and WITHOUT needing to know what hiking is', () => {
   // The test of the design. There is no hiking rule anywhere: he is walking, so
   // `atDesk` is false and the phone is not on a desk. A moment described
-  // honestly out of the signals SARA already has needs no list of activities.
+  // honestly out of the signals SAiM already has needs no list of activities.
   const hiking = push.momentFrom({
     context: { activity: 'steady', duty: { onDuty: false }, confidence: { level: 'high' } },
     phone: { activity: 'Walking', focusMode: false },

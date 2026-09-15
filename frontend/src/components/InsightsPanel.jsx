@@ -183,7 +183,7 @@ export default function InsightsPanel({ onNavigate }) {
             <div className="knowledge-stat-card">
               <span className="knowledge-stat-label">Trusted Notes</span>
               <span className="knowledge-stat-value">{knowledge.counts.trustedNotes}</span>
-              <span className="knowledge-stat-copy">Curated context SARA can lean on.</span>
+              <span className="knowledge-stat-copy">Curated context SAiM can lean on.</span>
             </div>
             <div className="knowledge-stat-card">
               <span className="knowledge-stat-label">Promote Next</span>

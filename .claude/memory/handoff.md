@@ -1,9 +1,9 @@
-# Handoff — SARA room presence (Apple Watch BLE), 31 Aug 2026
+# Handoff — SAiM room presence (Apple Watch BLE), 31 Aug 2026
 
 ## Where this came from
 
 The kiosk's watch presence lock was switched off on 30 Aug for "incorrectly
-locking SARA". Nick's spec for the rebuild: **watch seen → SARA fully visible;
+locking SAiM". Nick's spec for the rebuild: **watch seen → SAiM fully visible;
 watch not seen → just the clock; not in the home geofence → fully locked.** Only
 the Pi 4 has a screen, so only it locks. He then raised the bar twice: it must
 **infer which room he is actually in** ("as we build more automation around
@@ -24,7 +24,7 @@ Verified on a walk bedroom → kitchen → living room: tracked every leg, then 
 4.5.
 
 **Surfaces:** Pi 4 kiosk (full/clock/locked), NEURO topbar chip, VESTA for
-helen/isaac/test. NEURO backend 1916 tests green; sara/backend 138.
+helen/isaac/test. NEURO backend 1916 tests green; saim/backend 138.
 
 ## ⚠ The findings, in the order they cost time
 
@@ -77,17 +77,17 @@ sat in the bedroom and it reported `bedroom` confidently for eight minutes.
 
 ## The architecture, and why
 
-`sara/backend` holds the sensors, the fingerprint profiles and the
+`saim/backend` holds the sensors, the fingerprint profiles and the
 classification. **NEURO reads it as a SENSOR FEED, never a second opinion** —
-that distinction is what `sara/backend/src/state/inference.js` was retired for.
-SARA measures, NEURO reasons.
+that distinction is what `saim/backend/src/state/inference.js` was retired for.
+SAiM measures, NEURO reasons.
 
-- `sara/sensor/sara-room-sensor.py` — one Pi, one room. `SARA_SCAN_MODE`,
-  `SARA_IN_ROOM_RSSI` per sensor.
-- `sara/sensor/sara-display-agent.py` — pi-dev only, the only thing that can do
+- `saim/sensor/saim-room-sensor.py` — one Pi, one room. `SAIM_SCAN_MODE`,
+  `SAIM_IN_ROOM_RSSI` per sensor.
+- `saim/sensor/saim-display-agent.py` — pi-dev only, the only thing that can do
   `locked` (a page cannot write `/sys/class/backlight`, and painting black is
   not off). **Fails towards LIGHT** on every error path.
-- `sara/backend/src/presence/{rooms,store,history,fingerprint,profiles}.js`
+- `saim/backend/src/presence/{rooms,store,history,fingerprint,profiles}.js`
 - `backend/services/{room-presence,whereabouts}.js` — NEURO's readers.
 
 **Fingerprint beats threshold only when `sure`**; `unsure`/`none` fall back to
@@ -99,7 +99,7 @@ the per-sensor RSSI threshold, so an uncalibrated house behaves as before.
 - **⚠ VESTA does NOT auto-deploy from git.** Directory upload, not linked to the
   repo — a push to main deploys nothing. Use the Netlify MCP `deploy-site`
   command from `vesta/`. I got this wrong once today and said otherwise.
-- sara/frontend is built ON pi5 and served by `sara-backend`; the Pi 4 is only a
+- saim/frontend is built ON pi5 and served by `saim-backend`; the Pi 4 is only a
   browser pointed at `100.100.28.58:3005`.
 - Nick runs 2–3 Claude sessions on this repo. `server.js` is often held open —
   the room endpoint was hung off `routes/signals.js` for that reason. Expect

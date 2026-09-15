@@ -11,10 +11,10 @@
 // ONCE PER VISIT. The obvious key for a visit is the presence sensor's own
 // `last_changed`, and it is wrong in a way that is invisible until it is
 // annoying: a momentary drop to `unclear` and back restamps it, so a two-second
-// wobble reads as leaving and re-entering the room and SARA asks again. Ten
+// wobble reads as leaving and re-entering the room and SAiM asks again. Ten
 // wobbles in an evening is ten prompts, which is how she gets muted.
 //
-// ⚠ THE WOBBLE GUARD IS `sara/backend`'s, NOT A NEW NUMBER. `greeter.js` had
+// ⚠ THE WOBBLE GUARD IS `saim/backend`'s, NOT A NEW NUMBER. `greeter.js` had
 //   exactly this problem for greetings and measured the answer on real data:
 //   the watch went unsure for SIXTEEN SECONDS and came back, and the detector
 //   greeted an arrival that never happened, while his real walk out and back

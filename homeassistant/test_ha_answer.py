@@ -10,7 +10,7 @@ import os
 import sys
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components", "sara"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components", "saim"))
 
 from ha_answer import NOT_THE_HOUSE, PEOPLE_DOMAINS, ha_answer_stands  # noqa: E402
 

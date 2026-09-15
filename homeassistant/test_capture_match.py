@@ -13,7 +13,7 @@ import os
 import sys
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components", "sara"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "custom_components", "saim"))
 
 from capture_match import match_capture  # noqa: E402
 

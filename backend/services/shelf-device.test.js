@@ -24,8 +24,8 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const SHARED = path.resolve(__dirname, '..', '..', 'sara', 'shared-ui');
-const APP = path.resolve(__dirname, '..', '..', 'sara', 'app', 'src');
+const SHARED = path.resolve(__dirname, '..', '..', 'saim', 'shared-ui');
+const APP = path.resolve(__dirname, '..', '..', 'saim', 'app', 'src');
 const read = (p) => fs.readFileSync(p, 'utf8');
 const code = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
 
@@ -104,5 +104,5 @@ test('⚠ listening is readable by shape as well as colour', () => {
   assert.match(live[1], /border-color:/);
   assert.match(live[1], /background:/);
   // And it is HER colour, so it agrees with everything else on the screen.
-  assert.match(live[1], /--sara-rgb/);
+  assert.match(live[1], /--saim-rgb/);
 });

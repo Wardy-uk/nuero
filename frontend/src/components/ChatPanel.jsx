@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { apiUrl, apiFetch } from '../api';
-import { speakSara, isVoiceOutEnabled, setVoiceOutEnabled } from '../voiceUtils';
+import { speakSaim, isVoiceOutEnabled, setVoiceOutEnabled } from '../voiceUtils';
 import './ChatPanel.css';
 
 const STORAGE_KEY = 'neuro_last_conversation_id';
@@ -308,7 +308,7 @@ function useVoiceInput() {
   return { listening, transcript, start, stop, supported };
 }
 
-// speakSara imported from voiceUtils
+// speakSaim imported from voiceUtils
 
 export default function ChatPanel({ location }) {
   const [messages, setMessages] = useState([]);
@@ -375,12 +375,12 @@ export default function ChatPanel({ location }) {
     prevListening.current = voice.listening;
   }, [voice.listening]);
 
-  // Speak SARA's response when streaming ends
+  // Speak SAiM's response when streaming ends
   useEffect(() => {
     if (streaming || !voiceOut || messages.length === 0) return;
     const last = messages[messages.length - 1];
     if (last.role === 'assistant' && last.content) {
-      speakSara(last.content);
+      speakSaim(last.content);
     }
   }, [streaming]);
 
@@ -561,7 +561,7 @@ export default function ChatPanel({ location }) {
     <div className="chat-container">
       <div className="chat-header">
         <span className="chat-title" onClick={() => setShowConvList(!showConvList)} style={{ cursor: 'pointer' }}>
-          SARA {conversations.length > 0 && <span className="chat-conv-toggle">▾</span>}
+          SAiM {conversations.length > 0 && <span className="chat-conv-toggle">▾</span>}
         </span>
         <div className="chat-header-right">
           {'speechSynthesis' in window && (
@@ -599,7 +599,7 @@ export default function ChatPanel({ location }) {
       <div className="chat-messages">
         {messages.length === 0 && !loadingHistory && (
           <div className="chat-empty">
-            <span className="chat-empty-label">SARA</span>
+            <span className="chat-empty-label">SAiM</span>
             <span className="chat-empty-text">Queue, team, priorities, vault — ask or tell me what to do.</span>
           </div>
         )}
@@ -612,7 +612,7 @@ export default function ChatPanel({ location }) {
           return (
             <div key={i} className={`chat-msg chat-msg-${msg.role}`}>
               {msg.role === 'assistant' && (
-                <span className="chat-msg-label">SARA</span>
+                <span className="chat-msg-label">SAiM</span>
               )}
               {msg.role === 'user' && (
                 <span className="chat-msg-label chat-msg-label-user">You</span>
@@ -672,7 +672,7 @@ export default function ChatPanel({ location }) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={voice.listening ? 'Listening...' : 'Message SARA...'}
+          placeholder={voice.listening ? 'Listening...' : 'Message SAiM...'}
           rows={1}
           disabled={streaming}
         />

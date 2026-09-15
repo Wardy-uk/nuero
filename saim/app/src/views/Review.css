@@ -1,0 +1,142 @@
+.rev__modes {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+
+.rev__mode {
+  flex: 1 1 0;
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0.45rem 0.3rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.rev__mode--on {
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.16);
+  color: var(--text);
+  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.5);
+}
+
+/* ⚠ Type and colour are `LitLabel`'s — one definition of a section label for
+   the whole app. Only the spacing is this screen's, and NO `color:` here: this
+   sheet is imported AFTER Lit.css, so one left in place would win the cascade
+   and keep these grey while every other label moved with her. */
+.rev__h { margin: 1.25rem 0 0.5rem; }
+
+.rev__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.rev__row-title {
+  font-size: 0.92rem;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.rev__row-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.rev__big {
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.rev__calm { color: var(--muted); font-size: 0.9rem; }
+
+/* ⚠⚠ PENDING IS NOT UNREAD. This used to wear `.rev__unread`'s amber, which
+   means "I could not read this" — and items waiting on the device are something
+   she can see perfectly well and he can act on, with a button right there.
+   Amber-means-unread is the one colour whose meaning is fixed across both apps;
+   spending it on a merely-pending state is how it stops meaning anything. */
+.rev__pending {
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* The figure and what it is a figure OF, on one baseline. A 34pt number with
+   only "ok" under it does not say which way its scale runs — see Review.jsx. */
+.rev__bigrow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.rev__bigunit {
+  color: rgb(var(--saim-rgb, 114, 150, 211));
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.rev__unread {
+  color: #f0d6a6;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.rev__note {
+  margin: 0 0 0.7rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.rev__note--small { font-size: 0.75rem; margin: 0.7rem 0 0; }
+
+.rev__stats {
+  margin: 0 0 0.75rem;
+  padding-left: 1.05rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.rev__clear {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rev__btn {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* ⚠ The primitive's red, not a second one. `rgba(200, 70, 70)` here against
+   `rgba(224, 84, 58)` in Lit.css is two reds for one meaning, which is the same
+   thing Capture had on its stuck item. */
+.rev__btn--danger {
+  border-color: rgba(224, 84, 58, 0.55);
+  color: #ffb4b4;
+}
+
+/* ── Weekly target setter ── */
+.rev__target { margin-top: 0.5rem; }
+.rev__target .rev__note { margin: 0.4rem 0; }
+.rev__target-change { margin: 0.5rem 0 0; }
+.rev__target-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.rev__target-input {
+  width: 5.5rem;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  font-size: 0.9rem;
+}
