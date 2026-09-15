@@ -146,8 +146,22 @@ never touched.
 
 **Left for you, and it genuinely cannot be automated:**
 
-1. Site settings → Build & deploy → **Base directory** → `saim/app`.
-2. Optionally add `saim.nickward.co.uk` as a domain and make it primary (needs the DNS record first).
+1. ✅ Site settings → Build & deploy → **Base directory** → `saim/app` — **done 15 Sep**, build green,
+   `<title>SAiM Mobile</title>` serving.
+2. ❌ **The custom domain is DELIBERATELY NOT MOVED.** Nick's call, 15 Sep 2026. It stays
+   `sara.nickward.co.uk`, and `saim.nickward.co.uk` has no DNS record.
+
+   ⚠ **This is a decision, not an outstanding task — do not "finish" it.** Netlify redirects a
+   non-primary domain to the primary, so there is no way to serve both as real addresses: for
+   `saim.` to be the address it must be primary, and `sara.` then redirects to it. That changes the
+   PWA's **ORIGIN**, and `localStorage` and IndexedDB are per-origin — the stored PIN and, the one
+   that matters, **anything unsent in the outbox** would be stranded somewhere no longer reachable.
+   The whole benefit is a URL that reads better. Not worth spending a capture on.
+
+   Consequences, all deliberate: `VITE_ALLOWED_HOSTS` keeps its three `sara.*` entries permanently;
+   `VITE_CANONICAL_URL` stays `https://sara.nickward.co.uk`, because it is DeploymentGuard's
+   "open the correct site" link and a dead host makes the one recovery route a dead end. Both are
+   commented at their site. If the domain is ever actually moved, drain every device's outbox first.
 
 ⚠ **Why the base directory is not done for you.** Two independent reasons, both checked rather
 than assumed: the Netlify MCP exposes six write operations — project name, env vars, forms, visitor
