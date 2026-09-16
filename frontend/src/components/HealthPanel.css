@@ -311,3 +311,60 @@
   font-variant-numeric: tabular-nums;
   user-select: none;
 }
+
+/* ── The window control ────────────────────────────────────────────────────
+   A hairline between the sample-backed windows (Now / 24 hrs / 7 days) and the
+   rollup-backed ones. They are different statistics over different sources, and
+   the grouping says so without a paragraph on the button bar. */
+.hp-range-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--border);
+}
+
+/* Which statistic a chart is currently drawing. Recessive — it is a caveat, not
+   a heading — but never hidden: this control swaps the chart between a daily
+   median and a bucket average, and unlabelled the axis changes meaning in
+   silence. */
+.hp-chart-note {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* A measure with no intraday form. Deliberately the same card footprint as a
+   chart so the grid does not reflow when the window changes — a jumping layout
+   reads as something having broken. */
+.hp-chart--na { display: flex; flex-direction: column; justify-content: center; }
+
+/* ── "Now" ─────────────────────────────────────────────────────────────────
+   Latest readings, not a chart: one value has no axis to sit on. */
+.hp-now {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.hp-now-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.hp-now-label { font-size: 11px; color: var(--text-muted); }
+.hp-now-value {
+  font-size: 26px;
+  line-height: 1.15;
+  margin-top: 2px;
+  /* Tabular figures so a value changing does not shuffle the card width. */
+  font-variant-numeric: tabular-nums;
+}
+.hp-now-unit { font-size: 12px; color: var(--text-muted); margin-left: 3px; }
+.hp-now-age { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+/* ⚠ Marked, never hidden. An old reading presented as current is the failure
+   this page keeps being dug out of; a hidden one makes a metric that quietly
+   stopped invisible, which is the same failure with the evidence removed. */
+.hp-now-card--stale { border-color: var(--warning); }
+.hp-now-card--stale .hp-now-age { color: var(--warning); }
+/* Absent, never a dash that could be read as a value. */
+.hp-now-none { font-size: 13px; color: var(--text-muted); margin-top: 6px; }

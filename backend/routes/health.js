@@ -6,6 +6,11 @@ const db = require('../db/database');
 const stressScore = require('../services/stress-score');
 const appleHealth = require('../services/apple-health');
 const healthDaily = require('../services/health-daily');
+const healthSamples = require('../services/health-samples');
+
+// Past a week the daily rollup is the honest source and this read is both
+// slower and a different statistic. Refused, never clamped.
+const MAX_SAMPLE_HOURS = 24 * 7;
 
 // What the legacy flat-key ingest can store, and under which canonical metric
 // name. This route predates the FreeReps app and survives as the iOS Shortcut
@@ -293,6 +298,66 @@ router.get('/metrics', (req, res) => {
         newestAt,
       },
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/health/samples?hours=168 — the INTRADAY read.
+//
+// `/history` answers "what was each DAY", which over 24 hours is a single point.
+// This reads `health_samples` direct and buckets it, so the short windows on My
+// Health are a real curve rather than one dot.
+//
+// ⚠ `hours=0` means "just the latest reading of each", which is what the Now
+// view wants — deliberately a value of the SAME parameter rather than a second
+// route, so a client cannot ask for a window and a snapshot that disagree about
+// which metrics they cover.
+//
+// ⚠ The window is CAPPED at 7 days, and the cap REFUSES rather than silently
+// clamping. Past a week the daily rollup is the honest source (it has 762 days
+// of it) and a bucketed sample read would be both slower and a different
+// statistic wearing the same axis. A clamp would answer a question nobody asked
+// and look like it had answered the one they did.
+router.get('/samples', (req, res) => {
+  try {
+    const raw = req.query.hours;
+    const hours = raw === undefined ? 168 : Number(raw);
+
+    if (!Number.isFinite(hours) || hours < 0) {
+      return res.status(400).json({ error: 'hours must be a number of hours, 0 or more' });
+    }
+    if (hours > MAX_SAMPLE_HOURS) {
+      return res.status(400).json({
+        error: `hours must be ${MAX_SAMPLE_HOURS} or fewer — past a week use /history, which is a daily median rather than a bucket average`,
+        maxHours: MAX_SAMPLE_HOURS,
+      });
+    }
+
+    // A comma list, filtered to what actually has an intraday form. An unknown
+    // key is REPORTED rather than ignored: a chart asking for a series that does
+    // not exist would otherwise render empty and raise nothing, which is the
+    // reader-with-no-writer shape this area keeps paying for.
+    const asked = String(req.query.keys || '').split(',').map(s => s.trim()).filter(Boolean);
+    const unknown = asked.filter(k => !healthSamples.hasSeries(k));
+    const keys = asked.filter(k => healthSamples.hasSeries(k));
+
+    const snapshot = healthSamples.latest({ keys: keys.length ? keys : null });
+
+    if (hours === 0) {
+      return res.json({
+        windowHours: 0,
+        mode: 'now',
+        latest: snapshot.latest,
+        unknownKeys: unknown,
+        gaps: snapshot.gaps,
+        ok: snapshot.ok,
+      });
+    }
+
+    const out = healthSamples.read({ hours, keys: keys.length ? keys : null });
+    res.json({ ...out, mode: 'window', latest: snapshot.latest, unknownKeys: unknown,
+      gaps: [...(out.gaps || []), ...snapshot.gaps] });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

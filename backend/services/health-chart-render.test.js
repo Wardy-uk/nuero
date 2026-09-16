@@ -238,3 +238,158 @@ test('every charted key is one /api/health/history actually returns', async () =
     }
   }
 });
+
+// ── The short windows ───────────────────────────────────────────────────────
+//
+// Added 16 Sep 2026 with the Now / 24 hrs / 7 days control. These read
+// `health_samples` bucketed rather than `health_daily`, so the charts are drawing
+// a different statistic from a different table behind the same axis — which is
+// exactly the kind of swap that has to be visible rather than inferred.
+
+test('the page opens on 7 days', async () => {
+  const { RANGES, DEFAULT_RANGE } = await load();
+  assert.equal(DEFAULT_RANGE, '7d');
+  const d = RANGES.find(r => r.id === DEFAULT_RANGE);
+  assert.ok(d, 'the default names a range that does not exist');
+  assert.equal(d.hours, 168, 'the default must be the sample-backed week, not 7 daily rows');
+});
+
+test('the control offers a snapshot, two sample windows and the rollups', async () => {
+  const { RANGES } = await load();
+  const ids = RANGES.map(r => r.id);
+  assert.deepEqual(ids, ['now', '24h', '7d', '30d', '90d', '1y']);
+  // ⚠ Each range must name exactly ONE source. A range carrying both `hours` and
+  // `days` would make the fetch pick arbitrarily.
+  for (const r of RANGES) {
+    const hasHours = r.hours !== undefined;
+    const hasDays = r.days !== undefined;
+    assert.ok(hasHours !== hasDays, `${r.id} must be hours-backed or days-backed, not both`);
+  }
+  assert.equal(RANGES.find(r => r.id === 'now').hours, 0, 'Now must be the zero-hour snapshot');
+});
+
+test('an intraday axis carries TIMES, and a daily one carries dates', async () => {
+  const { timeLabel } = await load();
+  // ⚠ Local getters on purpose: a bucket is a true instant, and the browser is
+  // in the reader's zone. This is the opposite case from a 'YYYY-MM-DD' key,
+  // which is already wall-clock and must be sliced.
+  const noon = new Date(2026, 8, 16, 14, 30, 0).getTime();
+  assert.equal(timeLabel(noon), '14:30');
+  assert.match(timeLabel(noon, { withDay: true }), /^\w{3} 14:30$/);
+  assert.match(timeLabel(noon, { withDate: true }), /^16 Sep 14:30$/);
+  assert.equal(timeLabel(NaN), '');
+  assert.equal(timeLabel(null), '');
+});
+
+test('bucketed samples become rows NEWEST FIRST', async () => {
+  // ⚠ TrendChart reverses its input, so oldest-first here would draw every short
+  // window backwards in time and nothing else would look wrong.
+  const { sampleRows } = await load();
+  const t0 = Date.UTC(2026, 8, 16, 9, 0, 0);
+  const rows = sampleRows({
+    series: {
+      heartRateMedian: [
+        { t: t0, v: 70 }, { t: t0 + 3600000, v: 74 }, { t: t0 + 7200000, v: 78 },
+      ],
+    },
+  });
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].heartRateMedian, 78, 'the newest bucket must come first');
+  assert.equal(rows[2].heartRateMedian, 70);
+  assert.ok(rows[0].t > rows[2].t);
+});
+
+test('a missing bucket stays null through the adapter', async () => {
+  const { sampleRows, TrendChart } = await load();
+  const t0 = Date.UTC(2026, 8, 16, 9, 0, 0);
+  const rows = sampleRows({
+    series: {
+      heartRateMedian: [
+        { t: t0, v: 70 }, { t: t0 + 3600000, v: null }, { t: t0 + 7200000, v: 78 },
+      ],
+    },
+  });
+  assert.strictEqual(rows[1].heartRateMedian, null, 'an empty bucket must not become 0');
+  const html = renderToString(React.createElement(TrendChart, {
+    title: 'Heart rate', unit: 'bpm', dp: 0, days: rows, valueKey: 'heartRateMedian',
+    xLabel: (r) => String(r?.t || ''),
+  }));
+  assert.equal((html.match(/d="M/g) || []).length, 2, 'the gap must split the path');
+});
+
+test('an intraday chart SAYS it is not the daily median', async () => {
+  const { TrendChart } = await load();
+  const t0 = Date.UTC(2026, 8, 16, 9, 0, 0);
+  const days = [2, 1, 0].map(i => ({ t: t0 + i * 3600000, heartRateMedian: 70 + i }));
+  const html = renderToString(React.createElement(TrendChart, {
+    title: 'Heart rate', unit: 'bpm', dp: 0, days, valueKey: 'heartRateMedian',
+    note: 'Every reading, as a 1-hour average',
+    xLabel: (r) => String(r?.t || ''),
+  }));
+  // ⚠ The control swaps this chart between a daily median and a bucket average.
+  // Unlabelled, the axis changes meaning in silence.
+  assert.match(html, /hp-chart-note/, 'no statistic was named');
+  assert.match(html, /1-hour average/);
+});
+
+test('every trend either has an intraday form or says why not', async () => {
+  // A chart with no sample series renders a note; one with a series must be
+  // backed by the service, or the short window draws blank and raises nothing.
+  const healthSamples = require('./health-samples');
+  const { TRENDS } = await load();
+  for (const t of TRENDS) {
+    assert.equal(typeof t.sample, 'boolean', `${t.key} does not declare an intraday form`);
+    const keys = t.series ? t.series.map(s => s.key) : [t.key];
+    for (const k of keys) {
+      assert.equal(healthSamples.hasSeries(k), t.sample,
+        `${k}: TRENDS says sample=${t.sample}, the service disagrees`);
+    }
+  }
+});
+
+// ── Now ─────────────────────────────────────────────────────────────────────
+
+test('the snapshot shows a value with its age, never a bare number', async () => {
+  const { LatestReadings } = await load();
+  const now = Date.now();
+  const html = renderToString(React.createElement(LatestReadings, {
+    latest: {
+      bpSystolic: { value: 151, at: new Date(now - 4 * 60000).toISOString() },
+      bpDiastolic: { value: 90, at: new Date(now - 4 * 60000).toISOString() },
+      heartRateMedian: { value: 74, at: new Date(now - 4 * 60000).toISOString() },
+    },
+  }));
+  assert.match(html, /151\/90/, 'a blood pressure is read as a pair');
+  assert.match(html, /4 min ago/, 'the age is the point — 74bpm now and last Tuesday differ');
+  assert.match(html, /not recorded/, 'a metric with no reading must say so, not show a dash');
+});
+
+test('a stale reading is MARKED, never hidden and never shown as current', async () => {
+  const { LatestReadings } = await load();
+  const old = new Date(Date.now() - 6 * 3600000).toISOString();
+  const html = renderToString(React.createElement(LatestReadings, {
+    latest: { heartRateMedian: { value: 74, at: old } },
+  }));
+  assert.match(html, /hp-now-card--stale/, 'six hours old is not "now"');
+  assert.match(html, /74/, 'and it must still be shown — hiding it makes a dead feed invisible');
+});
+
+test('a pair is dated by its OLDER half', async () => {
+  // ⚠ Taking the newer would present a systolic from this morning and a
+  // diastolic from Tuesday as one coherent reading.
+  const { LatestReadings } = await load();
+  const now = Date.now();
+  const html = renderToString(React.createElement(LatestReadings, {
+    latest: {
+      bpSystolic: { value: 151, at: new Date(now - 2 * 60000).toISOString() },
+      bpDiastolic: { value: 90, at: new Date(now - 5 * 3600000).toISOString() },
+    },
+  }));
+  assert.match(html, /hp-now-card--stale/, 'the pair must inherit the older half');
+});
+
+test('an empty snapshot says so rather than rendering an empty grid', async () => {
+  const { LatestReadings } = await load();
+  const html = renderToString(React.createElement(LatestReadings, { latest: {} }));
+  assert.match(html, /No readings have arrived yet/);
+});

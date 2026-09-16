@@ -39,11 +39,42 @@ import './HealthPanel.css';
  * over-read into a diagnosis, and this renders it rather than tidying it away.
  */
 
-const RANGES = [
-  { days: 30, label: '30 days' },
-  { days: 90, label: '90 days' },
-  { days: 365, label: '1 year' },
+/**
+ * The windows this page offers, shortest first.
+ *
+ * ⚠ TWO DIFFERENT SOURCES SIT BEHIND ONE CONTROL, and the split is real rather
+ * than cosmetic. A `days` range reads `health_daily` — one row per day, a
+ * MEDIAN, 762 of them. An `hours` range reads `health_samples` bucketed — a
+ * bucket AVERAGE, because a daily rollup over 24 hours is a single point and a
+ * chart of one point is not a chart. They are different statistics and every
+ * chart says which one it is currently drawing; quietly swapping between them
+ * under one axis is how a page comes to mean two things.
+ *
+ * `hours: 0` is the snapshot — the latest reading of each, which is what "now"
+ * actually means. It draws no line, because one value has no axis to sit on.
+ */
+export const RANGES = [
+  { id: 'now', label: 'Now', hours: 0 },
+  { id: '24h', label: '24 hrs', hours: 24 },
+  { id: '7d', label: '7 days', hours: 168 },
+  { id: '30d', label: '30 days', days: 30 },
+  { id: '90d', label: '90 days', days: 90 },
+  { id: '1y', label: '1 year', days: 365 },
 ];
+
+// Nick's default (16 Sep 2026). The page opened on 90 days, which is the right
+// window for a trend and the wrong one for "how am I doing today" — and blood
+// pressure is only recorded on about 4% of days over 90, so the chart he had
+// just asked for opened nearly empty.
+export const DEFAULT_RANGE = '7d';
+
+const rangeById = (id) => RANGES.find(r => r.id === id) || RANGES.find(r => r.id === DEFAULT_RANGE);
+
+// The Today tile reads the newest rolled-up day whatever window is on screen, so
+// history is fetched even in an hours range — a week is plenty to find the last
+// day carrying a blood pressure, and it keeps the tile from blanking when the
+// control moves.
+const HISTORY_FLOOR_DAYS = 7;
 
 // Sequential ramp, deepest → lightest, matching the order of sleep depth.
 // Validated on the dark chart surface (#1a1e2e): monotonic lightness, every step
@@ -71,28 +102,34 @@ export const TRENDS = [
       { key: 'bpSystolic', label: 'Systolic' },
       { key: 'bpDiastolic', label: 'Diastolic' },
     ],
-    hint: 'Daily median of every reading that day, systolic over diastolic. NEURO does not diagnose — this is your own data plotted, and a sustained high run is a GP conversation, not a number to argue with here.',
+    sample: true,
+    hint: 'Systolic over diastolic. NEURO does not diagnose — this is your own data plotted, and a sustained high run is a GP conversation, not a number to argue with here.',
   },
   {
     key: 'heartRateMedian',
     title: 'Heart rate',
     unit: 'bpm',
     dp: 0,
+    sample: true,
     hint: 'The rate you spent the middle of your day at, weighted by the clock. The watch samples ~35x faster during exercise, so a plain average of readings mostly measures your workouts — each reading is weighted by how long it stood for instead.',
   },
-  { key: 'hrvMedian', title: 'HRV', unit: 'ms', dp: 1, hint: 'Daily median. Higher is generally better recovery — but only against your own range.' },
-  { key: 'rhrMedian', title: 'Resting heart rate', unit: 'bpm', dp: 0, hint: 'Daily median. A sustained rise is the signal, not any single day.' },
+  { key: 'hrvMedian', title: 'HRV', unit: 'ms', dp: 1, sample: true, hint: 'Daily median. Higher is generally better recovery — but only against your own range.' },
+  { key: 'rhrMedian', title: 'Resting heart rate', unit: 'bpm', dp: 0, sample: true, hint: 'Daily median. A sustained rise is the signal, not any single day.' },
   {
     key: 'spo2',
     title: 'Blood oxygen',
     unit: '%',
     dp: 1,
+    sample: true,
     hint: 'Daily average, as the watch measures it. Wrist SpO2 is noisy — a single low reading is far more likely to be a loose strap than a lung.',
   },
-  { key: 'asleepHours', title: 'Sleep', unit: 'h', dp: 2, hint: 'Time actually asleep, keyed to the night you woke on.' },
-  { key: 'steps', title: 'Steps', unit: '', dp: 0, hint: null },
-  { key: 'exerciseMinutes', title: 'Exercise', unit: 'min', dp: 0, hint: null },
-  { key: 'daylightMinutes', title: 'Daylight', unit: 'min', dp: 0, hint: 'Time outside, as the watch measures it.' },
+  // ⚠ NO intraday form, and that is a fact rather than a gap: sleep is a
+  // NIGHTLY figure rolled up from staged segments, and "sleep at 14:00" is not
+  // a question. The short windows say so instead of drawing an empty chart.
+  { key: 'asleepHours', title: 'Sleep', unit: 'h', dp: 2, sample: false, hint: 'Time actually asleep, keyed to the night you woke on.' },
+  { key: 'steps', title: 'Steps', unit: '', dp: 0, sample: true, hint: null },
+  { key: 'exerciseMinutes', title: 'Exercise', unit: 'min', dp: 0, sample: true, hint: null },
+  { key: 'daylightMinutes', title: 'Daylight', unit: 'min', dp: 0, sample: true, hint: 'Time outside, as the watch measures it.' },
 ];
 
 function fmtNum(v, dp = 0) {
@@ -153,6 +190,62 @@ export function axisLabel(day, withYear = false) {
   return withYear ? `${base} ${day.slice(0, 4)}` : base;
 }
 
+const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/**
+ * Format an intraday bucket for the axis.
+ *
+ * ⚠ LOCAL getters, deliberately — and this is NOT a contradiction of the
+ * slice-never-parse rule above it. That rule is about a 'YYYY-MM-DD' key, which
+ * is already a wall-clock fact and gains nothing but an offset from being parsed.
+ * A bucket is a true INSTANT (epoch ms), and the reader is a browser sitting in
+ * the reader's own zone, so converting is the whole job. `toISOString()` here
+ * would show every BST reading an hour early, which is the same bug from the
+ * other side.
+ */
+export function timeLabel(ms, { withDay = false, withDate = false } = {}) {
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '';
+  const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (withDate) return `${d.getDate()} ${MONTHS[d.getMonth()]} ${hhmm}`;
+  if (withDay) return `${DAYS_SHORT[d.getDay()]} ${hhmm}`;
+  return hhmm;
+}
+
+/**
+ * Turn the bucketed payload into the row shape TrendChart already speaks.
+ *
+ * Deliberately an ADAPTER rather than a second chart component: every rule that
+ * component carries — the shared scale across lanes, gaps drawn as gaps,
+ * coverage reported, one hover across all lanes — applies identically to an
+ * intraday series, and a parallel implementation is how the two would drift.
+ *
+ * ⚠ NEWEST FIRST, matching /api/health/history, because TrendChart reverses its
+ * input. Handing it oldest-first would draw every short window backwards in time
+ * and nothing else would look wrong.
+ */
+export function sampleRows(samples) {
+  const series = samples?.series || {};
+  const keys = Object.keys(series);
+  if (!keys.length) return [];
+  const length = Math.max(...keys.map(k => series[k]?.length || 0));
+  const rows = [];
+  for (let i = length - 1; i >= 0; i--) {
+    const t = series[keys.find(k => series[k]?.[i])]?.[i]?.t ?? null;
+    const row = { t, day: null, complete: true };
+    for (const k of keys) {
+      const p = series[k]?.[i];
+      // A missing bucket is null, not absent — TrendChart breaks its path at
+      // null, which is what makes the watch being off look like the watch being
+      // off rather than a straight line through it.
+      row[k] = p && Number.isFinite(p.v) ? p.v : null;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
 /**
  * Evenly spaced tick positions across the window, both ends always included.
  *
@@ -169,7 +262,13 @@ export function tickIndices(n, want = 5) {
   return [...new Set(out)];
 }
 
-export function TrendChart({ title, unit, dp, hint, days, valueKey, series, spanYear }) {
+export function TrendChart({ title, unit, dp, hint, days, valueKey, series, spanYear, xLabel, note }) {
+  // ⚠ ONE component for both sources. `xLabel` is the ONLY thing that differs
+  // between a daily trend and an intraday one — every other rule here (the
+  // shared scale across lanes, gaps drawn as gaps, coverage reported, one
+  // hover across all lanes) is identical, and a second chart component is how
+  // the two would come to disagree about what a gap means.
+  const labelAt = xLabel || ((row, full) => axisLabel(row?.day, full ? true : spanYear));
   const [hover, setHover] = useState(null);
   const [width, setWidth] = useState(560);
   const wrapRef = useRef(null);
@@ -277,6 +376,12 @@ export function TrendChart({ title, unit, dp, hint, days, valueKey, series, span
         </span>
       </div>
 
+      {/* ⚠ SAYS WHICH STATISTIC IT IS DRAWING. A daily median and a ten-minute
+          bucket average are different numbers over different spans, and this
+          control swaps between them — unlabelled, the axis silently changes
+          meaning when the window does. */}
+      {note && <div className="hp-chart-note">{note}</div>}
+
       {/* A pair needs naming. A single line does not — the chart title already
           says what it is, and a legend for one series is furniture. */}
       {multi && (
@@ -320,7 +425,7 @@ export function TrendChart({ title, unit, dp, hint, days, valueKey, series, span
                 y={AXIS_Y + 16}
                 className="hp-xtick"
                 textAnchor={i === 0 ? 'start' : i === rows.length - 1 ? 'end' : 'middle'}
-              >{axisLabel(rows[i]?.day, spanYear)}</text>
+              >{labelAt(rows[i], false)}</text>
             </g>
           ))}
 
@@ -349,7 +454,7 @@ export function TrendChart({ title, unit, dp, hint, days, valueKey, series, span
                 }).join('/')}${unit}`
               )}
             </strong>
-            <span>{axisLabel(hoverRow.day, true)}</span>
+            <span>{labelAt(hoverRow, true)}</span>
           </div>
         )}
       </div>
@@ -359,10 +464,101 @@ export function TrendChart({ title, unit, dp, hint, days, valueKey, series, span
   );
 }
 
+// ── "Now" ───────────────────────────────────────────────────────────────────
+//
+// The latest reading of each metric. Deliberately NOT a chart: one value has no
+// axis to sit on, and a one-point plot is a chart pretending to be a trend.
+//
+// What the cards read from, and how each is written. Blood pressure is one card
+// built from two series, because that is how a blood pressure is read.
+const NOW_CARDS = [
+  { id: 'bp', title: 'Blood pressure', unit: '', dp: 0, pair: ['bpSystolic', 'bpDiastolic'] },
+  { id: 'heartRateMedian', title: 'Heart rate', unit: 'bpm', dp: 0 },
+  { id: 'spo2', title: 'Blood oxygen', unit: '%', dp: 1 },
+  { id: 'hrvMedian', title: 'HRV', unit: 'ms', dp: 1 },
+  { id: 'rhrMedian', title: 'Resting heart rate', unit: 'bpm', dp: 0 },
+];
+
+/**
+ * How long ago, in words.
+ *
+ * ⚠ THE AGE IS THE POINT, not decoration. A heart rate of 74 means something
+ * quite different taken four minutes ago and taken last Tuesday, and on a page
+ * whose feed is a phone that syncs when iOS feels like it, "now" is a claim that
+ * has to be earned. A reading with no usable timestamp says so rather than being
+ * shown bare.
+ */
+function ageWords(iso, now = Date.now()) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const mins = Math.round((now - t) / 60000);
+  if (mins < 0) return 'just now';
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 48) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+// Past this, "now" is not what the number is. It is still shown — hiding a stale
+// reading is how a metric that quietly stopped becomes invisible — but it is
+// marked, because an old figure presented as current is the failure this whole
+// page keeps being dug out of.
+const STALE_MINUTES = 90;
+
+export function LatestReadings({ latest }) {
+  const now = Date.now();
+  const read = latest || {};
+  const cards = NOW_CARDS.map(c => {
+    const keys = c.pair || [c.id];
+    const parts = keys.map(k => read[k]).filter(Boolean);
+    if (parts.length !== keys.length) return { ...c, missing: true };
+    // For a pair, the reading is only coherent if both halves came from the same
+    // moment — so the OLDER of the two dates it. Taking the newer would present
+    // a systolic from this morning and a diastolic from Tuesday as one reading.
+    const at = parts.reduce((old, p) => (Date.parse(p.at) < Date.parse(old.at) ? p : old), parts[0]).at;
+    const mins = (now - Date.parse(at)) / 60000;
+    return {
+      ...c,
+      value: parts.map(p => fmtNum(p.value, c.dp)).join('/'),
+      age: ageWords(at, now),
+      stale: Number.isFinite(mins) && mins > STALE_MINUTES,
+    };
+  });
+
+  const anything = cards.some(c => !c.missing);
+  if (!anything) {
+    // "Nothing has been recorded" and "we could not look" are different facts;
+    // the caller reports a failed read separately, so this branch is only ever
+    // the first of the two.
+    return <div className="hp-quiet">No readings have arrived yet.</div>;
+  }
+
+  return (
+    <div className="hp-now">
+      {cards.map(c => (
+        <div className={`hp-now-card${c.stale ? ' hp-now-card--stale' : ''}`} key={c.id}>
+          <div className="hp-now-label">{c.title}</div>
+          {c.missing ? (
+            // Absent, never a dash that could be mistaken for a value. A metric
+            // with no rows at all and one that is merely late are different.
+            <div className="hp-now-none">not recorded</div>
+          ) : (
+            <>
+              <div className="hp-now-value">{c.value}<span className="hp-now-unit">{c.unit}</span></div>
+              <div className="hp-now-age">{c.age || 'time not recorded'}</div>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── The page ────────────────────────────────────────────────────────────────
 
 export default function HealthPanel() {
-  const [range, setRange] = useState(90);
+  const [range, setRange] = useState(DEFAULT_RANGE);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -370,18 +566,28 @@ export default function HealthPanel() {
   const [showAcked, setShowAcked] = useState(false);
   const [ackError, setAckError] = useState(null);
 
-  const fetchAll = useCallback(async (days) => {
+  const fetchAll = useCallback(async (rangeId) => {
     setLoading(true);
+    const r = rangeById(rangeId);
+    const intraday = r.hours !== undefined;
+    // ⚠ History is fetched in EVERY range, including the hours ones. The Today
+    // tiles read the newest rolled-up day and must not blank because the chart
+    // window moved — the two answer different questions and only one of them is
+    // driven by this control.
+    const historyDays = intraday ? HISTORY_FLOOR_DAYS : r.days;
     try {
-      const [history, readiness, signals, stress, sleep, metrics] = await Promise.all([
-        fetch(apiUrl(`/api/health/history?days=${days}`)).then(r => r.json()),
-        fetch(apiUrl('/api/health/readiness')).then(r => r.json()),
-        fetch(apiUrl('/api/health/signals')).then(r => r.json()),
-        fetch(apiUrl('/api/health/stress')).then(r => r.json()),
-        fetch(apiUrl('/api/health/sleep?days=14')).then(r => r.json()),
-        fetch(apiUrl('/api/health/metrics?days=30')).then(r => r.json()),
+      const [history, readiness, signals, stress, sleep, metrics, samples] = await Promise.all([
+        fetch(apiUrl(`/api/health/history?days=${historyDays}`)).then(r2 => r2.json()),
+        fetch(apiUrl('/api/health/readiness')).then(r2 => r2.json()),
+        fetch(apiUrl('/api/health/signals')).then(r2 => r2.json()),
+        fetch(apiUrl('/api/health/stress')).then(r2 => r2.json()),
+        fetch(apiUrl('/api/health/sleep?days=14')).then(r2 => r2.json()),
+        fetch(apiUrl('/api/health/metrics?days=30')).then(r2 => r2.json()),
+        intraday
+          ? fetch(apiUrl(`/api/health/samples?hours=${r.hours}`)).then(r2 => r2.json())
+          : Promise.resolve(null),
       ]);
-      setData({ history, readiness, signals, stress, sleep, metrics });
+      setData({ history, readiness, signals, stress, sleep, metrics, samples });
       setFailed(false);
     } catch {
       // "Couldn't ask" must stay distinguishable from "there's nothing there".
@@ -413,7 +619,17 @@ export default function HealthPanel() {
   if (loading && !data) return <div className="hp"><div className="hp-quiet">Reading health data…</div></div>;
   if (failed) return <div className="hp"><div className="hp-quiet hp-quiet--err">Couldn’t reach the health API. This is not an all-clear — it means nothing could be read.</div></div>;
 
-  const { history, readiness, signals, stress, sleep, metrics } = data;
+  const { history, readiness, signals, stress, sleep, metrics, samples } = data;
+  const activeRange = rangeById(range);
+  const intraday = activeRange.hours !== undefined;
+  const snapshotOnly = activeRange.hours === 0;
+  // The bucketed payload, adapted into the row shape TrendChart already speaks.
+  const sampleWindow = intraday && !snapshotOnly ? sampleRows(samples) : [];
+  // 7 days of hourly buckets spans a week, so a bare "14:00" cannot say which
+  // day it belongs to; 24 hours of ten-minute buckets is all one day and the
+  // weekday prefix would be noise on every tick.
+  const withDay = (activeRange.hours || 0) > 36;
+  const sampleLabel = (row, full) => timeLabel(row?.t, { withDay: withDay && !full, withDate: full });
   // Complete days only for the trends: today is a partial day and plotting it
   // draws a cliff every morning that is nothing but the clock.
   const days = (history?.history || []).filter(d => d.complete);
@@ -446,12 +662,19 @@ export default function HealthPanel() {
       <div className="hp-head">
         <h2 className="hp-h2">My Health</h2>
         <div className="hp-controls">
-          {RANGES.map(r => (
-            <button
-              key={r.days}
-              className={`hp-range${range === r.days ? ' hp-range--on' : ''}`}
-              onClick={() => setRange(r.days)}
-            >{r.label}</button>
+          {/* A hairline between the sample-backed windows and the rollup-backed
+              ones. They are different statistics, and grouping them says so
+              without a paragraph on the button bar. */}
+          {RANGES.map((r, i) => (
+            <React.Fragment key={r.id}>
+              {i > 0 && RANGES[i - 1].hours !== undefined && r.hours === undefined && (
+                <span className="hp-range-sep" aria-hidden="true" />
+              )}
+              <button
+                className={`hp-range${range === r.id ? ' hp-range--on' : ''}`}
+                onClick={() => setRange(r.id)}
+              >{r.label}</button>
+            </React.Fragment>
           ))}
           <button className="hp-refresh" onClick={() => fetchAll(range)}>Refresh</button>
         </div>
@@ -587,19 +810,72 @@ export default function HealthPanel() {
       {/* ── Trends ─────────────────────────────────────────────────
           Small multiples: one measure per chart, one axis each. Never two
           y-scales on one plot — HRV and resting heart rate share no scale and
-          drawing them together would invent a relationship out of the units. */}
+          drawing them together would invent a relationship out of the units.
+
+          Three modes behind one control, and each says which it is:
+            Now      the latest reading of each — no line, because one value has
+                     no axis to sit on
+            hours    bucketed raw samples, an intraday curve
+            days     the daily rollup, which is what a trend needs */}
       <section className="hp-section">
         <h3 className="hp-h3">
-          Trends
-          <span className="hp-h3-note">{days.length} complete days</span>
+          {snapshotOnly ? 'Latest readings' : intraday ? 'Recent' : 'Trends'}
+          <span className="hp-h3-note">
+            {snapshotOnly
+              ? 'the most recent reading of each, with its age'
+              : intraday
+                ? `${activeRange.label} · ${samples?.resolution || 'bucketed'}`
+                : `${days.length} complete days`}
+          </span>
         </h3>
-        <div className="hp-grid">
-          {/* spanYear only past 90 days: below that every tick carries the same
-              year and printing it five times is noise. */}
-          {TRENDS.map(t => (
-            <TrendChart key={t.key} valueKey={t.key} days={days} spanYear={range > 90} {...t} />
-          ))}
-        </div>
+
+        {/* A failed sample read is a NAMED gap, never an empty grid — "nothing
+            was recorded" and "we could not look" license opposite conclusions. */}
+        {intraday && (samples?.gaps || []).length > 0 && (
+          <div className="hp-quiet hp-quiet--err">
+            Couldn’t read part of this window: {samples.gaps.map(g => `${g.input} — ${g.why}`).join('; ')}.
+            This is not an all-clear.
+          </div>
+        )}
+
+        {snapshotOnly ? (
+          <LatestReadings latest={samples?.latest} />
+        ) : (
+          <div className="hp-grid">
+            {/* spanYear only past 90 days: below that every tick carries the same
+                year and printing it five times is noise. */}
+            {TRENDS.map(t => {
+              // ⚠ A measure with no intraday form SAYS SO rather than rendering
+              // an empty chart. Sleep is nightly — "sleep at 14:00" is not a
+              // question, and a blank plot would read as a broken feed.
+              if (intraday && t.sample === false) {
+                return (
+                  <div className="hp-chart hp-chart--na" key={t.key}>
+                    <div className="hp-chart-head">
+                      <span className="hp-chart-title">{t.title}</span>
+                    </div>
+                    <div className="hp-quiet">
+                      Measured per night, not through the day — pick 30 days or longer to see it.
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <TrendChart
+                  key={t.key}
+                  valueKey={t.key}
+                  days={intraday ? sampleWindow : days}
+                  spanYear={!intraday && activeRange.days > 90}
+                  xLabel={intraday ? sampleLabel : undefined}
+                  note={intraday
+                    ? (samples?.resolution ? `Every reading, as a ${samples.resolution}` : null)
+                    : 'Daily median'}
+                  {...t}
+                />
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* ── Sleep ──────────────────────────────────────────────────

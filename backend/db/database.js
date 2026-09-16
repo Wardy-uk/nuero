@@ -1502,6 +1502,66 @@ function getHealthSamplesBetween(metric, sinceIso, untilIso, limit) {
   );
 }
 
+// Samples folded into fixed time buckets, for the intraday charts.
+//
+// ⚠ THE BUCKETING IS DONE IN SQL, not by reading every row and grouping in JS.
+// Heart rate alone is ~393 samples a day, so a 7-day window is ~2,750 rows for
+// ONE metric and ~4,000 across the five vitals — fetchable, but pointlessly so
+// when the answer wanted is 168 numbers. GROUP BY on the existing
+// idx_health_samples_metric_time(metric, recorded_at DESC) does it in the index.
+//
+// ⚠ AVG *within* a bucket, which is NOT the mistake the daily figure made. The
+// daily median was dominated by workout hours because the watch samples ~35x
+// faster during exercise and ONE number stood for the whole day. A bucket is ten
+// minutes or an hour, so the density skew inside one is bounded, and — the part
+// that matters — a workout shows up as a visible SPIKE on the chart instead of
+// silently becoming the day. `n` rides along so a bucket built from one reading
+// is distinguishable from one built from sixty.
+//
+// `sum` is returned beside `avg` because the counters (steps, exercise minutes,
+// daylight) want a total per bucket and the rates want an average, exactly as
+// SCALAR_METRICS already decides for the daily rollup.
+function getHealthSampleBuckets(metrics, sinceIso, untilIso, bucketSeconds) {
+  if (!Array.isArray(metrics) || !metrics.length) return [];
+  const secs = Math.max(60, Math.floor(bucketSeconds) || 3600);
+  const placeholders = metrics.map(() => '?').join(',');
+  return all(
+    `SELECT metric,
+            CAST(strftime('%s', recorded_at) / ? AS INTEGER) * ? AS bucket_epoch,
+            COUNT(*)   AS n,
+            AVG(value) AS avg,
+            SUM(value) AS sum,
+            MIN(value) AS min,
+            MAX(value) AS max
+       FROM health_samples
+      WHERE metric IN (${placeholders})
+        AND recorded_at >= ?
+        AND (? IS NULL OR recorded_at <= ?)
+      GROUP BY metric, bucket_epoch
+      ORDER BY bucket_epoch ASC`,
+    [secs, secs, ...metrics, sinceIso, untilIso || null, untilIso || null]
+  );
+}
+
+// The newest reading for each of several metrics, for the "Now" view.
+//
+// One statement per metric on purpose: `ORDER BY recorded_at DESC LIMIT 1` walks
+// one step of the index, where a window function over the whole window would
+// read every row to throw all but the last away.
+function getLatestHealthSamples(metrics) {
+  if (!Array.isArray(metrics) || !metrics.length) return {};
+  const out = {};
+  for (const metric of metrics) {
+    const row = get(
+      `SELECT value, recorded_at FROM health_samples
+        WHERE metric = ? ORDER BY recorded_at DESC LIMIT 1`,
+      [metric]
+    );
+    if (row) out[metric] = { value: row.value, at: row.recorded_at };
+  }
+  return out;
+}
+
 function getSleepSamplesBetween(sinceIso, untilIso, limit) {
   return all(
     `SELECT metric, value, recorded_at FROM health_samples
@@ -2546,6 +2606,8 @@ module.exports = {
   getHealthMetricSummary,
   getDailyMetricAggregates,
   getHealthSamplesBetween,
+  getHealthSampleBuckets,
+  getLatestHealthSamples,
   getSleepSamplesBetween,
   upsertHealthDay,
   upsertDesktopDay,
