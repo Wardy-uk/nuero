@@ -350,3 +350,79 @@ test('an enrichment write does NOT trigger action-candidate extraction', () => {
     'an early return here would silently stop the activity feed recording enrichment writes'
   );
 });
+
+// --- a verdict is only a verdict if something capable made it ---------------------------
+
+test('a LOCAL model verdict is recorded but never counted', () => {
+  // ⚠ Measured on a live run. Mid-way through enriching 100 notes the daily cloud
+  // budget ran out, routing fell back to local without a word, and qwen2.5:1.5b
+  // answered a real meeting with `- Squad Structure` / `- Ticket Reduction` — two
+  // title fragments. The scorer counts BULLETS, so those notes scored 17 and ranked
+  // ABOVE every note a capable model had actually read. 54 good, 35 junk, junk on top.
+  const junk = note(
+    `${SUMMARY_BODY}\n## SAiM Insight\n\nx\n\n## Durable Insights\n\n- Squad Structure\n- Ticket Reduction\n`,
+    { ...SUMMARY_FM, saim_ai_enriched_at: '2026-09-16T19:00:00.000Z', saim_ai_provider: 'ollama' }
+  );
+  const value = km.knowledgeValue(junk);
+  assert.equal(value.judged, false, 'a local verdict does not count as judged');
+  assert.equal(value.needsRedo, true, 'and it is distinct from never having been read');
+  assert.equal(value.judgedBy, 'ollama', 'what made the call is still recorded');
+
+  const real = note(
+    `${SUMMARY_BODY}\n${AI_SECTIONS}`,
+    { ...SUMMARY_FM, saim_ai_enriched_at: '2026-09-16T19:00:00.000Z', saim_ai_provider: 'anthropic' }
+  );
+  assert.ok(
+    km.scorePromotionCandidate(real) > km.scorePromotionCandidate(junk),
+    'a real judgement must outrank a local one however many bullets the local one produced'
+  );
+});
+
+test('never-read and read-by-something-incapable are different states', () => {
+  const never = km.knowledgeValue(note(SUMMARY_BODY, SUMMARY_FM));
+  assert.equal(never.judged, false);
+  assert.equal(never.needsRedo, false, 'nothing to redo — it was never done');
+});
+
+test('isCapableJudge is a narrow evidenced list, and unknown counts as capable', () => {
+  assert.equal(km.isCapableJudge('ollama'), false);
+  assert.equal(km.isCapableJudge('anthropic'), true);
+  assert.equal(km.isCapableJudge('openrouter'), true);
+  // ⚠ The 15 notes enriched before provider stamping was reliable carry `cached` or
+  // nothing. Re-running a PAID pass over all of them on a guess is the expensive
+  // direction, so unknown is trusted and only measured-bad providers are excluded.
+  assert.equal(km.isCapableJudge(''), true);
+  assert.equal(km.isCapableJudge('cached'), true);
+});
+
+test('the enrichment REFUSES rather than downgrading when cloud is unavailable', async () => {
+  // A pass whose entire justification is that a local model cannot do the job must not
+  // quietly use one. Source-scanned rather than driven, because forcing the budget to
+  // zero means reaching into ai-routing's internals; positive control included.
+  const src = fs.readFileSync(path.join(__dirname, 'knowledge-memory.js'), 'utf-8');
+  assert.match(src, /enrichPromotionCandidates/, 'positive control');
+  assert.match(src, /isCloudAllowed\('knowledge_enrichment'\)/, 'the budget is checked');
+  assert.match(src, /refusing to enrich with a local model/i, 'and the refusal says why');
+});
+
+test('a junk verdict does not block its own retry', () => {
+  // The skip check is hash + existing insight; without the provider test the 35 junk
+  // notes match on all of it and every retry skips them as "unchanged", for ever.
+  const src = fs.readFileSync(path.join(__dirname, 'knowledge-memory.js'), 'utf-8');
+  assert.match(src, /&& isCapableJudge\(priorProvider\)/, 'the skip check must consider the prior provider');
+});
+
+test('a partial run SAYS it is partial', () => {
+  // ⚠ The binding limit is the HOURLY escalation cap (20), not the daily budget —
+  // measured live at 107/400 calls and 286k/1M tokens with lastFallbackReason
+  // "Hourly limit". A request for 100 therefore cannot complete in one pass, and a
+  // result reading "12 enriched" with nothing else on it looks like a queue with
+  // nothing left to do.
+  const src = fs.readFileSync(path.join(__dirname, 'knowledge-memory.js'), 'utf-8');
+  assert.match(src, /stoppedEarly/, 'the partial state is carried');
+  assert.match(src, /remaining/, 'and how many were not reached');
+  // Checked per note, not only at the start, or it writes junk for the rest of the run.
+  const loopIdx = src.indexOf('for (const note of targets)');
+  const checkIdx = src.indexOf("isCloudAllowed('knowledge_enrichment')", loopIdx);
+  assert.ok(loopIdx > 0 && checkIdx > loopIdx, 'the budget is re-checked inside the loop');
+});

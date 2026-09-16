@@ -405,6 +405,42 @@ function isTranscriptNote(note) {
 }
 
 /**
+ * Was this note judged by something capable of judging it?
+ *
+ * ⚠⚠ MEASURED ON A LIVE RUN, AND IT INVERTED THE WHOLE RANKING. Halfway through
+ * enriching 100 notes the daily cloud budget ran out, `isCloudAllowed` went false, and
+ * `_providerOrder` correctly fell back to local — silently, with no "fallback" line,
+ * because it never ATTEMPTED cloud. 54 notes got Anthropic and 35 got `qwen2.5:1.5b`,
+ * which answered a real meeting with:
+ *
+ *     ## Durable Insights
+ *     - Squad Structure
+ *     - Ticket Reduction
+ *
+ * Two title fragments. Against Anthropic's "Mid-sprint priority injections and
+ * incomplete sprint starts are the primary causes of reporting failures and low
+ * commitment tracking (low 80s)". ⚠ And because the scorer counts BULLETS, those two
+ * fragments scored the note 17 — putting every junk note ABOVE every good one, which
+ * is the opposite of the ranking this exists to produce.
+ *
+ * ⚠ So a local judgement is NOT a judgement here. This is the same call `CAPABILITY_TASKS`
+ * makes: a 1.5b model cannot decide what is worth recording, and a verdict it produced
+ * must not be counted as one, must not score, and must not block its own retry.
+ *
+ * ⚠ Unknown counts as CAPABLE. The 15 notes enriched before provider stamping was
+ * reliable carry `cached` or an unrecognised name, and re-running a paid pass over
+ * every one of them on a guess is the expensive direction; the narrow, evidenced list
+ * is of models we have SEEN produce unusable output.
+ */
+const LOCAL_ONLY_PROVIDERS = new Set(['ollama']);
+
+function isCapableJudge(provider) {
+  const clean = String(provider || '').trim().toLowerCase();
+  if (!clean) return true;
+  return !LOCAL_ONLY_PROVIDERS.has(clean);
+}
+
+/**
  * What the enrichment pass concluded was worth remembering in this note.
  *
  * ⚠⚠ THREE STATES, AND THE MIDDLE ONE IS THE WHOLE POINT. `judged: false` means nothing
@@ -426,13 +462,26 @@ function knowledgeValue(note) {
   // The stamp is what says a pass RAN. A note can be judged and yield nothing, which is
   // a real answer, so the stamp is the test rather than the presence of the sections.
   const enrichedAt = cleanQuoted(legacy.fmValue(fm, 'saim_ai_enriched_at') || '');
-  const judged = Boolean(enrichedAt);
+  const provider = cleanQuoted(legacy.fmValue(fm, 'saim_ai_provider') || '');
+  // ⚠ A stamp is not enough — see isCapableJudge. A local model's verdict is recorded
+  // but never counted, or two title fragments outrank a real insight.
+  const judged = Boolean(enrichedAt) && isCapableJudge(provider);
 
   const countBullets = (section) => (section.match(/^\s*[-*]\s+\S/gm) || []).length;
   const durable = countBullets(extractSectionFlexible(content, 'Durable Insights'));
   const loops = countBullets(extractSectionFlexible(content, 'Open Loops'));
 
-  return { judged, judgedAt: enrichedAt || null, durable, loops };
+  return {
+    judged,
+    judgedAt: enrichedAt || null,
+    judgedBy: provider || null,
+    // Distinct from `judged:false` meaning "never read": this one WAS read, by
+    // something not up to the job, and wants redoing rather than reading for the
+    // first time. The card and the enrichment pass both need to tell them apart.
+    needsRedo: Boolean(enrichedAt) && !isCapableJudge(provider),
+    durable,
+    loops
+  };
 }
 
 /**
@@ -1080,7 +1129,14 @@ async function buildAiInsightForExistingNote(note, { taskType = 'knowledge_conso
 
   const sourceHash = sourceHashForContent(note.path, note.content || '');
   const existingInsight = extractAiInsightSection(note.content || '');
-  if (legacy.fmValue(note.frontmatter, 'saim_ai_source_hash') === sourceHash && existingInsight) {
+  // ⚠ A local model's verdict does NOT satisfy the skip check. Without this the 35
+  // notes qwen2.5:1.5b answered with title fragments are sealed in for ever: the hash
+  // still matches, an insight section still exists, and every retry skips them as
+  // "unchanged". A bad answer that blocks its own correction is worse than no answer.
+  const priorProvider = cleanQuoted(legacy.fmValue(note.frontmatter, 'saim_ai_provider') || '');
+  if (legacy.fmValue(note.frontmatter, 'saim_ai_source_hash') === sourceHash
+      && existingInsight
+      && isCapableJudge(priorProvider)) {
     return {
       skipped: true,
       sourceHash,
@@ -2159,6 +2215,23 @@ async function enrichPromotionCandidates({ limit = 25, daysBack = 3650 } = {}) {
   if (aiRouting.getAIMode() === 'off') {
     return { status: 'error', error: 'AI_MODE is off — nothing was read or written' };
   }
+  // ⚠⚠ REFUSE RATHER THAN QUIETLY USE THE MODEL THIS PASS EXISTS TO AVOID. Mid-run on
+  // 16 Sep the daily cloud budget ran out; `_providerOrder` correctly fell back to
+  // local and said nothing (there is no "fallback" line, because cloud was never
+  // attempted), so 35 notes were written with `qwen2.5:1.5b` output — "Squad
+  // Structure", "Ticket Reduction" — which the scorer then counted as two durable
+  // insights each, ranking every junk note ABOVE every good one.
+  //
+  // The whole justification for this task being in CAPABILITY_TASKS is that a local
+  // model cannot make this judgement. A pass that silently accepts one when the budget
+  // is gone is not degrading, it is producing wrong answers and stamping them as read.
+  if (!aiRouting.isCloudAllowed('knowledge_enrichment')) {
+    return {
+      status: 'error',
+      error: 'Cloud budget unavailable — refusing to enrich with a local model. '
+        + 'Nothing was written. Retry once the daily allowance resets.'
+    };
+  }
 
   const cutoff = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
   const targets = loadRawNotes()
@@ -2174,7 +2247,19 @@ async function enrichPromotionCandidates({ limit = 25, daysBack = 3650 } = {}) {
   let cached = 0;
   let failed = 0;
 
+  let stoppedEarly = false;
   for (const note of targets) {
+    // ⚠ CHECKED BEFORE EVERY NOTE, NOT ONLY AT THE START. The binding limit is
+    // OPENROUTER_MAX_ESCALATIONS_PER_HOUR (20), not the daily budget — measured live,
+    // the daily counters were at 107/400 calls and 286k/1M tokens while
+    // `lastFallbackReason` read "Hourly limit". So a 100-note pass CANNOT complete in
+    // one go, and a start-only check would let it run on and write 80 notes of local
+    // junk. It stops cleanly and says how many are left instead.
+    if (!aiRouting.isCloudAllowed('knowledge_enrichment')) {
+      stoppedEarly = true;
+      break;
+    }
+
     let aiInsight = null;
     try {
       aiInsight = await buildAiInsightForExistingNote(note, { taskType: 'knowledge_enrichment' });
@@ -2213,7 +2298,12 @@ async function enrichPromotionCandidates({ limit = 25, daysBack = 3650 } = {}) {
     });
   }
 
-  console.log(`[knowledge-memory] enrich candidates: ${enriched} enriched, ${cached} unchanged, ${failed} no answer, of ${targets.length} considered`);
+  const remaining = targets.length - processed.length;
+  console.log(
+    `[knowledge-memory] enrich candidates: ${enriched} enriched, ${cached} unchanged, `
+    + `${failed} no answer, of ${targets.length} considered`
+    + (stoppedEarly ? ` — STOPPED with ${remaining} left: cloud budget spent for this hour` : '')
+  );
 
   return {
     status: 'ok',
@@ -2221,6 +2311,13 @@ async function enrichPromotionCandidates({ limit = 25, daysBack = 3650 } = {}) {
     enriched,
     cached,
     failed,
+    // A partial run must SAY it is partial. Reporting only "12 enriched" out of a
+    // request for 100 reads as a queue with nothing left to do.
+    stoppedEarly,
+    remaining,
+    budgetNote: stoppedEarly
+      ? 'Cloud budget spent for this hour (OPENROUTER_MAX_ESCALATIONS_PER_HOUR). Re-run after the hour rolls; enriched notes are skipped by content hash, so it resumes where it stopped.'
+      : null,
     processed
   };
 }
@@ -2305,6 +2402,7 @@ module.exports = {
   extractSectionFlexible,
   recentReflections,
   knowledgeValue,
+  isCapableJudge,
   toStringArray,
   uniqueStrings,
   isDismissed,
