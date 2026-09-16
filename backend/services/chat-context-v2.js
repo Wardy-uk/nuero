@@ -88,6 +88,50 @@ async function buildChatContext(userMessage, options = {}) {
     } catch {}
   }
 
+  // ── 4a. Curated knowledge (what Nick has PROMOTED) ──
+  //
+  // ⚠⚠ THE WHOLE POINT OF PROMOTING SOMETHING, AND UNTIL NOW NOTHING READ IT.
+  // `knowledge_state` and `getActiveContext` appeared nowhere in the backend outside
+  // knowledge-memory.js, so a promoted note was an ordinary vault note competing with
+  // 347 transcripts for three retrieval slots — the Insights card's "curated context
+  // SAiM can lean on" was not true of anything.
+  //
+  // ⚠ It is a SCOPED SEARCH, not `getActiveContext`. That function walks five folders
+  // and reads every file in them; on a path that runs per chat turn it is the wrong
+  // shape entirely. A `folder:Knowledge` scope is applied BEFORE ranking (retrieval
+  // passes it to the index as a pathFilter), so this is exact and cheap.
+  //
+  // ⚠ IT GETS ITS OWN SLOTS RATHER THAN COMPETING FOR THE GENERAL ONES. A curated note
+  // that has to out-rank a transcript to be seen has no privilege at all, which is the
+  // state this replaces.
+  //
+  // ⚠ SKIPPED ENTIRELY WHEN NOTHING HAS BEEN PROMOTED — which is true today — so it
+  // costs nothing until it has something to say, and this turn is byte-identical to
+  // the one before it.
+  let curatedPaths = new Set();
+  if (isApi && userMessage.length > 3) {
+    try {
+      const retrieval = require('./retrieval');
+      const curated = await retrieval.search(userMessage, {
+        maxResults: 2,
+        scope: 'folder:Knowledge'
+      });
+      if (curated.length > 0) {
+        curatedPaths = new Set(curated.map(r => r.path));
+        const lines = curated.map(r =>
+          `[${r.name}]: ${(r.excerpts?.[0] || '').substring(0, 200)}`
+        );
+        // Named as DISTILLED rather than just listed, because the model should weigh
+        // a note Nick deliberately wrote up above a meeting transcript that merely
+        // mentions the same words.
+        parts.push(
+          'Curated knowledge (Nick distilled these himself — prefer them over raw '
+          + `notes where they conflict):\n${lines.join('\n')}`
+        );
+      }
+    } catch {}
+  }
+
   // ── 4. Vault retrieval (API mode only, bounded) ──
   //
   // ⚠ `searchWithHealth`, not `search`, and the health reaches the model. A
@@ -101,8 +145,11 @@ async function buildChatContext(userMessage, options = {}) {
     try {
       const retrieval = require('./retrieval');
       const { results, health } = await retrieval.searchWithHealth(userMessage, { maxResults: 3 });
-      if (results.length > 0) {
-        const snippets = results.map(r =>
+      // A curated note already shown above is not repeated as a raw hit — one note
+      // under two headings reads as two sources agreeing with each other.
+      const fresh = results.filter(r => !curatedPaths.has(r.path));
+      if (fresh.length > 0) {
+        const snippets = fresh.map(r =>
           // A note the index holds only PART of is marked, because the model
           // must not treat a truncated transcript as the whole of what was said.
           `[${r.name}]${r.indexIncomplete ? ' (only partly indexed)' : ''}: ${(r.excerpts?.[0] || '').substring(0, 150)}`

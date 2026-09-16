@@ -37,6 +37,19 @@ const REFLECTION_DIR = 'Reflections/Knowledge';
 const REPORT_DIR = 'Documents/System/SAiM Import Reports';
 const VAULT_MODEL_DOC = 'Documents/System/Vault Operating Model.md';
 
+// How much a model-found insight is worth against the structural signal above. A
+// summary scores 11 on shape alone, so these are sized to SPREAD that flat 19 without
+// letting one insight outrank being the right kind of note in the first place:
+// 2 insights = 17, 1 = 14, loops only = 13, UNJUDGED = 11, judged-and-empty = 8.
+const DURABLE_INSIGHT_POINTS = 3;
+const OPEN_LOOP_POINTS = 1;
+// An open loop is a thing to chase, not a thing to remember, so it is worth less than
+// a durable insight and is capped lower.
+const MAX_SCORED_INSIGHTS = 2;
+const MAX_SCORED_LOOPS = 2;
+// We looked and found nothing. Ranks below "nobody has looked", deliberately.
+const JUDGED_EMPTY_PENALTY = -3;
+
 function isoNow() {
   return new Date().toISOString();
 }
@@ -359,6 +372,51 @@ function isTranscriptNote(note) {
 }
 
 /**
+ * What the enrichment pass concluded was worth remembering in this note.
+ *
+ * ⚠⚠ THREE STATES, AND THE MIDDLE ONE IS THE WHOLE POINT. `judged: false` means nothing
+ * has ever read this note — NOT that it was read and found empty. Conflating them is
+ * how an un-enriched note would rank as worthless, which is the "an unread domain is
+ * null, never 0" rule applied to a model's opinion. The queue ranks a judged-empty note
+ * BELOW an unjudged one, because "we looked and there is nothing here" is real evidence
+ * and "we never looked" is not.
+ *
+ * Read back out of the note body rather than a frontmatter counter: the
+ * `## Durable Insights` section IS the artefact, and a count stored beside it is a
+ * second copy free to disagree with it (the two-writers rule this codebase keeps
+ * relearning). PURE — no vault, no clock, no model.
+ */
+function knowledgeValue(note) {
+  const fm = (note && note.frontmatter) || {};
+  const content = (note && note.content) || '';
+
+  // The stamp is what says a pass RAN. A note can be judged and yield nothing, which is
+  // a real answer, so the stamp is the test rather than the presence of the sections.
+  const enrichedAt = cleanQuoted(legacy.fmValue(fm, 'saim_ai_enriched_at') || '');
+  const judged = Boolean(enrichedAt);
+
+  const countBullets = (section) => (section.match(/^\s*[-*]\s+\S/gm) || []).length;
+  const durable = countBullets(extractSectionFlexible(content, 'Durable Insights'));
+  const loops = countBullets(extractSectionFlexible(content, 'Open Loops'));
+
+  return { judged, judgedAt: enrichedAt || null, durable, loops };
+}
+
+/**
+ * Nick has said this is not knowledge.
+ *
+ * ⚠ THE QUEUE SHIPPED WITH NO WAY TO SAY NO. The only thing that removed a note was
+ * `knowledge_promoted_to`, and the only way to set that was to promote it — so the one
+ * way to make a personal optician appointment stop being offered was to file it in the
+ * knowledge base. Every other review surface in NEURO can be argued with (the attention
+ * lifecycle defers with a reason, task-dedupe stores rejections, the Must Move lane got
+ * "not today"); this one never got it.
+ */
+function isDismissed(note) {
+  return Boolean(cleanQuoted(((note && note.frontmatter) || {}).knowledge_dismissed || ''));
+}
+
+/**
  * canonical plaud_id -> the path of the SUMMARY for that recording.
  *
  * Built from the raw pool the candidates come from, so it costs no extra walk. The
@@ -427,6 +485,25 @@ function scorePromotionCandidate(note) {
   if (note.links > 0) score += 1;
   if (note.tags.length > 0) score += 1;
   if (String(fm.source || '').toLowerCase() === 'plaud') score += 2;
+
+  // ⚠⚠ WITHOUT THIS THE SCORE IS A SHAPE TEST AND NOTHING MORE. Measured before it was
+  // added: ALL NINETEEN summaries in the window scored exactly 11 — not similar,
+  // identical — so a 51-minute meeting that changed how the department plans sprints
+  // and a 15-minute chat about postage ranked the same, and the order was purely
+  // chronological. Everything above answers "is this the right KIND of note"; only
+  // this answers "is there anything in it worth keeping".
+  //
+  // ⚠ A JUDGED-EMPTY NOTE RANKS BELOW AN UNJUDGED ONE. "We read it and there is
+  // nothing durable here" is evidence; "nothing has read it" is not, and must never be
+  // scored as though it were. Unjudged scores zero from this arm and is REPORTED, so
+  // an un-enriched note sits in the middle rather than being condemned by silence.
+  const value = knowledgeValue(note);
+  if (value.judged) {
+    score += Math.min(value.durable, MAX_SCORED_INSIGHTS) * DURABLE_INSIGHT_POINTS;
+    score += Math.min(value.loops, MAX_SCORED_LOOPS) * OPEN_LOOP_POINTS;
+    if (!value.durable && !value.loops) score += JUDGED_EMPTY_PENALTY;
+  }
+
   if (note.supersededBy) score -= 10;
   if (note.promotedTo) score -= 10;
   return score;
@@ -535,6 +612,10 @@ function toCandidatePayload(note) {
     isSummary: isSummaryNote(note),
     supersededBy: note.supersededBy || null,
     signal: promotionSignal(note),
+    // ⚠ Carried so the CARD can say "nothing has read this yet" rather than letting an
+    // un-enriched note look like one judged worthless. The count that drives the rank
+    // must be visible beside the rank.
+    value: knowledgeValue(note),
     promotionScore: note.promotionScore
   };
 }
@@ -577,6 +658,7 @@ function rankPromotionCandidates({ topic, daysBack = 21 } = {}) {
 
   return raw
     .filter(note => !note.promotedTo)
+    .filter(note => !isDismissed(note))
     .map(note => ({ ...note, occurredAt: candidateTimestamp(note) }))
     .filter(note => note.occurredAt.ms >= cutoff)
     .filter(note => !term || `${note.name}\n${note.excerpt}\n${note.tags.join(' ')}`.toLowerCase().includes(term))
@@ -786,6 +868,31 @@ function upsertFrontmatterValue(content, key, value) {
     ? fmBlock.replace(pattern, line)
     : fmBlock.replace(/---\s*$/, `${line}\n---`);
   return `${nextFm}\n\n${body}`;
+}
+
+/**
+ * Drop a key from a note's frontmatter entirely.
+ *
+ * ⚠ Removing the LINE, never blanking the value: `knowledge_dismissed: ""` still reads
+ * as present to anything testing presence, so a blanking "undismiss" would leave the
+ * note hidden from the queue for ever with no sign of why.
+ *
+ * Deliberately line-based and surgical, like `upsertFrontmatterValue` beside it, rather
+ * than going through `updateFrontmatter` — that one reserialises and silently drops
+ * YAML list values (the `people:` and `aliases:` lesson).
+ */
+function removeFrontmatterKey(content, key) {
+  const text = String(content || '');
+  if (!text.startsWith('---')) return text;
+
+  const endIdx = text.indexOf('---', 3);
+  if (endIdx === -1) return text;
+
+  const fmBlock = text.slice(0, endIdx + 3);
+  const rest = text.slice(endIdx + 3);
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const stripped = fmBlock.replace(new RegExp(`^${escaped}:.*(?:\\r?\\n)?`, 'm'), '');
+  return stripped + rest;
 }
 
 function inferDomainFromSource(sourcePath) {
@@ -1185,6 +1292,97 @@ function updateSourceFrontmatter(source, fields) {
   const fullPath = path.join(VAULT_PATH(), source.path);
   fs.writeFileSync(fullPath, content, 'utf-8');
   try { vaultHooks.onVaultWrite(fullPath, 'knowledge-promotion'); } catch {}
+}
+
+/**
+ * "This is not knowledge." Written into the note's own frontmatter, never a KV table.
+ *
+ * ⚠ The vault is the durable record and these notes outlive any NEURO database; a
+ * dismissal kept in `agent_state` would be lost to a restore and the whole queue would
+ * come back. It is also readable in Obsidian, which is where Nick will be when he
+ * disagrees with it.
+ *
+ * ⚠ THERE IS A WAY BACK, and it is not optional — this is a judgement call on a note
+ * nobody can re-offer once it is hidden, so `undismissCandidate` exists for the same
+ * reason `unmerge`, `restore`, `unlink` and `forget` do elsewhere in this codebase.
+ *
+ * ⚠ The REASON is optional and stored when given: "not mine", "personal" and "nothing
+ * in it" are different facts about the queue, and a dismissal rate with no reasons is
+ * a number nobody can act on.
+ */
+function dismissCandidate({ sourcePath, reason } = {}) {
+  const vault = VAULT_PATH();
+  if (!vault || !fs.existsSync(vault)) {
+    return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
+  }
+  if (!sourcePath) return { status: 'error', error: 'sourcePath required' };
+
+  const fullPath = path.join(vault, sourcePath);
+  if (!fs.existsSync(fullPath)) {
+    return { status: 'error', error: `Note not found: ${sourcePath}` };
+  }
+
+  const note = readNoteMeta(fullPath);
+  // ⚠ A promoted note is not dismissable: it is already out of the queue, and stamping
+  // it would leave a note claiming to be both knowledge and not knowledge.
+  if (note.promotedTo) {
+    return { status: 'error', error: `Already promoted to ${note.promotedTo}` };
+  }
+  if (isDismissed(note)) {
+    return { status: 'ok', sourcePath, already: true, dismissedAt: cleanQuoted(note.frontmatter.knowledge_dismissed) };
+  }
+
+  const fields = { knowledge_dismissed: isoNow() };
+  const cleanReason = String(reason || '').trim().slice(0, 200);
+  if (cleanReason) fields.knowledge_dismissed_reason = cleanReason;
+  updateSourceFrontmatter(note, fields);
+
+  return { status: 'ok', sourcePath, already: false, dismissedAt: fields.knowledge_dismissed, reason: cleanReason || null };
+}
+
+function undismissCandidate({ sourcePath } = {}) {
+  const vault = VAULT_PATH();
+  if (!vault || !fs.existsSync(vault)) {
+    return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
+  }
+  if (!sourcePath) return { status: 'error', error: 'sourcePath required' };
+
+  const fullPath = path.join(vault, sourcePath);
+  if (!fs.existsSync(fullPath)) {
+    return { status: 'error', error: `Note not found: ${sourcePath}` };
+  }
+
+  const note = readNoteMeta(fullPath);
+  if (!isDismissed(note)) return { status: 'ok', sourcePath, already: true };
+
+  // Removing the KEYS, not blanking them — an empty `knowledge_dismissed: ""` still
+  // reads as a value to anything using presence as the test.
+  let content = removeFrontmatterKey(note.content, 'knowledge_dismissed');
+  content = removeFrontmatterKey(content, 'knowledge_dismissed_reason');
+  fs.writeFileSync(fullPath, content, 'utf-8');
+  try { vaultHooks.onVaultWrite(fullPath, 'knowledge-undismiss'); } catch {}
+
+  return { status: 'ok', sourcePath, already: false };
+}
+
+/** What Nick has said no to, so the screen can offer a way back. */
+function listDismissed({ limit = 50 } = {}) {
+  const vault = VAULT_PATH();
+  if (!vault || !fs.existsSync(vault)) {
+    return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
+  }
+
+  const items = loadRawNotes()
+    .filter(isDismissed)
+    .map(note => ({
+      path: note.path,
+      name: note.name,
+      dismissedAt: cleanQuoted(note.frontmatter.knowledge_dismissed) || null,
+      reason: cleanQuoted(note.frontmatter.knowledge_dismissed_reason) || null
+    }))
+    .sort((a, b) => String(b.dismissedAt).localeCompare(String(a.dismissedAt)));
+
+  return { status: 'ok', total: items.length, items: items.slice(0, limit) };
 }
 
 function promoteCandidate({ sourcePath, domain, title }) {
@@ -1889,6 +2087,108 @@ async function refreshAllPlaudConsolidations({ limit = 500 } = {}) {
   };
 }
 
+/**
+ * Ask the model what is worth remembering in the notes the queue actually offers.
+ *
+ * ⚠ `enrichManagedNotes` beside this targets `managed_by: saim-knowledge-memory` /
+ * `source: saim-import-consolidation` — CONSOLIDATED notes — and so has never touched
+ * a PLAUD meeting summary, which carries `source: PLAUD`. Measured before writing
+ * this: 15 notes in the whole vault had ever been enriched and exactly ONE was in
+ * `Meetings/`. The capability existed and was pointed somewhere else.
+ *
+ * ⚠ IT ENRICHES SUMMARIES, NEVER TRANSCRIPTS. A transcript is 11,000 words of
+ * unattributed speech that the model would be reading through a 3,500-character
+ * window — the first 6% of one meeting — and the summary of the same recording is
+ * right there. Spending a call on the recording instead of the write-up is the
+ * original bug wearing a model.
+ *
+ * ⚠ ORDERED NEWEST-FIRST BY THE NOTE'S OWN DATE, not mtime (Syncthing rewrites mtime),
+ * so a bounded run spends its calls on the meetings Nick might still act on.
+ *
+ * ⚠ Already-enriched notes are skipped by CONTENT HASH inside
+ * `buildAiInsightForExistingNote`, so a re-run costs nothing for unchanged notes and
+ * this is safely resumable — which matters, because a 100-note run against a local
+ * model takes a long time and the backend restarts several times a day.
+ *
+ * ⚠ A FAILED CALL IS COUNTED AND NAMED, never silently skipped. `buildAiInsight...`
+ * returns null on a parse failure, a timeout or AI_MODE=off, and all three look
+ * identical from outside — a run reporting "0 enriched" with no reason is
+ * indistinguishable from a run with nothing to do.
+ */
+async function enrichPromotionCandidates({ limit = 25, daysBack = 3650 } = {}) {
+  const vault = VAULT_PATH();
+  if (!vault || !fs.existsSync(vault)) {
+    return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
+  }
+  if (aiRouting.getAIMode() === 'off') {
+    return { status: 'error', error: 'AI_MODE is off — nothing was read or written' };
+  }
+
+  const cutoff = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
+  const targets = loadRawNotes()
+    .filter(note => isSummaryNote(note))
+    .filter(note => !note.promotedTo && !isDismissed(note))
+    .map(note => ({ ...note, occurredAt: candidateTimestamp(note) }))
+    .filter(note => note.occurredAt.ms >= cutoff)
+    .sort((a, b) => b.occurredAt.ms - a.occurredAt.ms)
+    .slice(0, limit);
+
+  const processed = [];
+  let enriched = 0;
+  let cached = 0;
+  let failed = 0;
+
+  for (const note of targets) {
+    let aiInsight = null;
+    try {
+      aiInsight = await buildAiInsightForExistingNote(note);
+    } catch (e) {
+      aiInsight = null;
+    }
+
+    if (!aiInsight) {
+      failed += 1;
+      processed.push({ path: note.path, enriched: false, reason: 'no-answer' });
+      continue;
+    }
+    if (aiInsight.skipped) {
+      cached += 1;
+      processed.push({ path: note.path, enriched: false, reason: 'unchanged' });
+      continue;
+    }
+
+    let content = note.content;
+    content = upsertFrontmatterValue(content, 'saim_ai_source_hash', aiInsight.sourceHash);
+    content = upsertFrontmatterValue(content, 'saim_ai_provider', aiInsight.provider || 'unknown');
+    content = upsertFrontmatterValue(content, 'saim_ai_enriched_at', aiInsight.generatedAt || isoNow());
+    content = insertAiSections(content, aiInsight);
+
+    const fullPath = path.join(vault, note.path);
+    fs.writeFileSync(fullPath, content, 'utf-8');
+    try { vaultHooks.onVaultWrite(fullPath, 'knowledge-ai-enrichment'); } catch {}
+
+    enriched += 1;
+    processed.push({
+      path: note.path,
+      enriched: true,
+      provider: aiInsight.provider || 'unknown',
+      durable: (aiInsight.durableInsights || []).length,
+      loops: (aiInsight.openLoops || []).length
+    });
+  }
+
+  console.log(`[knowledge-memory] enrich candidates: ${enriched} enriched, ${cached} unchanged, ${failed} no answer, of ${targets.length} considered`);
+
+  return {
+    status: 'ok',
+    considered: targets.length,
+    enriched,
+    cached,
+    failed,
+    processed
+  };
+}
+
 async function enrichManagedNotes({ limit = 25 } = {}) {
   const vault = VAULT_PATH();
   if (!vault || !fs.existsSync(vault)) {
@@ -1968,6 +2268,13 @@ module.exports = {
   candidateTimestamp,
   extractSectionFlexible,
   recentReflections,
+  knowledgeValue,
+  isDismissed,
+  removeFrontmatterKey,
+  dismissCandidate,
+  undismissCandidate,
+  listDismissed,
+  enrichPromotionCandidates,
   promotionSignal,
   isSummaryNote,
   isTranscriptNote,

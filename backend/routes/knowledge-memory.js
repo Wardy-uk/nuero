@@ -28,6 +28,63 @@ router.get('/active-context', async (req, res) => {
   }
 });
 
+// ⚠ `/dismissed` is a LITERAL path on a router that also carries `/promote` and
+// `/dismiss`; it is registered before them out of habit rather than necessity (none of
+// these are parameterised today), but this codebase has shipped a literal path
+// swallowed by a sibling `/:param` twice — `/triage/feedback` and `/triage/muted` —
+// so the order is deliberate and a parameterised route added later must go below it.
+router.get('/dismissed', (req, res) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
+    const result = knowledgeMemory.listDismissed({ limit });
+    if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[knowledge-memory/dismissed]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/dismiss', (req, res) => {
+  try {
+    const { sourcePath, reason } = req.body || {};
+    const result = knowledgeMemory.dismissCandidate({ sourcePath, reason });
+    if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[knowledge-memory/dismiss]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// The way back. Not optional — see dismissCandidate's header.
+router.post('/undismiss', (req, res) => {
+  try {
+    const { sourcePath } = req.body || {};
+    const result = knowledgeMemory.undismissCandidate({ sourcePath });
+    if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[knowledge-memory/undismiss]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ⚠ SPENDS MODEL CALLS, one per unenriched note, so it is bounded and never scheduled.
+// Kicking it off from a screen is deliberate: the cost should be a decision someone
+// makes, not something a cron quietly runs up against the daily budget.
+router.post('/enrich-candidates', async (req, res) => {
+  try {
+    const limit = req.body?.limit ? parseInt(req.body.limit, 10) : 25;
+    const result = await knowledgeMemory.enrichPromotionCandidates({ limit });
+    if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[knowledge-memory/enrich-candidates]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 router.post('/promote', (req, res) => {
   try {
     const { sourcePath, domain, title } = req.body || {};

@@ -10,19 +10,26 @@ export default function InsightsPanel({ onNavigate }) {
   const [suggestions, setSuggestions] = useState([]);
   const [applying, setApplying] = useState(null);
   const [promoting, setPromoting] = useState(null);
+  // ⚠ `dismissed` below is the SUGGESTIONS set and predates this; the knowledge queue's
+  // own dismissals are `dismissedNotes`. Reusing the name would have shadowed a Set
+  // with an object and rendered nothing, silently.
+  const [dismissing, setDismissing] = useState(null);
+  const [dismissedNotes, setDismissedNotes] = useState({ total: 0, items: [] });
+  const [showDismissed, setShowDismissed] = useState(false);
   const [dismissed, setDismissed] = useState(new Set());
   const [eodHistory, setEodHistory] = useState([]);
   const [ritualHistory, setRitualHistory] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes, ritualRes, knowledgeRes] = await Promise.all([
+      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes, ritualRes, knowledgeRes, dismissedRes] = await Promise.all([
         fetch(apiUrl('/api/activity/summaries?days=14')),
         fetch(apiUrl('/api/activity/suggestions')),
         fetch(apiUrl('/api/standup/today-status')),
         fetch(apiUrl('/api/standup/eod-history?days=14')),
         fetch(apiUrl('/api/standup/ritual-history?days=7')),
-        fetch(apiUrl('/api/knowledge-memory/overview'))
+        fetch(apiUrl('/api/knowledge-memory/overview')),
+        fetch(apiUrl('/api/knowledge-memory/dismissed'))
       ]);
       const json = await summariesRes.json();
       const sugJson = await suggestionsRes.json();
@@ -39,6 +46,12 @@ export default function InsightsPanel({ onNavigate }) {
 
       setData(json);
       setKnowledge(knowledgeJson.ok ? knowledgeJson : null);
+      // A failed read leaves the previous list rather than blanking it to zero, which
+      // would hide the "put back" route at the moment it is most likely wanted.
+      try {
+        const dismissedJson = await dismissedRes.json();
+        if (dismissedJson.ok) setDismissedNotes({ total: dismissedJson.total, items: dismissedJson.items || [] });
+      } catch {}
       setSuggestions(sugJson.suggestions || []);
       setEodHistory(eodJson.entries || []);
       const ritualJson = await ritualRes.json();
@@ -72,6 +85,40 @@ export default function InsightsPanel({ onNavigate }) {
       }
     } catch {}
     setPromoting(null);
+  };
+
+  const dismissCandidate = async (candidate) => {
+    // The reason is OPTIONAL — cancelling the prompt must not cancel the dismissal,
+    // or a man in a hurry learns the button does not work. An empty string is a
+    // dismissal with no reason given, which is a fine thing to be.
+    const reason = window.prompt(
+      `Why is this not knowledge?  (optional — "${candidate.name.slice(0, 48)}")`,
+      ''
+    );
+    if (reason === null) return;
+    setDismissing(candidate.path);
+    try {
+      const res = await fetch(apiUrl('/api/knowledge-memory/dismiss'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourcePath: candidate.path, reason })
+      });
+      const result = await res.json();
+      if (result.ok) await fetchData();
+    } catch {}
+    setDismissing(null);
+  };
+
+  const undismissCandidate = async (item) => {
+    try {
+      const res = await fetch(apiUrl('/api/knowledge-memory/undismiss'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourcePath: item.path })
+      });
+      const result = await res.json();
+      if (result.ok) await fetchData();
+    } catch {}
   };
 
   const applySuggestion = async (suggestion) => {
@@ -254,17 +301,76 @@ export default function InsightsPanel({ onNavigate }) {
                   ) : (
                     <div className="knowledge-item-copy">{candidate.excerpt}</div>
                   )}
-                  <button
-                    className="knowledge-promote-btn"
-                    onClick={() => promoteCandidate(candidate)}
-                    disabled={promoting === candidate.path}
-                  >
-                    {promoting === candidate.path ? 'Promoting...' : 'Promote to Knowledge'}
-                  </button>
+                  {/*
+                    ⚠ THREE STATES, NOT TWO. "Nothing has read this yet" must not look
+                    like "read it, nothing durable in it" — the second is evidence and
+                    the first is only silence, and the ranking treats them differently.
+                  */}
+                  {!candidate.value?.judged ? (
+                    <div className="knowledge-item-verdict knowledge-item-verdict--unread">
+                      Not yet read for durable insight
+                    </div>
+                  ) : candidate.value.durable || candidate.value.loops ? (
+                    <div className="knowledge-item-verdict knowledge-item-verdict--valued">
+                      {candidate.value.durable > 0
+                        ? `${candidate.value.durable} durable insight${candidate.value.durable === 1 ? '' : 's'}`
+                        : null}
+                      {candidate.value.durable > 0 && candidate.value.loops > 0 ? ' · ' : null}
+                      {candidate.value.loops > 0
+                        ? `${candidate.value.loops} open loop${candidate.value.loops === 1 ? '' : 's'}`
+                        : null}
+                    </div>
+                  ) : (
+                    <div className="knowledge-item-verdict knowledge-item-verdict--empty">
+                      Read — nothing durable found
+                    </div>
+                  )}
+                  <div className="knowledge-item-actions">
+                    <button
+                      className="knowledge-promote-btn"
+                      onClick={() => promoteCandidate(candidate)}
+                      disabled={promoting === candidate.path || dismissing === candidate.path}
+                    >
+                      {promoting === candidate.path ? 'Promoting...' : 'Promote to Knowledge'}
+                    </button>
+                    <button
+                      className="knowledge-dismiss-btn"
+                      onClick={() => dismissCandidate(candidate)}
+                      disabled={promoting === candidate.path || dismissing === candidate.path}
+                    >
+                      {dismissing === candidate.path ? 'Dismissing...' : 'Not knowledge'}
+                    </button>
+                  </div>
                 </div>
               )) : (
                 <div className="knowledge-empty">Nothing obvious to promote right now.</div>
               )}
+              {/*
+                The way back. Rendered only when there is something to undo — a
+                permanent "0 dismissed" row is a control nobody reads by week two.
+              */}
+              {dismissedNotes.total > 0 ? (
+                <div className="knowledge-dismissed-block">
+                  <button
+                    className="knowledge-inline-btn"
+                    onClick={() => setShowDismissed(v => !v)}
+                  >
+                    {showDismissed ? 'Hide' : `${dismissedNotes.total} dismissed`}
+                  </button>
+                  {showDismissed ? dismissedNotes.items.map(item => (
+                    <div key={item.path} className="knowledge-dismissed-row">
+                      <span className="knowledge-dismissed-name">{item.name}</span>
+                      {item.reason ? <span className="knowledge-item-meta">{item.reason}</span> : null}
+                      <button
+                        className="knowledge-inline-btn"
+                        onClick={() => undismissCandidate(item)}
+                      >
+                        Put back
+                      </button>
+                    </div>
+                  )) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 
