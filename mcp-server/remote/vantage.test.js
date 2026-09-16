@@ -123,3 +123,37 @@ test('an MCP client discovers the vantage tools beside NEURO\'s', async t => {
   assert.equal(res.isError, undefined);
   assert.equal(res.structuredContent.status, 'completed');
 });
+
+// Nick enabled the private half for his gateway (16 Sep 2026). What that switch
+// must NOT buy: reading his coaching data does not imply writing, acting or
+// sending, and none of it may surface anywhere a token is not required.
+test('private released: a read-only token reads it, and gains nothing else', async () => {
+  const cfg = readConfig({ ...base, VANTAGE_MCP_PRIVATE: 'true' });
+  const calls = [];
+  const ro = tools(cfg, async route => { calls.push(route); return { format: 'json', data: { ok: true, data: { note: 'private coaching observation' } }, backend_ok: true }; }, readOnly);
+  for (const operation of ['vantage_get_coach_brief', 'vantage_get_coach_sessions', 'vantage_get_self', 'vantage_get_observations']) assert.equal((await ro[`vantage_read`].run({ operation })).status, 'completed', operation);
+  assert.equal(calls.length, 4);
+  await assert.rejects(ro.vantage_write.run({ operation: 'vantage_post_observations', body: { text: 'x' } }), { code: 'insufficient_scope' });
+  await assert.rejects(ro.vantage_action.run({ operation: 'vantage_post_coach_sessions_by_id_messages', params: { id: '1' }, body: { content: 'x' } }), { code: 'insufficient_scope' });
+  await assert.rejects(ro.vantage_action.run({ operation: 'vantage_post_findings_by_id_neuro', params: { id: '1' }, body: {} }), { code: 'insufficient_scope' });
+  assert.equal(calls.length, 4, 'a refused write or action must never reach VANTAGE');
+});
+
+test('private released: nothing without a token reaches VANTAGE or returns its data', async t => {
+  const hits = [];
+  const upstream = http.createServer((req, res) => { hits.push(req.url); res.setHeader('Content-Type', 'application/json'); res.end('{"ok":true,"data":{"note":"PRIVATE-MARKER"}}'); });
+  const up = await listen(upstream, t);
+  const cfg = readConfig({ ...base, VANTAGE_MCP_PRIVATE: 'true', VANTAGE_API_URL: up, NEURO_API_URL: up });
+  const url = await listen(http.createServer(createApp(cfg, { verify: async () => { throw Object.assign(new Error('no'), { reason: 'invalid_token' }); }, log: () => {} })), t);
+  const call = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'vantage_read', arguments: { operation: 'vantage_get_self' } } };
+  for (const [path, init] of [
+    ['/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify(call) }],
+    ['/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: 'Bearer forged' }, body: JSON.stringify(call) }],
+    ['/health', {}], ['/health/ready', {}], ['/.well-known/oauth-protected-resource/mcp', {}], ['/vantage/api/self', {}], ['/api/self', {}],
+  ]) {
+    const res = await fetch(url + path, init);
+    assert.ok(!(await res.text()).includes('PRIVATE-MARKER'), path);
+  }
+  assert.deepEqual(hits, [], 'no unauthenticated request may reach an upstream');
+});
+
