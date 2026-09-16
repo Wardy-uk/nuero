@@ -88,6 +88,18 @@ const CAPABILITY_TASKS = new Set([
   // would belong here on capability alone: a 1.5B model cannot hold an
   // interview, follow what he actually said, and decide what is worth recording.
   'profile_interview',
+  // ⚠ ADDED 16 Sep 2026, and it is the SAME argument as profile_interview one line up.
+  // Deciding what in a meeting is worth remembering for ever is a judgement, not an
+  // extraction, and it was measured failing locally: `qwen2.5:1.5b` answered a real
+  // note with a `summary` that copied the first topic heading back, and returned
+  // `durableInsights` as an OBJECT rather than an array. Everything it got right was
+  // already derivable deterministically from the note's own structure, so a local
+  // pass here costs 22s a note to re-derive headings we already parse for free.
+  //
+  // ⚠ It is a SEPARATE task from `knowledge_consolidation` on purpose: that one runs
+  // nightly over every import and must stay local and free. This one is a bounded,
+  // deliberate, human-triggered pass and is allowed to cost money.
+  'knowledge_enrichment',
 ]);
 
 // Everything that should reach for cloud FIRST, for either reason. Kept under
@@ -117,6 +129,8 @@ const TASK_MODELS = {
   drilldown_framing: LIGHTWEIGHT_MODEL,
   action_suggestion: LIGHTWEIGHT_MODEL,
   knowledge_consolidation: 'qwen2.5:1.5b',
+  // Cloud-preferred (see CAPABILITY_TASKS); this is only the local last resort.
+  knowledge_enrichment: 'qwen2.5:1.5b',
   chat_stream: 'qwen2.5:1.5b',
   chat_sync: 'qwen2.5:1.5b',
   // gemma3:4b was never installed on the Pi 5 — these two would have failed on

@@ -297,3 +297,28 @@ test('removeFrontmatterKey drops the line and leaves the rest alone', () => {
 test('removeFrontmatterKey is a no-op on a note with no frontmatter', () => {
   assert.equal(km.removeFrontmatterKey('just a body', 'anything'), 'just a body');
 });
+
+// --- what a small model actually returns ---------------------------------------------
+
+test('a model that answers with an OBJECT instead of an array does not lose the note', () => {
+  // ⚠ MEASURED, NOT ANTICIPATED. qwen2.5:1.5b answered a real meeting note with
+  // `"durableInsights": { "topics": ["Agentic brain planning..."] }`. uniqueStrings
+  // iterates with for...of, a plain object is not iterable, so it THREW — and the
+  // throw was caught upstream and turned the whole note into a silent "no answer".
+  assert.deepEqual(km.toStringArray({ topics: ['Agentic brain planning'] }), ['Agentic brain planning']);
+  assert.deepEqual(km.uniqueStrings({ topics: ['one', 'two'] }, 6), ['one', 'two']);
+});
+
+test('toStringArray handles every shape a model has produced, and refuses none of them loudly', () => {
+  assert.deepEqual(km.toStringArray(['a', 'b']), ['a', 'b']);
+  assert.deepEqual(km.toStringArray('single'), ['single']);
+  assert.deepEqual(km.toStringArray(null), []);
+  assert.deepEqual(km.toStringArray(undefined), []);
+  assert.deepEqual(km.toStringArray(42), [], 'an unreadable shape is empty, never a crash');
+  assert.deepEqual(km.toStringArray({ a: 'one', b: ['two', 'three'] }), ['one', 'two', 'three']);
+});
+
+test('uniqueStrings still folds duplicates and honours its limit', () => {
+  assert.deepEqual(km.uniqueStrings(['a', 'A', ' a ', 'b'], 6), ['a', 'b']);
+  assert.deepEqual(km.uniqueStrings(['a', 'b', 'c'], 2), ['a', 'b']);
+});

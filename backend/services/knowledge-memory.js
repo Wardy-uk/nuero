@@ -97,10 +97,43 @@ function stripCodeFences(content) {
     .trim();
 }
 
+/**
+ * A model's idea of "an array of strings", made into one.
+ *
+ * ⚠⚠ MEASURED ON THE LIVE PI, NOT ANTICIPATED. `qwen2.5:1.5b` answered a real meeting
+ * note with `"durableInsights": { "topics": ["Agentic brain planning..."] }` — an
+ * OBJECT where the schema asked for an array. `uniqueStrings` iterates with `for...of`,
+ * a plain object is not iterable, so it THREW; the throw landed in
+ * `buildAiInsightForExistingNote`'s catch and the whole note returned null. One
+ * malformed field silently destroyed the entire enrichment for that note, and the run
+ * reported it only as "no answer".
+ *
+ * ⚠ It coerces rather than refusing, because the CONTENT was right and only the
+ * wrapper was wrong — throwing away a correct insight over its container is the
+ * expensive direction. A shape it cannot read at all yields [], which is the same as
+ * the model having nothing to say, and the caller counts that honestly.
+ */
+function toStringArray(value) {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') return value.trim() ? [value] : [];
+  if (typeof value === 'object') {
+    // `{topics: [...]}`, `{insights: [...]}` — take every array-or-string value it
+    // holds, in key order, rather than guessing which key was meant.
+    const out = [];
+    for (const nested of Object.values(value)) {
+      if (Array.isArray(nested)) out.push(...nested);
+      else if (typeof nested === 'string' && nested.trim()) out.push(nested);
+    }
+    return out;
+  }
+  return [];
+}
+
 function uniqueStrings(values, limit = 12) {
   const out = [];
   const seen = new Set();
-  for (const value of values || []) {
+  for (const value of toStringArray(values)) {
     const clean = String(value || '').replace(/\s+/g, ' ').trim();
     if (!clean) continue;
     const key = clean.toLowerCase();
@@ -1026,9 +1059,9 @@ async function buildAiInsight(item, targetPath, existingContent = '') {
       sourceHash,
       summary: String(parsed.summary || '').trim(),
       filingNote: String(parsed.filingNote || '').trim(),
-      durableInsights: uniqueStrings(parsed.durableInsights || [], 6),
-      openLoops: uniqueStrings(parsed.openLoops || [], 6),
-      promotionCandidates: uniqueStrings(parsed.promotionCandidates || [], 6),
+      durableInsights: uniqueStrings(parsed.durableInsights, 6),
+      openLoops: uniqueStrings(parsed.openLoops, 6),
+      promotionCandidates: uniqueStrings(parsed.promotionCandidates, 6),
       suggestedLinks
     };
   } catch {
@@ -1042,7 +1075,7 @@ function sourceHashForContent(relPath, content) {
     .digest('hex');
 }
 
-async function buildAiInsightForExistingNote(note) {
+async function buildAiInsightForExistingNote(note, { taskType = 'knowledge_consolidation' } = {}) {
   if (aiRouting.getAIMode() === 'off') return null;
 
   const sourceHash = sourceHashForContent(note.path, note.content || '');
@@ -1081,10 +1114,13 @@ async function buildAiInsightForExistingNote(note) {
   ].join('\n');
 
   try {
-    const result = await aiRouting.runTask('knowledge_consolidation', {
+    const result = await aiRouting.runTask(taskType, {
       prompt,
       contextWindow: 1536,
-      maxTokens: 220,
+      // 220 was sized for the local model and is tight for five arrays: a truncated
+      // answer is INVALID JSON, parseJsonObject returns null, and the note reports
+      // "no answer" — the max_tokens trap that has cost email triage whole runs.
+      maxTokens: 600,
       temperature: 0.2
     }, { confidence: 0.4, timeout: 45000 });
 
@@ -1097,10 +1133,10 @@ async function buildAiInsightForExistingNote(note) {
       sourceHash,
       summary: String(parsed.summary || '').trim(),
       filingNote: String(parsed.filingNote || '').trim(),
-      durableInsights: uniqueStrings(parsed.durableInsights || [], 6),
-      openLoops: uniqueStrings(parsed.openLoops || [], 6),
-      promotionCandidates: uniqueStrings(parsed.promotionCandidates || [], 6),
-      suggestedLinks: await resolveSuggestedLinks(parsed.suggestedLinks || [], [note.path])
+      durableInsights: uniqueStrings(parsed.durableInsights, 6),
+      openLoops: uniqueStrings(parsed.openLoops, 6),
+      promotionCandidates: uniqueStrings(parsed.promotionCandidates, 6),
+      suggestedLinks: await resolveSuggestedLinks(toStringArray(parsed.suggestedLinks), [note.path])
     };
   } catch {
     return null;
@@ -2141,7 +2177,7 @@ async function enrichPromotionCandidates({ limit = 25, daysBack = 3650 } = {}) {
   for (const note of targets) {
     let aiInsight = null;
     try {
-      aiInsight = await buildAiInsightForExistingNote(note);
+      aiInsight = await buildAiInsightForExistingNote(note, { taskType: 'knowledge_enrichment' });
     } catch (e) {
       aiInsight = null;
     }
@@ -2269,6 +2305,8 @@ module.exports = {
   extractSectionFlexible,
   recentReflections,
   knowledgeValue,
+  toStringArray,
+  uniqueStrings,
   isDismissed,
   removeFrontmatterKey,
   dismissCandidate,
