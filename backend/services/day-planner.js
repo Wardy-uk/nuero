@@ -362,14 +362,43 @@ function alreadyPlanned(dateKey, windowKey) {
   return Boolean(ledger()[`${dateKey}:${windowKey}`]);
 }
 
-/** Stamped per successful half-day, never batched at the end of a multi-step run. */
-function stampPlanned(dateKey, windowKey, blockIds) {
+/**
+ * Stamped per successful half-day, never batched at the end of a multi-step run.
+ *
+ * ⚠ `taskIds` was added on 16 Sep 2026 and is the whole point of the entry now.
+ * The ledger recorded `blockIds` only, so it could answer "did I plan this
+ * half-day?" and NOTHING about what went into it — which meant a task whose
+ * block Nick dropped at 15:30 was re-booked at 15:50 by the very next run, with
+ * the planner arguing with a decision he had just made. Measured on the live
+ * store: #30 (Krista) and #137 both booked twice on 4 Sep, each second booking
+ * following a drop.
+ */
+function stampPlanned(dateKey, windowKey, blockIds, taskIds = []) {
   const all = ledger();
-  all[`${dateKey}:${windowKey}`] = { at: new Date().toISOString(), blockIds };
+  all[`${dateKey}:${windowKey}`] = { at: new Date().toISOString(), blockIds, taskIds };
   // Bounded — this is a KV blob read on every run.
   const keys = Object.keys(all).sort();
   while (keys.length > 60) delete all[keys.shift()];
   db.setState(LEDGER_KEY, JSON.stringify(all));
+}
+
+/**
+ * Every task this planner already booked on `dateKey`, across both half-days.
+ *
+ * PURE — takes the ledger object, so the rule pins without a database.
+ * A ledger entry written before 16 Sep 2026 carries no `taskIds`; it reads as
+ * nothing planned, which is the old behaviour rather than a wrong answer.
+ */
+function plannedTaskIdsOn(all, dateKey) {
+  const out = new Set();
+  for (const [key, entry] of Object.entries(all || {})) {
+    if (!key.startsWith(`${dateKey}:`)) continue;
+    for (const id of (entry && entry.taskIds) || []) {
+      const n = Number(id);
+      if (Number.isFinite(n)) out.add(n);
+    }
+  }
+  return out;
 }
 
 function forget(dateKey, windowKey) {
@@ -398,6 +427,9 @@ function gather(now = new Date()) {
   let personalHeld = 0;
   let blockedHeld = 0;
   let blockedKnown = true;
+  let deferredHeld = 0;
+  let deferralsKnown = true;
+  let replanHeld = 0;
   try {
     const taskStore = require('./task-store');
     const { rankTasks } = require('./task-scoring');
@@ -442,6 +474,64 @@ function gather(now = new Date()) {
       const before = tasks.length;
       tasks = tasks.filter(t => !blockedIds.has(Number(t.id)));
       blockedHeld = before - tasks.length;
+
+      // ── A WINDOW NICK ENDED TODAY IS NOT AN INVITATION TO BOOK ANOTHER ────
+      //
+      // The ledger knew only which half-days had been planned, never what went
+      // into them, so a task whose block he dropped at 15:30 came back top of
+      // the pool and was re-booked at 15:50 by the next run. Measured on the
+      // live store: #30 (Krista) and #137 both booked twice on 4 Sep, the
+      // second booking after a drop each time. That is the planner overruling a
+      // decision he had just made, in his own diary.
+      //
+      // ⚠ The window is ONE DAY and it clears itself at midnight, deliberately.
+      // A task he took out of today's plan is still open and still owed, so
+      // refusing to plan it tomorrow would be a suppression nobody asked for and
+      // with no way back. `reschedule` remains the way to say "move it, today"
+      // and `restore` the way to undo a drop.
+      //
+      // ⚠ A task still sitting in a LIVE block is held by `blockedIds` above, so
+      // what this adds is exactly the case where the block has ENDED — dropped,
+      // released or written up — and the task is still open.
+      //
+      // The failure direction is the cheap one: held wrongly, the task simply is
+      // not auto-booked today and Nick can block it by hand from the card; held
+      // never, the planner argues with him, which is the bug.
+      const plannedToday = plannedTaskIdsOn(ledger(), dateKey);
+      if (plannedToday.size) {
+        const beforeReplan = tasks.length;
+        tasks = tasks.filter(t => !plannedToday.has(Number(t.id)));
+        replanHeld = beforeReplan - tasks.length;
+      }
+    }
+
+    // ── "NOT TODAY" IS A DECISION, AND THE PLANNER WAS NOT READING IT ───────
+    //
+    // The Must Move lane offers a defer with a reason and a return time, stored
+    // in `attention_records` — and the planner never asked, so a task Nick had
+    // just pushed to tomorrow could be booked into this afternoon. The lane and
+    // the diary disagreeing about a decision made once is exactly what reusing
+    // the lifecycle was supposed to prevent.
+    //
+    // ⚠ The key is built through `dedupeKeyFor`, never slugged here, so this
+    // lands on the SAME record the lane and the Now page write.
+    //
+    // ⚠ UNKNOWN NEVER BLOCKS, and it says so — `one-to-one-booking`'s awayCheck
+    // rule. An unreadable lifecycle must not stop the planner working, but a
+    // plan that quietly skipped the check must never pass for one that made it.
+    try {
+      const lifecycle = require('./attention-lifecycle');
+      const deferred = lifecycle.deferredKeys(now);
+      if (deferred.size) {
+        const beforeDefer = tasks.length;
+        tasks = tasks.filter(
+          t => !deferred.has(lifecycle.dedupeKeyFor({ type: 'todo', title: t.text })),
+        );
+        deferredHeld = beforeDefer - tasks.length;
+      }
+    } catch (e) {
+      deferralsKnown = false;
+      gaps.push(`deferrals unreadable (${e.message}) — planned without checking what you put off`);
     }
   } catch (e) {
     gaps.push(`tasks unreadable: ${e.message}`);
@@ -479,7 +569,12 @@ function gather(now = new Date()) {
     gaps.push(`existing blocks unreadable: ${e.message}`);
   }
 
-  return { dateKey, tasks, busy, calendarKnown, gaps, personalHeld, blockedHeld, blockedKnown, samples: durationSamples() };
+  return {
+    dateKey, tasks, busy, calendarKnown, gaps,
+    personalHeld, blockedHeld, blockedKnown,
+    deferredHeld, deferralsKnown, replanHeld,
+    samples: durationSamples(),
+  };
 }
 
 /**
@@ -628,6 +723,12 @@ async function run(windowKey, { now = new Date(), apply = false, force = false }
       personal: input.personalHeld,
       blocked: input.blockedHeld,
       blockedKnown: input.blockedKnown,
+      // Said "not today" in the lane. `deferralsKnown: false` means the check
+      // did not happen — never that nothing was deferred.
+      deferred: input.deferredHeld,
+      deferralsKnown: input.deferralsKnown,
+      // Already booked today into a window that has since ended.
+      replanned: input.replanHeld,
     },
     applied: false,
     ...draft,
@@ -666,7 +767,12 @@ async function run(windowKey, { now = new Date(), apply = false, force = false }
           created.push({ blockId: res.blockId ?? null, startTime: hhmm(block.startMin), tasks: block.tasks });
           // Stamped per successful create, never batched at the end — a crash
           // mid-run would otherwise duplicate everything on the next pass.
-          stampPlanned(dateKey, windowKey, created.map(c => c.blockId));
+          stampPlanned(
+            dateKey,
+            windowKey,
+            created.map(c => c.blockId),
+            created.flatMap(c => (c.tasks || []).map(t => Number(t.id)).filter(Number.isFinite)),
+          );
         } else {
           failed.push({ startTime: hhmm(block.startMin), error: res.error });
         }
@@ -758,6 +864,8 @@ module.exports = {
   // state
   alreadyPlanned,
   stampPlanned,
+  // PURE, and exported so the day-scoped re-plan rule pins without a database.
+  plannedTaskIdsOn,
   forget,
   ledger,
   _acquireLock: acquireLock,

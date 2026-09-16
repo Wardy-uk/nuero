@@ -1445,6 +1445,92 @@ test('blockedTaskIds returns null on a read failure, never an empty set', () => 
   }
 });
 
+test('a window ENDED today is not an invitation to book another (16 Sep 2026)', () => {
+  // Measured on the live store: #30 (Krista) and #137 were each booked TWICE on
+  // 4 Sep, the second booking following a drop — the planner overruling a
+  // decision Nick had just made, in his own diary. The ledger could not know,
+  // because it recorded block ids and never what went into them.
+  const planner = require('./day-planner');
+  const { taskId, blockId, dateKey } = ahead('Review the TPFG attribution rules');
+
+  // The planner booked it this morning, and Nick dropped the window.
+  planner.stampPlanned(dateKey, planner.MORNING.key, [blockId], [taskId]);
+  db.updateTaskBlockRow(blockId, { status: 'dropped' });
+
+  const input = withCalendar([], () => planner.gather(at(dateKey)));
+
+  assert.equal(input.tasks.some(t => t.id === taskId), false,
+    'the planner re-booked work whose window Nick had just ended');
+  assert.ok(input.replanHeld >= 1, 'a silent shortfall looks exactly like a quiet day');
+});
+
+test('the same task IS planned again the next day', () => {
+  // The memory is day-scoped on purpose. The task is still open and still owed.
+  const planner = require('./day-planner');
+  const { taskId, blockId, dateKey } = ahead('Chase the Micom commercials pack');
+
+  planner.stampPlanned(dateKey, planner.MORNING.key, [blockId], [taskId]);
+  db.updateTaskBlockRow(blockId, { status: 'dropped' });
+
+  const tomorrow = new Date(`${dateKey}T09:00:00`);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const input = withCalendar([], () => planner.gather(tomorrow));
+
+  assert.equal(input.replanHeld, 0, 'yesterday must not suppress today');
+  assert.ok(input.tasks.some(t => t.id === taskId),
+    'a task taken out of yesterday is still open, still owed, and plannable');
+});
+
+test('"not today" in the lane is honoured by the planner', () => {
+  // The lane offers a defer with a reason and a return time, stored in
+  // attention_records — and the planner never asked, so a task Nick had just
+  // pushed to tomorrow could be booked into this afternoon.
+  const planner = require('./day-planner');
+  const lifecycle = require('./attention-lifecycle');
+  const text = 'Write up the escalation accuracy findings';
+  const taskId = freshTask(text);
+
+  const rec = lifecycle.upsert({ id: `todo-${taskId}`, type: 'todo', title: text, reason: 'overdue', urgency: 'high' });
+  lifecycle.act(rec.id, 'defer', { reason: 'not-now', minutes: 24 * 60 });
+
+  // ⚠ Planned against the REAL clock, not this file's December fixture days. A
+  // deferral is stored as an absolute `defer_until` off the wall clock, so
+  // gathering for a date months ahead reads every deferral as long expired —
+  // the test would pass or fail on the fixture calendar rather than the rule.
+  const input = withCalendar([], () => planner.gather(new Date()));
+
+  assert.equal(input.tasks.some(t => t.id === taskId), false,
+    'the planner booked time for work Nick had just put off');
+  assert.ok(input.deferredHeld >= 1, 'what was held back must be reported');
+  assert.equal(input.deferralsKnown, true);
+
+  lifecycle.act(rec.id, 'undefer');
+});
+
+test('UNKNOWN never blocks, and never passes for a check that happened', () => {
+  // one-to-one-booking's awayCheck rule: an unreadable lifecycle must not stop
+  // the planner working, but a plan that skipped the check must not look like
+  // one that made it.
+  const planner = require('./day-planner');
+  const lifecycle = require('./attention-lifecycle');
+  const text = 'Prepare the Tier 2 ageing summary';
+  const taskId = freshTask(text);
+  const dateKey = nextDay();
+
+  const real = lifecycle.deferredKeys;
+  lifecycle.deferredKeys = () => { throw new Error('lifecycle unreadable'); };
+  let input;
+  try {
+    input = withCalendar([], () => planner.gather(at(dateKey)));
+  } finally {
+    lifecycle.deferredKeys = real;
+  }
+
+  assert.ok(input.tasks.some(t => t.id === taskId), 'a failed check must not stop the planner');
+  assert.equal(input.deferralsKnown, false, 'it must SAY the check did not happen');
+  assert.ok(input.gaps.some(g => /deferrals unreadable/.test(g)));
+});
+
 test('the day planner leaves already-blocked work alone, and says how much', () => {
   const planner = require('./day-planner');
   const { taskId, dateKey } = ahead('Fix auto-assignment of unassigned production tickets');

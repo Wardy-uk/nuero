@@ -319,3 +319,37 @@ test('the health capacity rule is OFF unless explicitly enabled', () => {
   assert.deepEqual(planner.capacityFor(low), planner.FULL_CAPACITY, 'off by default');
   assert.equal(planner.capacityFor(low, { enabled: true }).reduced, true, 'and available when asked for');
 });
+
+// ── The day-scoped re-plan memory ────────────────────────────────────────────
+
+test('the ledger reports every task planned that day, across both half-days', () => {
+  const led = {
+    '2026-09-04:morning': { blockIds: [1], taskIds: [30, 137] },
+    '2026-09-04:afternoon': { blockIds: [2], taskIds: [137, 88] },
+  };
+  assert.deepEqual(
+    [...planner.plannedTaskIdsOn(led, '2026-09-04')].sort((a, b) => a - b),
+    [30, 88, 137],
+  );
+});
+
+test('the memory is scoped to ONE DAY, so a task put off today is planned tomorrow', () => {
+  // The whole reason this clears at midnight: a task Nick took out of today's
+  // plan is still open and still owed. Refusing to plan it again ever would be
+  // a suppression nobody asked for, with no way back.
+  const led = { '2026-09-04:morning': { blockIds: [1], taskIds: [30] } };
+  assert.equal(planner.plannedTaskIdsOn(led, '2026-09-05').size, 0);
+});
+
+test('a ledger entry written before task ids existed reads as nothing planned', () => {
+  // The live ledger is full of these. They must read as the OLD behaviour —
+  // plan freely — rather than as a wrong answer about what was booked.
+  const led = { '2026-09-01:morning': { at: '2026-09-01T06:15:04.522Z', blockIds: [2, 3] } };
+  assert.equal(planner.plannedTaskIdsOn(led, '2026-09-01').size, 0);
+});
+
+test('an unreadable or empty ledger holds nothing back', () => {
+  for (const led of [null, undefined, {}]) {
+    assert.equal(planner.plannedTaskIdsOn(led, '2026-09-04').size, 0);
+  }
+});
