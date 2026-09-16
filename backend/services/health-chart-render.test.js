@@ -370,22 +370,58 @@ test('a stale reading is MARKED, never hidden and never shown as current', async
   const html = renderToString(React.createElement(LatestReadings, {
     latest: { heartRateMedian: { value: 74, at: old } },
   }));
-  assert.match(html, /hp-now-card--stale/, 'six hours old is not "now"');
+  assert.match(html, /hp-now-card--stale/, 'six hours old is not "now" for a heart rate');
   assert.match(html, /74/, 'and it must still be shown — hiding it makes a dead feed invisible');
 });
 
+test('staleness is judged PER METRIC, against each metric own cadence', async () => {
+  // ⚠⚠ Caught on the live output, not by a test. A single 90-minute threshold
+  // is wrong on three of the five cards, always towards a warning that is
+  // permanently on — and an always-on warning is one nobody reads, which costs
+  // the real catch. Resting heart rate is measured once or twice a DAY (median
+  // gap 479 min on the live table), so eleven hours old is it working.
+  const { LatestReadings } = await load();
+  const elevenHours = new Date(Date.now() - 11 * 3600000).toISOString();
+  const html = renderToString(React.createElement(LatestReadings, {
+    latest: { rhrMedian: { value: 75, at: elevenHours } },
+  }));
+  assert.ok(!/hp-now-card--stale/.test(html),
+    'a once-daily metric must not read as stale for behaving exactly as designed');
+
+  // But a resting heart rate that has not arrived in three days HAS stopped.
+  const threeDays = new Date(Date.now() - 72 * 3600000).toISOString();
+  const stale = renderToString(React.createElement(LatestReadings, {
+    latest: { rhrMedian: { value: 75, at: threeDays } },
+  }));
+  assert.match(stale, /hp-now-card--stale/, 'three days is a feed that has stopped');
+});
+
+test('every card declares its own staleness window', async () => {
+  // A card falling through to the default is a card nobody measured a cadence
+  // for — and the default is deliberately generous, so the miss is silent.
+  const { NOW_CARDS } = await load();
+  for (const c of NOW_CARDS) {
+    assert.ok(Number.isFinite(c.staleAfterMin) && c.staleAfterMin > 0,
+      `${c.id} has no measured staleness window`);
+  }
+});
+
 test('a pair is dated by its OLDER half', async () => {
-  // ⚠ Taking the newer would present a systolic from this morning and a
-  // diastolic from Tuesday as one coherent reading.
+  // ⚠ Taking the newer would present a systolic from two minutes ago and a
+  // diastolic from yesterday as one coherent reading.
   const { LatestReadings } = await load();
   const now = Date.now();
   const html = renderToString(React.createElement(LatestReadings, {
     latest: {
       bpSystolic: { value: 151, at: new Date(now - 2 * 60000).toISOString() },
-      bpDiastolic: { value: 90, at: new Date(now - 5 * 3600000).toISOString() },
+      bpDiastolic: { value: 90, at: new Date(now - 30 * 3600000).toISOString() },
     },
   }));
-  assert.match(html, /hp-now-card--stale/, 'the pair must inherit the older half');
+  // The AGE is the direct pin — it must describe the older half, whatever the
+  // staleness threshold happens to be.
+  assert.match(html, /30h ago/, 'the pair was dated by its newer half');
+  assert.ok(!/2 min ago/.test(html), 'the newer half must not date the pair');
+  assert.match(html, /hp-now-card--stale/, 'and past its own window it is marked');
 });
 
 test('an empty snapshot says so rather than rendering an empty grid', async () => {

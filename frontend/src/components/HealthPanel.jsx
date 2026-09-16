@@ -471,12 +471,33 @@ export function TrendChart({ title, unit, dp, hint, days, valueKey, series, span
 //
 // What the cards read from, and how each is written. Blood pressure is one card
 // built from two series, because that is how a blood pressure is read.
-const NOW_CARDS = [
-  { id: 'bp', title: 'Blood pressure', unit: '', dp: 0, pair: ['bpSystolic', 'bpDiastolic'] },
-  { id: 'heartRateMedian', title: 'Heart rate', unit: 'bpm', dp: 0 },
-  { id: 'spo2', title: 'Blood oxygen', unit: '%', dp: 1 },
-  { id: 'hrvMedian', title: 'HRV', unit: 'ms', dp: 1 },
-  { id: 'rhrMedian', title: 'Resting heart rate', unit: 'bpm', dp: 0 },
+//
+// ⚠⚠ `staleAfterMin` IS PER METRIC, AND IT HAD TO BE. A single threshold was the
+// obvious implementation and it is wrong on three of these five, always in the
+// direction of a warning that is permanently on — which is a warning nobody
+// reads, and it costs the real one. Measured over 30 days on the live table, as
+// the median and p90 gap between consecutive readings:
+//
+//     heart rate   3 / 7 min        continuous while worn
+//     HRV         15 / 41 min
+//     blood oxygen 35 / 134 min     a 90-minute rule flags a NORMAL gap
+//     blood pressure 39 / 56 min    within a session — but he goes MONTHS
+//                                   between sessions, so 90 min is always amber
+//     resting HR  479 / 1030 min    once or twice a DAY, so 90 min is
+//                                   permanently amber for a metric behaving
+//                                   exactly as designed
+//
+// Each is set at roughly 3x its own p90, so amber means the feed has genuinely
+// stopped rather than that this metric is not measured every minute. Blood
+// pressure is the exception to the formula and is judged on MEANING instead: a
+// reading from this morning still says something about today, one from March
+// does not, so it turns amber after a day.
+export const NOW_CARDS = [
+  { id: 'bp', title: 'Blood pressure', unit: '', dp: 0, pair: ['bpSystolic', 'bpDiastolic'], staleAfterMin: 24 * 60 },
+  { id: 'heartRateMedian', title: 'Heart rate', unit: 'bpm', dp: 0, staleAfterMin: 30 },
+  { id: 'spo2', title: 'Blood oxygen', unit: '%', dp: 1, staleAfterMin: 6 * 60 },
+  { id: 'hrvMedian', title: 'HRV', unit: 'ms', dp: 1, staleAfterMin: 2 * 60 },
+  { id: 'rhrMedian', title: 'Resting heart rate', unit: 'bpm', dp: 0, staleAfterMin: 36 * 60 },
 ];
 
 /**
@@ -500,11 +521,10 @@ function ageWords(iso, now = Date.now()) {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
-// Past this, "now" is not what the number is. It is still shown — hiding a stale
-// reading is how a metric that quietly stopped becomes invisible — but it is
-// marked, because an old figure presented as current is the failure this whole
-// page keeps being dug out of.
-const STALE_MINUTES = 90;
+// The fallback for a card that forgot to declare one. Deliberately generous:
+// between a missed warning and a permanent one, the permanent one does more
+// damage, because it is the thing that teaches the amber to be ignored.
+const STALE_MINUTES = 6 * 60;
 
 export function LatestReadings({ latest }) {
   const now = Date.now();
@@ -522,7 +542,7 @@ export function LatestReadings({ latest }) {
       ...c,
       value: parts.map(p => fmtNum(p.value, c.dp)).join('/'),
       age: ageWords(at, now),
-      stale: Number.isFinite(mins) && mins > STALE_MINUTES,
+      stale: Number.isFinite(mins) && mins > (c.staleAfterMin || STALE_MINUTES),
     };
   });
 
