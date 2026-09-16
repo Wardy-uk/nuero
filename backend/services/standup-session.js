@@ -461,7 +461,7 @@ Get him to ONE clear, specific set of commitments for today, and hold him to wha
 
 Run it roughly like this, adapting to his answers:
 1. Open with the single most important thing from the context — a carried commitment, an unanswered escalation, a heavy meeting day. Not a greeting and a list.
-2. Chase anything carried 3+ days. That is not a task any more, it is a decision. Make him pick: do it today, give it a date, or drop it. "Carry it again" is not on the menu — say so plainly, once, without lecturing. Record the outcome with resolve_commitment.
+2. Chase anything carried 3+ days. That is not a task any more, it is a decision. Make him pick: do it today, give it a date, or drop it. "Carry it again" is not on the menu — say so plainly, once, without lecturing. Record the outcome with resolve_commitment — and if he says one is already finished, resolve it "done" straight away. Never tell him something is cleared unless resolve_commitment came back ok.
 3. Agree today's focus. Two or three things, not ten. If he names something vague ("look at QA", "catch up on tickets"), push once for what "done" looks like by end of day. Once.
 4. Check it fits the calendar. If he has five hours of meetings and three big commitments, say so.
 5. When you have the focus, call set_focus, then tell him you're done and he can go.
@@ -508,6 +508,11 @@ You are running this — you started it, he did not come and find you.
 4. If something slipped that he also committed to yesterday, name it once —
    gently, as a fact. Twice in a row is a pattern worth saying out loud. Do not
    moralise, and do not turn the evening into a review because of it.
+   ⚠ If he says a CARRIED commitment is finished, or is no longer happening,
+   call resolve_commitment with its key ("done" or "dropped") in the same turn.
+   That call is the ONLY thing that stops tomorrow's standup chasing it again —
+   a summary line does not. Never tell him something is "cleared" unless
+   resolve_commitment came back ok.
 5. If there is a first thing for the NEXT WORKING DAY — on a Friday that is
    Monday — capture it with create_task. Only if he names one. Do not fish.
 6. Acknowledge what went right, without ceremony. "That's a good day's work",
@@ -701,6 +706,25 @@ async function _executeTool(session, name, input = {}) {
         task_id: taskId,
       });
       if (taskId) _noteLink(session, carried?.text || input.key, taskId);
+      // ⚠ PERSISTED NOW, not at finish. Until 16 Sep 2026 this decision lived
+      // only in the session: the morning note rendered it as a `## Decided` line
+      // nothing read back, and the EOD rendered it not at all — so an item
+      // closed twice was carried a third time. The ledger is one of the closure
+      // sources standup-accountability reconciles against. A failed write is
+      // REPORTED, never ok:true, so SAiM cannot tell him it is cleared.
+      try {
+        require('./commitment-ledger').record({
+          key: input.key,
+          text: carried?.text || null,
+          decision: input.decision,
+          date: session.dateKey,
+          taskId,
+          source: session.kind,
+        });
+      } catch (e) {
+        console.warn(`[StandupSession] Could not persist decision on "${input.key}": ${e.message}`);
+        return { ok: false, error: `Decision noted in this conversation but NOT saved — tomorrow's standup would still carry it. (${e.message})` };
+      }
       // "Scheduled" is only real if it becomes a dated task — otherwise it is a
       // carry wearing a different word, which is the exact failure this replaces.
       // ⚠ When the commitment already IS a task, that task gets the date. And a
@@ -877,7 +901,28 @@ function _emptySession(kind, ctx) {
  * The session is saved before returning, always — including when the model call
  * fails. A failed turn must never cost Nick what he already typed.
  */
+// A session's context is built once, when it starts, and then stored — so a
+// session opened at 08:30 kept offering commitments that were closed at 08:45,
+// by a task tick, an earlier decision, or a note written since. Every read of
+// the carried list re-asks standup-accountability, which is the one place that
+// decides whether a commitment is still live.
+function _refreshCarried(session) {
+  const acc = session?.context?.accountability;
+  if (!acc?.openCommitments) return;
+  try {
+    const { reconcile } = require('./standup-accountability');
+    const { open, closed } = reconcile(acc.openCommitments);
+    acc.openCommitments = open;
+    const known = new Set((acc.closedCommitments || []).map(c => c.key));
+    acc.closedCommitments = [...(acc.closedCommitments || []), ...closed.filter(c => !known.has(c.key))];
+  } catch (e) {
+    // Context, not a gate — the stored list is the old behaviour.
+    console.warn('[StandupSession] Carried-list reconcile failed:', e.message);
+  }
+}
+
 async function _turn(session) {
+  _refreshCarried(session);
   const prompt = `${session.kind === KIND_EOD ? EOD_PROMPT : STANDUP_PROMPT}\n\n---\nCONTEXT (${session.dateKey}):\n${_renderContext(session.context)}`;
 
   const aiRouting = require('./ai-routing');
@@ -958,7 +1003,11 @@ async function _turn(session) {
 /** Start a session, or hand back today's if one is already going. */
 async function start(kind, { restart = false } = {}) {
   const existing = load(kind);
-  if (existing && !restart && existing.state !== 'finished') return existing;
+  if (existing && !restart && existing.state !== 'finished') {
+    _refreshCarried(existing);
+    save(existing);
+    return existing;
+  }
 
   const ctx = await buildContext(kind);
   const session = _emptySession(kind, ctx);
@@ -1106,7 +1155,10 @@ function _renderDailyNote(session) {
 
   const carried = [];
   const dropped = [];
-  for (const c of (acc?.openCommitments || [])) {
+  // A commitment decided in THIS session is already closed by the ledger, so it
+  // has left openCommitments — but it still owes the note its `## Decided` line.
+  const decidedHere = (acc?.closedCommitments || []).filter(c => byKey.has(c.key));
+  for (const c of [...(acc?.openCommitments || []), ...decidedHere]) {
     const decision = byKey.get(c.key);
     const tag = `#carried-${c.daysCarried}d`;
     // A likely match (`c.task`, unconfirmed) is NOT a link — only a marker
@@ -1157,6 +1209,21 @@ function _renderEodSection(session) {
   lines.push(`**Didn't go to plan:** ${o.didntGo || 'Nothing'}`);
   if (o.tomorrowFirst) lines.push(`**Tomorrow starts with:** ${o.tomorrowFirst}`);
   if (o.mood) lines.push(`**Mood:** ${o.mood}`);
+
+  // ⚠ The EOD dropped every resolve_commitment decision until 16 Sep 2026: an
+  // evening that closed four carried commitments wrote none of it down. The
+  // ledger is the authority now; these lines are the human-readable copy, in
+  // the exact shapes standup-accountability parses back.
+  const acc = session.context?.accountability;
+  const textFor = (key) => [...(acc?.openCommitments || []), ...(acc?.closedCommitments || [])]
+    .find(c => c.key === key)?.text || key;
+  const decided = [];
+  for (const d of (o.commitments || [])) {
+    if (d.decision === 'done') decided.push(`- ~~${textFor(d.key)}~~ (already done)`);
+    else if (d.decision === 'dropped') decided.push(`- ~~${textFor(d.key)}~~ (dropped)`);
+    else if (d.decision === 'scheduled') decided.push(`- ${textFor(d.key)} → scheduled for ${d.due_date || 'a date'}`);
+  }
+  if (decided.length) lines.push('', '## Decided', ...decided);
   return lines.join('\n') + '\n';
 }
 
@@ -1175,6 +1242,9 @@ function finish(kind, dateKey = _today()) {
   const session = load(kind, dateKey);
   if (!session) throw new Error('No session to finish');
   if (session.state === 'finished') return { ok: true, alreadyFinished: true, session };
+
+  // The note is tomorrow's carry source; render it from what is live NOW.
+  _refreshCarried(session);
 
   if (kind === KIND_EOD) {
     const existing = obsidian.readTodayDailyNote() || '';

@@ -46,6 +46,7 @@ function parseDailyNote(content) {
   const focus = [];
   const carry = [];
   const eodItems = [];
+  const decided = [];
   let eodDone = false;
   let didntGo = null;
   // Are we inside the EOD section's `**Done:**` list? Cleared by the next bold
@@ -57,6 +58,7 @@ function parseDailyNote(content) {
     if (/^##\s+Focus Today/i.test(line)) { section = 'focus'; continue; }
     if (/^##\s+Carry/i.test(line)) { section = 'carry'; continue; }
     if (/^##\s+EOD/i.test(line)) { section = 'eod'; eodDone = true; continue; }
+    if (/^##\s+Decided/i.test(line)) { section = 'decided'; continue; }
     if (/^##\s/.test(line)) { section = null; continue; }
 
     if (section === 'eod') {
@@ -81,6 +83,15 @@ function parseDailyNote(content) {
       continue;
     }
 
+    // ⚠ `## Decided` is what the morning note writes for a commitment Nick
+    // closed ("already done", "dropped", "scheduled"). Until 16 Sep 2026 nothing
+    // read it back, so a decision recorded twice was still carried a third time.
+    if (section === 'decided') {
+      const d = parseDecidedLine(line);
+      if (d) decided.push(d);
+      continue;
+    }
+
     if (section !== 'focus' && section !== 'carry') continue;
     const m = line.match(/^\s*-\s+\[([ x>/])\]\s+(.+)$/i);
     if (!m) continue;
@@ -94,7 +105,140 @@ function parseDailyNote(content) {
   }
 
   const standupDone = focus.length > 0 || /^##\s+Standup/im.test(content);
-  return { focus, carry, eodItems, eodDone, didntGo, standupDone };
+  return { focus, carry, eodItems, decided, eodDone, didntGo, standupDone };
+}
+
+// The three shapes standup-session._renderDailyNote writes under `## Decided`.
+function parseDecidedLine(line) {
+  let m = line.match(/^\s*-\s+~~(.+?)~~\s*\((already done|dropped[^)]*)\)/i);
+  if (m) {
+    const text = cleanTaskText(m[1]);
+    return text ? { text, key: commitmentKey(text), decision: /^already/i.test(m[2]) ? 'done' : 'dropped' } : null;
+  }
+  m = line.match(/^\s*-\s+(.+?)\s+→\s+scheduled for\b/i);
+  if (m) {
+    const text = cleanTaskText(m[1]);
+    return text ? { text, key: commitmentKey(text), decision: 'scheduled' } : null;
+  }
+  return null;
+}
+
+// ── Is this commitment still live? ─────────────────────────────────────────
+//
+// ⚠ THE ONE ANSWER. Morning standup, EOD, the accountability route and anything
+// reading it through MCP all resolve here; nothing else decides it.
+//
+// A carry-forward is rebuilt from unticked daily-note lines, and a line never
+// changes once its day has passed — so "closed" can only come from later
+// evidence that outranks it. Four sources, each something Nick said or did:
+//   * ledger  — a resolve_commitment decision (done/dropped/scheduled), written
+//               the moment it is made (services/commitment-ledger.js);
+//   * decided — the `## Decided` lines older notes already hold: the same
+//               decision, persisted before the ledger existed. This is what
+//               repairs the existing stale data without a migration;
+//   * eod     — an EOD `**Done:**` bullet, his own account of the day;
+//   * task    — the NEURO task the line is linked to is done or dropped.
+//
+// A closure counts only if it is dated ON OR AFTER the newest unticked
+// mention. Re-committing to the same thing on a later day is a new, live
+// commitment — that is the way back, and it is what Nick does when he picks
+// something up again.
+
+// MEASURED on every Focus/Carry line in the notes since 10 Aug 2026 (33 keys):
+// rewordings of ONE commitment ("Verify and compile Phillipa's email response"
+// / "…her response"; the podcast script line with and without its tail) score
+// 1.00 with weighted jaccard 0.60–0.69. Every wrong or partial pair had jaccard
+// ≤ 0.46 — "NDC data fixes" inside the NDC split (0.28), "Weekly report to
+// Chris" vs the management report (0.26), and "Record full podcast" vs the
+// podcast SCRIPT line, which scores 1.00 on containment alone. Score without
+// jaccard would close unfinished work and hide it in the place Nick looks for
+// what he owes, so both bars apply.
+const EQUIV_SCORE = 0.85;
+const EQUIV_JACCARD = 0.5;
+
+function sameCommitment(a, b, pool = []) {
+  if (!a || !b) return false;
+  if (a.key && b.key && a.key === b.key) return true;
+  if (!a.text || !b.text) return false;
+  try {
+    // Lazy: task-dedupe pulls in the task store, which the parser must not.
+    const { findEquivalent } = require('./task-dedupe');
+    // IDF from the whole pool so it reflects Nick's real vocabulary, and b must
+    // be a's BEST match, not merely a good one.
+    const others = [b.text, ...pool.filter(t => t && t !== a.text && t !== b.text)];
+    const hit = findEquivalent(a.text, others, { minScore: EQUIV_SCORE });
+    return !!(hit && hit.index === 0 && hit.jaccard >= EQUIV_JACCARD);
+  } catch {
+    // Cannot compare → not the same. An exact key has already been checked.
+    return false;
+  }
+}
+
+/** Every closure on record, oldest first. `days` are parsed notes. */
+function gatherClosures(days, ledgerEntries = []) {
+  const out = [];
+  for (const e of ledgerEntries) out.push({ key: e.key, text: e.text || null, date: e.date, decision: e.decision, taskId: e.taskId || null, source: 'ledger' });
+  for (const day of days) {
+    if (!day.exists) continue;
+    for (const d of (day.decided || [])) out.push({ ...d, date: day.date, source: 'decided' });
+    for (const i of (day.eodItems || [])) out.push({ key: i.key, text: i.text, date: day.date, decision: 'done', source: 'eod' });
+  }
+  return out.sort((x, y) => x.date.localeCompare(y.date));
+}
+
+/**
+ * PURE. The closure that ends `entry` ({key, text, lastSeen, taskId}), or null
+ * when it is live. `taskStatus(id)` returns a task status or null (unknown).
+ */
+function closureFor(entry, closures, { taskStatus = () => null, pool = [] } = {}) {
+  if (entry.taskId) {
+    const status = taskStatus(entry.taskId);
+    if (status === 'done' || status === 'dropped') {
+      return { key: entry.key, text: entry.text, date: null, decision: status, taskId: entry.taskId, source: 'task' };
+    }
+  }
+  let found = null;
+  for (const c of closures) {
+    if (entry.lastSeen && c.date < entry.lastSeen) continue;
+    if (sameCommitment(entry, c, pool)) found = c; // newest wins
+  }
+  return found;
+}
+
+function _taskStatus(id) {
+  try {
+    const row = require('./task-store').getTask(Number(id));
+    return row ? row.status : null;
+  } catch {
+    return null; // unknown → stays live
+  }
+}
+
+function _ledger() {
+  try { return require('./commitment-ledger').list(); } catch { return []; }
+}
+
+/**
+ * Split commitments into still-live and closed against CURRENT evidence. Used
+ * by buildAccountability, and by anything holding an older snapshot (a stored
+ * session context), so a list built at 08:30 cannot resurrect something closed
+ * at 08:45.
+ */
+function reconcile(commitments, { days = null, ledger = null, taskStatus = _taskStatus, lookbackDays = 14 } = {}) {
+  const notes = days || readRecentNotes(lookbackDays);
+  const closures = gatherClosures(notes, ledger || _ledger());
+  const pool = [...commitments.map(c => c.text), ...closures.map(c => c.text)].filter(Boolean);
+  const open = [];
+  const closed = [];
+  for (const c of commitments) {
+    const hit = closureFor(c, closures, { taskStatus, pool });
+    if (!hit) { open.push(c); continue; }
+    closed.push({
+      ...c, lastSeen: c.lastSeen || null, taskId: c.taskId || hit.taskId || null,
+      closedOn: hit.date, decision: hit.decision, source: hit.source,
+    });
+  }
+  return { open, closed };
 }
 
 /**
@@ -155,7 +299,7 @@ function readRecentNotes(lookbackDays) {
  * Build the full accountability picture for this morning's standup.
  * Everything here is derived from the vault — no AI, no guessing.
  */
-function buildAccountability({ lookbackDays = 14 } = {}) {
+function buildAccountability({ lookbackDays = 14, ledger = null, taskStatus = _taskStatus } = {}) {
   const days = readRecentNotes(lookbackDays);
   const withNotes = days.filter(d => d.exists);
   const previous = withNotes[0] || null;
@@ -205,10 +349,10 @@ function buildAccountability({ lookbackDays = 14 } = {}) {
     for (const item of (day.eodItems || [])) eodReported.set(item.key, day.date);
   }
 
-  const openCommitments = [];
+  const candidates = [];
   for (const [key, entry] of tracked) {
     if (entry.lastDone || entry.dates.length === 0) continue;
-    openCommitments.push({
+    candidates.push({
       key,
       text: entry.text,
       daysCarried: entry.dates.length,
@@ -218,6 +362,9 @@ function buildAccountability({ lookbackDays = 14 } = {}) {
       taskId: entry.taskId || null,
     });
   }
+  // ⚠ Reconciled BEFORE anything reads it, so nothing downstream can see a
+  // commitment that has already been closed. See reconcile().
+  const { open: openCommitments, closed: closedCommitments } = reconcile(candidates, { days, ledger, taskStatus });
   openCommitments.sort((a, b) => b.daysCarried - a.daysCarried);
 
   // ── Yesterday's scoreboard ──
@@ -301,6 +448,7 @@ function buildAccountability({ lookbackDays = 14 } = {}) {
     today,
     yesterday,
     openCommitments,
+    closedCommitments,
     staleCount: stale.length,
     skippedDays: skipped,
     overdueMustDos,
@@ -308,4 +456,7 @@ function buildAccountability({ lookbackDays = 14 } = {}) {
   };
 }
 
-module.exports = { buildAccountability, commitmentKey, parseDailyNote, standupDoneIn, TASK_MARKER_RE };
+module.exports = {
+  buildAccountability, commitmentKey, parseDailyNote, standupDoneIn, TASK_MARKER_RE,
+  reconcile, closureFor, gatherClosures, sameCommitment, EQUIV_SCORE, EQUIV_JACCARD,
+};

@@ -87,15 +87,20 @@ test('yesterday carries the items themselves, not just a count', () => {
   assert.deepEqual(a.yesterday.eodItems, ['Productivity metrics for Naomi', 'Sign the risk assessment']);
 });
 
-test('a commitment reported done at EOD is STAMPED, never folded away', () => {
+// ⚠ REVERSED 16 Sep 2026, on Nick's call. This used to pin the opposite — an
+// EOD Done bullet was "evidence, never a tick", so the standup asked him to
+// confirm it again — and that is precisely how items he had confirmed at EOD
+// were chased the next morning. The EOD is his own account of the day; having
+// to say it twice is the bug. Only an exact or measured-equivalent match closes
+// (see standup-accountability EQUIV_*), so a loose summary line cannot.
+test('a commitment reported done at EOD is CLOSED, and says where that came from', () => {
   const ds = writeDay(-1, NOTE);
-  const a = acc.buildAccountability();
-  const open = a.openCommitments.find(c => /productivity metrics/i.test(c.text));
-
-  // Still carried: an unticked box is the record, and his own account of the day
-  // is evidence rather than a tick. Folding it away would close work on prose.
-  assert.ok(open, 'the unticked commitment stopped being carried');
-  assert.equal(open.reportedDoneOn, ds);
+  const a = acc.buildAccountability({ ledger: [] });
+  assert.equal(a.openCommitments.find(c => /productivity metrics/i.test(c.text)), undefined, 'EOD-confirmed commitment is still carried');
+  const closed = a.closedCommitments.find(c => /productivity metrics/i.test(c.text));
+  assert.ok(closed, 'closure is not reported');
+  assert.equal(closed.source, 'eod');
+  assert.equal(closed.closedOn, ds);
 });
 
 test('a commitment no EOD mentioned carries no claim about it', () => {
