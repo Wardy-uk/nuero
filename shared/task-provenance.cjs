@@ -178,6 +178,12 @@ const SOURCE_HOW = {
   'vantage-plan': 'From the VANTAGE improvement plan',
   vantage: 'Raised by VANTAGE',
   'jira-assigned': 'A Jira ticket assigned to you',
+  // ⚠ A ticket taken off Nick, unlinked by `jira-tasks.sync`. The task came from
+  // Jira and always did, so the provenance is KEPT and only the present-tense
+  // claim is dropped. Clearing `source` instead — which is what the unlink tried
+  // to do — renders as "No source recorded", which is a different untruth about
+  // a row whose origin is known exactly.
+  'jira-unassigned': 'Came from a Jira ticket that is no longer assigned to you',
   chat: 'You asked SAiM to add it in chat',
   'chat-marker': 'SAiM picked it out of something you said in chat',
   'standup-session': 'Came out of a morning standup',

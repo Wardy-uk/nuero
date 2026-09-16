@@ -224,6 +224,40 @@ test('an unassigned ticket is unlinked and left open, never closed', async () =>
   assert.equal(taskStore.updateTask(taskId, { status: 'done' }).status, 'done');
 });
 
+test('an unlinked task STOPS claiming to be a Jira ticket assigned to you', async () => {
+  // ⚠ The unlink has always tried to rewrite `source`, and `updateTask`'s
+  // whitelist silently DROPPED the key — so the card went on reading "A Jira
+  // ticket assigned to you" about a ticket that was not his any more. Found
+  // live on #267 (NF-14121), 16 Sep 2026, with the unlink itself working
+  // perfectly: the ledger entry was gone and the badge stayed.
+  const { describeTaskProvenance } = require('../../shared/task-provenance.cjs');
+  reset();
+  const created = await withJira(
+    { assigned: { issues: [issue({ key: 'NT-9' })], complete: true }, states: { issues: [issue({ key: 'NT-9' })], complete: true } },
+    () => jiraTasks.sync({ apply: true }),
+  );
+  const taskId = created.created[0].taskId;
+  assert.equal(db.getTaskRow(taskId).source, 'jira-assigned');
+
+  await withJira(
+    { assigned: { issues: [], complete: true }, states: { issues: [issue({ key: 'NT-9', status: 'In Progress' })], complete: true } },
+    () => jiraTasks.sync({ apply: true }),
+  );
+
+  const row = db.getTaskRow(taskId);
+  assert.equal(row.source, 'jira-unassigned', 'the unlink could not write the source');
+
+  // ⚠ And NOT cleared. The task did come from Jira, so an empty source would
+  // render "No source recorded" — a different untruth about a known origin.
+  const how = describeTaskProvenance(row).how;
+  assert.match(how, /no longer assigned/i);
+  assert.ok(!/No source recorded/i.test(how), 'the provenance was thrown away rather than corrected');
+  // ⚠ Compared against the OLD LINE ITSELF, not a pattern: "no longer assigned
+  // to you" legitimately ends in the same three words, so an anchored match on
+  // those rejects the correct wording. Test the claim, not the suffix.
+  assert.notEqual(how, 'A Jira ticket assigned to you', 'it still claims to be assigned to him');
+});
+
 test('a truncated assigned list unlinks nothing', async () => {
   reset();
   const created = await withJira(

@@ -49,6 +49,9 @@ const LINKS_KEY = 'jira_task_links';
 
 /** The stamp that makes a task Jira-owned. Read by `task-store`'s refusal. */
 const SOURCE = 'jira-assigned';
+// What a task becomes when Jira takes the ticket off him. Its own value rather
+// than a cleared one — see the unlink branch.
+const UNASSIGNED_SOURCE = 'jira-unassigned';
 
 /**
  * Kill switch. Off by default: it writes real tasks into Nick's list.
@@ -273,7 +276,14 @@ async function sync({ apply = false } = {}) {
           delete links[key];
           try {
             taskStore.updateTask(taskId, {
-              source: null,
+              // ⚠ NOT `null`. The task did come from Jira and always did, so the
+              // provenance is kept and only the present-tense claim is dropped —
+              // an empty source renders as "No source recorded", which is a
+              // different untruth about a row whose origin is known exactly.
+              // (This write was silently DROPPED until 16 Sep 2026: `source` was
+              // missing from `updateTask`'s whitelist, so an unlinked task went
+              // on reading "A Jira ticket assigned to you" for ever.)
+              source: UNASSIGNED_SOURCE,
               notes: `${row.notes ? `${row.notes}\n\n` : ''}No longer assigned to you in Jira (${issue.status}). `
                 + `Left open — it is yours to close or drop.`,
             });
@@ -287,6 +297,23 @@ async function sync({ apply = false } = {}) {
   }
 
   if (apply) writeLinks(links);
+
+  // ⚠ SAY WHAT IT DID. This sync closes tasks and unlinks them and, until
+  // 16 Sep 2026, logged NOTHING on success — so "has it ever actually closed
+  // one?" was unanswerable from the Pi, and a fault in it would look exactly
+  // like a quiet week in Jira. That is the same blindness as the write-up
+  // sweep's `0 completed`, which went unnoticed for the whole life of the
+  // feature. Quiet when there is nothing to report, loud when it acts.
+  if (apply && (result.closed.length || result.unlinked.length || result.created.length)) {
+    console.log(`[JiraTasks] ${result.created.length} created, ${result.closed.length} closed, `
+      + `${result.unlinked.length} unlinked (${result.assigned} assigned to you)`
+      + (result.closed.length ? ` — closed ${result.closed.map(c => c.key).join(', ')}` : '')
+      + (result.unlinked.length ? ` — unlinked ${result.unlinked.map(u => u.key).join(', ')}` : ''));
+  }
+  // A gap is worth a line whether or not anything was done: it is the difference
+  // between "nothing to do" and "could not tell".
+  for (const gap of result.gaps) console.warn(`[JiraTasks] ${gap}`);
+
   return result;
 }
 

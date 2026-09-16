@@ -606,6 +606,14 @@ function updateTask(id, fields = {}) {
   // ⚠ A field missing from this whitelist is SILENTLY DROPPED — the way
   // estimateMinutes went missing from POST /api/tasks. Both of these are
   // three-valued in effect: absent means "leave it", null means "clear it".
+  // ⚠ `source` is PROVENANCE and is not an ordinary editable field — no screen
+  // offers it, and rewriting it casually would make a task claim an origin it
+  // never had. It is here because it was MISSING and a real caller needed it:
+  // `jira-tasks.sync` unlinks a ticket taken off Nick with `source: null`, that
+  // key was silently dropped by this whitelist, and the task went on saying "A
+  // Jira ticket assigned to you" for ever — live on #267, which is how this was
+  // found. Only a writer that KNOWS the origin changed may set it.
+  if ('source' in fields) patch.source = fields.source || null;
   if ('assignee' in fields) patch.assignee = fields.assignee || null;
   if ('household' in fields) patch.household = fields.household ? 1 : 0;
   if ('notes' in fields) patch.notes = fields.notes || null;
