@@ -3,7 +3,10 @@ export class BackendError extends Error {
 }
 
 // Never forward MCP credentials, arbitrary URLs, or upstream error bodies.
-export function createBackend(config) {
+// `target` names ONE upstream and owns its credential; the transport rules below
+// (deadline, no redirects, size ceiling, safe error codes) are shared, so a second
+// upstream cannot quietly be given weaker ones.
+function createUpstream(config, target) {
   return async (route, body, options = {}) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), config.MCP_UPSTREAM_TIMEOUT_MS);
@@ -16,18 +19,11 @@ export function createBackend(config) {
         form.append('file', new Blob([Buffer.from(options.file.base64, 'base64')], { type: options.file.mime_type }), options.file.filename);
         payload = form;
       }
-      const guest = /^\/api\/(v|c)\//.test(route);
-      if (guest && !config.NEURO_CAPTURE_SESSION) throw new BackendError('capture_session_not_configured');
-      const dnd = route.startsWith('/api/vault-dnd');
-      if (dnd && !config.NEURO_DND_VAULT_KEY) throw new BackendError('dnd_vault_key_not_configured');
-      const response = await fetch(`${config.NEURO_API_URL.replace(/\/$/, '')}${route}`, {
+      const response = await fetch(`${target.baseUrl.replace(/\/$/, '')}${route}`, {
         method, redirect: 'error', signal: controller.signal,
         headers: {
           ...(!options.file ? { 'Content-Type': 'application/json' } : {}),
-          ...(config.NEURO_API_TOKEN ? { 'X-Neuro-Api-Token': config.NEURO_API_TOKEN } : { 'X-Neuro-Pin': config.NEURO_PIN }),
-          ...(route.startsWith('/api/vault/') || route === '/api/vault' ? { 'X-Api-Key': config.NEURO_VAULT_KEY } : {}),
-          ...(dnd ? { 'X-Api-Key': config.NEURO_DND_VAULT_KEY } : {}),
-          ...(guest ? { Authorization: `Bearer ${config.NEURO_CAPTURE_SESSION}` } : {}),
+          ...target.headersFor(route),
         },
         body: method === 'GET' ? undefined : payload,
       });
@@ -55,5 +51,40 @@ export function createBackend(config) {
       if (error instanceof BackendError) throw error;
       throw new BackendError(controller.signal.aborted ? 'backend_timeout' : 'backend_unavailable');
     } finally { clearTimeout(timer); }
+  };
+}
+
+export function createBackend(config) {
+  const upstream = createUpstream(config, {
+    baseUrl: config.NEURO_API_URL,
+    headersFor: route => {
+      const dnd = route.startsWith('/api/vault-dnd');
+      const guest = /^\/api\/(v|c)\//.test(route);
+      return {
+        ...(config.NEURO_API_TOKEN ? { 'X-Neuro-Api-Token': config.NEURO_API_TOKEN } : { 'X-Neuro-Pin': config.NEURO_PIN }),
+        ...(route.startsWith('/api/vault/') || route === '/api/vault' ? { 'X-Api-Key': config.NEURO_VAULT_KEY } : {}),
+        ...(dnd ? { 'X-Api-Key': config.NEURO_DND_VAULT_KEY } : {}),
+        ...(guest ? { Authorization: `Bearer ${config.NEURO_CAPTURE_SESSION}` } : {}),
+      };
+    },
+  });
+  return async (route, body, options = {}) => {
+    if (/^\/api\/(v|c)\//.test(route) && !config.NEURO_CAPTURE_SESSION) throw new BackendError('capture_session_not_configured');
+    if (route.startsWith('/api/vault-dnd') && !config.NEURO_DND_VAULT_KEY) throw new BackendError('dnd_vault_key_not_configured');
+    return upstream(route, body, options);
+  };
+}
+
+// VANTAGE has one credential, a PIN, in a header. It is refused BEFORE the network
+// when unset — "the gateway was never told the PIN" needs a different fix from
+// "VANTAGE is down", and a 401 would read as the latter.
+export function createVantageBackend(config) {
+  const upstream = createUpstream(config, {
+    baseUrl: config.VANTAGE_API_URL,
+    headersFor: () => ({ 'X-Vantage-Pin': config.VANTAGE_PIN }),
+  });
+  return async (route, body, options = {}) => {
+    if (!config.VANTAGE_PIN) throw new BackendError('vantage_not_configured');
+    return upstream(route, body, options);
   };
 }

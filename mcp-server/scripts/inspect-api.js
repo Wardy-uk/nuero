@@ -7,6 +7,35 @@ import { simple } from 'acorn-walk';
 export const backendRoot = fileURLToPath(new URL('../../backend/', import.meta.url));
 const parseSource = source => parse(source, { ecmaVersion: 'latest', sourceType: 'script', locations: true });
 const member = n => n?.type === 'MemberExpression' && !n.computed ? `${member(n.object) || n.object.name}.${n.property.name}` : n?.type === 'ChainExpression' ? member(n.expression) : null;
+function collect(operations, n, text, file, prefix = '') {
+  const values = n.arguments[0]?.type === 'ArrayExpression' ? n.arguments[0].elements.map(v => v.value) : [n.arguments[0]?.value];
+  if (values.some(v => typeof v !== 'string')) throw new Error(`Unresolved route at ${file}:${n.loc.start.line}`);
+  for (const suffix of values) {
+    const route = `${prefix}${suffix === '/' ? '' : suffix}`;
+    const method = n.callee.property.name.toUpperCase();
+    const handlerSource = text.slice(n.start, n.end);
+    const query = new Set(), body = new Set(); let queryOpen = false, bodyOpen = false;
+    simple(n, {
+      MemberExpression(m) {
+        const p = member(m);
+        if (/^req\.query\.[\w]+$/.test(p || '')) query.add(m.property.name);
+        if (/^req\.body\.[\w]+$/.test(p || '')) body.add(m.property.name);
+      },
+      VariableDeclarator(v) {
+        const init = v.init?.type === 'LogicalExpression' ? v.init.left : v.init;
+        const target = member(init) === 'req.query' ? query : member(init) === 'req.body' ? body : null;
+        if (target && v.id.type === 'ObjectPattern') for (const p of v.id.properties) if (p.type === 'Property') target.add(p.key.name || p.key.value);
+      },
+    });
+    // Passed-through payloads are validated by the underlying service. Record this
+    // explicitly, rather than inventing an incomplete schema from string matching.
+    queryOpen = /\breq\.query\b(?![?.\w])/.test(handlerSource);
+    bodyOpen = /\breq\.body\b(?![?.\w])/.test(handlerSource);
+    const comments = text.slice(Math.max(0, n.start - 500), n.start).split('\n').filter(l => /^\s*\/\//.test(l)).map(l => l.replace(/^\s*\/\/\s?/, '').trim());
+    const comment = `${method} ${route}. ${comments.filter(l => l.startsWith(`${method} ${route}`)).at(-1)?.replace(`${method} ${route}`, '').replace(/^\s*[—-]\s*/, '') || ''}`.trim().slice(0, 300);
+    operations.push({ id: `${method.toLowerCase()}_${route.replace(/^\/api\//, '').replace(/:([\w]+)/g, 'by_$1').replace(/[^a-zA-Z0-9]+/g, '_')}`, method, route, domain: route.split('/')[2], source: file, line: n.loc.start.line, description: comment || `${method} ${route}`, params: [...route.matchAll(/:([\w]+)/g)].map(m => m[1]), query: [...query].sort(), body: [...body].sort(), queryOpen, bodyOpen, multipart: /upload\.single\(/.test(handlerSource), stream: /text\/event-stream|handleChat\(/.test(handlerSource) });
+  }
+}
 export function inspectApi(root = backendRoot) {
   const source = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   const ast = parseSource(source); const imports = new Map(); const mounts = []; const direct = [];
@@ -21,48 +50,40 @@ export function inspectApi(root = backendRoot) {
     },
   });
   const operations = [];
-  function collect(n, text, file, prefix = '') {
-    const values = n.arguments[0]?.type === 'ArrayExpression' ? n.arguments[0].elements.map(v => v.value) : [n.arguments[0]?.value];
-    if (values.some(v => typeof v !== 'string')) throw new Error(`Unresolved route at ${file}:${n.loc.start.line}`);
-    for (const suffix of values) {
-      const route = `${prefix}${suffix === '/' ? '' : suffix}`;
-      const method = n.callee.property.name.toUpperCase();
-      const handlerSource = text.slice(n.start, n.end);
-      const query = new Set(), body = new Set(); let queryOpen = false, bodyOpen = false;
-      simple(n, {
-        MemberExpression(m) {
-          const p = member(m);
-          if (/^req\.query\.[\w]+$/.test(p || '')) query.add(m.property.name);
-          if (/^req\.body\.[\w]+$/.test(p || '')) body.add(m.property.name);
-        },
-        VariableDeclarator(v) {
-          const init = v.init?.type === 'LogicalExpression' ? v.init.left : v.init;
-          const target = member(init) === 'req.query' ? query : member(init) === 'req.body' ? body : null;
-          if (target && v.id.type === 'ObjectPattern') for (const p of v.id.properties) if (p.type === 'Property') target.add(p.key.name || p.key.value);
-        },
-      });
-      // Passed-through payloads are validated by the underlying service. Record this
-      // explicitly, rather than inventing an incomplete schema from string matching.
-      queryOpen = /\breq\.query\b(?![?.\w])/.test(handlerSource);
-      bodyOpen = /\breq\.body\b(?![?.\w])/.test(handlerSource);
-      const comments = text.slice(Math.max(0, n.start - 500), n.start).split('\n').filter(l => /^\s*\/\//.test(l)).map(l => l.replace(/^\s*\/\/\s?/, '').trim());
-      const comment = `${method} ${route}. ${comments.filter(l => l.startsWith(`${method} ${route}`)).at(-1)?.replace(`${method} ${route}`, '').replace(/^\s*[—-]\s*/, '') || ''}`.trim().slice(0, 300);
-      operations.push({ id: `${method.toLowerCase()}_${route.replace(/^\/api\//, '').replace(/:([\w]+)/g, 'by_$1').replace(/[^a-zA-Z0-9]+/g, '_')}`, method, route, domain: route.split('/')[2], source: file, line: n.loc.start.line, description: comment || `${method} ${route}`, params: [...route.matchAll(/:([\w]+)/g)].map(m => m[1]), query: [...query].sort(), body: [...body].sort(), queryOpen, bodyOpen, multipart: /upload\.single\(/.test(handlerSource), stream: /text\/event-stream|handleChat\(/.test(handlerSource) });
-    }
-  }
-  for (const n of direct) collect(n, source, 'server.js');
+  for (const n of direct) collect(operations, n, source, 'server.js');
   for (const mount of mounts) {
     const text = fs.readFileSync(path.join(root, mount.file), 'utf8');
     simple(parseSource(text), { CallExpression(n) {
-      if (/^router\.(get|post|put|patch|delete)$/.test(member(n.callee) || '')) collect(n, text, mount.file, mount.prefix);
+      if (/^router\.(get|post|put|patch|delete)$/.test(member(n.callee) || '')) collect(operations, n, text, mount.file, mount.prefix);
     } });
   }
   return operations.sort((a,b) => a.id.localeCompare(b.id));
 }
 
+// VANTAGE registers every route directly on `app` in one server.js, with no
+// routers. It lives in its own repo, so the default is the sibling checkout and
+// VANTAGE_REPO overrides it (on pi5 that is /mnt/data/vantage). Ids are prefixed
+// so a VANTAGE operation can never be confused with a NEURO one of the same shape.
+export const vantageRoot = process.env.VANTAGE_REPO
+  ? path.join(process.env.VANTAGE_REPO, 'backend')
+  : fileURLToPath(new URL('../../../Service Desk Continual Improvement/backend/', import.meta.url));
+export function inspectVantage(root = vantageRoot) {
+  const source = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  const operations = [];
+  simple(parseSource(source), { CallExpression(n) {
+    if (/^app\.(get|post|put|patch|delete)$/.test(member(n.callee) || '') && n.arguments[0]?.value?.startsWith('/api/')) collect(operations, n, source, 'server.js');
+  } });
+  return operations.map(op => ({ ...op, id: `vantage_${op.id}`, domain: `vantage-${op.domain}` })).sort((a,b) => a.id.localeCompare(b.id));
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const ops = inspectApi();
-  const target = fileURLToPath(new URL('../remote/api-inventory.json', import.meta.url));
-  fs.writeFileSync(target, JSON.stringify(ops, null, 2) + '\n');
-  console.log(`Inventoried ${ops.length} operations in ${new Set(ops.map(v => v.domain)).size} domains`);
+  const write = (file, ops, label) => {
+    fs.writeFileSync(fileURLToPath(new URL(`../remote/${file}`, import.meta.url)), JSON.stringify(ops, null, 2) + '\n');
+    console.log(`${label}: inventoried ${ops.length} operations in ${new Set(ops.map(v => v.domain)).size} domains`);
+  };
+  write('api-inventory.json', inspectApi(), 'NEURO');
+  // A missing VANTAGE checkout must be LOUD: silently keeping the old inventory
+  // is how a gateway comes to advertise routes that no longer exist.
+  if (!fs.existsSync(path.join(vantageRoot, 'server.js'))) { console.error(`VANTAGE: no server.js under ${vantageRoot}; set VANTAGE_REPO. vantage-inventory.json NOT refreshed.`); process.exitCode = 1; }
+  else write('vantage-inventory.json', inspectVantage(), 'VANTAGE');
 }

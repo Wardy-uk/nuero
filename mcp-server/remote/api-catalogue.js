@@ -68,3 +68,6 @@ export function fullAccessTools(config, api, auth, store, redact) {
   }
   return tools;
 }
+// Shared with vantage-catalogue.js so a second upstream reuses the SAME input
+// validation rather than a copy of it that can drift weaker.
+export { json, scalar, pathValue, file, safeInput };

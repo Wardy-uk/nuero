@@ -79,6 +79,17 @@ Common output shapes:
 
 No action/automation tools are exposed remotely. Legacy approvals, vault deletion, maintenance, arbitrary filesystem access and local fallback remain outside the remote gateway. Remote writes use existing backend services and indexing hooks. A timed-out write may already have committed: verify before retrying. No automatic write retries or cross-client deduplication are promised.
 
+## VANTAGE (16 September 2026)
+
+VANTAGE — the service-desk improvement system (`Wardy-uk/vantage`, pm2 `vantage-backend`, port 3006) — is exposed through five tools beside NEURO's: `vantage_capabilities`, `vantage_read`, `vantage_write`, `vantage_action`, `vantage_admin`. All **41** of its API routes are inventoried in `remote/vantage-inventory.json` by the same generator (`npm run catalogue:refresh`, which now writes both; `VANTAGE_REPO` points it at a checkout that is not the sibling `Service Desk Continual Improvement`). Large results page through `neuro_result_get` — one store, same scope rules.
+
+- **Separate tools, deliberately.** NEURO is inbound and personal, VANTAGE departmental and directive, and both deal in tasks. One registry answering for both would let a model treat a VANTAGE *finding* as a NEURO *task*; the server instructions say so too.
+- **Same OAuth scopes, no Auth0 change.** The tiers reuse `neuro:read/write/action/admin`.
+- **Every route has an EXPLICIT tier** in `remote/vantage-policy.js` — no heuristic fallback. A new VANTAGE route fails `vantage.test.js` until someone reads its handler and classifies it. `write` stays inside VANTAGE's SQLite; `action` reaches NEURO (escalate, create task, auto-push, sync), Microsoft Planner, or spends a model call (draft, coach message).
+- **A refresh is work.** `?refresh=1` / `?rematch=1` on radar, signals, plan tasks and the brief pull NOVA or call a model, so the read tool REFUSES them (`refresh_requires_vantage_action`) rather than dropping the switch — a refresh that silently did not happen reads exactly like stale data.
+- ⚠ **The private half is WITHHELD by default.** VANTAGE's own CLAUDE.md: coach, brief, self and observations are private, and nothing from them is exported into anything outward-facing. This gateway serves external assistants, so those 14 operations stay *listed* (marked `withheld`, because an operation that silently does not exist is a false answer) and return `status: "withheld"` without touching the network. `VANTAGE_MCP_PRIVATE=true` is Nick's switch, and nothing else flips it.
+- The PIN is VANTAGE's only credential; it is sent only to VANTAGE, never a NEURO credential with it, and redacted from every result.
+
 ## Local development
 
 Use Node 22 or later. From `mcp-server`:
@@ -112,6 +123,9 @@ See `remote/.env.example` for every variable.
 | `NEURO_API_URL` | Backend URL; legacy `NEURO_URL` accepted; default local port 3001 |
 | `NEURO_API_TOKEN` / `NEURO_PIN` | Separate backend credentials; machine token takes precedence |
 | `NEURO_VAULT_KEY` | Required vault API credential |
+| `VANTAGE_API_URL` | VANTAGE backend, default `http://127.0.0.1:3006`; in the pi5 container `http://host.docker.internal:3006` |
+| `VANTAGE_PIN` | VANTAGE's `X-Vantage-Pin`. Optional: unset, every `vantage_*` operation refuses with `vantage_not_configured` before the network |
+| `VANTAGE_MCP_PRIVATE` | `false` (default) withholds VANTAGE's private half — coach, brief, self, observations; `true` releases it |
 | `MCP_MEMORY_DIR` | Dedicated remote memory folder, default `MCP Memories` |
 | `MCP_UPSTREAM_TIMEOUT_MS` | Default 15000; applies to headers and full response body |
 | `MCP_RATE_LIMIT` | Requests per minute per source IP, default 120; in-memory, per process |

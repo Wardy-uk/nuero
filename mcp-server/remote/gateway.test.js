@@ -65,7 +65,8 @@ test('unauthenticated MCP and readiness are denied; metadata and liveness are pu
 });
 test('real SDK initialize, discovery, read, write and stateless reconnect', async t => {
   const f = await fixture(t); const tools = (await f.client.listTools()).tools;
-  assert.equal(tools.length, 24);
+  // 18 named + 6 NEURO full-access + 5 VANTAGE (vantage_capabilities, _read, _write, _action, _admin).
+  assert.equal(tools.length, 29);
   assert.ok(tools.every(v => v.inputSchema && v.outputSchema && v.annotations));
   assert.ok(!tools.some(v => /delete|approve|shell|http_request/.test(v.name)));
   const read = await f.client.callTool({ name: 'memory_search', arguments: { query: 'hello' } });

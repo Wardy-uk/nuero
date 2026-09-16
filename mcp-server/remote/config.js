@@ -21,6 +21,11 @@ export function readConfig(env = process.env) {
     NEURO_VAULT_KEY: z.string().min(1),
     NEURO_DND_VAULT_KEY: z.string().default(''),
     NEURO_CAPTURE_SESSION: z.string().default(''),
+    // VANTAGE is optional: with no PIN its tools stay discoverable and refuse with
+    // `vantage_not_configured`, rather than the gateway failing to start.
+    VANTAGE_API_URL: z.string().url().default('http://127.0.0.1:3006'),
+    VANTAGE_PIN: z.string().default(''),
+    VANTAGE_MCP_PRIVATE: z.enum(['true', 'false']).default('false'),
     MCP_MEMORY_DIR: z.string().default('MCP Memories'),
     MCP_UPSTREAM_TIMEOUT_MS: integer(15000, 60000),
     MCP_RATE_LIMIT: integer(120, 10000),
@@ -30,6 +35,8 @@ export function readConfig(env = process.env) {
   if (!config.NEURO_API_TOKEN && !config.NEURO_PIN) throw new Error('NEURO_API_TOKEN or NEURO_PIN required');
   const upstream = new URL(config.NEURO_API_URL);
   if (!['http:', 'https:'].includes(upstream.protocol) || upstream.username || upstream.password || upstream.search || upstream.hash) throw new Error('Invalid NEURO_API_URL');
+  const vantage = new URL(config.VANTAGE_API_URL);
+  if (!['http:', 'https:'].includes(vantage.protocol) || vantage.username || vantage.password || vantage.search || vantage.hash) throw new Error('Invalid VANTAGE_API_URL');
   if (!/^[\w -]+(?:\/[\w -]+)*$/.test(config.MCP_MEMORY_DIR)) throw new Error('Invalid MCP_MEMORY_DIR');
   return Object.freeze(config);
 }

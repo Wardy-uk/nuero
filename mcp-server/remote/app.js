@@ -3,11 +3,11 @@ import { rateLimit } from 'express-rate-limit';
 import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createVerifier } from './auth.js';
-import { createBackend } from './backend.js';
+import { createBackend, createVantageBackend } from './backend.js';
 import { createToolServer } from './tools.js';
 import { createResultStore } from './results.js';
 
-export function createApp(config, { verify = createVerifier(config), api = createBackend(config), log = (event, fields = {}) => {
+export function createApp(config, { verify = createVerifier(config), api = createBackend(config), vantageApi = createVantageBackend(config), log = (event, fields = {}) => {
   const failed = event === 'authentication_failure' || (fields.code && fields.code !== 'ok') || fields.status >= 400;
   if (config.LOG_LEVEL === 'silent' || (config.LOG_LEVEL === 'error' && !failed)) return;
   console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...fields }));
@@ -97,7 +97,7 @@ export function createApp(config, { verify = createVerifier(config), api = creat
   });
   app.use('/mcp', authorize);
   app.post('/mcp', express.json({ limit: '6mb' }), async (req, res) => {
-    const server = createToolServer(config, api, req.neuroAuth, (event, fields) => log(event, { request_id: req.requestId, ...fields }), resultStore);
+    const server = createToolServer(config, api, req.neuroAuth, (event, fields) => log(event, { request_id: req.requestId, ...fields }), resultStore, vantageApi);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on('close', () => { void server.close().catch(() => {}); });
     try { await server.connect(transport); await transport.handleRequest(req, res, req.body); }
