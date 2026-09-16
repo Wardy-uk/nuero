@@ -342,14 +342,48 @@ function getOrphans(daysBack = 7) {
 function pruneExcludedEntities() {
   const exclusions = require('./vault-exclusions');
   let pruned = 0;
+  let prunedMissing = 0;
+
+  // ⚠ A MOVED NOTE IS NOT AN EXCLUDED ONE, and only the exclude arm existed. When 111
+  // duplicate notes were archived on 16 Sep 2026 their 4,354 rows stayed behind: the
+  // stored path is where the note USED to be, which the exclude list knows nothing
+  // about, so nothing would ever have dropped them. `embeddings.rebuildEmbeddings`
+  // already prunes on exactly this test — anything no longer indexable — and the two
+  // disagreeing about what the vault contains is how a person page comes to count
+  // mentions from notes that are gone.
+  //
+  // ⚠ AN UNREADABLE VAULT PRUNES NOTHING BY THIS ARM. Every note looks missing when the
+  // disk is not mounted or Syncthing is mid-write, and "delete every mention NEURO
+  // holds" is not a recoverable mistake. Absence of the vault is never evidence of
+  // absence of a note.
+  const vaultReadable = Boolean(VAULT_PATH)
+    && path.isAbsolute(VAULT_PATH)
+    && fs.existsSync(VAULT_PATH)
+    && fs.statSync(VAULT_PATH).isDirectory();
+
   const rows = db.all('SELECT DISTINCT source_path FROM extracted_entities');
   for (const row of rows) {
-    if (!exclusions.isExcludedPath(row.source_path)) continue;
+    if (exclusions.isExcludedPath(row.source_path)) {
+      db.deleteEntitiesForPath(row.source_path);
+      pruned++;
+      continue;
+    }
+    if (!vaultReadable) continue;
+    let exists;
+    try { exists = fs.existsSync(path.join(VAULT_PATH, row.source_path)); }
+    catch { continue; }
+    if (exists) continue;
     db.deleteEntitiesForPath(row.source_path);
-    pruned++;
+    prunedMissing++;
   }
+
   if (pruned) console.log(`[Entities] Pruned ${pruned} generated/archived files from mentions`);
-  return { pruned };
+  if (prunedMissing) console.log(`[Entities] Pruned ${prunedMissing} files that are no longer in the vault`);
+  if (!vaultReadable) {
+    console.warn('[Entities] Vault not readable — pruned only by the exclude list. ' +
+      'Mentions from notes that have moved or gone are still counted.');
+  }
+  return { pruned, prunedMissing, vaultReadable };
 }
 
 /**

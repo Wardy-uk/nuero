@@ -109,7 +109,11 @@ async function main() {
     return;
   }
 
-  const backup = path.join(__dirname, `plaud_sync_state.backup.${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  // Beside the database, NEVER in the repo working tree: an untracked file there
+  // blocks the next `git pull --ff-only` on the Pi, which is how a deploy silently
+  // stops at the previous commit.
+  const stamp = new Date().toISOString().split(':').join('-').split('.').join('-');
+  const backup = path.join(__dirname, '..', 'db', 'plaud_sync_state.backup.' + stamp + '.json');
   fs.writeFileSync(backup, typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2));
   console.log(`Backed up the previous ledger to ${backup}`);
 
