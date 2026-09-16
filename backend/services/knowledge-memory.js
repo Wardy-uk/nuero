@@ -651,8 +651,22 @@ async function getActiveContext({ topic, maxResults = 5 } = {}) {
  * "4" for ever. A cap is not a measurement.
  */
 function recentReflections(limit = 4) {
+  // ⚠ SORTED BY THE DATE IN THE NAME, NOT BY MTIME — the same rule `candidateTimestamp`
+  // applies to candidates, and it was missed here at first. On the Pi these are
+  // Syncthing replicas, so mtime bears no relation to the week a reflection covers:
+  // the live list came back 09-14, 09-07, 08-24, 08-31. A reflection is named
+  // `YYYY-MM-DD - Knowledge Reflection`, so its own filename is the reliable key;
+  // an unparseable name falls back to mtime rather than sorting to the epoch.
   const all = loadFolderNotes(REFLECTION_DIR)
-    .sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    .map(note => {
+      const named = new Date(String(note.name).slice(0, 10));
+      const modified = new Date(note.modified);
+      const ms = Number.isNaN(named.getTime())
+        ? (Number.isNaN(modified.getTime()) ? 0 : modified.getTime())
+        : named.getTime();
+      return { ...note, sortMs: ms };
+    })
+    .sort((a, b) => b.sortMs - a.sortMs);
 
   return {
     total: all.length,

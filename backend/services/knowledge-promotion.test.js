@@ -298,13 +298,17 @@ test('recentReflections returns the NEWEST, and a total that is not the cap', ()
   const dir = path.join(root, 'Reflections', 'Knowledge');
   fs.mkdirSync(dir, { recursive: true });
 
-  // Written oldest-first so readdir order is the OPPOSITE of what we want back.
+  // ⚠ THE MTIMES DELIBERATELY DISAGREE WITH THE NAMES. On the Pi these are Syncthing
+  // replicas, so mtime bears no relation to the week a reflection covers — the live
+  // list came back 09-14, 09-07, 08-24, 08-31 when this sorted by mtime. Giving every
+  // file the SAME mtime means only the filename can produce the right order, so a
+  // revert to mtime sorting cannot pass by luck.
   const days = ['2026-06-29', '2026-07-06', '2026-07-20', '2026-08-31', '2026-09-07', '2026-09-14'];
-  days.forEach((day, i) => {
+  const sameMtime = new Date('2026-09-16T12:00:00Z');
+  days.forEach((day) => {
     const file = path.join(dir, `${day} - Knowledge Reflection.md`);
     fs.writeFileSync(file, `# Knowledge Reflection — ${day}\n\nbody\n`, 'utf-8');
-    const when = new Date(`${day}T09:00:00Z`);
-    fs.utimesSync(file, when, when);
+    fs.utimesSync(file, sameMtime, sameMtime);
   });
 
   const previous = process.env.OBSIDIAN_VAULT_PATH;
@@ -314,6 +318,11 @@ test('recentReflections returns the NEWEST, and a total that is not the cap', ()
     assert.equal(result.total, 6, 'the total is what is on disk, never the cap');
     assert.equal(result.items.length, 4);
     assert.ok(result.items[0].name.startsWith('2026-09-14'), 'newest first, not readdir order');
+    assert.deepEqual(
+      result.items.map(item => item.name.slice(0, 10)),
+      ['2026-09-14', '2026-09-07', '2026-08-31', '2026-07-20'],
+      'strictly newest-first by the date in the NAME, with identical mtimes'
+    );
     assert.ok(
       !result.items.some(item => item.name.startsWith('2026-06-29')),
       'the oldest must not appear in a list headed "recent"'
