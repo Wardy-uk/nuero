@@ -476,7 +476,7 @@ Get him to ONE clear, specific set of commitments for today, and hold him to wha
 
 Run it roughly like this, adapting to his answers:
 1. Open with the single most important thing from the context — a carried commitment, an unanswered escalation, a heavy meeting day. Not a greeting and a list.
-2. Chase anything carried 3+ days. That is not a task any more, it is a decision. Make him pick: do it today, give it a date, or drop it. "Carry it again" is not on the menu — say so plainly, once, without lecturing. Record the outcome with resolve_commitment — and if he says one is already finished, resolve it "done" straight away. Never tell him something is cleared unless resolve_commitment came back ok.
+2. Chase anything carried 3+ days. That is not a task any more, it is a decision. Make him pick: do it today, give it a date, or drop it. "Carry it again" is not on the menu — say so plainly, once, without lecturing. Record the outcome with resolve_commitment — and if he says one is already finished, resolve it "done" straight away. Never tell him something is cleared unless resolve_commitment came back ok. Only record a decision he actually STATED — "continue", "move on", "ok" or no answer is never a decision; if he does not pick, leave it carried and say so. Never record anything about an ALREADY CLOSED commitment.
 3. Agree today's focus. Two or three things, not ten. If he names something vague ("look at QA", "catch up on tickets"), push once for what "done" looks like by end of day. Once.
 4. Check it fits the calendar. If he has five hours of meetings and three big commitments, say so.
 5. When you have the focus, call set_focus, then tell him you're done and he can go.
@@ -527,7 +527,9 @@ You are running this — you started it, he did not come and find you.
    call resolve_commitment with its key ("done" or "dropped") in the same turn.
    That call is the ONLY thing that stops tomorrow's standup chasing it again —
    a summary line does not. Never tell him something is "cleared" unless
-   resolve_commitment came back ok.
+   resolve_commitment came back ok. Only record a decision he actually STATED —
+   "continue", "move on" or no answer is never a decision — and never record
+   anything about an ALREADY CLOSED commitment.
 5. If there is a first thing for the NEXT WORKING DAY — on a Friday that is
    Monday — capture it with create_task. Only if he names one. Do not fish.
 6. Acknowledge what went right, without ceremony. "That's a good day's work",
@@ -575,6 +577,7 @@ const SESSION_TOOLS = [
         due_date: { type: 'string', description: 'YYYY-MM-DD, required when decision is "scheduled".' },
         note: { type: 'string', description: 'Short reason, in his words where possible.' },
         task_id: { type: 'integer', description: 'The NEURO task this commitment is, from [task #N] or [likely task #N] in the context. Omit if it has none, or he said it is not that task.' },
+        reopen: { type: 'boolean', description: 'ONLY when he has explicitly asked to change a commitment that is ALREADY CLOSED. Requires his words in note. Never set it because he said "continue" or "move on".' },
       },
       required: ['key', 'decision'],
     },
@@ -705,7 +708,38 @@ async function _executeTool(session, name, input = {}) {
     case 'resolve_commitment': {
       if (!input.key) return { ok: false, error: 'key is required' };
       const taskStore = require('./task-store');
-      const carried = (session.context?.accountability?.openCommitments || []).find(c => c.key === input.key);
+      // ⚠ A decision may only be recorded against a commitment that EXISTS and
+      // is still LIVE. 16 Sep 2026: "Continue my stand-up" came back as "I'm
+      // reading that as: drop the AI messaging workflow" and four decisions were
+      // written — onto commitments already closed, under keys that were not
+      // keys at all (the model passed the item's TEXT, which the closed list
+      // shows). This tool never checked either, so an inferred decision could
+      // silently rewrite a closed item. The text form is accepted, but only by
+      // normalising it to a real key.
+      const { commitmentKey } = require('./standup-accountability');
+      const norm = commitmentKey(String(input.key));
+      const matches = (c) => c.key === input.key || c.key === norm || commitmentKey(c.text || '') === norm;
+      const accCtx = session.context?.accountability || {};
+      const carried = (accCtx.openCommitments || []).find(matches);
+      const closedAlready = !carried && (accCtx.closedCommitments || []).find(matches);
+      if (closedAlready) {
+        if (closedAlready.decision === input.decision) {
+          return { ok: true, unchanged: true, note: `Already ${closedAlready.decision} — nothing to record.` };
+        }
+        // Immutable within the session unless Nick explicitly changes it, in
+        // his own words — never inferred from "continue", "move on" or silence.
+        if (!input.reopen || !String(input.note || '').trim()) {
+          return {
+            ok: false,
+            error: `"${closedAlready.text}" is already CLOSED (${closedAlready.decision}${closedAlready.closedOn ? ` on ${closedAlready.closedOn}` : ''}). Nothing was changed. Do not record a decision on it unless he explicitly asks to change it — then pass reopen: true with his words in note.`,
+          };
+        }
+      }
+      if (!carried && !closedAlready) {
+        return { ok: false, error: `No carried commitment matches "${input.key}". Nothing was recorded. Use a [key: …] from the CARRIED list.` };
+      }
+      const target = carried || closedAlready;
+      input = { ...input, key: target.key };
       let taskId = null;
       if (input.task_id != null) {
         const row = taskStore.getTask(Number(input.task_id));
@@ -720,7 +754,7 @@ async function _executeTool(session, name, input = {}) {
         note: input.note || null,
         task_id: taskId,
       });
-      if (taskId) _noteLink(session, carried?.text || input.key, taskId);
+      if (taskId) _noteLink(session, target.text || input.key, taskId);
       // ⚠ PERSISTED NOW, not at finish. Until 16 Sep 2026 this decision lived
       // only in the session: the morning note rendered it as a `## Decided` line
       // nothing read back, and the EOD rendered it not at all — so an item
@@ -730,7 +764,7 @@ async function _executeTool(session, name, input = {}) {
       try {
         require('./commitment-ledger').record({
           key: input.key,
-          text: carried?.text || null,
+          text: target.text || null,
           decision: input.decision,
           date: session.dateKey,
           taskId,
@@ -752,11 +786,11 @@ async function _executeTool(session, name, input = {}) {
             taskStore.updateTask(taskId, { due_date: input.due_date });
           } else {
             const created = taskStore.createTask({
-              text: carried?.text || input.key,
+              text: target.text || input.key,
               due_date: input.due_date,
               source: 'standup-session',
             });
-            if (created?.id) _noteLink(session, carried?.text || input.key, created.id);
+            if (created?.id) _noteLink(session, target.text || input.key, created.id);
           }
         } catch (e) {
           console.warn(`[StandupSession] Could not date "${input.key}": ${e.message}`);

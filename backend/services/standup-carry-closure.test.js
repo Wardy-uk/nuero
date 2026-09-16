@@ -255,7 +255,8 @@ test('a turn after a closure TELLS the model its earlier chase is settled — th
   }
 
   assert.ok(seen, 'the model was never called');
-  const closedBlock = (seen.split('ALREADY CLOSED')[1] || '').split('\n\n')[0];
+  // Anchored on the context header: the prompt itself now says "ALREADY CLOSED".
+  const closedBlock = (seen.split('\nALREADY CLOSED —')[1] || '').split('\n\n')[0];
   assert.match(closedBlock, /EVEN IF YOU ASKED ABOUT ONE EARLIER/, 'the model is not told its earlier question is settled');
   assert.ok(closedBlock.includes(`"${PODCAST}" — done`), 'the closed commitment is not named to the model');
   const carriedBlock = (seen.split('CARRIED')[1] || '').split('\n\n')[0];
@@ -263,9 +264,66 @@ test('a turn after a closure TELLS the model its earlier chase is settled — th
   assert.ok(carriedBlock.includes(METRICS.slice(0, 30)), 'a live commitment vanished from the carried list');
 });
 
+// The live repro, 16 Sep 2026 09:03: "Continue my stand-up" became "I'm reading
+// that as: drop the AI messaging workflow", and four decisions were written —
+// onto commitments already closed, under the item TEXT rather than a key.
+test('a closed commitment cannot be changed by an inferred decision — nothing is written', async () => {
+  reset();
+  write(-3, focus(PODCAST, METRICS));
+  ledger.record({ key: acc.commitmentKey(PODCAST), text: PODCAST, decision: 'done', date: dayKey(-1) });
+  const s = session._emptySession('standup', { dateKey: dayKey(0), accountability: acc.buildAccountability() });
+  const before = JSON.stringify(ledger.list());
+
+  // Exactly what the model sent: the TEXT as the key, and a different decision.
+  const res = await session.executeTool(s, 'resolve_commitment', { key: PODCAST, decision: 'dropped' });
+  assert.equal(res.ok, false);
+  assert.match(res.error, /already CLOSED \(done/);
+  assert.equal(JSON.stringify(ledger.list()), before, 'the ledger was rewritten');
+  assert.deepEqual(s.outcome.commitments, [], 'the session outcome recorded it anyway');
+  assert.ok(!openTexts(acc.buildAccountability()).includes(PODCAST));
+  assert.equal(closedBy(acc.buildAccountability(), /full podcast/).decision, 'done', 'the closure changed');
+
+  // Re-stating the SAME decision is harmless and writes nothing.
+  const same = await session.executeTool(s, 'resolve_commitment', { key: PODCAST, decision: 'done' });
+  assert.equal(same.ok, true);
+  assert.equal(same.unchanged, true);
+  assert.equal(JSON.stringify(ledger.list()), before);
+});
+
+test('a key matching no carried commitment is refused, not written', async () => {
+  reset();
+  write(-3, focus(METRICS));
+  const s = session._emptySession('standup', { dateKey: dayKey(0), accountability: acc.buildAccountability() });
+  const res = await session.executeTool(s, 'resolve_commitment', { key: 'Something nobody committed to', decision: 'dropped' });
+  assert.equal(res.ok, false);
+  assert.deepEqual(ledger.list(), []);
+  assert.deepEqual(s.outcome.commitments, []);
+});
+
+test('the item TEXT given as a key resolves an OPEN commitment under its real key', async () => {
+  reset();
+  write(-3, focus(METRICS));
+  const s = session._emptySession('standup', { dateKey: dayKey(0), accountability: acc.buildAccountability() });
+  assert.equal((await session.executeTool(s, 'resolve_commitment', { key: METRICS, decision: 'done' })).ok, true);
+  assert.deepEqual(ledger.list().map(e => e.key), [acc.commitmentKey(METRICS)]);
+  assert.ok(!openTexts(acc.buildAccountability()).includes(METRICS));
+});
+
+test('an explicit reopen, with his words, can change a closed commitment', async () => {
+  reset();
+  write(-3, focus(PODCAST));
+  ledger.record({ key: acc.commitmentKey(PODCAST), text: PODCAST, decision: 'done', date: dayKey(-1) });
+  const s = session._emptySession('standup', { dateKey: dayKey(0), accountability: acc.buildAccountability() });
+  assert.equal((await session.executeTool(s, 'resolve_commitment', { key: PODCAST, decision: 'dropped', reopen: true })).ok, false, 'reopen without his words');
+  const ok = await session.executeTool(s, 'resolve_commitment', { key: PODCAST, decision: 'dropped', reopen: true, note: 'actually we cancelled the podcast' });
+  assert.equal(ok.ok, true);
+  assert.equal(closedBy(acc.buildAccountability(), /full podcast/).decision, 'dropped');
+});
+
 test('the prompts tell both rituals to record a confirmation, and never to claim one that did not save', () => {
   const src = fs.readFileSync(path.join(__dirname, 'standup-session.js'), 'utf8');
   const eodPrompt = src.split('const EOD_PROMPT')[1].split('`;')[0];
   assert.match(eodPrompt, /resolve_commitment/, 'the EOD is never asked to record a decision');
   assert.equal((src.match(/Never tell him something is\s+"?cleared"?\s+unless\s+resolve_commitment\s+came back ok/g) || []).length, 2);
+  assert.equal((src.match(/"continue",\s+"move on"[^—]*?(?:is\s+)?never\s+a\s+decision/g) || []).length, 2, 'a ritual may infer a decision from "continue"');
 });
