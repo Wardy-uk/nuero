@@ -397,6 +397,21 @@ function _renderContext(ctx) {
     }
   }
 
+  // ⚠ An empty CARRIED block does not stop a chase the model ALREADY STARTED.
+  // 16 Sep 2026: the session opened at 08:37 chasing four commitments; they were
+  // then reconciled closed, the carried list correctly went empty — and the very
+  // next turn asked again for "the answer on the AI messaging workflow", because
+  // the only place that item still existed was the model's own earlier message,
+  // and nothing in the context said that question was settled. Absence is not
+  // an instruction; this block is.
+  if (acc?.closedCommitments?.length) {
+    parts.push(`\nALREADY CLOSED — these are finished or decided. Never chase them and never ask for a decision on them, EVEN IF YOU ASKED ABOUT ONE EARLIER IN THIS CONVERSATION: that question is settled. If you did, say so in a few words and move on to today:`);
+    for (const c of acc.closedCommitments.slice(0, 12)) {
+      const when = c.closedOn ? ` on ${c.closedOn}` : '';
+      parts.push(`  - "${c.text}" — ${c.decision}${when}`);
+    }
+  }
+
   if (acc?.openCommitments?.length) {
     parts.push(`\nCARRIED (these are the ones to chase — a commitment on day 3+ needs a decision, not another carry):`);
     for (const c of acc.openCommitments.slice(0, 8)) {

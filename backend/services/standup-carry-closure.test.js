@@ -223,6 +223,46 @@ test('a session started before a closure is reconciled when it is resumed, and w
   assert.ok(!openTexts(session.load('standup').context.accountability).includes(PODCAST), 'the reconciled context was not saved');
 });
 
+// The live repro, 16 Sep 2026 09:xx: the reconciled list was correctly empty,
+// and "Continue my stand-up" still got "I need the answer on the AI messaging
+// workflow first" — the model continuing its OWN 08:37 chase, with nothing in
+// its context saying that question was settled. Asserted on what the model is
+// actually GIVEN, through the real reply()/_turn path with a capturing provider.
+test('a turn after a closure TELLS the model its earlier chase is settled — the transcript cannot revive it', async () => {
+  reset();
+  write(-3, focus(PODCAST, METRICS));
+  const s = session._emptySession('standup', { dateKey: dayKey(0), accountability: acc.buildAccountability() });
+  s.messages.push(
+    { role: 'user', content: "Let's do my standup." },
+    { role: 'assistant', content: `The big one: "${PODCAST}" — do it today, give it a date, or drop it?` },
+  );
+  session.save(s);
+  ledger.record({ key: acc.commitmentKey(PODCAST), text: PODCAST, decision: 'done', date: dayKey(0) });
+
+  const aiRouting = require('./ai-routing');
+  const real = { pick: aiRouting.getToolProvider, rec: aiRouting.recordUsage };
+  let seen = null;
+  aiRouting.getToolProvider = () => ({
+    name: 'capture',
+    provider: { chatWithTools: async (prompt) => { seen = prompt; return { text: 'Onto today.', usage: null, toolCalls: [] }; } },
+  });
+  aiRouting.recordUsage = () => {};
+  try {
+    await session.reply('standup', 'Continue my stand-up');
+  } finally {
+    aiRouting.getToolProvider = real.pick;
+    aiRouting.recordUsage = real.rec;
+  }
+
+  assert.ok(seen, 'the model was never called');
+  const closedBlock = (seen.split('ALREADY CLOSED')[1] || '').split('\n\n')[0];
+  assert.match(closedBlock, /EVEN IF YOU ASKED ABOUT ONE EARLIER/, 'the model is not told its earlier question is settled');
+  assert.ok(closedBlock.includes(`"${PODCAST}" — done`), 'the closed commitment is not named to the model');
+  const carriedBlock = (seen.split('CARRIED')[1] || '').split('\n\n')[0];
+  assert.ok(!carriedBlock.includes(PODCAST), 'still offered as carried');
+  assert.ok(carriedBlock.includes(METRICS.slice(0, 30)), 'a live commitment vanished from the carried list');
+});
+
 test('the prompts tell both rituals to record a confirmation, and never to claim one that did not save', () => {
   const src = fs.readFileSync(path.join(__dirname, 'standup-session.js'), 'utf8');
   const eodPrompt = src.split('const EOD_PROMPT')[1].split('`;')[0];
