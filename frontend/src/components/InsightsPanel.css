@@ -93,6 +93,16 @@
   color: var(--text-secondary, #94a3b8);
 }
 
+/* The one line saying why a candidate is worth distilling — sits above the detail and
+   reads as fact rather than prose, so the queue scans in a glance. */
+.knowledge-item-signal {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-primary, #e2e8f0);
+}
+
 .knowledge-section-header {
   display: flex;
   align-items: center;

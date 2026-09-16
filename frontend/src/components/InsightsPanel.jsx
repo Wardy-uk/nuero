@@ -50,7 +50,13 @@ export default function InsightsPanel({ onNavigate }) {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const promoteCandidate = async (candidate) => {
-    const suggestedDomain = candidate.path.startsWith('Plaud/') ? 'Meetings' : 'General';
+    // A meeting write-up belongs under Meetings wherever it sits — `imports.js` routes
+    // these into `Meetings/YYYY/MM/`, so keying the suggestion on a `Plaud/` prefix
+    // offered "General" for every real candidate.
+    const suggestedDomain = candidate.isSummary || candidate.path.startsWith('Meetings/')
+      || candidate.path.startsWith('Plaud/')
+      ? 'Meetings'
+      : 'General';
     const chosenDomain = window.prompt('Promote into which Knowledge domain/folder?', suggestedDomain);
     if (!chosenDomain) return;
     setPromoting(candidate.path);
@@ -188,7 +194,7 @@ export default function InsightsPanel({ onNavigate }) {
             <div className="knowledge-stat-card">
               <span className="knowledge-stat-label">Promote Next</span>
               <span className="knowledge-stat-value">{knowledge.counts.promotionCandidates}</span>
-              <span className="knowledge-stat-copy">Likely signal trapped in raw intake.</span>
+              <span className="knowledge-stat-copy">Likely signal in the last 21 days of intake.</span>
             </div>
             <div className="knowledge-stat-card">
               <span className="knowledge-stat-label">Reflection Notes</span>
@@ -224,9 +230,30 @@ export default function InsightsPanel({ onNavigate }) {
                 <div key={candidate.path} className="knowledge-list-item">
                   <div className="knowledge-item-topline">
                     <span className="knowledge-item-title">{candidate.name}</span>
-                    <span className="knowledge-item-meta">{candidate.folder}</span>
+                    <span className="knowledge-item-meta">
+                      {(candidate.occurredAt || candidate.modified || '').slice(0, 10)}
+                    </span>
                   </div>
-                  <div className="knowledge-item-copy">{candidate.excerpt}</div>
+                  {/*
+                    ⚠ The signal, never the excerpt, whenever there is one. `excerpt` is
+                    the first 260 characters of the body, which for a PLAUD note is the
+                    title, the title again as a wikilink and the speaker warning —
+                    boilerplate every transcript shares, so the card answered "why
+                    promote this" with nothing. It stays as the fallback for a note with
+                    no structure to read, because no structure is not no content.
+                  */}
+                  {candidate.signal ? (
+                    <>
+                      <div className="knowledge-item-signal">{candidate.signal.headline}</div>
+                      {candidate.signal.conclusion
+                        ? <div className="knowledge-item-copy">{candidate.signal.conclusion}</div>
+                        : candidate.signal.topicNames?.length > 0
+                          ? <div className="knowledge-item-copy">{candidate.signal.topicNames.join(' · ')}</div>
+                          : null}
+                    </>
+                  ) : (
+                    <div className="knowledge-item-copy">{candidate.excerpt}</div>
+                  )}
                   <button
                     className="knowledge-promote-btn"
                     onClick={() => promoteCandidate(candidate)}

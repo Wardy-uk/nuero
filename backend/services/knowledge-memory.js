@@ -13,6 +13,7 @@ const retrieval = require('./retrieval');
 const weeklySummary = require('./weekly-summary');
 const knowledgeGaps = require('./knowledge-gaps');
 const vaultHooks = require('./vault-hooks');
+const { canonicalPlaudId } = require('../../shared/plaud-id.cjs');
 
 const VAULT_PATH = () => process.env.OBSIDIAN_VAULT_PATH || '';
 // ⚠ `Meetings/transcripts` is where transcripts were SUPPOSED to land and holds
@@ -136,6 +137,37 @@ function extractMarkdownSection(content, heading) {
     ? remainder
     : remainder.slice(0, nextHeadingOffset);
   return section.trim();
+}
+
+/**
+ * A section at ANY heading level, for reading PLAUD summaries.
+ *
+ * ⚠ PLAUD WRITES TWO LAYOUTS AND `extractMarkdownSection` ONLY SEES ONE. Measured on
+ * the live vault: `## Meeting Notes` on 157 notes and `### Meeting Notes` (nested under
+ * `## Summary`) on 15. The strict extractor is anchored to `^## `, so those 15 returned
+ * EMPTY — not an error, just a card with nothing on it.
+ *
+ * ⚠ It is a SEPARATE function rather than a loosened `extractMarkdownSection`: that one
+ * is paired with `removeMarkdownSection`/`insertAiSections` and its result is ANDed with
+ * the AI-enrichment skip check, so widening what it matches risks re-enriching notes
+ * with PAID model calls. Reading is allowed to be lenient; rewriting is not.
+ *
+ * ⚠⚠ THE SECTION ENDS AT THE SAME OR A HIGHER LEVEL, NEVER AT ANY HEADING. The first
+ * cut stopped at `#{1,4}`, so `## Meeting Notes` followed by a `### **Topic**` subhead
+ * ended IMMEDIATELY and the section read as empty — 11 notes, every one of them a long
+ * meeting, reporting zero topics while their follow-ups counted fine. An extractor that
+ * returns '' is indistinguishable from a note that has nothing to say.
+ */
+function extractSectionFlexible(content, heading) {
+  const text = String(content || '');
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const startMatch = text.match(new RegExp(`^(#{2,4})\\s+${escaped}\\s*$`, 'm'));
+  if (!startMatch || startMatch.index === undefined) return '';
+
+  const level = startMatch[1].length;
+  const rest = text.slice(startMatch.index + startMatch[0].length);
+  const nextHeading = rest.search(new RegExp(`\\n#{1,${level}}\\s+`));
+  return (nextHeading === -1 ? rest : rest.slice(0, nextHeading)).trim();
 }
 
 /**
@@ -306,54 +338,263 @@ function noteDateParts(note) {
   };
 }
 
+/**
+ * Is this note the DISTILLED write-up, or the raw recording it came from?
+ *
+ * Read off what the note SAYS IT IS (`note_type`, written by plaud-sync) rather than
+ * where it sits: `imports.js` routes a summary into `Meetings/YYYY/MM/`, so the folder
+ * stopped being a statement about the note the day routing shipped.
+ */
+function isSummaryNote(note) {
+  const fm = (note && note.frontmatter) || {};
+  const noteType = cleanQuoted(fm.note_type || fm.type).toLowerCase();
+  if (noteType === 'summary') return true;
+  // ⚠ `plaud_summary_type`, NOT `summary_type` — see the scorer below.
+  return Boolean(cleanQuoted(fm.plaud_summary_type));
+}
+
+function isTranscriptNote(note) {
+  const fm = (note && note.frontmatter) || {};
+  return cleanQuoted(fm.note_type || fm.type).toLowerCase() === 'transcript';
+}
+
+/**
+ * canonical plaud_id -> the path of the SUMMARY for that recording.
+ *
+ * Built from the raw pool the candidates come from, so it costs no extra walk. The
+ * join is the canonical id and never the `Summary: [[...]]` link in the transcript
+ * body — those were left pointing at `… 2` twins by the 15 Sep duplicate incident
+ * and a broken link would read as "no summary exists".
+ */
+function indexSummariesByRecording(notes) {
+  const index = new Map();
+  for (const note of notes || []) {
+    if (!isSummaryNote(note)) continue;
+    const id = canonicalPlaudId((note.frontmatter || {}).plaud_id);
+    if (!id || index.has(id)) continue;
+    index.set(id, note.path);
+  }
+  return index;
+}
+
+/** The summary that supersedes this note, or '' — never undefined. */
+function supersedingSummary(note, summaryIndex) {
+  if (!summaryIndex || isSummaryNote(note)) return '';
+  const id = canonicalPlaudId(((note && note.frontmatter) || {}).plaud_id);
+  if (!id) return '';
+  return summaryIndex.get(id) || '';
+}
+
+/**
+ * ⚠⚠ TWO ARMS OF THIS SCORED A VAULT LAYOUT THAT NO LONGER EXISTS (16 Sep 2026).
+ *
+ * `Plaud/Summaries/` scored **+5** and holds **ONE** file — `imports.js` routes every
+ * Plaud summary into `Meetings/YYYY/MM/`, where **263** of them live and scored **+2**,
+ * a point BELOW the raw transcript each was distilled from. And the tie-breaker that
+ * would have flipped exactly that, `summary_type`, is a key on **ZERO** notes in this
+ * vault; the real one is `plaud_summary_type`, on **2,326**. ⚠ A wrong frontmatter key
+ * returns undefined rather than throwing, so that arm had never fired once in the
+ * feature's life and `summaryType` on the payload was always null — the
+ * `sleep_core_hours` / `meeting_alert` species, third instance.
+ *
+ * Measured on the live pair for 2026-09-14: transcript **8**, its own summary **7**. So
+ * the queue offered 11,820 words of unattributed speech whose opening line is "Sorry, I
+ * was going to say something you can crap on", and hid the 2,081-word note holding 15
+ * topics, 14 conclusions and 26 follow-ups. Nothing errored; the ranking was simply
+ * upside down, and the excerpt on the card was boilerplate every transcript shares, so
+ * there was nothing on screen to say so.
+ *
+ * ⚠ A SUPERSEDED TRANSCRIPT IS PENALISED, NEVER FILTERED. If the id join is ever wrong
+ * the note stays visible at the bottom of the queue rather than vanishing from it —
+ * a demoted candidate is a cheap, visible mistake, a silently dropped one is not.
+ * Same -10 idiom as `promotedTo`.
+ */
 function scorePromotionCandidate(note) {
   let score = 0;
-  if (note.path.startsWith('Plaud/Summaries/')) score += 5;
-  // Both transcript locations score the same — the folder a transcript sits in is
-  // a deployment detail, not a statement about how good a promotion candidate it
-  // is. Scoring only the empty one meant this arm had never fired.
-  if (note.path.startsWith('Meetings/transcripts/') || note.path.startsWith('Plaud/Transcripts/')) score += 3;
-  if (note.path.startsWith('Meetings/')) score += 2;
+  const fm = (note && note.frontmatter) || {};
+
+  // What the note IS decides most of it. The recording is source material for the
+  // write-up, so it must never outrank the write-up.
+  if (isSummaryNote(note)) score += 6;
+  else if (isTranscriptNote(note)) score += 1;
+  else if (note.path.startsWith('Meetings/')) score += 2;
+
+  // Kept, at a weight that matches its evidence: one file today, but still where
+  // `imports.canonicalizePlaudTranscript` puts a rescued stray.
+  if (note.path.startsWith('Plaud/Summaries/')) score += 2;
+
   if (note.wordCount > 350) score += 2;
   if (note.links > 0) score += 1;
   if (note.tags.length > 0) score += 1;
-  if (String(note.frontmatter.source || '').toLowerCase() === 'plaud') score += 2;
-  if (String(note.frontmatter.summary_type || '').trim()) score += 1;
+  if (String(fm.source || '').toLowerCase() === 'plaud') score += 2;
+  if (note.supersededBy) score -= 10;
   if (note.promotedTo) score -= 10;
   return score;
 }
 
-function getPromotionCandidates({ topic, limit = 8, daysBack = 21 } = {}) {
+/**
+ * Why this note is worth distilling, in the note's own words.
+ *
+ * ⚠ THE CARD USED TO RENDER `excerpt(content, 260)`, WHICH FOR A PLAUD NOTE IS THE
+ * TITLE, THE TITLE AGAIN AS A WIKILINK, AND THE SPEAKER WARNING — boilerplate all 347
+ * transcripts share, so the queue answered "what is this" with something identifying
+ * nothing and "why promote it" with nothing at all.
+ *
+ * ⚠ IT DELIBERATELY DOES NOT READ `## Summary`, which is the obvious section and is
+ * EMPTY on the live 2026-09-14 note — a card built on it renders blank. The signal is
+ * in `## Meeting Notes` (the `Topic Title:` / `Conclusion:` lines PLAUD writes) and the
+ * unticked boxes under `## Next Arrangements`.
+ *
+ * ⚠ Returns null rather than an empty shape when there is nothing to say, so the caller
+ * falls back to the excerpt: a note with no structure is not a note with no content.
+ * PURE — no vault, no clock.
+ */
+function promotionSignal(note) {
+  const content = (note && note.content) || '';
+  const fm = (note && note.frontmatter) || {};
+
+  const meetingNotes = extractSectionFlexible(content, 'Meeting Notes');
+  const arrangements = extractSectionFlexible(content, 'Next Arrangements');
+
+  // ⚠ THREE TOPIC CONVENTIONS, MEASURED ON THE LIVE VAULT, TRIED IN ORDER AND NEVER
+  // SUMMED: `- Topic Title: X` (43 notes), a `### **X**` subheading (11) and a bare
+  // `**X**` line (31). A note uses one of them, so adding the counts would double up
+  // any note that happens to contain two — the first non-empty list wins.
+  //
+  // ⚠ Written against what PLAUD ACTUALLY EMITS rather than one observed file. The
+  // first cut knew only the first convention, and the notes using the other two
+  // reported zero topics — a plausible number, and wrong, which is why it survived a
+  // read-through and was caught only by running it over the whole vault.
+  const stripBold = (value) => String(value).replace(/\*\*/g, '').trim();
+  const titled = [...meetingNotes.matchAll(/^\s*[-*]\s*Topic Title:\s*(.+)$/gm)].map(m => stripBold(m[1]));
+  const subheads = [...meetingNotes.matchAll(/^#{3,5}\s+(.+)$/gm)].map(m => stripBold(m[1]));
+  const bolded = [...meetingNotes.matchAll(/^\*\*([^*\n]+)\*\*\s*$/gm)].map(m => stripBold(m[1]));
+  const topicNames = [titled, subheads, bolded].find(list => list.filter(Boolean).length) || [];
+  const topics = topicNames.filter(Boolean).length;
+
+  const openFollowUps = (arrangements.match(/^\s*[-*]\s*\[ \]/gm) || []).length;
+
+  // ⚠ A FOURTH TEMPLATE: the Consultation layout (`## Overview` on 9 notes,
+  // `## Next Steps` on 15) has neither Meeting Notes nor Next Arrangements, so it
+  // reported a duration and nothing else. Its next steps are PLAIN BULLETS, not
+  // checkboxes, so they are counted and named separately — calling them "open
+  // follow-ups" would claim a tick state the note does not carry.
+  const nextSteps = (extractSectionFlexible(content, 'Next Steps').match(/^\s*[-*]\s+(?!\[)/gm) || []).length;
+
+  // Only the first template states conclusions; the others carry the point in their
+  // topic names or in the Overview paragraph, which is why those travel too.
+  const conclusionMatch = meetingNotes.match(/^\s*[-*]\s*Conclusion:\s*(.+)$/m);
+  const overview = extractSectionFlexible(content, 'Overview');
+  const overviewSentence = overview
+    ? (overview.split(/(?<=\.)\s+/)[0] || '').trim()
+    : '';
+  const conclusion = conclusionMatch ? conclusionMatch[1].trim() : overviewSentence;
+
+  // `duration_ms` is quoted on some notes and bare on others — cleanQuoted first, or
+  // Number('"3062000"') is NaN and every meeting silently loses its length.
+  const durationMs = Number(cleanQuoted(fm.duration_ms));
+  const durationMinutes = Number.isFinite(durationMs) && durationMs > 0
+    ? Math.round(durationMs / 60000)
+    : null;
+
+  if (!topics && !openFollowUps && !nextSteps && !conclusion && durationMinutes === null) return null;
+
+  const parts = [];
+  if (durationMinutes !== null) parts.push(`${durationMinutes} min`);
+  if (topics) parts.push(`${topics} topic${topics === 1 ? '' : 's'}`);
+  if (openFollowUps) parts.push(`${openFollowUps} open follow-up${openFollowUps === 1 ? '' : 's'}`);
+  else if (nextSteps) parts.push(`${nextSteps} next step${nextSteps === 1 ? '' : 's'}`);
+
+  return {
+    headline: parts.join(' · '),
+    conclusion,
+    topics,
+    topicNames: topicNames.slice(0, 3),
+    openFollowUps,
+    nextSteps,
+    durationMinutes
+  };
+}
+
+function toCandidatePayload(note) {
+  return {
+    path: note.path,
+    name: note.name,
+    folder: note.folder,
+    modified: note.modified,
+    occurredAt: note.occurredAt ? new Date(note.occurredAt.ms).toISOString() : note.modified,
+    occurredAtSource: note.occurredAt ? note.occurredAt.when : 'file',
+    excerpt: note.excerpt,
+    wordCount: note.wordCount,
+    tags: note.tags,
+    knowledgeState: note.knowledgeState,
+    // ⚠ `plaud_summary_type`. The old `summary_type` is on zero notes in this vault,
+    // so this field had only ever been null. See scorePromotionCandidate.
+    summaryType: cleanQuoted(note.frontmatter.plaud_summary_type) || null,
+    noteType: cleanQuoted(note.frontmatter.note_type || note.frontmatter.type) || null,
+    isSummary: isSummaryNote(note),
+    supersededBy: note.supersededBy || null,
+    signal: promotionSignal(note),
+    promotionScore: note.promotionScore
+  };
+}
+
+/**
+ * Every candidate, ranked. Split out from `getPromotionCandidates` so `getOverview` can
+ * report how many there ARE as well as show the top few — it used to render the length
+ * of the CAPPED list, so the card read "6" whatever the real number was.
+ */
+/**
+ * When did this note's CONTENT happen — not when the file was last touched.
+ *
+ * mtime is not a fact about the meeting. Syncthing rewrites it, NEURO's own hooks
+ * rewrite it, and the AI-enrichment pass rewrites it, so the queue was ranking a
+ * 26 Aug meeting above a 14 Sep one and calling both "recent". Measured on the live
+ * vault: the whole top six were August notes inside a 21-day window on 16 September.
+ *
+ * "when: file" is reported rather than hidden, because a note whose own date cannot be
+ * read is being ranked on a weaker signal and that should be visible.
+ */
+function candidateTimestamp(note) {
+  const fm = (note && note.frontmatter) || {};
+  for (const key of ['start_at', 'date', 'created_at']) {
+    const parsed = new Date(cleanQuoted(fm[key]));
+    if (!Number.isNaN(parsed.getTime())) return { ms: parsed.getTime(), when: 'note' };
+  }
+  const fallback = new Date(note && note.modified);
+  return {
+    ms: Number.isNaN(fallback.getTime()) ? 0 : fallback.getTime(),
+    when: 'file'
+  };
+}
+
+function rankPromotionCandidates({ topic, daysBack = 21 } = {}) {
   const cutoff = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
   const term = String(topic || '').trim().toLowerCase();
 
-  return loadRawNotes()
+  const raw = loadRawNotes();
+  const summaryIndex = indexSummariesByRecording(raw);
+
+  return raw
     .filter(note => !note.promotedTo)
-    .filter(note => new Date(note.modified).getTime() >= cutoff)
+    .map(note => ({ ...note, occurredAt: candidateTimestamp(note) }))
+    .filter(note => note.occurredAt.ms >= cutoff)
     .filter(note => !term || `${note.name}\n${note.excerpt}\n${note.tags.join(' ')}`.toLowerCase().includes(term))
-    .map(note => ({
-      ...note,
-      promotionScore: scorePromotionCandidate(note)
-    }))
+    .map(note => {
+      const withSource = { ...note, supersededBy: supersedingSummary(note, summaryIndex) };
+      return { ...withSource, promotionScore: scorePromotionCandidate(withSource) };
+    })
     .sort((a, b) => {
       if (b.promotionScore !== a.promotionScore) return b.promotionScore - a.promotionScore;
-      return new Date(b.modified) - new Date(a.modified);
-    })
-    .slice(0, limit)
-    .map(note => ({
-      path: note.path,
-      name: note.name,
-      folder: note.folder,
-      modified: note.modified,
-      excerpt: note.excerpt,
-      wordCount: note.wordCount,
-      tags: note.tags,
-      knowledgeState: note.knowledgeState,
-      summaryType: note.frontmatter.summary_type || null,
-      promotionScore: note.promotionScore
-    }));
+      return b.occurredAt.ms - a.occurredAt.ms;
+    });
 }
 
+function getPromotionCandidates({ topic, limit = 8, daysBack = 21 } = {}) {
+  return rankPromotionCandidates({ topic, daysBack })
+    .slice(0, limit)
+    .map(toCandidatePayload);
+}
 async function getActiveContext({ topic, maxResults = 5 } = {}) {
   const trustedNotes = loadTrustedNotes();
   if (!topic || !topic.trim()) {
@@ -397,17 +638,32 @@ async function getActiveContext({ topic, maxResults = 5 } = {}) {
     }));
 }
 
+/**
+ * The NEWEST reflections, and how many there are.
+ *
+ * ⚠ `loadFolderNotes` does NOT sort — `walkMarkdown` returns readdir order — so
+ * `.slice(0, limit)` was "the first four the directory listing yielded", which on this
+ * vault is the four OLDEST (June/July) under a heading reading "recent". Same species
+ * as the wins ledger reading `activity_log` in query order.
+ *
+ * ⚠ `total` is separate from the list because the Insights card rendered the LENGTH OF
+ * THE CAPPED LIST as its count: it read "4" while 13 sat on disk, and would have read
+ * "4" for ever. A cap is not a measurement.
+ */
 function recentReflections(limit = 4) {
-  return loadFolderNotes(REFLECTION_DIR)
-    .slice(0, limit)
-    .map(note => ({
+  const all = loadFolderNotes(REFLECTION_DIR)
+    .sort((a, b) => new Date(b.modified) - new Date(a.modified));
+
+  return {
+    total: all.length,
+    items: all.slice(0, limit).map(note => ({
       path: note.path,
       name: note.name,
       modified: note.modified,
       excerpt: note.excerpt
-    }));
+    }))
+  };
 }
-
 function getAiEnrichmentNotesForDate(dateKey = isoDate()) {
   const vault = VAULT_PATH();
   if (!vault || !fs.existsSync(vault)) return [];
@@ -445,7 +701,8 @@ async function getOverview({ topic } = {}) {
 
   const raw = loadRawNotes();
   const trusted = loadTrustedNotes();
-  const candidates = getPromotionCandidates({ topic, limit: 6 });
+  const rankedCandidates = rankPromotionCandidates({ topic });
+  const candidates = rankedCandidates.slice(0, 6).map(toCandidatePayload);
   const activeContext = await getActiveContext({ topic, maxResults: 5 });
   const weekly = weeklySummary.summarizeWeek({});
   const gaps = knowledgeGaps.findKnowledgeGaps({ topic, daysBack: 90 });
@@ -462,8 +719,13 @@ async function getOverview({ topic } = {}) {
     counts: {
       rawNotes: raw.length,
       trustedNotes: trusted.length,
-      promotionCandidates: candidates.length,
-      reflectionNotes: reflections.length,
+      // ⚠ TOTALS, not the length of the capped list beside them. Both of these used
+      // to render the cap — "Promote Next 6" was `limit: 6` and "Reflection Notes 4"
+      // was `recentReflections(4)`, against 13 on disk. A number that cannot move is
+      // one nobody can act on.
+      promotionCandidates: rankedCandidates.length,
+      promotionCandidatesShown: candidates.length,
+      reflectionNotes: reflections.total,
       knowledgeDomains: domains.size
     },
     weekly: weekly.status === 'ok' ? weekly.counts : null,
@@ -473,7 +735,7 @@ async function getOverview({ topic } = {}) {
       .map(([domain, count]) => ({ domain, count })),
     activeContext,
     promotionCandidates: candidates,
-    recentReflections: reflections,
+    recentReflections: reflections.items,
     knowledgeGaps: gaps.status === 'ok' ? (gaps.suggestions || []).slice(0, 5) : []
   };
 }
@@ -956,6 +1218,22 @@ function promoteCandidate({ sourcePath, domain, title }) {
   };
 }
 
+/**
+ * One line saying why a candidate is worth distilling.
+ *
+ * Shared by the Monday reflection note so the note and the Insights card cannot come
+ * to describe the same candidate differently — the `describeCandidateSource` rule.
+ * Falls back to the excerpt only when the note has no structure to read.
+ */
+function candidateSummaryLine(candidate) {
+  const signal = candidate.signal;
+  if (!signal) return candidate.excerpt;
+  const parts = [];
+  if (signal.headline) parts.push(signal.headline);
+  if (signal.conclusion) parts.push(signal.conclusion);
+  return parts.length ? parts.join(' — ') : candidate.excerpt;
+}
+
 function generateReflection({ topic, write = false } = {}) {
   const overview = {
     weekly: weeklySummary.summarizeWeek({}),
@@ -983,7 +1261,7 @@ function generateReflection({ topic, write = false } = {}) {
     lines.push('- No obvious promotion candidates right now.');
   } else {
     for (const candidate of overview.candidates) {
-      lines.push(`- [[${candidate.path.replace(/\.md$/, '')}|${candidate.name}]] — ${candidate.excerpt}`);
+      lines.push(`- [[${candidate.path.replace(/\.md$/, '')}|${candidate.name}]] — ${candidateSummaryLine(candidate)}`);
     }
   }
   lines.push('');
@@ -1671,6 +1949,17 @@ module.exports = {
   TRUSTED_ROOTS,
   getOverview,
   getPromotionCandidates,
+  // Pure, exported so the judgements pin without a vault (the pi-health.assess split).
+  scorePromotionCandidate,
+  candidateTimestamp,
+  extractSectionFlexible,
+  recentReflections,
+  promotionSignal,
+  isSummaryNote,
+  isTranscriptNote,
+  indexSummariesByRecording,
+  supersedingSummary,
+  candidateSummaryLine,
   getActiveContext,
   promoteCandidate,
   generateReflection,
