@@ -1,19 +1,27 @@
 'use strict';
 
 /**
- * The hold — a task blocked into the calendar does not go done until it has been
- * written up (18 Aug 2026).
+ * Blocks, ticks and outcome notes.
+ *
+ * ⚠ **THE HOLD IS GONE (15 Sep 2026, Nick's call: "being in a block should not
+ * stop me independently ticking off a task").** From 18 Aug a `done` on a
+ * blocked task was held at `in-progress` until an outcome note was written, on
+ * the reasoning that a window in the diary is not evidence the work happened.
+ * Measured over the whole life of that rule, the sweep logged `0 completed` on
+ * every pass — not one block was ever closed by a write-up — so all it ever did
+ * was delay each completion by ~24h until the ageing pass released the block,
+ * while the task sat at `in-progress`, which the read path reports as plain
+ * `open`. It presented as a checkbox that did nothing.
  *
  * Separate from task-blocks.test.js because these need a real DB and a real
- * vault on disk, where that file is pure. The properties pinned here are the
- * ones that decide whether the feature is trustworthy rather than merely
- * present:
+ * vault on disk, where that file is pure. What is pinned here now:
  *
- *   - ticking done HOLDS rather than completing, and says so
- *   - the tick is not thrown away (held at in-progress, so Nick ticks once)
- *   - writing the note releases it, on the sweep, with no further tick
- *   - an unreadable vault fails OPEN — the evidence rule is worth enforcing
- *     against forgetfulness, not against an unmounted disk
+ *   - ticking a blocked task COMPLETES it, immediately, with no hold
+ *   - the tick PROPAGATES: every open block holding it shows the box ticked
+ *   - a block settles itself once its ticked work is done, so it stops asking
+ *     for a write-up nobody owes
+ *   - the note still EXISTS and still works — `isOutcomeWritten` still refuses
+ *     an empty stub, `saveNote` still completes the block
  *   - release() needs a reason, and records it
  */
 
@@ -59,12 +67,16 @@ function recentSlot() {
   // later in the day: `listTaskBlockRows` orders by (date, start) descending and
   // the tests about "the most recent block" mean the one worked most recently,
   // not the one inserted last.
-  // ⚠ The step is sized against the number of fixtures in this file (74 at the
-  // time of writing) so the last one still lands in the PAST: at 10 minutes a
-  // pass is 12 hours long and the tail of the file books itself into the future,
-  // where a block correctly does not hold and half the suite fails for a reason
-  // that has nothing to do with the rule under test.
-  const at = new Date(Date.now() - (8 * 60 - (slotSeq++ * 5)) * 60000);
+  // ⚠ The budget is a FIXED SPAN divided by a generous fixture count, rather
+  // than a step sized by hand against however many fixtures the file had on the
+  // day it was written. That hand-tuned version (8h back, 5 min a step, "74 at
+  // the time of writing") silently broke the moment a test was ADDED: the tail
+  // booked itself into the future, and the failures landed on unrelated tests
+  // further down the file. Every slot now lands between SPAN and SPAN/2 hours
+  // ago — comfortably in the past, comfortably inside STALE_AFTER_MS.
+  const SPAN_MIN = 20 * 60;
+  const SLOTS = 400;
+  const at = new Date(Date.now() - (SPAN_MIN - (slotSeq++ % SLOTS) * (SPAN_MIN / 2 / SLOTS)) * 60000);
   // Keep the window inside one day: an end that wrapped past midnight would
   // parse as EARLIER than its start and read as ancient.
   if (at.getHours() === 23 && at.getMinutes() > 55) at.setMinutes(55);
@@ -86,7 +98,17 @@ function blockedTasks(texts, { dateKey = null, startTime = null, endTime = null 
   const list = Array.isArray(texts) ? texts : [texts];
   const tasks = list.map(text => {
     const { id } = taskStore.createTask({ text, source: 'manual', skipExport: true });
-    return db.getTaskRow(id);
+    const row = db.getTaskRow(id);
+    // ⚠ `createTask` FOLDS on normalised text (dedupe_key is UNIQUE), so two
+    // fixtures in this file sharing a wording are ONE task — and the second
+    // test then silently inherits whatever the first did to it. That cost a
+    // real half hour: 'Did this one' was already `done` from a fixture 400
+    // lines up, so `updateTask` saw no transition, skipped the tick
+    // propagation, and the failure surfaced as an unrelated reschedule
+    // refusing. Caught here, at the collision, rather than wherever it lands.
+    assert.equal(row.status, 'open',
+      `fixture text "${text}" collided with an existing task (#${id}, ${row.status}) — give it its own wording`);
+    return row;
   });
   const notePath = taskBlocks.outcomeNotePath(tasks, dateKey, startTime);
   const blockId = db.createTaskBlockRow({
@@ -120,37 +142,49 @@ function writeUp(full) {
   );
 }
 
-test('ticking a blocked task done holds it, and says why', () => {
+test('ticking a blocked task completes it — a block never holds a tick', () => {
   const { taskId, blockId, notePath } = blockedTask('Build the succession cover matrix');
 
   const result = taskStore.updateTask(taskId, { status: 'done' });
-  assert.equal(result.status, 'in-progress',
-    'the tick was thrown away or let through — either way Nick loses');
-  assert.ok(result.held, 'a silent hold is the worst outcome: the task stays open and nothing says why');
-  assert.equal(result.held.blockId, blockId);
-  assert.equal(result.held.notePath, notePath);
+  assert.equal(result.status, 'done',
+    'being in a block must not stop a task being ticked off (Nick, 15 Sep 2026)');
+  assert.equal(result.held, undefined,
+    '`held` is gone, not nulled: a key that can never be set is a payload field with no writer');
 
-  assert.equal(db.getTaskBlockRow(blockId).status, 'awaiting-writeup');
+  // The tick still reaches the block — otherwise the block and the task list
+  // disagree about work that has just been finished.
+  const item = db.listTaskBlockItems(blockId).find(i => i.task_id === taskId);
+  assert.equal(item.awaiting, 1);
+  assert.ok(fs.readFileSync(path.join(process.env.OBSIDIAN_VAULT_PATH, notePath), 'utf8'));
 });
 
-test('a held task is not logged as a completion', () => {
+test('a completed task IS logged as a completion, and stamped', () => {
   const { taskId } = blockedTask('Write the Tier 2 ageing note');
   taskStore.updateTask(taskId, { status: 'done' });
-  // A win the work has not evidenced is exactly what "a win is detected, not
-  // declared" exists to stop.
-  assert.equal(db.getTaskRow(taskId).completed_at, null);
+  // Under the hold this was null for ~24h, so a day's finished work was missing
+  // from the wins ledger and from "what did I get done today".
+  assert.ok(db.getTaskRow(taskId).completed_at, 'a finished task must carry its completion stamp');
 });
 
-test('writing the note releases it on the sweep — no second tick needed', () => {
-  const { taskId, blockId, full } = blockedTask('Draft the headcount split for production ops');
+test('a block stops asking for a write-up once its ticked work is done', () => {
+  const { taskId, blockId } = blockedTask('Draft the headcount split for production ops');
   taskStore.updateTask(taskId, { status: 'done' });
-  assert.equal(db.getTaskRow(taskId).status, 'in-progress');
+
+  // `refreshBlockStatus`: a block owes a write-up only while it holds ticked
+  // work that is NOT done. With the tick completing outright, nothing is owed.
+  assert.equal(db.getTaskRow(taskId).status, 'done');
+  assert.equal(db.getTaskBlockRow(blockId).status, 'scheduled');
+});
+
+test('the note still works — writing one up completes the block', () => {
+  const { taskId, blockId, full } = blockedTask('Draft the Tier 3 ageing summary');
+  taskStore.updateTask(taskId, { status: 'done' });
 
   writeUp(full);
   const swept = taskBlocks.sweep();
 
-  assert.equal(db.getTaskRow(taskId).status, 'done');
-  assert.equal(db.getTaskBlockRow(blockId).status, 'complete');
+  assert.equal(db.getTaskBlockRow(blockId).status, 'complete',
+    'the write-up is optional now, but it must still close the block when it lands');
   assert.deepEqual(swept.gaps, []);
   assert.ok(swept.completed.some(c => c.blockId === blockId));
 });
@@ -204,11 +238,12 @@ test('dropping a task is never held — abandoning is not a claim needing proof'
 
 test('release needs a reason, and stores it', () => {
   const { taskId, blockId } = blockedTask('Sit in on the SMT update');
-  taskStore.updateTask(taskId, { status: 'done' });   // ticked, then held
+  taskStore.updateTask(taskId, { status: 'done' });   // ticked, and done
 
+  const before = db.getTaskBlockRow(blockId).status;
   const refused = taskBlocks.release(blockId, '   ');
   assert.equal(refused.ok, false, 'a reasonless release is a second, quieter way of saying done');
-  assert.equal(db.getTaskBlockRow(blockId).status, 'awaiting-writeup',
+  assert.equal(db.getTaskBlockRow(blockId).status, before,
     'a refused release must leave the block exactly as it was');
 
   const done = taskBlocks.release(blockId, 'Meeting was cancelled, nothing to write up');
@@ -270,7 +305,7 @@ test('a future block is listed, but flagged as not yet owing a write-up', () => 
 
 // ── Batching: several tasks in one window ────────────────────────────────────
 
-test('a batch holds every task in it, on one note', () => {
+test('a batch ticks every task in it, on one note, and holds none', () => {
   const { taskIds, blockId, notePath } = blockedTasks([
     'Approve the Sandford refund',
     'Reply to Chris about headcount',
@@ -278,12 +313,15 @@ test('a batch holds every task in it, on one note', () => {
   ]);
 
   for (const id of taskIds) {
-    const held = taskStore.updateTask(id, { status: 'done' }).held;
-    assert.ok(held, `task #${id} was not held by its block`);
-    assert.equal(held.blockId, blockId);
-    // One note between them. Three notes for one sitting is friction that would
-    // stop the write-up happening at all.
-    assert.equal(held.notePath, notePath);
+    assert.equal(taskStore.updateTask(id, { status: 'done' }).status, 'done',
+      `task #${id} did not complete — a batch must not hold any of its tasks`);
+  }
+  // One note between them. Three notes for one sitting is friction that would
+  // stop the write-up happening at all.
+  assert.equal(db.getTaskBlockRow(blockId).note_path, notePath);
+  for (const id of taskIds) {
+    assert.equal(db.listTaskBlockItems(blockId).find(i => i.task_id === id).awaiting, 1,
+      'every tick must reach the one shared note');
   }
 });
 
@@ -404,13 +442,15 @@ test('removing a task drops its membership and its hold, not the task', async ()
   assert.equal(result.ok, true);
   assert.equal(result.remaining, 1);
 
-  // The task is untouched and ordinary again — so it completes normally, with
-  // no hold, because it is no longer in any block.
+  // The task is untouched and ordinary again.
   assert.equal(db.getTaskRow(leaves).status, 'open');
   assert.equal(taskStore.updateTask(leaves, { status: 'done' }).status, 'done');
 
-  // The one left behind is still held.
-  assert.ok(taskStore.updateTask(stays, { status: 'done' }).held);
+  // ⚠ And the one LEFT BEHIND completes just the same — being in a block is
+  // not a reason a task cannot be ticked. Removing it from the block must not
+  // be the thing that makes it tickable, or the escape hatch becomes the route.
+  assert.equal(taskStore.updateTask(stays, { status: 'done' }).status, 'done');
+  assert.equal(db.listTaskBlockItems(blockId).find(i => i.task_id === stays).awaiting, 1);
 });
 
 test('removing the last task is refused — drop the block instead', async () => {
@@ -425,14 +465,23 @@ test('removing the last task is refused — drop the block instead', async () =>
   assert.equal(db.listTaskBlockItems(blockId).length, 1);
 });
 
-test('removing the last ticked task stops the block holding anyone', async () => {
-  const { taskIds, blockId } = blockedTasks(['Ticked then removed', 'Never ticked']);
+test('a block that has been reopened owes its write-up again', async () => {
+  // The one route left to `awaiting-writeup`: a task ticked in a block and then
+  // REOPENED is ticked work that is no longer done, which is exactly what
+  // `refreshBlockStatus` asks. Pinned because that status is otherwise
+  // unreachable now, and an unreachable status is dead state.
+  const { taskIds, blockId } = blockedTasks(['Ticked then reopened', 'Never ticked']);
   taskStore.updateTask(taskIds[0], { status: 'done' });
+  assert.equal(db.getTaskBlockRow(blockId).status, 'scheduled');
+
+  taskStore.updateTask(taskIds[0], { status: 'open' });
+  taskBlocks.refreshBlockStatus(blockId);
   assert.equal(db.getTaskBlockRow(blockId).status, 'awaiting-writeup');
 
+  // Removing it takes the claim away with it.
   await taskBlocks.removeTask(blockId, taskIds[0]);
   assert.equal(db.getTaskBlockRow(blockId).status, 'scheduled',
-    'the block kept claiming to be waiting on a write-up for a hold that no longer exists');
+    'the block kept claiming to be waiting on a write-up for work it no longer holds');
 });
 
 test('a task cannot be removed from a block that is already finished', async () => {
@@ -560,7 +609,9 @@ test('saving something that still says nothing does not release the block', () =
   assert.equal(saved.ok, true, 'the words are still saved — they are his');
   assert.equal(saved.released, false);
   assert.match(saved.reason, /characters/);
-  assert.equal(db.getTaskRow(taskIds[0]).status, 'in-progress');
+  // ⚠ The BLOCK is not released. The task is done either way now — the empty
+  // stub rule is about whether the window got a record, never about the tick.
+  assert.notEqual(db.getTaskBlockRow(blockId).status, 'complete');
 });
 
 test('a note changed in the vault since loading refuses the save', () => {
@@ -677,7 +728,7 @@ test('ticking a box in the note records the tick in NEURO', () => {
 test('unticking a box in the note takes the tick back', () => {
   const { taskIds, blockId } = blockedTasks(['Ticked then reconsidered', 'Other']);
   taskStore.updateTask(taskIds[0], { status: 'done' });
-  assert.equal(db.getTaskBlockRow(blockId).status, 'awaiting-writeup');
+  assert.equal(db.listTaskBlockItems(blockId).find(i => i.task_id === taskIds[0]).awaiting, 1);
 
   const view = taskBlocks.readNoteForEdit(blockId);
   const edited = view.raw.replace(`- [x] Ticked then reconsidered <!--t:${taskIds[0]}-->`,
@@ -712,7 +763,7 @@ test('a task already done shows ticked, even though it never held', () => {
   // It completed straight away because the note already had a write-up, so
   // `awaiting` was never set. Keying the box on that flag alone would show a
   // finished task unticked — the note contradicting the task list.
-  const { taskIds, blockId, full } = blockedTasks(['One', 'Two']);
+  const { taskIds, blockId, full } = blockedTasks(['One of a pair', 'Two of a pair']);
   fs.writeFileSync(full, fs.readFileSync(full, 'utf8').replace(
     '## What came of it\n', '## What came of it\nA summary written before any box was ticked.\n'), 'utf8');
 
@@ -746,9 +797,12 @@ test('separate blocks stay independent', () => {
     '## What came of it\nGot the first of the two done today.\n'), { baseHash: viewA.hash });
 
   assert.equal(db.getTaskBlockRow(a.blockId).status, 'complete');
-  assert.equal(db.getTaskBlockRow(b.blockId).status, 'awaiting-writeup');
+  assert.equal(db.getTaskBlockRow(b.blockId).status, 'scheduled',
+    'writing one block up must not touch another');
+  // Both tasks were ticked, so both are done. A write-up in one window was
+  // never what closed the other's work, and is no longer what closes its own.
   assert.equal(db.getTaskRow(a.taskIds[0]).status, 'done');
-  assert.equal(db.getTaskRow(b.taskIds[1]).status, 'in-progress');
+  assert.equal(db.getTaskRow(b.taskIds[1]).status, 'done');
 });
 
 test('two blocks on the same day get their own notes', () => {
@@ -757,17 +811,21 @@ test('two blocks on the same day get their own notes', () => {
   assert.notEqual(a.notePath, b.notePath, 'both blocks would write over each other');
 });
 
-test('a task in two open blocks is held by the most recent, and reported honestly', () => {
-  // Legitimate: work that did not finish gets blocked again. The newer block is
-  // the one being worked, so it is the one that holds.
+test('a task in two open blocks is ticked in both, and reported honestly', () => {
+  // Legitimate: work that did not finish gets blocked again. Under the hold the
+  // NEWER block was picked to hold the tick; now neither holds it and both show
+  // the box ticked, which is the honest rendering of one finished task.
   const first = blockedTasks(['Carried over', 'Only in the first']);
   const second = blockedTasks(['Only in the second']);
   db.addTaskBlockItem(second.blockId, first.taskIds[0], null);
 
-  const held = taskStore.updateTask(first.taskIds[0], { status: 'done' }).held;
-  assert.equal(held.blockId, second.blockId, 'the block being worked now should hold it');
+  assert.equal(taskStore.updateTask(first.taskIds[0], { status: 'done' }).status, 'done');
+  for (const id of [first.blockId, second.blockId]) {
+    assert.equal(db.listTaskBlockItems(id).find(i => i.task_id === first.taskIds[0]).awaiting, 1,
+      `block #${id} did not record the tick`);
+  }
 
-  // Finish it via the second block.
+  // Writing up the second block is still a normal write-up.
   const view = taskBlocks.readNoteForEdit(second.blockId);
   taskBlocks.saveNote(second.blockId, view.raw.replace('## What came of it\n',
     '## What came of it\nPicked up the carried-over one and finished it.\n'), { baseHash: view.hash });
@@ -795,8 +853,11 @@ test('the sweep handles several blocks in one pass', () => {
   const swept = taskBlocks.sweep();
   const ids = swept.completed.map(x => x.blockId);
   assert.ok(ids.includes(a.blockId) && ids.includes(b.blockId));
-  assert.ok(!ids.includes(c.blockId));
-  assert.equal(db.getTaskRow(c.taskIds[0]).status, 'in-progress');
+  assert.ok(!ids.includes(c.blockId), 'a block with no write-up must not be closed as one');
+  assert.equal(db.getTaskBlockRow(c.blockId).status, 'scheduled');
+  // ⚠ And c's TASK is done regardless. The sweep decides the fate of BLOCKS,
+  // never of ticks — that separation is the whole of this change.
+  assert.equal(db.getTaskRow(c.taskIds[0]).status, 'done');
   assert.deepEqual(swept.gaps, []);
 });
 
@@ -807,7 +868,7 @@ test('ticking a task ticks it in every block that holds it', () => {
   // discussing in the block that's closing it."
   // Both blocks hold more than one task, which is when a note carries a
   // checklist at all — a single-task block has nothing to tick.
-  const first = blockedTasks(['Carried over', 'Only in the first']);
+  const first = blockedTasks(['Carried over again', 'Only in the first again']);
   const second = blockedTasks(['Second block A', 'Second block B']);
   db.addTaskBlockItem(second.blockId, first.taskIds[0], null);
   taskBlocks.writeChecklistToNote(second.blockId);
@@ -816,48 +877,58 @@ test('ticking a task ticks it in every block that holds it', () => {
 
   for (const id of [first.blockId, second.blockId]) {
     const view = taskBlocks.readNoteForEdit(id);
-    assert.ok(view.raw.includes(`- [x] Carried over <!--t:${first.taskIds[0]}-->`),
+    assert.ok(view.raw.includes(`- [x] Carried over again <!--t:${first.taskIds[0]}-->`),
       `block #${id} still showed the task unticked`);
   }
 });
 
-test('closing it in one block stops the other asking for a write-up', () => {
+test('neither block is left asking for a write-up once the work is done', () => {
   const first = blockedTasks(['Shared task']);
   const second = blockedTasks(['Something else']);
   db.addTaskBlockItem(second.blockId, first.taskIds[0], null);
   taskBlocks.writeChecklistToNote(second.blockId);
 
   taskStore.updateTask(first.taskIds[0], { status: 'done' });
-  // Both now owe a write-up for it — whichever is written up first closes it.
-  assert.equal(db.getTaskBlockRow(first.blockId).status, 'awaiting-writeup');
-  assert.equal(db.getTaskBlockRow(second.blockId).status, 'awaiting-writeup');
 
+  // Under the hold both blocks went to `awaiting-writeup` and the task sat at
+  // in-progress until one of them was written up. Now the task is simply done,
+  // and neither block is owed anything — a window that demands a record for
+  // finished work is the nag this codebase keeps deleting.
+  assert.equal(db.getTaskRow(first.taskIds[0]).status, 'done');
+  for (const id of [first.blockId, second.blockId]) {
+    assert.equal(db.getTaskBlockRow(id).status, 'scheduled',
+      `block #${id} is asking for a write-up nobody owes`);
+  }
+
+  // Writing one up anyway is still a normal, supported thing to do.
   const view = taskBlocks.readNoteForEdit(second.blockId);
   taskBlocks.saveNote(second.blockId, view.raw.replace('## What came of it\n',
     '## What came of it\nPicked up the shared one and finished it here.\n'), { baseHash: view.hash });
-
-  assert.equal(db.getTaskRow(first.taskIds[0]).status, 'done');
-  // The other block has nothing outstanding left, so it must stop asking.
-  assert.equal(db.getTaskBlockRow(first.blockId).status, 'scheduled',
-    'a block went on demanding a write-up for work already closed elsewhere');
+  assert.equal(db.getTaskBlockRow(second.blockId).status, 'complete');
+  assert.equal(db.getTaskBlockRow(first.blockId).status, 'scheduled');
 });
 
-test('a block with its OWN unfinished ticks keeps owing one', () => {
-  // The settle must be per task, not "this block is done now".
+test('a settle is per TASK, not "this block is finished now"', () => {
+  // The rule the old `awaiting-writeup` dance was protecting still matters: a
+  // write-up in one window must not reach into another block and settle work it
+  // does not hold. Pinned on the ITEMS, which is where the fact lives now.
   const first = blockedTasks(['Shared again', 'Its own work']);
   const second = blockedTasks(['Elsewhere']);
   db.addTaskBlockItem(second.blockId, first.taskIds[0], null);
 
   taskStore.updateTask(first.taskIds[0], { status: 'done' });
-  taskStore.updateTask(first.taskIds[1], { status: 'done' });
 
   const view = taskBlocks.readNoteForEdit(second.blockId);
   taskBlocks.saveNote(second.blockId, view.raw.replace('## What came of it\n',
     '## What came of it\nClosed the shared one over here.\n'), { baseHash: view.hash });
 
-  assert.equal(db.getTaskBlockRow(first.blockId).status, 'awaiting-writeup',
-    'its own ticked task still needs writing up');
-  assert.equal(db.getTaskRow(first.taskIds[1]).status, 'in-progress');
+  // The second block closed. The first still holds its own untouched work and
+  // is untouched itself.
+  assert.equal(db.getTaskBlockRow(second.blockId).status, 'complete');
+  assert.equal(db.getTaskBlockRow(first.blockId).status, 'scheduled');
+  assert.equal(db.getTaskRow(first.taskIds[1]).status, 'open',
+    'a write-up in another window closed work it never held');
+  assert.equal(db.listTaskBlockItems(first.blockId).find(i => i.task_id === first.taskIds[1]).awaiting, 0);
 });
 
 test('unticking a task unticks it everywhere too', () => {
@@ -1022,14 +1093,14 @@ test('an untouched block moves whole, and its old event is deleted', async () =>
   assert.equal(db.listTaskBlockItems(blockId).length, 0);
 });
 
-test('a TICKED task never moves — it stays, owed a write-up', async () => {
-  // The whole rule. Carrying finished work into a future slot would make the
-  // new block's note responsible for evidence about a sitting already had, and
-  // would put a completion in the diary that has already happened.
-  const { taskIds, blockId } = blockedTasks(['Did this one', 'Never started', 'Also not started'], { dateKey: '2026-09-01' });
+test('a TICKED task never moves — the sitting it belongs to has happened', async () => {
+  // The whole rule, and it survives the hold going: carrying finished work into
+  // a future slot would put a completion in the diary that has already happened
+  // and make the new block's note responsible for a sitting already had.
+  const { taskIds, blockId } = blockedTasks(['Did this one before moving the rest', 'Never started', 'Also not started'], { dateKey: '2026-09-01' });
   db.updateTaskBlockRow(blockId, { event_id: 'evt-part' });
-  taskStore.updateTask(taskIds[0], { status: 'done' });   // held, awaiting write-up
-  assert.equal(db.getTaskBlockRow(blockId).status, 'awaiting-writeup');
+  taskStore.updateTask(taskIds[0], { status: 'done' });
+  assert.equal(db.getTaskRow(taskIds[0]).status, 'done', 'the tick completes outright now');
 
   const res = await withGraph(async (deleted) => {
     const r = await taskBlocks.reschedule(blockId, { date: '2026-09-16', startTime: '10:00', minutes: 60 });
@@ -1040,14 +1111,12 @@ test('a TICKED task never moves — it stays, owed a write-up', async () => {
 
   assert.equal(res.ok, true);
   assert.equal(res.from.action, 'kept');
-  assert.equal(res.from.stillOwedWriteUp, 1);
   assert.deepEqual(res.moved.map(m => m.taskId).sort(), [taskIds[1], taskIds[2]].sort());
 
-  // The ticked one is still on the old block and still held.
+  // The ticked one is still on the old block, and still done.
   const left = db.listTaskBlockItems(blockId);
   assert.deepEqual(left.map(i => i.task_id), [taskIds[0]]);
-  assert.equal(db.getTaskBlockRow(blockId).status, 'awaiting-writeup');
-  assert.equal(db.getTaskRow(taskIds[0]).status, 'in-progress');
+  assert.equal(db.getTaskRow(taskIds[0]).status, 'done');
 
   // And it did not follow the others into the new slot.
   const next = db.listTaskBlockItems(res.to.blockId).map(i => i.task_id);
@@ -1524,15 +1593,15 @@ test('a block a day past its window stops holding, and the sweep closes it', () 
     'the reason is the only thing separating this from a close Nick made himself');
 });
 
-test('ageing out completes what was TICKED and leaves the rest open', () => {
-  // The same rule the write-up follows: closing the block is not a claim that
-  // everything in the window got done. But a tick WAS a real statement, and the
-  // hold was only ever deferring it pending evidence that is no longer coming —
-  // leaving it at 'in-progress' for ever is the bug, not a safe default.
+test('ageing out closes the BLOCK and touches no task either way', () => {
+  // Closing the block is not a claim that everything in the window got done —
+  // that was true under the hold and is still true. What has changed is that
+  // the ticked task was ALREADY done at the moment Nick ticked it, so the
+  // ageing pass has nothing left to rescue: it is bookkeeping about a window,
+  // not the delayed second half of a completion.
   const { taskIds, blockId } = agedBlock(['Ticked before it went stale', 'Never touched'], 2);
-  const held = taskStore.updateTask(taskIds[0], { status: 'done' }).held;
-  assert.ok(held, 'a two-hour-old block should still hold');
-  assert.equal(db.getTaskRow(taskIds[0]).status, 'in-progress');
+  assert.equal(taskStore.updateTask(taskIds[0], { status: 'done' }).status, 'done',
+    'a two-hour-old block must not hold a tick');
 
   // A day later, the write-up is not coming.
   const swept = taskBlocks.sweep({ now: new Date(Date.now() + 30 * 3600000) });

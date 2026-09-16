@@ -174,11 +174,10 @@ test('an unrecorded sender SAYS so rather than falling back to the blob', () => 
   assert.ok(!/AAMk/.test(ev[0].ref));
 });
 
-test('a block ALREADY UNDER WAY holds the tick, and says so', () => {
-  // Not a regression — the other half of the write-up rule. Done on a window he
-  // is sitting in is a real statement, held at in-progress until the note lands,
-  // and `taskHeld` is what lets the card say that rather than reporting a
-  // failure.
+test('a block ALREADY UNDER WAY completes its task — there is no hold', () => {
+  // The case that used to be held at in-progress until an outcome note landed.
+  // The hold is gone (15 Sep 2026): being in a block does not stop a task being
+  // ticked off, so "that's done" on a live window closes the task outright.
   const n = seq++;
   const p = v => String(v).padStart(2, '0');
   const now = new Date();
@@ -208,7 +207,7 @@ test('a block ALREADY UNDER WAY holds the tick, and says so', () => {
   });
 
   const r = lifecycle.act(record.id, 'complete');
-  assert.equal(r.taskHeld, true, 'held is a third outcome, not a failure');
-  assert.equal(r.taskCompleted, false);
-  assert.equal(db.getTaskRow(id).status, 'in-progress', 'the tick is kept, not thrown away');
+  assert.equal(r.taskCompleted, true);
+  assert.equal(r.taskHeld, undefined, 'a flag that can never be true must not be on the payload');
+  assert.equal(db.getTaskRow(id).status, 'done');
 });

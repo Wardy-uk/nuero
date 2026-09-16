@@ -27,7 +27,7 @@ const {
   HUB_OPEN, HUB_CLOSE, OUTCOME_HUB,
   renderChecklist, parseChecklist, syncChecklistInNote, LIST_OPEN, LIST_CLOSE,
   MIN_OUTCOME_CHARS, DAY_START_MIN, DAY_END_MIN, SEARCH_DAYS, latestEndFor, blockSubject, liveBlock,
-  blockWindow, isStale, holdsNow, STALE_AFTER_MS,
+  blockWindow, isStale, STALE_AFTER_MS,
 } = require('./task-blocks');
 
 const TASK = { id: 58, text: 'Build succession plan — cover for HoTS and emerging team leads' };
@@ -639,27 +639,36 @@ test('the window is built from the parts, in local time', () => {
   assert.equal(win.start.getDate(), 14);
 });
 
-test('a block that has not started does NOT hold', () => {
-  // The premise of the hold is that Nick sat down and worked, and the evidence
-  // is the note he writes afterwards. At 09:00 there is no sitting yet to write
-  // up, so a 10:00 block has nothing to hold a tick against. This is the case
-  // that made a task un-tickable from the moment the planner booked it.
-  assert.equal(holdsNow(HELD_BLOCK, onDay(9)), false);
-  assert.equal(holdsNow(HELD_BLOCK, onDay(9, 59)), false);
+test('there is no hold left to export — a block never refuses a tick', () => {
+  // ⚠ `checkHold`, `holdsNow` and `markAwaiting` were DELETED on 15 Sep 2026
+  // with the hold itself (Nick: "being in a block should not stop me
+  // independently ticking off a task"). Pinned as an ABSENCE rather than left
+  // as untested dead exports: an uncalled hold sitting in the module is the
+  // obvious thing for a later change to wire back up, and a reader with no
+  // writer is how the Jira queue cache came to state a seven-week-old snapshot
+  // as current fact.
+  const blocks = require('./task-blocks');
+  for (const gone of ['checkHold', 'holdsNow', 'markAwaiting']) {
+    assert.equal(blocks[gone], undefined, `${gone} is back — the hold must not return by export`);
+  }
+  // The window arithmetic it used SURVIVES: the ageing sweep still needs it,
+  // because a block must still close itself a day after its window.
+  assert.equal(typeof blocks.isStale, 'function');
+  assert.equal(typeof blocks.blockWindow, 'function');
 });
 
-test('a block holds inside its window and for a day after', () => {
-  assert.equal(holdsNow(HELD_BLOCK, onDay(10, 30)), true, 'mid-window');
-  assert.equal(holdsNow(HELD_BLOCK, onDay(12)), true, 'just finished');
-  assert.equal(holdsNow(HELD_BLOCK, new Date(2026, 8, 15, 10, 0)), true, '23h later, still owed');
+test('a block is not stale inside its window, nor for a day after', () => {
+  assert.equal(isStale(HELD_BLOCK, onDay(10, 30)), false, 'mid-window');
+  assert.equal(isStale(HELD_BLOCK, onDay(12)), false, 'just finished');
+  assert.equal(isStale(HELD_BLOCK, new Date(2026, 8, 15, 10, 0)), false, '23h later');
 });
 
-test('a block a day past its window stops holding', () => {
-  // Nothing had ever aged one out, so an abandoned window locked its tasks for
-  // good — and because a held tick parks the task at 'in-progress', the only
-  // visible symptom was a checkbox that would not stick.
+test('a block a day past its window is stale, and the sweep closes it', () => {
+  // Nothing had ever aged one out, so an abandoned window sat open for good —
+  // and while the hold existed it locked its tasks with it, whose only visible
+  // symptom was a checkbox that would not stick. The tasks are free now either
+  // way; the BLOCK must still age out or every window stays open for ever.
   assert.equal(isStale(HELD_BLOCK, new Date(2026, 8, 15, 11, 1)), true);
-  assert.equal(holdsNow(HELD_BLOCK, new Date(2026, 8, 15, 11, 1)), false);
   assert.equal(isStale(HELD_BLOCK, new Date(2026, 8, 15, 10, 59)), false, 'a minute short is not stale');
 });
 
@@ -667,11 +676,9 @@ test('the band is a day, and both edges are the same number', () => {
   assert.equal(STALE_AFTER_MS, 24 * 60 * 60 * 1000);
 });
 
-test('an unreadable window holds NOTHING, and is not stale either', () => {
-  // Fails OPEN, like the vault check beside it: a block whose time cannot be
-  // parsed can never be aged out, so holding on one would wedge its tasks
-  // permanently with nothing on earth able to move them. It is not stale,
-  // because expiring on a guess would close a block that may still be owed.
+test('an unreadable window is NOT stale — expiring on a guess closes a live block', () => {
+  // Fails OPEN. A block whose time cannot be parsed must not be aged out on a
+  // guess, because that would close a window that may still be in use.
   for (const bad of [
     null,
     { id: 2 },
@@ -680,7 +687,6 @@ test('an unreadable window holds NOTHING, and is not stale either', () => {
     { id: 5, date_key: '2026-09-14', start_time: '10:00', end_time: 'later' },
   ]) {
     assert.equal(blockWindow(bad), null, `window read from ${JSON.stringify(bad)}`);
-    assert.equal(holdsNow(bad, onDay(12)), false, `held on ${JSON.stringify(bad)}`);
     assert.equal(isStale(bad, onDay(12)), false, `aged out ${JSON.stringify(bad)}`);
   }
 });

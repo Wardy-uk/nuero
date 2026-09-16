@@ -615,16 +615,6 @@ function updateTask(id, fields = {}) {
     patch.status = fields.status;
   }
 
-  // A task blocked into the calendar is not finished until it has been written
-  // up (18 Aug 2026). The hold lives HERE rather than in the route because this
-  // is the only writer — the SAiM completion funnel, the MCP tool, the chat tool
-  // and every route all arrive through this function, and a check in any one of
-  // them would be a check the other three walk straight past.
-  //
-  // Held means held at 'in-progress', not refused: the tick was a real statement
-  // about the work and throwing it away would make Nick tick twice. Only the
-  // 'done' claim waits for its evidence. 'dropped' is never held — abandoning
-  // something is not a claim that needs proving.
   // ── A ticket is closed in Jira, and nowhere else ──────────────────────────
   //
   // Nick's rule for assigned Jira tickets (3 Sep 2026): they become real tasks
@@ -633,7 +623,7 @@ function updateTask(id, fields = {}) {
   // lives here rather than in a route because this is the only writer: the
   // todos routes, the SAiM completion funnel, the MCP tool and the chat tool
   // all arrive through this function, and a guard in any one of them is a guard
-  // the other three walk past. (The same argument as the write-up hold below.)
+  // the other three walk past. (The same argument as the tick propagation below.)
   //
   // It REFUSES rather than holding, and names the ticket: held would leave the
   // task sitting at in-progress with nothing on earth able to move it, whereas
@@ -647,26 +637,45 @@ function updateTask(id, fields = {}) {
     }
   }
 
-  let held = null;
-  if (patch.status === 'done' && row.status !== 'done' && fields.force !== true) {
-    const taskBlocks = require('./task-blocks');
-    const blocker = taskBlocks.checkHold(id);
-    if (blocker) {
-      // The task id matters: the block records WHICH of its tasks were ticked,
-      // so a batch completes only those when the write-up lands.
-      taskBlocks.markAwaiting(blocker.id, id);
-      patch.status = 'in-progress';
-      held = {
-        blockId: blocker.id,
-        notePath: blocker.note_path,
-        dateKey: blocker.date_key,
-        startTime: blocker.start_time,
-        reason: blocker.holdReason || 'no write-up yet',
-      };
-    }
-  }
+  const completing = patch.status === 'done' && row.status !== 'done';
 
   db.updateTaskRow(id, patch);
+
+  // ── A BLOCK IS A PLAN, AND A TICK IS A FACT (15 Sep 2026) ─────────────────
+  //
+  // Being in a block no longer stops a task being ticked off (Nick's call).
+  // Until now a `done` on a blocked task was HELD at `in-progress` until an
+  // outcome note was written, on the reasoning that a window in the diary is
+  // not evidence the work happened. That reasoning still stands about the
+  // BLOCK. It was never true of the TASK, and the measurement is unambiguous:
+  // across the whole life of the feature the sweep logged `0 completed` on
+  // every single pass — not one block has ever been closed by a write-up.
+  // What the hold actually did was delay every completion by ~24h until the
+  // ageing pass released the block, and leave the task at `in-progress`, which
+  // the read path reports as plain `open` — so it presented as a checkbox that
+  // did nothing. A rule that has never once produced its intended outcome and
+  // reliably produces a dead control is not a safeguard, it is a bug with a
+  // rationale.
+  //
+  // ⚠ The tick still PROPAGATES: every open block holding this task has its
+  // item marked and its note's checklist rewritten, or the block and the task
+  // list disagree about work Nick has just finished — the two-screens problem
+  // `setTickEverywhere` exists to end.
+  //
+  // ⚠ Order is load-bearing: this runs AFTER the row is written, because
+  // `refreshBlockStatus` decides whether a block still owes a write-up by
+  // asking whether its ticked items are done. Run before the write and every
+  // block flips to `awaiting-writeup` for work that is already finished.
+  //
+  // Never allowed to fail the completion — the task is closed by the time this
+  // runs, and an unreachable vault must not report the tick as a failure.
+  if (completing) {
+    try {
+      require('./task-blocks').setTickEverywhere(id, true);
+    } catch (e) {
+      console.warn(`[TaskStore] Could not sync the tick on #${id}'s blocks: ${e.message}`);
+    }
+  }
 
   // Finishing something is the one event the activity log never recorded, which
   // left "what did I actually get done today" unanswerable from the data. Logged
@@ -720,13 +729,13 @@ function updateTask(id, fields = {}) {
 
   scheduleExport();
 
-  const updated = db.getTaskRow(id);
-  // `held` rides on the returned row rather than changing the return shape:
-  // every existing caller reads columns off it and is unaffected, while the ones
-  // that need to SAY the tick was held can. A silent hold would be the worst of
-  // both — the task quietly stays open and Nick is never told why.
-  if (updated && held) updated.held = held;
-  return updated;
+  // ⚠ `held` is deliberately GONE from the returned row rather than left as a
+  // field that is now always null. Clients read `task.held` to decide whether
+  // to paint the tick, and a key that can never be set is the payload-field-
+  // with-no-writer shape this codebase keeps getting bitten by. They already
+  // handle its absence (`data?.task?.held || null`), so a null-safe read is
+  // simply never true and the tick paints — which is the new rule.
+  return db.getTaskRow(id);
 }
 
 function setStatus(id, status) {

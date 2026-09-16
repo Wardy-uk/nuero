@@ -18,11 +18,17 @@
  * *a meeting in the diary does not mean Nick attended it* — the Plaud note is
  * what proves both that he was there and that the meeting was processed. A time
  * block has the identical hole and no recording to close it, because nobody
- * Plauds a solo work block. So the evidence is an outcome note Nick writes, and
- * until one lands the task **holds at `awaiting-writeup` rather than going
- * done** (Nick's call, 18 Aug). That hold is enforced in `task-store.updateTask`,
- * the single writer, so it cannot be walked around by the SAiM completion
- * funnel, the MCP tool, the chat tool or the route.
+ * Plauds a solo work block. So the evidence is an outcome note Nick writes.
+ *
+ * ⚠ **That note no longer GATES the task (15 Sep 2026, Nick's call): "being in
+ * a block should not stop me independently ticking off a task".** From 18 Aug a
+ * `done` on a blocked task was held at `in-progress` until a note landed. The
+ * measurement over the whole life of that rule: the sweep logged `0 completed`
+ * on every pass — not one block was ever closed by a write-up — so all the hold
+ * ever did was delay each completion by ~24h until the ageing pass released the
+ * block, while presenting as a checkbox that did nothing. The note is now a
+ * record of the sitting, which is what it was always good for, and the block
+ * settles itself once its ticked work is done.
  *
  * Three refusals carry the design:
  *
@@ -935,106 +941,23 @@ function isStale(block, now = new Date()) {
   return now.getTime() - win.end.getTime() > STALE_AFTER_MS;
 }
 
-/**
- * May this block hold a tick right now?
- *
- * Two refusals, both added 14 Sep 2026 after the hold had quietly become the
- * reason tasks would not close.
- *
- * ⚠ **A window that has not STARTED never holds.** The hold's whole premise is
- * that Nick sat down and worked, and the evidence of that is the note he writes
- * afterwards — so a block at 15:30 cannot hold a tick made at midday, because
- * there is no sitting yet to write up. `openOnly` includes `scheduled`, which is
- * every future block the day planner books on a timer, so before this a task was
- * un-tickable from the moment it was planned.
- *
- * ⚠ **A window a day past never holds either.** See `STALE_AFTER_MS`.
- *
- * ⚠ An unreadable window fails OPEN, like the vault check below it: a block
- * whose time cannot be parsed can never be aged out either, so holding on one
- * would wedge its tasks permanently with nothing able to move them.
- */
-function holdsNow(block, now = new Date()) {
-  const win = blockWindow(block);
-  if (!win) {
-    console.warn(`[TaskBlocks] Block #${block && block.id} has an unreadable window, not holding`);
-    return false;
-  }
-  if (now < win.start) return false;
-  return !isStale(block, now);
-}
-
-// ── The hold ─────────────────────────────────────────────────────────────────
-
-/**
- * Is completing this task held, and by which block?
- *
- * Returns the blocking row, or null. Called by `task-store.updateTask` on the
- * transition to 'done' — the one place every completion path funnels through,
- * which is why the hold cannot be walked around by the SAiM funnel, the MCP
- * tool, the chat tool or the route.
- *
- * **A vault that cannot be read does NOT hold the task.** That is deliberate and
- * it is the one place this fails open: a Syncthing hiccup or an unmounted disk
- * would otherwise refuse every completion Nick made, in the single screen he
- * uses to find what he owes. The evidence rule is worth enforcing against
- * forgetfulness; it is not worth enforcing against a mount point.
- */
-function checkHold(taskId, now = new Date()) {
-  let blocks;
-  try {
-    blocks = db.listTaskBlockRows({ taskId, openOnly: true });
-  } catch (e) {
-    console.warn('[TaskBlocks] Hold check failed:', e.message);
-    return null;
-  }
-  if (!blocks.length) return null;
-
-  // Only a window that has started and has not gone stale gets to hold a tick.
-  // Filtering BEFORE the note check matters twice: an unstarted block must not
-  // be able to refuse a completion, and the block finally held must be chosen
-  // from the ones entitled to hold rather than from `blocks[0]`, which after
-  // this filter is routinely a future slot.
-  const holding = blocks.filter((b) => holdsNow(b, now));
-  if (!holding.length) return null;
-
-  for (const block of holding) {
-    const note = readOutcomeNote(block);
-    if (note.error) {
-      console.warn(`[TaskBlocks] Vault unreadable, not holding task #${taskId}: ${note.error}`);
-      return null;
-    }
-    const verdict = isOutcomeWritten(note.raw);
-    if (verdict.written) return null;   // one written-up block is enough
-  }
-
-  // Hold on the most recent one — that is the block Nick just worked.
-  return { ...holding[0], holdReason: isOutcomeWritten(readOutcomeNote(holding[0]).raw).reason };
-}
-
-/**
- * Record that this task's tick was held.
- *
- * Marks the ITEM as well as the block. Per item, because a batch of four
- * routinely finishes three: when the note lands, only the ticked ones complete.
- * Completing the rest would mark work done that nobody did.
- */
-function markAwaiting(blockId, taskId = null) {
-  try {
-    db.updateTaskBlockRow(blockId, { status: 'awaiting-writeup' });
-    if (taskId == null) { writeChecklistToNote(blockId); return; }
-    // Ticked is ticked, everywhere (Nick, 18 Aug). ⚠ A task in two open blocks is
-    // no longer reachable — `plan` refuses it (8 Sep) — but the rows that
-    // predate that refusal still exist, so this stays as the settler for them:
-    // a box ticked in one while the other still shows it outstanding is the
-    // two-screens-disagreeing problem the checklist sync exists to end. What
-    // stays per-block is the WRITE-UP: whichever block is written up first
-    // closes it, and the rest settle by themselves.
-    setTickEverywhere(taskId, true);
-  } catch (e) {
-    console.warn('[TaskBlocks] Could not mark awaiting:', e.message);
-  }
-}
+// ── The write-up, after the tick ─────────────────────────────────────────────
+//
+// ⚠ There is NO HOLD any more (15 Sep 2026, Nick's call): being in a block does
+// not stop a task being ticked off. `checkHold`, `holdsNow` and `markAwaiting`
+// are DELETED rather than left exported-but-uncalled — a reader with no writer
+// is how the Jira queue cache came to state a seven-week-old snapshot as fact,
+// and an un-called hold sitting here is the obvious thing for a future change
+// to wire back up. `task-store.updateTask` now completes the task and calls
+// `setTickEverywhere` to keep the blocks in step; `refreshBlockStatus` then
+// settles each block by itself, because a block only owes a write-up while it
+// holds ticked work that is NOT done.
+//
+// What survives, and is the half that was always right: the block still gets a
+// stub note, the note is still the record of the sitting, `isOutcomeWritten`
+// still refuses an empty one, and `sweep` still ages a window out a day after
+// it closed. The write-up is now something Nick may write, not a gate his task
+// list waits behind.
 
 /** Every open block this task sits in. */
 function openBlocksWithTask(taskId) {
@@ -1191,8 +1114,7 @@ function writeChecklistToNote(blockId) {
  *
  * The escape hatch, and it is not optional — see the header. A reason is
  * REQUIRED: `released` has to stay legible as a decision Nick made rather than
- * degrading into a second, quieter way of saying done. `force` on the task
- * completion that follows is what actually lets it through the hold.
+ * degrading into a second, quieter way of saying done.
  */
 function release(blockId, reason, { completeTask = true } = {}) {
   const block = db.getTaskBlockRow(blockId);
@@ -1209,7 +1131,7 @@ function release(blockId, reason, { completeTask = true } = {}) {
     const taskStore = require('./task-store');
     for (const item of db.listTaskBlockItems(blockId)) {
       if (!item.awaiting) continue;
-      taskStore.updateTask(item.task_id, { status: 'done', force: true });
+      taskStore.updateTask(item.task_id, { status: 'done' });
       settleTaskElsewhere(item.task_id, blockId);
       completed.push(item.task_id);
     }
@@ -1420,7 +1342,7 @@ function saveNote(blockId, content, { baseHash = null } = {}) {
       continue;
     }
     try {
-      taskStore.updateTask(item.task_id, { status: 'done', force: true });
+      taskStore.updateTask(item.task_id, { status: 'done' });
       // Nothing more is owed for it anywhere else — this block closed it, and
       // the others must stop asking for a write-up they no longer need.
       settleTaskElsewhere(item.task_id, blockId);
@@ -2155,7 +2077,7 @@ function sweep({ now = new Date(), dryRun = false } = {}) {
       const completed = [];
       for (const item of items) {
         if (!item.awaiting) continue;
-        taskStore.updateTask(item.task_id, { status: 'done', force: true });
+        taskStore.updateTask(item.task_id, { status: 'done' });
         settleTaskElsewhere(item.task_id, block.id);
         completed.push(item.task_id);
       }
@@ -2379,18 +2301,15 @@ module.exports = {
   plan,
   schedule,
   scheduleMoving,
-  checkHold,
   // Pure, and exported so the two rules that decide whether a tick is held pin
   // without a vault, a database or a clock — the `pi-health.assess()` split.
   STALE_AFTER_MS,
   AGED_OUT_REASON,
   blockWindow,
   isStale,
-  holdsNow,
   createNote,
   readNoteForEdit,
   saveNote,
-  markAwaiting,
   writeChecklistToNote,
   setTickEverywhere,
   refreshBlockStatus,

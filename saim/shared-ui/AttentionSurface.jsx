@@ -55,10 +55,13 @@ export const DEFERRALS = [
 //
 // ⚠ Resolving the CARD and closing the TASK are two outcomes, and the act route
 // states both (`taskCompleted` + `taskWhy`) rather than implying one from the
-// other. A tick held by the outcome-note rule comes back `taskCompleted: false`
-// and `taskHeld: true`, so it renders as held — never as finished, never as failed.
-// `taskWhy` is the server's own sentence and is shown verbatim — a second
-// phrasing on the client is a second answer free to drift.
+// other. `taskWhy` is the server's own sentence and is shown verbatim — a
+// second phrasing on the client is a second answer free to drift.
+//
+// ⚠ The `taskHeld` branch is GONE (15 Sep 2026). It rendered a tick parked by
+// the outcome-note hold, and that hold no longer exists: being in a block does
+// not stop a task being ticked off, so a ticked task is simply completed and
+// comes back `taskCompleted: true`.
 //
 // `undefined` means the shell did not report a result at all, and says NOTHING
 // rather than guessing — "it failed" over a completion that landed is the lie in
@@ -79,9 +82,6 @@ export function describeCompletion(res) {
   // Off his list with no task behind it — an escalation he dealt with. The
   // ticket is still open in Jira, and `taskWhy` says so.
   if (res.handled === true) return { tone: 'done', lead: 'Done — off your list.', sub: why };
-  // ⚠ Held is its own outcome: the tick landed and the task closes when its
-  // write-up exists. Rendered as "no task was closed" it read as the tick failing.
-  if (res.taskHeld === true) return { tone: 'partial', lead: 'Ticked — held until its write-up is in.', sub: why };
   return { tone: 'partial', lead: 'Card cleared — no task was closed.', sub: why };
 }
 

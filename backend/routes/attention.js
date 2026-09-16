@@ -236,9 +236,6 @@ router.post('/records/:id/act', async (req, res) => {
       // Off his list without a task closing (an escalation he dealt with). The
       // card stops coming back; nothing is claimed about a task.
       handled: Boolean(result.handled),
-      // Held by the outcome-note rule: the tick landed and the task closes once
-      // its write-up exists. Not a failure, and not a completion yet.
-      taskHeld: Boolean(result.taskHeld),
       taskWhy,
       // Present only when the completion had to leave the building.
       msPush,

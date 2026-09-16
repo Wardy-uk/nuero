@@ -678,11 +678,12 @@ function act(recordId, action, opts = {}) {
     // surface can say what actually happened rather than implying both.
     case 'complete': {
       let taskCompleted = false;
-      // ⚠ A FLAG, not only a sentence. A tick held by the outcome-note rule used
-      // to come back as `taskCompleted:false` with the hold only in `taskWhy`, so a
-      // screen could not tell "held until the write-up" from "nothing was closed"
-      // without matching words — and rendered the hold as a failure.
-      let taskHeld = false;
+      // ⚠ `taskHeld` is GONE (15 Sep 2026). It flagged a tick parked by the
+      // outcome-note hold, and that hold no longer exists — being in a block
+      // does not stop a task being ticked off. Left in place it would be a flag
+      // that can never be true, i.e. the payload-field-with-no-writer shape
+      // this codebase keeps getting bitten by; every client reads it null-safely
+      // already, so its absence is simply never truthy.
       // The work is off Nick's list somewhere that stops the card being
       // regenerated, without a task being closed — an escalation he has dealt
       // with. Distinct from `taskCompleted` so no screen claims a task closed.
@@ -721,15 +722,12 @@ function act(recordId, action, opts = {}) {
           } else if (match.status === 'done') {
             taskWhy = 'task was already done';
           } else {
-            // ⚠ `task-store.setStatus` owns the outcome-note hold
-            // (`task-blocks`), so a held tick comes back held rather than being
-            // forced through here. Its refusal is reported, not swallowed.
-            const updated = taskStore.setStatus(match.id, 'done');
-            taskHeld = Boolean(updated && updated.held);
-            taskCompleted = !taskHeld;
-            taskWhy = taskCompleted
-              ? `task #${match.id} completed`
-              : `task #${match.id} is held — ${(updated && updated.held && updated.held.reason) || 'awaiting a write-up'}`;
+            // ⚠ `task-store.setStatus` is still the one writer, and still the
+            // one place a REFUSAL can come from — a Jira-linked task throws by
+            // name. That is reported, not swallowed.
+            taskStore.setStatus(match.id, 'done');
+            taskCompleted = true;
+            taskWhy = `task #${match.id} completed`;
           }
         } catch (e) {
           taskWhy = e.message;
@@ -767,12 +765,9 @@ function act(recordId, action, opts = {}) {
           } else {
             try {
               const taskStore = require('./task-store');
-              const updated = taskStore.setStatus(items[0].task_id, 'done');
-              taskHeld = Boolean(updated && updated.held);
-              taskCompleted = !taskHeld;
-              taskWhy = taskCompleted
-                ? `task #${items[0].task_id} completed`
-                : `task #${items[0].task_id} is held — ${(updated && updated.held && updated.held.reason) || 'awaiting a write-up'}`;
+              taskStore.setStatus(items[0].task_id, 'done');
+              taskCompleted = true;
+              taskWhy = `task #${items[0].task_id} completed`;
             } catch (e) {
               taskWhy = e.message;
             }
@@ -807,7 +802,6 @@ function act(recordId, action, opts = {}) {
         ok: true,
         taskCompleted,
         handled,
-        taskHeld,
         taskWhy,
         // Non-null when the completion still has to reach Microsoft. The caller
         // MUST await it and report the outcome; ignoring it resolves the record
