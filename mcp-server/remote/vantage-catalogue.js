@@ -2,7 +2,7 @@ import inventory from './vantage-inventory.json' with { type: 'json' };
 import { z } from 'zod';
 import { json, scalar, pathValue, safeInput } from './api-catalogue.js';
 import { scopesFor } from './api-policy.js';
-import { classification, actionQuery, privateOperations, paramEnums, notes } from './vantage-policy.js';
+import { classification, actionQuery, privateOperations, paramEnums, notes, bodySchemas, noBody } from './vantage-policy.js';
 import { BackendError } from './backend.js';
 
 // VANTAGE is DEPARTMENTAL and DIRECTIVE (the service desk: findings, the Support
@@ -22,7 +22,9 @@ export function vantageSchema(op) {
   return z.strictObject({
     params: z.strictObject(Object.fromEntries(op.params.map(key => [key, paramEnums[op.id]?.[key] ? z.enum(paramEnums[op.id][key]) : pathValue]))).default({}),
     query: z.strictObject(Object.fromEntries(op.query.map(key => [key, scalar.optional()]))).default({}),
-    body: (op.bodyOpen ? json : z.strictObject(Object.fromEntries(op.body.map(key => [key, json.optional()])))).optional(),
+    // A transcribed contract wins over the inventory's "arbitrary JSON"; a route
+    // that reads no body advertises none rather than inviting an ignored payload.
+    ...(noBody.has(op.id) ? {} : { body: (bodySchemas[op.id] || (op.bodyOpen ? json : z.strictObject(Object.fromEntries(op.body.map(key => [key, json.optional()]))))).optional() }),
   });
 }
 
@@ -68,8 +70,11 @@ export function vantageTools(config, api, auth, store, redact) {
   for (const kind of ['read', 'write', 'action', 'admin']) {
     const names = vantageOperations.filter(op => op.classification === kind || (kind === 'action' && actionQuery[op.id])).map(op => op.id);
     tools.push({ name: `vantage_${kind}`, description: `Execute a named VANTAGE ${kind} capability from vantage_capabilities. Fixed registry only; no caller-supplied URL, method or headers. ${kind === 'read' ? 'Reads VANTAGE without changing anything; refresh/rematch switches need vantage_action.' : kind === 'action' ? 'Reaches NEURO, Microsoft Planner, NOVA or spends a model call — requires explicit user intent. Also runs refresh/rematch switches on VANTAGE reads. Never automatically retry an uncertain outcome.' : 'Requires explicit user intent. Never automatically retry an uncertain outcome.'}`, input: z.strictObject({ ...requestShape, operation: z.enum(names) }), output: resultOutput, write: kind !== 'read', classification: kind, scopes: scopesFor(kind), run: async ({ operation, ...input }) => {
-      const bound = bindVantage(operation, Object.fromEntries(Object.entries(input).filter(([,v]) => v !== undefined)), kind);
+      // Scope BEFORE input: a caller who may not do this at all gets one plain
+      // refusal, rather than a schema critique of a payload that was never going
+      // to be sent anywhere.
       if (scopesFor(kind).some(s => !auth.scopes.includes(s))) throw new BackendError('insufficient_scope');
+      const bound = bindVantage(operation, Object.fromEntries(Object.entries(input).filter(([,v]) => v !== undefined)), kind);
       if (bound.op.private && !privateAllowed) return { operation, status: 'withheld', result: { reason: withheldReason } };
       const result = await api(bound.route, bound.body, { method: bound.op.method, extended: true });
       const id = store.put(redact(result), scopesFor(kind));

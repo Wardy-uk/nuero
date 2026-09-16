@@ -7,8 +7,9 @@ import { once } from 'node:events';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { inspectVantage, vantageRoot } from '../scripts/inspect-api.js';
-import { vantageOperations, bindVantage, vantageTools } from './vantage-catalogue.js';
+import { vantageOperations, bindVantage, vantageTools, vantageSchema } from './vantage-catalogue.js';
 import * as policy from './vantage-policy.js';
+import { z } from 'zod';
 import { createVantageBackend } from './backend.js';
 import { createResultStore } from './results.js';
 import { createApp } from './app.js';
@@ -19,6 +20,7 @@ const base = { MCP_PUBLIC_URL: 'https://neuro.example/mcp', MCP_AUTH_ISSUER: 'ht
 const config = readConfig(base);
 const all = { scopes: ['neuro:read', 'neuro:write', 'neuro:action', 'neuro:admin'] };
 const readOnly = { scopes: ['neuro:read'] };
+const privateCfg = readConfig({ ...base, VANTAGE_MCP_PRIVATE: 'true' });
 const ok = async () => ({ format: 'json', data: { ok: true, data: [] }, backend_ok: true });
 const tools = (cfg, api, auth = all) => Object.fromEntries(vantageTools(cfg, api, auth, createResultStore(), v => redact(v, cfg)).map(t => [t.name, t]));
 async function listen(server, t) {
@@ -157,3 +159,65 @@ test('private released: nothing without a token reaches VANTAGE or returns its d
   assert.deepEqual(hits, [], 'no unauthenticated request may reach an upstream');
 });
 
+
+// ── Request bodies (16 Sep 2026) ─────────────────────────────────────────────
+// Live: ChatGPT sent {kind, title, content} to vantage_post_observations and got a
+// bare backend_http_400 — the field is `note`. The inventory could only say
+// "arbitrary JSON", so the client had nothing to build from.
+test('the advertised observation body IS the handler contract', async () => {
+  const cap = tools(config, async () => ok()).vantage_capabilities;
+  const described = (await cap.run({ query: 'vantage_post_observations', offset: 0, limit: 5, describe: true })).capabilities.find(c => c.operation === 'vantage_post_observations');
+  const body = described.input_schema.properties.body;
+  assert.deepEqual(body.required.sort(), ['kind', 'note']);
+  assert.deepEqual(body.properties.kind.enum, ['pattern', 'win', 'blocker', 'avoidance']);
+  assert.equal(body.additionalProperties, false);
+  // The shape that actually failed must be visibly absent, not merely unlisted.
+  for (const guessed of ['title', 'content']) assert.ok(!(guessed in body.properties), `${guessed} must not be advertised`);
+});
+
+test('a body matching the advertised schema reaches VANTAGE; a guessed one never leaves the gateway', async () => {
+  const sent = [];
+  // ⚠ observations are VANTAGE's private half, so this needs the release switch
+  // the Pi runs; with it off the write is withheld and never reaches the network.
+  const t1 = tools(privateCfg, async (route, body) => { sent.push({ route, body }); return ok(); });
+  const good = { kind: 'pattern', note: 'SLA breaches sit with Development, not Nick\'s team.' };
+  assert.equal((await t1.vantage_write.run({ operation: 'vantage_post_observations', body: good })).status, 'completed');
+  assert.deepEqual(sent, [{ route: '/api/observations', body: good }]);
+  // 3: a missing required field. 4: unknown fields and wrong types.
+  for (const bad of [
+    { kind: 'pattern' },                                   // no note
+    { note: 'x' },                                         // no kind
+    { kind: 'insight', note: 'x' },                        // kind outside the closed set
+    { kind: 'pattern', title: 'x', content: 'y' },         // the live failure, verbatim
+    { kind: 'pattern', note: 'x', sessionId: 'not-a-number' },
+    { kind: 'pattern', note: '' },
+  ]) await assert.rejects(t1.vantage_write.run({ operation: 'vantage_post_observations', body: bad }), e => e.name === 'ZodError' || e.code === 'invalid_operation_input', JSON.stringify(bad));
+  assert.equal(sent.length, 1, 'an invalid body must never reach VANTAGE');
+});
+
+test('every write and action body is a transcribed contract or an explicit no-body', async () => {
+  const { bodySchemas, noBody } = policy;
+  const ids = new Set(vantageOperations.map(o => o.id));
+  for (const id of [...Object.keys(bodySchemas), ...noBody]) assert.ok(ids.has(id), `policy names unknown operation ${id}`);
+  for (const op of vantageOperations) {
+    if (!['write', 'action', 'admin'].includes(op.classification) || op.method === 'GET') continue;
+    assert.ok(bodySchemas[op.id] || noBody.has(op.id), `${op.id} still advertises arbitrary JSON`);
+  }
+  // PUT findings is snake_case and POST findings is camelCase. That asymmetry is
+  // the live contract: update() drops anything outside its allow-list SILENTLY,
+  // so a camelCase patch answers 200 having written nothing.
+  const put = z.toJSONSchema(vantageSchema(vantageOperations.find(o => o.id === 'vantage_put_findings_by_id')), { io: 'input' }).properties.body;
+  assert.ok('raised_with' in put.properties && !('raisedWith' in put.properties));
+  const post = z.toJSONSchema(vantageSchema(vantageOperations.find(o => o.id === 'vantage_post_findings')), { io: 'input' }).properties.body;
+  assert.ok('raisedWith' in post.properties && !('raised_with' in post.properties));
+  // A route reading no body advertises none, rather than inviting an ignored payload.
+  const reopen = z.toJSONSchema(vantageSchema(vantageOperations.find(o => o.id === 'vantage_post_findings_by_id_reopen')), { io: 'input' });
+  assert.ok(!('body' in reopen.properties));
+});
+
+test('an uncertain write is still never retried automatically', async () => {
+  let calls = 0;
+  const t1 = tools(privateCfg, async () => { calls += 1; throw Object.assign(new Error('boom'), { code: 'backend_timeout' }); });
+  await assert.rejects(t1.vantage_write.run({ operation: 'vantage_post_observations', body: { kind: 'win', note: 'x' } }), { code: 'backend_timeout' });
+  assert.equal(calls, 1, 'the gateway must not retry a write whose outcome is unknown');
+});
