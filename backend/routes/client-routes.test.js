@@ -230,6 +230,63 @@ function unresolved(raw, { mounts, inline, routesOf }) {
   return null;
 }
 
+// ── VANTAGE is a DIFFERENT SERVER, and the MCP server is a client of both ───
+//
+// ⚠ `mcp-server/remote/backend.js` declares TWO targets — `NEURO_API_URL` and
+// `VANTAGE_API_URL` — so a `/api/...` literal under `mcp-server/` is not
+// necessarily aimed at NEURO. Scanned as though it were, VANTAGE's own routes
+// (`/api/findings`, `/api/self`, `/api/observations`) report as dead NEURO
+// routes: three permanent false positives, red on every deploy, which is how a
+// guard stops being read and costs the real catch it exists for.
+//
+// ⚠ THE AUTHORITY IS THE INVENTORY EACH SERVER PUBLISHES, never a list of path
+// names written here. `vantage-inventory.json` (33 routes) and
+// `api-inventory.json` (473) already declare who owns what, so a route added to
+// VANTAGE tomorrow is excused without anybody editing this file — and the
+// alternative, three names in a constant, is a list somebody has to remember to
+// extend, which is the same species of rot as a hand-tuned exemption.
+//
+// ⚠ VANTAGE DECLARING IT IS NOT ENOUGH — NEURO MUST NOT. Measured: `/api/friction`
+// and `/api/signals` are on BOTH inventories, and both are real NEURO routes with
+// real NEURO callers. Excusing a path on VANTAGE's word alone would blind this
+// scan to any NEURO caller of a path that happens to exist on both, which is the
+// failure this whole file exists to catch, introduced by the fix for a cosmetic
+// one. So the test is: VANTAGE has it AND NEURO does not.
+//
+// An unreadable or missing inventory excuses NOTHING — it is not evidence that a
+// path belongs to VANTAGE, and failing open here costs a false alarm while
+// failing closed would cost a real dead route.
+function vantageOwnedPaths() {
+  const read = (name) => {
+    try {
+      const raw = fs.readFileSync(path.join(REPO, 'mcp-server', 'remote', name), 'utf8');
+      return new Set(JSON.parse(raw).map((e) => e && e.route).filter(Boolean));
+    } catch {
+      return new Set();
+    }
+  };
+  const vantage = read('vantage-inventory.json');
+  const neuro = read('api-inventory.json');
+  // A declared route carries `:params`; the scan works on literal prefixes, so
+  // compare on the leading literal segments both sides can agree on.
+  // ⚠ Keyed to match `knownPrefix`, which STRIPS the leading `api` segment. A
+  // key built without that strip matches nothing and the exclusion silently
+  // does nothing — which is exactly how the first cut of this failed.
+  const literal = (route) => route.replace(/^\/api\/?/, '').split('/').filter(Boolean)
+    .reduce((acc, seg) => (acc.stopped || seg.startsWith(':')
+      ? { segs: acc.segs, stopped: true }
+      : { segs: acc.segs.concat(seg), stopped: false }), { segs: [], stopped: false })
+    .segs.join('/');
+
+  const neuroLiteral = new Set([...neuro].map(literal));
+  const owned = new Set();
+  for (const route of vantage) {
+    const key = literal(route);
+    if (key && !neuroLiteral.has(key)) owned.add(key);
+  }
+  return owned;
+}
+
 // ── 1. the NEURO clients ────────────────────────────────────────────────────
 
 const NEURO_CLIENTS = {
@@ -245,9 +302,11 @@ test('every NEURO web client path resolves to a route that exists', () => {
     path.join(REPO, 'backend', 'routes'),
   );
 
+  const vantageOwned = vantageOwnedPaths();
   const dead = [];
   for (const [client, dirs] of Object.entries(NEURO_CLIENTS)) {
     for (const [raw, where] of clientPaths(dirs)) {
+      if (vantageOwned.has(knownPrefix(raw).join('/'))) continue;  // VANTAGE's, not NEURO's
       const why = unresolved(raw, table);
       if (why) dead.push(`${client}: ${raw} — ${why} (${where})`);
     }
@@ -258,6 +317,33 @@ test('every NEURO web client path resolves to a route that exists', () => {
     [],
     'A web client calls a path with no route behind it:\n  ' + dead.join('\n  '),
   );
+});
+
+test('POSITIVE CONTROL: the VANTAGE exclusion excuses VANTAGE and nothing else', () => {
+  const owned = vantageOwnedPaths();
+
+  // It must actually DO something, or the exclusion is decoration and the three
+  // false positives it exists to remove come straight back.
+  assert.ok(owned.size > 0, 'no VANTAGE route was recognised — the inventories did not load');
+  for (const seg of ['findings', 'self', 'observations']) {
+    assert.ok(owned.has(seg), `/api/${seg} is VANTAGE's and must be excused`);
+  }
+
+  // ⚠ THE HALF THAT CAN FAIL SILENTLY. `/api/friction` and `/api/signals` are on
+  // BOTH inventories and are real NEURO routes with real NEURO callers. Excusing
+  // a path on VANTAGE's word alone would pass this whole suite — nothing breaks,
+  // the scan simply stops looking at them — so the over-broad version is pinned
+  // here rather than left to be noticed. Mutation-checked: dropping the
+  // `!neuroLiteral.has(key)` guard fails these two assertions and nothing else.
+  for (const shared of ['friction', 'signals']) {
+    assert.ok(
+      !owned.has(shared),
+      `/api/${shared} exists on BOTH servers — NEURO callers of it must still be checked`,
+    );
+  }
+
+  // And a plain NEURO route is never excused.
+  assert.ok(!owned.has('tasks'), '/api/tasks belongs to NEURO and must still be scanned');
 });
 
 test('POSITIVE CONTROL: the scan catches a dead path and clears a live one', () => {
