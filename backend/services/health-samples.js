@@ -43,17 +43,54 @@ const { SCALAR_METRICS } = require('./health-daily');
 // ⚠ A key that is ABSENT from here has no intraday form at all, and that is a
 // fact to report rather than a chart to fake. Sleep is the case: it is a nightly
 // figure derived from staged segments, and "sleep at 14:00" is not a question.
+//
+// `unit` and `staleAfterMin` travel WITH the reading, so no consumer has to
+// know either. Before this the staleness windows lived in the desktop panel and
+// nothing else could apply them — which is how a second surface comes to call
+// the same reading current while the first calls it stale.
+//
+// ⚠⚠ `staleAfterMin` IS PER METRIC, AND IT HAD TO BE. A single threshold is the
+// obvious implementation and is wrong on most of these, always in the direction
+// of a warning that is permanently on — which is a warning nobody reads, and it
+// costs the real one. Measured over 30 days on the live table as the median and
+// p90 gap between consecutive readings, each window set at roughly 3x its own
+// p90:
+//
+//     heart rate            3 /    7 min   continuous while worn
+//     steps                 7 /   29 min
+//     HRV                  15 /   41 min
+//     blood oxygen         35 /  134 min   a 90-minute rule flags a NORMAL gap
+//     blood pressure       39 /   56 min   within a session, but MONTHS between
+//     exercise minutes     22 /  154 min   only logged while exercising
+//     resting heart rate  479 / 1030 min   once or twice a DAY
+//     daylight             13 /  840 min   cannot accrue overnight, so the p90
+//                                          gap IS a night
+//
+// Blood pressure is the exception to the formula and is judged on MEANING
+// instead: a reading from this morning still says something about today, one
+// from March does not.
 const SERIES = {
-  bpSystolic: { metric: 'blood_pressure_systolic', how: 'avg' },
-  bpDiastolic: { metric: 'blood_pressure_diastolic', how: 'avg' },
-  heartRateMedian: { metric: 'heartRate', how: 'avg' },
-  hrvMedian: { metric: 'hrv', how: 'avg' },
-  rhrMedian: { metric: 'rhr', how: 'avg' },
-  spo2: { metric: 'blood_oxygen_saturation', how: 'avg' },
-  steps: { metric: 'steps', how: 'sum' },
-  exerciseMinutes: { metric: 'apple_exercise_time', how: 'sum' },
-  daylightMinutes: { metric: 'time_in_daylight', how: 'sum' },
+  bpSystolic: { metric: 'blood_pressure_systolic', how: 'avg', unit: 'mmHg', staleAfterMin: 24 * 60 },
+  bpDiastolic: { metric: 'blood_pressure_diastolic', how: 'avg', unit: 'mmHg', staleAfterMin: 24 * 60 },
+  heartRateMedian: { metric: 'heartRate', how: 'avg', unit: 'bpm', staleAfterMin: 30 },
+  hrvMedian: { metric: 'hrv', how: 'avg', unit: 'ms', staleAfterMin: 2 * 60 },
+  rhrMedian: { metric: 'rhr', how: 'avg', unit: 'bpm', staleAfterMin: 36 * 60 },
+  spo2: { metric: 'blood_oxygen_saturation', how: 'avg', unit: '%', staleAfterMin: 6 * 60 },
+  steps: { metric: 'steps', how: 'sum', unit: 'steps', staleAfterMin: 90 },
+  exerciseMinutes: { metric: 'apple_exercise_time', how: 'sum', unit: 'min', staleAfterMin: 8 * 60 },
+  daylightMinutes: { metric: 'time_in_daylight', how: 'sum', unit: 'min', staleAfterMin: 48 * 60 },
 };
+
+// ⚠ NOT exposed individually by `latest()`. Both halves of a blood pressure are
+// charted as separate lanes, which is right for a plot, and are meaningless as
+// separate LATEST values — see `latestBloodPressure`.
+const BP_KEYS = ['bpSystolic', 'bpDiastolic'];
+
+// The fallback for a series that forgot to declare a window. Deliberately
+// generous: between a missed warning and a permanent one, the permanent one
+// does more damage, because it is the thing that teaches the warning to be
+// ignored.
+const DEFAULT_STALE_AFTER_MIN = 6 * 60;
 
 // Scale is READ from the daily rollup's own table, never restated. SpO2 is a
 // fraction (x100) and daylight is seconds (/60); getting either wrong here would
@@ -194,9 +231,125 @@ function read({ hours = 168, keys = null, now = new Date() } = {}) {
   };
 }
 
-/** The newest reading of each series, for the "Now" view. */
-function latest({ keys = null } = {}) {
-  const wanted = (keys && keys.length ? keys : Object.keys(SERIES)).filter(hasSeries);
+/** Parse a stored timestamp, tolerating both SQLite's format and ISO. */
+function toMs(at) {
+  if (!at) return NaN;
+  const str = String(at);
+  return Date.parse(str.includes('T') ? str : `${str.replace(' ', 'T')}Z`);
+}
+
+function isoOf(at) {
+  const ms = toMs(at);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+/**
+ * Stamp a reading with how old it is and whether that makes it stale, PURE.
+ *
+ * ⚠ `stale` is decided HERE, once, and travels with the value. It used to be a
+ * table in the desktop panel, which meant no other surface could apply it — the
+ * MCP tool had no idea a reading was eleven hours old, and a second copy of the
+ * windows is how two surfaces come to disagree about the same reading.
+ *
+ * ⚠ An unreadable timestamp is `stale: null`, NEVER false. "We cannot tell how
+ * old this is" is not "this is current", and false is the answer that lets a
+ * stale value present as current — the one thing this must not do.
+ */
+function stampAge(value, at, spec, nowMs) {
+  const ms = toMs(at);
+  const staleAfterMin = (spec && spec.staleAfterMin) || DEFAULT_STALE_AFTER_MIN;
+  if (!Number.isFinite(ms)) {
+    return {
+      value, unit: spec?.unit || null, at: null,
+      ageMinutes: null, stale: null, staleAfterMin,
+      note: 'no usable timestamp — age unknown',
+    };
+  }
+  const ageMinutes = Math.round((nowMs - ms) / 60000);
+  return {
+    value,
+    unit: spec?.unit || null,
+    at: new Date(ms).toISOString(),
+    ageMinutes,
+    stale: ageMinutes > staleAfterMin,
+    staleAfterMin,
+  };
+}
+
+/**
+ * The newest COMPLETE blood pressure.
+ *
+ * ⚠⚠ ONE MEASUREMENT, NEVER TWO HALVES GLUED TOGETHER. The newest systolic and
+ * the newest diastolic are independent reads and nothing makes them the same
+ * event; pairing them manufactures a reading nobody took, on the one metric here
+ * where a wrong number is a clinical statement. The pairing is done in SQL on
+ * `recorded_at` — measured live, 10,544 of 10,544 systolic samples have a
+ * diastolic at the identical instant, so the source genuinely supports it.
+ *
+ * ⚠ Where it does not pair, this says so rather than falling back to halves.
+ * Three diastolic samples in the live table have no systolic partner, so the
+ * refusal is a real branch, not a defensive one.
+ *
+ * ⚠ `laterUnpairedReading` exists so a pair can never silently present as the
+ * most recent thing known: if a half arrived after the last complete reading,
+ * the consumer is told rather than left to assume.
+ */
+function latestBloodPressure({ now = new Date() } = {}) {
+  const spec = SERIES.bpSystolic;
+  let row = null;
+  let newestSampleAt = null;
+  try {
+    row = db.getLatestBloodPressure();
+    newestSampleAt = db.getLatestBloodPressureSampleAt();
+  } catch (e) {
+    return { known: false, reason: `could not read blood pressure — ${e.message}` };
+  }
+
+  if (!row || !Number.isFinite(row.systolic) || !Number.isFinite(row.diastolic)) {
+    return {
+      known: false,
+      // ⚠ STRUCTURED, not a phrase for a consumer to match on. "Readings exist
+      // but none of them pair" and "nothing has ever been recorded" send a
+      // reader to different places, and a surface deciding which by testing the
+      // prose would break the moment the wording improved.
+      hasReadings: Boolean(newestSampleAt),
+      reason: newestSampleAt
+        ? 'readings exist, but no systolic and diastolic from the same measurement — no complete blood pressure is available'
+        : 'no blood pressure has been recorded',
+    };
+  }
+
+  const stamped = stampAge(null, row.at, spec, now.getTime());
+  const pairMs = toMs(row.at);
+  const newestMs = toMs(newestSampleAt);
+  return {
+    known: true,
+    systolic: row.systolic,
+    diastolic: row.diastolic,
+    unit: spec.unit,
+    at: stamped.at,
+    ageMinutes: stamped.ageMinutes,
+    stale: stamped.stale,
+    staleAfterMin: stamped.staleAfterMin,
+    // True when a lone systolic or diastolic landed after this pair. The pair is
+    // still the latest COMPLETE reading; it is just not the latest datum.
+    laterUnpairedReading: Number.isFinite(pairMs) && Number.isFinite(newestMs) && newestMs > pairMs,
+  };
+}
+
+/**
+ * The newest reading of each series, for the "Now" view.
+ *
+ * ⚠ BLOOD PRESSURE IS ABSENT FROM THIS MAP BY DESIGN. Exposing `bpSystolic` and
+ * `bpDiastolic` as separate latest values makes the wrong thing — pairing two
+ * unrelated measurements — the easy thing. It is returned by
+ * `latestBloodPressure` as one reading, or not at all.
+ */
+function latest({ keys = null, now = new Date() } = {}) {
+  const nowMs = now.getTime();
+  const wanted = (keys && keys.length ? keys : Object.keys(SERIES))
+    .filter(hasSeries)
+    .filter(k => !BP_KEYS.includes(k));
   const metrics = [...new Set(wanted.map(k => SERIES[k].metric))];
   let raw = {};
   const gaps = [];
@@ -213,21 +366,27 @@ function latest({ keys = null } = {}) {
     // one whose last reading is two years old are different facts, and the age
     // is what tells them apart. Nothing is invented for a metric with no rows.
     if (!row || !Number.isFinite(row.value)) continue;
-    out[key] = {
-      value: Math.round(row.value * scaleFor(spec.metric) * 100) / 100,
-      at: String(row.at).replace(' ', 'T') + 'Z',
-    };
+    const value = Math.round(row.value * scaleFor(spec.metric) * 100) / 100;
+    out[key] = stampAge(value, row.at, spec, nowMs);
   }
-  return { ok: gaps.length === 0, latest: out, gaps };
+  const bloodPressure = latestBloodPressure({ now });
+  if (bloodPressure.known === false && /could not read/.test(bloodPressure.reason || '')) {
+    gaps.push({ input: 'bloodPressure', why: bloodPressure.reason });
+  }
+  return { ok: gaps.length === 0, latest: out, bloodPressure, gaps };
 }
 
 module.exports = {
   read,
   latest,
+  latestBloodPressure,
   hasSeries,
   // exported for tests
   SERIES,
   bucketPlan,
   shapeSeries,
   scaleFor,
+  stampAge,
+  BP_KEYS,
+  DEFAULT_STALE_AFTER_MIN,
 };

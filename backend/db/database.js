@@ -1543,6 +1543,42 @@ function getHealthSampleBuckets(metrics, sinceIso, untilIso, bucketSeconds) {
   );
 }
 
+// The newest COMPLETE blood pressure — both halves from ONE measurement.
+//
+// ⚠⚠ NEVER the newest systolic beside the newest diastolic. Those are two
+// independent reads and nothing makes them the same event: pairing them would
+// invent a reading that was never taken, and on the one metric here where a
+// wrong number is a clinical statement. The join is on `recorded_at`, which is
+// when the CUFF took the reading — measured on the live table, 10,544 of 10,544
+// systolic samples have a diastolic at the identical instant, so the source
+// genuinely supports pairing. Three diastolic samples have no systolic partner,
+// which is why the no-complete-reading branch is real rather than theoretical.
+//
+// The (metric, recorded_at DESC) index serves both sides of the join.
+function getLatestBloodPressure() {
+  return get(
+    `SELECT s.value AS systolic, d.value AS diastolic, s.recorded_at AS at
+       FROM health_samples s
+       JOIN health_samples d
+         ON d.metric = 'blood_pressure_diastolic'
+        AND d.recorded_at = s.recorded_at
+      WHERE s.metric = 'blood_pressure_systolic'
+      ORDER BY s.recorded_at DESC
+      LIMIT 1`
+  );
+}
+
+// The newest blood-pressure sample of EITHER half, paired or not. Exists so a
+// paired reading can never silently present as the most recent thing known: if
+// an unpaired half arrived afterwards, the consumer is told.
+function getLatestBloodPressureSampleAt() {
+  const row = get(
+    `SELECT MAX(recorded_at) AS at FROM health_samples
+      WHERE metric IN ('blood_pressure_systolic','blood_pressure_diastolic')`
+  );
+  return row && row.at ? row.at : null;
+}
+
 // The newest reading for each of several metrics, for the "Now" view.
 //
 // One statement per metric on purpose: `ORDER BY recorded_at DESC LIMIT 1` walks
@@ -2608,6 +2644,8 @@ module.exports = {
   getHealthSamplesBetween,
   getHealthSampleBuckets,
   getLatestHealthSamples,
+  getLatestBloodPressure,
+  getLatestBloodPressureSampleAt,
   getSleepSamplesBetween,
   upsertHealthDay,
   upsertDesktopDay,

@@ -171,3 +171,62 @@ test('the bucket fold matches how the daily rollup treats the same metric', () =
       `${key} folds as ${spec.how} hourly but ${daily.how} daily`);
   }
 });
+
+// ── Freshness, and the paired blood pressure ────────────────────────────────
+//
+// Both moved into this service on 16 Sep 2026. The staleness windows used to
+// live in the desktop panel, so no other surface could apply them — the MCP tool
+// had no idea a reading was eleven hours old. They are decided once here and
+// travel ON the reading.
+
+test('every series declares a measured staleness window', () => {
+  // A series falling through to the default is one nobody measured a cadence
+  // for — and the default is deliberately generous, so the miss would be silent.
+  for (const [key, spec] of Object.entries(hs.SERIES)) {
+    assert.ok(Number.isFinite(spec.staleAfterMin) && spec.staleAfterMin > 0,
+      `${key} has no measured staleness window`);
+    assert.ok(typeof spec.unit === 'string' && spec.unit.length,
+      `${key} has no unit, so a consumer has to guess one`);
+  }
+});
+
+test('the windows differ per metric, because the cadences do', () => {
+  // ⚠ One threshold is wrong on most of these, always towards a warning that is
+  // permanently on. Measured p90 gaps: heart rate 7 min, resting heart rate
+  // 1030 min. A rule that suits one cannot suit the other.
+  assert.ok(hs.SERIES.rhrMedian.staleAfterMin > hs.SERIES.heartRateMedian.staleAfterMin * 10,
+    'a once-daily metric cannot share a window with a continuous one');
+  assert.ok(hs.SERIES.spo2.staleAfterMin > hs.SERIES.heartRateMedian.staleAfterMin);
+});
+
+test('a reading carries its age and whether that makes it stale', () => {
+  const now = Date.UTC(2026, 8, 16, 12, 0, 0);
+  const spec = { unit: 'bpm', staleAfterMin: 30 };
+  const fresh = hs.stampAge(74, '2026-09-16 11:50:00', spec, now);
+  assert.equal(fresh.ageMinutes, 10);
+  assert.equal(fresh.stale, false);
+  assert.equal(fresh.unit, 'bpm');
+  assert.equal(fresh.staleAfterMin, 30);
+
+  const old = hs.stampAge(74, '2026-09-16 06:00:00', spec, now);
+  assert.equal(old.ageMinutes, 360);
+  assert.equal(old.stale, true);
+});
+
+test('an unreadable timestamp is stale:null, NEVER false', () => {
+  // ⚠ "We cannot tell how old this is" is not "this is current", and false is
+  // precisely the answer that lets a stale value present as a current one.
+  const r = hs.stampAge(74, 'not-a-date', { unit: 'bpm', staleAfterMin: 30 }, Date.now());
+  assert.strictEqual(r.stale, null);
+  assert.strictEqual(r.ageMinutes, null);
+  assert.match(r.note, /age unknown/);
+});
+
+test('blood pressure is never exposed as two independent latest values', () => {
+  // ⚠⚠ The rule that makes the wrong thing impossible rather than discouraged:
+  // a consumer cannot pair a newest systolic with a newest diastolic if the
+  // halves are not there to pair.
+  assert.deepEqual(hs.BP_KEYS, ['bpSystolic', 'bpDiastolic']);
+  // They remain chartable — two lanes on one axis is right for a plot.
+  assert.ok(hs.hasSeries('bpSystolic') && hs.hasSeries('bpDiastolic'));
+});

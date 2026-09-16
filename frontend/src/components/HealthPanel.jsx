@@ -485,35 +485,22 @@ export function TrendChart({ title, unit, dp, hint, days, valueKey, series, span
 // The latest reading of each metric. Deliberately NOT a chart: one value has no
 // axis to sit on, and a one-point plot is a chart pretending to be a trend.
 //
-// What the cards read from, and how each is written. Blood pressure is one card
-// built from two series, because that is how a blood pressure is read.
+// ⚠⚠ THE FRESHNESS RULES ARE THE SERVER'S, NOT THIS FILE'S. The per-metric
+// staleness windows used to live here, which meant no other surface could apply
+// them — the MCP tool had no idea a reading was eleven hours old. They are now
+// measured and decided once in `health-samples.js` and travel ON the reading, so
+// this renders `stale` rather than recomputing it. Two copies of a threshold is
+// how two surfaces come to call the same reading current and stale.
 //
-// ⚠⚠ `staleAfterMin` IS PER METRIC, AND IT HAD TO BE. A single threshold was the
-// obvious implementation and it is wrong on three of these five, always in the
-// direction of a warning that is permanently on — which is a warning nobody
-// reads, and it costs the real one. Measured over 30 days on the live table, as
-// the median and p90 gap between consecutive readings:
-//
-//     heart rate   3 / 7 min        continuous while worn
-//     HRV         15 / 41 min
-//     blood oxygen 35 / 134 min     a 90-minute rule flags a NORMAL gap
-//     blood pressure 39 / 56 min    within a session — but he goes MONTHS
-//                                   between sessions, so 90 min is always amber
-//     resting HR  479 / 1030 min    once or twice a DAY, so 90 min is
-//                                   permanently amber for a metric behaving
-//                                   exactly as designed
-//
-// Each is set at roughly 3x its own p90, so amber means the feed has genuinely
-// stopped rather than that this metric is not measured every minute. Blood
-// pressure is the exception to the formula and is judged on MEANING instead: a
-// reading from this morning still says something about today, one from March
-// does not, so it turns amber after a day.
+// ⚠ Blood pressure is NOT in `latest` and must never be reassembled from it: the
+// server returns one paired measurement under `bloodPressure`, or says it has
+// none. Pairing a newest systolic with a newest diastolic invents a reading
+// nobody took.
 export const NOW_CARDS = [
-  { id: 'bp', title: 'Blood pressure', unit: '', dp: 0, pair: ['bpSystolic', 'bpDiastolic'], staleAfterMin: 24 * 60 },
-  { id: 'heartRateMedian', title: 'Heart rate', unit: 'bpm', dp: 0, staleAfterMin: 30 },
-  { id: 'spo2', title: 'Blood oxygen', unit: '%', dp: 1, staleAfterMin: 6 * 60 },
-  { id: 'hrvMedian', title: 'HRV', unit: 'ms', dp: 1, staleAfterMin: 2 * 60 },
-  { id: 'rhrMedian', title: 'Resting heart rate', unit: 'bpm', dp: 0, staleAfterMin: 36 * 60 },
+  { id: 'heartRateMedian', title: 'Heart rate' },
+  { id: 'spo2', title: 'Blood oxygen' },
+  { id: 'hrvMedian', title: 'HRV' },
+  { id: 'rhrMedian', title: 'Resting heart rate' },
 ];
 
 /**
@@ -522,47 +509,29 @@ export const NOW_CARDS = [
  * ⚠ THE AGE IS THE POINT, not decoration. A heart rate of 74 means something
  * quite different taken four minutes ago and taken last Tuesday, and on a page
  * whose feed is a phone that syncs when iOS feels like it, "now" is a claim that
- * has to be earned. A reading with no usable timestamp says so rather than being
- * shown bare.
+ * has to be earned.
  */
-function ageWords(iso, now = Date.now()) {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return null;
-  const mins = Math.round((now - t) / 60000);
-  if (mins < 0) return 'just now';
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 48) return `${hrs}h ago`;
-  return `${Math.round(hrs / 24)}d ago`;
+function ageWords(minutes) {
+  if (!Number.isFinite(minutes)) return null;
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 48 * 60) return `${Math.round(minutes / 60)}h ago`;
+  return `${Math.round(minutes / 1440)}d ago`;
 }
 
-// The fallback for a card that forgot to declare one. Deliberately generous:
-// between a missed warning and a permanent one, the permanent one does more
-// damage, because it is the thing that teaches the amber to be ignored.
-const STALE_MINUTES = 6 * 60;
-
-export function LatestReadings({ latest }) {
-  const now = Date.now();
+export function LatestReadings({ latest, bloodPressure }) {
   const read = latest || {};
-  const cards = NOW_CARDS.map(c => {
-    const keys = c.pair || [c.id];
-    const parts = keys.map(k => read[k]).filter(Boolean);
-    if (parts.length !== keys.length) return { ...c, missing: true };
-    // For a pair, the reading is only coherent if both halves came from the same
-    // moment — so the OLDER of the two dates it. Taking the newer would present
-    // a systolic from this morning and a diastolic from Tuesday as one reading.
-    const at = parts.reduce((old, p) => (Date.parse(p.at) < Date.parse(old.at) ? p : old), parts[0]).at;
-    const mins = (now - Date.parse(at)) / 60000;
-    return {
-      ...c,
-      value: parts.map(p => fmtNum(p.value, c.dp)).join('/'),
-      age: ageWords(at, now),
-      stale: Number.isFinite(mins) && mins > (c.staleAfterMin || STALE_MINUTES),
-    };
-  });
+  const bp = bloodPressure;
 
-  const anything = cards.some(c => !c.missing);
+  const vitals = NOW_CARDS
+    .map(c => ({ ...c, r: read[c.id] }))
+    .filter(c => c.r && Number.isFinite(c.r.value));
+
+  // ⚠ `hasReadings` matters here: blood pressure that EXISTS but does not pair
+  // is not "no readings have arrived". Caught by a test — the panel was showing
+  // the empty state over real readings it had simply refused to pair, which is
+  // the conflation the paired-reading rule exists to prevent, one layer up.
+  const anything = vitals.length > 0 || bp?.known || bp?.hasReadings;
   if (!anything) {
     // "Nothing has been recorded" and "we could not look" are different facts;
     // the caller reports a failed read separately, so this branch is only ever
@@ -572,21 +541,51 @@ export function LatestReadings({ latest }) {
 
   return (
     <div className="hp-now">
-      {cards.map(c => (
-        <div className={`hp-now-card${c.stale ? ' hp-now-card--stale' : ''}`} key={c.id}>
-          <div className="hp-now-label">{c.title}</div>
-          {c.missing ? (
-            // Absent, never a dash that could be mistaken for a value. A metric
-            // with no rows at all and one that is merely late are different.
-            <div className="hp-now-none">not recorded</div>
-          ) : (
-            <>
-              <div className="hp-now-value">{c.value}<span className="hp-now-unit">{c.unit}</span></div>
-              <div className="hp-now-age">{c.age || 'time not recorded'}</div>
-            </>
-          )}
-        </div>
-      ))}
+      {/* One card, one measurement. */}
+      <div className={`hp-now-card${bp?.known && bp.stale ? ' hp-now-card--stale' : ''}`}>
+        <div className="hp-now-label">Blood pressure</div>
+        {bp?.known ? (
+          <>
+            <div className="hp-now-value">
+              {fmtNum(bp.systolic, 0)}/{fmtNum(bp.diastolic, 0)}
+              <span className="hp-now-unit">{bp.unit}</span>
+            </div>
+            <div className="hp-now-age">
+              {ageWords(bp.ageMinutes) || 'time not recorded'}
+              {bp.laterUnpairedReading && ' · latest complete reading'}
+            </div>
+          </>
+        ) : (
+          // ⚠ Says WHY. "No complete reading" and "nothing recorded" send you to
+          // different places, and neither is a dash.
+          <div className="hp-now-none">{bp?.reason || 'not available'}</div>
+        )}
+      </div>
+
+      {NOW_CARDS.map(c => {
+        const r = read[c.id];
+        return (
+          <div className={`hp-now-card${r?.stale ? ' hp-now-card--stale' : ''}`} key={c.id}>
+            <div className="hp-now-label">{c.title}</div>
+            {!r || !Number.isFinite(r.value) ? (
+              // Absent, never a dash that could be mistaken for a value.
+              <div className="hp-now-none">not recorded</div>
+            ) : (
+              <>
+                <div className="hp-now-value">{fmtNum(r.value, r.unit === '%' || r.unit === 'ms' ? 1 : 0)}
+                  <span className="hp-now-unit">{r.unit}</span>
+                </div>
+                {/* ⚠ `stale: null` is "we cannot tell how old this is", which must
+                    not render as a clean age — that is a stale value presenting
+                    as current, with the evidence removed. */}
+                <div className="hp-now-age">
+                  {r.stale === null ? (r.note || 'age unknown') : ageWords(r.ageMinutes)}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -875,7 +874,7 @@ export default function HealthPanel() {
         )}
 
         {snapshotOnly ? (
-          <LatestReadings latest={samples?.latest} />
+          <LatestReadings latest={samples?.latest} bloodPressure={samples?.bloodPressure} />
         ) : (
           <div className="hp-grid">
             {/* spanYear only past 90 days: below that every tick carries the same

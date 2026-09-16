@@ -348,7 +348,11 @@ router.get('/samples', (req, res) => {
       return res.json({
         windowHours: 0,
         mode: 'now',
+        // ⚠ `latest` carries VALUES with their age. It deliberately does NOT
+        // contain bpSystolic/bpDiastolic — a blood pressure is one measurement
+        // and is returned whole under `bloodPressure`, or not at all.
         latest: snapshot.latest,
+        bloodPressure: snapshot.bloodPressure,
         unknownKeys: unknown,
         gaps: snapshot.gaps,
         ok: snapshot.ok,
@@ -356,7 +360,8 @@ router.get('/samples', (req, res) => {
     }
 
     const out = healthSamples.read({ hours, keys: keys.length ? keys : null });
-    res.json({ ...out, mode: 'window', latest: snapshot.latest, unknownKeys: unknown,
+    res.json({ ...out, mode: 'window', latest: snapshot.latest,
+      bloodPressure: snapshot.bloodPressure, unknownKeys: unknown,
       gaps: [...(out.gaps || []), ...snapshot.gaps] });
   } catch (e) {
     res.status(500).json({ error: e.message });

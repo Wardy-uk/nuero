@@ -348,87 +348,92 @@ test('every trend either has an intraday form or says why not', async () => {
 });
 
 // ── Now ─────────────────────────────────────────────────────────────────────
+//
+// ⚠ These pin RENDERING, not the freshness rule. The per-metric windows moved
+// into `health-samples.js` on 16 Sep 2026 so every surface applies the same
+// ones — see health-samples.test.js for the decision itself. What matters here
+// is that the panel renders what the server decided and invents nothing.
 
-test('the snapshot shows a value with its age, never a bare number', async () => {
+const vital = (value, unit, ageMinutes, stale, extra = {}) => ({
+  value, unit, ageMinutes, stale,
+  at: new Date(Date.now() - ageMinutes * 60000).toISOString(),
+  staleAfterMin: 30, ...extra,
+});
+
+test('the snapshot shows a value with its unit and age, never a bare number', async () => {
   const { LatestReadings } = await load();
-  const now = Date.now();
   const html = renderToString(React.createElement(LatestReadings, {
-    latest: {
-      bpSystolic: { value: 151, at: new Date(now - 4 * 60000).toISOString() },
-      bpDiastolic: { value: 90, at: new Date(now - 4 * 60000).toISOString() },
-      heartRateMedian: { value: 74, at: new Date(now - 4 * 60000).toISOString() },
+    latest: { heartRateMedian: vital(74, 'bpm', 4, false) },
+    bloodPressure: {
+      known: true, systolic: 151, diastolic: 90, unit: 'mmHg',
+      ageMinutes: 4, stale: false, at: new Date().toISOString(),
     },
   }));
-  assert.match(html, /151\/90/, 'a blood pressure is read as a pair');
+  // React SSR puts comment markers between adjacent text nodes, so the pair is
+  // read out of the stripped text rather than matched against raw markup.
+  const text = html.replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  assert.ok(text.includes('151/90'), `a blood pressure is read as a pair — got: ${text}`);
+  assert.match(html, /mmHg/, 'and carries its unit');
+  assert.match(html, /74/);
+  assert.match(html, /bpm/);
   assert.match(html, /4 min ago/, 'the age is the point — 74bpm now and last Tuesday differ');
-  assert.match(html, /not recorded/, 'a metric with no reading must say so, not show a dash');
+  assert.match(html, /not recorded/, 'a metric with no reading says so, rather than showing a dash');
 });
 
-test('a stale reading is MARKED, never hidden and never shown as current', async () => {
+test('the panel renders the SERVER stale flag and does not second-guess it', async () => {
+  // ⚠ The window is the server's. A panel applying its own would be a second
+  // opinion about the same reading, which is how two surfaces come to disagree.
   const { LatestReadings } = await load();
-  const old = new Date(Date.now() - 6 * 3600000).toISOString();
-  const html = renderToString(React.createElement(LatestReadings, {
-    latest: { heartRateMedian: { value: 74, at: old } },
-  }));
-  assert.match(html, /hp-now-card--stale/, 'six hours old is not "now" for a heart rate');
-  assert.match(html, /74/, 'and it must still be shown — hiding it makes a dead feed invisible');
-});
-
-test('staleness is judged PER METRIC, against each metric own cadence', async () => {
-  // ⚠⚠ Caught on the live output, not by a test. A single 90-minute threshold
-  // is wrong on three of the five cards, always towards a warning that is
-  // permanently on — and an always-on warning is one nobody reads, which costs
-  // the real catch. Resting heart rate is measured once or twice a DAY (median
-  // gap 479 min on the live table), so eleven hours old is it working.
-  const { LatestReadings } = await load();
-  const elevenHours = new Date(Date.now() - 11 * 3600000).toISOString();
-  const html = renderToString(React.createElement(LatestReadings, {
-    latest: { rhrMedian: { value: 75, at: elevenHours } },
-  }));
-  assert.ok(!/hp-now-card--stale/.test(html),
-    'a once-daily metric must not read as stale for behaving exactly as designed');
-
-  // But a resting heart rate that has not arrived in three days HAS stopped.
-  const threeDays = new Date(Date.now() - 72 * 3600000).toISOString();
   const stale = renderToString(React.createElement(LatestReadings, {
-    latest: { rhrMedian: { value: 75, at: threeDays } },
+    latest: { heartRateMedian: vital(74, 'bpm', 360, true) },
   }));
-  assert.match(stale, /hp-now-card--stale/, 'three days is a feed that has stopped');
+  assert.match(stale, /hp-now-card--stale/, 'the server said stale and the panel hid it');
+  assert.match(stale, /74/, 'and it must still be shown — hiding it makes a dead feed invisible');
+
+  // The same age, but the server judged it fresh (a once-daily metric). The
+  // panel must not override that with a threshold of its own.
+  const fresh = renderToString(React.createElement(LatestReadings, {
+    latest: { rhrMedian: vital(75, 'bpm', 360, false, { staleAfterMin: 36 * 60 }) },
+  }));
+  assert.ok(!/hp-now-card--stale/.test(fresh),
+    'the panel applied its own threshold instead of the one on the reading');
 });
 
-test('every card declares its own staleness window', async () => {
-  // A card falling through to the default is a card nobody measured a cadence
-  // for — and the default is deliberately generous, so the miss is silent.
-  const { NOW_CARDS } = await load();
-  for (const c of NOW_CARDS) {
-    assert.ok(Number.isFinite(c.staleAfterMin) && c.staleAfterMin > 0,
-      `${c.id} has no measured staleness window`);
-  }
-});
-
-test('a pair is dated by its OLDER half', async () => {
-  // ⚠ Taking the newer would present a systolic from two minutes ago and a
-  // diastolic from yesterday as one coherent reading.
+test('an unknown age is never rendered as a clean timestamp', async () => {
+  // ⚠ `stale: null` means "we cannot tell how old this is". Rendering that as a
+  // tidy age is a stale value presenting as current with the evidence removed.
   const { LatestReadings } = await load();
-  const now = Date.now();
   const html = renderToString(React.createElement(LatestReadings, {
-    latest: {
-      bpSystolic: { value: 151, at: new Date(now - 2 * 60000).toISOString() },
-      bpDiastolic: { value: 90, at: new Date(now - 30 * 3600000).toISOString() },
-    },
+    latest: { heartRateMedian: { value: 74, unit: 'bpm', ageMinutes: null, stale: null, at: null, note: 'no usable timestamp — age unknown' } },
   }));
-  // The AGE is the direct pin — it must describe the older half, whatever the
-  // staleness threshold happens to be.
-  assert.match(html, /30h ago/, 'the pair was dated by its newer half');
-  assert.ok(!/2 min ago/.test(html), 'the newer half must not date the pair');
-  assert.match(html, /hp-now-card--stale/, 'and past its own window it is marked');
+  assert.match(html, /age unknown/);
+  assert.ok(!/min ago|h ago|just now/.test(html), 'an unknown age was dressed up as a real one');
+});
+
+test('blood pressure is rendered from the PAIR, never reassembled from halves', async () => {
+  // ⚠⚠ The panel has no access to individual halves — `latest` does not carry
+  // them — so the wrong thing is impossible rather than merely discouraged.
+  const { LatestReadings, NOW_CARDS } = await load();
+  for (const c of NOW_CARDS) {
+    assert.ok(!['bpSystolic', 'bpDiastolic'].includes(c.id),
+      'a BP half is a card, so the panel can pair two unrelated measurements');
+  }
+  const html = renderToString(React.createElement(LatestReadings, {
+    latest: { bpSystolic: vital(151, 'mmHg', 2, false), bpDiastolic: vital(90, 'mmHg', 900, true) },
+    bloodPressure: { known: false, hasReadings: true, reason: 'readings exist, but no systolic and diastolic from the same measurement — no complete blood pressure is available' },
+  }));
+  // Even handed halves in `latest`, nothing may render as a blood pressure.
+  const text = html.replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  assert.ok(!text.includes('151/90'), 'the panel paired two unrelated measurements');
+  assert.match(html, /no complete blood pressure is available/, 'and it must say why');
 });
 
 test('an empty snapshot says so rather than rendering an empty grid', async () => {
   const { LatestReadings } = await load();
-  const html = renderToString(React.createElement(LatestReadings, { latest: {} }));
+  const html = renderToString(React.createElement(LatestReadings, { latest: {}, bloodPressure: { known: false, reason: 'no blood pressure has been recorded' } }));
   assert.match(html, /No readings have arrived yet/);
 });
+
 
 // ── An isolated reading is still a reading ──────────────────────────────────
 

@@ -169,3 +169,68 @@ test('the literal /samples path is not swallowed by a sibling', async () => {
   const json = await (await get('?hours=24')).json();
   assert.ok(json.series, 'got something that was not the samples payload');
 });
+
+// ── The paired blood pressure ───────────────────────────────────────────────
+//
+// Real SQL, because the pairing IS a join and the pure suite cannot see it.
+
+test('the snapshot returns ONE paired blood pressure, not two halves', async () => {
+  const json = await (await get('?hours=0')).json();
+  assert.equal(json.bloodPressure.known, true);
+  assert.equal(json.bloodPressure.unit, 'mmHg');
+  assert.ok(json.bloodPressure.systolic > json.bloodPressure.diastolic);
+  // ⚠⚠ The halves must NOT be separately available — a consumer cannot pair two
+  // unrelated measurements if the halves are not there to pair.
+  assert.equal(json.latest.bpSystolic, undefined, 'a lone systolic is exposed');
+  assert.equal(json.latest.bpDiastolic, undefined, 'a lone diastolic is exposed');
+});
+
+test('both halves come from the SAME measurement event', async () => {
+  // The whole point. Seed a newer systolic with no partner: the answer must stay
+  // the last COMPLETE pair, not the newest systolic beside an older diastolic.
+  const at = new Date();
+  db.insertHealthSample('blood_pressure_systolic', 199, sqlTime(at.getTime()), 'test');
+
+  const json = await (await get('?hours=0')).json();
+  assert.equal(json.bloodPressure.known, true);
+  assert.notEqual(json.bloodPressure.systolic, 199,
+    'an unpaired systolic was glued to a diastolic from another moment');
+  // And the consumer is TOLD the pair is not the newest datum, rather than left
+  // to assume it.
+  assert.equal(json.bloodPressure.laterUnpairedReading, true);
+});
+
+test('no complete reading is stated as such, never filled in from halves', async () => {
+  // A fresh DB with only one half of a blood pressure in it.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-bp-'));
+  const scratch = path.join(dir, 'bp.db');
+  const prev = process.env.NEURO_DB_PATH;
+  process.env.NEURO_DB_PATH = scratch;
+  delete require.cache[require.resolve('../db/database')];
+  delete require.cache[require.resolve('../services/health-samples')];
+  const db2 = require('../db/database');
+  await db2.init();
+  db2.insertHealthSample('blood_pressure_diastolic', 90, sqlTime(Date.now()), 'test');
+  const hs2 = require('../services/health-samples');
+  const out = hs2.latestBloodPressure({ now: new Date() });
+
+  assert.equal(out.known, false);
+  assert.equal(out.hasReadings, true, 'readings exist, so this is not "nothing recorded"');
+  assert.match(out.reason, /same measurement/);
+  assert.equal(out.systolic, undefined);
+  assert.equal(out.diastolic, undefined);
+
+  // Restore for anything after this.
+  process.env.NEURO_DB_PATH = prev;
+  delete require.cache[require.resolve('../db/database')];
+  delete require.cache[require.resolve('../services/health-samples')];
+});
+
+test('a reading carries its age and stale flag through the route', async () => {
+  const json = await (await get('?hours=0')).json();
+  const hr = json.latest.heartRateMedian;
+  assert.ok(Number.isFinite(hr.ageMinutes), 'no age reached the client');
+  assert.equal(typeof hr.stale, 'boolean');
+  assert.ok(Number.isFinite(hr.staleAfterMin), 'the window must travel with the reading');
+  assert.equal(hr.unit, 'bpm');
+});

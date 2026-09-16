@@ -1083,20 +1083,91 @@ server.tool('manage_kb_article',
 // Tools: Health
 // ═══════════════════════════════════════════════════════
 
+// How long ago, in words. The AGE is not decoration: a heart rate of 74 means
+// something quite different taken four minutes ago and taken last Tuesday, and
+// the phone syncs at iOS's discretion, so "latest" is a claim to be earned.
+function ageWords(minutes) {
+  if (!Number.isFinite(minutes)) return 'age unknown';
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 48 * 60) return `${Math.round(minutes / 60)}h ago`;
+  return `${Math.round(minutes / 1440)}d ago`;
+}
+
+// ⚠ A STALE READING IS NEVER PRESENTED AS CURRENT. It is still shown — hiding it
+// would make a feed that quietly stopped invisible — but it is labelled with how
+// old it is and what the expected cadence was, so a reader cannot take it for a
+// measurement of now.
+function freshnessNote(r) {
+  if (r.stale === null) return ` — ${r.note || 'age unknown'} ⚠ CANNOT CONFIRM THIS IS CURRENT`;
+  const when = ageWords(r.ageMinutes);
+  if (!r.stale) return ` — ${when}`;
+  const expected = Number.isFinite(r.staleAfterMin)
+    ? `, expected within ${r.staleAfterMin < 60 ? `${r.staleAfterMin} min` : `${Math.round(r.staleAfterMin / 60)}h`}`
+    : '';
+  return ` — ${when} ⚠ STALE${expected}; do NOT read this as a current measurement`;
+}
+
+const VITAL_LABELS = {
+  heartRateMedian: 'Heart rate',
+  spo2: 'Blood oxygen',
+  hrvMedian: 'HRV',
+  rhrMedian: 'Resting heart rate',
+};
+
+function renderVitals(snapshot) {
+  const lines = ['', '## Latest readings (MEASURED VALUES)', ''];
+  const latest = snapshot?.latest || {};
+  const bp = snapshot?.bloodPressure;
+
+  // ⚠ ONE MEASUREMENT. `latest` carries no systolic or diastolic of its own, so
+  // there is nothing here to pair by mistake — the server returns a blood
+  // pressure whole or says it has none.
+  if (bp?.known) {
+    lines.push(`- **Blood pressure** ${bp.systolic}/${bp.diastolic} ${bp.unit}${freshnessNote(bp)}`
+      + (bp.laterUnpairedReading ? ' _(a later reading exists with only one half, so this is the latest COMPLETE measurement, not the latest datum)_' : ''));
+  } else {
+    lines.push(`- **Blood pressure** — not available: ${bp?.reason || 'unknown'}`);
+  }
+
+  for (const [key, label] of Object.entries(VITAL_LABELS)) {
+    const r = latest[key];
+    if (!r || !Number.isFinite(r.value)) {
+      // Absent, never a dash or a zero that could read as a measurement.
+      lines.push(`- **${label}** — not recorded`);
+      continue;
+    }
+    lines.push(`- **${label}** ${r.value}${r.unit ? ` ${r.unit}` : ''}${freshnessNote(r)}`);
+  }
+
+  for (const g of snapshot?.gaps || []) {
+    lines.push(`- ⚠ Could not read ${g.input} — ${g.why}. This is not an all-clear.`);
+  }
+  return lines;
+}
+
 server.tool('get_health',
-  'Apple Health from the watch: today\'s readiness against Nick\'s own rolling baseline, what has changed (trends and sources that have gone quiet), the stress score, and what data has actually arrived and how fresh it is.',
+  'Apple Health from the watch: the latest MEASURED VITALS (blood pressure as one paired reading, heart rate, blood oxygen, HRV, resting heart rate), each with its age and a stale marker; readiness for today against a rolling personal baseline; what has changed; the stress score; and SEPARATELY how many samples have ARRIVED per metric. Sample counts are arrival counts, never measurements.',
   {
     days: z.number().optional().describe('Freshness window for the metric summary, in days (default 30)'),
   },
   async ({ days }) => {
-    const [stress, series, readiness, signals] = await Promise.all([
+    const [stress, series, readiness, signals, snapshot] = await Promise.all([
       neuroApi('/api/health/stress'),
       neuroApi(`/api/health/metrics?days=${days || 30}`),
       neuroApi('/api/health/readiness'),
       neuroApi('/api/health/signals'),
+      // hours=0 is the snapshot: the latest reading of each, with its age, and
+      // blood pressure as ONE paired measurement rather than two halves.
+      neuroApi('/api/health/samples?hours=0'),
     ]);
 
     const lines = ['# Health', ''];
+
+    // Values lead. They are what "how is he" means, and before this the tool
+    // carried none of them — a reader asking for a blood pressure got a SAMPLE
+    // COUNT out of the arrivals list below, with no way to tell the difference.
+    lines.push(...renderVitals(snapshot), '');
 
     // Readiness leads, because it is the only line here that needed two years of
     // Nick to produce — the raw figures below mean nothing to a reader without a
@@ -1147,13 +1218,18 @@ server.tool('get_health',
       lines.push('', `⚠ Could not check: ${signals.unknowns.map(u => u.input).join(', ')} — this is not an all-clear.`);
     }
 
-    lines.push('', `## Data arriving (${series.metricCount} metrics, ${series.totalSamples} samples / ${series.windowDays}d)`, '');
+    // ⚠⚠ ARRIVAL COUNTS, NOT MEASUREMENTS, and the wording has to carry that on
+    // its own. Nick read "blood_pressure_systolic 155" off the equivalent table
+    // in the UI as a reading of 155mmHg — it was 155 SAMPLES. On this surface the
+    // same confusion would be restated by a model as a fact about his health, so
+    // every figure below says "readings received" and the heading says it twice.
+    lines.push('', `## Data ARRIVING — sample counts, not measurements (${series.metricCount} metrics, ${series.totalSamples} readings received / ${series.windowDays}d)`, '');
     if (!series.metrics?.length) {
       lines.push('Nothing in the window. The phone syncs at iOS\'s discretion, so a gap is not necessarily a fault — but nothing at all usually means the app has been force-quit.');
     } else {
       for (const m of series.metrics.slice(0, 40)) {
         const age = m.ageHours === null ? '?' : m.ageHours < 48 ? `${m.ageHours}h ago` : `${Math.round(m.ageHours / 24)}d ago`;
-        lines.push(`- **${m.metric}** — ${m.samples} samples, last ${age}`);
+        lines.push(`- **${m.metric}** — ${m.samples} readings received, last ${age}`);
       }
       if (series.metrics.length > 40) lines.push(`- …and ${series.metrics.length - 40} more`);
     }
