@@ -1,9 +1,9 @@
 import inventory from './api-inventory.json' with { type: 'json' };
 import { z } from 'zod';
-import { classify, interactive, aliases, scopesFor } from './api-policy.js';
+import { classify, interactive, aliases, scopesFor, paramEnums, notes } from './api-policy.js';
 import { BackendError } from './backend.js';
 
-export const operations = inventory.map(op => Object.freeze({ ...op, classification: classify(op), interactive: interactive[op.id] || null, adaptedRoute: aliases[op.id] || null }));
+export const operations = inventory.map(op => Object.freeze({ ...op, classification: classify(op), interactive: interactive[op.id] || null, adaptedRoute: aliases[op.id] || null, ...(notes[op.id] ? { description: `${op.description} ${notes[op.id]}` } : {}) }));
 const index = new Map(operations.map(op => [op.id, op]));
 const json = z.json();
 const scalar = z.union([z.string().max(16000), z.number().finite(), z.boolean(), z.null()]);
@@ -20,7 +20,7 @@ function safeInput(value, key = '', depth = 0) {
 }
 export function operationSchema(op) {
   return z.strictObject({
-    params: z.strictObject(Object.fromEntries(op.params.map(key => [key, pathValue]))).default({}),
+    params: z.strictObject(Object.fromEntries(op.params.map(key => [key, paramEnums[op.id]?.[key] ? z.enum(paramEnums[op.id][key]) : pathValue]))).default({}),
     query: (op.queryOpen ? z.record(z.string(), scalar) : z.strictObject(Object.fromEntries(op.query.map(key => [key, scalar.optional()])))).default({}),
     body: (op.bodyOpen ? json : z.strictObject(Object.fromEntries(op.body.map(key => [key, json.optional()])))).optional(),
     ...(op.multipart ? { file } : {}),

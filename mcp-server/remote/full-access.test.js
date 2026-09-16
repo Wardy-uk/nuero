@@ -10,6 +10,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { operations, bindOperation, operationSchema, fullAccessTools } from './api-catalogue.js';
 import { inspectApi } from '../scripts/inspect-api.js';
+import { z } from 'zod';
+import * as policy from './api-policy.js';
 import { scopesFor } from './api-policy.js';
 import { createResultStore } from './results.js';
 import { createApp } from './app.js';
@@ -29,7 +31,7 @@ test('every mounted NEURO route is inventoried; source changes cannot silently l
 });
 test('all registered operations bind to fixed routes and expose serializable input schemas', () => {
   for (const op of operations) {
-    const input = { params: Object.fromEntries(op.params.map(k=>[k,'test-id'])) };
+    const input = { params: Object.fromEntries(op.params.map(k=>[k,policy.paramEnums[op.id]?.[k]?.[0] ?? 'test-id'])) };
     if (op.multipart) input.file = { filename: 'test.txt', mime_type: 'text/plain', base64: 'dGVzdA==' };
     const bound = bindOperation(op.id, input);
     assert.ok(bound.route.startsWith('/api/')); assert.ok(!bound.route.includes(':'));
@@ -67,7 +69,7 @@ test('all executable operations dispatch once; interactive auth endpoints do not
   const tools = fullAccessTools(config, async (route,body,options) => { calls.push({route,body,options}); return {data:{ok:true},format:'json'}; },auth,store,v=>redact(v,config));
   for (const op of operations) {
     const before = calls.length;
-    const input = { operation:op.id, params:Object.fromEntries(op.params.map(k=>[k,'abc'])) };
+    const input = { operation:op.id, params:Object.fromEntries(op.params.map(k=>[k,policy.paramEnums[op.id]?.[k]?.[0] ?? 'abc'])) };
     if (op.multipart) input.file={filename:'test.txt',mime_type:'text/plain',base64:'dGVzdA=='};
     const out = await tools.find(v=>v.name===`neuro_${op.classification}`).run(input);
     assert.equal(calls.length,before+(op.interactive?0:1));
@@ -140,4 +142,12 @@ test('real MCP client discovers and calls the full catalogue, scopes and result 
     const action=await client.callTool({name:'neuro_action',arguments:{operation:'post_calendar_events',body:{title:'Test'}}});
     assert.equal(Boolean(action.isError),token==='read');
   }
+});
+
+test('standup session kind is a closed set, and a wrong one is refused before NEURO', () => {
+  const { paramEnums, notes } = policy;
+  for (const id of [...Object.keys(paramEnums), ...Object.keys(notes)]) assert.ok(operations.some(op => op.id === id), `policy names unknown operation ${id}`);
+  assert.equal(bindOperation('post_standup_session_by_kind_start', { params: { kind: 'standup' } }).route, '/api/standup-session/standup/start');
+  assert.throws(() => bindOperation('post_standup_session_by_kind_start', { params: { kind: 'morning' } }), z.ZodError);
+  assert.match(operations.find(op => op.id === 'post_standup_save_to_daily').description, /Focus Today/);
 });

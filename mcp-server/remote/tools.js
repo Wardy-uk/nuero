@@ -162,7 +162,7 @@ export function createToolServer(config, api, auth, log, store = createResultSto
         return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
       } catch (e) {
         code = e instanceof BackendError ? e.code : e instanceof z.ZodError ? 'invalid_operation_input' : 'backend_invalid_response';
-        return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: code, ...(tool.write && !['insufficient_scope', 'invalid_operation_input'].includes(code) ? { write_outcome: 'unconfirmed; verify before retrying' } : {}) }) }], ...(code === 'insufficient_scope' ? { _meta: { 'mcp/www_authenticate': [`Bearer resource_metadata="${new URL(config.MCP_PUBLIC_URL).origin}/.well-known/oauth-protected-resource/mcp", error="insufficient_scope", scope="${scopes.join(' ')}"`] } } : {}) };
+        return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: code, ...(e instanceof z.ZodError ? { issues: e.issues.slice(0, 5).map(i => ({ path: i.path.join('.'), message: i.message })) } : {}), ...(tool.write && !['insufficient_scope', 'invalid_operation_input'].includes(code) ? { write_outcome: 'unconfirmed; verify before retrying' } : {}) }) }], ...(code === 'insufficient_scope' ? { _meta: { 'mcp/www_authenticate': [`Bearer resource_metadata="${new URL(config.MCP_PUBLIC_URL).origin}/.well-known/oauth-protected-resource/mcp", error="insufficient_scope", scope="${scopes.join(' ')}"`] } } : {}) };
       } finally { log('tool_call', { tool: tool.name, ...(args.operation ? { operation: args.operation } : {}), classification: tool.classification || (tool.write ? 'write' : 'read'), latency_ms: Math.round(performance.now() - start), code }); }
     });
   }
