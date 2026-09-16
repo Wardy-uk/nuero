@@ -62,31 +62,62 @@ const pad = n => String(n).padStart(2, '0');
  * Each call steps a quarter-hour further back, so every fixture gets its own
  * (date_key, start_time) — crossing midnight is fine and still inside the day.
  */
-function recentSlot() {
-  // Steps FORWARD from eight hours ago, so a fixture created later also sits
-  // later in the day: `listTaskBlockRows` orders by (date, start) descending and
-  // the tests about "the most recent block" mean the one worked most recently,
-  // not the one inserted last.
-  // ⚠ The budget is a FIXED SPAN divided by a generous fixture count, rather
-  // than a step sized by hand against however many fixtures the file had on the
-  // day it was written. That hand-tuned version (8h back, 5 min a step, "74 at
-  // the time of writing") silently broke the moment a test was ADDED: the tail
-  // booked itself into the future, and the failures landed on unrelated tests
-  // further down the file. Every slot now lands between SPAN and SPAN/2 hours
-  // ago — comfortably in the past, comfortably inside STALE_AFTER_MS.
-  const SPAN_MIN = 20 * 60;
-  const SLOTS = 400;
-  const at = new Date(Date.now() - (SPAN_MIN - (slotSeq++ % SLOTS) * (SPAN_MIN / 2 / SLOTS)) * 60000);
-  // Keep the window inside one day: an end that wrapped past midnight would
-  // parse as EARLIER than its start and read as ancient.
-  if (at.getHours() === 23 && at.getMinutes() > 55) at.setMinutes(55);
-  const startMin = at.getHours() * 60 + at.getMinutes();
+/**
+ * The slot construction, as a PURE function of the clock and the sequence.
+ *
+ * Split out so the uniqueness rule can be pinned across a whole day of possible
+ * `now` values. The bug it replaces only fired when the band happened to
+ * straddle midnight — green on the Pi at 15:00 and red on this laptop at 18:30 —
+ * so a test that calls it at whatever time the suite happens to run proves
+ * nothing about the case that actually breaks.
+ *
+ * Returns the sequence value the CALLER should hold next, because skipping
+ * consumes one.
+ */
+function slotAt(nowMs, seq) {
+  // Steps FORWARD from twenty hours ago, one WHOLE MINUTE per fixture, so a
+  // fixture created later also sits later in the day: `listTaskBlockRows` orders
+  // by (date, start) descending and the tests about "the most recent block" mean
+  // the one worked most recently, not the one inserted last.
+  //
+  // ⚠⚠ ONE MINUTE PER FIXTURE, AND THE LAST FIVE MINUTES OF A DAY ARE SKIPPED,
+  // so every fixture owns a distinct (date_key, start_time) BY CONSTRUCTION.
+  // The previous version stepped 1.5 minutes and then CLAMPED anything past
+  // 23:55 back to 23:55, which collapsed several fixtures onto one slot and
+  // violated UNIQUE(date_key, start_time). The failure surfaced on whichever
+  // test drew the duplicate rather than on the helper — the same shape as the
+  // hand-sized step this replaced, wearing a clock instead of a calendar.
+  //
+  // Skipping ADVANCES the sequence, so a skipped minute is never revisited and
+  // uniqueness survives the jump across midnight.
+  //
+  // The clamp existed to stop a four-minute window overflowing into "24:03",
+  // which would parse as EARLIER than its start; reserving the last five minutes
+  // of the day does that job without collapsing anything.
+  const BASE_MIN = 20 * 60;
+  const LAST_SAFE_MIN = 24 * 60 - 6; // 23:54 — leaves room for a 4-minute window
+  let at;
+  let startMin;
+  do {
+    // 600 minutes of band walks from 20h to 10h ago — comfortably in the past,
+    // comfortably inside STALE_AFTER_MS, with room as tests are added. Nothing
+    // here can reach the present.
+    at = new Date(nowMs - (BASE_MIN - (seq++ % 600)) * 60000);
+    startMin = at.getHours() * 60 + at.getMinutes();
+  } while (startMin > LAST_SAFE_MIN);
   const hhmm = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
   return {
     dateKey: `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`,
     startTime: hhmm(startMin),
     endTime: hhmm(startMin + 4),
+    nextSeq: seq,
   };
+}
+
+function recentSlot() {
+  const s = slotAt(Date.now(), slotSeq);
+  slotSeq = s.nextSeq;
+  return s;
 }
 
 /** Tasks with a block already scheduled, and its stub on disk. */
@@ -1715,4 +1746,62 @@ test('a dry-run sweep ages nothing out', () => {
   const swept = taskBlocks.sweep({ dryRun: true });
   assert.ok(swept.expired.some(e => e.blockId === blockId), 'it must still be REPORTED');
   assert.equal(db.getTaskBlockRow(blockId).status, 'scheduled', 'but not written');
+});
+
+// ── The fixture helper itself ───────────────────────────────────────────────
+//
+// Pinned because it broke silently on 16 Sep 2026 and the failure landed on an
+// unrelated test 1,000 lines away: the old helper clamped anything past 23:55
+// back to 23:55, collapsing several fixtures onto one (date_key, start_time) and
+// tripping the UNIQUE index. It fired only when the band straddled midnight, so
+// the suite was green on the Pi and red on the laptop an hour later.
+
+test('every fixture gets its own slot, at EVERY time of day', () => {
+  // A test that runs at whatever o'clock the suite happens to start proves
+  // nothing about the case that breaks, so this walks a whole day in 10-minute
+  // steps and checks the midnight crossing from every side.
+  const base = Date.UTC(2026, 8, 16, 0, 0, 0);
+  for (let minute = 0; minute < 24 * 60; minute += 10) {
+    const now = base + minute * 60000;
+    const seen = new Set();
+    let seq = 0;
+    for (let i = 0; i < 200; i++) {
+      const s = slotAt(now, seq);
+      seq = s.nextSeq;
+      const key = `${s.dateKey} ${s.startTime}`;
+      assert.ok(!seen.has(key),
+        `duplicate slot ${key} at fixture ${i} when now is ${new Date(now).toISOString()}`);
+      seen.add(key);
+    }
+  }
+});
+
+test('a fixture window never overflows midnight', () => {
+  // "24:03" parses as EARLIER than its start and reads as an ancient block.
+  const base = Date.UTC(2026, 8, 16, 0, 0, 0);
+  for (let minute = 0; minute < 24 * 60; minute += 10) {
+    let seq = 0;
+    for (let i = 0; i < 200; i++) {
+      const s = slotAt(base + minute * 60000, seq);
+      seq = s.nextSeq;
+      assert.ok(s.endTime < '24:00', `window ended at ${s.endTime}`);
+      assert.ok(s.endTime > s.startTime, `${s.startTime}..${s.endTime} is not a window`);
+    }
+  }
+});
+
+test('fixtures stay in the past, and inside the stale window', () => {
+  // Both ends matter: a slot in the FUTURE has not been sat in and would be held
+  // by the not-yet-started rule, and one older than STALE_AFTER_MS has aged out.
+  // Either turns a fixture into a test of something nobody meant to test.
+  const now = Date.UTC(2026, 8, 16, 14, 30, 0);
+  let seq = 0;
+  for (let i = 0; i < 200; i++) {
+    const s = slotAt(now, seq);
+    seq = s.nextSeq;
+    const at = Date.parse(`${s.dateKey}T${s.startTime}:00`);
+    const agoHours = (now - at) / 3600000;
+    assert.ok(agoHours > 0, `fixture ${i} is in the future (${s.dateKey} ${s.startTime})`);
+    assert.ok(agoHours < 24, `fixture ${i} is ${agoHours.toFixed(1)}h old — past STALE_AFTER_MS`);
+  }
 });

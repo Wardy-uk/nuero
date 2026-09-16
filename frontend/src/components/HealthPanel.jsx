@@ -57,7 +57,7 @@ const SLEEP_RAMP = { deep: '#3a6fc4', core: '#5a95e0', rem: '#8fbdf2' };
 // blood pressure is the one number on this page currently worth a conversation
 // with a GP, and burying it under step counts is a design decision about what
 // Nick reads first.
-const TRENDS = [
+export const TRENDS = [
   {
     key: 'bp',
     title: 'Blood pressure',
@@ -144,7 +144,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * already cost this codebase a whole day on the calendar. There is nothing to
  * compute — the string already holds the answer.
  */
-function axisLabel(day, withYear = false) {
+export function axisLabel(day, withYear = false) {
   if (typeof day !== 'string' || day.length < 10) return '';
   const m = Number(day.slice(5, 7));
   const d = Number(day.slice(8, 10));
@@ -160,7 +160,7 @@ function axisLabel(day, withYear = false) {
  * day carries data, because the distance between two readings is exactly what
  * the axis exists to make measurable.
  */
-function tickIndices(n, want = 5) {
+export function tickIndices(n, want = 5) {
   if (n <= 0) return [];
   if (n === 1) return [0];
   const count = Math.max(2, Math.min(want, n));
@@ -169,7 +169,7 @@ function tickIndices(n, want = 5) {
   return [...new Set(out)];
 }
 
-function TrendChart({ title, unit, dp, hint, days, valueKey, series, spanYear }) {
+export function TrendChart({ title, unit, dp, hint, days, valueKey, series, spanYear }) {
   const [hover, setHover] = useState(null);
   const [width, setWidth] = useState(560);
   const wrapRef = useRef(null);
