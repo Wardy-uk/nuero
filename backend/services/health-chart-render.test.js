@@ -429,3 +429,74 @@ test('an empty snapshot says so rather than rendering an empty grid', async () =
   const html = renderToString(React.createElement(LatestReadings, { latest: {} }));
   assert.match(html, /No readings have arrived yet/);
 });
+
+// ── An isolated reading is still a reading ──────────────────────────────────
+
+test('a lone reading draws a DOT, not an invisible moveto', async () => {
+  // ⚠⚠ The bug this pins blanked whole charts in silence. A run of one point is
+  // `M x y` and nothing else, which SVG renders as NOTHING — and an isolated
+  // reading is the NORMAL case for anything not sampled continuously. Measured
+  // on the live 24-hour window when it was found: blood oxygen was 16 of 16
+  // points isolated and drew COMPLETELY EMPTY, blood pressure showed one segment
+  // out of 27, resting heart rate nothing at all — each under a heading stating
+  // a median and a coverage percentage, so the numbers claimed data the plot
+  // denied. Blood pressure on the 90-day view had it too: 4 scattered days, none
+  // of them drawn.
+  const { TrendChart } = await load();
+  const days = [
+    { day: '2026-09-16', spo2: 96 },
+    { day: '2026-09-15', spo2: null },
+    { day: '2026-09-14', spo2: 94 },
+    { day: '2026-09-13', spo2: null },
+    { day: '2026-09-12', spo2: 97 },
+  ];
+  const html = renderToString(React.createElement(TrendChart, {
+    title: 'Blood oxygen', unit: '%', dp: 1, days, valueKey: 'spo2',
+  }));
+  const ds = [...html.matchAll(/ d="([^"]+)"/g)].map(m => m[1]).filter(d => d.startsWith('M'));
+  assert.equal(ds.length, 3, 'three isolated readings should be three marks');
+  for (const d of ds) {
+    assert.match(d, /L/, `"${d}" has no drawable command — it renders as nothing`);
+  }
+});
+
+test('every path a chart emits is drawable, on a real sparse payload', async () => {
+  // The general form, over every trend at once: no chart may emit a path that
+  // draws nothing. A per-series assertion would miss whichever series nobody
+  // thought to check.
+  const { TrendChart, TRENDS, sampleRows } = await load();
+  // Shaped like the live 24-hour window: heart rate nearly continuous, blood
+  // pressure and SpO2 scattered, resting heart rate a couple of readings.
+  const t0 = Date.UTC(2026, 8, 16, 0, 0, 0);
+  const series = {};
+  const put = (key, every) => {
+    series[key] = Array.from({ length: 144 }, (_, i) => ({
+      t: t0 + i * 10 * 60000,
+      v: i % every === 0 ? 70 + (i % 9) : null,
+    }));
+  };
+  put('heartRateMedian', 1);
+  put('bpSystolic', 5);
+  put('bpDiastolic', 5);
+  put('spo2', 9);
+  put('rhrMedian', 70);
+  put('hrvMedian', 3);
+  put('steps', 4);
+  put('exerciseMinutes', 17);
+  put('daylightMinutes', 31);
+  const rows = sampleRows({ series });
+
+  let paths = 0;
+  for (const t of TRENDS) {
+    if (t.sample === false) continue;
+    const html = renderToString(React.createElement(TrendChart, {
+      ...t, days: rows, valueKey: t.key, xLabel: (r) => String(r?.t || ''),
+    }));
+    for (const d of [...html.matchAll(/ d="([^"]+)"/g)].map(m => m[1])) {
+      if (!d.startsWith('M')) continue;
+      paths++;
+      assert.match(d, /L/, `${t.title} emitted an invisible path: ${d}`);
+    }
+  }
+  assert.ok(paths > 50, `expected a sparse payload to produce many marks, got ${paths}`);
+});

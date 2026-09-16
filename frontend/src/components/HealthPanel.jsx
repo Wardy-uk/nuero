@@ -332,9 +332,25 @@ export function TrendChart({ title, unit, dp, hint, days, valueKey, series, span
   const drawn = lanes.map(lane => ({
     ...lane,
     mid: median(lane.points.map(p => p.v)),
-    paths: segments(lane.points).map(run =>
-      run.map((p, n) => `${n ? 'L' : 'M'}${x(p.i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ')
-    ),
+    paths: segments(lane.points).map(run => {
+      const d = run.map((p, n) => `${n ? 'L' : 'M'}${x(p.i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ');
+      // ⚠⚠ A RUN OF ONE POINT IS `M x y` AND NOTHING ELSE, WHICH SVG DRAWS AS
+      // NOTHING. Not a rounding detail — an isolated reading is the NORMAL case
+      // for anything not sampled continuously, so this silently blanked whole
+      // charts. Measured on the live 24-hour window: blood oxygen was 16 of 16
+      // points isolated and rendered COMPLETELY EMPTY, blood pressure showed one
+      // segment out of 27, resting heart rate nothing at all — each under a
+      // heading stating a median and a coverage percentage, so the numbers said
+      // there was data and the plot said there was none. Blood pressure on the
+      // 90-day view had it too: 4 scattered days, none of them drawn.
+      //
+      // A zero-length segment plus `stroke-linecap: round` is a dot, which is
+      // the honest mark for a reading with no neighbour to join. Deliberately
+      // NOT bridging the gap to the next reading instead: a line across six
+      // hours nobody measured is the chart telling a story that never happened,
+      // which is the rule this whole page is built on.
+      return run.length === 1 ? `${d} L${x(run[0].i).toFixed(1)} ${y(run[0].v).toFixed(1)}` : d;
+    }),
   }));
 
   // Coverage is measured on the BEST-covered lane. For a pair, "97% covered"
