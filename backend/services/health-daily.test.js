@@ -345,18 +345,83 @@ test('the two halves of blood pressure never collapse into one number', () => {
   assert.equal(day.bpDiastolic, 90);
 });
 
-test('heart rate is a MEDIAN, not the mean a gym session drags upward', () => {
-  // Eight resting readings and one exercise peak. The mean is 76.7; the median
-  // is the rate he actually spent the day at.
-  const values = [62, 64, 65, 66, 68, 70, 72, 74, 180];
-  const [day] = hd.buildDays({
-    medianRows: values.map((v, i) => ({
-      metric: 'heartRate', value: v,
-      recorded_at: `2026-09-16 ${String(6 + i).padStart(2, '0')}:00:00`,
-    })),
-    todayKey: '2026-09-17',
+// ⚠ THE SHAPE OF THIS FIXTURE IS THE WHOLE FINDING, and it is copied from a real
+// day (2025-01-05) rather than invented: 1,866 heart-rate samples, of which
+// 1,346 — 72% — fall in the two hours 11:00 to 12:59 at 130-137bpm, against
+// 16-21 an hour across the rest of the day. The watch samples roughly 35x faster
+// during a workout. An invented fixture with evenly spaced readings agrees with
+// the plain median and proves nothing.
+function denseWorkoutDay(day = '2025-01-05') {
+  const rows = [];
+  const push = (h, m, s, v) => rows.push({
+    metric: 'heartRate',
+    value: v,
+    recorded_at: `${day} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
   });
-  assert.equal(day.heartRateMedian, 68);
+  // Resting the rest of the day: ~18 readings an hour, around 70bpm.
+  for (let h = 0; h < 24; h++) {
+    if (h === 11 || h === 12) continue;
+    for (let i = 0; i < 18; i++) push(h, Math.floor(i * 60 / 18), 0, 68 + (i % 5));
+  }
+  // The workout: a reading every five seconds for two hours, around 133bpm.
+  for (let h = 11; h <= 12; h++) {
+    for (let i = 0; i < 673; i++) {
+      push(h, Math.floor((i * 5) / 60) % 60, (i * 5) % 60, 130 + (i % 8));
+    }
+  }
+  return rows;
+}
+
+test('heart rate follows the CLOCK, not the sampling rate', () => {
+  const rows = denseWorkoutDay();
+  const [day] = hd.buildDays({ medianRows: rows, todayKey: '2025-01-06' });
+
+  // 72% of the readings are the workout, so the plain median IS the workout.
+  const plain = rows.map(r => r.value).sort((a, b) => a - b)[Math.floor(rows.length / 2)];
+  assert.ok(plain >= 125, `fixture is not density-skewed (plain median ${plain})`);
+
+  // Two hours of a twenty-four hour day cannot be the middle of it.
+  assert.ok(day.heartRateMedian < 100,
+    `heart rate reported ${day.heartRateMedian}bpm — the workout has captured the day`);
+  assert.ok(day.heartRateMedian >= 65 && day.heartRateMedian <= 80,
+    `expected a resting-ish figure, got ${day.heartRateMedian}`);
+});
+
+test('a watch off the wrist is not hours spent at the last reading', () => {
+  // One reading at 180bpm, then nothing for three hours, then a resting day.
+  // Uncapped, that single sample stands for three hours and takes the median
+  // with it. Measured max gap on the live table is 10,141s, so this is the real
+  // failure, not a hypothetical one.
+  const rows = [{ metric: 'heartRate', value: 180, recorded_at: '2026-09-01 06:00:00' }];
+  for (let i = 0; i < 40; i++) {
+    const m = i * 4;
+    rows.push({
+      metric: 'heartRate',
+      value: 70,
+      recorded_at: `2026-09-01 09:${String(m % 60).padStart(2, '0')}:00`,
+    });
+  }
+  const [day] = hd.buildDays({ medianRows: rows, todayKey: '2026-09-02' });
+  assert.equal(day.heartRateMedian, 70);
+});
+
+test('the sample weight cap is above the measured p99, not a round guess', () => {
+  // Gaps over September 2026: p50 209s, p90 423s, p99 807s, max 10,141s. A cap
+  // below p99 would start truncating ordinary readings; one far above it stops
+  // distinguishing an outage from a quiet hour.
+  assert.ok(hd.MAX_SAMPLE_WEIGHT_MS > 807000, 'cap must clear the measured p99 gap');
+  assert.ok(hd.MAX_SAMPLE_WEIGHT_MS < 3600000, 'cap must still refuse an hour-long outage');
+});
+
+test('only heart rate is time-weighted — blood pressure is read as taken', () => {
+  // BP readings are user-initiated and roughly spread through the day, and the
+  // plain median is also what a clinician reads. Weighting them would make an
+  // hour of sitting still count for more than the reading itself.
+  assert.ok(hd.TIME_WEIGHTED.has('heartRate'));
+  assert.ok(!hd.TIME_WEIGHTED.has('blood_pressure_systolic'));
+  assert.ok(!hd.TIME_WEIGHTED.has('blood_pressure_diastolic'));
+  assert.ok(!hd.TIME_WEIGHTED.has('hrv'));
+  assert.ok(!hd.TIME_WEIGHTED.has('rhr'));
 });
 
 test('SpO2 is scaled to a percentage exactly once', () => {

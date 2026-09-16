@@ -78,7 +78,7 @@ const TRENDS = [
     title: 'Heart rate',
     unit: 'bpm',
     dp: 0,
-    hint: 'Daily median across every reading — the rate you actually spent the day at. Deliberately a median: a mean sits between a gym session and eight hours asleep, which is a rate that never happened.',
+    hint: 'The rate you spent the middle of your day at, weighted by the clock. The watch samples ~35x faster during exercise, so a plain average of readings mostly measures your workouts — each reading is weighted by how long it stood for instead.',
   },
   { key: 'hrvMedian', title: 'HRV', unit: 'ms', dp: 1, hint: 'Daily median. Higher is generally better recovery — but only against your own range.' },
   { key: 'rhrMedian', title: 'Resting heart rate', unit: 'bpm', dp: 0, hint: 'Daily median. A sustained rise is the signal, not any single day.' },

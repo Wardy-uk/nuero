@@ -115,6 +115,75 @@ function median(nums) {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+/**
+ * Median WEIGHTED BY TIME, for a metric the watch does not sample evenly.
+ *
+ * ⚠⚠ THE PLAIN MEDIAN IS WRONG FOR HEART RATE, AND ONLY THE LIVE DATA SHOWS IT.
+ * A plain median answers "the middle READING", which is only the middle of the
+ * DAY if readings arrive at a steady rate — and heart rate does not. Measured on
+ * 2025-01-05: 1,866 samples, of which 1,346 (72%) land in the two hours 11:00 to
+ * 12:59 at 130-137bpm, against 16-21 an hour for the rest of the day. The watch
+ * samples roughly 35x faster during a workout, so the plain median came back
+ * 128bpm — a figure describing his exercise, presented as his day. It would move
+ * whenever his training changed and stay flat through anything cardiovascular,
+ * which is the exact opposite of what a trend chart is for.
+ *
+ * So each reading is weighted by the interval it stands for.
+ *
+ * ⚠ THE WEIGHT IS CAPPED, and the cap is measured rather than picked. Over
+ * September 2026 the gap between consecutive samples is 209s at the median, 423s
+ * at p90 and 807s at p99, with a maximum of 10,141s — a watch off the wrist for
+ * nearly three hours. MAX_SAMPLE_WEIGHT_MS sits just above p99, so every genuine
+ * sampling interval survives whole and only an OUTAGE is truncated. Uncapped, a
+ * night the watch died would be counted as three hours spent at whatever the
+ * last reading before it happened to be.
+ */
+const MAX_SAMPLE_WEIGHT_MS = 900000; // 15 min — just above the measured p99
+
+// Metrics whose samples are not evenly spaced in time. Blood pressure is
+// deliberately NOT here: those readings are user-initiated and roughly spread,
+// and the plain median is also what a clinician reads.
+const TIME_WEIGHTED = new Set(['heartRate']);
+
+function parseStamp(at) {
+  if (!at) return NaN;
+  const s = String(at);
+  return Date.parse(s.includes('T') ? s : `${s.replace(' ', 'T')}Z`);
+}
+
+function timeWeightedMedian(rows) {
+  const pts = (rows || [])
+    .map(r => ({ v: Number(r.v), t: parseStamp(r.t) }))
+    .filter(p => Number.isFinite(p.v) && p.v > 0 && Number.isFinite(p.t))
+    .sort((a, b) => a.t - b.t);
+
+  if (!pts.length) return null;
+  if (pts.length === 1) return pts[0].v;
+
+  const gaps = [];
+  for (let i = 1; i < pts.length; i++) gaps.push(pts[i].t - pts[i - 1].t);
+  // The final reading has no successor, so it stands for a typical interval
+  // rather than for nothing (dropping it loses the end of the day) or for
+  // everything left until midnight (which nothing measured).
+  const tailGap = Math.max(1, median(gaps) || 1);
+
+  const weighted = pts.map((p, i) => ({
+    v: p.v,
+    w: Math.min(Math.max(i + 1 < pts.length ? pts[i + 1].t - p.t : tailGap, 1), MAX_SAMPLE_WEIGHT_MS),
+  }));
+
+  const total = weighted.reduce((n, p) => n + p.w, 0);
+  if (!(total > 0)) return median(pts.map(p => p.v));
+
+  weighted.sort((a, b) => a.v - b.v);
+  let acc = 0;
+  for (const p of weighted) {
+    acc += p.w;
+    if (acc >= total / 2) return p.v;
+  }
+  return weighted[weighted.length - 1].v;
+}
+
 /** Median absolute deviation, scaled to compare with a standard deviation. */
 function robustSigma(nums, mid) {
   const devs = nums.filter(Number.isFinite).map(n => Math.abs(n - mid));
@@ -158,14 +227,21 @@ function buildDays({ aggregates = [], medianRows = [], nights = [], todayKey = n
     const value = Number(row.value);
     if (!Number.isFinite(value) || value <= 0) continue;
     const id = `${key}:${day}`;
-    if (!buckets.has(id)) buckets.set(id, { key, day, values: [] });
-    buckets.get(id).values.push(value);
+    // The TIMESTAMP is kept, not just the value: a time-weighted fold needs to
+    // know how long each reading stood for, and recovering that after the fact
+    // is impossible.
+    if (!buckets.has(id)) buckets.set(id, { key, metric: row.metric, day, samples: [] });
+    buckets.get(id).samples.push({ v: value, t: row.recorded_at });
   }
-  for (const { key, day, values } of buckets.values()) {
-    dayOf(day)[key] = round(median(values));
+  for (const { key, metric, day, samples } of buckets.values()) {
+    dayOf(day)[key] = round(
+      TIME_WEIGHTED.has(metric)
+        ? timeWeightedMedian(samples)
+        : median(samples.map(s => s.v))
+    );
     // Sample count for HRV only, because it is the one figure a consumer is
     // entitled to distrust: a "median" of one reading is that reading.
-    if (key === 'hrvMedian') dayOf(day).hrvSamples = values.length;
+    if (key === 'hrvMedian') dayOf(day).hrvSamples = samples.length;
   }
 
   for (const night of nights) {
@@ -635,6 +711,9 @@ module.exports = {
   MEDIAN_METRICS,
   MEDIAN_ROW_CAP,
   DEFAULT_MEDIAN_ROW_CAP,
+  TIME_WEIGHTED,
+  timeWeightedMedian,
+  MAX_SAMPLE_WEIGHT_MS,
   BASELINE_DAYS,
   MIN_BASELINE_DAYS,
   SYNC_WINDOW_DAYS,
