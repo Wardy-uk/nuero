@@ -86,7 +86,26 @@ async function _processWrite(relativePath, source) {
   }
 
   // 4. Candidate action extraction from notes
-  try {
+  //
+  // ⚠⚠ NOT ON AN AI-ENRICHMENT WRITE. That pass appends NEURO's OWN `## Open Loops`
+  // and `## Promote Next` sections, which read exactly like commitments — so
+  // extracting from them is NEURO raising tasks off its own generated text, and the
+  // meeting underneath was already scanned when the note first landed. Measured: a
+  // three-note trial created 2 candidates per note, so enriching 100 would have put
+  // ~200 into the Spotted queue. That is the 229-restamp / 911-candidate flood
+  // reproduced exactly, and `vault-hooks` has no `maxCreate` cap to catch it
+  // (`scanRecentNotes` has one; this path does not).
+  //
+  // ⚠ Only THIS step is skipped. Re-embedding and entity extraction above still run,
+  // because the note's content genuinely changed and the insight text is worth
+  // indexing — it is the commitment inference that must not read a machine's output
+  // as a promise somebody made.
+  //
+  // ⚠ A GUARD, NOT AN EARLY RETURN — step 5 below still logs the write. An early
+  // return here would silently stop the activity feed recording enrichment writes.
+  if (source === 'knowledge-ai-enrichment') {
+    console.log(`${tag} Skipped action candidates for ${relativePath} — enrichment writes NEURO's own sections`);
+  } else try {
     const actionCandidates = require('./action-candidates');
     // ⚠ ExcludingNova, matching the nightly sweep (item 21). Without it a
     // NOVA-owned 1-2-1 note routed into `Meetings/` by `imports` was extracted

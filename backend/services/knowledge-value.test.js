@@ -322,3 +322,31 @@ test('uniqueStrings still folds duplicates and honours its limit', () => {
   assert.deepEqual(km.uniqueStrings(['a', 'A', ' a ', 'b'], 6), ['a', 'b']);
   assert.deepEqual(km.uniqueStrings(['a', 'b', 'c'], 2), ['a', 'b']);
 });
+
+// --- the enrichment must not feed the review queue -------------------------------------
+
+test('an enrichment write does NOT trigger action-candidate extraction', () => {
+  // ⚠ Measured on the live Pi: a 3-note trial created 2 candidates PER NOTE, because
+  // the pass appends NEURO's own `## Open Loops` / `## Promote Next` sections and
+  // those read exactly like commitments. Enriching 100 would have put ~200 into the
+  // Spotted queue — the 229-restamp / 911-candidate flood reproduced, and vault-hooks
+  // has no maxCreate cap to catch it.
+  //
+  // A source scan, because the alternative is driving the real hook with a real DB and
+  // a real model. Positive control included so a broken scan cannot pass by absence.
+  const src = fs.readFileSync(path.join(__dirname, 'vault-hooks.js'), 'utf-8');
+  assert.match(src, /syncNoteActionCandidatesUnlessNova/, 'positive control: the call still exists');
+  assert.match(
+    src,
+    /source === 'knowledge-ai-enrichment'/,
+    'the enrichment source must be guarded out of candidate extraction'
+  );
+  // ⚠ And it must be a GUARD, not an early return: step 5 still logs the write.
+  const guardIdx = src.indexOf("source === 'knowledge-ai-enrichment'");
+  const activityIdx = src.indexOf('trackVaultWrite');
+  assert.ok(guardIdx > 0 && activityIdx > guardIdx, 'activity logging still follows the guard');
+  assert.ok(
+    !/source === 'knowledge-ai-enrichment'[\s\S]{0,220}?\breturn;/.test(src),
+    'an early return here would silently stop the activity feed recording enrichment writes'
+  );
+});
