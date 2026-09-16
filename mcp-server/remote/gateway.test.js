@@ -191,3 +191,20 @@ test('partial context, bounded evidence and retrieval coverage are explicit', as
   const unverified = toolDefinitions(config, async () => ({ results: [] }));
   assert.equal((await unverified.find(v => v.name === 'memory_search').run({ query: 'test', limit: 5 })).partial, true);
 });
+
+// ⚠ A CLIENT BUDGETS THE TOOL CATALOGUE, AND OVERFLOW IS SILENT.
+// Measured against ChatGPT on 16 Sep 2026: a 55.4KB / 29-tool catalogue was
+// truncated to the first 24 tools in registration order — the five vantage_* tools
+// were served correctly by the gateway and never reached the model, with no error
+// anywhere. 44.5KB (24 tools) was accepted, so the ceiling sits between the two.
+// This pins the whole advertised payload well under the lower figure. If it fails,
+// SHRINK THE CATALOGUE — do not raise the number, because the failure it prevents
+// is invisible from the server side and looks like a tool that does not exist.
+test('the advertised tool catalogue stays inside a client tool-schema budget', async t => {
+  const f = await fixture(t);
+  const tools = (await f.client.listTools()).tools;
+  const bytes = Buffer.byteLength(JSON.stringify({ tools }));
+  assert.ok(bytes < 45000, `tools/list is ${bytes} bytes; a client dropped the tail at 55403`);
+  // Nothing may quietly become enormous on its own either.
+  for (const tool of tools) assert.ok(Buffer.byteLength(JSON.stringify(tool)) < 4000, `${tool.name} schema is too large`);
+});

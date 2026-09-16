@@ -53,9 +53,18 @@ export function fullAccessTools(config, api, auth, store, redact) {
     return { total: found.length, next_offset: offset + limit < found.length ? offset + limit : null, capabilities: found.slice(offset,offset+limit).map(op => ({ operation: op.id, tool: `neuro_${op.classification}`, purpose: op.description, classification: op.classification, scopes: scopesFor(op.classification), interactive: op.interactive, ...(describe ? { input_schema: z.toJSONSchema(operationSchema(op), { io: 'input' }), backend_validation: 'Backend service validates domain fields; dynamic body schemas intentionally accept JSON.', route: op.route } : {}) })) };
   } });
   tools.push({ name: 'neuro_result_get', description: 'Read the next page of a full-access operation result without repeating the operation. Results expire after five minutes or capacity eviction; the original operation scopes are still required.', input: z.strictObject({ result_id: z.string().uuid(), offset: z.number().int().min(0).default(0), length: z.number().int().min(1).max(16000).default(12000) }), output: z.object({ result_id: z.string(), text: z.string(), encoding: z.string(), offset: z.number(), total_chars: z.number(), next_offset: z.number().nullable(), expires_at: z.string() }), write: false, run: async ({ result_id, offset, length }) => store.get(result_id, auth.scopes, offset, length) });
+  // ⚠ `operation` is a STRING here, not an enum of all 513 ids, and the reason is
+  // discovery rather than taste. A client budgets how much tool schema it will
+  // accept: ChatGPT took the first 24 tools of a 55.4KB catalogue and silently
+  // dropped the rest, which is how five working VANTAGE tools came to be invisible
+  // (measured 16 Sep 2026 — the four enums below were 22KB of that). The registry
+  // is unchanged and still CLOSED: `bindOperation` refuses an id it does not hold,
+  // and the classification check below refuses one belonging to another tier, so
+  // nothing is validated less — the list simply stops being shipped to every client
+  // on every connection when `neuro_capabilities` exists to answer exactly that.
   for (const kind of ['read','write','action','admin']) {
-    const names = operations.filter(op => op.classification === kind).map(op => op.id);
-    tools.push({ name: `neuro_${kind}`, description: `Execute a named NEURO ${kind} capability from neuro_capabilities. Fixed registry only; no caller-supplied HTTP URL/method/headers. ${kind === 'read' ? 'Retrieve any NEURO domain.' : 'Requires explicit user intent; external/destructive effects follow the named operation. Never automatically retry an uncertain outcome.'}`, input: z.strictObject({ ...requestShape, operation: z.enum(names) }), output: resultOutput, write: kind !== 'read', classification: kind, scopes: scopesFor(kind), run: async ({ operation, ...input }) => {
+    const examples = operations.filter(op => op.classification === kind).slice(0, 3).map(op => op.id).join(', ');
+    tools.push({ name: `neuro_${kind}`, description: `Execute a named NEURO ${kind} capability. Fixed registry only; no caller-supplied HTTP URL/method/headers. \`operation\` is an id from neuro_capabilities (e.g. ${examples}) — call that first rather than guessing; an unknown id is refused. ${kind === 'read' ? 'Retrieve any NEURO domain.' : 'Requires explicit user intent; external/destructive effects follow the named operation. Never automatically retry an uncertain outcome.'}`, input: z.strictObject({ ...requestShape, operation: z.string().min(1).max(120) }), output: resultOutput, write: kind !== 'read', classification: kind, scopes: scopesFor(kind), run: async ({ operation, ...input }) => {
       const bound = bindOperation(operation, Object.fromEntries(Object.entries(input).filter(([,v]) => v !== undefined)));
       if (bound.op.classification !== kind) throw new BackendError('wrong_operation_classification');
       if (scopesFor(kind).some(s => !auth.scopes.includes(s))) throw new BackendError('insufficient_scope');
