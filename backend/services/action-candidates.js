@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
+const { canonicalPlaudId } = require('../../shared/plaud-id.cjs');
 
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
 const AUTO_PROMOTE_CONFIDENCE = 0.93;
@@ -806,8 +807,19 @@ async function loadNovaClaimed() {
 function novaClaimedNote(absPath, claimed) {
   try {
     const head = fs.readFileSync(absPath, 'utf-8').slice(0, 2000).replace(/\r\n/g, '\n');
-    const m = head.match(/^plaud_id:\s*"?([A-Za-z0-9]+)"?\s*$/m);
-    return Boolean(m && claimed.has(m[1]));
+    // ⚠ THE CHARACTER CLASS HAD NO UNDERSCORE. When PLAUD started prefixing ids with
+    // `of_` (15 Sep 2026) this matched NOTHING, so every note read as unclaimed and
+    // NOVA's own 1-2-1s and consultations were extracted into the review queue
+    // alongside the duplicate-note flood. A tightened class is a filter that fails OPEN
+    // and says nothing. Both sides are canonicalised so either spelling matches.
+    const m = head.match(/^plaud_id:\s*"?([^"\s]+?)"?\s*$/m);
+    if (!m) return false;
+    const id = canonicalPlaudId(m[1]);
+    if (!id) return false;
+    for (const claim of claimed) {
+      if (canonicalPlaudId(claim) === id) return true;
+    }
+    return false;
   } catch {
     return false;
   }

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
+const { canonicalPlaudId, unknownPrefix } = require('../../shared/plaud-id.cjs');
 
 const PLAUD_STATE_KEY = 'plaud_sync_state';
 const PLAUD_RUNNING_KEY = 'plaud_sync_running';
@@ -110,7 +111,10 @@ function buildExistingNoteIndex() {
       continue;
     }
 
-    const plaudId = extractFrontmatterValue(content, 'plaud_id');
+    // Canonical, so a note written in July under a bare id and one written today under
+    // an `of_` id land on the SAME entry. Keying on the raw string is what let a
+    // re-pull write a second copy beside a note it should have recognised.
+    const plaudId = canonicalPlaudId(extractFrontmatterValue(content, 'plaud_id'));
     if (!plaudId) continue;
 
     const relativePath = path.relative(vaultPath, filePath).replace(/\\/g, '/');
@@ -499,10 +503,32 @@ function shouldRecheckForPreferredSummary(recording, existing) {
   return ageHours <= DEFAULT_SUMMARY_STABILIZATION_HOURS;
 }
 
+/**
+ * The key this recording's state is filed under. ALWAYS canonical, so the ledger cannot
+ * hold one recording twice under two spellings — which is exactly what happened when
+ * PLAUD started prefixing ids with `of_`. The RAW `recording.id` still goes to PLAUD;
+ * only our own bookkeeping is canonicalised.
+ */
+function recordingKey(recording) {
+  const raw = recording && recording.id;
+  const prefix = unknownPrefix(raw);
+  if (prefix) {
+    // Not fatal — we file it under the id as given, which is correct if the prefix is
+    // part of the id. It is LOUD because an unrecognised prefix is the one condition
+    // that duplicates the vault, and last time nothing said a word.
+    console.warn(
+      `[PlaudSync] Recording id "${raw}" carries an unrecognised "${prefix}" prefix. ` +
+      'If these are re-pulls of recordings already in the vault, add the prefix to ' +
+      'shared/plaud-id.cjs KNOWN_PREFIXES before the next sync writes duplicates.'
+    );
+  }
+  return canonicalPlaudId(raw);
+}
+
 function shouldProcessRecording(recording, syncState, incremental) {
   if (!incremental) return true;
 
-  const existing = syncState.syncedRecordings?.[recording.id];
+  const existing = syncState.syncedRecordings?.[recordingKey(recording)];
   if (!existing) return true;
 
   const currentFingerprint = recording.updated_at || recording.modified_at || recording.created_at || recording.start_at || null;
@@ -792,7 +818,7 @@ function renderSummaryNote(recording, note, summaryBody, transcriptRelativePath)
   const noteTitle = pickNoteTitle(recording, note);
   const lines = [
     '---',
-    `plaud_id: "${escapeYaml(recording.id)}"`,
+    `plaud_id: "${escapeYaml(canonicalPlaudId(recording.id))}"`,
     `title: "${escapeYaml(noteTitle)}"`,
     `created_at: ${yamlScalar(recording.created_at)}`,
     `start_at: ${yamlScalar(recording.start_at)}`,
@@ -808,7 +834,7 @@ function renderSummaryNote(recording, note, summaryBody, transcriptRelativePath)
     '',
     '## Recording',
     '',
-    `- Plaud ID: \`${recording.id}\``,
+    `- Plaud ID: \`${canonicalPlaudId(recording.id)}\``,
     `- Created: ${recording.created_at || 'Unknown'}`,
     `- Started: ${recording.start_at || 'Unknown'}`,
     `- Duration: ${formatDuration(recording.duration)}`,
@@ -827,7 +853,7 @@ function renderTranscriptNote(recording, summaryRelativePath, transcriptBody, na
   const meetingDate = new Date(recording.start_at || recording.created_at || Date.now()).toISOString().slice(0, 10);
   const lines = [
     '---',
-    `plaud_id: "${escapeYaml(recording.id)}"`,
+    `plaud_id: "${escapeYaml(canonicalPlaudId(recording.id))}"`,
     `date: ${meetingDate}`,
     `title: "${escapeYaml(recording.name || recording.id)}"`,
     `created_at: ${yamlScalar(recording.created_at)}`,
@@ -950,6 +976,8 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
       const failures = [];
 
       for (const recording of recordings) {
+        // Canonical for OUR state; recording.id stays raw for every PLAUD call.
+        const key = recordingKey(recording);
         if (!shouldProcessRecording(recording, syncState, incremental)) {
           skipped += 1;
           continue;
@@ -989,7 +1017,7 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
           // On expiry the recording is pulled ANYWAY, stamped as unattributed: a late
           // transcript is a nuisance, a transcript that never arrives is a lost meeting.
           const speakerNaming = assessSpeakerNaming(transcriptSegments);
-          const pending = syncState.pendingSpeakers?.[recording.id] || null;
+          const pending = syncState.pendingSpeakers?.[key] || null;
           const speakerHold = decideSpeakerHold({
             naming: speakerNaming,
             firstSeenAt: pending?.firstSeenAt || new Date().toISOString(),
@@ -999,7 +1027,7 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
           });
 
           if (speakerHold.hold) {
-            const held = noteSpeakerHold(syncState, recording.id, new Date().toISOString(), speakerNaming);
+            const held = noteSpeakerHold(syncState, key, new Date().toISOString(), speakerNaming);
             // Persisted PER RECORDING, never batched to the end of the run: a crash or a
             // deploy mid-pass would otherwise lose the stamp and restart the clock.
             writeSyncState(syncState);
@@ -1015,13 +1043,13 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
           if (speakerHold.outcome === 'timeout') {
             console.warn(`[PlaudSync] ${recording.id} pulled UNATTRIBUTED — ${speakerHold.reason}`);
           }
-          if (clearSpeakerHold(syncState, recording.id)) writeSyncState(syncState);
+          if (clearSpeakerHold(syncState, key)) writeSyncState(syncState);
 
           const baseName = buildNoteBaseName(details);
           const defaultSummaryRelativePath = `${normalizeVaultPath(getSummaryFolder())}/${baseName}.md`;
           const defaultTranscriptRelativePath = `${normalizeVaultPath(getTranscriptFolder())}/${baseName}.md`;
           const targets = getExistingNoteTargets(
-            existingNotesByPlaudId[recording.id],
+            existingNotesByPlaudId[key],
             1,
             defaultSummaryRelativePath,
             defaultTranscriptRelativePath
@@ -1029,7 +1057,7 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
           const summaryRelativePath = targets.summaryPaths[0];
           const transcriptRelativePath = targets.transcriptPath;
 
-          const hadExistingSync = Boolean(syncState.syncedRecordings[recording.id]);
+          const hadExistingSync = Boolean(syncState.syncedRecordings[key]);
           const summaryWrite = writeFile(
             summaryRelativePath,
             renderSummaryNote(details, preferredSummary, summaryBody, transcriptRelativePath)
@@ -1064,7 +1092,7 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
           if (hadExistingSync) updated += 1;
           else imported += 1;
 
-          syncState.syncedRecordings[recording.id] = {
+          syncState.syncedRecordings[key] = {
             summaryRelativePath: finalSummaryRelativePath,
             transcriptRelativePath,
             syncedAt: new Date().toISOString(),
@@ -1074,11 +1102,11 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
             summaryPreferenceRank: getSummaryPreferenceRank(preferredSummary),
             summaryPreferenceLabel: describeSummaryChoice(preferredSummary)
           };
-          existingNotesByPlaudId[recording.id] = {
+          existingNotesByPlaudId[key] = {
             summaries: [finalSummaryRelativePath],
             transcripts: [transcriptRelativePath]
           };
-          delete syncState.failedRecordings[recording.id];
+          delete syncState.failedRecordings[key];
           writeSyncState(syncState);
 
           if (DEFAULT_BETWEEN_RECORDINGS_MS > 0) {
@@ -1088,8 +1116,8 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
           failed += 1;
           const message = error.message || String(error);
           console.error(`[PlaudSync] Recording ${recording.id} failed:`, message);
-          const prior = syncState.failedRecordings[recording.id] || {};
-          syncState.failedRecordings[recording.id] = {
+          const prior = syncState.failedRecordings[key] || {};
+          syncState.failedRecordings[key] = {
             // `firstFailedAt` is kept so a recording failing every night is distinguishable
             // from one that failed once — the first is a broken recording, the second is a
             // blip, and they want different attention.
@@ -1360,6 +1388,9 @@ async function reconcilePlaudRecordings({ minJaccard = 0.5, write = true } = {})
 // of syncPlaudRecordings but always writes to default (new) paths and updates the
 // shared ledger so a crash resumes. Returns the routed summary path.
 async function processRecordingFresh(client, recording, syncState) {
+  // Canonical for OUR state; recording.id stays raw for every PLAUD call. Repull is the
+  // path that would re-duplicate the whole vault if the ledger and the id disagreed.
+  const key = recordingKey(recording);
   const details = assertUsableDetails(
     await withRetry(`get_file ${recording.id}`, () => callTool(client, 'get_file', { file_id: recording.id })),
     recording.id
@@ -1398,7 +1429,7 @@ async function processRecordingFresh(client, recording, syncState) {
     else if (routeResult.error) console.warn(`[PlaudSync] PLAUD route skipped for ${recording.id}: ${routeResult.error}`);
   } catch (error) { console.error(`[PlaudSync] PLAUD route failed for ${recording.id}:`, error.message); }
 
-  syncState.syncedRecordings[recording.id] = {
+  syncState.syncedRecordings[key] = {
     summaryRelativePath: finalSummaryRelativePath,
     transcriptRelativePath,
     syncedAt: new Date().toISOString(),
@@ -1408,7 +1439,7 @@ async function processRecordingFresh(client, recording, syncState) {
     summaryPreferenceRank: getSummaryPreferenceRank(preferredSummary),
     summaryPreferenceLabel: describeSummaryChoice(preferredSummary),
   };
-  delete syncState.failedRecordings[recording.id];
+  delete syncState.failedRecordings[key];
   writeSyncState(syncState);
   return finalSummaryRelativePath;
 }
@@ -1638,6 +1669,7 @@ module.exports = {
   htmlUnescape,
   // exported for tests / reuse
   _internal: {
+    recordingKey,
     titleTokens,
     jaccard,
     recordingDateStr,
