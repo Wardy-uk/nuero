@@ -703,8 +703,16 @@ CREATE TABLE IF NOT EXISTS health_daily (
   daylight_minutes REAL,
   respiratory_rate REAL,
   wrist_temp REAL,
-  spo2 REAL,
+  spo2 REAL,                         -- PERCENT. Apple stores oxygen saturation as a
+                                     -- fraction (0.85..1.0); health-daily scales it once,
+                                     -- so this column is 85..100 and means one thing.
   weight_kg REAL,
+  -- Blood pressure and heart rate: daily MEDIANS, like hrv/rhr above. BP is a
+  -- pair and the two halves are stored separately because they are two
+  -- measurements, not one number with a slash in it.
+  bp_systolic REAL,
+  bp_diastolic REAL,
+  heart_rate_median REAL,
   complete INTEGER NOT NULL DEFAULT 0,
   computed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

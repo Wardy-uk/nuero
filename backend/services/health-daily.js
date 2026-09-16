@@ -55,13 +55,46 @@ const SCALAR_METRICS = {
   time_in_daylight: { key: 'daylightMinutes', how: 'sum', scale: 1 / 60 },
   respiratoryRate: { key: 'respiratoryRate', how: 'avg' },
   apple_sleeping_wrist_temperature: { key: 'wristTemp', how: 'avg' },
-  blood_oxygen_saturation: { key: 'spo2', how: 'avg' },
+  // ⚠ SPO2 ARRIVES AS A FRACTION, not a percentage. Measured over all 21,791
+  // samples in the live table: min 0.85, max 1.00, never once above 1. Stored
+  // raw it renders as "0.97%" or, worse, as a plausible-looking 1 on a chart
+  // axis nobody can read. Scaled ONCE here, exactly like time_in_daylight's
+  // seconds, so the column means percent and no consumer has to know.
+  blood_oxygen_saturation: { key: 'spo2', how: 'avg', scale: 100 },
   weight_body_mass: { key: 'weightKg', how: 'avg' },
 };
 
 // Pulled raw so the daily figure can be a median. Both are cheap: hrv is ~60
 // readings a day and rhr is ~1,200 rows in the table's entire life.
-const MEDIAN_METRICS = { hrv: 'hrvMedian', rhr: 'rhrMedian' };
+const MEDIAN_METRICS = {
+  hrv: 'hrvMedian',
+  rhr: 'rhrMedian',
+  // Heart rate is a MEDIAN and deliberately not the SQL average: a day holds a
+  // gym session and eight hours asleep, and a mean sits between two things that
+  // never happened. The median is the rate he actually spent the day at.
+  heartRate: 'heartRateMedian',
+  // Blood pressure is two measurements, folded independently. Median again, and
+  // for the ordinary reason — a reading taken straight after a walk is real and
+  // should not move the day.
+  blood_pressure_systolic: 'bpSystolic',
+  blood_pressure_diastolic: 'bpDiastolic',
+};
+
+// Raw-row budget PER METRIC per chunk, because the volumes are not comparable:
+// measured live, heart rate arrives ~370 times a day against HRV's ~58 and blood
+// pressure's ~5. One shared cap either truncates heart rate or reads ten times
+// more HRV than exists.
+//
+// ⚠⚠ THE CAP REFUSES, IT NEVER TRUNCATES. getHealthSamplesBetween orders NEWEST
+// FIRST, so a read that hits its limit silently drops the OLDEST days in the
+// chunk — and they are then written with no reading at all, which is
+// indistinguishable from a watch that was off. That exact shape already cost
+// this table once: 744 days written and only 328 carrying any HRV. Hitting the
+// cap is now a named gap and the metric is left out of that chunk entirely.
+const MEDIAN_ROW_CAP = {
+  heartRate: 60000,
+};
+const DEFAULT_MEDIAN_ROW_CAP = 20000;
 
 // Baseline window for readiness. Fourteen days is `stress-score`'s window and is
 // reused rather than re-picked — two different answers to "what is normal for
@@ -433,13 +466,27 @@ function sync({ days = SYNC_WINDOW_DAYS, now = new Date(), today = now } = {}) {
     gaps.push({ input: 'aggregates', why: e.message });
   }
 
-  let medianRows = [];
-  try {
-    for (const metric of Object.keys(MEDIAN_METRICS)) {
-      medianRows.push(...db.getHealthSamplesBetween(metric, since, until, 20000).map(r => ({ ...r, metric })));
+  const medianRows = [];
+  for (const metric of Object.keys(MEDIAN_METRICS)) {
+    const cap = MEDIAN_ROW_CAP[metric] || DEFAULT_MEDIAN_ROW_CAP;
+    try {
+      // cap + 1 so hitting the ceiling is DETECTABLE rather than merely likely.
+      const rows = db.getHealthSamplesBetween(metric, since, until, cap + 1);
+      if (rows.length > cap) {
+        gaps.push({
+          input: metric,
+          why: `more than ${cap} samples in this window — refused rather than truncated, `
+             + 'because a truncated read keeps the newest rows and would roll up the '
+             + 'oldest days in this chunk as having no reading',
+        });
+        continue;
+      }
+      medianRows.push(...rows.map(r => ({ ...r, metric })));
+    } catch (e) {
+      // Per metric, so one unreadable series does not take the other four with
+      // it — the old catch wrapped the whole loop and reported "hrv/rhr".
+      gaps.push({ input: metric, why: e.message });
     }
-  } catch (e) {
-    gaps.push({ input: 'hrv/rhr', why: e.message });
   }
 
   let nights = [];
@@ -543,6 +590,12 @@ function fromRow(row) {
     wristTemp: row.wrist_temp,
     spo2: row.spo2,
     weightKg: row.weight_kg,
+    // ⚠ null here is "this day was rolled up before the column existed" as much
+    // as it is "no reading was taken" — the charts draw a gap for both, which is
+    // the honest rendering of either.
+    bpSystolic: row.bp_systolic,
+    bpDiastolic: row.bp_diastolic,
+    heartRateMedian: row.heart_rate_median,
     complete: row.complete === 1,
   };
 }
@@ -580,6 +633,8 @@ module.exports = {
   // constants
   SCALAR_METRICS,
   MEDIAN_METRICS,
+  MEDIAN_ROW_CAP,
+  DEFAULT_MEDIAN_ROW_CAP,
   BASELINE_DAYS,
   MIN_BASELINE_DAYS,
   SYNC_WINDOW_DAYS,

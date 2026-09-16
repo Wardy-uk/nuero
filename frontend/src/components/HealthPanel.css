@@ -257,3 +257,57 @@
   .hp-grid { grid-template-columns: 1fr; }
   .hp-hero-num { font-size: 42px; }
 }
+
+/* ── A second series on one plot ───────────────────────────────────────────
+   Only blood pressure uses this, and only because both halves are mmHg. The
+   two lanes are told apart by HUE AND BY DASH: a pair distinguished by colour
+   alone is a pair one reader in twelve cannot read, and this chart is drawn on
+   a dark surface where a low-chroma second hue is the first thing to go.
+
+   #8fbdf2 is not a new colour: it is the lightest step of SLEEP_RAMP, already
+   validated against this surface for lightness and contrast. A fresh hue here
+   would be a fourth blue nobody had checked. */
+.hp-line--1 {
+  stroke: #8fbdf2;
+  stroke-dasharray: 5 3;
+}
+.hp-dot--1 { fill: #8fbdf2; }
+
+.hp-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.hp-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.hp-legend-dot {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+/* Mirrors the dash on the line itself, so the key and the mark match. */
+.hp-legend-dot--1 {
+  background: repeating-linear-gradient(
+    to right,
+    #8fbdf2 0 4px,
+    transparent 4px 6px
+  );
+}
+
+/* ── The time axis ─────────────────────────────────────────────────────────
+   Recessive on purpose: it is a reference, not a mark. The data lines must
+   still be the first thing read. */
+.hp-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.hp-xtick {
+  fill: var(--text-muted);
+  font-size: 9.5px;
+  /* Tabular figures keep the dates from shuffling by a pixel as they change. */
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}

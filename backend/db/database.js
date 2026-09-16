@@ -416,6 +416,39 @@ async function init() {
     console.error('[DB] health_samples migration check failed:', e.message);
   }
 
+  // health_daily: blood pressure and heart rate.
+  //
+  // All three have been arriving for two years and had nowhere to land — the
+  // rollup only knew the metrics in SCALAR_METRICS/MEDIAN_METRICS, so a reading
+  // taken every few minutes was queryable one sample at a time and invisible as
+  // a trend. Measured on the live table before adding them: 10,544 systolic,
+  // 10,547 diastolic and ~370 heart-rate samples a day back to Aug 2024.
+  //
+  // ADD COLUMN, never a table rebuild: `health_daily` holds 743 rolled-up days
+  // and every one of them is recomputable from health_samples, but a rebuild on
+  // a live DB is a destructive migration to buy three nullable columns.
+  //
+  // ⚠ Existing rows read NULL for all three until the backfill runs, and NULL
+  // here means "this day was rolled up before the column existed", not "no
+  // reading was taken" — which is why the charts draw a gap rather than a zero.
+  try {
+    const dailyCols = db.prepare('PRAGMA table_info(health_daily)').all().map(r => r.name);
+    if (dailyCols.length) {
+      for (const [col, type] of [
+        ['bp_systolic', 'REAL'],
+        ['bp_diastolic', 'REAL'],
+        ['heart_rate_median', 'REAL'],
+      ]) {
+        if (!dailyCols.includes(col)) {
+          db.exec(`ALTER TABLE health_daily ADD COLUMN ${col} ${type}`);
+          console.log(`[DB] health_daily.${col} added`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[DB] health_daily migration check failed:', e.message);
+  }
+
   // saim_actions.snoozed_until — "not now" for an approval card.
   //
   // ⚠ A SNOOZE IS NOT A DECISION, so the STATUS stays 'pending'. That is the
@@ -1485,8 +1518,9 @@ function upsertHealthDay(row) {
        day, asleep_hours, sleep_source, deep_hours, rem_hours, core_hours,
        awake_hours, sleep_efficiency, hrv_median, hrv_samples, rhr_median,
        steps, active_energy, exercise_minutes, stand_minutes, daylight_minutes,
-       respiratory_rate, wrist_temp, spo2, weight_kg, complete, computed_at
-     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+       respiratory_rate, wrist_temp, spo2, weight_kg,
+       bp_systolic, bp_diastolic, heart_rate_median, complete, computed_at
+     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
      ON CONFLICT(day) DO UPDATE SET
        asleep_hours=excluded.asleep_hours, sleep_source=excluded.sleep_source,
        deep_hours=excluded.deep_hours, rem_hours=excluded.rem_hours,
@@ -1497,6 +1531,8 @@ function upsertHealthDay(row) {
        exercise_minutes=excluded.exercise_minutes, stand_minutes=excluded.stand_minutes,
        daylight_minutes=excluded.daylight_minutes, respiratory_rate=excluded.respiratory_rate,
        wrist_temp=excluded.wrist_temp, spo2=excluded.spo2, weight_kg=excluded.weight_kg,
+       bp_systolic=excluded.bp_systolic, bp_diastolic=excluded.bp_diastolic,
+       heart_rate_median=excluded.heart_rate_median,
        complete=excluded.complete, computed_at=CURRENT_TIMESTAMP`,
     [
       row.day, row.asleepHours ?? null, row.sleepSource ?? null, row.deepHours ?? null,
@@ -1505,7 +1541,9 @@ function upsertHealthDay(row) {
       row.rhrMedian ?? null, row.steps ?? null, row.activeEnergy ?? null,
       row.exerciseMinutes ?? null, row.standMinutes ?? null, row.daylightMinutes ?? null,
       row.respiratoryRate ?? null, row.wristTemp ?? null, row.spo2 ?? null,
-      row.weightKg ?? null, row.complete ? 1 : 0,
+      row.weightKg ?? null,
+      row.bpSystolic ?? null, row.bpDiastolic ?? null, row.heartRateMedian ?? null,
+      row.complete ? 1 : 0,
     ]
   );
 }

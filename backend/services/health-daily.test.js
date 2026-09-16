@@ -304,3 +304,90 @@ test('the last chunk is trimmed, so the range read is the range asked for', () =
 test('a chunk size of zero cannot spin for ever', () => {
   assert.equal(hd.chunkPlan(10, 0).length, 10);
 });
+
+// ── Blood pressure, heart rate and the SpO2 scale ───────────────────────────
+//
+// All four arrived on 16 Sep 2026, after two years of samples that had nowhere
+// to land. The fixtures use REAL values off the live Pi — systolic 145..157,
+// diastolic 87..96, SpO2 as the fraction Apple actually sends — because the
+// whole point of the SpO2 change is that the plausible implementation (store
+// what arrived) is wrong on Nick's actual data.
+
+function bpRows(day, pairs) {
+  return pairs.flatMap(([sys, dia], i) => {
+    const at = `${day} ${String(6 + i).padStart(2, '0')}:00:00`;
+    return [
+      { metric: 'blood_pressure_systolic', value: sys, recorded_at: at },
+      { metric: 'blood_pressure_diastolic', value: dia, recorded_at: at },
+    ];
+  });
+}
+
+test('blood pressure folds to a daily median, both halves independently', () => {
+  const [day] = hd.buildDays({
+    medianRows: bpRows('2026-09-16', [[145, 87], [151, 90], [157, 96]]),
+    todayKey: '2026-09-17',
+  });
+  assert.equal(day.bpSystolic, 151);
+  assert.equal(day.bpDiastolic, 90);
+});
+
+test('the two halves of blood pressure never collapse into one number', () => {
+  // Diastolic must never inherit systolic's fold. The live table has a max
+  // diastolic of 183 against a max systolic of 172, so a crossed wire is NOT
+  // detectable by "is one bigger than the other" — it has to be pinned.
+  const [day] = hd.buildDays({
+    medianRows: bpRows('2026-09-16', [[150, 90]]),
+    todayKey: '2026-09-17',
+  });
+  assert.notEqual(day.bpSystolic, day.bpDiastolic);
+  assert.equal(day.bpSystolic, 150);
+  assert.equal(day.bpDiastolic, 90);
+});
+
+test('heart rate is a MEDIAN, not the mean a gym session drags upward', () => {
+  // Eight resting readings and one exercise peak. The mean is 76.7; the median
+  // is the rate he actually spent the day at.
+  const values = [62, 64, 65, 66, 68, 70, 72, 74, 180];
+  const [day] = hd.buildDays({
+    medianRows: values.map((v, i) => ({
+      metric: 'heartRate', value: v,
+      recorded_at: `2026-09-16 ${String(6 + i).padStart(2, '0')}:00:00`,
+    })),
+    todayKey: '2026-09-17',
+  });
+  assert.equal(day.heartRateMedian, 68);
+});
+
+test('SpO2 is scaled to a percentage exactly once', () => {
+  // Apple sends a fraction; 0.9714 is a real average off the live table.
+  const [day] = hd.buildDays({
+    aggregates: [scalarRow('2026-09-16', 'blood_oxygen_saturation', { avg: 0.9714 })],
+    todayKey: '2026-09-17',
+  });
+  assert.equal(day.spo2, 97.14);
+  // NEGATIVE: the unscaled value must not survive. A 0.97 on a chart labelled
+  // "%" is the same class of bug as time_in_daylight's seconds read as minutes.
+  assert.ok(day.spo2 > 1, 'stored SpO2 must be a percentage, never the raw fraction');
+});
+
+test('every median metric has a row cap, and heart rate gets its own', () => {
+  // Not a style point: measured live, heart rate arrives ~370/day against HRV's
+  // ~58, so a shared 20,000 cap is hit by a 55-day window of heart rate alone.
+  assert.ok(hd.MEDIAN_ROW_CAP.heartRate > hd.DEFAULT_MEDIAN_ROW_CAP,
+    'heart rate must not share the default cap');
+  for (const metric of Object.keys(hd.MEDIAN_METRICS)) {
+    const cap = hd.MEDIAN_ROW_CAP[metric] || hd.DEFAULT_MEDIAN_ROW_CAP;
+    assert.ok(Number.isFinite(cap) && cap > 0, `${metric} has no usable cap`);
+  }
+});
+
+test('blood pressure and heart rate are medians, never scalar averages', () => {
+  // A regression guard with teeth: moving any of these into SCALAR_METRICS
+  // would silently swap a median for a mean and nothing on screen would change
+  // shape enough to notice.
+  for (const metric of ['heartRate', 'blood_pressure_systolic', 'blood_pressure_diastolic']) {
+    assert.ok(hd.MEDIAN_METRICS[metric], `${metric} must fold as a median`);
+    assert.ok(!hd.SCALAR_METRICS[metric], `${metric} must not also be a scalar`);
+  }
+});
