@@ -1526,7 +1526,7 @@
     "route": "/api/health/sleep",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 371,
+    "line": 376,
     "description": "GET /api/health/sleep. per-night totals from the per-segment rows (#40).",
     "params": [],
     "query": [
