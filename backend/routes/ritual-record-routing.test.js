@@ -168,3 +168,48 @@ test('⚠ the MCP inventory carries the body schema these routes need', () => {
   assert.ok(!standup.body.includes('done'));
   assert.ok(!eod.body.includes('focus'));
 });
+
+test('⚠ the ritual ops are findable by the words someone would search for', async () => {
+  // `neuro_capabilities` is a LITERAL substring match over
+  // `id + domain + description`, where description is the inventory's plus the
+  // policy note. The obvious query "standup record" found NOTHING when this
+  // shipped: the id spells it `standup_record`, and nothing else in the entry
+  // carried the two words with a space between them. An operation nobody can
+  // find is the state this whole change exists to fix, so the phrasings are
+  // pinned rather than left to a description edit to quietly drop.
+  //
+  // ⚠ The haystack is REBUILT the way api-catalogue.js builds it, not matched
+  // against the source text: the notes are template literals, so the source
+  // carries an unexpanded `${RECORD_NOTE}` and a regex over it would test a
+  // string the gateway never sees. `api-policy.js` imports nothing, so this
+  // needs no mcp-server/node_modules and runs on the Pi.
+  const { pathToFileURL } = require('url');
+  const policyPath = path.join(__dirname, '..', '..', 'mcp-server', 'remote', 'api-policy.js');
+  const { notes } = await import(pathToFileURL(policyPath).href);
+  const inv = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', '..', 'mcp-server', 'remote', 'api-inventory.json'), 'utf8'));
+  const byId = Object.fromEntries(inv.map(op => [op.id, op]));
+
+  const haystack = (id) => {
+    const op = byId[id];
+    assert.ok(op, `${id} must be in the inventory`);
+    assert.ok(notes[id], `${id} must carry a policy note`);
+    return `${op.id} ${op.domain} ${op.description} ${notes[id]}`.toLowerCase();
+  };
+
+  const standup = haystack('post_standup_record');
+  for (const q of ['standup record', 'standup.record', 'record standup', 'complete standup']) {
+    assert.ok(standup.includes(q), `post_standup_record must be findable by "${q}"`);
+  }
+
+  const eod = haystack('post_standup_eod_record');
+  for (const q of ['eod record', 'eod.record', 'record eod', 'complete eod']) {
+    assert.ok(eod.includes(q), `post_standup_eod_record must be findable by "${q}"`);
+  }
+
+  // Positive control: a phrase neither carries must NOT match, or a haystack
+  // that had accidentally swept in the whole policy file would satisfy every
+  // loop above and prove nothing.
+  assert.ok(!standup.includes('weekly review'));
+  assert.ok(!eod.includes('weekly review'));
+});

@@ -22,7 +22,8 @@ export const paramEnums = Object.fromEntries(
 );
 // Guidance a route string cannot carry. The session routes start a conversation
 // with NEURO's OWN model; an external assistant that has already run the standup
-// with Nick records the result with save_to_daily, which is what marks it done.
+// with Nick records the result with post_standup_record / post_standup_eod_record,
+// which is what marks it done.
 const SESSION_NOTE = 'Opens a standup conversation driven by NEURO\'s own AI (start → reply → finish; kind is "standup" or "eod"). If you have already run the standup with the user, do NOT use this — record it with post_standup_record (morning) or post_standup_eod_record (evening) instead.';
 // The canonical ritual-persistence route, and the description has to say so in
 // as many words. Sara ran a full standup on 17 Sep 2026 and saved it with the
@@ -34,8 +35,17 @@ export const notes = {
   post_standup_session_by_kind_start: SESSION_NOTE,
   post_standup_session_by_kind_reply: SESSION_NOTE,
   post_standup_session_by_kind_finish: SESSION_NOTE,
-  post_standup_record: `${RECORD_NOTE} body.focus is a REQUIRED array of strings — what the user committed to today, one per item; these become the "## Focus Today" checkboxes that mark the standup done and that tomorrow reads back as carry-overs. Optional: body.blockers (string), body.mood (string), body.date ("YYYY-MM-DD", defaults to today).`,
-  post_standup_eod_record: `${RECORD_NOTE} Supply at least one of body.done (array of strings — what got finished), body.didntGo (string), body.tomorrowFirst (string), body.mood (string). Optional body.date ("YYYY-MM-DD") records an evening already past — use it the morning after. Writes the "## EOD" section the evening ritual owns.`,
+  // (!) The keyword lists are not decoration, and they are LITERAL on purpose.
+  // `neuro_capabilities` is a plain substring match over
+  // `id + domain + description`, so the obvious search "standup record" found
+  // NOTHING: the id spells it `standup_record`, the route spells it
+  // `standup/record`, and nothing else carried the two words with a space
+  // between them. Prose aliases did not fix it either — "record standup" matched
+  // and "standup record" still did not. An operation nobody can find by the
+  // words they would search for is the state this whole change is fixing, one
+  // layer up. Pinned by ritual-record-routing.test.js.
+  post_standup_record: `standup.record. Search keywords: standup record, record standup, save standup, complete standup, finish standup, morning ritual. ${RECORD_NOTE} body.focus is a REQUIRED array of strings — what the user committed to today, one per item; these become the "## Focus Today" checkboxes that mark the standup done and that tomorrow reads back as carry-overs. Optional: body.blockers (string), body.mood (string), body.date ("YYYY-MM-DD", defaults to today).`,
+  post_standup_eod_record: `eod.record. Search keywords: eod record, record eod, save eod, complete eod, end of day reflection, evening ritual. ${RECORD_NOTE} Supply at least one of body.done (array of strings — what got finished), body.didntGo (string), body.tomorrowFirst (string), body.mood (string). Optional body.date ("YYYY-MM-DD") records an evening already past — use it the morning after. Writes the "## EOD" section the evening ritual owns.`,
   post_standup_save_to_daily: 'SUPERSEDED by post_standup_record — prefer that. Appends free markdown under "## Standup — <date>". It marks the standup done but writes no "## Focus Today", so tomorrow\'s carry-over scan reads nothing.',
 };
 export const aliases ={ post_chat: '/api/chat/sync', get_nudges_stream: '/api/nudges' };
