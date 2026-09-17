@@ -29,6 +29,12 @@ export const classification = {
   vantage_get_self_moved: 'read',
   vantage_get_observations: 'read',
 
+  // Leading indicators. All local reads off VANTAGE's own SQLite.
+  vantage_get_leading: 'read',            // ?refresh=1 forces a NOVA pull — see actionQuery
+  vantage_get_leading_log: 'read',
+  vantage_get_leading_claims: 'read',
+  vantage_get_leading_scoreboard: 'read',
+
   // ── write: VANTAGE's own store only ──
   vantage_post_findings: 'write',
   vantage_put_findings_by_id: 'write',
@@ -52,6 +58,19 @@ export const classification = {
   vantage_post_plan_by_id_task: 'action',            // creates a NEURO task
   vantage_post_plan_by_id_planner: 'action',         // adopts a Microsoft Planner card into NEURO
   vantage_post_coach_sessions_by_id_messages: 'action', // model call
+  // ⚠⚠ ACTION, NOT WRITE, and it is the one place this policy's own rule is
+  // deliberately overruled. That rule is "write stays inside VANTAGE's own
+  // SQLite; action reaches NEURO, Microsoft, NOVA or spends a model call", and
+  // by that test this is a write: it updates one row and calls nothing.
+  //
+  // It is classified action anyway, on Nick's instruction (17 Sep 2026), because
+  // the rule measures the wrong thing here. What it costs is not an external
+  // call but a JUDGEMENT recorded under a person's name, in the ledger that
+  // assesses whether the detectors are worth trusting — and a wrong verdict
+  // corrupts that measurement in the flattering direction, which is the one
+  // nobody checks. `action` makes it need a scope ordinary CRUD does not, so it
+  // has to be invoked deliberately rather than reached for.
+  vantage_post_leading_log_by_id_verdict: 'action',
 
   // ── admin: VANTAGE's own configuration ──
   vantage_get_settings: 'admin',          // masked, but it describes every credential VANTAGE holds
@@ -68,6 +87,9 @@ export const actionQuery = {
   vantage_get_radar: ['refresh'],
   vantage_get_plan_tasks: ['rematch'],
   vantage_get_coach_brief: ['refresh'],
+  // ?refresh=1 forces kpi-series.current({force}), which bypasses the cache and
+  // fetches NOVA's /api/neuro-bridge/* — the same shape as signals and radar.
+  vantage_get_leading: ['refresh'],
 };
 
 // VANTAGE's own CLAUDE.md: coach, brief, self and the observations are PRIVATE —
@@ -96,6 +118,18 @@ export const notes = {
   vantage_post_findings_by_id_neuro: 'Escalates one finding into NEURO (a task or an approval-queue action). Confirm with the user first.',
   vantage_post_plan_by_id_link: 'body.taskId is an EXISTING NEURO task id. To create a new task use vantage_post_plan_by_id_task.',
   vantage_post_coach_sessions_by_id_messages: 'body.content is the user message; VANTAGE\'s coach answers with a model call.',
+  // The instruction an assistant reads before invoking this. The tier makes it
+  // deliberate and the body schema makes the attribution impossible to forge;
+  // this is the part neither can express - that the JUDGEMENT is never the
+  // assistant's to make in the first place.
+  vantage_post_leading_log_by_id_verdict:
+    'Records a verdict on ONE leading-indicator warning. body.verdict is useful | false | inconclusive. '
+    + 'body.by can only be "assistant" from here: the verdict is recorded as ASSISTANT-RELAYED, never as '
+    + 'one of his own, and body.note must say what he actually said so it can be audited. '
+    + 'NEVER decide useful/false/inconclusive yourself. Ask Nick, then record his answer. This ledger '
+    + 'is what assesses whether the detectors are worth trusting, a person-sourced verdict permanently '
+    + 'outranks the automatic one, and a verdict he did not give corrupts that measurement in the '
+    + 'flattering direction - the one nobody checks.',
 };
 
 // ── Request bodies ───────────────────────────────────────────────────────────
@@ -128,6 +162,26 @@ export const OBSERVATION_KINDS = ['pattern', 'win', 'blocker', 'avoidance'];
 const SETTING_KEYS = ['OPENROUTER_API_KEY', 'OPENROUTER_MODEL', 'NOVA_BRIDGE_URL', 'NOVA_BRIDGE_SECRET', 'NEURO_URL', 'NEURO_API_TOKEN', 'NEURO_VAULT_API_KEY', 'ONE_TO_ONE_GRACE_DAYS', 'ONE_TO_ONE_BOOK_AHEAD_DAYS', 'QA_SCORE_FLOOR', 'GOLDEN_RULES_FLOOR', 'STANDUP_FLOOR_PCT'];
 
 export const bodySchemas = {
+  // indicator-log.label(id, { verdict, by, actionTaken, note })
+  //
+  // ⚠⚠ `by` IS PINNED TO 'assistant' HERE, not offered as a choice. VANTAGE
+  // itself also accepts 'nick', because its own UI is Nick pressing a button —
+  // but an MCP caller is NEVER that, and an open enum would let an assistant
+  // attribute its own judgement to him. VANTAGE cannot tell the two apart (one
+  // credential, shared by the browser and this gateway), so the distinction has
+  // to be made HERE, where the caller is known to be an assistant. Structurally
+  // impossible beats instructed not to.
+  //
+  // ⚠ `note` is REQUIRED rather than optional: it is the only thing that makes
+  // "recorded on Nick's explicit instruction" checkable rather than asserted,
+  // and VANTAGE refuses an assistant verdict without one anyway — advertising it
+  // as optional would invite a call that can only fail.
+  vantage_post_leading_log_by_id_verdict: z.strictObject({
+    verdict: z.enum(['useful', 'false', 'inconclusive']),
+    by: z.literal('assistant'),
+    note: text,
+    actionTaken: z.string().max(4000).nullable().optional(),
+  }),
   // coach.addObservation({ kind, note, sessionId })
   vantage_post_observations: z.strictObject({
     kind: z.enum(OBSERVATION_KINDS),
