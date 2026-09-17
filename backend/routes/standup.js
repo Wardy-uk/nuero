@@ -1135,19 +1135,15 @@ router.get('/eod-history', (req, res) => {
     const filePath = pathMod.join(dailyDir, `${dateStr}.md`);
     if (!fs.existsSync(filePath)) continue;
     const content = fs.readFileSync(filePath, 'utf-8');
-    const eodMatch = content.match(/## EOD[^\n]*\n([\s\S]*?)(?=\n##|$)/);
-    if (!eodMatch) continue;
-    const eodText = eodMatch[1].trim();
-    if (!eodText) continue;
-    const winMatch = eodText.match(/\*\*Win:\*\*\s*(.+)/);
-    const didntGoMatch = eodText.match(/\*\*Didn't go to plan:\*\*\s*(.+)/);
-    const feelingMatch = eodText.match(/\*\*Feeling:\*\*\s*(.+)/);
-    entries.push({
-      date: dateStr,
-      win: winMatch ? winMatch[1].trim() : null,
-      didntGo: didntGoMatch ? didntGoMatch[1].trim() : null,
-      feeling: feelingMatch ? feelingMatch[1].trim() : null,
-    });
+    // ONE parser, both generations of the section. This route matched `**Win:**`
+    // and `**Feeling:**` only — labels the guided flow stopped writing when the
+    // session renderer replaced it on 14 Aug 2026 — so every EOD since came back
+    // `win: null, feeling: null` and the view was blank for 7 of the 11 entries
+    // it exists to show. Normalising at the parser boundary rather than here is
+    // what stops the next consumer learning the same two-format lesson.
+    const eod = accountability.parseEodEntry(content);
+    if (!eod) continue;
+    entries.push({ date: dateStr, ...eod });
   }
   res.json({ entries });
 });

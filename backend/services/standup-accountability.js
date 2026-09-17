@@ -108,6 +108,92 @@ function parseDailyNote(content) {
   return { focus, carry, eodItems, decided, eodDone, didntGo, standupDone };
 }
 
+// The `## EOD` section has TWO generations, and the reader has to know both.
+//
+// The old guided flow (`POST /api/standup/eod/submit-guided`) wrote three inline
+// labels: `**Win:**`, `**Didn't go to plan:**`, `**Feeling:**`. The session
+// renderer that replaced it on 14 Aug 2026 writes `**Done:**` as a BULLET LIST
+// plus `**Mood:**` — and `GET /api/standup/eod-history` was never updated, so it
+// went on matching `Win:` and `Feeling:` and returned `win: null, feeling: null`
+// for every EOD written since. Measured on the live vault: 7 notes in the new
+// shape against 4 in the old, so the history view was blank for the majority of
+// the entries it existed to show. No error, no empty list, just nulls — the
+// wrong-label species this repo has paid for as `sleep_core_hours`,
+// `meeting_alert` and `summary_type`.
+//
+// (!) THIS IS DELIBERATELY NOT `parseDailyNote`'s EOD ARM, which reads the same
+// text and answers a DIFFERENT question. That one is accountability's: it folds
+// `**Done:**` into `eodItems` so a commitment Nick reported finishing can be
+// chased, and it NULLS a `didntGo` of "Nothing" because nothing went wrong. A
+// history view must render what he actually wrote, "Nothing" included, and must
+// not put a legacy `Win:` into the commitment stream. Reading for display and
+// reading for accountability are the same split as `extractSectionFlexible` vs
+// `extractMarkdownSection`: reading may be lenient where rewriting may not.
+//
+// PURE, so it pins without a vault.
+const EOD_SECTION_RE = /## EOD[^\n]*\n([\s\S]*?)(?=\n##|$)/;
+
+function parseEodEntry(content) {
+  if (typeof content !== 'string' || !content) return null;
+  // Vault notes are mixed CRLF/LF and `\r` is a JS line terminator, so a
+  // line-anchored match silently fails on half of them.
+  const m = EOD_SECTION_RE.exec(content.replace(/\r\n/g, '\n'));
+  if (!m) return null;
+  const text = m[1].trim();
+  if (!text) return null;
+
+  const done = [];
+  let win = null;
+  let didntGo = null;
+  let feeling = null;
+  let inDone = false;
+
+  for (const line of text.split('\n')) {
+    // Any bold label ends the Done list, including Done itself.
+    const label = /^\s*\*\*([^*]+?):\*\*\s*(.*)$/.exec(line);
+    if (label) {
+      const key = label[1].trim().toLowerCase();
+      const value = label[2].trim();
+      inDone = key === 'done';
+      // (!) An empty value is ABSENT, never the empty string — requirement 4:
+      // a missing optional field stays missing rather than being fabricated
+      // into a falsy-but-present one.
+      if (value) {
+        if (key === 'win') win = value;
+        // Both generations feed ONE slot. First non-empty wins, so a note
+        // carrying both (a legacy note re-run through the session flow) is not
+        // silently overwritten by whichever happens to sit lower.
+        else if ((key === 'feeling' || key === 'mood') && !feeling) feeling = value;
+        // (!) Verbatim, "Nothing" included — see the divergence noted above.
+        else if (/^didn'?t go to plan$/.test(key)) didntGo = value;
+      }
+      if (key === 'win' && value) done.push(value);
+      continue;
+    }
+    if (!inDone) continue;
+    const bullet = /^\s*-\s+(?:\[[ x>/]\]\s+)?(.+)$/.exec(line);
+    if (bullet) {
+      const item = bullet[1].trim();
+      if (item) done.push(item);
+      continue;
+    }
+    // A non-empty, non-bullet line ends the list (the `<!-- daily-nav -->`
+    // footer and its link line both land here).
+    if (line.trim()) inDone = false;
+  }
+
+  // (!) `win` is the single HIGHLIGHT and is only filled where there genuinely
+  // is one. A lone `Done:` item IS that day's win, so it fills the slot — but
+  // 2026-09-08 lists SEVEN ("Ticket type analysis for Mel", "Prep for Risk
+  // meeting", ...), and neither picking the first nor joining them is a win: it
+  // is emphasis this note never expressed. Those days carry `done` instead and
+  // leave `win` null, which is requirement 4 applied to the field that provoked
+  // the fix. Measured: 6 of the 7 new-format notes are multi-item.
+  if (!win && done.length === 1) win = done[0];
+
+  return { done, win, didntGo, feeling };
+}
+
 // The three shapes standup-session._renderDailyNote writes under `## Decided`.
 function parseDecidedLine(line) {
   let m = line.match(/^\s*-\s+~~(.+?)~~\s*\((already done|dropped[^)]*)\)/i);
@@ -457,6 +543,6 @@ function buildAccountability({ lookbackDays = 14, ledger = null, taskStatus = _t
 }
 
 module.exports = {
-  buildAccountability, commitmentKey, parseDailyNote, standupDoneIn, TASK_MARKER_RE,
+  buildAccountability, commitmentKey, parseDailyNote, parseEodEntry, standupDoneIn, TASK_MARKER_RE,
   reconcile, closureFor, gatherClosures, sameCommitment, EQUIV_SCORE, EQUIV_JACCARD,
 };

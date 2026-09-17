@@ -589,6 +589,18 @@ export default function InsightsPanel({ onNavigate }) {
                       <span className="eod-field-value">{entry.win}</span>
                     </div>
                   )}
+                  {/* The session renderer records a LIST, and most days carry
+                      several (7 on 2026-09-08). `win` deliberately stays null
+                      there rather than crowning an arbitrary first item, so
+                      without this row those entries render empty — which is the
+                      bug being fixed, moved one layer out. A single item is
+                      already shown as the Win above, so it is not repeated. */}
+                  {entry.done?.length > 1 && (
+                    <div className="eod-field">
+                      <span className="eod-field-label">Done</span>
+                      <span className="eod-field-value">{entry.done.join(' · ')}</span>
+                    </div>
+                  )}
                   {entry.didntGo && (
                     <div className="eod-field">
                       <span className="eod-field-label">Didn't go</span>
