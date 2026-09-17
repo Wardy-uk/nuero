@@ -40,6 +40,7 @@ const CalendarView = lazy(() => import('./components/CalendarView'));
 const InboxPanel = lazy(() => import('./components/InboxPanel'));
 const AdminPanel = lazy(() => import('./components/AdminPanel'));
 const QATab = lazy(() => import('./components/QATab'));
+const KpiTrackerPanel = lazy(() => import('./components/KpiTrackerPanel'));
 const EscalationPanel = lazy(() => import('./components/EscalationPanel'));
 const ActionsPanel = lazy(() => import('./components/ActionsPanel'));
 const DecisionsPanel = lazy(() => import('./components/DecisionsPanel'));
@@ -321,6 +322,7 @@ function AuthenticatedApp() {
       case 'actions': return <ActionsPanel onNavigate={handleNavigate} />;
       case 'decisions': return <DecisionsPanel />;
       case 'weekly-risk': return <WeeklyRiskPanel onNavigate={handleNavigate} />;
+      case 'kpi-tracker': return <KpiTrackerPanel />;
       case 'management-log': return <ManagementLogPanel onNavigate={handleNavigate} />;
       case 'journal': return <JournalPanel />;
       case 'standups': return <StandupsPanel />;

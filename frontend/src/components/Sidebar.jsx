@@ -65,6 +65,13 @@ const SECONDARY_ITEMS = [
   // gets a menu entry rather than being reachable only from the 07:30 push —
   // which is the failure this list already documents twice above.
   { id: 'weekly-risk', label: 'Weekly Risk', icon: '▲' },
+  // Next to Weekly Risk deliberately: both are numbers that leave the building.
+  // One is the Monday report, this is the daily sheet.
+  //
+  // ⚠ VANTAGE has the same screen. Both exist on purpose and temporarily
+  // (Nick, 17 Sep 2026) so he can find out which he actually opens; when he
+  // knows, the other goes.
+  { id: 'kpi-tracker', label: 'KPI Tracker', icon: '▦' },
   // ⚠ Its own entry, not a section of the weekly report (Nick, 7 Sep 2026). It
   // is a RUNNING RECORD — conversations get logged the day they happen, not on
   // the Monday the report is built — and before this there was no way to add to

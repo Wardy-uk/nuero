@@ -250,6 +250,11 @@ app.use('/api/profile', require('./routes/profile'));
 app.use('/api/catalogues', require('./routes/catalogue'));
 app.use('/api/v', require('./routes/vesta'));
 app.use('/api/weekly-risk', require('./routes/weekly-risk'));
+// The Daily KPI Tracker, read straight from NOVA. VANTAGE renders the same
+// numbers; neither proxies the other, so they cannot disagree about the figures
+// — only about presentation, which is the point of having both while Nick
+// decides which he actually opens.
+app.use('/api/kpi-tracker', require('./routes/kpi-tracker'));
 app.use('/api/tasks', require('./routes/tasks'));
 // Its own mount, deliberately NOT under /api/tasks — a sibling registered after
 // the parameterised /api/tasks/:id would have "task-dedupe" parsed as an id.

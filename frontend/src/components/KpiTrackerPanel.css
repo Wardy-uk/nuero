@@ -1,0 +1,75 @@
+/* Daily KPI Tracker. Tokens only — no literal colours, so it follows the theme
+   the way every other panel does. */
+
+.kt-wrap {
+  padding: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+  font-family: var(--font-mono);
+}
+
+.kt-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 48px 0;
+  text-align: center;
+}
+
+.kt-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.kt-head h2 { margin: 0 0 4px; }
+.kt-sub { margin: 0; color: var(--text-muted); font-size: 12px; }
+
+.kt-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.kt-warn-text { color: var(--warning, var(--text-muted)); }
+
+.kt-banner {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+}
+.kt-bad { color: var(--danger); border-color: var(--danger); }
+.kt-warn { color: var(--warning, var(--text)); }
+
+.kt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.kt-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: normal;
+  font-size: 11px;
+  padding: 4px 8px 6px 0;
+}
+.kt-table td { padding: 7px 8px 7px 0; border-top: 1px solid var(--border); }
+.kt-num { text-align: right; }
+.kt-dim { color: var(--text-muted); }
+
+/* A row NOVA cannot compute. Dimmed but PRESENT — dropping it would redefine
+   the tracker as the subset NOVA happens to know. */
+.kt-unmeasured { opacity: 0.5; }
+.kt-note { color: var(--text-muted); font-size: 12px; }
+
+/* RAG is NOVA's own judgement and wears the status tokens. Nothing else on this
+   screen uses them, so a colour here always means a state. */
+.kt-red { color: var(--danger); }
+.kt-amber { color: var(--warning, var(--text)); }
+.kt-green { color: var(--success, var(--text)); }
+
+.kt-pill {
+  margin-left: 6px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
