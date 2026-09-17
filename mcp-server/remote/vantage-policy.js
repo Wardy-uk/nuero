@@ -34,6 +34,9 @@ export const classification = {
   vantage_get_leading_log: 'read',
   vantage_get_leading_claims: 'read',
   vantage_get_leading_scoreboard: 'read',
+  // The Daily KPI Tracker — the 34 rows Nick reports to the business. ?refresh=1
+  // forces a live Jira recompute on NOVA, so it is an action-query like the rest.
+  vantage_get_tracker: 'read',
 
   // ── write: VANTAGE's own store only ──
   vantage_post_findings: 'write',
@@ -84,6 +87,7 @@ export const classification = {
 // and did not get looks exactly like stale data; the action tool accepts it.
 export const actionQuery = {
   vantage_get_signals: ['refresh'],
+  vantage_get_tracker: ['refresh'],
   vantage_get_radar: ['refresh'],
   vantage_get_plan_tasks: ['rematch'],
   vantage_get_coach_brief: ['refresh'],

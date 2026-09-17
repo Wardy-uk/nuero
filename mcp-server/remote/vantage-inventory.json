@@ -5,7 +5,7 @@
     "route": "/api/coach/sessions/:id",
     "domain": "vantage-coach",
     "source": "server.js",
-    "line": 238,
+    "line": 248,
     "description": "DELETE /api/coach/sessions/:id.",
     "params": [
       "id"
@@ -23,7 +23,7 @@
     "route": "/api/findings/:id",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 190,
+    "line": 200,
     "description": "DELETE /api/findings/:id.",
     "params": [
       "id"
@@ -41,7 +41,7 @@
     "route": "/api/observations/:id",
     "domain": "vantage-observations",
     "source": "server.js",
-    "line": 289,
+    "line": 299,
     "description": "DELETE /api/observations/:id.",
     "params": [
       "id"
@@ -59,7 +59,7 @@
     "route": "/api/plan/:id/link",
     "domain": "vantage-plan",
     "source": "server.js",
-    "line": 224,
+    "line": 234,
     "description": "DELETE /api/plan/:id/link.",
     "params": [
       "id"
@@ -77,7 +77,7 @@
     "route": "/api/coach/brief",
     "domain": "vantage-coach",
     "source": "server.js",
-    "line": 269,
+    "line": 279,
     "description": "GET /api/coach/brief.",
     "params": [],
     "query": [
@@ -95,7 +95,7 @@
     "route": "/api/coach/modes",
     "domain": "vantage-coach",
     "source": "server.js",
-    "line": 228,
+    "line": 238,
     "description": "GET /api/coach/modes.",
     "params": [],
     "query": [],
@@ -111,7 +111,7 @@
     "route": "/api/coach/sessions",
     "domain": "vantage-coach",
     "source": "server.js",
-    "line": 231,
+    "line": 241,
     "description": "GET /api/coach/sessions.",
     "params": [],
     "query": [],
@@ -127,7 +127,7 @@
     "route": "/api/coach/sessions/:id",
     "domain": "vantage-coach",
     "source": "server.js",
-    "line": 232,
+    "line": 242,
     "description": "GET /api/coach/sessions/:id.",
     "params": [
       "id"
@@ -145,7 +145,7 @@
     "route": "/api/findings",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 187,
+    "line": 197,
     "description": "GET /api/findings.",
     "params": [],
     "query": [
@@ -164,7 +164,7 @@
     "route": "/api/findings/auto-push",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 207,
+    "line": 217,
     "description": "GET /api/findings/auto-push.",
     "params": [],
     "query": [],
@@ -180,7 +180,7 @@
     "route": "/api/findings/markdown",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 192,
+    "line": 202,
     "description": "GET /api/findings/markdown.",
     "params": [],
     "query": [
@@ -198,7 +198,7 @@
     "route": "/api/friction",
     "domain": "vantage-friction",
     "source": "server.js",
-    "line": 283,
+    "line": 293,
     "description": "GET /api/friction.",
     "params": [],
     "query": [],
@@ -296,7 +296,7 @@
     "route": "/api/observations",
     "domain": "vantage-observations",
     "source": "server.js",
-    "line": 287,
+    "line": 297,
     "description": "GET /api/observations.",
     "params": [],
     "query": [
@@ -314,7 +314,7 @@
     "route": "/api/plan",
     "domain": "vantage-plan",
     "source": "server.js",
-    "line": 214,
+    "line": 224,
     "description": "GET /api/plan.",
     "params": [],
     "query": [],
@@ -330,7 +330,7 @@
     "route": "/api/plan/tasks",
     "domain": "vantage-plan",
     "source": "server.js",
-    "line": 220,
+    "line": 230,
     "description": "GET /api/plan/tasks.",
     "params": [],
     "query": [
@@ -366,7 +366,7 @@
     "route": "/api/self",
     "domain": "vantage-self",
     "source": "server.js",
-    "line": 271,
+    "line": 281,
     "description": "GET /api/self.",
     "params": [],
     "query": [],
@@ -382,7 +382,7 @@
     "route": "/api/self/moved",
     "domain": "vantage-self",
     "source": "server.js",
-    "line": 277,
+    "line": 287,
     "description": "GET /api/self/moved.",
     "params": [],
     "query": [],
@@ -398,7 +398,7 @@
     "route": "/api/self/quick",
     "domain": "vantage-self",
     "source": "server.js",
-    "line": 272,
+    "line": 282,
     "description": "GET /api/self/quick.",
     "params": [],
     "query": [],
@@ -443,12 +443,30 @@
     "stream": false
   },
   {
+    "id": "vantage_get_tracker",
+    "method": "GET",
+    "route": "/api/tracker",
+    "domain": "vantage-tracker",
+    "source": "server.js",
+    "line": 188,
+    "description": "GET /api/tracker.",
+    "params": [],
+    "query": [
+      "refresh"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "vantage_post_coach_brief_start",
     "method": "POST",
     "route": "/api/coach/brief/start",
     "domain": "vantage-coach",
     "source": "server.js",
-    "line": 270,
+    "line": 280,
     "description": "POST /api/coach/brief/start.",
     "params": [],
     "query": [],
@@ -464,7 +482,7 @@
     "route": "/api/coach/sessions",
     "domain": "vantage-coach",
     "source": "server.js",
-    "line": 237,
+    "line": 247,
     "description": "POST /api/coach/sessions.",
     "params": [],
     "query": [],
@@ -480,7 +498,7 @@
     "route": "/api/coach/sessions/:id/messages",
     "domain": "vantage-coach",
     "source": "server.js",
-    "line": 243,
+    "line": 253,
     "description": "POST /api/coach/sessions/:id/messages.",
     "params": [
       "id"
@@ -501,7 +519,7 @@
     "route": "/api/findings",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 188,
+    "line": 198,
     "description": "POST /api/findings.",
     "params": [],
     "query": [],
@@ -517,7 +535,7 @@
     "route": "/api/findings/auto-push",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 208,
+    "line": 218,
     "description": "POST /api/findings/auto-push.",
     "params": [],
     "query": [],
@@ -533,7 +551,7 @@
     "route": "/api/findings/:id/draft",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 191,
+    "line": 201,
     "description": "POST /api/findings/:id/draft.",
     "params": [
       "id"
@@ -551,7 +569,7 @@
     "route": "/api/findings/:id/neuro",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 197,
+    "line": 207,
     "description": "POST /api/findings/:id/neuro.",
     "params": [
       "id"
@@ -569,7 +587,7 @@
     "route": "/api/findings/:id/reopen",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 210,
+    "line": 220,
     "description": "POST /api/findings/:id/reopen.",
     "params": [
       "id"
@@ -587,7 +605,7 @@
     "route": "/api/findings/:id/resolve",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 209,
+    "line": 219,
     "description": "POST /api/findings/:id/resolve.",
     "params": [
       "id"
@@ -605,7 +623,7 @@
     "route": "/api/findings/sync",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 203,
+    "line": 213,
     "description": "POST /api/findings/sync.",
     "params": [],
     "query": [],
@@ -621,7 +639,7 @@
     "route": "/api/leading/log/:id/verdict",
     "domain": "vantage-leading",
     "source": "server.js",
-    "line": 182,
+    "line": 192,
     "description": "POST /api/leading/log/:id/verdict.",
     "params": [
       "id"
@@ -639,7 +657,7 @@
     "route": "/api/observations",
     "domain": "vantage-observations",
     "source": "server.js",
-    "line": 288,
+    "line": 298,
     "description": "POST /api/observations.",
     "params": [],
     "query": [],
@@ -655,7 +673,7 @@
     "route": "/api/plan/:id/link",
     "domain": "vantage-plan",
     "source": "server.js",
-    "line": 222,
+    "line": 232,
     "description": "POST /api/plan/:id/link.",
     "params": [
       "id"
@@ -673,7 +691,7 @@
     "route": "/api/plan/:id/planner",
     "domain": "vantage-plan",
     "source": "server.js",
-    "line": 223,
+    "line": 233,
     "description": "POST /api/plan/:id/planner.",
     "params": [
       "id"
@@ -691,7 +709,7 @@
     "route": "/api/plan/:id/task",
     "domain": "vantage-plan",
     "source": "server.js",
-    "line": 221,
+    "line": 231,
     "description": "POST /api/plan/:id/task.",
     "params": [
       "id"
@@ -743,7 +761,7 @@
     "route": "/api/findings/:id",
     "domain": "vantage-findings",
     "source": "server.js",
-    "line": 189,
+    "line": 199,
     "description": "PUT /api/findings/:id.",
     "params": [
       "id"
@@ -761,7 +779,7 @@
     "route": "/api/plan/:id",
     "domain": "vantage-plan",
     "source": "server.js",
-    "line": 215,
+    "line": 225,
     "description": "PUT /api/plan/:id.",
     "params": [
       "id"
