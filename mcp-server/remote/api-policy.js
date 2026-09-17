@@ -23,12 +23,20 @@ export const paramEnums = Object.fromEntries(
 // Guidance a route string cannot carry. The session routes start a conversation
 // with NEURO's OWN model; an external assistant that has already run the standup
 // with Nick records the result with save_to_daily, which is what marks it done.
-const SESSION_NOTE = 'Opens a standup conversation driven by NEURO\'s own AI (start → reply → finish; kind is "standup" or "eod"). If you have already run the standup with the user, do NOT use this — record it with post_standup_save_to_daily instead.';
+const SESSION_NOTE = 'Opens a standup conversation driven by NEURO\'s own AI (start → reply → finish; kind is "standup" or "eod"). If you have already run the standup with the user, do NOT use this — record it with post_standup_record (morning) or post_standup_eod_record (evening) instead.';
+// The canonical ritual-persistence route, and the description has to say so in
+// as many words. Sara ran a full standup on 17 Sep 2026 and saved it with the
+// generic note capture, because nothing told her there was a ritual route — so
+// the prose landed in Imports/ and NEURO went on reporting NO STANDUP. A route
+// that exists and is not discoverable as the right one is a route nobody uses.
+const RECORD_NOTE = 'THE canonical way to complete this ritual when you have already run it with the user in conversation. Do not use capture_note / post_capture_note for a standup or EOD: that files prose the ritual system cannot see. This writes NEURO\'s own daily-note format (the same one its native standup writes), preserves everything else already in the note, and is idempotent — calling it again replaces today\'s ritual rather than duplicating it.';
 export const notes = {
   post_standup_session_by_kind_start: SESSION_NOTE,
   post_standup_session_by_kind_reply: SESSION_NOTE,
   post_standup_session_by_kind_finish: SESSION_NOTE,
-  post_standup_save_to_daily: 'Record a morning standup the user has done with you. body.content is markdown appended under "## Standup — <date>" in today\'s daily note, and marks the standup done. Include a "## Focus Today" section of "- [ ] item" lines: tomorrow\'s standup reads that heading back to check what was carried over.',
+  post_standup_record: `${RECORD_NOTE} body.focus is a REQUIRED array of strings — what the user committed to today, one per item; these become the "## Focus Today" checkboxes that mark the standup done and that tomorrow reads back as carry-overs. Optional: body.blockers (string), body.mood (string), body.date ("YYYY-MM-DD", defaults to today).`,
+  post_standup_eod_record: `${RECORD_NOTE} Supply at least one of body.done (array of strings — what got finished), body.didntGo (string), body.tomorrowFirst (string), body.mood (string). Optional body.date ("YYYY-MM-DD") records an evening already past — use it the morning after. Writes the "## EOD" section the evening ritual owns.`,
+  post_standup_save_to_daily: 'SUPERSEDED by post_standup_record — prefer that. Appends free markdown under "## Standup — <date>". It marks the standup done but writes no "## Focus Today", so tomorrow\'s carry-over scan reads nothing.',
 };
 export const aliases ={ post_chat: '/api/chat/sync', get_nudges_stream: '/api/nudges' };
 const adminDomains = new Set(['auth', 'pin', 'capture-links', 'ai', 'feature-flags']);

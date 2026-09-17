@@ -776,6 +776,62 @@ router.post('/save-to-daily', (req, res) => {
   res.json({ success: true, path: filePath });
 });
 
+// The canonical route for an external assistant (Sara in ChatGPT, the Watch
+// shortcut, Nick on paper) to complete the ritual NEURO already understands.
+//
+// (!) NOT a second standup format. `standupSession.recordExternal` renders with
+// the SAME `_renderDailyNote` / `_renderEodSection` the native session uses and
+// fires the SAME completion markers, so the note it writes is the note NEURO
+// would have written itself. `save-to-daily` above appends free markdown under a
+// `## Standup — <date>` heading: that satisfies the done-detector and gives
+// TOMORROW'S carry-over scan nothing to read, because there is no
+// `## Focus Today`. These two are the ones to use.
+//
+// (!) THE HANDLERS ARE INLINE, AND THAT IS LOAD-BEARING. Written as a shared
+// `recordRitual(kind)` factory they were three lines shorter and the MCP
+// inventory came back `body: []`, `bodyOpen: false` — `inspect-api.js` reads the
+// handler passed to `router.post`, and a call expression has no body to read. A
+// strict empty body schema then REJECTS `focus`, so the operation would have
+// been published, discoverable, and uncallable. There is no duplicated logic
+// here: both delegate to the one service function, and the fields genuinely
+// differ between morning and evening.
+function respondToRecord(res, run) {
+  try {
+    const result = run();
+    // The whole point is that the existing detector now agrees, so SAY so rather
+    // than leaving the caller to infer it from a 200. A write that lands and is
+    // still not recognised is the exact failure this route exists to remove.
+    const note = obsidianService.readDailyNote(result.dateKey) || '';
+    const parsed = accountability.parseDailyNote(note);
+    res.json({
+      ...result,
+      standupDone: parsed.standupDone,
+      eodDone: parsed.eodDone,
+      committed: parsed.focus.length + parsed.carry.length,
+    });
+  } catch (e) {
+    // A refusal is a caller error worth reading (no focus items, a malformed
+    // date), not a 500 the gateway would flatten to `backend_http_500`.
+    const bad = /^(focus must|an EOD record|dateKey must|Unknown ritual)/.test(e.message);
+    if (!bad) console.error('[Standup] record failed:', e);
+    res.status(bad ? 400 : 500).json({ error: e.message });
+  }
+}
+
+// POST /api/standup/record — records a morning standup already done with an external assistant
+router.post('/record', (req, res) => {
+  const { focus, blockers, mood, date } = req.body || {};
+  respondToRecord(res, () => require('../services/standup-session')
+    .recordExternal('standup', { focus, blockers, mood }, { dateKey: date || undefined }));
+});
+
+// POST /api/standup/eod/record — records an evening reflection already done with an external assistant
+router.post('/eod/record', (req, res) => {
+  const { done, didntGo, tomorrowFirst, mood, date } = req.body || {};
+  respondToRecord(res, () => require('../services/standup-session')
+    .recordExternal('eod', { done, didntGo, tomorrowFirst, mood }, { dateKey: date || undefined }));
+});
+
 // GET /api/standup/ritual-state — checks if standup is done today from vault
 router.get('/ritual-state', (req, res) => {
   const dailyNote = obsidianService.readTodayDailyNote();

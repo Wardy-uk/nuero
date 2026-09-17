@@ -1139,12 +1139,225 @@ function _findDuplicate(text, existing) {
 }
 
 /**
+ * The day a note is ABOUT, as a local Date.
+ *
+ * (!) Never `new Date(dateKey)`. An ISO date string parses as midnight UTC,
+ * which renders as the PREVIOUS day west of here — the calendar bug this repo
+ * has now paid for three times. Identical to the old `new Date()` on the native
+ * path, where dateKey is always today, and correct for a ritual being recorded
+ * against a day that is not.
+ */
+function _dateOf(dateKey) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey || ''));
+  if (!m) return new Date();
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+// -- Merging a ritual into a daily note that already has content -------------
+
+/**
+ * Split a note into frontmatter, the preamble above the first `## `, and its
+ * `## ` sections. PURE.
+ */
+function _splitNote(text) {
+  const src = String(text == null ? '' : text).replace(/\r\n/g, '\n');
+  let rest = src;
+  let frontmatter = '';
+  const fm = /^---\n[\s\S]*?\n---\n?/.exec(rest);
+  if (fm) { frontmatter = fm[0]; rest = rest.slice(fm[0].length); }
+
+  const sections = [];
+  const preamble = [];
+  let cur = null;
+  for (const line of rest.split('\n')) {
+    const h = /^##[ \t]+(.+?)[ \t]*$/.exec(line);
+    if (h && !line.startsWith('###')) {
+      if (cur) sections.push(cur);
+      cur = { name: h[1], heading: line, body: [] };
+      continue;
+    }
+    if (cur) cur.body.push(line);
+    else preamble.push(line);
+  }
+  if (cur) sections.push(cur);
+  return { frontmatter, preamble: preamble.join('\n'), sections };
+}
+
+function _joinNote(note) {
+  const parts = [];
+  // (!) Frontmatter and the title are ONE part, not two. Joining them with a
+  // blank line is harmless to a YAML parser and still wrong: it would make a
+  // merged note differ from the one `_renderDailyNote` writes directly, and the
+  // whole claim of this path is that the two are the same bytes.
+  const fm = note.frontmatter
+    ? (note.frontmatter.endsWith('\n') ? note.frontmatter : note.frontmatter + '\n')
+    : '';
+  const pre = note.preamble.replace(/\s+$/, '');
+  if (fm || pre) parts.push(fm + (pre ? pre + '\n' : ''));
+  for (const sec of note.sections) {
+    parts.push(sec.heading + '\n' + sec.body.join('\n').replace(/\s+$/, '') + '\n');
+  }
+  return parts.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
+}
+
+const _norm = (name) => String(name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Write a rendered ritual into an existing daily note, replacing the sections
+ * the ritual owns and PRESERVING everything else.
+ *
+ * `writeTodayDailyNote(_renderDailyNote(session))` is right for the native
+ * standup, which runs before anything else has written to the note — but by the
+ * time an external assistant records the same ritual, `## SAiM Actions` and
+ * `## NEURO Observations` are usually already there, and overwriting is how a
+ * morning's logged alerts silently vanish.
+ *
+ * (!) THE MATCH SCANS FORWARD, and that is what makes it safe for EOD. The
+ * evening renders `## EOD` followed by its own `## Decided`, while the MORNING
+ * may already have written a `## Decided` of its own higher up the note. Having
+ * matched `## EOD` at index i, the search for `Decided` resumes at i+1, so the
+ * morning's decisions can never be claimed and overwritten by the evening's.
+ * A name-anywhere match would destroy them.
+ *
+ * (!) Idempotent by construction: a section the ritual owns is REPLACED, never
+ * appended to, so recording the same standup twice leaves one of each section.
+ *
+ * (!) Existing frontmatter and preamble WIN. They are the note's own identity;
+ * the rendered ones are only a fallback for a note that does not exist yet.
+ *
+ * PURE — no vault, no clock.
+ */
+function mergeRitual(existing, rendered) {
+  const cur = _splitNote(existing);
+  const inc = _splitNote(rendered);
+  if (!cur.sections.length && !cur.preamble.trim() && !cur.frontmatter) return _joinNote(inc);
+
+  const out = {
+    frontmatter: cur.frontmatter || inc.frontmatter,
+    preamble: cur.preamble.trim() ? cur.preamble : inc.preamble,
+    sections: cur.sections.slice(),
+  };
+
+  // Where a rendered section that is NOT already present should land. The
+  // ritual's sections belong at the top of the note (Focus Today is what the
+  // note is for); an EOD block belongs at the end, after the day it describes.
+  let at = _norm(inc.sections[0] && inc.sections[0].name) === 'eod' ? out.sections.length : 0;
+  let from = 0;
+  for (const sec of inc.sections) {
+    let idx = -1;
+    for (let i = from; i < out.sections.length; i++) {
+      if (_norm(out.sections[i].name) === _norm(sec.name)) { idx = i; break; }
+    }
+    if (idx === -1) {
+      out.sections.splice(at, 0, sec);
+      from = at + 1;
+    } else {
+      out.sections[idx] = sec;
+      from = idx + 1;
+    }
+    at = from;
+  }
+  return _joinNote(out);
+}
+
+/**
+ * Record a ritual the user completed SOMEWHERE ELSE — with an external
+ * assistant, on paper, in their head — into NEURO's canonical daily note.
+ *
+ * (!) This is the native path with the conversation removed, NOT a second
+ * format. It builds the same session shape `finish()` writes from, renders it
+ * with the SAME `_renderDailyNote` / `_renderEodSection`, and fires the SAME
+ * completion markers. There is deliberately no ChatGPT-shaped representation
+ * anywhere: a standup recorded this way is byte-for-byte the standup NEURO
+ * would have written itself, which is the only thing that makes every existing
+ * reader — `standupDoneIn`, tomorrow's carry-over scan, the nudge, the ritual
+ * view — recognise it without being taught about a new source.
+ *
+ * (!) It does NOT create tasks to satisfy a detector. `standupDoneIn` is true
+ * because there are real focus items in `## Focus Today`, which is the same
+ * reason it is true after a native standup. A record with no focus items is
+ * REFUSED rather than written as an empty scaffold — NEURO writes that scaffold
+ * itself, and a detector that accepts it creates the evidence for its own test
+ * (the `task-blocks` empty-stub rule).
+ */
+function recordExternal(kind, outcome, opts) {
+  const options = opts || {};
+  const dateKey = options.dateKey || _today();
+  const src = outcome || {};
+  if (kind !== KIND_STANDUP && kind !== KIND_EOD) {
+    throw new Error('Unknown ritual kind "' + kind + '" - expected "standup" or "eod"');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey))) {
+    throw new Error('dateKey must be YYYY-MM-DD, got "' + dateKey + '"');
+  }
+
+  const clean = (v) => (typeof v === 'string' ? v.trim() : '');
+  const list = (v) => (Array.isArray(v) ? v.map(clean).filter(Boolean) : []);
+
+  const o = kind === KIND_STANDUP
+    ? {
+        focus: list(src.focus),
+        blockers: clean(src.blockers),
+        mood: clean(src.mood),
+        commitments: [],
+        taskLinks: [],
+      }
+    : {
+        done: list(src.done),
+        didntGo: clean(src.didntGo),
+        tomorrowFirst: clean(src.tomorrowFirst),
+        mood: clean(src.mood),
+        commitments: [],
+      };
+
+  // (!) Refuse an empty ritual rather than writing a scaffold that would satisfy
+  // the done-detector while telling tomorrow's standup nothing.
+  if (kind === KIND_STANDUP && !o.focus.length) {
+    throw new Error('focus must contain at least one item - a standup with nothing committed is not a standup');
+  }
+  if (kind === KIND_EOD && !o.done.length && !o.didntGo && !o.tomorrowFirst && !o.mood) {
+    throw new Error('an EOD record needs at least one of done, didntGo, tomorrowFirst or mood');
+  }
+
+  // The same context the live session gathers, so carried commitments are
+  // reconciled identically. A failed read costs the carry-over list and must
+  // never cost the ritual - `_renderDailyNote` already tolerates a null.
+  let accountability = null;
+  try {
+    accountability = require('./standup-accountability').buildAccountability();
+  } catch (e) {
+    console.warn('[StandupSession] recordExternal: accountability unavailable:', e.message);
+  }
+
+  const session = { kind, dateKey, outcome: o, context: { accountability } };
+  _refreshCarried(session);
+
+  const rendered = kind === KIND_EOD ? _renderEodSection(session) : _renderDailyNote(session);
+  const existing = obsidian.readDailyNote(dateKey) || '';
+  const merged = mergeRitual(existing, rendered);
+  const notePath = obsidian.writeDailyNote(dateKey, merged);
+
+  // The same markers finish() fires. Without these the note is right and every
+  // counter that watches the ritual is still wrong.
+  if (kind === KIND_EOD) {
+    try { require('./nudges').markEodDone(); } catch {}
+    try { require('./activity').trackEodDone(); } catch {}
+  } else {
+    try { require('./nudges').markStandupDone(); } catch {}
+    try { require('./activity').trackStandupDone(new Date().getHours(), true); } catch {}
+  }
+  try { require('./activity').trackVaultWrite('daily'); } catch {}
+
+  return { ok: true, kind, dateKey, path: notePath, created: !existing };
+}
+
+/**
  * Build the morning daily note. Same section headings as the old guided flow —
  * standup-accountability parses them back tomorrow to work out what was carried,
  * so the format is a contract, not a preference.
  */
 function _renderDailyNote(session) {
-  const d = new Date();
+  const d = _dateOf(session.dateKey);
   const o = session.outcome;
   const acc = session.context.accountability;
   const byKey = new Map((o.commitments || []).map(c => [c.key, c]));
@@ -1327,6 +1540,9 @@ module.exports = {
   resume,
   finish,
   load,
+  _dateOf,
+  recordExternal,
+  mergeRitual,
   _renderDailyNote,
   _renderEodSection,
   save,

@@ -71,19 +71,39 @@ function recComment(recurrence) {
 }
 
 // Daily notes
-function readTodayDailyNote() {
-  const notePath = path.join(getVaultPath(), 'Daily', `${todayDateString()}.md`);
+//
+// ⚠ The dated pair is the implementation and the "today" pair are wrappers, not
+// the other way round. A second copy that resolved the date itself is how the
+// standup and the thing reading it back came to disagree about which day they
+// were talking about (`finish(kind, dateKey)` carries the same scar), and
+// anything reconciling a ritual captured yesterday needs to address a day that
+// is not today.
+function dailyNotePath(dateKey) {
+  return path.join(getVaultPath(), 'Daily', `${dateKey}.md`);
+}
+
+function readDailyNote(dateKey) {
+  if (!getVaultPath()) return null;
+  const notePath = dailyNotePath(dateKey);
   if (!fs.existsSync(notePath)) return null;
   return fs.readFileSync(notePath, 'utf-8');
 }
 
-function writeTodayDailyNote(content) {
+function writeDailyNote(dateKey, content) {
   const dir = path.join(requireVaultPath(), 'Daily');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const notePath = path.join(dir, `${todayDateString()}.md`);
+  const notePath = path.join(dir, `${dateKey}.md`);
   fs.writeFileSync(notePath, content, 'utf-8');
   try { require('./vault-hooks').onVaultWrite(notePath, 'daily-note'); } catch {}
   return notePath;
+}
+
+function readTodayDailyNote() {
+  return readDailyNote(todayDateString());
+}
+
+function writeTodayDailyNote(content) {
+  return writeDailyNote(todayDateString(), content);
 }
 
 function appendToDailyNote(content) {
@@ -2166,6 +2186,8 @@ module.exports = {
   isConfigured,
   readTodayDailyNote,
   writeTodayDailyNote,
+  readDailyNote,
+  writeDailyNote,
   appendToDailyNote,
   readStandup,
   writeStandup,
