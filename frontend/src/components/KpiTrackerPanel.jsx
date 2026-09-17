@@ -30,7 +30,14 @@ export default function KpiTrackerPanel() {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const res = await fetch(apiUrl('/api/kpi-tracker'), { credentials: 'include' });
+      // ⚠ NO `credentials: 'include'`. NEURO answers with
+      // `Access-Control-Allow-Origin: *`, and the browser REFUSES a wildcard
+      // origin on a credentialed request — the fetch throws "Failed to fetch"
+      // before the response is ever looked at, which reads as the API being
+      // down when it answered in 140ms. Auth is injected globally by the fetch
+      // patch in api.js; no panel passes credentials, and this one should not
+      // have either.
+      const res = await fetch(apiUrl('/api/kpi-tracker'));
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || 'Request failed');
       setData(json.data);
