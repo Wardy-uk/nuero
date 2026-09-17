@@ -96,6 +96,30 @@ const DOORS = new Set([
                      // shell does not have to special-case which app it is in.
 ]);
 
+// ⚠ A SEGMENT IS SOMETIMES TOO WIDE A DOOR, so there is a second, narrower list.
+//
+// `activity` earns exactly ONE path here: the kiosk reports which screen is on,
+// for the usage heatmap, and it is one of the three surfaces being measured —
+// without it the desk screen's opens are simply absent, which reads as a panel
+// nobody touches rather than one nobody instrumented.
+//
+// Opening the whole `activity` segment would have come with
+// `POST /activity/suggestions/apply` and `POST /activity/rebuild-embeddings`.
+// Neither leaves the building, so both pass the test DOORS applies — but
+// neither has a screen behind it here, and "access with no screen behind it is
+// exposure, not capability" is the rule that closed `vault` and `plaud` on
+// 11 Sep. A rebuild costs hours of Voyage calls; that it is only expensive
+// rather than dangerous is not a reason to leave it reachable from a
+// touchscreen in the living room.
+//
+// ⚠ Matched on the WHOLE path with the query stripped, never by prefix — a
+// `startsWith` door would take `/activity/tab/../suggestions` on any client
+// that does not normalise, and the traversal guard above is the only thing
+// standing between those two facts.
+const EXACT_DOORS = new Set([
+  '/activity/tab',
+]);
+
 /**
  * Is this path one of the doors? PURE, and exported so the refusal is testable
  * without a network — the refusal IS the feature here.
@@ -108,6 +132,8 @@ function isAllowed(pathname) {
   const p = String(pathname || '');
   if (!p.startsWith('/')) return false;
   if (p.includes('..') || p.includes(String.fromCharCode(92))) return false;
+  const bare = p.split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+  if (EXACT_DOORS.has(bare)) return true;
   const segment = p.slice(1).split(/[/?#]/)[0];
   return DOORS.has(segment);
 }

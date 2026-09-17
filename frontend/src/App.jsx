@@ -57,6 +57,7 @@ const JournalPanel = lazy(() => import('./components/JournalPanel'));
 const FocusPanel = lazy(() => import('./components/FocusPanel'));
 const BriefingPanel = lazy(() => import('./components/BriefingPanel'));
 const PiHealthPanel = lazy(() => import('./components/PiHealthPanel'));
+const ScreenUsagePanel = lazy(() => import('./components/ScreenUsagePanel'));
 const NotionSyncPanel = lazy(() => import('./components/NotionSyncPanel'));
 const CataloguesPanel = lazy(() => import('./components/CataloguesPanel'));
 const ProfilePanel = lazy(() => import('./components/ProfilePanel'));
@@ -270,13 +271,18 @@ function AuthenticatedApp() {
   const worstStatus = statusFetch.status;
   const worstCacheAge = statusFetch.cacheAge || null;
 
-  // Track tab opens
+  // Track screen opens. Feeds the usage heatmap (`/api/screen-usage`), which is
+  // what says which of these 33 screens still earn their place.
+  //
+  // ⚠ `surface` is what keeps the desktop's opens apart from SAiM's and
+  // VANTAGE's. Rows logged before 17 Sep 2026 carry none and read as NEURO's,
+  // which is correct — this was the only caller.
   React.useEffect(() => {
     if (!activeView) return;
     fetch(apiUrl('/api/activity/tab'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tab: activeView })
+      body: JSON.stringify({ tab: activeView, surface: 'neuro' })
     }).catch(() => {}); // fire and forget — never block UI
   }, [activeView]);
 
@@ -329,6 +335,7 @@ function AuthenticatedApp() {
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
       case 'health': return <HealthPanel />;
       case 'pi-health': return <PiHealthPanel />;
+      case 'screen-usage': return <ScreenUsagePanel />;
       case 'notion-sync': return <NotionSyncPanel />;
       case 'catalogues': return <CataloguesPanel />;
       case 'about-me': return <ProfilePanel />;

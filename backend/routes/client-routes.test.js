@@ -407,17 +407,39 @@ function kioskDoors() {
   const proxy = fs.readFileSync(
     path.join(REPO, 'saim', 'backend', 'src', 'routes', 'neuroProxy.js'), 'utf8',
   );
+
+  const names = (block, pattern) => {
+    const out = new Set();
+    for (const line of block.split(String.fromCharCode(10))) {
+      const code = line.split('//')[0].trim();
+      const m = code.match(pattern);
+      if (m) out.add(m[1]);
+    }
+    return out;
+  };
+
   const block = proxy.match(/const DOORS = new Set\(\[([\s\S]*?)\]\)/);
   assert.ok(block, 'could not read the DOORS allowlist — the scan is broken, not the doors');
-
-  const doors = new Set();
-  for (const line of block[1].split('\n')) {
-    const code = line.split('//')[0].trim();
-    const m = code.match(/^'([a-z0-9-]+)'/);
-    if (m) doors.add(m[1]);
-  }
+  const doors = names(block[1], /^'([a-z0-9-]+)'/);
   assert.ok(doors.size > 5, 'DOORS parsed suspiciously small — positive control on the parse');
-  return doors;
+
+  // A SECOND, NARROWER LIST. `activity` is deliberately NOT a segment door —
+  // that segment also carries `suggestions/apply` and `rebuild-embeddings`,
+  // neither of which has a kiosk screen behind it — so the screen-usage report
+  // is opened as ONE PATH. A scan that only read DOORS would call that path
+  // stranded, and would go on passing if somebody later widened it to a whole
+  // segment. Same comment rule as above: a name inside a comment is not a door.
+  const exactBlock = proxy.match(/const EXACT_DOORS = new Set\(\[([\s\S]*?)\]\)/);
+  const exact = exactBlock ? names(exactBlock[1], /^'(\/[a-z0-9\-/]+)'/) : new Set();
+
+  return { doors, exact };
+}
+
+/** Does this client path reach NEURO — by segment door, or as an exact path? */
+function throughDoor(raw, gates) {
+  const seg = knownPrefix(raw)[0];
+  const bare = raw.replace(/^\/api/, '').split(/[?#]/)[0].replace(/\/+$/, '');
+  return gates.exact.has(bare) || (Boolean(seg) && gates.doors.has(seg));
 }
 
 test('every segment the shared SAiM views call is a kiosk door, or declared closed', () => {
@@ -432,7 +454,7 @@ test('every segment the shared SAiM views call is a kiosk door, or declared clos
   for (const [raw, where] of clientPaths(['saim/app/src/views', 'saim/shared-ui'])) {
     const seg = knownPrefix(raw)[0];
     if (!seg) continue;
-    if (doors.has(seg) || named.has(seg) || CLOSED_ON_PURPOSE.has(seg)) continue;
+    if (throughDoor(raw, doors) || named.has(seg) || CLOSED_ON_PURPOSE.has(seg)) continue;
     stranded.push(`${raw} — '${seg}' is not a kiosk door (${where})`);
   }
 
@@ -467,7 +489,7 @@ test('every path the kiosk shell calls resolves — on saim/backend or through a
     // means it must be a door AND resolve on the far side.
     const seg = knownPrefix(raw)[0];
     if (!seg) continue;
-    if (!doors.has(seg)) {
+    if (!throughDoor(raw, doors)) {
       dead.push(`${raw} — not a saim/backend route and '${seg}' is not a door (${where})`);
       continue;
     }

@@ -12,6 +12,7 @@ const canShowTab = (t) => t.id !== 'voice' || Boolean(speechRecognitionCtor());
 import Field from '../../shared-ui/Field';
 import { FieldCover } from '../../shared-ui/FieldCover';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
+import { useScreenTracking } from '../../shared-ui/useScreenTracking';
 import { surfaceRgb } from '../../shared-ui/fieldDrive.mjs';
 import '../../shared-ui/Lit.css';
 import ExitButton from './components/ExitButton';
@@ -64,6 +65,14 @@ import './KioskShell.css';
 const fetchAttentionForField = () => fetch('/api/attention').then((r) => r.json());
 // Through saim/backend's `signals` door; a refusal or an outage renders nothing.
 const fetchWhereabouts = () => fetch('/api/signals/room').then((r) => (r.ok ? r.json() : null));
+// Which screen is on, for the usage heatmap. Through the `activity` door, so no
+// credential lives in an always-on desk browser. Fire and forget.
+const reportScreen = (tab) =>
+  fetch('/api/activity/tab', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tab, surface: 'saim' }),
+  });
 
 function AppShell() {
   const { now } = useSaimState();
@@ -105,6 +114,7 @@ function AppShell() {
   // passthrough, which reports failure as a 200 carrying `available:false` —
   // the hook treats both that and `poolAvailable:false` as blind.
   const fieldDrive = useFieldDrive(fetchAttentionForField, active !== 'surface');
+  useScreenTracking(active, reportScreen);
 
   // ⚠ The capture outbox only drains when something starts it, and only the
   // phone's shell did. So a note captured at the desk while NEURO was briefly

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getPin, clearPin, apiFetch } from './api';
+import { getPin, clearPin, apiFetch, apiUrl, authHeaders } from './api';
 import { usePushSubscription } from './hooks/usePushSubscription';
 import { useWakeLock } from './hooks/useWakeLock';
 import LockScreen from './components/LockScreen';
@@ -8,6 +8,7 @@ import { startAutoFlush } from './mobile/outbox';
 import actionSurfaces from '../../../shared/action-surfaces.cjs';
 import Field from '../../shared-ui/Field';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
+import { useScreenTracking } from '../../shared-ui/useScreenTracking';
 import { surfaceRgb } from '../../shared-ui/fieldDrive.mjs';
 import '../../shared-ui/Lit.css';
 import { PRIMARY, SECONDARY, TABS, VALID_TABS, DEFAULT_TAB, revealsSecondary } from '../../shared-ui/tabs';
@@ -67,6 +68,15 @@ const { resolveSaimLitePlan, resolveSaimLiteTab } = actionSurfaces;
 
 // Module scope so the hook's effect is not re-created on every render.
 const fetchAttentionForField = () => apiFetch('/api/attention');
+
+// Which screen is on, for the usage heatmap. Direct to NEURO with the PIN.
+// ⚠ Fire and forget — a usage grid never costs a navigation. See the hook.
+const reportScreen = (tab) =>
+  fetch(apiUrl('/api/activity/tab'), {
+    method: 'POST',
+    headers: authHeaders('/api/activity/tab'),
+    body: JSON.stringify({ tab, surface: 'saim' }),
+  });
 
 function readLaunchIntent() {
   if (typeof window === 'undefined') return null;
@@ -229,6 +239,7 @@ export default function App() {
   // ⚠ Her substrate is now DRIVEN on every screen, not hardcoded. Skipped on
   // the Surface, which has a live read of its own and mounts its own field.
   const fieldDrive = useFieldDrive(fetchAttentionForField, active !== 'surface');
+  useScreenTracking(active, reportScreen);
 
 
   // ⚠⚠ THE MENU MINIMISES ITSELF WHEN SHE IS BACK ON SCREEN. `navOpen` was only

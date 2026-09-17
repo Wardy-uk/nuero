@@ -4,8 +4,27 @@ const db = require('../db/database');
 
 // ── Event logging ──────────────────────────────────────────────────────────
 
-function trackTabOpen(tabName) {
-  db.logActivity('tab_open', { tab: tabName });
+// Which surface a screen open came from. `screen-usage.js` owns the vocabulary;
+// this is the one place it is enforced on the way IN, so a typo from a client
+// lands as a named surface rather than as a fourth one nobody rendered.
+const SURFACES = new Set(['neuro', 'saim', 'vantage']);
+
+/**
+ * ⚠ An UNRECOGNISED surface is refused back to the caller, never normalised to
+ * 'neuro' — "I did not understand you" and "this came from the desktop" are
+ * different claims, and quietly filing SAiM's opens under NEURO would make the
+ * grid confidently wrong about which app Nick actually uses.
+ *
+ * ⚠ OMITTING it is NOT a typo and is accepted as 'neuro', because every row
+ * logged before 17 Sep 2026 came from `frontend/src/App.jsx` and an old cached
+ * bundle still sends the bare shape. Same distinction `setScopes` draws between
+ * a missing field and an empty one.
+ */
+function trackTabOpen(tabName, surface) {
+  if (surface != null && !SURFACES.has(surface)) {
+    throw new Error(`unknown surface "${surface}"`);
+  }
+  db.logActivity('tab_open', surface ? { tab: tabName, surface } : { tab: tabName });
 }
 
 function trackStandupDone(hour, withNote = false) {
@@ -433,6 +452,7 @@ function applySuggestion(id, params) {
 
 module.exports = {
   trackTabOpen,
+  SURFACES,
   trackStandupDone,
   trackNudgeSnooze,
   trackNudgeDismiss,

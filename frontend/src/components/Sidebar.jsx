@@ -87,6 +87,13 @@ const SECONDARY_ITEMS = [
   // Label only. The view id stays `pi-health` so every deep link, ?view= param
   // and notification route keeps working — the same call as `today` for Now.
   { id: 'pi-health',  label: 'NEURO Health', icon: '▚' },
+  // Which screens actually get opened, across NEURO, SAiM and VANTAGE. Beside
+  // the two health panels because it is the same kind of question — how is this
+  // estate being used — rather than work. ⚠ It is the ONLY reader `tab_open`
+  // has ever had: the event has been logged since 22 June 2026 and rendered
+  // nowhere, which is a writer with no reader, the mirror of the failure this
+  // codebase names everywhere else.
+  { id: 'screen-usage', label: 'Screen Usage', icon: '▦' },
   // ⚠ Notion Sync USED to be an entry here and now lives inside Settings (Nick,
   // 3 Sep 2026). Its view id still routes, so every deep link and ?view= param
   // keeps working — the same call as `pi-health` and `today`. Do not re-add it

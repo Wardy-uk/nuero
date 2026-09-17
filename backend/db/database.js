@@ -1081,6 +1081,45 @@ function getActivityForRange(startDate, endDate) {
   );
 }
 
+/**
+ * Screen opens in a window, for the usage heatmap (`services/screen-usage.js`).
+ *
+ * ⚠ Bounded by `date_key` FIRST because `idx_activity_date` is
+ * `(date_key, event_type)` — filtering on `event_type` alone scans the whole
+ * log, and this runs on a panel load.
+ */
+function getTabOpensSince(fromDateKey) {
+  return all(
+    `SELECT event_data, hour, date_key FROM activity_log
+      WHERE date_key >= ? AND event_type = 'tab_open'
+      ORDER BY date_key ASC`,
+    [fromDateKey]
+  );
+}
+
+/**
+ * The first date each SURFACE ever logged a screen open.
+ *
+ * ⚠ This is a fact about the whole log, not about the window — it is what lets
+ * the grid say "nothing was watching" rather than drawing a blank week as zero,
+ * so it deliberately does NOT take a lower bound. It returns three rows at most.
+ *
+ * ⚠ A row with no `surface` is NEURO's: that key was added on 17 Sep 2026 and
+ * until then `frontend/src/App.jsx` was the only caller. `COALESCE` rather than
+ * a guess — see the service header.
+ */
+function getTabOpenFirstSeen() {
+  return all(
+    `SELECT COALESCE(json_extract(event_data, '$.surface'), 'neuro') AS surface,
+            MIN(date_key) AS first_seen
+       FROM activity_log
+      WHERE event_type = 'tab_open'
+        AND json_extract(event_data, '$.tab') IS NOT NULL
+        AND json_extract(event_data, '$.tab') NOT LIKE 'checkin:%'
+      GROUP BY surface`
+  );
+}
+
 // Daily summary helpers
 function saveDailySummary(dateKey, summary) {
   run(`
@@ -2603,6 +2642,8 @@ module.exports = {
   logActivity,
   getActivityForDate,
   getActivityForRange,
+  getTabOpensSince,
+  getTabOpenFirstSeen,
   saveDailySummary,
   getDailySummaries,
   getTodayActivity,

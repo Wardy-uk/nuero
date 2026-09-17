@@ -5,12 +5,25 @@ const router = express.Router();
 const db = require('../db/database');
 const activity = require('../services/activity');
 
-// POST /api/activity/tab — track tab open
+// POST /api/activity/tab — track a screen open.
+//
+// Called by the NEURO desktop, by SAiM (phone, Pi kiosk and the laptop Electron
+// window, all through one `goTab`) and by VANTAGE's own recorder. It feeds
+// `GET /api/screen-usage`. `surface` is optional — see `activity.trackTabOpen`
+// for why a missing one is accepted and an unrecognised one is refused.
 router.post('/tab', (req, res) => {
-  const { tab } = req.body;
+  const { tab, surface } = req.body;
   if (!tab) return res.status(400).json({ error: 'tab required' });
+  if (surface != null && !activity.SURFACES.has(surface)) {
+    // 400, not a silent re-file: a client sending a surface nobody renders
+    // should hear about it rather than have its opens appear under NEURO's.
+    return res.status(400).json({
+      error: `unknown surface "${surface}"`,
+      known: [...activity.SURFACES],
+    });
+  }
   try {
-    activity.trackTabOpen(tab);
+    activity.trackTabOpen(tab, surface);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

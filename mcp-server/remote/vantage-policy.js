@@ -39,6 +39,15 @@ export const classification = {
   vantage_get_tracker: 'read',
 
   // ── write: VANTAGE's own store only ──
+  // Which VANTAGE view is on, for NEURO's usage heatmap. `write` by the rule
+  // above — it touches VANTAGE's own SQLite and reaches nothing outside it.
+  // ⚠ The concern here is INTEGRITY, not reach: the grid's whole value is that
+  // it records what Nick actually opened, so an agent calling this puts
+  // fabricated navigation into a measurement Nick uses to decide which screens
+  // to keep. It is not withheld (a capability that silently does not exist is a
+  // false answer — see privateOperations), it is NOTED, so a caller has to
+  // choose to corrupt it rather than do so by accident.
+  vantage_post_screen_open: 'write',
   vantage_post_findings: 'write',
   vantage_put_findings_by_id: 'write',
   vantage_delete_findings_by_id: 'write',
@@ -117,6 +126,7 @@ export const paramEnums = {
 
 // Guidance a route string cannot carry.
 export const notes = {
+  vantage_post_screen_open: 'Records that a VANTAGE view was OPENED, for the NEURO screen-usage heatmap. Call this only to reflect a real navigation — it measures what Nick actually looked at, and a synthetic open is indistinguishable from a real one once stored.',
   vantage_get_findings_auto_push: 'Dry run: shows which findings WOULD be pushed to NEURO. Changes nothing.',
   vantage_post_findings_auto_push: 'Applies the auto-push: writes NEURO tasks or pending actions for qualifying findings. Run the GET dry run first and confirm with the user.',
   vantage_post_findings_by_id_neuro: 'Escalates one finding into NEURO (a task or an approval-queue action). Confirm with the user first.',
@@ -162,6 +172,10 @@ const TENSES = ['happened', 'happening', 'could'];
 const FINDING_STATUSES = ['open', 'raised', 'resolved_pending', 'resolved', 'accepted'];
 const PLAN_STATUSES = ['not-started', 'in-progress', 'blocked', 'escalated', 'done'];
 const COACH_MODES = ['coach', 'prep', 'reflect'];
+// VANTAGE's own views. A CLOSED enum, mirroring `services/screen-opens.js`'s
+// refusal — an unrecognised name is not a screen, and one that reached the
+// store would appear on NEURO's grid as a VANTAGE screen that does not exist.
+const VANTAGE_VIEWS = ['radar', 'tracker', 'findings', 'plan', 'coach', 'patterns', 'admin', 'standing'];
 export const OBSERVATION_KINDS = ['pattern', 'win', 'blocker', 'avoidance'];
 const SETTING_KEYS = ['OPENROUTER_API_KEY', 'OPENROUTER_MODEL', 'NOVA_BRIDGE_URL', 'NOVA_BRIDGE_SECRET', 'NEURO_URL', 'NEURO_API_TOKEN', 'NEURO_VAULT_API_KEY', 'ONE_TO_ONE_GRACE_DAYS', 'ONE_TO_ONE_BOOK_AHEAD_DAYS', 'QA_SCORE_FLOOR', 'GOLDEN_RULES_FLOOR', 'STANDUP_FLOOR_PCT'];
 
@@ -193,6 +207,9 @@ export const bodySchemas = {
     sessionId: z.number().int().nullable().optional(),
   }),
   // findings.add({ title, detail, source, severity, foundOn, action, raisedWith, raisedOn, tense })
+  vantage_post_screen_open: z.strictObject({
+    screen: z.enum(VANTAGE_VIEWS),
+  }),
   vantage_post_findings: z.strictObject({
     title: text,
     detail: z.string().max(8000).optional(),
