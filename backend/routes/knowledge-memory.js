@@ -45,6 +45,17 @@ router.get('/dismissed', (req, res) => {
   }
 });
 
+router.get('/domains', (req, res) => {
+  try {
+    const result = knowledgeMemory.listDomains();
+    if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[knowledge-memory/domains]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 router.post('/dismiss', (req, res) => {
   try {
     const { sourcePath, reason } = req.body || {};

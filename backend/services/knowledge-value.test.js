@@ -426,3 +426,41 @@ test('a partial run SAYS it is partial', () => {
   const checkIdx = src.indexOf("isCloudAllowed('knowledge_enrichment')", loopIdx);
   assert.ok(loopIdx > 0 && checkIdx > loopIdx, 'the budget is re-checked inside the loop');
 });
+
+// --- the domain picker had nothing to pick from ------------------------------------------
+
+test('domains are read from the vault, and existing is kept apart from suggested', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'km-domains-'));
+  fs.mkdirSync(path.join(root, 'Areas', 'Support Operations'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'Areas', 'Team Management'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'Areas', '1-2-1 Tracker.md'), '# generated\n', 'utf-8');
+  fs.writeFileSync(path.join(root, 'Areas', '_about.md'), '# about\n', 'utf-8');
+
+  const previous = process.env.OBSIDIAN_VAULT_PATH;
+  process.env.OBSIDIAN_VAULT_PATH = root;
+  try {
+    const before = km.listDomains();
+    // ⚠ "the folder is not there" and "the folder is there and empty" are different
+    // facts, and only the first means nothing has ever been promoted.
+    assert.equal(before.knowledgeFolderExists, false);
+    assert.deepEqual(before.existing, []);
+    assert.ok(before.suggested.includes('Support Operations'), 'suggestions come from HIS Areas');
+    // ⚠ A GENERATED FILE IS NOT A SUBJECT — `Areas/1-2-1 Tracker.md` is rendered by
+    // one-to-one-tracker.js and was being offered as a Knowledge domain.
+    assert.ok(!before.suggested.includes('1-2-1 Tracker'), 'generated files are not domains');
+    assert.ok(!before.suggested.some(d => d.startsWith('_')), 'underscore notes are not domains');
+
+    fs.mkdirSync(path.join(root, 'Knowledge', 'Support Operations'), { recursive: true });
+    const after = km.listDomains();
+    assert.equal(after.knowledgeFolderExists, true);
+    assert.deepEqual(after.existing, ['Support Operations']);
+    assert.ok(
+      !after.suggested.includes('Support Operations'),
+      'a domain that exists is not also offered as a suggestion'
+    );
+  } finally {
+    if (previous === undefined) delete process.env.OBSIDIAN_VAULT_PATH;
+    else process.env.OBSIDIAN_VAULT_PATH = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

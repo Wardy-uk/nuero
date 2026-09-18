@@ -547,3 +547,49 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* The domain picker. Suggestions are Nick's own Areas; a domain that already exists in
+   Knowledge/ is marked, because "somewhere I already file things" and "a folder this
+   would create" are different choices and only one of them grows the taxonomy. */
+.knowledge-domain-picker {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.2));
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.04);
+}
+
+.knowledge-domain-picker-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+  margin-bottom: 8px;
+}
+
+.knowledge-domain-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.knowledge-domain-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.28));
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+  cursor: pointer;
+}
+
+.knowledge-domain-chip:hover {
+  border-color: rgba(79, 156, 249, 0.5);
+  color: var(--text-primary, #e2e8f0);
+}
+
+.knowledge-domain-chip--existing {
+  border-color: rgba(79, 156, 249, 0.38);
+  background: rgba(79, 156, 249, 0.1);
+  color: var(--accent, #4fc3f7);
+}

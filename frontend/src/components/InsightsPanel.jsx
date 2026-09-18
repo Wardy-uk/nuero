@@ -16,20 +16,24 @@ export default function InsightsPanel({ onNavigate }) {
   const [dismissing, setDismissing] = useState(null);
   const [dismissedNotes, setDismissedNotes] = useState({ total: 0, items: [] });
   const [showDismissed, setShowDismissed] = useState(false);
+  const [domains, setDomains] = useState({ existing: [], suggested: [], knowledgeFolderExists: false });
+  // Which candidate has its domain picker open. One at a time.
+  const [picking, setPicking] = useState(null);
   const [dismissed, setDismissed] = useState(new Set());
   const [eodHistory, setEodHistory] = useState([]);
   const [ritualHistory, setRitualHistory] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes, ritualRes, knowledgeRes, dismissedRes] = await Promise.all([
+      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes, ritualRes, knowledgeRes, dismissedRes, domainsRes] = await Promise.all([
         fetch(apiUrl('/api/activity/summaries?days=14')),
         fetch(apiUrl('/api/activity/suggestions')),
         fetch(apiUrl('/api/standup/today-status')),
         fetch(apiUrl('/api/standup/eod-history?days=14')),
         fetch(apiUrl('/api/standup/ritual-history?days=7')),
         fetch(apiUrl('/api/knowledge-memory/overview')),
-        fetch(apiUrl('/api/knowledge-memory/dismissed'))
+        fetch(apiUrl('/api/knowledge-memory/dismissed')),
+        fetch(apiUrl('/api/knowledge-memory/domains'))
       ]);
       const json = await summariesRes.json();
       const sugJson = await suggestionsRes.json();
@@ -52,6 +56,10 @@ export default function InsightsPanel({ onNavigate }) {
         const dismissedJson = await dismissedRes.json();
         if (dismissedJson.ok) setDismissedNotes({ total: dismissedJson.total, items: dismissedJson.items || [] });
       } catch {}
+      try {
+        const domainsJson = await domainsRes.json();
+        if (domainsJson.ok) setDomains(domainsJson);
+      } catch {}
       setSuggestions(sugJson.suggestions || []);
       setEodHistory(eodJson.entries || []);
       const ritualJson = await ritualRes.json();
@@ -62,16 +70,9 @@ export default function InsightsPanel({ onNavigate }) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const promoteCandidate = async (candidate) => {
-    // A meeting write-up belongs under Meetings wherever it sits — `imports.js` routes
-    // these into `Meetings/YYYY/MM/`, so keying the suggestion on a `Plaud/` prefix
-    // offered "General" for every real candidate.
-    const suggestedDomain = candidate.isSummary || candidate.path.startsWith('Meetings/')
-      || candidate.path.startsWith('Plaud/')
-      ? 'Meetings'
-      : 'General';
-    const chosenDomain = window.prompt('Promote into which Knowledge domain/folder?', suggestedDomain);
+  const promoteCandidate = async (candidate, chosenDomain) => {
     if (!chosenDomain) return;
+    setPicking(null);
     setPromoting(candidate.path);
     try {
       const res = await fetch(apiUrl('/api/knowledge-memory/promote'), {
@@ -328,7 +329,7 @@ export default function InsightsPanel({ onNavigate }) {
                   <div className="knowledge-item-actions">
                     <button
                       className="knowledge-promote-btn"
-                      onClick={() => promoteCandidate(candidate)}
+                      onClick={() => setPicking(picking === candidate.path ? null : candidate.path)}
                       disabled={promoting === candidate.path || dismissing === candidate.path}
                     >
                       {promoting === candidate.path ? 'Promoting...' : 'Promote to Knowledge'}
@@ -341,6 +342,48 @@ export default function InsightsPanel({ onNavigate }) {
                       {dismissing === candidate.path ? 'Dismissing...' : 'Not knowledge'}
                     </button>
                   </div>
+                  {/*
+                    ⚠ A PICKER, NOT A BLANK PROMPT. This was `window.prompt("which
+                    Knowledge domain/folder?")` with nothing to pick from, over a
+                    `Knowledge/` folder that did not exist — asking someone to name a
+                    member of an empty set they cannot see.
+
+                    ⚠ Suggestions are Nick's own `Areas/`, read from the vault, never
+                    a taxonomy invented in this file. And the note says when nothing
+                    has been created yet, rather than letting an empty row read as a
+                    failed load.
+                  */}
+                  {picking === candidate.path ? (
+                    <div className="knowledge-domain-picker">
+                      <div className="knowledge-domain-picker-label">
+                        {domains.existing.length > 0
+                          ? 'File it under'
+                          : 'No Knowledge domains yet — pick one to start, or type your own'}
+                      </div>
+                      <div className="knowledge-domain-options">
+                        {[...domains.existing, ...domains.suggested].map(name => (
+                          <button
+                            key={name}
+                            className={domains.existing.includes(name)
+                              ? 'knowledge-domain-chip knowledge-domain-chip--existing'
+                              : 'knowledge-domain-chip'}
+                            onClick={() => promoteCandidate(candidate, name)}
+                          >
+                            {name}
+                          </button>
+                        ))}
+                        <button
+                          className="knowledge-domain-chip"
+                          onClick={() => {
+                            const typed = window.prompt('New Knowledge domain name?', '');
+                            if (typed && typed.trim()) promoteCandidate(candidate, typed.trim());
+                          }}
+                        >
+                          Other…
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )) : (
                 <div className="knowledge-empty">Nothing obvious to promote right now.</div>

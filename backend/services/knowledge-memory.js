@@ -13,6 +13,7 @@ const retrieval = require('./retrieval');
 const weeklySummary = require('./weekly-summary');
 const knowledgeGaps = require('./knowledge-gaps');
 const vaultHooks = require('./vault-hooks');
+const vaultExclusions = require('./vault-exclusions');
 const { canonicalPlaudId } = require('../../shared/plaud-id.cjs');
 
 const VAULT_PATH = () => process.env.OBSIDIAN_VAULT_PATH || '';
@@ -1477,6 +1478,74 @@ function listDismissed({ limit = 50 } = {}) {
   return { status: 'ok', total: items.length, items: items.slice(0, limit) };
 }
 
+/**
+ * The domains a note can be promoted INTO, and where they come from.
+ *
+ * ⚠⚠ THE PICKER USED TO BE A BLANK `window.prompt` ASKING "which Knowledge
+ * domain/folder?" WITH NOTHING TO PICK FROM — and `Knowledge/` did not exist, so the
+ * honest answer was "there are none, invent one". Asking someone to name a member of
+ * an empty set they cannot see is not a choice.
+ *
+ * ⚠ SUGGESTIONS COME FROM NICK'S OWN `Areas/`, NEVER A LIST INVENTED HERE. His vault
+ * already organises subjects: Support Operations, Team Management, Service Management
+ * Framework, Ticket Analysis, Weekly Reporting, Home Automation, OU Study. A taxonomy
+ * this file made up would be a second one competing with the one he maintains — the
+ * `TEAMS`/`DIRECT_REPORTS` lesson, where six hardcoded copies of a list drifted four
+ * ways while the vault was right about every one.
+ *
+ * ⚠ A DOMAIN NAMES THE SUBJECT, NOT THE PROVENANCE. `inferDomainFromSource` answers
+ * "Meetings" for anything under `Meetings/`, which files a distilled insight by where
+ * it came from — reproducing the source folder inside Knowledge and telling you
+ * nothing. It is kept ONLY as the last-resort default when nothing better is known,
+ * and is deliberately no longer what the UI suggests first.
+ *
+ * `existing` and `suggested` are kept apart: one is what is really there, the other is
+ * a proposal. A screen that merges them cannot say "you have not created any yet".
+ */
+function listDomains() {
+  const vault = VAULT_PATH();
+  if (!vault || !fs.existsSync(vault)) {
+    return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
+  }
+
+  const readDirNames = (rel) => {
+    const dir = path.join(vault, rel);
+    if (!fs.existsSync(dir)) return [];
+    try {
+      return fs.readdirSync(dir, { withFileTypes: true })
+        .filter(entry => !entry.name.startsWith('.') && !entry.name.startsWith('_'))
+        // ⚠ A GENERATED FILE IS NOT A SUBJECT. `Areas/1-2-1 Tracker.md` is rendered by
+        // one-to-one-tracker.js and was being offered as a Knowledge domain. Tested
+        // against `vault-exclusions`' own patterns rather than a second list here,
+        // so anything that becomes generated later drops out without touching this.
+        .filter(entry => entry.isDirectory()
+          || !vaultExclusions.GENERATED_FILE_PATTERNS.some(re => re.test(entry.name)))
+        .map(entry => (entry.isDirectory() ? entry.name : path.basename(entry.name, '.md')))
+        .filter(name => name && name !== 'Archive');
+    } catch {
+      return [];
+    }
+  };
+
+  const existing = [...new Set(readDirNames('Knowledge'))].sort();
+
+  // Areas are Nick's own subject headings; Knowledge domains that already exist are
+  // not repeated as suggestions.
+  const fromAreas = [...new Set(readDirNames('Areas'))]
+    .filter(name => !existing.includes(name))
+    .sort();
+
+  return {
+    status: 'ok',
+    // Distinct from an empty `existing`: "the folder is not there" and "the folder is
+    // there and empty" are different facts, and only the first one means nothing has
+    // ever been promoted.
+    knowledgeFolderExists: fs.existsSync(path.join(vault, 'Knowledge')),
+    existing,
+    suggested: fromAreas
+  };
+}
+
 function promoteCandidate({ sourcePath, domain, title }) {
   const vault = VAULT_PATH();
   if (!vault || !fs.existsSync(vault)) {
@@ -2410,6 +2479,7 @@ module.exports = {
   dismissCandidate,
   undismissCandidate,
   listDismissed,
+  listDomains,
   enrichPromotionCandidates,
   promotionSignal,
   isSummaryNote,
