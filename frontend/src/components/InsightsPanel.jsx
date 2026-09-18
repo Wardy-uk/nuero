@@ -19,6 +19,9 @@ export default function InsightsPanel({ onNavigate }) {
   const [domains, setDomains] = useState({ existing: [], suggested: [], knowledgeFolderExists: false });
   // Which candidate has its domain picker open. One at a time.
   const [picking, setPicking] = useState(null);
+  // Which bullets are ticked, per candidate path. ⚠ Absent means "all", which is the
+  // default and matches the server: omitting the indexes files the whole note.
+  const [selection, setSelection] = useState({});
   const [dismissed, setDismissed] = useState(new Set());
   const [eodHistory, setEodHistory] = useState([]);
   const [ritualHistory, setRitualHistory] = useState([]);
@@ -70,6 +73,24 @@ export default function InsightsPanel({ onNavigate }) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Ticked by default: the common case is "file all of it", and a card that starts
+  // with everything unticked makes Promote a no-op until you notice why.
+  const chosenFor = (candidate, kind) => {
+    const picked = selection[candidate.path]?.[kind];
+    const all = (kind === 'insights' ? candidate.value?.durableItems : candidate.value?.loopItems) || [];
+    return picked === undefined ? all.map((_, i) => i) : picked;
+  };
+
+  const toggleItem = (candidate, kind, index) => {
+    setSelection(prev => {
+      const current = chosenFor(candidate, kind);
+      const next = current.includes(index)
+        ? current.filter(i => i !== index)
+        : [...current, index].sort((a, b) => a - b);
+      return { ...prev, [candidate.path]: { ...(prev[candidate.path] || {}), [kind]: next } };
+    });
+  };
+
   const promoteCandidate = async (candidate, chosenDomain) => {
     if (!chosenDomain) return;
     setPicking(null);
@@ -78,7 +99,14 @@ export default function InsightsPanel({ onNavigate }) {
       const res = await fetch(apiUrl('/api/knowledge-memory/promote'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourcePath: candidate.path, domain: chosenDomain })
+        body: JSON.stringify({
+          sourcePath: candidate.path,
+          domain: chosenDomain,
+          // ⚠ INDEXES, never the text — the server re-derives from the note, so this
+          // cannot write caller-supplied content into the vault.
+          insightIndexes: chosenFor(candidate, 'insights'),
+          loopIndexes: chosenFor(candidate, 'loops')
+        })
       });
       const result = await res.json();
       if (result.ok) {
@@ -322,7 +350,16 @@ export default function InsightsPanel({ onNavigate }) {
                       {candidate.value.durableItems?.length > 0 ? (
                         <ul className="knowledge-insight-list">
                           {candidate.value.durableItems.map((item, i) => (
-                            <li key={i} className="knowledge-insight">{item}</li>
+                            <li key={i} className="knowledge-insight">
+                              <label className="knowledge-insight-pick">
+                                <input
+                                  type="checkbox"
+                                  checked={chosenFor(candidate, 'insights').includes(i)}
+                                  onChange={() => toggleItem(candidate, 'insights', i)}
+                                />
+                                <span>{item}</span>
+                              </label>
+                            </li>
                           ))}
                         </ul>
                       ) : null}
@@ -330,7 +367,16 @@ export default function InsightsPanel({ onNavigate }) {
                       {candidate.value.loopItems?.length > 0 ? (
                         <ul className="knowledge-insight-list">
                           {candidate.value.loopItems.map((item, i) => (
-                            <li key={i} className="knowledge-insight knowledge-insight--loop">{item}</li>
+                            <li key={i} className="knowledge-insight knowledge-insight--loop">
+                              <label className="knowledge-insight-pick">
+                                <input
+                                  type="checkbox"
+                                  checked={chosenFor(candidate, 'loops').includes(i)}
+                                  onChange={() => toggleItem(candidate, 'loops', i)}
+                                />
+                                <span>{item}</span>
+                              </label>
+                            </li>
                           ))}
                         </ul>
                       ) : null}

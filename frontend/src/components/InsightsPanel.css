@@ -615,3 +615,18 @@
   color: var(--text-secondary, #94a3b8);
   list-style: circle;
 }
+
+/* Tick what gets filed. Ticked by default — the common case is "all of it", and a card
+   that starts empty makes Promote a no-op until you work out why. */
+.knowledge-insight-pick {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.knowledge-insight-pick input {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--accent, #4fc3f7);
+}

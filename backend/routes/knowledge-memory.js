@@ -98,8 +98,8 @@ router.post('/enrich-candidates', async (req, res) => {
 
 router.post('/promote', (req, res) => {
   try {
-    const { sourcePath, domain, title } = req.body || {};
-    const result = knowledgeMemory.promoteCandidate({ sourcePath, domain, title });
+    const { sourcePath, domain, title, insightIndexes, loopIndexes } = req.body || {};
+    const result = knowledgeMemory.promoteCandidate({ sourcePath, domain, title, insightIndexes, loopIndexes });
     if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
     res.json({ ok: true, ...result });
   } catch (e) {

@@ -567,3 +567,70 @@ test('with nothing extracted, the stub SAYS so rather than faking a signal', () 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// --- promoting only part of a note ---------------------------------------------------
+
+function vaultWithTwo() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'km-part-'));
+  fs.mkdirSync(path.join(root, 'Meetings'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'Meetings/n.md'), [
+    '---', 'note_type: summary', 'saim_ai_enriched_at: "2026-09-16T19:00:00Z"',
+    'saim_ai_provider: anthropic', '---', '',
+    '## Durable Insights', '', '- FIRST insight.', '- SECOND insight.', '',
+    '## Open Loops', '', '- LOOP one.', '- LOOP two.', ''
+  ].join('\n'), 'utf-8');
+  return root;
+}
+
+function inVault(root, fn) {
+  const previous = process.env.OBSIDIAN_VAULT_PATH;
+  process.env.OBSIDIAN_VAULT_PATH = root;
+  try { return fn(); } finally {
+    if (previous === undefined) delete process.env.OBSIDIAN_VAULT_PATH;
+    else process.env.OBSIDIAN_VAULT_PATH = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test('only the ticked insights are filed', () => {
+  const root = vaultWithTwo();
+  inVault(root, () => {
+    const r = km.promoteCandidate({
+      sourcePath: 'Meetings/n.md', domain: 'Health',
+      insightIndexes: [1], loopIndexes: []
+    });
+    const body = fs.readFileSync(path.join(root, r.promotedPath), 'utf-8');
+    assert.match(body, /SECOND insight/);
+    assert.ok(!/FIRST insight/.test(body), 'an unticked insight is not filed');
+    assert.ok(!/## Still Open/.test(body), 'ticking no loops files no loops section');
+  });
+});
+
+test('OMITTED means all — an empty array does not', () => {
+  // ⚠ `undefined` is "the caller did not choose" (every existing caller, and the old
+  // whole-note behaviour); `[]` is "I ticked nothing", which is a real choice.
+  const root = vaultWithTwo();
+  inVault(root, () => {
+    const r = km.promoteCandidate({ sourcePath: 'Meetings/n.md', domain: 'Health' });
+    const body = fs.readFileSync(path.join(root, r.promotedPath), 'utf-8');
+    assert.match(body, /FIRST insight/);
+    assert.match(body, /SECOND insight/);
+    assert.match(body, /LOOP one/);
+  });
+});
+
+test('⚠ the client sends INDEXES, so it cannot write its own text into the vault', () => {
+  // Accepting the strings would make /promote a route that writes arbitrary
+  // caller-supplied content into the vault under the word "knowledge".
+  const root = vaultWithTwo();
+  inVault(root, () => {
+    const r = km.promoteCandidate({
+      sourcePath: 'Meetings/n.md', domain: 'Health',
+      insightIndexes: [0, 99, -1, 'nonsense', null]
+    });
+    const body = fs.readFileSync(path.join(root, r.promotedPath), 'utf-8');
+    assert.match(body, /FIRST insight/, 'the valid index is honoured');
+    assert.ok(!/nonsense/.test(body), 'junk indexes contribute nothing');
+    assert.ok(!/SECOND insight/.test(body), 'out-of-range indexes select nothing');
+  });
+});

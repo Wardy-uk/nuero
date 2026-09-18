@@ -1352,7 +1352,28 @@ function ensureVaultOperatingModelDoc() {
   return { status: 'ok', path: VAULT_MODEL_DOC };
 }
 
-function buildPromotedBody({ source, title, domain }) {
+/**
+ * Which of a note's bullets were chosen, given what the client asked for.
+ *
+ * ⚠⚠ THE CLIENT SENDS INDEXES, NEVER TEXT. Accepting the strings themselves would make
+ * `POST /promote` a route that writes arbitrary caller-supplied content into the vault
+ * under the word "knowledge" — the `rooms.act()` rule, where the client sends a key and
+ * the server re-derives the offer from a fresh read.
+ *
+ * ⚠ OMITTED MEANS ALL, and that is not the same as an empty array. `undefined` is "the
+ * caller did not choose" (the old whole-note behaviour, and what every existing caller
+ * sends); `[]` is "I ticked nothing", which is a real choice and yields none.
+ */
+function selectItems(items, chosen) {
+  if (chosen === undefined || chosen === null) return items;
+  if (!Array.isArray(chosen)) return items;
+  const wanted = new Set(
+    chosen.map(n => Number(n)).filter(n => Number.isInteger(n) && n >= 0 && n < items.length)
+  );
+  return items.filter((_, i) => wanted.has(i));
+}
+
+function buildPromotedBody({ source, title, domain, insightIndexes, loopIndexes }) {
   const sourceFm = source.frontmatter || {};
   const sourceLinks = parseCsvField(sourceFm.knowledge_sources);
   if (!sourceLinks.includes(source.path)) sourceLinks.unshift(source.path);
@@ -1377,12 +1398,14 @@ function buildPromotedBody({ source, title, domain }) {
   // ⚠ Whether they are here is also what makes Promote an informed press: the card now
   // shows the same bullets, so the button says what it will file.
   const value = knowledgeValue(source);
+  const durableItems = selectItems(value.durableItems, insightIndexes);
+  const loopItems = selectItems(value.loopItems, loopIndexes);
   const lines = [];
   lines.push(frontmatter, '', `# ${title}`, '');
 
-  if (value.durableItems.length > 0) {
+  if (durableItems.length > 0) {
     lines.push('## What This Says', '');
-    for (const item of value.durableItems) lines.push(`- ${item}`);
+    for (const item of durableItems) lines.push(`- ${item}`);
     lines.push('');
   } else {
     // Nothing was found, so the stub is honest about it rather than opening with
@@ -1392,12 +1415,12 @@ function buildPromotedBody({ source, title, domain }) {
     lines.push('');
   }
 
-  if (value.loopItems.length > 0) {
+  if (loopItems.length > 0) {
     // ⚠ Kept SEPARATE from the insights and never merged into them: an open loop is
     // debt to chase, not a fact to remember, and filing one as knowledge is how a
     // question becomes an answer by being in the wrong section.
     lines.push('## Still Open', '');
-    for (const item of value.loopItems) lines.push(`- ${item}`);
+    for (const item of loopItems) lines.push(`- ${item}`);
     lines.push('');
   }
 
@@ -1583,7 +1606,7 @@ function listDomains() {
   };
 }
 
-function promoteCandidate({ sourcePath, domain, title }) {
+function promoteCandidate({ sourcePath, domain, title, insightIndexes, loopIndexes }) {
   const vault = VAULT_PATH();
   if (!vault || !fs.existsSync(vault)) {
     return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
@@ -1616,7 +1639,7 @@ function promoteCandidate({ sourcePath, domain, title }) {
     counter += 1;
   }
 
-  const content = buildPromotedBody({ source, title: finalTitle, domain: finalDomain });
+  const content = buildPromotedBody({ source, title: finalTitle, domain: finalDomain, insightIndexes, loopIndexes });
   fs.writeFileSync(targetFull, content, 'utf-8');
 
   try { vaultHooks.onVaultWrite(targetFull, 'knowledge-promotion'); } catch {}
