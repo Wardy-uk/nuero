@@ -19,7 +19,7 @@ const fs = require('fs');
 
 process.env.NEURO_DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-sop-')), 'a.db');
 
-const { assess, overall, foldRituals, _internals } = require('./state-of-play');
+const { assess, overall, foldRituals, nextDays, _internals } = require('./state-of-play');
 
 /** A snapshot with nothing wrong; each test spoils exactly one thing. */
 const clean = (over = {}) => ({
@@ -303,4 +303,30 @@ test('an unreadable triage is null, never a clear inbox', () => {
     path.join(__dirname, '..', '..', 'frontend', 'src', 'components', 'StateOfPlay.jsx'), 'utf8');
   assert.ok(/inbox\.known === false/.test(panel),
     'the panel renders inbox.open without checking `known` — an unreadable triage shows as 0');
+});
+
+// ── The week ahead ──────────────────────────────────────────────────────────
+
+test('nextDays walks forward from today, marking today and the weekend', () => {
+  const days = nextDays('2026-09-18', 7); // a Friday
+  assert.strictEqual(days.length, 7);
+  assert.strictEqual(days[0].key, '2026-09-18');
+  assert.strictEqual(days[0].isToday, true);
+  assert.strictEqual(days[6].key, '2026-09-24');
+  assert.deepStrictEqual(days.map(d => d.weekend), [false, true, true, false, false, false, false]);
+  assert.ok(!days.slice(1).some(d => d.isToday), 'only the first day is today');
+});
+
+test('⚠ it steps a local Date, never adds 86.4e6 — the day BST ends is 25 hours long', () => {
+  // 25 Oct 2026 is the BST→GMT switch. An arithmetic step lands at 23:00 the
+  // previous day, which silently duplicates a column and drops another.
+  const days = nextDays('2026-10-24', 4);
+  assert.deepStrictEqual(days.map(d => d.key), ['2026-10-24', '2026-10-25', '2026-10-26', '2026-10-27']);
+});
+
+test('it walks across a month and a year boundary without a gap', () => {
+  assert.deepStrictEqual(nextDays('2026-09-29', 4).map(d => d.key),
+    ['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02']);
+  assert.deepStrictEqual(nextDays('2026-12-30', 3).map(d => d.key),
+    ['2026-12-30', '2026-12-31', '2027-01-01']);
 });

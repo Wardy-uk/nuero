@@ -284,3 +284,122 @@ button.sop-stat:hover { border-color: var(--accent-dim); }
   .sop-grid { grid-template-columns: 1fr; }
   .sop-focus { padding: 16px; }
 }
+
+/* ── Due over the next 7 days ─────────────────────────────────────────────
+ *
+ * A column chart: one series across seven days, so HEIGHT carries magnitude and
+ * a single hue carries identity. Deliberately not the usage grid's ramp — that
+ * would encode the same number twice and make a busy Thursday and a quiet one
+ * differ only in shade.
+ *
+ * Prominent by construction: full width, directly under the focus band, above
+ * the stat row.
+ */
+.sop-due {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px 14px;
+  margin-bottom: 14px;
+}
+
+.sop-due-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.sop-due-head h3 { margin: 0; font-size: 15px; color: var(--text-primary); }
+.sop-due-sub { margin: 3px 0 0; font-size: 12px; color: var(--text-muted); }
+
+/* ⚠ The chips are the same size as the chart's own labels on purpose. They
+ * carry what the bars CANNOT show — already overdue, and undated — and a week
+ * read without them is a week that looks lighter than it is. */
+.sop-due-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.sop-due-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.sop-due-chip-n { font-size: 16px; color: var(--text-primary); font-family: var(--font-mono); }
+/* Amber only when something really is late — a permanently coloured chip is one
+ * nobody reads by week two. */
+.sop-due-chip-bad { border-color: var(--warning); }
+.sop-due-chip-bad .sop-due-chip-n { color: var(--warning); }
+
+.sop-due-chart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  align-items: end;
+}
+
+.sop-due-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 2px 4px;
+  border-radius: var(--radius-sm);
+}
+/* A weekend is shown, never dropped: hiding it would compress the week and make
+ * the run to Friday look shorter than it is. Recessive, because a quiet
+ * Saturday is not news. */
+.sop-due-weekend { background: rgba(255, 255, 255, 0.015); }
+.sop-due-weekend .sop-due-dow,
+.sop-due-weekend .sop-due-date { color: var(--text-muted); }
+
+.sop-due-today { background: rgba(90, 163, 249, 0.08); }
+.sop-due-today .sop-due-dow { color: var(--accent); }
+
+.sop-due-n {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1;
+}
+/* A zero is a real, measured zero — muted, but printed. */
+.sop-due-col .sop-due-n { color: var(--text-primary); }
+
+.sop-due-track {
+  width: 100%;
+  height: 84px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sop-due-bar {
+  width: 68%;
+  max-width: 34px;
+  background: var(--accent);
+  /* Rounded at the data end only, anchored to the baseline. */
+  border-radius: 4px 4px 0 0;
+  min-height: 3px;
+}
+.sop-due-today .sop-due-bar { background: var(--accent); box-shadow: 0 0 0 1px rgba(90, 163, 249, 0.45); }
+.sop-due-weekend .sop-due-bar { background: var(--accent-dim); }
+
+.sop-due-dow { font-size: 11px; color: var(--text-secondary); }
+.sop-due-date { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+
+@media (forced-colors: active) {
+  .sop-due-bar { forced-color-adjust: none; background: CanvasText; }
+  .sop-due-chip-bad { border-style: dashed; }
+}
+
+@media (max-width: 640px) {
+  .sop-due { padding: 12px; }
+  .sop-due-track { height: 60px; }
+  .sop-due-date { display: none; }
+}

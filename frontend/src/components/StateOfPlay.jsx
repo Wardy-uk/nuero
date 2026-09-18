@@ -113,6 +113,98 @@ function RitualRow({ label, days, field, n, of }) {
   );
 }
 
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * What is due over the next seven days.
+ *
+ * ⚠ A COLUMN CHART, not a heatmap — this is one series compared across seven
+ * days, so height carries the magnitude and a single hue carries identity.
+ * Reaching for the usage grid's ramp here would encode the same number twice
+ * and make a busy Thursday and a quiet one differ only in shade.
+ *
+ * ⚠⚠ WHAT THE BARS CANNOT SHOW TRAVELS BESIDE THEM, or a light-looking week is
+ * a lie by omission. Two things have no bar: work that is ALREADY OVERDUE (it
+ * had a day and the day has gone) and work with NO DUE DATE AT ALL. Both are
+ * stated as chips next to the chart, at the same size, because a chart of 16
+ * bars over a backlog of 46 open tasks is not a picture of the week's work.
+ *
+ * ⚠ A zero is a REAL zero here — the tasks table knows every due date it holds,
+ * so unlike the usage grid there is no un-instrumented state to distinguish. A
+ * quiet Saturday is a fact and is drawn as an empty column, not hidden: dropping
+ * weekends would compress the week and make the run to Friday look shorter than
+ * it is.
+ *
+ * ⚠ It STATES and never advises — no "you are overloaded", no colour that
+ * grades a day. Whether sixteen due this week is a lot is Nick's call, and a
+ * panel that editorialises about his workload is one he stops opening.
+ */
+export function DueAhead({ data, overdue, noDueDate, onNavigate }) {
+  if (!data || !Array.isArray(data.days) || data.days.length === 0) return null;
+
+  // Scaled to the busiest day, with a floor so a week holding one task does not
+  // draw a single full-height bar and read as a wall of work.
+  const scale = Math.max(data.busiest, 3);
+  const label = (key) => `${Number(key.slice(8, 10))} ${MONTHS[Number(key.slice(5, 7)) - 1]}`;
+
+  return (
+    <section className="sop-due">
+      <header className="sop-due-head">
+        <div>
+          <h3>Due over the next 7 days</h3>
+          <p className="sop-due-sub">
+            {data.total} task{data.total === 1 ? '' : 's'} with a due date between{' '}
+            {label(data.from)} and {label(data.to)} · NEURO&rsquo;s own tasks
+          </p>
+        </div>
+        <div className="sop-due-chips">
+          {/* ⚠ Overdue leads and is NOT a bar — it is not a day. Rendered even
+              at zero, because "nothing late" is the fact worth seeing. */}
+          <button
+            type="button"
+            className={`sop-due-chip${overdue > 0 ? ' sop-due-chip-bad' : ''}`}
+            onClick={() => onNavigate && onNavigate('todos')}
+          >
+            <span className="sop-due-chip-n">{overdue}</span>
+            <span>already overdue</span>
+          </button>
+          <button
+            type="button"
+            className="sop-due-chip"
+            onClick={() => onNavigate && onNavigate('todos')}
+          >
+            <span className="sop-due-chip-n">{noDueDate}</span>
+            <span>no due date — not on this chart</span>
+          </button>
+        </div>
+      </header>
+
+      <div className="sop-due-chart" role="img"
+        aria-label={`Tasks due per day: ${data.days.map(d => `${DOW[d.dow]} ${d.count}`).join(', ')}`}>
+        {data.days.map((d) => (
+          <div
+            key={d.key}
+            className={`sop-due-col${d.isToday ? ' sop-due-today' : ''}${d.weekend ? ' sop-due-weekend' : ''}`}
+            title={`${DOW[d.dow]} ${label(d.key)} — ${d.count} task${d.count === 1 ? '' : 's'} due`}
+          >
+            <span className="sop-due-n">{d.count}</span>
+            <div className="sop-due-track">
+              {/* A zero draws NO bar rather than a sliver: a 1px mark reads as
+                  "one task" at a glance, and the number above says zero. */}
+              {d.count > 0 && (
+                <span className="sop-due-bar" style={{ height: `${Math.max(6, (d.count / scale) * 100)}%` }} />
+              )}
+            </div>
+            <span className="sop-due-dow">{DOW[d.dow]}</span>
+            <span className="sop-due-date">{label(d.key)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function StateOfPlay({ onNavigate }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -153,6 +245,7 @@ export default function StateOfPlay({ onNavigate }) {
 
   const okJobs = jobs.filter(j => j.state === 'ok').length;
 
+
   return (
     <div className="sop-panel">
       {/* ── Focus band: what is actually wrong, worst first ─────────────── */}
@@ -184,6 +277,16 @@ export default function StateOfPlay({ onNavigate }) {
       </section>
 
       {/* ── Headline numbers ─────────────────────────────────────────────── */}
+      {/* ⚠ Directly under the focus band and ABOVE the stat row — Nick asked
+          for it prominent, and the week ahead is the one thing on this panel he
+          acts on rather than reads. The stats stay below it. */}
+      <DueAhead
+        data={tasks.dueAhead}
+        overdue={tasks.overdue}
+        noDueDate={tasks.noDueDate}
+        onNavigate={go}
+      />
+
       <div className="sop-stats">
         <Stat label="Open tasks" value={tasks.open} sub={`${tasks.done} done`} onClick={() => go('todos')} />
         <Stat label="Overdue" value={tasks.overdue} tone={tasks.overdue > 0 ? 'danger' : 'good'} onClick={() => go('todos')} />

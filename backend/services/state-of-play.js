@@ -158,22 +158,100 @@ function foldRituals({ dateKeys, rolled = [], live = [], logFrom = null }) {
   };
 }
 
+// The statuses a task can be in and still be OWED. ⚠ `in-progress` is included
+// deliberately: `status = 'open'` is a literal column match, so a task Nick has
+// actually STARTED was invisible to every figure in this block — which is
+// backwards, and is the same trap `task-dedupe`'s pool had. It changes no
+// number on the day it shipped (there were zero in-progress tasks), which is
+// precisely the safest moment to widen it.
+const ACTIVE_STATUSES = "status IN ('open','in-progress')";
+
+/**
+ * The next `count` days from `today`, as local date keys. PURE.
+ *
+ * ⚠ Built by stepping a local Date, never by adding 86.4e6 to a timestamp —
+ * the day BST ends is 25 hours long and an arithmetic step lands at 23:00 the
+ * previous day, silently duplicating a column and dropping another.
+ */
+function nextDays(today, count) {
+  const [y, m, d] = String(today).split('-').map(Number);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const dt = new Date(y, m - 1, d + i);
+    out.push({
+      key: `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`,
+      dow: dt.getDay(),
+      weekend: dt.getDay() === 0 || dt.getDay() === 6,
+      isToday: i === 0,
+    });
+  }
+  return out;
+}
+
+/**
+ * How much is due on each of the next seven days.
+ *
+ * ⚠ A ZERO HERE IS A REAL ZERO. Unlike the usage heatmap there is no
+ * un-instrumented state — the tasks table knows every due date it holds — so a
+ * quiet Saturday is a fact and is drawn as one.
+ *
+ * ⚠⚠ WHAT IT CANNOT SEE MUST TRAVEL WITH IT, or a light-looking week is a lie
+ * by omission. Two things are invisible to a bar chart of due dates and both
+ * ride on the payload: tasks that are ALREADY OVERDUE (they have a day, and it
+ * has gone) and tasks with NO DUE DATE AT ALL — on the live store that is 3
+ * undated against 46 open, so a week showing 16 bars is not a week holding 16
+ * jobs. The panel states both beside the chart rather than under it.
+ *
+ * ⚠ It counts NEURO's OWN tasks — the same rows every other figure in this
+ * block counts. Microsoft-owned tasks are file-backed mirrors and are NOT in
+ * this table; reading them needs the vault, and `snapshot()` is pure SQL on a
+ * path that polls every 60 seconds. Measured 18 Sep 2026: Microsoft held 6
+ * dated tasks, NONE of them inside the next seven days — so the bars are the
+ * same either way — but THREE of them were overdue (two since 21 August), which
+ * this block reports as 0. That is a real gap and it is named on the payload
+ * rather than left for the chart to imply away.
+ */
+function dueAhead(today, days = 7) {
+  const span = nextDays(today, days);
+  const counts = tally(
+    rows(
+      `SELECT due_date k, COUNT(*) c FROM tasks
+        WHERE ${ACTIVE_STATUSES} AND due_date IS NOT NULL
+          AND due_date >= ? AND due_date <= ?
+        GROUP BY due_date`,
+      [span[0].key, span[span.length - 1].key]
+    ),
+    'k'
+  );
+
+  const buckets = span.map(d => ({ ...d, count: counts[d.key] || 0 }));
+  return {
+    days: buckets,
+    total: buckets.reduce((n, b) => n + b.count, 0),
+    busiest: buckets.reduce((m, b) => Math.max(m, b.count), 0),
+    from: span[0].key,
+    to: span[span.length - 1].key,
+  };
+}
+
 function snapshot() {
   const today = todayLocal();
 
-  const openTasks = scalar("SELECT COUNT(*) c FROM tasks WHERE status='open'");
+  const openTasks = scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES}`);
   const tasks = {
     open: openTasks,
     done: scalar("SELECT COUNT(*) c FROM tasks WHERE status='done'"),
-    moscow: tally(rows("SELECT COALESCE(moscow,'unset') k, COUNT(*) c FROM tasks WHERE status='open' GROUP BY k"), 'k'),
+    moscow: tally(rows(`SELECT COALESCE(moscow,'unset') k, COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} GROUP BY k`), 'k'),
     // priority is 1-3 with NULL meaning never triaged; 0 is the unset bucket.
-    unprioritised: scalar("SELECT COUNT(*) c FROM tasks WHERE status='open' AND priority IS NULL"),
-    estimated: scalar("SELECT COUNT(*) c FROM tasks WHERE status='open' AND estimate_minutes IS NOT NULL"),
-    overdue: scalar("SELECT COUNT(*) c FROM tasks WHERE status='open' AND due_date IS NOT NULL AND due_date < ?", [today]),
-    dueToday: scalar("SELECT COUNT(*) c FROM tasks WHERE status='open' AND due_date = ?", [today]),
-    noDueDate: scalar("SELECT COUNT(*) c FROM tasks WHERE status='open' AND due_date IS NULL"),
-    byContext: rows("SELECT COALESCE(context,'none') k, COUNT(*) c FROM tasks WHERE status='open' GROUP BY k ORDER BY c DESC"),
-    bySource: rows("SELECT COALESCE(source,'unknown') k, COUNT(*) c FROM tasks WHERE status='open' GROUP BY k ORDER BY c DESC LIMIT 6"),
+    unprioritised: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND priority IS NULL`),
+    estimated: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND estimate_minutes IS NOT NULL`),
+    overdue: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND due_date IS NOT NULL AND due_date < ?`, [today]),
+    dueToday: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND due_date = ?`, [today]),
+    noDueDate: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND due_date IS NULL`),
+    byContext: rows(`SELECT COALESCE(context,'none') k, COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} GROUP BY k ORDER BY c DESC`),
+    bySource: rows(`SELECT COALESCE(source,'unknown') k, COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} GROUP BY k ORDER BY c DESC LIMIT 6`),
+    // The week ahead, for the chart at the top of the panel.
+    dueAhead: dueAhead(today),
   };
 
   const commitments = {
@@ -428,4 +506,6 @@ function overall(issues) {
   return 'ok';
 }
 
-module.exports = { snapshot, assess, overall, TRACKED_JOBS, foldRituals, _internals: { daysSince, todayLocal, lastDays } };
+module.exports = {
+  // PURE, exported so the week ahead pins without a database.
+  nextDays, snapshot, assess, overall, TRACKED_JOBS, foldRituals, _internals: { daysSince, todayLocal, lastDays } };
