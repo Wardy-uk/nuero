@@ -26,14 +26,16 @@ const DUE = {
   to: '2026-09-24',
   total: 16,
   busiest: 6,
+  origins: ['neuro', 'microsoft', 'note'],
+  byOrigin: { neuro: 14, microsoft: 2, note: 0 },
   days: [
-    { key: '2026-09-18', dow: 5, weekend: false, isToday: true, count: 6 },
-    { key: '2026-09-19', dow: 6, weekend: true, isToday: false, count: 0 },
-    { key: '2026-09-20', dow: 0, weekend: true, isToday: false, count: 0 },
-    { key: '2026-09-21', dow: 1, weekend: false, isToday: false, count: 3 },
-    { key: '2026-09-22', dow: 2, weekend: false, isToday: false, count: 1 },
-    { key: '2026-09-23', dow: 3, weekend: false, isToday: false, count: 2 },
-    { key: '2026-09-24', dow: 4, weekend: false, isToday: false, count: 4 },
+    { key: '2026-09-18', dow: 5, weekend: false, isToday: true, count: 6, by: { neuro: 6, microsoft: 0, note: 0 } },
+    { key: '2026-09-19', dow: 6, weekend: true, isToday: false, count: 0, by: { neuro: 0, microsoft: 0, note: 0 } },
+    { key: '2026-09-20', dow: 0, weekend: true, isToday: false, count: 0, by: { neuro: 0, microsoft: 0, note: 0 } },
+    { key: '2026-09-21', dow: 1, weekend: false, isToday: false, count: 3, by: { neuro: 2, microsoft: 1, note: 0 } },
+    { key: '2026-09-22', dow: 2, weekend: false, isToday: false, count: 1, by: { neuro: 1, microsoft: 0, note: 0 } },
+    { key: '2026-09-23', dow: 3, weekend: false, isToday: false, count: 2, by: { neuro: 2, microsoft: 0, note: 0 } },
+    { key: '2026-09-24', dow: 4, weekend: false, isToday: false, count: 4, by: { neuro: 3, microsoft: 1, note: 0 } },
   ],
 };
 
@@ -65,7 +67,8 @@ test.before(async () => {
 });
 
 const render = (props) => renderToString(React.createElement(DueAhead, {
-  data: DUE, overdue: 0, noDueDate: 3, onNavigate: () => {}, ...props,
+  data: DUE, overdue: 0, overdueByOrigin: null, noDueDate: 7,
+  poolKnown: true, poolReason: null, onNavigate: () => {}, ...props,
 }));
 
 test('positive control — seven columns with their counts', () => {
@@ -103,6 +106,56 @@ test('⚠ a zero day draws NO bar — a sliver would read as "one task"', () => 
   assert.equal(bars.length, 5);
 });
 
+test('⚠ a day is STACKED by where its work came from', () => {
+  // "4 due Thursday, one of them a Planner card on somebody else's board" is a
+  // different Thursday from four of his own.
+  const html = render();
+  assert.match(html, /sop-due-neuro/);
+  assert.match(html, /sop-due-microsoft/, 'the Microsoft share must be visible, not folded into the total');
+  // Asserted on the TITLE, which names the day and its split precisely — a
+  // slice of surrounding HTML is a window whose size is a guess.
+  assert.match(html, /Thu 24 Sep — 4 tasks due \(3 NEURO, 1 Microsoft\)/);
+  assert.match(html, /Fri 18 Sep — 6 tasks due \(6 NEURO\)/, 'a single-origin day names only that origin');
+  assert.match(html, /Sat 19 Sep — 0 tasks due"/, 'and a zero day claims no origins at all');
+});
+
+test('⚠ the legend keys only the origins actually PRESENT in the window', () => {
+  // A permanent "Daily note" swatch over a week containing none is a key
+  // nobody reads, and implies an absence that is really a quiet board.
+  const html = render();
+  assert.match(html, /NEURO/);
+  assert.match(html, /Microsoft/);
+  assert.ok(!/sop-due-key-item[^]*Daily note/.test(html), 'an absent origin gets no key');
+});
+
+test('a window with ONE origin shows no legend at all', () => {
+  const solo = { ...DUE, byOrigin: { neuro: 16, microsoft: 0, note: 0 } };
+  assert.ok(!/sop-due-key/.test(render({ data: solo })), 'one series needs no key — the heading names it');
+});
+
+test('⚠⚠ an unreadable vault SAYS so — it must not render as a lighter week', () => {
+  // `parseVaultTodos` returns empty arrays when the vault is not configured, no
+  // throw and no warning. Without this the Microsoft half silently vanishes and
+  // the week looks exactly like a real quiet one.
+  const html = render({ poolKnown: false, poolReason: 'vault not configured' });
+  assert.match(html, /couldn’t be read/);
+  assert.match(html, /vault not configured/);
+  assert.match(html, /busier than it looks/, 'and says which way the error runs');
+});
+
+test('a readable pool shows no gap line', () => {
+  assert.ok(!/couldn’t be read/.test(render({ poolKnown: true })));
+});
+
+test('⚠ the overdue chip names WHERE the late work is', () => {
+  // Measured live: all 3 overdue tasks were Microsoft Planner cards, invisible
+  // to this panel until they were pulled in. "3 overdue" without the origin
+  // sends him looking in the wrong list.
+  const html = render({ overdue: 3, overdueByOrigin: { neuro: 0, microsoft: 3, note: 0 } });
+  assert.match(html, /3 Microsoft/);
+  assert.ok(!/0 NEURO/.test(html), 'an origin with none is not listed');
+});
+
 test('⚠ a weekend is SHOWN, never dropped', () => {
   // Dropping it would compress the week and make the run to Friday look
   // shorter than it is.
@@ -122,11 +175,7 @@ test('⚠ it STATES and never grades the day', () => {
   }
 });
 
-test('⚠ it names WHOSE tasks it counts — Microsoft ones are not in this table', () => {
-  // Measured 18 Sep 2026: Microsoft held 3 overdue tasks this panel cannot see.
-  // The chart must not imply it is showing everything Nick owes.
-  assert.match(render(), /NEURO/);
-});
+
 
 test('⚠ dates are SLICED, never parsed — a UTC-midnight Date renders the day before', () => {
   const fs = require('fs');

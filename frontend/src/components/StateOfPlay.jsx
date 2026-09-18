@@ -140,13 +140,34 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * grades a day. Whether sixteen due this week is a lot is Nick's call, and a
  * panel that editorialises about his workload is one he stops opening.
  */
-export function DueAhead({ data, overdue, noDueDate, onNavigate }) {
+const ORIGIN_LABEL = { neuro: 'NEURO', microsoft: 'Microsoft', note: 'Daily note' };
+
+export function DueAhead({ data, overdue, overdueByOrigin, noDueDate, poolKnown, poolReason, onNavigate }) {
   if (!data || !Array.isArray(data.days) || data.days.length === 0) return null;
 
-  // Scaled to the busiest day, with a floor so a week holding one task does not
-  // draw a single full-height bar and read as a wall of work.
   const scale = Math.max(data.busiest, 3);
   const label = (key) => `${Number(key.slice(8, 10))} ${MONTHS[Number(key.slice(5, 7)) - 1]}`;
+  const origins = data.origins || ['neuro', 'microsoft', 'note'];
+  // ⚠ A legend key only for origins actually PRESENT in the window. A permanent
+  // "Microsoft" swatch over a week containing none is a key nobody reads, and
+  // it implies an absence that is really just a quiet week on that board.
+  const present = origins.filter((o) => (data.byOrigin || {})[o] > 0);
+
+  const chip = (n, text, bad) => (
+    <button
+      type="button"
+      className={`sop-due-chip${bad ? ' sop-due-chip-bad' : ''}`}
+      onClick={() => onNavigate && onNavigate('todos')}
+    >
+      <span className="sop-due-chip-n">{n}</span>
+      <span>{text}</span>
+    </button>
+  );
+
+  const overdueDetail = overdueByOrigin && overdue > 0
+    ? origins.filter((o) => overdueByOrigin[o] > 0)
+        .map((o) => `${overdueByOrigin[o]} ${ORIGIN_LABEL[o]}`).join(' · ')
+    : null;
 
   return (
     <section className="sop-due">
@@ -155,30 +176,36 @@ export function DueAhead({ data, overdue, noDueDate, onNavigate }) {
           <h3>Due over the next 7 days</h3>
           <p className="sop-due-sub">
             {data.total} task{data.total === 1 ? '' : 's'} with a due date between{' '}
-            {label(data.from)} and {label(data.to)} · NEURO&rsquo;s own tasks
+            {label(data.from)} and {label(data.to)}
           </p>
+          {/* ⚠ AN UNREADABLE VAULT IS NOT AN EMPTY ONE. Without this the
+              Microsoft half silently vanishes and the week renders lighter than
+              it is, looking exactly like a real quiet week. */}
+          {poolKnown === false && (
+            <p className="sop-due-gap">
+              ⚠ Microsoft and daily-note tasks couldn’t be read{poolReason ? ` — ${poolReason}` : ''}.
+              These bars show NEURO’s own tasks only, so the week may be busier than it looks.
+            </p>
+          )}
         </div>
         <div className="sop-due-chips">
           {/* ⚠ Overdue leads and is NOT a bar — it is not a day. Rendered even
               at zero, because "nothing late" is the fact worth seeing. */}
-          <button
-            type="button"
-            className={`sop-due-chip${overdue > 0 ? ' sop-due-chip-bad' : ''}`}
-            onClick={() => onNavigate && onNavigate('todos')}
-          >
-            <span className="sop-due-chip-n">{overdue}</span>
-            <span>already overdue</span>
-          </button>
-          <button
-            type="button"
-            className="sop-due-chip"
-            onClick={() => onNavigate && onNavigate('todos')}
-          >
-            <span className="sop-due-chip-n">{noDueDate}</span>
-            <span>no due date — not on this chart</span>
-          </button>
+          {chip(overdue, overdueDetail ? `already overdue · ${overdueDetail}` : 'already overdue', overdue > 0)}
+          {chip(noDueDate, 'no due date — not on this chart', false)}
         </div>
       </header>
+
+      {present.length > 1 && (
+        <div className="sop-due-key">
+          {present.map((o) => (
+            <span key={o} className="sop-due-key-item">
+              <i className={`sop-due-swatch sop-due-${o}`} />
+              {ORIGIN_LABEL[o]} <b>{data.byOrigin[o]}</b>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="sop-due-chart" role="img"
         aria-label={`Tasks due per day: ${data.days.map(d => `${DOW[d.dow]} ${d.count}`).join(', ')}`}>
@@ -186,14 +213,28 @@ export function DueAhead({ data, overdue, noDueDate, onNavigate }) {
           <div
             key={d.key}
             className={`sop-due-col${d.isToday ? ' sop-due-today' : ''}${d.weekend ? ' sop-due-weekend' : ''}`}
-            title={`${DOW[d.dow]} ${label(d.key)} — ${d.count} task${d.count === 1 ? '' : 's'} due`}
+            title={`${DOW[d.dow]} ${label(d.key)} — ${d.count} task${d.count === 1 ? '' : 's'} due${
+              d.count > 0
+                ? ` (${origins.filter(o => d.by[o] > 0).map(o => `${d.by[o]} ${ORIGIN_LABEL[o]}`).join(', ')})`
+                : ''
+            }`}
           >
             <span className="sop-due-n">{d.count}</span>
             <div className="sop-due-track">
-              {/* A zero draws NO bar rather than a sliver: a 1px mark reads as
-                  "one task" at a glance, and the number above says zero. */}
+              {/* Stacked, so where the day's work comes from is visible: four of
+                  his own is a different Thursday from three plus a Planner card
+                  on somebody else's board. A zero draws NOTHING — a sliver reads
+                  as "one task". */}
               {d.count > 0 && (
-                <span className="sop-due-bar" style={{ height: `${Math.max(6, (d.count / scale) * 100)}%` }} />
+                <span className="sop-due-bar" style={{ height: `${Math.max(6, (d.count / scale) * 100)}%` }}>
+                  {origins.filter((o) => d.by[o] > 0).map((o) => (
+                    <i
+                      key={o}
+                      className={`sop-due-seg sop-due-${o}`}
+                      style={{ height: `${(d.by[o] / d.count) * 100}%` }}
+                    />
+                  ))}
+                </span>
               )}
             </div>
             <span className="sop-due-dow">{DOW[d.dow]}</span>
@@ -283,7 +324,10 @@ export default function StateOfPlay({ onNavigate }) {
       <DueAhead
         data={tasks.dueAhead}
         overdue={tasks.overdue}
+        overdueByOrigin={tasks.overdueByOrigin}
         noDueDate={tasks.noDueDate}
+        poolKnown={tasks.poolKnown}
+        poolReason={tasks.poolReason}
         onNavigate={go}
       />
 

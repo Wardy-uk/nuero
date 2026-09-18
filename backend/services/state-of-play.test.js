@@ -19,7 +19,7 @@ const fs = require('fs');
 
 process.env.NEURO_DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-sop-')), 'a.db');
 
-const { assess, overall, foldRituals, nextDays, _internals } = require('./state-of-play');
+const { assess, overall, foldRituals, nextDays, taskPool, dueAhead, originOf, _internals } = require('./state-of-play');
 
 /** A snapshot with nothing wrong; each test spoils exactly one thing. */
 const clean = (over = {}) => ({
@@ -329,4 +329,103 @@ test('it walks across a month and a year boundary without a gap', () => {
     ['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02']);
   assert.deepStrictEqual(nextDays('2026-12-30', 3).map(d => d.key),
     ['2026-12-30', '2026-12-31', '2027-01-01']);
+});
+
+test('⚠⚠ dueAhead counts EVERY origin, and a linked pair is ONE task', () => {
+  // The whole reason this goes through `parseVaultTodos` rather than the
+  // Microsoft mirror file: `task-dedupe` links a pair so the mirror line is
+  // suppressed and NEURO's row carries it. Measured live, the raw mirror held
+  // SIX dated Planner cards and the merged pool held FIVE — "Succession plan",
+  // linked to NEURO #58, appearing once. Reading the file would have
+  // double-counted it, silently, on a chart whose job is to say how much is due.
+  const pool = [
+    { due_date: '2026-09-21', source: 'NEURO' },
+    { due_date: '2026-09-21', source: 'MS Planner' },
+    { due_date: '2026-09-21', source: 'Daily 2026-09-17' },
+    // The linked pair arrives from parseVaultTodos as ONE row carrying both ids.
+    { due_date: '2026-09-22', source: 'NEURO', ms_id: 'abc', task_id: 58 },
+  ];
+  const out = dueAhead('2026-09-18', pool);
+
+  const mon = out.days.find(d => d.key === '2026-09-21');
+  assert.deepStrictEqual(mon.by, { neuro: 1, microsoft: 1, note: 1 });
+  assert.strictEqual(mon.count, 3);
+
+  const tue = out.days.find(d => d.key === '2026-09-22');
+  assert.strictEqual(tue.count, 1, 'a linked pair is one task, not two');
+  assert.strictEqual(tue.by.neuro, 1);
+  assert.strictEqual(tue.by.microsoft, 0, 'and it counts as NEURO, which is the row that survived the merge');
+
+  assert.strictEqual(out.total, 4);
+  assert.deepStrictEqual(out.byOrigin, { neuro: 2, microsoft: 1, note: 1 });
+});
+
+test('⚠ originOf borrows the `MS ` prefix rule, never a second opinion', () => {
+  assert.strictEqual(originOf({ source: 'MS Planner' }), 'microsoft');
+  assert.strictEqual(originOf({ source: 'MS ToDo' }), 'microsoft');
+  assert.strictEqual(originOf({ source: 'Daily 2026-09-17' }), 'note');
+  assert.strictEqual(originOf({ source: 'NEURO' }), 'neuro');
+  // Unknown provenance is NEURO's, matching the table it came from — never a
+  // fourth bucket nothing renders.
+  assert.strictEqual(originOf({ source: '' }), 'neuro');
+  assert.strictEqual(originOf({}), 'neuro');
+});
+
+test('a task due outside the window is not counted, and undated ones never are', () => {
+  const out = dueAhead('2026-09-18', [
+    { due_date: '2026-10-30', source: 'NEURO' },
+    { due_date: '2026-01-01', source: 'MS Planner' },
+    { due_date: null, source: 'NEURO' },
+    { source: 'NEURO' },
+  ]);
+  assert.strictEqual(out.total, 0);
+  assert.strictEqual(out.busiest, 0);
+});
+
+test('⚠ every day carries a full origin breakdown, even an empty one', () => {
+  // A day missing `by` would make the renderer branch on undefined rather than
+  // on a real zero.
+  for (const d of dueAhead('2026-09-18', []).days) {
+    assert.deepStrictEqual(d.by, { neuro: 0, microsoft: 0, note: 0 });
+  }
+});
+
+// ── The pool, and the failure it introduces ─────────────────────────────────
+
+test('⚠⚠ an unreadable vault is KNOWN-FALSE, never an empty pool', () => {
+  // `parseVaultTodos` returns `{active: [], done: []}` when the vault is not
+  // configured — no throw, no warning. Without this check a Syncthing hiccup or
+  // a missing env var quietly drops every Microsoft task and renders a lighter
+  // week that looks exactly like a real quiet one.
+  const out = taskPool(() => ({ known: false, reason: 'vault not configured' }));
+  assert.strictEqual(out.known, false);
+  assert.match(out.reason, /not configured/);
+  assert.deepStrictEqual(out.tasks, []);
+});
+
+test('⚠ a pool that THREW is known-false with the reason, and never propagates', () => {
+  // A usage figure is not worth taking the whole panel down for.
+  const out = taskPool(() => { throw new Error('ENOENT vault'); });
+  assert.strictEqual(out.known, false);
+  assert.match(out.reason, /ENOENT vault/);
+});
+
+test('a readable but genuinely EMPTY vault is known-TRUE — a different fact', () => {
+  const out = taskPool(() => ({ known: true, active: [] }));
+  assert.strictEqual(out.known, true);
+  assert.deepStrictEqual(out.tasks, []);
+});
+
+test('a readable pool passes its tasks through', () => {
+  const out = taskPool(() => ({ known: true, active: [{ due_date: '2026-09-18', source: 'MS Planner' }] }));
+  assert.strictEqual(out.known, true);
+  assert.strictEqual(out.tasks.length, 1);
+});
+
+test('⚠ a malformed answer is refused rather than trusted', () => {
+  assert.strictEqual(taskPool(() => null).known, false);
+  assert.strictEqual(taskPool(() => undefined).known, false);
+  // A truthy answer with no usable list is still readable, just empty — the
+  // reader said it looked, so this is not a gap.
+  assert.deepStrictEqual(taskPool(() => ({ known: true })).tasks, []);
 });

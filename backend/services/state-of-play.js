@@ -158,6 +158,64 @@ function foldRituals({ dateKeys, rolled = [], live = [], logFrom = null }) {
   };
 }
 
+/**
+ * Every task Nick owes, from every source — NEURO's own rows, Microsoft's
+ * mirrors and daily-note lines.
+ *
+ * ⚠⚠ IT GOES THROUGH `parseVaultTodos`, NEVER THE MIRROR FILE, because that is
+ * the ONE place the NEURO↔Microsoft link is honoured. `task-dedupe` links a
+ * pair so the Microsoft line is suppressed and NEURO's row carries it — measured
+ * live, the raw mirror holds SIX dated Planner cards and the merged pool holds
+ * FIVE, the missing one being "Succession plan", linked to NEURO #58. Counting
+ * the file directly would have double-counted it, silently, on a chart whose
+ * whole job is to say how much is due.
+ *
+ * ⚠⚠ AN UNREADABLE VAULT IS NOT AN EMPTY ONE, and this is the failure this read
+ * introduces. `parseVaultTodos` returns `{active: [], done: []}` when the vault
+ * is not configured — no throw, no warning — so a Syncthing hiccup or a missing
+ * env var would quietly drop every Microsoft task and render a lighter week that
+ * looks exactly like a real one. `known` is checked FIRST and travels onto the
+ * payload, so the panel says "Microsoft could not be read" rather than showing
+ * NEURO's half as though it were the whole.
+ *
+ * ⚠ Cost: measured on the Pi at 26ms cold, 10ms WARM (`vault-cache` holds it),
+ * against a panel that polls every 60 seconds. That is what makes this
+ * affordable at all; it is why `snapshot()` was pure SQL before, and the number
+ * is written down so the next person can tell whether it still is.
+ */
+function taskPool(read) {
+  const obsidian = read || (() => {
+    const ob = require('./obsidian');
+    if (!ob.isConfigured()) return { known: false, reason: 'vault not configured' };
+    return { known: true, active: ob.parseVaultTodos().active };
+  });
+
+  try {
+    const out = obsidian();
+    if (!out || out.known === false) {
+      return { known: false, reason: (out && out.reason) || 'vault unreadable', tasks: [] };
+    }
+    return { known: true, tasks: Array.isArray(out.active) ? out.active : [] };
+  } catch (e) {
+    return { known: false, reason: `vault unreadable (${e.message})`, tasks: [] };
+  }
+}
+
+/**
+ * Where a task came from, for the split on the chart. PURE.
+ *
+ * ⚠ Matched on the `MS ` PREFIX of `source`, which is what `task-dedupe` and
+ * `parseVaultTodos` already use (`/^MS /.test(t.source)`) — borrowed rather
+ * than re-derived, because a second opinion about what "a Microsoft task" is
+ * would eventually disagree with the screen that suppresses its mirror line.
+ */
+function originOf(task) {
+  const src = (task && task.source) || '';
+  if (/^MS /.test(src)) return 'microsoft';
+  if (/^Daily/.test(src)) return 'note';
+  return 'neuro';
+}
+
 // The statuses a task can be in and still be OWED. ⚠ `in-progress` is included
 // deliberately: `status = 'open'` is a literal column match, so a task Nick has
 // actually STARTED was invisible to every figure in this block — which is
@@ -188,45 +246,61 @@ function nextDays(today, count) {
   return out;
 }
 
+/** The three origins a task can have, in the order they stack. */
+const ORIGINS = ['neuro', 'microsoft', 'note'];
+
 /**
- * How much is due on each of the next seven days.
+ * How much is due on each of the next seven days, from EVERY source.
  *
  * ⚠ A ZERO HERE IS A REAL ZERO. Unlike the usage heatmap there is no
- * un-instrumented state — the tasks table knows every due date it holds — so a
- * quiet Saturday is a fact and is drawn as one.
+ * un-instrumented state — the pool knows every due date it holds — so a quiet
+ * Saturday is a fact and is drawn as one. The one thing that is NOT a real zero
+ * is a pool that could not be read, and that never reaches this function:
+ * `taskPool` reports it and the panel renders the gap instead.
  *
- * ⚠⚠ WHAT IT CANNOT SEE MUST TRAVEL WITH IT, or a light-looking week is a lie
- * by omission. Two things are invisible to a bar chart of due dates and both
- * ride on the payload: tasks that are ALREADY OVERDUE (they have a day, and it
- * has gone) and tasks with NO DUE DATE AT ALL — on the live store that is 3
- * undated against 46 open, so a week showing 16 bars is not a week holding 16
- * jobs. The panel states both beside the chart rather than under it.
+ * ⚠⚠ WHAT IT CANNOT SHOW MUST TRAVEL WITH IT, or a light-looking week is a lie
+ * by omission. Two things have no bar and both ride on the payload: work
+ * ALREADY OVERDUE (it had a day and the day has gone) and work with NO DUE DATE
+ * AT ALL. On the live store that is 7 undated against 55 open, so a week showing
+ * 16 bars is not a week holding 16 jobs.
  *
- * ⚠ It counts NEURO's OWN tasks — the same rows every other figure in this
- * block counts. Microsoft-owned tasks are file-backed mirrors and are NOT in
- * this table; reading them needs the vault, and `snapshot()` is pure SQL on a
- * path that polls every 60 seconds. Measured 18 Sep 2026: Microsoft held 6
- * dated tasks, NONE of them inside the next seven days — so the bars are the
- * same either way — but THREE of them were overdue (two since 21 August), which
- * this block reports as 0. That is a real gap and it is named on the payload
- * rather than left for the chart to imply away.
+ * ⚠ The split is carried PER DAY, not just as a total — "4 due Thursday, one of
+ * them a Planner card someone else owns" is a different Thursday from four of
+ * his own, and a stacked bar is the only place that fact fits.
  */
-function dueAhead(today, days = 7) {
-  const span = nextDays(today, days);
-  const counts = tally(
-    rows(
-      `SELECT due_date k, COUNT(*) c FROM tasks
-        WHERE ${ACTIVE_STATUSES} AND due_date IS NOT NULL
-          AND due_date >= ? AND due_date <= ?
-        GROUP BY due_date`,
-      [span[0].key, span[span.length - 1].key]
-    ),
-    'k'
-  );
+/** Count a list of tasks by where they came from. PURE. */
+function tallyOrigins(list) {
+  const out = { neuro: 0, microsoft: 0, note: 0 };
+  for (const t of list) out[originOf(t)]++;
+  return out;
+}
 
-  const buckets = span.map(d => ({ ...d, count: counts[d.key] || 0 }));
+function dueAhead(today, pool, days = 7) {
+  const span = nextDays(today, days);
+  const index = new Map(span.map((d, i) => [d.key, i]));
+
+  const buckets = span.map(d => ({
+    ...d,
+    count: 0,
+    by: { neuro: 0, microsoft: 0, note: 0 },
+  }));
+
+  for (const t of pool) {
+    const due = t && t.due_date;
+    if (!due) continue;
+    const i = index.get(due);
+    if (i === undefined) continue;
+    buckets[i].count++;
+    buckets[i].by[originOf(t)]++;
+  }
+
+  const byOrigin = { neuro: 0, microsoft: 0, note: 0 };
+  for (const b of buckets) for (const o of ORIGINS) byOrigin[o] += b.by[o];
+
   return {
     days: buckets,
+    origins: ORIGINS,
+    byOrigin,
     total: buckets.reduce((n, b) => n + b.count, 0),
     busiest: buckets.reduce((m, b) => Math.max(m, b.count), 0),
     from: span[0].key,
@@ -234,10 +308,20 @@ function dueAhead(today, days = 7) {
   };
 }
 
-function snapshot() {
+function snapshot(opts = {}) {
   const today = todayLocal();
 
-  const openTasks = scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES}`);
+  // ⚠ The DUE-DATE family counts EVERY task Nick owes — NEURO's rows,
+  // Microsoft's cards and daily-note lines — because "what is due on Thursday"
+  // is a question about his week, not about one table. The TRIAGE family below
+  // (MoSCoW, priority, estimates, context, source) stays NEURO-only, because
+  // Microsoft has no such fields and folding 9 of them into `unset` would
+  // report a triage backlog that does not exist. The cards say which is which.
+  const pool = taskPool(opts.readTasks);
+  const active = pool.tasks;
+  const openTasks = pool.known
+    ? active.length
+    : scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES}`);
   const tasks = {
     open: openTasks,
     done: scalar("SELECT COUNT(*) c FROM tasks WHERE status='done'"),
@@ -245,13 +329,24 @@ function snapshot() {
     // priority is 1-3 with NULL meaning never triaged; 0 is the unset bucket.
     unprioritised: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND priority IS NULL`),
     estimated: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND estimate_minutes IS NOT NULL`),
-    overdue: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND due_date IS NOT NULL AND due_date < ?`, [today]),
-    dueToday: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND due_date = ?`, [today]),
-    noDueDate: scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND due_date IS NULL`),
+    overdue: pool.known
+      ? active.filter(t => t.due_date && t.due_date < today).length
+      : scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND due_date IS NOT NULL AND due_date < ?`, [today]),
+    dueToday: pool.known
+      ? active.filter(t => t.due_date === today).length
+      : scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND due_date = ?`, [today]),
+    noDueDate: pool.known
+      ? active.filter(t => !t.due_date).length
+      : scalar(`SELECT COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} AND due_date IS NULL`),
     byContext: rows(`SELECT COALESCE(context,'none') k, COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} GROUP BY k ORDER BY c DESC`),
     bySource: rows(`SELECT COALESCE(source,'unknown') k, COUNT(*) c FROM tasks WHERE ${ACTIVE_STATUSES} GROUP BY k ORDER BY c DESC LIMIT 6`),
     // The week ahead, for the chart at the top of the panel.
-    dueAhead: dueAhead(today),
+    // ⚠ `poolKnown` is what stops an unreadable vault rendering as a light
+    // week. It is NOT the same as an empty pool, and the panel must say so.
+    poolKnown: pool.known,
+    poolReason: pool.known ? null : pool.reason,
+    overdueByOrigin: pool.known ? tallyOrigins(active.filter(t => t.due_date && t.due_date < today)) : null,
+    dueAhead: dueAhead(today, active),
   };
 
   const commitments = {
@@ -508,4 +603,8 @@ function overall(issues) {
 
 module.exports = {
   // PURE, exported so the week ahead pins without a database.
-  nextDays, snapshot, assess, overall, TRACKED_JOBS, foldRituals, _internals: { daysSince, todayLocal, lastDays } };
+  nextDays,
+  taskPool,
+  dueAhead,
+  originOf,
+  tallyOrigins, snapshot, assess, overall, TRACKED_JOBS, foldRituals, _internals: { daysSince, todayLocal, lastDays } };

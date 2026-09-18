@@ -382,19 +382,66 @@ button.sop-stat:hover { border-color: var(--accent-dim); }
 .sop-due-bar {
   width: 68%;
   max-width: 34px;
-  background: var(--accent);
-  /* Rounded at the data end only, anchored to the baseline. */
   border-radius: 4px 4px 0 0;
   min-height: 3px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse; /* NEURO at the baseline, the rest stacked on */
 }
-.sop-due-today .sop-due-bar { background: var(--accent); box-shadow: 0 0 0 1px rgba(90, 163, 249, 0.45); }
-.sop-due-weekend .sop-due-bar { background: var(--accent-dim); }
+.sop-due-today .sop-due-bar { box-shadow: 0 0 0 1px rgba(90, 163, 249, 0.45); }
+
+/* ── Where a day's work comes from ────────────────────────────────────────
+ *
+ * CATEGORICAL, because the origins are the subject — not a magnitude. Three
+ * hues, assigned in a FIXED order and never cycled.
+ *
+ * ⚠ VALIDATED, not eyeballed: worst adjacent pair ΔE 9.7 deutan / 28.3 tritan,
+ * 22.8 normal vision, all three at or above 3:1 against the card. The only
+ * check they miss is the lightness BAND, which on a near-black surface is
+ * unavoidable — a palette inside that band would not clear 3:1 here, and
+ * contrast is the one that decides whether a segment can be seen at all.
+ *
+ * ⚠ PINK, NOT ORANGE, for Microsoft. Orange scored better on CVD but sits
+ * ΔE 9 from `--warning`, which on THIS panel means "something is late" — a
+ * near-amber segment would read as a warning about a task that is merely on
+ * somebody else's board. Pink is ΔE 17.5 clear of it. Status colours are
+ * reserved, and that includes looking like one.
+ *
+ * ⚠ Green is deliberately avoided for the same reason (`--success`), so the
+ * third slot is a mint that reads as its own hue rather than as "good".
+ */
+.sop-due-seg { display: block; width: 100%; }
+.sop-due-neuro { background: #5aa3f9; }
+.sop-due-microsoft { background: #ef7fae; }
+.sop-due-note { background: #7ee0c0; }
+/* A 1px rule between stacked segments, so two adjacent ones never read as a
+ * single taller bar. */
+.sop-due-seg + .sop-due-seg { border-bottom: 1px solid var(--bg-card); }
+
+.sop-due-key { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.sop-due-key-item { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+.sop-due-key-item b { color: var(--text-secondary); font-family: var(--font-mono); font-weight: 500; }
+.sop-due-swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+/* ⚠ The gap line. An unreadable vault renders a LIGHTER week that looks exactly
+ * like a real quiet one, so it is amber and says which half is missing. */
+.sop-due-gap {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--warning);
+  line-height: 1.45;
+  max-width: 62ch;
+}
 
 .sop-due-dow { font-size: 11px; color: var(--text-secondary); }
 .sop-due-date { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
 
 @media (forced-colors: active) {
-  .sop-due-bar { forced-color-adjust: none; background: CanvasText; }
+  /* Forced colours strip every background, so the stack would flatten into one
+     block. Borders survive — each segment keeps an edge. */
+  .sop-due-seg { forced-color-adjust: none; background: Canvas; border: 1px solid CanvasText; }
+  .sop-due-microsoft { background: GrayText; }
+  .sop-due-note { background: Highlight; }
   .sop-due-chip-bad { border-style: dashed; }
 }
 
