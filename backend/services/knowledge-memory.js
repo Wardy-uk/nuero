@@ -1614,22 +1614,26 @@ function listDomains() {
  * unopened boxes" under Knowledge turns an open question into something that reads six
  * months later like a settled answer.
  *
- * ⚠⚠ ORIGIN IS ASKED, NEVER INFERRED, AND THAT IS NICK'S RULE (18 Sep 2026): a task is
- * a COMMITMENT if somebody asked him for it and an IMPROVEMENT if he offered it
- * himself. Nothing here can tell those apart — the loop is one line of model-written
- * prose with no record of who spoke first — and `inferOrigin`'s own header says the
- * quiet part: it reads PROVENANCE, never wording, because measured on the live store no
- * keyword rule separates "Prepare price comparisons for Chris" from "Build an
- * escalation view in NOVA". So the button asks, and because the answer is explicit
- * `createTask` records it as a DECISION rather than stamping `origin_proposed`.
+ * ⚠⚠ ORIGIN IS ASKED, NEVER INFERRED, and the question is "IS SOMEBODY WAITING?" —
+ * which is `task-origin.cjs`'s own definition: a COMMITMENT is work somebody else is
+ * expecting; an IMPROVEMENT is work Nick set himself and nobody is waiting on.
  *
- * ⚠ THIS DISAGREES WITH `inferOrigin`'s MEETING RULE AND THAT IS DELIBERATE, NOT AN
- * OVERSIGHT. `shared/task-origin.cjs` says a task promoted from a meeting note is a
- * commitment "whether or not he was asked", because it was said in front of people.
- * Nick's rule here splits on who suggested it. The two are reconciled by ASKING rather
- * than by changing the inference — flipping `inferOrigin` would silently re-classify
- * historical tasks and move numbers in the weekly risk report Chris reads, which is a
- * decision for Nick and not a side effect of this button.
+ * ⚠ It deliberately does NOT ask "did you suggest it, or were you asked". Nick tried
+ * that rule on 18 Sep 2026 and withdrew it the same day: what makes something a
+ * commitment is that other people heard it, not who spoke first — which is exactly
+ * what `inferOrigin`'s meeting rule already says ("whether or not he was asked"). The
+ * two now agree.
+ *
+ * ⚠⚠ SO WHY ASK AT ALL, RATHER THAN INFERRING "IT CAME FROM A MEETING NOTE"? Because
+ * `Meetings/` holds notes that are not work meetings — the live queue right now has
+ * two optician consultations in it — and `weekly-risk` groups on
+ * `origin = 'commitment'` with NO domain filter. So inferring commitment from the
+ * folder would put "confirm the exchange policy on four unopened boxes of contact
+ * lenses" into the overdue count in the PIP report Chris reads. Asking costs one tap
+ * and cannot do that.
+ *
+ * ⚠ Because the answer is explicit, `createTask` records it as a DECISION and does not
+ * stamp `origin_proposed`.
  *
  * ⚠ NULL IS ALLOWED. "I do not know yet" is a first-class answer the report counts as
  * its own named bucket; forcing a choice here is how a guess becomes a decision.

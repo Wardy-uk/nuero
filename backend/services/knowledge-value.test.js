@@ -690,13 +690,21 @@ test('loopToTask records the origin as a DECISION, both ways', () => {
   }
 });
 
-test('⚠ this button disagrees with inferOrigin ON PURPOSE, and does not change it', () => {
-  // shared/task-origin.cjs says a meeting-promotion task is a commitment "whether or
-  // not he was asked". Nick's rule here splits on who suggested it. They are
-  // reconciled by ASKING, never by flipping the inference — that would silently
-  // re-classify historical tasks and move numbers in the weekly risk report.
+test('⚠ the button and inferOrigin now AGREE, and the question is "who is waiting"', () => {
+  // Nick tried "did I suggest it, or was I asked" on 18 Sep 2026 and withdrew it the
+  // same day: what makes something a commitment is that other people heard it, not who
+  // spoke first — which is what inferOrigin's meeting rule has said all along.
   const origin = fs.readFileSync(path.join(__dirname, '..', '..', 'shared', 'task-origin.cjs'), 'utf-8');
-  assert.match(origin, /whether or not he was asked/, 'the meeting rule is still as it was');
+  assert.match(origin, /whether or not he was asked/, 'the meeting rule is unchanged');
+
   const src = fs.readFileSync(path.join(__dirname, 'knowledge-memory.js'), 'utf-8');
-  assert.match(src, /DISAGREES WITH `inferOrigin`/, 'and the disagreement is written down where it happens');
+  assert.match(src, /IS SOMEBODY WAITING\?/, 'the button asks the definition, not the retracted rule');
+  assert.ok(!/DISAGREES WITH/.test(src), 'and no longer claims to disagree with the inference');
+
+  // ⚠ And it must keep ASKING rather than inferring from the folder: `Meetings/` holds
+  // notes that are not work meetings, and weekly-risk counts commitments with NO
+  // domain filter — so inferring would put a personal errand in the PIP report.
+  const risk = fs.readFileSync(path.join(__dirname, 'weekly-risk.js'), 'utf-8');
+  assert.match(risk, /origin = 'commitment'/, 'positive control: the report still groups on origin');
+  assert.match(src, /NO domain filter/, 'the reason for asking is written down where it is decided');
 });

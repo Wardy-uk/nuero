@@ -153,10 +153,15 @@ export default function InsightsPanel({ onNavigate }) {
     } catch {}
   };
 
-  // ⚠ ORIGIN IS ASKED, NEVER GUESSED. Nick's rule (18 Sep): asked of him = a
-  // COMMITMENT, offered by him = an IMPROVEMENT. Nothing in a one-line loop records
-  // who spoke first, and getting it wrong either manufactures a broken promise in the
-  // report Chris reads or hides a real one.
+  // ⚠ ORIGIN IS ASKED, and the question is "is somebody waiting?" — task-origin.cjs's
+  // own definition. NOT "did you suggest it": Nick tried that rule on 18 Sep and
+  // withdrew it the same day, because what makes something a commitment is that other
+  // people heard it, not who spoke first.
+  //
+  // ⚠ Asked rather than inferred from the folder because `Meetings/` holds notes that
+  // are not work meetings (two optician consultations are in the queue right now), and
+  // weekly-risk counts commitments with no domain filter — so a wrong yes puts a
+  // personal errand in the overdue figure Chris reads.
   const loopToTask = async (candidate, loopIndex, origin) => {
     const key = `${candidate.path}:${loopIndex}`;
     setAskingOrigin(null);
@@ -421,8 +426,9 @@ export default function InsightsPanel({ onNavigate }) {
                                 if (askingOrigin === key) {
                                   return (
                                     <span className="knowledge-loop-ask">
-                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, 'commitment')}>Someone asked me</button>
-                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, 'improvement')}>I offered it</button>
+                                      <span className="knowledge-loop-q">Is somebody waiting on this?</span>
+                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, 'commitment')}>Yes — owed to someone</button>
+                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, 'improvement')}>No — my own</button>
                                       {/* ⚠ "I do not know yet" is a real answer the weekly report counts
                                           as its own bucket — forcing a choice turns a guess into a decision. */}
                                       <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, null)}>Not sure</button>

@@ -669,3 +669,11 @@
 .knowledge-loop-note--bad {
   color: var(--warning, #f59e0b);
 }
+
+.knowledge-loop-q {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary, #94a3b8);
+  align-self: center;
+  margin-right: 2px;
+}
