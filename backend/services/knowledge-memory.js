@@ -50,6 +50,9 @@ const MAX_SCORED_INSIGHTS = 2;
 const MAX_SCORED_LOOPS = 2;
 // We looked and found nothing. Ranks below "nobody has looked", deliberately.
 const JUDGED_EMPTY_PENALTY = -3;
+// How many bullets travel on the payload and into a promoted note. The model is asked
+// for 0-2, so this is headroom rather than a cap anyone should hit.
+const MAX_LISTED_ITEMS = 6;
 
 function isoNow() {
   return new Date().toISOString();
@@ -468,9 +471,18 @@ function knowledgeValue(note) {
   // but never counted, or two title fragments outrank a real insight.
   const judged = Boolean(enrichedAt) && isCapableJudge(provider);
 
-  const countBullets = (section) => (section.match(/^\s*[-*]\s+\S/gm) || []).length;
-  const durable = countBullets(extractSectionFlexible(content, 'Durable Insights'));
-  const loops = countBullets(extractSectionFlexible(content, 'Open Loops'));
+  // ⚠ THE TEXT, NOT JUST A COUNT. The card said "2 durable insights" and showed
+  // neither, so Promote was a blanket yes to something unseen; and the promoted note
+  // threw the insights away entirely and asked Nick to write them again himself.
+  // Bounded, because these travel on a polled payload.
+  const bulletsIn = (section) => (section.match(/^[ 	]*[-*][ 	]+(.+)$/gm) || [])
+    .map(line => line.replace(/^[ 	]*[-*][ 	]+/, '').trim())
+    .filter(Boolean)
+    .slice(0, MAX_LISTED_ITEMS);
+  const durableItems = bulletsIn(extractSectionFlexible(content, 'Durable Insights'));
+  const loopItems = bulletsIn(extractSectionFlexible(content, 'Open Loops'));
+  const durable = durableItems.length;
+  const loops = loopItems.length;
 
   return {
     judged,
@@ -481,7 +493,9 @@ function knowledgeValue(note) {
     // first time. The card and the enrichment pass both need to tell them apart.
     needsRedo: Boolean(enrichedAt) && !isCapableJudge(provider),
     durable,
-    loops
+    loops,
+    durableItems,
+    loopItems
   };
 }
 
@@ -1353,30 +1367,53 @@ function buildPromotedBody({ source, title, domain }) {
     promoted_at: isoNow()
   });
 
-  const summaryType = sourceFm.summary_type ? `Summary type: ${sourceFm.summary_type}\n` : '';
-  return `${frontmatter}
+  // ⚠⚠ THE INSIGHTS COME ACROSS. This used to open with `source.excerpt` — the first
+  // 260 characters of the note, which for a PLAUD summary is the title and
+  // "## Recording - Plaud ID: …" — and then a placeholder reading "Add the durable
+  // point SAiM should remember". So the model had already written two good durable
+  // insights two sections down in the source, the promoted note carried NONE of them,
+  // and Nick was asked to write them again himself. Promote meant "make me a stub".
+  //
+  // ⚠ Whether they are here is also what makes Promote an informed press: the card now
+  // shows the same bullets, so the button says what it will file.
+  const value = knowledgeValue(source);
+  const lines = [];
+  lines.push(frontmatter, '', `# ${title}`, '');
 
-# ${title}
+  if (value.durableItems.length > 0) {
+    lines.push('## What This Says', '');
+    for (const item of value.durableItems) lines.push(`- ${item}`);
+    lines.push('');
+  } else {
+    // Nothing was found, so the stub is honest about it rather than opening with
+    // boilerplate dressed up as a signal.
+    lines.push('## What This Says', '');
+    lines.push('- _Nothing durable was extracted — write the point worth keeping, or drop this note._');
+    lines.push('');
+  }
 
-## Signal
+  if (value.loopItems.length > 0) {
+    // ⚠ Kept SEPARATE from the insights and never merged into them: an open loop is
+    // debt to chase, not a fact to remember, and filing one as knowledge is how a
+    // question becomes an answer by being in the wrong section.
+    lines.push('## Still Open', '');
+    for (const item of value.loopItems) lines.push(`- ${item}`);
+    lines.push('');
+  }
 
-${source.excerpt || 'Promoted from raw memory for curation.'}
+  lines.push('## Why This Matters', '');
+  lines.push('- _Your words: why this is worth keeping._');
+  lines.push('');
 
-## Why This Matters
+  lines.push('## Source Trace', '');
+  lines.push(`- Origin: [[${source.path.replace(/\.md$/, '')}|${source.name}]]`);
+  if (value.judgedBy) lines.push(`- Insights extracted by ${value.judgedBy}${value.judgedAt ? ` on ${String(value.judgedAt).slice(0, 10)}` : ''}`);
+  const summaryType = cleanQuoted(sourceFm.plaud_summary_type);
+  if (summaryType) lines.push(`- Summary type: ${summaryType}`);
+  lines.push('');
 
-- Add the durable point SAiM should remember.
-- Capture the decision, pattern, or principle here.
-
-## Actions / Decisions
-
-- 
-
-## Source Trace
-
-- Origin: [[${source.path.replace(/\.md$/, '')}|${source.name}]]
-${summaryType ? `- ${summaryType.trim()}\n` : ''}`;
+  return lines.join('\n');
 }
-
 function updateSourceFrontmatter(source, fields) {
   let content = source.content;
   for (const [key, value] of Object.entries(fields)) {

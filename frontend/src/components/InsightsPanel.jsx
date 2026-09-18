@@ -312,15 +312,38 @@ export default function InsightsPanel({ onNavigate }) {
                       Not yet read for durable insight
                     </div>
                   ) : candidate.value.durable || candidate.value.loops ? (
-                    <div className="knowledge-item-verdict knowledge-item-verdict--valued">
-                      {candidate.value.durable > 0
-                        ? `${candidate.value.durable} durable insight${candidate.value.durable === 1 ? '' : 's'}`
-                        : null}
-                      {candidate.value.durable > 0 && candidate.value.loops > 0 ? ' · ' : null}
-                      {candidate.value.loops > 0
-                        ? `${candidate.value.loops} open loop${candidate.value.loops === 1 ? '' : 's'}`
-                        : null}
-                    </div>
+                    <>
+                      {/*
+                        ⚠ THE BULLETS, NOT JUST THE COUNT. "2 durable insights" with
+                        neither shown made Promote a blanket yes to something unseen —
+                        and the promoted note used to discard them entirely. Now the
+                        card shows exactly what will be filed.
+                      */}
+                      {candidate.value.durableItems?.length > 0 ? (
+                        <ul className="knowledge-insight-list">
+                          {candidate.value.durableItems.map((item, i) => (
+                            <li key={i} className="knowledge-insight">{item}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {/* Kept visually apart: debt to chase, not a fact to remember. */}
+                      {candidate.value.loopItems?.length > 0 ? (
+                        <ul className="knowledge-insight-list">
+                          {candidate.value.loopItems.map((item, i) => (
+                            <li key={i} className="knowledge-insight knowledge-insight--loop">{item}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="knowledge-item-verdict knowledge-item-verdict--valued">
+                        {candidate.value.durable > 0
+                          ? `${candidate.value.durable} durable insight${candidate.value.durable === 1 ? '' : 's'}`
+                          : null}
+                        {candidate.value.durable > 0 && candidate.value.loops > 0 ? ' · ' : null}
+                        {candidate.value.loops > 0
+                          ? `${candidate.value.loops} open loop${candidate.value.loops === 1 ? '' : 's'}`
+                          : null}
+                      </div>
+                    </>
                   ) : (
                     <div className="knowledge-item-verdict knowledge-item-verdict--empty">
                       Read — nothing durable found

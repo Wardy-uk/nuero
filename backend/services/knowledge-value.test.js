@@ -500,3 +500,70 @@ test('a promoted note is not given a second date', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// --- what Promote actually files ---------------------------------------------------------
+
+test('a promoted note CARRIES the insights instead of discarding them', () => {
+  // ⚠ It used to open with `source.excerpt` — the first 260 chars, which for a PLAUD
+  // summary is the title and "## Recording - Plaud ID: …" — then a placeholder reading
+  // "Add the durable point SAiM should remember". So the model had already written the
+  // insights two sections down in the source, the promoted note carried NONE of them,
+  // and Nick was asked to write them again himself. Promote meant "make me a stub".
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'km-carry-'));
+  fs.mkdirSync(path.join(root, 'Meetings', '2026', '09'), { recursive: true });
+  const rel = 'Meetings/2026/09/2026-09-13 Consultation.md';
+  fs.writeFileSync(path.join(root, rel), [
+    '---', 'note_type: summary', 'source: PLAUD',
+    'saim_ai_enriched_at: "2026-09-16T19:00:00Z"', 'saim_ai_provider: anthropic', '---', '',
+    '## Durable Insights', '', '- Thinner brand handled better; material matters to compliance.', '',
+    '## Open Loops', '', '- Confirm exchange policy on the unopened boxes.', ''
+  ].join('\n'), 'utf-8');
+
+  const previous = process.env.OBSIDIAN_VAULT_PATH;
+  process.env.OBSIDIAN_VAULT_PATH = root;
+  try {
+    const r = km.promoteCandidate({ sourcePath: rel, domain: 'Health' });
+    const body = fs.readFileSync(path.join(root, r.promotedPath), 'utf-8');
+
+    assert.match(body, /Thinner brand handled better/, 'the durable insight is in the note');
+    assert.match(body, /Confirm exchange policy/, 'so is the open loop');
+    // ⚠ Kept in SEPARATE sections: a loop is debt to chase, not a fact to remember,
+    // and filing one under the insights turns a question into an answer.
+    const saysIdx = body.indexOf('## What This Says');
+    const openIdx = body.indexOf('## Still Open');
+    assert.ok(saysIdx > 0 && openIdx > saysIdx, 'insights and loops are distinct sections');
+    assert.ok(
+      body.slice(saysIdx, openIdx).includes('Thinner brand')
+      && !body.slice(saysIdx, openIdx).includes('exchange policy'),
+      'the loop is not filed as an insight'
+    );
+    // The boilerplate and the placeholder are gone.
+    assert.ok(!/Plaud ID/.test(body), 'no excerpt boilerplate');
+    assert.ok(!/Add the durable point/.test(body), 'no "go and write it yourself" placeholder');
+    assert.match(body, /Insights extracted by anthropic/, 'and it says who judged it');
+  } finally {
+    if (previous === undefined) delete process.env.OBSIDIAN_VAULT_PATH;
+    else process.env.OBSIDIAN_VAULT_PATH = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('with nothing extracted, the stub SAYS so rather than faking a signal', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'km-empty-'));
+  fs.mkdirSync(path.join(root, 'Meetings'), { recursive: true });
+  const rel = 'Meetings/plain.md';
+  fs.writeFileSync(path.join(root, rel), '---\nnote_type: summary\n---\n\nJust prose.\n', 'utf-8');
+
+  const previous = process.env.OBSIDIAN_VAULT_PATH;
+  process.env.OBSIDIAN_VAULT_PATH = root;
+  try {
+    const r = km.promoteCandidate({ sourcePath: rel, domain: 'General' });
+    const body = fs.readFileSync(path.join(root, r.promotedPath), 'utf-8');
+    assert.match(body, /Nothing durable was extracted/);
+    assert.ok(!/## Still Open/.test(body), 'no empty loops section');
+  } finally {
+    if (previous === undefined) delete process.env.OBSIDIAN_VAULT_PATH;
+    else process.env.OBSIDIAN_VAULT_PATH = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

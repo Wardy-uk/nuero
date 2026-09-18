@@ -593,3 +593,25 @@
   background: rgba(79, 156, 249, 0.1);
   color: var(--accent, #4fc3f7);
 }
+
+/* What promoting will actually file. Shown in full rather than counted, because a
+   count is not something you can agree or disagree with. */
+.knowledge-insight-list {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  list-style: disc;
+}
+
+.knowledge-insight {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary, #e2e8f0);
+  margin-bottom: 4px;
+}
+
+/* An open loop is debt to chase, not a fact to remember — quieter, and never mixed
+   in with the insights above it. */
+.knowledge-insight--loop {
+  color: var(--text-secondary, #94a3b8);
+  list-style: circle;
+}
