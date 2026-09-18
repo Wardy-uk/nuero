@@ -88,6 +88,18 @@ const NVRAM_LOW = 2000;        // bytes free of a 64KB partition
 const MEM_FLOOR_KB = 40000;    // context only; well under the 81MB seen when wedged
 const WATCHER_STALE_MIN = 20;  // 4 missed samples at a 5-minute cadence
 
+// ⚠ MEASURED ON THIS BOX, and the numbers are pi-health's — imported there from
+// here rather than restated, so there is ONE definition of "too hot". Two
+// numbers for one condition is how a dashboard comes to disagree with the alert
+// that woke you (the `watchdog` 3d/10d rule).
+//
+// ⚠ Temperature is NOT part of the wedge. It sits with nvram and MemFree in the
+// slow-burn section and deliberately does NOT set `degrading`, because that
+// state means "the fork exhaustion is building" and a hot router is a different
+// failure. Saying otherwise would report a wedge that is not happening.
+const TEMP_WARN = 82;          // an RT-AC68U idles ~68; sustained 82 is hot
+const TEMP_CRITICAL = 85;      // this model becomes unstable above ~80
+
 // ── Pure ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -223,6 +235,13 @@ function assess(samples, now = new Date()) {
     add('warn', `MemFree ${Math.round(memFree / 1024)} MB`, 'low even by this router’s standards');
   }
 
+  const tempC = _num(latest.tempC);
+  if (tempC != null && tempC >= TEMP_CRITICAL) {
+    add('critical', `Router ${tempC}°C`, 'this model becomes unstable above ~80°C');
+  } else if (tempC != null && tempC >= TEMP_WARN) {
+    add('warn', `Router ${tempC}°C`, 'running hot for an RT-AC68U');
+  }
+
   if (degrading) {
     return { ...base, state: 'degrading', ageMinutes: ageMin, why: issues[0] ? issues[0].title : 'build-up detected' };
   }
@@ -284,6 +303,12 @@ function record(sample = {}) {
     dprocs: Array.isArray(sample.dprocs) ? sample.dprocs.slice(0, 12).map((s) => String(s).slice(0, 40)) : [],
     memFreeKb: _num(sample.memFreeKb),
     nvramFree: _num(sample.nvramFree),
+    // ⚠ Restored 18 Sep 2026. The monitor rewrite of 14 Sep dropped temperature
+    // entirely: the old file-based watcher collected it, the POST did not carry
+    // it, and this whitelist would have silently discarded it if it had. So the
+    // "router is overheating" alarm was dark for four days with every light
+    // green — a field missing from a whitelist fails exactly that quietly.
+    tempC: _num(sample.tempC),
   };
   const samples = [row, ...(state.samples || [])].slice(0, MAX_SAMPLES);
   db.setState(STATE_KEY, JSON.stringify({ samples, notifiedFor: state.notifiedFor || null }));
@@ -323,4 +348,5 @@ module.exports = {
   record, samples, current, shouldAnnounce,
   STATE_KEY, MAX_SAMPLES,
   LOAD_WARN, TASKS_WARN, D_SUSTAINED, D_SAMPLES_REQUIRED, NVRAM_LOW, WATCHER_STALE_MIN,
+  TEMP_WARN, TEMP_CRITICAL,
 };

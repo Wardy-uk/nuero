@@ -8,7 +8,7 @@
 // actually looked like in each state.
 const test = require('node:test');
 const assert = require('node:assert');
-const { assess, sustainedD, headline, D_SUSTAINED } = require('./router-health');
+const { assess, sustainedD, headline, D_SUSTAINED, TEMP_WARN, TEMP_CRITICAL } = require('./router-health');
 
 const NOW = new Date('2026-09-14T20:00:00Z');
 const at = (minsAgo) => new Date(NOW.getTime() - minsAgo * 60000).toISOString();
@@ -157,4 +157,54 @@ test('every assessment declares the thresholds are provisional', () => {
 
 test('D_SUSTAINED sits clear of the measured baseline of zero', () => {
   assert.ok(D_SUSTAINED > 0, 'a bar of 0 would fire on every healthy sample');
+});
+
+// ── Temperature (restored 18 Sep 2026) ───────────────────────────────────────
+// The 14 Sep monitor rewrite dropped temperature: the old watcher collected it,
+// the replacement POSTed a payload without it, and `record`'s whitelist would
+// have discarded it anyway. So the overheating alarm was dark for four days
+// with every light green. Fixtures are the live readings — 68C idle, measured
+// on the box 18 Sep 2026.
+
+test('the idle reading raises nothing', () => {
+  const a = assess([healthy({ tempC: 68 })], NOW);
+  assert.equal(a.state, 'ok');
+  assert.deepEqual(a.issues, []);
+});
+
+test('hot warns, unstable is critical', () => {
+  const warm = assess([healthy({ tempC: TEMP_WARN })], NOW);
+  assert.equal(warm.issues.length, 1);
+  assert.equal(warm.issues[0].level, 'warn');
+  assert.match(warm.issues[0].title, /82/);
+
+  const hot = assess([healthy({ tempC: TEMP_CRITICAL })], NOW);
+  assert.equal(hot.issues[0].level, 'critical');
+});
+
+// ⚠ THE RULE WORTH PINNING. `degrading` means the fork exhaustion is building.
+// A hot router is a DIFFERENT failure, so temperature must never produce that
+// state — reporting a wedge that is not happening sends the reader to reboot a
+// box whose real problem is airflow.
+test('overheating is not the wedge — state stays ok', () => {
+  const a = assess([healthy({ tempC: 90 })], NOW);
+  assert.equal(a.state, 'ok');
+  assert.equal(a.issues[0].level, 'critical');
+});
+
+test('no reading is silence, never a cold router', () => {
+  // null and "cool" are different facts; only one of them is an all-clear.
+  for (const v of [null, undefined]) {
+    const a = assess([healthy({ tempC: v })], NOW);
+    assert.deepEqual(a.issues, [], `tempC=${v} should raise nothing`);
+  }
+});
+
+// ⚠ ONE definition of "too hot". pi-health judges the same reading from the
+// file the watcher writes; if it restates the numbers the two surfaces drift.
+test('pi-health imports the thresholds rather than restating them', () => {
+  const src = require('fs').readFileSync(require.resolve('./pi-health.js'), 'utf8');
+  assert.match(src, /require\('\.\/router-health'\)/, 'positive control: pi-health must import them');
+  assert.ok(!/rt\.tempC != null && rt\.tempC >= 8[25]/.test(src),
+    'pi-health must not carry its own temperature literals');
 });

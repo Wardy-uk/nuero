@@ -334,6 +334,10 @@ async function getTopProcesses(limit = 6) {
 // load, and pi-health stays a read-only local collector.
 const ROUTER_STATUS = '/mnt/data/logs/router-status.json';
 const ROUTER_STALE_MS = 10 * 60 * 1000;
+// ⚠ IMPORTED, never restated. router-health judges the same reading from the
+// POSTed sample; a second pair of numbers here is how this panel and the senses
+// row come to disagree about whether the router is overheating.
+const { TEMP_WARN: ROUTER_TEMP_WARN, TEMP_CRITICAL: ROUTER_TEMP_CRITICAL } = require('./router-health');
 
 async function getRouter() {
   if (!IS_LINUX) return null;
@@ -600,8 +604,8 @@ function assess(s) {
     } else {
       if (!rt.routerUp) add('critical', 'Router unreachable', 'the Pi cannot ping the router \u2014 it may have wedged');
       else if (!rt.netUp) add('critical', 'No internet through the router', 'router answers but traffic is not flowing');
-      if (rt.tempC != null && rt.tempC >= 85) add('critical', `Router ${rt.tempC}\u00b0C`, 'this model becomes unstable above ~80\u00b0C');
-      else if (rt.tempC != null && rt.tempC >= 82) add('warn', `Router ${rt.tempC}\u00b0C`, 'running hot for an RT-AC68U');
+      if (rt.tempC != null && rt.tempC >= ROUTER_TEMP_CRITICAL) add('critical', `Router ${rt.tempC}\u00b0C`, 'this model becomes unstable above ~80\u00b0C');
+      else if (rt.tempC != null && rt.tempC >= ROUTER_TEMP_WARN) add('warn', `Router ${rt.tempC}\u00b0C`, 'running hot for an RT-AC68U');
       if (rt.rebootsToday > 0) add('warn', `Router rebooted ${rt.rebootsToday}\u00d7 today`, 'router-watch had to recover it');
       if (rt.linkDrops24h >= 3) add('warn', `${rt.linkDrops24h} router link drops in 24h`, 'the link between Pi and router keeps flapping');
     }

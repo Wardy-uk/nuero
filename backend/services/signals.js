@@ -289,7 +289,12 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
     const up = a.latest && a.latest.uptimeSec != null
       ? `up ${age(Math.round(a.latest.uptimeSec / 60))}`
       : null;
-    return { state: 'live', ageMinutes: a.ageMinutes, detail: up };
+    // ⚠ A READER for the stored temperature. A value written to the durable
+    // record and rendered by nothing is the failure this codebase names more
+    // than any other — it is how the wrong explanation survives uncorrected.
+    // JUDGED in router-health, RENDERED here.
+    const t = a.latest && a.latest.tempC != null ? `${a.latest.tempC}°C` : null;
+    return { state: 'live', ageMinutes: a.ageMinutes, detail: [up, t].filter(Boolean).join(' · ') || null };
   });
 
   // ── RescueTime ────────────────────────────────────────────────────────────
