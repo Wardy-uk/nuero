@@ -35,6 +35,12 @@ const post = (body) => fetch(`${base}/api/activity/tab`, {
   body: JSON.stringify(body),
 });
 
+const touch = (body) => fetch(`${base}/api/activity/interact`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
 test.before(async () => {
   await db.init();
   const app = express();
@@ -95,15 +101,65 @@ test('⚠ a checkin: is written by routes/location.js and is NOT a screen', asyn
   assert.ok(body.excluded.checkins >= 1, 'and what was excluded is COUNTED, not silently dropped');
 });
 
-test('⚠ getTabOpenFirstSeen reads surface out of the JSON — the SQL and the JS must agree', async () => {
+test('⚠ the first-seen aggregate reads surface AND kind out of the JSON in SQL', async () => {
   // The pure suite stubs this. If `json_extract` ever disagreed with what
   // `logActivity` writes, every surface would read as never-instrumented and
   // the whole grid would blank out while still answering 200.
-  const seen = db.getTabOpenFirstSeen();
-  const bySurface = Object.fromEntries(seen.map((r) => [r.surface, r.first_seen]));
-  assert.ok(bySurface.neuro, 'NEURO rows were found by the aggregate');
-  assert.ok(bySurface.saim, 'and SAiM\'s were told apart from them IN SQL');
-  assert.equal(bySurface.nova, undefined, 'the refused surface never reached the store');
+  //
+  // It records its OWN interaction rather than relying on a test below having
+  // run: a test that only passes in file order is one that breaks the first
+  // time somebody reorders the file, for a reason that looks like a real bug.
+  await touch({ tab: 'todos', surface: 'neuro', count: 3 });
+
+  const seen = db.getScreenEventFirstSeen();
+  const map = Object.fromEntries(seen.map((r) => [`${r.event_type}::${r.surface}`, r.first_seen]));
+  assert.ok(map['tab_open::neuro'], 'NEURO opens were found by the aggregate');
+  assert.ok(map['tab_open::saim'], 'and SAiM was told apart from it IN SQL');
+  assert.ok(map['screen_interact::neuro'], 'and an interaction is a SEPARATE row from an open');
+  assert.equal(map['tab_open::nova'], undefined, 'the refused surface never reached the store');
+});
+
+test('⚠ an interaction is recorded, carries its batch COUNT, and lands on the same row', async () => {
+  // Asserted as a DELTA, not an absolute: another test in this file records
+  // interactions too, and an absolute would break the moment the file is
+  // reordered — for a reason that looks exactly like a real bug.
+  const read = async () => {
+    const body = await (await fetch(`${base}/api/screen-usage`)).json();
+    return body.rows.find((r) => r.screen === 'todos' && r.surface === 'neuro');
+  };
+  const before = (await read())?.interacted.total ?? 0;
+  assert.equal((await touch({ tab: 'todos', surface: 'neuro', count: 14 })).status, 200);
+  const row = await read();
+
+  assert.ok(row.opened.total >= 1, 'the open is still there on the same row');
+  assert.equal(row.interacted.total - before, 14, 'the batch of 14 clicks arrived as 14, not as 1');
+});
+
+test('⚠ the route reports what it STORED, so a clamped flush is visible to the client', async () => {
+  const res = await touch({ tab: 'chat', surface: 'saim', count: 99999 });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.recorded, 500, 'a runaway count is clamped, and the client is told the real figure');
+});
+
+test('an interaction with an unrecognised surface is REFUSED like an open is', async () => {
+  const res = await touch({ tab: 'radar', surface: 'nova', count: 3 });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /unknown surface/);
+});
+
+test('⚠⚠ interactions do NOT land in tab_open — the nudge picker must not see them', async () => {
+  // `nudges.js` filters strictly on `event_type === 'tab_open'` to choose what
+  // to nudge about, and `outcomes.js` counts them into the Friday reflection.
+  // If interactions folded into that type, both would silently change meaning
+  // at roughly ten times the volume.
+  const all = db.getScreenEventsSince('2000-01-01');
+  const opens = all.filter((r) => r.event_type === 'tab_open');
+  const touches = all.filter((r) => r.event_type === 'screen_interact');
+  assert.ok(opens.length > 0 && touches.length > 0, 'positive control — both kinds really were stored');
+  for (const r of opens) {
+    assert.equal(JSON.parse(r.event_data).count, undefined, 'a tab_open row must never carry an interaction batch');
+  }
 });
 
 test('⚠ an unreadable VANTAGE is a named gap, never an unused surface', async () => {
@@ -112,6 +168,7 @@ test('⚠ an unreadable VANTAGE is a named gap, never an unused surface', async 
   assert.equal(v.known, false);
   assert.ok(v.reason, 'it says WHY, or the panel can only render a blank row');
   assert.equal(v.opens, 0);
+  assert.deepEqual(v.since, { opened: null, interacted: null });
   assert.ok(body.gaps.some((g) => /VANTAGE/i.test(g)));
   assert.ok(body.findings.some((f) => f.severity === 'gap' && f.surface === 'vantage'));
 });

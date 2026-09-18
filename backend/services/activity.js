@@ -9,6 +9,11 @@ const db = require('../db/database');
 // lands as a named surface rather than as a fourth one nobody rendered.
 const SURFACES = new Set(['neuro', 'saim', 'vantage']);
 
+// The most control-uses one flush may claim. Generous against real use (a
+// flush is seconds of clicking) and small enough that a runaway cannot
+// dominate the heatmap's scale.
+const MAX_INTERACTIONS_PER_FLUSH = 500;
+
 /**
  * ⚠ An UNRECOGNISED surface is refused back to the caller, never normalised to
  * 'neuro' — "I did not understand you" and "this came from the desktop" are
@@ -25,6 +30,35 @@ function trackTabOpen(tabName, surface) {
     throw new Error(`unknown surface "${surface}"`);
   }
   db.logActivity('tab_open', surface ? { tab: tabName, surface } : { tab: tabName });
+}
+
+/**
+ * A batch of control uses on one screen.
+ *
+ * ⚠ A COALESCED COUNT, not one row per click. The client buffers and flushes,
+ * because a busy TodoPanel session is dozens of clicks a minute and a request
+ * (and a row) each would make the measurement more expensive than the thing
+ * measured. `wins` folds commits one-row-per-repo-per-day for the same reason.
+ *
+ * ⚠ ITS OWN EVENT TYPE, never `tab_open` with a flag — `nudges.js` and
+ * `outcomes.js` filter strictly on `tab_open`, so folding these in would
+ * silently change what a nudge targets and what the Friday reflection counts.
+ *
+ * ⚠ The count is BOUNDED. A stuck listener or a hostile client could otherwise
+ * put one enormous number in a cell and flatten every other row on the grid to
+ * invisible, which destroys the whole page rather than one figure.
+ */
+function trackScreenInteract(tabName, surface, count) {
+  if (surface != null && !SURFACES.has(surface)) {
+    throw new Error(`unknown surface "${surface}"`);
+  }
+  const n = typeof count === 'number' && Number.isFinite(count) && count > 0
+    ? Math.min(Math.floor(count), MAX_INTERACTIONS_PER_FLUSH)
+    : 1;
+  const data = { tab: tabName, count: n };
+  if (surface) data.surface = surface;
+  db.logActivity('screen_interact', data);
+  return n;
 }
 
 function trackStandupDone(hour, withNote = false) {
@@ -452,7 +486,9 @@ function applySuggestion(id, params) {
 
 module.exports = {
   trackTabOpen,
+  trackScreenInteract,
   SURFACES,
+  MAX_INTERACTIONS_PER_FLUSH,
   trackStandupDone,
   trackNudgeSnooze,
   trackNudgeDismiss,

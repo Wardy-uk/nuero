@@ -74,6 +74,16 @@ const reportScreen = (tab) =>
     body: JSON.stringify({ tab, surface: 'saim' }),
   });
 
+// A coalesced batch of control uses, through the same `activity/tab` door's
+// sibling. Both are exact-path doors on the proxy — the segment is NOT open.
+const reportInteractions = ({ tab, surface, count, keepalive }) =>
+  fetch('/api/activity/interact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tab, surface, count }),
+    keepalive,
+  });
+
 function AppShell() {
   const { now } = useSaimState();
   const [active, setActive] = useState(DEFAULT_TAB);
@@ -114,7 +124,7 @@ function AppShell() {
   // passthrough, which reports failure as a 200 carrying `available:false` —
   // the hook treats both that and `poolAvailable:false` as blind.
   const fieldDrive = useFieldDrive(fetchAttentionForField, active !== 'surface');
-  useScreenTracking(active, reportScreen);
+  useScreenTracking(active, reportScreen, reportInteractions);
 
   // ⚠ The capture outbox only drains when something starts it, and only the
   // phone's shell did. So a note captured at the desk while NEURO was briefly

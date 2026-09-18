@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import interactions from '../../shared/interaction-buffer.cjs';
 import { apiUrl, getPin, setPin, clearPin } from './api';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
@@ -285,6 +286,34 @@ function AuthenticatedApp() {
       body: JSON.stringify({ tab: activeView, surface: 'neuro' })
     }).catch(() => {}); // fire and forget — never block UI
   }, [activeView]);
+
+  // Control uses on whatever screen is showing, coalesced and flushed.
+  //
+  // ⚠ Attached ONCE with a ref for the current view, not per view: the buffer
+  // is keyed by screen and the tab is read at event time, so re-attaching on
+  // every navigation would tear down a pending flush and lose exactly the
+  // clicks made on the screen being left.
+  const viewRef = React.useRef(activeView);
+  viewRef.current = activeView;
+  React.useEffect(() => {
+    const buffer = interactions.createInteractionBuffer({
+      surface: 'neuro',
+      send: ({ tab, surface, count, keepalive }) => fetch(apiUrl('/api/activity/interact'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tab, surface, count }),
+        keepalive,
+      }),
+    });
+    const detach = interactions.attachInteractionListener({
+      // ⚠ The CONTENT area only. The sidebar and the bottom nav sit outside it,
+      // so navigating away is not counted as working on the screen you left.
+      scope: '.main-panel',
+      getTab: () => viewRef.current,
+      buffer,
+    });
+    return () => { buffer.flush(); detach(); };
+  }, []);
 
   const handleNavigate = (view, context = null) => {
     if (view === 'chat') {

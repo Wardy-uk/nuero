@@ -28,26 +28,41 @@ const PANEL = path.resolve(__dirname, '..', '..', 'frontend', 'src', 'components
 // The payload shape `GET /api/screen-usage` returns, with the three cell states
 // present in one row: unknown (masked), zero, and real counts.
 const WEEKS = ['2026-08-24', '2026-08-31', '2026-09-07', '2026-09-14'];
+const hrs = (o) => Object.assign(new Array(24).fill(0), o);
+
 const PAYLOAD = {
-  generatedAt: '2026-09-17T09:00:00.000Z',
+  generatedAt: '2026-09-18T09:00:00.000Z',
   window: { weeks: 4, from: WEEKS[0], to: '2026-09-20' },
   weeks: WEEKS,
-  measures: 'opens, not time spent on a screen',
+  kinds: ['opened', 'interacted'],
+  measures: {
+    opened: 'times a screen was opened — not time spent on it',
+    interacted: 'times a control on it was used — a screen you read and never click is not a screen that failed',
+  },
   surfaces: [
-    { id: 'neuro', label: 'NEURO', known: true, since: '2026-06-22', screens: 2, opens: 40 },
-    { id: 'saim', label: 'SAiM', known: true, since: '2026-09-14', screens: 1, opens: 6 },
-    { id: 'vantage', label: 'VANTAGE', known: false, reason: 'VANTAGE database not found at /mnt/data/vantage-data/vantage.db', screens: 0, opens: 0, since: null },
+    { id: 'neuro', label: 'NEURO', known: true, since: { opened: '2026-06-22', interacted: '2026-09-14' }, screens: 3, opens: 40, interactions: 90 },
+    { id: 'saim', label: 'SAiM', known: true, since: { opened: '2026-09-14', interacted: '2026-09-14' }, screens: 1, opens: 6, interactions: 2 },
+    { id: 'vantage', label: 'VANTAGE', known: false, reason: 'VANTAGE database not found at /mnt/data/vantage-data/vantage.db', screens: 0, opens: 0, interactions: 0, since: { opened: null, interacted: null } },
   ],
   rows: [
-    { surface: 'neuro', screen: 'today', total: 28, weeks: [8, 9, 10, 1], hours: Object.assign(new Array(24).fill(0), { 9: 12, 14: 22 }), lastOpened: '2026-09-17' },
-    { surface: 'neuro', screen: 'strava', total: 0, weeks: [0, 0, 0, 0], hours: new Array(24).fill(0), lastOpened: '2026-06-30' },
-    { surface: 'saim', screen: 'surface', total: 6, weeks: [null, null, null, 6], hours: Object.assign(new Array(24).fill(0), { 20: 6 }), lastOpened: '2026-09-17' },
+    // Worked in: opens AND interactions.
+    { surface: 'neuro', screen: 'todos', opened: { total: 28, weeks: [8, 9, 10, 1], hours: hrs({ 9: 12, 14: 22 }), last: '2026-09-17' },
+      interacted: { total: 90, weeks: [null, null, null, 90], hours: hrs({ 14: 90 }), last: '2026-09-17' } },
+    // ⚠ READ, never clicked — the case the whole panel must not present as failure.
+    { surface: 'neuro', screen: 'briefing', opened: { total: 12, weeks: [3, 3, 3, 3], hours: hrs({ 8: 12 }), last: '2026-09-17' },
+      interacted: { total: 0, weeks: [null, null, null, 0], hours: hrs({}), last: null } },
+    // Quiet on both.
+    { surface: 'neuro', screen: 'strava', opened: { total: 0, weeks: [0, 0, 0, 0], hours: hrs({}), last: '2026-06-30' },
+      interacted: { total: 0, weeks: [null, null, null, 0], hours: hrs({}), last: null } },
+    { surface: 'saim', screen: 'surface', opened: { total: 6, weeks: [null, null, null, 6], hours: hrs({ 20: 6 }), last: '2026-09-17' },
+      interacted: { total: 2, weeks: [null, null, null, 2], hours: hrs({ 20: 2 }), last: '2026-09-17' } },
   ],
-  hourTotals: Object.assign(new Array(24).fill(0), { 9: 12, 14: 22, 20: 6 }),
+  hourTotals: { opened: hrs({ 8: 12, 9: 12, 14: 22, 20: 6 }), interacted: hrs({ 14: 90, 20: 2 }) },
   excluded: { checkins: 4, outsideWindow: 0 },
   findings: [
     { severity: 'gap', surface: 'vantage', title: 'VANTAGE could not be read', detail: 'database not found' },
-    { severity: 'note', surface: 'saim', title: 'SAiM has only been recorded since 2026-09-14', detail: 'Earlier weeks are blank because nothing was watching, not because nothing was opened.' },
+    { severity: 'note', surface: 'neuro', kind: 'interacted', title: 'NEURO interactions only recorded since 2026-09-14', detail: 'Earlier weeks are blank because nothing was watching, not because nothing happened.' },
+    { severity: 'note', surface: 'neuro', kind: 'interacted', title: '1 NEURO screen was opened but never clicked', detail: 'Read, not worked — which for a dashboard or a briefing is the screen doing its job, not failing at it: briefing' },
   ],
   gaps: ['VANTAGE database not found at /mnt/data/vantage-data/vantage.db'],
 };
@@ -98,8 +113,8 @@ test.before(async () => {
 test('positive control — the grid actually rendered', () => {
   assert.match(html, /Screen usage/);
   assert.match(html, /su-cell/, 'no cells drawn at all — the harness is broken, not the panel');
-  assert.match(html, /today/);
-  assert.match(html, /surface/);
+  assert.match(html, /todos/);
+  assert.match(html, /briefing/);
 });
 
 test('⚠⚠ an UNMEASURED week is drawn differently from an EMPTY one', () => {
@@ -134,13 +149,14 @@ test('⚠⚠ an UNMEASURED week is drawn differently from an EMPTY one', () => {
 test('⚠ an unmeasured cell SAYS it was not measured, in words, on hover', () => {
   assert.match(
     html,
-    /not measured; nothing was recording this surface yet/,
+    /not measured; nothing was recording this yet/,
     'colour alone cannot carry this — the low end of the ramp is under 3:1 against the card'
   );
 });
 
 test('⚠ every cell carries its exact count — the contrast warning obliges visible values', () => {
   assert.match(html, /10 opens/);
+  assert.match(html, /90 interactions/);
   assert.match(html, /1 open[^s]/, 'singular, so a single open does not read as "1 opens"');
 });
 
@@ -152,13 +168,64 @@ test('⚠ an unreadable surface renders as a GAP naming why, never as an empty s
 });
 
 test('⚠ a freshly instrumented surface says so on the panel, not just in the payload', () => {
-  assert.match(html, /only been recorded since/);
-  assert.match(html, /nothing was watching, not because nothing was opened/);
+  assert.match(html, /only recorded since/);
+  assert.match(html, /nothing was watching, not because nothing happened/);
 });
 
-test('⚠ it states what it MEASURES — opens, never time', () => {
-  assert.match(html, /opens, not time spent on a screen/);
-  assert.match(html, /read for an hour reads/, 'and says plainly what that costs the reading');
+test('⚠⚠ a screen READ and never clicked is named as such, not left to look like failure', () => {
+  // The single most misreadable thing on this page: Briefing has 4 controls and
+  // TodoPanel has 99, so the interacted half will ALWAYS show the reading
+  // screens near-empty. Beside a full accessed half that reads as an
+  // indictment of the screens that work best.
+  assert.match(html, /opened but never clicked/);
+  assert.match(html, /doing its job, not failing at it/);
+});
+
+test('⚠ ACCESSED is on the left and INTERACTED WITH on the right, sharing one row label', () => {
+  const accessed = html.indexOf('>Accessed<');
+  const interacted = html.indexOf('>Interacted with<');
+  assert.ok(accessed > -1 && interacted > -1, 'both column groups are present');
+  assert.ok(accessed < interacted, 'accessed is kept on the LEFT, as asked');
+
+  // One row label per screen, not one per grid — the comparison this answers
+  // is about a single row, and repeating the name would split that sentence.
+  const labels = html.match(/<span class="su-screen">todos<\/span>/g) || [];
+  assert.equal(labels.length, 2, 'once in the week grid, once in the hour grid — never twice within one');
+});
+
+test('⚠⚠ each half states its OWN scale, because brightness must not be compared across', () => {
+  // `TodoPanel` has 99 controls, so interaction counts dwarf every open count.
+  // One shared scale would wash the accessed half out to nothing.
+  const scales = [...html.matchAll(/busiest cell <!-- -->(\d+)/g)].map((m) => Number(m[1]));
+  assert.ok(scales.length >= 4, 'both grids declare a scale for both halves');
+  assert.notDeepEqual(scales[0], scales[1], 'the two halves really are on different scales here');
+  assert.match(html, /scaled to its own busiest\s+cell/);
+  assert.match(html, /never across the divider/);
+});
+
+test('⚠ the divider is a real rule, not a gap — a two-scale grid must not read as one', () => {
+  assert.match(html, /su-kind-split/);
+});
+
+test('⚠⚠ per-KIND masking survives to the screen: one row, full left, blank right', () => {
+  // NEURO has opens since June and interactions since September. `todos` must
+  // show real counts on the left and HATCHED cells on the right for the same
+  // weeks — if the right half showed zeros it would read as "opened it
+  // constantly, never touched a thing".
+  const row = html.slice(html.indexOf('>todos<'), html.indexOf('>briefing<'));
+  assert.ok(row.length > 200, 'positive control — the todos row was isolated');
+  assert.match(row, /accessed · week of 24 Aug — 8 opens/, 'the accessed half has a real count');
+  assert.match(row, /interacted with · week of 24 Aug — not measured/, 'the interacted half is unmeasured');
+  assert.ok(
+    !/interacted with · week of 24 Aug — 0 interactions/.test(row),
+    'it must NOT read as a measured zero'
+  );
+});
+
+test('⚠ it states what BOTH halves measure, and defends the reading screens', () => {
+  assert.match(html, /not time spent on it/);
+  assert.match(html, /not a screen that failed/,
+    'the caveat that stops the interacted grid reading as a report card');
 });
 
 test('excluded check-ins are named rather than silently filtered', () => {

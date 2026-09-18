@@ -48,6 +48,7 @@ export const classification = {
   // false answer — see privateOperations), it is NOTED, so a caller has to
   // choose to corrupt it rather than do so by accident.
   vantage_post_screen_open: 'write',
+  vantage_post_screen_interact: 'write',
   vantage_post_findings: 'write',
   vantage_put_findings_by_id: 'write',
   vantage_delete_findings_by_id: 'write',
@@ -126,6 +127,7 @@ export const paramEnums = {
 
 // Guidance a route string cannot carry.
 export const notes = {
+  vantage_post_screen_interact: 'Records a batch of CONTROL USES on a VANTAGE view (a button, link, input or select), for the NEURO screen-usage heatmap. Same rule as screen-open: call it only to reflect real navigation. A view that is read and never clicked is not a view that failed.',
   vantage_post_screen_open: 'Records that a VANTAGE view was OPENED, for the NEURO screen-usage heatmap. Call this only to reflect a real navigation — it measures what Nick actually looked at, and a synthetic open is indistinguishable from a real one once stored.',
   vantage_get_findings_auto_push: 'Dry run: shows which findings WOULD be pushed to NEURO. Changes nothing.',
   vantage_post_findings_auto_push: 'Applies the auto-push: writes NEURO tasks or pending actions for qualifying findings. Run the GET dry run first and confirm with the user.',
@@ -209,6 +211,12 @@ export const bodySchemas = {
   // findings.add({ title, detail, source, severity, foundOn, action, raisedWith, raisedOn, tense })
   vantage_post_screen_open: z.strictObject({
     screen: z.enum(VANTAGE_VIEWS),
+  }),
+  vantage_post_screen_interact: z.strictObject({
+    screen: z.enum(VANTAGE_VIEWS),
+    // Bounded here as well as server-side: the server must not trust a client,
+    // and a client should not knowingly send what will be clamped.
+    count: z.number().int().min(1).max(500).optional(),
   }),
   vantage_post_findings: z.strictObject({
     title: text,

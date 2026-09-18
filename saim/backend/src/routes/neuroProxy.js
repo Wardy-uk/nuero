@@ -118,6 +118,7 @@ const DOORS = new Set([
 // standing between those two facts.
 const EXACT_DOORS = new Set([
   '/activity/tab',
+  '/activity/interact',
 ]);
 
 /**

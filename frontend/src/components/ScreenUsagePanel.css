@@ -214,6 +214,37 @@
 .su-step-2 { background: #5aa3f9; }
 .su-step-3 { background: #93c6ff; }
 
+/* ── The two column groups ────────────────────────────────────────────────
+ *
+ * Accessed on the left, interacted on the right, sharing one row label.
+ *
+ * ⚠ THE DIVIDER IS LOAD-BEARING, not decoration. Each half is scaled to its
+ * OWN busiest cell — they have to be, since a screen with 99 controls produces
+ * interaction counts that dwarf every open count on the page — so brightness
+ * compares DOWN a column and never ACROSS. A real rule makes that boundary
+ * visible; a gap alone would read as one continuous grid on two scales, which
+ * is the most misleading thing this page could do.
+ */
+.su-kindrow th { padding-bottom: 6px; }
+
+.su-kindhead {
+  text-align: left;
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  padding-left: 2px;
+}
+.su-kind-scale {
+  display: block;
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+.su-kind-split { border-left: 1px solid var(--border); padding-left: 12px !important; }
+.su-grid td.su-kind-split { padding-left: 12px; }
+
 /* ── Numbers (the table view) ─────────────────────────────────────────── */
 
 .su-numbers { border-spacing: 0; font-family: var(--font-mono); }

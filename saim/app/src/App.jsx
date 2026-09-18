@@ -78,6 +78,17 @@ const reportScreen = (tab) =>
     body: JSON.stringify({ tab, surface: 'saim' }),
   });
 
+// A coalesced batch of control uses. `keepalive` so a flush started as the app
+// is backgrounded outlives the page — and a fetch rather than `sendBeacon`,
+// which cannot carry the PIN header and would push it into a URL.
+const reportInteractions = ({ tab, surface, count, keepalive }) =>
+  fetch(apiUrl('/api/activity/interact'), {
+    method: 'POST',
+    headers: authHeaders('/api/activity/interact'),
+    body: JSON.stringify({ tab, surface, count }),
+    keepalive,
+  });
+
 function readLaunchIntent() {
   if (typeof window === 'undefined') return null;
   const params = new URLSearchParams(window.location.search);
@@ -239,7 +250,7 @@ export default function App() {
   // ⚠ Her substrate is now DRIVEN on every screen, not hardcoded. Skipped on
   // the Surface, which has a live read of its own and mounts its own field.
   const fieldDrive = useFieldDrive(fetchAttentionForField, active !== 'surface');
-  useScreenTracking(active, reportScreen);
+  useScreenTracking(active, reportScreen, reportInteractions);
 
 
   // ⚠⚠ THE MENU MINIMISES ITSELF WHEN SHE IS BACK ON SCREEN. `navOpen` was only

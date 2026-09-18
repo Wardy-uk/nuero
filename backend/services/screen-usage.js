@@ -80,6 +80,14 @@ const DEFAULT_WEEKS = 12;
 // Not a screen. See the header.
 const CHECKIN_PREFIX = 'checkin:';
 
+// ⚠ INTERACTIONS ARE THEIR OWN EVENT TYPE, never `tab_open` with a flag.
+// `nudges.js` and `outcomes.js` both filter strictly on `event_type ===
+// 'tab_open'` — the first to pick a nudge target, the second for a count in the
+// Friday reflection — so folding interactions into that type would silently
+// change what both of them mean, at roughly ten times the volume.
+const OPEN_EVENT = 'tab_open';
+const INTERACT_EVENT = 'screen_interact';
+
 // VANTAGE's own default, kept in step with `estate-cost.js` rather than a
 // second opinion about where that file lives.
 const DEFAULT_VANTAGE_DB = '/mnt/data/vantage-data/vantage.db';
@@ -150,45 +158,69 @@ function weekEndKey(mondayKey) {
  * An open is `{ surface, screen, dateKey, hour }`. Anything without a screen or
  * a parseable date is DROPPED AND COUNTED, never guessed into a bucket.
  */
-function foldOpens(opens, columns) {
+const KINDS = ['opened', 'interacted'];
+
+/** An empty per-kind bucket. */
+function bucket(columns) {
+  return { total: 0, weeks: columns.map(() => 0), hours: new Array(24).fill(0), last: null };
+}
+
+/**
+ * Fold raw events into `{ surface, screen } -> { opened, interacted }`.
+ *
+ * An event is `{ kind, surface, screen, dateKey, hour, count }`. `count` is how
+ * many acts the row stands for: an OPEN is always one, and an INTERACTION row
+ * carries a batch, because the client coalesces clicks rather than posting one
+ * request per button press (`wins`' one-row-per-repo-per-day rule).
+ *
+ * Anything without a screen or a parseable date is DROPPED AND COUNTED, never
+ * guessed into a bucket.
+ */
+function foldEvents(events, columns) {
   const index = new Map(columns.map((k, i) => [k, i]));
   const rows = new Map();
   let dropped = 0;
   let outsideWindow = 0;
 
-  for (const o of opens || []) {
-    const screen = o && typeof o.screen === 'string' ? o.screen.trim() : '';
+  for (const e of events || []) {
+    const screen = e && typeof e.screen === 'string' ? e.screen.trim() : '';
     if (!screen) { dropped++; continue; }
 
-    const wk = weekKeyOf(o.dateKey);
+    const wk = weekKeyOf(e.dateKey);
     if (!wk) { dropped++; continue; }
 
-    const surface = knownSurface(o.surface) ? o.surface : 'neuro';
+    const kind = KINDS.includes(e.kind) ? e.kind : 'opened';
+    const surface = knownSurface(e.surface) ? e.surface : 'neuro';
     const id = `${surface}::${screen}`;
     let row = rows.get(id);
     if (!row) {
-      row = {
-        surface,
-        screen,
-        total: 0,
-        weeks: columns.map(() => 0),
-        hours: new Array(24).fill(0),
-        lastOpened: null,
-      };
+      // ⚠ EVERY row carries BOTH kinds, whether or not it has either. A screen
+      // that is opened and never touched must still render an interacted half,
+      // or the grid would simply have no row there and the absence would read
+      // as the screen not existing rather than as work not happening on it.
+      row = { surface, screen, opened: bucket(columns), interacted: bucket(columns) };
       rows.set(id, row);
     }
+    const b = row[kind];
 
-    // The window bounds the GRID, not the totals a row reports about itself —
-    // `lastOpened` is what says a screen has gone quiet, and truncating it to
-    // the window would make every long-dead screen claim it was last opened
-    // twelve weeks ago.
-    if (!row.lastOpened || o.dateKey > row.lastOpened) row.lastOpened = o.dateKey;
+    // ⚠ A COUNT, not a 1. An interaction row stands for a batch of clicks.
+    // Tested for number BEFORE any guard — `Number(null)` is 0 and
+    // `Number(undefined)` is NaN, and a coerced count silently drops a real
+    // batch to nothing or poisons the total.
+    const n = typeof e.count === 'number' && Number.isFinite(e.count) && e.count > 0
+      ? Math.floor(e.count)
+      : 1;
+
+    // The window bounds the GRID, not what a row reports about itself — `last`
+    // is what says a screen has gone quiet, and truncating it to the window
+    // would make every long-dead screen claim it was last seen twelve weeks ago.
+    if (!b.last || e.dateKey > b.last) b.last = e.dateKey;
 
     const col = index.get(wk);
     if (col === undefined) { outsideWindow++; continue; }
 
-    row.total++;
-    row.weeks[col]++;
+    b.total += n;
+    b.weeks[col] += n;
 
     // An hour outside 0–23 is not an hour. It cannot come from `logActivity`,
     // but it can come from VANTAGE's own store, which is not ours to trust.
@@ -196,57 +228,75 @@ function foldOpens(opens, columns) {
     // ⚠ TESTED FOR NUMBER FIRST, never coerced. `Number(null)` and `Number('')`
     // are both 0 and `Number.isInteger(0)` is true, so a MISSING hour silently
     // became MIDNIGHT — an absence rendered as a real reading, in the one bucket
-    // where "he was on this screen at 3am" looks odd enough to be believed. The
-    // same species as a sample count read as a blood pressure. Caught by the
-    // test, not by reading.
-    const h = o.hour;
-    if (typeof h === 'number' && Number.isInteger(h) && h >= 0 && h <= 23) row.hours[h]++;
+    // where "he was on this screen at 3am" looks odd enough to be believed.
+    const h = e.hour;
+    if (typeof h === 'number' && Number.isInteger(h) && h >= 0 && h <= 23) b.hours[h] += n;
   }
 
   return { rows: [...rows.values()], dropped, outsideWindow };
 }
 
 /**
- * Blank out the weeks a surface could not have reported in.
+ * Blank out the weeks a surface could not have reported in, PER KIND.
  *
  * ⚠ THIS IS THE HONEST HALF OF THE WHOLE FEATURE. A week that ENDED before the
  * surface first reported is `null` — "I could not see it" — and a week that
  * merely contains the start date stays a number, because part of it WAS
  * measured and zeroing it would hide the day instrumentation landed.
+ *
+ * ⚠⚠ PER KIND, AND THAT IS NOT A DETAIL. NEURO has recorded OPENS since
+ * 22 June 2026 and INTERACTIONS only since 18 September — so one surface has
+ * two different answers to "when did this start", and a `since` keyed on the
+ * surface alone would fill eleven weeks of its interacted grid with ZEROS.
+ * Side by side with a full accessed grid that reads as "he opens NEURO
+ * constantly and never touches anything", which is false and is exactly the
+ * lie this masking exists to prevent — with the two grids adjacent it would be
+ * far more legible, and far more wrong, than the original single-grid case.
  */
-function maskUnknownWeeks(rows, columns, sinceBySurface) {
+function maskUnknownWeeks(rows, columns, sinceByKind) {
   for (const row of rows) {
-    const since = sinceBySurface[row.surface];
-    if (!since) continue;
-    for (let i = 0; i < columns.length; i++) {
-      if (weekEndKey(columns[i]) < since) row.weeks[i] = null;
+    for (const kind of KINDS) {
+      const since = sinceByKind[`${row.surface}::${kind}`];
+      if (!since) continue;
+      for (let i = 0; i < columns.length; i++) {
+        if (weekEndKey(columns[i]) < since) row[kind].weeks[i] = null;
+      }
     }
   }
   return rows;
 }
 
-/** Column totals across every row, for the hour-of-day grid's own scale. */
+/** Column totals per kind, so each grid is scaled by its own busiest hour. */
 function hourTotals(rows) {
-  const out = new Array(24).fill(0);
+  const out = { opened: new Array(24).fill(0), interacted: new Array(24).fill(0) };
   for (const row of rows) {
-    for (let h = 0; h < 24; h++) out[h] += row.hours[h] || 0;
+    for (const kind of KINDS) {
+      for (let h = 0; h < 24; h++) out[kind][h] += row[kind].hours[h] || 0;
+    }
   }
   return out;
 }
 
 /**
- * Rank rows for display: most-opened first, within surface order.
+ * Rank rows for display: most-OPENED first, within surface order.
  *
- * Grouping by surface rather than interleaving is deliberate — the question
- * "which of NEURO's screens have gone quiet" is not answered by a list where a
- * SAiM screen sits between two of them.
+ * ⚠ RANKED BY OPENS, NEVER BY INTERACTIONS, and never by the two combined.
+ * The accessed grid is the one that has three months of history, and a row
+ * order that moved as interaction data accrued would reshuffle the screen
+ * under Nick as the feature bedded in. It also refuses the implicit claim that
+ * a touched screen outranks a read one — `pi-health` is a dashboard and
+ * `briefing` is prose, and neither is failing by having nothing to click.
+ *
+ * Grouping by surface rather than interleaving is deliberate: "which of
+ * NEURO's screens have gone quiet" is not answered by a list where a SAiM
+ * screen sits between two of them.
  */
 function screenRows(rows) {
   const order = Object.keys(SURFACES);
   return [...rows].sort((a, b) => {
     const s = order.indexOf(a.surface) - order.indexOf(b.surface);
     if (s !== 0) return s;
-    if (b.total !== a.total) return b.total - a.total;
+    if (b.opened.total !== a.opened.total) return b.opened.total - a.opened.total;
     return a.screen.localeCompare(b.screen);
   });
 }
@@ -266,58 +316,83 @@ function assess(rows, columns, surfaces) {
   for (const s of surfaces) {
     if (s.known === false) {
       findings.push({
-        severity: 'gap',
-        surface: s.id,
+        severity: 'gap', surface: s.id,
         title: `${s.label} could not be read`,
         detail: s.reason || 'no reason recorded',
       });
       continue;
     }
+
     // ⚠ A READABLE SURFACE THAT HAS NEVER REPORTED, which is the case the first
     // live run caught: SAiM came back `known:true, screens:0, since:null` and
-    // `assess()` said NOTHING, because the freshly-instrumented arm below keys
-    // on a `since` it does not have. So the most-used app in the estate would
-    // have sat silently at the bottom of the grid with no rows and no
-    // explanation — which is precisely the "blank reads as unused" failure this
-    // whole feature is built to refuse, reproduced inside the thing refusing it.
+    // `assess()` said NOTHING, because the freshly-instrumented arm keys on a
+    // `since` it does not have. So the most-used app in the estate would have
+    // sat silently at the bottom of the grid with no rows and no explanation —
+    // the "blank reads as unused" failure this feature refuses, reproduced
+    // inside the thing refusing it. Stated as an ABSENCE OF MEASUREMENT, never
+    // as an absence of use.
     //
-    // It is stated as an ABSENCE OF MEASUREMENT, never as an absence of use.
-    if (!s.since) {
-      findings.push({
-        severity: 'gap',
-        surface: s.id,
-        title: `${s.label} has never reported a screen open`,
-        detail: 'Nothing is recording it yet, so it has no rows here. That is a gap in the measurement, not a sign the app goes unused.',
-      });
-      continue;
+    // ⚠ PER KIND. A surface can be fully instrumented for opens and not at all
+    // for interactions, which is every surface on the day this shipped.
+    for (const kind of KINDS) {
+      const since = s.since[kind];
+      const what = kind === 'opened' ? 'screen open' : 'interaction';
+
+      if (!since) {
+        findings.push({
+          severity: 'gap', surface: s.id, kind,
+          title: `${s.label} has never reported ${kind === 'opened' ? 'a screen open' : 'an interaction'}`,
+          detail: `Nothing is recording ${what}s for it yet, so that half of the grid is blank. It is a gap in the measurement, not a sign the app goes unused.`,
+        });
+        continue;
+      }
+      if (since > columns[0]) {
+        findings.push({
+          severity: 'note', surface: s.id, kind,
+          title: `${s.label} ${kind === 'opened' ? 'opens' : 'interactions'} only recorded since ${since}`,
+          detail: 'Earlier weeks are blank because nothing was watching, not because nothing happened.',
+        });
+      }
     }
-    // A surface instrumented inside the window cannot be compared against the
-    // ones that were not, and saying so is the point.
-    if (s.since > columns[0]) {
+  }
+
+  // Screens with no OPENS in the window, per surface, and only where the whole
+  // window could have been seen — a screen on a freshly instrumented surface
+  // has not "gone quiet", it has never been watched.
+  for (const s of surfaces) {
+    if (s.known === false) continue;
+    if (!s.since.opened || s.since.opened > columns[0]) continue;
+    const quiet = rows.filter(r => r.surface === s.id && r.opened.total === 0).map(r => r.screen);
+    if (quiet.length) {
       findings.push({
-        severity: 'note',
-        surface: s.id,
-        title: `${s.label} has only been recorded since ${s.since}`,
-        detail: 'Earlier weeks are blank because nothing was watching, not because nothing was opened.',
+        severity: 'note', surface: s.id, kind: 'opened',
+        title: `${quiet.length} ${s.label} screen${quiet.length === 1 ? '' : 's'} not opened in this window`,
+        detail: quiet.join(', '),
       });
     }
   }
 
-  // Quiet screens, per surface, and only for surfaces that could have seen the
-  // whole window — a screen on a freshly instrumented surface has not "gone
-  // quiet", it has never been watched.
+  // ⚠⚠ THE ONE THING THIS PANEL MUST SAY OUT LOUD, ONCE INTERACTIONS EXIST.
+  // A screen with opens and no interactions is not a failing screen — it is
+  // very often a READING screen doing its job. Measured: BriefingPanel has 4
+  // interactive elements and TodoPanel has 99, so the interacted grid will
+  // ALWAYS show Briefing, State of Play and Pi Health near-empty. Put beside a
+  // full accessed grid that reads as an indictment, and a reader would draw
+  // exactly the wrong conclusion about the screens that work best.
+  //
+  // It names them as READ rather than worked, and it is deliberately NOT a
+  // finding about the screens — it is a finding about how to read the grid.
   for (const s of surfaces) {
     if (s.known === false) continue;
-    if (s.since && s.since > columns[0]) continue;
-    const quiet = rows
-      .filter(r => r.surface === s.id && r.total === 0)
+    if (!s.since.interacted || s.since.interacted > columns[0]) continue;
+    const readOnly = rows
+      .filter(r => r.surface === s.id && r.opened.total > 0 && r.interacted.total === 0)
       .map(r => r.screen);
-    if (quiet.length) {
+    if (readOnly.length) {
       findings.push({
-        severity: 'note',
-        surface: s.id,
-        title: `${quiet.length} ${s.label} screen${quiet.length === 1 ? '' : 's'} not opened in this window`,
-        detail: quiet.join(', '),
+        severity: 'note', surface: s.id, kind: 'interacted',
+        title: `${readOnly.length} ${s.label} screen${readOnly.length === 1 ? ' was' : 's were'} opened but never clicked`,
+        detail: `Read, not worked — which for a dashboard or a briefing is the screen doing its job, not failing at it: ${readOnly.join(', ')}`,
       });
     }
   }
@@ -337,8 +412,8 @@ function assess(rows, columns, surfaces) {
  * and blank out the grid this exists to fill.
  */
 function readNeuroLog(db, fromDateKey) {
-  const rows = db.getTabOpensSince(fromDateKey);
-  const opens = [];
+  const rows = db.getScreenEventsSince(fromDateKey);
+  const events = [];
   let checkins = 0;
 
   for (const r of rows) {
@@ -347,16 +422,19 @@ function readNeuroLog(db, fromDateKey) {
     const screen = data && typeof data.tab === 'string' ? data.tab : '';
     if (!screen) continue;
     if (screen.startsWith(CHECKIN_PREFIX)) { checkins++; continue; }
-    opens.push({
+    events.push({
+      kind: r.event_type === INTERACT_EVENT ? 'interacted' : 'opened',
       // Untagged is NEURO's, and it is a fact — see the header.
       surface: knownSurface(data.surface) ? data.surface : 'neuro',
       screen,
       dateKey: r.date_key,
       hour: r.hour,
+      // An open is one act; an interaction row carries a coalesced batch.
+      count: typeof data.count === 'number' ? data.count : 1,
     });
   }
 
-  return { opens, checkins };
+  return { events, checkins };
 }
 
 function vantageDbPath() {
@@ -407,10 +485,15 @@ function readVantage() {
     const opens = rows
       .filter(r => r && typeof r.screen === 'string' && r.screen.trim())
       .map(r => ({
+        // ⚠ A row written before interactions existed carries no `kind` and is
+        // an OPEN — the only thing VANTAGE recorded then. Defaulting it to
+        // anything else would retrospectively reclassify real history.
+        kind: r.kind === 'interacted' ? 'interacted' : 'opened',
         surface: 'vantage',
         screen: r.screen.trim(),
         dateKey: r.date_key,
         hour: r.hour,
+        count: typeof r.count === 'number' ? r.count : 1,
       }));
 
     return { known: true, opens, empty: opens.length === 0 };
@@ -422,18 +505,22 @@ function readVantage() {
 }
 
 /**
- * The first date each surface ever reported. PURE over the opens it is given.
+ * The first date each surface+kind ever reported. PURE over what it is given.
  *
- * A surface that has reported NOTHING gets no `since` at all, which is not the
- * same as one whose first day is today — the first is "never instrumented, or
- * instrumented and never used", and the grid says which by whether the surface
- * was readable.
+ * ⚠ KEYED `surface::kind`, because one surface legitimately has two answers:
+ * NEURO has recorded opens since June and interactions since September. A key
+ * on the surface alone would blank the wrong half of the grid — or, worse,
+ * fill the interacted half with zeros it never measured.
+ *
+ * A surface+kind that has reported NOTHING gets no entry at all, which is not
+ * the same as one whose first day is today.
  */
-function firstSeen(opens) {
+function firstSeen(events) {
   const out = {};
-  for (const o of opens) {
-    if (!o.dateKey) continue;
-    if (!out[o.surface] || o.dateKey < out[o.surface]) out[o.surface] = o.dateKey;
+  for (const e of events) {
+    if (!e.dateKey) continue;
+    const k = `${e.surface}::${KINDS.includes(e.kind) ? e.kind : 'opened'}`;
+    if (!out[k] || e.dateKey < out[k]) out[k] = e.dateKey;
   }
   return out;
 }
@@ -457,13 +544,14 @@ function build(opts = {}) {
   const columns = weekColumns(now, weeks);
   const gaps = [];
 
-  let neuro = { opens: [], checkins: 0 };
-  let logged = {};
+  let neuro = { events: [], checkins: 0 };
+  const logged = {};
   try {
     neuro = readNeuroLog(db, columns[0]);
     // Asked over the WHOLE log, not the window — see `readNeuroLog`.
-    for (const r of db.getTabOpenFirstSeen()) {
-      if (knownSurface(r.surface) && r.first_seen) logged[r.surface] = r.first_seen;
+    for (const r of db.getScreenEventFirstSeen()) {
+      const kind = r.event_type === INTERACT_EVENT ? 'interacted' : 'opened';
+      if (knownSurface(r.surface) && r.first_seen) logged[`${r.surface}::${kind}`] = r.first_seen;
     }
   } catch (e) {
     // NEURO's own log failing is not an empty estate — it is the grid being
@@ -471,29 +559,35 @@ function build(opts = {}) {
     gaps.push(`NEURO activity log could not be read (${e.message})`);
   }
 
-  const allOpens = [...neuro.opens];
-  if (vantage.known) allOpens.push(...vantage.opens);
+  const all = [...neuro.events];
+  if (vantage.known) all.push(...vantage.events);
   else gaps.push(vantage.reason);
 
-  // VANTAGE's store is read whole, so its own opens carry its first sighting;
+  // VANTAGE's store is read whole, so its own rows carry its first sighting;
   // NEURO's comes from the aggregate above because its window read cannot.
-  const since = { ...firstSeen(allOpens), ...logged };
-  const folded = foldOpens(allOpens, columns);
+  const since = { ...firstSeen(all), ...logged };
+  const folded = foldEvents(all, columns);
   maskUnknownWeeks(folded.rows, columns, since);
   const rows = screenRows(folded.rows);
 
   const surfaces = Object.entries(SURFACES).map(([id, label]) => {
     if (id === 'vantage' && !vantage.known) {
-      return { id, label, known: false, reason: vantage.reason, screens: 0, opens: 0, since: null };
+      return {
+        id, label, known: false, reason: vantage.reason,
+        screens: 0, opens: 0, interactions: 0,
+        since: { opened: null, interacted: null },
+      };
     }
     const mine = rows.filter(r => r.surface === id);
     return {
-      id,
-      label,
-      known: true,
-      since: since[id] || null,
+      id, label, known: true,
+      since: {
+        opened: since[`${id}::opened`] || null,
+        interacted: since[`${id}::interacted`] || null,
+      },
       screens: mine.length,
-      opens: mine.reduce((n, r) => n + r.total, 0),
+      opens: mine.reduce((n, r) => n + r.opened.total, 0),
+      interactions: mine.reduce((n, r) => n + r.interacted.total, 0),
     };
   });
 
@@ -503,6 +597,7 @@ function build(opts = {}) {
     generatedAt: new Date().toISOString(),
     window: { weeks, from: columns[0], to: weekEndKey(columns[columns.length - 1]) },
     weeks: columns,
+    kinds: KINDS,
     surfaces,
     rows,
     hourTotals: hourTotals(rows),
@@ -510,8 +605,13 @@ function build(opts = {}) {
     excluded: { checkins: neuro.checkins, outsideWindow: folded.outsideWindow },
     findings: assess(rows, columns, surfaces),
     gaps,
-    // Carried so no screen has to restate it and risk saying it differently.
-    measures: 'opens, not time spent on a screen',
+    // Carried so no screen has to restate these and risk phrasing them
+    // differently. ⚠ The second line is the one that stops the interacted grid
+    // reading as a report card on screens that are meant to be read.
+    measures: {
+      opened: 'times a screen was opened — not time spent on it',
+      interacted: 'times a control on it was used — a screen you read and never click is not a screen that failed',
+    },
   };
 }
 
@@ -522,7 +622,7 @@ module.exports = {
   weekKeyOf,
   weekColumns,
   weekEndKey,
-  foldOpens,
+  foldEvents,
   maskUnknownWeeks,
   hourTotals,
   screenRows,
@@ -532,6 +632,9 @@ module.exports = {
   readVantage,
   SURFACES,
   CHECKIN_PREFIX,
+  INTERACT_EVENT,
+  OPEN_EVENT,
+  KINDS,
   DEFAULT_WEEKS,
   VANTAGE_COLLECTION,
 };

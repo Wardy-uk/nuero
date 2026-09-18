@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import interactions from '../../shared/interaction-buffer.cjs';
 
 /**
  * Tell NEURO which SAiM screen is on.
@@ -32,9 +33,11 @@ import { useEffect, useRef } from 'react';
  * through the outbox, which exists for captures: a lost screen open is a lost
  * observation, not a lost thought.
  */
-export function useScreenTracking(tab, report) {
+export function useScreenTracking(tab, report, interact) {
   const reportRef = useRef(report);
   reportRef.current = report;
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
 
   useEffect(() => {
     if (!tab || typeof reportRef.current !== 'function') return;
@@ -45,6 +48,29 @@ export function useScreenTracking(tab, report) {
       /* never costs a navigation */
     }
   }, [tab]);
+
+  // ── Control uses, counted and flushed ──────────────────────────────────────
+  //
+  // ⚠ Attached ONCE, not per tab. The buffer is keyed by screen and the tab is
+  // read at event time, so re-attaching on every navigation would tear down a
+  // pending flush and drop the clicks made on the screen being left — which is
+  // every screen, every time.
+  useEffect(() => {
+    if (typeof interact !== 'function') return undefined;
+    const buffer = interactions.createInteractionBuffer({
+      surface: 'saim',
+      send: ({ tab: t, surface, count, keepalive }) => interact({ tab: t, surface, count, keepalive }),
+    });
+    const detach = interactions.attachInteractionListener({
+      // Both SAiM shells render the screen inside `.app__view`; the nav strip
+      // is outside it, so switching tabs is not counted as working on one.
+      scope: '.app__view',
+      getTab: () => tabRef.current,
+      buffer,
+    });
+    return () => { buffer.flush(); detach(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }
 
 export default useScreenTracking;

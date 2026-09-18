@@ -30,6 +30,30 @@ router.post('/tab', (req, res) => {
   }
 });
 
+// POST /api/activity/interact — a coalesced batch of control uses on one screen.
+//
+// Separate from /tab because they are different facts: one says he went there,
+// the other says he did something once he had. The client buffers and flushes,
+// so `count` is a batch — see `activity.trackScreenInteract`.
+router.post('/interact', (req, res) => {
+  const { tab, surface, count } = req.body;
+  if (!tab) return res.status(400).json({ error: 'tab required' });
+  if (surface != null && !activity.SURFACES.has(surface)) {
+    return res.status(400).json({
+      error: `unknown surface "${surface}"`,
+      known: [...activity.SURFACES],
+    });
+  }
+  try {
+    // Reports the count it STORED, not the one it was sent — they differ when
+    // a flush is clamped, and a client that cannot see that has no way to know
+    // its buffer is running away.
+    res.json({ ok: true, recorded: activity.trackScreenInteract(tab, surface, count) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/activity/summaries — last N days of daily summaries
 router.get('/summaries', (req, res) => {
   const days = parseInt(req.query.days || '14', 10);

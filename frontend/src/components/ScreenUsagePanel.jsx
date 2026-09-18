@@ -97,32 +97,58 @@ function Legend({ hasUnknown }) {
   );
 }
 
-function Grid({ rows, columns, label, valueOf, columnLabel, cellTitle }) {
-  // ⚠ Scaled to THIS grid's own max. A week total and an hour total are
-  // different quantities and sharing a scale would make the hour grid look
-  // permanently empty beside it.
-  const max = useMemo(() => {
-    let m = 0;
-    for (const r of rows) for (const c of columns) {
-      const v = valueOf(r, c);
-      if (typeof v === 'number' && v > m) m = v;
-    }
-    return m;
-  }, [rows, columns, valueOf]);
+const KIND_LABEL = { opened: 'Accessed', interacted: 'Interacted with' };
 
+/**
+ * One table, TWO column groups: accessed on the left, interacted on the right,
+ * sharing a single row label.
+ *
+ * ⚠ Nick's layout (18 Sep 2026), and it is the right one — the comparison this
+ * answers is "opened a lot, worked in rarely", which is a fact about ONE row.
+ * Two separate tables would put the halves of that sentence in different
+ * places and make the reader hold a row name in their head to compare.
+ *
+ * ⚠⚠ EACH HALF IS SCALED TO ITS OWN BUSIEST CELL, and the panel says so. Opens
+ * and control-uses are different quantities — `TodoPanel` has 99 controls, so
+ * its interaction counts dwarf every open count on the page. Sharing a scale
+ * would wash the whole accessed grid out to nothing. The cost is that
+ * brightness must NOT be compared across the divider, which is why the divider
+ * is a real rule and each half carries its own "busiest" figure.
+ */
+function Grid({ rows, columns, label, columnLabel, cellTitle, kinds, scales }) {
   return (
     <div className="su-grid-wrap">
       <table className="su-grid">
         <caption className="su-caption">{label}</caption>
         <thead>
-          <tr>
-            <th scope="col" className="su-rowhead">Screen</th>
-            {columns.map((c, i) => (
-              <th key={c} scope="col" className="su-colhead">
-                <span>{columnLabel(c, i)}</span>
+          <tr className="su-kindrow">
+            <th scope="col" className="su-rowhead" />
+            {kinds.map((kind, i) => (
+              <th
+                key={kind}
+                scope="colgroup"
+                colSpan={columns.length + 1}
+                className={`su-kindhead${i > 0 ? ' su-kind-split' : ''}`}
+              >
+                {KIND_LABEL[kind]}
+                <span className="su-kind-scale">busiest cell {scales[kind] || 0}</span>
               </th>
             ))}
-            <th scope="col" className="su-total">All</th>
+          </tr>
+          <tr>
+            <th scope="col" className="su-rowhead">Screen</th>
+            {kinds.map((kind, ki) => [
+              ...columns.map((c, i) => (
+                <th
+                  key={`${kind}-${c}`}
+                  scope="col"
+                  className={`su-colhead${ki > 0 && i === 0 ? ' su-kind-split' : ''}`}
+                >
+                  <span>{columnLabel(c, i)}</span>
+                </th>
+              )),
+              <th key={`${kind}-all`} scope="col" className="su-total">All</th>,
+            ])}
           </tr>
         </thead>
         <tbody>
@@ -132,15 +158,17 @@ function Grid({ rows, columns, label, valueOf, columnLabel, cellTitle }) {
                 <span className={`su-tag su-tag-${r.surface}`}>{r.surface}</span>
                 <span className="su-screen">{r.screen}</span>
               </th>
-              {columns.map((c) => {
-                const v = valueOf(r, c);
-                return (
-                  <td key={c} className="su-td">
-                    <span className={cellClass(step(v, max))} title={cellTitle(r, c, v)} />
-                  </td>
-                );
-              })}
-              <td className="su-total">{r.total}</td>
+              {kinds.map((kind, ki) => [
+                ...columns.map((c, i) => {
+                  const v = r[kind].weeks ? r[kind].weeks[columns.indexOf(c)] : null;
+                  return (
+                    <td key={`${kind}-${c}`} className={`su-td${ki > 0 && i === 0 ? ' su-kind-split' : ''}`}>
+                      <span className={cellClass(step(v, scales[kind]))} title={cellTitle(r, c, v, kind)} />
+                    </td>
+                  );
+                }),
+                <td key={`${kind}-all`} className="su-total">{r[kind].total}</td>,
+              ])}
             </tr>
           ))}
         </tbody>
@@ -149,15 +177,29 @@ function Grid({ rows, columns, label, valueOf, columnLabel, cellTitle }) {
   );
 }
 
-function Numbers({ rows, columns, columnLabel, valueOf }) {
+/** Same shape for the hour grid, which indexes by hour rather than week key. */
+function HourGrid({ rows, hours, label, kinds, scales }) {
   return (
     <div className="su-grid-wrap">
-      <table className="su-grid su-numbers">
+      <table className="su-grid">
+        <caption className="su-caption">{label}</caption>
         <thead>
+          <tr className="su-kindrow">
+            <th scope="col" className="su-rowhead" />
+            {kinds.map((kind, i) => (
+              <th key={kind} scope="colgroup" colSpan={hours.length} className={`su-kindhead${i > 0 ? ' su-kind-split' : ''}`}>
+                {KIND_LABEL[kind]}
+                <span className="su-kind-scale">busiest cell {scales[kind] || 0}</span>
+              </th>
+            ))}
+          </tr>
           <tr>
             <th scope="col" className="su-rowhead">Screen</th>
-            {columns.map((c, i) => <th key={c} scope="col">{columnLabel(c, i)}</th>)}
-            <th scope="col">All</th>
+            {kinds.map((kind, ki) => hours.map((h, i) => (
+              <th key={`${kind}-${h}`} scope="col" className={`su-colhead${ki > 0 && i === 0 ? ' su-kind-split' : ''}`}>
+                <span>{h % 3 === 0 ? String(h).padStart(2, '0') : ''}</span>
+              </th>
+            )))}
           </tr>
         </thead>
         <tbody>
@@ -167,14 +209,76 @@ function Numbers({ rows, columns, columnLabel, valueOf }) {
                 <span className={`su-tag su-tag-${r.surface}`}>{r.surface}</span>
                 <span className="su-screen">{r.screen}</span>
               </th>
-              {columns.map((c) => {
-                const v = valueOf(r, c);
-                // ⚠ An em dash, never a 0. This table exists so the low end of
-                // the ramp is legible; printing 0 where nothing was measured
-                // would reintroduce the exact lie the hatching avoids.
-                return <td key={c} className={v === null ? 'su-num-unknown' : ''}>{v === null ? '—' : v}</td>;
-              })}
-              <td>{r.total}</td>
+              {kinds.map((kind, ki) => hours.map((h, i) => {
+                const v = r[kind].hours[h];
+                return (
+                  <td key={`${kind}-${h}`} className={`su-td${ki > 0 && i === 0 ? ' su-kind-split' : ''}`}>
+                    <span
+                      className={cellClass(step(v, scales[kind]))}
+                      title={`${r.screen} · ${String(h).padStart(2, '0')}:00 — ${v} ${kind === 'opened' ? 'open' : 'interaction'}${v === 1 ? '' : 's'}`}
+                    />
+                  </td>
+                );
+              }))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * The table view. Required, not optional: the ramp's lightest step sits under
+ * 3:1 against the card, and a contrast warning obliges visible values.
+ */
+function Numbers({ rows, columns, columnLabel, kinds, valueOf }) {
+  return (
+    <div className="su-grid-wrap">
+      <table className="su-grid su-numbers">
+        <thead>
+          <tr className="su-kindrow">
+            <th className="su-rowhead" />
+            {kinds.map((kind, i) => (
+              <th key={kind} scope="colgroup" colSpan={columns.length + 1} className={`su-kindhead${i > 0 ? ' su-kind-split' : ''}`}>
+                {KIND_LABEL[kind]}
+              </th>
+            ))}
+          </tr>
+          <tr>
+            <th scope="col" className="su-rowhead">Screen</th>
+            {kinds.map((kind, ki) => [
+              ...columns.map((c, i) => (
+                <th key={`${kind}-${c}`} scope="col" className={ki > 0 && i === 0 ? 'su-kind-split' : ''}>{columnLabel(c, i)}</th>
+              )),
+              <th key={`${kind}-all`} scope="col">All</th>,
+            ])}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={`${r.surface}/${r.screen}`}>
+              <th scope="row" className="su-rowhead">
+                <span className={`su-tag su-tag-${r.surface}`}>{r.surface}</span>
+                <span className="su-screen">{r.screen}</span>
+              </th>
+              {kinds.map((kind, ki) => [
+                ...columns.map((c, i) => {
+                  const v = valueOf(r, c, kind);
+                  // ⚠ An em dash, NEVER a 0. This table exists so the low end
+                  // of the ramp is legible; printing 0 where nothing was
+                  // measured reintroduces the exact lie the hatching avoids.
+                  return (
+                    <td
+                      key={`${kind}-${c}`}
+                      className={`${v === null ? 'su-num-unknown' : ''}${ki > 0 && i === 0 ? ' su-kind-split' : ''}`}
+                    >
+                      {v === null ? '—' : v}
+                    </td>
+                  );
+                }),
+                <td key={`${kind}-all`}>{r[kind].total}</td>,
+              ])}
             </tr>
           ))}
         </tbody>
@@ -218,14 +322,30 @@ export default function ScreenUsagePanel() {
   if (!data) return null;
 
   const { rows, weeks: columns, surfaces, findings, gaps, excluded, window: win } = data;
+  const kinds = data.kinds || ['opened', 'interacted'];
   // ⚠ Long tail: ~50 screens across three apps. The top 20 is a readable grid;
   // the rest are still HERE, behind a toggle, because a screen hidden from the
   // list that says which screens are quiet is the one thing this cannot do.
   const shown = showAll ? rows : rows.slice(0, 20);
-  const hasUnknown = shown.some((r) => r.weeks.some((w) => w === null));
+  const hasUnknown = shown.some((r) => kinds.some((k) => r[k].weeks.some((w) => w === null)));
 
-  const weekValue = (r, c) => r.weeks[columns.indexOf(c)];
-  const hourValue = (r, h) => r.hours[h];
+  // ⚠ PER KIND, never shared. `TodoPanel` has 99 controls, so its interaction
+  // counts dwarf every open count on the page — one scale would wash the whole
+  // accessed half out to nothing. Computed over the ROWS SHOWN, so expanding
+  // the list cannot change the brightness of the rows already on screen.
+  const scaleOver = (pick) => {
+    const m = {};
+    for (const k of kinds) {
+      let max = 0;
+      for (const r of shown) for (const v of pick(r, k)) if (typeof v === 'number' && v > max) max = v;
+      m[k] = max;
+    }
+    return m;
+  };
+  const weekScales = scaleOver((r, k) => r[k].weeks);
+  const hourScales = scaleOver((r, k) => r[k].hours);
+
+  const weekValue = (r, c, kind) => r[kind].weeks[columns.indexOf(c)];
 
   return (
     <div className="su-panel">
@@ -233,7 +353,7 @@ export default function ScreenUsagePanel() {
         <div>
           <h2>Screen usage</h2>
           <p className="su-sub">
-            {win.from} → {win.to} · counts {data.measures}
+            {win.from} → {win.to}
           </p>
         </div>
         <div className="su-controls">
@@ -267,9 +387,16 @@ export default function ScreenUsagePanel() {
               <span className="su-surface-gap">Couldn’t read it — {s.reason}</span>
             ) : (
               <>
-                <span className="su-surface-stat">{s.screens} screens · {s.opens} opens</span>
+                <span className="su-surface-stat">{s.screens} screens</span>
+                {/* ⚠ TWO since dates, because one surface genuinely has two.
+                    NEURO has logged opens since June and interactions since
+                    September; collapsing them would claim the interacted grid
+                    covers three months it never saw. */}
                 <span className="su-surface-since">
-                  {s.since ? `recorded since ${shortDate(s.since)}` : 'nothing recorded yet'}
+                  {s.opens} opens · {s.since.opened ? `since ${shortDate(s.since.opened)}` : 'none recorded'}
+                </span>
+                <span className="su-surface-since">
+                  {s.interactions} interactions · {s.since.interacted ? `since ${shortDate(s.since.interacted)}` : 'none recorded'}
                 </span>
               </>
             )}
@@ -292,29 +419,37 @@ export default function ScreenUsagePanel() {
 
       {asNumbers ? (
         <>
-          <Numbers rows={shown} columns={columns} valueOf={weekValue} columnLabel={shortDate} />
-          <Numbers rows={shown} columns={hours} valueOf={hourValue} columnLabel={(h) => String(h).padStart(2, '0')} />
+          <Numbers rows={shown} columns={columns} kinds={kinds} valueOf={weekValue} columnLabel={shortDate} />
+          <Numbers
+            rows={shown}
+            columns={hours}
+            kinds={kinds}
+            valueOf={(r, h, kind) => r[kind].hours[h]}
+            columnLabel={(h) => String(h).padStart(2, '0')}
+          />
         </>
       ) : (
         <>
           <Grid
             rows={shown}
             columns={columns}
-            label="By week — what has gone quiet"
-            valueOf={weekValue}
+            kinds={kinds}
+            scales={weekScales}
+            label="By week — what has gone quiet, and what you actually work in"
             columnLabel={(c, i) => (i % 2 === 0 ? shortDate(c) : '')}
-            cellTitle={(r, c, v) =>
-              v === null
-                ? `${r.screen} · week of ${shortDate(c)} — not measured; nothing was recording this surface yet`
-                : `${r.screen} · week of ${shortDate(c)} — ${v} open${v === 1 ? '' : 's'}`}
+            cellTitle={(r, c, v, kind) => {
+              const noun = kind === 'opened' ? 'open' : 'interaction';
+              return v === null
+                ? `${r.screen} · ${KIND_LABEL[kind].toLowerCase()} · week of ${shortDate(c)} — not measured; nothing was recording this yet`
+                : `${r.screen} · ${KIND_LABEL[kind].toLowerCase()} · week of ${shortDate(c)} — ${v} ${noun}${v === 1 ? '' : 's'}`;
+            }}
           />
-          <Grid
+          <HourGrid
             rows={shown}
-            columns={hours}
+            hours={hours}
+            kinds={kinds}
+            scales={hourScales}
             label="By hour of day — when you reach for what"
-            valueOf={hourValue}
-            columnLabel={(h) => (h % 3 === 0 ? String(h).padStart(2, '0') : '')}
-            cellTitle={(r, h, v) => `${r.screen} · ${String(h).padStart(2, '0')}:00 — ${v} open${v === 1 ? '' : 's'}`}
           />
         </>
       )}
@@ -335,8 +470,9 @@ export default function ScreenUsagePanel() {
           </div>
         )}
         <p className="su-note">
-          Counts {data.measures} — a screen opened once and read for an hour reads
-          quieter here than one bounced through six times.
+          <b>Accessed</b> counts {data.measures.opened}. <b>Interacted with</b> counts{' '}
+          {data.measures.interacted}. Each half is scaled to its own busiest
+          cell, so brightness compares down a column, never across the divider.
           {excluded.checkins > 0 && ` ${excluded.checkins} location check-ins excluded — they share the event type but are not screens.`}
         </p>
       </footer>

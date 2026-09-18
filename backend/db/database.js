@@ -1082,41 +1082,47 @@ function getActivityForRange(startDate, endDate) {
 }
 
 /**
- * Screen opens in a window, for the usage heatmap (`services/screen-usage.js`).
+ * Screen opens AND interactions in a window, for the usage heatmap
+ * (`services/screen-usage.js`).
  *
  * ⚠ Bounded by `date_key` FIRST because `idx_activity_date` is
  * `(date_key, event_type)` — filtering on `event_type` alone scans the whole
  * log, and this runs on a panel load.
  */
-function getTabOpensSince(fromDateKey) {
+function getScreenEventsSince(fromDateKey) {
   return all(
-    `SELECT event_data, hour, date_key FROM activity_log
-      WHERE date_key >= ? AND event_type = 'tab_open'
+    `SELECT event_type, event_data, hour, date_key FROM activity_log
+      WHERE date_key >= ? AND event_type IN ('tab_open', 'screen_interact')
       ORDER BY date_key ASC`,
     [fromDateKey]
   );
 }
 
 /**
- * The first date each SURFACE ever logged a screen open.
+ * The first date each SURFACE reported each KIND of screen event.
  *
  * ⚠ This is a fact about the whole log, not about the window — it is what lets
  * the grid say "nothing was watching" rather than drawing a blank week as zero,
- * so it deliberately does NOT take a lower bound. It returns three rows at most.
+ * so it deliberately does NOT take a lower bound. It returns six rows at most.
+ *
+ * ⚠⚠ GROUPED BY event_type AS WELL AS SURFACE. NEURO has logged opens since
+ * 22 June 2026 and interactions only since 18 September, so one surface has two
+ * different answers. Collapsing them would fill eleven weeks of the interacted
+ * grid with zeros it never measured.
  *
  * ⚠ A row with no `surface` is NEURO's: that key was added on 17 Sep 2026 and
- * until then `frontend/src/App.jsx` was the only caller. `COALESCE` rather than
- * a guess — see the service header.
+ * until then `frontend/src/App.jsx` was the only caller.
  */
-function getTabOpenFirstSeen() {
+function getScreenEventFirstSeen() {
   return all(
-    `SELECT COALESCE(json_extract(event_data, '$.surface'), 'neuro') AS surface,
+    `SELECT event_type,
+            COALESCE(json_extract(event_data, '$.surface'), 'neuro') AS surface,
             MIN(date_key) AS first_seen
        FROM activity_log
-      WHERE event_type = 'tab_open'
+      WHERE event_type IN ('tab_open', 'screen_interact')
         AND json_extract(event_data, '$.tab') IS NOT NULL
         AND json_extract(event_data, '$.tab') NOT LIKE 'checkin:%'
-      GROUP BY surface`
+      GROUP BY event_type, surface`
   );
 }
 
@@ -2642,8 +2648,8 @@ module.exports = {
   logActivity,
   getActivityForDate,
   getActivityForRange,
-  getTabOpensSince,
-  getTabOpenFirstSeen,
+  getScreenEventsSince,
+  getScreenEventFirstSeen,
   saveDailySummary,
   getDailySummaries,
   getTodayActivity,
