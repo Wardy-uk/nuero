@@ -355,3 +355,69 @@ test('a clean week says nothing extra', () => {
   assert.equal(c.uncheckable, 0);
   assert.equal(c.caveat, null);
 });
+
+// ── Weekends are not audited (18 Sep 2026) ───────────────────────────────────
+// Nick: "RT should ignore weekends - 12/13th was sat/sun". Two of the five days
+// it was marking RescueTime down for were a Saturday and a Sunday. The fixtures
+// are those real days: the agent measured 7.3h on Sat 12 and RescueTime logged
+// nothing at all.
+
+const satDesk = [{
+  day: '2026-09-12', host: 'DESKTOP-8LGF9RR', complete: 1,
+  sample_count: 300, active_minutes: 438, present_minutes: 700,
+}];
+
+test('a weekend is skipped, not judged', () => {
+  const a = rt.assessDay(null, satDesk, { nonWorking: 'weekend' });
+  assert.equal(a.state, 'unknown');
+  assert.match(a.why, /weekend/);
+  assert.equal(a.ratio, null);
+});
+
+test('the same day on a weekday is still judged under', () => {
+  // ⚠ The positive control. Without it, a rule that skipped EVERYTHING would
+  // pass the test above and the audit would be silently switched off.
+  const a = rt.assessDay(null, satDesk, {});
+  assert.equal(a.state, 'under');
+});
+
+test('a bank holiday is skipped by the same rule as a Saturday', () => {
+  // One definition of a working day, so a holiday Monday needs no rule of its own.
+  assert.equal(rt.assessDay(null, satDesk, { nonWorking: 'holiday' }).state, 'unknown');
+  assert.match(rt.assessDay(null, satDesk, { nonWorking: 'holiday' }).why, /bank holiday/);
+});
+
+test('a skipped day counts against neither judged nor under', () => {
+  // ⚠ This is the whole point: the senses row said "under-reported on 5 of the
+  // last 14 measured days" and two of those five were the weekend.
+  const pairs = [
+    { day: '2026-09-12', ...rt.assessDay(null, satDesk, { nonWorking: 'weekend' }) },
+    { day: '2026-09-13', ...rt.assessDay(null, satDesk, { nonWorking: 'weekend' }) },
+    { day: '2026-09-14', ...rt.assessDay(null, satDesk, {}) },
+  ];
+  const c = rt.coverage(pairs);
+  assert.equal(c.under, 1, 'only the weekday counts as under');
+  assert.equal(c.unknown, 2, 'the weekend days are reported, not dropped');
+});
+
+test('a skipped day is still a visible row with a stated reason', () => {
+  // A silent filter is a number nobody can check.
+  const a = rt.assessDay(null, satDesk, { nonWorking: 'weekend' });
+  assert.ok(a.why && a.why.length > 0);
+});
+
+// ⚠ THE PURE TESTS ABOVE PASS `nonWorking` IN THEMSELVES, so every one of them
+// would still pass if no caller ever supplied it and the whole rule sat dead.
+// That is exactly how the router temperature test shipped toothless earlier the
+// same day. This asserts the wiring: both call sites must ask working-days.
+test('every assessDay call site supplies the working-day reason', () => {
+  const src = fs.readFileSync(require.resolve('./rescuetime.js'), 'utf8');
+  const calls = src.match(/assessDay\([^;]*?\)/gs) || [];
+  const callers = calls.filter(c => !c.startsWith('assessDay(rtDay'));
+  assert.ok(callers.length >= 2, `positive control: expected the 2 call sites, found ${callers.length}`);
+  for (const c of callers) {
+    assert.match(c, /nonWorking:/, `an assessDay call site does not pass nonWorking: ${c.slice(0, 80)}`);
+  }
+  assert.match(src, /require\('\.\/working-days'\)/, 'the reason must come from working-days, not a local weekday check');
+  assert.ok(!/getDay\(\)\s*===?\s*[06]/.test(src), 'no second definition of "weekend" in this file');
+});

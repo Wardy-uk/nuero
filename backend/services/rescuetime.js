@@ -296,7 +296,38 @@ function foldDays(overviewRows = [], activityRows = []) {
  *     attributed to one machine. The comparison is made against the agent's
  *     busiest host that day and SAYS which — an approximation, named as one.
  */
-function assessDay(rtDay, deskDays = []) {
+// ⚠ Nick, 18 Sep 2026: "RT should ignore weekends - 12/13th was sat/sun". Two of
+// the five days it was being marked down for were a Saturday and a Sunday.
+//
+// ⚠ SKIPPED, NOT DROPPED. The day keeps a row and states why, because a silent
+// filter is a number nobody can check — the `screen-usage` checkin rule. It
+// becomes `unknown`, which `coverage()` already excludes from both `judged` and
+// `under`, so a weekend can no longer count against the integration.
+//
+// ⚠ THE REASON IS PASSED IN, never looked up here. This function is PURE and
+// pins without a DB, a clock or a bank-holiday feed; the caller owns the I/O.
+// It comes from `working-days`, so there is ONE definition of a working day and
+// a bank holiday Monday is handled by the same rule as a Saturday rather than
+// needing its own.
+//
+// ⚠ The cost, stated plainly: he DOES work weekends — the agent measured 7.3h
+// on Sat 12 and 7.0h on Sun 13 Sep — so those hours are no longer audited, and
+// a RescueTime that dies on a Friday now goes unnoticed until Monday. That is
+// his call, and it is the right one for a tool whose question is "where did the
+// WORKING day go".
+const SKIP_LABEL = { weekend: 'a weekend', holiday: 'a bank holiday', leave: 'a day off' };
+
+function assessDay(rtDay, deskDays = [], opts = {}) {
+  const skip = opts.nonWorking ? (SKIP_LABEL[opts.nonWorking] || 'a non-working day') : null;
+  if (skip) {
+    return {
+      state: 'unknown',
+      why: `${skip} — RescueTime is only audited on working days`,
+      ratio: null,
+      host: null,
+    };
+  }
+
   // ⚠ BUSIEST BY ACTIVE TIME, not by present. "Which machine was he working at"
   // is the question; a laptop left switched on and idle all day has the most
   // present minutes and did none of the work.
@@ -561,7 +592,8 @@ function recentDays(days = 30) {
   for (const r of require('./desktop-daily').recentDays(days)) {
     (deskByDay[r.day] = deskByDay[r.day] || []).push(r);
   }
-  return rt.map(r => ({ ...r, agreement: assessDay(r, deskByDay[r.day] || []) }));
+  const wd = require('./working-days');
+  return rt.map(r => ({ ...r, agreement: assessDay(r, deskByDay[r.day] || [], { nonWorking: wd.nonWorkingReason(r.day) }) }));
 }
 
 /**
@@ -597,7 +629,10 @@ function coverageReport(days = 30) {
   const rtByDay = {};
   for (const r of db.getRescueTimeDays(days).map(hydrate)) rtByDay[r.day] = r;
 
-  const pairs = Object.keys(byDay).map(day => ({ day, ...assessDay(rtByDay[day] || null, byDay[day]) }));
+  const wd = require('./working-days');
+  const pairs = Object.keys(byDay).map(day => ({
+    day, ...assessDay(rtByDay[day] || null, byDay[day], { nonWorking: wd.nonWorkingReason(day) }),
+  }));
   return { ...coverage(pairs), configured: isConfigured(), credentialSource: credentialSource(), pairs };
 }
 
