@@ -482,7 +482,7 @@ function readVantage() {
     // A store that exists and holds nothing is a DIFFERENT fact from one that
     // cannot be read: the hook ships and records nothing until the first view
     // is opened, so this is "nothing recorded yet", not "VANTAGE is unused".
-    const opens = rows
+    const events = rows
       .filter(r => r && typeof r.screen === 'string' && r.screen.trim())
       .map(r => ({
         // ⚠ A row written before interactions existed carries no `kind` and is
@@ -496,7 +496,7 @@ function readVantage() {
         count: typeof r.count === 'number' ? r.count : 1,
       }));
 
-    return { known: true, opens, empty: opens.length === 0 };
+    return { known: true, events, empty: events.length === 0 };
   } catch (e) {
     return { known: false, reason: `could not read VANTAGE screen opens (${e.message})` };
   } finally {

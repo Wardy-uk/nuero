@@ -191,3 +191,46 @@ test('it is READ-ONLY — this panel must never be why something changed', async
     assert.notEqual(res.status, 200, `${method} must not be handled`);
   }
 });
+
+// ── The REAL VANTAGE reader ─────────────────────────────────────────────────
+
+test('⚠⚠ the real readVantage returns the shape build() consumes', async () => {
+  // THIS TEST EXISTS BECAUSE ITS ABSENCE SHIPPED A 500. The pure suite stubs
+  // `readVantage`, so it asserted the contract I INTENDED and never ran the
+  // function — and when the fold's field was renamed `opens` → `events` the
+  // reader was not, so every live call died on "vantage.events is not
+  // iterable" with a fully green suite behind it. A stub cannot test the thing
+  // it replaces.
+  const Database = require('better-sqlite3');
+  const file = path.join(tmp, 'vantage-real.db');
+  const vdb = new Database(file);
+  vdb.exec('CREATE TABLE docs (id INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, json TEXT NOT NULL)');
+  const ins = vdb.prepare('INSERT INTO docs (collection, json) VALUES (?, ?)');
+  const su = require('../services/screen-usage');
+  ins.run(su.VANTAGE_COLLECTION, JSON.stringify({ screen: 'radar', kind: 'opened', count: 1, date_key: '2026-09-15', hour: 9 }));
+  ins.run(su.VANTAGE_COLLECTION, JSON.stringify({ screen: 'radar', kind: 'interacted', count: 5, date_key: '2026-09-15', hour: 9 }));
+  // A row from before interactions existed — no `kind` at all.
+  ins.run(su.VANTAGE_COLLECTION, JSON.stringify({ screen: 'plan', count: 1, date_key: '2026-09-15', hour: 9 }));
+  vdb.close();
+
+  const prev = process.env.VANTAGE_DB_PATH;
+  process.env.VANTAGE_DB_PATH = file;
+  try {
+    const out = su.readVantage();
+    assert.equal(out.known, true, out.reason || 'the real reader could not open a real file');
+    assert.ok(Array.isArray(out.events), 'it must return `events` — the field build() spreads');
+    assert.equal(out.events.length, 3);
+
+    // And end to end, through the real fold, which is what actually broke.
+    const built = su.build({ weeks: 52, db: { getScreenEventsSince: () => [], getScreenEventFirstSeen: () => [] } });
+    const radar = built.rows.find((r) => r.screen === 'radar');
+    assert.ok(radar, 'the VANTAGE rows reached the grid');
+    assert.equal(radar.opened.total, 1);
+    assert.equal(radar.interacted.total, 5);
+    const plan = built.rows.find((r) => r.screen === 'plan');
+    assert.equal(plan.opened.total, 1, 'a kindless legacy row is an OPEN, not reclassified');
+    assert.equal(plan.interacted.total, 0);
+  } finally {
+    process.env.VANTAGE_DB_PATH = prev;
+  }
+});
