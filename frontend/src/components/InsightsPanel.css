@@ -630,3 +630,42 @@
   flex-shrink: 0;
   accent-color: var(--accent, #4fc3f7);
 }
+
+/* A loop is debt: the way out is a task, not a knowledge note. */
+.knowledge-loop-btn {
+  margin-left: 24px;
+  margin-top: 4px;
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.24));
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+  cursor: pointer;
+}
+
+.knowledge-loop-btn:hover {
+  border-color: rgba(79, 156, 249, 0.45);
+  color: var(--text-primary, #e2e8f0);
+}
+
+.knowledge-loop-ask {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 5px 0 0 24px;
+}
+
+.knowledge-loop-note {
+  display: block;
+  margin: 4px 0 0 24px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary, #64748b);
+}
+
+.knowledge-loop-note--bad {
+  color: var(--warning, #f59e0b);
+}

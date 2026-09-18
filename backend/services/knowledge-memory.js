@@ -1606,6 +1606,106 @@ function listDomains() {
   };
 }
 
+/**
+ * Turn one open loop into a task.
+ *
+ * An open loop is debt to chase, not a fact to remember — so the honest fate of most of
+ * them is a task, not a knowledge note. Filing "confirm the exchange policy on four
+ * unopened boxes" under Knowledge turns an open question into something that reads six
+ * months later like a settled answer.
+ *
+ * ⚠⚠ ORIGIN IS ASKED, NEVER INFERRED, AND THAT IS NICK'S RULE (18 Sep 2026): a task is
+ * a COMMITMENT if somebody asked him for it and an IMPROVEMENT if he offered it
+ * himself. Nothing here can tell those apart — the loop is one line of model-written
+ * prose with no record of who spoke first — and `inferOrigin`'s own header says the
+ * quiet part: it reads PROVENANCE, never wording, because measured on the live store no
+ * keyword rule separates "Prepare price comparisons for Chris" from "Build an
+ * escalation view in NOVA". So the button asks, and because the answer is explicit
+ * `createTask` records it as a DECISION rather than stamping `origin_proposed`.
+ *
+ * ⚠ THIS DISAGREES WITH `inferOrigin`'s MEETING RULE AND THAT IS DELIBERATE, NOT AN
+ * OVERSIGHT. `shared/task-origin.cjs` says a task promoted from a meeting note is a
+ * commitment "whether or not he was asked", because it was said in front of people.
+ * Nick's rule here splits on who suggested it. The two are reconciled by ASKING rather
+ * than by changing the inference — flipping `inferOrigin` would silently re-classify
+ * historical tasks and move numbers in the weekly risk report Chris reads, which is a
+ * decision for Nick and not a side effect of this button.
+ *
+ * ⚠ NULL IS ALLOWED. "I do not know yet" is a first-class answer the report counts as
+ * its own named bucket; forcing a choice here is how a guess becomes a decision.
+ *
+ * ⚠ The caller sends an INDEX and the loop text is re-derived from the note — the same
+ * rule as `promoteCandidate`, so this cannot be used to write arbitrary task text.
+ *
+ * ⚠ Pressing twice is safe and needs no bookkeeping: `dedupeKey` is UNIQUE on
+ * normalised text, so a second press FOLDS onto the existing task rather than
+ * duplicating it.
+ */
+function loopToTask({ sourcePath, loopIndex, origin } = {}) {
+  const vault = VAULT_PATH();
+  if (!vault || !fs.existsSync(vault)) {
+    return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
+  }
+  if (!sourcePath) return { status: 'error', error: 'sourcePath required' };
+
+  const index = Number(loopIndex);
+  if (!Number.isInteger(index) || index < 0) {
+    return { status: 'error', error: 'loopIndex must be a non-negative integer' };
+  }
+
+  // ⚠ An unrecognised origin is REFUSED, never quietly treated as "not set" —
+  // "I did not understand you" and "leave it unclassified" are different requests,
+  // and only one of them should silently produce an unclassified task
+  // (`ms-task-local`'s rule).
+  const ALLOWED = ['commitment', 'improvement'];
+  let chosenOrigin = null;
+  if (origin !== undefined && origin !== null && origin !== '') {
+    const clean = String(origin).trim().toLowerCase();
+    if (!ALLOWED.includes(clean)) {
+      return { status: 'error', error: `origin must be one of ${ALLOWED.join(', ')}, or omitted` };
+    }
+    chosenOrigin = clean;
+  }
+
+  const fullPath = path.join(vault, sourcePath);
+  if (!fs.existsSync(fullPath)) {
+    return { status: 'error', error: `Note not found: ${sourcePath}` };
+  }
+
+  const note = readNoteMeta(fullPath);
+  const loops = knowledgeValue(note).loopItems;
+  const text = loops[index];
+  if (!text) {
+    return { status: 'error', error: `No open loop at index ${index} in ${sourcePath}` };
+  }
+
+  let created;
+  try {
+    created = require('./task-store').createTask({
+      text,
+      // A source `inferOrigin` has no rule for, deliberately: the origin on this route
+      // comes from the button and must not be second-guessed by a classifier.
+      source: 'knowledge-loop',
+      origin_path: sourcePath,
+      origin: chosenOrigin,
+      // Nick is standing here, so telling him he already has one costs a sentence.
+      checkSimilar: true
+    });
+  } catch (e) {
+    return { status: 'error', error: e.message };
+  }
+
+  return {
+    status: 'ok',
+    sourcePath,
+    loopIndex: index,
+    text,
+    taskId: created?.task_id ?? created?.id ?? null,
+    origin: chosenOrigin,
+    similar: created?.similar || null
+  };
+}
+
 function promoteCandidate({ sourcePath, domain, title, insightIndexes, loopIndexes }) {
   const vault = VAULT_PATH();
   if (!vault || !fs.existsSync(vault)) {
@@ -2546,6 +2646,7 @@ module.exports = {
   undismissCandidate,
   listDismissed,
   listDomains,
+  loopToTask,
   enrichPromotionCandidates,
   promotionSignal,
   isSummaryNote,

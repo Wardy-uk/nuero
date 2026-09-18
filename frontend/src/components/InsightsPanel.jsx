@@ -22,6 +22,9 @@ export default function InsightsPanel({ onNavigate }) {
   // Which bullets are ticked, per candidate path. ⚠ Absent means "all", which is the
   // default and matches the server: omitting the indexes files the whole note.
   const [selection, setSelection] = useState({});
+  // `${path}:${loopIndex}` -> the task it became, so a pressed loop says so.
+  const [loopTasks, setLoopTasks] = useState({});
+  const [askingOrigin, setAskingOrigin] = useState(null);
   const [dismissed, setDismissed] = useState(new Set());
   const [eodHistory, setEodHistory] = useState([]);
   const [ritualHistory, setRitualHistory] = useState([]);
@@ -148,6 +151,32 @@ export default function InsightsPanel({ onNavigate }) {
       const result = await res.json();
       if (result.ok) await fetchData();
     } catch {}
+  };
+
+  // ⚠ ORIGIN IS ASKED, NEVER GUESSED. Nick's rule (18 Sep): asked of him = a
+  // COMMITMENT, offered by him = an IMPROVEMENT. Nothing in a one-line loop records
+  // who spoke first, and getting it wrong either manufactures a broken promise in the
+  // report Chris reads or hides a real one.
+  const loopToTask = async (candidate, loopIndex, origin) => {
+    const key = `${candidate.path}:${loopIndex}`;
+    setAskingOrigin(null);
+    setLoopTasks(prev => ({ ...prev, [key]: { pending: true } }));
+    try {
+      const res = await fetch(apiUrl('/api/knowledge-memory/loop-to-task'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourcePath: candidate.path, loopIndex, origin })
+      });
+      const result = await res.json();
+      setLoopTasks(prev => ({
+        ...prev,
+        [key]: result.ok
+          ? { taskId: result.taskId, origin: result.origin, similar: result.similar }
+          : { error: result.error || 'could not create the task' }
+      }));
+    } catch {
+      setLoopTasks(prev => ({ ...prev, [key]: { error: 'could not reach NEURO' } }));
+    }
   };
 
   const applySuggestion = async (suggestion) => {
@@ -376,6 +405,36 @@ export default function InsightsPanel({ onNavigate }) {
                                 />
                                 <span>{item}</span>
                               </label>
+                              {(() => {
+                                const key = `${candidate.path}:${i}`;
+                                const made = loopTasks[key];
+                                if (made?.pending) return <span className="knowledge-loop-note">Creating…</span>;
+                                if (made?.error) return <span className="knowledge-loop-note knowledge-loop-note--bad">{made.error}</span>;
+                                if (made?.taskId) {
+                                  return (
+                                    <span className="knowledge-loop-note">
+                                      {`→ task #${made.taskId} (${made.origin || 'unclassified'})`}
+                                      {made.similar?.length > 0 ? ' · you may already have one like this' : ''}
+                                    </span>
+                                  );
+                                }
+                                if (askingOrigin === key) {
+                                  return (
+                                    <span className="knowledge-loop-ask">
+                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, 'commitment')}>Someone asked me</button>
+                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, 'improvement')}>I offered it</button>
+                                      {/* ⚠ "I do not know yet" is a real answer the weekly report counts
+                                          as its own bucket — forcing a choice turns a guess into a decision. */}
+                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, null)}>Not sure</button>
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <button className="knowledge-loop-btn" onClick={() => setAskingOrigin(key)}>
+                                    Make a task
+                                  </button>
+                                );
+                              })()}
                             </li>
                           ))}
                         </ul>

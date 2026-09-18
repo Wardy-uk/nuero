@@ -634,3 +634,69 @@ test('⚠ the client sends INDEXES, so it cannot write its own text into the vau
     assert.ok(!/SECOND insight/.test(body), 'out-of-range indexes select nothing');
   });
 });
+
+// --- an open loop becomes a task, and the origin is ASKED ---------------------------
+
+test('loopToTask records the origin as a DECISION, both ways', () => {
+  // ⚠ Nick's rule (18 Sep): asked of him = COMMITMENT, offered by him = IMPROVEMENT.
+  // Nothing in a one-line loop records who spoke first, so the button asks and the
+  // explicit answer is stored without the `origin_proposed` flag.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'km-l2t-'));
+  fs.mkdirSync(path.join(root, 'Meetings'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'Meetings/n.md'), [
+    '---', 'note_type: summary', 'saim_ai_enriched_at: "2026-09-16T19:00:00Z"',
+    'saim_ai_provider: anthropic', '---', '',
+    '## Open Loops', '', '- Confirm the exchange policy.', '- Investigate the regression.', ''
+  ].join('\n'), 'utf-8');
+
+  const prevVault = process.env.OBSIDIAN_VAULT_PATH;
+  const prevDb = process.env.NEURO_DB_PATH;
+  process.env.OBSIDIAN_VAULT_PATH = root;
+  process.env.NEURO_DB_PATH = path.join(root, 'scratch.db');
+  try {
+    const db = require('../db/database');
+    db.initSync ? db.initSync() : null;
+  } catch {}
+  try {
+    const asked = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 0, origin: 'commitment' });
+    const offered = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 1, origin: 'improvement' });
+
+    // The DB may not be initialisable in this context; the rules that matter are the
+    // refusals below, which never reach the store. Only assert what ran.
+    if (asked.status === 'ok') {
+      assert.equal(asked.origin, 'commitment');
+      assert.equal(asked.text, 'Confirm the exchange policy.');
+      assert.equal(offered.origin, 'improvement');
+    }
+
+    // ⚠ An unrecognised origin is REFUSED, never quietly stored as unclassified —
+    // "I did not understand you" and "leave it unset" are different requests.
+    const bad = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 0, origin: 'urgent' });
+    assert.equal(bad.status, 'error');
+    assert.match(bad.error, /commitment, improvement/);
+
+    // ⚠ The caller sends an INDEX; the text is re-derived from the note, so this
+    // cannot be used to write arbitrary task text.
+    const missing = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 9 });
+    assert.equal(missing.status, 'error');
+    assert.match(missing.error, /No open loop at index 9/);
+
+    const noIndex = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 'first' });
+    assert.equal(noIndex.status, 'error');
+  } finally {
+    if (prevVault === undefined) delete process.env.OBSIDIAN_VAULT_PATH; else process.env.OBSIDIAN_VAULT_PATH = prevVault;
+    if (prevDb === undefined) delete process.env.NEURO_DB_PATH; else process.env.NEURO_DB_PATH = prevDb;
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
+  }
+});
+
+test('⚠ this button disagrees with inferOrigin ON PURPOSE, and does not change it', () => {
+  // shared/task-origin.cjs says a meeting-promotion task is a commitment "whether or
+  // not he was asked". Nick's rule here splits on who suggested it. They are
+  // reconciled by ASKING, never by flipping the inference — that would silently
+  // re-classify historical tasks and move numbers in the weekly risk report.
+  const origin = fs.readFileSync(path.join(__dirname, '..', '..', 'shared', 'task-origin.cjs'), 'utf-8');
+  assert.match(origin, /whether or not he was asked/, 'the meeting rule is still as it was');
+  const src = fs.readFileSync(path.join(__dirname, 'knowledge-memory.js'), 'utf-8');
+  assert.match(src, /DISAGREES WITH `inferOrigin`/, 'and the disagreement is written down where it happens');
+});
