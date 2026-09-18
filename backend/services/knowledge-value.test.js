@@ -464,3 +464,39 @@ test('domains are read from the vault, and existing is kept apart from suggested
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('a promoted note is not given a second date', () => {
+  // Every PLAUD summary is already named `YYYY-MM-DD – …`, so prefixing the promotion
+  // date produced `2026-09-18 2026-09-13 Consultation.md` — two dates, the less useful
+  // one first, in a filename Nick reads in Obsidian for ever.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'km-promote-'));
+  fs.mkdirSync(path.join(root, 'Meetings', '2026', '09'), { recursive: true });
+  const dated = 'Meetings/2026/09/2026-09-13 Consultation.md';
+  const undated = 'Meetings/2026/09/Some Standing Note.md';
+  for (const rel of [dated, undated]) {
+    fs.writeFileSync(path.join(root, rel), '---\nnote_type: summary\n---\n\n## Overview\nBody.\n', 'utf-8');
+  }
+
+  const previous = process.env.OBSIDIAN_VAULT_PATH;
+  process.env.OBSIDIAN_VAULT_PATH = root;
+  try {
+    const a = km.promoteCandidate({ sourcePath: dated, domain: 'Health' });
+    assert.equal(a.status, 'ok');
+    assert.match(a.promotedPath, /^Knowledge\/Health\/2026-09-13 Consultation\.md$/,
+      'the note keeps its own date and gains no other');
+
+    // ⚠ A note with no date of its own still gets one — the prefix is what orders the
+    // folder, so dropping it unconditionally would leave undated notes unsortable.
+    const b = km.promoteCandidate({ sourcePath: undated, domain: 'Health' });
+    assert.match(b.promotedPath, /^Knowledge\/Health\/\d{4}-\d{2}-\d{2} Some Standing Note\.md$/);
+
+    // A brand-new domain is created, and is offered as EXISTING next time.
+    const domains = km.listDomains();
+    assert.deepEqual(domains.existing, ['Health']);
+    assert.ok(!domains.suggested.includes('Health'), 'not offered twice');
+  } finally {
+    if (previous === undefined) delete process.env.OBSIDIAN_VAULT_PATH;
+    else process.env.OBSIDIAN_VAULT_PATH = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

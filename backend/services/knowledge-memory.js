@@ -1563,7 +1563,13 @@ function promoteCandidate({ sourcePath, domain, title }) {
   const folder = path.join(vault, 'Knowledge', finalDomain);
   fs.mkdirSync(folder, { recursive: true });
 
-  let fileBase = `${isoDate()} ${finalTitle}`;
+  // ⚠ NOT A SECOND DATE. Every PLAUD summary is already named `YYYY-MM-DD – …`, so
+  // prefixing the promotion date produced `2026-09-18 2026-09-13 Consultation.md` —
+  // two dates, the less useful one first, in a filename Nick reads in Obsidian for
+  // ever. The date that matters is when the thing HAPPENED, not when he clicked
+  // promote; `promoted_at` in the frontmatter already records the latter.
+  const alreadyDated = /^\d{4}-\d{2}-\d{2}\b/.test(finalTitle);
+  let fileBase = alreadyDated ? finalTitle : `${isoDate()} ${finalTitle}`;
   let filename = `${fileBase}.md`;
   let targetFull = path.join(folder, filename);
   let counter = 2;
