@@ -1324,7 +1324,17 @@ function recordExternal(kind, outcome, opts) {
   // never cost the ritual - `_renderDailyNote` already tolerates a null.
   let accountability = null;
   try {
-    accountability = require('./standup-accountability').buildAccountability();
+    // ⚠⚠ ANCHORED TO THE DAY BEING RECORDED, not to today. The scan walks from
+    //   the day BEFORE the anchor backwards, so without this the note this call
+    //   is about to write is inside its own carry-over window — and recording a
+    //   past day's standup twice aged every carried commitment by a day
+    //   (`#carried-1d` → `#carried-2d`). That is the CENTRAL case here: this
+    //   function exists to reconcile a ritual captured elsewhere, possibly
+    //   yesterday.
+    //
+    // ⚠ It is also the right question. The carry-overs for a given morning are
+    //   what was open BEFORE that morning, never what is open now.
+    accountability = require('./standup-accountability').buildAccountability({ asOf: dateKey });
   } catch (e) {
     console.warn('[StandupSession] recordExternal: accountability unavailable:', e.message);
   }

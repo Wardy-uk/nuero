@@ -358,12 +358,12 @@ function standupDoneIn(content) {
 }
 
 // Walk back over the last `lookbackDays` calendar days, newest first
-function readRecentNotes(lookbackDays) {
+function readRecentNotes(lookbackDays, asOf = new Date()) {
   const dir = path.join(vaultPath(), 'Daily');
   const days = [];
   if (!vaultPath() || !fs.existsSync(dir)) return days;
 
-  const today = new Date();
+  const today = asOf instanceof Date ? asOf : new Date();
   for (let i = 1; i <= lookbackDays; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
@@ -382,11 +382,46 @@ function readRecentNotes(lookbackDays) {
 }
 
 /**
- * Build the full accountability picture for this morning's standup.
- * Everything here is derived from the vault — no AI, no guessing.
+ * PURE. A `YYYY-MM-DD` key as a LOCAL midnight Date.
+ *
+ * ⚠ NEVER `new Date('2026-09-19')`, which is midnight UTC and renders as the
+ *   18th west of here. The rule this repo states everywhere else, and the one
+ *   `_dateOf` already follows in `standup-session`.
+ *
+ * Anything unparseable falls back to now — an unreadable anchor must not stop
+ * the standup, and "today" is the behaviour every caller had before this.
  */
-function buildAccountability({ lookbackDays = 14, ledger = null, taskStatus = _taskStatus } = {}) {
-  const days = readRecentNotes(lookbackDays);
+function _asOfDate(asOf) {
+  if (asOf instanceof Date) return asOf;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(asOf || ''));
+  if (!m) return new Date();
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+/**
+ * Build the full accountability picture for a standup.
+ * Everything here is derived from the vault — no AI, no guessing.
+ *
+ * ⚠⚠ `asOf` IS THE DAY BEING BUILT FOR, and defaulting it to today is what
+ * every caller had before it existed. It matters because the scan walks from
+ * the day BEFORE the anchor backwards, so the anchor day is excluded from its
+ * own carry-over count — and without it, recording a PAST day's standup counted
+ * the note it had just written as another day of carrying.
+ *
+ * Live symptom: `recordExternal` exists to reconcile a ritual captured
+ * elsewhere, possibly yesterday, and recording yesterday's standup twice aged
+ * every carried commitment by a day (`#carried-1d` → `#carried-2d`). It is also
+ * simply the right question: the carry-overs for a given morning are what was
+ * open BEFORE that morning, not what is open now.
+ *
+ * ⚠ `ledger` and `taskStatus` are deliberately still "as of NOW". They CLOSE
+ * commitments rather than age them, and closing one that has since been done is
+ * the safe direction — it stops a thing already finished being chased. Making
+ * those historical would need a point-in-time task store, which does not exist.
+ */
+function buildAccountability({ lookbackDays = 14, asOf = null, ledger = null, taskStatus = _taskStatus } = {}) {
+  const anchor = _asOfDate(asOf);
+  const days = readRecentNotes(lookbackDays, anchor);
   const withNotes = days.filter(d => d.exists);
   const previous = withNotes[0] || null;
 
@@ -394,7 +429,11 @@ function buildAccountability({ lookbackDays = 14, ledger = null, taskStatus = _t
   // Kept separate from the lookback: today's items aren't "carried" yet, but if
   // the standup is already done we should be tracking progress against them.
   let today = null;
-  const todayStr = dateStr(new Date());
+  // ⚠ THE ANCHOR DAY, not the wall clock. Reading the real today while the rest
+  //   of this picture is built for another day would mix two days into one
+  //   answer — and on a re-record it is the note just written, which is exactly
+  //   the self-counting this anchor removes.
+  const todayStr = dateStr(anchor);
   const todayFile = path.join(vaultPath(), 'Daily', `${todayStr}.md`);
   if (vaultPath() && fs.existsSync(todayFile)) {
     try {

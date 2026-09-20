@@ -137,14 +137,10 @@ test('recording the same standup twice is one standup', async () => {
   //   `readRecentNotes` walks from YESTERDAY backwards, so a note written for
   //   today is excluded from its own carry-over scan and the two passes agree.
   //
-  // ⚠⚠ AND THE LITERAL WAS HIDING A REAL BUG rather than merely rotting. For a
-  //   day in the PAST the first write creates a note that the second write's
-  //   scan then INCLUDES, so every carried commitment is counted one day older
-  //   — `#carried-1d` becomes `#carried-2d`. That is the CENTRAL case for
-  //   `recordExternal`, which exists to reconcile a ritual captured elsewhere,
-  //   possibly yesterday. NOT fixed here: the fix is to exclude the day being
-  //   written from its own accountability scan, which changes
-  //   `buildAccountability`'s contract and is a decision, not a fixture repair.
+  // ⚠⚠ AND THE LITERAL WAS HIDING A REAL BUG rather than merely rotting — see
+  //   the PAST-day test below, which is where that now lives. This one keeps
+  //   the same-day case, and the point of keeping both is that this one passes
+  //   under the OLD rule as well as the new one. It could never have caught it.
   const day = todayKey();
   const body = { focus: ['Ship the thing'], date: day };
   await post('/api/standup/record', body);
@@ -153,6 +149,39 @@ test('recording the same standup twice is one standup', async () => {
   assert.equal(res.status, 200);
   assert.equal(read(day), first, 'byte-identical');
   assert.equal(read(day).match(/^## Focus Today$/gm).length, 1);
+});
+
+test('⚠⚠ recording a PAST day twice does not age its carry-overs', async () => {
+  // THE BUG THE HARDCODED FIXTURE WAS HIDING. `readRecentNotes` walks from the
+  // day BEFORE its anchor backwards, and the anchor used to be the WALL CLOCK.
+  // So for a day in the past the first write created a note that the second
+  // write's scan then INCLUDED, and every carried commitment was counted one
+  // day older: `#carried-1d` became `#carried-2d`.
+  //
+  // ⚠ This is the CENTRAL case for `recordExternal`, which exists to reconcile
+  //   a ritual captured elsewhere — Sara running the morning standup in ChatGPT
+  //   and it being written up afterwards, possibly the next day.
+  //
+  // ⚠ It is written against a day in the PAST deliberately. The same-day test
+  //   above passes either way, because today is excluded from its own scan by
+  //   the old rule as well as the new one — which is exactly why this went
+  //   unnoticed.
+  const day = dayKey(-1);
+  const body = { focus: ['Ship the thing'], date: day };
+
+  await post('/api/standup/record', body);
+  const first = read(day);
+  assert.ok(first, 'the first record wrote a note');
+
+  const res = await post('/api/standup/record', body);
+  assert.equal(res.status, 200);
+  assert.equal(read(day), first, 'byte-identical — a re-record is the same standup');
+
+  // ⚠ And it is specifically the AGE that must not move. A plain equality can
+  //   pass while both copies are wrong together, so the tag is asserted too.
+  const tags = (first.match(/#carried-(\d+)d/g) || []);
+  const after = (read(day).match(/#carried-(\d+)d/g) || []);
+  assert.deepEqual(after, tags, 'no carry-over aged on the second pass');
 });
 
 test('a refusal is a 400 that SAYS why, not a 500', async () => {
