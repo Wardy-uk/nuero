@@ -98,6 +98,75 @@ horizon does not.
 
 ---
 
+## What she is DOING (20 Sep 2026)
+
+The feed said what she had READ, what she thought MATTERED and how confident the
+read was. It never said whether anything was **under way** — so a request Nick
+had made ten seconds earlier and a completely idle afternoon produced the same
+screen, and the only place "in flight" existed at all was a `useState` inside the
+phone PWA, invisible to the kiosk, to iOS and to the phone's own next poll.
+
+**The loop she is visibly in**:
+`observe → assess → recommend → obtain approval → execute → verify → report`.
+
+* **A REQUEST SENT IS NOT AN ACTION COMPLETED.** `executing` means the ask is
+  out, `verifying` means something took it and has not said what happened, and
+  **neither is success**. The outcome is reported when it is known, or the
+  failure is, and nothing in between claims either. A card that clears itself on
+  an error is one he believes worked.
+* **One vocabulary, composed server-side** — `shared/operation-phase.cjs`,
+  mirrored in `Operation.swift` and pinned across the two repos. The phase and
+  its `label` arrive on the payload and are rendered **verbatim**; an
+  unrecognised phase renders **nothing**, never its own raw id.
+* **`unavailable` outranks everything**, including a request in flight. It is
+  not a status — it says how much of the rest of the screen can be believed, and
+  a surface that has gone blind must never look calm. A routine gap does **not**
+  reach it: a warning that is always on is one nobody reads.
+* **The resting phases carry no detail line.** `standing_by`, `quiet` and
+  `monitoring` are true for hours; a line that is there most of every day costs
+  the reading of the ones that matter.
+* **The label lives in the crown, monospace and faint** — the console register,
+  beside the context word, not above the sentence. "in a meeting · QUIET" is one
+  sentence made of two different facts. It takes **her** colour when live and
+  has no palette of its own.
+* **The only phase a shell decides for itself is its own**: `assessing` while it
+  is waiting on a question, `executing` while a write of its own is out. That is
+  a fact about the device, not an inference about Nick's day — and it is
+  transient, so a client-local phase can never survive contrary server data.
+  Even then the **words** come from the shared vocabulary.
+* **Never spinner dots.** Thinking is a thin line shifting in her colour; under
+  `prefers-reduced-motion` it becomes a steady line, not nothing.
+
+**Deliberately not on the lock-screen widget.** A phase is a right-now fact and
+a widget refreshes on iOS's budget (~15–30 min) against a five-minute deadline,
+so it would reliably show an operational state that had already ended — the
+stale-reading-as-current failure this whole layer exists to remove.
+
+## Everything she can do is sayable (20 Sep 2026)
+
+The sentences have been composed server-side for weeks and could only ever be
+**tapped**: saying *"not now"* streamed a chat answer about deferring rather
+than deferring anything. The tap path and the spoken path were two vocabularies
+and only one of them worked.
+
+* **No client parses language.** The brain composes, per utterance, the exact
+  `phrases` that mean it; `shared/heard.cjs` (and `Heard.swift`) does string
+  equality against that list. A client is never inferring what he meant.
+* **Ambiguity is refused, never guessed.** A phrase two offered sentences claim
+  matches neither and falls through to chat, where a wrong answer costs a
+  sentence — acting on a coin toss costs a deferral he did not make.
+* **Only what is on offer.** The list is bounded by what the record allows, so a
+  verb NEURO would refuse is no more reachable by voice than by thumb.
+* **An unmatched sentence is a QUESTION, never a failed command.**
+* **What she heard is shown before it is acted on**, in the words of the
+  sentence that ran rather than the raw dictation — that is the *report* half.
+* ⚠ **"Do it" is deliberately absent, and it is a seam.** It should mean
+  *perform the prepared action awaiting your word* — but the offered verbs are
+  open / not-now / done / seen / dismiss and none of them is that action. The
+  one genuinely prepared, held-back write on the payload is a **room offer**,
+  which has no utterance at all. Making "do it" honest means giving room offers
+  a sentence first.
+
 ## The honesty rules the layout must not break
 
 These pre-date the look and outlive it. They live in

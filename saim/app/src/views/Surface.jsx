@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, chatStream } from '../api';
 import actionSurfaces from '../../../../shared/action-surfaces.cjs';
+// ⚠ The matcher, not a parser. The server composes the exact phrases that mean
+// each sentence; this compares what was said against that list. See
+// `shared/heard.cjs` — nothing here works out what Nick meant.
+import { matchSaid } from '../../../../shared/heard.cjs';
 import { speakIfEnabled, isAudioUnlocked, unlockAudio, isVoiceOutEnabled, setVoiceOutEnabled } from '../voiceUtils';
 // ⚠ ONE source, shared with the Pi kiosk (`saim/shared-ui`). SAiM's presence
 // must look the same wherever she is; two copies would drift, which is exactly
@@ -146,6 +150,39 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   }, [speech]);
 
   async function ask(question) {
+    // ── Was that a COMMAND? ──────────────────────────────────
+    //
+    // SAiM's principle is that everything she can do is achievable
+    // conversationally, and until this the sentences she offers could only be
+    // TAPPED — saying "not now" streamed a chat answer ABOUT deferring rather
+    // than deferring anything.
+    //
+    // ⚠ NOTHING IS PARSED HERE. The brain composed the phrases that mean each
+    //   sentence; this is string equality against that list, and a phrase two
+    //   sentences claim matches NEITHER. Anything unmatched is a QUESTION and
+    //   goes to chat exactly as before — never reported as a failed command.
+    //
+    // ⚠ It is checked against the utterances ON SCREEN, so a verb NEURO would
+    //   refuse is no more reachable by voice than by thumb.
+    const heard = matchSaid(question, state.data?.utterances);
+    if (heard?.kind === 'control' && heard.control === 'stop') {
+      // Speech only. A write already sent is out of this shell's hands, and
+      // claiming to have recalled it is "a request sent is not an action
+      // completed" pointed backwards.
+      try { window.speechSynthesis?.cancel(); } catch { /* not every shell has one */ }
+      endExchange();
+      return;
+    }
+    if (heard?.kind === 'utterance') {
+      // Shown, then done — he must be able to see what she heard, or a
+      // misheard word becomes an action with no explanation. The utterance's
+      // own words are the echo, never the raw dictation, because THAT is what
+      // is about to happen.
+      setExchange({ question, answer: heard.utterance.say, thinking: false, error: null, acted: true });
+      await onSay(heard.utterance, state.data?.primary);
+      return;
+    }
+
     setExchange({ question, answer: '', thinking: true, error: null });
     // Fire-and-forget, in PARALLEL with the answer: the dashboard should change
     // as he finishes speaking, not after the model has finished replying. A
@@ -301,14 +338,35 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     }
   }
 
+  // Accepting an offer is the one press on this screen with a PHYSICAL effect,
+  // so it gets the same honesty as a desk intent: it is in flight while it is in
+  // flight, and a refusal stays on screen in NEURO's own words.
+  //
+  // ⚠⚠ IT USED TO SWALLOW THE FAILURE into a `console.warn` and refetch — so a
+  //   light that did not come on was INDISTINGUISHABLE from one that did, and
+  //   the only thing Nick saw either way was the offer disappearing. A card that
+  //   clears itself on an error is one he believes worked, which is the failure
+  //   this whole layer exists to remove.
+  const [roomBusy, setRoomBusy] = useState(false);
+  const [roomFailure, setRoomFailure] = useState(null);
   async function roomAct(key, decision) {
     const path = decision === 'accept' ? 'accept' : 'decline';
+    setRoomFailure(null);
+    setRoomBusy(true);
     try {
-      await apiFetch(`/api/rooms/${encodeURIComponent(key)}/${path}`, { method: 'POST' });
+      const res = await apiFetch(`/api/rooms/${encodeURIComponent(key)}/${path}`, { method: 'POST' });
+      // ⚠ A 200 carrying `ok:false` is NOT an acknowledgement — `neuroCapture`'s
+      //   rule, and the same one the kiosk capture bridge is built on. The
+      //   offer is re-derived server-side from a fresh read, so one that has
+      //   stopped being true is refused rather than executed late, and that
+      //   refusal is a thing Nick needs to see.
+      if (res && res.ok === false) {
+        setRoomFailure(res.reason || res.error || (decision === 'accept' ? 'That could not be done.' : 'That could not be recorded.'));
+      }
     } catch (e) {
-      // Never allowed to take the surface down. The refetch below will show
-      // whether anything actually changed.
-      console.warn('[surface] room offer failed:', e.message);
+      setRoomFailure(e.message || 'That could not be done.');
+    } finally {
+      setRoomBusy(false);
     }
     load();
   }
@@ -506,6 +564,27 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   // ALSO set the default on the component, so the explicit prop passed from
   // here beat the default and every device kept the old stack — a switch that
   // looked thrown and was not. An explicit value always beats a default.
+  // ── The phase THIS DEVICE knows ─────────────────────────────
+  //
+  // Everything else on `data.operation` is the brain's and is rendered verbatim.
+  // This is the deliberate exception: "I am waiting on my own request" is a fact
+  // about this shell, not an inference about Nick's day, and the server has no
+  // way to observe it.
+  //
+  // ⚠ TRANSIENT BY CONSTRUCTION. The moment the request settles this is null
+  //   and the server's answer is back, so a client-local phase can never survive
+  //   contrary server data — which is what keeps it from becoming a second store.
+  //
+  // ⚠ The WORDS are not ours. `AttentionSurface` looks the label up in the
+  //   shared vocabulary; this only names which phase it is in.
+  //
+  // ⚠ A question is ASSESSING, a write is EXECUTING. They are different halves
+  //   of the loop and collapsing them into one "busy" would throw away exactly
+  //   the distinction this feature is about.
+  const localPhase = exchange?.thinking ? 'assessing'
+    : (busy || roomBusy) ? 'executing'
+      : null;
+
   const look = typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('look') === 'list'
     ? 'list' : 'approach';
@@ -579,17 +658,50 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       sayOverride={exchange ? (
         <>
           <p className="surface__asked">“{exchange.question}”</p>
+          {/* ⚠ WHAT SHE HEARD, SHOWN BEFORE IT IS ACTED ON. A misheard word that
+              defers a card with no explanation is worse than one that produces a
+              wrong chat answer — this is the "report" half of the loop, and it
+              echoes the SENTENCE that ran rather than the raw dictation, because
+              the sentence is what actually happened. */}
+          {exchange.acted && <p className="surface__saysub">Heard as a command · doing it</p>}
           {exchange.error ? (
             <p className="surface__saysub surface__saysub--warn">{exchange.error}</p>
           ) : (
-            <p className="surface__saylead">{exchange.answer || (exchange.thinking ? '…' : '')}</p>
+            <p className="surface__saylead">
+              {exchange.answer || (exchange.thinking ? (
+                /* ⚠ A THIN SHIFTING LINE, never spinner dots. Dots are furniture
+                   that says only "something is happening"; this is her field
+                   resolving, which is the same language the rest of the screen
+                   already speaks — and under `prefers-reduced-motion` it becomes
+                   a steady line rather than nothing, because that is a request
+                   for less movement, not less information. */
+                <span className="surface__thinking" role="status" aria-label="Thinking" />
+              ) : '')}
+            </p>
           )}
           <div className="surface__acts">
             <button type="button" className="surface__btn" onClick={endExchange}>Done</button>
           </div>
         </>
       ) : null}
-      footAside={voiceErr ? <p className="surface__aside surface__aside--warn">{voiceErr}</p> : null}
+      localPhase={localPhase}
+      footAside={(voiceErr || roomFailure) ? (
+        <>
+          {voiceErr && <p className="surface__aside surface__aside--warn">{voiceErr}</p>}
+          {/* ⚠ STAYS UNTIL READ, and is tappable to clear — a note that fades on
+              its own is one he may never see, which is `outcome`'s rule one
+              component along. It says what NEURO said rather than a house
+              phrasing of it. */}
+          {roomFailure && (
+            <button
+              type="button"
+              className="surface__aside surface__aside--warn"
+              onClick={() => setRoomFailure(null)}
+              aria-label="Clear this note"
+            >Nothing changed in the house — {roomFailure}</button>
+          )}
+        </>
+      ) : null}
       deviceSlot={micCard}
       footExtra={/* ⚠⚠ NOTHING, NOT AN EMPTY ROW. This rendered a flex row with
           `padding-top: 0.5rem` whether or not the hatch inside it was showing —

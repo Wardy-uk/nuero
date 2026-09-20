@@ -15,3 +15,36 @@
   padding: 1rem;
   min-height: calc(100% + 2rem);
 }
+
+/* ── Thinking ───────────────────────────────────────────
+ * A thin line that shifts, in HER colour — one light source, inherited from the
+ * surface rather than picked here. It replaces three dots, which said only that
+ * something was happening and looked like every other spinner on the phone.
+ *
+ * ⚠ Reduced motion leaves the line and stops the movement. Removing it would
+ * take the information away with the animation; the ask is for less movement. */
+.surface__thinking {
+  display: inline-block;
+  width: 6ch;
+  height: 2px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--approach-rgb, 122 162 247), 0.15) 0%,
+    rgba(var(--approach-rgb, 122 162 247), 0.95) 50%,
+    rgba(var(--approach-rgb, 122 162 247), 0.15) 100%
+  );
+  background-size: 250% 100%;
+  animation: surface-thinking 2.4s ease-in-out infinite;
+}
+@keyframes surface-thinking {
+  0%   { background-position: 120% 0; }
+  100% { background-position: -20% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .surface__thinking {
+    animation: none;
+    background: rgba(var(--approach-rgb, 122 162 247), 0.55);
+  }
+}

@@ -1126,7 +1126,72 @@ const MAX_UTTERANCES = 5;
 function finish(list, payload) {
   const out = list.filter(Boolean).slice(0, MAX_UTTERANCES - 1);
   out.push(say('Show me everything', { kind: 'reveal' }));
-  return out;
+  // ⚠ The spoken form of each sentence, composed HERE so no client parses
+  //   language — see `shared/heard.cjs`. Attached last, over the final list,
+  //   because ambiguity is a property of what is on offer TOGETHER.
+  return out.map((u) => ({ ...u, phrases: phrasesFor(u) }));
+}
+
+/**
+ * What Nick could SAY to mean this sentence. PURE.
+ *
+ * SAiM's principle is that everything she can do is achievable conversationally
+ * — and until this the sentences could only be TAPPED, so saying "not now"
+ * streamed a chat answer about deferring rather than deferring anything.
+ *
+ * ⚠⚠ THE LIST IS CLOSED AND IT IS COMPOSED SERVER-SIDE. A client matching on
+ *   its own rules would be inferring what he meant, which is the one thing
+ *   every other field on this payload exists to prevent. Here it compares what
+ *   he said against a list the brain wrote.
+ *
+ * ⚠ THE SENTENCE ITSELF IS ALWAYS IN IT. Reading a sentence off the screen and
+ *   saying it back must work, or the shelf and the voice are two vocabularies
+ *   again.
+ *
+ * ⚠ COLLISIONS ARE NOT POLICED HERE and do not need to be: `matchSaid` refuses
+ *   a phrase two offered sentences claim, and falls through to chat. "It’s too
+ *   big" and "Make it smaller" both answer too-big, and the composer never
+ *   offers them together — but the refusal is what makes that safe rather than
+ *   lucky.
+ *
+ * ⚠⚠ "DO IT" IS DELIBERATELY ABSENT, AND THIS IS THE SEAM. It should mean
+ *   "perform the prepared action awaiting your word" — but on a working surface
+ *   the offered verbs are open / not-now / done / seen / dismiss, and NONE of
+ *   them is the one prepared action. The only genuinely prepared, held-back
+ *   write on this payload is a ROOM OFFER, which has no utterance at all: it is
+ *   rendered by the shelf with its own two buttons. Making "do it" honest means
+ *   giving room offers a sentence first, which is a separate change on four
+ *   surfaces. Guessing which verb he meant would spend a deferral, a dismissal
+ *   or a completion on a coin toss, out loud, on the card in front of him.
+ */
+function phrasesFor(u) {
+  const intent = (u && u.intent) || {};
+  const base = [u && u.say].filter(Boolean);
+  const kind = intent.kind;
+  const action = intent.action;
+
+  if (kind === 'act' && action === 'defer') {
+    return intent.reason === 'too-big'
+      ? [...base, 'too big', 'its too big', 'thats too big']
+      : [...base, 'not now', 'not right now', 'later', 'in an hour'];
+  }
+  if (kind === 'act' && action === 'acknowledge') return [...base, 'seen it', 'ive seen it', 'noted', 'i know'];
+  if (kind === 'act' && action === 'dismiss') return [...base, 'not mine', 'thats not mine'];
+  if (kind === 'act' && action === 'complete') return [...base, 'done', 'thats done', 'ive done it', 'finished'];
+  if (kind === 'session' && action === 'finish') return [...base, 'done', 'thats done', 'ive done it', 'finished'];
+  if (kind === 'session' && action === 'shrink') return [...base, 'smaller', 'make it smaller', 'break it down'];
+  if (kind === 'session' && action === 'step-away') return [...base, 'something came up', 'i got pulled away'];
+  if (kind === 'session' && action === 'start') return [...base, 'on it', 'im on it', 'starting it'];
+  // ⚠ "That’s finished" is about the MEETING, and it is the only sentence on
+  //   that surface that changes anything — so it earns the natural phrasings.
+  if (kind === 'meeting') return [...base, 'weve finished', 'the meeting is over', 'it finished', 'were done'];
+  if (kind === 'navigate') return [...base, 'open it', 'show me that'];
+  if (kind === 'reveal') return [...base, 'show me everything', 'everything'];
+  if (kind === 'refresh') return [...base, 'try again', 'again'];
+  // ⚠ An `ask` gets its own words and NOTHING ELSE. It is a question, and a
+  //   question routed through the matcher rather than through chat would answer
+  //   it from a cached payload instead of asking the brain.
+  return base;
 }
 
 /**
@@ -1331,7 +1396,7 @@ module.exports = {
   // through eight payload fixtures.
   _internals: {
     dashSteady, dashSession, dashOffDuty, dashRitual, dashBlind, dashFirefighting, dashPreMeeting, dashInMeeting,
-    utterancesFor, timeOf, endTimeOf, nowSlot, agendaRows, coveredBy, countdownFor,
+    utterancesFor, phrasesFor, timeOf, endTimeOf, nowSlot, agendaRows, coveredBy, countdownFor,
     COUNTDOWN_MINUTES,
   },
 };
