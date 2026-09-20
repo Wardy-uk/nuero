@@ -5,6 +5,10 @@ import Approach, { minutesOf } from './Approach';
 import Shelf from './Shelf';
 import { isPressing } from './useFieldDrive';
 import { surfaceRgb } from './fieldDrive.mjs';
+// ⚠ ONE vocabulary, shared with the backend that composes the phase and with
+// iOS's `Operation.swift`. A renderer that built its own words from `phase`
+// would be a second opinion about what she is doing.
+import { labelFor, isActivePhase } from '../../shared/operation-phase.cjs';
 import './AttentionSurface.css';
 
 // AttentionSurface — the attention feed, rendered.
@@ -42,6 +46,10 @@ import './AttentionSurface.css';
 //     than no button at all.
 //   * "THAT'S DONE" SAYS WHAT IT CLOSED. The card clearing and the task closing
 //     are two outcomes; a held tick is not a completion, and the screen says so.
+//   * A REQUEST SENT IS NOT AN ACTION COMPLETED. The operation phase says which
+//     half of the loop she is in — asked, taken, verified, failed — and a
+//     request that failed or expired stays on screen with the reason. A card
+//     that clears itself on an error is one Nick believes worked.
 
 // How long "not now" means, in Nick's words rather than in minutes.
 export const DEFERRALS = [
@@ -132,6 +140,16 @@ export default function AttentionSurface({
   onDeskOpen = null,
   // Per-app outcome: waiting | claimed | opened | failed | expired.
   deskStates = {},
+  // ⚠ A phase THIS SHELL knows and the brain cannot: it is mid-request itself.
+  //   Everything else on `data.operation` is composed server-side and rendered
+  //   verbatim, and this is deliberately the only exception — "I am waiting on
+  //   my own fetch" is a fact about this device, not an inference about Nick's
+  //   day, and the server has no way to observe it.
+  //
+  // ⚠ It uses the SAME vocabulary (`shared/operation-phase.cjs`), never a
+  //   second set of words. A shell inventing its own label is the fourth
+  //   opinion this whole layer exists to prevent.
+  localPhase = null,
   onNavigate,
   // What Nick could SAY next. Each utterance carries a structured intent, so no
   // shell ever parses language — see `backend/services/saim-surface.js`.
@@ -404,10 +422,36 @@ export default function AttentionSurface({
     pressing,
   });
 
+  // ── Which half of the loop she is in ─────────────────────────
+  //
+  // ⚠ The SHELL'S own phase wins, and only ever transiently: it is set while
+  //   this device is itself mid-request, which the brain cannot observe. The
+  //   moment it clears, the server's answer is back — so a client-local state
+  //   can never survive contrary server data, which is the rule that keeps this
+  //   from becoming a second store.
+  //
+  // ⚠ The WORDS are the shared vocabulary's in both cases. A shell writing its
+  //   own label for a phase is exactly the drift this layer removes.
+  const operation = data.operation && typeof data.operation === 'object' ? data.operation : null;
+  const opPhase = localPhase || (operation ? operation.phase : null);
+  const opLabel = localPhase ? labelFor(localPhase) : (operation ? operation.label : null);
+  const opActive = opPhase ? isActivePhase(opPhase) : false;
+  // ⚠ The detail belongs to the SERVER'S phase. A local phase has no sentence
+  //   of its own and must not borrow the one composed for a different state —
+  //   "the laptop has taken VS Code" under the word ASSESSING would be a fact
+  //   moved onto a state it was not about.
+  const opDetail = localPhase ? null : (operation ? operation.detail : null);
+
   return (
     <div
       className={`${rootClassName}${layout === 'approach' ? ' surface--approach' : ''}`}
-      style={layout === 'approach' ? { '--approach-rgb': toneRgb } : undefined}
+      // ⚠ HER COLOUR IS SET IN BOTH LAYOUTS. It used to ride only on
+      //   `approach`, so anything in the list layout reading `--approach-rgb`
+      //   silently fell back to the default blue — a second answer about what
+      //   state she is in, on the one screen the rule exists to keep single.
+      //   The corridor still only DRAWS in approach; what is shared is the
+      //   light, not the scene.
+      style={{ '--approach-rgb': toneRgb }}
     >
       {/* The coherence on screen is the coherence of the READ — informative
           before a word is read, which is what keeps this from being a
@@ -432,11 +476,35 @@ export default function AttentionSurface({
           >
             {context?.label ? context.label.toLowerCase() : 'unsure'}
           </button>
+          {/* ── What she is DOING about it ─────────────────────────
+              The word beside it says what KIND of moment this is; this says
+              which half of the loop she is in. They are different facts and
+              both are hers — "in a meeting · QUIET" reads as one sentence.
+
+              ⚠ RENDERED VERBATIM off the payload. The only phase this shell
+              ever decides for itself is `localPhase`, and even then the WORDS
+              come from the shared vocabulary rather than from here.
+
+              ⚠ An unrecognised phase renders NOTHING rather than its own raw
+              id: a payload from a newer backend must degrade to showing less,
+              never to printing an identifier at Nick. */}
+          {opLabel && (
+            <span
+              className={`surface__op${opActive ? ' surface__op--live' : ''}`}
+              aria-live="polite"
+            >{opLabel}</span>
+          )}
           {crownExtra}
         </div>
 
+        {/* The lifecycle line. Present only where the composer gave one — the
+            resting phases deliberately carry none, because a line that is there
+            for most of every day is a line nobody reads, and that then costs
+            the reading of the ones that matter. */}
+        {opDetail && <p className="surface__opdetail">{opDetail}</p>}
+
         {showWhy && (
-          <div className="surface__why">
+          <div className={`surface__why${opDetail ? ' surface__why--shifted' : ''}`}>
             {context?.summary && <p className="surface__whyline surface__whyline--lead">{context.summary}</p>}
             {(context?.reasons || []).map((r, i) => <p key={i} className="surface__whyline">{r}</p>)}
             {(context?.contradictions || []).map((c, i) => (

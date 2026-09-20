@@ -156,7 +156,11 @@ function _load() {
   try {
     const raw = db.getState(STATE_KEY);
     const v = raw ? JSON.parse(raw) : null;
-    return v && Array.isArray(v.pending) ? v : { pending: [], outcomes: [] };
+    if (!v || !Array.isArray(v.pending)) return { pending: [], outcomes: [], claimed: [] };
+    // ⚠ A blob written before claims were recorded has no `claimed` key. It
+    // reads as an empty list, which is the OLD behaviour exactly — nothing in
+    // flight is reported rather than anything being invented about it.
+    return { ...v, claimed: Array.isArray(v.claimed) ? v.claimed : [] };
   } catch {
     // ⚠ Unreadable is not empty: returning a fresh queue would drop an intent
     // that may already have been promised to him on screen.
@@ -169,6 +173,8 @@ function _save(state) {
     db.setState(STATE_KEY, JSON.stringify({
       pending: state.pending.slice(-MAX_PENDING),
       outcomes: state.outcomes.slice(-20),
+      // Bounded like the other two. This is a hand-off queue, not a log.
+      claimed: (state.claimed || []).slice(-MAX_PENDING),
     }));
     return true;
   } catch (e) {
@@ -250,6 +256,19 @@ function claim({ host = null, now = Date.now(), canOpen = null } = {}) {
   }
 
   state.pending = live.filter(i => !mine.includes(i));
+  // ⚠⚠ CLAIMING REMOVED THE ONLY RECORD THAT A REQUEST WAS IN FLIGHT. Once
+  //   the agent took an intent it was gone from `pending` and had no outcome
+  //   yet, so from the server's side a request the laptop was mid-way through
+  //   opening was INDISTINGUISHABLE from one that had never been made — which
+  //   meant the operation phase would have read STANDING BY while the card
+  //   beside it said "the laptop has taken it". Two parts of one screen
+  //   disagreeing about the same request.
+  //
+  // ⚠ It is a separate list rather than a flag on the pending entry, because
+  //   `claimable()` is what `queue()` prunes with and a claimed intent must
+  //   never be handed to a second agent.
+  state.claimed = [...(state.claimed || []).filter(c => !isExpired(c, now)),
+    ...mine.map(i => ({ id: i.id, app: i.app, host: i.host || null, at: new Date(now).toISOString() }))];
   _save(state);
   return { intents: mine.map(i => ({ id: i.id, app: i.app })), gaps: [] };
 }
@@ -259,6 +278,10 @@ function record(id, ok, detail = null) {
   const state = _load();
   if (!state) return { ok: false, reason: 'could not read the intent queue' };
   state.outcomes = [...(state.outcomes || []), { id, ok: Boolean(ok), detail: detail || null, at: new Date().toISOString() }];
+  // Settled — it is no longer in flight. Leaving it in `claimed` would hold the
+  // surface on "waiting for the laptop" over a request that has already
+  // answered, which is the stale-warning failure one route along.
+  state.claimed = (state.claimed || []).filter(c => c && c.id !== id);
   _save(state);
   return { ok: true };
 }
@@ -280,4 +303,37 @@ function status(id) {
   return { known: true, state: 'claimed', detail: 'the laptop has taken it' };
 }
 
-module.exports = { queue, claim, record, status, isExpired, claimable, offer, APPS, BUTTON_LABELS, TTL_MS, MAX_PENDING, STATE_KEY };
+/**
+ * What is in flight right now, so the operation phase can say so.
+ *
+ * Two lists, and they are DIFFERENT FACTS:
+ *   requested — queued and nobody has picked it up. The request is out and the
+ *               laptop has not answered. This is `executing`.
+ *   taken     — an agent claimed it and has not reported back. The machine is
+ *               doing it; we do not yet know whether it worked. This is
+ *               `verifying`, and it is the whole reason claims are recorded.
+ *
+ * ⚠ An UNREADABLE queue is `known: false`, never two empty lists. "I could not
+ *   look" and "nothing is in flight" license opposite sentences, and this file
+ *   already makes that distinction for `_load`.
+ *
+ * ⚠ Expired entries are excluded from both. A request that outlived its
+ *   deadline is not in flight — it is over, and `status()` names it `expired`.
+ *   Nothing is WRITTEN here: this is a read, and pruning on a polled path would
+ *   make a read that happens to run often change what the queue holds.
+ */
+function inFlight({ now = Date.now() } = {}) {
+  const state = _load();
+  if (!state) return { known: false, why: 'could not read the intent queue', requested: [], taken: [] };
+  const live = (entry) => entry && APPS[entry.app] && !isExpired(entry, now);
+  const shape = (entry) => ({ id: entry.id, app: entry.app, label: APPS[entry.app], host: entry.host || null, at: entry.at });
+  const settled = new Set((state.outcomes || []).map(o => o && o.id));
+  return {
+    known: true,
+    why: null,
+    requested: (state.pending || []).filter(i => live(i) && !settled.has(i.id)).map(shape),
+    taken: (state.claimed || []).filter(c => live(c) && !settled.has(c.id)).map(shape),
+  };
+}
+
+module.exports = { queue, claim, record, status, inFlight, isExpired, claimable, offer, APPS, BUTTON_LABELS, TTL_MS, MAX_PENDING, STATE_KEY };

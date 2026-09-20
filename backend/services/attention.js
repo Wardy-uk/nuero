@@ -1385,6 +1385,58 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     framed = null;
   }
 
+  // ── What she is DOING about it ──────────────────────────────
+  //
+  // Everything above says what she READ and what she thinks MATTERS. Nothing
+  // said whether anything was under way — so a request Nick had made ten
+  // seconds earlier and an idle afternoon produced the same screen, and the one
+  // place "in flight" existed at all was a `useState` inside the phone's
+  // Surface, invisible to the kiosk, to iOS and to the phone's own next poll.
+  //
+  // ⚠ Composed HERE for the reason `say`, `speech`, `tab` and `field` are:
+  //   four surfaces render one decision and must not each invent a fifth thing
+  //   about it. The client renders `label` and `detail` verbatim.
+  //
+  // ⚠ Never allowed to fail the feed, and null means "render it the way you
+  //   did before this existed" — the contract `surface` and `field` already
+  //   have.
+  let operation = null;
+  try {
+    // ⚠ The intent queue is the ONE source that can say a request is out and
+    //   unanswered. An unreadable one reports `known:false`, which the composer
+    //   treats as "I could not look" rather than as "nothing is in flight".
+    let desk = null;
+    try {
+      desk = require('./desk-intents').inFlight({ now: now.getTime() });
+    } catch (e) {
+      desk = { known: false, why: e.message, requested: [], taken: [] };
+    }
+    // ⚠ A queue that could not be read is a NAMED GAP, not a quiet one. The
+    //   composer correctly refuses to claim anything is in flight, but it then
+    //   falls through to STANDING BY — and "nothing is happening" is exactly
+    //   what an unreadable queue cannot support. Rather than invent a phase for
+    //   a rare KV hiccup, the uncertainty goes where every other one goes, in
+    //   its own words, on the channel built for it.
+    if (desk && desk.known === false) {
+      gaps.push({ input: 'desk-intents', why: desk.why || 'could not read the intent queue' });
+    }
+    operation = require('./attention-operation').composeOperation({
+      poolAvailable: poolError === null,
+      quiet: gated.quiet === true,
+      context,
+      rooms,
+      desk,
+      // The cards Nick has put off, carrying the sentence already composed for
+      // them when they were held back. `snoozed` is the same array that went
+      // into `dropped`, so the crown and the held line cannot name different
+      // times for one deferral.
+      deferrals: snoozed,
+    });
+  } catch (e) {
+    console.warn('[Attention] operation composition failed:', e.message);
+    operation = null;
+  }
+
   // ── Her colour, decided ONCE ─────────────────────────────────────
   //
   // ⚠⚠ THE LOCK-SCREEN WIDGET TAKES NO COLOUR AT ALL. It draws the same nebulous
@@ -1463,6 +1515,10 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     // Her colour, resolved once above — see the note there. Additive and
     // nullable, so every existing consumer is untouched.
     field,
+    // What she is DOING — resolved once above. Additive and nullable, so every
+    // consumer written before this is untouched and a composition failure
+    // degrades to exactly the screen they already knew how to draw.
+    operation,
     surface: framed ? framed.surface : null,
     dashboard: framed ? framed.dashboard : null,
     // Non-null when the DASHBOARD moved because he asked, rather than because

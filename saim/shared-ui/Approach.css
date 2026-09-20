@@ -198,6 +198,18 @@
   margin: 0;
 }
 
+/* The lifecycle line rides with the crown, in the console column — which is
+   where MANIFESTATION.md puts what she READ. The bottom-left band is her
+   SENTENCE and its height has been rebalanced through six commits; a line that
+   can appear and disappear does not belong in a box that cannot grow. */
+.surface--approach .surface__opdetail {
+  position: absolute;
+  left: 4%;
+  top: 8.5%;
+  z-index: 9;
+  max-width: min(38%, 420px);
+}
+
 .surface--approach .surface__why {
   position: absolute;
   left: 4%;
@@ -205,6 +217,11 @@
   z-index: 9;
   max-width: min(42%, 460px);
 }
+/* ⚠ Both are absolutely positioned in the console column, so the reasoning
+   panel has to MOVE when a lifecycle line is above it — two boxes pinned to
+   overlapping percentages is how one comes to be printed through the other.
+   Only ever open on a tap, so this costs nothing the rest of the time. */
+.surface--approach .surface__why--shifted { top: 16%; }
 
 /* The corridor, behind everything she says. */
 .surface--approach .approach {

@@ -178,3 +178,98 @@ test('⚠ an agent that can open SOME things is handed only those', () => {
   assert.deepEqual(r.intents.map(i => i.app), ['music']);
   assert.equal(di.claim({ canOpen: ABLE }).intents[0].app, 'terminal', 'the other waits');
 });
+
+// ── What is in flight, so the operation phase can say so ─────────────────────
+//
+// ⚠⚠ CLAIMING USED TO DESTROY THE ONLY RECORD THAT A REQUEST WAS UNDER WAY.
+//   Once an agent took an intent it left `pending` and had no outcome yet, so
+//   from the server's side a request the laptop was mid-way through opening was
+//   INDISTINGUISHABLE from one that had never been made. The operation phase
+//   would have read STANDING BY while the card beside it said "the laptop has
+//   taken it" — two halves of one screen disagreeing about one request.
+
+test('a queued intent is REQUESTED, and claiming moves it to TAKEN', () => {
+  reset();
+  const q = di.queue('code');
+  assert.equal(q.ok, true);
+
+  let f = di.inFlight();
+  assert.equal(f.known, true);
+  assert.deepEqual(f.requested.map(i => i.app), ['code'], 'out, nobody has picked it up');
+  assert.deepEqual(f.taken, []);
+
+  di.claim({ canOpen: ABLE });
+  f = di.inFlight();
+  assert.deepEqual(f.requested, [], 'no longer waiting to be picked up');
+  assert.deepEqual(f.taken.map(i => i.app), ['code'], 'the machine has it and has not said what happened');
+  assert.equal(f.taken[0].id, q.intent.id, 'the same request, not a new one');
+});
+
+test('an outcome takes it OUT of flight — settled is not in flight', () => {
+  reset();
+  const q = di.queue('browser');
+  di.claim({ canOpen: ABLE });
+  assert.equal(di.inFlight().taken.length, 1);
+
+  di.record(q.intent.id, true, 'opened');
+  const f = di.inFlight();
+  assert.deepEqual(f.taken, [], 'a request that has answered is no longer waiting');
+  assert.deepEqual(f.requested, []);
+  // ⚠ And the surface can still ask what happened — recording the claim must
+  //   not have cost the outcome.
+  assert.equal(di.status(q.intent.id).state, 'opened');
+});
+
+test('a FAILED outcome also leaves flight — a failure is an answer', () => {
+  reset();
+  const q = di.queue('music');
+  di.claim({ canOpen: ABLE });
+  di.record(q.intent.id, false, 'no music player configured');
+  assert.deepEqual(di.inFlight().taken, []);
+  assert.equal(di.status(q.intent.id).state, 'failed');
+});
+
+test('⚠ an expired request is not in flight — it is over', () => {
+  reset();
+  di.queue('terminal');
+  const later = Date.now() + di.TTL_MS + 1000;
+  const f = di.inFlight({ now: later });
+  assert.deepEqual(f.requested, [], 'past its deadline it is expired, not pending');
+  assert.deepEqual(f.taken, []);
+});
+
+test('⚠ a claim that outlives its deadline stops being reported as under way', () => {
+  reset();
+  di.queue('code');
+  di.claim({ canOpen: ABLE });
+  const later = Date.now() + di.TTL_MS + 1000;
+  assert.deepEqual(di.inFlight({ now: later }).taken, [], 'a stuck agent cannot hold the phase for ever');
+});
+
+test('⚠ reading in flight WRITES NOTHING — a polled read must not prune the queue', () => {
+  reset();
+  di.queue('code');
+  const before = db.getState(di.STATE_KEY);
+  di.inFlight({ now: Date.now() + di.TTL_MS + 1000 });
+  assert.equal(db.getState(di.STATE_KEY), before, 'the stored queue is byte-identical after a read');
+  // And the intent is still claimable in its own right, because nothing pruned it.
+  assert.equal(di.claim({ canOpen: ABLE }).intents.length, 1);
+});
+
+test('⚠ a blob written before claims were recorded reads as nothing in flight', () => {
+  // The OLD behaviour exactly — nothing is invented about a state that predates
+  // the bookkeeping, which is the `openActions` rule one service along.
+  reset();
+  db.setState(di.STATE_KEY, JSON.stringify({ pending: [], outcomes: [] }));
+  const f = di.inFlight();
+  assert.equal(f.known, true);
+  assert.deepEqual(f.taken, []);
+});
+
+test('⚠ an UNREADABLE queue is known:false, never two empty lists', () => {
+  reset();
+  db.setState(di.STATE_KEY, '{not json');
+  const f = di.inFlight();
+  assert.equal(f.known, false, '"I could not look" and "nothing is in flight" license opposite sentences');
+  assert.ok(f.why, 'and it says why');
+});

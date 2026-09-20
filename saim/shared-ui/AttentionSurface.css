@@ -100,6 +100,37 @@
   border-bottom: 1px dotted rgba(139, 152, 168, 0.5);
 }
 
+/* ── What she is DOING ─────────────────────────────────
+ * Monospace and faint, like the console column: this is the part of the screen
+ * that cannot flatter her, and the moment it starts looking like a headline it
+ * competes with the sentence that is actually the product.
+ *
+ * ⚠ NO PALETTE OF ITS OWN. A live phase brightens and takes HER colour — one
+ * light source, inherited. A local amber here would be a second opinion about
+ * what state she is in, which is the drift `fieldDrive` exists to stop. */
+.surface__op {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  opacity: 0.55;
+  white-space: nowrap;
+}
+.surface__op--live {
+  color: rgb(var(--approach-rgb, 122 162 247));
+  opacity: 1;
+}
+
+/* The lifecycle line. One sentence, composed server-side, and it is only ever
+   here when there is something to say — the resting phases carry none. */
+.surface__opdetail {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--muted);
+  max-width: 44ch;
+}
+
 /* Speech-out. Stays OFF by default — a PWA that talks unprompted on a train
    gets deleted — so this is the switch, sitting where she is rather than in a
    settings screen. */
