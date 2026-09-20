@@ -112,8 +112,40 @@ test('POST /eod/record is NOT swallowed by POST /eod', async () => {
   assert.match(note, /^## EOD$/m);
 });
 
+/**
+ * A day key relative to today, in the vault's own LOCAL form.
+ *
+ * ⚠ Never `toISOString()`, which is UTC — west of here that names yesterday,
+ *   and this repo's own rule everywhere else.
+ */
+function dayKey(offset = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+const todayKey = () => dayKey(0);
+
 test('recording the same standup twice is one standup', async () => {
-  const day = '2026-09-19';
+  // ⚠⚠ CLOCK-DERIVED, AND IT HAS TO BE. This was pinned to a literal
+  //   '2026-09-19' — the day it was written, which was THAT day's today — and it
+  //   went red the moment the wall clock moved past it, blocking every deploy
+  //   behind a suite that had changed in no way. The date-bomb species this
+  //   repo has now been bitten by three times.
+  //
+  // ⚠ What it is FOR is same-day idempotency, and that is what today gives it:
+  //   `readRecentNotes` walks from YESTERDAY backwards, so a note written for
+  //   today is excluded from its own carry-over scan and the two passes agree.
+  //
+  // ⚠⚠ AND THE LITERAL WAS HIDING A REAL BUG rather than merely rotting. For a
+  //   day in the PAST the first write creates a note that the second write's
+  //   scan then INCLUDES, so every carried commitment is counted one day older
+  //   — `#carried-1d` becomes `#carried-2d`. That is the CENTRAL case for
+  //   `recordExternal`, which exists to reconcile a ritual captured elsewhere,
+  //   possibly yesterday. NOT fixed here: the fix is to exclude the day being
+  //   written from its own accountability scan, which changes
+  //   `buildAccountability`'s contract and is a decision, not a fixture repair.
+  const day = todayKey();
   const body = { focus: ['Ship the thing'], date: day };
   await post('/api/standup/record', body);
   const first = read(day);
@@ -128,16 +160,23 @@ test('a refusal is a 400 that SAYS why, not a 500', async () => {
   // a bare `backend_http_500` and the model cannot correct itself. A 400 with
   // the reason is the difference between a retry that works and one that does
   // not.
-  const empty = await post('/api/standup/record', { focus: [], date: '2026-09-20' });
+  // ⚠ A DAY OF ITS OWN, and clock-derived. This was the literal '2026-09-20' —
+  //   whichever day it happened to be written on — so `and nothing was written`
+  //   was really asserting that no OTHER test in this file had touched that
+  //   date. The moment one did, on that one calendar day, this went red for a
+  //   reason that had nothing to do with refusals. Three days out is a day
+  //   nothing here writes and nothing scans.
+  const spare = dayKey(3);
+  const empty = await post('/api/standup/record', { focus: [], date: spare });
   assert.equal(empty.status, 400);
   assert.match(empty.json.error, /focus must contain/);
-  assert.equal(read('2026-09-20'), null, 'and nothing was written');
+  assert.equal(read(spare), null, 'and nothing was written');
 
   const badDate = await post('/api/standup/record', { focus: ['a'], date: '20/09/2026' });
   assert.equal(badDate.status, 400);
   assert.match(badDate.json.error, /YYYY-MM-DD/);
 
-  const thinEod = await post('/api/standup/eod/record', { date: '2026-09-20' });
+  const thinEod = await post('/api/standup/eod/record', { date: spare });
   assert.equal(thinEod.status, 400);
   assert.match(thinEod.json.error, /at least one of/);
 });
