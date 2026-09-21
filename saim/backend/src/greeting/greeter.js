@@ -244,7 +244,7 @@ function createGreeter({ env = process.env, fetchImpl = (...a) => fetch(...a), l
       log.log('[greeter] SAIM_GREET_SPEAKERS not set — greetings off');
       return false;
     }
-    log.log(`[greeter] greeting on arrival in: ${[...speakers].map(([r, s]) => `${r} (${s.kind === 'ha' ? s.entity : 'sensor'})`).join(', ')}`);
+    log.log(`[greeter] greeting on arrival in: ${[...speakers].map(([r, s]) => `${r} (${s.entity || 'sensor'})`).join(', ')}`);
     timer = setInterval(() => { tick().catch((e) => log.warn('[greeter] tick failed: ' + e.message)); }, TICK_MS);
     if (timer.unref) timer.unref();
     return true;
