@@ -429,3 +429,91 @@ test('⚠ a malformed answer is refused rather than trusted', () => {
   // reader said it looked, so this is not a gap.
   assert.deepStrictEqual(taskPool(() => ({ known: true })).tasks, []);
 });
+
+// ── Knowledge reflection: new, and actually reachable ───────────────────────
+//
+// Added 21 Sep 2026. A reflection's entire reach used to be one web push, so on
+// a morning when both registered push endpoints were the iPhone it was written,
+// announced to a device Nick was not holding, and invisible on the machine he
+// was sitting at.
+
+const WRITTEN = '2026-09-21T07:10:00.000Z';
+const withReflection = (over = {}, snapOver = {}) => clean({
+  generatedAt: '2026-09-21T09:00:00.000Z',
+  knowledge: { announcedAt: WRITTEN, path: 'Knowledge/x.md', name: '2026-09-21 - Knowledge Reflection', lastOpenedAt: null, ...over },
+  ...snapOver,
+});
+
+const reflectionIssue = (snap) => assess(snap).find(i => /knowledge reflection/i.test(i.title));
+
+test('a new reflection nobody has been back to is raised, and opens Insights', () => {
+  const issue = reflectionIssue(withReflection());
+  assert.ok(issue, 'expected the reflection issue');
+  // ⚠ The whole point of the card. The focus band renders every issue as a
+  // button on to `view`, so this is what makes it open the page rather than
+  // merely announce that a note exists somewhere.
+  assert.equal(issue.view, 'insights', 'it must navigate to Insights');
+  assert.equal(issue.severity, 'info', 'nothing is wrong — info, never warn');
+});
+
+test('opening Insights after it was written clears it', () => {
+  const issue = reflectionIssue(withReflection({ lastOpenedAt: '2026-09-21 08:00:00' }));
+  assert.equal(issue, undefined, 'he has been since — there is nothing to say');
+});
+
+test('opening Insights BEFORE it was written does not clear it', () => {
+  // The Monday case: he looks at Insights at 07:00, the reflection is written
+  // at 08:10. An open is only evidence if it came afterwards.
+  const issue = reflectionIssue(withReflection({ lastOpenedAt: '2026-09-21 06:00:00' }));
+  assert.ok(issue, 'an earlier visit is not evidence he has seen this one');
+});
+
+test('it ages out on its own rather than staying permanently lit', () => {
+  // ⚠ Reflections are WEEKLY, so past a week the next one has superseded this
+  // one. Without the bound this is a line that is always on — the failure this
+  // codebase has paid for twice (seven weeks of "partly live", the always-on
+  // swap warning). A warning that is always on costs the real one.
+  const old = withReflection({}, {});
+  old.knowledge.announcedAt = '2026-09-01T07:10:00.000Z'; // 20 days before
+  assert.equal(reflectionIssue(old), undefined, 'a superseded reflection is not news');
+});
+
+test('nothing announced is silence, never a gap', () => {
+  // `announcedAt: null` is the correct, uninteresting state on a fresh install
+  // and for the first week after this shipped. It is not a source that failed.
+  const issues = assess(clean({ generatedAt: '2026-09-21T09:00:00.000Z', knowledge: { announcedAt: null, path: null, name: null, lastOpenedAt: null } }));
+  assert.equal(issues.find(i => /reflection/i.test(i.title)), undefined);
+  assert.equal(issues.find(i => /reflection/i.test(i.detail || '')), undefined);
+});
+
+test('a snapshot with no knowledge block is not an error', () => {
+  // Every other consumer of assess() predates this field.
+  assert.doesNotThrow(() => assess(clean()));
+});
+
+test('it says Insights was not opened, never that the note is unread', () => {
+  // ⚠ FORBIDDEN WORDING. What is measured is whether a tab was opened. Whether
+  // Nick READ the reflection is not observable and must not be claimed — and
+  // the plausible tidy-up here is to shorten the sentence to "unread".
+  const issue = reflectionIssue(withReflection());
+  const text = `${issue.title} ${issue.detail}`.toLowerCase();
+  for (const word of ['unread', 'you have not read', "haven't read", 'ignored', 'you missed']) {
+    assert.ok(!text.includes(word), `must not claim ${word}: ${text}`);
+  }
+  assert.ok(/not opened insights/i.test(issue.detail), `it must say what it measured: ${issue.detail}`);
+});
+
+test("a SQLite timestamp is read as UTC, not as the reader's local time", () => {
+  // ⚠ CURRENT_TIMESTAMP is `YYYY-MM-DD HH:MM:SS` in UTC with NO ZONE, and
+  // Date.parse reads that as LOCAL — an hour out through BST, which is the bug
+  // the calendar has already paid for twice. Asserted against a known epoch so
+  // it holds whatever zone the machine runs in: a verdict-based test would pass
+  // for the wrong reason on the Pi, which is UTC.
+  const { _sqliteUtc } = _internals;
+  assert.equal(_sqliteUtc('2026-06-01 08:30:00'), Date.parse('2026-06-01T08:30:00Z'));
+  // Already zoned: appending a second Z turns a good timestamp into NaN, which
+  // reads as "never opened" and relights the card.
+  assert.equal(_sqliteUtc('2026-06-01T08:30:00Z'), Date.parse('2026-06-01T08:30:00Z'));
+  assert.equal(_sqliteUtc(null), null);
+  assert.equal(_sqliteUtc('not a date'), null);
+});

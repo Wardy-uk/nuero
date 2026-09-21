@@ -308,6 +308,71 @@ function dueAhead(today, pool, days = 7) {
   };
 }
 
+/**
+ * The newest knowledge reflection, and whether Insights has been opened since.
+ *
+ * ⚠ WHY THIS IS ON THIS PANEL AT ALL. Until 21 Sep 2026 a reflection's ENTIRE
+ * reach was one web push. Its only other references were the vault write, this
+ * file's TRACKED_JOBS entry (which notices the job STOPPING, never that a new
+ * one is ready) and SAiM's tab routing. It is not a nudge type and raises no
+ * action card — so on the morning both registered push endpoints turned out to
+ * be the iPhone, the reflection was written, announced to a device Nick was not
+ * holding, and invisible on the machine he was sitting at. A weekly artefact
+ * whose only announcement is a single push to one device is one that does not
+ * get read: zero notes have ever been promoted.
+ *
+ * ⚠ IT READS A STAMP, NOT THE VAULT. `generateReflection` records the write in
+ * `agent_state`, so this costs one KV read and keeps `snapshot()` off the disk —
+ * and, more to the point, the panel stays truthful when the vault is unreachable
+ * instead of reporting "no reflection" at a Syncthing hiccup. mtime is no use
+ * here for the reason `recentReflections` already documents: these are replicas.
+ *
+ * ⚠ `announcedAt: null` is NOT a gap and must not be reported as one. It means
+ * nothing has been written since the stamp existed, which is the correct and
+ * uninteresting state on a fresh install and for the first week after this
+ * shipped.
+ *
+ * ⚠ The "seen" test is EXACTLY what it measures — Insights opened after the
+ * reflection was written — and the wording downstream says that rather than
+ * claiming he read it. Opening a panel is not reading a note, and this is the
+ * closest honest proxy available without asking him to press a button, which is
+ * friction on the one feature whose whole problem is that it gets skipped.
+ */
+function knowledgeReflection() {
+  let stamp = null;
+  try {
+    const raw = db.getState('knowledge_reflection_last');
+    if (raw) stamp = JSON.parse(raw);
+  } catch {
+    // An unreadable or malformed stamp is not a reflection that failed to
+    // exist. Fall through to the null shape: this panel says nothing rather
+    // than inventing either an alarm or an all-clear.
+    stamp = null;
+  }
+  if (!stamp || !stamp.at || Number.isNaN(Date.parse(stamp.at))) {
+    return { announcedAt: null, path: null, name: null, lastOpenedAt: null };
+  }
+
+  // A day early: `date_key` is UTC-stamped while `hour` is local, so a bound set
+  // to the exact day can drop a genuine open made either side of midnight. It is
+  // an index filter, and the timestamp comparison below is the real answer.
+  const from = new Date(Date.parse(stamp.at) - 36 * 3600 * 1000)
+    .toISOString().slice(0, 10);
+  let lastOpenedAt = null;
+  try {
+    lastOpenedAt = db.getLastTabOpenAt('insights', from);
+  } catch {
+    lastOpenedAt = null;
+  }
+
+  return {
+    announcedAt: stamp.at,
+    path: stamp.path || null,
+    name: stamp.name || null,
+    lastOpenedAt,
+  };
+}
+
 function snapshot(opts = {}) {
   const today = todayLocal();
 
@@ -498,6 +563,7 @@ function snapshot(opts = {}) {
   return {
     generatedAt: new Date().toISOString(),
     tasks, commitments, approvals, inbox, rituals, vault, jobs, calendar, msPush,
+    knowledge: knowledgeReflection(),
   };
 }
 
@@ -508,6 +574,27 @@ function snapshot(opts = {}) {
  * Severity: critical (something is broken or silently lying) > warn (drifting)
  * > info (worth knowing, not wrong).
  */
+/**
+ * SQLite's CURRENT_TIMESTAMP is `YYYY-MM-DD HH:MM:SS` in UTC with no zone on it,
+ * so `Date.parse` reads it as LOCAL and lands an hour out through BST — the bug
+ * the calendar has already paid for twice. Tolerates a value that already
+ * carries a zone, because appending a second `Z` turns a good timestamp into
+ * NaN, and NaN here reads as "never opened" and relights the card.
+ */
+function _sqliteUtc(value) {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  const iso = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(raw)
+    ? raw.replace(' ', 'T')
+    : `${raw.replace(' ', 'T')}Z`;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? null : t;
+}
+
+// Reflections are weekly, so a week is exactly how long one can still be the
+// newest thing there is. Past that the next one has superseded it.
+const REFLECTION_FRESH_DAYS = 7;
+
 function assess(s) {
   const issues = [];
   const add = (severity, title, detail, view) => issues.push({ severity, title, detail, view });
@@ -590,6 +677,44 @@ function assess(s) {
       'The accountability chain reads yesterday\'s note, so it has little to work from.', 'standup');
   }
 
+  // A knowledge reflection Nick has not been back to. `view: 'insights'` is what
+  // makes this ACTIONABLE — the focus band renders every issue as a button on to
+  // its view, so the card opens the page the reflection is on rather than merely
+  // announcing that one exists somewhere.
+  //
+  // ⚠ IT AGES OUT ON ITS OWN, and that bound is not optional. Reflections are
+  // WEEKLY, so anything older than REFLECTION_FRESH_DAYS has already been
+  // superseded by the next one and is no longer news. Without it this becomes a
+  // line that is permanently lit — which is the failure this codebase has paid
+  // for twice already (seven weeks of "partly live" over a healthy read, and the
+  // always-on swap warning over a Pi that was working correctly). A warning that
+  // is always on is one nobody reads, and it costs the real one.
+  //
+  // ⚠ INFO, NEVER WARN. Nothing is wrong. The focus band's own subtitle is
+  // "worth knowing about", not "worth worrying about", and promoting this would
+  // put a routine weekly artefact above a completion Microsoft rejected.
+  //
+  // ⚠ IT SAYS "not opened since", NEVER "unread". What is measured is whether
+  // the Insights tab has been opened since the note was written; whether he read
+  // it is not observable and must not be claimed. Pinned by a forbidden-wording
+  // test, because the plausible tidy-up here is to shorten it to "unread".
+  const k = s.knowledge;
+  if (k && k.announcedAt) {
+    const written = Date.parse(k.announcedAt);
+    const ageDays = Math.floor((Date.parse(s.generatedAt) - written) / 86400000);
+    const opened = _sqliteUtc(k.lastOpenedAt);
+    const seen = opened != null && opened > written;
+    // ⚠ A snapshot with no `generatedAt` cannot be aged, so it raises nothing —
+    // and NaN comparisons are false in both directions, which would make that a
+    // SILENT no-op. Stated here so it reads as a decision rather than an
+    // accident of arithmetic.
+    if (!seen && Number.isFinite(ageDays) && ageDays >= 0 && ageDays <= REFLECTION_FRESH_DAYS) {
+      add('info', 'New knowledge reflection',
+        `${k.name || 'This week’s reflection'} was written ${ageDays === 0 ? 'today' : `${ageDays} day${ageDays === 1 ? '' : 's'} ago`} and you have not opened Insights since.`,
+        'insights');
+    }
+  }
+
   const severityRank = { critical: 0, warn: 1, info: 2 };
   return issues.sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
 }
@@ -607,4 +732,4 @@ module.exports = {
   taskPool,
   dueAhead,
   originOf,
-  tallyOrigins, snapshot, assess, overall, TRACKED_JOBS, foldRituals, _internals: { daysSince, todayLocal, lastDays } };
+  tallyOrigins, snapshot, assess, overall, TRACKED_JOBS, foldRituals, _internals: { daysSince, todayLocal, lastDays, _sqliteUtc } };

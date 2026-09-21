@@ -1842,6 +1842,34 @@ function generateReflection({ topic, write = false } = {}) {
   fs.writeFileSync(fullPath, markdown, 'utf-8');
   try { vaultHooks.onVaultWrite(fullPath, 'knowledge-reflection'); } catch {}
 
+  // ⚠ STAMPED HERE, NOT WHERE THE PUSH IS SENT. Until 21 Sep 2026 the ONLY
+  // announcement a reflection ever got was one web push — so on a morning when
+  // the desktop had no push subscription at all (both registered endpoints were
+  // the iPhone), the reflection was written, announced to a device Nick was not
+  // holding, and then invisible on the machine he was sitting at. Nothing in any
+  // desktop surface said it existed.
+  //
+  // The stamp goes with the WRITE so the desktop card survives push being
+  // broken, unsubscribed or suppressed by the governor — which is the failure
+  // that prompted it. A stamp written beside `sendToAll` would go missing in
+  // exactly the case it exists to cover.
+  //
+  // Read by `state-of-play.snapshot()`. It carries a real timestamp rather than
+  // the filename's date because the panel compares it against when Insights was
+  // last opened, and mtime is no use on the Pi — these are Syncthing replicas,
+  // which is the same reason `recentReflections` sorts by name.
+  try {
+    db.setState('knowledge_reflection_last', JSON.stringify({
+      at: new Date().toISOString(),
+      path: toRel(fullPath),
+      name: filename.replace(/\.md$/, ''),
+    }));
+  } catch (e) {
+    // Never allowed to fail the reflection: the note is the product, the stamp
+    // is only how a panel finds out about it.
+    console.warn('[Knowledge] could not stamp reflection:', e.message);
+  }
+
   return { status: 'ok', markdown, path: toRel(fullPath) };
 }
 

@@ -1099,6 +1099,36 @@ function getScreenEventsSince(fromDateKey) {
 }
 
 /**
+ * When was one tab last opened? Newest `created_at`, or null if never.
+ *
+ * ⚠ BOUNDED BY `date_key` FIRST, like `getScreenEventsSince` and for the same
+ * reason — `idx_activity_date` is `(date_key, event_type)`, so filtering on
+ * `event_type` alone scans the whole log, and this runs on a panel load.
+ * Callers pass the earliest date they care about; they never need the whole
+ * history, because the question is always "since <something happened>".
+ *
+ * ⚠ `created_at` is SQLite's CURRENT_TIMESTAMP, which is UTC, and so is any ISO
+ * string it gets compared against. That is NOT true of `date_key`, which
+ * `logActivity` stamps from `toISOString()` while `hour` is local — a known
+ * inherited wart. The bound is therefore deliberately used as a coarse index
+ * filter only, and never as the answer: pass a date a day early and let the
+ * timestamp decide.
+ *
+ * ⚠ Returns null for "never opened in this window", which the caller must not
+ * read as "never opened at all" — it only ever looked at the window it asked
+ * for.
+ */
+function getLastTabOpenAt(tab, fromDateKey) {
+  const row = get(
+    `SELECT MAX(created_at) AS at FROM activity_log
+      WHERE date_key >= ? AND event_type = 'tab_open'
+        AND json_extract(event_data, '$.tab') = ?`,
+    [fromDateKey, tab]
+  );
+  return (row && row.at) || null;
+}
+
+/**
  * The first date each SURFACE reported each KIND of screen event.
  *
  * ⚠ This is a fact about the whole log, not about the window — it is what lets
@@ -2650,6 +2680,7 @@ module.exports = {
   getActivityForRange,
   getScreenEventsSince,
   getScreenEventFirstSeen,
+  getLastTabOpenAt,
   saveDailySummary,
   getDailySummaries,
   getTodayActivity,
