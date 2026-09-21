@@ -300,7 +300,14 @@ function record(sample = {}) {
     load15: _num(sample.load15),
     tasks: _num(sample.tasks),
     dcount: _num(sample.dcount),
-    dprocs: Array.isArray(sample.dprocs) ? sample.dprocs.slice(0, 12).map((s) => String(s).slice(0, 40)) : [],
+    // ⚠ 90, not 40. The watcher used to store `$NF` — the last ARGUMENT of each
+    // stuck process — so a 245-strong pile-up of
+    // `cp /tmp/syslog.log /tmp/syslog.log-1 /jffs` arrived as three unranked
+    // entries reading "/jffs", and the one field that identifies the cause
+    // destroyed it. It now folds by COMMAND and prefixes a count ("245x cp
+    // ..."), which is longer than a bare process name: at 40 that string was
+    // cut mid-path, which is the same loss by a different route.
+    dprocs: Array.isArray(sample.dprocs) ? sample.dprocs.slice(0, 12).map((s) => String(s).slice(0, 90)) : [],
     memFreeKb: _num(sample.memFreeKb),
     nvramFree: _num(sample.nvramFree),
     // ⚠ Restored 18 Sep 2026. The monitor rewrite of 14 Sep dropped temperature
