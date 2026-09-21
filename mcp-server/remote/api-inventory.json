@@ -2908,7 +2908,7 @@
     "route": "/api/router/health",
     "domain": "router",
     "source": "routes/router.js",
-    "line": 63,
+    "line": 68,
     "description": "GET /api/router/health. the current read. Read-only; nothing notifies.",
     "params": [],
     "query": [],
@@ -6071,11 +6071,12 @@
     "route": "/api/greeting",
     "domain": "greeting",
     "source": "routes/greeting.js",
-    "line": 20,
+    "line": 28,
     "description": "POST /api/greeting.",
     "params": [],
     "query": [],
     "body": [
+      "client",
       "preview",
       "room"
     ],
