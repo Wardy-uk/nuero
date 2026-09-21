@@ -31,10 +31,39 @@ const crypto = require('crypto');
 
 const REPO = path.resolve(__dirname, '..', '..');
 const CSS = path.join(REPO, 'frontend', 'src', 'index.css');
-// Sibling checkout. Absent on the Pi and on CI, which is not an error: the
-// exporter is a developer tool, and it says so rather than failing a deploy.
-const IOS = path.resolve(REPO, '..', 'nuero-ios');
-const OUT = path.join(IOS, 'NeuroKit', 'Sources', 'NeuroKit', 'Theme.swift');
+/**
+ * Sibling checkout. Absent on the Pi and on CI, which is not an error: the
+ * exporter is a developer tool, and it says so rather than failing a deploy.
+ *
+ * ⚠⚠ BOTH SPELLINGS, AND THAT IS NOT TIDINESS — IT IS WHY THIS GUARD WAS DEAD.
+ * The GitHub repo is `nuero-ios` (the historical typo) and the checkout on the
+ * Mac is `neuro-ios`, so a literal `'nuero-ios'` found nothing and
+ * `design-tokens.test.js` SKIPPED with *"no nuero-ios checkout beside this
+ * repo"* — on the one machine that has the iOS app and is the only place the
+ * comparison can ever be made. The test documents itself as the thing standing
+ * between two palettes and silent divergence, and it had not run once here.
+ * Measured on 20 Sep 2026: nothing had drifted (both sides at 6bf36d36dee6), so
+ * this cost nothing YET, which is exactly why it could have run for months.
+ *
+ * ⚠ `export-desktop-agent.js` in this directory already tried both names. Two
+ * cross-repo tools in one repo disagreeing about where the sibling lives is how
+ * one of them ends up inert while the other looks like proof it works.
+ */
+function findIOSCheckout() {
+  for (const name of ['neuro-ios', 'nuero-ios']) {
+    const dir = path.resolve(REPO, '..', name);
+    // ⚠ A `.git` or the NeuroKit tree, never the bare name — a stale empty
+    // folder left beside the repo must not be mistaken for the checkout and
+    // silently become the thing we compare against.
+    if (!fs.existsSync(dir)) continue;
+    if (fs.existsSync(path.join(dir, '.git')) ||
+        fs.existsSync(path.join(dir, 'NeuroKit'))) return dir;
+  }
+  return null;
+}
+
+const IOS = findIOSCheckout();
+const OUT = IOS ? path.join(IOS, 'NeuroKit', 'Sources', 'NeuroKit', 'Theme.swift') : null;
 
 /**
  * The `:root` block, and only that. A token declared inside a media query or a
@@ -184,9 +213,13 @@ function main() {
   const check = process.argv.includes('--check');
   const { source, tokens } = generate();
 
-  if (!fs.existsSync(IOS)) {
+  // ⚠ A NULL CHECK, not `existsSync(IOS)`. `findIOSCheckout` answers null when
+  // there is none, and `fs.existsSync(null)` happens to return false rather
+  // than throwing — so the old shape would keep working by accident and stop
+  // the day that coercion changes.
+  if (!IOS) {
     // Not a failure: the iOS checkout is a developer's sibling directory.
-    console.log('[design-tokens] no nuero-ios checkout beside this repo — nothing to write');
+    console.log('[design-tokens] no iOS checkout beside this repo — nothing to write');
     console.log(`[design-tokens] read ${Object.keys(tokens).length} tokens from index.css`);
     return;
   }
