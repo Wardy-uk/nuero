@@ -278,6 +278,33 @@ function _enrichData(data, record) {
 }
 
 async function sendToAll(title, body, data = {}) {
+  // ⚠ THE SIGNATURE IS POSITIONAL, AND ONE CALLER PASSED AN OBJECT.
+  // `routes/router.js` called sendToAll({type, title, body}) — so the object
+  // landed in the TITLE slot and every router alert arrived on the phone as
+  // "[object Object]" with an empty body. The `type` went with it: `data` stayed
+  // `{}`, so the push was unclassified, ungated by ALWAYS_DELIVER, and carried
+  // nothing for the lifecycle or `push_log` to reason about. It ran for days and
+  // was found on a morning the router was genuinely wedging — the one alert that
+  // most needed reading was the unreadable one.
+  //
+  // ⚠ It NORMALISES rather than refuses, because the failure directions are not
+  // symmetric: a badly-shaped call still describes something NEURO decided was
+  // worth saying, and dropping it trades an ugly notification for a silent one —
+  // which is the failure `push_log` exists to make visible. It is LOUD, and the
+  // shape is pinned by a source scan so it cannot reach main again.
+  if (title && typeof title === 'object' && body === undefined) {
+    console.warn(
+      '[WebPush] sendToAll called with an OBJECT — the signature is ' +
+      `sendToAll(title, body, data). Unpacking: type=${title.type || 'none'}`
+    );
+    const packed = title;
+    title = packed.title;
+    body = packed.body;
+    data = { ...(data || {}), ...packed };
+    delete data.title;
+    delete data.body;
+  }
+
   // Both of the returns below were SILENT. A notification NEURO decided to send
   // and could not deliver is a fact worth keeping — without it, "SAiM has gone
   // quiet" and "SAiM has nothing to say" are the same observation.

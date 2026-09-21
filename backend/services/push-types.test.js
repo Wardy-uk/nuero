@@ -81,6 +81,43 @@ function sentTypes() {
   return found;
 }
 
+test('no caller passes sendToAll an object instead of (title, body, data)', () => {
+  // ⚠ THIS IS THE TEST THE TYPE SCAN ABOVE LOOKED LIKE. It matches `type:`
+  // anywhere within 500 characters of the call, so `sendToAll({type: 'router_
+  // health', title, body})` satisfied it perfectly — classified, listed, and
+  // shipping "[object Object]" to the phone with an empty body and no `type` on
+  // the payload at all. A scan that proves a type is CLASSIFIED proves nothing
+  // about which ARGUMENT it is in.
+  const bad = [];
+  for (const file of sourceFiles()) {
+    const src = fs.readFileSync(file, 'utf8');
+    let i = src.indexOf('sendToAll(');
+    while (i !== -1) {
+      // What follows the open paren, ignoring whitespace and newlines. A `{`
+      // there is the object form; every correct call opens with a string.
+      const after = src.slice(i + 'sendToAll('.length).replace(/^\s+/, '');
+      if (after.startsWith('{')) bad.push(path.basename(file));
+      i = src.indexOf('sendToAll(', i + 1);
+    }
+  }
+  assert.deepEqual(
+    bad, [],
+    'sendToAll takes (title, body, data) positionally. These pass one object, ' +
+    'which puts it in the title slot and drops the type:\n' +
+    bad.map(f => `  ${f}`).join('\n')
+  );
+});
+
+test('the object-shape scan can actually see the object form', () => {
+  // Positive control for the scan above — without it a changed call spelling
+  // makes it pass by absence, which is the failure it was written to catch.
+  const probe = "webpush.sendToAll({ type: 'x', title: 'y' });";
+  const after = probe
+    .slice(probe.indexOf('sendToAll(') + 'sendToAll('.length)
+    .replace(/^\s+/, '');
+  assert.ok(after.startsWith('{'), 'the scan must recognise the object form');
+});
+
 test('the scan actually finds sendToAll call sites', () => {
   // Positive control. Without this, a broken regex finds nothing and every
   // assertion below passes by absence — the exact failure this file exists to

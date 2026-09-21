@@ -40,11 +40,16 @@ router.post('/sample', (req, res) => {
           // net, so there is nothing Nick can usefully do about it at 03:00 —
           // and nudge volume is the one budget allowed to argue against
           // building more.
-          require('../services/webpush').sendToAll({
-            type: 'router_health',
-            title: 'SAiM — Router',
-            body: line,
-          });
+          // ⚠ POSITIONAL: sendToAll(title, body, data). Passing one object put
+          // the object in the TITLE slot, so every router alert arrived as
+          // "[object Object]" with an empty body and no `type` — which also
+          // cost it the classification `router_health` was written for. Live on
+          // 21 Sep 2026, on a morning the router was genuinely wedging.
+          require('../services/webpush').sendToAll(
+            'SAiM — Router',
+            line,
+            { type: 'router_health' }
+          );
           announced = true;
         }
       }
