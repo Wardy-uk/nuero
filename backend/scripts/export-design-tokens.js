@@ -27,6 +27,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { findIOSCheckout } = require('../../shared/ios-checkout.cjs');
 const crypto = require('crypto');
 
 const REPO = path.resolve(__dirname, '..', '..');
@@ -49,20 +50,8 @@ const CSS = path.join(REPO, 'frontend', 'src', 'index.css');
  * cross-repo tools in one repo disagreeing about where the sibling lives is how
  * one of them ends up inert while the other looks like proof it works.
  */
-function findIOSCheckout() {
-  for (const name of ['neuro-ios', 'nuero-ios']) {
-    const dir = path.resolve(REPO, '..', name);
-    // ⚠ A `.git` or the NeuroKit tree, never the bare name — a stale empty
-    // folder left beside the repo must not be mistaken for the checkout and
-    // silently become the thing we compare against.
-    if (!fs.existsSync(dir)) continue;
-    if (fs.existsSync(path.join(dir, '.git')) ||
-        fs.existsSync(path.join(dir, 'NeuroKit'))) return dir;
-  }
-  return null;
-}
 
-const IOS = findIOSCheckout();
+const IOS = findIOSCheckout(REPO);
 const OUT = IOS ? path.join(IOS, 'NeuroKit', 'Sources', 'NeuroKit', 'Theme.swift') : null;
 
 /**

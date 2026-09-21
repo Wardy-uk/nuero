@@ -29,6 +29,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { findIOSCheckout } = require('../../shared/ios-checkout.cjs');
 const crypto = require('crypto');
 
 const REPO = path.resolve(__dirname, '..', '..');
@@ -45,17 +46,8 @@ const SRC_DIR = path.join(REPO, 'desktop-agent');
 // Both spellings are tried, and a candidate only counts if it actually LOOKS
 // like the checkout — a `desktop-agent` directory or a `.git` — so an empty
 // folder of the right name cannot swallow the write again.
-function findIOSCheckout() {
-  for (const name of ['neuro-ios', 'nuero-ios']) {
-    const dir = path.resolve(REPO, '..', name);
-    if (!fs.existsSync(dir)) continue;
-    if (fs.existsSync(path.join(dir, '.git')) ||
-        fs.existsSync(path.join(dir, 'desktop-agent'))) return dir;
-  }
-  return null;
-}
 
-const IOS = findIOSCheckout();
+const IOS = findIOSCheckout(REPO);
 const OUT_DIR = IOS ? path.join(IOS, 'desktop-agent') : null;
 
 /** The files that cross. Windows' agent stays put — it installs from here. */

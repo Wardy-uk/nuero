@@ -23,8 +23,12 @@ const path = require('path');
 
 const { STOP_PHRASES, normaliseSaid } = require('../../shared/heard.cjs');
 
-const SWIFT = path.resolve(__dirname, '..', '..', '..', 'nuero-ios',
-  'NeuroKit', 'Sources', 'NeuroKit', 'Heard.swift');
+const { findIOSCheckout } = require('../../shared/ios-checkout.cjs');
+// ⚠ BOTH SPELLINGS — the checkout is `neuro-ios`, the remote `nuero-ios`.
+// Hard-coding either made this guard SKIP on the only machine that has
+// the iOS app, which is the whole point of a cross-repo parity test.
+const IOS = findIOSCheckout(path.resolve(__dirname, '..', '..'));
+const SWIFT = IOS ? path.join(IOS, 'NeuroKit', 'Sources', 'NeuroKit', 'Heard.swift') : null;
 
 function swiftStopPhrases(src) {
   const block = src.match(/stopPhrases:\s*Set<String>\s*=\s*\[([\s\S]*?)\]/);
@@ -33,7 +37,7 @@ function swiftStopPhrases(src) {
 }
 
 test('both sides stop on the same words', (t) => {
-  if (!fs.existsSync(SWIFT)) {
+  if (!(SWIFT && fs.existsSync(SWIFT))) {
     t.skip('no nuero-ios checkout beside this repo');
     return;
   }
@@ -46,7 +50,7 @@ test('both sides stop on the same words', (t) => {
 });
 
 test('⚠ the normaliser agrees about apostrophes, case and punctuation', (t) => {
-  if (!fs.existsSync(SWIFT)) {
+  if (!(SWIFT && fs.existsSync(SWIFT))) {
     t.skip('no nuero-ios checkout beside this repo');
     return;
   }
@@ -65,7 +69,7 @@ test('⚠ the normaliser agrees about apostrophes, case and punctuation', (t) =>
 });
 
 test('⚠ both sides refuse an ambiguous phrase rather than picking one', (t) => {
-  if (!fs.existsSync(SWIFT)) {
+  if (!(SWIFT && fs.existsSync(SWIFT))) {
     t.skip('no nuero-ios checkout beside this repo');
     return;
   }

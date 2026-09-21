@@ -25,8 +25,12 @@ const path = require('path');
 
 const { PHASES, LABELS } = require('../../shared/operation-phase.cjs');
 
-const SWIFT = path.resolve(__dirname, '..', '..', '..', 'nuero-ios',
-  'NeuroKit', 'Sources', 'NeuroKit', 'Operation.swift');
+const { findIOSCheckout } = require('../../shared/ios-checkout.cjs');
+// ⚠ BOTH SPELLINGS — the checkout is `neuro-ios`, the remote `nuero-ios`.
+// Hard-coding either made this guard SKIP on the only machine that has
+// the iOS app, which is the whole point of a cross-repo parity test.
+const IOS = findIOSCheckout(path.resolve(__dirname, '..', '..'));
+const SWIFT = IOS ? path.join(IOS, 'NeuroKit', 'Sources', 'NeuroKit', 'Operation.swift') : null;
 
 /** The raw phase strings the Swift enum declares, in declaration order. */
 function swiftPhases(src) {
@@ -47,7 +51,7 @@ function swiftLabels(src) {
 }
 
 test('the Swift half declares exactly the phases the vocabulary does', (t) => {
-  if (!fs.existsSync(SWIFT)) {
+  if (!(SWIFT && fs.existsSync(SWIFT))) {
     t.skip('no nuero-ios checkout beside this repo');
     return;
   }
@@ -67,7 +71,7 @@ test('the Swift half declares exactly the phases the vocabulary does', (t) => {
 });
 
 test('the Swift half spells every label the same way', (t) => {
-  if (!fs.existsSync(SWIFT)) {
+  if (!(SWIFT && fs.existsSync(SWIFT))) {
     t.skip('no nuero-ios checkout beside this repo');
     return;
   }
@@ -80,7 +84,7 @@ test('the Swift half spells every label the same way', (t) => {
 });
 
 test('the Swift half agrees about which phases are ACTIVE', (t) => {
-  if (!fs.existsSync(SWIFT)) {
+  if (!(SWIFT && fs.existsSync(SWIFT))) {
     t.skip('no nuero-ios checkout beside this repo');
     return;
   }
