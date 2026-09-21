@@ -93,14 +93,28 @@ function isWorkHours(now, isWorkingDay) {
  * Should SAiM speak at all? PURE.
  * @returns {{speak: boolean, why: string|null}}
  */
-function decide({ room, now, quiet, inMeeting, ledger, cooldownMinutes = COOLDOWN_MINUTES }) {
-  if (!room) return { speak: false, why: 'no room' };
+function decide({ room, client, now, quiet, inMeeting, ledger, cooldownMinutes = COOLDOWN_MINUTES }) {
+  // WARNING  A ROOM AND A CLIENT ARE BOTH ARRIVALS, AND THEY COOL DOWN
+  //   SEPARATELY. Walking into the study and opening SAiM on the phone are two
+  //   different arrivals, so one must not silence the other - a man who checks
+  //   his phone in the kitchen would otherwise never be greeted by the kitchen
+  //   again. What they DO share is `recentKinds` and `lastAnyAt`, so she does
+  //   not tell him about the rain twice on two surfaces and the once-a-day
+  //   sleep line stays once a day across all of them. The existing comment on
+  //   `recentKinds` already draws that line: a variety rule, not a suppression.
+  const where = room || client;
+  if (!where) return { speak: false, why: 'no room or client' };
   if (quiet) return { speak: false, why: 'quiet hours' };
   if (inMeeting) return { speak: false, why: 'in a meeting' };
-  const last = ledger && ledger.rooms && ledger.rooms[room];
+  const seen = room ? (ledger && ledger.rooms) : (ledger && ledger.clients);
+  const last = seen && seen[where];
   const lastMs = last ? new Date(last).getTime() : NaN;
   if (Number.isFinite(lastMs) && now.getTime() - lastMs < cooldownMinutes * 60000) {
-    return { speak: false, why: `greeted in the ${room} ${Math.round((now.getTime() - lastMs) / 60000)} min ago` };
+    const mins = Math.round((now.getTime() - lastMs) / 60000);
+    return {
+      speak: false,
+      why: room ? `greeted in the ${room} ${mins} min ago` : `greeted on ${client} ${mins} min ago`,
+    };
   }
   return { speak: true, why: null };
 }
@@ -275,9 +289,14 @@ function readLedger() {
   }
 }
 
-function recordGreeting(ledger, { room, now, opener, lead, briefKind = null }) {
+function recordGreeting(ledger, { room, client, now, opener, lead, briefKind = null }) {
   const next = {
-    rooms: { ...(ledger.rooms || {}), [room]: now.toISOString() },
+    rooms: room ? { ...(ledger.rooms || {}), [room]: now.toISOString() } : { ...(ledger.rooms || {}) },
+    // WARNING  A SEPARATE MAP, NOT A ROOM CALLED "saim-ios". `rooms` is read by
+    //   the arrival detector and keyed on sensor room ids; putting a client in
+    //   there would make the phone look like somewhere in the house to every
+    //   future reader of this ledger.
+    clients: client ? { ...(ledger.clients || {}), [client]: now.toISOString() } : { ...(ledger.clients || {}) },
     lastAnyAt: now.toISOString(),
     recentOpeners: [opener, ...(ledger.recentOpeners || []).filter((o) => o !== opener)].slice(0, RECENT_KEEP),
     recentLeads: lead
@@ -300,7 +319,7 @@ function recordGreeting(ledger, { room, now, opener, lead, briefKind = null }) {
  * `preview` composes and gates without recording, so the voice can be checked
  * without spending the cooldown.
  */
-async function claim({ room, now = new Date(), preview = false } = {}) {
+async function claim({ room, client = null, now = new Date(), preview = false } = {}) {
   const ledger = readLedger();
 
   let quiet = false;
@@ -316,7 +335,7 @@ async function claim({ room, now = new Date(), preview = false } = {}) {
     inMeeting = Boolean(require('./attention').currentMeetingEvent(now));
   } catch { /* an unreadable diary is not a meeting */ }
 
-  const decision = decide({ room, now, quiet, inMeeting, ledger });
+  const decision = decide({ room, client, now, quiet, inMeeting, ledger });
   if (!decision.speak && !preview) return { speak: false, why: decision.why, text: null };
 
   let workingDay = false;
@@ -345,7 +364,7 @@ async function claim({ room, now = new Date(), preview = false } = {}) {
     if (workHours && p && p.kind === 'item' && p.title) workTitle = p.title;
     brief = briefLine({
       now,
-      room,
+      room: room || null,
       workHours,
       // Once a day for the sleep line: the first time she speaks to him.
       firstToday: !(ledger.lastAnyAt && dateKey(new Date(ledger.lastAnyAt)) === dateKey(now)),
@@ -366,7 +385,7 @@ async function claim({ room, now = new Date(), preview = false } = {}) {
   const words = compose({ now, room, workHours, workTitle, brief, ledger });
   if (!preview) {
     try {
-      db.setState(LEDGER_KEY, JSON.stringify(recordGreeting(ledger, { room, now, ...words })));
+      db.setState(LEDGER_KEY, JSON.stringify(recordGreeting(ledger, { room, client, now, ...words })));
     } catch (e) {
       console.warn('[Greeting] ledger write failed:', e.message);
     }
