@@ -144,17 +144,99 @@ function buildReviewStateKey(relativePath) {
   return `note_action_review:${hashKey(relativePath)}:${relativePath}`;
 }
 
-function readReviewState(relativePath) {
-  const raw = db.getState(buildReviewStateKey(relativePath));
-  if (!raw) return { contentHash: null, reviewedAt: null, handled: {} };
+/**
+ * What Nick has already answered about, keyed by the RECORDING rather than the file.
+ *
+ * PLAUD emits several summary variants per recording and `imports` routes each one
+ * into `Meetings/` as its own note — "<title>.md", "<title> 2.md", and so on. They
+ * are one meeting, and they carry the same commitments in the same words. Every
+ * defence in this file was scoped to the note PATH, so the moment the second
+ * variant was scanned, all of them were looking at the wrong note: `alreadyTracked`
+ * found nothing, the review state was empty, and `todoAlreadyExists` compared
+ * against a path that did not match. A commitment Nick had already answered came
+ * straight back as new.
+ *
+ * Measured on the live queue when this was written: 36 pending, 31 of them
+ * word-for-word re-raises (score 1.000) of commitments already decided, 30 of which
+ * he had already APPROVED INTO TASKS and 21 of which were already DONE. Every one
+ * came from a different note path than the one he decided on (samePath=0).
+ */
+function buildRecordingReviewKey(recordingId) {
+  return `note_action_review_rec:${recordingId}`;
+}
+
+/**
+ * The PLAUD recording a note came from, or null.
+ *
+ * Canonicalised, so a note written before the 15 Sep `of_` prefix change matches one
+ * written after it. Cached because a note's plaud_id never changes, and this is asked
+ * once per candidate on a path that already walks the meetings corpus.
+ */
+const recordingIdCache = new Map();
+
+function recordingIdFromContent(content) {
+  const match = String(content || '').slice(0, 2000).match(/^plaud_id:\s*"?([A-Za-z0-9_-]+)"?\s*$/m);
+  if (!match) return null;
+  const id = canonicalPlaudId(match[1]);
+  return id || null;
+}
+
+function recordingIdForPath(relativePath) {
+  if (!relativePath || !VAULT_PATH) return null;
+  if (recordingIdCache.has(relativePath)) return recordingIdCache.get(relativePath);
+  let id = null;
   try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object'
-      ? { contentHash: parsed.contentHash || null, reviewedAt: parsed.reviewedAt || null, handled: parsed.handled || {} }
-      : { contentHash: null, reviewedAt: null, handled: {} };
+    id = recordingIdFromContent(fs.readFileSync(path.join(VAULT_PATH, relativePath), 'utf-8'));
   } catch {
-    return { contentHash: null, reviewedAt: null, handled: {} };
+    // Unreadable is UNKNOWN, never "not a recording" — see sameRecording below.
+    id = null;
   }
+  recordingIdCache.set(relativePath, id);
+  return id;
+}
+
+/**
+ * Two notes are the same recording only when BOTH are known and equal.
+ *
+ * null means "this note has no plaud_id, or could not be read". Letting null match
+ * null would make every daily note, email-sourced candidate and unreadable file the
+ * same "recording" as every other — which would suppress genuine, unrelated
+ * commitments wholesale. Unknown must never be evidence of sameness.
+ */
+function sameRecording(a, b) {
+  return Boolean(a) && Boolean(b) && a === b;
+}
+
+/**
+ * Read state for a note, folding in anything decided about its recording.
+ *
+ * `contentHash` stays strictly PER PATH — each summary variant has its own body and
+ * its own reason to be re-scanned. Only `handled` is shared, because that records
+ * what Nick SAID, and he said it about the commitment rather than about the file.
+ * The per-path map is still read first so decisions made before this existed keep
+ * working on their own note; nothing needed migrating for them to stay valid.
+ */
+function readReviewState(relativePath, recordingId = undefined) {
+  const parse = (raw) => {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const own = parse(db.getState(buildReviewStateKey(relativePath))) || {};
+  const rec = recordingId === undefined ? recordingIdForPath(relativePath) : recordingId;
+  const shared = rec ? (parse(db.getState(buildRecordingReviewKey(rec))) || {}) : {};
+
+  return {
+    contentHash: own.contentHash || null,
+    reviewedAt: own.reviewedAt || null,
+    recordingId: rec || null,
+    handled: { ...(shared.handled || {}), ...(own.handled || {}) },
+  };
 }
 
 function writeReviewState(relativePath, state) {
@@ -173,13 +255,35 @@ function getActionSignature(action) {
 function markHandled(relativePath, semanticSignature, status, details = {}) {
   if (!relativePath || !semanticSignature) return;
   const state = readReviewState(relativePath);
-  state.handled[semanticSignature] = {
+  const entry = {
     status,
     at: new Date().toISOString(),
     ...details,
   };
+  state.handled[semanticSignature] = entry;
   state.reviewedAt = new Date().toISOString();
   writeReviewState(relativePath, state);
+
+  // And against the RECORDING, so the answer carries to PLAUD's other summary
+  // variants of the same meeting. Written as well as, never instead of, the
+  // per-path entry: the two are read together and the path copy is what keeps
+  // decisions taken before this existed working on their own note.
+  const recordingId = state.recordingId;
+  if (!recordingId) return;
+  const key = buildRecordingReviewKey(recordingId);
+  let shared = {};
+  try {
+    shared = JSON.parse(db.getState(key) || '{}') || {};
+  } catch {
+    // An unreadable blob must not be silently overwritten with a fresh one —
+    // that would discard every earlier decision for this recording. Keep the
+    // new entry only, and say so.
+    console.warn(`[ActionCandidates] Unreadable recording review state for ${recordingId}; starting a new one`);
+    shared = {};
+  }
+  shared.handled = { ...(shared.handled || {}), [semanticSignature]: { ...entry, sourcePath: relativePath } };
+  shared.reviewedAt = new Date().toISOString();
+  db.setState(key, JSON.stringify(shared));
 }
 
 /**
@@ -319,16 +423,77 @@ function extractActionCandidates(text, relativePath) {
   return candidates;
 }
 
+/**
+ * Index of the one task in `list` that is the same commitment as `candidate`, or -1.
+ *
+ * Signature equality first because it is free, then `task-dedupe`'s matcher at
+ * FOLD_SCORE — the SAME matcher the cross-note fold uses, deliberately, so there is
+ * one notion of "these are the same commitment" rather than two free to disagree.
+ */
+function matchingTaskIndex(candidate, list) {
+  if (!list.length) return -1;
+  const exact = list.findIndex((task) => buildSemanticSignature(task.text) === candidate.semanticSignature);
+  if (exact !== -1) return exact;
+  try {
+    const taskDedupe = require('./task-dedupe');
+    const hit = taskDedupe.findEquivalent(candidate.text, list.map((t) => t.text), { minScore: FOLD_SCORE });
+    return hit ? hit.index : -1;
+  } catch {
+    // Not knowing must not invent a match. Fall back to the signature answer.
+    return -1;
+  }
+}
+
+/**
+ * Where a task came from, whichever kind of task it is.
+ *
+ * A NEURO-owned row exposes its provenance as BOTH `originPath` and
+ * `meta.sourcePath`; a file-backed one carries only the latter. Reading the
+ * canonical field first with the older one as a fallback is belt-and-braces
+ * rather than a fix — measured, the two agree wherever `origin_path` is set, and
+ * this is NOT mutation-checked because no live shape distinguishes them today.
+ * Kept because a task whose origin cannot be read must degrade to "unknown
+ * recording", which sameRecording refuses, rather than to a wrong match.
+ */
+function taskOriginPath(task) {
+  return task?.originPath || task?.meta?.sourcePath || null;
+}
+
+/**
+ * Is this commitment already a task?
+ *
+ * Neither arm of the old test could fire for the case that mattered. `sameSource`
+ * compared the candidate's note path against the task's, so a commitment reaching
+ * us through PLAUD's SECOND summary variant never matched the task the first
+ * variant had created — the paths differ, though it is one meeting. And
+ * `task.source?.startsWith('Master')` was written for the `Master Todo.md` list
+ * RETIRED on 16 Aug 2026: DB-backed rows report `source: 'NEURO'` and the stored
+ * values are lowercase (`master-todo-import`), while `startsWith` is
+ * case-sensitive — so that arm had matched nothing at all since the list went.
+ *
+ * Live measurement behind this: 26 of 36 pending candidates were already tasks,
+ * 21 of them already DONE.
+ */
 function todoAlreadyExists(candidate) {
   try {
     const obsidian = require('./obsidian');
     const { active, done } = obsidian.parseVaultTodos();
-    const all = [...active, ...done];
-    return all.some((task) => {
-      const sameSource = (task.meta?.sourcePath || null) === candidate.sourcePath;
-      const sameSignature = buildSemanticSignature(task.text) === candidate.semanticSignature;
-      return sameSignature && (sameSource || task.source?.startsWith('Master'));
-    });
+
+    // An OPEN task is on the list Nick is looking at right now. Which meeting put
+    // it there does not matter — he cannot action one commitment twice, so
+    // offering it again is never right.
+    if (matchingTaskIndex(candidate, active) !== -1) return true;
+
+    // A DONE task is a different question. A commitment can genuinely recur, and a
+    // LATER meeting raising it again is real signal, so a finished task only
+    // suppresses when this is not a new sighting at all: the same recording,
+    // reaching us through one of PLAUD's other summary variants of that meeting.
+    const doneIndex = matchingTaskIndex(candidate, done);
+    if (doneIndex === -1) return false;
+    return sameRecording(
+      recordingIdForPath(candidate.sourcePath),
+      recordingIdForPath(taskOriginPath(done[doneIndex]))
+    );
   } catch {
     return false;
   }
@@ -352,7 +517,11 @@ function syncNoteActionCandidates(relativePath) {
   }
 
   const contentHash = hashKey(stripFrontmatter(content));
-  const reviewState = readReviewState(relativePath);
+  // The recording comes from the content already in hand, so this costs no extra
+  // read, and seed the cache for the sibling lookups todoAlreadyExists will make.
+  const recordingId = recordingIdFromContent(content);
+  recordingIdCache.set(relativePath, recordingId);
+  const reviewState = readReviewState(relativePath, recordingId);
 
   // Gate on CONTENT, not mtime. `scanRecentNotes` selects notes by file mtime
   // inside a 7-day window, so on 14 Aug the restamp-people backfill rewrote
@@ -438,7 +607,7 @@ function syncNoteActionCandidates(relativePath) {
     if (todoAlreadyExists(candidate)) {
       markHandled(candidate.sourcePath, candidate.semanticSignature, 'executed', {
         text: candidate.text,
-        reason: 'already-in-master-todo',
+        reason: 'already-a-task',
       });
       continue;
     }
@@ -856,6 +1025,10 @@ function scanRecentNotes(options = {}) {
   // landed in a single night on 14 Aug and nothing stopped it.
   const { days = 7, dryRun = true, limit = 500, scope = 'meetings', maxCreate = 60,
           novaClaimed = new Set() } = options;
+  // A note's plaud_id never changes, but a path cached as null before the file
+  // existed would stay null for the life of the process — and the backend runs
+  // for days. Cleared per sweep so a newly written note is resolved, not assumed.
+  recordingIdCache.clear();
   const started = Date.now();
   const result = {
     dryRun, days, scope, scanned: 0, skipped: 0, unchanged: 0, novaOwned: 0,
@@ -1037,6 +1210,12 @@ module.exports = {
   extractActionCandidates,
   rememberReviewedAction,
   reviewStatusFor,
+  // Exported for the pin in candidate-recording-scope.test.js: "unknown never
+  // matches unknown" is the rule that stops every non-PLAUD note sharing one
+  // decision memory, and it is worth asserting directly rather than only through
+  // behaviour.
+  sameRecording,
+  recordingIdFromContent,
   syncNoteActionCandidates,
   syncNoteActionCandidatesUnlessNova,
   novaClaimedCached,
