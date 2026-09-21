@@ -5,6 +5,8 @@
 // are wrong on iOS. Those fixes are ported back here (they are harmless on desktop),
 // so the two files match again. Change one, change the other.
 
+import { spokenForm } from '../../shared/spoken.cjs';
+
 const STORAGE_KEY = 'saim_voice_out';
 // Pre-rename key. Speech-out is OFF by default, so a lost key reads as
 // "Nick never turned it on" — silently undoing a choice he made.
@@ -92,7 +94,11 @@ export function speakSaim(text) {
   // iOS can leave the queue paused after a backgrounded tab or a finished utterance;
   // resume() is a no-op when it isn't.
   synth.resume();
-  const clean = cleanText(text);
+  // ⚠ SPOKEN FORM. `CLAUDE.md`'s first line says the name is pronounced
+  // "Sam"; nothing implemented it, so every surface said "say-im".
+  // Applied here, at the speech boundary, because the WRITTEN form is
+  // correct everywhere it is read.
+  const clean = spokenForm(cleanText(text));
   if (!clean) return null;
   const utterance = new SpeechSynthesisUtterance(clean);
   utterance.rate = 1.0;

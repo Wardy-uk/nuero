@@ -22,6 +22,7 @@
  */
 
 const crypto = require('crypto');
+const { spokenForm } = require('../../shared/spoken.cjs');
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = process.env.TTS_MODEL || 'openai/gpt-audio-mini';
@@ -95,7 +96,10 @@ function pcm16ToWav(pcm, sampleRate = SAMPLE_RATE) {
 async function speak(text, options = {}) {
   if (!isConfigured()) throw new Error('OpenRouter API key not configured');
 
-  const clean = String(text || '').trim().slice(0, MAX_CHARS);
+  // ⚠ SPOKEN FORM BEFORE THE CACHE KEY, not after — the key is a hash of the
+  // text, so normalising afterwards would cache the written and the spoken
+  // form under two keys and buy the same audio twice.
+  const clean = spokenForm(String(text || '').trim()).slice(0, MAX_CHARS);
   if (!clean) throw new Error('Nothing to speak');
 
   const voice = options.voice || VOICE;

@@ -36,6 +36,7 @@ const presence = require('../routes/presence');
 const ha = require('../telemetry/homeAssistant');
 const neuroConfig = require('../integrations/neuroConfig');
 const pending = require('./pending');
+const { spokenForm } = require('../../../../shared/spoken.cjs');
 
 // How long a sure room must hold before it is an arrival. Was 25s; measured on the
 // second live test the greeting landed ~60s after he walked in (≈16s for the
@@ -151,12 +152,20 @@ function createGreeter({ env = process.env, fetchImpl = (...a) => fetch(...a), l
     if (!c.ok) { log.warn(`[greeter] ${room}: no greeting — ${c.why}`); return { spoken: false, why: c.why }; }
     if (!c.speak || !c.text) { log.log(`[greeter] ${room}: staying quiet — ${c.why}`); return { spoken: false, why: c.why }; }
 
+    // ⚠ SPOKEN FORM, AT THE ONE POINT BOTH KINDS PASS THROUGH. `CLAUDE.md`'s
+    // first line says the name is pronounced "Sam" and nothing implemented it,
+    // so the satellite said "say-im" out loud (heard 21 Sep 2026). Doing it
+    // HERE rather than in each branch means the Android tablet is covered by
+    // the server and its Kotlin `TextToSpeech` needs no change — and the two
+    // cannot drift. It renders one name; it never edits her words.
+    const spoken = spokenForm(c.text);
+
     if (speaker.kind === 'sensor') {
-      pending.put(room, c.text);
+      pending.put(room, spoken);
       log.log(`[greeter] ${room}: greeting queued for the room's sensor`);
       return { spoken: true, via: 'sensor' };
     }
-    const r = await speakViaHa(speaker.entity, c.text);
+    const r = await speakViaHa(speaker.entity, spoken);
     if (!r.ok) log.warn(`[greeter] ${room}: Home Assistant did not speak — ${r.why}`);
     else log.log(`[greeter] ${room}: greeted via ${speaker.entity}`);
     return { spoken: r.ok, via: 'ha', why: r.why || null };
