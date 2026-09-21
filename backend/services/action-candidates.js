@@ -161,6 +161,34 @@ function buildReviewStateKey(relativePath) {
  * he had already APPROVED INTO TASKS and 21 of which were already DONE. Every one
  * came from a different note path than the one he decided on (samePath=0).
  */
+/**
+ * How long an EXACT decision is remembered across different recordings.
+ *
+ * Bounded on purpose. The same-recording memory has no expiry — two summary
+ * variants are one meeting for ever — but suppressing across meetings forever is
+ * the thing this file has always refused, so a commitment genuinely raised again
+ * months later still reaches Nick.
+ */
+const DECISION_MEMORY_DAYS = 90;
+
+/**
+ * What Nick answered about this exact commitment, wherever it came from.
+ *
+ * The signature is the NORMALISED text, so this fires only on a word-for-word
+ * match. That is the whole justification: a later meeting genuinely revisiting a
+ * topic produces DIFFERENT wording, whereas an identical sentence is the same
+ * extraction reaching us twice. Measured on the live queue — after the
+ * recording-scoped fix, 5 of the 6 survivors were score-1.000 re-raises of
+ * decisions already made, four of them already rejected once. Nick: "some of the
+ * 10 left is the spotted section I've already done."
+ *
+ * Anything short of identical still needs the same recording, because there the
+ * wording drift could be a real re-raise and a wrong suppression hides work.
+ */
+function buildSignatureReviewKey(semanticSignature) {
+  return `note_action_review_sig:${semanticSignature}`;
+}
+
 function buildRecordingReviewKey(recordingId) {
   return `note_action_review_rec:${recordingId}`;
 }
@@ -284,6 +312,12 @@ function markHandled(relativePath, semanticSignature, status, details = {}) {
   shared.handled = { ...(shared.handled || {}), [semanticSignature]: { ...entry, sourcePath: relativePath } };
   shared.reviewedAt = new Date().toISOString();
   db.setState(key, JSON.stringify(shared));
+
+  // And globally, against the exact wording, so an identical sentence extracted
+  // from a different meeting is not offered as though it were new.
+  db.setState(buildSignatureReviewKey(semanticSignature), JSON.stringify({
+    status, at: entry.at, sourcePath: relativePath, text: details.text || null,
+  }));
 }
 
 /**
@@ -295,6 +329,31 @@ function markHandled(relativePath, semanticSignature, status, details = {}) {
  * "handled" — the alternative is two extractors disagreeing about whether Nick
  * has already turned something down.
  */
+/**
+ * A prior EXACT decision on this commitment from any note, inside the window.
+ *
+ * Returns null when there is none, when it has aged out, or when the store cannot
+ * be read — not knowing must never suppress work, since a duplicate row is cheap
+ * and visible while a hidden commitment is not.
+ */
+function recentExactDecision(semanticSignature, now = Date.now()) {
+  if (!semanticSignature) return null;
+  let entry = null;
+  try {
+    entry = JSON.parse(db.getState(buildSignatureReviewKey(semanticSignature)) || 'null');
+  } catch {
+    return null;
+  }
+  if (!entry || (entry.status !== 'rejected' && entry.status !== 'executed')) return null;
+  const at = Date.parse(entry.at || '');
+  // An undateable entry is kept rather than trusted forever: without an age we
+  // cannot honour the window, and the window is what stops this suppressing work
+  // for good.
+  if (!Number.isFinite(at)) return null;
+  if ((now - at) > DECISION_MEMORY_DAYS * 24 * 60 * 60 * 1000) return null;
+  return entry;
+}
+
 function reviewStatusFor(relativePath, semanticSignature) {
   if (!relativePath || !semanticSignature) return null;
   return readReviewState(relativePath).handled[semanticSignature]?.status || null;
@@ -490,6 +549,15 @@ function todoAlreadyExists(candidate) {
     // reaching us through one of PLAUD's other summary variants of that meeting.
     const doneIndex = matchingTaskIndex(candidate, done);
     if (doneIndex === -1) return false;
+
+    // Word-for-word the same thing he has already finished. Which meeting raised
+    // it is irrelevant — an identical sentence is the same extraction, not a
+    // fresh commitment, and offering completed work back is the complaint this
+    // whole change exists to answer.
+    if (buildSemanticSignature(done[doneIndex].text) === candidate.semanticSignature) return true;
+
+    // Reworded rather than identical: that could be a genuine recurrence, so it
+    // only suppresses within the recording that produced it.
     return sameRecording(
       recordingIdForPath(candidate.sourcePath),
       recordingIdForPath(taskOriginPath(done[doneIndex]))
@@ -601,6 +669,18 @@ function syncNoteActionCandidates(relativePath) {
 
     const handled = reviewState.handled[candidate.semanticSignature];
     if (handled?.status === 'rejected' || handled?.status === 'executed' || handled?.status === 'ignored') {
+      continue;
+    }
+
+    // Word-for-word the same commitment Nick has already answered, from another
+    // meeting and inside the memory window. Not a new sighting — the same
+    // extraction arriving twice.
+    const priorExact = recentExactDecision(candidate.semanticSignature);
+    if (priorExact) {
+      markHandled(candidate.sourcePath, candidate.semanticSignature, priorExact.status, {
+        text: candidate.text,
+        reason: 'exact-match-already-decided',
+      });
       continue;
     }
 
@@ -1216,6 +1296,8 @@ module.exports = {
   // behaviour.
   sameRecording,
   recordingIdFromContent,
+  recentExactDecision,
+  DECISION_MEMORY_DAYS,
   syncNoteActionCandidates,
   syncNoteActionCandidatesUnlessNova,
   novaClaimedCached,

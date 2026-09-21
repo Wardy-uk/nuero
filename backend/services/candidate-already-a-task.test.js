@@ -86,7 +86,9 @@ test('a DONE task from the SAME recording suppresses it', () => {
   assert.equal(r.created, 0, 'finished work must not come back through another variant');
 });
 
-test('a DONE task does NOT suppress a genuinely new sighting from another recording', () => {
+test('a DONE task does NOT suppress a REWORDED sighting from another recording', () => {
+  // Reworded, deliberately: an IDENTICAL sentence matching finished work is the
+  // same extraction arriving twice and is suppressed whatever the recording.
   const text = 'Nick to review the quarterly escalation policy';
   const created = taskStore.createTask({
     text, source: 'meeting-promotion', origin_path: `${DIR}/Old Meeting.md`,
@@ -96,9 +98,37 @@ test('a DONE task does NOT suppress a genuinely new sighting from another record
     '---', 'type: note', `plaud_id: "${REC_A}"`, '---', '', '## Next Arrangements', `- ${text}`,
   ].join('\n'), 'utf-8');
 
-  // A LATER, different meeting raises it again. That is new signal, not a duplicate.
-  writeNote(`${DIR}/New Meeting.md`, REC_B, text);
+  // A LATER, different meeting raises related but differently-worded work.
+  writeNote(`${DIR}/New Meeting.md`, REC_B,
+    'Nick to redraft the quarterly escalation policy and agree it with Chris');
   const r = syncNoteActionCandidates(`${DIR}/New Meeting.md`);
 
   assert.equal(r.created, 1, 'a recurrence raised by a different meeting must still be offered');
+});
+
+/**
+ * Identical wording matching finished work is suppressed whatever meeting it
+ * came from.
+ *
+ * The recording-scoped rule alone left this open: live, "Nick will consult with
+ * Annabelle, who is further ahead in this process" was already a DONE task and
+ * still sat in the review queue, because the note offering it was a different
+ * recording from the one that produced the task. An identical sentence is the
+ * same extraction, not a fresh commitment.
+ */
+test('an IDENTICAL sentence matching a DONE task is suppressed across recordings', () => {
+  const text = 'Nick will consult with Annabelle, who is further ahead in this process';
+  const created = taskStore.createTask({
+    text, source: 'meeting-promotion', origin_path: `${DIR}/Annabelle Origin.md`,
+  });
+  taskStore.updateTask(created.id, { status: 'done' });
+  fs.writeFileSync(path.join(vault, `${DIR}/Annabelle Origin.md`), [
+    '---', 'type: note', `plaud_id: "${REC_A}"`, '---', '', '## Next Arrangements', `- ${text}`,
+  ].join('\n'), 'utf-8');
+
+  // A DIFFERENT recording, same sentence.
+  writeNote(`${DIR}/Annabelle Elsewhere.md`, REC_B, text);
+  const r = syncNoteActionCandidates(`${DIR}/Annabelle Elsewhere.md`);
+
+  assert.equal(r.created, 0, 'work already completed must not be offered back for approval');
 });

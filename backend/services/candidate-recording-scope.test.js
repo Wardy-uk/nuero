@@ -87,10 +87,13 @@ test('REJECTED: the second summary variant does NOT raise it again', () => {
   assert.equal(pending().length, 0);
 });
 
-test('a DIFFERENT recording raising the same commitment is still offered', () => {
-  // The asymmetry that keeps this honest: a later meeting discussing the same
-  // thing is real signal, and a decision must not suppress it for ever.
-  writeNote(`${DIR}/Later Meeting.md`, OTHER_RECORDING);
+test('a DIFFERENT recording REWORDING the commitment is still offered', () => {
+  // The asymmetry that keeps this honest: a later meeting genuinely discussing
+  // the same ground is real signal, and a decision must not suppress it for
+  // ever. Note the wording MUST differ — an identical sentence is the same
+  // extraction arriving twice and is suppressed by the exact-match rule below.
+  writeNote(`${DIR}/Later Meeting.md`, OTHER_RECORDING,
+    'Nick Ward to arrange a follow-up with Filippo about the consent-mapping backlog');
   const r = syncNoteActionCandidates(`${DIR}/Later Meeting.md`);
 
   assert.equal(r.created, 1, 'a genuinely new sighting must still reach the queue');
@@ -133,4 +136,68 @@ test('the of_ prefix is canonicalised, so a pre-15-Sep note matches a later one'
   const r = syncNoteActionCandidates(`${DIR}/Prefixed 2.md`);
 
   assert.equal(r.created, 0, 'of_<id> and <id> are one recording — see shared/plaud-id.cjs');
+});
+
+/**
+ * An identical sentence from a DIFFERENT meeting is the same extraction, not a
+ * new sighting.
+ *
+ * The first cut of this fix kept cross-recording re-raises on the grounds that a
+ * later meeting revisiting a topic is genuine signal. Live, that left 5 of 6
+ * survivors as score-1.000 re-raises of decisions already made — four already
+ * rejected once. Nick: "some of the 10 left is the spotted section I've already
+ * done." A genuine revisit is worded differently; an identical one is not.
+ *
+ * Bounded to DECISION_MEMORY_DAYS so this never becomes permanent suppression,
+ * which is the thing this file has always refused.
+ */
+test('an EXACT re-raise from a different recording is not offered again', () => {
+  const text = 'Nick Ward to speak offline with Charlie Keough about the cancelled CIA alert';
+  writeNote(`${DIR}/Meeting X.md`, 'c0ffee00c0ffee00c0ffee00c0ffee00', text);
+  syncNoteActionCandidates(`${DIR}/Meeting X.md`);
+  decideAll('rejected');
+
+  writeNote(`${DIR}/Meeting Y.md`, 'beefbeefbeefbeefbeefbeefbeefbeef', text);
+  const r = syncNoteActionCandidates(`${DIR}/Meeting Y.md`);
+
+  assert.equal(r.created, 0, 'the same sentence he already rejected must not return');
+});
+
+test('a REWORDED commitment from a different recording IS still offered', () => {
+  // Not identical, so it could be a real revisit — the asymmetry that keeps this
+  // from becoming a blanket "never show me this again".
+  writeNote(`${DIR}/Reword A.md`, '1111222233334444555566667777aaaa',
+    'Nick to review the escalation policy before the board meeting');
+  syncNoteActionCandidates(`${DIR}/Reword A.md`);
+  decideAll('rejected');
+
+  writeNote(`${DIR}/Reword B.md`, '9999888877776666555544443333bbbb',
+    'Nick to rewrite the escalation policy and circulate it to the leadership team');
+  const r = syncNoteActionCandidates(`${DIR}/Reword B.md`);
+
+  assert.equal(r.created, 1, 'different wording may be a genuine new commitment');
+});
+
+test('the cross-recording memory EXPIRES, so nothing is suppressed for ever', () => {
+  const { recentExactDecision, DECISION_MEMORY_DAYS, buildSemanticSignature } = candidates;
+  assert.equal(typeof recentExactDecision, 'function', 'positive control');
+  const sig = buildSemanticSignature('Nick to renew the annual insurance policy');
+  db.setState(`note_action_review_sig:${sig}`, JSON.stringify({
+    status: 'rejected', at: new Date(Date.now() - (DECISION_MEMORY_DAYS + 1) * 86400000).toISOString(),
+  }));
+  assert.equal(recentExactDecision(sig), null, 'a decision older than the window must not suppress');
+
+  db.setState(`note_action_review_sig:${sig}`, JSON.stringify({
+    status: 'rejected', at: new Date().toISOString(),
+  }));
+  assert.ok(recentExactDecision(sig), 'a recent one must');
+});
+
+test('an undateable or unreadable decision suppresses NOTHING', () => {
+  const { recentExactDecision, buildSemanticSignature } = candidates;
+  const sig = buildSemanticSignature('Nick to book the annual fire drill');
+  db.setState(`note_action_review_sig:${sig}`, JSON.stringify({ status: 'rejected' }));
+  assert.equal(recentExactDecision(sig), null, 'no timestamp means the window cannot be honoured');
+  db.setState(`note_action_review_sig:${sig}`, 'not json');
+  assert.equal(recentExactDecision(sig), null, 'an unreadable entry must not hide work');
 });

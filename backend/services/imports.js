@@ -886,6 +886,20 @@ function routeFile(filePath, destination, type) {
   return destRel;
 }
 
+/**
+ * Is this note under a deliberately retired directory (Archive, _toDelete, _Staging)?
+ *
+ * Matched on ANY path segment, so `Projects/Archive/...` counts as much as a
+ * top-level `Archive/...` — the depth lesson vault-hygiene's collectArchiveDirs
+ * already paid for.
+ */
+function _underRetiredDir(relativePath) {
+  if (!relativePath) return false;
+  const { RETIRED_DIRS } = require('./vault-exclusions');
+  const retired = new Set(RETIRED_DIRS);
+  return String(relativePath).split('/').some((segment) => retired.has(segment));
+}
+
 async function routePlaudSummary(summaryPath, { transcriptPath = null, transcriptInsight = null, forceCanonical = false } = {}) {
   if (!summaryPath || !fs.existsSync(summaryPath)) {
     return { status: 'error', error: 'summaryPath not found' };
@@ -893,6 +907,21 @@ async function routePlaudSummary(summaryPath, { transcriptPath = null, transcrip
 
   const vaultPath = getVaultPath();
   const relativeSummaryPath = path.relative(vaultPath, summaryPath).replace(/\\/g, '/');
+
+  // ARCHIVING IS A DECISION, AND ROUTING MUST NOT UNDO IT.
+  // A note under Archive/ was deliberately put out of the way. Routing it back
+  // into Meetings/ silently reverses that, and because the canonical name is
+  // already taken by the live note it lands as "<title> 2.md" — a brand new
+  // duplicate born out of cleaning up the last one. That is exactly what happened
+  // on 21 Sep: 117 archived duplicates were rewritten by plaud-sync, routed back
+  // here, and the archive folder emptied itself down to its own _about.md.
+  // Same rule as plaud-admin-blocks' ledger (a deleted block is never recreated
+  // by a rescan) and as reconcile/repull, which already refuse to restore from
+  // Archive — the ROUTINE path simply never had the guard the recovery paths do.
+  if (_underRetiredDir(relativeSummaryPath)) {
+    return { status: 'skipped', reason: 'archived', path: relativeSummaryPath };
+  }
+
   const classification = await classifyFile(summaryPath, { transcriptInsight, context: 'plaud-summary' });
   const content = fs.readFileSync(summaryPath, 'utf-8');
   const frontmatter = parseFrontmatter(content);

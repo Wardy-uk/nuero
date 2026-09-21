@@ -67,8 +67,32 @@ function ensureFolder(relativePath) {
   fs.mkdirSync(target, { recursive: true });
 }
 
+/**
+ * Every markdown file that is a live note of record.
+ *
+ * ⚠ RETIRED DIRECTORIES ARE SKIPPED, AND THAT IS LOAD-BEARING. This walk builds
+ * `buildExistingNoteIndex`, which decides WHICH FILE A SUMMARY IS WRITTEN INTO —
+ * so anything it returns is a write target. It used to walk the whole vault,
+ * `Archive/` included, and the 16 Sep cleanup is what armed the trap: those 111
+ * duplicates were MOVED to `Archive/Plaud duplicates (id format change
+ * 2026-09-15)/` and they kept their `plaud_id`. So the index found two notes per
+ * recording — the live one and the archived one — and wrote the summary into the
+ * archived copy. `imports` then routed that write back into `Meetings/`, where
+ * the canonical name was taken, so it landed as "<title> 2.md".
+ *
+ * That is the loop: archive a duplicate, have it rewritten, have it routed back
+ * as a fresh duplicate, every morning. Live evidence on 21 Sep — 117 new
+ * "<title> 2.md" notes across meetings back to 8 July, and the archive folder
+ * emptied down to its own `_about.md`.
+ *
+ * An archived note must never be a write target. Cleaning up by archiving is
+ * only safe once this holds.
+ */
 function readMarkdownFiles(rootPath) {
   if (!fs.existsSync(rootPath)) return [];
+
+  const { RETIRED_DIRS } = require('./vault-exclusions');
+  const retired = new Set(RETIRED_DIRS);
 
   const results = [];
   const stack = [rootPath];
@@ -77,6 +101,10 @@ function readMarkdownFiles(rootPath) {
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const nextPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
+        // Matched at ANY depth, not just the vault root — `Projects/Archive/...`
+        // is as retired as `Archive/...`, which is the lesson vault-hygiene's
+        // `collectArchiveDirs` already paid for.
+        if (retired.has(entry.name)) continue;
         stack.push(nextPath);
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
         results.push(nextPath);
@@ -1670,6 +1698,11 @@ module.exports = {
   // exported for tests / reuse
   _internal: {
     recordingKey,
+    // Exported so the archive-loop pin is a real test rather than one that
+    // passes by absence: these two decide WHERE a summary is written, and an
+    // archived note must never be a candidate.
+    readMarkdownFiles,
+    buildExistingNoteIndex,
     titleTokens,
     jaccard,
     recordingDateStr,
