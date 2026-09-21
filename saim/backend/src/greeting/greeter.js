@@ -60,6 +60,15 @@ function parseSpeakers(raw) {
     if (!/^[a-z0-9-]{1,40}$/.test(room || '') || !spec) continue;
     if (spec === 'sensor') out.set(room, { kind: 'sensor' });
     else if (/^ha:media_player\.[a-z0-9_]+$/.test(spec)) out.set(room, { kind: 'ha', entity: spec.slice(3) });
+    // ⚠ A WYOMING SATELLITE IS NOT A `media_player`, which is why the living
+    //   room could not be moved off the HomePod by configuration alone. The
+    //   Pi 4's USB speaker is reachable ONLY as `assist_satellite.living_room`
+    //   — Home Assistant lists four media_players here and none of them is it
+    //   (checked live, 21 Sep 2026: the HomePod, two Sky Glass, one
+    //   unavailable). `tts.speak` cannot address a satellite; `announce` can.
+    else if (/^ha_satellite:assist_satellite\.[a-z0-9_]+$/.test(spec)) {
+      out.set(room, { kind: 'ha_satellite', entity: spec.slice('ha_satellite:'.length) });
+    }
   }
   return out;
 }
@@ -145,6 +154,36 @@ function createGreeter({ env = process.env, fetchImpl = (...a) => fetch(...a), l
     }
   }
 
+  /**
+   * Speak through a Wyoming assist satellite.
+   *
+   * ⚠ A SECOND NAMED DOOR, never a general "call any HA service" helper —
+   * `ha-rooms.js` refuses one outright ("an open proxy into a house") and this
+   * follows that rule: one service, one shape, nothing interpolated but the
+   * entity and the words.
+   *
+   * ⚠ IT USES THE SATELLITE'S OWN VOICE. `assist_satellite.announce` speaks
+   * through the pipeline that satellite is already assigned to — piper here —
+   * so this needs no `tts` entity and must NOT be given one: naming a second
+   * engine is how one room comes to sound different from the rest of the house.
+   */
+  async function speakViaSatellite(entity, text) {
+    const base = (env.SAIM_HA_BASE_URL || '').replace(/\/+$/, '');
+    const token = env.SAIM_HA_TOKEN || '';
+    if (!base || !token) return { ok: false, why: 'Home Assistant not configured' };
+    try {
+      const res = await fetchImpl(`${base}/api/services/assist_satellite/announce`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_id: entity, message: text }),
+        signal: AbortSignal.timeout(10000),
+      });
+      return res.ok ? { ok: true } : { ok: false, why: `Home Assistant answered ${res.status}` };
+    } catch (e) {
+      return { ok: false, why: e.message };
+    }
+  }
+
   async function deliver(room) {
     const speaker = speakers.get(room);
     if (!speaker) return { spoken: false, why: 'room has no speaker' };
@@ -165,10 +204,16 @@ function createGreeter({ env = process.env, fetchImpl = (...a) => fetch(...a), l
       log.log(`[greeter] ${room}: greeting queued for the room's sensor`);
       return { spoken: true, via: 'sensor' };
     }
-    const r = await speakViaHa(speaker.entity, spoken);
+    const viaSatellite = speaker.kind === 'ha_satellite';
+    const r = viaSatellite
+      ? await speakViaSatellite(speaker.entity, spoken)
+      : await speakViaHa(speaker.entity, spoken);
     if (!r.ok) log.warn(`[greeter] ${room}: Home Assistant did not speak — ${r.why}`);
     else log.log(`[greeter] ${room}: greeted via ${speaker.entity}`);
-    return { spoken: r.ok, via: 'ha', why: r.why || null };
+    // ⚠ `via` NAMES THE DOOR, not just "ha" — two different services with
+    //   different failure modes, and a log that cannot tell them apart sends
+    //   the reader to the wrong one.
+    return { spoken: r.ok, via: viaSatellite ? 'ha_satellite' : 'ha', why: r.why || null };
   }
 
   async function tick(nowMs = Date.now()) {

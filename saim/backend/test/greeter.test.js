@@ -160,3 +160,81 @@ test('delivery: a room with no speaker never asks NEURO', async () => {
 test('greeter does not start without configured speakers', () => {
   assert.equal(createGreeter({ env: {}, log: quietLog }).start(), false);
 });
+
+// ── The living room speaks through its SATELLITE, not the HomePod ──────────
+
+/**
+ * ⚠⚠ WHY THIS KIND EXISTS. Nick: stop using the Apple HomePod; the Pi 4 has
+ * its own speaker. It could not be done by configuration, because a Wyoming
+ * satellite is NOT a `media_player` — Home Assistant lists four here and none
+ * of them is the Pi (checked live 21 Sep 2026: the HomePod, two Sky Glass, one
+ * unavailable). `tts.speak` needs a `media_player_entity_id`; the Pi's USB
+ * speaker is reachable only as `assist_satellite.living_room`.
+ */
+test('parseSpeakers: a satellite is a speaker, and its shape is checked', () => {
+  const m = parseSpeakers('living-room=ha_satellite:assist_satellite.living_room,study=sensor');
+  assert.deepEqual(m.get('living-room'), { kind: 'ha_satellite', entity: 'assist_satellite.living_room' });
+  assert.deepEqual(m.get('study'), { kind: 'sensor' }, 'the tablet is untouched');
+
+  // ⚠ Anything not matching is DROPPED SILENTLY, as every other spec is — so a
+  //   typo must not fall through to some other door.
+  assert.equal(parseSpeakers('x=ha_satellite:media_player.living_room').get('x'), undefined);
+  assert.equal(parseSpeakers('x=ha_satellite:assist_satellite.Living Room').get('x'), undefined);
+  assert.equal(parseSpeakers('x=ha_satellite:').get('x'), undefined);
+});
+
+/**
+ * ⚠ A DIFFERENT SERVICE, AND NO TTS ENTITY. `announce` speaks through the
+ * pipeline the satellite is already assigned to (piper). Naming a second
+ * engine is how one room comes to sound different from the rest of the house.
+ */
+test('delivery: a satellite room is announced to, never tts.speak', async () => {
+  const calls = [];
+  const g = createGreeter({
+    env: { ...ENV, SAIM_GREET_SPEAKERS: 'living-room=ha_satellite:assist_satellite.living_room' },
+    log: quietLog,
+    fetchImpl: async (url, opts) => {
+      calls.push({ url, body: JSON.parse(opts.body || '{}') });
+      if (url.includes('/api/greeting')) {
+        return reply(200, { ok: true, speak: true, text: 'Morning, Nick.', why: null });
+      }
+      return reply(200, {});
+    },
+  });
+
+  const out = await g.deliver('living-room');
+  assert.equal(out.spoken, true);
+  assert.equal(out.via, 'ha_satellite', 'the door is named, so a failure sends you to the right service');
+
+  const spoke = calls.find((c) => c.url.includes('/api/services/'));
+  assert.ok(spoke, 'Home Assistant was called');
+  assert.match(spoke.url, /assist_satellite\/announce$/, 'announce, not tts.speak');
+  assert.equal(spoke.body.entity_id, 'assist_satellite.living_room');
+  assert.equal(spoke.body.message, 'Morning, Nick.');
+  assert.equal(spoke.body.entity_id_tts, undefined);
+  assert.equal(spoke.body.media_player_entity_id, undefined,
+    'a satellite is not a media_player and must never be addressed as one');
+});
+
+/**
+ * ⚠ THE NAME IS SPOKEN, NOT SPELLED. `spokenForm` runs in `deliver`, the one
+ * point every speaker kind passes through, so the satellite gets it for the
+ * same reason the tablet does.
+ */
+test('delivery: a satellite hears "Sam", not the written name', async () => {
+  const calls = [];
+  const g = createGreeter({
+    env: { ...ENV, SAIM_GREET_SPEAKERS: 'living-room=ha_satellite:assist_satellite.living_room' },
+    log: quietLog,
+    fetchImpl: async (url, opts) => {
+      calls.push({ url, body: JSON.parse(opts.body || '{}') });
+      if (url.includes('/api/greeting')) {
+        return reply(200, { ok: true, speak: true, text: 'Morning, Nick. SAiM here.', why: null });
+      }
+      return reply(200, {});
+    },
+  });
+  await g.deliver('living-room');
+  const spoke = calls.find((c) => c.url.includes('/api/services/'));
+  assert.equal(spoke.body.message, 'Morning, Nick. Sam here.');
+});
