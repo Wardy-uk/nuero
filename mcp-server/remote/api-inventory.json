@@ -8561,6 +8561,28 @@
     "stream": false
   },
   {
+    "id": "post_todos_suggestions_by_actionId_fields",
+    "method": "POST",
+    "route": "/api/todos/suggestions/:actionId/fields",
+    "domain": "todos",
+    "source": "routes/todos.js",
+    "line": 934,
+    "description": "POST /api/todos/suggestions/:actionId/fields. set the moscow, priority and",
+    "params": [
+      "actionId"
+    ],
+    "query": [],
+    "body": [
+      "dueDate",
+      "moscow",
+      "priority"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_todos_toggle",
     "method": "POST",
     "route": "/api/todos/toggle",

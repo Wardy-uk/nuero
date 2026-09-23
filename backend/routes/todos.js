@@ -900,4 +900,134 @@ router.get('/moscow/review', (req, res) => {
   }
 });
 
+/**
+ * Set MoSCoW / priority / due date on a suggestion BEFORE it is approved.
+ *
+ * Nick's ask (23 Sep 2026): a card in "Spotted, waiting on you" should carry the
+ * three triage fields, individually or across a multi-select, and "leaving any
+ * unselected should apply the current default".
+ *
+ * It writes onto the pending action's payload and nothing else. The
+ * `capture_todo` executor ALREADY reads `payload.metadata.moscow`,
+ * `.priority` and `.dueDate`, each falling through to the existing default when
+ * absent — MoSCoW to the classifier, priority to `priorityFromMoscow`, and the
+ * due date to `commitment-due.resolveDueDate` (the stated date, else ten days).
+ * So an omitted field is not "no value", it is the default, by construction
+ * rather than by a second copy of the defaulting rules living here.
+ *
+ * ⚠ A SCOPED DOOR, DELIBERATELY NOT A FIELD ON APPROVE.
+ * `/api/actions/:id/approve` is a plain approve with no general payload-edit
+ * door, and it stays that way: it approves every action type, two of which send
+ * email as Nick. The precedent is `POST /api/waiting-on/chase/:actionId/recipient`
+ * — one scoped route per editable thing. This one refuses any action that is not
+ * a pending `capture_todo`.
+ *
+ * ⚠ An explicit MoSCoW is a DECISION, never a proposal. `createTask` stores
+ * `moscow_proposed = 0` unless told otherwise, which is what we want here: Nick
+ * picked it. The `proposed` flag exists for a GUESS, and nothing here guesses.
+ */
+// POST /api/todos/suggestions/:actionId/fields — set the moscow, priority and
+// dueDate triage fields on a pending capture_todo suggestion (the "Spotted,
+// waiting on you" queue) before it is approved into a task. Omitted fields keep
+// the current default. Keywords: suggestion triage, spotted todo, moscow,
+// priority, due date, capture_todo.
+router.post('/suggestions/:actionId/fields', (req, res) => {
+  const actionId = Number(req.params.actionId);
+  if (!Number.isInteger(actionId)) {
+    return res.status(400).json({ error: 'actionId must be a number' });
+  }
+
+  const action = db.getSaimAction(actionId);
+  if (!action) return res.status(404).json({ error: 'No such action' });
+  if (action.type !== 'capture_todo') {
+    return res.status(400).json({ error: `This route only edits capture_todo suggestions, not ${action.type}` });
+  }
+  // ⚠ Belt-and-braces, and NOT mutation-checked: `db.updateSaimActionPayload` is
+  // itself scoped to `status = 'pending'`, so removing this check still yields a
+  // 409 from the write below. It is kept because it names WHICH state the action
+  // is in, which the write cannot, and removing it would make the 409 arrive with
+  // no reason attached.
+  if (action.status !== 'pending') {
+    return res.status(409).json({ error: `Action #${actionId} is already ${action.status}` });
+  }
+
+  if (!req.body || typeof req.body !== 'object') {
+    return res.status(400).json({ error: 'Expected a JSON body' });
+  }
+  const body = req.body;
+  // ⚠ Destructured DIRECTLY off `req.body`, for the API CATALOGUE rather than for
+  // convenience. `inspect-api` publishes an operation's body fields only from a
+  // destructure whose init is exactly `req.body` — via an intermediate (`= body`)
+  // or behind a `|| {}` it sees nothing and ships `body: []`: callable, because
+  // bodyOpen is true, and impossible to work out how to call. That is the 17 Sep
+  // 2026 trap, where a handler written as a shared factory published an empty
+  // body list and the gateway then rejected the one field it needed. The guard
+  // above is what makes the bare `req.body` safe.
+  // Presence is still decided by `has()` below: destructuring cannot tell an
+  // omitted key from an explicit null, and those are different requests.
+  const { moscow, priority, dueDate } = req.body;
+  const payload = { ...(action.payload || {}) };
+  const metadata = { ...(payload.metadata || {}) };
+  const applied = {};
+
+  // ⚠ OMITTED and EXPLICIT NULL are different requests. Omitting a field leaves
+  // whatever is there (and so the default); sending null CLEARS it back to the
+  // default. Treating a missing field as a clear would silently undo a choice
+  // made a moment earlier on the same card — the `setScopes` distinction.
+  const has = (k) => Object.prototype.hasOwnProperty.call(body, k);
+
+  if (has('moscow')) {
+    if (moscow == null || moscow === '') {
+      delete metadata.moscow;
+      applied.moscow = null;
+    } else {
+      // ⚠ Refused, never normalised to null. `normMoscow` answers null for junk,
+      // and null here means "use the default" — so a typo would look like it
+      // worked and quietly apply something else.
+      const value = taskStore.normMoscow(moscow);
+      if (!value) return res.status(400).json({ error: `Unrecognised moscow value: ${moscow}` });
+      metadata.moscow = value;
+      applied.moscow = value;
+    }
+  }
+
+  if (has('priority')) {
+    if (priority == null || priority === '') {
+      delete metadata.priority;
+      applied.priority = null;
+    } else {
+      const value = taskStore.normPriority(priority);
+      if (!value) return res.status(400).json({ error: `Unrecognised priority value: ${priority}` });
+      metadata.priority = value;
+      applied.priority = value;
+    }
+  }
+
+  if (has('dueDate')) {
+    if (dueDate == null || dueDate === '') {
+      delete metadata.dueDate;
+      applied.dueDate = null;
+    } else {
+      // Local wall-clock date, exactly as the picker sends it. Parsing it into a
+      // Date and re-serialising is how a due date lands a day early west of here.
+      const value = String(dueDate).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return res.status(400).json({ error: `dueDate must be YYYY-MM-DD, got: ${dueDate}` });
+      }
+      metadata.dueDate = value;
+      applied.dueDate = value;
+    }
+  }
+
+  if (!Object.keys(applied).length) {
+    return res.status(400).json({ error: 'Nothing to set — send moscow, priority or dueDate' });
+  }
+
+  payload.metadata = metadata;
+  const ok = db.updateSaimActionPayload(actionId, payload);
+  if (!ok) return res.status(409).json({ error: 'Action is no longer pending' });
+
+  res.json({ ok: true, actionId, applied });
+});
+
 module.exports = router;

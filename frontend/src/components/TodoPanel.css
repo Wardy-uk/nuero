@@ -1532,3 +1532,47 @@
   cursor: pointer;
 }
 .todo-filter-clear:hover { color: var(--text-primary); }
+
+/* Triage controls on a suggestion card.
+   Every control opens on "default" and says so, because leaving one alone is
+   not an absence — it is the value NEURO would have applied anyway. */
+.todo-suggestion-triage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-right: 10px;
+}
+
+.todo-suggestion-select,
+.todo-suggestion-date {
+  background: var(--bg-input, #12161c);
+  color: var(--text-primary, #e6e9ef);
+  border: 1px solid var(--border, #2a3039);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 0.78rem;
+  font-family: inherit;
+  min-width: 108px;
+}
+
+.todo-suggestion-select:disabled,
+.todo-suggestion-date:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.todo-suggestion-select:focus,
+.todo-suggestion-date:focus {
+  outline: none;
+  border-color: var(--accent, #4a9eff);
+}
+
+@media (max-width: 720px) {
+  .todo-suggestion-triage {
+    width: 100%;
+    margin: 6px 0 0 0;
+  }
+  .todo-suggestion-select,
+  .todo-suggestion-date { flex: 1 1 auto; min-width: 0; }
+}

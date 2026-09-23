@@ -1357,7 +1357,31 @@ function buildTodoSaimLine(active, overdue) {
   return `${active.length} open. ${overdue.length} overdue.`;
 }
 
-function SuggestedTodoQueue({ items, actingId, selected, onToggleSelect, onSelectAll, onClearSelection, onBatch, batching, batchError, onApprove, onReject }) {
+/**
+ * Triage a suggestion before it becomes a task.
+ *
+ * Every option list opens with "Default", and that is the honest word: leaving a
+ * control alone is not "no value", it is the value NEURO would have used anyway
+ * — the MoSCoW classifier, `priorityFromMoscow`, and `commitment-due` (the date
+ * the sentence states, else ten days). The control says which default it is, so
+ * the card is readable without knowing any of that.
+ */
+const MOSCOW_CHOICES = [
+  ['', 'MoSCoW: default'],
+  ['must', 'Must'],
+  ['should', 'Should'],
+  ['could', 'Could'],
+  ['wont', "Won't"],
+];
+
+const PRIORITY_CHOICES = [
+  ['', 'Priority: default'],
+  ['3', 'High (3)'],
+  ['2', 'Normal (2)'],
+  ['1', 'Low (1)'],
+];
+
+export function SuggestedTodoQueue({ items, actingId, selected, onToggleSelect, onSelectAll, onClearSelection, onBatch, batching, batchError, onApprove, onReject, fields = {}, onFieldChange, fieldError }) {
   if (!items.length) return null;
 
   const allSelected = selected.length === items.length;
@@ -1395,6 +1419,7 @@ function SuggestedTodoQueue({ items, actingId, selected, onToggleSelect, onSelec
       )}
 
       {batchError && <div className="todo-batch-error">{batchError}</div>}
+      {fieldError && <div className="todo-batch-error">{fieldError}</div>}
 
       <div className="todo-suggestions-list">
         {items.map((item) => {
@@ -1434,6 +1459,35 @@ function SuggestedTodoQueue({ items, actingId, selected, onToggleSelect, onSelec
                     <span className="todo-due">+{item.duplicateIds.length} duplicate{item.duplicateIds.length > 1 ? 's' : ''}</span>
                   )}
                 </div>
+              </div>
+              <div className="todo-suggestion-triage" onClick={(e) => e.stopPropagation()}>
+                <select
+                  className="todo-suggestion-select"
+                  value={fields[item.id]?.moscow || ''}
+                  disabled={actingId === item.id || batching}
+                  onChange={(e) => onFieldChange(item.id, 'moscow', e.target.value)}
+                  aria-label={`MoSCoW for: ${item.text}`}
+                >
+                  {MOSCOW_CHOICES.map(([v, label]) => <option key={v || 'default'} value={v}>{label}</option>)}
+                </select>
+                <select
+                  className="todo-suggestion-select"
+                  value={fields[item.id]?.priority || ''}
+                  disabled={actingId === item.id || batching}
+                  onChange={(e) => onFieldChange(item.id, 'priority', e.target.value)}
+                  aria-label={`Priority for: ${item.text}`}
+                >
+                  {PRIORITY_CHOICES.map(([v, label]) => <option key={v || 'default'} value={v}>{label}</option>)}
+                </select>
+                <input
+                  type="date"
+                  className="todo-suggestion-date"
+                  value={fields[item.id]?.dueDate || ''}
+                  disabled={actingId === item.id || batching}
+                  onChange={(e) => onFieldChange(item.id, 'dueDate', e.target.value)}
+                  aria-label={`Due date for: ${item.text}`}
+                  title="Leave empty for the default — the date the sentence states, or ten days"
+                />
               </div>
               <div className="todo-suggestion-actions">
                 <button className="btn btn-secondary btn-sm" disabled={actingId === item.id || batching} onClick={() => onReject(item)}>
@@ -1833,6 +1887,14 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   const [selectedSuggestions, setSelectedSuggestions] = useState([]);
   const [batching, setBatching] = useState(false);
   const [batchError, setBatchError] = useState(null);
+  // Per-card MoSCoW / priority / due date, chosen BEFORE the suggestion is
+  // approved. Keyed by action id; a field absent from the entry means "leave it
+  // to the default", which is the contract the backend route relies on — it
+  // writes only what it is sent.
+  const [suggestionFields, setSuggestionFields] = useState({});
+  // A refused field write must be VISIBLE. Approving anyway would create the task
+  // with default MoSCoW and due date while the card still showed Nick's choice.
+  const [suggestionError, setSuggestionError] = useState(null);
 
   const applyLocal = (t) => {
     const key = t.task_id ? `task:${t.task_id}` : `${t.filePath}:${t.lineNumber}`;
@@ -1875,6 +1937,50 @@ export default function TodoPanel({ focusContext, onClearContext }) {
 
   // Batch: approve/dismiss every selected card in one round trip. Duplicates of an
   // approved card are dismissed rather than approved — the task only wants capturing once.
+  const setSuggestionField = (id, field, value) => {
+    setSuggestionFields(prev => {
+      const entry = { ...(prev[id] || {}) };
+      // Empty select = "use the default", so the key is REMOVED rather than set
+      // to null. Sending null would explicitly clear it, which is the same
+      // outcome here but a different request, and there is no reason to make one.
+      if (value === '' || value == null) delete entry[field];
+      else entry[field] = value;
+      const next = { ...prev };
+      if (Object.keys(entry).length) next[id] = entry;
+      else delete next[id];
+      return next;
+    });
+  };
+
+  /**
+   * Push a card's chosen triage fields onto its pending action, before approving.
+   *
+   * Returns true when there was nothing to send or the send succeeded. A FAILURE
+   * IS NOT SWALLOWED: approving anyway would create the task with the default
+   * MoSCoW and due date while the card showed Nick's choice, which is the silent
+   * half-success this codebase keeps removing. The caller stops instead.
+   */
+  const pushSuggestionFields = async (id) => {
+    const fields = suggestionFields[id];
+    if (!fields || !Object.keys(fields).length) return true;
+    try {
+      const res = await fetch(apiUrl(`/api/todos/suggestions/${id}/fields`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error('[TodoPanel] Could not set suggestion fields:', res.status, body.error);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.error('[TodoPanel] Suggestion fields error:', e);
+      return false;
+    }
+  };
+
   const handleBatch = async (verb) => {
     const chosen = suggestedTodos.filter(s => selectedSuggestions.includes(s.id));
     if (!chosen.length) return;
@@ -1882,6 +1988,19 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     const duplicates = chosen.flatMap(s => s.duplicateIds || []);
     setBatching(true);
     try {
+      // Each card carries its OWN choices, so the batch is not one set of values
+      // applied to everything — it is N cards each keeping what Nick picked on it.
+      if (verb === 'approve') {
+        const results = await Promise.all(primaries.map(id => pushSuggestionFields(id)));
+        const failed = primaries.filter((_, i) => !results[i]);
+        if (failed.length) {
+          // Stop rather than add some of them with the wrong dates. Nothing has
+          // been approved at this point, so there is nothing to unwind.
+          setBatchError(`Couldn't apply your settings to ${failed.length} of ${primaries.length} — nothing was added.`);
+          setBatching(false);
+          return;
+        }
+      }
       const post = (ids, v) => fetch(apiUrl('/api/actions/batch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1915,6 +2034,16 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     // uncovers an identical card and looks like nothing happened.
     const ids = [item.id, ...(item.duplicateIds || [])];
     try {
+      // Triage choices are written onto the pending action FIRST, so the
+      // executor reads them as it creates the task. Only on approve: dismissing
+      // a card does not need its due date, and writing one would be a change
+      // recorded against something Nick just turned down.
+      if (verb === 'approve' && !(await pushSuggestionFields(item.id))) {
+        setSuggestionError(`Couldn't apply your MoSCoW/priority/due date to "${item.text.slice(0, 60)}" — nothing was added.`);
+        setActingSuggestionId(null);
+        return;
+      }
+      setSuggestionError(null);
       const results = await Promise.all(
         ids.map((id, i) => fetch(apiUrl(`/api/actions/${id}/${i === 0 ? verb : 'reject'}`), {
           method: 'POST',
@@ -2283,6 +2412,9 @@ export default function TodoPanel({ focusContext, onClearContext }) {
               onBatch={handleBatch}
               batching={batching}
               batchError={batchError}
+              fields={suggestionFields}
+              onFieldChange={setSuggestionField}
+              fieldError={suggestionError}
               onApprove={(item) => handleSuggestionAction(item, 'approve')}
               onReject={(item) => handleSuggestionAction(item, 'reject')}
             />
@@ -2491,6 +2623,9 @@ export default function TodoPanel({ focusContext, onClearContext }) {
         onBatch={handleBatch}
         batching={batching}
         batchError={batchError}
+        fields={suggestionFields}
+        onFieldChange={setSuggestionField}
+        fieldError={suggestionError}
         onApprove={(item) => handleSuggestionAction(item, 'approve')}
         onReject={(item) => handleSuggestionAction(item, 'reject')}
       />
