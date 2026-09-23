@@ -2019,7 +2019,13 @@ export default function TodoPanel({ focusContext, onClearContext }) {
       } else {
         setBatchError(null);
       }
-      await fetchTodos();
+      // ⚠ Refresh whichever list is ON SCREEN. `fetchTodos` is the refresh for
+      // the FULL-mode path, and in focused mode that path is null — so it
+      // refreshed nothing at all. Approving a spotted todo hid the card
+      // (resolvedSuggestions answers the click immediately) and never refetched
+      // the list, so a task Nick had just added with today's date did not appear
+      // under Due Today: it looked like it had vanished rather than arrived.
+      if (mode === 'focused') refreshFocus(); else await fetchTodos();
     } catch (e) {
       console.error('[TodoPanel] Batch error:', e);
       setBatchError('Batch failed. Nothing was changed.');
@@ -2055,7 +2061,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
       } else {
         console.error(`[TodoPanel] Suggestion ${verb} failed:`, results.map(r => r.status));
       }
-      await fetchTodos();
+      if (mode === 'focused') refreshFocus(); else await fetchTodos();
     } catch (e) {
       console.error(`[TodoPanel] Suggestion ${verb} error:`, e);
     }
@@ -2117,14 +2123,14 @@ export default function TodoPanel({ focusContext, onClearContext }) {
       });
       const json = await res.json().catch(() => ({}));
       if (!json.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      await fetchTodos();
+      if (mode === 'focused') refreshFocus(); else await fetchTodos();
     } catch (e) {
       // Said out loud rather than swallowed: a "Not today" that silently did
       // nothing leaves the row exactly where it was, which reads as a dead
       // button — the failure this whole lane change exists to remove.
       setLaneError(`Couldn't put "${item.text}" off: ${e.message}`);
     }
-  }, [fetchTodos]);
+  }, [fetchTodos, refreshFocus, mode]);
 
   const undeferFromLane = useCallback(async (item) => {
     try {
@@ -2135,11 +2141,11 @@ export default function TodoPanel({ focusContext, onClearContext }) {
       });
       const json = await res.json().catch(() => ({}));
       if (!json.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      await fetchTodos();
+      if (mode === 'focused') refreshFocus(); else await fetchTodos();
     } catch (e) {
       setLaneError(`Couldn't bring "${item.text}" back: ${e.message}`);
     }
-  }, [fetchTodos]);
+  }, [fetchTodos, refreshFocus, mode]);
 
   const addTask = async () => {
     const text = newTaskText.trim();
@@ -2153,7 +2159,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
       });
       if (res.ok) {
         setNewTaskText('');
-        await fetchTodos();
+        if (mode === 'focused') refreshFocus(); else await fetchTodos();
       } else {
         console.error('[TodoPanel] Add task failed:', res.status);
       }
@@ -2605,7 +2611,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
             setSyncing(true);
             try {
               await fetch(apiUrl('/api/microsoft/tasks/sync'), { method: 'POST' });
-              await fetchTodos();
+              if (mode === 'focused') refreshFocus(); else await fetchTodos();
             } catch {}
             setSyncing(false);
           }}>{syncing ? 'Syncing...' : 'Sync MS'}</button>
