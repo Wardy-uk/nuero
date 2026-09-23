@@ -1026,12 +1026,21 @@ function start() {
   }, 45 * 1000);
 
   // Every 30 minutes 8am-6pm weekdays — sync Microsoft Tasks (Planner + ToDo) to vault
+  //
+  // ⚠ `recoverMissedExecutions` is load-bearing (23 Sep 2026). node-cron 3.0.3
+  // fires only if its 1-second timer lands INSIDE the matching second, and with
+  // recovery off a late timer skips the tick without a word. The Plaud job is
+  // scheduled on the same seconds and registered first; the MS job logged
+  // nothing from 13:15 to 16:45 (seven ticks) while Plaud went on logging, and
+  // three new Planner tasks stayed out of NEURO all afternoon. Recovery replays
+  // the missed second once the loop is free. watchdog.checkMicrosoftSync() is
+  // the backstop.
   cron.schedule('15,45 8-18 * * 1-5', () => {
     console.log('[Scheduler] Syncing Microsoft Tasks...');
     require('./obsidian').syncMicrosoftTasks().catch(e => {
       console.error('[Scheduler] MS Tasks sync failed:', e.message);
     });
-  });
+  }, { recoverMissedExecutions: true });
 
   // Startup MS Tasks sync — 30s after start
   setTimeout(() => {

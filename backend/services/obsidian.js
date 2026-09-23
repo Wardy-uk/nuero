@@ -2084,6 +2084,9 @@ async function syncMicrosoftTasks() {
     `[Sync] Microsoft Tasks written: ${plannerCount} planner, ${todoCount} todo` +
     (heldSkipped ? ` (${heldSkipped} held — completion queued for retry)` : '')
   );
+  // The watchdog's evidence that this job is still running. Stamped only on a
+  // real write — a skipped run (Graph down, refusing to empty) is not a success.
+  try { require('../db/database').setState('ms_tasks_last_success', new Date().toISOString()); } catch {}
   return { ok: true, planner: plannerCount, todo: todoCount, held: heldSkipped };
 }
 

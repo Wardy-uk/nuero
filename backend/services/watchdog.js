@@ -335,6 +335,44 @@ async function checkHost() {
   return out;
 }
 
+// ── Microsoft Tasks sync ────────────────────────────────────────────────────
+// The mirror is how Planner tasks reach NEURO (and VANTAGE). The job runs at
+// :15/:45, 08:15–18:45 on weekdays, so outside that window an old stamp is
+// expected and is not flagged. Added 23 Sep 2026 after the job silently
+// skipped seven ticks — see the cron in scheduler.js.
+
+const MS_SYNC_STALE_MINUTES = 60;
+
+/** PURE. `lastSuccess` is an ISO string or null; `now` a Date. */
+function msSyncIssue(lastSuccess, now = new Date()) {
+  const day = now.getDay();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  // From 09:30 (the 08:15 run plus an hour and a tick of slack) to 19:30.
+  if (day === 0 || day === 6 || mins < 9 * 60 + 30 || mins > 19 * 60 + 30) return null;
+
+  const t = lastSuccess ? Date.parse(lastSuccess) : NaN;
+  if (Number.isNaN(t)) {
+    return { key: 'ms-sync:stale', level: 'critical', title: 'Microsoft Tasks sync has no recorded success', detail: 'Planner and To-Do changes may not be reaching NEURO' };
+  }
+  const age = Math.round((now.getTime() - t) / 60000);
+  if (age <= MS_SYNC_STALE_MINUTES) return null;
+  return {
+    key: 'ms-sync:stale',
+    level: 'critical',
+    title: 'Microsoft Tasks sync has stopped',
+    detail: `last successful sync ${age} min ago — new Planner tasks are not reaching NEURO`,
+  };
+}
+
+function checkMicrosoftSync() {
+  try {
+    const issue = msSyncIssue(db.getState('ms_tasks_last_success'));
+    return issue ? [issue] : [];
+  } catch (e) {
+    return [{ key: 'ms-sync:check-failed', level: 'warn', title: 'Microsoft sync check failed', detail: e.message }];
+  }
+}
+
 // ── Runner ──────────────────────────────────────────────────────────────────
 
 async function run({ notify = true } = {}) {
@@ -342,6 +380,7 @@ async function run({ notify = true } = {}) {
     ...checkBackups(),
     ...checkOffsiteBackup(),
     ...checkTaskExport(),
+    ...checkMicrosoftSync(),
     ...checkScheduledJobs(),
     ...(await checkAi()),
     ...(await checkHost()),
@@ -381,4 +420,4 @@ async function run({ notify = true } = {}) {
   };
 }
 
-module.exports = { run, checkBackups, checkTaskExport, checkScheduledJobs, checkAi, checkHost };
+module.exports = { run, checkBackups, checkTaskExport, checkScheduledJobs, checkAi, checkHost, checkMicrosoftSync, msSyncIssue };
