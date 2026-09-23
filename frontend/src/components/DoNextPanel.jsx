@@ -28,9 +28,16 @@ function formatDue(dueDate) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
+// Compared as LOCAL date STRINGS, never as `Date` objects. `new Date('2026-09-23')`
+// is UTC midnight while `new Date(new Date().toDateString())` is local midnight, and
+// the hour between them is what made TodoPanel's "Due today" chip show only overdue
+// rows through the whole of BST. This copy was only accidentally right — the skew is
+// smaller than a day — and would report everything due today as overdue west of UTC.
 function isOverdue(dueDate) {
   if (!dueDate) return false;
-  return new Date(dueDate) < new Date(new Date().toDateString());
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return String(dueDate).slice(0, 10) < today;
 }
 export default function DoNextPanel({ onNavigate, compact = false }) {
   const { data, refresh } = useCachedFetch('/api/do-next', { interval: 30000 });

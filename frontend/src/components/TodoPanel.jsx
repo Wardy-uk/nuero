@@ -29,9 +29,41 @@ function sourceClass(source) {
   return '';
 }
 
+/**
+ * Today, and a due date, as LOCAL `YYYY-MM-DD` strings.
+ *
+ * ⚠⚠ DATES ARE COMPARED AS STRINGS, NEVER AS `Date` OBJECTS, and that is the
+ * whole point. `new Date('2026-09-23')` is parsed as UTC MIDNIGHT, while
+ * `new Date(new Date().toDateString())` is LOCAL midnight — in BST those are an
+ * hour apart, so a task due TODAY sits an hour AFTER "today" and compares as
+ * neither equal to it nor before it.
+ *
+ * That is exactly what broke the "Due today" chip: its predicate asked
+ * `d.getTime() === today.getTime() || d < today`, and through the whole of BST
+ * a task due today matched NEITHER branch. The filter showed only genuinely
+ * overdue rows — 33d, 26d, 2d — and none of the eight tasks actually due that
+ * day. It would have come right by itself in winter, which is the worst kind of
+ * bug to wait for.
+ *
+ * `isOverdue` had the same construction and was only ACCIDENTALLY right: the
+ * one-hour skew is smaller than a day, so it still landed on the correct side
+ * of the boundary. West of UTC it would not — there `new Date('2026-09-23')` is
+ * the evening of the 22nd, and everything due today would read as overdue.
+ */
+export function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Sliced, not parsed — the value may be a bare date or a full timestamp, and
+// re-parsing either is what re-introduces the offset above.
+export function dueKey(dueDate) {
+  return dueDate ? String(dueDate).slice(0, 10) : null;
+}
+
 function isOverdue(dueDate) {
-  if (!dueDate) return false;
-  return new Date(dueDate) < new Date(new Date().toDateString());
+  const due = dueKey(dueDate);
+  return due ? due < todayKey() : false;
 }
 
 // Overdue FOR NICK, which is the only question the count, the filter tab and
@@ -72,14 +104,18 @@ const FILTER_GROUPS = {
  * Each is lifted VERBATIM from the if/else chain it replaced — the stacking
  * change must not quietly redefine what any single filter means.
  */
-const FILTER_PREDICATES = {
+export const FILTER_PREDICATES = {
   mustdo: t => Boolean(t.mustdo),
   overdue: isMineOverdue,
+  // ⚠ "Due today" means TODAY. It used to be `=== today || < today`, i.e. today
+  // OR anything earlier — and because the equality could never fire (see
+  // todayKey above), what it actually delivered was the overdue pile and
+  // nothing else. Overdue has its own chip right beside this one, so a filter
+  // answering a different question from its label is the thing to remove, not
+  // to keep. Restore the `|| due < todayKey()` if "by end of today" was wanted.
   today: t => {
-    if (!t.due_date) return false;
-    const d = new Date(t.due_date);
-    const today = new Date(new Date().toDateString());
-    return d.getTime() === today.getTime() || d < today;
+    const due = dueKey(t.due_date);
+    return due ? due === todayKey() : false;
   },
   // ⚠ Positively "has no date", never "is not overdue". An undated task is
   // invisible to every date-driven surface NEURO has — the Must Move lane,
