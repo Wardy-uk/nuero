@@ -102,7 +102,20 @@ router.post('/undismiss', (req, res) => {
 router.post('/enrich-candidates', async (req, res) => {
   try {
     const limit = req.body?.limit ? parseInt(req.body.limit, 10) : 25;
-    const result = await knowledgeMemory.enrichPromotionCandidates({ limit });
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return res.status(400).json({ ok: false, error: 'limit must be a whole number between 1 and 100' });
+    }
+    // ⚠ ENRICH WHAT IS ON SCREEN. The panel can be showing 21 days or the whole vault,
+    // and a button that silently reads a different set from the one under it is a button
+    // whose reported cost is about some other list.
+    let daysBack;
+    if (req.body?.daysBack !== undefined) {
+      daysBack = Number(req.body.daysBack);
+      if (!Number.isInteger(daysBack) || daysBack < 1 || daysBack > knowledgeMemory.ALL_TIME_DAYS) {
+        return res.status(400).json({ ok: false, error: 'daysBack must be a whole number of days between 1 and 3650' });
+      }
+    }
+    const result = await knowledgeMemory.enrichPromotionCandidates({ limit, daysBack });
     if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
     res.json({ ok: true, ...result });
   } catch (e) {

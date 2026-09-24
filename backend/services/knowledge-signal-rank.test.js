@@ -112,7 +112,9 @@ const noteWith = (body, fm = {}) => ({
   links: 1,
   tags: ['meeting'],
   content: body,
-  frontmatter: { note_type: 'meeting-summary', source: 'PLAUD', ...fm }
+  // Copied off live notes rather than invented — every summary in the vault carries
+  // BOTH of these, and `meeting-summary` is not a value isSummaryNote recognises.
+  frontmatter: { note_type: '"summary"', plaud_summary_type: '"auto_sum_note"', source: 'PLAUD', ...fm }
 });
 
 const BIG = `## Meeting Notes

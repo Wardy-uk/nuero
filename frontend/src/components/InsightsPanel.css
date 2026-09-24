@@ -165,6 +165,34 @@
   background: rgba(79, 156, 249, 0.18);
 }
 
+.knowledge-enrich-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  margin-bottom: 4px;
+}
+
+.knowledge-enrich-note {
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+}
+
+/* The outcome of a run. ⚠ A partial or refused run is AMBER, never the same neutral
+   grey as a clean one — "8 read" and "8 read, 39 left, budget gone" must not look alike. */
+.knowledge-enrich-result {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary, #94a3b8);
+  padding: 6px 0 10px;
+}
+
+.knowledge-enrich-result.is-partial {
+  color: var(--warning, #fbbf24);
+}
+
 .knowledge-header-actions {
   display: flex;
   align-items: center;

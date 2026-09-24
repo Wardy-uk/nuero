@@ -27,6 +27,9 @@ export default function InsightsPanel({ onNavigate }) {
   // the default here: the daily view must not become an 814-row pile. "All time" is the
   // way into the back catalogue, which was previously unreachable rather than low-ranked.
   const [windowDays, setWindowDays] = useState(21);
+  // The enrichment pass: null | 'running' | a result object. Kept until the next press,
+  // because a run that stopped early or found nothing must not vanish into a refetch.
+  const [enriching, setEnriching] = useState(null);
   const [eodHistory, setEodHistory] = useState([]);
   const [ritualHistory, setRitualHistory] = useState([]);
 
@@ -151,6 +154,30 @@ export default function InsightsPanel({ onNavigate }) {
       const result = await res.json();
       if (result.ok) await fetchData();
     } catch {}
+  };
+
+  // ⚠ THE ONE CONTROL IN THIS PANEL THAT SPENDS MONEY — one cloud call per note. So it
+  // quotes the cost before the press, and afterwards reports what actually happened
+  // rather than just refetching: "25 read" and "stopped after 8, budget gone" and
+  // "nothing needed reading" are three different outcomes and a silently-refreshed list
+  // renders all three identically.
+  const enrichCandidates = async (limit) => {
+    setEnriching('running');
+    try {
+      const res = await fetch(apiUrl('/api/knowledge-memory/enrich-candidates'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit, daysBack: windowDays })
+      });
+      const result = await res.json();
+      // ⚠ A refusal carries its OWN words (AI_MODE off, cloud budget spent, vault
+      // unreachable) and they are shown verbatim — "failed" would send Nick to check
+      // the wrong thing, which is what the old voice-bridge error did for weeks.
+      setEnriching(result.ok ? result : { error: result.error || 'the run did not complete' });
+      if (result.ok && result.enriched > 0) await fetchData();
+    } catch {
+      setEnriching({ error: 'could not reach NEURO' });
+    }
   };
 
   const applySuggestion = async (suggestion) => {
@@ -329,6 +356,52 @@ export default function InsightsPanel({ onNavigate }) {
                   <button className="knowledge-inline-btn" onClick={() => onNavigate?.('imports')}>Open imports</button>
                 </div>
               </div>
+
+              {/*
+                ⚠ THE COST IS STATED BEFORE THE PRESS, not after. One cloud call per note,
+                and the figure comes from `promotionUnenriched`, which the backend derives
+                with the SAME predicate the run uses — a separately-computed number on a
+                button that spends money is the worst possible place for the two to drift.
+              */}
+              <div className="knowledge-enrich-bar">
+                {knowledge.counts.promotionUnenriched > 0 ? (
+                  <>
+                    <button
+                      className="knowledge-inline-btn"
+                      disabled={enriching === 'running'}
+                      onClick={() => enrichCandidates(Math.min(25, knowledge.counts.promotionUnenriched))}
+                    >
+                      {enriching === 'running'
+                        ? 'Reading…'
+                        : `Read ${Math.min(25, knowledge.counts.promotionUnenriched)} note${Math.min(25, knowledge.counts.promotionUnenriched) === 1 ? '' : 's'}`}
+                    </button>
+                    <span className="knowledge-enrich-note">
+                      {`${knowledge.counts.promotionUnenriched} of ${knowledge.counts.promotionCandidates} not yet read · one AI call each`}
+                    </span>
+                  </>
+                ) : (
+                  // ⚠ Distinct from a failure and from an empty queue: everything in THIS
+                  // window has been read, which is the good outcome and should say so.
+                  <span className="knowledge-enrich-note">Everything in this window has been read.</span>
+                )}
+              </div>
+
+              {enriching && enriching !== 'running' ? (
+                <div className={`knowledge-enrich-result${enriching.error || enriching.stoppedEarly ? ' is-partial' : ''}`}>
+                  {enriching.error
+                    ? enriching.error
+                    : (
+                      <>
+                        {`Read ${enriching.enriched} of ${enriching.considered}.`}
+                        {enriching.failed > 0 ? ` ${enriching.failed} gave no answer.` : ''}
+                        {/* ⚠ A partial run must SAY it is partial — "8 read" alone reads as
+                            a queue with nothing left to do. */}
+                        {enriching.stoppedEarly ? ` ${enriching.remaining} left — ${enriching.budgetNote}` : ''}
+                      </>
+                    )}
+                </div>
+              ) : null}
+
               {knowledge.promotionCandidates?.length > 0 ? knowledge.promotionCandidates.map(candidate => (
                 <div key={candidate.path} className="knowledge-list-item">
                   <div className="knowledge-item-topline">

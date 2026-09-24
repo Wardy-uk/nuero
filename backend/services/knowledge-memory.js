@@ -99,6 +99,8 @@ const MAX_SIGNAL_SCORE = 5;
 // ⚠ ONE default, named once. It was a literal in two signatures, and the reported
 // window has to be the window that was actually used or the count lies about itself.
 const DEFAULT_CANDIDATE_DAYS = 21;
+// The whole vault, named once — it was a bare 3650 in two signatures.
+const ALL_TIME_DAYS = 3650;
 
 /**
  * How substantial does this note LOOK, from what it says about itself?
@@ -1009,6 +1011,10 @@ async function getOverview({ topic, daysBack } = {}) {
       // the same field and mean completely different things; the window is what tells
       // them apart, and a screen that guessed it would eventually guess wrong.
       promotionWindowDays: Number.isFinite(Number(daysBack)) ? Number(daysBack) : DEFAULT_CANDIDATE_DAYS,
+      // ⚠ WHAT A RUN WOULD COST, from the SAME predicate the run uses — never a count of
+      // "unjudged", which understates it after a PROMPT_VERSION bump and would quote a
+      // price below what the button actually spends.
+      promotionUnenriched: rankedCandidates.filter(needsEnrichment).length,
       reflectionNotes: reflections.total,
       knowledgeDomains: domains.size
     },
@@ -2454,6 +2460,28 @@ async function refreshAllPlaudConsolidations({ limit = 500 } = {}) {
 }
 
 /**
+ * Would enrichment spend a model call on this note?
+ *
+ * ⚠⚠ ONE PREDICATE, TWO SURFACES. The panel states a cost before Nick presses and the
+ * pass decides what to read; if those are two pieces of logic they will disagree, and
+ * the number on a button that spends money is the worst place in the system for that.
+ *
+ * ⚠ IT IS THE HASH, NOT THE STAMP. A note enriched under an older PROMPT_VERSION is a
+ * target again — that is the whole point of versioning it — so "already enriched" and
+ * "nothing to do" are not the same question.
+ */
+function needsEnrichment(note) {
+  if (!isSummaryNote(note)) return false;
+  const fm = (note && note.frontmatter) || {};
+  const provider = cleanQuoted(legacy.fmValue(fm, 'saim_ai_provider') || '');
+  // A local model's verdict never counted, so it never blocks its own retry.
+  if (!isCapableJudge(provider)) return true;
+  const stored = legacy.fmValue(fm, 'saim_ai_source_hash');
+  if (!stored) return true;
+  return cleanQuoted(stored) !== sourceHashForContent(note.path, note.content || '');
+}
+
+/**
  * Ask the model what is worth remembering in the notes the queue actually offers.
  *
  * ⚠ `enrichManagedNotes` beside this targets `managed_by: saim-knowledge-memory` /
@@ -2481,7 +2509,7 @@ async function refreshAllPlaudConsolidations({ limit = 500 } = {}) {
  * identical from outside — a run reporting "0 enriched" with no reason is
  * indistinguishable from a run with nothing to do.
  */
-async function enrichPromotionCandidates({ limit = 25, daysBack = 3650 } = {}) {
+async function enrichPromotionCandidates({ limit = 25, daysBack = ALL_TIME_DAYS } = {}) {
   const vault = VAULT_PATH();
   if (!vault || !fs.existsSync(vault)) {
     return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
@@ -2508,9 +2536,19 @@ async function enrichPromotionCandidates({ limit = 25, daysBack = 3650 } = {}) {
   }
 
   const cutoff = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
+  // ⚠⚠ THE SKIP CHECK MUST HAPPEN BEFORE THE SLICE, NOT INSIDE THE LOOP. It used to take
+  // the newest `limit` summaries and hash-check each one as it went — so with the 53
+  // most recent notes already enriched, a limit-25 run reported "25 unchanged, 0
+  // enriched" and NEVER REACHED the 300 older notes that had never been read. The pass
+  // looked healthy, cost nothing, and did nothing, which from a button is indistinguishable
+  // from a button that does not work.
+  //
+  // ⚠ With the filter here, `limit` means CALLS SPENT rather than notes considered — which
+  // is what a bounded, paid, human-triggered pass should be bounded by, and what lets the
+  // panel quote a true cost before Nick presses.
   const targets = loadRawNotes()
-    .filter(note => isSummaryNote(note))
     .filter(note => !note.promotedTo && !isDismissed(note))
+    .filter(note => needsEnrichment(note))
     .map(note => ({ ...note, occurredAt: candidateTimestamp(note) }))
     .filter(note => note.occurredAt.ms >= cutoff)
     .sort((a, b) => b.occurredAt.ms - a.occurredAt.ms)
@@ -2674,7 +2712,9 @@ module.exports = {
   scorePromotionCandidate,
   // Pure; exported so the bands pin without a vault.
   signalScore,
+  needsEnrichment,
   DEFAULT_CANDIDATE_DAYS,
+  ALL_TIME_DAYS,
   candidateTimestamp,
   extractSectionFlexible,
   recentReflections,
