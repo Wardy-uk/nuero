@@ -111,25 +111,10 @@ router.post('/enrich-candidates', async (req, res) => {
   }
 });
 
-// An open loop is debt to chase, not knowledge. ⚠ Attended only — one press, one
-// task. There is deliberately no sweep: a pass that turned every loop into a task is
-// how the review queue reached 364 items nobody read.
-router.post('/loop-to-task', (req, res) => {
-  try {
-    const { sourcePath, loopIndex, origin } = req.body || {};
-    const result = knowledgeMemory.loopToTask({ sourcePath, loopIndex, origin });
-    if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
-    res.json({ ok: true, ...result });
-  } catch (e) {
-    console.error('[knowledge-memory/loop-to-task]', e);
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
 router.post('/promote', (req, res) => {
   try {
-    const { sourcePath, domain, title, insightIndexes, loopIndexes } = req.body || {};
-    const result = knowledgeMemory.promoteCandidate({ sourcePath, domain, title, insightIndexes, loopIndexes });
+    const { sourcePath, domain, title, insightIndexes } = req.body || {};
+    const result = knowledgeMemory.promoteCandidate({ sourcePath, domain, title, insightIndexes });
     if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
     res.json({ ok: true, ...result });
   } catch (e) {

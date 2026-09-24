@@ -22,9 +22,6 @@ export default function InsightsPanel({ onNavigate }) {
   // Which bullets are ticked, per candidate path. ⚠ Absent means "all", which is the
   // default and matches the server: omitting the indexes files the whole note.
   const [selection, setSelection] = useState({});
-  // `${path}:${loopIndex}` -> the task it became, so a pressed loop says so.
-  const [loopTasks, setLoopTasks] = useState({});
-  const [askingOrigin, setAskingOrigin] = useState(null);
   const [dismissed, setDismissed] = useState(new Set());
   // ⚠ How far back the promotion queue reaches. 21 is the server's default and stays
   // the default here: the daily view must not become an 814-row pile. "All time" is the
@@ -84,7 +81,7 @@ export default function InsightsPanel({ onNavigate }) {
   // with everything unticked makes Promote a no-op until you notice why.
   const chosenFor = (candidate, kind) => {
     const picked = selection[candidate.path]?.[kind];
-    const all = (kind === 'insights' ? candidate.value?.durableItems : candidate.value?.loopItems) || [];
+    const all = candidate.value?.durableItems || [];
     return picked === undefined ? all.map((_, i) => i) : picked;
   };
 
@@ -111,8 +108,7 @@ export default function InsightsPanel({ onNavigate }) {
           domain: chosenDomain,
           // ⚠ INDEXES, never the text — the server re-derives from the note, so this
           // cannot write caller-supplied content into the vault.
-          insightIndexes: chosenFor(candidate, 'insights'),
-          loopIndexes: chosenFor(candidate, 'loops')
+          insightIndexes: chosenFor(candidate, 'insights')
         })
       });
       const result = await res.json();
@@ -155,37 +151,6 @@ export default function InsightsPanel({ onNavigate }) {
       const result = await res.json();
       if (result.ok) await fetchData();
     } catch {}
-  };
-
-  // ⚠ ORIGIN IS ASKED, and the question is "is somebody waiting?" — task-origin.cjs's
-  // own definition. NOT "did you suggest it": Nick tried that rule on 18 Sep and
-  // withdrew it the same day, because what makes something a commitment is that other
-  // people heard it, not who spoke first.
-  //
-  // ⚠ Asked rather than inferred from the folder because `Meetings/` holds notes that
-  // are not work meetings (two optician consultations are in the queue right now), and
-  // weekly-risk counts commitments with no domain filter — so a wrong yes puts a
-  // personal errand in the overdue figure Chris reads.
-  const loopToTask = async (candidate, loopIndex, origin) => {
-    const key = `${candidate.path}:${loopIndex}`;
-    setAskingOrigin(null);
-    setLoopTasks(prev => ({ ...prev, [key]: { pending: true } }));
-    try {
-      const res = await fetch(apiUrl('/api/knowledge-memory/loop-to-task'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourcePath: candidate.path, loopIndex, origin })
-      });
-      const result = await res.json();
-      setLoopTasks(prev => ({
-        ...prev,
-        [key]: result.ok
-          ? { taskId: result.taskId, origin: result.origin, similar: result.similar }
-          : { error: result.error || 'could not create the task' }
-      }));
-    } catch {
-      setLoopTasks(prev => ({ ...prev, [key]: { error: 'could not reach NEURO' } }));
-    }
   };
 
   const applySuggestion = async (suggestion) => {
@@ -401,7 +366,7 @@ export default function InsightsPanel({ onNavigate }) {
                     <div className="knowledge-item-verdict knowledge-item-verdict--unread">
                       Not yet read for durable insight
                     </div>
-                  ) : candidate.value.durable || candidate.value.loops ? (
+                  ) : candidate.value.durable ? (
                     <>
                       {/*
                         ⚠ THE BULLETS, NOT JUST THE COUNT. "2 durable insights" with
@@ -425,62 +390,8 @@ export default function InsightsPanel({ onNavigate }) {
                           ))}
                         </ul>
                       ) : null}
-                      {/* Kept visually apart: debt to chase, not a fact to remember. */}
-                      {candidate.value.loopItems?.length > 0 ? (
-                        <ul className="knowledge-insight-list">
-                          {candidate.value.loopItems.map((item, i) => (
-                            <li key={i} className="knowledge-insight knowledge-insight--loop">
-                              <label className="knowledge-insight-pick">
-                                <input
-                                  type="checkbox"
-                                  checked={chosenFor(candidate, 'loops').includes(i)}
-                                  onChange={() => toggleItem(candidate, 'loops', i)}
-                                />
-                                <span>{item}</span>
-                              </label>
-                              {(() => {
-                                const key = `${candidate.path}:${i}`;
-                                const made = loopTasks[key];
-                                if (made?.pending) return <span className="knowledge-loop-note">Creating…</span>;
-                                if (made?.error) return <span className="knowledge-loop-note knowledge-loop-note--bad">{made.error}</span>;
-                                if (made?.taskId) {
-                                  return (
-                                    <span className="knowledge-loop-note">
-                                      {`→ task #${made.taskId} (${made.origin || 'unclassified'})`}
-                                      {made.similar?.length > 0 ? ' · you may already have one like this' : ''}
-                                    </span>
-                                  );
-                                }
-                                if (askingOrigin === key) {
-                                  return (
-                                    <span className="knowledge-loop-ask">
-                                      <span className="knowledge-loop-q">Is somebody waiting on this?</span>
-                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, 'commitment')}>Yes — owed to someone</button>
-                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, 'improvement')}>No — my own</button>
-                                      {/* ⚠ "I do not know yet" is a real answer the weekly report counts
-                                          as its own bucket — forcing a choice turns a guess into a decision. */}
-                                      <button className="knowledge-domain-chip" onClick={() => loopToTask(candidate, i, null)}>Not sure</button>
-                                    </span>
-                                  );
-                                }
-                                return (
-                                  <button className="knowledge-loop-btn" onClick={() => setAskingOrigin(key)}>
-                                    Make a task
-                                  </button>
-                                );
-                              })()}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
                       <div className="knowledge-item-verdict knowledge-item-verdict--valued">
-                        {candidate.value.durable > 0
-                          ? `${candidate.value.durable} durable insight${candidate.value.durable === 1 ? '' : 's'}`
-                          : null}
-                        {candidate.value.durable > 0 && candidate.value.loops > 0 ? ' · ' : null}
-                        {candidate.value.loops > 0
-                          ? `${candidate.value.loops} open loop${candidate.value.loops === 1 ? '' : 's'}`
-                          : null}
+                        {`${candidate.value.durable} durable insight${candidate.value.durable === 1 ? '' : 's'}`}
                       </div>
                     </>
                   ) : (

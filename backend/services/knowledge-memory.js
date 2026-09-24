@@ -43,11 +43,12 @@ const VAULT_MODEL_DOC = 'Documents/System/Vault Operating Model.md';
 // letting one insight outrank being the right kind of note in the first place:
 // 2 insights = 17, 1 = 14, loops only = 13, UNJUDGED = 11, judged-and-empty = 8.
 const DURABLE_INSIGHT_POINTS = 3;
-const OPEN_LOOP_POINTS = 1;
-// An open loop is a thing to chase, not a thing to remember, so it is worth less than
-// a durable insight and is capped lower.
+// ⚠ SCORED separately from LISTED. The prompt now returns up to six insights, and
+// scoring all six would let one rich meeting outrank everything else on volume alone —
+// the third insight is not three points better than the second. Two is where a note has
+// demonstrated it holds something; the rest travel onto the card and into the promoted
+// note, they just stop moving the rank.
 const MAX_SCORED_INSIGHTS = 2;
-const MAX_SCORED_LOOPS = 2;
 // We looked and found nothing. Ranks below "nobody has looked", deliberately.
 const JUDGED_EMPTY_PENALTY = -3;
 // ── The structural signal, folded into the rank (24 Sep 2026) ──────────────────
@@ -553,9 +554,7 @@ function knowledgeValue(note) {
     .filter(Boolean)
     .slice(0, MAX_LISTED_ITEMS);
   const durableItems = bulletsIn(extractSectionFlexible(content, 'Durable Insights'));
-  const loopItems = bulletsIn(extractSectionFlexible(content, 'Open Loops'));
   const durable = durableItems.length;
-  const loops = loopItems.length;
 
   return {
     judged,
@@ -566,9 +565,7 @@ function knowledgeValue(note) {
     // first time. The card and the enrichment pass both need to tell them apart.
     needsRedo: Boolean(enrichedAt) && !isCapableJudge(provider),
     durable,
-    loops,
-    durableItems,
-    loopItems
+    durableItems
   };
 }
 
@@ -677,8 +674,7 @@ function scorePromotionCandidate(note) {
   const value = knowledgeValue(note);
   if (value.judged) {
     score += Math.min(value.durable, MAX_SCORED_INSIGHTS) * DURABLE_INSIGHT_POINTS;
-    score += Math.min(value.loops, MAX_SCORED_LOOPS) * OPEN_LOOP_POINTS;
-    if (!value.durable && !value.loops) score += JUDGED_EMPTY_PENALTY;
+    if (!value.durable) score += JUDGED_EMPTY_PENALTY;
   }
 
   if (note.supersededBy) score -= 10;
@@ -1228,9 +1224,23 @@ async function buildAiInsight(item, targetPath, existingContent = '') {
   }
 }
 
+// ⚠⚠ THE SKIP HASH MUST COVER THE PROMPT, NOT ONLY THE NOTE. It hashed path + body, so
+// the skip check asked "has the note changed?" when the question it stands in for is
+// "would we get the same answer?" — and those diverge the moment the prompt changes.
+// Concretely: raising the insight cap from 2 to 6 and dropping open loops would have
+// SKIPPED all 53 already-enriched notes as unchanged, so the richest meetings in the
+// vault — the ones already paid for — would have stayed frozen at two bullets for ever
+// while only new notes got the better answer. Invisible, and permanent.
+//
+// ⚠ Bump PROMPT_VERSION whenever the enrichment prompt's SHAPE or RULES change, and only
+// then: it re-reads every note at one cloud call each, so a bump is a deliberate, costed
+// decision rather than something done while tidying wording.
+//   v2 — 24 Sep 2026: knowledge only (open loops dropped), insight cap 2 -> 6.
+const PROMPT_VERSION = 'v2';
+
 function sourceHashForContent(relPath, content) {
   return crypto.createHash('sha1')
-    .update(`${relPath}\n${stripFrontmatter(content)}`)
+    .update(`${PROMPT_VERSION}\n${relPath}\n${stripFrontmatter(content)}`)
     .digest('hex');
 }
 
@@ -1260,7 +1270,6 @@ async function buildAiInsightForExistingNote(note, { taskType = 'knowledge_conso
     '{',
     '  "summary": "1-2 sentence synthesis",',
     '  "durableInsights": ["insight"],',
-    '  "openLoops": ["follow-up, risk, or unresolved question"],',
     '  "promotionCandidates": ["durable knowledge worth promoting"],',
     '  "suggestedLinks": ["project, person, area, or concept to link"],',
     '  "filingNote": "one short sentence describing how this note should live in the vault"',
@@ -1269,7 +1278,22 @@ async function buildAiInsightForExistingNote(note, { taskType = 'knowledge_conso
     '- Be conservative and concrete.',
     '- Do not invent facts.',
     '- Prefer operationally useful insights over generic summaries.',
-    '- Keep each array to 0-2 items max.',
+    // ⚠⚠ THE OLD CAP WAS 0-2 AND IT WAS BINDING, NOT HEADROOM: measured over the 53
+    // properly enriched notes, 49 returned EXACTLY 2. So a 68-minute meeting covering 26
+    // topics was filed with the same two bullets as a fifteen-minute chat, and everything
+    // past the second point was discarded on every note in the vault.
+    // ⚠ PROPORTIONATE, not simply higher — "up to six" alone invites six mediocre bullets
+    // on a thin note, which is the same failure wearing the other hat. The storage always
+    // allowed six (`uniqueStrings(..., 6)` / MAX_LISTED_ITEMS); only the prompt said two.
+    '- Return as many durable insights as the note genuinely holds, up to 6.',
+    '- A short or thin note should return one, or none. Never pad to reach a number.',
+    // ⚠ KNOWLEDGE ONLY (Nick, 24 Sep 2026: "I think this is knowledge only — I don't know
+    // where open loops would even fit"). Follow-ups are NOT lost by this: `action-candidates`
+    // already mines these same meeting notes for commitments into the review queue, so
+    // asking here was a SECOND extraction of the same material by a different service —
+    // which is exactly why the card read as a list of tasks he had already seen.
+    '- Record what is worth REMEMBERING, never what is worth DOING.',
+    '- A follow-up, a chase, an action or a pending decision is not a durable insight.',
     '- If the note is sparse, link-heavy, or unclear, return short summary plus empty arrays.',
     '',
     `Path: ${note.path}`,
@@ -1300,7 +1324,9 @@ async function buildAiInsightForExistingNote(note, { taskType = 'knowledge_conso
       summary: String(parsed.summary || '').trim(),
       filingNote: String(parsed.filingNote || '').trim(),
       durableInsights: uniqueStrings(parsed.durableInsights, 6),
-      openLoops: uniqueStrings(parsed.openLoops, 6),
+      // ⚠ NOT ASKED FOR, and refused if volunteered — a model that returns loops anyway
+      // must not have them written back, or the section returns by the back door.
+      openLoops: [],
       promotionCandidates: uniqueStrings(parsed.promotionCandidates, 6),
       suggestedLinks: await resolveSuggestedLinks(toStringArray(parsed.suggestedLinks), [note.path])
     };
@@ -1468,7 +1494,7 @@ function selectItems(items, chosen) {
   return items.filter((_, i) => wanted.has(i));
 }
 
-function buildPromotedBody({ source, title, domain, insightIndexes, loopIndexes }) {
+function buildPromotedBody({ source, title, domain, insightIndexes }) {
   const sourceFm = source.frontmatter || {};
   const sourceLinks = parseCsvField(sourceFm.knowledge_sources);
   if (!sourceLinks.includes(source.path)) sourceLinks.unshift(source.path);
@@ -1494,7 +1520,6 @@ function buildPromotedBody({ source, title, domain, insightIndexes, loopIndexes 
   // shows the same bullets, so the button says what it will file.
   const value = knowledgeValue(source);
   const durableItems = selectItems(value.durableItems, insightIndexes);
-  const loopItems = selectItems(value.loopItems, loopIndexes);
   const lines = [];
   lines.push(frontmatter, '', `# ${title}`, '');
 
@@ -1507,15 +1532,6 @@ function buildPromotedBody({ source, title, domain, insightIndexes, loopIndexes 
     // boilerplate dressed up as a signal.
     lines.push('## What This Says', '');
     lines.push('- _Nothing durable was extracted — write the point worth keeping, or drop this note._');
-    lines.push('');
-  }
-
-  if (loopItems.length > 0) {
-    // ⚠ Kept SEPARATE from the insights and never merged into them: an open loop is
-    // debt to chase, not a fact to remember, and filing one as knowledge is how a
-    // question becomes an answer by being in the wrong section.
-    lines.push('## Still Open', '');
-    for (const item of loopItems) lines.push(`- ${item}`);
     lines.push('');
   }
 
@@ -1701,111 +1717,7 @@ function listDomains() {
   };
 }
 
-/**
- * Turn one open loop into a task.
- *
- * An open loop is debt to chase, not a fact to remember — so the honest fate of most of
- * them is a task, not a knowledge note. Filing "confirm the exchange policy on four
- * unopened boxes" under Knowledge turns an open question into something that reads six
- * months later like a settled answer.
- *
- * ⚠⚠ ORIGIN IS ASKED, NEVER INFERRED, and the question is "IS SOMEBODY WAITING?" —
- * which is `task-origin.cjs`'s own definition: a COMMITMENT is work somebody else is
- * expecting; an IMPROVEMENT is work Nick set himself and nobody is waiting on.
- *
- * ⚠ It deliberately does NOT ask "did you suggest it, or were you asked". Nick tried
- * that rule on 18 Sep 2026 and withdrew it the same day: what makes something a
- * commitment is that other people heard it, not who spoke first — which is exactly
- * what `inferOrigin`'s meeting rule already says ("whether or not he was asked"). The
- * two now agree.
- *
- * ⚠⚠ SO WHY ASK AT ALL, RATHER THAN INFERRING "IT CAME FROM A MEETING NOTE"? Because
- * `Meetings/` holds notes that are not work meetings — the live queue right now has
- * two optician consultations in it — and `weekly-risk` groups on
- * `origin = 'commitment'` with NO domain filter. So inferring commitment from the
- * folder would put "confirm the exchange policy on four unopened boxes of contact
- * lenses" into the overdue count in the PIP report Chris reads. Asking costs one tap
- * and cannot do that.
- *
- * ⚠ Because the answer is explicit, `createTask` records it as a DECISION and does not
- * stamp `origin_proposed`.
- *
- * ⚠ NULL IS ALLOWED. "I do not know yet" is a first-class answer the report counts as
- * its own named bucket; forcing a choice here is how a guess becomes a decision.
- *
- * ⚠ The caller sends an INDEX and the loop text is re-derived from the note — the same
- * rule as `promoteCandidate`, so this cannot be used to write arbitrary task text.
- *
- * ⚠ Pressing twice is safe and needs no bookkeeping: `dedupeKey` is UNIQUE on
- * normalised text, so a second press FOLDS onto the existing task rather than
- * duplicating it.
- */
-function loopToTask({ sourcePath, loopIndex, origin } = {}) {
-  const vault = VAULT_PATH();
-  if (!vault || !fs.existsSync(vault)) {
-    return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
-  }
-  if (!sourcePath) return { status: 'error', error: 'sourcePath required' };
-
-  const index = Number(loopIndex);
-  if (!Number.isInteger(index) || index < 0) {
-    return { status: 'error', error: 'loopIndex must be a non-negative integer' };
-  }
-
-  // ⚠ An unrecognised origin is REFUSED, never quietly treated as "not set" —
-  // "I did not understand you" and "leave it unclassified" are different requests,
-  // and only one of them should silently produce an unclassified task
-  // (`ms-task-local`'s rule).
-  const ALLOWED = ['commitment', 'improvement'];
-  let chosenOrigin = null;
-  if (origin !== undefined && origin !== null && origin !== '') {
-    const clean = String(origin).trim().toLowerCase();
-    if (!ALLOWED.includes(clean)) {
-      return { status: 'error', error: `origin must be one of ${ALLOWED.join(', ')}, or omitted` };
-    }
-    chosenOrigin = clean;
-  }
-
-  const fullPath = path.join(vault, sourcePath);
-  if (!fs.existsSync(fullPath)) {
-    return { status: 'error', error: `Note not found: ${sourcePath}` };
-  }
-
-  const note = readNoteMeta(fullPath);
-  const loops = knowledgeValue(note).loopItems;
-  const text = loops[index];
-  if (!text) {
-    return { status: 'error', error: `No open loop at index ${index} in ${sourcePath}` };
-  }
-
-  let created;
-  try {
-    created = require('./task-store').createTask({
-      text,
-      // A source `inferOrigin` has no rule for, deliberately: the origin on this route
-      // comes from the button and must not be second-guessed by a classifier.
-      source: 'knowledge-loop',
-      origin_path: sourcePath,
-      origin: chosenOrigin,
-      // Nick is standing here, so telling him he already has one costs a sentence.
-      checkSimilar: true
-    });
-  } catch (e) {
-    return { status: 'error', error: e.message };
-  }
-
-  return {
-    status: 'ok',
-    sourcePath,
-    loopIndex: index,
-    text,
-    taskId: created?.task_id ?? created?.id ?? null,
-    origin: chosenOrigin,
-    similar: created?.similar || null
-  };
-}
-
-function promoteCandidate({ sourcePath, domain, title, insightIndexes, loopIndexes }) {
+function promoteCandidate({ sourcePath, domain, title, insightIndexes }) {
   const vault = VAULT_PATH();
   if (!vault || !fs.existsSync(vault)) {
     return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
@@ -1838,7 +1750,7 @@ function promoteCandidate({ sourcePath, domain, title, insightIndexes, loopIndex
     counter += 1;
   }
 
-  const content = buildPromotedBody({ source, title: finalTitle, domain: finalDomain, insightIndexes, loopIndexes });
+  const content = buildPromotedBody({ source, title: finalTitle, domain: finalDomain, insightIndexes });
   fs.writeFileSync(targetFull, content, 'utf-8');
 
   try { vaultHooks.onVaultWrite(targetFull, 'knowledge-promotion'); } catch {}
@@ -2776,7 +2688,6 @@ module.exports = {
   undismissCandidate,
   listDismissed,
   listDomains,
-  loopToTask,
   enrichPromotionCandidates,
   promotionSignal,
   isSummaryNote,

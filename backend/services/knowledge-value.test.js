@@ -78,7 +78,11 @@ test('unjudged, judged-with-value and judged-empty are three different answers',
   ));
   assert.equal(valued.judged, true);
   assert.equal(valued.durable, 2);
-  assert.equal(valued.loops, 1);
+  // ⚠ KNOWLEDGE ONLY (24 Sep 2026). `loops` and `loopItems` are gone from the SHAPE,
+  // not merely unread — a field left on a payload with no reader is how this feature's
+  // own explanation rotted for a month. Pinned as an ABSENCE.
+  assert.equal(valued.loops, undefined, 'open loops are no longer part of the value');
+  assert.equal(valued.loopItems, undefined);
 
   // Read, and genuinely nothing in it. NOT the same as never read.
   const empty = km.knowledgeValue(note(
@@ -115,6 +119,9 @@ test('RANKS MOST TO LEAST USEFUL, and unjudged sits above judged-empty', () => {
     `${SUMMARY_BODY}\n## SAiM Insight\n\nx\n\n## Durable Insights\n\n- Only one thing here.\n`,
     { ...SUMMARY_FM, ...stamp }
   );
+  // ⚠ A note whose ONLY content was follow-ups now reads as judged-and-empty, and that
+  // is the decision rather than a casualty of it: `action-candidates` already mines these
+  // same notes for commitments, so a note holding nothing but chases holds no KNOWLEDGE.
   const loopsOnly = note(
     `${SUMMARY_BODY}\n## SAiM Insight\n\nx\n\n## Open Loops\n\n- Chase this.\n`,
     { ...SUMMARY_FM, ...stamp }
@@ -125,8 +132,9 @@ test('RANKS MOST TO LEAST USEFUL, and unjudged sits above judged-empty', () => {
   const s = n => km.scorePromotionCandidate(n);
 
   assert.ok(s(twoInsights) > s(oneInsight), '2 insights beats 1');
-  assert.ok(s(oneInsight) > s(loopsOnly), 'a durable insight beats an open loop');
-  assert.ok(s(loopsOnly) > s(unjudged), 'a judged note with something beats an unread one');
+  assert.ok(s(oneInsight) > s(loopsOnly), 'a durable insight beats a note of pure chases');
+  assert.equal(s(loopsOnly), s(judgedEmpty), 'follow-ups alone now score as judged-and-empty');
+  assert.ok(s(unjudged) > s(loopsOnly), 'and judged-empty still ranks below unread');
   assert.ok(
     s(unjudged) > s(judgedEmpty),
     'UNREAD outranks READ-AND-EMPTY: silence is not evidence of worthlessness'
@@ -526,17 +534,14 @@ test('a promoted note CARRIES the insights instead of discarding them', () => {
     const body = fs.readFileSync(path.join(root, r.promotedPath), 'utf-8');
 
     assert.match(body, /Thinner brand handled better/, 'the durable insight is in the note');
-    assert.match(body, /Confirm exchange policy/, 'so is the open loop');
-    // ⚠ Kept in SEPARATE sections: a loop is debt to chase, not a fact to remember,
-    // and filing one under the insights turns a question into an answer.
-    const saysIdx = body.indexOf('## What This Says');
-    const openIdx = body.indexOf('## Still Open');
-    assert.ok(saysIdx > 0 && openIdx > saysIdx, 'insights and loops are distinct sections');
-    assert.ok(
-      body.slice(saysIdx, openIdx).includes('Thinner brand')
-      && !body.slice(saysIdx, openIdx).includes('exchange policy'),
-      'the loop is not filed as an insight'
-    );
+    // ⚠⚠ KNOWLEDGE ONLY (24 Sep 2026). This used to assert the loop was filed in its own
+    // `## Still Open` section; the stronger rule now is that it is NOT FILED AT ALL, and the
+    // note still carries one so this cannot pass by the fixture simply lacking loops.
+    // A promoted note is knowledge — a chase belongs in the task store, which
+    // `action-candidates` already puts it in from this very note.
+    assert.ok(!/Confirm exchange policy/.test(body), 'a follow-up is never filed as knowledge');
+    assert.ok(!/## Still Open/.test(body), 'and the section is gone entirely');
+    assert.ok(body.indexOf('## What This Says') > 0, 'the insights section survives');
     // The boilerplate and the placeholder are gone.
     assert.ok(!/Plaud ID/.test(body), 'no excerpt boilerplate');
     assert.ok(!/Add the durable point/.test(body), 'no "go and write it yourself" placeholder');
@@ -597,12 +602,12 @@ test('only the ticked insights are filed', () => {
   inVault(root, () => {
     const r = km.promoteCandidate({
       sourcePath: 'Meetings/n.md', domain: 'Health',
-      insightIndexes: [1], loopIndexes: []
+      insightIndexes: [1]
     });
     const body = fs.readFileSync(path.join(root, r.promotedPath), 'utf-8');
     assert.match(body, /SECOND insight/);
     assert.ok(!/FIRST insight/.test(body), 'an unticked insight is not filed');
-    assert.ok(!/## Still Open/.test(body), 'ticking no loops files no loops section');
+    assert.ok(!/## Still Open/.test(body), 'there is no loops section to file');
   });
 });
 
@@ -615,7 +620,9 @@ test('OMITTED means all — an empty array does not', () => {
     const body = fs.readFileSync(path.join(root, r.promotedPath), 'utf-8');
     assert.match(body, /FIRST insight/);
     assert.match(body, /SECOND insight/);
-    assert.match(body, /LOOP one/);
+    // ⚠ OMITTED still means ALL — of the INSIGHTS. A loop in the source note is not
+    // filed by omission, by selection, or at all.
+    assert.ok(!/LOOP one/.test(body), 'omitting a selection does not resurrect loops');
   });
 });
 
@@ -635,76 +642,55 @@ test('⚠ the client sends INDEXES, so it cannot write its own text into the vau
   });
 });
 
-// --- an open loop becomes a task, and the origin is ASKED ---------------------------
+// --- knowledge only: the open-loop path is DELETED, and pinned as an absence --------
+//
+// Nick, 24 Sep 2026: "I think this is knowledge only — I don't know where open loops
+// would even fit." He was reading a card that was roughly half follow-ups, because
+// `## Open Loops` asked the model for chases and risks out of the SAME meeting notes
+// `action-candidates` already mines into the review queue. A second extraction of the
+// same material by a different service, rendered under the word "knowledge".
+//
+// The two tests that used to sit here exercised `loopToTask` and its origin question.
+// They are replaced rather than deleted, because a deletion that leaves no pin is one
+// the next tidy-up reinstates by accident.
 
-test('loopToTask records the origin as a DECISION, both ways', () => {
-  // ⚠ Nick's rule (18 Sep): asked of him = COMMITMENT, offered by him = IMPROVEMENT.
-  // Nothing in a one-line loop records who spoke first, so the button asks and the
-  // explicit answer is stored without the `origin_proposed` flag.
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'km-l2t-'));
-  fs.mkdirSync(path.join(root, 'Meetings'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'Meetings/n.md'), [
-    '---', 'note_type: summary', 'saim_ai_enriched_at: "2026-09-16T19:00:00Z"',
-    'saim_ai_provider: anthropic', '---', '',
-    '## Open Loops', '', '- Confirm the exchange policy.', '- Investigate the regression.', ''
-  ].join('\n'), 'utf-8');
+test('the loop-to-task path is gone — service, export and route', () => {
+  assert.equal(km.loopToTask, undefined, 'the function is gone, not merely unexported');
 
-  const prevVault = process.env.OBSIDIAN_VAULT_PATH;
-  const prevDb = process.env.NEURO_DB_PATH;
-  process.env.OBSIDIAN_VAULT_PATH = root;
-  process.env.NEURO_DB_PATH = path.join(root, 'scratch.db');
-  try {
-    const db = require('../db/database');
-    db.initSync ? db.initSync() : null;
-  } catch {}
-  try {
-    const asked = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 0, origin: 'commitment' });
-    const offered = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 1, origin: 'improvement' });
-
-    // The DB may not be initialisable in this context; the rules that matter are the
-    // refusals below, which never reach the store. Only assert what ran.
-    if (asked.status === 'ok') {
-      assert.equal(asked.origin, 'commitment');
-      assert.equal(asked.text, 'Confirm the exchange policy.');
-      assert.equal(offered.origin, 'improvement');
-    }
-
-    // ⚠ An unrecognised origin is REFUSED, never quietly stored as unclassified —
-    // "I did not understand you" and "leave it unset" are different requests.
-    const bad = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 0, origin: 'urgent' });
-    assert.equal(bad.status, 'error');
-    assert.match(bad.error, /commitment, improvement/);
-
-    // ⚠ The caller sends an INDEX; the text is re-derived from the note, so this
-    // cannot be used to write arbitrary task text.
-    const missing = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 9 });
-    assert.equal(missing.status, 'error');
-    assert.match(missing.error, /No open loop at index 9/);
-
-    const noIndex = km.loopToTask({ sourcePath: 'Meetings/n.md', loopIndex: 'first' });
-    assert.equal(noIndex.status, 'error');
-  } finally {
-    if (prevVault === undefined) delete process.env.OBSIDIAN_VAULT_PATH; else process.env.OBSIDIAN_VAULT_PATH = prevVault;
-    if (prevDb === undefined) delete process.env.NEURO_DB_PATH; else process.env.NEURO_DB_PATH = prevDb;
-    try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
-  }
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'knowledge-memory.js'), 'utf-8');
+  assert.ok(!/loop-to-task/.test(routes), 'and so is the route that called it');
+  // ⚠ Positive control: a broken scan must not pass by absence.
+  assert.match(routes, /\/promote/, 'this is still the knowledge-memory router');
+  assert.equal(typeof km.promoteCandidate, 'function', 'and the rest of the service survives');
 });
 
-test('⚠ the button and inferOrigin now AGREE, and the question is "who is waiting"', () => {
-  // Nick tried "did I suggest it, or was I asked" on 18 Sep 2026 and withdrew it the
-  // same day: what makes something a commitment is that other people heard it, not who
-  // spoke first — which is what inferOrigin's meeting rule has said all along.
-  const origin = fs.readFileSync(path.join(__dirname, '..', '..', 'shared', 'task-origin.cjs'), 'utf-8');
-  assert.match(origin, /whether or not he was asked/, 'the meeting rule is unchanged');
-
+test('⚠ the prompt asks for knowledge and REFUSES loops if volunteered', () => {
   const src = fs.readFileSync(path.join(__dirname, 'knowledge-memory.js'), 'utf-8');
-  assert.match(src, /IS SOMEBODY WAITING\?/, 'the button asks the definition, not the retracted rule');
-  assert.ok(!/DISAGREES WITH/.test(src), 'and no longer claims to disagree with the inference');
+  assert.match(src, /worth REMEMBERING, never what is worth DOING/, 'the rule is stated to the model');
+  assert.ok(
+    !/"openLoops": \["follow-up, risk, or unresolved question"\]/.test(src),
+    'the promotion prompt no longer asks for them'
+  );
+  // ⚠ Asking is not enough — a model that returns loops anyway must not have them
+  // written back, or the section returns by the back door on the next enrichment.
+  assert.match(src, /openLoops: \[\],/, 'and a volunteered loop is dropped, not stored');
+});
 
-  // ⚠ And it must keep ASKING rather than inferring from the folder: `Meetings/` holds
-  // notes that are not work meetings, and weekly-risk counts commitments with NO
-  // domain filter — so inferring would put a personal errand in the PIP report.
-  const risk = fs.readFileSync(path.join(__dirname, 'weekly-risk.js'), 'utf-8');
-  assert.match(risk, /origin = 'commitment'/, 'positive control: the report still groups on origin');
-  assert.match(src, /NO domain filter/, 'the reason for asking is written down where it is decided');
+test('⚠ the insight cap is no longer binding', () => {
+  // Measured: of 53 properly enriched notes, 49 returned EXACTLY 2 — the cap was the
+  // answer, not a ceiling nobody reached. A 68-minute meeting covering 26 topics was
+  // filed with the same two bullets as a fifteen-minute chat.
+  const src = fs.readFileSync(path.join(__dirname, 'knowledge-memory.js'), 'utf-8');
+  assert.ok(!/Keep each array to 0-2 items max[\s\S]{0,200}durableInsights/.test(src));
+  assert.match(src, /up to 6/, 'the promotion prompt asks for as many as the note holds');
+  assert.match(src, /Never pad to reach a number/, 'and a thin note still returns one or none');
+});
+
+test('⚠⚠ the skip hash covers the PROMPT, or no prompt change ever reaches an enriched note', () => {
+  // The hash asked "has the note changed?" standing in for "would we get the same
+  // answer?" — which diverge the moment the prompt does. Without this, all 53 notes
+  // already enriched would skip as unchanged and stay frozen at two bullets for ever.
+  const src = fs.readFileSync(path.join(__dirname, 'knowledge-memory.js'), 'utf-8');
+  assert.match(src, /const PROMPT_VERSION = /, 'the prompt is versioned');
+  assert.match(src, /update\(`\$\{PROMPT_VERSION\}/, 'and that version is IN the hash');
 });
