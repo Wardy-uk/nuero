@@ -50,6 +50,79 @@ const MAX_SCORED_INSIGHTS = 2;
 const MAX_SCORED_LOOPS = 2;
 // We looked and found nothing. Ranks below "nobody has looked", deliberately.
 const JUDGED_EMPTY_PENALTY = -3;
+// ── The structural signal, folded into the rank (24 Sep 2026) ──────────────────
+//
+// ⚠⚠ MEASURED ON THE WHOLE VAULT BEFORE THIS EXISTED: 814 candidates all-time, and
+// 189 OF 243 SUMMARIES SCORED EXACTLY 11. Not similar — identical, 78% of the back
+// catalogue in one undifferentiated block, ordered by nothing but date. Everything
+// above this line asks "is this the right KIND of note", and every PLAUD summary
+// answers it the same way, so the score was a shape test that every candidate passed.
+//
+// ⚠⚠ AND THE ENRICHMENT ARM BELOW DOES NOT BREAK THE TIE EITHER, which is the finding
+// that made this necessary rather than merely nice. `durable` is the COUNT of bullets
+// the model returned, and the prompt asks for 0-2 — so measured over the 41 capably
+// judged notes it is 2 on 39 of them, 41 of 41 yield at least one, and NOT ONE has
+// ever been judged empty. The arm therefore moves every enriched note from 11 to 19
+// as a block. Enriching the whole vault would buy two flat tiers instead of one.
+//
+// ⚠ SO THESE WEIGHTS ARE CHOSEN FROM THE DISTRIBUTION, NOT VALIDATED AGAINST OUTCOMES,
+// and that distinction is the honest part. The obvious validation — do these features
+// predict how much a note yields — CANNOT BE RUN: the target is a capped constant, so
+// every correlation came back ~0 (topics -0.13, follow-ups -0.03, duration 0.03,
+// words -0.13) and those numbers are evidence about the CAP, not about the features.
+// Bands are percentiles of the live corpus (n=246 with a parsed signal):
+//   topics          p50 4   p75 7   p90 11   max 26
+//   openFollowUps   p50 5   p75 10  p90 16   max 43
+//   durationMinutes p50 27  p75 42  p90 59   max 171
+//   a stated conclusion appears on 48/246 (20%)
+// Ranking by a measured proxy beats ranking by nothing, and saying which it is beats
+// implying it was tested. A rating asked of the model is what would make this real.
+const TOPICS_MANY = 11;
+const TOPICS_SOME = 7;
+const FOLLOW_UPS_MANY = 16;
+const DURATION_LONG_MINUTES = 42;
+//
+// ⚠ AN OPEN FOLLOW-UP IS DEBT TO CHASE, NOT KNOWLEDGE TO KEEP — the panel already
+// keeps the two visually apart and `loopToTask` sends one to the task store rather
+// than the vault. It earns a point only at the p90, and only one, because a meeting
+// that generated sixteen commitments was substantial; it does not follow that it is
+// worth REMEMBERING. Same reason OPEN_LOOP_POINTS is a third of DURABLE_INSIGHT_POINTS.
+//
+// ⚠ THE ARM IS CAPPED BELOW THE EVIDENCE ARM ON PURPOSE. Max here is 5 against the
+// enrichment arm's 8, so a note something has actually READ still outranks a note that
+// merely LOOKS big. Letting shape outrank a read insight is the exact inversion the
+// 16 Sep local-model incident caused, and it must not be reintroduced from the other
+// direction. Pinned.
+const MAX_SIGNAL_SCORE = 5;
+
+// ⚠ ONE default, named once. It was a literal in two signatures, and the reported
+// window has to be the window that was actually used or the count lies about itself.
+const DEFAULT_CANDIDATE_DAYS = 21;
+
+/**
+ * How substantial does this note LOOK, from what it says about itself?
+ *
+ * PURE — no vault, no clock, no model. Takes the shape `promotionSignal` returns, or
+ * null for a note with no parsed structure.
+ *
+ * ⚠ A NOTE WITH NO SIGNAL SCORES ZERO, NEVER A PENALTY. 568 of the 814 candidates have
+ * no parsed structure at all (transcripts, imports, daily notes) and "this template is
+ * one we cannot read" is not evidence that the meeting was trivial — the "unread is
+ * null, never 0" rule, one field along. It sits where it already sat.
+ */
+function signalScore(signal) {
+  if (!signal) return 0;
+  let score = 0;
+  if (signal.topics >= TOPICS_MANY) score += 2;
+  else if (signal.topics >= TOPICS_SOME) score += 1;
+  if (Number.isFinite(signal.durationMinutes) && signal.durationMinutes >= DURATION_LONG_MINUTES) score += 1;
+  if (signal.openFollowUps >= FOLLOW_UPS_MANY) score += 1;
+  // Rare (20%) and the closest thing the note carries to "this meeting settled
+  // something", which is what durable knowledge is made of.
+  if (signal.conclusion) score += 1;
+  return Math.min(score, MAX_SIGNAL_SCORE);
+}
+
 // How many bullets travel on the payload and into a promoted note. The model is asked
 // for 0-2, so this is headroom rather than a cap anyone should hit.
 const MAX_LISTED_ITEMS = 6;
@@ -594,6 +667,13 @@ function scorePromotionCandidate(note) {
   // nothing durable here" is evidence; "nothing has read it" is not, and must never be
   // scored as though it were. Unjudged scores zero from this arm and is REPORTED, so
   // an un-enriched note sits in the middle rather than being condemned by silence.
+  // ⚠ THE SIGNAL THE CARD ALREADY SHOWS, NOW IN THE RANK. `promotionSignal` has parsed
+  // topics, follow-ups, duration and the conclusion since it was written, and the score
+  // read NONE of it — so the queue displayed "42 min · 5 topics · 14 open follow-ups"
+  // beside a number that could not see any of those words. Free, deterministic, and it
+  // is what spreads the 189-way tie above.
+  score += signalScore(promotionSignal(note));
+
   const value = knowledgeValue(note);
   if (value.judged) {
     score += Math.min(value.durable, MAX_SCORED_INSIGHTS) * DURABLE_INSIGHT_POINTS;
@@ -746,7 +826,7 @@ function candidateTimestamp(note) {
   };
 }
 
-function rankPromotionCandidates({ topic, daysBack = 21 } = {}) {
+function rankPromotionCandidates({ topic, daysBack = DEFAULT_CANDIDATE_DAYS } = {}) {
   const cutoff = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
   const term = String(topic || '').trim().toLowerCase();
 
@@ -769,7 +849,7 @@ function rankPromotionCandidates({ topic, daysBack = 21 } = {}) {
     });
 }
 
-function getPromotionCandidates({ topic, limit = 8, daysBack = 21 } = {}) {
+function getPromotionCandidates({ topic, limit = 8, daysBack = DEFAULT_CANDIDATE_DAYS } = {}) {
   return rankPromotionCandidates({ topic, daysBack })
     .slice(0, limit)
     .map(toCandidatePayload);
@@ -886,7 +966,18 @@ function parseCsvField(value) {
     .filter(Boolean);
 }
 
-async function getOverview({ topic } = {}) {
+/**
+ * ⚠ `daysBack` reaches the BACK CATALOGUE. The queue has always defaulted to 21 days,
+ * which is right for "what landed this week" and means the other 775 notes in the vault
+ * are not ranked badly — they are NOT IN THE QUEUE AT ALL, and nothing on the screen
+ * said so. (The enrichment pass beside it uses 3650, so the two halves disagreed about
+ * how much vault exists by a factor of 170.)
+ *
+ * ⚠ The default is UNCHANGED at 21. Widening it silently would turn the daily view into
+ * an 814-row list, which is the pile this exists to replace; reaching further is a thing
+ * Nick asks for, and the count beside it says what he is reaching into.
+ */
+async function getOverview({ topic, daysBack } = {}) {
   const vault = VAULT_PATH();
   if (!vault || !fs.existsSync(vault)) {
     return { status: 'error', error: 'OBSIDIAN_VAULT_PATH not configured' };
@@ -894,7 +985,7 @@ async function getOverview({ topic } = {}) {
 
   const raw = loadRawNotes();
   const trusted = loadTrustedNotes();
-  const rankedCandidates = rankPromotionCandidates({ topic });
+  const rankedCandidates = rankPromotionCandidates({ topic, daysBack });
   const candidates = rankedCandidates.slice(0, 6).map(toCandidatePayload);
   const activeContext = await getActiveContext({ topic, maxResults: 5 });
   const weekly = weeklySummary.summarizeWeek({});
@@ -918,6 +1009,10 @@ async function getOverview({ topic } = {}) {
       // one nobody can act on.
       promotionCandidates: rankedCandidates.length,
       promotionCandidatesShown: candidates.length,
+      // ⚠ REPORTED, never assumed by the client. A count of 814 and a count of 26 are
+      // the same field and mean completely different things; the window is what tells
+      // them apart, and a screen that guessed it would eventually guess wrong.
+      promotionWindowDays: Number.isFinite(Number(daysBack)) ? Number(daysBack) : DEFAULT_CANDIDATE_DAYS,
       reflectionNotes: reflections.total,
       knowledgeDomains: domains.size
     },
@@ -2665,6 +2760,9 @@ module.exports = {
   getPromotionCandidates,
   // Pure, exported so the judgements pin without a vault (the pi-health.assess split).
   scorePromotionCandidate,
+  // Pure; exported so the bands pin without a vault.
+  signalScore,
+  DEFAULT_CANDIDATE_DAYS,
   candidateTimestamp,
   extractSectionFlexible,
   recentReflections,

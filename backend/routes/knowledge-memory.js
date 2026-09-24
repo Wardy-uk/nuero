@@ -4,10 +4,25 @@ const express = require('express');
 const router = express.Router();
 const knowledgeMemory = require('../services/knowledge-memory');
 
+// ⚠ `daysBack` is how the BACK CATALOGUE is reached — the queue defaults to 21 days, so
+// without it 775 of the vault's 814 candidates are unreachable rather than low-ranked.
+// ⚠ A JUNK VALUE IS REFUSED, NEVER CLAMPED (`temporal-range`'s rule): clamping answers a
+// question nobody asked while looking like it answered the one they did, and here the
+// difference is "this week" versus "everything since 2019".
 router.get('/overview', async (req, res) => {
   try {
     const topic = req.query.topic ? String(req.query.topic) : undefined;
-    const result = await knowledgeMemory.getOverview({ topic });
+    let daysBack;
+    if (req.query.daysBack !== undefined) {
+      daysBack = Number(req.query.daysBack);
+      if (!Number.isInteger(daysBack) || daysBack < 1 || daysBack > 3650) {
+        return res.status(400).json({
+          ok: false,
+          error: 'daysBack must be a whole number of days between 1 and 3650'
+        });
+      }
+    }
+    const result = await knowledgeMemory.getOverview({ topic, daysBack });
     if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
     res.json({ ok: true, ...result });
   } catch (e) {

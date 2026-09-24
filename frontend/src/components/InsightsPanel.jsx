@@ -26,6 +26,10 @@ export default function InsightsPanel({ onNavigate }) {
   const [loopTasks, setLoopTasks] = useState({});
   const [askingOrigin, setAskingOrigin] = useState(null);
   const [dismissed, setDismissed] = useState(new Set());
+  // ⚠ How far back the promotion queue reaches. 21 is the server's default and stays
+  // the default here: the daily view must not become an 814-row pile. "All time" is the
+  // way into the back catalogue, which was previously unreachable rather than low-ranked.
+  const [windowDays, setWindowDays] = useState(21);
   const [eodHistory, setEodHistory] = useState([]);
   const [ritualHistory, setRitualHistory] = useState([]);
 
@@ -37,7 +41,7 @@ export default function InsightsPanel({ onNavigate }) {
         fetch(apiUrl('/api/standup/today-status')),
         fetch(apiUrl('/api/standup/eod-history?days=14')),
         fetch(apiUrl('/api/standup/ritual-history?days=7')),
-        fetch(apiUrl('/api/knowledge-memory/overview')),
+        fetch(apiUrl(`/api/knowledge-memory/overview?daysBack=${windowDays}`)),
         fetch(apiUrl('/api/knowledge-memory/dismissed')),
         fetch(apiUrl('/api/knowledge-memory/domains'))
       ]);
@@ -72,7 +76,7 @@ export default function InsightsPanel({ onNavigate }) {
       setRitualHistory(ritualJson.entries || []);
     } catch {}
     setLoading(false);
-  }, []);
+  }, [windowDays]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -304,7 +308,16 @@ export default function InsightsPanel({ onNavigate }) {
             <div className="knowledge-stat-card">
               <span className="knowledge-stat-label">Promote Next</span>
               <span className="knowledge-stat-value">{knowledge.counts.promotionCandidates}</span>
-              <span className="knowledge-stat-copy">Likely signal in the last 21 days of intake.</span>
+              {/*
+                ⚠ READ FROM THE PAYLOAD, never restated here. This line said "the last
+                21 days" as a literal, so the moment the window opens a screen showing
+                814 candidates would still have claimed to be showing three weeks.
+              */}
+              <span className="knowledge-stat-copy">
+                {knowledge.counts.promotionWindowDays >= 365
+                  ? 'Ranked by what each note says about itself, across the whole vault.'
+                  : `Likely signal in the last ${knowledge.counts.promotionWindowDays ?? 21} days of intake.`}
+              </span>
             </div>
             <div className="knowledge-stat-card">
               <span className="knowledge-stat-label">Reflection Notes</span>
@@ -334,7 +347,22 @@ export default function InsightsPanel({ onNavigate }) {
             <div className="knowledge-section-card">
               <div className="knowledge-section-header">
                 <span className="knowledge-section-title">Promotion Queue</span>
-                <button className="knowledge-inline-btn" onClick={() => onNavigate?.('imports')}>Open imports</button>
+                <div className="knowledge-header-actions">
+                  {/*
+                    ⚠ Two windows, and the wide one says what it is. 775 of the vault's
+                    814 candidates sit outside 21 days, so this is not a filter being
+                    relaxed — it is the only route to them.
+                  */}
+                  <button
+                    className={`knowledge-inline-btn${windowDays === 21 ? ' is-active' : ''}`}
+                    onClick={() => setWindowDays(21)}
+                  >Last 21 days</button>
+                  <button
+                    className={`knowledge-inline-btn${windowDays !== 21 ? ' is-active' : ''}`}
+                    onClick={() => setWindowDays(3650)}
+                  >All time</button>
+                  <button className="knowledge-inline-btn" onClick={() => onNavigate?.('imports')}>Open imports</button>
+                </div>
               </div>
               {knowledge.promotionCandidates?.length > 0 ? knowledge.promotionCandidates.map(candidate => (
                 <div key={candidate.path} className="knowledge-list-item">
