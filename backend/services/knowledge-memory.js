@@ -1015,6 +1015,13 @@ async function getOverview({ topic, daysBack } = {}) {
       // "unjudged", which understates it after a PROMPT_VERSION bump and would quote a
       // price below what the button actually spends.
       promotionUnenriched: rankedCandidates.filter(needsEnrichment).length,
+      // ⚠⚠ THE DENOMINATOR IS ELIGIBLE NOTES, NOT ALL CANDIDATES. Measured in the live
+      // 21-day window: 63 candidates, of which only 3 are summaries — the rest are
+      // transcripts and daily notes, which enrichment NEVER reads (the write-up is the
+      // thing worth a call, not 11,000 words of unattributed speech). Quoting "3 of 63"
+      // says 60 notes have been read when 60 were never eligible, which is exactly the
+      // "could not look" / "nothing there" conflation refused everywhere else here.
+      promotionEnrichable: rankedCandidates.filter(isSummaryNote).length,
       reflectionNotes: reflections.total,
       knowledgeDomains: domains.size
     },

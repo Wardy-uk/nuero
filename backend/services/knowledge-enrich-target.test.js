@@ -94,6 +94,14 @@ test('⚠ the panel quotes its cost from the same predicate, never its own count
   const panel = fs.readFileSync(
     path.join(__dirname, '..', '..', 'frontend', 'src', 'components', 'InsightsPanel.jsx'), 'utf-8');
   assert.match(panel, /counts\.promotionUnenriched/, 'the button reads the served count');
+  // ⚠ And quotes it against ELIGIBLE notes. Live, the 21-day window holds 63 candidates
+  // and 3 summaries; "3 of 63" claims 60 were read when 60 were never readable.
+  assert.match(src, /promotionEnrichable: rankedCandidates\.filter\(isSummaryNote\)/);
+  assert.match(panel, /promotionEnrichable/, 'the denominator is readable notes');
+  assert.ok(
+    !/promotionUnenriched\} of \$\{knowledge\.counts\.promotionCandidates/.test(panel),
+    'never quoted against the whole candidate list'
+  );
   // ⚠ And it sends the window it is SHOWING, or the quoted cost describes another list.
   assert.match(panel, /daysBack: windowDays/, 'the run covers what is on screen');
 });

@@ -376,7 +376,13 @@ export default function InsightsPanel({ onNavigate }) {
                         : `Read ${Math.min(25, knowledge.counts.promotionUnenriched)} note${Math.min(25, knowledge.counts.promotionUnenriched) === 1 ? '' : 's'}`}
                     </button>
                     <span className="knowledge-enrich-note">
-                      {`${knowledge.counts.promotionUnenriched} of ${knowledge.counts.promotionCandidates} not yet read · one AI call each`}
+                      {/*
+                        ⚠ OF THE READABLE NOTES, never of all candidates. Most of what is in
+                        the window is transcripts and daily notes, which enrichment never
+                        reads — "3 of 63" would claim 60 had been read when 60 were never
+                        eligible.
+                      */}
+                      {`${knowledge.counts.promotionUnenriched} of ${knowledge.counts.promotionEnrichable} summaries not yet read · one AI call each`}
                     </span>
                   </>
                 ) : (
