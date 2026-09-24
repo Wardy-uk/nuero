@@ -2457,13 +2457,29 @@
     "route": "/api/people-gap",
     "domain": "people-gap",
     "source": "routes/people-gap.js",
-    "line": 16,
+    "line": 24,
     "description": "GET /api/people-gap.",
     "params": [],
     "query": [
       "days",
       "minSightings"
     ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_people_gap_ignored",
+    "method": "GET",
+    "route": "/api/people-gap/ignored",
+    "domain": "people-gap",
+    "source": "routes/people-gap.js",
+    "line": 85,
+    "description": "GET /api/people-gap/ignored. the Ignored (n) list.",
+    "params": [],
+    "query": [],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -7017,12 +7033,32 @@
     "stream": false
   },
   {
+    "id": "post_people_gap_alias",
+    "method": "POST",
+    "route": "/api/people-gap/alias",
+    "domain": "people-gap",
+    "source": "routes/people-gap.js",
+    "line": 98,
+    "description": "POST /api/people-gap/alias. fold a near miss into an existing person.",
+    "params": [],
+    "query": [],
+    "body": [
+      "alias",
+      "dryRun",
+      "person"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_people_gap_apply",
     "method": "POST",
     "route": "/api/people-gap/apply",
     "domain": "people-gap",
     "source": "routes/people-gap.js",
-    "line": 36,
+    "line": 44,
     "description": "POST /api/people-gap/apply.",
     "params": [],
     "query": [],
@@ -7030,7 +7066,27 @@
       "days",
       "dryRun",
       "minSightings",
-      "names"
+      "names",
+      "role"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_people_gap_ignore",
+    "method": "POST",
+    "route": "/api/people-gap/ignore",
+    "domain": "people-gap",
+    "source": "routes/people-gap.js",
+    "line": 56,
+    "description": "POST /api/people-gap/ignore. record that a suggested name is not someone to",
+    "params": [],
+    "query": [],
+    "body": [
+      "name",
+      "reason"
     ],
     "queryOpen": false,
     "bodyOpen": true,
@@ -7043,7 +7099,7 @@
     "route": "/api/people-gap/report",
     "domain": "people-gap",
     "source": "routes/people-gap.js",
-    "line": 27,
+    "line": 35,
     "description": "POST /api/people-gap/report.",
     "params": [],
     "query": [],
@@ -7052,6 +7108,24 @@
     ],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_people_gap_unignore",
+    "method": "POST",
+    "route": "/api/people-gap/unignore",
+    "domain": "people-gap",
+    "source": "routes/people-gap.js",
+    "line": 69,
+    "description": "POST /api/people-gap/unignore. undo. Every other decision here has a way back.",
+    "params": [],
+    "query": [],
+    "body": [
+      "name"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

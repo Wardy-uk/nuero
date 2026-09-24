@@ -46,6 +46,13 @@ export const notes = {
   // layer up. Pinned by ritual-record-routing.test.js.
   post_standup_record: `standup.record. Search keywords: standup record, record standup, save standup, complete standup, finish standup, morning ritual. ${RECORD_NOTE} body.focus is a REQUIRED array of strings — what the user committed to today, one per item; these become the "## Focus Today" checkboxes that mark the standup done and that tomorrow reads back as carry-overs. Optional: body.blockers (string), body.mood (string), body.date ("YYYY-MM-DD", defaults to today).`,
   post_standup_eod_record: `eod.record. Search keywords: eod record, record eod, save eod, complete eod, end of day reflection, evening ritual. ${RECORD_NOTE} Supply at least one of body.done (array of strings — what got finished), body.didntGo (string), body.tomorrowFirst (string), body.mood (string). Optional body.date ("YYYY-MM-DD") records an evening already past — use it the morning after. Writes the "## EOD" section the evening ritual owns.`,
+  // Same trap as post_standup_record above: `neuro_capabilities` is a plain
+  // substring match, so the obvious search "people gap" (with a space) matches
+  // neither the id (`people_gap`) nor the domain (`people-gap`). Keywords are
+  // literal on purpose.
+  post_people_gap_apply: 'people-gap.apply. Search keywords: people gap, missing person note, create person note, suggested people, who has no People note. Creates stub People notes for names NEURO keeps seeing with no note. Pass body.names to pick a subset (a name from the seen-once list needs body.minSightings: 1). NEVER guesses cadence or whether someone is a direct report; body.role is the one field it will set.',
+  post_people_gap_ignore: 'people-gap.ignore. Search keywords: people gap, ignore person, not a person, meeting room name, stop suggesting. Records that a suggested name is not someone to file — a room, a shared mailbox, a mis-transcription. Reversible via post_people_gap_unignore.',
+  post_people_gap_alias: 'people-gap.alias. Search keywords: people gap, add alias, alias of, mis-transcription, same person, merge name. (!) EDITS A PEOPLE NOTE THE USER MAINTAINS BY HAND and there is no undo. Call with body.dryRun: true FIRST and show the returned `line` before writing. Refuses (HTTP 409) an alias already claimed by someone else.',
   post_standup_save_to_daily: 'SUPERSEDED by post_standup_record — prefer that. Appends free markdown under "## Standup — <date>". It marks the standup done but writes no "## Focus Today", so tomorrow\'s carry-over scan reads nothing.',
 };
 export const aliases ={ post_chat: '/api/chat/sync', get_nudges_stream: '/api/nudges' };

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
 import PersonDetail from './PersonDetail';
 import WaitingOn from './WaitingOn';
+import SuggestedPeople from './SuggestedPeople';
 import './PeopleBoard.css';
 
 // Current direct reports, grouped for display. Leavers and people who move to
@@ -1030,6 +1031,12 @@ export default function PeopleBoard() {
           deliberately above the roster, because it is the thing you act on.
           Covers everyone the meeting notes mention, not just direct reports. */}
       <WaitingOn />
+
+      {/* Names NEURO keeps meeting that have no People note. Deliberately here
+          rather than on a screen of its own: the nightly push already routes to
+          /people, and the roster it is proposing additions to is right below.
+          A screen you have to go and find is one that never gets found. */}
+      <SuggestedPeople />
 
       <div className="people-header">
         <h2 className="people-title">Team</h2>

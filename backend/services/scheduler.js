@@ -712,10 +712,17 @@ function start() {
     try {
       const gap = require('./people-gap').runNightlyScan({ days: 90 });
       if (gap.status === 'ok') {
-        console.log(`[Scheduler] People gap: ${gap.candidates.length} candidates, ${gap.belowThreshold.length} seen once`);
-        if (gap.candidates.length > 0) {
+        const fresh = gap.newCandidates || [];
+        console.log(`[Scheduler] People gap: ${gap.candidates.length} candidates (${fresh.length} new), ${gap.belowThreshold.length} seen once`);
+        // ⚠ ONLY WHEN SOMEBODY NEW TURNS UP. It used to fire on the whole list,
+        // so four names Nick had deliberately left alone interrupted him every
+        // night — and a notification that is always there is one nobody reads,
+        // which costs the night a genuinely new colleague appears. The list
+        // itself lives on the People page now; the push is only ever news.
+        if (fresh.length > 0) {
+          const names = fresh.slice(0, 3).map(c => c.name).join(', ');
           require('./webpush').sendToAll('SAiM — People notes',
-            `${gap.candidates.length} ${gap.candidates.length === 1 ? 'person has' : 'people have'} no People note. Review in Vault Audit.`,
+            `${names}${fresh.length > 3 ? ` and ${fresh.length - 3} more` : ''} — no People note yet. Review on the People page.`,
             { type: 'vault_hygiene', url: '/people' }).catch(() => {});
         }
       }

@@ -1,0 +1,212 @@
+/* Suggested people — names NEURO keeps meeting with no People note.
+   Sits inside the People board beside WaitingOn, so it never becomes a
+   .main-panel flex child itself and borrows that card's frame. */
+
+.sp {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+/* An unreadable scan is amber and says why — never the same as an empty one. */
+.sp-error { border-left-color: var(--warning); }
+
+.sp-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.sp-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.sp-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary);
+}
+
+.sp-refresh { margin-left: auto; }
+
+/* ─────────────────────────────────────────────────────────── rows */
+
+.sp-list { list-style: none; margin: 0; padding: 0; }
+
+.sp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.sp-row:first-child { border-top: none; }
+
+/* Seen-once and ignored rows are quieter, never hidden — a name you cannot see
+   is one you cannot decide about. */
+.sp-row-faint { opacity: 0.72; }
+
+.sp-row-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.sp-name { font-size: 13px; color: var(--text-primary); }
+
+.sp-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* A near miss is a QUESTION about an existing person, never a claim — so it is
+   worded and coloured as a maybe. */
+.sp-maybe {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  opacity: 0.85;
+}
+
+.sp-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sp-role {
+  width: 130px;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.sp-btn {
+  padding: 3px 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.sp-btn:hover:not(:disabled) { border-color: var(--accent); }
+.sp-btn:disabled { opacity: 0.45; cursor: default; }
+
+.sp-btn-primary { border-color: var(--accent); color: var(--accent); }
+.sp-btn-quiet { color: var(--text-secondary); }
+
+/* ─────────────────────────────────────────────────────────── prose */
+
+/* Amber: the read was degraded. Reserved for that, so it keeps meaning it. */
+.sp-gap {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.sp-note {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.sp-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sp-withheld {
+  margin: 8px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+.sp-fold { margin-top: 8px; }
+
+.sp-fold-btn {
+  padding: 2px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.sp-fold-btn:hover { color: var(--text-primary); }
+
+/* ─────────────────────────────────────────── the alias confirm */
+
+/* This edits a note Nick maintains by hand and there is no undo from a card,
+   so the exact line is shown before anything is written. */
+.sp-confirm {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+}
+
+.sp-confirm-lead { margin: 0 0 6px; font-size: 12px; color: var(--text-primary); }
+
+.sp-confirm-what {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.sp-confirm-line {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.sp-confirm-actions { display: flex; gap: 6px; }
+
+@media (max-width: 600px) {
+  .sp { padding: 12px; }
+  .sp-row { align-items: flex-start; }
+  .sp-role { width: 100%; }
+}
