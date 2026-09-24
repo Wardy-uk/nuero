@@ -1,4 +1,4 @@
-/* The clock state: at home, not in this room.
+/* The clock state: at home (or in the building), not in this room.
    Deliberately plain and dim — it is a screen nobody is standing at. */
 
 .clockscreen {
@@ -10,8 +10,11 @@
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
+  padding: 0 6vw;            /* a sentence needs a gutter; a clock never did */
+  box-sizing: border-box;
   background: #06080c;
   color: #7d8da5;
+  text-align: center;
   /* ⚠ SWALLOWS EVERY TAP (Nick, 11 Sep 2026: "lock the tablet down so no one can
      access it if I'm not there"). This used to be `pointer-events: none`, on the
      reasoning that taps should reach whatever is underneath when this clears —
@@ -46,6 +49,46 @@
 .clockscreen__say {
   margin-top: 1.2rem;
   font-size: clamp(0.85rem, 2.2vw, 1.15rem);
+  opacity: 0.4;
+}
+
+/* ── Message-led (Nick, 24 Sep 2026) ────────────────────────────────────────
+   When SAiM has something to say about where he is, that is the screen and the
+   clock is the supporting line under it. Scoped to `--message` so the no-message
+   case above is untouched: a hero-sized empty space is worse than a big clock.
+
+   ⚠ SIZE AND BRIGHTNESS BOTH MOVE. Promoting the message on size alone leaves it
+   at 0.4 opacity beside a clock rendered in the brightest ink on the panel, and
+   the eye still reads the bright thing first — the swap has to be complete or it
+   is not a swap. */
+.clockscreen--message .clockscreen__say {
+  order: -1;                 /* belt-and-braces: hero first whatever the DOM does */
+  margin-top: 0;
+  margin-bottom: 0.6rem;
+  /* ⚠ NOT the clock's 18vw. "Away from the desk — back at 17:00." is ~35
+     characters against the clock's 5, so a viewport-width scale sized for a
+     clock overflows the panel; this one is sized to fill the width WRAPPED to
+     two or three lines, which is what a sentence at reading distance wants. */
+  font-size: clamp(1.8rem, 7.5vw, 4.5rem);
+  font-weight: 250;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  max-width: 18ch;           /* forces a sensible wrap rather than one long ribbon */
+  text-wrap: balance;        /* no orphaned "17:00." on a line of its own */
+  color: #cfdaea;            /* brighter than the clock ever was — this is the point */
+  opacity: 1;
+}
+
+.clockscreen--message .clockscreen__time {
+  /* Still legible across the room, still clearly second. */
+  font-size: clamp(1.9rem, 7vw, 3.6rem);
+  font-weight: 200;
+  color: #7d8da5;
+  opacity: 0.8;
+}
+
+.clockscreen--message .clockscreen__date {
+  font-size: clamp(0.75rem, 2vw, 1.05rem);
   opacity: 0.4;
 }
 
