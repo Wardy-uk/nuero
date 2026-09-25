@@ -62,7 +62,11 @@
      the first attempt did — and a measurement written twice is one that drifts
      the next time either side is tuned, which is the whole reason this file
      exists. The app scope is the nearest ancestor of both. */
-  --shelf-pad-y: clamp(5px, 0.62cqw, 11px);
+  /* ⚠ Raised 25 Sep 2026 with the shelf's horizontal padding; the FOOT reads
+     this same property, and the two must stay equal or the shelf and the line
+     beside it stop sitting on one baseline. The fallback in Shelf.css is the
+     same number and must move with it. */
+  --shelf-pad-y: clamp(6px, 0.85cqw, 16px);
 }
 
 /* ── A card ────────────────────────────────────────────────────────────────── */

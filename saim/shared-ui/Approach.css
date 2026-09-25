@@ -586,7 +586,19 @@
  * bands, in order, with nothing sharing a row. */
 .surface--approach .surface__say { width: min(48%, 640px); top: 21%; }
 .approach--quiet .approach__row { top: 62%; }
-.approach__fact { padding: clamp(5px, 0.8cqw, 12px) clamp(8px, 1.1cqw, 16px); }
+/* ⚠ THE CEILING WAS THE PROBLEM, NOT THE SLOPE (Nick, 25 Sep 2026: "the padding
+   is poor"). Measured on the real render at three widths: the card grows
+   272 -> 417 -> 565px between 1280 and 2560, and the side padding went
+   9 -> 11 -> 12px, because `cqw` reaches the old 12/16px ceiling at roughly a
+   1450px container and then stops. So the furniture kept scaling and the space
+   inside it did not, and the bigger the screen the tighter it read — which is
+   why this looks worst on the widest display in the house.
+
+   The ceilings are lifted to where the slope actually wants to go at 2560, so
+   padding stays a roughly constant ~6% of card width at every size instead of
+   collapsing to 2%. The MINIMUMS are untouched on purpose: they are what the
+   phone and the 1280 kiosk sit near, and this is a fix for large screens. */
+.approach__fact { padding: clamp(5px, 1.2cqw, 24px) clamp(8px, 1.7cqw, 32px); }
 .surface--approach .surface__foot { bottom: 5%; }
 .surface--approach .surface__shelf { bottom: 5%; }
 
@@ -747,7 +759,9 @@
 .surface--approach .surface__say .surface__says { margin-top: clamp(7px, 1cqw, 13px); }
 
 /* The facts sit clear of the foot, which is two lines tall on the kiosk. */
-.approach--quiet .approach__row { bottom: 25%; gap: clamp(8px, 1.1cqw, 16px); }
+/* ⚠ Same ceiling, same fix. A 16px gutter between four 565px cards reads as one
+   slab with hairlines in it, which is what "boxes next to each other" meant. */
+.approach--quiet .approach__row { bottom: 25%; gap: clamp(8px, 1.6cqw, 30px); }
 
 /* ── The flat row is the side that was unbounded ────────────────────────────
  *
