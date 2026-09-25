@@ -62,18 +62,25 @@
      declaration above it. The two-declaration trick silently does nothing
      here; it would look right in the file and still ship zero padding. */
   padding: 11px 18px;
-}
-
-@supports (padding: 1cqw) {
-  .shelf__btn,
-  .shelf__wx {
-    padding: var(--shelf-pad-y, clamp(6px, 0.85cqw, 16px)) clamp(10px, 1.4cqw, 26px);
-  }
   background: linear-gradient(180deg, rgba(11, 17, 25, 0.9), rgba(5, 9, 14, 0.74));
   backdrop-filter: blur(3px);
   white-space: nowrap;
   font: inherit;
   color: var(--ink-2, #9fb0c6);
+}
+
+/* ⚠ ONLY `padding` belongs in here. The first cut of this block closed the rule
+   above after the padding line and left `background`, `color` and `font`
+   stranded inside the `@supports` — so on the very engine the fallback exists
+   for, the pills lost their fill and rendered as white default buttons. Caught
+   by rendering the degraded path, not by reading it: the CSS is valid either
+   way and the file looked right. A fallback block that breaks the case it is
+   written for is worse than no fallback, because it also looks handled. */
+@supports (padding: 1cqw) {
+  .shelf__btn,
+  .shelf__wx {
+    padding: var(--shelf-pad-y, clamp(6px, 0.85cqw, 16px)) clamp(10px, 1.4cqw, 26px);
+  }
 }
 
 .shelf__btn {
