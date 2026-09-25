@@ -579,8 +579,12 @@
   min-width: 0;
 }
 .approach__fact:focus-visible { outline: 2px solid rgb(var(--approach-rgb)); outline-offset: 2px; }
-.approach__fact .approach__val { font-size: clamp(11px, 1.75cqw, 22px); }
-.approach__fact .approach__sub { font-size: clamp(8.5px, 1.15cqw, 14px); }
+.approach__fact .approach__val { font-size: 18px; }
+.approach__fact .approach__sub { font-size: 13px; }
+@supports (font-size: 1cqw) {
+  .approach__fact .approach__val { font-size: clamp(11px, 1.75cqw, 22px); }
+  .approach__fact .approach__sub { font-size: clamp(8.5px, 1.15cqw, 14px); }
+}
 .approach__fact .approach__lab { color: rgba(255, 255, 255, 0.26); }
 .approach__fact .approach__lab u { color: var(--muted, #63728a); }
 
@@ -614,7 +618,13 @@
    padding stays a roughly constant ~6% of card width at every size instead of
    collapsing to 2%. The MINIMUMS are untouched on purpose: they are what the
    phone and the 1280 kiosk sit near, and this is a fix for large screens. */
-.approach__fact { padding: clamp(5px, 1.2cqw, 24px) clamp(8px, 1.7cqw, 32px); }
+/* ⚠ PLAIN PX FIRST — on an engine without container queries this rule is the
+   ONLY padding `.approach__fact` has, and without it the card computes to zero
+   and the text sits on the border. Measured on the Galaxy Tab, 25 Sep 2026. */
+.approach__fact { padding: 12px 18px; }
+@supports (padding: 1cqw) {
+  .approach__fact { padding: clamp(5px, 1.2cqw, 24px) clamp(8px, 1.7cqw, 32px); }
+}
 .surface--approach .surface__foot { bottom: 5%; }
 .surface--approach .surface__shelf { bottom: 5%; }
 
@@ -777,7 +787,10 @@
 /* The facts sit clear of the foot, which is two lines tall on the kiosk. */
 /* ⚠ Same ceiling, same fix. A 16px gutter between four 565px cards reads as one
    slab with hairlines in it, which is what "boxes next to each other" meant. */
-.approach--quiet .approach__row { bottom: 25%; gap: clamp(8px, 1.6cqw, 30px); }
+.approach--quiet .approach__row { bottom: 25%; gap: 16px; }
+@supports (gap: 1cqw) {
+  .approach--quiet .approach__row { gap: clamp(8px, 1.6cqw, 30px); }
+}
 
 /* ── The flat row is the side that was unbounded ────────────────────────────
  *

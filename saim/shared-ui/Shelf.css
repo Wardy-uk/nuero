@@ -7,12 +7,15 @@
   align-items: flex-end;
   /* ⚠ Ceiling lifted with the rest of the shelf (25 Sep 2026) — see the
      padding rule below for the measurement. */
-  gap: clamp(6px, 0.9cqw, 14px);
+  gap: 10px;
+}
+@supports (gap: 1cqw) {
+  .shelf { gap: clamp(6px, 0.9cqw, 14px); }
 }
 
 .shelf__cap {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: clamp(7px, 0.68cqw, 12px);
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.3);
@@ -20,7 +23,7 @@
 
 .shelf__row {
   display: flex;
-  gap: clamp(6px, 1cqw, 18px);
+  gap: 12px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -39,7 +42,33 @@
      of monospace caps — Nick, 25 Sep 2026, of "the open on desktop links". The
      row is uppercase at 0.1em tracking, which needs MORE air than ordinary
      text, not the same. Minimum untouched: the phone is not the problem. */
-  padding: var(--shelf-pad-y, clamp(6px, 0.85cqw, 16px)) clamp(10px, 1.4cqw, 26px);
+  /* ⚠⚠ A PLAIN FALLBACK FIRST, AND THE CONTAINER-UNIT VERSION BEHIND `@supports`
+     (25 Sep 2026). Measured off the Galaxy Tab in the study: the `border` and
+     `border-radius` above render, and `padding` and `gap` — the only cqw-valued
+     declarations in the same rule — come out at ZERO, so BROWSER / VS CODE /
+     MUSIC / TERMINAL ran together into one unreadable bar. The engine is
+     dropping every declaration whose unit it does not know.
+
+     ⚠ THE GIVEAWAY WAS IN THE TILES, NOT HERE: `.approach--quiet
+     .approach__row` sets its gap in cqw and the base `.approach__row` sets a
+     plain `gap: 6px`. That 6px was visible on the tablet — which can only
+     happen if the cqw override was thrown away.
+
+     ⚠ IT HAS TO BE `@supports`, NOT TWO DECLARATIONS, BECAUSE OF `var()`.
+     A custom property is substituted at COMPUTED-VALUE time, not parse time,
+     so `padding: var(--shelf-pad-y) …` parses fine on an old engine, WINS the
+     cascade, and only then fails — and an invalid-at-computed-value-time
+     property resets to its initial value (0) rather than falling back to the
+     declaration above it. The two-declaration trick silently does nothing
+     here; it would look right in the file and still ship zero padding. */
+  padding: 11px 18px;
+}
+
+@supports (padding: 1cqw) {
+  .shelf__btn,
+  .shelf__wx {
+    padding: var(--shelf-pad-y, clamp(6px, 0.85cqw, 16px)) clamp(10px, 1.4cqw, 26px);
+  }
   background: linear-gradient(180deg, rgba(11, 17, 25, 0.9), rgba(5, 9, 14, 0.74));
   backdrop-filter: blur(3px);
   white-space: nowrap;
@@ -49,7 +78,7 @@
 
 .shelf__btn {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: clamp(7.5px, 0.72cqw, 13px);
+  font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   font-weight: 600;
@@ -83,13 +112,13 @@ button.shelf__btn:focus-visible { outline: 2px solid currentColor; outline-offse
   font-weight: 400;
 }
 
-.shelf__wx { display: flex; align-items: baseline; gap: clamp(6px, 0.8cqw, 12px); }
+.shelf__wx { display: flex; align-items: baseline; gap: 10px; }
 .shelf__wx u {
   text-decoration: none;
   font-weight: 700;
   color: var(--ink, #eef3fa);
   letter-spacing: -0.02em;
-  font-size: clamp(10px, 1cqw, 19px);
+  font-size: 17px;
 }
 .shelf__wx s {
   text-decoration: none;
@@ -129,4 +158,17 @@ button.shelf__btn--live {
   border-color: rgb(var(--saim-rgb, 114, 150, 211));
   background: rgba(var(--saim-rgb, 114, 150, 211), 0.2);
   color: #e6edf3;
+}
+
+/* ── The container-unit half ────────────────────────────────────────────────
+ * Everything above is sized in plain px so the shelf is legible on an engine
+ * without container queries (see the padding rule for the measurement). These
+ * restore the fluid scale wherever the unit is understood, and are skipped
+ * whole where it is not — which is the behaviour the px values exist for. */
+@supports (gap: 1cqw) {
+  .shelf__row { gap: clamp(6px, 1cqw, 18px); }
+  .shelf__cap { font-size: clamp(7px, 0.68cqw, 12px); }
+  .shelf__btn { font-size: clamp(7.5px, 0.72cqw, 13px); }
+  .shelf__wx { gap: clamp(6px, 0.8cqw, 12px); }
+  .shelf__wx u { font-size: clamp(10px, 1cqw, 19px); }
 }
