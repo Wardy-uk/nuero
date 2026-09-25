@@ -347,7 +347,23 @@
      gone (the mic is a card in this row now; the held line reads "blocked on
      someone, until tomorrow 15:18"), so the room belongs where the content is.
      The TOTAL is unchanged, so nothing new can collide. */
-  max-width: min(52%, 660px);
+
+  /* ⚠ WIDENED 25 Sep 2026 BECAUSE THE PADDING FIX MADE THE ROW WRAP, and this
+     row wrapping is the one failure the file already calls out: it is
+     right-aligned and wraps from the END, so what falls onto a second line is
+     TERMINAL — and one line down, alone, it reads as a different control from
+     the three beside it. Measured at 1920: the row was 640px inside a 660px
+     box, so there were 20px of slack and the extra air needed ~54.
+
+     ⚠ The no-collision property is PRESERVED, not traded away. The foot is
+     `min(34%, 400px)` and they share the bottom, so the pair must stay inside
+     the 92% between the two 4% margins. 58% is the widest value that holds at
+     the NARROWEST screen in the estate: at 1280 that is 742 + 400 = 1142
+     against 1178 available. At 1920 it is 820 + 400 against 1766. Anything
+     larger fits the desk and overlaps the kiosk, which is the direction that
+     fails silently — the foot is often empty, so a collision would show up
+     only on the days something was held back. */
+  max-width: min(58%, 820px);
 }
 .surface--approach .surface__desk,
 .surface--approach .surface__rooms { display: none; }
