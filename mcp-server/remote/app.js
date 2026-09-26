@@ -86,7 +86,7 @@ export function createApp(config, { verify = createVerifier(config), api = creat
       // carries a value, so this is safe to log.
       const reason = error?.reason || error?.code || 'invalid_token';
       log('authentication_failure', { request_id: req.requestId, reason });
-      res.set('WWW-Authenticate', `Bearer resource_metadata="${metadataUrl}", scope="neuro:read", error="invalid_token"`);
+      res.set('WWW-Authenticate', `Bearer resource_metadata="${metadataUrl}", scope="neuro:read neuro:write neuro:action neuro:admin", error="invalid_token"`);
       res.status(401).json({ error: 'unauthorized' });
     }
   };
