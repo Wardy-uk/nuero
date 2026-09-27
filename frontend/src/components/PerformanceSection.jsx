@@ -125,6 +125,8 @@ export default function PerformanceSection({ Chart, initial = null }) {
   // what is pinned is what renders — the loaders below are the live path.
   const [d, setD] = useState(initial);
   const [failed, setFailed] = useState(false);
+  // null = let the service choose (the bedroom radiator when it has data).
+  const [sleepSource, setSleepSource] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -133,7 +135,7 @@ export default function PerformanceSection({ Chart, initial = null }) {
         get('/api/performance/today'),
         get('/api/performance/exertion?days=90'),
         get('/api/performance/fitness'),
-        get('/api/performance/sleep-environment'),
+        get(`/api/performance/sleep-environment${sleepSource ? `?source=${sleepSource}` : ''}`),
         get('/api/performance/heat-cost'),
       ]);
       setD({ today, exertion, fitness, sleepEnv, heat });
@@ -141,7 +143,7 @@ export default function PerformanceSection({ Chart, initial = null }) {
     } catch {
       setFailed(true);
     }
-  }, []);
+  }, [sleepSource]);
 
   useEffect(() => { if (!initial) load(); }, [load, initial]);
 
@@ -201,7 +203,19 @@ export default function PerformanceSection({ Chart, initial = null }) {
       </section>
 
       <section className="hp-section">
-        <h3 className="hp-h3">Sleep and the room<span className="hp-h3-note">from the weather logger</span></h3>
+        <h3 className="hp-h3">
+          Sleep and the room
+          {/* Two sources, and which one answered is always visible: the radiator
+              valve has months in the bedroom but reads warm with the heating on;
+              the logger measures the air but only from the day it was placed. */}
+          <span className="ps-source">
+            {[['radiator', 'Bedroom radiator'], ['logger', 'Weather logger']].map(([id, name]) => (
+              <button key={id} type="button"
+                className={`hp-range${sleepEnv.source === id ? ' hp-range--on' : ''}`}
+                onClick={() => setSleepSource(id)}>{name}</button>
+            ))}
+          </span>
+        </h3>
         {sleepEnv.needsLocation ? (
           <>
             <div className="hp-quiet">{sleepEnv.why}. Say where it lives now and only nights from then are compared with your sleep.</div>

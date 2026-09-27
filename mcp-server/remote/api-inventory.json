@@ -2582,7 +2582,7 @@
     "route": "/api/performance/heat-cost",
     "domain": "performance",
     "source": "routes/performance.js",
-    "line": 61,
+    "line": 78,
     "description": "GET /api/performance/heat-cost.",
     "params": [],
     "query": [],
@@ -2601,7 +2601,9 @@
     "line": 49,
     "description": "GET /api/performance/sleep-environment.",
     "params": [],
-    "query": [],
+    "query": [
+      "source"
+    ],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -7284,6 +7286,24 @@
     "stream": false
   },
   {
+    "id": "post_performance_bedroom_sync",
+    "method": "POST",
+    "route": "/api/performance/bedroom/sync",
+    "domain": "performance",
+    "source": "routes/performance.js",
+    "line": 59,
+    "description": "POST /api/performance/bedroom/sync.",
+    "params": [],
+    "query": [],
+    "body": [
+      "all"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_performance_exertion_rebuild",
     "method": "POST",
     "route": "/api/performance/exertion/rebuild",
@@ -7307,7 +7327,7 @@
     "route": "/api/performance/logger-location",
     "domain": "performance",
     "source": "routes/performance.js",
-    "line": 55,
+    "line": 72,
     "description": "POST /api/performance/logger-location.",
     "params": [],
     "query": [],

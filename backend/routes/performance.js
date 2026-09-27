@@ -46,7 +46,24 @@ router.post('/exertion/rebuild', guard((req) => {
 router.get('/fitness', guard(() => insights.loadCardioFitness()));
 
 /** GET /api/performance/sleep-environment — the logger's room against sleep. */
-router.get('/sleep-environment', guard(() => insights.loadSleepEnvironment()));
+router.get('/sleep-environment', guard((req) => {
+  const source = ['radiator', 'logger'].includes(req.query.source) ? req.query.source : null;
+  return insights.loadSleepEnvironment({ source });
+}));
+
+/**
+ * POST /api/performance/bedroom/sync  { all?: true }
+ * Copy the bedroom radiator's hourly statistics from Home Assistant. The hourly
+ * job takes the last three days; `all` takes everything HA holds.
+ */
+router.post('/bedroom/sync', async (req, res) => {
+  try {
+    const r = await require('../services/bedroom-climate').sync({ days: req.body && req.body.all === true ? null : 3 });
+    res.status(r.ok ? 200 : 503).json(r);
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
+});
 
 /**
  * POST /api/performance/logger-location  { label, since: 'YYYY-MM-DD' }

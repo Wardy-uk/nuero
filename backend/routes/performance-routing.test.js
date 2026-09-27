@@ -74,12 +74,12 @@ test('today answers, and says its scale is not Athlytic’s', async () => {
 });
 
 test('the sleep read refuses until NEURO knows where the logger lives', async () => {
-  const before = await (await fetch(`${base}/api/performance/sleep-environment`)).json();
+  const before = await (await fetch(`${base}/api/performance/sleep-environment?source=logger`)).json();
   assert.equal(before.needsLocation, true);
   assert.equal((await post('/logger-location', { label: 'bedroom', since: 'soon' })).status, 400);
   const ok = await (await post('/logger-location', { label: 'bedroom', since: '2026-09-27' })).json();
   assert.equal(ok.location.label, 'bedroom');
-  const after = await (await fetch(`${base}/api/performance/sleep-environment`)).json();
+  const after = await (await fetch(`${base}/api/performance/sleep-environment?source=logger`)).json();
   assert.equal(after.needsLocation, undefined);
 });
 
@@ -88,4 +88,10 @@ test('fitness and heat cost answer without data rather than failing', async () =
   assert.equal(f.vo2max.latest, null);
   const h = await (await fetch(`${base}/api/performance/heat-cost`)).json();
   assert.equal(h.known, false);
+});
+
+test('with no bedroom data copied yet, the radiator source says so', async () => {
+  const j = await (await fetch(`${base}/api/performance/sleep-environment?source=radiator`)).json();
+  assert.equal(j.known, false);
+  assert.match(j.why, /no bedroom temperature/);
 });

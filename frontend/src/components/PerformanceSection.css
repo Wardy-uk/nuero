@@ -19,3 +19,4 @@
 .ps-form input { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: var(--radius-sm); padding: 4px 8px; font: inherit; }
 .ps-form button { background: var(--accent-dim); border: 1px solid var(--accent); color: #fff; border-radius: var(--radius-sm); padding: 4px 12px; cursor: pointer; }
 .ps-err { color: var(--danger); }
+.ps-source { display: inline-flex; gap: 6px; margin-left: 10px; vertical-align: middle; }

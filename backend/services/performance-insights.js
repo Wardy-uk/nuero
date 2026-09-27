@@ -273,26 +273,54 @@ function setLoggerLocation({ label, since }) {
 }
 
 /**
- * ⚠ REFUSES WITHOUT A LOCATION. The first three months of readings run from
- * −4.8 °C to 25.8 °C — a freezer, a cool room, brief trips somewhere at 5 °C —
- * so correlating them with sleep measures where the logger happened to be, not
- * the room he slept in. Until Nick says where it lives and since when, the
- * honest answer is "tell me", not a finding.
+ * The room overnight against sleep, from one of two sources.
+ *
+ *   • `radiator` (the default) — the bedroom radiator valve's hourly statistics,
+ *     copied from Home Assistant. In the room he sleeps in, for months. It sits
+ *     ON the radiator, so with the heating on it reads warm, and it has no
+ *     humidity — both said in the caveat.
+ *   • `logger` — the Blue Maestro, which measures the air (and humidity) but only
+ *     counts from the date Nick says it went into a room: its first three months
+ *     ran from a freezer to a warm room.
+ *
+ * ⚠ The logger path REFUSES WITHOUT A LOCATION rather than guessing.
  */
-function loadSleepEnvironment({ days = 200 } = {}) {
+function loadSleepEnvironment({ days = 200, source = null } = {}) {
   const hd = require('./health-daily');
-  const env = require('./environment');
+  const bedroom = require('./bedroom-climate');
+  const cover = bedroom.coverage();
   const location = loggerLocation();
-  if (!location) {
-    return { known: false, needsLocation: true, why: 'NEURO does not know where the logger lives — its readings so far range from a freezer to a warm room, so they cannot describe where you slept' };
+  const use = source || (cover.hours > 0 ? 'radiator' : 'logger');
+  const sources = { radiator: { available: cover.hours > 0, ...cover }, logger: { available: Boolean(location), location } };
+
+  if (use === 'radiator') {
+    if (!cover.hours) return { known: false, source: use, sources, why: 'no bedroom temperature copied from Home Assistant yet' };
+    const rows = hd.recentDays(days, { completeOnly: true });
+    const since = Math.floor(Date.parse(cover.from) / 1000);
+    const result = sleepEnvironment(rows, overnightRoom(bedroom.asReadings(bedroom.hoursSince(since))));
+    return {
+      known: true,
+      source: use,
+      sources,
+      ...result,
+      sentence: result.sentence.replace(/the logger's room/g, `the ${bedroom.LABEL}`),
+      caveat: `From the ${bedroom.LABEL} radiator valve's hourly readings since ${cover.from.slice(0, 10)}. It sits on the radiator, so it reads warm while the heating is on, and it measures no humidity. A correlation is not a cause.`,
+    };
   }
+
+  if (!location) {
+    return { known: false, source: use, sources, needsLocation: true, why: 'NEURO does not know where the logger lives — its readings so far range from a freezer to a warm room, so they cannot describe where you slept' };
+  }
+  const env = require('./environment');
   const rows = hd.recentDays(days, { completeOnly: true }).filter((d) => d.day > location.since);
-  if (!rows.length) return { known: false, location, why: `no finished nights since the logger went in the ${location.label}` };
-  const since = Math.floor(Date.parse(`${addDays(location.since, 0)}T12:00:00Z`) / 1000);
+  if (!rows.length) return { known: false, source: use, sources, location, why: `no finished nights since the logger went in the ${location.label}` };
+  const since = Math.floor(Date.parse(`${location.since}T12:00:00Z`) / 1000);
   const readings = env.readingsBetween(since, Math.floor(Date.now() / 1000), 200000);
   const result = sleepEnvironment(rows, overnightRoom(readings));
   return {
     known: true,
+    source: use,
+    sources,
     location,
     ...result,
     sentence: result.sentence.replace(/the logger's room/g, `the ${location.label}`),

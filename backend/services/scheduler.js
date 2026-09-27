@@ -557,6 +557,18 @@ function start() {
     }
   });
 
+  // Hourly at :29 — copy the bedroom radiator's hourly temperature from Home
+  // Assistant's long-term statistics. Three days each pass, so an HA outage of a
+  // day or two heals itself; the first run after deploy is a manual full copy.
+  cron.schedule('29 * * * *', async () => {
+    try {
+      const r = await require('./bedroom-climate').sync({ days: 3 });
+      if (!r.ok) console.warn(`[Scheduler] Bedroom climate: ${r.why}`);
+    } catch (e) {
+      console.warn('[Scheduler] Bedroom climate failed:', e.message);
+    }
+  });
+
   // Hourly at :27 — exertion from heart rate, just after the health rollup at :25
   // (it reads that rollup's resting heart rate). Idempotent over 10 days, so not
   // a catch-up job, the same call as the rollup itself.

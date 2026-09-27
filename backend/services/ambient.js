@@ -571,9 +571,22 @@ async function build({ now = new Date(), context = null } = {}) {
     const se = require('./performance-insights').cachedSleepEnvironment(now.getTime());
     const finding = se && se.known && Array.isArray(se.findings) ? se.findings[0] : null;
     if (finding) {
-      const latest = require('./environment').readingsBetween(Math.floor(now.getTime() / 1000) - 3600, Math.floor(now.getTime() / 1000), 10);
-      const last = latest[latest.length - 1];
-      roomSleep = { known: true, finding, label: se.location.label, nowC: last ? last.temperature_c : null };
+      // The room NOW comes from the same source the finding was measured on —
+      // a finding about the radiator's readings is not tested against the logger.
+      let nowC = null;
+      let label = null;
+      const nowS = Math.floor(now.getTime() / 1000);
+      if (se.source === 'radiator') {
+        const bc = require('./bedroom-climate');
+        const h = bc.hoursSince(nowS - 3 * 3600);
+        nowC = h.length ? h[h.length - 1].mean : null;
+        label = bc.LABEL;
+      } else {
+        const latest = require('./environment').readingsBetween(nowS - 3600, nowS, 10);
+        nowC = latest.length ? latest[latest.length - 1].temperature_c : null;
+        label = se.location && se.location.label;
+      }
+      if (label) roomSleep = { known: true, finding, label, nowC };
     }
   } catch (e) {
     gaps.push({ source: 'sleep-environment', why: e.message });

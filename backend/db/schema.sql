@@ -784,6 +784,19 @@ CREATE TABLE IF NOT EXISTS health_exertion_daily (
   computed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- A room's temperature, hour by hour, copied from Home Assistant's LONG-TERM
+-- statistics (services/bedroom-climate.js). HA purges ordinary history after ~10
+-- days but keeps these hourly means indefinitely; the copy makes NEURO's sleep
+-- analysis independent of HA being up. The bedroom sensor sits ON the radiator.
+CREATE TABLE IF NOT EXISTS room_climate_hourly (
+  entity_id TEXT NOT NULL,
+  hour_start INTEGER NOT NULL,       -- unix seconds, UTC
+  mean_c REAL,
+  min_c REAL,
+  max_c REAL,
+  PRIMARY KEY (entity_id, hour_start)
+);
+
 -- Host/infrastructure metrics: Pi 5, Pi 4, router, broadband.
 --
 -- Deliberately NOT health_samples: that table is Apple Health data, and its
