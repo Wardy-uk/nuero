@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNickNow, stampFor } from '../mobile/useNickNow';
 import { apiFetch } from '../api';
 import Readiness from '../../../shared-ui/Readiness.jsx';
+import Exertion from '../../../shared-ui/Exertion.jsx';
 import { Lit, LitLabel } from '../../../shared-ui/Lit.jsx';
 import { enqueue, flush, outcomeFor, pending as pendingOps, subscribe } from '../mobile/outbox';
 import Freshness from '../components/Freshness';
@@ -657,6 +658,15 @@ export default function Now({ onNavigate }) {
   // reached for `quiet` flipped the dial to its off-duty face whenever she
   // decided not to interrupt. Unknown resolves to ON duty, the backend's rule.
   const [offDuty, setOffDuty] = useState(false);
+  // Exertion, from /api/performance/today — its own fetch, so a failure costs
+  // only this card. Swallowed for the same reason as readiness: the card renders
+  // nothing without data, which is the correct outcome of a failed read.
+  const [exertion, setExertion] = useState(null);
+  useEffect(() => {
+    let live = true;
+    apiFetch('/api/performance/today').then((d) => { if (live) setExertion(d); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
   useEffect(() => {
     let live = true;
     apiFetch('/api/attention')
@@ -789,6 +799,10 @@ export default function Now({ onNavigate }) {
           <Readiness readiness={readiness} offDuty={offDuty} />
         </Lit>
       )}
+
+      {/* Exertion: one sentence and a bar, composed by the backend so iOS and
+          every web shell say the same words. Nothing at all without a reading. */}
+      <Exertion data={exertion} />
 
       <Freshness
         freshness={freshness}

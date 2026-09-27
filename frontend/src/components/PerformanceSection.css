@@ -2,7 +2,7 @@
    validated palette in PerformanceSection.jsx. */
 .ps-heroes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0 14px; }
 .ps-hero { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
-.ps-hero--notice { border-color: var(--warning); }
+.ps-hero--notice { border-color: var(--accent); }
 .ps-hero-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
 .ps-hero-value { font-size: 26px; font-weight: 600; color: var(--text-primary); margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
 .ps-hero-unit { font-size: 13px; font-weight: 400; color: var(--text-muted); margin-left: 3px; }

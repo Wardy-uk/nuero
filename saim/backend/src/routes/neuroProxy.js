@@ -119,6 +119,9 @@ const DOORS = new Set([
 const EXACT_DOORS = new Set([
   '/activity/tab',
   '/activity/interact',
+  // SAiM's Exertion card on Now. EXACT, not the segment: `performance` also
+  // holds the logger-location and rebuild writes, which have no screen here.
+  '/performance/today',
 ]);
 
 /**

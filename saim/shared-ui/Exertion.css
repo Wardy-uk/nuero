@@ -1,0 +1,11 @@
+/* SAiM's Exertion card. Her words in serif; the bar is the validated data ramp. */
+.exertion { margin-bottom: 1.25rem; }
+.exertion__head { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; width: 100%;
+  background: none; border: 0; padding: 0; color: inherit; text-align: left; cursor: pointer; }
+.exertion__say { font-family: Newsreader, Georgia, "Times New Roman", serif; font-size: 1.05rem; line-height: 1.35; }
+.exertion__bar { display: flex; gap: 2px; height: 10px; margin: 0.6rem 0 0.4rem; border-radius: 4px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.06); }
+.exertion__bar > span { display: block; min-width: 3px; }
+.exertion__rest { background: transparent; }
+.exertion__more p { margin: 0.4rem 0; font-size: 0.9rem; line-height: 1.4; }
+.exertion__faint { font-size: 0.72rem; opacity: 0.6; }

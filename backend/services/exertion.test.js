@@ -79,3 +79,11 @@ test('target follows recovery, against HIS usual, and refuses when recovery is u
 test('a day is LOCAL — 23:30 UTC in summer is tomorrow in London', () => {
   assert.equal(ex.localDayKey(Date.parse('2026-06-20T23:30:00Z'), 'Europe/London'), '2026-06-21');
 });
+
+test('SAiM\'s line states a fact, is the same words the iOS fallback uses, and never advises', () => {
+  assert.equal(ex.lineFor({ yesterday: { score: 5.5 }, today: { score: 3.5 } }), "Yesterday's exertion was 5.5 of 10, 3.5 so far today.");
+  const spike = ex.lineFor({ trainingLoad: { known: true, state: 'spike', ratio: 1.62 } });
+  assert.equal(spike, "This week's exertion is 1.62× your usual.");
+  assert.ok(!/rest|should|take it/i.test(spike));
+  assert.equal(ex.lineFor({}), null);
+});

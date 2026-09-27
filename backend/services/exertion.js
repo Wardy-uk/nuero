@@ -335,6 +335,23 @@ function recent(days = 60) {
   return db.all('SELECT * FROM health_exertion_daily ORDER BY day DESC LIMIT ?', [days]).map(fromRow);
 }
 
+/**
+ * SAiM's one sentence about exertion. PURE, and composed HERE so every surface —
+ * iOS SAiM, the SAiM PWA, the kiosk, the Electron window — renders the same words
+ * rather than each phrasing it. It STATES and never advises: a spike is a ratio
+ * against his own month, not "take it easy". Null when there is nothing to say.
+ */
+function lineFor({ today, yesterday, trainingLoad } = {}) {
+  if (trainingLoad && trainingLoad.known && trainingLoad.state === 'spike' && Number.isFinite(trainingLoad.ratio)) {
+    return `This week's exertion is ${trainingLoad.ratio.toFixed(2)}× your usual.`;
+  }
+  if (yesterday && Number.isFinite(yesterday.score)) {
+    const t = today && Number.isFinite(today.score) ? `, ${today.score.toFixed(1)} so far today` : '';
+    return `Yesterday's exertion was ${yesterday.score.toFixed(1)} of 10${t}.`;
+  }
+  return null;
+}
+
 /** Today in one read: exertion so far, load, recovery, and the suggestion. */
 function summary(now = new Date()) {
   const rows = recent(CHRONIC_DAYS + 14);
@@ -345,6 +362,7 @@ function summary(now = new Date()) {
   let readiness = null;
   try { readiness = require('./health-daily').today(now).readiness; } catch { readiness = null; }
   return {
+    line: lineFor({ today: todayRow, yesterday: finished[0] || null, trainingLoad: load }),
     today: todayRow,
     yesterday: finished[0] || null,
     trainingLoad: load,
@@ -362,6 +380,7 @@ module.exports = {
   estimateMax,
   trainingLoad,
   target,
+  lineFor,
   SCORE_K,
   // io
   sync,
