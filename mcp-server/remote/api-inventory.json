@@ -1248,6 +1248,62 @@
     "stream": false
   },
   {
+    "id": "get_environment_hikes",
+    "method": "GET",
+    "route": "/api/environment/hikes",
+    "domain": "environment",
+    "source": "routes/environment.js",
+    "line": 88,
+    "description": "GET /api/environment/hikes.",
+    "params": [],
+    "query": [
+      "days",
+      "types"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_environment_readings",
+    "method": "GET",
+    "route": "/api/environment/readings",
+    "domain": "environment",
+    "source": "routes/environment.js",
+    "line": 50,
+    "description": "GET /api/environment/readings.",
+    "params": [],
+    "query": [
+      "from",
+      "to"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_environment_sensors_by_id",
+    "method": "GET",
+    "route": "/api/environment/sensors/:id",
+    "domain": "environment",
+    "source": "routes/environment.js",
+    "line": 71,
+    "description": "GET /api/environment/sensors/:id.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_escalation_active",
     "method": "GET",
     "route": "/api/escalation/active",
@@ -3287,7 +3343,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 284,
+    "line": 287,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -5924,6 +5980,22 @@
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_environment_readings",
+    "method": "POST",
+    "route": "/api/environment/readings",
+    "domain": "environment",
+    "source": "routes/environment.js",
+    "line": 24,
+    "description": "POST /api/environment/readings.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

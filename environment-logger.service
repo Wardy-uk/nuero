@@ -1,0 +1,23 @@
+[Unit]
+Description=NEURO environment logger (Blue Maestro Disc Maxi -> /api/environment)
+After=bluetooth.target network-online.target
+Wants=bluetooth.target network-online.target
+
+[Service]
+Type=simple
+# NEURO_API_TOKEN lives in a local-only file (NOT in git):
+#   /etc/neuro-environment-logger.env  ->  NEURO_API_TOKEN=<token>
+EnvironmentFile=/etc/neuro-environment-logger.env
+Environment=NEURO_URL=http://localhost:3001
+# Pin the one logger, so a neighbour's Disc Maxi is never synced into NEURO.
+Environment=BM_SENSOR=F69F4CC2
+Environment=BM_SYNC_MINUTES=30
+Environment=BM_DUMP_DIR=/home/nickw/environment-logger
+# Reuses the watch-presence venv, which already carries bleak.
+ExecStart=/home/nickw/watch-irk/venv/bin/python -u /home/nickw/nuero/environment-logger-service.py
+Restart=always
+RestartSec=10
+User=nickw
+
+[Install]
+WantedBy=multi-user.target

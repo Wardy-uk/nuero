@@ -504,6 +504,53 @@ CREATE TABLE IF NOT EXISTS health_workouts (
 
 CREATE INDEX IF NOT EXISTS idx_health_workouts_started ON health_workouts(started_at);
 
+-- Environmental readings from a carried logger (Blue Maestro Disc Maxi) —
+-- temperature, humidity and pressure, matched to hikes by TIME at read time.
+--
+-- ⚠ `t` IS RECONSTRUCTED, NOT MEASURED. The logger keeps no clock: the phone
+-- times each record backwards from the moment it downloaded, so every reading
+-- is right to within `timing_error_s` (half the logging interval) and no
+-- better. That bound is stored per row because the interval can change.
+--
+-- ⚠ KEYED ON THE LOGGER, NOT THE PHONE. `sensor_id` is the device MAC suffix,
+-- so two phones syncing one logger fold instead of doubling. UNIQUE(sensor_id,
+-- t) makes a re-sent queue idempotent; the phone downloads only records it has
+-- not timed before, so the same reading never arrives under two times.
+--
+-- ⚠ NO HIKE ID. Matching is a window join against `health_workouts` (or any
+-- other source of a walk's start and end — the website's Intervals.icu
+-- activities), so a reading is never tied to one system's notion of a hike.
+CREATE TABLE IF NOT EXISTS environment_readings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sensor_id TEXT NOT NULL,
+  model TEXT,
+  t INTEGER NOT NULL,
+  temperature_c REAL NOT NULL,
+  humidity_pct REAL,
+  pressure_hpa REAL,
+  timing_error_s INTEGER NOT NULL DEFAULT 0,
+  received_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(sensor_id, t)
+);
+
+CREATE INDEX IF NOT EXISTS idx_environment_readings_t ON environment_readings(t);
+
+-- How far through each logger's history NEURO has got. ⚠ THE CURSOR LIVES HERE,
+-- NOT ON A DOWNLOADER: the Pi syncs the logger when it is home and the phone can
+-- sync it on the road, and two private cursors would each download — and time —
+-- the same records. `log_count` is the logger's record count at the download that
+-- moved it; `synced_at` is unix seconds.
+CREATE TABLE IF NOT EXISTS environment_sensors (
+  sensor_id TEXT PRIMARY KEY,
+  model TEXT,
+  interval_s INTEGER,
+  log_count INTEGER,
+  synced_at INTEGER,
+  last_t INTEGER,
+  source TEXT,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- What a device says about ITSELF — battery, motion, connectivity, focus.
 --
 -- Everything here is currently read out of Home Assistant's iOS Companion app

@@ -199,6 +199,9 @@ app.use('/api/location', locationRoutes);
 // PIN like everything else: a native app holds a credential properly, so this
 // needs none of the source-address guarding `/api/v1` above resorts to.
 app.use('/api/device', require('./routes/device'));
+// A carried environmental logger (Blue Maestro Disc Maxi), downloaded by the
+// phone and matched to hikes by time.
+app.use('/api/environment', require('./routes/environment'));
 app.use('/api/jira', jiraRoutes);
 app.use('/api/escalation', escalationRoutes);
 app.use('/api/focus', focusRoutes);
