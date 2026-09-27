@@ -111,11 +111,15 @@ const KNOWN_GAPS = Object.freeze([
   // ⚠ CORRECTED 12 Sep 2026. This said "dismissInboxItem stores no reason,
   // so done and not-relevant are indistinguishable" — and BOTH halves had
   // stopped being true: `dismissEmail` has recorded done / not-relevant /
-  // replied since 16 Aug (#70), and `dismissInboxItem` belonged to the
-  // `inbox_items` table DELETED on 26 Aug, so it named a function that no
-  // longer exists. It went unnoticed because `momentum.knownGaps` carries this
-  // list onto /api/adhd and no client reads it — a stale explanation protected
-  // from correction by having no reader.
+  // replied since 16 Aug (#70), and `dismissInboxItem` was deleted on 26 Aug
+  // with `inbox-scanner.js` and its db helpers, so it named a function that no
+  // longer exists. (The `inbox_items` TABLE was not deleted — it is still
+  // defined in schema.sql, marked `@inert` and written by nothing. Retiring the
+  // readers is not the same act as dropping the table, and inert-tables.test.js
+  // is what holds the second half.) It went unnoticed because
+  // `momentum.knownGaps` was carried onto /api/adhd and read by no client — a
+  // stale explanation protected from correction by having no reader. It has one
+  // now: AdhdPanel renders the list, pinned by wins-known-gaps-reader.test.js.
   'emails dealt with — uncounted by CHOICE rather than by limitation: clearing one IS distinguishable now (dismissEmail records done / not-relevant / replied), so whether that counts as a win is a decision nobody has taken, not a missing signal. Replies are already counted, via sent_replies',
   'vault writes — 2,229 in 30 days, overwhelmingly Syncthing and the import pipeline rather than Nick',
 ]);
@@ -190,7 +194,7 @@ function gitRepos() {
 function foldCommits(commits) {
   const byRepoDay = new Map();
   for (const c of commits) {
-    const key = `${c.repo} ${c.dateKey}`;
+    const key = JSON.stringify([c.repo, c.dateKey]);
     const entry = byRepoDay.get(key) || { repo: c.repo, dateKey: c.dateKey, count: 0, latest: c.at, subjects: [] };
     entry.count++;
     if (c.at > entry.latest) entry.latest = c.at;

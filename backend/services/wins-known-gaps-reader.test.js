@@ -44,10 +44,21 @@ test('positive control: the backend still emits knownGaps on momentum', () => {
     'adhd-dashboard no longer carries knownGaps — if that was deliberate, delete this file');
 
   // And the list itself is non-empty, or "it has a reader" is a claim about
-  // nothing. Read as utf8 deliberately: wins.js contains a literal NUL byte as
-  // a dedup separator, so `file` calls it binary.
+  // nothing. ⚠ wins.js USED to hold a literal NUL byte as a fold-key
+  // separator, which made `file` call it binary and made grep/ripgrep skip it
+  // silently — so the one file whose whole subject is unaudited claims was
+  // itself unsearchable. Replaced with JSON.stringify([repo, dateKey]) on
+  // 21 Sep 2026; keep it greppable.
   const wins = fs.readFileSync(path.join(__dirname, 'wins.js'), 'utf8');
   assert.ok(wins.includes('const KNOWN_GAPS = Object.freeze(['), 'KNOWN_GAPS has moved or gone');
+
+  // A control byte anywhere in wins.js makes `file` report it as data and makes
+  // grep/ripgrep skip it with NO match and NO error — the failure mode that let
+  // KNOWN_GAPS[1] rot for four weeks. String.fromCharCode, not an escape: this
+  // file's own rule is that a backslash can be lost through a heredoc and then
+  // pass for the wrong reason.
+  assert.ok(!wins.includes(String.fromCharCode(0)),
+    'wins.js contains a NUL byte — grep and ripgrep will silently skip the file');
 });
 
 test('the desktop card READS momentum.knownGaps', () => {
