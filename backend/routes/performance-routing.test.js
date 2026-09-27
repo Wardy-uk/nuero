@@ -33,7 +33,13 @@ test.before(async () => {
     db.upsertHealthDay({ day, rhrMedian: 75, complete: true });
   }
   // Yesterday: a quiet day at 80 bpm with a 60-minute walk at 110 bpm, every 3 min.
-  const start = now - 30 * 3600000;
+  // ⚠ ANCHORED TO YESTERDAY'S MIDNIGHT, never to "now minus N hours": relative to
+  // the clock, the walk straddled midnight whenever the suite ran in the early
+  // afternoon and split across two days — it failed on the Pi and passed here.
+  const midnight = new Date(now);
+  midnight.setDate(midnight.getDate() - 1);
+  midnight.setHours(0, 0, 0, 0);
+  const start = midnight.getTime();
   for (let m = 0; m < 24 * 60; m += 3) {
     const walking = m >= 600 && m < 660;
     db.insertHealthSample('heartRate', walking ? 110 : 80, sqlTime(start + m * 60000), 'test');
