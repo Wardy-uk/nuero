@@ -361,7 +361,9 @@ export function TrendChart({ title, unit, dp, hint, days, valueKey, series, span
     : 0;
   const coverage = rows.length ? Math.round((bestCovered / rows.length) * 100) : 0;
 
-  const ticks = tickIndices(rows.length);
+  // ⚠ Width-aware. A year-labelled tick is ~80px, so five of them collide on a
+  // phone-width card; below ~420px there is room for three.
+  const ticks = tickIndices(rows.length, width < 420 ? 3 : 5);
 
   function onMove(e) {
     const rect = wrapRef.current?.getBoundingClientRect();

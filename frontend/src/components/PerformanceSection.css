@@ -10,6 +10,7 @@
 .ps-zones { margin: 4px 0 12px; }
 .ps-zone-bar { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--bg-tertiary); }
 .ps-zone-seg { display: block; min-width: 3px; }
+.ps-zone-rest { display: block; }
 .ps-zone-empty { font-size: 11px; color: var(--text-muted); padding: 0 8px; line-height: 14px; }
 .ps-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; font-size: 11px; color: var(--text-secondary); }
 .ps-legend-item i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }

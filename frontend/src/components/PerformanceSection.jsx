@@ -52,11 +52,22 @@ function ZoneBar({ day }) {
     <div className="ps-zones">
       <div className="ps-zone-bar" role="img"
         aria-label={`Time in heart-rate bands: ${day.zoneMinutes.map((m, i) => `band ${i + 1} ${Math.round(m)} minutes`).join(', ')}`}>
-        {total > 0 ? day.zoneMinutes.map((m, i) => (m > 0 ? (
-          <span key={i} className="ps-zone-seg"
-            style={{ background: ZONE_RAMP[i], flexGrow: m }}
-            title={`${bpm ? `${bpm[i]}+ bpm` : `band ${i + 1}`}: ${fmtMins(m)}`} />
-        ) : null)) : <span className="ps-zone-empty">No time above {bpm ? `${bpm[0]} bpm` : 'the first band'} yet.</span>}
+        {/* ⚠ Scaled against the WHOLE day the watch saw, not against the time
+            in the bands: 1h39m of effort filling the bar reads as a hard day.
+            The unfilled remainder is time below the first band. */}
+        {total > 0 ? (
+          <>
+            {day.zoneMinutes.map((m, i) => (m > 0 ? (
+              <span key={i} className="ps-zone-seg"
+                style={{ background: ZONE_RAMP[i], flexGrow: m }}
+                title={`${bpm ? `${bpm[i]}+ bpm` : `band ${i + 1}`}: ${fmtMins(m)}`} />
+            ) : null))}
+            {day.coveredMinutes > total && (
+              <span className="ps-zone-rest" style={{ flexGrow: day.coveredMinutes - total }}
+                title={`below ${bpm ? `${bpm[0]} bpm` : 'the first band'}: ${fmtMins(day.coveredMinutes - total)}`} />
+            )}
+          </>
+        ) : <span className="ps-zone-empty">No time above {bpm ? `${bpm[0]} bpm` : 'the first band'} yet.</span>}
       </div>
       <div className="ps-legend">
         {ZONE_RAMP.map((c, i) => (
