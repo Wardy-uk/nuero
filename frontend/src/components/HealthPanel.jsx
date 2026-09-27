@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiUrl, apiFetch } from '../api';
 import './HealthPanel.css';
+import PerformanceSection from './PerformanceSection';
 
 /**
  * My Health — the deep view over two years of Apple Health.
@@ -790,6 +791,11 @@ export default function HealthPanel() {
           {(stress?.caveats || []).map((c, i) => <div className="hp-caveat" key={i}>⚠ {c}</div>)}
         </div>
       </section>
+
+      {/* ── Exertion, fitness, and the weather logger ───────────────
+          Its own component, loading its own data: this is the desk view of
+          it, and SAiM says at most one fact from it. */}
+      <PerformanceSection Chart={TrendChart} />
 
       {/* ── What has changed ─────────────────────────────────────── */}
       <section className="hp-section">

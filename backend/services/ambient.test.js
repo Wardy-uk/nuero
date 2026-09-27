@@ -409,3 +409,41 @@ test('one hour sitting does not compete with the watch own stand reminder', () =
   assert.equal(kinds(r).includes('sedentary'), false);
   assert.equal(ambient.STAND_QUIET_HOURS, 2);
 });
+
+// ── Performance facts (27 Sep 2026) ──────────────────────────────────────────
+
+test('a training spike is one factual line; building and steady say nothing', () => {
+  const spike = ambient.assess({ phone: livePhone(), training: { known: true, state: 'spike', ratio: 1.8, acute: 180, chronic: 100 } }, NOW);
+  const o = spike.observations.find((x) => x.kind === 'training-load');
+  assert.ok(o, 'a spike should be observed');
+  assert.match(o.text, /1\.8× your usual/);
+  assert.ok(!/injur|should|rest/i.test(o.text));
+  for (const state of ['building', 'steady', 'easing']) {
+    const r = ambient.assess({ phone: livePhone(), training: { known: true, state, ratio: 1.2 } }, NOW);
+    assert.ok(!kinds(r).includes('training-load'), state);
+  }
+});
+
+test('the room line needs a measured finding, the evening, and a warm room', () => {
+  const finding = { label: 'time asleep', unit: 'h', warmRoomC: 21, coolRoomC: 18, warmValue: 7.2, coolValue: 7.6, nights: 40, p: 0.004, r: -0.4 };
+  const evening = new Date('2026-08-25T21:30:00');
+  const on = ambient.assess({ phone: livePhone(), roomSleep: { known: true, finding, label: 'bedroom', nowC: 22 } }, evening);
+  const o = on.observations.find((x) => x.kind === 'room-sleep');
+  assert.ok(o);
+  assert.match(o.text, /The bedroom is 22°C/);
+  assert.match(o.text, /24 min lower/);
+  // Afternoon, a cool room, or no finding: silence.
+  assert.ok(!kinds(ambient.assess({ phone: livePhone(), roomSleep: { known: true, finding, label: 'bedroom', nowC: 22 } }, NOW)).includes('room-sleep'));
+  assert.ok(!kinds(ambient.assess({ phone: livePhone(), roomSleep: { known: true, finding, label: 'bedroom', nowC: 19 } }, evening)).includes('room-sleep'));
+  assert.ok(!kinds(ambient.assess({ phone: livePhone(), roomSleep: null }, evening)).includes('room-sleep'));
+});
+
+test('neither performance fact can push — both are pull-only by having no rule', () => {
+  const push = require('./ambient-push');
+  const moment = { known: true };
+  for (const kind of ['training-load', 'room-sleep']) {
+    const v = push.worthInterrupting({ kind, text: 'x' }, moment);
+    assert.equal(v.push, false);
+    assert.match(v.why, /no push rule/);
+  }
+});

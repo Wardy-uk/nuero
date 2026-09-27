@@ -764,6 +764,26 @@ CREATE TABLE IF NOT EXISTS health_daily (
   computed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Exertion per LOCAL day, from continuous heart rate (services/exertion.js).
+-- Banister TRIMP above resting + 10 bpm. z1..z5 are DISPLAY-band MINUTES (20/30/
+-- 40/50/60% of reserve), not inputs to load. `partial` = under 16h of heart rate, so `load` is a floor, not the day.
+-- rest_hr / max_hr are the scale the day was judged on, stored beside it because
+-- a later re-estimate of max HR changes every zone and the row must say which.
+CREATE TABLE IF NOT EXISTS health_exertion_daily (
+  day TEXT PRIMARY KEY,
+  load REAL,
+  score REAL,
+  z1 REAL, z2 REAL, z3 REAL, z4 REAL, z5 REAL,
+  covered_minutes INTEGER,
+  elevated_minutes INTEGER,
+  partial INTEGER NOT NULL DEFAULT 0,
+  rest_hr REAL,
+  max_hr REAL,
+  max_source TEXT,
+  complete INTEGER NOT NULL DEFAULT 0,
+  computed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Host/infrastructure metrics: Pi 5, Pi 4, router, broadband.
 --
 -- Deliberately NOT health_samples: that table is Apple Health data, and its

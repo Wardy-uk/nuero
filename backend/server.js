@@ -202,6 +202,8 @@ app.use('/api/device', require('./routes/device'));
 // A carried environmental logger (Blue Maestro Disc Maxi), downloaded by the
 // phone and matched to hikes by time.
 app.use('/api/environment', require('./routes/environment'));
+// Recovery, exertion and the logger's reads — the Athlytic-style half of health.
+app.use('/api/performance', require('./routes/performance'));
 app.use('/api/jira', jiraRoutes);
 app.use('/api/escalation', escalationRoutes);
 app.use('/api/focus', focusRoutes);

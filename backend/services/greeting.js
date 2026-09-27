@@ -164,6 +164,7 @@ function briefLine({
   rooms = null,
   weather = null,
   lastNight = null,
+  training = null,
   recentKinds = [],
 } = {}) {
   const said = new Set(Array.isArray(recentKinds) ? recentKinds : []);
@@ -237,6 +238,18 @@ function briefLine({
     const h = Math.floor(lastNight.asleepHours);
     const m = Math.round((lastNight.asleepHours - h) * 60);
     const hit = fresh('sleep', `You slept ${h}h${String(m).padStart(2, '0')} - ${lastNight.usualLine}.`);
+    if (hit) return hit;
+  }
+
+  // 6. A WEEK OF EXERTION WELL PAST HIS USUAL - once, on the first greeting of the
+  //    day. The lowest rank: it is true all week, so it can always wait for a
+  //    quieter arrival, and it is the easiest line to become a nag.
+  //
+  // WARNING  A SPIKE ONLY, stated as a ratio. No advice, no "take it easy" -
+  //   `exertion` labels the ratio a heuristic and she does not upgrade it.
+  if (firstToday && training && training.known === true && training.state === 'spike'
+      && Number.isFinite(training.ratio)) {
+    const hit = fresh('training', `This week's exertion is ${training.ratio}× your usual.`);
     if (hit) return hit;
   }
 
@@ -373,6 +386,7 @@ async function claim({ room, client = null, now = new Date(), preview = false } 
       rooms: payload && payload.rooms,
       weather: payload && payload.weather,
       lastNight: payload && payload.lastNight,
+      training: (() => { try { return require('./exertion').summary(now).trainingLoad; } catch { return null; } })(),
       // WARNING  SHE DOES NOT SAY THE SAME KIND OF THING TWICE RUNNING. Told
       //   about the weather on the way in, she finds something else next time
       //   or says nothing - the rule the opener and lead pools already follow.

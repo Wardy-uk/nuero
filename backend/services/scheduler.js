@@ -557,6 +557,19 @@ function start() {
     }
   });
 
+  // Hourly at :27 — exertion from heart rate, just after the health rollup at :25
+  // (it reads that rollup's resting heart rate). Idempotent over 10 days, so not
+  // a catch-up job, the same call as the rollup itself.
+  cron.schedule('27 * * * *', () => {
+    try {
+      const { written, gaps } = require('./exertion').sync();
+      for (const g of gaps) console.warn(`[Scheduler] Exertion gap — ${g.input}: ${g.why}`);
+      if (written) console.log(`[Scheduler] Exertion: ${written} day(s)`);
+    } catch (e) {
+      console.error('[Scheduler] Exertion failed:', e.message);
+    }
+  });
+
   // Hourly at :50 — roll the desktop agent's samples into desktop_daily.
   //
   // ⚠ The cadence is not cosmetic. The live buffer is a ring of MAX_SAMPLES

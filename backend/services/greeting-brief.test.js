@@ -188,3 +188,13 @@ test('WARNING-WARNING the sleep line needs lastNight ON THE PAYLOAD, not just th
   const draft = src.slice(src.indexOf('const draft = {'), src.lastIndexOf('generatedAt: now.toISOString()'));
   assert.ok(draft.includes('lastNight,'), 'the dashboard still gets it');
 });
+
+test('a training spike is the LOWEST rank, first greeting only, and a ratio — never advice', () => {
+  const training = { known: true, state: 'spike', ratio: 1.8 };
+  const b = briefLine({ now: NOW, firstToday: true, training });
+  assert.equal(b.kind, 'training');
+  assert.match(b.line, /1\.8× your usual/);
+  assert.ok(!/take it easy|rest|should|injur/i.test(b.line));
+  assert.equal(briefLine({ now: NOW, firstToday: false, training }), null);
+  assert.equal(briefLine({ now: NOW, firstToday: true, training: { ...training, state: 'building' } }), null);
+});

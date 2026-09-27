@@ -1,0 +1,20 @@
+/* Recovery & exertion on My Health. Theme tokens only; the zone ramp is the one
+   validated palette in PerformanceSection.jsx. */
+.ps-heroes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0 14px; }
+.ps-hero { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.ps-hero--notice { border-color: var(--warning); }
+.ps-hero-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+.ps-hero-value { font-size: 26px; font-weight: 600; color: var(--text-primary); margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.ps-hero-unit { font-size: 13px; font-weight: 400; color: var(--text-muted); margin-left: 3px; }
+.ps-hero-sub { font-size: 12px; color: var(--text-secondary); line-height: 1.35; }
+.ps-zones { margin: 4px 0 12px; }
+.ps-zone-bar { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--bg-tertiary); }
+.ps-zone-seg { display: block; min-width: 3px; }
+.ps-zone-empty { font-size: 11px; color: var(--text-muted); padding: 0 8px; line-height: 14px; }
+.ps-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; font-size: 11px; color: var(--text-secondary); }
+.ps-legend-item i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.ps-grid-one { grid-template-columns: 1fr; }
+.ps-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+.ps-form input { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: var(--radius-sm); padding: 4px 8px; font: inherit; }
+.ps-form button { background: var(--accent-dim); border: 1px solid var(--accent); color: #fff; border-radius: var(--radius-sm); padding: 4px 12px; cursor: pointer; }
+.ps-err { color: var(--danger); }

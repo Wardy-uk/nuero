@@ -441,6 +441,48 @@ function assess(input = {}, now = new Date()) {
   // every poll would be the same line over and over.
   if (input.longFocus) observations.push(input.longFocus);
 
+  // ── Training load ─────────────────────────────────────────────────────────
+  //
+  // ⚠ A SPIKE ONLY, and stated as a ratio against his own month. "Building" and
+  // "easing" are the normal texture of a life and saying them would be noise;
+  // a week running well past his usual is the one worth a line. It is the
+  // textbook acute:chronic heuristic and the text does not pretend otherwise —
+  // no "you are at risk of injury", which nothing here can know.
+  const load = input.training || null;
+  if (load && load.known === true && load.state === 'spike' && Number.isFinite(load.ratio)) {
+    observations.push({
+      kind: 'training-load',
+      level: 'info',
+      text: `This week's exertion is ${load.ratio}× your usual.`,
+      because: 'the last 7 days of heart-rate load against the last 28',
+      caveat: 'a coach’s heuristic, not something validated on you',
+      evidence: [{ source: 'exertion', ref: 'acute:chronic', detail: `${load.acute} vs ${load.chronic}` }],
+      weight: 2,
+    });
+  }
+
+  // ── The room tonight, when it has mattered ────────────────────────────────
+  //
+  // ⚠ ONLY BEHIND A MEASURED FINDING, in a room Nick has named. Without both it
+  // would be SAiM volunteering "it's warm" — true, and nothing to do with sleep.
+  // Evening only, because the room at 14:00 says nothing about tonight.
+  const rs = input.roomSleep || null;
+  if (rs && rs.known === true && rs.finding && Number.isFinite(rs.nowC) && now.getHours() >= 21
+      && rs.nowC >= rs.finding.warmRoomC) {
+    const f = rs.finding;
+    const diff = f.warmValue - f.coolValue;
+    const amount = f.unit === 'h' ? `${Math.round(Math.abs(diff) * 60)} min` : `${Math.round(Math.abs(diff) * 10) / 10} ${f.unit}`;
+    observations.push({
+      kind: 'room-sleep',
+      level: 'info',
+      text: `The ${rs.label} is ${Math.round(rs.nowC)}°C — on warmer nights your ${f.label} has run ${amount} ${diff < 0 ? 'lower' : 'higher'}.`,
+      because: `${f.nights} nights in the ${rs.label}, p = ${f.p}`,
+      caveat: 'a correlation, not a cause',
+      evidence: [{ source: 'logger', ref: 'sleep-environment', detail: `r = ${f.r}` }],
+      weight: 2,
+    });
+  }
+
   // ── Ordering and the cap ──────────────────────────────────────────────────
   //
   // Health findings outrank body-maintenance prompts: "your resting heart rate
@@ -517,10 +559,32 @@ async function build({ now = new Date(), context = null } = {}) {
     gaps.push({ source: 'desktop', why: e.message });
   }
 
+  // Both read from NEURO's own tables and never fail the build.
+  let training = null;
+  try {
+    training = require('./exertion').summary(now).trainingLoad;
+  } catch (e) {
+    gaps.push({ source: 'exertion', why: e.message });
+  }
+  let roomSleep = null;
+  try {
+    const se = require('./performance-insights').cachedSleepEnvironment(now.getTime());
+    const finding = se && se.known && Array.isArray(se.findings) ? se.findings[0] : null;
+    if (finding) {
+      const latest = require('./environment').readingsBetween(Math.floor(now.getTime() / 1000) - 3600, Math.floor(now.getTime() / 1000), 10);
+      const last = latest[latest.length - 1];
+      roomSleep = { known: true, finding, label: se.location.label, nowC: last ? last.temperature_c : null };
+    }
+  } catch (e) {
+    gaps.push({ source: 'sleep-environment', why: e.message });
+  }
+
   const assessed = assess({
     phone,
     standHours,
     longFocus,
+    training,
+    roomSleep,
     days,
     dietEnergy,
     water,
