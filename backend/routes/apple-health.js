@@ -182,9 +182,19 @@ router.post('/ingest', (req, res) => {
     if (Object.keys(parsed.excluded).length) {
       console.log('[AppleHealth] Excluded by APPLE_HEALTH_EXCLUDE:', JSON.stringify(parsed.excluded));
     }
+    // ⚠ WORKOUTS ON EVERY LINE, zero included, and WHICH APP SENT IT.
+    // `health_workouts` sat at zero rows for three weeks while this line
+    // reported healthy posts daily, because it only counted metric points —
+    // "no workouts arrived" and "workouts arrived and were refused" were both
+    // invisible. Two apps and FreeReps post here, and the user-agent is the
+    // only thing that tells them apart.
+    const workoutsRejected = parsed.rejected.filter((r) => r.metric === 'workout').length;
+    const agent = String(req.headers['user-agent'] || 'unknown').split(' ')[0];
     console.log(
       `[AppleHealth] ${parsed.received} points → ${inserted} new, ${skipped} already had, ` +
-      `${parsed.rejected.length} rejected (${Date.now() - started}ms)`
+      `${parsed.rejected.length} rejected; workouts ${parsed.workoutsReceived} received → ` +
+      `${workoutsInserted} new, ${parsed.workouts.length - workoutsInserted} already had, ` +
+      `${workoutsRejected} rejected [${agent}] (${Date.now() - started}ms)`
     );
 
     // Field names match the app's IngestResult so it can render a real summary.

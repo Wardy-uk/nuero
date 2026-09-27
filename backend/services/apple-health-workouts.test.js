@@ -169,3 +169,31 @@ test('parsePayload threads workouts through with the metrics', () => {
   assert.equal(r.records.length, 2);            // ECG takes the document route
   assert.deepEqual(r.unstored, {});             // and nothing is discarded
 });
+
+// ⚠ THE PHONE'S OWN SHAPE, key for key. `HealthSync.readWorkouts()` in
+// nuero-ios builds exactly this dictionary; if a key it sends is ever missing
+// from WORKOUT_FIELDS the workout still stores, with that column null, and only
+// `unknownWorkoutFields` says so. Pinned so a rename on either side fails here.
+test('a WorkOutDoors hike exactly as NeuroKit sends it parses with nothing unknown', () => {
+  const out = parse([{
+    id: 'C0FFEE00-1111-2222-3333-444455556666',
+    name: 'Hiking',
+    start: '2026-09-19 09:12:04 +0100',
+    end: '2026-09-19 13:40:51 +0100',
+    duration: 16127,
+    distance: { qty: 14230.5, units: 'm' },
+    activeEnergyBurned: { qty: 1180.2, units: 'kcal' },
+    avgHeartRate: { qty: 112.4, units: 'bpm' },
+    maxHeartRate: { qty: 151, units: 'bpm' },
+    elevationUp: { qty: 612, units: 'm' },
+  }]);
+  assert.equal(out.rejected.length, 0);
+  assert.deepEqual(out.unknownWorkoutFields, {});
+  const w = out.workouts[0];
+  assert.equal(w.activityType, 'Hiking');
+  assert.equal(w.startedAt, '2026-09-19 08:12:04');
+  assert.equal(w.distanceM, 14230.5);
+  assert.equal(w.elevationM, 612);
+  assert.equal(w.maxHeartRate, 151);
+  assert.equal(w.payload, null);
+});
