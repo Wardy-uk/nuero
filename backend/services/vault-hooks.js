@@ -19,16 +19,46 @@ const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || '';
  * Call after any vault write. Pass the absolute or relative path of the file.
  * Debounces rapid writes to the same file (e.g., multiple appends within 2s).
  */
+/**
+ * A vault-relative path, or null when the file is not inside the vault.
+ *
+ * ⚠ The Pi's OBSIDIAN_VAULT_PATH is a SYMLINK (/home/nickw/nuero-vault →
+ * /mnt/data/nuero-vault), and routes/vault.js resolves writes against the REAL
+ * root (its symlink-escape guard). Relative to the symlink, that path came out as
+ * `../../../mnt/data/nuero-vault/Projects/...` — which matches none of the
+ * `startsWith('Projects/')` exclusions downstream, so every project note written
+ * through the vault API had its checkboxes raised as tasks (127 of 136 pending on
+ * 2 Oct 2026). Both roots are tried; anything still outside is refused.
+ */
+function toVaultRelative(filePath, vaultPath = VAULT_PATH) {
+  if (!vaultPath || !filePath) return null;
+  if (!path.isAbsolute(filePath)) {
+    const rel = String(filePath).replace(/\\/g, '/');
+    return rel === '..' || rel.startsWith('../') ? null : rel;
+  }
+  const direct = relIn(vaultPath, filePath);
+  if (direct) return direct;
+  let real = null;
+  try { real = require('fs').realpathSync(vaultPath); } catch { return null; }
+  return relIn(real, filePath);
+}
+
+function relIn(root, filePath) {
+  const rel = path.relative(root, filePath).replace(/\\/g, '/');
+  if (!rel || rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) return null;
+  return rel;
+}
+
 const _pending = new Map(); // relativePath → timeout handle
 const DEBOUNCE_MS = 2000;
 
 function onVaultWrite(filePath, source) {
   if (!VAULT_PATH || !filePath) return;
 
-  // Normalise to relative path
-  let relativePath = filePath;
-  if (path.isAbsolute(filePath)) {
-    relativePath = path.relative(VAULT_PATH, filePath).replace(/\\/g, '/');
+  const relativePath = toVaultRelative(filePath);
+  if (!relativePath) {
+    console.warn(`[VaultHook:${source || 'unknown'}] Ignored a write outside the vault: ${filePath}`);
+    return;
   }
 
   // Skip non-markdown
@@ -153,4 +183,4 @@ async function _processWrite(relativePath, source) {
   } catch {}
 }
 
-module.exports = { onVaultWrite };
+module.exports = { onVaultWrite, toVaultRelative };

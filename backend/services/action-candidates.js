@@ -86,6 +86,12 @@ function shouldSkipPath(relativePath) {
   return (
     !value ||
     !value.endsWith('.md') ||
+    // A path that escapes the vault is not vault-relative, so every prefix rule
+    // below would miss it — which is how `../../../mnt/data/nuero-vault/Projects/`
+    // raised 127 tasks from project notes (2 Oct 2026). Refuse it outright.
+    value.startsWith('../') ||
+    value.startsWith('/') ||
+    /^[A-Za-z]:\//.test(value) ||
     value.startsWith('Tasks/') ||
     value.startsWith('Daily/') ||
     value.startsWith('Templates/') ||
