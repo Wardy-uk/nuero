@@ -164,60 +164,42 @@ test('long content widens the centrepiece', () => {
 // bands were committing 15 + 40 + 24 + 24 = 103%. Each cap was defensible alone
 // and together they guaranteed a collision whenever BOTH the centrepiece and the
 // flat row were full — which is why it looked intermittent.
-test('the vertical bands fit inside the panel with a gutter', () => {
-  const css = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
-  // ⚠ The LAST match, never the first: this file is a stack of deliberate
-  // overrides, and the first `.surface__say` block is the one they supersede.
-  const last = (re) => {
-    const all = [...css.matchAll(re)];
-    assert.ok(all.length, `missing: ${re}`);
-    return Number(all[all.length - 1][1]);
-  };
-  const heroTop = last(/\.surface--approach \.surface__say \{[^}]*?top: (\d+)%/g);
-  const heroCap = last(/\.surface--approach \.surface__say \{[^}]*?max-height: (\d+)%/g);
-  const rowBottom = last(/\.approach--quiet \.approach__row \{ bottom: (\d+)%/g);
-  const rowCap = last(/\.approach--quiet \.approach__row \{\s*max-height: (\d+)%/g);
+// ⚠ REWRITTEN 2 Oct 2026. These two used to pin a percentage BUDGET — the hero's
+// top + cap below the row's bottom + cap — and both halves of that budget were
+// later removed on purpose: the row's 23% cap on 14 Sep (it sliced the bottoms
+// off the cards on the Fire; the clamps became the only bound), and the hero's
+// cap on short landscape screens on 2 Oct (it squeezed the headline below its
+// own two-line clamp, cutting it through its letters). Arithmetic over numbers
+// the file no longer has is a test that fails for ever and gets ignored. What
+// is pinned now is the MECHANISM; the gutter itself was MEASURED on a 1024x600
+// render of the live kiosk (18px, 2 Oct 2026), because content height cannot
+// be read off CSS.
+const approachCss = () => fs.readFileSync(
+  path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '');
 
-  const herBottom = heroTop + heroCap;      // 50
-  const rowTop = 100 - rowBottom - rowCap;  // 52
-  assert.ok(herBottom < rowTop, `she reaches ${herBottom}% and the row starts at ${rowTop}%`);
-  assert.ok(rowTop - herBottom >= 2, `gutter is only ${rowTop - herBottom}%`);
-
-  // ⚠ AND THE FOOT IS A BAND TOO, which the first two cuts forgot. Measured on
-  // the panel it is 92px of a 487px stage - 19% - because it carries the mic
-  // button as well as the held-back line, not the "two lines" it was budgeted
-  // as. It sits on a 4% offset, so it starts at 77% and the row must end above
-  // that. Measured, because its height is content and cannot be read off CSS.
-  const FOOT_BAND = 23;
-  const rowBottomEdge = 100 - rowBottom;
-  assert.ok(rowBottomEdge <= 100 - FOOT_BAND - 1,
-    `the row reaches ${rowBottomEdge}% and the foot starts at ${100 - FOOT_BAND}%`);
+test('on a short landscape screen the headline cannot shrink below its clamp', () => {
+  const css = approachCss();
+  const at = css.lastIndexOf('@media (max-height: 900px) and (min-aspect-ratio: 1/1)');
+  assert.ok(at >= 0, 'the short-landscape block exists');
+  const block = css.slice(at);
+  assert.match(block, /\.surface__saylead \{[^}]*line-clamp: 2/);
+  assert.match(block, /\.surface__saylead \{ flex-shrink: 0; \}/);
+  assert.match(block, /\.surface__saysub \{[^}]*flex-shrink: 0;[^}]*line-clamp: 1/);
+  // Sized by the clamps, not by a % cap — the stacked state keeps its own cap.
+  assert.match(block, /\.surface__say:not\(\.surface__say--stacked\) \{[^}]*max-height: none/);
+  // The row drops into the space the one-line shelf frees.
+  assert.match(block, /\.approach--quiet \.approach__row \{ bottom: 17%; \}/);
 });
 
-// ⚠ Scoped to the corridor. The phone reads the same payload in portrait, where
-// the box is already 92% wide and this must change nothing.
-test('the wide rule never reaches the phone', () => {
-  const css = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8');
-  for (const m of css.matchAll(/^(.*surface__say--wide.*)\{/gm)) {
-    assert.match(m[1], /\.surface--approach/, `unscoped rule: ${m[1].trim()}`);
-  }
-});
-
-// ── The quiet layout is the one that was actually on screen ────────────────
-// Measured over DevTools on the Fire, 14 Sep 2026: zero `.approach__card`, one
-// `.approach__fact`. The overlap Nick photographed is the FLAT row, not the
-// corridor — so the bands, not the cards, are what had to be bounded.
-test('the flat row is capped and its titles clamped, so it cannot grow into her', () => {
-  const css = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'shared-ui', 'Approach.css'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
+test('the flat row is bounded by its clamps, not by a height cap', () => {
+  const css = approachCss();
   const row = css.slice(css.lastIndexOf('.approach--quiet .approach__row {'));
-  assert.match(row.slice(0, row.indexOf('}')), /max-height: 23%/);
+  assert.doesNotMatch(row.slice(0, row.indexOf('}')), /max-height/,
+    'a cap here slices the bottoms off the cards — the clamps are the bound');
   // Clamped rather than sliced: overflow alone cuts letters in half.
   assert.match(css, /\.approach__fact \.approach__val \{[^}]*line-clamp: 3/);
+  assert.match(css, /\.approach__fact \.approach__sub \{[^}]*line-clamp: 2/);
 });
 
 // ⚠ Decided on the cards it RENDERS, with the SAME parser that places them.
