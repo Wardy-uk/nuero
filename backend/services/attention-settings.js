@@ -29,7 +29,17 @@ const DEFAULTS = {
   interruptionLevel: 'normal',
   pausedUntil: null,
   domains: { work: true, personal: true },
+  displayNight: null,        // null = DISPLAY_NIGHT_DEFAULT
 };
+
+/**
+ * ⚠ THE SCREENS' NIGHT IS ITS OWN WINDOW, NOT QUIET HOURS. Nick, 2 Oct 2026:
+ * "9pm to 7am for now", while push quiet hours run 22:00-07:00. They answer
+ * different questions — when may she interrupt, and when should a panel stop
+ * lighting the room — so borrowing one for the other would quietly change both
+ * the moment either was retuned.
+ */
+const DISPLAY_NIGHT_DEFAULT = '21:00-07:00';
 
 function _envQuietHours() {
   const raw = process.env.PUSH_QUIET_HOURS || '22:00-07:00';
@@ -63,6 +73,8 @@ function read() {
       work: domains.work !== false,
       personal: domains.personal !== false,
     },
+    displayNight: isQuietWindow(stored.displayNight) ? stored.displayNight : DISPLAY_NIGHT_DEFAULT,
+    displayNightSource: isQuietWindow(stored.displayNight) ? 'setting' : 'default',
   };
 }
 
@@ -79,7 +91,11 @@ function update(patch = {}) {
     interruptionLevel: current.interruptionLevel,
     pausedUntil: current.pausedUntil,
     domains: { ...current.domains },
+    displayNight: current.displayNightSource === 'setting' ? current.displayNight : null,
   };
+
+  if (patch.displayNight === null) next.displayNight = null;      // back to the default
+  else if (isQuietWindow(patch.displayNight)) next.displayNight = patch.displayNight;
 
   if (patch.quietHours === null) next.quietHours = null;          // back to the server's
   else if (isQuietWindow(patch.quietHours)) next.quietHours = patch.quietHours;
@@ -119,7 +135,11 @@ function isPaused(settings, now = new Date()) {
 
 /** Quiet-hours test against a settings object rather than the env. PURE. */
 function isQuietAt(settings, now = new Date()) {
-  const raw = settings && settings.quietHours;
+  return inWindow(settings && settings.quietHours, now);
+}
+
+/** Is `now` inside an `HH:MM-HH:MM` window (which may wrap midnight)? PURE. */
+function inWindow(raw, now = new Date()) {
   if (!raw || raw === 'off') return false;
   const m = String(raw).match(/^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/);
   if (!m) return false;
@@ -130,4 +150,4 @@ function isQuietAt(settings, now = new Date()) {
   return startMins > endMins ? (mins >= startMins || mins < endMins) : (mins >= startMins && mins < endMins);
 }
 
-module.exports = { read, update, isPaused, isQuietAt, isQuietWindow, LEVELS, DEFAULTS, STATE_KEY };
+module.exports = { read, update, isPaused, isQuietAt, inWindow, isQuietWindow, LEVELS, DEFAULTS, STATE_KEY, DISPLAY_NIGHT_DEFAULT };

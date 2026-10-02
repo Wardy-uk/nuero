@@ -1,0 +1,9 @@
+/* Above everything, including the clock and lock overlays and the nav. */
+.nightdim {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.78);
+  transition: opacity 0.6s ease;
+  cursor: pointer;
+}

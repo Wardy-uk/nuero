@@ -348,6 +348,31 @@ export default function Controls() {
         )}
       </section>
 
+      {/* ⚠ Its OWN window, not quiet hours: one is when she may interrupt, the
+          other is when a panel stops lighting the room. Older backends do not
+          send it, so the section only renders when there is a value to show. */}
+      {settings.displayNight !== undefined && (
+        <section className="controls__section">
+          <h3 className="controls__heading">Screens dim overnight</h3>
+          <div className="controls__chips">
+            {['off', '21:00-07:00', '22:00-07:00', '20:00-07:00', '23:00-06:00'].map((w) => (
+              <button
+                key={w}
+                className={`controls__chip${settings.displayNight === w ? ' controls__chip--on' : ''}`}
+                disabled={busy}
+                onClick={() => patch({ displayNight: w })}
+              >
+                {w === 'off' ? 'Never' : w}
+              </button>
+            ))}
+          </div>
+          <p className="controls__muted">
+            Wall screens and tablets go dim in this window. A touch wakes one for a few minutes.
+            {settings.displayNightSource === 'default' ? ' This is the default — you have not set your own.' : ''}
+          </p>
+        </section>
+      )}
+
       <section className="controls__section">
         <h3 className="controls__heading">What counts</h3>
         {['work', 'personal'].map((d) => (

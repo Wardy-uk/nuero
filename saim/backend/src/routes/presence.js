@@ -40,6 +40,7 @@ const history = require('../presence/history');
 const profiles = require('../presence/profiles');
 const { classify } = require('../presence/fingerprint');
 const { resolveRoom, displayState, offsiteDisplayState } = require('../presence/rooms');
+const nightDisplay = require('../display/night');
 const pendingGreetings = require('../greeting/pending');
 const neuroConfig = require('../integrations/neuroConfig');
 
@@ -436,6 +437,8 @@ router.get('/display', (req, res) => {
         unreadable: deskOnly.unreadable, why: deskOnly.why,
       },
       home: null,
+      ...nightDisplay.placeFor(room, { offsite: true }),
+      night: nightDisplay.night(room, now),
       checkedAt: now.toISOString(),
     });
   }
@@ -505,8 +508,22 @@ router.get('/display', (req, res) => {
       why: arbitration.why,
     },
     home: { away: home.away, zone: home.zone, basis: home.basis, reason: home.reason },
+    // Where this screen is (home + its HA area, or work), and whether it is night
+    // for it. `night.dim` is the one decision the page, Fully and the backlight
+    // agent all obey.
+    ...nightDisplay.placeFor(room, { offsite: false }),
+    night: nightDisplay.night(room, now),
     checkedAt: now.toISOString(),
   });
+});
+
+// POST /api/presence/display/wake?room=study — he touched this screen. At night
+// it lifts the dim for a few minutes; by day it changes nothing. Kept server-side
+// so the backlight agent, which cannot see a tap, wakes the panel too.
+router.post('/display/wake', (req, res) => {
+  const room = String(req.query.room || '').trim();
+  if (!/^[a-z0-9-]{1,40}$/.test(room)) return res.status(400).json({ ok: false, reason: 'room is required' });
+  res.json({ ok: true, room, night: nightDisplay.wake(room) });
 });
 
 router.get('/', (_req, res) => {

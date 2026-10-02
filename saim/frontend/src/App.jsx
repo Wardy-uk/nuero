@@ -19,6 +19,7 @@ import ExitButton from './components/ExitButton';
 import RefreshButton from './components/RefreshButton';
 import LockScreen from './components/LockScreen';
 import ClockScreen from './components/ClockScreen';
+import NightDim from './components/NightDim';
 import ConnectionStatus from './components/ConnectionStatus';
 import Whereabouts from '../../shared-ui/Whereabouts';
 import { startAutoFlush } from '../../app/src/mobile/outbox';
@@ -93,7 +94,9 @@ function AppShell() {
   // verdict, so this screen, the phone and the widget cannot each invent their
   // own idea of what a missing watch means: watch here → SAiM, watch elsewhere
   // → clock, out of the house → off.
-  const { state: displayState, detail: displayDetail } = useDisplayState();
+  const { state: displayState, detail: displayDetail, place, area, night, dim, wake } = useDisplayState();
+  // The room line belongs on HOME screens only; the work Fire has no area.
+  const homeArea = place === 'home' ? area : null;
   const locked = displayState === 'locked';
   const showClock = displayState === 'clock';
   // ⚠ Both of these render as an OVERLAY over the live shell rather than instead
@@ -252,8 +255,9 @@ function AppShell() {
           clock screen is lit and its field animates; the lock screen is `still`
           because its panel is dark. Putting them inside would stop the one
           field anybody can actually see. */}
-      {showClock && <ClockScreen now={now} say={displayDetail?.say} />}
-      {locked && <LockScreen reason={displayDetail?.reason} now={now} />}
+      {showClock && <ClockScreen now={now} say={displayDetail?.say} area={homeArea} />}
+      {locked && <LockScreen reason={displayDetail?.reason} now={now} area={homeArea} />}
+      <NightDim dim={dim} nightActive={Boolean(night && night.active)} onWake={wake} />
     </div>
   );
 }

@@ -1,0 +1,13 @@
+.roomreading {
+  position: relative;
+  z-index: 2;
+  margin-top: 1.4rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: clamp(0.85rem, 1.7vw, 1.25rem);
+  letter-spacing: 0.08em;
+  color: var(--ink-2, #9fb0c6);
+  text-align: center;
+}
+.roomreading__area { color: var(--ink, #eef3fa); }
+.roomreading--wait { opacity: 0.5; }
+.roomreading--gap { color: #f0d6a6; opacity: 0.8; }

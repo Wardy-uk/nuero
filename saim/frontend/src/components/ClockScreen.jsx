@@ -1,4 +1,5 @@
 import Field from '../../../shared-ui/Field';
+import RoomReading from './RoomReading';
 import './ClockScreen.css';
 
 // The middle state: Nick is at home (or in the building), but not in this room.
@@ -24,7 +25,7 @@ import './ClockScreen.css';
 // is an IPS LCD and does not burn in — at worst temporary image persistence.
 // The clock can sit still. (The `locked` state blanks the backlight outright,
 // which is the display agent's job, not this component's.)
-export default function ClockScreen({ now, say }) {
+export default function ClockScreen({ now, say, area }) {
   const d = now instanceof Date ? now : new Date();
   const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const date = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -54,6 +55,8 @@ export default function ClockScreen({ now, say }) {
       {message ? <div className="clockscreen__say">{message}</div> : null}
       <div className="clockscreen__time">{time}</div>
       <div className="clockscreen__date">{date}</div>
+      {/* Home screens only — `area` is null on the work Fire. */}
+      <RoomReading area={area} />
     </div>
   );
 }

@@ -32,6 +32,14 @@ router.get('/history', (req, res) => {
   res.json(rooms.history(limit));
 });
 
+// GET /api/rooms/area?name=Office — one room's temperature and lights, for a
+// screen that lives in it. Read-only, and it never advances the visit episode.
+router.get('/area', async (req, res) => {
+  const name = String(req.query.name || '').trim().slice(0, 60);
+  if (!name) return res.status(400).json({ known: false, why: 'name is required' });
+  res.json(await rooms.areaReading(name));
+});
+
 // POST /api/rooms/:key/accept — do it.
 router.post('/:key/accept', async (req, res) => {
   try {

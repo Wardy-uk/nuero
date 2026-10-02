@@ -39,6 +39,10 @@ POLL_S = float(os.environ.get("SAIM_DISPLAY_POLL_S", "5"))
 # A verdict older than this is not trusted. The backend answers in milliseconds;
 # if we cannot reach it at all we light the screen rather than guess.
 TIMEOUT_S = float(os.environ.get("SAIM_DISPLAY_TIMEOUT_S", "8"))
+# Overnight, the share of "on" the panel drops to (Nick, 2 Oct 2026: "overnight
+# the screens should dim - unless I'm interacting"). The backend decides WHEN, in
+# `night.dim`, and already accounts for a recent touch; this only says how far.
+NIGHT_SHARE = float(os.environ.get("SAIM_DISPLAY_NIGHT_SHARE", "0.15"))
 
 if not ROOM:
     raise SystemExit("SAIM_ROOM is required")
@@ -95,13 +99,22 @@ def main():
         # None (unreachable / unparseable / unknown) is treated as lit, never dark.
         state = d.get("state") if d else "clock"
 
-        want = 0 if state == "locked" else on_level
-        if state != last:
+        # ⚠ Dim is never dark: at least 1, because a 0 here is indistinguishable
+        # from the locked state and from a dead Pi. Only `locked` goes to 0.
+        dim = bool(d and isinstance(d.get("night"), dict) and d["night"].get("dim"))
+        if state == "locked":
+            want = 0
+        elif dim:
+            want = max(1, int(round(on_level * NIGHT_SHARE)))
+        else:
+            want = on_level
+        label = state + (" (night)" if dim and state != "locked" else "")
+        if label != last:
             note = ""
             if d and d.get("contradiction"):
                 note = " [" + d["contradiction"] + "]"
-            print("[display] -> " + state + " (backlight " + str(want) + ")" + note, flush=True)
-            last = state
+            print("[display] -> " + label + " (backlight " + str(want) + ")" + note, flush=True)
+            last = label
         set_brightness(want)
         time.sleep(POLL_S)
 

@@ -1,4 +1,5 @@
 import Field from '../../../shared-ui/Field';
+import RoomReading from './RoomReading';
 import './LockScreen.css';
 
 // LockScreen — privacy lock overlay for the Pi wall display (WS2-WP3).
@@ -31,7 +32,7 @@ function formatTime(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function LockScreen({ reason, now }) {
+export default function LockScreen({ reason, now, area }) {
   return (
     <div className="lock" aria-label="SAiM locked — away from home">
       {/* ⚠ This replaces a pulsing ORB, which `MANIFESTATION.md` deprecates
@@ -54,6 +55,9 @@ export default function LockScreen({ reason, now }) {
         <span className="lock__mark">SAiM</span>
         {now && <span className="lock__time">{formatTime(now)}</span>}
         <span className="lock__reason">{REASON_TEXT[reason] || 'Locked'}</span>
+        {/* The room, not his day: temperature and lights are what anyone in the
+            house can see from the doorway, so they are safe on a privacy lock. */}
+        <RoomReading area={area} />
       </div>
     </div>
   );

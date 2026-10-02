@@ -3078,6 +3078,24 @@
     "stream": false
   },
   {
+    "id": "get_rooms_area",
+    "method": "GET",
+    "route": "/api/rooms/area",
+    "domain": "rooms",
+    "source": "routes/rooms.js",
+    "line": 37,
+    "description": "GET /api/rooms/area. ?name=Office — one room's temperature and lights, for a",
+    "params": [],
+    "query": [
+      "name"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_rooms_history",
     "method": "GET",
     "route": "/api/rooms/history",
@@ -7770,7 +7788,7 @@
     "route": "/api/rooms/:key/accept",
     "domain": "rooms",
     "source": "routes/rooms.js",
-    "line": 36,
+    "line": 44,
     "description": "POST /api/rooms/:key/accept. do it.",
     "params": [
       "key"
@@ -7788,7 +7806,7 @@
     "route": "/api/rooms/:key/decline",
     "domain": "rooms",
     "source": "routes/rooms.js",
-    "line": 50,
+    "line": 58,
     "description": "POST /api/rooms/:key/decline. not this time. Asks again on the next visit.",
     "params": [
       "key"

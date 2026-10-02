@@ -251,6 +251,67 @@ function history(limit = 50) {
   return { ok: true, entries, total: Object.keys(map).length };
 }
 
+/**
+ * One room's reading, for a screen that lives in it. PURE — takes the house.
+ *
+ * Nick, 2 Oct 2026: the home screens "should display room info as well — so
+ * never nothing". The clock and lock states used to show only the time, so a
+ * screen in the kitchen said nothing a microwave does not.
+ *
+ * ⚠ IT READS THE HOUSE, NEVER `snapshot()`. Snapshot advances the visit
+ * episode, and a screen polling its own room is not Nick walking into it — a
+ * read that moved the episode would re-open offers he has already answered.
+ *
+ * ⚠ THREE LIGHT STATES, as everywhere: `unavailable` is off at the wall, which
+ * she cannot reach, and is counted apart from `off`.
+ *
+ * ⚠ A TEMPERATURE ABOVE 45 IS REFUSED, not shown. Hive's `sensor.*` entities are
+ * Fahrenheit while `climate.*` is Celsius; `ha-rooms` already reads the right
+ * one, and this is the same guard `room-offers` applies, so a 68 never reaches a
+ * wall as a room that is apparently on fire.
+ *
+ * @returns {{ known, area, tempC, targetC, lights: {total,on,off,unreachable}, why }}
+ */
+function describeArea(house, name) {
+  const wanted = String(name || '').trim().toLowerCase();
+  if (!wanted) return { known: false, area: null, why: 'no room named' };
+  if (!house || !house.known) {
+    return { known: false, area: name, why: 'the house could not be read' };
+  }
+  const room = (house.rooms || []).find(r => String(r.area || '').toLowerCase() === wanted);
+  if (!room) return { known: false, area: name, why: 'Home Assistant has no room by that name' };
+
+  const temps = (room.climate || [])
+    .map(c => c.currentC)
+    .filter(t => typeof t === 'number' && Number.isFinite(t) && t > -30 && t <= 45);
+  const targets = (room.climate || [])
+    .map(c => c.targetC)
+    .filter(t => typeof t === 'number' && Number.isFinite(t) && t <= 45);
+  const lights = room.lights || [];
+  return {
+    known: true,
+    area: room.area,
+    tempC: temps.length ? Math.round((temps.reduce((a, b) => a + b, 0) / temps.length) * 10) / 10 : null,
+    targetC: targets.length ? Math.max(...targets) : null,
+    lights: {
+      total: lights.length,
+      on: lights.filter(l => l.state === 'on').length,
+      off: lights.filter(l => l.state === 'off').length,
+      unreachable: lights.filter(l => l.state === 'unavailable').length,
+    },
+    why: null,
+  };
+}
+
+/** `describeArea` against a (cached) live read. Never throws. */
+async function areaReading(name, { now = new Date() } = {}) {
+  try {
+    return describeArea(await _readHouse(now), name);
+  } catch (e) {
+    return { known: false, area: name, why: 'the house could not be read' };
+  }
+}
+
 module.exports = {
   snapshot,
   act,
@@ -260,4 +321,6 @@ module.exports = {
   EPISODE_KEY,
   DECISIONS_KEY,
   MAX_DECISIONS,
+  describeArea,
+  areaReading,
 };

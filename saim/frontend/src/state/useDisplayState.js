@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // What this screen should be showing, as decided by NEURO — `full`, `clock` or
 // `locked`, for THIS room.
@@ -49,6 +49,10 @@ function resolveRoom() {
 export function useDisplayState() {
   const [state, setState] = useState('full');
   const [detail, setDetail] = useState(null);
+  // Woken locally the moment he touches it, so the dim lifts on the tap rather
+  // than up to one poll later. The server's verdict is still the authority — this
+  // only ever LIFTS a dim early, it can never cause one.
+  const [localWakeUntil, setLocalWakeUntil] = useState(0);
   const alive = useRef(true);
 
   useEffect(() => {
@@ -80,5 +84,29 @@ export function useDisplayState() {
     return () => { alive.current = false; clearInterval(id); };
   }, []);
 
-  return { state, detail, room: ROOM };
+  const wake = useCallback(() => {
+    setLocalWakeUntil(Date.now() + 60_000);
+    fetch(`/api/presence/display/wake?room=${encodeURIComponent(ROOM)}`, { method: 'POST' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive.current && d && d.night) setDetail((prev) => (prev ? { ...prev, night: d.night } : prev));
+      })
+      .catch(() => { /* the local wake still holds */ });
+  }, []);
+
+  // ⚠ FAILS TOWARDS LIT, like everything here: no verdict, or one from a backend
+  // that predates night, means no dim.
+  const night = detail && detail.night && typeof detail.night === 'object' ? detail.night : null;
+  const dim = Boolean(night && night.dim) && Date.now() >= localWakeUntil;
+
+  return {
+    state,
+    detail,
+    room: ROOM,
+    place: detail && (detail.place === 'home' || detail.place === 'work') ? detail.place : null,
+    area: detail && typeof detail.area === 'string' ? detail.area : null,
+    night,
+    dim,
+    wake,
+  };
 }
