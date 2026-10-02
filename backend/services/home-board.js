@@ -30,6 +30,20 @@ const rooms = require('./rooms');
 
 const MAX_EVENTS = 4;
 
+// HA's condition ids, as a person would say them. An unknown id is shown with
+// its hyphens spaced out rather than dropped.
+const CONDITIONS = {
+  'clear-night': 'Clear', cloudy: 'Cloudy', exceptional: 'Unusual weather', fog: 'Fog',
+  hail: 'Hail', lightning: 'Thunder', 'lightning-rainy': 'Thunderstorms', partlycloudy: 'Partly cloudy',
+  pouring: 'Heavy rain', rainy: 'Rain', snowy: 'Snow', 'snowy-rainy': 'Sleet', sunny: 'Sunny',
+  windy: 'Windy', 'windy-variant': 'Windy',
+};
+function conditionLabel(id) {
+  const k = String(id || '').toLowerCase();
+  if (!k) return null;
+  return CONDITIONS[k] || k.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
+}
+
 function pad(n) { return String(n).padStart(2, '0'); }
 function dateKey(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 
@@ -78,7 +92,7 @@ function weatherLines(weather, outlookFn, now) {
   if (tempC !== null && /F/i.test(String(weather.unit || ''))) tempC = Math.round(((tempC - 32) * 5) / 9 * 10) / 10;
   let lines = [];
   try { lines = (outlookFn(weather, weather.hours || [], now).lines) || []; } catch { lines = []; }
-  return { known: true, condition: weather.condition || null, tempC, lines: lines.slice(0, 2) };
+  return { known: true, condition: conditionLabel(weather.condition), tempC, lines: lines.slice(0, 2) };
 }
 
 async function build({ area = null, now = new Date() } = {}) {
@@ -111,4 +125,4 @@ async function build({ area = null, now = new Date() } = {}) {
   return { area, room, weather, house: houseLine, diary, gaps: [...new Set(gaps)], at: now.toISOString() };
 }
 
-module.exports = { build, restOfDay, houseSummary, weatherLines, MAX_EVENTS };
+module.exports = { build, restOfDay, houseSummary, weatherLines, conditionLabel, MAX_EVENTS };

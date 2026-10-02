@@ -58,3 +58,10 @@ test('weather in Fahrenheit is converted, never shown as Celsius', () => {
   assert.equal(w.tempC, 20);
   assert.deepEqual(w.lines, ['Dry all afternoon.']);
 });
+
+test('weather conditions read as words, not Home Assistant ids', () => {
+  assert.equal(board.conditionLabel('partlycloudy'), 'Partly cloudy');
+  assert.equal(board.conditionLabel('lightning-rainy'), 'Thunderstorms');
+  assert.equal(board.conditionLabel('new-thing'), 'New thing');
+  assert.equal(board.conditionLabel(null), null);
+});

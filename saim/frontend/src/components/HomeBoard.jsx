@@ -88,7 +88,7 @@ export default function HomeBoard({ now, area, say }) {
             <>
               <div className="homeboard__wx">
                 {typeof w.tempC === 'number' ? `${Math.round(w.tempC)}°` : ''}{' '}
-                <span>{String(w.condition || '').replace(/-/g, ' ')}</span>
+                <span>{w.condition || ''}</span>
               </div>
               {(w.lines || []).map((l) => <div key={l} className="homeboard__line">{l}</div>)}
             </>
