@@ -32,17 +32,30 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-BACKLIGHT = os.environ.get("SAIM_BACKLIGHT", "/sys/class/backlight/panel_backlight@1")
-ROOM = os.environ.get("SAIM_ROOM", "").strip()
-BASE = os.environ.get("SAIM_DISPLAY_URL", "").strip()
-POLL_S = float(os.environ.get("SAIM_DISPLAY_POLL_S", "5"))
+def env(name, default=""):
+    """SAIM_* first, then the pre-rename SARA_* name.
+
+    ⚠ The live unit on pi-dev still loads /etc/sara-room.env, which the rename
+    deliberately left alone, so a SAIM_-only read crash-looped the agent the
+    first time this script was redeployed (2 Oct 2026) - and a crash-looping
+    agent leaves the panel at whatever brightness it last set."""
+    v = os.environ.get("SAIM_" + name)
+    if v is None:
+        v = os.environ.get("SARA_" + name, default)
+    return v
+
+
+BACKLIGHT = env("BACKLIGHT", "/sys/class/backlight/panel_backlight@1")
+ROOM = env("ROOM").strip()
+BASE = env("DISPLAY_URL").strip()
+POLL_S = float(env("DISPLAY_POLL_S", "5"))
 # A verdict older than this is not trusted. The backend answers in milliseconds;
 # if we cannot reach it at all we light the screen rather than guess.
-TIMEOUT_S = float(os.environ.get("SAIM_DISPLAY_TIMEOUT_S", "8"))
+TIMEOUT_S = float(env("DISPLAY_TIMEOUT_S", "8"))
 # Overnight, the share of "on" the panel drops to (Nick, 2 Oct 2026: "overnight
 # the screens should dim - unless I'm interacting"). The backend decides WHEN, in
 # `night.dim`, and already accounts for a recent touch; this only says how far.
-NIGHT_SHARE = float(os.environ.get("SAIM_DISPLAY_NIGHT_SHARE", "0.15"))
+NIGHT_SHARE = float(env("DISPLAY_NIGHT_SHARE", "0.15"))
 
 if not ROOM:
     raise SystemExit("SAIM_ROOM is required")
