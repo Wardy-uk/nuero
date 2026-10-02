@@ -158,8 +158,34 @@ test('finishing writes the note and closes the session', () => {
 test('the context tells the model to chase carried work, with the keys to do it', () => {
   const rendered = session._renderContext(fixture().context);
   assert.match(rendered, /CARRIED/);
-  assert.match(rendered, /carried 5 days/);
+  assert.match(rendered, /on 5 standups/);
   assert.match(rendered, /key: ship the qa framework/);
+  // A context persisted before lastStandup existed must not claim "none".
+  assert.doesNotMatch(rendered, /LAST STANDUP/);
+});
+
+test('a week with no standup is named, and the carried list is dated', () => {
+  // 2 Oct 2026, live: SAiM called a 23 Sep commitment "from yesterday" and
+  // asked whether a 13:00 meeting from that day was happening today.
+  const rendered = session._renderContext({
+    accountability: {
+      yesterday: { date: '2026-10-01', committed: 0, done: 0, items: [], eodItems: [] },
+      lastStandup: { date: '2026-09-23', daysAgo: 9 },
+      openCommitments: [{
+        key: 'prep sip', text: 'Prep for Support Improvement Plan meeting at 13:00',
+        daysCarried: 1, lastSeen: '2026-09-23', lastSeenDaysAgo: 9,
+      }],
+    },
+  });
+  assert.match(rendered, /LAST STANDUP: 2026-09-23, 9 days ago/);
+  assert.match(rendered, /last committed 2026-09-23 \(9 days ago\)/);
+  assert.match(rendered, /never whether he is doing it today/);
+  assert.doesNotMatch(rendered, /^YESTERDAY/m);
+
+  const none = session._renderContext({
+    accountability: { lastStandup: null, openCommitments: [{ key: 'k', text: 'x', daysCarried: 1 }] },
+  });
+  assert.match(none, /none in the last two weeks/);
 });
 
 test('the schedule knows Nick works Monday to Friday', () => {
@@ -255,4 +281,22 @@ test('the set_weekly_target tool takes a whole number and nothing else', () => {
   assert.equal(tool.input_schema.properties.target.type, 'integer');
   assert.deepEqual(tool.input_schema.required, ['target']);
   assert.match(tool.description, /Never invent one/i);
+});
+
+test('what the tools did reaches the next turn, refusals included', () => {
+  // 2 Oct 2026, live: having booked 14:00 itself, the next turn said "Now
+  // blocking them" again and reported its own block as a clash.
+  const log = [
+    session._describeToolResult('block_time', { task_ids: [23] }, { ok: true, booked: '2026-10-02 14:00-15:00', tasks: ['#400 Podcast'] }),
+    session._describeToolResult('set_weekly_target', { target: 10 }, { ok: true, target: 10 }),
+    session._describeToolResult('block_time', { task_ids: [400] }, { ok: false, error: 'slot taken' }),
+  ];
+  assert.match(log[0], /BOOKED 2026-10-02 14:00-15:00 for #400 Podcast/);
+  assert.match(log[1], /SET to 10/);
+  assert.match(log[2], /REFUSED — nothing changed: slot taken/);
+  const block = session._renderToolLog(log);
+  assert.match(block, /ALREADY DONE THIS SESSION/);
+  assert.match(block, /never treat a block you booked as a clash/);
+  assert.equal(session._renderToolLog([]), '');
+  assert.equal(session._renderToolLog(undefined), '');
 });

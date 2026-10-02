@@ -474,15 +474,24 @@ function buildAccountability({ lookbackDays = 14, asOf = null, ledger = null, ta
     for (const item of (day.eodItems || [])) eodReported.set(item.key, day.date);
   }
 
+  // ⚠ `daysCarried` counts the STANDUPS a commitment appeared on, not calendar
+  // days — so after a week with no standup, a line from the last one reads
+  // "carried 1 day" and the model calls it "from yesterday". `lastSeenDaysAgo`
+  // is the calendar fact, measured against the anchor in local midnights.
+  const daysAgo = (key) => Math.round((anchorMidnight - _asOfDate(key)) / 86400000);
+  const anchorMidnight = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+
   const candidates = [];
   for (const [key, entry] of tracked) {
     if (entry.lastDone || entry.dates.length === 0) continue;
+    const lastSeen = entry.dates[entry.dates.length - 1];
     candidates.push({
       key,
       text: entry.text,
       daysCarried: entry.dates.length,
       firstSeen: entry.dates[0],
-      lastSeen: entry.dates[entry.dates.length - 1],
+      lastSeen,
+      lastSeenDaysAgo: daysAgo(lastSeen),
       reportedDoneOn: eodReported.get(key) || null,
       taskId: entry.taskId || null,
     });
@@ -506,6 +515,16 @@ function buildAccountability({ lookbackDays = 14, asOf = null, ledger = null, ta
       unresolved: previous.didntGo || null,
     };
   }
+
+  // ── When the ritual last actually ran ──
+  // `yesterday` above is the most recent NOTE, and NEURO writes notes itself
+  // (the alert logger, observations) — so it is routinely a day with no standup
+  // in it. This is the day commitments were last made, which is what "carried
+  // from" really means. Null when none ran in the lookback.
+  const lastStandupDay = withNotes.find(d => d.standupDone) || null;
+  const lastStandup = lastStandupDay
+    ? { date: lastStandupDay.date, daysAgo: daysAgo(lastStandupDay.date) }
+    : null;
 
   // ── Days the ritual was skipped entirely (weekdays only) ──
   const skipped = days
@@ -572,6 +591,7 @@ function buildAccountability({ lookbackDays = 14, asOf = null, ledger = null, ta
     headline,
     today,
     yesterday,
+    lastStandup,
     openCommitments,
     closedCommitments,
     staleCount: stale.length,

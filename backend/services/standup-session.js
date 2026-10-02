@@ -321,7 +321,7 @@ function _renderContext(ctx) {
     // the note was, and the checkbox list beneath it was always empty. The
     // counts were computed correctly all along and then not used.
     const y = acc.yesterday;
-    parts.push(`YESTERDAY (${y.date}): committed to ${y.committed} thing${y.committed === 1 ? '' : 's'}, ${y.done} ticked off in the note.`);
+    parts.push(`MOST RECENT DAILY NOTE (${y.date}) — NEURO writes these itself, so this is NOT necessarily a day he did a standup: committed to ${y.committed} thing${y.committed === 1 ? '' : 's'}, ${y.done} ticked off in the note.`);
     for (const item of (y.items || []).slice(0, 6)) {
       parts.push(`  [${item.done ? 'x' : ' '}] ${item.text}`);
     }
@@ -412,8 +412,20 @@ function _renderContext(ctx) {
     }
   }
 
+  // ⚠ Without this the model only ever saw "carried 1 day" and called a
+  // nine-day-old commitment "from yesterday" — then asked about a 13:00 meeting
+  // that had happened the week before. Say when commitments were last made.
+  const ls = acc?.lastStandup;
+  if (ls && ls.daysAgo > 1) {
+    parts.push(`\nLAST STANDUP: ${ls.date}, ${ls.daysAgo} days ago. There has been NO standup since. Never say "yesterday" about the carried list — say when it was from. Anything in it naming a time or a meeting ("at 13:00", "prep for X") referred to THAT day, not today: ask whether it is still live, never whether he is doing it today.`);
+  } else if (acc?.openCommitments?.length && acc && 'lastStandup' in acc && ls === null) {
+    // `in`, not falsy: a session persisted before this field existed has no key
+    // at all, and "I don't know" must not be rendered as "none in two weeks".
+    parts.push('\nLAST STANDUP: none in the last two weeks. Do not describe anything as "from yesterday".');
+  }
+
   if (acc?.openCommitments?.length) {
-    parts.push(`\nCARRIED (these are the ones to chase — a commitment on day 3+ needs a decision, not another carry):`);
+    parts.push(`\nCARRIED (these are the ones to chase — a commitment on day 3+ needs a decision, not another carry; "on N standups" counts standups, not calendar days):`);
     for (const c of acc.openCommitments.slice(0, 8)) {
       // A commitment he told an EOD he had finished is not one to chase again.
       // It is his own account rather than a tick, so it is stated as evidence
@@ -429,7 +441,10 @@ function _renderContext(ctx) {
           ? ` [task #${c.task.id}]`
           : ` [likely task #${c.task.id} "${c.task.text}"]`;
       }
-      parts.push(`  - "${c.text}" — carried ${c.daysCarried} day${c.daysCarried === 1 ? '' : 's'}${said}${task} [key: ${c.key}]`);
+      const age = c.lastSeen
+        ? `, last committed ${c.lastSeen}${Number.isFinite(c.lastSeenDaysAgo) ? ` (${c.lastSeenDaysAgo} day${c.lastSeenDaysAgo === 1 ? '' : 's'} ago)` : ''}`
+        : '';
+      parts.push(`  - "${c.text}" — on ${c.daysCarried} standup${c.daysCarried === 1 ? '' : 's'}${age}${said}${task} [key: ${c.key}]`);
     }
   }
 
@@ -698,7 +713,42 @@ async function executeTool(session, name, input = {}) {
   if (result && result.ok === false) {
     console.warn(`[StandupSession] ${name} refused: ${result.error || 'no reason given'}`);
   }
+  // ⚠ AND IT MUST REACH THE NEXT TURN. Because the transcript keeps only prose,
+  // the model on turn N+1 could not see what turn N had done: 2 Oct 2026 it
+  // booked 13:00 + 14:00, was asked for the weekly target, then said "Now
+  // blocking them" again and reported its OWN 14:00 block as a clash. The log
+  // is rendered into every prompt as what has already happened this session.
+  try {
+    const log = (session.toolLog = session.toolLog || []);
+    log.push(_describeToolResult(name, input, result));
+    if (log.length > 25) log.splice(0, log.length - 25);
+  } catch {}
   return result;
+}
+
+/** PURE. One line saying what a tool call actually did — or that it did not. */
+function _describeToolResult(name, input = {}, result = {}) {
+  if (!result || result.ok === false) {
+    return `${name} REFUSED — nothing changed: ${String(result?.error || 'no reason').slice(0, 160)}`;
+  }
+  switch (name) {
+    case 'block_time':
+      return `block_time: ${result.already ? 'already booked' : 'BOOKED'} ${result.booked} for ${(result.tasks || []).join('; ') || (input.task_ids || []).map(id => `#${id}`).join(', ')}`;
+    case 'create_task':
+      return `create_task: CREATED #${result.task_id ?? '?'} "${result.text || input.text || ''}"`;
+    case 'set_weekly_target':
+      return `set_weekly_target: weekly target SET to ${result.target}`;
+    case 'resolve_commitment':
+      return result.unchanged
+        ? `resolve_commitment: "${input.key}" was already decided`
+        : `resolve_commitment: recorded ${result.recorded} on "${input.key}"${input.due_date ? ` (due ${input.due_date})` : ''}`;
+    case 'set_focus':
+      return `set_focus: focus recorded — ${(result.focus || []).join('; ')}`;
+    case 'complete_task':
+      return `complete_task: closed ${input.task_id != null ? `#${input.task_id}` : JSON.stringify(input).slice(0, 80)}`;
+    default:
+      return `${name}: ok ${JSON.stringify(input).slice(0, 100)}`;
+  }
 }
 
 async function _executeTool(session, name, input = {}) {
@@ -921,6 +971,12 @@ async function _executeTool(session, name, input = {}) {
   }
 }
 
+/** PURE. The tool log as a prompt block; empty string when nothing has run. */
+function _renderToolLog(log) {
+  if (!Array.isArray(log) || !log.length) return '';
+  return `\n\nALREADY DONE THIS SESSION (by your own tool calls, oldest first — this is the record; your earlier messages are not). Never redo any of it, never treat a block you booked as a clash, and never ask for something already set:\n${log.map(l => `  - ${l}`).join('\n')}`;
+}
+
 /** Remember that `text` is task #taskId, so the note line can say so. One entry per task. */
 function _noteLink(session, text, taskId) {
   const links = (session.outcome.taskLinks = session.outcome.taskLinks || []);
@@ -972,7 +1028,7 @@ function _refreshCarried(session) {
 
 async function _turn(session) {
   _refreshCarried(session);
-  const prompt = `${session.kind === KIND_EOD ? EOD_PROMPT : STANDUP_PROMPT}\n\n---\nCONTEXT (${session.dateKey}):\n${_renderContext(session.context)}`;
+  const prompt = `${session.kind === KIND_EOD ? EOD_PROMPT : STANDUP_PROMPT}\n\n---\nCONTEXT (${session.dateKey}):\n${_renderContext(session.context)}${_renderToolLog(session.toolLog)}`;
 
   const aiRouting = require('./ai-routing');
   let reply = '';
@@ -1564,5 +1620,7 @@ module.exports = {
   executeTool,
   _renderContext,
   _emptySession,
+  _describeToolResult,
+  _renderToolLog,
   _linkCommitments,
 };
