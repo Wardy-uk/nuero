@@ -586,7 +586,11 @@ function clearFyiSection({ dryRun = false } = {}) {
 function purgeAgedInformational({ dryRun = false, days = AGE_OUT_DAYS, now = Date.now() } = {}) {
   const stored = getStoredTriage();
   const { entries, aged } = ageOutInformational(stored, { days, now });
-  if (aged && !dryRun) storeTriage(entries);
+  // ⚠ `now` goes through to the prune as well. Without it the entry this call
+  // has just aged out — stamped at `now` — was pruned against the WALL clock, so
+  // with an anchor more than DISMISSED_RETAIN_DAYS old it vanished on write. The
+  // test went red on 2 Oct 2026, 25 days after its fixture date.
+  if (aged && !dryRun) storeTriage(entries, now);
   return { ok: true, aged, dryRun, days, remaining: entries.filter(e => !e.dismissed).length };
 }
 
