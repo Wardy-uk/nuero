@@ -373,16 +373,17 @@ function displayState(thisRoom, arbitration, home, inferred = null, sustained = 
   // silences apart — the clock is shown for "you're elsewhere in the house",
   // for "I couldn't see the watch", and for "I couldn't ask HA", and those are
   // not the same fact even though they draw the same screen.
+  //
+  // ⚠ `say` IS HER SENTENCE, NOT A DIAGNOSTIC. These two used to hand over
+  // `arbitration.why`, so a wall screen led with "not in kitchen or living-room
+  // or study" in its biggest type (photographed 2 Oct 2026). The why still
+  // travels on the verdict as `watch.why` for anyone debugging; the screen
+  // shows the time and the room instead.
   if (!arbitration || arbitration.status === 'unknown') {
-    return {
-      state: 'clock',
-      reason: 'watch-unreadable',
-      say: arbitration ? arbitration.why : 'no sensor readings',
-      decidedBy,
-    };
+    return { state: 'clock', reason: 'watch-unreadable', say: null, decidedBy };
   }
   if (arbitration.status === 'absent') {
-    return { state: 'clock', reason: 'watch-not-here', say: arbitration.why, decidedBy };
+    return { state: 'clock', reason: 'watch-not-here', say: null, decidedBy };
   }
   return {
     state: 'clock',

@@ -87,3 +87,15 @@ test('the verdict carries place, area and night, and a wake is reachable over HT
     server.close();
   }
 });
+
+test('⚠ the clock never leads with a sensor diagnostic', () => {
+  // Photographed 2 Oct 2026: "not in kitchen or living-room or study" in the
+  // clock's biggest type. That is `arbitration.why`, a debugging string.
+  const { displayState } = require('../src/presence/rooms');
+  const rooms = [{ room: 'kitchen', readable: true, inRoom: false }, { room: 'study', readable: true, inRoom: false }];
+  const absent = displayState('study', { status: 'absent', room: null, rooms, unreadable: [], why: 'not in kitchen or study' }, { away: false });
+  assert.equal(absent.state, 'clock');
+  assert.equal(absent.say, null);
+  const unknown = displayState('study', { status: 'unknown', room: null, rooms: [], unreadable: ['study'], why: 'no readable sensors' }, { away: false });
+  assert.equal(unknown.say, null);
+});
