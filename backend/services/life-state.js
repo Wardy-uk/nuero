@@ -68,6 +68,11 @@ const MAKER_APPS = ['code', 'cursor', 'windowsterminal', 'terminal', 'powershell
 const WORK_SSIDS = (process.env.LIFE_WORK_SSIDS || 'Nurtur-Corp').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const WORK_ZONES = (process.env.LIFE_WORK_ZONES || 'Office,Work').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const SLEEP_ROOM = process.env.LIFE_SLEEP_ROOM || 'bedroom';
+// ⚠ A ROOM SENSOR IS NOT ALWAYS AT HOME. `office` is the WORK Fire's sensor (it
+// was renamed from `work-office` on 14 Sep), so the watch heard at that desk
+// means he is at WORK — counting it as a room of the house put him "home, in the
+// office" while he sat in Derby, on the first live read (2 Oct 2026).
+const OFFSITE_ROOMS = (process.env.LIFE_OFFSITE_ROOMS || 'office,work-office').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const TV_ROOM = process.env.LIFE_TV_ROOM || 'living-room';
 
 function lower(v) { return String(v == null ? '' : v).toLowerCase(); }
@@ -101,6 +106,9 @@ function bandFor(now, { hours = '08:00-18:00', night = '21:00-07:00' } = {}) {
 function placeFor({ room, phone }) {
   const zone = lower(phone && phone.zone);
   const ssid = lower(phone && phone.ssid);
+  if (room && room.known && room.room && OFFSITE_ROOMS.includes(lower(room.room))) {
+    return { kind: 'work', label: 'your desk', basis: 'watch at the work desk sensor' };
+  }
   if (room && room.known && room.room) return { kind: 'home', label: room.room, basis: 'watch room sensor' };
   if (WORK_ZONES.includes(zone)) return { kind: 'work', label: phone.zone, basis: 'phone zone' };
   if (ssid && WORK_SSIDS.includes(ssid)) return { kind: 'work', label: 'Office', basis: 'office Wi-Fi' };

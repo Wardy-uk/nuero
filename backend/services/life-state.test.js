@@ -176,3 +176,12 @@ test('a declaration lapses when its time is up, or when he changes place', () =>
 test('an unknown activity cannot be declared', async () => {
   await assert.rejects(() => life.declare('napping'), /unknown activity/);
 });
+
+test('⚠ the watch at the WORK desk sensor is work, not a room at home', () => {
+  // First live read, 2 Oct 2026: "home, in the office" while he sat in Derby.
+  const r = life.infer(base({ room: { known: true, room: 'office' }, desk: { known: true, app: 'ms-teams', label: 'Teams' } }), at(2, 14));
+  assert.equal(r.place.kind, 'work');
+  assert.equal(r.doing, 'working');
+  assert.equal(r.confidence, 'sure');
+  assert.equal(r.ask, null);
+});
