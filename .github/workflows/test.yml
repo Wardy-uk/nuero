@@ -21,9 +21,20 @@ jobs:
           # major than production defeats the point of testing it at all.
           node-version: '22'
 
-      - name: Install backend deps
-        working-directory: backend
+      # ⚠ NOT BACKEND ALONE. The render tests (`*-render.test.js`) draw real
+      # components from frontend/ and saim/ and need React from those apps'
+      # node_modules. Installing only backend/ failed 17 of them with "Cannot
+      # find module 'react'" — so this job was red on every push for weeks while
+      # the same suite passed on the Pi, where everything is installed.
+      # Reproduced from a clean clone on 2 Oct 2026: 4,435 pass / 17 fail
+      # backend-only, 4,610 / 0 with these three installs.
+      - name: Install workspace deps (backend, frontend, worker)
         run: npm ci || npm install
+
+      - name: Install SAiM app deps (render tests use them)
+        run: |
+          (cd saim/app && (npm ci || npm install))
+          (cd saim/frontend && (npm ci || npm install))
 
       - name: Run backend tests
         working-directory: backend
