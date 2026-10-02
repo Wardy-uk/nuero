@@ -202,9 +202,16 @@ function infer(s = {}, now = new Date()) {
     doing = DOING.WORKING; confidence = 'guess';
     say(`a laptop is active during working hours (${desk.label || desk.app})`);
     say('nothing proves it is work — it could be your own project');
-  } else if (s.tv && s.tv.on && room && room.known && room.room === TV_ROOM && !atDesk) {
-    doing = DOING.WATCHING_TV; confidence = 'likely';
-    say('the TV has power and your watch is in the living room');
+  } else if (s.tv && s.tv.on && place.kind === 'home' && !atDesk
+      && !(room && room.known && room.room && room.room !== TV_ROOM)) {
+    // ⚠ Nick, 2 Oct 2026: "you only need to know if it's on or off — if it's on,
+    // the TV is on." The plug is the TV. What it cannot say is who is watching,
+    // so he counts as watching unless his watch puts him in ANOTHER room — then
+    // someone else is, and that is not his evening.
+    doing = DOING.WATCHING_TV;
+    confidence = room && room.known && room.room === TV_ROOM ? 'sure' : 'likely';
+    say('the TV is on');
+    if (room && room.known && room.room === TV_ROOM) say('and your watch is in the living room');
   } else if (band === 'night' && place.kind === 'home') {
     doing = DOING.WINDING_DOWN; confidence = 'guess';
     say('it is late and you are home');

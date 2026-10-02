@@ -65,3 +65,8 @@ test('weather conditions read as words, not Home Assistant ids', () => {
   assert.equal(board.conditionLabel('new-thing'), 'New thing');
   assert.equal(board.conditionLabel(null), null);
 });
+
+test('the house line says when the TV is on', () => {
+  const s = board.houseSummary({ known: true, rooms: [], household: { known: false } }, 'Office', { tvOn: true });
+  assert.equal(s.tvOn, true);
+});

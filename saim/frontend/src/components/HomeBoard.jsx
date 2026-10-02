@@ -54,6 +54,7 @@ function houseLines(house) {
   const out = [];
   const on = house.lightsOnElsewhere || [];
   if (on.length) out.push({ text: `Lights on: ${on.join(', ')}` });
+  if (house.tvOn === true) out.push({ text: 'TV on' });
   const hh = house.household || {};
   if (hh.known && Array.isArray(hh.who) && hh.who.length) out.push({ text: `Home: ${hh.who.join(', ')}` });
   return out;

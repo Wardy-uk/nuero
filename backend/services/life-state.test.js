@@ -71,10 +71,18 @@ test('a real meeting outranks everything and makes him on duty', () => {
   assert.equal(r.showWork, true);
 });
 
-test('TV on with the watch in the living room is watching TV', () => {
+test('TV on with the watch in the living room is watching TV, and sure', () => {
   const r = life.infer(base({ workingDay: SATURDAY, tv: { known: true, on: true }, room: { known: true, room: 'living-room' } }), at(3, 20));
   assert.equal(r.doing, 'watching-tv');
+  assert.equal(r.confidence, 'sure');
   assert.equal(r.company, 'family');
+});
+
+test('⚠ the plug IS the TV: on, at home, room unknown, is watching TV', () => {
+  // Nick, 2 Oct 2026: "if it's on — the TV is on."
+  const r = life.infer(base({ workingDay: SATURDAY, tv: { known: true, on: true }, room: { known: false } }), at(3, 20));
+  assert.equal(r.doing, 'watching-tv');
+  assert.equal(r.confidence, 'likely');
 });
 
 test('TV on with nobody in the living room is NOT watching TV', () => {

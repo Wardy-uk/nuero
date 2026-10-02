@@ -67,7 +67,7 @@ function restOfDay(rows, now) {
 }
 
 /** The house beyond this room, in one line's worth of facts. PURE. */
-function houseSummary(house, thisArea) {
+function houseSummary(house, thisArea, { tvOn = null } = {}) {
   if (!house || !house.known) return { known: false, why: 'the house could not be read' };
   const here = String(thisArea || '').toLowerCase();
   const lightsOn = (house.rooms || [])
@@ -78,6 +78,8 @@ function houseSummary(house, thisArea) {
   return {
     known: true,
     lightsOnElsewhere: lightsOn,
+    // The plug IS the TV (Nick, 2 Oct 2026). null = could not read it.
+    tvOn,
     household: hh.known
       ? { known: true, othersHome: hh.othersHome, who: Array.isArray(hh.who) ? hh.who : [] }
       : { known: false },
@@ -119,7 +121,13 @@ async function build({ area = null, now = new Date() } = {}) {
     gaps.push('diary');
   }
 
-  const houseLine = houseSummary(house, area);
+  let tvOn = null;
+  try {
+    const id = process.env.LIFE_TV_ENTITY || 'switch.living_room_extension_socket_1';
+    const row = (require('./ha').cachedStates() || []).find((x) => x && x.entity_id === id);
+    if (row && (row.state === 'on' || row.state === 'off')) tvOn = row.state === 'on';
+  } catch { /* unknown */ }
+  const houseLine = houseSummary(house, area, { tvOn });
   if (!houseLine.known) gaps.push('house');
 
   return { area, room, weather, house: houseLine, diary, gaps: [...new Set(gaps)], at: now.toISOString() };
