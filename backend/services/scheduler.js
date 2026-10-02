@@ -961,6 +961,38 @@ function start() {
     catch (e) { console.error('[Scheduler] Coverage refresh failed:', e.message); }
   });
 
+  // ── Trusted knowledge ────────────────────────────────────────────────────
+  // The lookup set the chat path reads (`scope: 'trusted'` in retrieval), plus the
+  // generated index Nick reads in Obsidian. Rebuilt from the VAULT, because the
+  // truth is a frontmatter line he can type by hand — the vault-hooks patch
+  // catches that promptly and this is what guarantees it.
+  //
+  // ⚠ A PARTIAL WALK IS NEVER STORED and never renders (see knowledge-trust):
+  // a half-read vault written over a good set silently un-trusts whatever it
+  // could not reach, and an un-trusted note looks exactly like one Nick never
+  // marked.
+  //
+  // Deliberately NOT a TRACKED_JOBS catch-up job — idempotent, reads live state,
+  // and a missed run self-corrects on the next one.
+  const refreshTrustedKnowledge = (when) => {
+    try {
+      const knowledgeTrust = require('./knowledge-trust');
+      const refreshed = knowledgeTrust.refreshTrust();
+      if (!refreshed.known) {
+        console.warn(`[Knowledge] Trust set NOT refreshed (${when}) — ${(refreshed.reasons || []).join('; ')}`);
+        return;
+      }
+      if (refreshed.changed) {
+        const index = knowledgeTrust.renderIndex({ apply: true });
+        console.log(`[Knowledge] ${refreshed.count} trusted note(s) (${when}); index ${index.changed ? 'rewritten' : 'unchanged'}`);
+      }
+      try { require('./knowledge-candidates').invalidate(); } catch { /* cache only */ }
+    } catch (e) { console.error('[Scheduler] Trusted-knowledge refresh failed:', e.message); }
+  };
+
+  setTimeout(() => refreshTrustedKnowledge('startup'), 30000);
+  cron.schedule('40 * * * *', () => refreshTrustedKnowledge('hourly'));
+
   // Startup health check — verify capture system is working
   setTimeout(() => {
     const fs = require('fs');

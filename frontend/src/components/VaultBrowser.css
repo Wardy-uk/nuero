@@ -555,3 +555,16 @@
   color: var(--text-muted);
   font-weight: 400;
 }
+
+/* Trusted knowledge, marked in the note rather than copied into a folder.
+   ⚠ Rendered for a note trusted by its LOCATION (under Knowledge/), where
+   un-marking would mean moving the file — so this is a statement, not a
+   control, and is deliberately not styled like the buttons beside it. */
+.vault-trust-badge {
+  padding: 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--accent);
+  white-space: nowrap;
+}

@@ -85,6 +85,27 @@ async function _processWrite(relativePath, source) {
     console.warn(`${tag} Entity extraction failed for ${relativePath}:`, e.message);
   }
 
+  // 3b. Trusted-knowledge bookkeeping
+  //
+  // ⚠ A PATCH, NOT A WALK. Nick can mark a note as knowledge by typing
+  // `knowledge_state: trusted` into it in Obsidian, and this hook is the only
+  // thing that sees that happen promptly. Re-scanning ~1,500 files on every
+  // note write is how a hook becomes the reason the Pi is busy, so this patches
+  // the one path; the scheduled refresh is what guarantees the set.
+  //
+  // ⚠ It NEVER fails the write, and it never marks anything — it only records
+  // what the note now says about itself.
+  try {
+    const knowledgeTrust = require('./knowledge-trust');
+    const moved = knowledgeTrust.noteChanged(relativePath);
+    if (moved.changed) {
+      console.log(`${tag} ${moved.trusted ? 'Now' : 'No longer'} trusted knowledge: ${relativePath}`);
+    }
+  } catch (e) {
+    console.warn(`${tag} Trust bookkeeping failed for ${relativePath}:`, e.message);
+  }
+  try { require('./knowledge-candidates').invalidate(); } catch { /* cache only */ }
+
   // 4. Candidate action extraction from notes
   //
   // ⚠⚠ NOT ON AN AI-ENRICHMENT WRITE. That pass appends NEURO's OWN `## Open Loops`

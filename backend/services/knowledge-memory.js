@@ -14,6 +14,9 @@ const weeklySummary = require('./weekly-summary');
 const knowledgeGaps = require('./knowledge-gaps');
 const vaultHooks = require('./vault-hooks');
 const vaultExclusions = require('./vault-exclusions');
+// ⚠ ONE surgical frontmatter writer, shared with knowledge-trust.js. Never
+// obsidian.updateFrontmatter — that reserialises and drops YAML list values.
+const frontmatterEdit = require('./frontmatter-edit');
 const { canonicalPlaudId } = require('../../shared/plaud-id.cjs');
 
 const VAULT_PATH = () => process.env.OBSIDIAN_VAULT_PATH || '';
@@ -1052,23 +1055,7 @@ function renderFrontmatter(frontmatter) {
 }
 
 function upsertFrontmatterValue(content, key, value) {
-  const line = `${key}: "${String(value).replace(/"/g, '\\"')}"`;
-  if (!content.startsWith('---')) {
-    return `---\n${line}\n---\n\n${content}`;
-  }
-
-  const endIdx = content.indexOf('---', 3);
-  if (endIdx === -1) {
-    return `---\n${line}\n---\n\n${content}`;
-  }
-
-  const fmBlock = content.slice(0, endIdx + 3);
-  const body = content.slice(endIdx + 3).replace(/^\s*/, '');
-  const pattern = new RegExp(`^${key}:.*$`, 'm');
-  const nextFm = pattern.test(fmBlock)
-    ? fmBlock.replace(pattern, line)
-    : fmBlock.replace(/---\s*$/, `${line}\n---`);
-  return `${nextFm}\n\n${body}`;
+  return frontmatterEdit.upsertFrontmatterValue(content, key, value);
 }
 
 /**
@@ -1083,17 +1070,7 @@ function upsertFrontmatterValue(content, key, value) {
  * YAML list values (the `people:` and `aliases:` lesson).
  */
 function removeFrontmatterKey(content, key) {
-  const text = String(content || '');
-  if (!text.startsWith('---')) return text;
-
-  const endIdx = text.indexOf('---', 3);
-  if (endIdx === -1) return text;
-
-  const fmBlock = text.slice(0, endIdx + 3);
-  const rest = text.slice(endIdx + 3);
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const stripped = fmBlock.replace(new RegExp(`^${escaped}:.*(?:\\r?\\n)?`, 'm'), '');
-  return stripped + rest;
+  return frontmatterEdit.removeFrontmatterKey(content, key);
 }
 
 function inferDomainFromSource(sourcePath) {

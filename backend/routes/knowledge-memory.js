@@ -3,6 +3,8 @@
 const express = require('express');
 const router = express.Router();
 const knowledgeMemory = require('../services/knowledge-memory');
+const knowledgeTrust = require('../services/knowledge-trust');
+const knowledgeCandidates = require('../services/knowledge-candidates');
 
 // ⚠ `daysBack` is how the BACK CATALOGUE is reached — the queue defaults to 21 days, so
 // without it 775 of the vault's 814 candidates are unreachable rather than low-ranked.
@@ -208,6 +210,130 @@ router.post('/ensure-docs', (req, res) => {
     res.json({ ok: true, ...result });
   } catch (e) {
     console.error('[knowledge-memory/ensure-docs]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── Trusted knowledge: marked IN the note, never copied ──────────────────────
+//
+// ⚠ These sit beside `/promote` and do a different job. Promotion DISTILS a
+// recording into a new note under `Knowledge/`; trusting marks a note Nick has
+// already written, where it already is. See `services/knowledge-trust.js`.
+
+/** Everything currently marked as knowledge, read from the vault. */
+// GET /api/knowledge-memory/trusted — list every note marked as trusted knowledge (curated context SAiM prefers). Keywords: knowledge trusted curated list.
+router.get('/trusted', (req, res) => {
+  try {
+    res.json({ ok: true, ...knowledgeTrust.listTrusted() });
+  } catch (e) {
+    console.error('[knowledge-memory/trusted]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
+ * Mark a note as knowledge.
+ *
+ * ⚠ A refusal is a 400 with the REASON, never a silent no-op — the whole point
+ * of this pair is that a note can be un-markable for a good reason (it is
+ * generated, it is in a folder the index cannot see) and Nick has to be able to
+ * read which.
+ */
+// POST /api/knowledge-memory/trust — mark a note as trusted knowledge IN PLACE (nothing copied or moved). Keywords: mark as knowledge, trust note, curate.
+router.post('/trust', (req, res) => {
+  try {
+    const { path: notePath, domain } = req.body || {};
+    const result = knowledgeTrust.markTrusted({ path: notePath, domain });
+    if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
+
+    // The note leaves the candidate queue immediately rather than at the next
+    // cache expiry — a card that stays put after a successful press reads as a
+    // button that did nothing.
+    try { knowledgeCandidates.invalidate(); } catch { /* never fails the mark */ }
+    try { knowledgeTrust.renderIndex({ apply: true }); } catch { /* the index is a view */ }
+
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[knowledge-memory/trust]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
+ * Take it back.
+ *
+ * ⚠ A note under `Knowledge/` answers 400 and SAYS it is trusted by location —
+ * removing the flag would leave it trusted and the button would appear to work.
+ */
+// POST /api/knowledge-memory/untrust — stop trusting a note as knowledge. Keywords: untrust, unmark knowledge, remove curated.
+router.post('/untrust', (req, res) => {
+  try {
+    const { path: notePath } = req.body || {};
+    const result = knowledgeTrust.unmarkTrusted({ path: notePath });
+    if (result.status === 'error') return res.status(400).json({ ok: false, ...result });
+
+    try { knowledgeCandidates.invalidate(); } catch { /* never fails the unmark */ }
+    try { knowledgeTrust.renderIndex({ apply: true }); } catch { /* the index is a view */ }
+
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[knowledge-memory/untrust]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
+ * Rebuild the lookup set from the vault and re-render the index.
+ *
+ * The scheduler does this, and this is how it is inspected — and how a note
+ * marked by hand in Obsidian (`knowledge_state: trusted`) is picked up without
+ * waiting for the next pass.
+ */
+// POST /api/knowledge-memory/trust/refresh — rebuild the trusted-knowledge lookup set from the vault and re-render the Knowledge Index. Keywords: refresh knowledge trust reindex.
+router.post('/trust/refresh', (req, res) => {
+  try {
+    const refreshed = knowledgeTrust.refreshTrust();
+    const index = knowledgeTrust.renderIndex({ apply: req.body?.dryRun !== true });
+    try { knowledgeCandidates.invalidate(); } catch { /* cache only */ }
+    res.json({ ok: true, refreshed, index });
+  } catch (e) {
+    console.error('[knowledge-memory/trust-refresh]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
+ * Notes Nick wrote that look like knowledge.
+ *
+ * ⚠ Computed on read and persisted NOWHERE, so there is no queue to flood —
+ * see the header of `services/knowledge-candidates.js`. `minScore` is
+ * overridable for inspection; junk is REFUSED rather than clamped, because
+ * clamping answers a question nobody asked while looking like it answered the
+ * one they did (`temporal-range`'s rule).
+ */
+// GET /api/knowledge-memory/candidates — notes Nick wrote that look like knowledge and are not marked yet. Keywords: knowledge candidates, suggest notes to trust.
+router.get('/candidates', (req, res) => {
+  try {
+    const opts = {};
+    if (req.query.limit !== undefined) {
+      const limit = Number(req.query.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return res.status(400).json({ ok: false, error: 'limit must be a whole number between 1 and 100' });
+      }
+      opts.limit = limit;
+    }
+    if (req.query.minScore !== undefined) {
+      const minScore = Number(req.query.minScore);
+      if (!Number.isFinite(minScore) || minScore < 0 || minScore > 50) {
+        return res.status(400).json({ ok: false, error: 'minScore must be a number between 0 and 50' });
+      }
+      opts.minScore = minScore;
+    }
+    if (String(req.query.force || '') === 'true') opts.force = true;
+
+    res.json({ ok: true, ...knowledgeCandidates.candidates(opts) });
+  } catch (e) {
+    console.error('[knowledge-memory/candidates]', e);
     res.status(500).json({ ok: false, error: e.message });
   }
 });

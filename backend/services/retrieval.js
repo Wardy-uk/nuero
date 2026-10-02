@@ -77,6 +77,11 @@ function parseScope(scope) {
     const folder = raw.slice(7).trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
     return folder ? { kind: 'folder', value: folder } : null;
   }
+  // ⚠ The ONLY scope with no argument: it names a SET rather than a place.
+  // Curated knowledge stopped being a folder — a note Nick marks stays where he
+  // filed it (see knowledge-trust.js), so `folder:Knowledge` would now miss every
+  // note marked in place and answer with only the distilled meetings.
+  if (raw.toLowerCase() === 'trusted') return { kind: 'trusted', value: null };
   if (raw.toLowerCase().startsWith('person:')) {
     const person = raw.slice(7).trim();
     return person ? { kind: 'person', value: person } : null;
@@ -107,6 +112,25 @@ function folderIsReachable(relDir, folder) {
   const f = String(folder || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
   if (!d || !f) return true;                        // the vault root, or no scope
   return pathInFolder(d, f) || f.startsWith(`${d}/`);
+}
+
+/**
+ * The trusted path set, resolved lazily and cached for one search.
+ *
+ * ⚠ LAZY `require`, because `knowledge-trust` is a writer as well as a reader and
+ * retrieval sits on the chat path. It is ONE KV read, never a walk.
+ *
+ * ⚠⚠ UNKNOWN ADMITS NOTHING, AND IT IS NOT THE SAME AS AN EMPTY SET. A trust
+ * set that has never been built and a vault where Nick has marked nothing both
+ * return no results; only the first is a bug, and letting an unbuilt set read as
+ * 'he has curated nothing' is the false all-clear this module refuses everywhere
+ * else. The caller is told separately — see knowledge-trust.trustedPaths().
+ */
+function trustedSet() {
+  try { return require('./knowledge-trust').trustedPaths(); }
+  catch (e) {
+    return { paths: new Set(), known: false, count: 0, why: 'trust set could not be read: ' + e.message };
+  }
 }
 
 // Reading a file to answer "does this mention Naomi?" is the expensive half, so
@@ -159,6 +183,7 @@ function inScope(result, parsed, cache) {
   if (!rel) return false;
   if (parsed.kind === 'folder') return pathInFolder(rel, parsed.value);
   if (parsed.kind === 'person') return noteMentionsPerson(rel, parsed.value, cache);
+  if (parsed.kind === 'trusted') return trustedSet().paths.has(rel);
   // An unrecognised scope admits nothing. Fail CLOSED: a typo'd scope must not
   // hand back the whole vault labelled as scoped.
   return false;
@@ -435,6 +460,12 @@ async function semanticSearchScoped(query, options = {}) {
   if (_parsed) {
     if (_parsed.kind === 'folder') {
       pathFilter = (rel) => pathInFolder(rel, _parsed.value);
+    } else if (_parsed.kind === 'trusted') {
+      // A path set is a pathFilter like any other, so it is applied BEFORE
+      // ranking — exact recall, and the same cost as the folder check it
+      // replaces: a Set lookup per row instead of a prefix test.
+      const trust = trustedSet();
+      pathFilter = (rel) => trust.paths.has(rel);
     } else if (_parsed.kind === 'person') {
       postFilter = (rel) => noteMentionsPerson(rel, _parsed.value, personCache);
     } else {

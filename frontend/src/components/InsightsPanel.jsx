@@ -3,6 +3,114 @@ import { apiUrl } from '../api';
 import HealthCard from './HealthCard';
 import './InsightsPanel.css';
 
+/**
+ * Notes Nick wrote that look like knowledge.
+ *
+ * ⚠ THE OTHER HALF OF THE QUEUE BESIDE IT, AND A DIFFERENT ACT. The Promotion
+ * Queue reads RECORDINGS — Plaud and Meetings — and distils one into a new note
+ * under `Knowledge/`. This reads the folders Nick writes in and marks a note
+ * IN PLACE, because a note he already wrote is the distillate: copying it would
+ * leave two files free to drift.
+ *
+ * ⚠ It renders NOTHING when there is nothing to offer and nothing went unread.
+ * A permanent panel saying the queue is empty is furniture on a screen he opens
+ * to think with.
+ *
+ * ⚠ Everything withheld is COUNTED. A list of twelve out of 451 notes with no
+ * account of the rest is one nobody can check, and "the filter ate a good note"
+ * would be indistinguishable from "nothing turned up".
+ */
+export function OwnNotesQueue({ data, onAct }) {
+  const [busy, setBusy] = useState(null);
+
+  if (!data) return null;
+
+  const items = data.candidates || [];
+  const gaps = data.reasons || [];
+
+  // Nothing to offer AND nothing unread — say nothing at all.
+  if (!items.length && data.known && !gaps.length) return null;
+
+  const act = async (route, body, path) => {
+    setBusy(path);
+    try {
+      await fetch(apiUrl(`/api/knowledge-memory/${route}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (onAct) await onAct();
+    } catch { /* the refetch is what confirms it */ }
+    setBusy(null);
+  };
+
+  const withheld = data.withheld || {};
+
+  return (
+    <div className="knowledge-section-card">
+      <div className="knowledge-section-header">
+        <span className="knowledge-section-title">Your own notes</span>
+        <span className="knowledge-section-note">
+          {data.matched > items.length
+            ? `${items.length} of ${data.matched} — ranked, so you can stop whenever`
+            : `${items.length} to look at`}
+        </span>
+      </div>
+
+      <p className="knowledge-section-caption">
+        Notes you wrote that look worth trusting. Marking one leaves it exactly where it
+        is — nothing is copied or moved, and SAiM starts preferring it over meeting
+        transcripts.
+      </p>
+
+      {/* ⚠ A partly-read vault offering nothing looks exactly like a vault with
+          nothing in it, so the gap is named rather than rendered as calm. */}
+      {!data.known && (
+        <p className="knowledge-gap-line">
+          I could not read all of the vault, so this list is incomplete{gaps.length ? `: ${gaps.join('; ')}` : '.'}
+        </p>
+      )}
+      {data.known && gaps.length > 0 && (
+        <p className="knowledge-gap-line">{gaps.join('; ')}</p>
+      )}
+
+      {items.map((c) => (
+        <div className="knowledge-candidate" key={c.path}>
+          <div className="knowledge-candidate-head">
+            <span className="knowledge-candidate-title">{c.title}</span>
+            <span className="knowledge-candidate-meta">{c.folder}</span>
+          </div>
+          {/* Why it is being offered, in the note's own measurements — a
+              suggestion with no premise is a fact from nowhere. */}
+          <div className="knowledge-candidate-meta">{c.why.join(' · ')}</div>
+          <div className="knowledge-candidate-actions">
+            <button
+              className="knowledge-inline-btn is-active"
+              disabled={busy === c.path}
+              onClick={() => act('trust', { path: c.path, domain: c.suggestedDomain }, c.path)}
+            >{busy === c.path ? '…' : 'Mark as knowledge'}</button>
+            <button
+              className="knowledge-inline-btn"
+              disabled={busy === c.path}
+              onClick={() => act('dismiss', { sourcePath: c.path, reason: 'not-knowledge' }, c.path)}
+            >Not knowledge</button>
+          </div>
+        </div>
+      ))}
+
+      {!items.length && data.known && (
+        <p className="knowledge-section-caption">Nothing new to offer.</p>
+      )}
+
+      <p className="knowledge-section-caption">
+        {`Read ${data.considered} note${data.considered === 1 ? '' : 's'} in ${(data.folders || []).join(', ')}. `
+          + `Held back: ${withheld.trusted || 0} already marked, ${withheld.dismissed || 0} dismissed, `
+          + `${withheld.stub || 0} too short, ${withheld.belowBar || 0} below the bar.`}
+      </p>
+    </div>
+  );
+}
+
 export default function InsightsPanel({ onNavigate }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -30,12 +138,13 @@ export default function InsightsPanel({ onNavigate }) {
   // The enrichment pass: null | 'running' | a result object. Kept until the next press,
   // because a run that stopped early or found nothing must not vanish into a refetch.
   const [enriching, setEnriching] = useState(null);
+  const [ownNotes, setOwnNotes] = useState(null);
   const [eodHistory, setEodHistory] = useState([]);
   const [ritualHistory, setRitualHistory] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes, ritualRes, knowledgeRes, dismissedRes, domainsRes] = await Promise.all([
+      const [summariesRes, suggestionsRes, todayStatusRes, eodHistoryRes, ritualRes, knowledgeRes, dismissedRes, domainsRes, ownNotesRes] = await Promise.all([
         fetch(apiUrl('/api/activity/summaries?days=14')),
         fetch(apiUrl('/api/activity/suggestions')),
         fetch(apiUrl('/api/standup/today-status')),
@@ -43,13 +152,17 @@ export default function InsightsPanel({ onNavigate }) {
         fetch(apiUrl('/api/standup/ritual-history?days=7')),
         fetch(apiUrl(`/api/knowledge-memory/overview?daysBack=${windowDays}`)),
         fetch(apiUrl('/api/knowledge-memory/dismissed')),
-        fetch(apiUrl('/api/knowledge-memory/domains'))
+        fetch(apiUrl('/api/knowledge-memory/domains')),
+        fetch(apiUrl('/api/knowledge-memory/candidates'))
       ]);
       const json = await summariesRes.json();
       const sugJson = await suggestionsRes.json();
       const todayLive = await todayStatusRes.json();
       const eodJson = await eodHistoryRes.json();
       const knowledgeJson = await knowledgeRes.json();
+      // ⚠ A failed read is null, NEVER an empty list: "I could not look" and
+      // "you have written nothing worth trusting" are opposite claims.
+      try { setOwnNotes(await ownNotesRes.json()); } catch { setOwnNotes(null); }
 
       // Merge live status into today
       if (json.today) {
@@ -336,6 +449,7 @@ export default function InsightsPanel({ onNavigate }) {
               )}
             </div>
 
+            <OwnNotesQueue data={ownNotes} onAct={fetchData} />
             <div className="knowledge-section-card">
               <div className="knowledge-section-header">
                 <span className="knowledge-section-title">Promotion Queue</span>
@@ -356,6 +470,11 @@ export default function InsightsPanel({ onNavigate }) {
                   <button className="knowledge-inline-btn" onClick={() => onNavigate?.('imports')}>Open imports</button>
                 </div>
               </div>
+
+              <p className="knowledge-section-caption">
+                Recordings and meeting notes worth distilling into a new, shorter note.
+                This reads Plaud and Meetings only — your own write-ups are in the section above.
+              </p>
 
               {/*
                 ⚠ THE COST IS STATED BEFORE THE PRESS, not after. One cloud call per note,

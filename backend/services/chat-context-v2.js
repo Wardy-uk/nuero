@@ -96,6 +96,14 @@ async function buildChatContext(userMessage, options = {}) {
   // 347 transcripts for three retrieval slots — the Insights card's "curated context
   // SAiM can lean on" was not true of anything.
   //
+  // ⚠⚠ THE SCOPE IS `trusted`, NOT `folder:Knowledge`, AND THAT IS THE WHOLE FIX.
+  // Curated knowledge used to mean one folder, so the only way in was
+  // `promoteCandidate` — which reads Plaud and Meetings and nothing else. Every
+  // note Nick wrote himself was therefore ineligible BY CONSTRUCTION: 332 under
+  // Projects/, 26 under Decision Log/, 17 under Ideas/, and four promoted notes
+  // in total, all four of them meeting recordings. A note marked in place now
+  // stays where he filed it and still earns these slots (knowledge-trust.js).
+  //
   // ⚠ It is a SCOPED SEARCH, not `getActiveContext`. That function walks five folders
   // and reads every file in them; on a path that runs per chat turn it is the wrong
   // shape entirely. A `folder:Knowledge` scope is applied BEFORE ranking (retrieval
@@ -114,7 +122,7 @@ async function buildChatContext(userMessage, options = {}) {
       const retrieval = require('./retrieval');
       const curated = await retrieval.search(userMessage, {
         maxResults: 2,
-        scope: 'folder:Knowledge'
+        scope: 'trusted'
       });
       if (curated.length > 0) {
         curatedPaths = new Set(curated.map(r => r.path));

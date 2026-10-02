@@ -68,6 +68,94 @@ function Backlinks({ notePath, onNavigate }) {
   );
 }
 
+/**
+ * "This is knowledge" — marked in the note, where the note already is.
+ *
+ * ⚠ NOTHING IS COPIED OR MOVED. Promotion (on Insights) distils a RECORDING
+ * into a new note under `Knowledge/`; this marks a note Nick wrote himself, in
+ * place. Copying it would leave two files free to drift with no answer to which
+ * one is real.
+ *
+ * ⚠ The state is read from the CONTENT already loaded rather than a second
+ * fetch — but the client decides nothing. Every refusal comes from the server
+ * and is rendered in its words, because the reasons are real (a generated file,
+ * a folder the index cannot see, a note trusted by its location) and a control
+ * that silently does nothing teaches Nick to stop using it.
+ */
+function knowledgeStateOf(notePath, content) {
+  if (String(notePath || '').replace(/\\/g, '/').toLowerCase().startsWith('knowledge/')) return 'location';
+  const text = String(content || '');
+  if (!text.startsWith('---')) return null;
+  const end = text.indexOf('\n---', 3);
+  const block = end === -1 ? '' : text.slice(0, end);
+  const line = block.split(/\r?\n/).find((l) => /^knowledge_state:/i.test(l));
+  if (!line) return null;
+  const value = line.slice(line.indexOf(':') + 1).trim().replace(/^"|"$/g, '').toLowerCase();
+  return (value === 'trusted' || value === 'distilled') ? 'flag' : null;
+}
+
+export function TrustControl({ notePath, content, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const state = knowledgeStateOf(notePath, content);
+
+  const send = async (route) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/knowledge-memory/${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: notePath }),
+      });
+      const data = await res.json();
+      // ⚠ A refusal is shown in the SERVER's words. It knows why; a second
+      // phrasing here would be a weaker opinion about the same rules.
+      if (!data.ok) setError(data.error || 'That did not work.');
+      else if (onChanged) onChanged();
+    } catch {
+      setError('Could not reach NEURO.');
+    }
+    setBusy(false);
+  };
+
+  // Trusted because of where it sits. Un-marking means moving the file, which
+  // is a decision about a note rather than a toggle — so this says so instead
+  // of offering a button that answers 400.
+  if (state === 'location') {
+    return (
+      <span className="vault-trust-badge" title="Distilled into Knowledge/ — move it out of that folder to un-trust it">
+        Knowledge
+      </span>
+    );
+  }
+
+  return (
+    <>
+      {error && <span className="vault-save-msg err" title={error}>{error}</span>}
+      {state === 'flag' ? (
+        <button
+          className="vault-toggle-btn active"
+          onClick={() => send('untrust')}
+          disabled={busy}
+          title="SAiM prefers this note over raw notes and transcripts. Click to stop."
+        >
+          {busy ? '…' : 'Knowledge ✓'}
+        </button>
+      ) : (
+        <button
+          className="vault-toggle-btn"
+          onClick={() => send('trust')}
+          disabled={busy}
+          title="Mark as knowledge — SAiM will prefer this over meeting transcripts. The note is not moved or copied."
+        >
+          {busy ? '…' : 'Mark as knowledge'}
+        </button>
+      )}
+    </>
+  );
+}
+
 export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
   const [currentDir, setCurrentDir] = useState('');
   const [entries, setEntries] = useState([]);
@@ -248,6 +336,11 @@ export default function VaultBrowser({ initialOpenPath, onClearInitialPath }) {
             >
               Delete
             </button>
+            <TrustControl
+              notePath={openFile.path}
+              content={openFile.content}
+              onChanged={() => openFileHandler(openFile.path)}
+            />
             <button
               className={`vault-toggle-btn ${previewMode ? 'active' : ''}`}
               onClick={() => setPreviewMode(!previewMode)}

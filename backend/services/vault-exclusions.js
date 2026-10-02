@@ -112,6 +112,11 @@ const GENERATED_FILE_PATTERNS = [
   // meetings on any "who is mentioned where" query while saying nothing, which
   // is exactly what #34 removed for the MoSCoW worksheets.
   /^1-2-1 Tracker\.md$/i,
+  // The Knowledge Index is rendered by knowledge-trust.js and is links only.
+  // Indexed, it would match every query about any of the notes it lists and
+  // hand back a page of titles — the 1-2-1 tracker failure above, with a
+  // bigger blast radius because these are the notes chat is told to PREFER.
+  /^Knowledge Index\.md$/i,
   /\.backup-/i,
   /\.sync-conflict-/i,
 ];
