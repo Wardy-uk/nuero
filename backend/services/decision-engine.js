@@ -237,6 +237,22 @@ function isFinishedTaskBlock(eventId) {
   }
 }
 
+// The open tasks in a NEURO task block, so "Open" on its card can go to the
+// task rather than to meeting prep (Nick, 2 Oct 2026). Null for a real meeting
+// or on a read failure, so the card opens the way it did before.
+function openBlockTaskIds(eventId) {
+  try {
+    const block = db.getTaskBlockByEventId(eventId);
+    if (!block) return null;
+    const ids = db.listTaskBlockItems(block.id)
+      .filter((i) => i.task_status !== 'done')
+      .map((i) => i.task_id);
+    return ids.length ? ids : null;
+  } catch {
+    return null;
+  }
+}
+
 function collectMeetings(ctx) {
   const items = [];
   if (!ctx.calendar || ctx.calendar.length === 0) return items;
@@ -265,7 +281,10 @@ function collectMeetings(ctx) {
       urgency: imminent ? 'critical' : soon ? 'high' : 'medium',
       source: 'calendar',
       actionHint: imminent ? 'Join / prep now' : 'Coming up',
-      meta: { start: event.start_time, end: event.end_time, location: event.location, minutesAway },
+      meta: {
+        start: event.start_time, end: event.end_time, location: event.location, minutesAway,
+        blockTaskIds: openBlockTaskIds(event.event_id),
+      },
       _unsuppressable: imminent, // imminent meetings cannot be suppressed
     });
   }

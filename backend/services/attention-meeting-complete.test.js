@@ -153,6 +153,21 @@ test('a block whose tasks are all done is NOT rebuilt as a meeting card', () => 
   assert.ok(ids.includes('cal-AAMkREALONE'));
 });
 
+test('an open block card names its open tasks, so Open can go to the task', () => {
+  const engine = require('./decision-engine');
+  const soon = (min) => new Date(Date.now() + min * 60000).toISOString();
+  const blk = blockCard(['Open one', 'Finished one']);
+  taskStore.setStatus(blk.tasks[1], 'done');
+  const items = engine.collectMeetings({ calendar: [
+    { event_id: blk.event, subject: 'Task block: two', start_time: soon(20), end_time: soon(50) },
+    { event_id: 'AAMkREALTWO', subject: 'A real meeting', start_time: soon(30), end_time: soon(60) },
+  ] });
+  const card = items.find((i) => i.id === `cal-${blk.event}`);
+  assert.deepEqual(card.meta.blockTaskIds, [blk.tasks[0]], 'only the open task, never the finished one');
+  const real = items.find((i) => i.id === 'cal-AAMkREALTWO');
+  assert.equal(real.meta.blockTaskIds, null, 'a real meeting has no tasks to open');
+});
+
 test('a FINISHED block is not something a reminder can act on', () => {
   const { tasks, blockId, recordId } = blockCard(['In a dropped block']);
   db.updateTaskBlockRow(blockId, { status: 'dropped' });

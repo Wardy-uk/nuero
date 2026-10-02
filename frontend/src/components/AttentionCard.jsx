@@ -86,6 +86,35 @@ const LABELS = {
 const NOT_NOW_MINUTES = 120;
 const WAITING_MINUTES = 24 * 60;
 
+/**
+ * "Open" on a card about ONE task opens THAT task, not the list (Nick, 2 Oct
+ * 2026). TodoPanel already pins a row from `taskId` / `msId` / `taskText`
+ * (see taskPin.js); the card simply never handed them over.
+ *
+ * - A todo card carries `meta.owner` ({taskId} or {msId}). Its title is the
+ *   task's own text, used as the last-resort pin. A summary card ("3 tasks
+ *   with no date") has no owner and gets no pin, so it still opens the list.
+ * - A NEURO task block arrives as a meeting. When it still holds open work,
+ *   `meta.blockTaskIds` names it, and Open goes to the first of those tasks
+ *   rather than to meeting prep, which has nothing to say about a solo block.
+ *
+ * Returns null when there is nothing to pin; the caller then falls back to the
+ * ordinary destination.
+ */
+export function taskDestination(card) {
+  const meta = card.meta || {};
+  if (card.type === 'todo' && meta.owner) {
+    const ctx = { taskText: card.title || null };
+    if (meta.owner.taskId != null) ctx.taskId = meta.owner.taskId;
+    if (meta.owner.msId != null) ctx.msId = meta.owner.msId;
+    return { view: 'todos', context: ctx, label: 'Open task' };
+  }
+  if (card.type === 'meeting' && Array.isArray(meta.blockTaskIds) && meta.blockTaskIds.length) {
+    return { view: 'todos', context: { taskId: meta.blockTaskIds[0] }, label: 'Open task' };
+  }
+  return null;
+}
+
 export default function AttentionCard({
   card,
   onNavigate,
@@ -126,9 +155,11 @@ export default function AttentionCard({
   // Where this card goes, resolved once so the LABEL and the click cannot
   // disagree about it — a button naming a destination it does not open is worse
   // than the mute one it replaced.
-  const destination = resolveNueroNavigation({ type: card.type, meta: card.meta, id: card.id })
+  const destination = taskDestination(card)
+    || resolveNueroNavigation({ type: card.type, meta: card.meta, id: card.id })
     || (card.tab ? { view: card.tab } : null);
-  const openLabel = (destination && VIEW_LABELS[destination.view]) || LABELS.open;
+  const openLabel = destination?.label
+    || (destination && VIEW_LABELS[destination.view]) || LABELS.open;
 
   // Navigation only. No request, by design — see the header.
   const open = () => {

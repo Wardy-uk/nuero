@@ -414,6 +414,34 @@ function getFollowThroughTodo() {
   }
 }
 
+// The task a todo nudge is ABOUT, so its "Open" lands on that row rather than
+// the whole list (Nick, 2 Oct 2026). The nudge row stores only its message, so
+// the handles are re-derived from the current follow-through candidate — and
+// attached ONLY when that candidate still produces the exact message on the
+// banner. If the candidate has moved on since the last nag, the banner names
+// one task and the handles would name another; opening the wrong task is worse
+// than opening the list, so a mismatch returns null. PURE.
+function todoNudgeTarget(nudge, candidate) {
+  if (!nudge || nudge.type !== 'todo' || !candidate) return null;
+  if (candidate.message !== nudge.message) return null;
+  const t = {
+    taskId: candidate.task_id ?? null,
+    msId: candidate.ms_id ?? null,
+    filePath: candidate.filePath ?? null,
+    lineNumber: candidate.lineNumber ?? null,
+    taskText: candidate.text || null,
+  };
+  if (t.taskId == null && t.msId == null && t.filePath == null && !t.taskText) return null;
+  return t;
+}
+
+function withTargets(active) {
+  const list = active || [];
+  if (!list.some((n) => n.type === 'todo')) return list;
+  const candidate = getFollowThroughTodo();
+  return list.map((n) => (n.type === 'todo' ? { ...n, target: todoNudgeTarget(n, candidate) } : n));
+}
+
 // Called by cron — creates the initial nudge at 9am
 // Now context-aware: checks if user is active, in a meeting, or standup already started
 function triggerStandupNudge() {
@@ -499,7 +527,7 @@ function triggerTodoNudge() {
   const msg = followThrough?.message || getNagMessage('todo', 0);
   db.createNudge('todo', msg, dateKey);
   console.log('[Nudge] Todo nudge created for', dateKey);
-  broadcast({ type: 'nudge', nudge_type: 'todo', message: msg, nag_count: 0 });
+  broadcast({ type: 'nudge', nudge_type: 'todo', message: msg, nag_count: 0, target: todoNudgeTarget({ type: 'todo', message: msg }, followThrough) });
   webpush.sendToAll('SAiM', msg, { type: 'todo', url: '/todos' }).catch(() => {});
 }
 
@@ -696,7 +724,7 @@ function nagCheck() {
     // leaves the banner showing the message this nudge was first created with.
     if (msg !== nudge.message) db.updateNudgeMessage(nudge.id, msg);
     console.log(`[Nudge] Nag #${newCount} for ${nudge.type}: ${msg}`);
-    broadcast({ type: 'nudge', nudge_type: nudge.type, message: msg, nag_count: newCount });
+    broadcast({ type: 'nudge', nudge_type: nudge.type, message: msg, nag_count: newCount, target: todoNudgeTarget({ type: nudge.type, message: msg }, followThrough) });
     const url = nudge.type === 'standup' ? '/standup'
       : nudge.type === 'escalation' ? '/focus'
       : nudge.type === 'email' ? '/inbox'
@@ -1043,6 +1071,8 @@ function markJournalDone() {
 
 module.exports = {
   addClient,
+  todoNudgeTarget,
+  withTargets,
   broadcast,
   NUDGE_TYPES,
   // Exported for tests — the tone ladder is a design decision worth pinning.

@@ -129,11 +129,13 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos, onGoToJournal,
             if (existing) {
               return prev.map(n =>
                 n.type === data.nudge_type && n.active
-                  ? { ...n, message: data.message, nag_count: data.nag_count }
+                  // A new message may name a different task, so the target
+                  // travels with it and an old one is never kept past it.
+                  ? { ...n, message: data.message, nag_count: data.nag_count, target: data.target || null }
                   : n
               );
             }
-            return [...prev, { type: data.nudge_type, message: data.message, nag_count: data.nag_count, active: 1 }];
+            return [...prev, { type: data.nudge_type, message: data.message, nag_count: data.nag_count, target: data.target || null, active: 1 }];
           });
         } else if (data.type === 'nudge_cleared') {
           setNudges(prev => prev.filter(n => n.type !== data.nudge_type));
@@ -249,7 +251,7 @@ export default function NudgeBanner({ onGoToStandup, onGoToTodos, onGoToJournal,
                 className="nudge-action"
                 onClick={() => {
                   if (nudge.type === 'standup' || nudge.type === 'eod') onGoToStandup();
-                  else if (nudge.type === 'todo') onGoToTodos();
+                  else if (nudge.type === 'todo') onGoToTodos(nudge.target || null);
                   else if (nudge.type === 'journal') { if (onGoToJournal) onGoToJournal(); }
                   else if (nudge.type === '121') { if (onGoToPeople) onGoToPeople(); }
                   else if (nudge.type === 'escalation') { if (onGoToBriefing) onGoToBriefing(); }

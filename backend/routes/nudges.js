@@ -20,7 +20,8 @@ router.get('/schedule', (req, res) => {
 
 // GET /api/nudges — active nudges + snooze state + why nothing is nudging
 router.get('/', (req, res) => {
-  const active = db.getActiveNudges();
+  // `target` on a todo nudge names the task it is about — see todoNudgeTarget.
+  const active = nudges.withTargets(db.getActiveNudges());
   const snoozeState = nudges.getSnoozeState();
   // `suppression` travels with the payload so a quiet banner can SAY why it is
   // quiet. Silence that looks identical to a broken nudge is what makes Nick
