@@ -38,6 +38,10 @@ let base;
 
 test.before(async () => {
   await db.init();
+  // Every arrival here has something worth saying, each a different kind, so
+  // these tests pin the cooldown and the ledger rather than the content rule.
+  let n = 0;
+  require('../services/greeting')._setBriefOverride(() => ({ kind: `test-${++n}`, line: 'Rain from three.' }));
   const app = express();
   app.use(express.json());
   app.use('/api/greeting', require('./greeting'));
@@ -168,4 +172,18 @@ test('the shared variety memory survives a client arrival', async () => {
     'the opener memory is carried, not reset, when the other kind of arrival lands'
   );
   assert.ok(afterClient.rooms.study, 'and the room it already knew about survives');
+});
+
+test('⚠ nothing worth saying is SILENCE, not "Afternoon, Nick"', async () => {
+  // Nick, 2 Oct 2026: the voice "never said anything useful".
+  require('../services/greeting')._setBriefOverride(() => null);
+  try {
+    const r = await post({ client: 'silence-test-client' });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.speak, false);
+    assert.equal(r.json.why, 'nothing-worth-saying');
+  } finally {
+    let n = 100;
+    require('../services/greeting')._setBriefOverride(() => ({ kind: `test-${++n}`, line: 'Rain from three.' }));
+  }
 });

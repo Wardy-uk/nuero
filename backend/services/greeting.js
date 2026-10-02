@@ -375,7 +375,7 @@ async function claim({ room, client = null, now = new Date(), preview = false } 
     const payload = await require('./attention').build({ now });
     const p = payload && payload.primary;
     if (workHours && p && p.kind === 'item' && p.title) workTitle = p.title;
-    brief = briefLine({
+    brief = (_briefOverride || briefLine)({
       now,
       room: room || null,
       workHours,
@@ -396,7 +396,14 @@ async function claim({ room, client = null, now = new Date(), preview = false } 
     console.warn('[Greeting] attention unavailable:', e.message);
   }
 
-  const words = compose({ now, room, workHours, workTitle, brief, ledger });
+  // ⚠ NOTHING WORTH SAYING IS SILENCE. Nick, 2 Oct 2026: it "never said
+  // anything useful". "Afternoon, Nick" plus the top work task is not a reason
+  // to interrupt a room, so a greeting is only spoken when a brief line earned
+  // it — a meeting about to start, a breach, a cold room, rain, an unusual
+  // night. Not recorded, so the cooldown is not spent on saying nothing.
+  if (!brief && !preview) return { speak: false, why: 'nothing-worth-saying', text: null };
+
+  const words = compose({ now, room, workHours, workTitle: null, brief, ledger });
   if (!preview) {
     try {
       db.setState(LEDGER_KEY, JSON.stringify(recordGreeting(ledger, { room, client, now, ...words })));
@@ -413,7 +420,13 @@ async function claim({ room, client = null, now = new Date(), preview = false } 
   };
 }
 
+// Test seam: lets the cooldown/ledger suites give an arrival something genuine to
+// say without a populated diary. Never set outside tests.
+let _briefOverride = null;
+function _setBriefOverride(fn) { _briefOverride = typeof fn === 'function' ? fn : null; }
+
 module.exports = {
+  _setBriefOverride,
   claim, decide, compose, isWorkHours, dayPart, recordGreeting, pick,
   briefLine, MEETING_SOON_MINUTES,
   OPENERS, LEADS, ROOM_OPENERS, COOLDOWN_MINUTES, LEDGER_KEY,

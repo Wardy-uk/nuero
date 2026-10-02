@@ -983,6 +983,17 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
       offWhy: `not working — ${String(life.label).toLowerCase()}` }
     : context;
   const gated = gate(gateContext, visible, now);
+
+  // ⚠ USEFUL OR SILENT. Nick, 2 Oct 2026: the voice "never said anything
+  // useful", and iOS read every new top card aloud on every refresh — a card
+  // changing is not a reason to speak. The line is still composed for the
+  // screen; it is only SPOKEN when it is worth an interruption: something
+  // breaching, a meeting coming up, or the answer to a question he just asked.
+  if (gated.speech && !ask) {
+    const p = gated.primary;
+    const worthSaying = p && p.kind === 'item' && (p.urgency === 'critical' || p.type === 'meeting');
+    if (!worthSaying) gated.speech = null;
+  }
   gated.dropped = [...gated.dropped, ...snoozed];
 
   // ── Ambient observations ──────────────────────────────────────────────────
