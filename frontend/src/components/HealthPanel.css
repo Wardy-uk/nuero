@@ -239,7 +239,10 @@
   border-bottom: 1px solid var(--border);
 }
 .hp-table td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
-.hp-num { text-align: right; font-variant-numeric: tabular-nums; }
+/* `.hp-table .hp-num` so a header carrying it beats `.hp-table th`'s left align —
+   a numeric column's heading sits over its numbers, not over the gap beside them. */
+.hp-num, .hp-table .hp-num { text-align: right; font-variant-numeric: tabular-nums; }
+.hp-table th:last-child, .hp-table td:last-child { padding-right: 0; }
 /* A stale feed is the expected failure, so it is coloured rather than left to be
    spotted by reading dates. */
 .hp-stale { color: var(--warning); }

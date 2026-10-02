@@ -227,7 +227,7 @@ export default function PerformanceSection({ Chart, initial = null }) {
           <>
             <p className="hp-sentence">{sleepEnv.sentence}</p>
             <table className="hp-table">
-              <thead><tr><th>Sleep measure</th><th>Nights</th><th>Cooler room</th><th>Warmer room</th><th>p</th></tr></thead>
+              <thead><tr><th>Sleep measure</th><th className="hp-num">Nights</th><th className="hp-num">Cooler room</th><th className="hp-num">Warmer room</th><th className="hp-num">p</th></tr></thead>
               <tbody>
                 {sleepEnv.results.map((r) => (
                   <tr key={r.outcome}>
@@ -258,7 +258,7 @@ export default function PerformanceSection({ Chart, initial = null }) {
         )}
         {heat.hikes && heat.hikes.length > 0 && (
           <table className="hp-table">
-            <thead><tr><th>Hike</th><th>Effort</th><th>Temperature</th><th>Dew point</th></tr></thead>
+            <thead><tr><th>Hike</th><th className="hp-num">Effort</th><th className="hp-num">Temperature</th><th className="hp-num">Dew point</th></tr></thead>
             <tbody>
               {heat.hikes.map((h) => (
                 <tr key={h.startedAt}>

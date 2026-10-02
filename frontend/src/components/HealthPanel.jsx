@@ -978,7 +978,7 @@ export default function HealthPanel() {
           </span>
         </h3>
         <table className="hp-table">
-          <thead><tr><th>Metric</th><th>Samples (30d)</th><th>Last seen</th></tr></thead>
+          <thead><tr><th>Metric</th><th className="hp-num">Samples (30d)</th><th className="hp-num">Last seen</th></tr></thead>
           <tbody>
             {shownMetrics.map(m => (
               <tr key={m.metric}>
