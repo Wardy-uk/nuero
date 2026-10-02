@@ -715,6 +715,32 @@ function placeLabel(place) {
  * ⚠ An unreadable clock yields NULL, and the caller falls back to a word that
  *   is true at any hour. Guessing 'morning' would be inventing the time of day.
  */
+/** home · out · night, from the life read. PURE. Unknown is `home`, the old shape. */
+function lifeMode(life, now) {
+  if (!isObj(life)) return 'home';
+  if (life.doing === 'sleeping' || life.doing === 'winding-down' || life.band === 'night') return 'night';
+  const outDoing = ['out', 'walking', 'driving', 'exercising'];
+  const kind = life.place && life.place.kind;
+  if (outDoing.includes(life.doing) || kind === 'out' || kind === 'elsewhere') return 'out';
+  return 'home';
+}
+
+/** The room he is in, as one row: temperature and lights. Null when unread. */
+function roomRow(rooms) {
+  if (!isObj(rooms) || rooms.known !== true) return null;
+  const area = (Array.isArray(rooms.considered) ? rooms.considered : [])[0];
+  if (!isObj(area) || !area.area) return null;
+  const facts = [];
+  const t = area.temperature && area.temperature.reading && area.temperature.reading.currentC;
+  if (Number.isFinite(t) && t <= 45) facts.push(`${Math.round(t)}°`);
+  const l = area.lights;
+  if (isObj(l) && Number.isFinite(l.total) && l.total > 0) {
+    const on = (l.on || []).length;
+    facts.push(on > 0 ? `${on} light${on === 1 ? '' : 's'} on` : 'lights off');
+  }
+  return facts.length ? row('room', area.area, { note: facts.join(' · ') }) : null;
+}
+
 function partOfDay(now) {
   const d = now instanceof Date ? now : (typeof now === 'number' || typeof now === 'string' ? new Date(now) : null);
   if (!d || Number.isNaN(d.getTime())) return null;
@@ -866,7 +892,29 @@ function dashOffDuty(payload, now) {
     rows.push(row('now', p.title, { note: p.say || null, level: 'crit' }));
   }
 
-  return { kind: SURFACES.OFF_DUTY, label: partOfDay(now) || 'off duty', rows, figure, note: null };
+  // ── Home, out or night ─────────────────────────────────────────────────
+  // Nick, 2 Oct 2026: what the screen shows should follow where he is and what
+  // he is doing. One dashboard, three shapes, chosen from the life read so the
+  // phone, the kiosks and iOS agree. A breaching item survives every shape.
+  const mode = lifeMode(payload.life, now);
+  if (mode === 'home') {
+    const here = roomRow(payload.rooms);
+    if (here) rows.splice(rows.findIndex((r) => r.when === 'now') + 1, 0, here);
+  }
+  const keep = (r) => {
+    if (r.level === 'crit' || r.when === 'now' || r.when === 'room') return true;
+    if (mode === 'night') return /^next/.test(String(r.when || ''));
+    if (mode === 'out') return r.when !== 'slept' && r.when !== 'did';
+    return true;
+  };
+  let shaped = rows.filter(keep);
+  if (mode === 'night') {
+    // One line about tomorrow, not the whole morning.
+    const firstNext = shaped.findIndex((r) => /^next/.test(String(r.when || '')));
+    shaped = shaped.filter((r, i) => !/^next/.test(String(r.when || '')) || i === firstNext);
+  }
+  const label = mode === 'night' ? 'tonight' : mode === 'out' ? 'out' : (partOfDay(now) || 'off duty');
+  return { kind: SURFACES.OFF_DUTY, mode, label, rows: shaped, figure: mode === 'home' ? figure : null, note: null };
 }
 function dashInbox(payload) {
   const box = payload.inbox;
@@ -1403,6 +1451,7 @@ function compose(payload, opts = {}) {
 }
 
 module.exports = {
+  lifeMode,
   silenceFor,
   partOfDay,
   placeLabel,

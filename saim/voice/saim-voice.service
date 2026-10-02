@@ -1,0 +1,14 @@
+[Unit]
+Description=SAiM natural voice for Home Assistant (Wyoming TTS via NEURO, Piper fallback)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nickw
+EnvironmentFile=/etc/saim-voice.env
+ExecStart=/home/nickw/saim-voice/venv/bin/python -u /mnt/data/nuero/saim/voice/wyoming_neuro_tts.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

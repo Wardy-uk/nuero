@@ -375,8 +375,52 @@ function checkMicrosoftSync() {
 
 // ── Runner ──────────────────────────────────────────────────────────────────
 
+/**
+ * SAiM's senses — any one of them gone quiet or erroring.
+ *
+ * ⚠ Found 2 Oct 2026: every router tracker in Home Assistant had been frozen for
+ * SIXTEEN DAYS, with the integration reporting "loaded" and nothing anywhere
+ * saying so — while `person.nick` sat at "home" in Derby. NEURO Health already
+ * RATED each sense live/stale/error; nothing ever TOLD anyone. This does.
+ *
+ * A dead sense is a warning at once (the morning briefing) and becomes critical
+ * — one push, then one when it recovers — once it has been dead for
+ * SENSE_CRITICAL_HOURS. Only the senses SAiM's judgement rests on escalate; the
+ * rest stay warnings. `off` and `never` are decisions, not faults, and are
+ * never raised.
+ */
+const SENSE_CRITICAL_HOURS = Number(process.env.SENSE_CRITICAL_HOURS) || 12;
+const CORE_SENSES = new Set(['phone', 'watch', 'laptop', 'calendar', 'health', 'router']);
+
+async function checkSenses(previous = {}, now = new Date()) {
+  let rooms = { ok: false, why: 'the room sensors were not read', sensors: [] };
+  try { rooms = await require('./room-presence').sensors(now); } catch (e) { rooms = { ok: false, why: e.message, sensors: [] }; }
+  let snap;
+  try { snap = require('./signals').snapshot(now, { rooms }); } catch (e) {
+    return [{ key: 'sense:snapshot', level: 'warn', title: "Could not read SAiM's senses", detail: e.message, since: now.toISOString() }];
+  }
+  const out = [];
+  for (const sig of (snap && snap.signals) || []) {
+    if (sig.state !== 'stale' && sig.state !== 'error') continue;
+    const key = `sense:${sig.id}`;
+    const since = (previous[key] && previous[key].since) || now.toISOString();
+    const hours = (now.getTime() - Date.parse(since)) / 3600000;
+    const core = CORE_SENSES.has(sig.id) || String(sig.id).startsWith('room-');
+    out.push({
+      key,
+      level: core && hours >= SENSE_CRITICAL_HOURS ? 'critical' : 'warn',
+      title: `${sig.label || sig.id} has ${sig.state === 'error' ? 'stopped working' : 'gone quiet'}`,
+      detail: [sig.why, sig.what ? `SAiM loses: ${sig.what}` : null].filter(Boolean).join(' — '),
+      since,
+    });
+  }
+  return out;
+}
+
 async function run({ notify = true } = {}) {
+  const previousSenses = _readActive();
   const issues = [
+    ...(await checkSenses(previousSenses)),
     ...checkBackups(),
     ...checkOffsiteBackup(),
     ...checkTaskExport(),
@@ -389,7 +433,9 @@ async function run({ notify = true } = {}) {
   const current = Object.fromEntries(issues.map(i => [i.key, i]));
   const previous = _readActive();
 
-  const isNew = issues.filter(i => !previous[i.key]);
+  // "New" includes an issue whose LEVEL rose: a sense dead for an hour is a
+  // warning, and the push is owed the moment it crosses into critical.
+  const isNew = issues.filter(i => !previous[i.key] || (i.level === 'critical' && previous[i.key].level !== 'critical'));
   const resolved = Object.values(previous).filter(p => !current[p.key]);
 
   // Only criticals are pushed. Warnings are real but not worth waking anyone —
@@ -397,14 +443,24 @@ async function run({ notify = true } = {}) {
   const toAlert = isNew.filter(i => i.level === 'critical');
 
   if (notify && webpush.isConfigured()) {
-    for (const i of toAlert) {
+    const isSense = (x) => String(x.key).startsWith('sense:');
+    for (const i of toAlert.filter((x) => !isSense(x))) {
       // 'system_alert' is in webpush ALWAYS_DELIVER, so it survives quiet hours
       // and still gets fingerprint-deduped for 30 minutes.
       await webpush.sendToAll(`⚠ ${i.title}`, i.detail || '', { type: 'system_alert', key: i.key });
     }
+    // ⚠ A dead SENSE respects quiet hours. A room sensor going deaf at midnight
+    // is worth knowing over breakfast, never worth waking him at 03:00 — so it
+    // has its own suppressible type rather than riding `system_alert`.
+    for (const i of toAlert.filter(isSense)) {
+      await webpush.sendToAll(`⚠ ${i.title}`, i.detail || '', { type: 'sense_alert', key: i.key });
+    }
     // Silence should mean "fine", not "the alerter gave up" — so say when it clears.
-    for (const r of resolved.filter(r => r.level === 'critical')) {
+    for (const r of resolved.filter(r => r.level === 'critical' && !isSense(r))) {
       await webpush.sendToAll(`✅ Resolved: ${r.title}`, 'Back to normal.', { type: 'system_alert', key: `${r.key}:resolved` });
+    }
+    for (const r of resolved.filter(r => r.level === 'critical' && isSense(r))) {
+      await webpush.sendToAll(`✅ Back: ${r.title.replace(/ has (gone quiet|stopped working)$/, '')}`, 'Reporting again.', { type: 'sense_alert', key: `${r.key}:resolved` });
     }
   }
 
@@ -420,4 +476,5 @@ async function run({ notify = true } = {}) {
   };
 }
 
-module.exports = { run, checkBackups, checkTaskExport, checkScheduledJobs, checkAi, checkHost, checkMicrosoftSync, msSyncIssue };
+module.exports = {
+  checkSenses, run, checkBackups, checkTaskExport, checkScheduledJobs, checkAi, checkHost, checkMicrosoftSync, msSyncIssue };

@@ -136,6 +136,16 @@ const RULES = {
     say: o => ({ title: 'SAiM', body: `${o.text} ${o.suggestion || ''}`.trim() }),
   },
 
+  // ⚠ A MOMENT, not a body reading — the first of the "comes to him" lines in
+  // `SAiM — Situational Intelligence` (2 Oct 2026). Only composed when the life
+  // read says he is OUT and rain is due within two hours (`momentObservations`),
+  // so the rule itself has nothing left to check. Driving is vetoed above.
+  'rain-out': {
+    when: () => true,
+    urgency: 'normal',
+    say: o => ({ title: 'SAiM', body: o.text }),
+  },
+
   'health-signal': {
     // The one worth interrupting for on its own merits, and the only one allowed
     // during a focus session. Still never in a meeting.
@@ -219,6 +229,26 @@ function worthInterrupting(observation, moment) {
  * and the rest keep until the next pass or stay on the screen where they were
  * already visible. Nothing is lost by waiting: they are all still true.
  */
+const RAIN_OUT_KEY = 'ambient_rain_out_last';
+const RAIN_HORIZON_MIN = 120;
+
+/**
+ * Moments that come from the LIFE read rather than from the body. PURE given its
+ * inputs; `lastRain` is the rain spell already told about, so one spell is said
+ * once rather than every pass while it lasts.
+ */
+function momentObservations({ life = null, rain = null, lastRain = null } = {}) {
+  const out = [];
+  const outside = life && (['out', 'walking', 'exercising'].includes(life.doing)
+    || (life.place && (life.place.kind === 'out' || life.place.kind === 'elsewhere')));
+  if (outside && life.sure && rain && Number.isFinite(rain.inMinutes)
+      && rain.inMinutes >= 0 && rain.inMinutes <= RAIN_HORIZON_MIN && rain.starts !== lastRain) {
+    const when = rain.inMinutes <= 45 ? `in about ${Math.max(5, Math.round(rain.inMinutes / 5) * 5)} minutes` : `from ${rain.starts}`;
+    out.push({ kind: 'rain-out', text: `Rain ${when}, and you're out.`, rainStarts: rain.starts });
+  }
+  return out;
+}
+
 async function deliver({ now = new Date() } = {}) {
   if (!ENABLED) return { sent: 0, skipped: 'disabled' };
 
@@ -237,6 +267,19 @@ async function deliver({ now = new Date() } = {}) {
 
     const ambient = await require('./ambient').build({ now, context });
     observations = ambient.observations || [];
+    // Moments from the life read — never allowed to cost the body observations.
+    try {
+      const life = await require('./life-state').read(now);
+      let rain = null;
+      try {
+        const w = await require('./ha-rooms').readWeather();
+        if (w && w.known) rain = require('../../shared/weather-outlook.cjs').outlook(w, w.hours || [], now).rain;
+      } catch { /* no weather, no rain moment */ }
+      const db = require('../db/database');
+      observations = observations.concat(momentObservations({ life, rain, lastRain: db.getState(RAIN_OUT_KEY) }));
+    } catch (e) {
+      console.warn('[AmbientPush] life moments unavailable:', e.message);
+    }
     const learning = require('./attention-learning');
     moment = momentFrom({
       context,
@@ -278,6 +321,10 @@ async function deliver({ now = new Date() } = {}) {
     // Recorded so the sweep can ask, later, whether it made any difference.
     // Without this there is nothing to learn from — and a learning loop cannot
     // be retrofitted onto deliveries nobody kept.
+    if (chosen.kind === 'rain-out') {
+      const o = observations.find((x) => x.kind === 'rain-out');
+      try { require('../db/database').setState(RAIN_OUT_KEY, o && o.rainStarts ? o.rainStarts : ''); } catch { /* best effort */ }
+    }
     try { require('./attention-learning').recordDelivery(chosen.kind); } catch (e) {
       console.warn('[AmbientPush] Could not record delivery:', e.message);
     }
@@ -289,6 +336,7 @@ async function deliver({ now = new Date() } = {}) {
 }
 
 module.exports = {
+  momentObservations,
   momentFrom,
   worthInterrupting,
   deliver,

@@ -1331,3 +1331,52 @@ test('the composed payload carries the silence beside say and speech', () => {
   assert.equal(out.silence.kind, 'quiet');
   assert.equal(out.silence.lead, 'In a meeting');
 });
+
+// ── Home, out and night (Nick, 2 Oct 2026: "the display really should be based
+//    on where the device is and what time of day it is") ──────────────────────
+
+const lifePayload = (life, extra = {}) => ({
+  poolAvailable: true,
+  context: { activity: 'steady', duty: { onDuty: false } },
+  life: { showWork: false, sure: true, ...life },
+  agenda: { known: true, scope: 'tomorrow', events: [
+    { subject: 'Dentist', at: '09:00' }, { subject: 'Standup', at: '09:30' },
+  ] },
+  lastNight: { known: true, asleepHours: 7.5 },
+  didRecently: { known: true, headline: '3 things done today' },
+  weeklyTarget: { state: 'on-track', done: 12, target: 20 },
+  rooms: { known: true, considered: [{ area: 'Living Room', temperature: { reading: { currentC: 20.6 } }, lights: { total: 2, on: ['a'], off: ['b'] } }] },
+  ...extra,
+});
+const AT = new Date(2026, 9, 3, 16, 0);
+
+test('a weekday evening of hobby coding is framed as his own time, not work', () => {
+  const p = lifePayload({ doing: 'hobby', label: 'On a project of your own', band: 'evening', place: { kind: 'home', label: 'study' } });
+  assert.equal(surfaceFor(p), SURFACES.OFF_DUTY);
+});
+
+test('at home: what he is doing, then the room he is in', () => {
+  const d = compose(lifePayload({ doing: 'relaxing', label: 'Relaxing', band: 'evening', place: { kind: 'home', label: 'living-room' } }), { now: AT }).dashboard;
+  assert.equal(d.mode, 'home');
+  assert.equal(d.rows[0].when, 'now');
+  assert.equal(d.rows[1].when, 'room');
+  assert.match(d.rows[1].note, /21° · 1 light on/);
+});
+
+test('out: what is next, no sleep or wins rows, no week figure', () => {
+  const d = compose(lifePayload({ doing: 'walking', label: 'Out walking', band: 'working', place: { kind: 'out', label: 'Ashby' } }), { now: AT }).dashboard;
+  assert.equal(d.mode, 'out');
+  assert.equal(d.label, 'out');
+  assert.ok(!d.rows.some((r) => r.when === 'slept' || r.when === 'did' || r.when === 'room'));
+  assert.equal(d.figure, null);
+  assert.ok(d.rows.some((r) => /^next/.test(r.when)));
+});
+
+test('night: one line about tomorrow and nothing to act on', () => {
+  const d = compose(lifePayload({ doing: 'winding-down', label: 'Winding down', band: 'night', place: { kind: 'home', label: 'bedroom' } }), { now: new Date(2026, 9, 3, 22, 30) }).dashboard;
+  assert.equal(d.mode, 'night');
+  assert.equal(d.label, 'tonight');
+  assert.equal(d.rows.filter((r) => /^next/.test(r.when)).length, 1);
+  assert.ok(!d.rows.some((r) => r.when === 'did' || r.when === 'slept'));
+  assert.equal(d.figure, null);
+});

@@ -176,3 +176,29 @@ test('nothing readable means not confident, and therefore silent', () => {
   assert.equal(blind.known, false);
   assert.equal(push.worthInterrupting(WATER, blind).push, false);
 });
+
+// ── Moments from the life read (2 Oct 2026) ─────────────────────────────────
+const { momentObservations } = require('./ambient-push');
+
+test('rain due while he is out is a moment worth saying', () => {
+  const [o] = momentObservations({
+    life: { doing: 'walking', sure: true, place: { kind: 'out', label: 'Ashby' } },
+    rain: { starts: '15:00', inMinutes: 40 },
+  });
+  assert.equal(o.kind, 'rain-out');
+  assert.match(o.text, /Rain in about 40 minutes, and you're out\./);
+});
+
+test('rain while he is at home is not a push — the screen already says it', () => {
+  assert.deepEqual(momentObservations({
+    life: { doing: 'relaxing', sure: true, place: { kind: 'home' } },
+    rain: { starts: '15:00', inMinutes: 40 },
+  }), []);
+});
+
+test('one rain spell is said once, and a guess at "out" says nothing', () => {
+  const life = { doing: 'out', sure: true, place: { kind: 'out' } };
+  assert.deepEqual(momentObservations({ life, rain: { starts: '15:00', inMinutes: 40 }, lastRain: '15:00' }), []);
+  assert.deepEqual(momentObservations({ life: { ...life, sure: false }, rain: { starts: '15:00', inMinutes: 40 } }), []);
+  assert.deepEqual(momentObservations({ life, rain: { starts: '19:00', inMinutes: 300 } }), [], 'too far off');
+});

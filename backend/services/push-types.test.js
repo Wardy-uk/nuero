@@ -46,6 +46,9 @@ const SUPPRESSIBLE = new Set([
   // to build and a weekly reboot is the safety net, so there is nothing to be
   // done about it at 03:00. It fires once per episode, not once per sample.
   'router_health',
+  // A sense going quiet (watchdog.checkSenses). SUPPRESSIBLE: a deaf room sensor
+  // at midnight is a breakfast problem, not a 03:00 one.
+  'sense_alert',
 ]);
 
 const ROOTS = ['services', 'routes'];
