@@ -99,3 +99,14 @@ test('⚠ the clock never leads with a sensor diagnostic', () => {
   const unknown = displayState('study', { status: 'unknown', room: null, rooms: [], unreadable: ['study'], why: 'no readable sensors' }, { away: false });
   assert.equal(unknown.say, null);
 });
+
+test('out of the house with someone else in: the board, not a dark screen', () => {
+  const { displayState } = require('../src/presence/rooms');
+  const arb = { status: 'absent', room: null, rooms: [{ room: 'living-room', readable: true, inRoom: false }], unreadable: [], why: 'x' };
+  const withFamily = displayState('living-room', arb, { away: true }, null, null, { othersHome: true });
+  assert.equal(withFamily.state, 'clock');
+  assert.equal(withFamily.reason, 'not-home-others-in');
+  // An empty house, or one Home Assistant could not read, still goes dark.
+  assert.equal(displayState('living-room', arb, { away: true }).state, 'locked');
+  assert.equal(displayState('living-room', arb, { away: true }, null, null, { othersHome: null }).state, 'locked');
+});

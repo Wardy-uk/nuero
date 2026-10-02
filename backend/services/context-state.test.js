@@ -402,9 +402,10 @@ test('duty: a working day outside hours is off duty', () => {
 });
 
 test('duty: the boundaries are inclusive at the start and exclusive at the end', () => {
-  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T07:00:00')).onDuty, true);
-  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T21:59:00')).onDuty, true);
-  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T22:00:00')).onDuty, false);
+  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T07:59:00')).onDuty, false);
+  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T08:00:00')).onDuty, true);
+  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T17:59:00')).onDuty, true);
+  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T18:00:00')).onDuty, false);
 });
 
 test('duty: UNKNOWN fails towards ON duty, and says so', () => {
@@ -447,17 +448,34 @@ test('the duty window is deliberately wider than the booking window', () => {
   );
 });
 
-test('duty: still working at 18:14 on a Friday', () => {
-  // The case that broke it. An 18:00 cutoff flipped the widget to a day-off
-  // view while Nick was demonstrably still at it, and off duty HIDES work.
-  assert.equal(resolveDuty(WORKING, new Date('2026-08-28T18:14:00')).onDuty, true);
-  assert.equal(resolveDuty(WORKING, new Date('2026-08-28T20:30:00')).onDuty, true);
+test('duty: still working at 18:14 on a Friday is decided by EVIDENCE, not the clock', () => {
+  // The case that broke the first 18:00 cutoff: the widget went to a day-off
+  // view while Nick was demonstrably still at it. The hours are now his
+  // 08:00-18:00 (2 Oct 2026), and what keeps him on duty past them is evidence
+  // of real work — never the clock alone, and never the laptop alone.
+  const late = new Date('2026-08-28T18:14:00');
+  assert.equal(resolveDuty(WORKING, late).onDuty, false, 'no evidence: his evening');
+  const inMeeting = resolveDuty(WORKING, late, { workEvidence: 'you are in a meeting' });
+  assert.equal(inMeeting.onDuty, true);
+  assert.match(inMeeting.reason, /in a meeting/);
 });
 
-test('duty hours mirror the push quiet-hours default, not a fresh guess', () => {
-  // NEURO already had one considered statement about when to leave Nick alone.
-  // A second, narrower one is how two parts of the system come to disagree
-  // about the same evening.
-  assert.equal(ON_DUTY_START_HOUR, 7);
-  assert.equal(ON_DUTY_END_HOUR, 22);
+test('duty: a meeting running past 18:00 keeps him on duty through the context', () => {
+  const ctx = resolveContext(calm({
+    calendar: { known: true, events: [{ subject: '1-2-1', start: '2026-08-28T17:30:00', end: '2026-08-28T18:30:00', attendeesOther: true }] },
+  }), new Date('2026-08-28T18:10:00'));
+  assert.equal(ctx.activity, ACTIVITY.IN_MEETING);
+  assert.equal(ctx.duty.onDuty, true);
+});
+
+test('duty: working hours are a setting', () => {
+  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T19:00:00'), { hours: '09:00-20:00' }).onDuty, true);
+  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T08:30:00'), { hours: '09:00-20:00' }).onDuty, false);
+  // Junk falls back to the default rather than to "always" or "never".
+  assert.equal(resolveDuty(WORKING, new Date('2026-08-18T12:00:00'), { hours: 'lunch' }).onDuty, true);
+});
+
+test('duty hours default to 08:00-18:00, his call', () => {
+  assert.equal(ON_DUTY_START_HOUR, 8);
+  assert.equal(ON_DUTY_END_HOUR, 18);
 });

@@ -46,19 +46,29 @@ const LATE_DAY_STARTS_HOUR = 16;
 // desk) or STEADY at 22:00 on a Tuesday (a working day, but he has finished).
 // Surfaces use this to decide what KIND of thing to show, not how to rank.
 //
-// ⚠ These MIRROR the `PUSH_QUIET_HOURS` default (22:00–07:00) rather than being
-// picked fresh. The first cut used 08:00–18:00 and was simply wrong: at 18:14 on
-// a Friday — plainly still working — the widget flipped to a day-off view and
-// hid the lot. NEURO already had exactly one considered statement about when
-// Nick should be left alone, and inventing a second, narrower one was the error.
-// A boundary this feature gets wrong is worse than no boundary at all, because
-// off duty HIDES work.
+// ⚠ 08:00-18:00 IS NICK'S CALL (2 Oct 2026: "working hours should be classed as
+// 8am to 6pm"), and it is a SETTING (`attention_settings.workingHours`).
 //
-// Still wider than `task-blocks`' 09:00–17:30, which answers a different
-// question ("where can a meeting be booked"); pinned against it by a test so a
-// change to either is a visible decision rather than drift.
-const ON_DUTY_START_HOUR = 7;
-const ON_DUTY_END_HOUR = 22;
+// ⚠ THE CLOCK IS NOT THE WHOLE ANSWER, and that is the lesson this file already
+// paid for: an earlier 08:00-18:00 flipped the widget to a day-off view at 18:14
+// on a Friday while he was plainly still working, and hid the lot. So outside
+// the hours, EVIDENCE of work keeps him on duty — a real meeting with other
+// people in it, or a focus session he started. The laptop alone is NOT evidence
+// (Nick: "I could be hobby coding or studying"). Evidence ends, duty ends.
+//
+// Still wider than `task-blocks`' 09:00–17:30 window, which answers a different
+// question ("where can a meeting be booked").
+const DEFAULT_WORKING_HOURS = '08:00-18:00';
+const ON_DUTY_START_HOUR = 8;
+const ON_DUTY_END_HOUR = 18;
+
+function parseHours(raw) {
+  const m = String(raw || '').match(/^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const start = Number(m[1]) + Number(m[2]) / 60;
+  const end = Number(m[3]) + Number(m[4]) / 60;
+  return end > start ? { start, end, label: raw } : null;
+}
 
 /**
  * Is Nick on duty? PURE — `now` is passed, nothing is read from the clock.
@@ -68,9 +78,10 @@ const ON_DUTY_END_HOUR = 22;
  * applies to dropping. "We could not tell" must never be the reason a surface
  * goes quiet, so `known` is reported separately from the answer.
  */
-function resolveDuty(workingDay, now) {
+function resolveDuty(workingDay, now, { hours = null, workEvidence = null } = {}) {
+  const span = parseHours(hours) || parseHours(DEFAULT_WORKING_HOURS);
   const hour = now.getHours() + now.getMinutes() / 60;
-  const inHours = hour >= ON_DUTY_START_HOUR && hour < ON_DUTY_END_HOUR;
+  const inHours = hour >= span.start && hour < span.end;
 
   if (!known(workingDay)) {
     return {
@@ -89,10 +100,13 @@ function resolveDuty(workingDay, now) {
     };
   }
   if (!inHours) {
+    if (workEvidence) {
+      return { onDuty: true, known: true, reason: `Outside working hours, but ${workEvidence}.` };
+    }
     return {
       onDuty: false,
       known: true,
-      reason: `Outside working hours (${ON_DUTY_START_HOUR}:00–${ON_DUTY_END_HOUR}:00).`,
+      reason: `Outside working hours (${span.label}).`,
     };
   }
   return { onDuty: true, known: true, reason: 'A working day, in hours.' };
@@ -545,7 +559,12 @@ function resolveContext(inputs = {}, now = new Date()) {
     summary,
     place,
     quiet,
-    duty: resolveDuty(src.workingDay, at),
+    duty: resolveDuty(src.workingDay, at, {
+      hours: src.workingHours,
+      workEvidence: activity === ACTIVITY.IN_MEETING ? 'you are in a meeting'
+        : activity === ACTIVITY.IN_FOCUS_SESSION ? 'you have a focus session running'
+          : null,
+    }),
     confidence: deriveConfidence({ activity, knownCount, contradictions }),
     cannotSee: cannotSee(unknowns, activity),
     reasons,
@@ -563,6 +582,7 @@ module.exports = {
   cannotSee,
   ON_DUTY_START_HOUR,
   ON_DUTY_END_HOUR,
+  DEFAULT_WORKING_HOURS,
   ACTIVITY,
   INPUT_BLOCKS,
   PRE_MEETING_MINUTES,

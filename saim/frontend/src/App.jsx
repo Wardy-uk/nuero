@@ -20,6 +20,7 @@ import RefreshButton from './components/RefreshButton';
 import LockScreen from './components/LockScreen';
 import ClockScreen from './components/ClockScreen';
 import NightDim from './components/NightDim';
+import HomeBoard from './components/HomeBoard';
 import ConnectionStatus from './components/ConnectionStatus';
 import Whereabouts from '../../shared-ui/Whereabouts';
 import { startAutoFlush } from '../../app/src/mobile/outbox';
@@ -255,7 +256,11 @@ function AppShell() {
           clock screen is lit and its field animates; the lock screen is `still`
           because its panel is dark. Putting them inside would stop the one
           field anybody can actually see. */}
-      {showClock && <ClockScreen now={now} say={displayDetail?.say} area={homeArea} />}
+      {/* Home screens show the household board when he is not in the room; the
+          work Fire keeps the clock, because it sits in an office. */}
+      {showClock && (place === 'home'
+        ? <HomeBoard now={now} area={homeArea} say={displayDetail?.say} />
+        : <ClockScreen now={now} say={displayDetail?.say} area={homeArea} />)}
       {locked && <LockScreen reason={displayDetail?.reason} now={now} area={homeArea} />}
       <NightDim dim={dim} nightActive={Boolean(night && night.active)} onWake={wake} />
     </div>

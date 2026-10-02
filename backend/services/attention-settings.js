@@ -30,7 +30,13 @@ const DEFAULTS = {
   pausedUntil: null,
   domains: { work: true, personal: true },
   displayNight: null,        // null = DISPLAY_NIGHT_DEFAULT
+  workingHours: null,        // null = WORKING_HOURS_DEFAULT
 };
+
+// Nick, 2 Oct 2026: "working hours should be classed as 8am to 6pm". Read by
+// context-state's duty resolver; evidence of real work extends it.
+const WORKING_HOURS_DEFAULT = '08:00-18:00';
+const isHoursWindow = (v) => /^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(String(v || ''));
 
 /**
  * ⚠ THE SCREENS' NIGHT IS ITS OWN WINDOW, NOT QUIET HOURS. Nick, 2 Oct 2026:
@@ -75,6 +81,8 @@ function read() {
     },
     displayNight: isQuietWindow(stored.displayNight) ? stored.displayNight : DISPLAY_NIGHT_DEFAULT,
     displayNightSource: isQuietWindow(stored.displayNight) ? 'setting' : 'default',
+    workingHours: isHoursWindow(stored.workingHours) ? stored.workingHours : WORKING_HOURS_DEFAULT,
+    workingHoursSource: isHoursWindow(stored.workingHours) ? 'setting' : 'default',
   };
 }
 
@@ -92,7 +100,11 @@ function update(patch = {}) {
     pausedUntil: current.pausedUntil,
     domains: { ...current.domains },
     displayNight: current.displayNightSource === 'setting' ? current.displayNight : null,
+    workingHours: current.workingHoursSource === 'setting' ? current.workingHours : null,
   };
+
+  if (patch.workingHours === null) next.workingHours = null;
+  else if (isHoursWindow(patch.workingHours)) next.workingHours = patch.workingHours;
 
   if (patch.displayNight === null) next.displayNight = null;      // back to the default
   else if (isQuietWindow(patch.displayNight)) next.displayNight = patch.displayNight;
@@ -150,4 +162,4 @@ function inWindow(raw, now = new Date()) {
   return startMins > endMins ? (mins >= startMins || mins < endMins) : (mins >= startMins && mins < endMins);
 }
 
-module.exports = { read, update, isPaused, isQuietAt, inWindow, isQuietWindow, LEVELS, DEFAULTS, STATE_KEY, DISPLAY_NIGHT_DEFAULT };
+module.exports = { read, update, isPaused, isQuietAt, inWindow, isQuietWindow, LEVELS, DEFAULTS, STATE_KEY, DISPLAY_NIGHT_DEFAULT, WORKING_HOURS_DEFAULT };

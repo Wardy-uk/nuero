@@ -41,6 +41,7 @@ const profiles = require('../presence/profiles');
 const { classify } = require('../presence/fingerprint');
 const { resolveRoom, displayState, offsiteDisplayState } = require('../presence/rooms');
 const nightDisplay = require('../display/night');
+const household = require('../display/household');
 const pendingGreetings = require('../greeting/pending');
 const neuroConfig = require('../integrations/neuroConfig');
 
@@ -470,7 +471,7 @@ router.get('/display', (req, res) => {
   inferredSince = clock.since;
   const sustained = clock.sustained;
 
-  const display = displayState(room, arbitration, home, inferredNow, sustained);
+  const display = displayState(room, arbitration, home, inferredNow, sustained, { othersHome: household.othersHome() });
 
   if (lastDisplay.get(room) !== display.state) {
     history.note('display:' + room, lastDisplay.get(room) || null, display.state,

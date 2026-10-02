@@ -671,6 +671,10 @@ async function gather(now = new Date()) {
   const gaps = [];
   const inputs = {};
 
+  // Nick's working hours (a setting, default 08:00-18:00). A failed read leaves
+  // the default in force rather than costing the feed.
+  try { inputs.workingHours = require('./attention-settings').read().workingHours; } catch { /* default */ }
+
   inputs.calendar = _calendarInput(gaps);
 
   try {

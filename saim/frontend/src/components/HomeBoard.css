@@ -1,0 +1,89 @@
+/* The household board: a home screen when Nick is not in its room. Same
+   layer, same tap-swallowing rule and same dim ground as the clock it
+   replaces — a board in a room he is not in must not open his live SAiM shell
+   to whoever touches it. */
+
+.homeboard {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 4vw;
+  padding: 5vh 6vw;
+  box-sizing: border-box;
+  background: #06080c;
+  color: #7d8da5;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: default;
+  user-select: none;
+}
+
+.homeboard__main,
+.homeboard__side { position: relative; z-index: 1; min-width: 0; }
+
+.homeboard__time {
+  font-size: clamp(3.5rem, 13vw, 10rem);
+  font-weight: 200;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: #b7c4d8;
+}
+.homeboard__date {
+  margin-top: 0.4rem;
+  font-size: clamp(0.9rem, 2vw, 1.5rem);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.homeboard__say {
+  margin-top: 1.2rem;
+  font-family: Newsreader, Georgia, serif;
+  font-size: clamp(1rem, 2.2vw, 1.7rem);
+  color: #c9d3e3;
+}
+.homeboard__room {
+  margin-top: 1.4rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: clamp(0.8rem, 1.6vw, 1.2rem);
+  letter-spacing: 0.06em;
+  color: #9fb0c6;
+}
+
+.homeboard__side { display: flex; flex-direction: column; gap: 1.6rem; }
+.homeboard__h {
+  margin: 0 0 0.45rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: clamp(0.65rem, 1.1vw, 0.85rem);
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.32);
+}
+.homeboard__wx {
+  font-size: clamp(1.4rem, 3vw, 2.4rem);
+  color: #c9d3e3;
+}
+.homeboard__wx span { font-size: 0.6em; text-transform: capitalize; color: #9fb0c6; }
+.homeboard__line {
+  font-size: clamp(0.85rem, 1.6vw, 1.2rem);
+  line-height: 1.5;
+  color: #a9b6c9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.homeboard__when {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.85em;
+  color: #7d8da5;
+  margin-right: 0.4em;
+}
+.homeboard__busy { color: #7d8da5; }
+.homeboard__gap { color: #c8b48c; opacity: 0.85; }
+
+@media (max-aspect-ratio: 1/1) {
+  .homeboard { grid-template-columns: 1fr; align-content: center; }
+}

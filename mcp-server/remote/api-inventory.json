@@ -3096,6 +3096,24 @@
     "stream": false
   },
   {
+    "id": "get_rooms_board",
+    "method": "GET",
+    "route": "/api/rooms/board",
+    "domain": "rooms",
+    "source": "routes/rooms.js",
+    "line": 47,
+    "description": "GET /api/rooms/board. ?area=Office — the household board for a HOME screen when",
+    "params": [],
+    "query": [
+      "area"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_rooms_history",
     "method": "GET",
     "route": "/api/rooms/history",
@@ -7788,7 +7806,7 @@
     "route": "/api/rooms/:key/accept",
     "domain": "rooms",
     "source": "routes/rooms.js",
-    "line": 44,
+    "line": 58,
     "description": "POST /api/rooms/:key/accept. do it.",
     "params": [
       "key"
@@ -7806,7 +7824,7 @@
     "route": "/api/rooms/:key/decline",
     "domain": "rooms",
     "source": "routes/rooms.js",
-    "line": 58,
+    "line": 72,
     "description": "POST /api/rooms/:key/decline. not this time. Asks again on the next visit.",
     "params": [
       "key"

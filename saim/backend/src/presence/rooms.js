@@ -258,7 +258,7 @@ function offsiteDisplayState(thisRoom, arbitration, { mobile = [], meeting = nul
   return { state: 'clock', reason: 'not-at-this-desk', say: null, decidedBy: 'offsite' };
 }
 
-function displayState(thisRoom, arbitration, home, inferred = null, sustained = null, { offsite = false } = {}) {
+function displayState(thisRoom, arbitration, home, inferred = null, sustained = null, { offsite = false, othersHome = false } = {}) {
   // ⚠ FIRST, and before every rule below — all of which are about a house.
   if (offsite) return offsiteDisplayState(thisRoom, arbitration);
 
@@ -351,6 +351,15 @@ function displayState(thisRoom, arbitration, home, inferred = null, sustained = 
         decidedBy,
         contradiction: `Home Assistant says not home, but the watch is audible in the ${arbitration.room}. Trusting the watch.`,
       };
+    }
+    // ⚠ OUT, BUT SOMEONE ELSE IS IN: the household board, not a dark screen.
+    // Nick, 2 Oct 2026: a home screen he is not with shows "generic useful
+    // stuff". The lock existed to hide HIS DAY; the board carries nothing of it
+    // (diary redacted, no tasks, no queue), so there is nothing to lock away
+    // from Helen or Isaac. An empty house still goes dark — `othersHome` is true
+    // only when Home Assistant positively says so.
+    if (othersHome === true) {
+      return { state: 'clock', reason: 'not-home-others-in', say: null, decidedBy };
     }
     return {
       state: 'locked',

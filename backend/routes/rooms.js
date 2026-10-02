@@ -40,6 +40,20 @@ router.get('/area', async (req, res) => {
   res.json(await rooms.areaReading(name));
 });
 
+// GET /api/rooms/board?area=Office — the household board for a HOME screen when
+// Nick is not in its room: this room, the weather, the house, who is home, and
+// the rest of today's diary REDACTED the way VESTA redacts it. Nothing on it is
+// anything a person standing in the house could not already see.
+router.get('/board', async (req, res) => {
+  const area = String(req.query.area || '').trim().slice(0, 60) || null;
+  try {
+    res.json(await require('../services/home-board').build({ area }));
+  } catch (e) {
+    console.error('[rooms] board failed:', e.message);
+    res.status(500).json({ known: false, why: e.message });
+  }
+});
+
 // POST /api/rooms/:key/accept — do it.
 router.post('/:key/accept', async (req, res) => {
   try {
