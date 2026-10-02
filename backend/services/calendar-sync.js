@@ -22,7 +22,42 @@
  * than simply rewriting the window.
  */
 
+const crypto = require('crypto');
 const db = require('../db/database');
+
+// Source-health identity for this path (Build 1, the nervous system). The
+// cadence is the scheduler's every-20-minutes; three missed runs is stale.
+const SOURCE_ID = 'microsoft.calendar';
+const EXPECTED_INTERVAL_MS = 20 * 60 * 1000;
+const STALE_AFTER_MS = 60 * 60 * 1000;
+
+function _beginRun() {
+  try {
+    return require('./source-health').beginSourceRun(SOURCE_ID, {
+      system: 'microsoft-graph', expectedIntervalMs: EXPECTED_INTERVAL_MS, staleAfterMs: STALE_AFTER_MS,
+    });
+  } catch (e) {
+    // The event layer is additive: if it cannot even start, the sync runs as it
+    // always did, unobserved.
+    console.warn('[CalendarSync] source-health unavailable:', e.message);
+    const noop = () => null;
+    return { succeed: noop, fail: noop, publish: noop };
+  }
+}
+
+/**
+ * What the window looked like, reduced to a hash. The domain event is keyed on
+ * it, so an unchanged diary re-observed every 20 minutes folds into the event
+ * already in the log: the log records change, not polling.
+ */
+function _fingerprint(events) {
+  const lines = events
+    .filter(e => e && e.id && e.start)
+    .map(e => [e.id, e.start, e.end || '', e.subject || '', e.showAs || '', e.isAllDay ? 1 : 0,
+      e.attendeesOther === undefined ? '?' : (e.attendeesOther ? 1 : 0)].join('|'))
+    .sort();
+  return crypto.createHash('sha256').update(lines.join(String.fromCharCode(10))).digest('hex');
+}
 
 function _dateStr(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -38,22 +73,31 @@ async function sync({ days = 14, checkArrivals = true } = {}) {
   const now = new Date();
   const from = _dateStr(now);
   const to = _dateStr(new Date(now.getTime() + days * 86400000));
+  const run = _beginRun();
 
   let events;
   try {
     events = await microsoft.fetchCalendarEvents(from, to);
   } catch (e) {
     console.warn('[CalendarSync] Fetch failed:', e.message);
+    run.fail(e, { reason: 'fetch-threw' });
     return { synced: 0, reason: e.message };
   }
 
-  if (!Array.isArray(events)) return { synced: 0, reason: 'no events returned' };
+  if (!Array.isArray(events)) {
+    run.fail('no events returned', { reason: 'no-events' });
+    return { synced: 0, reason: 'no events returned' };
+  }
 
   // Nothing back from Graph is ambiguous — an empty diary and a broken auth look
   // identical. Leave the existing cache alone rather than wiping a good one on a
   // transient failure; a stale calendar beats an empty one.
   if (events.length === 0) {
     console.log('[CalendarSync] Graph returned no events — leaving the cache as it is');
+    // ⚠ Recorded as a FAILURE, flagged ambiguous. The cache was not refreshed,
+    // so this run must not renew the source's freshness — and "an empty
+    // fortnight" and "broken auth" are indistinguishable from here.
+    run.fail('Graph returned no events', { reason: 'empty-response', ambiguous: true });
     return { synced: 0, from, to, reason: 'empty response' };
   }
 
@@ -127,10 +171,29 @@ async function sync({ days = 14, checkArrivals = true } = {}) {
     });
   } catch (e) {
     console.error('[CalendarSync] Write failed:', e.message);
+    run.fail(e, { reason: 'write-failed' });
     return { synced: 0, reason: e.message };
   }
 
   try { require('./working-memory').invalidate('calendar synced'); } catch {}
+
+  // The cache write has committed: that is what success means for this source.
+  // Recorded here, before the Plaud and triage hooks, because those are other
+  // features hanging off a fresh calendar, not part of ingesting it.
+  run.publish({
+    type: 'observation.calendar.window_synced',
+    occurredAt: now.toISOString(),
+    subject: { entityType: 'person', entityId: 'nick' },
+    idempotencyKey: `graph-calendar-window:${from}:${to}:${_fingerprint(events)}`,
+    payload: { window: { from, to }, count: synced, fingerprint: _fingerprint(events) },
+  });
+  run.succeed({
+    synced, from, to,
+    // Agrees with what this function RETURNS: a cold start reports no
+    // arrivals (below), so its event must not claim any either.
+    newCount: known.size === 0 ? 0 : newEventIds.length,
+    coldStart: known.size === 0,
+  });
 
   // The 5-minute Plaud write-up block after every meeting Nick created or
   // accepted. Hooked here rather than on its own cron for the same reason the

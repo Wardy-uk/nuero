@@ -1353,3 +1353,114 @@ CREATE TABLE IF NOT EXISTS calendar_history (
   UNIQUE(event_id, start_time)
 );
 CREATE INDEX IF NOT EXISTS idx_calhist_start ON calendar_history(start_time);
+
+-- ── The nervous system (Build 1, 2 Oct 2026) ─────────────────────────────────
+-- A durable, typed, append-only event log beneath the existing runtime. NOT an
+-- event-sourced rewrite: every existing table stays the authority for what it
+-- holds. This is the integration spine that sources publish into and that
+-- projectors and (later) evaluators consume from.
+--
+-- ⚠ Named `event_log`, not `events`: "event" already means a CALENDAR event in
+-- forty places in this codebase (`getCalendarEvents`, `calendar_cache`), and a
+-- bare `events` table would be read as one of those by the next person.
+--
+-- Only `services/event-bus.js` writes these four tables. Application code
+-- publishes through `publishEvent()`; it never inserts here directly.
+--
+-- `seq` IS the offset. A consumer's position is the last seq it has finished,
+-- so "resume after a restart" is a single integer read back from disk.
+CREATE TABLE IF NOT EXISTS event_log (
+  seq                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id              TEXT NOT NULL UNIQUE,
+  schema_version        INTEGER NOT NULL,
+  type                  TEXT NOT NULL,
+  occurred_at           TEXT NOT NULL,   -- when it happened at the source (ISO, UTC)
+  received_at           TEXT NOT NULL,   -- when NEURO recorded it (ISO, UTC)
+  source_system         TEXT NOT NULL,
+  source_json           TEXT NOT NULL,   -- { system, deviceId?, recordId? }
+  subject_type          TEXT,
+  subject_id            TEXT,
+  correlation_id        TEXT NOT NULL,
+  causation_id          TEXT,
+  -- ⚠ UNIQUE, and THIS is the idempotency: the same source item delivered twice
+  -- with the same key folds into the first event rather than becoming a second.
+  idempotency_key       TEXT NOT NULL UNIQUE,
+  payload               TEXT NOT NULL,   -- JSON object, immutable
+  payload_hash          TEXT NOT NULL,   -- sha256 of payload: a re-delivery that DIFFERS is reported, never silently folded
+  provenance_kind       TEXT NOT NULL CHECK (provenance_kind IN ('fact', 'observation', 'inference')),
+  provenance_confidence REAL
+);
+CREATE INDEX IF NOT EXISTS idx_event_log_type ON event_log(type, seq);
+CREATE INDEX IF NOT EXISTS idx_event_log_correlation ON event_log(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_event_log_source ON event_log(source_system, seq);
+
+-- ⚠ Append-only is ENFORCED, not requested. A projection rebuilt from a log that
+-- something quietly edited is a projection of a history that never happened.
+-- A future retention policy must drop these triggers deliberately, in a
+-- migration that says so — not work round them.
+CREATE TRIGGER IF NOT EXISTS event_log_no_update BEFORE UPDATE ON event_log
+BEGIN SELECT RAISE(ABORT, 'event_log is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS event_log_no_delete BEFORE DELETE ON event_log
+BEGIN SELECT RAISE(ABORT, 'event_log is append-only'); END;
+
+-- One row per named consumer: where it has got to. Written in the SAME
+-- transaction as a transactional consumer's effects, so a crash between
+-- "applied the event" and "recorded that I did" cannot happen.
+CREATE TABLE IF NOT EXISTS event_consumers (
+  name              TEXT PRIMARY KEY,
+  position          INTEGER NOT NULL DEFAULT 0,   -- last seq fully handled (processed or dead-lettered)
+  last_processed_at TEXT,
+  last_error        TEXT,
+  last_error_at     TEXT,
+  replayed_at       TEXT,
+  updated_at        TEXT NOT NULL
+);
+
+-- A consumer that could not handle an event. `retrying` holds the consumer at
+-- that event (ordering is preserved — a projection must not skip ahead);
+-- `dead` is terminal: retries exhausted, the consumer moved past it, and the
+-- row is KEPT as the record that it did. `resolved` = a later attempt or a
+-- replay handled it. Nothing here is ever deleted.
+CREATE TABLE IF NOT EXISTS event_failures (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  consumer         TEXT NOT NULL,
+  seq              INTEGER NOT NULL,
+  status           TEXT NOT NULL CHECK (status IN ('retrying', 'dead', 'resolved')),
+  attempts         INTEGER NOT NULL DEFAULT 0,
+  last_error       TEXT,
+  first_failed_at  TEXT NOT NULL,
+  last_failed_at   TEXT NOT NULL,
+  next_attempt_at  TEXT,
+  resolved_at      TEXT,
+  resolution       TEXT,             -- 'processed' | 'replay'
+  UNIQUE(consumer, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_event_failures_status ON event_failures(status, consumer);
+
+-- The first materialised world-state projection: is each source actually
+-- working? Owned by the `source-health` projector and REBUILDABLE ENTIRELY
+-- FROM event_log — nothing here may be set by anything else, or a replay
+-- would erase it. The expected interval and stale threshold travel ON the
+-- events for exactly that reason.
+--
+-- ⚠ Two separate questions, deliberately two columns: `state` is the outcome
+-- of the last attempt (unknown | healthy | failing), `freshness` is whether
+-- the last SUCCESS is recent enough to believe (unknown | fresh | stale). A
+-- source can be failing-but-fresh (one hiccup) or healthy-but-stale (it
+-- succeeded, long ago), and folding them into one word loses which.
+CREATE TABLE IF NOT EXISTS source_health (
+  source_id            TEXT PRIMARY KEY,
+  state                TEXT NOT NULL DEFAULT 'unknown',
+  freshness            TEXT NOT NULL DEFAULT 'unknown',
+  last_attempt_at      TEXT,
+  last_success_at      TEXT,
+  last_failure_at      TEXT,
+  failure_detail       TEXT,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  expected_interval_ms INTEGER,
+  stale_after_ms       INTEGER,
+  stale_since          TEXT,
+  last_detail          TEXT,           -- JSON: the last success's summary (counts, window)
+  last_event_seq       INTEGER,
+  updated_at           TEXT NOT NULL
+);

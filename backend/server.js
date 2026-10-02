@@ -251,6 +251,8 @@ app.use('/api/desktop', require('./routes/desktop'));
 app.use('/api/router', require('./routes/router'));
 app.use('/api/rescuetime', require('./routes/rescuetime'));
 app.use('/api/signals', require('./routes/signals'));
+// The nervous system (Build 1): event backbone + SourceHealth. Read-only.
+app.use('/api/events', require('./routes/events'));
 app.use('/api/greeting', require('./routes/greeting'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/catalogues', require('./routes/catalogue'));
