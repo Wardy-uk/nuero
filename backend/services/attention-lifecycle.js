@@ -753,9 +753,24 @@ function act(recordId, action, opts = {}) {
           // A real meeting. Say what it is instead of implying a failed write.
           taskWhy = 'a meeting is not a task — there is nothing here to close';
         } else {
-          const items = db.listTaskBlockItems(block.id).filter((i) => !i.awaiting);
+          // ⚠ Outstanding means the TASK is not done, not "unticked in this
+          // block". A task finished from the list or from another block has its
+          // tick here cleared by `settleTaskElsewhere`, so reading `awaiting`
+          // counted finished work as still to do (2 Oct 2026).
+          const items = db.listTaskBlockItems(block.id).filter((i) => i.task_status !== 'done');
+          // Once nothing is left, the block is closed so the calendar cannot
+          // rebuild the card. A write-up is optional since 15 Sep, so it is
+          // never asked for here. `completeTask:false`: the work is already
+          // done, so it must not go into the wins ledger a second time.
+          const closeBlock = () => {
+            const r = require('./task-blocks').release(block.id, 'all tasks done — closed from the attention card', { completeTask: false });
+            handled = !!(r && r.ok);
+            return handled;
+          };
           if (items.length === 0) {
-            taskWhy = 'everything in this block is already ticked — it needs its write-up';
+            taskWhy = closeBlock()
+              ? 'every task in this block is done — block closed'
+              : 'every task in this block is done, but the block could not be closed';
           } else if (items.length > 1) {
             // ⚠ REFUSED, and the count is named. One press cannot mean "finish
             // all four": a batch of four routinely finishes three, and closing
@@ -768,6 +783,7 @@ function act(recordId, action, opts = {}) {
               taskStore.setStatus(items[0].task_id, 'done');
               taskCompleted = true;
               taskWhy = `task #${items[0].task_id} completed`;
+              closeBlock();
             } catch (e) {
               taskWhy = e.message;
             }

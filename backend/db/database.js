@@ -2424,6 +2424,20 @@ function getTaskBlockByEventId(eventId) {
   ) || null;
 }
 
+/**
+ * The newest block on a calendar event, WHATEVER its status. The attention feed
+ * needs this to tell a closed block (or one whose work is all done) from a real
+ * meeting — `getTaskBlockByEventId` above only answers for open ones.
+ */
+function getAnyTaskBlockByEventId(eventId) {
+  if (!eventId) return null;
+  return get(
+    `SELECT * FROM task_blocks WHERE event_id = ?
+      ORDER BY date_key DESC, start_time DESC LIMIT 1`,
+    [eventId],
+  ) || null;
+}
+
 /** Take a task out of a block. The task row itself is untouched. */
 function removeTaskBlockItem(blockId, taskId) {
   return run('DELETE FROM task_block_items WHERE block_id = ? AND task_id = ?', [blockId, taskId]).changes;
@@ -2781,6 +2795,7 @@ module.exports = {
   listTaskBlockItems,
   listTaskBlockRows,
   getTaskBlockByEventId,
+  getAnyTaskBlockByEventId,
   removeTaskBlockItem,
   setTaskBlockItemAwaiting,
   updateTaskBlockRow,

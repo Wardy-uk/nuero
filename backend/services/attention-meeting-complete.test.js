@@ -106,12 +106,51 @@ test('Done on a REAL meeting says what it is, not that something failed', () => 
   assert.match(r.taskWhy, /not a task/, 'the honest answer, not "nothing to complete"');
 });
 
-test('a block whose tasks are all ticked asks for its write-up', () => {
-  const { tasks, blockId, recordId } = blockCard(['Already ticked']);
-  db.setTaskBlockItemAwaiting(blockId, tasks[0], true);
+// ── A block whose work is all done (Nick, 2 Oct 2026) ────────────────────────
+//
+// Every task done, Done pressed, and the card stayed. Two faults: outstanding
+// was read off `awaiting` (which `settleTaskElsewhere` clears when a task is
+// finished elsewhere, so done work counted as to-do), and nothing closed the
+// block, so the calendar rebuilt the card on the next poll.
+
+test('Done on a block whose tasks were all finished ELSEWHERE closes the block', () => {
+  const { tasks, blockId, recordId } = blockCard(['Done from the list', 'Done from another block']);
+  // Finished elsewhere: status done, tick here cleared, which is the shape
+  // `settleTaskElsewhere` leaves behind.
+  for (const id of tasks) {
+    taskStore.setStatus(id, 'done');
+    db.setTaskBlockItemAwaiting(blockId, id, false);
+  }
   const r = lifecycle.act(recordId, 'complete');
-  assert.equal(r.taskCompleted, false);
-  assert.match(r.taskWhy, /write-up/);
+  assert.equal(r.ok, true);
+  assert.equal(r.handled, true, 'the block must be closed, or the card comes back');
+  assert.doesNotMatch(r.taskWhy, /write-up/, 'a write-up is optional since 15 Sep and must not be demanded');
+  assert.equal(db.getTaskBlockRow(blockId).status, 'released');
+});
+
+test('Done on a single-task block also closes the block', () => {
+  const { blockId, recordId } = blockCard(['The only task in its block']);
+  const r = lifecycle.act(recordId, 'complete');
+  assert.equal(r.taskCompleted, true);
+  assert.equal(db.getTaskBlockRow(blockId).status, 'released');
+});
+
+test('a block whose tasks are all done is NOT rebuilt as a meeting card', () => {
+  const engine = require('./decision-engine');
+  const soon = (min) => new Date(Date.now() + min * 60000).toISOString();
+  const done = blockCard(['Finished block task']);
+  taskStore.setStatus(done.tasks[0], 'done');
+  const open = blockCard(['Still-open block task']);
+  const calendar = [
+    { event_id: done.event, subject: 'Task block: finished', start_time: soon(20), end_time: soon(50) },
+    { event_id: open.event, subject: 'Task block: open', start_time: soon(25), end_time: soon(55) },
+    { event_id: 'AAMkREALONE', subject: 'A real meeting', start_time: soon(30), end_time: soon(60) },
+  ];
+  const ids = engine.collectMeetings({ calendar }).map((i) => i.id);
+  assert.ok(!ids.includes(`cal-${done.event}`), 'finished work must not come back as upcoming');
+  // Positive controls: an open block and a real meeting still show.
+  assert.ok(ids.includes(`cal-${open.event}`));
+  assert.ok(ids.includes('cal-AAMkREALONE'));
 });
 
 test('a FINISHED block is not something a reminder can act on', () => {

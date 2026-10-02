@@ -218,6 +218,25 @@ function collectNovaFlags(ctx) {
   return items;
 }
 
+// A NEURO task block is booked into the same calendar as real meetings, so it
+// arrives here as a "meeting". Once the block is closed, or every task in it is
+// done, it is not upcoming work any more, and offering it is a card that Done
+// cannot clear because the next poll rebuilds it from the calendar (Nick,
+// 2 Oct 2026). A read failure answers false, so the card still shows: hiding a
+// real meeting on a database error is the worse mistake.
+const CLOSED_BLOCK_STATUSES = ['released', 'complete', 'dropped'];
+function isFinishedTaskBlock(eventId) {
+  try {
+    const block = db.getAnyTaskBlockByEventId(eventId);
+    if (!block) return false;
+    if (CLOSED_BLOCK_STATUSES.includes(block.status)) return true;
+    const items = db.listTaskBlockItems(block.id);
+    return items.length > 0 && items.every((i) => i.task_status === 'done');
+  } catch {
+    return false;
+  }
+}
+
 function collectMeetings(ctx) {
   const items = [];
   if (!ctx.calendar || ctx.calendar.length === 0) return items;
@@ -232,6 +251,7 @@ function collectMeetings(ctx) {
 
     const minutesAway = Math.round((start - now) / 60000);
     if (minutesAway > 60) continue;
+    if (isFinishedTaskBlock(event.event_id)) continue;
 
     const imminent = minutesAway <= 10;
     const soon = minutesAway <= 30;
@@ -1058,6 +1078,8 @@ module.exports = {
   // Which system can close a task is the fact the whole completion path turns
   // on, so it is worth defending on its own.
   ownerOf,
+  // Exported for the test that a finished task block is not rebuilt as a card.
+  collectMeetings,
   FOCUS_DEFAULT,
   FOCUS_MAX,
 };
