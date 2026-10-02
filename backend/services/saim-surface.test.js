@@ -1380,3 +1380,17 @@ test('night: one line about tomorrow and nothing to act on', () => {
   assert.ok(!d.rows.some((r) => r.when === 'did' || r.when === 'slept'));
   assert.equal(d.figure, null);
 });
+
+test('⚠ the evening EOD prompt does not pull a hobby evening back to work', () => {
+  // Live, 2 Oct 2026 19:09: life read "hobby, showWork:false", and the screen
+  // still led with "EOD outstanding" because a ritual was exempt.
+  const p = lifePayload({ doing: 'hobby', label: 'On a project of your own', band: 'evening', place: { kind: 'home', label: 'living-room' } },
+    { context: { activity: 'ritual', ritual: 'eod', duty: { onDuty: false } } });
+  assert.equal(surfaceFor(p), SURFACES.OFF_DUTY);
+});
+
+test('the MORNING standup is still a ritual even when the read is not work', () => {
+  const p = lifePayload({ doing: 'relaxing', label: 'Relaxing', band: 'early', place: { kind: 'home', label: 'kitchen' } },
+    { context: { activity: 'ritual', ritual: 'standup', duty: { onDuty: false } } });
+  assert.equal(surfaceFor(p), SURFACES.RITUAL);
+});

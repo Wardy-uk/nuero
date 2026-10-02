@@ -976,8 +976,14 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   // ever narrows a steady/away/unknown/firefighting read; a meeting, a session or
   // a ritual is left exactly as it was. An escalation marked unsuppressable still
   // gets through, as it does on a Saturday.
+  // ⚠ The EVENING ritual folds too (Nick, 2 Oct 2026, at 19:09 on a Friday
+  // with VS Code open on his own project: the living-room screen still led
+  // with "EOD outstanding" and two work tasks). The EOD prompt is work; once
+  // the life read says he has stopped, it is held and named like the rest.
+  // The MORNING standup is left alone — it is what starts a working day.
+  const offRitual = context.activity === ACTIVITY.RITUAL && context.ritual === 'eod';
   const gateContext = life && life.showWork === false
-    && [ACTIVITY.STEADY, ACTIVITY.AWAY, ACTIVITY.UNKNOWN, ACTIVITY.FIREFIGHTING].includes(context.activity)
+    && ([ACTIVITY.STEADY, ACTIVITY.AWAY, ACTIVITY.UNKNOWN, ACTIVITY.FIREFIGHTING].includes(context.activity) || offRitual)
     ? { ...context, activity: ACTIVITY.OFF, label: life.label,
       summary: life.place && life.place.label ? `${life.label} · ${life.place.label}` : life.label,
       offWhy: `not working — ${String(life.label).toLowerCase()}` }

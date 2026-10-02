@@ -110,7 +110,8 @@ function surfaceFor(payload) {
   // a Saturday gets. A meeting, a session, a ritual or pre-meeting is untouched.
   const life = payload.life;
   if (isObj(life) && life.showWork === false
-      && ['steady', 'away', 'unknown', 'firefighting', 'off'].includes(activity)) {
+      && (['steady', 'away', 'unknown', 'firefighting', 'off'].includes(activity)
+        || (activity === 'ritual' && payload.context.ritual === 'eod'))) {
     return SURFACES.OFF_DUTY;
   }
   return BY_ACTIVITY[activity] || SURFACES.STEADY;
