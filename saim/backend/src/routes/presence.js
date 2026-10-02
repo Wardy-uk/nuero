@@ -336,10 +336,20 @@ router.get('/room', (_req, res) => {
     // house — so it would be missing here, and a work sensor that died would be
     // invisible on the health page. Found when the work Fire went flat overnight
     // (13 Sep 2026) and showed no row at all.
-    expected: [...new Set([
-      ...Object.values(profiles.all()).flatMap((p) => Object.keys((p && p.sensors) || {})),
-      ...String(process.env.SAIM_OFFSITE_ROOMS || '').split(',').map(s => s.trim()).filter(Boolean),
-    ])].sort(),
+    //
+    // ⚠ A RETIRED name is not expected to report. `work-office` stays in
+    // SAIM_OFFSITE_ROOMS on purpose (removing it would make it a house room if
+    // anything ever reported it again) but no sensor uses it since the 14 Sep
+    // rename to `office`, so expecting it painted a permanent "stale" row on the
+    // health page — a light nobody can fix, which is how the real ones get
+    // ignored. `SAIM_RETIRED_ROOMS=work-office` takes it off the list only.
+    expected: (() => {
+      const retired = new Set(String(process.env.SAIM_RETIRED_ROOMS || '').split(',').map(s => s.trim()).filter(Boolean));
+      return [...new Set([
+        ...Object.values(profiles.all()).flatMap((p) => Object.keys((p && p.sensors) || {})),
+        ...String(process.env.SAIM_OFFSITE_ROOMS || '').split(',').map(s => s.trim()).filter(Boolean),
+      ])].filter((r) => !retired.has(r)).sort();
+    })(),
     checkedAt: now.toISOString(),
   });
 });
