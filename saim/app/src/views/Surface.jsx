@@ -371,6 +371,21 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     load();
   }
 
+  // "What are you up to?" answered — or "not now" (null). His word becomes the
+  // strongest evidence the life read has; it lapses when he changes place.
+  const [lifeBusy, setLifeBusy] = useState(false);
+  async function lifeAnswer(doing) {
+    setLifeBusy(true);
+    try {
+      await apiFetch(doing ? '/api/signals/life/declare' : '/api/signals/life/not-now', {
+        method: 'POST',
+        body: doing ? JSON.stringify({ doing }) : undefined,
+      });
+    } catch { /* the question simply stays; nothing pretends it was answered */ }
+    finally { setLifeBusy(false); }
+    load({ quiet: true });
+  }
+
   async function act(card, action, opts = {}) {
     if (!card || card.kind !== 'item') return undefined;
     // ⚠ `complete` NEVER takes the legacy route. A dismissal is not a completion,
@@ -633,6 +648,8 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       onOpen={open}
       onAct={act}
       onRoomAct={roomAct}
+      onLifeAnswer={lifeAnswer}
+      lifeBusy={lifeBusy}
       onDeskOpen={deskReachable === false ? null : deskOpen}
       deskStates={deskStates}
       onSay={onSay}

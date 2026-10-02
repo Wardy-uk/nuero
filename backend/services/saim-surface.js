@@ -104,6 +104,15 @@ function surfaceFor(payload) {
   if (!isObj(payload)) return SURFACES.BLIND;
   if (payload.poolAvailable === false) return SURFACES.BLIND;
   const activity = payload.context && payload.context.activity;
+  // ⚠ The LIFE read decides whether this is a work screen at all. When he is not
+  // working (a weekday evening, hobby coding, the sofa, a walk) a steady, away,
+  // unknown or firefighting read is framed as his own time — the same dashboard
+  // a Saturday gets. A meeting, a session, a ritual or pre-meeting is untouched.
+  const life = payload.life;
+  if (isObj(life) && life.showWork === false
+      && ['steady', 'away', 'unknown', 'firefighting', 'off'].includes(activity)) {
+    return SURFACES.OFF_DUTY;
+  }
   return BY_ACTIVITY[activity] || SURFACES.STEADY;
 }
 
@@ -780,6 +789,16 @@ function dashOffDuty(payload, now) {
   //   the first day that has anything — on a Saturday night, tomorrow is
   //   usually empty and Monday is the useful answer. `scope` is rendered
   //   verbatim so no client is a second opinion about which day these are.
+  // --- What he is doing, first --------------------------------------------
+  // The life read, in its own words, with where. Only when it is at least
+  // `likely`: a guess stated as the first line of his evening is the confident
+  // wrong answer this is built to refuse.
+  const life = payload.life;
+  if (isObj(life) && life.sure && life.doing && life.doing !== 'unknown') {
+    const where = life.place && life.place.label ? life.place.label : null;
+    rows.push(row('now', life.label, { note: where }));
+  }
+
   const agenda = payload.agenda;
   if (isObj(agenda)) {
     if (agenda.known === false) {

@@ -42,6 +42,41 @@ router.get('/', async (req, res) => {
 // every call. A banner refreshing every half minute must cost approximately
 // nothing; `room-presence` holds a 5s cache, so this is a memory read most times
 // it is asked.
+// GET /api/signals/life — what he is doing, where, with whom, how sure, and the
+// evidence. The one answer every surface picks its content from.
+// POST /api/signals/life/declare {doing, minutes?} — he told us. Lapses when he
+// changes place or after `minutes` (default 120).
+router.post('/life/declare', async (req, res) => {
+  try {
+    const { doing, minutes } = req.body || {};
+    res.json(await require('../services/life-state').declare(doing, { minutes }));
+  } catch (e) {
+    res.status(e.status || 500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/signals/life/not-now — quieten the question for an hour.
+router.post('/life/not-now', async (req, res) => {
+  const life = require('../services/life-state');
+  life.snoozeAsk(60);
+  res.json(await life.read());
+});
+
+// DELETE /api/signals/life/declare — take back what he said.
+router.delete('/life/declare', async (req, res) => {
+  const life = require('../services/life-state');
+  life.clearDeclared();
+  res.json(await life.read());
+});
+
+router.get('/life', async (req, res) => {
+  try {
+    res.json(await require('../services/life-state').read());
+  } catch (e) {
+    res.status(500).json({ doing: 'unknown', why: e.message });
+  }
+});
+
 router.get('/room', async (req, res) => {
   try {
     const roomPresence = require('../services/room-presence');

@@ -84,6 +84,7 @@ const DOORS = new Set([
                      //   It cannot name an entity, unlock anything, or reach a
                      //   switch — sockets are deliberately not readable here.
   'signals',         // where he is for the top bar (room / zone / town) + sense
+                     //   and "what are you up to?" answers (life/declare) — internal, reversible
                      // health. GET-only router: no writes, no credentials, no body data.
                      // ⚠ The town is a place name, never the geocoded ADDRESS.
   // ⚠ `health` is deliberately NOT a door: body data behind an unauthenticated

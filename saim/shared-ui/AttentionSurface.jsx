@@ -3,6 +3,7 @@ import Field from './Field';
 import Dashboard from './Dashboard';
 import Approach, { minutesOf } from './Approach';
 import Shelf from './Shelf';
+import LifeAsk from './LifeAsk';
 import { isPressing } from './useFieldDrive';
 import { surfaceRgb } from './fieldDrive.mjs';
 // ⚠ ONE vocabulary, shared with the backend that composes the phase and with
@@ -138,6 +139,10 @@ export default function AttentionSurface({
   // surface that cannot reach the route, in which case nothing is offered —
   // never a button that fails when tapped.
   onDeskOpen = null,
+  // Answer "what are you up to?": `(doing | null) => {}`, null meaning "not
+  // now". Omitted where the shell cannot reach NEURO — then nothing is asked.
+  onLifeAnswer = null,
+  lifeBusy = false,
   // Per-app outcome: waiting | claimed | opened | failed | expired.
   deskStates = {},
   // ⚠ A phase THIS SHELL knows and the brain cannot: it is mid-request itself.
@@ -441,10 +446,12 @@ export default function AttentionSurface({
   //   "the laptop has taken VS Code" under the word ASSESSING would be a fact
   //   moved onto a state it was not about.
   const opDetail = localPhase ? null : (operation ? operation.detail : null);
+  // "What are you up to?" — only when NEURO asked, only where it can be answered.
+  const askLife = Boolean(onLifeAnswer && data.life && data.life.ask && !hideSecondary);
 
   return (
     <div
-      className={`${rootClassName}${layout === 'approach' ? ' surface--approach' : ''}`}
+      className={`${rootClassName}${layout === 'approach' ? ' surface--approach' : ''}${askLife ? ' surface--asking' : ''}`}
       // ⚠ HER COLOUR IS SET IN BOTH LAYOUTS. It used to ride only on
       //   `approach`, so anything in the list layout reading `--approach-rgb`
       //   silently fell back to the default blue — a second answer about what
@@ -520,6 +527,7 @@ export default function AttentionSurface({
           </div>
         )}
 
+        {askLife && <LifeAsk ask={data.life.ask} onAnswer={onLifeAnswer} busy={lifeBusy} />}
         {beforeSay}
 
         {/* ⚠ `--stacked` WHEN THE TRANSITION IS ALSO HERE. The cap below was

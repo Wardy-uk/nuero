@@ -1,0 +1,41 @@
+.lifeask {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(var(--approach-rgb, 114, 150, 211), 0.35);
+  border-radius: 10px;
+  background: rgba(10, 15, 22, 0.88);
+  box-sizing: border-box;
+}
+.lifeask__q {
+  font-family: Newsreader, Georgia, serif;
+  font-size: 0.98rem;
+  color: var(--text, #e6edf3);
+}
+.lifeask__opts { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.lifeask__opt {
+  font: inherit;
+  font-size: 0.82rem;
+  color: #c9d3e3;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 0.32rem 0.75rem;
+  min-height: 32px;
+  cursor: pointer;
+}
+.lifeask__opt:disabled { opacity: 0.5; cursor: default; }
+.lifeask__opt--quiet { color: #78899a; border-style: dashed; }
+
+/* In the corridor layout it takes the top-right corner the dashboard chip uses,
+   and the chip steps aside while she is asking — two things in one corner is
+   how this layout has collided before. */
+.surface--approach .lifeask {
+  position: absolute;
+  right: 4%;
+  top: 4%;
+  z-index: 70;
+  max-width: min(36%, 460px);
+}
+.surface--asking.surface--approach .dash { display: none; }

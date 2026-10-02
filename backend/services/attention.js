@@ -322,7 +322,7 @@ function gate(context, items, now = new Date()) {
       // that context re-ranks and gates but never ADDS still holds — nothing
       // here invents a candidate, it only changes which of decision-engine's
       // own items survive.
-      drop((i) => i._unsuppressable === true || _isPersonal(i), 'not a working day');
+      drop((i) => i._unsuppressable === true || _isPersonal(i), ctx.offWhy || 'not a working day');
       primary = kept.length ? itemCard(kept.shift(), now) : contextCard('context-off', ctx.label, ctx.summary);
       rationale = 'Not a working day, so work is held back and only personal or unsuppressable items get through.';
       break;
@@ -957,7 +957,32 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     gaps.push({ input: 'attention-deferrals', why: e.message });
   }
 
-  const gated = gate(context, visible, now);
+  // What he is DOING, where and with whom — the life-shaped read every surface
+  // picks its content from (`services/life-state.js`). Never allowed to fail
+  // the feed: a null `life` reads to every client as "as before".
+  let life = null;
+  try {
+    life = await require('./life-state').read(now);
+  } catch (e) {
+    console.warn('[Attention] life-state failed:', e.message);
+    gaps.push({ input: 'life', why: e.message });
+  }
+
+  // ⚠ NO WORK WHILE HE IS NOT WORKING. Nick, 2 Oct 2026: "I don't care about work
+  // tasks at 4pm on a Saturday." The day-off pool switch (work held back, only
+  // personal or unsuppressable items through, every drop NAMED) already existed
+  // for non-working days; this applies the SAME rule whenever the life read says
+  // work should not show — a weekday evening, hobby coding, the sofa. It only
+  // ever narrows a steady/away/unknown/firefighting read; a meeting, a session or
+  // a ritual is left exactly as it was. An escalation marked unsuppressable still
+  // gets through, as it does on a Saturday.
+  const gateContext = life && life.showWork === false
+    && [ACTIVITY.STEADY, ACTIVITY.AWAY, ACTIVITY.UNKNOWN, ACTIVITY.FIREFIGHTING].includes(context.activity)
+    ? { ...context, activity: ACTIVITY.OFF, label: life.label,
+      summary: life.place && life.place.label ? `${life.label} · ${life.place.label}` : life.label,
+      offWhy: `not working — ${String(life.label).toLowerCase()}` }
+    : context;
+  const gated = gate(gateContext, visible, now);
   gated.dropped = [...gated.dropped, ...snoozed];
 
   // ── Ambient observations ──────────────────────────────────────────────────
@@ -1353,6 +1378,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   try {
     const draft = {
       context,
+      life,
       weeklyTarget,
       // ⚠ This is a WHITELIST, and a field left out is dropped in silence.
       //   `weather` was on the payload and absent here, so the off-duty
@@ -1505,6 +1531,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     //   the thing that needs it, which is the whitelist trap three times over
     //   today (`weather`, `canOpen`, this).
     lastNight,
+    life,
     ...gated,
     // ── What she SHOWS, and what he could SAY ────────────────────────────
     // Nick, 31 Aug 2026: SAiM is a manifestation, not a menu — "a series of
