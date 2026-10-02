@@ -40,7 +40,8 @@ const db = require('../db/database');
 const bus = require('./event-bus');
 
 const CONSUMER = 'source-health';
-const TYPES = ['source.sync.started', 'source.sync.succeeded', 'source.sync.failed', 'source.sync.stale'];
+const TYPES = ['source.sync.started', 'source.sync.succeeded', 'source.sync.failed', 'source.sync.stale',
+  'source.observation.received'];
 const SOURCE_ID = /^[a-z][a-z0-9_.-]{0,63}$/;
 
 // ── the projector ────────────────────────────────────────────────────────────
@@ -74,8 +75,13 @@ function applyEvent(ev) {
     source_id: sourceId, state: 'unknown', freshness: 'unknown',
     last_attempt_at: null, last_success_at: null, last_failure_at: null, failure_detail: null,
     consecutive_failures: 0, expected_interval_ms: null, stale_after_ms: null, stale_since: null,
-    last_detail: null,
+    last_detail: null, last_observed_at: null,
   };
+  // A "never seen" stale verdict (Build 2B) is about a source with no row at
+  // all. It changes nothing here — there is no success to be stale about, and
+  // writing a row would turn "never heard from" into a known-but-unknown
+  // source. Skipping is deterministic, so replay is unaffected.
+  if (ev.type === 'source.sync.stale' && p.neverSeen === true && !_row(sourceId)) return;
   const next = { ...cur };
   const latestOutcome = _later(cur.last_success_at, cur.last_failure_at);
 
@@ -114,14 +120,54 @@ function applyEvent(ev) {
       break;
 
     case 'source.sync.stale':
-      // ⚠ Only if it is about the success we still hold. A stale verdict on a
-      // success that has since been superseded is out of date and changes
-      // nothing — otherwise a replay would mark a fresh source stale.
-      if (cur.last_success_at && p.lastSuccessAt === cur.last_success_at) {
+      // ⚠ Only if it is about the basis we still hold. A stale verdict on a
+      // success (or, for a push source, an observation) that has since been
+      // superseded is out of date and changes nothing — otherwise a replay
+      // would mark a fresh source stale.
+      if (p.basis === 'observation') {
+        if (cur.last_observed_at && p.lastObservedAt === cur.last_observed_at) {
+          next.freshness = 'stale';
+          next.stale_since = next.stale_since || at;
+        }
+      } else if (cur.last_success_at && p.lastSuccessAt === cur.last_success_at) {
         next.freshness = 'stale';
         next.stale_since = next.stale_since || at;
       }
       break;
+
+    case 'source.observation.received': {
+      // A push delivery (Build 2). TWO clocks, kept apart on purpose:
+      //
+      //  • the DELIVERY (receivedAt) is the outcome. It decides `state`, and is
+      //    compared with failures on the same clock — a failed POST is stamped
+      //    when it was refused, so ordering them by when the sensor observed
+      //    something would let a draining queue roll a later failure back.
+      //  • the newest OBSERVATION decides `freshness`. A phone emptying a
+      //    six-hour-old queue delivered successfully and is still not telling
+      //    NEURO anything current.
+      const received = ev.receivedAt;
+      const observed = p.newestObservedAt;
+      next.last_attempt_at = _later(cur.last_attempt_at, received);
+      next.last_success_at = _later(cur.last_success_at, received);
+      if (!latestOutcome || received >= latestOutcome) {
+        next.state = 'healthy';
+        next.consecutive_failures = 0;
+        next.last_detail = p.detail === undefined ? null : JSON.stringify(p.detail);
+      }
+      if (Number.isInteger(p.expectedIntervalMs) && p.expectedIntervalMs > 0) next.expected_interval_ms = p.expectedIntervalMs;
+      if (Number.isInteger(p.staleAfterMs) && p.staleAfterMs > 0) next.stale_after_ms = p.staleAfterMs;
+      if (typeof observed === 'string' && observed) {
+        // Only something NEWER than what we hold makes it fresh. An older or
+        // equal observation (a late chunk, a re-sent backlog) leaves a stale
+        // verdict standing, because it adds nothing current.
+        if (!cur.last_observed_at || observed > cur.last_observed_at) {
+          next.last_observed_at = observed;
+          next.freshness = 'fresh';
+          next.stale_since = null;
+        }
+      }
+      break;
+    }
 
     default:
       return; // not ours; the consumer's type filter means this cannot happen
@@ -132,9 +178,10 @@ function applyEvent(ev) {
   db.run(
     `INSERT INTO source_health (source_id, state, freshness, last_attempt_at, last_success_at, last_failure_at,
        failure_detail, consecutive_failures, expected_interval_ms, stale_after_ms, stale_since, last_detail,
-       last_event_seq, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       last_event_seq, updated_at, last_observed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source_id) DO UPDATE SET
+       last_observed_at = excluded.last_observed_at,
        state = excluded.state, freshness = excluded.freshness, last_attempt_at = excluded.last_attempt_at,
        last_success_at = excluded.last_success_at, last_failure_at = excluded.last_failure_at,
        failure_detail = excluded.failure_detail, consecutive_failures = excluded.consecutive_failures,
@@ -143,7 +190,7 @@ function applyEvent(ev) {
        last_event_seq = excluded.last_event_seq, updated_at = excluded.updated_at`,
     [sourceId, next.state, next.freshness, next.last_attempt_at, next.last_success_at, next.last_failure_at,
       next.failure_detail, next.consecutive_failures, next.expected_interval_ms, next.stale_after_ms,
-      next.stale_since, next.last_detail, next.last_event_seq, next.updated_at]
+      next.stale_since, next.last_detail, next.last_event_seq, next.updated_at, next.last_observed_at || null]
   );
 }
 
@@ -260,21 +307,29 @@ async function checkStaleness(opts = {}) {
   await bus.pumpConsumer(CONSUMER, { now: nowMs });
   const marked = [];
   const rows = db.all(`SELECT * FROM source_health WHERE stale_after_ms IS NOT NULL
-                       AND last_success_at IS NOT NULL AND freshness != 'stale'`);
+                       AND (last_success_at IS NOT NULL OR last_observed_at IS NOT NULL) AND freshness != 'stale'`);
   for (const r of rows) {
-    const ageMs = nowMs - Date.parse(r.last_success_at);
+    // A push source is judged on its newest OBSERVATION; a pull source on its
+    // last success, exactly as in Build 1 (same key, same payload).
+    const byObservation = !!r.last_observed_at;
+    const basis = byObservation ? r.last_observed_at : r.last_success_at;
+    const ageMs = nowMs - Date.parse(basis);
     if (!(ageMs > r.stale_after_ms)) continue;
+    const payload = { sourceId: r.source_id, lastSuccessAt: r.last_success_at, staleAfterMs: r.stale_after_ms, ageMs };
+    if (byObservation) Object.assign(payload, { basis: 'observation', lastObservedAt: basis });
     const ev = _safePublish({
       type: 'source.sync.stale',
       occurredAt: new Date(nowMs).toISOString(),
       source: { system: 'neuro', recordId: r.source_id },
       subject: { entityType: 'source', entityId: r.source_id },
-      idempotencyKey: `source-stale:${r.source_id}:${r.last_success_at}`,
-      payload: { sourceId: r.source_id, lastSuccessAt: r.last_success_at, staleAfterMs: r.stale_after_ms, ageMs },
+      idempotencyKey: byObservation
+        ? `source-stale:${r.source_id}:obs:${basis}`
+        : `source-stale:${r.source_id}:${r.last_success_at}`,
+      payload,
     });
     if (ev) {
       marked.push(r.source_id);
-      console.warn(`[SourceHealth] ${r.source_id} is STALE — last success ${Math.round(ageMs / 60000)} min ago (threshold ${Math.round(r.stale_after_ms / 60000)} min)`);
+      console.warn(`[SourceHealth] ${r.source_id} is STALE — last ${byObservation ? 'observation' : 'success'} ${Math.round(ageMs / 60000)} min ago (threshold ${Math.round(r.stale_after_ms / 60000)} min)`);
     }
   }
   if (marked.length) await bus.pumpConsumer(CONSUMER, { now: nowMs });
@@ -299,6 +354,12 @@ function _shape(r, nowMs) {
     staleSince: r.stale_since,
     lastDetail: r.last_detail ? JSON.parse(r.last_detail) : null,
     successAgeMs: r.last_success_at ? nowMs - Date.parse(r.last_success_at) : null,
+    // Build 2: push sources. `freshnessBasis` says which clock freshness is
+    // judged on, so a reader never compares a delivery time with a threshold
+    // meant for an observation time.
+    lastObservedAt: r.last_observed_at || null,
+    observationAgeMs: r.last_observed_at ? nowMs - Date.parse(r.last_observed_at) : null,
+    freshnessBasis: r.last_observed_at ? 'observation' : (r.last_success_at ? 'success' : null),
     // Started after the last outcome: a run in progress, or one that died
     // mid-way. Which of the two is for the stale check to say, not this flag.
     inProgress: !!(r.last_attempt_at && (!latestOutcome || r.last_attempt_at > latestOutcome)),

@@ -51,7 +51,55 @@ const TYPES = Object.freeze({
     required: ['sourceId', 'lastSuccessAt', 'staleAfterMs'],
   },
 
+  // A PUSH source delivered observations (Build 2). Push sources — the phone
+  // apps — have no "run": nothing on the server starts them, so a fake
+  // `source.sync.started` would be a story told about a session that never
+  // existed. This is the honest equivalent: "client X delivered, and the newest
+  // thing it had observed was at T". `occurredAt` IS that newest observation
+  // time, so freshness is judged on what the sensor saw, not on when its queue
+  // happened to drain. Carries expectedIntervalMs / staleAfterMs for the same
+  // reason the started event does: the projection needs no config to rebuild.
+  //
+  // A failed delivery is `source.sync.failed` with `runId` = the delivery id.
+  'source.observation.received': {
+    version: 1,
+    provenance: 'observation',
+    required: ['sourceId', 'deliveryId', 'newestObservedAt'],
+  },
+
   // ── Domain observations ────────────────────────────────────────────────────
+
+  // Native sensing (Build 2). Small on purpose: one type per thing observed,
+  // never one per metric or per field.
+  //
+  // The newest NEWLY-STORED HealthKit sample of one metric in one delivery —
+  // NOT every sample. Health arrives at ~1,000–1,400 samples a day and the log
+  // is undeletable by design; health_samples stays the store of record, and
+  // this is the change notification the world model is projected from. Keyed
+  // on the sample's own HealthKit UUID, so the same sample arriving from both
+  // apps (each keeps its own anchors and re-sends) is ONE event.
+  'observation.health.recorded': {
+    version: 1,
+    provenance: 'observation',
+    required: ['metric', 'value', 'observedAt'],
+  },
+  // A device self-report (battery, motion activity, connectivity, steps).
+  // ⚠ Never carries the SSID or a geocoded place name — those stay in
+  // device_status, which can be cleared; this log cannot.
+  'observation.device.updated': {
+    version: 1,
+    provenance: 'observation',
+    required: ['deviceId', 'observedAt'],
+  },
+  // The newest position fix in a delivery — WHEN and HOW ACCURATE, never WHERE.
+  // Coordinates stay in location_points. The world model needs "when did NEURO
+  // last know where he was, and from which device"; an immutable record of his
+  // movements is a different thing that nobody asked for.
+  'observation.location.recorded': {
+    version: 1,
+    provenance: 'observation',
+    required: ['deviceId', 'observedAt'],
+  },
   // What the Graph calendar window looked like on a successful sync. Keyed on a
   // fingerprint of the window's content, so re-observing an unchanged diary
   // folds into the existing event: the log records CHANGE, not polling.

@@ -416,6 +416,20 @@ async function init() {
     console.error('[DB] health_samples migration check failed:', e.message);
   }
 
+  // Migration: source_health.last_observed_at (Build 2 — push sources). Build 1
+  // shipped the table without it, and CREATE TABLE IF NOT EXISTS never adds a
+  // column to a table that already exists, so the live DB needs this. NULL on
+  // every existing row, which is exactly Build 1's behaviour for pull sources.
+  try {
+    const shColumns = db.prepare('PRAGMA table_info(source_health)').all().map(r => r.name);
+    if (shColumns.length && !shColumns.includes('last_observed_at')) {
+      db.exec('ALTER TABLE source_health ADD COLUMN last_observed_at TEXT');
+      console.log('[DB] source_health.last_observed_at added');
+    }
+  } catch (e) {
+    console.error('[DB] source_health migration check failed:', e.message);
+  }
+
   // health_daily: blood pressure and heart rate.
   //
   // All three have been arriving for two years and had nowhere to land — the

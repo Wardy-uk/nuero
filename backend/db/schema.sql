@@ -1462,5 +1462,89 @@ CREATE TABLE IF NOT EXISTS source_health (
   stale_since          TEXT,
   last_detail          TEXT,           -- JSON: the last success's summary (counts, window)
   last_event_seq       INTEGER,
+  updated_at           TEXT NOT NULL,
+  -- Build 2: for a PUSH source, the newest OBSERVATION it has delivered. When
+  -- set, freshness is judged on this rather than on when a delivery arrived,
+  -- so a phone draining a six-hour-old queue does not read as fresh. NULL for
+  -- pull sources, which keep Build 1's behaviour exactly. (Existing databases
+  -- gain it through the migration in database.js.)
+  last_observed_at     TEXT
+);
+
+-- Build 2: the latest native observation per thing observed, materialised from
+-- observation.* events by the `observation-state` projector. REBUILDABLE FROM
+-- event_log. One row per assertion key (`health:<metric>`,
+-- `device:<deviceId>`, `location:<deviceId>`); the row is whichever event has
+-- the newest OBSERVED time, never whichever arrived last.
+-- ⚠ No coordinates, SSIDs or place names: the log they come from is immutable.
+CREATE TABLE IF NOT EXISTS observation_latest (
+  assertion_key        TEXT PRIMARY KEY,
+  kind                 TEXT NOT NULL,         -- health | device | location
+  subject_type         TEXT,
+  subject_id           TEXT,
+  value_json           TEXT NOT NULL,
+  source_id            TEXT NOT NULL,         -- which producer: healthkit.neuro-ios, …
+  observed_at          TEXT NOT NULL,
+  received_at          TEXT NOT NULL,
+  event_id             TEXT NOT NULL,
+  event_seq            INTEGER NOT NULL,
+  provenance_kind      TEXT NOT NULL,
+  confidence           REAL,
+  superseded_event_id  TEXT,                  -- the event this one replaced
+  superseded_count     INTEGER NOT NULL DEFAULT 0,
+  older_ignored_count  INTEGER NOT NULL DEFAULT 0, -- arrived late, observed earlier: kept out
   updated_at           TEXT NOT NULL
+);
+
+-- Build 2B: the source-blindness evaluator's own memory, folded from source.*
+-- events (so it is REBUILDABLE FROM event_log and never reads another
+-- consumer's table mid-replay).
+CREATE TABLE IF NOT EXISTS source_blind_state (
+  source_id            TEXT PRIMARY KEY,
+  basis_at             TEXT,                  -- newest observation (push) or success (pull)
+  last_success_at      TEXT,
+  last_outcome_at      TEXT,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  last_failure         TEXT,
+  active_finding_id    TEXT,
+  updated_at           TEXT NOT NULL
+);
+
+-- One row per EPISODE of blindness: opened on the transition into stale /
+-- failing / never-seen, refreshed (never re-opened) while it lasts, resolved
+-- when the source recovers. A finding is EVIDENCE for the attention engine,
+-- never a notification in itself.
+CREATE TABLE IF NOT EXISTS source_blind_findings (
+  finding_id           TEXT PRIMARY KEY,      -- source-blind:<sourceId>:<opening seq>
+  source_id            TEXT NOT NULL,
+  status               TEXT NOT NULL,         -- active | resolved
+  condition            TEXT NOT NULL,         -- stale | failing | never-seen
+  first_detected_at    TEXT NOT NULL,
+  last_seen_at         TEXT NOT NULL,
+  resolved_at          TEXT,
+  basis_at             TEXT,
+  last_success_at      TEXT,
+  failure_count        INTEGER NOT NULL DEFAULT 0,
+  stale_after_ms       INTEGER,
+  confidence           REAL,
+  change               TEXT NOT NULL,         -- new | change | repeat | resolved
+  repeats              INTEGER NOT NULL DEFAULT 0,
+  evidence_json        TEXT NOT NULL,         -- event ids, capped
+  updated_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_source_blind_findings_status ON source_blind_findings(status, source_id);
+
+-- What the EXISTING attention policy said about each finding, recorded by
+-- ambient-push on its normal pass. NOT derivable from the log (it depends on
+-- the moment: meeting, focus, quiet hours), so it lives OUTSIDE the evaluator's
+-- tables and survives a replay; finding ids are deterministic, so it reattaches.
+CREATE TABLE IF NOT EXISTS source_blind_attention (
+  finding_id           TEXT PRIMARY KEY,
+  mode                 TEXT NOT NULL,         -- shadow | live
+  first_decided_at     TEXT NOT NULL,
+  last_decided_at      TEXT NOT NULL,
+  decisions            INTEGER NOT NULL DEFAULT 0,
+  would_push           INTEGER NOT NULL DEFAULT 0, -- 1 if any pass said yes
+  pushed_at            TEXT,                  -- live mode only: actually sent
+  last_decision_json   TEXT NOT NULL
 );

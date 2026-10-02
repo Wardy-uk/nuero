@@ -373,6 +373,51 @@ function checkMicrosoftSync() {
   }
 }
 
+/**
+ * The nervous system itself (Build 2). SourceHealth now carries the native
+ * senses, and the source-blindness evaluator rides on it — so a consumer that
+ * has stopped, or dead-lettered events, is SAiM going blind about blindness.
+ *
+ * ⚠ WARNINGS ONLY, never critical: these land in the briefing, never as a
+ * push. A dead letter is a fault worth reading about over breakfast, and the
+ * senses it affects are already watched by checkSenses above, which is where
+ * any escalation belongs. Two systems pushing about one blind sensor is the
+ * duplicate interruption this whole build exists to prevent.
+ *
+ * Coexistence is deliberate (Build 2B): checkSenses keeps judging the senses
+ * from signals.snapshot, which now reads the SourceHealth projection for the
+ * Graph calendar. Per-app native sources are NOT raised here — a redundant
+ * app gone quiet is the source-blindness evaluator's finding, routed through
+ * the attention policy, not a watchdog alarm.
+ */
+function checkEventSpine() {
+  try {
+    const bus = require('./event-bus');
+    const st = bus.getStatus();
+    const out = [];
+    for (const c of st.consumers) {
+      if (!c.registered) continue;
+      if (c.deadLettered > 0) {
+        out.push({
+          key: `event-spine:dead:${c.name}`, level: 'warn',
+          title: `Event consumer ${c.name} dead-lettered ${c.deadLettered} event(s)`,
+          detail: `${c.lastError || 'see event_failures'} — its projection is missing those events until a replay`,
+        });
+      }
+      if (c.retrying > 0) {
+        out.push({
+          key: `event-spine:retrying:${c.name}`, level: 'warn',
+          title: `Event consumer ${c.name} is held on a failing event`,
+          detail: c.lastError || 'retrying with back-off',
+        });
+      }
+    }
+    return out;
+  } catch (e) {
+    return [{ key: 'event-spine:check-failed', level: 'warn', title: 'Event spine check failed', detail: e.message }];
+  }
+}
+
 // ── Runner ──────────────────────────────────────────────────────────────────
 
 /**
@@ -425,6 +470,7 @@ async function run({ notify = true } = {}) {
     ...checkOffsiteBackup(),
     ...checkTaskExport(),
     ...checkMicrosoftSync(),
+    ...checkEventSpine(),
     ...checkScheduledJobs(),
     ...(await checkAi()),
     ...(await checkHost()),
@@ -477,4 +523,5 @@ async function run({ notify = true } = {}) {
 }
 
 module.exports = {
-  checkSenses, run, checkBackups, checkTaskExport, checkScheduledJobs, checkAi, checkHost, checkMicrosoftSync, msSyncIssue };
+  checkSenses, run, checkBackups, checkTaskExport, checkScheduledJobs, checkAi, checkHost, checkMicrosoftSync, msSyncIssue,
+  checkEventSpine };

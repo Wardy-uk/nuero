@@ -413,6 +413,29 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
     // assumed; guessing a key here would have produced a permanently-red light
     // for a feature that works.
     const row = db.get('SELECT COUNT(*) AS n, MAX(fetched_at) AS fetched FROM calendar_cache');
+    // Build 2: the canonical SourceHealth projection is preferred for the
+    // Graph sync, because the cache's MAX(fetched_at) is NOT about Graph — the
+    // phone's EventKit pushes write `fetched_at` into the same table, so a dead
+    // Graph sync read as "live" for as long as the phone kept pushing. The
+    // projection is about the Graph run alone, and knows a failure from a
+    // quiet diary. The cache stays the fallback when the projection has never
+    // heard from the source or cannot be read — and says which answered.
+    let graph = null;
+    try { graph = require('./source-health').getSource('microsoft.calendar', { now: now.getTime() }); } catch { graph = null; }
+    if (graph && graph.known && graph.lastSuccessAt) {
+      const ageMinutes = graph.successAgeMs == null ? null : Math.max(0, Math.round(graph.successAgeMs / 60000));
+      const n = row && row.n ? `${row.n} cached events` : 'no cached events';
+      // One failed run with fresh data is a hiccup; three in a row is a fault.
+      if (graph.state === 'failing' && graph.consecutiveFailures >= 3) {
+        return { state: 'error', ageMinutes, why: `the last ${graph.consecutiveFailures} Outlook syncs failed${graph.failure && graph.failure.error ? ` — ${graph.failure.error}` : ''}`, detail: `${n} · source health` };
+      }
+      return {
+        state: graph.freshness === 'stale' ? 'stale' : 'live',
+        ageMinutes,
+        ...(graph.freshness === 'stale' ? { why: 'Outlook has not synced successfully in over an hour' } : {}),
+        detail: `${n} · source health`,
+      };
+    }
     if (!row || !row.n) return { state: 'never', why: 'nothing cached yet' };
     const r = rate(row.fetched, 30, now, { staleAfter: 180 });
     return { ...r, detail: `${row.n} cached events` };

@@ -566,6 +566,43 @@ function collectNudges(ctx) {
   return items;
 }
 
+/**
+ * A sense gone blind (Build 2B), as a pool candidate — LIVE MODE ONLY.
+ *
+ * In shadow mode (the default) this returns nothing: the source-blindness
+ * evaluator's findings are judged by ambient-push and recorded, and the
+ * screen is unchanged. In live mode an active finding becomes an ordinary
+ * candidate, so the gate, the lifecycle (acknowledge / defer / dismiss) and
+ * the learned suppression all apply to it exactly as to anything else.
+ * Low severity never enters the pool — a redundant peer is still reporting.
+ *
+ * Keyed per EPISODE (`dedupeKey` = the finding id), so a resolved blindness
+ * and the next one are two records, and one episode is one record however
+ * many times the staleness check runs.
+ */
+function collectSourceBlindness() {
+  let sb;
+  try { sb = require('./source-blindness'); } catch { return []; }
+  if (sb.mode() !== 'live') return [];
+  let findings = [];
+  try { findings = sb.getFindings({ status: 'active' }); } catch { return []; }
+  return findings
+    .filter((f) => f.severity !== 'low')
+    .map((f) => ({
+      type: 'source-blind',
+      id: f.findingId,
+      dedupeKey: f.findingId,
+      title: f.condition === 'failing' ? `${f.label} keeps failing` : f.condition === 'never-seen'
+        ? `${f.label} has never reported` : `${f.label} has gone quiet`,
+      reason: f.whyItMatters,
+      score: f.severity === 'high' ? 72 : 52,
+      urgency: f.severity === 'high' ? 'high' : 'medium',
+      source: 'neuro',
+      actionHint: 'Open NEURO Health',
+      meta: { source: f.source, condition: f.condition, confidence: f.confidence, evidence: f.evidence },
+    }));
+}
+
 function collectImports(ctx) {
   const items = [];
   if (ctx.pendingImports > 0) {
@@ -882,6 +919,7 @@ async function evaluate(options = {}) {
     ...collectUrgentEmails(ctx),
     ...collectNudges(ctx),
     ...collectImports(ctx),
+    ...collectSourceBlindness(),
   ];
 
   // Deduplicate, apply behaviour + time-of-day modifiers
@@ -1099,6 +1137,8 @@ module.exports = {
   ownerOf,
   // Exported for the test that a finished task block is not rebuilt as a card.
   collectMeetings,
+  // Exported for the test that shadow mode adds nothing to the pool.
+  collectSourceBlindness,
   FOCUS_DEFAULT,
   FOCUS_MAX,
 };

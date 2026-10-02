@@ -1218,8 +1218,11 @@ function start() {
   // event when it has, so the SourceHealth projection can be rebuilt from the
   // log without re-judging it against a different clock.
   cron.schedule('*/5 * * * *', () => {
-    require('./source-health').checkStaleness().catch(e =>
-      console.error('[Scheduler] Source staleness check failed:', e.message));
+    require('./source-health').checkStaleness()
+      // Build 2B: expected sources NEURO has never heard from. Recorded as an
+      // event too, so the source-blindness evaluator stays a function of the log.
+      .then(() => require('./source-blindness').checkExpected())
+      .catch(e => console.error('[Scheduler] Source staleness check failed:', e.message));
   });
 
   // 8:20am weekdays — safety net, not the main path. Invites are caught on

@@ -21,6 +21,8 @@ const appleIngest = require('../services/apple-ingest');
 router.post('/calendar', (req, res) => {
   try {
     const result = appleIngest.ingestCalendar(req.body || {});
+    // Build 2: the push (or its refusal) onto the event spine. Never throws.
+    require('../services/native-events').recordEventKitPush({ headers: req.headers, body: req.body || {}, result });
     if (!result.ok) return res.status(400).json(result);
     if (result.rejected > 0) {
       console.warn(`[Apple] ${result.rejected} pushed event(s) were unusable and not stored`);

@@ -55,10 +55,17 @@ router.post('/points', (req, res) => {
     points: body.points,
     nowSeconds: Math.floor(Date.now() / 1000),
   });
-  if (!batch.ok) return res.status(400).json({ ok: false, error: batch.reason });
+  const nativeEvents = require('../services/native-events');
+  if (!batch.ok) {
+    nativeEvents.recordDeliveryFailure({ kind: 'location', headers: req.headers, deviceId: body.deviceId, error: batch.reason, reason: 'malformed' });
+    return res.status(400).json({ ok: false, error: batch.reason });
+  }
 
   try {
     const { stored, duplicate } = locationPoints.store(batch.deviceId, batch.accepted, body.source);
+    // Build 2: WHEN and how accurately — never where — onto the event spine,
+    // after the write, and never able to fail it.
+    nativeEvents.recordLocationBatch({ headers: req.headers, deviceId: batch.deviceId, accepted: batch.accepted, stored });
     // Never log a coordinate. Counts describe the health of the feed without
     // writing where Nick was into the process log.
     if (stored > 0) console.log(`[Location] ${stored} new points from ${batch.deviceId}`);
@@ -73,6 +80,7 @@ router.post('/points', (req, res) => {
   } catch (e) {
     // Nothing was recorded, so the device must send this batch again.
     console.error('[Location] point ingest failed:', e.message);
+    nativeEvents.recordDeliveryFailure({ kind: 'location', headers: req.headers, deviceId: batch.deviceId, error: e.message, reason: 'store-failed' });
     res.status(503).json({ ok: false, error: e.message, retryable: true });
   }
 });

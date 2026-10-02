@@ -376,7 +376,11 @@ let builtinsLoaded = false;
 function _loadBuiltins() {
   if (builtinsLoaded) return;
   builtinsLoaded = true;
+  // Registration order is pump order: source-health first, so a projection
+  // the others read is never behind them in the same pass.
   require('./source-health');
+  require('./observation-state');
+  require('./source-blindness');
 }
 
 function getConsumer(name) {

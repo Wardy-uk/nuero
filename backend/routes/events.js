@@ -15,11 +15,19 @@ const express = require('express');
 const router = express.Router();
 const bus = require('../services/event-bus');
 const sourceHealth = require('../services/source-health');
+const observationState = require('../services/observation-state');
+const sourceBlindness = require('../services/source-blindness');
 
 // GET /api/events/status — event backbone health: event count, newest event, consumer lag, failed and dead-lettered events
 router.get('/status', (req, res) => {
   try {
-    res.json({ ok: true, ...bus.getStatus(), sourceHealth: sourceHealth.getSourceHealth().projection });
+    res.json({
+      ok: true,
+      ...bus.getStatus(),
+      sourceHealth: sourceHealth.getSourceHealth().projection,
+      observationState: observationState.list().projection,
+      sourceBlindness: sourceBlindness.status(),
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -29,6 +37,26 @@ router.get('/status', (req, res) => {
 router.get('/source-health', (req, res) => {
   try {
     res.json({ ok: true, ...sourceHealth.getSourceHealth() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/findings — source-blindness findings: which sensor has gone blind (stale, failing, never seen), the evidence event ids, severity, and what the attention policy decided (shadow or live). ?status=active|resolved
+router.get('/findings', (req, res) => {
+  try {
+    const status = req.query.status === 'active' || req.query.status === 'resolved' ? req.query.status : null;
+    res.json({ ok: true, evaluator: sourceBlindness.status(), findings: sourceBlindness.getFindings({ status }) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/observations — latest native observation per thing (health metric, device, location fix time), with source app, observed vs received time, freshness and evidence event. No coordinates. ?kind=health|device|location
+router.get('/observations', (req, res) => {
+  try {
+    const kind = ['health', 'device', 'location'].includes(req.query.kind) ? req.query.kind : null;
+    res.json({ ok: true, ...observationState.list({ kind }) });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

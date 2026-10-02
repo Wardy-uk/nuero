@@ -146,6 +146,19 @@ const RULES = {
     say: o => ({ title: 'SAiM', body: o.text }),
   },
 
+  // ⚠ A SENSE GONE BLIND (Build 2B). The finding comes from the source-blindness
+  // evaluator; this rule is the only thing that may turn it into a push, and it
+  // is subject to every universal veto above it like any other kind. Low
+  // severity (a redundant peer is still reporting, or the source is enrichment
+  // only) NEVER interrupts — it is a screen fact. And not off duty: a phone app
+  // gone quiet at 21:00 is a thing to fix in the morning, never a reason to
+  // reach for the phone that evening.
+  'source-blind': {
+    when: (m, o) => o.severity !== 'low' && m.onDuty,
+    urgency: 'low',
+    say: o => ({ title: 'SAiM', body: [o.text, o.detail].filter(Boolean).join(' ') }),
+  },
+
   'health-signal': {
     // The one worth interrupting for on its own merits, and the only one allowed
     // during a focus session. Still never in a meeting.
@@ -249,6 +262,37 @@ function momentObservations({ life = null, rain = null, lastRain = null } = {}) 
   return out;
 }
 
+/**
+ * Source-blind findings through the attention policy. Returns one entry per
+ * finding: `{ observation, result }`, where `result` is what goes into the
+ * pass's results and carries `shadow: true` unless the evaluator is live.
+ *
+ * Records the verdict against each finding EVERY pass, in both modes — that
+ * record is what shadow mode exists to produce. Never throws.
+ */
+function sourceBlindVerdicts(moment, { now = new Date() } = {}) {
+  const out = [];
+  let sb;
+  try { sb = require('./source-blindness'); } catch { return out; }
+  const mode = sb.mode();
+  if (mode === 'off') return out;
+  let obs = [];
+  try { obs = sb.observations({ now }); } catch (e) {
+    console.warn('[AmbientPush] source-blind findings unreadable:', e.message);
+    return out;
+  }
+  for (const o of obs) {
+    const verdict = worthInterrupting(o, moment);
+    const decision = { push: !!verdict.push, why: verdict.why || null, severity: o.severity, mode, at: now.toISOString() };
+    sb.recordAttention(o.findingId, decision, { now });
+    out.push({
+      observation: o,
+      result: { kind: o.kind, findingId: o.findingId, ...verdict, ...(mode === 'shadow' ? { shadow: true } : {}) },
+    });
+  }
+  return out;
+}
+
 async function deliver({ now = new Date() } = {}) {
   if (!ENABLED) return { sent: 0, skipped: 'disabled' };
 
@@ -300,7 +344,14 @@ async function deliver({ now = new Date() } = {}) {
     results.push({ kind: observation.kind, ...verdict });
   }
 
-  const winners = results.filter(r => r.push);
+  // ── Source blindness (Build 2B) ─────────────────────────────────────────────
+  // Judged by the SAME worthInterrupting and the same moment as everything
+  // above. In SHADOW mode (the default) the verdict is recorded against the
+  // finding and that is the only effect: it cannot win, and nothing is sent.
+  const blind = sourceBlindVerdicts(moment, { now });
+  for (const b of blind) results.push(b.result);
+
+  const winners = results.filter(r => r.push && !r.shadow);
   if (!winners.length) return { sent: 0, considered: results };
 
   // Health findings outrank body-maintenance prompts.
@@ -321,6 +372,11 @@ async function deliver({ now = new Date() } = {}) {
     // Recorded so the sweep can ask, later, whether it made any difference.
     // Without this there is nothing to learn from — and a learning loop cannot
     // be retrofitted onto deliveries nobody kept.
+    if (chosen.kind === 'source-blind' && chosen.findingId) {
+      // Live mode only (shadow results cannot win). Marked delivered so this
+      // episode is never pushed again unless its condition changes.
+      require('./source-blindness').recordAttention(chosen.findingId, { push: true, why: null, sent: true }, { now, pushed: true });
+    }
     if (chosen.kind === 'rain-out') {
       const o = observations.find((x) => x.kind === 'rain-out');
       try { require('../db/database').setState(RAIN_OUT_KEY, o && o.rainStarts ? o.rainStarts : ''); } catch { /* best effort */ }
@@ -336,6 +392,7 @@ async function deliver({ now = new Date() } = {}) {
 }
 
 module.exports = {
+  sourceBlindVerdicts,
   momentObservations,
   momentFrom,
   worthInterrupting,

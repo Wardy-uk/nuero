@@ -22,6 +22,7 @@ const express = require('express');
 const router = express.Router();
 
 const deviceStatus = require('../services/device-status');
+const nativeEvents = require('../services/native-events');
 
 /**
  * POST /api/device/status — the phone's current self-report.
@@ -44,10 +45,15 @@ const deviceStatus = require('../services/device-status');
  */
 router.post('/status', (req, res) => {
   const v = deviceStatus.validate(req.body || {});
-  if (!v.ok) return res.status(400).json({ ok: false, error: v.reason });
+  if (!v.ok) {
+    nativeEvents.recordDeliveryFailure({ kind: 'device', headers: req.headers, deviceId: (req.body || {}).deviceId, error: v.reason, reason: 'malformed' });
+    return res.status(400).json({ ok: false, error: v.reason });
+  }
 
   try {
     const { stored } = deviceStatus.store(v.status);
+    // Build 2: onto the event spine after the write, and never able to fail it.
+    nativeEvents.recordDeviceReport({ headers: req.headers, status: v.status, stored });
     res.json({
       ok: true,
       stored,
@@ -57,6 +63,7 @@ router.post('/status', (req, res) => {
   } catch (e) {
     // Nothing was written, so the device must send this again.
     console.error('[Device] status ingest failed:', e.message);
+    nativeEvents.recordDeliveryFailure({ kind: 'device', headers: req.headers, deviceId: v.status.deviceId, error: e.message, reason: 'store-failed' });
     res.status(503).json({ ok: false, error: e.message, retryable: true });
   }
 });

@@ -30,6 +30,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
 const appleHealth = require('../services/apple-health');
+const nativeEvents = require('../services/native-events');
 
 // ── Source guard ─────────────────────────────────────────────────────────────
 //
@@ -112,14 +113,19 @@ router.post('/ingest', (req, res) => {
   try {
     const parsed = appleHealth.parsePayload(req.body);
     if (!parsed.ok) {
+      nativeEvents.recordDeliveryFailure({ kind: 'healthkit', headers: req.headers, error: parsed.error, reason: 'malformed' });
       return res.status(400).json({ error: parsed.error });
     }
 
     let inserted = 0;
+    // The samples that were NEW, for the event spine (Build 2). A re-sent
+    // sample is not stored and so is not news.
+    const insertedSamples = [];
     for (const s of parsed.samples) {
       try {
         if (db.insertHealthSampleWithUuid(s.metric, s.value, s.recordedAt, 'apple-health', s.sourceUuid)) {
           inserted++;
+          insertedSamples.push(s);
         }
       } catch (e) {
         // One bad row must not lose the rest of a backfill batch.
@@ -188,6 +194,11 @@ router.post('/ingest', (req, res) => {
     // "no workouts arrived" and "workouts arrived and were refused" were both
     // invisible. Two apps and FreeReps post here, and the user-agent is the
     // only thing that tells them apart.
+    // Build 2: the delivery and its new observations onto the event spine. After
+    // every write above has committed, and never able to fail the ingest —
+    // recordHealthDelivery does not throw.
+    nativeEvents.recordHealthDelivery({ headers: req.headers, parsed, inserted: insertedSamples, workoutsInserted });
+
     const workoutsRejected = parsed.rejected.filter((r) => r.metric === 'workout').length;
     const agent = String(req.headers['user-agent'] || 'unknown').split(' ')[0];
     console.log(
@@ -221,6 +232,7 @@ router.post('/ingest', (req, res) => {
     });
   } catch (e) {
     console.error('[AppleHealth] Ingest failed:', e.message);
+    nativeEvents.recordDeliveryFailure({ kind: 'healthkit', headers: req.headers, error: e.message, reason: 'ingest-error' });
     res.status(500).json({ error: e.message });
   }
 });
