@@ -1394,3 +1394,8 @@ test('the MORNING standup is still a ritual even when the read is not work', () 
     { context: { activity: 'ritual', ritual: 'standup', duty: { onDuty: false } } });
   assert.equal(surfaceFor(p), SURFACES.RITUAL);
 });
+
+test('⚠ the home dashboard carries a room row when the room was read', () => {
+  const d = compose(lifePayload({ doing: 'hobby', label: 'On a project of your own', band: 'evening', place: { kind: 'home', label: 'living-room' } }), { now: AT }).dashboard;
+  assert.ok(d.rows.some((r) => r.when === 'room' && /1 light on/.test(r.note)));
+});

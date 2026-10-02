@@ -989,6 +989,12 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
       offWhy: `not working — ${String(life.label).toLowerCase()}` }
     : context;
   const gated = gate(gateContext, visible, now);
+  // What the screen SAYS about the moment follows the life read too: the crown
+  // and the "here" row both read `context.label`, which still said "EOD
+  // outstanding" on a hobby evening after the work had been held back (live,
+  // 2 Oct 2026). The ACTIVITY is left as context-state decided it.
+  const shownContext = gateContext === context
+    ? context : { ...context, label: gateContext.label, summary: gateContext.summary };
 
   // ⚠ USEFUL OR SILENT. Nick, 2 Oct 2026: the voice "never said anything
   // useful", and iOS read every new top card aloud on every refresh — a card
@@ -1394,8 +1400,12 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
   let framed = null;
   try {
     const draft = {
-      context,
+      context: shownContext,
       life,
+      // ⚠ WHITELIST again: `rooms` was read above and never handed to the
+      //   composer, so the home dashboard's room row (temperature, lights on)
+      //   could never render — Nick, 2 Oct: "I was expecting to see room info".
+      rooms,
       weeklyTarget,
       // ⚠ This is a WHITELIST, and a field left out is dropped in silence.
       //   `weather` was on the payload and absent here, so the off-duty
@@ -1533,7 +1543,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
 
   return {
     generatedAt: now.toISOString(),
-    context,
+    context: shownContext,
     weeklyTarget,
     readiness,
     transition,

@@ -326,7 +326,14 @@ export default function AttentionSurface({
       // fact about today rather than a moment in it, so none of that is touched.
       // A timed entry is finished once its hour has gone; an all-day one is
       // finished at the end of the working day.
-      if (isAllDay) {
+      // ⚠ ONLY TODAY'S ENTRIES CAN HAVE FINISHED. The check compared the clock
+      // alone, so tomorrow's all-day "hiking" vanished at 17:00 today (live,
+      // 2 Oct 2026). The date is sliced from the stamp, never parsed.
+      const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+      const isToday = stamp != null && stamp.slice(0, 10) === today;
+      if (!isToday) {
+        // a later day: nothing about it has finished yet
+      } else if (isAllDay) {
         if (nowMinutes >= ALL_DAY_TO) return;
       } else if (iso) {
         const mm = iso.match(/T(\d{2}):(\d{2})/);
