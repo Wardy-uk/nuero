@@ -987,4 +987,39 @@
     -webkit-line-clamp: 2;
     line-clamp: 2;
   }
+
+  /* ⚠⚠ THE CLAMP ABOVE WAS NEVER THE WHOLE STORY, because the lines could
+     still SHRINK. Measured at 1024x600 on 2 Oct 2026 (Nick's Fire photo): the
+     lead needed 70px and got 47, the sub 21 and got 14 — both cut through their
+     letters — because `flex: 0 1 auto` + `min-height: 0` let the 39% cap squeeze
+     them below their own clamp. A clamp only puts the cut on a line boundary if
+     nothing else is allowed to cut first.
+
+     So on a short landscape screen there is ONE mechanism, the same argument
+     the flat row makes: two lines of headline, one of sub, neither may shrink,
+     and the box is as tall as that — 219px here, deterministic. The % cap goes,
+     because it could only ever be redundant or destructive, and here it was the
+     latter. The stacked (transition) state keeps its cap; it holds more. */
+  .surface--approach .surface__saylead { flex-shrink: 0; }
+  .surface--approach .surface__saysub {
+    flex-shrink: 0;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+  /* The height comes out of the empty band under the crown (which ends ~80px
+     on the Fire), not out of the gutter above the cards. */
+  .surface--approach .surface__say:not(.surface__say--stacked) {
+    max-height: none;
+    top: 8%;
+  }
+
+  /* ⚠ THE SHELF WRAPPED, AND THAT IS WHAT PUSHED THE CARDS INTO HER. At 1024px
+     the row needs ~642px against 594, so "2 AT THE WALL" fell onto a second
+     line — 88px tall instead of 50 — and the cards had to ride above it. A
+     touch less air per pill keeps it to one line, which frees the band the
+     cards drop into. */
+  .surface--approach .shelf__row { gap: 8px; }
+  .surface--approach .shelf__btn,
+  .surface--approach .shelf__wx { padding-left: 9px; padding-right: 9px; }
+  .approach--quiet .approach__row { bottom: 17%; }
 }
