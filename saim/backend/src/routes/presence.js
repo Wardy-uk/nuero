@@ -227,6 +227,31 @@ function homePresence(telemetry) {
 
 // ── Room sensors ────────────────────────────────────────────────────────────
 
+// Her natural voice for greetings the tablet collects: NEURO's `/api/tts/speak`
+// (the coral voice the phone uses), called with saim/backend's own credential so
+// the tablet never holds one.
+const neuroConfigForTts = require('../integrations/neuroConfig');
+pendingGreetings.setRenderer(async (text) => {
+  const env = process.env;
+  if (!neuroConfigForTts.readiness(env).ready) return null;
+  const res = await fetch(`${neuroConfigForTts.getBaseUrl(env)}/api/tts/speak`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...neuroConfigForTts.authHeaders(env) },
+    body: JSON.stringify({ text }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok || !/audio\//.test(res.headers.get('content-type') || '')) return null;
+  return Buffer.from(await res.arrayBuffer());
+});
+
+// GET /api/presence/greeting-audio/:id — the clip for a greeting the tablet just
+// collected. 404 means "no clip": the tablet then uses its own voice.
+router.get('/greeting-audio/:id', async (req, res) => {
+  const audio = await pendingGreetings.clip(req.params.id).catch(() => null);
+  if (!audio) return res.status(404).json({ ok: false, reason: 'no clip for that greeting' });
+  res.set('Content-Type', 'audio/wav').set('Cache-Control', 'no-store').send(audio);
+});
+
 // POST /api/presence/sensor — one room sensor's latest reading.
 router.post('/sensor', express.json({ limit: '16kb' }), (req, res) => {
   if (SENSOR_TOKEN && req.get('X-Saim-Sensor-Token') !== SENSOR_TOKEN) {

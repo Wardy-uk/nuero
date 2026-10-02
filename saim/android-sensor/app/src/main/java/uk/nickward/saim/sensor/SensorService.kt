@@ -328,11 +328,16 @@ class SensorService : Service() {
                 val code = conn.responseCode
                 // A refusal says why; a sensor that cannot tell a 400 from a 200 reports
                 // into a hole for a fortnight.
-                val text = (if (code >= 400) conn.errorStream else conn.inputStream)
-                    ?.bufferedReader()?.use { it.readText() }?.take(200) ?: ""
-                lastPush = if (code < 400) "accepted ($code)" else "REJECTED $code: $text"
+                // ⚠ READ THE WHOLE REPLY. It used to be cut to 200 characters BEFORE the
+                // greeting was parsed out of it, so any greeting long enough to say
+                // something useful lost its closing brace and was silently dropped —
+                // only the short "Afternoon, Nick." ever spoke (found 2 Oct 2026). The
+                // 200-character cut belongs to the status line only.
+                val full = (if (code >= 400) conn.errorStream else conn.inputStream)
+                    ?.bufferedReader()?.use { it.readText() } ?: ""
+                lastPush = if (code < 400) "accepted ($code)" else "REJECTED $code: ${full.take(200)}"
                 conn.disconnect()
-                if (code < 400) speakGreeting(text)
+                if (code < 400) speakGreeting(full, url)
             } catch (e: Exception) {
                 lastPush = "failed: ${e.javaClass.simpleName} ${e.message ?: ""}".trim()
             } finally {
@@ -354,16 +359,59 @@ class SensorService : Service() {
     }
 
     /** Speak the greeting in a reading's reply, once per id. Never fails the push. */
-    private fun speakGreeting(replyBody: String) {
+    private fun speakGreeting(replyBody: String, pushUrl: String) {
         val greeting = Greeting.parse(replyBody) ?: return
         if (greeting.id == lastGreetingId) return
         lastGreetingId = greeting.id
         lastGreeting = greeting.text
+        // ⚠ HER NATURAL VOICE FIRST (Nick, 2 Oct 2026: the built-in one was "so
+        // unnatural that it was annoying"). The backend renders the clip and the
+        // reply carries where to fetch it; Android's own voice is the FALLBACK, so
+        // a clip that fails or never arrives still gets the words said.
+        val audioUrl = greeting.audio?.let { Greeting.resolve(pushUrl, it) }
+        if (audioUrl != null) {
+            playClip(audioUrl) { speakBuiltIn(greeting) }
+        } else {
+            speakBuiltIn(greeting)
+        }
+    }
+
+    private fun speakBuiltIn(greeting: Greeting) {
         if (!ttsReady) {
             Log.w(TAG, "greeting received but text-to-speech is not ready")
             return
         }
         tts?.speak(greeting.text, TextToSpeech.QUEUE_FLUSH, null, greeting.id)
+    }
+
+    private var player: android.media.MediaPlayer? = null
+
+    /** Play a clip; on any failure, or if it has not started within 10s, run `fallback` once. */
+    private fun playClip(url: String, fallback: () -> Unit) {
+        handler.post {
+            val done = java.util.concurrent.atomic.AtomicBoolean(false)
+            val fail = { if (done.compareAndSet(false, true)) { player?.release(); player = null; fallback() } }
+            try {
+                player?.release()
+                val mp = android.media.MediaPlayer()
+                player = mp
+                mp.setAudioAttributes(
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                mp.setDataSource(url)
+                mp.setOnPreparedListener { if (done.compareAndSet(false, true)) it.start() }
+                mp.setOnErrorListener { _, _, _ -> fail(); true }
+                mp.setOnCompletionListener { it.release(); if (player === it) player = null }
+                mp.prepareAsync()
+                handler.postDelayed({ fail() }, 10_000)
+            } catch (e: Exception) {
+                Log.w(TAG, "clip playback failed: ${e.message}")
+                fail()
+            }
+        }
     }
 
     // ── Device state ────────────────────────────────────────────────────────

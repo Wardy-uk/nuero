@@ -8,7 +8,7 @@ package uk.nickward.saim.sensor
  * that decides whether SAiM speaks is pinned. Anything malformed is null — silence,
  * never a garbled sentence read aloud.
  */
-data class Greeting(val id: String, val text: String) {
+data class Greeting(val id: String, val text: String, val audio: String? = null) {
     companion object {
         private val OBJECT = Regex("\"greeting\"\\s*:\\s*\\{([^{}]*)\\}")
         private fun field(name: String) = Regex("\"$name\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")
@@ -19,7 +19,17 @@ data class Greeting(val id: String, val text: String) {
             val id = field("id").find(inner)?.groupValues?.get(1)?.let(::unescape) ?: return null
             val text = field("text").find(inner)?.groupValues?.get(1)?.let(::unescape)?.trim() ?: return null
             if (id.isEmpty() || text.isEmpty() || text.length > 500) return null
-            return Greeting(id, text)
+            // Optional: where the backend put her natural-voice clip. A path, never
+            // a foreign host — resolved against the URL this sensor already pushes to.
+            val audio = field("audio").find(inner)?.groupValues?.get(1)?.let(::unescape)
+                ?.takeIf { it.startsWith("/") && !it.startsWith("//") }
+            return Greeting(id, text, audio)
+        }
+
+        /** `/api/...` against the origin of the push URL. Null when it cannot be formed. */
+        fun resolve(pushUrl: String, path: String): String? {
+            val m = Regex("^(https?://[^/]+)").find(pushUrl) ?: return null
+            return m.groupValues[1] + path
         }
 
         private fun unescape(s: String): String {
