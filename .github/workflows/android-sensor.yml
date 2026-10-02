@@ -30,7 +30,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      # ⚠ No setup-android step. GitHub's ubuntu-latest image already ships the
+      # Android SDK (ANDROID_HOME), and `android-actions/setup-android@v3` began
+      # failing on every run from 15 Sep 2026 — before a line of this app was
+      # compiled — so nothing was published for two and a half weeks.
 
       - uses: gradle/actions/setup-gradle@v4
         with:
