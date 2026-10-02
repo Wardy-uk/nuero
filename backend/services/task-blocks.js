@@ -1226,7 +1226,15 @@ function readNoteForEdit(blockId) {
     notePath: note.foundPath || block.note_path,
     raw,
     exists: note.raw != null,
-    hash: contentHash(raw),
+    // ⚠ The hash is of what is ON DISK, never of `raw`, which is the disk copy
+    // with the tick boxes brought up to date for display. Hashing `raw` made the
+    // guard compare a synced copy against an unsynced one, so as soon as ANY
+    // task in the block had been ticked since the note was written the two could
+    // never match: every save answered "this note changed in the vault" and
+    // Reload re-synced and failed again — a permanent refusal over a note nobody
+    // else had touched. Null when there is no file yet, which is what makes
+    // `saveNote` skip the check rather than refuse a first write.
+    hash: note.raw != null ? contentHash(note.raw) : null,
     written: verdict.written,
     chars: verdict.chars,
     minChars: MIN_OUTCOME_CHARS,

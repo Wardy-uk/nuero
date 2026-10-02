@@ -660,6 +660,43 @@ test('a note changed in the vault since loading refuses the save', () => {
   assert.match(fs.readFileSync(full, 'utf8'), /Written in Obsidian/, 'the vault copy was overwritten');
 });
 
+test('a CRLF note does not make itself permanently unsaveable', () => {
+  // ⚠ THE DISPLAYED COPY IS NOT THE FILE, and the base hash must describe the
+  // FILE. `readNoteForEdit` runs the note through `syncChecklistInNote` so the
+  // boxes match what has actually been ticked — and that rebuild joins the fence
+  // with LF. Half this vault is CRLF (Obsidian on Windows, delivered by
+  // Syncthing), so on those notes the rebuilt copy can NEVER equal the file.
+  // Hashing the rebuilt copy therefore made every save answer "this note changed
+  // in the vault" over a note nobody else had touched — and Reload re-synced and
+  // failed again, so the block could never be written up at all.
+  //
+  // Two tasks, because only a multi-task block renders the checklist that gets
+  // rebuilt, which is the shape the live failure had.
+  const { blockId, full } = blockedTasks([
+    'Produce the bi-weekly podcast',
+    'Circulate the podcast running order',
+  ]);
+  const crlf = fs.readFileSync(full, 'utf8').split('\n').join('\r\n');
+  fs.writeFileSync(full, crlf, 'utf8');
+
+  const view = taskBlocks.readNoteForEdit(blockId);
+  assert.notEqual(view.raw, crlf,
+    'the displayed copy and the file must genuinely differ here, or this proves nothing');
+
+  // ⚠ Appended rather than spliced in after the heading: the note is CRLF, so a
+  // replace anchored on a bare "\n" silently matches nothing and the test then
+  // passes on an unchanged file.
+  const saved = taskBlocks.saveNote(
+    blockId,
+    view.raw + '\nRecorded the first episode and published it to the team channel.\n',
+    { baseHash: view.hash }
+  );
+
+  assert.equal(saved.conflict, undefined, 'a note nobody else touched must not be reported as changed');
+  assert.equal(saved.ok, true);
+  assert.match(fs.readFileSync(full, 'utf8'), /Recorded the first episode/);
+});
+
 test('frontmatter edited away is restored, so the note stays findable', () => {
   // `task_ids` is the link back to the block. Lose it and a renamed note can
   // never be matched again, and the block holds forever.
