@@ -64,6 +64,7 @@ function deps(over = {}) {
     flaggedEmails: () => ({ lastScan: '2026-10-20T08:00:00Z', items: [] }),
     uniqueFirstName: (n) => String(n).split(' ')[0],
     selfEmails: () => ['nick.ward@nurtur.tech'],
+    self: ['nick.ward@nurtur.tech'],
     readMoment: async () => ({ moment: OPEN_MOMENT }),
     ...over,
   };
@@ -167,10 +168,53 @@ test('only HIGH-urgency email from someone else in the meeting counts; his own d
   const g = mc.gather(wm.nextMeetings({ now: NOW, limit: 5 }).find((m) => m.meetingId === 'graph:tl'),
     deps({ flaggedEmails: () => ({ lastScan: 'x', items }) }));
   assert.equal(g.evidence.emails.length, 0);
-  items.push({ emailId: 'e3', fromEmail: 'Naomi.Wentworth@nurtur.tech', urgency: 'high', subject: 'Before Tech Leadership' });
+  items.push({ emailId: 'e3', fromEmail: 'Naomi.Wentworth@nurtur.tech', urgency: 'high', subject: 'Before Tech Leadership on Monday' });
+  items.push({ emailId: 'e4', fromEmail: 'naomi.wentworth@nurtur.tech', urgency: 'high', subject: 'Rota for half term' });
   const g2 = mc.gather(wm.nextMeetings({ now: NOW, limit: 5 }).find((m) => m.meetingId === 'graph:tl'),
     deps({ flaggedEmails: () => ({ lastScan: 'x', items }) }));
-  assert.deepEqual(g2.evidence.emails.map((e) => e.emailId), ['e3']);
+  assert.deepEqual(g2.evidence.emails.map((e) => e.emailId), ['e3'], 'only the one ABOUT this meeting triggers');
+  assert.equal(g2.evidence.otherEmails, 1, 'the other is kept as supporting evidence');
+});
+
+test('an urgent email about something else does NOT make a finding (measured live: it fired on every meeting Chris attends)', () => {
+  const m = wm.nextMeetings({ now: NOW, limit: 5 }).find((x) => x.meetingId === 'graph:tl');
+  const g = mc.gather(m, deps({ tasksFromNote: () => [], flaggedEmails: () => ({ lastScan: 'x',
+    items: [{ emailId: 'e9', fromEmail: 'chris.middleton@nurtur.tech', urgency: 'high', subject: 'PIP review paperwork' }] }) }));
+  assert.equal(mc.assess(m, g).finding, false);
+});
+
+test('if NEURO cannot tell which attendee is Nick, email is not assessed — and says so', () => {
+  const m = wm.nextMeetings({ now: NOW, limit: 5 }).find((x) => x.meetingId === 'graph:tl');
+  // From another attendee, high urgency, about this meeting — would count if Nick were known.
+  const g = mc.gather(m, deps({ self: [], flaggedEmails: () => ({ lastScan: 'x',
+    items: [{ emailId: 'e8', fromEmail: 'naomi.wentworth@nurtur.tech', urgency: 'high', subject: 'Tech Leadership agenda' }] }) }));
+  assert.equal(g.evidence.emails.length, 0);
+  assert.ok(g.missing.some((x) => x.input === 'self'));
+});
+
+test('evaluate() resolves who Nick is from the async signed-in lookup', async () => {
+  const r = await mc.evaluate({ now: Date.parse('2026-10-20T08:31:00Z'), deps: deps({ self: undefined,
+    selfEmails: async () => ['nick.ward@nurtur.tech'], tasksFromNote: () => [],
+    flaggedEmails: () => ({ lastScan: 'x', items: [{ emailId: 'e7', fromEmail: 'naomi.wentworth@nurtur.tech', urgency: 'high', subject: 'Tech Leadership prep' }] }) }) });
+  assert.ok(!r.skipped.some((s) => s.meetingId === 'graph:tl'), 'self known → the relevant email from Naomi counts');
+  assert.equal(row('graph:tl').status, 'active');
+});
+
+test('an address known only from the signed-in account is still Nick (the live nickw@ case)', () => {
+  const m = { title: 'Tech Leadership', start: '2026-10-20T10:00', kind: 'meeting', participants: [
+    { email: 'nickw@nurtur.tech', personId: null }, { email: 'naomi.wentworth@nurtur.tech', personId: 'person:naomi-wentworth', displayName: 'Naomi Wentworth' }] };
+  const g = mc.gather(m, deps({ self: ['NickW@nurtur.tech'], flaggedEmails: () => ({ lastScan: 'x',
+    items: [{ emailId: 'e6', fromEmail: 'nickw@nurtur.tech', urgency: 'high', subject: 'Tech Leadership notes' }] }) }));
+  assert.equal(g.evidence.emails.length, 0, 'his own mail is never "an attendee emailed you"');
+  assert.equal(g.others.length, 1);
+});
+
+test('email relevance: shared content words, generic words ignored', () => {
+  assert.equal(mc.emailRelates('Tech Leadership', 'Re: Tech Leadership — slides'), true);
+  assert.equal(mc.emailRelates('Tech Leadership', 'Leadership offsite'), false, 'one of two words is not enough');
+  assert.equal(mc.emailRelates('Weekly Meeting', 'Weekly numbers'), false, 'nothing specific in the title');
+  assert.equal(mc.emailRelates('Monthly Update', 'Update on pricing'), false, '"update" names no meeting');
+  assert.equal(mc.emailRelates('Naomi Check In', 'Naomi — sick note'), true);
 });
 
 test('missing evidence is NAMED: never-run triage and an unreadable store are not "nothing there"', () => {

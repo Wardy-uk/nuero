@@ -28,11 +28,16 @@
  *
  *   • an open task Nick took on from the PREVIOUS occurrence's write-up
  *   • an open waiting-on item somebody owes him FROM that write-up
- *   • an unanswered high-urgency email from someone in the meeting
+ *   • an unanswered high-urgency email from someone in the meeting WHOSE
+ *     SUBJECT IS ABOUT IT (shares the meeting title's content words)
  *
- * Open waiting-on items for attendees in general are SUPPORTING evidence only:
- * with ~290 open items across his team, letting them trigger alone would make
- * every 1-2-1 a finding.
+ * Open waiting-on items for attendees in general, and urgent emails from them
+ * about other things, are SUPPORTING evidence only. Measured on the live data
+ * (3 Oct): with any urgent email counting, every meeting Chris attends fired —
+ * and every meeting at all, until Nick's own address was recognised (the
+ * calendar knows him as nickw@, his People note declares no address). Who NICK
+ * is comes from the signed-in Microsoft account; if that cannot be read, email
+ * is not assessed at all rather than guessed.
  *
  * ── How "the previous one" is found ─────────────────────────────────────────
  *
@@ -64,6 +69,24 @@ function mode() {
 }
 
 const lower = (s) => String(s || '').trim().toLowerCase();
+
+// Words that say nothing about WHICH meeting: an email mentioning "weekly" is
+// not about the Weekly Meeting.
+const GENERIC = new Set(['meeting', 'weekly', 'monthly', 'daily', 'catch', 'check', 'sync', 'call', 'review', 'team',
+  'update', 'with', 'nick', 'and', 'the', 'for', 'about', 'what', 'mean', 'want', 'session', 'chat']);
+
+function contentWords(s) {
+  return [...new Set(lower(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !GENERIC.has(w)))];
+}
+
+/** Is this email ABOUT this meeting? PURE. Two content words shared — or the only one the title has. */
+function emailRelates(meetingTitle, subject) {
+  const title = contentWords(meetingTitle);
+  if (!title.length) return false;
+  const subj = new Set(contentWords(subject));
+  const shared = title.filter((w) => subj.has(w)).length;
+  return title.length === 1 ? shared === 1 : shared >= 2;
+}
 
 /** A wall-clock minute string shifted by `min` minutes (no zone involved). */
 function shiftLocal(local, min) {
@@ -142,7 +165,14 @@ const DEFAULT_DEPS = {
   waitingOn: _waitingOn,
   flaggedEmails: _flaggedEmails,
   uniqueFirstName: _uniqueFirstName,
-  selfEmails: () => { const p = wm.getPerson(SELF_PERSON); return p ? p.emails : []; },
+  // Who NICK is: the signed-in Microsoft account (authoritative) plus any
+  // address his People note declares. Async; resolved once per evaluate().
+  selfEmails: async () => {
+    const out = [];
+    try { const a = await require('./microsoft').getSignedInAddress(); if (a) out.push(a); } catch { /* unknown */ }
+    const p = wm.getPerson(SELF_PERSON);
+    return out.concat(p ? p.emails : []);
+  },
   readMoment: (now) => require('./ambient-push').readMoment({ now: new Date(now) }),
 };
 
@@ -154,9 +184,10 @@ const DEFAULT_DEPS = {
  * "nothing there" are different facts, and only the second is evidence.
  */
 function gather(meeting, deps) {
-  const evidence = { previous: null, commitments: [], owedFromPrevious: [], attendeeOwed: [], emails: [] };
+  const evidence = { previous: null, commitments: [], owedFromPrevious: [], attendeeOwed: [], emails: [], otherEmails: 0 };
   const missing = [];
-  const self = new Set((deps.selfEmails() || []).map(lower));
+  const self = new Set((Array.isArray(deps.self) ? deps.self : []).map(lower));
+  if (!self.size) missing.push({ input: 'self', why: 'NEURO cannot tell which attendee is Nick (no signed-in address) — email not assessed' });
   const others = meeting.participants.filter((p) => !self.has(p.email) && p.personId !== SELF_PERSON);
   const otherEmails = new Set(others.map((p) => p.email));
 
@@ -191,16 +222,20 @@ function gather(meeting, deps) {
     }
   }
 
-  try {
-    const flagged = deps.flaggedEmails();
-    if (!flagged || !flagged.lastScan) missing.push({ input: 'email', why: 'triage has never run — not the same as no email' });
-    else {
-      evidence.emails = (flagged.items || [])
-        .filter((e) => otherEmails.has(lower(e.fromEmail)) && e.urgency === 'high')
-        .slice(0, MAX_LIST)
-        .map((e) => ({ emailId: e.emailId, from: e.from, subject: String(e.subject || '').slice(0, 160), received: e.received }));
-    }
-  } catch (e) { missing.push({ input: 'email', why: `unreadable: ${e.message}` }); }
+  if (self.size) {
+    try {
+      const flagged = deps.flaggedEmails();
+      if (!flagged || !flagged.lastScan) missing.push({ input: 'email', why: 'triage has never run — not the same as no email' });
+      else {
+        const fromOthers = (flagged.items || []).filter((e) => otherEmails.has(lower(e.fromEmail)) && e.urgency === 'high');
+        const relevant = fromOthers.filter((e) => emailRelates(meeting.title, e.subject));
+        evidence.emails = relevant.slice(0, MAX_LIST)
+          .map((e) => ({ emailId: e.emailId, from: e.from, subject: String(e.subject || '').slice(0, 160), received: e.received }));
+        // Supporting only: urgent, from someone in the meeting, about something else.
+        evidence.otherEmails = fromOthers.length - relevant.length;
+      }
+    } catch (e) { missing.push({ input: 'email', why: `unreadable: ${e.message}` }); }
+  }
 
   return { evidence, missing, others };
 }
@@ -255,6 +290,9 @@ function _row(id) { return db.get('SELECT * FROM meeting_context_findings WHERE 
  */
 async function evaluate({ now = Date.now(), deps = {} } = {}) {
   const d = { ...DEFAULT_DEPS, ...deps };
+  if (!Array.isArray(d.self)) {
+    try { d.self = await Promise.resolve(d.selfEmails()); } catch { d.self = []; }
+  }
   const nowMs = now instanceof Date ? now.getTime() : now;
   const nowLocal = wm.localMinute(nowMs);
   const iso = new Date(nowMs).toISOString();
@@ -345,7 +383,7 @@ function findings({ status = null, limit = 50 } = {}) {
 }
 
 module.exports = {
-  mode, gather, assess, summarise, evaluate, findings, shiftLocal,
+  mode, gather, assess, summarise, evaluate, findings, shiftLocal, emailRelates,
   WINDOW_MIN, WINDOW_MAX, RECOMMEND_BEFORE_MIN, MAX_PARTICIPANTS,
   _noteFor,
 };
