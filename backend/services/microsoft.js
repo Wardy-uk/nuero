@@ -631,6 +631,46 @@ async function fetchRecentEmailsDetailed(hoursBack = 24, maxResults = 500) {
   return { emails: null, complete: false, source: null };
 }
 
+/**
+ * What Nick SENT, as metadata only (Build 5D progress evidence): subject,
+ * recipients, time, whether anything was attached. No body, no preview — the
+ * question is "did a message go to that person about that thing", and the
+ * words of the message are not needed to ask it. Read-only (Mail.ReadWrite
+ * already covers it). Graph only: the NOVA bridge has no Sent Items route, and
+ * a fallback that cannot see the folder must not answer as an empty one.
+ *
+ * Returns { messages, complete } or null when Graph could not be asked —
+ * "could not look" is never "sent nothing".
+ */
+async function fetchSentMail({ sinceIso, maxResults = 200 } = {}) {
+  const token = await getAccessToken();
+  if (!token || !sinceIso) return null;
+  try {
+    const filter = `sentDateTime ge ${sinceIso}`;
+    const select = 'id,subject,toRecipients,ccRecipients,sentDateTime,hasAttachments,conversationId';
+    const pageSize = Math.min(100, Math.max(1, maxResults));
+    const data = await graphFetchAll(
+      `/me/mailFolders/SentItems/messages?$filter=${encodeURIComponent(filter)}&$top=${pageSize}&$orderby=sentDateTime desc&$select=${select}`,
+      token, {}, Math.max(1, Math.ceil(maxResults / pageSize))
+    );
+    if (!data || !Array.isArray(data.value)) return null;
+    const addr = (r) => (r && r.emailAddress && r.emailAddress.address ? String(r.emailAddress.address).toLowerCase() : null);
+    const messages = data.value.slice(0, maxResults).map((m) => ({
+      id: m.id,
+      subject: m.subject || '',
+      to: (m.toRecipients || []).map(addr).filter(Boolean),
+      cc: (m.ccRecipients || []).map(addr).filter(Boolean),
+      sentAt: m.sentDateTime,
+      hasAttachments: m.hasAttachments === true,
+      conversationId: m.conversationId || null,
+    }));
+    return { messages, complete: !data.truncated && data.value.length <= maxResults };
+  } catch (err) {
+    console.warn('[Microsoft] Sent mail fetch error:', err.message);
+    return null;
+  }
+}
+
 // Array-or-null shape, kept for callers that only want the mail.
 async function fetchRecentEmails(hoursBack = 24, maxResults = 500) {
   const { emails } = await fetchRecentEmailsDetailed(hoursBack, maxResults);
@@ -1933,6 +1973,7 @@ module.exports = {
   respondToEvent,
   fetchRecentEmails,
   fetchRecentEmailsDetailed,
+  fetchSentMail,
   fetchEmailById,
   sendEmailReply,
   markEmailRead,

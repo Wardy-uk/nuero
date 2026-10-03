@@ -6,10 +6,30 @@ const webpush = require('./webpush');
 
 const LOOK_AHEAD_MINUTES = 25;
 
-async function checkUpcomingMeetings() {
+// Build 5A: this is still the LIVE meeting push, and is NOT retired until the
+// comparison record (meeting_prep_comparisons, read by
+// meeting-intelligence.parity) shows the unified pipeline covers what it says.
+// `retired` stops the send and keeps the record; anything else is live.
+function prepMode() {
+  return String(process.env.MEETING_PREP_MODE || 'live').toLowerCase() === 'retired' ? 'retired' : 'live';
+}
+
+/** Record what this path decided about one meeting, beside the new pipeline's answer. Never throws. */
+function recordOldSide(event, side) {
+  try {
+    const startLocal = String(event.start || '').slice(0, 16);
+    const key = `graph:${event.id}@${startLocal}`;
+    const iso = new Date().toISOString();
+    db.run(`INSERT INTO meeting_prep_comparisons (meeting_key, title, start_local, old_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(meeting_key) DO UPDATE SET old_json = excluded.old_json, updated_at = excluded.updated_at`,
+    [key, event.subject || null, startLocal, JSON.stringify(side), iso, iso]);
+  } catch (e) { console.warn('[MeetingPrep] comparison not recorded:', e.message); }
+}
+
+async function checkUpcomingMeetings({ now = new Date() } = {}) {
   if (!obsidian.isConfigured()) return;
 
-  const now = new Date();
   const isWeekday = now.getDay() >= 1 && now.getDay() <= 5;
   if (!isWeekday) return;
 
@@ -84,7 +104,10 @@ async function checkUpcomingMeetings() {
       });
     }
 
-    if (matchedPeople.length === 0) continue;
+    if (matchedPeople.length === 0) {
+      recordOldSide(event, { wouldNotify: false, why: 'no People note name part in the title', matchedPeople: [], mode: prepMode(), sent: false });
+      continue;
+    }
 
     // Build notification
     const timeStr = startTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
@@ -97,10 +120,18 @@ async function checkUpcomingMeetings() {
     const body = parts.length > 0 ? parts.join(' · ') : 'No notes found';
     const title = `Meeting in ${Math.round(minutesUntil)} min — ${event.subject}`;
 
-    console.log(`[MeetingPrep] Notifying for: ${event.subject} at ${timeStr}`);
-
     // Mark as notified before sending (prevent double-fire)
     db.setState(notifyKey, new Date().toISOString());
+
+    const side = { wouldNotify: true, matchedPeople: matchedPeople.map(p => p.name), title, body, mode: prepMode(), sent: false };
+    if (prepMode() === 'retired') {
+      console.log(`[MeetingPrep] (retired) would have notified for: ${event.subject} at ${timeStr} — not sent`);
+      recordOldSide(event, side);
+      continue;
+    }
+
+    console.log(`[MeetingPrep] Notifying for: ${event.subject} at ${timeStr}`);
+    recordOldSide(event, { ...side, sent: true });
 
     await webpush.sendToAll(title, body, {
       type: 'meeting_prep',
@@ -109,4 +140,4 @@ async function checkUpcomingMeetings() {
   }
 }
 
-module.exports = { checkUpcomingMeetings };
+module.exports = { checkUpcomingMeetings, prepMode };

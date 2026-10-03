@@ -1529,6 +1529,42 @@
     "stream": false
   },
   {
+    "id": "get_events_world_meeting_intelligence",
+    "method": "GET",
+    "route": "/api/events/world/meeting-intelligence",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 173,
+    "description": "GET /api/events/world/meeting-intelligence. SHADOW meeting findings (Build 5A), one per upcoming real meeting: your actions and items owed from the last occurrence with their progress state, linked commitment-risk findings (by id, not restated), related urgent email, what could not be read, confiden",
+    "params": [],
+    "query": [
+      "status"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_events_world_meeting_prep_parity",
+    "method": "GET",
+    "route": "/api/events/world/meeting-prep-parity",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 184,
+    "description": "GET /api/events/world/meeting-prep-parity. the old live meeting-prep push beside the unified meeting pipeline, per meeting: both said something, only one did, or neither; and whether the record supports retiring meeting-prep (it is never retired automatically). ?days=14",
+    "params": [],
+    "query": [
+      "days"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_events_world_meetings",
     "method": "GET",
     "route": "/api/events/world/meetings",
@@ -1550,7 +1586,7 @@
     "route": "/api/events/world/obligations",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 173,
+    "line": 211,
     "description": "GET /api/events/world/obligations. counts across the Build 4 task and commitment projections: tasks by status, sources by system, commitments by direction/status/kind, how promisors were resolved, how many are linked to a meeting, and the relationship links (synced, realised-by, possible-same)",
     "params": [],
     "query": [],
@@ -1570,6 +1606,24 @@
     "description": "GET /api/events/world/people. people known to the world model (declared in People notes): names, email addresses, explicitly stated role/team/relationship, provenance; plus any address two notes both claim",
     "params": [],
     "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_events_world_progress",
+    "method": "GET",
+    "route": "/api/events/world/progress",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 195,
+    "description": "GET /api/events/world/progress. Build 5D progress evidence (did it happen, sent email, later note, fulfilled, likely done): with ?commitmentId=…, one commitment's derived state (fulfilled = fact; likely_fulfilled = an inference that never completes it; contradicted; progress_observed; no_evidence; u",
+    "params": [],
+    "query": [
+      "commitmentId"
+    ],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -3074,6 +3128,43 @@
     "stream": false
   },
   {
+    "id": "get_prepared_actions",
+    "method": "GET",
+    "route": "/api/prepared-actions",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 16,
+    "description": "GET /api/prepared-actions. drafts NEURO has prepared for approval (prepared action, follow-up draft, chase draft, approval queue): what it wants to do, for which commitment-at-risk finding, to whom, why, the evidence, the exact draft, authority A4, approval required, age and status. Nothing here is ",
+    "params": [],
+    "query": [
+      "limit",
+      "status"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_prepared_actions_by_id",
+    "method": "GET",
+    "route": "/api/prepared-actions/:id",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 26,
+    "description": "GET /api/prepared-actions/:id. one prepared action with its evidence, draft and decision history",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_profile",
     "method": "GET",
     "route": "/api/profile",
@@ -3756,7 +3847,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 291,
+    "line": 293,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -7883,6 +7974,46 @@
     ],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_prepared_actions_by_id_approve",
+    "method": "POST",
+    "route": "/api/prepared-actions/:id/approve",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 37,
+    "description": "POST /api/prepared-actions/:id/approve. record Nick's approval of a prepared action (approve draft). RECORDED ONLY: in Build 5 approving sends nothing and executes nothing; the response says executed:false. Body: { note? }",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "note"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_prepared_actions_by_id_reject",
+    "method": "POST",
+    "route": "/api/prepared-actions/:id/reject",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 49,
+    "description": "POST /api/prepared-actions/:id/reject. record Nick's rejection of a prepared action (reject draft); kept for audit, and NEURO will not prepare another for the same risk episode. Body: { note? }",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "note"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

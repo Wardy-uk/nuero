@@ -169,6 +169,44 @@ router.get('/world/commitment-risk', (req, res) => {
   }
 });
 
+// GET /api/events/world/meeting-intelligence — SHADOW meeting findings (Build 5A), one per upcoming real meeting: your actions and items owed from the last occurrence with their progress state, linked commitment-risk findings (by id, not restated), related urgent email, what could not be read, confidence, timing and what the attention policy would have done. Nothing is ever sent. ?status=active|withdrawn|expired
+router.get('/world/meeting-intelligence', (req, res) => {
+  try {
+    const mi = require('../services/meeting-intelligence');
+    const status = ['active', 'withdrawn', 'expired'].includes(req.query.status) ? req.query.status : null;
+    res.json({ ok: true, mode: mi.mode(), findings: mi.findings({ status }) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/world/meeting-prep-parity — the old live meeting-prep push beside the unified meeting pipeline, per meeting: both said something, only one did, or neither; and whether the record supports retiring meeting-prep (it is never retired automatically). ?days=14
+router.get('/world/meeting-prep-parity', (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(90, Number(req.query.days) || 14));
+    const prep = require('../services/meeting-prep');
+    res.json({ ok: true, meetingPrepMode: prep.prepMode(), ...require('../services/meeting-intelligence').parity({ sinceDays: days }) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/world/progress — Build 5D progress evidence (did it happen, sent email, later note, fulfilled, likely done): with ?commitmentId=…, one commitment's derived state (fulfilled = fact; likely_fulfilled = an inference that never completes it; contradicted; progress_observed; no_evidence; unknown) with every piece of evidence and the rule that matched; without, a summary of every commitment that has any evidence, and whether sent mail and notes could be read.
+router.get('/world/progress', (req, res) => {
+  try {
+    const pe = require('../services/progress-evidence');
+    const id = String(req.query.commitmentId || '').trim();
+    if (id) {
+      const p = pe.progressFor(id);
+      if (!p) return res.status(404).json({ ok: false, error: 'no such commitment' });
+      return res.json({ ok: true, progress: p });
+    }
+    res.json({ ok: true, ...pe.summary() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // GET /api/events/world/obligations — counts across the Build 4 task and commitment projections: tasks by status, sources by system, commitments by direction/status/kind, how promisors were resolved, how many are linked to a meeting, and the relationship links (synced, realised-by, possible-same)
 router.get('/world/obligations', (req, res) => {
   try {

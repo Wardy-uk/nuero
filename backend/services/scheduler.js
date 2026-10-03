@@ -1344,19 +1344,24 @@ function registerDurableJobs() {
     },
   });
 
+  // Build 5A: the meeting-context job is SUPERSEDED by meeting-intelligence —
+  // one finding per meeting that carries meeting-context's evidence AND the
+  // meeting-only commitment risk, asked about once. meeting-context.evaluate is
+  // no longer scheduled (its gatherer is what this runs); running both would be
+  // the two shadow findings per meeting this build removes.
   runtime.defineJob({
-    name: 'meeting-context',
+    name: 'meeting-intelligence',
     cron: '*/5 * * * *',
     class: 'freshness-sensitive',
     catchUp: 'latest',
     maxLagMs: 10 * 60 * 1000,
     maxAttempts: 1,
     timeoutMs: 2 * 60 * 1000,
-    why: 'Build 3D: does NEURO hold anything about the next real meeting worth having in mind? SHADOW — findings and recorded verdicts only, nothing is ever sent.',
+    why: 'Build 5A: one semantic finding per upcoming real meeting (prior actions, items owed, linked commitment risk, related urgent email, progress). SHADOW — recorded verdicts only, nothing is ever sent.',
     run: async () => {
-      const r = await require('./meeting-context').evaluate();
+      const r = await require('./meeting-intelligence').evaluate();
       return { mode: r.mode, considered: r.considered, created: r.created, updated: r.updated,
-        withdrawn: r.withdrawn, expired: r.expired, decided: r.decided };
+        withdrawn: r.withdrawn, expired: r.expired, decided: r.decided, compared: r.compared };
     },
   });
 

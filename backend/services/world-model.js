@@ -56,8 +56,11 @@ const CONSUMER = 'world-model';
 const TYPES = ['observation.person.declared', 'observation.calendar.event_observed', 'observation.calendar.event_removed',
   // Build 4B: tasks and commitments fold in the SAME consumer, so owners resolve
   // against exactly the people that existed at that point in the log.
-  'observation.task.observed', 'observation.task.removed', 'observation.commitment.observed'];
+  'observation.task.observed', 'observation.task.removed', 'observation.commitment.observed',
+  // Build 5D: evidence about whether a commitment moved, folded beside it.
+  'observation.progress.evidence'];
 const obligations = require('./world-obligations');
+const progress = require('./progress-evidence');
 const MAX_EVIDENCE = 10;
 const TIMEZONE = process.env.NEURO_TIMEZONE || 'Europe/London';
 
@@ -281,6 +284,7 @@ function applyEvent(ev) {
     case 'observation.task.observed': return obligations.applyTaskObserved(ev);
     case 'observation.task.removed': return obligations.applyTaskRemoved(ev);
     case 'observation.commitment.observed': return obligations.applyCommitmentObserved(ev);
+    case 'observation.progress.evidence': return progress.applyEvidence(ev);
     case 'observation.calendar.event_observed': return _applyObserved(ev);
     case 'observation.calendar.event_removed': return _applyRemoved(ev);
     default: return undefined;
@@ -298,6 +302,7 @@ bus.registerConsumer({
       db.run(`DELETE FROM ${t}`);
     }
     obligations.reset();
+    progress.reset();
   },
 });
 

@@ -130,6 +130,15 @@ const DEFAULT_DEPS = {
   plannedBlocks: (neuroTaskId) => db.all(`SELECT b.date_key, b.start_time, b.status FROM task_blocks b
       JOIN task_block_items i ON i.block_id = b.id WHERE i.task_id = ? AND b.status IN ('scheduled', 'awaiting-writeup')`, [neuroTaskId]),
   readMoment: (nowMs) => require('./ambient-push').readMoment({ now: new Date(nowMs) }),
+  // Build 5D. Progress is read per commitment from the projection; the scan
+  // that feeds it runs at the head of each pass, throttled.
+  progress: (commitmentId) => require('./progress-evidence').progressFor(commitmentId),
+  refreshProgress: (nowMs) => require('./progress-evidence').refresh({ now: nowMs }),
+  // Build 5F: after the findings are written, prepare (never execute) the next
+  // step for the strongest of them.
+  prepareActions: (nowMs) => require('./prepared-actions').prepareFromRisk({ now: nowMs }),
+  // Build 5A: a meeting-only risk is surfaced on the meeting's own finding.
+  meetingFindingFor: (meetingId, startLocal) => require('./meeting-intelligence').activeFindingFor(meetingId, startLocal),
 };
 
 // ── the judgement ───────────────────────────────────────────────────────────
@@ -227,6 +236,23 @@ function assess(c, { nowLocal, nowMs, deps }) {
 
   if (!triggers.length) return { finding: false, why: dueContext ? `no trigger (${dueContext})` : 'no stated deadline and no imminent related meeting' };
 
+  // ── Build 5D: what NEURO has seen since it was made ───────────────────────
+  // A likely fulfilment HOLDS the finding (recorded, with its reasons) — it
+  // never completes the commitment. A contradiction (inferred done, then an
+  // authoritative reopen) does not hold: the authority says it is open.
+  let prog = null;
+  try { prog = deps.progress ? deps.progress(c.commitmentId) : null; checked.push('progress-evidence'); } catch (e) {
+    unavailable.push({ input: 'progress-evidence', why: `unreadable: ${e.message}` });
+  }
+  if (prog) {
+    evidence.progressState = { state: prog.state, basis: prog.basis, reasons: prog.reasons, evidenceIds: prog.evidenceIds || [] };
+    if (prog.state === 'likely_fulfilled') {
+      return { finding: false, held: true, progress: prog,
+        why: `likely already done (${prog.reasons.join('; ')}) — an inference, so not raised and NOT marked complete` };
+    }
+    if (prog.state === 'unknown') unavailable.push({ input: 'progress-evidence', why: prog.reasons.join('; ') });
+  }
+
   // ── bounded progress evidence ─────────────────────────────────────────────
   if (task && task.sources.some((s) => s.system === 'neuro')) {
     const nid = task.sources.find((s) => s.system === 'neuro').recordId;
@@ -304,6 +330,11 @@ async function evaluate({ now = Date.now(), deps = {} } = {}) {
   const out = { mode: mode(), considered: 0, created: 0, escalated: 0, updated: 0, resolved: 0, decided: 0, held: 0, skipped: [] };
   if (out.mode === 'off') return out;
 
+  // Build 5D: gather what NEURO can see before judging. Never fails the pass.
+  if (d.refreshProgress) {
+    try { out.progressScan = await d.refreshProgress(nowMs); } catch (e) { out.progressScan = { error: e.message }; }
+  }
+
   const open = d.commitments();
   const openIds = new Set(open.map((c) => c.commitmentId));
 
@@ -379,6 +410,13 @@ async function evaluate({ now = Date.now(), deps = {} } = {}) {
     // Unchanged: nothing written. The same risk does not become a new finding.
   }
 
+  // Build 5E: PREPARE (never execute) the next step for the strongest
+  // findings, before attention is asked, so a finding and its draft are judged
+  // together. A failure here costs the draft, never the finding.
+  if (d.prepareActions) {
+    try { out.prepared = await d.prepareActions(nowMs); } catch (e) { out.prepared = { error: e.message }; }
+  }
+
   // What the EXISTING attention policy would do — once per finding per level,
   // at the recommended moment. Shadow: recorded, never sent.
   const due = db.all(`SELECT * FROM commitment_risk_findings WHERE status = 'active' AND attention_decided_at IS NULL
@@ -387,12 +425,31 @@ async function evaluate({ now = Date.now(), deps = {} } = {}) {
   if (due.length) { try { ({ moment } = await d.readMoment(nowMs)); } catch (e) { momentErr = e.message; } }
   for (const f of due) {
     let decision;
-    if (!moment) decision = { push: false, why: `could not read the moment: ${momentErr}` };
+    let triggers = [];
+    try { triggers = JSON.parse(f.triggers_json) || []; } catch { triggers = []; }
+    const meetingOnly = triggers.length > 0 && triggers.every((t) => t.kind === 'meeting-near');
+    let prepared = null;
+    try { prepared = d.preparedFor ? d.preparedFor(f.finding_id) : require('./prepared-actions').forFinding(f.finding_id); } catch { prepared = null; }
+    if (meetingOnly) {
+      // ⚠ Build 5A: a risk that matters BECAUSE a meeting is coming is surfaced
+      // once, on that meeting's finding (which carries this one as a linked
+      // section). Asking here as well would be two interruptions about one
+      // meeting. The meeting pipeline asks the attention question.
+      let rm = null;
+      try { rm = JSON.parse(f.related_meeting_json); } catch { rm = null; }
+      let mf = null;
+      try { mf = rm && d.meetingFindingFor ? d.meetingFindingFor(rm.meetingId, rm.start) : null; } catch { mf = null; }
+      decision = { push: false, deferredTo: 'meeting-intelligence', meetingId: rm ? rm.meetingId : null,
+        meetingFindingId: mf ? mf.findingId : null,
+        why: 'a meeting-only risk is surfaced once, on the meeting\'s own finding — not asked here' };
+    } else if (!moment) decision = { push: false, why: `could not read the moment: ${momentErr}` };
     else {
       const ap = require('./ambient-push');
-      const v = ap.worthInterrupting({ kind: 'commitment-risk', text: f.summary, level: f.level, findingId: f.finding_id }, moment);
+      const v = ap.worthInterrupting({ kind: 'commitment-risk', text: f.summary, level: f.level, findingId: f.finding_id,
+        preparedActionId: prepared ? prepared.actionId : null }, moment);
       decision = { push: !!v.push, why: v.why || null, urgency: v.urgency || null, wouldSay: v.push ? v.message : null };
     }
+    if (prepared) decision.preparedAction = { actionId: prepared.actionId, type: prepared.actionType, status: prepared.status };
     db.run(`UPDATE commitment_risk_findings SET attention_decided_at = ?, attention_json = ?, attention_mode = 'shadow',
               attention_level = level, decisions = decisions + 1, updated_at = ? WHERE finding_id = ?`,
     [iso, JSON.stringify({ ...decision, shadow: true, sent: false }), iso, f.finding_id]);

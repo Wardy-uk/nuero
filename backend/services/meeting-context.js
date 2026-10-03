@@ -244,10 +244,17 @@ function gather(meeting, deps) {
  * Should this meeting produce a finding? PURE over the gathered evidence.
  * Returns { finding: bool, why, confidence, triggers }.
  */
+/** The structural gate: is this a meeting worth considering at all? PURE. null = yes, else why not. */
+function gate(meeting) {
+  if (meeting.kind !== 'meeting') return `not a meeting with other people (${meeting.kind})`;
+  if (meeting.responseStatus === 'declined') return 'declined';
+  if (meeting.participants.length > MAX_PARTICIPANTS) return `a broadcast (${meeting.participants.length} people)`;
+  return null;
+}
+
 function assess(meeting, gathered) {
-  if (meeting.kind !== 'meeting') return { finding: false, why: `not a meeting with other people (${meeting.kind})` };
-  if (meeting.responseStatus === 'declined') return { finding: false, why: 'declined' };
-  if (meeting.participants.length > MAX_PARTICIPANTS) return { finding: false, why: `a broadcast (${meeting.participants.length} people)` };
+  const blocked = gate(meeting);
+  if (blocked) return { finding: false, why: blocked };
   const e = gathered.evidence;
   const triggers = [];
   if (e.commitments.length) triggers.push('open-commitments-from-previous');
@@ -383,7 +390,7 @@ function findings({ status = null, limit = 50 } = {}) {
 }
 
 module.exports = {
-  mode, gather, assess, summarise, evaluate, findings, shiftLocal, emailRelates,
+  mode, gate, gather, assess, summarise, evaluate, findings, shiftLocal, emailRelates, DEFAULT_DEPS,
   WINDOW_MIN, WINDOW_MAX, RECOMMEND_BEFORE_MIN, MAX_PARTICIPANTS,
   _noteFor,
 };

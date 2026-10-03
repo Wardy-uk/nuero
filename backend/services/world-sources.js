@@ -12,9 +12,11 @@
  * must not change because the world model failed — the same contract as
  * source-health.beginSourceRun.
  *
- * Change, not polling: every key carries a content fingerprint, so an
- * unchanged meeting or an unchanged note re-observed every pass folds into the
- * event already in the log.
+ * Change, not polling: an unchanged meeting or note re-observed every pass
+ * publishes nothing. ⚠ Build 5B: keys name the TRANSITION (change-key.js). The
+ * Build 3 keys named the STATE (`<id>:<fingerprint>`), so a meeting moved and
+ * moved back folded the move back into its first event and the projection was
+ * left showing the slot it had left.
  */
 
 const fs = require('fs');
@@ -22,6 +24,10 @@ const path = require('path');
 const db = require('../db/database');
 const bus = require('./event-bus');
 const wm = require('./world-model');
+const ck = require('./change-key');
+
+const CAL_TYPES = ['observation.calendar.event_observed', 'observation.calendar.event_removed'];
+const CAL_REMOVED = ['observation.calendar.event_removed'];
 
 function _safe(input, opts) {
   try { return bus.publishEvent(input, opts); } catch (e) {
@@ -85,12 +91,15 @@ function publishCalendarWindow({ provider, events, window, correlationId = null,
       if (!e || !e.id || !e.start) continue;
       const payload = calendarPayload(provider, e);
       seen.add(payload.providerEventId);
+      const subjectId = `${provider}:${payload.providerEventId}`.slice(0, 256);
+      const held = ck.latest('calendar-entry', subjectId, CAL_TYPES, CAL_REMOVED);
+      if (ck.isUnchanged(held, payload.fingerprint)) continue;
       const r = send({
         type: 'observation.calendar.event_observed',
         occurredAt,
         source: { system: provider === 'graph' ? 'microsoft-graph' : 'eventkit', recordId: payload.providerEventId },
-        subject: { entityType: 'calendar-entry', entityId: `${provider}:${payload.providerEventId}`.slice(0, 256) },
-        idempotencyKey: `cal-event:${provider}:${payload.providerEventId}:${payload.fingerprint}`.slice(0, 512),
+        subject: { entityType: 'calendar-entry', entityId: subjectId },
+        idempotencyKey: ck.observationKey(`cal-event:${provider}`, payload.providerEventId, held, payload.fingerprint),
         payload,
       });
       if (r && !r.duplicate) changed += 1;
@@ -109,13 +118,19 @@ function publishCalendarWindow({ provider, events, window, correlationId = null,
       );
       for (const h of held) {
         if (seen.has(h.id)) continue;
+        const subjectId = `${provider}:${h.id}`.slice(0, 256);
+        const last = ck.latest('calendar-entry', subjectId, CAL_TYPES, CAL_REMOVED);
+        if (last && last.removed) continue; // already said: one removal per presence
         const r = send({
           type: 'observation.calendar.event_removed',
           occurredAt,
           source: { system: provider === 'graph' ? 'microsoft-graph' : 'eventkit', recordId: h.id },
-          subject: { entityType: 'calendar-entry', entityId: `${provider}:${h.id}`.slice(0, 256) },
-          idempotencyKey: `cal-removed:${provider}:${h.id}:${h.fp || 'none'}`.slice(0, 512),
-          payload: { provider, providerEventId: h.id, lastFingerprint: h.fp || 'none', role: h.role, window },
+          subject: { entityType: 'calendar-entry', entityId: subjectId },
+          // Keyed on the observation that made it present. The fingerprint it
+          // carries is what the projector checks, so a removal of a version
+          // since replaced still changes nothing.
+          idempotencyKey: ck.removalKey(`cal-removed:${provider}`, h.id, last),
+          payload: { provider, providerEventId: h.id, lastFingerprint: (last && last.fingerprint) || h.fp || 'none', role: h.role, window },
         });
         if (r && !r.duplicate) removed += 1;
       }
@@ -210,12 +225,16 @@ function publishPeople({ vaultRoot = process.env.OBSIDIAN_VAULT_PATH, now = Date
     const fm = parseFrontmatter(text);
     if (fm.type && fm.type !== 'person') continue;
     const payload = personPayload(f.slice(0, -3), `People/${f}`, fm);
+    const held = ck.latest('person', payload.personId, ['observation.person.declared']);
+    if (ck.isUnchanged(held, payload.fingerprint)) continue;
     const r = _safe({
       type: 'observation.person.declared',
       occurredAt: new Date(nowMs).toISOString(),
       source: { system: 'vault', recordId: payload.notePath },
       subject: { entityType: 'person', entityId: payload.personId },
-      idempotencyKey: `person-declared:${payload.personId}:${payload.fingerprint}`,
+      // ⚠ A transition key: an address added and later removed again is two
+      // facts, and the second must not fold into the note's first declaration.
+      idempotencyKey: ck.observationKey('person-declared', payload.personId, held, payload.fingerprint),
       payload,
     }, { now: nowMs });
     if (r && !r.duplicate) changed += 1;

@@ -1393,6 +1393,9 @@ CREATE TABLE IF NOT EXISTS event_log (
 CREATE INDEX IF NOT EXISTS idx_event_log_type ON event_log(type, seq);
 CREATE INDEX IF NOT EXISTS idx_event_log_correlation ON event_log(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_event_log_source ON event_log(source_system, seq);
+-- Build 5B: producers read "what was last said about this record" to build a
+-- change key (services/change-key.js). An index, not a change to any row.
+CREATE INDEX IF NOT EXISTS idx_event_log_subject ON event_log(subject_id, seq);
 
 -- ⚠ Append-only is ENFORCED, not requested. A projection rebuilt from a log that
 -- something quietly edited is a projection of a history that never happened.
@@ -1850,6 +1853,106 @@ CREATE TABLE IF NOT EXISTS wm_obligation_history (
   at                TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_wm_obligation_history_entity ON wm_obligation_history(entity_id, id);
+
+-- Build 5A: ONE semantic finding per upcoming meeting, replacing the separate
+-- meeting-context finding and the meeting-only half of commitment-risk. It
+-- LINKS commitment-risk findings (linked_json) rather than restating them, and
+-- it is the only thing that asks the attention policy about a meeting.
+-- SHADOW only: verdicts recorded, nothing sent.
+CREATE TABLE IF NOT EXISTS meeting_intelligence_findings (
+  finding_id            TEXT PRIMARY KEY,      -- meeting-intelligence:<meeting id>:<start>
+  meeting_id            TEXT NOT NULL,
+  title                 TEXT,
+  start_local           TEXT NOT NULL,
+  status                TEXT NOT NULL,         -- active | withdrawn | expired
+  triggers_json         TEXT NOT NULL,
+  sections_json         TEXT NOT NULL,         -- yourActions / owedToYou / emails / supporting
+  linked_json           TEXT NOT NULL,         -- commitment-risk findings: on this meeting, and surfaced elsewhere
+  missing_json          TEXT NOT NULL,
+  confidence            REAL,
+  recommended_at_local  TEXT,
+  summary               TEXT,
+  evidence_fingerprint  TEXT,
+  attention_decided_at  TEXT,
+  attention_json        TEXT,
+  decisions             INTEGER NOT NULL DEFAULT 0,
+  first_created_at      TEXT NOT NULL,
+  updated_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_intel_meeting ON meeting_intelligence_findings(meeting_id, start_local);
+
+-- Build 5A: what the LIVE meeting-prep push did beside what the unified
+-- pipeline would have, per meeting occurrence — the parity record that decides
+-- whether meeting-prep can be retired. Written by both sides, read by parity().
+CREATE TABLE IF NOT EXISTS meeting_prep_comparisons (
+  meeting_key  TEXT PRIMARY KEY,               -- graph:<event id>@<start minute>
+  title        TEXT,
+  start_local  TEXT,
+  old_json     TEXT,                           -- meeting-prep: matched, would notify, sent, body
+  new_json     TEXT,                           -- meeting-intelligence: finding or not, why, summary
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+
+-- Build 5E: actions NEURO has PREPARED and Nick may approve. Authority A4
+-- (consequential: it would leave the building as Nick), so approval is always
+-- required, and in Build 5 an approval RECORDS a decision and executes nothing.
+-- Deliberately not saim_actions: approving a saim_actions row runs its
+-- executor, and "prepared, approved, not sent" cannot be expressed there
+-- without changing approve for every other action type.
+-- Outside the event log (like the findings it answers): a clock-driven
+-- judgement plus a human decision, auditable through history_json.
+CREATE TABLE IF NOT EXISTS prepared_actions (
+  action_id          TEXT PRIMARY KEY,
+  idempotency_key    TEXT NOT NULL UNIQUE,     -- commitment + episode + type: one per risk episode
+  finding_id         TEXT NOT NULL,
+  commitment_id      TEXT NOT NULL,
+  action_type        TEXT NOT NULL,            -- draft_chase_email | draft_update_email
+  target_json        TEXT NOT NULL,            -- { personId, displayName, email, method }
+  reason             TEXT NOT NULL,
+  evidence_json      TEXT NOT NULL,
+  draft_json         TEXT NOT NULL,            -- the exact words; an artefact, never a sent message
+  authority_class    TEXT NOT NULL CHECK (authority_class = 'A4'),
+  approval_required  INTEGER NOT NULL DEFAULT 1 CHECK (approval_required = 1),
+  status             TEXT NOT NULL CHECK (status IN ('prepared', 'approved', 'rejected', 'expired', 'cancelled', 'executed')),
+  created_at         TEXT NOT NULL,
+  expires_at         TEXT,
+  decided_at         TEXT,
+  decision_note      TEXT,
+  history_json       TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_prepared_actions_status ON prepared_actions(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_prepared_actions_finding ON prepared_actions(finding_id);
+-- ⚠ Enforced, not requested: nothing in Build 5 may execute a prepared action.
+-- `executed` exists in the vocabulary for a future build, which must drop this
+-- trigger in a migration that says so.
+CREATE TRIGGER IF NOT EXISTS prepared_actions_never_executed_b5
+  BEFORE UPDATE OF status ON prepared_actions WHEN NEW.status = 'executed'
+BEGIN SELECT RAISE(ABORT, 'Build 5: prepared actions are approval-recorded only and are never executed'); END;
+CREATE TRIGGER IF NOT EXISTS prepared_actions_never_inserted_executed_b5
+  BEFORE INSERT ON prepared_actions WHEN NEW.status = 'executed'
+BEGIN SELECT RAISE(ABORT, 'Build 5: prepared actions are approval-recorded only and are never executed'); END;
+
+-- Build 5D: progress evidence about a commitment, folded by the world-model
+-- consumer from observation.progress.evidence (rebuildable from event_log).
+-- OBSERVATIONS only. The derived state (likely_fulfilled, contradicted, ...) is
+-- computed at read time by progress-evidence.deriveProgress and NEVER written
+-- back to wm_commitments.status: an inference is not a completion.
+CREATE TABLE IF NOT EXISTS wm_progress_evidence (
+  commitment_id     TEXT NOT NULL,
+  kind              TEXT NOT NULL,           -- sent-email | later-note
+  ref               TEXT NOT NULL,           -- message id | note path#Lline
+  evidence_event_id TEXT NOT NULL,
+  at                TEXT NOT NULL,           -- when the thing seen happened (sent / note date)
+  polarity          TEXT NOT NULL,           -- done | progress | not-done
+  strength          TEXT NOT NULL,           -- strong | partial
+  provenance_kind   TEXT NOT NULL DEFAULT 'observation',
+  reason            TEXT,                    -- the rule that matched, in words
+  detail_json       TEXT,
+  received_at       TEXT NOT NULL,
+  PRIMARY KEY (commitment_id, kind, ref)
+);
 
 -- Build 4D: the commitment-at-risk evaluator's findings. Outside the event log
 -- like meeting_context_findings: a clock-driven judgement over the projection.

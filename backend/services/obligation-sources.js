@@ -35,6 +35,7 @@ const path = require('path');
 const crypto = require('crypto');
 const db = require('../db/database');
 const bus = require('./event-bus');
+const ck = require('./change-key');
 
 const NOTE_SLACK_MIN = 20;
 const MAX_TEXT = 500;
@@ -200,46 +201,45 @@ function neuroTaskPayload(row, { meeting = null, managementLog = null } = {}) {
 }
 
 /**
- * The idempotency key is the TRANSITION, not the state: "<what the projection
- * holds> > <what the store holds now>". A state-only key folds A→B→A into the
- * first A — a task reopened to exactly its original state would vanish into
- * the event that created it (caught by the reopen test). Keyed on the
- * transition, a return to an earlier state is a new fact, and an unchanged
- * record is not republished at all. A lagging projection only makes a
- * producer repeat the same transition, which folds.
+ * The idempotency key is the TRANSITION, not the state. A state-only key folds
+ * A→B→A into the first A — a task reopened to exactly its original state would
+ * vanish into the event that created it (caught by the reopen test). Keyed on
+ * the transition, a return to an earlier state is a new fact, and an unchanged
+ * record is not republished at all.
  */
-function _heldTask(system, recordId) {
-  try {
-    return db.get('SELECT fingerprint, removed, evidence_event_id FROM wm_task_sources WHERE system = ? AND record_id = ?', [system, String(recordId)]);
-  } catch { return null; }
-}
-function _prevToken(held) {
-  if (!held) return 'new';
-  return held.removed ? `removed@${held.evidence_event_id}` : held.fingerprint;
-}
+// ⚠ Build 5B: the previous token is the EVENT that set the held state, read
+// from the log (change-key.js). The Build 4 token was the held FINGERPRINT,
+// which fixed A→B→A and left A→B→A→B: the second A→B reproduced the first
+// one's key and folded, leaving the projection at A.
+const TASK_TYPES = ['observation.task.observed', 'observation.task.removed'];
+const TASK_REMOVED = ['observation.task.removed'];
 
 function _publishTask(payload, nowMs) {
-  const held = _heldTask(payload.system, payload.recordId);
-  if (held && !held.removed && held.fingerprint === payload.fingerprint) return { duplicate: true, unchanged: true };
+  const subjectId = `${payload.system}:${payload.recordId}`.slice(0, 256);
+  const held = ck.latest('task', subjectId, TASK_TYPES, TASK_REMOVED);
+  if (ck.isUnchanged(held, payload.fingerprint)) return { duplicate: true, unchanged: true };
   return _safe({
     type: 'observation.task.observed',
     occurredAt: new Date(nowMs).toISOString(),
     source: { system: payload.system === 'neuro' ? 'neuro-tasks' : 'microsoft-graph', recordId: payload.recordId },
-    subject: { entityType: 'task', entityId: `${payload.system}:${payload.recordId}`.slice(0, 256) },
-    idempotencyKey: `task-observed:${payload.system}:${payload.recordId}:${_prevToken(held)}>${payload.fingerprint}`.slice(0, 512),
+    subject: { entityType: 'task', entityId: subjectId },
+    idempotencyKey: ck.observationKey(`task-observed:${payload.system}`, payload.recordId, held, payload.fingerprint),
     payload,
   }, { now: nowMs });
 }
 
-function _publishRemoved(system, recordId, held, nowMs, why) {
+function _publishRemoved(system, recordId, heldRow, nowMs, why) {
+  const subjectId = `${system}:${recordId}`.slice(0, 256);
+  const last = ck.latest('task', subjectId, TASK_TYPES, TASK_REMOVED);
+  if (last && last.removed) return { duplicate: true, unchanged: true };
   return _safe({
     type: 'observation.task.removed',
     occurredAt: new Date(nowMs).toISOString(),
     source: { system: system === 'neuro' ? 'neuro-tasks' : 'microsoft-graph', recordId: String(recordId) },
-    subject: { entityType: 'task', entityId: `${system}:${recordId}`.slice(0, 256) },
+    subject: { entityType: 'task', entityId: subjectId },
     // Keyed on the observation that made it present: one removal per presence.
-    idempotencyKey: `task-removed:${system}:${recordId}:${held.evidence_event_id || held.fingerprint || 'none'}`.slice(0, 512),
-    payload: { system, recordId: String(recordId), lastFingerprint: held.fingerprint || 'none', why },
+    idempotencyKey: ck.removalKey(`task-removed:${system}`, recordId, last),
+    payload: { system, recordId: String(recordId), lastFingerprint: heldRow.fingerprint || (last && last.fingerprint) || 'none', why },
   }, { now: nowMs });
 }
 
@@ -325,18 +325,15 @@ function publishWaitingOn({ now = Date.now(), vaultRoot } = {}) {
     for (const row of rows) {
       const meeting = row.source_path ? meetingLinkFor(row.source_path, { vaultRoot, cache }) : null;
       const payload = waitingOnPayload(row, { meeting });
-      let held = null;
-      try {
-        held = db.get('SELECT fingerprint FROM wm_commitments WHERE commitment_id = ?',
-          [require('./world-obligations').waitingCommitmentId(payload.recordId)]);
-      } catch { held = null; }
-      if (held && held.fingerprint === payload.fingerprint) continue; // unchanged: nothing to say
+      const subjectId = `waiting-on:${payload.recordId}`.slice(0, 256);
+      const held = ck.latest('commitment', subjectId, ['observation.commitment.observed']);
+      if (ck.isUnchanged(held, payload.fingerprint)) continue; // unchanged: nothing to say
       const r = _safe({
         type: 'observation.commitment.observed',
         occurredAt: new Date(nowMs).toISOString(),
         source: { system: 'neuro-waiting-on', recordId: payload.recordId.slice(0, 256) },
-        subject: { entityType: 'commitment', entityId: `waiting-on:${payload.recordId}`.slice(0, 256) },
-        idempotencyKey: `commitment-observed:waiting-on:${payload.recordId}:${held ? held.fingerprint : 'new'}>${payload.fingerprint}`.slice(0, 512),
+        subject: { entityType: 'commitment', entityId: subjectId },
+        idempotencyKey: ck.observationKey('commitment-observed:waiting-on', payload.recordId, held, payload.fingerprint),
         payload,
       }, { now: nowMs });
       if (r && !r.duplicate) changed += 1;

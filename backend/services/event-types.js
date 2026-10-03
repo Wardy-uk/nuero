@@ -211,6 +211,17 @@ const TYPES = Object.freeze({
     provenance: 'observation',
     required: ['system', 'recordId', 'description', 'status', 'fingerprint'],
   },
+  // Build 5D: one thing NEURO SAW that bears on whether a commitment moved — an
+  // email Nick sent to its counterparty about it, or a later note line that
+  // matches it — with the exact rule that matched. An OBSERVATION, never a
+  // completion: `likely_fulfilled` is derived from these at read time and
+  // never changes a commitment's status. Sent mail enters as metadata only
+  // (subject, one recipient, time), and only when it matched a commitment.
+  'observation.progress.evidence': {
+    version: 1,
+    provenance: 'observation',
+    required: ['commitmentId', 'kind', 'ref', 'at', 'polarity', 'strength', 'fingerprint'],
+  },
 
   // What the Graph calendar window looked like on a successful sync. Keyed on a
   // fingerprint of the window's content, so re-observing an unchanged diary
