@@ -35,7 +35,6 @@ import StateOfPlay from './components/StateOfPlay';
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const PeopleBoard = lazy(() => import('./components/PeopleBoard'));
 const StandupEditor = lazy(() => import('./components/StandupEditor'));
-const NinetyDayPlan = lazy(() => import('./components/NinetyDayPlan'));
 const TodoPanel = lazy(() => import('./components/TodoPanel'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const InboxPanel = lazy(() => import('./components/InboxPanel'));
@@ -341,7 +340,7 @@ function AuthenticatedApp() {
       // header — the identical hole the 'standup' entry above was added to fix.
       case 'eod': return <StandupEditor startWithEod />;
       case 'people': return <PeopleBoard />;
-      case 'plan': return <NinetyDayPlan />;
+      // 'plan' (the 90-Day Plan) retired in Build 9 — the plan ended in July and its folder is archived; a bookmarked ?view=plan falls through to Now.
       case 'todos': return <TodoPanel focusContext={navContext} onClearContext={() => setNavContext(null)} />;
       case 'calendar': return <CalendarView />;
       case 'meeting-prep': return <MeetingPrep />;

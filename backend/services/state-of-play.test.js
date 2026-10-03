@@ -84,9 +84,25 @@ test('pending approvals escalate only when something really sends', () => {
   assert.equal(internal[0].severity, 'info');
   assert.match(internal[0].detail, /All internal/);
 
-  const outbound = assess(clean({ approvals: { pending: 3, outbound: 1, pendingByType: { chase_commitment: 1, capture_todo: 2 }, pendingByKind: { outbound: 1, write: 2 }, lifetime: {}, recent: [] } }));
+  // Build 9: the fixture used to be a chase_commitment, which Build 8 retired
+  // from this queue — the remaining outbound kinds are Jira / Microsoft /
+  // calendar, and NONE of them is email.
+  const outbound = assess(clean({ approvals: { pending: 3, outbound: 1, retired: 0, pendingByType: { escalate_ticket: 1, capture_todo: 2 }, pendingByKind: { outbound: 1, write: 2 }, lifetime: {}, recent: [] } }));
   assert.equal(outbound[0].severity, 'warn');
-  assert.match(outbound[0].detail, /1 would send something to a real person/);
+  assert.match(outbound[0].detail, /1 would act outside NEURO/);
+  assert.match(outbound[0].detail, /none sends email/);
+  assert.doesNotMatch(outbound[0].detail, /real person|email or Teams/);
+});
+
+test('Build 9: a retired legacy row is not "would send" — it is named as something to reject', () => {
+  const issues = assess(clean({ approvals: { pending: 2, outbound: 0, retired: 2, pendingByType: { reply_email: 2 }, pendingByKind: { retired: 2 }, lifetime: {}, recent: [] } }));
+  const titles = issues.map((i) => i.title).join(' | ');
+  assert.match(titles, /2 retired actions still pending/);
+  // Positive control: nothing claims these await approval as live actions.
+  assert.doesNotMatch(titles, /awaiting approval/);
+  const r = issues.find((i) => /retired/.test(i.title));
+  assert.equal(r.severity, 'info');
+  assert.match(r.detail, /can no longer be approved/);
 });
 
 // The regression this replaced. draft_reply reads as outbound by its name and is

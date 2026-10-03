@@ -1494,6 +1494,25 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     operation = null;
   }
 
+  // ── What is waiting on Nick's approval (Build 9) ─────────────────────
+  //
+  // ⚠ READ-ONLY, AND IT SAYS WHERE. Every outbound email is a governed action
+  //   approved on the desktop with a human proof; this block lets the ambient
+  //   surfaces say "something needs you, in NEURO" and nothing more. It never
+  //   enters the decision pool (that would make an approval compete with a
+  //   breaching escalation for the primary slot) and it never feeds a phase.
+  //   Composed once in `approval-summary` so four shells cannot word it four
+  //   ways. `say: null` when nothing waits — silence is the normal case.
+  //
+  // ⚠ Carried on the block, NOT pushed into `gaps` (the weeklyTarget rule):
+  //   gaps counts holes in the decision pool and the widget prints its length.
+  let approvals = null;
+  try {
+    approvals = require('./prepared-actions').needsYou();
+  } catch (e) {
+    approvals = require('./approval-summary').unknown(e.message);
+  }
+
   // ── Her colour, decided ONCE ─────────────────────────────────────
   //
   // ⚠⚠ THE LOCK-SCREEN WIDGET TAKES NO COLOUR AT ALL. It draws the same nebulous
@@ -1559,6 +1578,9 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     //   today (`weather`, `canOpen`, this).
     lastNight,
     life,
+    // What waits for Nick's approval in NEURO — see the note above. Additive
+    // and nullable; a consumer that ignores it draws exactly what it did.
+    approvals,
     ...gated,
     // ── What she SHOWS, and what he could SAY ────────────────────────────
     // Nick, 31 Aug 2026: SAiM is a manifestation, not a menu — "a series of

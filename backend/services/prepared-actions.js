@@ -238,6 +238,39 @@ function list({ status = null, limit = 50 } = {}) {
     ? db.all('SELECT * FROM prepared_actions WHERE status = ? ORDER BY updated_at DESC LIMIT ?', [status, lim])
     : db.all('SELECT * FROM prepared_actions ORDER BY updated_at DESC LIMIT ?', [lim])).map(shape);
 }
+/**
+ * Every row still in play — prepared, approved, in flight, uncertain, or a
+ * failure proven unsent — UNBOUNDED by page (Build 9). The route's buckets were
+ * computed over the newest 50 by updated_at while `counts` were global, so an
+ * older draft still awaiting approval could fall off "Needs approval" while the
+ * count beside it still included it. The live set is small by construction
+ * (one live chase per commitment, one reply per email, one report per week).
+ */
+function listLive() {
+  return db.all(
+    `SELECT * FROM prepared_actions
+      WHERE status IN ('prepared','approved','executing','executed','execution_uncertain')
+         OR (status = 'failed' AND retry_safe = 1)
+      ORDER BY updated_at DESC`,
+  ).map(shape);
+}
+
+/** What is waiting on Nick (approval / review), summarised. Never throws. */
+function needsYou() {
+  const summary = require('./approval-summary');
+  try {
+    const rows = db.all(
+      `SELECT action_type, status, retry_safe, created_at FROM prepared_actions
+        WHERE status IN ('prepared','execution_uncertain') OR (status = 'failed' AND retry_safe = 1)`,
+    );
+    let sendingEnabled = null;
+    try { sendingEnabled = require('./feature-flags').isEnabled('governed_execution'); } catch { sendingEnabled = null; }
+    return summary.summarise(rows, { sendingEnabled });
+  } catch (e) {
+    return summary.unknown(e.message);
+  }
+}
+
 function countsByStatus() {
   const out = {};
   for (const r of db.all('SELECT status, COUNT(*) n FROM prepared_actions GROUP BY status')) out[r.status] = r.n;
@@ -1047,5 +1080,5 @@ module.exports = {
   prepareReply, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, agendaAsked,
   approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,
-  get, forFinding, forCommitment, list, countsByStatus,
+  get, forFinding, forCommitment, list, listLive, needsYou, countsByStatus,
 };

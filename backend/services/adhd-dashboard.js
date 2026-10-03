@@ -162,7 +162,9 @@ function _nudgeDestination(type) {
     todo: 'todos',
     eod: 'eod',
     121: 'people',
-    plan_milestone: 'plan',
+    // The 90-Day Plan view was retired in Build 9 (the plan ended in July; its
+    // milestone window closed in June and is stamped sent), so no handle.
+    plan_milestone: null,
     journal: 'journal',
     escalation: 'escalations',
     email: 'inbox',

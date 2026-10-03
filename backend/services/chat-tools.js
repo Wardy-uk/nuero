@@ -219,28 +219,13 @@ const TOOLS = [
       required: ['subject'],
     },
   },
-  {
-    name: 'create_meeting',
-    tier: 'queued',
-    description: 'Queue a meeting WITH OTHER PEOPLE for Nick\'s approval. This does NOT book or invite anyone. Use this instead of schedule_focus_block whenever anyone other than Nick is involved. Give attendees as plain names ("abdi", "Luke Scaife") — addresses are looked up here, so never invent an email.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        subject: { type: 'string', description: 'Meeting title.' },
-        start: { type: 'string', description: 'Local start time, "YYYY-MM-DDTHH:mm".' },
-        minutes: { type: 'integer', description: 'Length in minutes (default 30).' },
-        attendees: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Names or email addresses of everyone to invite, excluding Nick. He is the organiser and is added automatically.',
-        },
-        location: { type: 'string', description: 'Optional location.' },
-        online: { type: 'boolean', description: 'True to make it a Teams meeting.' },
-        agenda: { type: 'string', description: 'Optional agenda for the invite body.' },
-      },
-      required: ['subject', 'start', 'attendees'],
-    },
-  },
+  // ⚠ `create_meeting` WAS RETIRED HERE IN BUILD 9. It queued an attendee-
+  //   bearing `schedule_focus_block`, which Build 8 made un-approvable (410:
+  //   invites are outbound and not yet governed) — so every call produced a
+  //   card that could never be approved, and told the model "invites will go
+  //   out once Nick approves", which was false. Until invites are a governed
+  //   type (Build 10), chat books nothing with other people in it. The handler
+  //   below survives only to refuse in words if a stale caller asks.
   {
     name: 'escalate_ticket',
     tier: 'queued',
@@ -731,59 +716,14 @@ const HANDLERS = {
     };
   },
 
-  // Reuses the schedule_focus_block action type deliberately — its executor
-  // already passes payload.attendees through to createCalendarEvent, so the only
-  // thing missing was resolving names to addresses. The reason string is what
-  // the approval card shows, so it carries the meeting wording.
-  async create_meeting({ subject, start, minutes, attendees, location, online, agenda }) {
-    const title = String(subject || '').trim();
-    if (!title) return { ok: false, error: 'subject is required' };
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(String(start || ''))) {
-      return { ok: false, error: 'start must be a local time like "2026-08-17T14:00"' };
-    }
-    const names = (Array.isArray(attendees) ? attendees : []).map(a => String(a || '').trim()).filter(Boolean);
-    if (!names.length) return { ok: false, error: 'attendees is empty — use schedule_focus_block for solo time' };
-
-    // Never guess an address: hand ambiguity back so the model can ask Nick
-    // rather than inviting the wrong Chris.
-    const resolved = await require('./contact-directory').resolveNames(names);
-    const missing = resolved.filter(r => r.status !== 'resolved');
-    if (missing.length) {
-      return {
-        ok: false,
-        error: 'Could not resolve every attendee — nothing queued.',
-        unresolved: missing.map(m => ({
-          name: m.query,
-          problem: m.status,
-          candidates: (m.candidates || []).map(c => `${c.name} <${c.email}>`),
-        })),
-        hint: 'Ask Nick which person is meant, or for the email address, then call create_meeting again.',
-      };
-    }
-
-    const invitees = resolved.map(r => ({ name: r.name, email: r.email }));
-    const mins = Number(minutes) > 0 ? Number(minutes) : 30;
-    const id = require('./suggestion-engine').queueAction(
-      'schedule_focus_block',
-      {
-        subject: title,
-        start,
-        minutes: mins,
-        attendees: invitees,
-        location: location || null,
-        body: agenda || null,
-        isOnline: Boolean(online),
-      },
-      `Meeting "${title}" with ${invitees.map(i => i.name).join(', ')} at ${start.replace('T', ' ')}`,
-      0.85
-    );
-
+  // Retired in Build 9 (see the note where its definition used to be). Refuses
+  // in words and queues NOTHING: a queued meeting with attendees can no longer
+  // be approved, so creating one would be a card that exists only to fail.
+  async create_meeting() {
     return {
-      ok: true,
-      queued_action_id: id,
+      ok: false,
       booked: false,
-      invited: invitees,
-      note: `Queued for approval. Nothing is booked and NO invites have gone out — ${invitees.length} ${invitees.length === 1 ? 'person' : 'people'} will be invited only once Nick approves it.`,
+      error: "Setting up meetings with other people from chat is switched off: calendar invites are being moved behind the governed approval path, and until then nothing here can send one. Nothing was queued and nobody was invited. Nick can book it himself from Calendar in NEURO.",
     };
   },
 };

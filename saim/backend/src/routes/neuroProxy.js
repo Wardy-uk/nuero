@@ -53,7 +53,9 @@ const DOORS = new Set([
   'adhd',            // the Now screen's session + recovery cards
   'session',         // focus sessions — start, pause, shrink, step away
   'focus',           // the legacy focus read, still behind the Focus screen
-  'todos',           // read + tick. Completion is internal and reversible.
+  'todos',           // read + tick. ⚠ Not purely internal (corrected Build 9):
+                     // complete-ms / wip-ms write to Microsoft To Do / Planner —
+                     // Nick ticking his own task, same as every surface; no email.
   'tasks',           // create / patch a NEURO task
   'wins',            // the momentum ledger. Read-only in practice.
   'capture',         // notes, todos, features. The whole point of the kiosk.

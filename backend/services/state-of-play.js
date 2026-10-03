@@ -437,7 +437,13 @@ function snapshot(opts = {}) {
   try {
     const presenter = require('./action-presenter');
     pendingActions = db.getPendingSaimActions(2000) || [];
+    const { legacyRetired } = require('./legacy-outbound');
     for (const a of pendingActions) {
+      // A retired legacy outbound row can only 410 on approve (Build 8), so it
+      // is not something that 'would send' — counted apart (Build 9).
+      let payload = a.payload;
+      if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = {}; } }
+      if (legacyRetired({ ...a, payload })) { pendingKinds.retired = (pendingKinds.retired || 0) + 1; continue; }
       const kind = presenter.describe(a)?.kind || 'unknown';
       pendingKinds[kind] = (pendingKinds[kind] || 0) + 1;
     }
@@ -448,6 +454,7 @@ function snapshot(opts = {}) {
     pendingByType: tally(rows("SELECT type k, COUNT(*) c FROM saim_actions WHERE status='pending' GROUP BY k"), 'k'),
     pendingByKind: pendingKinds,
     outbound: pendingKinds.outbound || 0,
+    retired: pendingKinds.retired || 0,
     lifetime: tally(rows("SELECT status k, COUNT(*) c FROM saim_actions GROUP BY k"), 'k'),
     recent: rows(`SELECT date(created_at) d, COUNT(*) c FROM saim_actions
                   WHERE created_at >= date('now','-13 day') GROUP BY d ORDER BY d`),
@@ -643,14 +650,27 @@ function assess(s) {
       `Ticked here, not yet accepted by Graph${ms.oldestHours ? ` (oldest ${ms.oldestHours}h)` : ''}. Retrying every 10 minutes.`, 'todos');
   }
 
+  // ⚠ Build 9: the legacy queue sends NO email any more (Build 8), so "would
+  //   send something to a real person (email or Teams)" was false twice over —
+  //   it counted retired rows that can only 410, and the outbound kinds left
+  //   are a Jira escalation, a Planner completion or a calendar block. Retired
+  //   rows are named as what they are: things to reject, not to approve.
   if (s.approvals.pending > 0) {
     const outbound = s.approvals.outbound || 0;
-    add(outbound > 0 ? 'warn' : 'info',
-      `${s.approvals.pending} action${s.approvals.pending === 1 ? '' : 's'} awaiting approval`,
-      outbound > 0
-        ? `${outbound} would send something to a real person (email or Teams). The rest are internal.`
-        : 'All internal — nothing here sends anything.',
-      'actions');
+    const retired = s.approvals.retired || 0;
+    const live = s.approvals.pending - retired;
+    if (live > 0) {
+      add(outbound > 0 ? 'warn' : 'info',
+        `${live} older-queue action${live === 1 ? '' : 's'} awaiting approval`,
+        outbound > 0
+          ? `${outbound} would act outside NEURO if approved (a Jira escalation, a Microsoft task or your calendar) — none sends email. The rest are internal.`
+          : 'All internal — nothing here sends anything.',
+        'actions');
+    }
+    if (retired > 0) {
+      add('info', `${retired} retired action${retired === 1 ? '' : 's'} still pending`,
+        'From before outbound email was governed; they can no longer be approved. Reject them on Actions.', 'actions');
+    }
   }
 
   if (s.tasks.overdue > 0) {
@@ -711,17 +731,19 @@ function assess(s) {
     const uncertain = (g.needsReview || []).filter((x) => x.status === 'execution_uncertain');
     const failed = (g.needsReview || []).filter((x) => x.status === 'failed');
     if (uncertain.length) {
-      add('critical', `${uncertain.length} sent chase${uncertain.length === 1 ? '' : 's'} could not be confirmed`,
+      // "email", not "chase": since Build 8 the governed types are chases,
+      // replies, agenda requests and the weekly report (Build 9 wording).
+      add('critical', `${uncertain.length} sent email${uncertain.length === 1 ? '' : 's'} could not be confirmed`,
         `${uncertain[0].detail || 'NEURO could not confirm it in Sent Items.'} It will not be resent automatically — check Outlook.`, 'actions');
     }
     if ((g.stuck || []).length) {
       add('critical', 'An approved action is stuck', `${g.stuck.length} approved/executing action(s) have not progressed. The reconciler should settle them; if this persists, check NEURO Health.`, 'actions');
     }
     if (failed.length) {
-      add('warn', `${failed.length} approved chase${failed.length === 1 ? '' : 'es'} did not send`, failed[0].detail || 'Nothing was sent.', 'actions');
+      add('warn', `${failed.length} approved email${failed.length === 1 ? '' : 's'} did not send`, failed[0].detail || 'Nothing was sent.', 'actions');
     }
     const ready = (g.counts && g.counts.prepared) || 0;
-    if (ready) add('info', `${ready} drafted action${ready === 1 ? '' : 's'} waiting for your approval`, 'Drafted by NEURO; nothing is sent until you approve the exact words.', 'actions');
+    if (ready) add('info', `${ready} drafted email${ready === 1 ? '' : 's'} waiting for your approval`, 'Drafted by NEURO; nothing is sent until you approve the exact words.', 'actions');
   }
 
   const k = s.knowledge;

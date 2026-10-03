@@ -2736,7 +2736,6 @@ export default function TodoPanel({ focusContext, onClearContext }) {
           { key: 'commitment', label: `${LABELS.commitment}s (${countFor('commitment')})` },
           { key: 'improvement', label: `${LABELS.improvement} (${countFor('improvement')})` },
           { key: 'unclassified', label: `${UNCLASSIFIED_LABEL} (${countFor('unclassified')})` },
-          { key: 'plan', label: `90-Day Plan (${countFor('plan')})` },
           { key: 'vault', label: `Vault Todos (${countFor('vault')})` },
           { key: 'ms', label: `MS Tasks (${countFor('ms')})` },
         ].map(f => (

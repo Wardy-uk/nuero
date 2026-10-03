@@ -377,15 +377,11 @@ export default function Dashboard({ onNavigate }) {
   const dateStr = today.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
   const timeOfDay = getTimeOfDay();
 
-  const planFetch = useCachedFetch('/api/obsidian/ninety-day-plan', { interval: 60000 });
   const td = todayStr();
   const calFetch = useCachedFetch(`/api/obsidian/calendar?start=${td}&end=${td}`, { interval: 120000 });
   const calEvents = (calFetch.data?.events || [])
     .filter(e => e.showAs !== 'cancelled')
     .sort((a, b) => new Date(a.start) - new Date(b.start));
-
-  const plan = planFetch.data;
-  const planPct = plan ? Math.round((plan.totalDone / Math.max(plan.totalTasks, 1)) * 100) : 0;
 
   return (
     <div className="dash">
@@ -395,15 +391,9 @@ export default function Dashboard({ onNavigate }) {
         <span className="dash-date">{dateStr} — Day {dayCount}</span>
       </div>
 
-      {/* Stat cards */}
-      <div className="dash-stats">
-        <div className="dash-stat" onClick={() => onNavigate?.('plan')}>
-          <span className="stat-val">{plan ? `${planPct}%` : '-'}</span>
-          <span className="stat-lbl">90-Day</span>
-          {plan && <span className="stat-sub">Day {plan.currentDay}</span>}
-        </div>
-      </div>
-
+      {/* The 90-Day Plan tile and its two sections were removed in Build 9:
+          the plan ended in July, its folder was archived on 12 Aug and the
+          endpoint answers "not found", so the tile read "-" for seven weeks. */}
       {/* Must Do items — always visible */}
       <InlineMustDos />
       <InlineMustMove onNavigate={onNavigate} />
@@ -435,44 +425,6 @@ export default function Dashboard({ onNavigate }) {
 
       {/* Do Next — replaces InlineTodos */}
       <DoNextPanel compact={true} onNavigate={onNavigate} />
-
-      {/* 90-Day progress */}
-      {plan && (
-        <div className="review-section">
-          <div className="progress-header">
-            <span className="progress-title">90-Day Plan</span>
-            <span className="progress-meta">{plan.totalDone}/{plan.totalTasks} — {plan.nextCheckpoint.label} in {plan.daysToCheckpoint}d</span>
-          </div>
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${planPct}%` }} />
-            <div className="progress-marker" style={{ left: `${Math.round((plan.currentDay / 90) * 100)}%` }} />
-          </div>
-        </div>
-      )}
-
-      {/* 90-Day alerts — overdue + today's plan tasks */}
-      {plan && ((plan.overdueTasks?.length > 0) || (plan.todayTasks?.length > 0)) && (
-        <div className="review-section">
-          <div className="review-section-header">
-            <span className="review-section-title">
-              90-Day Plan
-              {plan.overdueTasks?.length > 0 && <span className="review-badge-warn">{plan.overdueTasks.length} overdue</span>}
-            </span>
-            <button className="review-link" onClick={() => onNavigate?.('plan')}>Full plan</button>
-          </div>
-          {plan.overdueTasks?.slice(0, 3).map((t, i) => (
-            <div key={`o${i}`} className="dash-task task-high">
-              <span className="task-key">Day {t.day}</span>
-              <span className="task-text">{t.text}</span>
-            </div>
-          ))}
-          {plan.todayTasks?.filter(t => t.status !== 'x').map((t, i) => (
-            <div key={`t${i}`} className="dash-task">
-              <span className="task-text">{t.text}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Orphan captures — unreviewed notes */}
       <OrphanAlert onNavigate={onNavigate} />

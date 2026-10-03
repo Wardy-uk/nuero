@@ -384,14 +384,24 @@ const PRESENTERS = {
     label: 'Escalate a ticket',
     kind: OUTBOUND,
     summary: `Escalate ${p.ticketKey || 'a ticket'} in NOVA`,
+    // ⚠ THESE ARE THE FIELDS THE EXECUTOR SENDS (Build 9). The card read
+    //   `reason` / `dueDate` / `comment`, which nothing has ever written —
+    //   `chat-tools` stores `reasonCode` / `neededBy` / `notes` and
+    //   `executeAction` sends exactly those — so the approval card showed a
+    //   ticket key and nothing else while NOVA received a reason, a date and
+    //   notes Nick never saw. An approval is only an approval of what is on
+    //   the card. The old names stay as a fallback for any older row.
     fields: [
       field('Ticket', p.ticketKey, { mono: true }),
-      field('Reason', p.reasonLabel || p.reason),
-      field('Due date', p.dueDate),
+      field('Reason', p.reasonLabel || p.reasonCode || p.reason),
+      field('Needed by', p.neededBy || p.dueDate),
     ],
-    body: trimmed(p.comment) || null,
-    bodyLabel: p.comment ? 'Internal comment NOVA will add' : null,
-    blockers: p.ticketKey ? [] : ['No ticketKey on this action.'],
+    body: trimmed(p.notes) || trimmed(p.comment) || null,
+    bodyLabel: (trimmed(p.notes) || trimmed(p.comment)) ? 'Notes sent to NOVA with the escalation' : null,
+    blockers: [
+      ...(p.ticketKey ? [] : ['No ticketKey on this action.']),
+      ...(p.reasonCode || p.reasonLabel || p.reason ? [] : ['No reason on this action — NOVA requires one.']),
+    ],
     warnings: ['NOVA raises the priority and tightens the due date. Internal comment only — the customer sees nothing.'],
   }),
 };

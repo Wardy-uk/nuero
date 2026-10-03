@@ -24,7 +24,6 @@ const executor = () => require('../services/action-executor');
 const proofs = () => require('../services/approval-proof');
 
 const HUMAN_ONLY = 'Approving, editing or rejecting an A4 action needs Nick — a machine client cannot do it on his behalf.';
-const ACTIVE = ['prepared', 'approved', 'executing', 'executed', 'execution_uncertain'];
 
 /** One queue, five views of it (7I). Pure: from the shaped actions. */
 function buckets(actions) {
@@ -43,13 +42,25 @@ function buckets(actions) {
 router.get('/', (req, res) => {
   try {
     const status = pa().STATUSES.includes(req.query.status) ? req.query.status : null;
-    const actions = pa().list({ status, limit: req.query.limit });
+    const page = pa().list({ status, limit: req.query.limit });
+    // ⚠ Live rows are ALWAYS included, whatever the page size (Build 9): the
+    // buckets used to be computed over the newest 50 only, so an older draft
+    // still awaiting approval could vanish from "Needs approval". The page
+    // limit now bounds HISTORY, never what is waiting on Nick.
+    const seen = new Set();
+    const actions = [];
+    for (const a of [...(status ? [] : pa().listLive()), ...page]) {
+      if (!a || seen.has(a.actionId)) continue;
+      seen.add(a.actionId);
+      actions.push(a);
+    }
     res.json({
       ok: true,
       executableTypes: require('../services/action-registry').executableTypes(),
       counts: pa().countsByStatus(),
       actions,
       buckets: buckets(actions),
+      needsYou: pa().needsYou(),
       legacy: pa().legacyHistory(),
       sending: { enabled: require('../services/feature-flags').isEnabled('governed_execution') },
       approvalCode: proofs().codeStatus(),

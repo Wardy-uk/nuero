@@ -409,6 +409,28 @@
   border-bottom: 1px solid rgba(76, 154, 255, 0.35);
 }
 
+/* ── Something needs you, in NEURO (Build 9) ──────────────────────────────
+   One statement, no control: approval happens at the desk. Slightly more
+   presence than an ambient observation (it is a real thing waiting on him),
+   far less than the pool (it is never urgent enough to interrupt). */
+.surface__approvals {
+  margin: 14px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--surface-rule, rgba(255,255,255,0.08));
+  color: var(--surface-text, #e8e9ee);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.surface__approvalstag {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f0d6a6;
+}
+.surface__approvals--unknown { color: var(--muted); font-size: 0.78rem; }
+
 /* ── Ambient observations ─────────────────────────────────────────────────
    Sat still a long time, no exercise for three days, a health trend. Rendered
    BELOW the pool and visibly quieter than it: these are things she noticed,

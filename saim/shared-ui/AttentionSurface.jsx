@@ -232,6 +232,10 @@ export default function AttentionSurface({
     // Null is the normal case and renders nothing — the situation changing is
     // what this surface DOES, and annotating that would be noise on every read.
     askedSurface = null,
+    // What waits for Nick's approval in NEURO (Build 9), one sentence composed
+    // by `approval-summary`. Rendered as a STATEMENT — approval is desktop-only
+    // and needs a human proof, so there is deliberately no button here.
+    approvals = null,
   } = data;
 
   // ── Saying it ONCE ─────────────────────────────────────────────────────────
@@ -990,6 +994,22 @@ export default function AttentionSurface({
         {!hideSecondary && rooms && rooms.known === false && (
           <p className="surface__aside surface__aside--warn">
             I can&rsquo;t see the house right now.
+          </p>
+        )}
+
+        {/* ── Something needs you, in NEURO ────────────────────────────────
+            A drafted email awaiting approval, or a send NEURO could not
+            confirm. ⚠ NO BUTTON, ON ANY SHELL: approving needs the approval
+            code at the desk (Build 7), and an ambient surface that can send is
+            one that can send by accident. The sentence names where to go.
+            `say` is null when nothing waits, which renders nothing; an
+            unreadable queue says so in its own muted words rather than
+            reading as "nothing to approve". */}
+        {!hideSecondary && approvals?.say && (
+          <p className={`surface__approvals${approvals.known === false ? ' surface__approvals--unknown' : ''}`}
+            data-approvals={approvals.known === false ? 'unknown' : 'waiting'}>
+            {approvals.known !== false && <span className="surface__approvalstag">Needs you</span>}
+            {approvals.say}
           </p>
         )}
 

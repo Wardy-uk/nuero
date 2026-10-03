@@ -135,6 +135,7 @@ function useTimeHighlight() {
 export default function Sidebar({ activeView, onNavigate, open }) {
   const [importsCount, setImportsCount] = useState(0);
   const [actionsCount, setActionsCount] = useState(0);
+  const [actionsTitle, setActionsTitle] = useState('');
 
   const [moreOpen, setMoreOpen] = useState(() => {
     try { return localStorage.getItem('sidebar_more_open') === 'true'; }
@@ -164,10 +165,29 @@ export default function Sidebar({ activeView, onNavigate, open }) {
       // The badge is the discovery mechanism: a queued draft reply is invisible
       // otherwise, and it was for a day. pendingTotal, not pending.length —
       // the list itself is capped and the badge must not inherit that cap.
-      fetch(apiUrl('/api/actions'))
-        .then(res => res.json())
-        .then(data => setActionsCount(data.pendingTotal ?? (data.pending || []).length))
-        .catch(() => {});
+      //
+      // ⚠ ONE QUEUE, ONE NUMBER (Build 9). The Actions screen holds two stores —
+      // the legacy queue (navigation shortcuts, internal suggestions) and the
+      // governed drafts every outbound email now is — and this badge counted
+      // the legacy one alone, so a prepared weekly-risk report raised no number
+      // on the one control whose job is "something needs you". Both are summed;
+      // a store that could not be read contributes nothing rather than a guess,
+      // and the title says which parts answered.
+      Promise.allSettled([
+        fetch(apiUrl('/api/actions')).then(res => res.json()),
+        fetch(apiUrl('/api/prepared-actions?limit=1')).then(res => res.json()),
+      ]).then(([legacy, governed]) => {
+        const l = legacy.status === 'fulfilled'
+          ? (legacy.value.pendingTotal ?? (legacy.value.pending || []).length) : null;
+        const ny = governed.status === 'fulfilled' ? governed.value.needsYou : null;
+        const g = ny && ny.known ? (ny.needsApproval || 0) + (ny.needsReview || 0) : null;
+        if (l === null && g === null) return;
+        setActionsCount((l || 0) + (g || 0));
+        setActionsTitle([
+          g === null ? 'drafted emails: could not check' : `${g} drafted email${g === 1 ? '' : 's'} to approve or check`,
+          l === null ? 'other actions: could not check' : `${l} other pending`,
+        ].join(' · '));
+      });
     }
 
     fetchCounts();
@@ -197,7 +217,7 @@ export default function Sidebar({ activeView, onNavigate, open }) {
         {item.id === 'actions' && actionsCount > 0 && (
           /* 930 does not fit a badge and 930 is the real number, so say "lots"
              rather than either lying or breaking the row. */
-          <span className="sidebar-badge">{actionsCount > 99 ? '99+' : actionsCount}</span>
+          <span className="sidebar-badge" title={actionsTitle || undefined}>{actionsCount > 99 ? '99+' : actionsCount}</span>
         )}
 
       </span>

@@ -62,11 +62,13 @@ const TOOL_LABELS = {
   complete_task: 'Complete a task',
   append_daily_note: 'Add to today’s note',
   capture_feature: 'Capture a feature idea',
-  draft_email_reply: 'Draft an email reply (for your approval)',
+  // ⚠ Labels say "approve in NEURO" (Build 9): SAiM has no
+  // approval control on any shell, so the label says where the decision lives.
+  // `create_meeting` was retired from chat in Build 9 and is gone from here.
+  draft_email_reply: 'Draft an email reply (approve in NEURO)',
   get_urgent_emails: 'Check urgent email',
-  schedule_focus_block: 'Book a focus block (for your approval)',
-  create_meeting: 'Set up a meeting (for your approval)',
-  escalate_ticket: 'Escalate a ticket (for your approval)',
+  schedule_focus_block: 'Book a focus block (approve in NEURO)',
+  escalate_ticket: 'Escalate a ticket (approve in NEURO)',
 };
 
 function toolLabel(name) {
