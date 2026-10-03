@@ -461,7 +461,9 @@ async function fetchCalendarEvents(startDate, endDate) {
         { Prefer: `outlook.timezone="${EVENT_TIMEZONE}"` }
       );
       if (data && data.value) {
-        return data.value.map(event => {
+        // Build 3C: `truncated` rides on the array, because a short list from a
+        // failed page walk must not read as meetings that were removed.
+        const mapped = data.value.map(event => {
           const startDt = event.start.dateTime;
           const endDt = event.end.dateTime;
           const date = startDt.split('T')[0];
@@ -501,6 +503,8 @@ async function fetchCalendarEvents(startDate, endDate) {
             seriesMasterId: event.seriesMasterId || null,
           };
         });
+        if (data.truncated) mapped.truncated = true;
+        return mapped;
       }
     } catch (err) {
       console.error('[Microsoft] Calendar fetch error:', err.message);

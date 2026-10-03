@@ -142,6 +142,42 @@ const TYPES = Object.freeze({
     provenance: 'observation',
     required: ['deviceId', 'observedAt'],
   },
+  // ── The world model (Build 3C) ─────────────────────────────────────────────
+  //
+  // ONE calendar entry as a source showed it — subject, times, status and the
+  // attendee list. Keyed on a fingerprint of that content, so an unchanged
+  // meeting re-observed every twenty minutes FOLDS: the log records change,
+  // not polling (the window_synced rule, one level down).
+  //
+  // ⚠ A deliberate privacy decision, written down: unlike location (no
+  // coordinates, ever), a meeting's subject and its attendees' names and
+  // addresses DO enter the log, because "who is in the 14:00 and what is it
+  // about" is the fact the world model exists to hold — and calendar_history
+  // already keeps the same content permanently. What stays out: the body, the
+  // join link (it carries tokens), free-text notes.
+  'observation.calendar.event_observed': {
+    version: 1,
+    provenance: 'observation',
+    required: ['provider', 'providerEventId', 'title', 'start', 'end', 'fingerprint'],
+  },
+  // A calendar entry that a source previously showed inside its sync window
+  // and no longer does — cancelled and deleted, or moved out of the window.
+  // The source cannot say which, so neither does this.
+  'observation.calendar.event_removed': {
+    version: 1,
+    provenance: 'observation',
+    required: ['provider', 'providerEventId', 'lastFingerprint'],
+  },
+  // A person as Nick's own vault declares them (People/<name>.md): name,
+  // addresses, aliases and only the relationship fields the note states
+  // EXPLICITLY. A FACT — it is his own record — keyed on its content so an
+  // unchanged note folds. Nothing is inferred about anyone.
+  'observation.person.declared': {
+    version: 1,
+    provenance: 'fact',
+    required: ['personId', 'displayName', 'emails', 'notePath', 'fingerprint'],
+  },
+
   // What the Graph calendar window looked like on a successful sync. Keyed on a
   // fingerprint of the window's content, so re-observing an unchanged diary
   // folds into the existing event: the log records CHANGE, not polling.

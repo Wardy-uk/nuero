@@ -76,4 +76,34 @@ router.get('/runtime', (req, res) => {
   }
 });
 
+// GET /api/events/world/meetings — the world model's meeting state: what meeting is happening now, what is next, who is in it (mapped to known people), which calendar sources support it, and how fresh each source is
+router.get('/world/meetings', (req, res) => {
+  try {
+    res.json({ ok: true, ...require('../services/world-model').meetingState() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/world/people — people known to the world model (declared in People notes): names, email addresses, explicitly stated role/team/relationship, provenance; plus any address two notes both claim
+router.get('/world/people', (req, res) => {
+  try {
+    const wm = require('../services/world-model');
+    res.json({ ok: true, people: wm.listPeople(), conflicts: wm.identityConflicts() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/world/meeting-context — SHADOW meeting-context findings: before a real meeting, what NEURO holds about it (open actions from the last occurrence, items owed from it, urgent emails from attendees), the evidence and missing evidence, confidence, recommended timing and what the attention policy would have done. ?status=active|withdrawn|expired
+router.get('/world/meeting-context', (req, res) => {
+  try {
+    const mc = require('../services/meeting-context');
+    const status = ['active', 'withdrawn', 'expired'].includes(req.query.status) ? req.query.status : null;
+    res.json({ ok: true, mode: mc.mode(), findings: mc.findings({ status }) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;

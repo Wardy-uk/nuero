@@ -159,6 +159,15 @@ const RULES = {
     say: o => ({ title: 'SAiM', body: [o.text, o.detail].filter(Boolean).join(' ') }),
   },
 
+  // Build 3D — SHADOW ONLY. The meeting-context evaluator asks this rule what
+  // the policy WOULD do and records the answer; nothing in deliver() ever
+  // offers a meeting-context observation, so this rule cannot win a push.
+  'meeting-context': {
+    when: m => m.onDuty,
+    urgency: 'normal',
+    say: o => ({ title: 'SAiM', body: o.text }),
+  },
+
   'health-signal': {
     // The one worth interrupting for on its own merits, and the only one allowed
     // during a focus session. Still never in a meeting.
@@ -293,6 +302,24 @@ function sourceBlindVerdicts(moment, { now = new Date() } = {}) {
   return out;
 }
 
+/**
+ * The moment, read once: context, phone, laptop and what has been muted.
+ * Shared by deliver() and by shadow evaluators (Build 3D) so a recorded
+ * "what the policy would do" is judged against exactly the moment a real push
+ * would have been. Throws if the read fails — callers decide what that means.
+ */
+async function readMoment({ now = new Date() } = {}) {
+  const attention = require('./attention');
+  const { inputs } = await attention.gather();
+  const context = require('./context-state').resolveContext(inputs);
+  const ha = require('./ha');
+  const phone = ha.isConfigured() ? await ha.getPhoneStatus() : null;
+  const desktop = require('./desktop-activity').run(now);
+  const learning = require('./attention-learning');
+  const moment = momentFrom({ context, phone, desktop, now, muted: learning.mutedList().map(m => m.kind) });
+  return { context, moment };
+}
+
 async function deliver({ now = new Date() } = {}) {
   if (!ENABLED) return { sent: 0, skipped: 'disabled' };
 
@@ -301,13 +328,8 @@ async function deliver({ now = new Date() } = {}) {
   let moment = null;
 
   try {
-    const attention = require('./attention');
-    const { inputs } = await attention.gather();
-    const context = require('./context-state').resolveContext(inputs);
-
-    const ha = require('./ha');
-    const phone = ha.isConfigured() ? await ha.getPhoneStatus() : null;
-    const desktop = require('./desktop-activity').run(now);
+    const read = await readMoment({ now });
+    const context = read.context;
 
     const ambient = await require('./ambient').build({ now, context });
     observations = ambient.observations || [];
@@ -324,14 +346,7 @@ async function deliver({ now = new Date() } = {}) {
     } catch (e) {
       console.warn('[AmbientPush] life moments unavailable:', e.message);
     }
-    const learning = require('./attention-learning');
-    moment = momentFrom({
-      context,
-      phone,
-      desktop,
-      now,
-      muted: learning.mutedList().map(m => m.kind),
-    });
+    moment = read.moment;
   } catch (e) {
     console.warn('[AmbientPush] Could not read the moment:', e.message);
     // ⚠ Refuses rather than guessing. Not knowing where he is is precisely when
@@ -397,6 +412,7 @@ module.exports = {
   momentFrom,
   worthInterrupting,
   deliver,
+  readMoment,
   RULES,
   ENABLED,
   DRY_HOURS,

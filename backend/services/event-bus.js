@@ -381,6 +381,7 @@ function _loadBuiltins() {
   require('./source-health');
   require('./observation-state');
   require('./source-blindness');
+  require('./world-model');
 }
 
 function getConsumer(name) {

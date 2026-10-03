@@ -270,7 +270,7 @@ test('10. the three production jobs register with their audited policies', () =>
   runtime._reset();
   require('./scheduler').registerDurableJobs();
   const j = runtime._jobs;
-  assert.deepEqual([...j.keys()].sort(), ['ambient-pass', 'calendar-sync', 'source-staleness']);
+  assert.deepEqual([...j.keys()].sort(), ['ambient-pass', 'calendar-sync', 'meeting-context', 'source-staleness', 'world-people-sync']);
   assert.equal(j.get('calendar-sync').cron, '*/20 * * * *');
   assert.equal(j.get('calendar-sync').maxLagMs, null, 'a late calendar sync is as good as an on-time one');
   assert.equal(j.get('calendar-sync').maxAttempts, 2);

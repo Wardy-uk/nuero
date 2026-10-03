@@ -417,6 +417,24 @@ function ingestCalendar({ from, to, events, calendars, client } = {}) {
     for (const row of rows) db.upsertCalendarEvent(row);
   });
 
+  // Build 3C: the world model. ALL normalised entries, including the ones the
+  // cache just dropped as copies of a Graph meeting — the projector attaches
+  // those to the Graph meeting as a SUPPORTING source, which is the record that
+  // two systems agreed. Never allowed to fail the push.
+  try {
+    const wm = require('./world-model');
+    const fromMs = Date.parse(String(from));
+    const toMs = Date.parse(String(to));
+    require('./world-sources').publishCalendarWindow({
+      provider: 'apple',
+      events: normalised,
+      window: Number.isFinite(fromMs) && Number.isFinite(toMs)
+        ? { fromLocal: wm.localMinute(fromMs), toLocal: wm.localMinute(toMs) } : null,
+    });
+  } catch (e) {
+    console.warn('[Apple] world model not updated:', e.message);
+  }
+
   _recordPush({
     at: new Date().toISOString(),
     client: who,

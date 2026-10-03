@@ -1354,6 +1354,38 @@ function registerDurableJobs() {
   });
 
   runtime.defineJob({
+    name: 'world-people-sync',
+    cron: '7 * * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 1,
+    timeoutMs: 2 * 60 * 1000,
+    why: 'Build 3C: People notes into the world model. Idempotent (content-keyed), so only the newest slot matters.',
+    run: async () => {
+      const r = require('./world-sources').publishPeople();
+      if (r.error) throw new Error(r.error);
+      return r;
+    },
+  });
+
+  runtime.defineJob({
+    name: 'meeting-context',
+    cron: '*/5 * * * *',
+    class: 'freshness-sensitive',
+    catchUp: 'latest',
+    maxLagMs: 10 * 60 * 1000,
+    maxAttempts: 1,
+    timeoutMs: 2 * 60 * 1000,
+    why: 'Build 3D: does NEURO hold anything about the next real meeting worth having in mind? SHADOW — findings and recorded verdicts only, nothing is ever sent.',
+    run: async () => {
+      const r = await require('./meeting-context').evaluate();
+      return { mode: r.mode, considered: r.considered, created: r.created, updated: r.updated,
+        withdrawn: r.withdrawn, expired: r.expired, decided: r.decided };
+    },
+  });
+
+  runtime.defineJob({
     name: 'ambient-pass',
     cron: '*/40 * * * *',
     class: 'freshness-sensitive',

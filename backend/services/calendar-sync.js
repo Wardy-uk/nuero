@@ -187,6 +187,27 @@ async function sync({ days = 14, checkArrivals = true } = {}) {
     idempotencyKey: `graph-calendar-window:${from}:${to}:${_fingerprint(events)}`,
     payload: { window: { from, to }, count: synced, fingerprint: _fingerprint(events) },
   });
+  // Build 3C: one observation per meeting for the world model, and a removal
+  // for anything inside the window that has gone. Skipped — and SAID — when the
+  // ids are synthesised (the NOVA bridge fallback carries no Graph ids, so
+  // every meeting would arrive as a new one) and removals are skipped when the
+  // page walk was truncated (a short list is not a list of cancellations).
+  try {
+    if (events.some(e => e && typeof e.id === 'string' && e.id.startsWith('graph-'))) {
+      console.warn('[CalendarSync] synthesised event ids — world model not updated this pass');
+    } else {
+      const w = require('./world-sources').publishCalendarWindow({
+        provider: 'graph',
+        events,
+        window: events.truncated ? null : { fromLocal: `${from}T00:00`, toLocal: `${to}T23:59` },
+        correlationId: run.correlationId || null,
+      });
+      if (w && (w.changed || w.removed)) console.log(`[CalendarSync] world model: ${w.changed} meeting change(s), ${w.removed} removal(s)`);
+    }
+  } catch (e) {
+    console.warn('[CalendarSync] world model not updated:', e.message);
+  }
+
   run.succeed({
     synced, from, to,
     // Agrees with what this function RETURNS: a cold start reports no

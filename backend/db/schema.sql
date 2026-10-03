@@ -1592,3 +1592,144 @@ CREATE TABLE IF NOT EXISTS runtime_job_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_runtime_job_runs_job ON runtime_job_runs(job, scheduled_for);
 CREATE INDEX IF NOT EXISTS idx_runtime_job_runs_status ON runtime_job_runs(status, job);
+
+-- ── The world model: Person and Meeting (Build 3C, 3 Oct 2026) ──────────────
+-- Owned by the `world-model` projector and REBUILDABLE ENTIRELY FROM event_log
+-- (observation.person.declared, observation.calendar.event_observed / _removed).
+-- Nothing else may write these tables, or a replay would erase it.
+--
+-- Facts, observations and inferences are kept apart per row: provenance_kind
+-- says which, confidence says how sure, evidence_json names the event ids.
+
+-- A person NEURO knows across domains. Only DECLARED people (a People note)
+-- are entities; an attendee address nobody has declared stays a participant
+-- with person_id NULL — "unknown" is a real answer, not a person to invent.
+CREATE TABLE IF NOT EXISTS wm_people (
+  person_id         TEXT PRIMARY KEY,          -- person:<slug of the note name>
+  display_name      TEXT NOT NULL,
+  note_path         TEXT,
+  role              TEXT,                      -- only if the note states it
+  team              TEXT,
+  direct_report     INTEGER,                   -- 1 / 0 / NULL (not stated)
+  manager           TEXT,
+  status            TEXT,                      -- the note's own status, verbatim
+  aliases_json      TEXT NOT NULL DEFAULT '[]',
+  provenance_kind   TEXT NOT NULL,
+  confidence        REAL,
+  first_observed_at TEXT NOT NULL,
+  last_observed_at  TEXT NOT NULL,
+  evidence_json     TEXT NOT NULL,
+  fingerprint       TEXT,
+  updated_at        TEXT NOT NULL
+);
+
+-- How an identity (an email address) is known to belong to a person. One
+-- owner per identity: two notes claiming one address is a CONFLICT, recorded,
+-- and the address is bound to NEITHER — never a coin toss.
+CREATE TABLE IF NOT EXISTS wm_person_identities (
+  kind              TEXT NOT NULL,             -- email
+  value             TEXT NOT NULL,             -- lower-cased
+  person_id         TEXT,                      -- NULL while conflicted
+  method            TEXT NOT NULL,             -- vault-declared
+  conflict_json     TEXT,                      -- the claimants, when > 1
+  evidence_event_id TEXT NOT NULL,
+  observed_at       TEXT NOT NULL,
+  PRIMARY KEY (kind, value)
+);
+
+-- Every binding change, kept: the audit trail for identity resolution.
+CREATE TABLE IF NOT EXISTS wm_identity_log (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind              TEXT NOT NULL,
+  value             TEXT NOT NULL,
+  person_id         TEXT,
+  action            TEXT NOT NULL,             -- bound | unbound | conflict | participants-linked
+  rule              TEXT NOT NULL,
+  evidence_event_id TEXT NOT NULL,
+  detail_json       TEXT,
+  at                TEXT NOT NULL
+);
+
+-- One row per meeting. `meeting_id` is the AUTHORITATIVE provider's id
+-- (graph:<id>, else apple:<id>). Times are the wall-clock strings the sources
+-- deliver (Europe/London) and are compared as wall-clock, never re-parsed.
+CREATE TABLE IF NOT EXISTS wm_meetings (
+  meeting_id        TEXT PRIMARY KEY,
+  provider          TEXT NOT NULL,             -- graph | apple
+  provider_event_id TEXT NOT NULL,
+  series_id         TEXT,
+  title             TEXT NOT NULL,
+  start_local       TEXT NOT NULL,             -- YYYY-MM-DDTHH:MM, wall clock
+  end_local         TEXT NOT NULL,
+  is_all_day        INTEGER NOT NULL DEFAULT 0,
+  show_as           TEXT,
+  status            TEXT NOT NULL,             -- scheduled | cancelled | removed | merged
+  merged_into       TEXT,
+  response_status   TEXT,
+  is_organizer      INTEGER,
+  kind              TEXT NOT NULL,             -- meeting | block | unknown (from attendeesOther — an inference)
+  organizer_email   TEXT,
+  location_label    TEXT,
+  is_online         INTEGER,
+  provenance_kind   TEXT NOT NULL,
+  confidence        REAL,
+  observed_at       TEXT NOT NULL,             -- when a source last showed a CHANGE
+  received_at       TEXT NOT NULL,
+  evidence_json     TEXT NOT NULL,
+  fingerprint       TEXT,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wm_meetings_start ON wm_meetings(start_local, status);
+
+-- Which sources describe a meeting. Graph is authoritative; a phone copy of
+-- the same meeting is a SUPPORTING source of the Graph meeting, not a second
+-- meeting.
+CREATE TABLE IF NOT EXISTS wm_meeting_sources (
+  provider          TEXT NOT NULL,
+  provider_event_id TEXT NOT NULL,
+  meeting_id        TEXT NOT NULL,
+  role              TEXT NOT NULL,             -- authoritative | supporting
+  match_rule        TEXT,                      -- provider-id | start+title
+  observed_at       TEXT NOT NULL,
+  evidence_event_id TEXT NOT NULL,
+  PRIMARY KEY (provider, provider_event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_wm_meeting_sources_meeting ON wm_meeting_sources(meeting_id);
+
+CREATE TABLE IF NOT EXISTS wm_meeting_participants (
+  meeting_id        TEXT NOT NULL,
+  email             TEXT NOT NULL,             -- lower-cased
+  name              TEXT,
+  response          TEXT,
+  is_organizer      INTEGER NOT NULL DEFAULT 0,
+  person_id         TEXT,                      -- NULL = no declared person owns this address
+  link_method       TEXT,                      -- exact-email | NULL
+  PRIMARY KEY (meeting_id, email)
+);
+CREATE INDEX IF NOT EXISTS idx_wm_participants_person ON wm_meeting_participants(person_id);
+
+-- Build 3D: the meeting-context evaluator's findings. Outside the event log on
+-- purpose (like source_blind_attention): it is a clock-driven judgement over
+-- several stores. Each row names its evidence (task ids, waiting-on keys,
+-- email ids, the world model's evidence event ids) and what it could NOT read,
+-- plus what the attention policy would have done — SHADOW only, never sent.
+CREATE TABLE IF NOT EXISTS meeting_context_findings (
+  finding_id            TEXT PRIMARY KEY,        -- meeting-context:<meetingId>:<start>
+  meeting_id            TEXT NOT NULL,
+  title                 TEXT NOT NULL,
+  start_local           TEXT NOT NULL,
+  status                TEXT NOT NULL,           -- active | withdrawn | expired
+  trigger_json          TEXT NOT NULL,
+  evidence_json         TEXT NOT NULL,
+  missing_json          TEXT NOT NULL,
+  confidence            REAL,
+  recommended_at_local  TEXT,
+  summary               TEXT,
+  evidence_fingerprint  TEXT,
+  first_created_at      TEXT NOT NULL,
+  updated_at            TEXT NOT NULL,
+  attention_mode        TEXT,
+  attention_decided_at  TEXT,
+  attention_json        TEXT,
+  decisions             INTEGER NOT NULL DEFAULT 0
+);
