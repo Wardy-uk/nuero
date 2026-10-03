@@ -88,6 +88,17 @@ const FLAGS = [
     impact: 'creates and closes tasks in your list',
   },
   {
+    key: 'governed_execution',
+    env: 'GOVERNED_EXECUTION_ENABLED',
+    default: true,
+    label: 'Send a chase once you approve it',
+    description: 'When you approve a prepared chase, NEURO sends exactly that email as you and then '
+      + 'checks Sent Items to confirm it went. Nothing is ever sent without your approval of the exact '
+      + 'words. Turning this off is the emergency brake: approvals are still recorded, nothing is sent, '
+      + 'and an approval expires after 24 hours if the brake is still on.',
+    impact: 'sends email as you, only after you approve it',
+  },
+  {
     key: 'dnd_vault_read_only',
     env: 'DND_VAULT_READ_ONLY',
     default: false,

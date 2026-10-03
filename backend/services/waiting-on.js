@@ -280,10 +280,10 @@ function snooze(key, until = null) {
 }
 
 /** Record that a chase went out, so it is not asked twice in a week. */
-function markChased(key) {
+function markChased(key, { now = Date.now() } = {}) {
   const item = _get(key);
   if (!item) return null;
-  item.askedAt = new Date().toISOString();
+  item.askedAt = new Date(now).toISOString();
   item.chaseCount = (item.chaseCount || 0) + 1;
   _upsert(item);
   return item;
@@ -298,6 +298,12 @@ async function queueChase(key) {
   const item = _get(key);
   if (!item) return { ok: false, error: 'No such item' };
   if (item.status !== 'open') return { ok: false, error: `Already ${item.status}` };
+
+  // Build 6: NEURO's governed chase and this queue must not both reach the same
+  // person about the same thing. A governed chase already prepared, approved,
+  // in flight or recently sent for this item answers the question.
+  const governed = require('./prepared-actions').governedChaseLive(`waiting-on:${key}`);
+  if (governed) return { ok: false, error: `NEURO already has a chase for this (${governed.status}) — see Pending actions` };
 
   // Resolve the address HERE rather than at send time, so the approval screen
   // can show who it is actually going to. An address discovered only inside the

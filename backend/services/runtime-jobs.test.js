@@ -271,8 +271,16 @@ test('10. the three production jobs register with their audited policies', () =>
   require('./scheduler').registerDurableJobs();
   const j = runtime._jobs;
   // Build 5A: meeting-context's job was superseded by meeting-intelligence.
-  assert.deepEqual([...j.keys()].sort(), ['ambient-pass', 'calendar-sync', 'capture-drain', 'commitment-risk', 'meeting-intelligence',
+  assert.deepEqual([...j.keys()].sort(), ['action-executor', 'ambient-pass', 'calendar-sync', 'capture-drain', 'commitment-risk', 'meeting-intelligence',
     'ms-tasks-sync', 'source-staleness', 'world-obligations-sync', 'world-people-sync']);
+  // Build 6: the governed executor's reconciler. Correctness-critical, one
+  // attempt per slot (a failed pass is simply the next slot — reconcile is
+  // idempotent and never resends), and NOT also on node-cron.
+  assert.equal(j.get('action-executor').cron, '*/2 * * * *');
+  assert.equal(j.get('action-executor').class, 'correctness-critical');
+  assert.equal(j.get('action-executor').maxAttempts, 1);
+  assert.ok(!fs.readFileSync(path.join(__dirname, 'scheduler.js'), 'utf8').includes('action-executor\').reconcile();\n  })'),
+    'the reconciler must not also be on node-cron');
   assert.equal(j.get('calendar-sync').cron, '*/20 * * * *');
   assert.equal(j.get('calendar-sync').maxLagMs, null, 'a late calendar sync is as good as an on-time one');
   assert.equal(j.get('calendar-sync').maxAttempts, 2);

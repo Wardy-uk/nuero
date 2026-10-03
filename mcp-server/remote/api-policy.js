@@ -7,6 +7,11 @@ export const interactive = {
   get_strava_auth: 'Connect Strava in NEURO; the browser must follow the authorization redirect.',
   get_strava_callback: 'OAuth callback consumed by the browser, not an independent user action.',
   post_pin: 'NEURO deliberately rejects machine clients for PIN changes. Use the signed-in NEURO settings screen.',
+  // Build 6: approving a prepared action can SEND EMAIL AS NICK. A4 approval is
+  // his, in NEURO, against the exact words he reads — never an agent's. The
+  // backend refuses the API token as well; this stops the gateway offering it.
+  post_prepared_actions_by_id_approve: 'Approving a drafted action is Nick\'s decision and may send email as him. He approves it in NEURO → Actions, where the exact recipient and words are shown. An agent must never approve on his behalf.',
+  post_prepared_actions_by_id_edit: 'Editing a drafted action creates a new version that Nick must approve in NEURO → Actions.',
 };
 // Path params the backend accepts only from a closed set. The inventory is
 // generated from route strings and cannot see a handler's own validation, so a

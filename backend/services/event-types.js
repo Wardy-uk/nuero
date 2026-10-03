@@ -231,6 +231,19 @@ const TYPES = Object.freeze({
     provenance: 'observation',
     required: ['window', 'count', 'fingerprint'],
   },
+
+  // ── Build 6: the lifecycle of a governed action ────────────────────────────
+  // Facts about NEURO's own acts and Nick's decisions on them. ⚠ REFERENCES
+  // ONLY: action id, type, version, the target's PERSON id, a short hash of the
+  // provider message id. Never the recipient address, the subject or the body —
+  // the log is immutable, and a message's words belong in the one row Nick
+  // approved, not in an undeletable stream. One event per transition, keyed
+  // `action:<id>:<status>`, so a repeated transition folds.
+  ...Object.fromEntries([
+    'action.prepared', 'action.approved', 'action.rejected', 'action.superseded',
+    'action.execution.started', 'action.execution.uncertain', 'action.executed',
+    'action.verified', 'action.failed', 'action.expired', 'action.cancelled',
+  ].map((t) => [t, { version: 1, provenance: 'fact', required: ['actionId', 'actionType', 'version'] }])),
 });
 
 const PROVENANCE_KINDS = Object.freeze(['fact', 'observation', 'inference']);

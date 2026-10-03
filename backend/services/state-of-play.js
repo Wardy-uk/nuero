@@ -560,10 +560,18 @@ function snapshot(opts = {}) {
     };
   } catch { /* zeroes */ }
 
+  // Build 6: the governed action ledger. Read here so a send that could not be
+  // confirmed, or a claim left behind by a restart, is SEEN on the desk board —
+  // deliberately not pushed: the executor never notifies, and the attention
+  // engine stays the only interruption authority. null = could not read.
+  let governed = null;
+  try { governed = require('./action-executor').status(); } catch { /* null */ }
+
   return {
     generatedAt: new Date().toISOString(),
     tasks, commitments, approvals, inbox, rituals, vault, jobs, calendar, msPush,
     knowledge: knowledgeReflection(),
+    governed,
   };
 }
 
@@ -698,6 +706,24 @@ function assess(s) {
   // the Insights tab has been opened since the note was written; whether he read
   // it is not observable and must not be claimed. Pinned by a forbidden-wording
   // test, because the plausible tidy-up here is to shorten it to "unread".
+  const g = s.governed;
+  if (g) {
+    const uncertain = (g.needsReview || []).filter((x) => x.status === 'execution_uncertain');
+    const failed = (g.needsReview || []).filter((x) => x.status === 'failed');
+    if (uncertain.length) {
+      add('critical', `${uncertain.length} sent chase${uncertain.length === 1 ? '' : 's'} could not be confirmed`,
+        `${uncertain[0].detail || 'NEURO could not confirm it in Sent Items.'} It will not be resent automatically — check Outlook.`, 'actions');
+    }
+    if ((g.stuck || []).length) {
+      add('critical', 'An approved action is stuck', `${g.stuck.length} approved/executing action(s) have not progressed. The reconciler should settle them; if this persists, check NEURO Health.`, 'actions');
+    }
+    if (failed.length) {
+      add('warn', `${failed.length} approved chase${failed.length === 1 ? '' : 'es'} did not send`, failed[0].detail || 'Nothing was sent.', 'actions');
+    }
+    const ready = (g.counts && g.counts.prepared) || 0;
+    if (ready) add('info', `${ready} drafted action${ready === 1 ? '' : 's'} waiting for your approval`, 'Drafted by NEURO; nothing is sent until you approve the exact words.', 'actions');
+  }
+
   const k = s.knowledge;
   if (k && k.announcedAt) {
     const written = Date.parse(k.announcedAt);

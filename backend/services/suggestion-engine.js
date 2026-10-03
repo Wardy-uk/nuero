@@ -713,6 +713,10 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
       const item = waitingOn.list({ status: 'all' }).find(i => i.key === payload.waitingKey);
       if (!item) return { ok: false, detail: 'That waiting-on item no longer exists' };
       if (item.status !== 'open') return { ok: false, detail: `Already ${item.status} — nothing to chase` };
+      // Build 6: refuse if NEURO's governed chase for this is in flight or was
+      // sent recently — the two queues must never chase the same thing twice.
+      const governed = require('./prepared-actions').governedChaseLive(`waiting-on:${payload.waitingKey}`, { includePrepared: false });
+      if (governed) return { ok: false, detail: `NEURO's own chase for this is already ${governed.status} — not sending a second one` };
 
       // The address is normally resolved and stored when the chase is QUEUED, so
       // that the approval screen shows who it is going to. Prefer that over

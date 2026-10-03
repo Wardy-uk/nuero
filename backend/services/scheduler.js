@@ -1453,6 +1453,21 @@ function registerDurableJobs() {
   });
 
   runtime.defineJob({
+    name: 'action-executor',
+    cron: '*/2 * * * *',
+    class: 'correctness-critical',
+    catchUp: 'latest',
+    maxAttempts: 1,
+    timeoutMs: 3 * 60 * 1000,
+    why: 'Build 6: the durable half of approval-gated execution. Expires stale approvals, recovers a send interrupted by a restart FROM THE LEDGER (verify, never resend), executes an approval whose trigger was missed, and verifies executed/uncertain sends against Sent Items. It never sends anything Nick has not approved.',
+    run: async () => {
+      const r = await require('./action-executor').reconcile();
+      return { swept: r.swept, recovered: r.recovered.length, executed: r.executed.length, checked: r.checked,
+        outcomes: r.verified.map((v) => v.outcome) };
+    },
+  });
+
+  runtime.defineJob({
     name: 'ambient-pass',
     cron: '*/40 * * * *',
     class: 'freshness-sensitive',

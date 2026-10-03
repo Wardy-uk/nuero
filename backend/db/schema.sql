@@ -1902,37 +1902,109 @@ CREATE TABLE IF NOT EXISTS meeting_prep_comparisons (
 -- without changing approve for every other action type.
 -- Outside the event log (like the findings it answers): a clock-driven
 -- judgement plus a human decision, auditable through history_json.
+--
+-- ⚠ Build 6 (3 Oct 2026) REPLACED the Build 5 shape. One type — chase_commitment
+-- — may now execute after an explicit approval of its exact payload. The Build 5
+-- triggers that refused `executed` outright were DROPPED by
+-- db/migrate-build6-actions.js, which rebuilds an existing table into this shape
+-- (SQLite cannot widen a CHECK) and installs the Build 6 triggers in their
+-- place: payload immutable, approval immutable, only an approved and
+-- hash-matching row of an EXECUTABLE type can enter `executing`, terminal
+-- states stay terminal, nothing is ever deleted. The triggers live in the
+-- migration, not here, because they name columns an un-migrated table lacks.
 CREATE TABLE IF NOT EXISTS prepared_actions (
-  action_id          TEXT PRIMARY KEY,
-  idempotency_key    TEXT NOT NULL UNIQUE,     -- commitment + episode + type: one per risk episode
-  finding_id         TEXT NOT NULL,
-  commitment_id      TEXT NOT NULL,
-  action_type        TEXT NOT NULL,            -- draft_chase_email | draft_update_email
-  target_json        TEXT NOT NULL,            -- { personId, displayName, email, method }
-  reason             TEXT NOT NULL,
-  evidence_json      TEXT NOT NULL,
-  draft_json         TEXT NOT NULL,            -- the exact words; an artefact, never a sent message
-  authority_class    TEXT NOT NULL CHECK (authority_class = 'A4'),
-  approval_required  INTEGER NOT NULL DEFAULT 1 CHECK (approval_required = 1),
-  status             TEXT NOT NULL CHECK (status IN ('prepared', 'approved', 'rejected', 'expired', 'cancelled', 'executed')),
-  created_at         TEXT NOT NULL,
-  expires_at         TEXT,
-  decided_at         TEXT,
-  decision_note      TEXT,
-  history_json       TEXT NOT NULL,
-  updated_at         TEXT NOT NULL
+  action_id             TEXT PRIMARY KEY,
+  idempotency_key       TEXT NOT NULL UNIQUE,  -- commitment + episode + type (+ #vN for an edit)
+  finding_id            TEXT NOT NULL,
+  commitment_id         TEXT NOT NULL,
+  subject_ref           TEXT,                  -- the commitment's source ref, e.g. waiting-on:<key>
+  action_type           TEXT NOT NULL,         -- registered in services/action-registry.js
+  version               INTEGER NOT NULL DEFAULT 1,
+  parent_action_id      TEXT,                  -- the version this one was edited from
+  target_json           TEXT NOT NULL,         -- { personId, displayName, email, method }
+  reason                TEXT NOT NULL,
+  evidence_json         TEXT NOT NULL,
+  evidence_hash         TEXT,
+  draft_json            TEXT NOT NULL,         -- the exact words Nick approves
+  payload_hash          TEXT NOT NULL,         -- what an approval binds to
+  authority_class       TEXT NOT NULL CHECK (authority_class = 'A4'),
+  approval_required     INTEGER NOT NULL DEFAULT 1 CHECK (approval_required = 1),
+  status                TEXT NOT NULL CHECK (status IN ('prepared', 'approved', 'executing', 'execution_uncertain',
+                          'executed', 'verified', 'failed', 'rejected', 'expired', 'cancelled', 'superseded')),
+  created_at            TEXT NOT NULL,
+  expires_at            TEXT,
+  decided_at            TEXT,
+  decision_note         TEXT,
+  approved_by           TEXT,
+  approved_at           TEXT,
+  approved_payload_hash TEXT,
+  approved_evidence_hash TEXT,
+  approval_expires_at   TEXT,
+  executed_at           TEXT,
+  verified_at           TEXT,
+  chase_recorded_at     TEXT,                  -- when waiting_on was told it was chased (once)
+  last_check_at         TEXT,                  -- last verification check (operational)
+  last_block            TEXT,                  -- last transient reason execution waited (operational)
+  outcome_detail        TEXT,                  -- why it failed / is uncertain / was cancelled
+  retry_safe            INTEGER,               -- 1 = proven not sent; 0 = may have been sent
+  history_json          TEXT NOT NULL,         -- every transition, appended
+  updated_at            TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_prepared_actions_status ON prepared_actions(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_prepared_actions_finding ON prepared_actions(finding_id);
--- ⚠ Enforced, not requested: nothing in Build 5 may execute a prepared action.
--- `executed` exists in the vocabulary for a future build, which must drop this
--- trigger in a migration that says so.
-CREATE TRIGGER IF NOT EXISTS prepared_actions_never_executed_b5
-  BEFORE UPDATE OF status ON prepared_actions WHEN NEW.status = 'executed'
-BEGIN SELECT RAISE(ABORT, 'Build 5: prepared actions are approval-recorded only and are never executed'); END;
-CREATE TRIGGER IF NOT EXISTS prepared_actions_never_inserted_executed_b5
-  BEFORE INSERT ON prepared_actions WHEN NEW.status = 'executed'
-BEGIN SELECT RAISE(ABORT, 'Build 5: prepared actions are approval-recorded only and are never executed'); END;
+
+-- Build 6D: the execution ledger. ONE row per attempt, and `execution_key` is
+-- UNIQUE — `exec:<action_id>:<approved payload hash>` — so a given approved
+-- version can be attempted ONCE, ever. There is no automatic retry path: a
+-- resend needs a new version, which needs a new approval. The draft's
+-- internetMessageId is written BEFORE the send is requested, so every attempt
+-- that could have sent anything carries the handle that verifies it.
+CREATE TABLE IF NOT EXISTS action_attempts (
+  attempt_id            TEXT PRIMARY KEY,      -- <action_id>#<attempt>
+  action_id             TEXT NOT NULL,
+  attempt               INTEGER NOT NULL,
+  execution_key         TEXT NOT NULL UNIQUE,
+  boot_id               TEXT NOT NULL,         -- which process claimed it
+  started_at            TEXT NOT NULL,
+  draft_id              TEXT,                  -- provider id of the draft created for this attempt
+  internet_message_id   TEXT,                  -- the provider message id; the verification handle
+  draft_created_at      TEXT,
+  send_requested_at     TEXT,
+  send_http_status      INTEGER,
+  send_outcome          TEXT CHECK (send_outcome IN ('accepted', 'rejected', 'uncertain')),
+  error_category        TEXT,                  -- auth | scope | http_4xx | http_5xx | timeout | network | no-handle | abandoned
+  error_detail          TEXT,                  -- short, never message content
+  retry_safe            INTEGER,               -- 1 = proven not sent
+  finished_at           TEXT,
+  final_state           TEXT,                  -- executed | execution_uncertain | failed
+  UNIQUE (action_id, attempt)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_action_attempts_one_open ON action_attempts(action_id) WHERE finished_at IS NULL;
+CREATE TRIGGER IF NOT EXISTS action_attempts_no_delete BEFORE DELETE ON action_attempts
+BEGIN SELECT RAISE(ABORT, 'the execution ledger is append/audit only'); END;
+-- A finished attempt is a record: nothing about it changes afterwards.
+CREATE TRIGGER IF NOT EXISTS action_attempts_frozen BEFORE UPDATE ON action_attempts WHEN OLD.finished_at IS NOT NULL
+BEGIN SELECT RAISE(ABORT, 'a finished attempt is immutable'); END;
+-- The verification handle, once written, cannot be swapped for another.
+CREATE TRIGGER IF NOT EXISTS action_attempts_handle_once BEFORE UPDATE ON action_attempts
+  WHEN OLD.internet_message_id IS NOT NULL AND NEW.internet_message_id IS NOT OLD.internet_message_id
+BEGIN SELECT RAISE(ABORT, 'an attempt''s message id is written once'); END;
+
+-- Build 6F: every verification check whose OUTCOME changed (a repeated
+-- identical answer only touches prepared_actions.last_check_at). Append-only.
+CREATE TABLE IF NOT EXISTS action_verifications (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  action_id             TEXT NOT NULL,
+  attempt_id            TEXT NOT NULL,
+  checked_at            TEXT NOT NULL,
+  outcome               TEXT NOT NULL CHECK (outcome IN ('verified', 'not_found', 'ambiguous', 'provider_unavailable')),
+  proof_json            TEXT NOT NULL          -- ids, recipient/subject/time/body match; never the body itself
+);
+CREATE INDEX IF NOT EXISTS idx_action_verifications_action ON action_verifications(action_id, id);
+CREATE TRIGGER IF NOT EXISTS action_verifications_append_only_u BEFORE UPDATE ON action_verifications
+BEGIN SELECT RAISE(ABORT, 'verification records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS action_verifications_append_only_d BEFORE DELETE ON action_verifications
+BEGIN SELECT RAISE(ABORT, 'verification records are append-only'); END;
 
 -- Build 5D: progress evidence about a commitment, folded by the world-model
 -- consumer from observation.progress.evidence (rebuildable from event_log).

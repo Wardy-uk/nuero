@@ -451,6 +451,17 @@ async function init() {
     console.error('[DB] Build 3B migration check failed:', e.message);
   }
 
+  // Migration: Build 6 — prepared_actions becomes approval-gated EXECUTABLE for
+  // one registered type. Rebuilds an old-shape table (copying every row) and
+  // replaces the Build 5 "never executed" triggers with the Build 6 ones. See
+  // db/migrate-build6-actions.js, which says so at length.
+  //
+  // ⚠ NOT swallowed like the column migrations above: if this fails the table
+  // is in the Build 5 shape with no Build 6 triggers, and the executor's SQL
+  // guards would be missing. Better the boot fails loudly than a sending path
+  // runs without its database-level gate.
+  require('./migrate-build6-actions').migrate(db);
+
   // health_daily: blood pressure and heart rate.
   //
   // All three have been arriving for two years and had nowhere to land — the

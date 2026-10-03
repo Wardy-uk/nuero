@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import './ActionsPanel.css';
+import PreparedActions from './PreparedActions';
 
 /**
  * Pending actions — the approval surface for everything SAiM has queued.
@@ -447,6 +448,10 @@ export default function ActionsPanel({ onNavigate }) {
           </p>
         )}
       </div>
+
+      {/* Build 6: NEURO's governed drafts — the one queue whose approval can
+          SEND (a chase), and only the exact words shown. Above the legacy queue. */}
+      <PreparedActions />
 
       {/* Only worth the space once the queue is past what one screen can hold.
           Below that, filters are clutter in front of a list you can just read. */}

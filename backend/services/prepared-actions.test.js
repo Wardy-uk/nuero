@@ -1,7 +1,12 @@
 'use strict';
 
 /**
- * Prepared actions (Build 5E/5F).
+ * Prepared actions (Build 5E/5F; contract updated by Build 6).
+ *
+ * ⚠ Build 6 CHANGED what approval means for ONE type (chase_commitment, which
+ * now sends after approval — see action-executor.test.js). Everything this file
+ * prepares is still unsendable here: every outbound door below throws, and the
+ * one executable type is exercised against mocks in the executor's own suite.
  *
  *   run: node --test backend/services/prepared-actions.test.js
  *
@@ -127,11 +132,11 @@ test('22/27/28. a strong risk prepares ONE approval-required A4 draft, with its 
   assert.equal(att.sent, false);
   // 28. the table refuses an action that does not require approval, or is not A4
   assert.throws(() => db.run(`INSERT INTO prepared_actions (action_id, idempotency_key, finding_id, commitment_id, action_type, target_json,
-      reason, evidence_json, draft_json, authority_class, approval_required, status, created_at, history_json, updated_at)
-      VALUES ('x', 'x', 'f', 'c', 't', '{}', 'r', '{}', '{}', 'A4', 0, 'prepared', 'n', '[]', 'n')`), /CHECK/);
+      reason, evidence_json, draft_json, payload_hash, authority_class, approval_required, status, created_at, history_json, updated_at)
+      VALUES ('x', 'x', 'f', 'c', 't', '{}', 'r', '{}', '{}', 'h', 'A4', 0, 'prepared', 'n', '[]', 'n')`), /CHECK/);
   assert.throws(() => db.run(`INSERT INTO prepared_actions (action_id, idempotency_key, finding_id, commitment_id, action_type, target_json,
-      reason, evidence_json, draft_json, authority_class, approval_required, status, created_at, history_json, updated_at)
-      VALUES ('y', 'y', 'f', 'c', 't', '{}', 'r', '{}', '{}', 'A2', 1, 'prepared', 'n', '[]', 'n')`), /CHECK/);
+      reason, evidence_json, draft_json, payload_hash, authority_class, approval_required, status, created_at, history_json, updated_at)
+      VALUES ('y', 'y', 'f', 'c', 't', '{}', 'r', '{}', '{}', 'h', 'A2', 1, 'prepared', 'n', '[]', 'n')`), /CHECK/);
 });
 
 test('25. a repeated evaluator pass prepares nothing new', async () => {
@@ -195,22 +200,36 @@ test('26. snoozed, deferred "not today", recently chased or already queued prepa
   assert.equal(pa.shouldPrepare({ ...BASE, finding: { ...BASE.finding, level: 'elevated' } }).prepare, false, 'elevated is not enough');
 });
 
-test('29/31. approval is RECORDED and executes nothing — the DB refuses `executed`, and no sender is reachable', async () => {
-  const a = pa.list({ status: 'prepared' })[0];
-  const r = pa.approve(a.actionId, { note: 'looks right', now: NOW + 1000 });
-  assert.equal(r.ok, true);
-  assert.equal(r.executed, false);
+test('29/31. (Build 6 contract) a NON-executable type is approval-recorded only; approval binds the payload hash; no sender is reachable', async () => {
+  const a = pa.list({ status: 'prepared' }).find((x) => x.actionType === 'draft_update_email');
+  assert.ok(a, 'positive control: a prepared holding note exists');
+  assert.equal(a.executes, false, 'draft_update_email has no executor in Build 6');
+  // No hash, a wrong hash, and an unfilled [date] are each refused.
+  assert.match(pa.approve(a.actionId, { approver: 'nick', now: NOW + 1000 }).error, /payloadHash/);
+  assert.match(pa.approve(a.actionId, { approver: 'nick', payloadHash: 'nope', now: NOW + 1000 }).error, /not the one you were shown/);
+  assert.match(pa.approve(a.actionId, { approver: 'nick', payloadHash: a.payloadHash, now: NOW + 1000 }).error, /placeholder/);
+  assert.equal(pa.get(a.actionId).status, 'prepared');
+  // Edit fills the date: a NEW version, the old one superseded and untouched.
+  const ed = pa.edit(a.actionId, { payloadHash: a.payloadHash, body: a.draft.body.replace('[date]', 'Friday'), now: NOW + 1500 });
+  assert.equal(ed.ok, true, ed.error);
+  assert.equal(pa.get(a.actionId).status, 'superseded');
+  assert.equal(ed.action.version, 2);
+  const r = pa.approve(ed.action.actionId, { approver: 'nick', payloadHash: ed.action.payloadHash, note: 'looks right', now: NOW + 2000 });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.executable, false);
   assert.match(r.notice, /nothing has been sent/);
-  assert.equal(pa.get(a.actionId).status, 'approved');
-  assert.equal(pa.approve(a.actionId).already, true, 'approving twice is the same decision, not a second one');
-  assert.throws(() => db.run(`UPDATE prepared_actions SET status = 'executed' WHERE action_id = ?`, [a.actionId]), /never executed/);
-  assert.equal(pa.get(a.actionId).status, 'approved');
+  assert.equal(pa.get(ed.action.actionId).status, 'approved');
+  assert.equal(pa.approve(ed.action.actionId, { approver: 'nick', payloadHash: ed.action.payloadHash }).already, true, 'approving twice is the same decision');
+  // The database refuses to execute a type the registry does not mark executable.
+  assert.throws(() => db.run(`UPDATE prepared_actions SET status = 'executing' WHERE action_id = ?`, [ed.action.actionId]), /not an executable action type|only an approved/);
+  assert.throws(() => db.run(`UPDATE prepared_actions SET status = 'executed' WHERE action_id = ?`, [ed.action.actionId]), /not an executable action type|illegal execution transition/);
+  assert.equal(pa.get(ed.action.actionId).status, 'approved');
   assert.deepEqual(sends, [], 'nothing reached web push, mail, Teams or a Graph write');
-  // Structural: the module and its router import no sender at all.
+  // Structural: the PREPARE/APPROVE module imports no sender. (The executor is a separate module.)
   for (const f of ['services/prepared-actions.js', 'routes/prepared-actions.js']) {
-    const s = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    assert.doesNotMatch(s, /require\(['"][./]*(services\/)?(webpush|email-sender|teams|microsoft|suggestion-engine)['"]\)/, f);
-    assert.doesNotMatch(s, /sendToAll|sendMail|sendDm|graphWrite|executeAction|queueAction/, f);
+    const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    assert.doesNotMatch(src, /require\(['"][./]*(services\/)?(webpush|email-sender|teams|microsoft|suggestion-engine|action-mail)['"]\)/, f);
+    assert.doesNotMatch(src, /sendToAll|sendMail|sendDm|graphWrite|executeAction|queueAction/, f);
   }
   assert.match(fs.readFileSync(path.join(__dirname, 'prepared-actions.js'), 'utf8'), /function approve/, 'positive control');
 });
@@ -243,7 +262,9 @@ test('30. rejected and expired actions remain, with their history', async () => 
   assert.equal(db.get('SELECT COUNT(*) n FROM prepared_actions').n >= 3, true, 'nothing is ever deleted');
 });
 
-test('the HTTP route approves without executing, and answers executed:false', async () => {
+test('the HTTP route refuses an approval without the displayed payload hash, and executes nothing', async () => {
+  addTask({ text: 'Nick to send the leave planner to Hope Goodall by 2026-10-03', due_date: '2026-10-03' });
+  await reconcile(); await run();
   const express = require('express');
   const app = express();
   app.use(express.json());
@@ -253,11 +274,15 @@ test('the HTTP route approves without executing, and answers executed:false', as
   const base = `http://127.0.0.1:${server.address().port}/api/prepared-actions`;
   try {
     const list = await (await fetch(base)).json();
-    assert.equal(list.executes, false);
-    const target = list.actions.find((x) => x.status === 'prepared') || list.actions[0];
+    assert.deepEqual(list.executableTypes, ['chase_commitment'], 'the registry allow-list, as published');
+    assert.ok(list.actions.every((x) => x.executes === (x.actionType === 'chase_commitment')), 'executes is per type, from the registry');
+    const target = list.actions.find((x) => x.status === 'prepared');
+    assert.ok(target, 'positive control: this test needs a PREPARED action to reach the hash rule');
     const res = await fetch(`${base}/${target.actionId}/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ note: 'ok' }) });
     const body = await res.json();
+    assert.equal(res.status, 400, 'no payloadHash: the approval cannot bind to what was shown');
     assert.equal(body.executed, false);
+    assert.equal(list.actions.find((x) => x.actionId === target.actionId).status, (await (await fetch(`${base}/${target.actionId}`)).json()).action.status, 'unchanged');
     const missing = await fetch(`${base}/nope/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     assert.equal(missing.status, 404);
   } finally { server.close(); }

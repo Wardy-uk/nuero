@@ -3133,8 +3133,8 @@
     "route": "/api/prepared-actions",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 16,
-    "description": "GET /api/prepared-actions. drafts NEURO has prepared for approval (prepared action, follow-up draft, chase draft, approval queue): what it wants to do, for which commitment-at-risk finding, to whom, why, the evidence, the exact draft, authority A4, approval required, age and status. Nothing here is ",
+    "line": 26,
+    "description": "GET /api/prepared-actions. drafts NEURO has prepared for approval (prepared action, follow-up draft, chase draft, approval queue, governed action): what it wants to do, for which commitment-at-risk finding, to whom, why, the evidence, the exact draft and its payloadHash, authority A4, whether the ty",
     "params": [],
     "query": [
       "limit",
@@ -3152,11 +3152,27 @@
     "route": "/api/prepared-actions/:id",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 26,
-    "description": "GET /api/prepared-actions/:id. one prepared action with its evidence, draft and decision history",
+    "line": 46,
+    "description": "GET /api/prepared-actions/:id. one prepared action with its evidence, exact draft, payloadHash, approval, decision history, execution attempts and Sent Items verifications",
     "params": [
       "id"
     ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_prepared_actions_status",
+    "method": "GET",
+    "route": "/api/prepared-actions/status",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 37,
+    "description": "GET /api/prepared-actions/status. the execution ledger at a glance (action ledger, execution status, stuck actions, uncertain sends, verification): counts by status, anything stuck, anything failed or uncertain that needs review, attempts made, sends requested",
+    "params": [],
     "query": [],
     "body": [],
     "queryOpen": false,
@@ -7983,14 +7999,37 @@
     "route": "/api/prepared-actions/:id/approve",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 37,
-    "description": "POST /api/prepared-actions/:id/approve. record Nick's approval of a prepared action (approve draft). RECORDED ONLY: in Build 5 approving sends nothing and executes nothing; the response says executed:false. Body: { note? }",
+    "line": 57,
+    "description": "POST /api/prepared-actions/:id/approve. Nick approves the EXACT draft he was shown (approve draft, approve chase, send chase). Requires body.payloadHash from the screen; a changed draft is refused. For chase_commitment this SENDS the email as Nick and then verifies it in Sent Items; other types reco",
     "params": [
       "id"
     ],
     "query": [],
     "body": [
-      "note"
+      "note",
+      "payloadHash"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_prepared_actions_by_id_edit",
+    "method": "POST",
+    "route": "/api/prepared-actions/:id/edit",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 101,
+    "description": "POST /api/prepared-actions/:id/edit. Nick edits a prepared draft's subject or body (edit draft, change wording, resend after a proven failure). Creates a NEW version that needs its own approval; the old one is superseded and never changed. The recipient cannot be edited. Refuses machine clients. Bod",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "body",
+      "payloadHash",
+      "subject"
     ],
     "queryOpen": false,
     "bodyOpen": true,
@@ -8003,7 +8042,7 @@
     "route": "/api/prepared-actions/:id/reject",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 49,
+    "line": 89,
     "description": "POST /api/prepared-actions/:id/reject. record Nick's rejection of a prepared action (reject draft); kept for audit, and NEURO will not prepare another for the same risk episode. Body: { note? }",
     "params": [
       "id"
