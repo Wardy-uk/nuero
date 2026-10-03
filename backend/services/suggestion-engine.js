@@ -708,89 +708,20 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
       };
     }
 
+    // ⚠ RETIRED IN BUILD 7 (3 Oct 2026). This was the legacy chase SENDER: no
+    // attempt ledger, no idempotency key, no Sent Items check, and a timeout read
+    // as "not sent". It sent 2 chases (Aug 2026), recorded in
+    // action_legacy_history as legacy_unverified. Every chase now goes through ONE
+    // path — prepared-actions → human-proof approval → action-executor — so this
+    // case REFUSES, loudly, and reaches no sender. There is deliberately no flag
+    // that turns it back on. The case label stays only so the presenter-parity
+    // test keeps a card for any old row; the body must never send.
     case 'chase_commitment': {
-      const waitingOn = require('./waiting-on');
-      const item = waitingOn.list({ status: 'all' }).find(i => i.key === payload.waitingKey);
-      if (!item) return { ok: false, detail: 'That waiting-on item no longer exists' };
-      if (item.status !== 'open') return { ok: false, detail: `Already ${item.status} — nothing to chase` };
-      // Build 6: refuse if NEURO's governed chase for this is in flight or was
-      // sent recently — the two queues must never chase the same thing twice.
-      const governed = require('./prepared-actions').governedChaseLive(`waiting-on:${payload.waitingKey}`, { includePrepared: false });
-      if (governed) return { ok: false, detail: `NEURO's own chase for this is already ${governed.status} — not sending a second one` };
-
-      // The address is normally resolved and stored when the chase is QUEUED, so
-      // that the approval screen shows who it is going to. Prefer that over
-      // re-resolving here: re-resolving would silently discard a manual override
-      // and send to whoever the directory currently guesses, which is precisely
-      // the case the override exists for.
-      let email = payload.to?.email || null;
-      if (!email) {
-        // Older queued actions predate the stored address; fall back rather than
-        // stranding them.
-        const directory = require('./contact-directory');
-        let resolved;
-        try {
-          resolved = await directory.resolveName(item.person);
-        } catch (e) {
-          return { ok: false, detail: `Could not look up ${item.person}: ${e.message}` };
-        }
-        // Never guess an address for a message that goes to a real person.
-        if (!resolved || resolved.status !== 'resolved' || !resolved.email) {
-          return { ok: false, detail: `No confident email for ${item.person} (${resolved?.status || 'unresolved'}) — set one on the chase, or add it to their People note` };
-        }
-        email = resolved.email;
-      }
-
-      const body = payload.body || waitingOn.buildChaseMessage(item);
-
-      // Q9: email is what ships, Teams is a preference layered on top. So the
-      // channel is a preference and email is the floor — a Teams DM that cannot
-      // be delivered falls back rather than failing, because the point of the
-      // chase is that the person is asked, not that Teams was used.
-      const channel = payload.channel === 'teams' ? 'teams' : 'email';
-      let via = 'email';
-      let fellBackFrom = null;
-
-      if (channel === 'teams') {
-        const dm = await require('./teams').sendDm({ email, text: body });
-        if (dm.sent) {
-          via = 'teams';
-        } else {
-          // Recorded, not swallowed: "it went by email" without saying why is
-          // how you fail to notice that Teams has never once worked.
-          fellBackFrom = dm.reason;
-          console.log(`[Chase] Teams unavailable (${dm.reason}) — falling back to email for ${item.person}`);
-        }
-      }
-
-      if (via === 'email') {
-        const result = await require('./email-sender').sendMail({
-          to: [{ name: item.person, email }],
-          subject: `Quick one — ${item.text.slice(0, 60)}`,
-          body,
-        });
-        if (!result.sent) {
-          const reasons = {
-            auth: 'Not signed in to Microsoft — reconnect 365.',
-            scope: 'Mail.Send not granted — re-consent to Microsoft.',
-          };
-          const why = reasons[result.reason] || `Send failed (${result.reason})`;
-          return {
-            ok: false,
-            detail: fellBackFrom ? `${why} (Teams also unavailable: ${fellBackFrom})` : why,
-          };
-        }
-      }
-
-      waitingOn.markChased(item.key);
-      // Name the channel AND the address. "Sent" without saying where is not a
-      // useful confirmation when both were choosable.
-      const where = via === 'teams' ? `Teams DM to ${email}` : email;
-      const note = fellBackFrom ? ` — Teams unavailable (${fellBackFrom}), sent by email` : '';
+      console.error(`[Chase] REFUSED legacy chase_commitment #${action.id}: the legacy sender was retired in Build 7`);
       return {
-        ok: true,
-        detail: `Asked ${item.person} (${where}) about "${item.text.slice(0, 50)}"${note}`,
-        navigate: 'people',
+        ok: false,
+        code: 'LEGACY_CHASE_RETIRED',
+        detail: 'The old chase sender was retired in Build 7 and sent nothing. Press Chase on the People board again: it drafts the chase in Actions → Drafted by NEURO, where you approve the exact email.',
       };
     }
 

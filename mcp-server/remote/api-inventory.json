@@ -5,7 +5,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 356,
+    "line": 366,
     "description": "DELETE /api/actions/:id/snooze. wake it now. Every other decision in NEURO",
     "params": [
       "id"
@@ -3133,8 +3133,8 @@
     "route": "/api/prepared-actions",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 26,
-    "description": "GET /api/prepared-actions. drafts NEURO has prepared for approval (prepared action, follow-up draft, chase draft, approval queue, governed action): what it wants to do, for which commitment-at-risk finding, to whom, why, the evidence, the exact draft and its payloadHash, authority A4, whether the ty",
+    "line": 43,
+    "description": "GET /api/prepared-actions. the action queue for chases and drafted emails (prepared action, chase draft, approval queue, needs approval, action history): each draft with its exact words, payloadHash, status, origin and approval provenance; buckets by stage; legacy (old-queue chases, unverified); sen",
     "params": [],
     "query": [
       "limit",
@@ -3152,8 +3152,8 @@
     "route": "/api/prepared-actions/:id",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 46,
-    "description": "GET /api/prepared-actions/:id. one prepared action with its evidence, exact draft, payloadHash, approval, decision history, execution attempts and Sent Items verifications",
+    "line": 73,
+    "description": "GET /api/prepared-actions/:id. one prepared action with its evidence, exact draft, payloadHash, approval and its provenance, decision history, execution attempts and Sent Items verifications",
     "params": [
       "id"
     ],
@@ -3170,7 +3170,7 @@
     "route": "/api/prepared-actions/status",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 37,
+    "line": 64,
     "description": "GET /api/prepared-actions/status. the execution ledger at a glance (action ledger, execution status, stuck actions, uncertain sends, verification): counts by status, anything stuck, anything failed or uncertain that needs review, attempts made, sends requested",
     "params": [],
     "query": [],
@@ -5370,7 +5370,7 @@
     "route": "/api/actions",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 282,
+    "line": 292,
     "description": "POST /api/actions.",
     "params": [],
     "query": [],
@@ -5395,7 +5395,7 @@
     "route": "/api/actions/batch",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 396,
+    "line": 406,
     "description": "POST /api/actions/batch. approve or reject many at once",
     "params": [],
     "query": [],
@@ -5414,7 +5414,7 @@
     "route": "/api/actions/bulk-reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 444,
+    "line": 454,
     "description": "POST /api/actions/bulk-reject.",
     "params": [],
     "query": [],
@@ -5432,7 +5432,7 @@
     "route": "/api/actions/:id/approve",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 369,
+    "line": 379,
     "description": "POST /api/actions/:id/approve.",
     "params": [
       "id"
@@ -5450,7 +5450,7 @@
     "route": "/api/actions/:id/reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 381,
+    "line": 391,
     "description": "POST /api/actions/:id/reject. reject and optionally suppress",
     "params": [
       "id"
@@ -5468,7 +5468,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 328,
+    "line": 338,
     "description": "POST /api/actions/:id/snooze.   { minutes }  — \"not now\".",
     "params": [
       "id"
@@ -7994,18 +7994,38 @@
     "stream": false
   },
   {
+    "id": "post_prepared_actions_by_id_approval_challenge",
+    "method": "POST",
+    "route": "/api/prepared-actions/:id/approval-challenge",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 84,
+    "description": "POST /api/prepared-actions/:id/approval-challenge. step 1 of Nick approving a drafted action in NEURO: a single-use, five-minute challenge bound to this action's exact version and payload hash. Useless without Nick's approval code. Refuses machine clients, and refuses an executable type while sendin",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_prepared_actions_by_id_approve",
     "method": "POST",
     "route": "/api/prepared-actions/:id/approve",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 57,
-    "description": "POST /api/prepared-actions/:id/approve. Nick approves the EXACT draft he was shown (approve draft, approve chase, send chase). Requires body.payloadHash from the screen; a changed draft is refused. For chase_commitment this SENDS the email as Nick and then verifies it in Sent Items; other types reco",
+    "line": 102,
+    "description": "POST /api/prepared-actions/:id/approve. step 2: Nick approves the EXACT draft he was shown, with the challenge from step 1 and his approval code. For chase_commitment this SENDS the email as Nick and then verifies it in Sent Items; other types record the approval only. Refuses machine clients; a PIN",
     "params": [
       "id"
     ],
     "query": [],
     "body": [
+      "approvalCode",
+      "challengeId",
       "note",
       "payloadHash"
     ],
@@ -8020,7 +8040,7 @@
     "route": "/api/prepared-actions/:id/edit",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 101,
+    "line": 149,
     "description": "POST /api/prepared-actions/:id/edit. Nick edits a prepared draft's subject or body (edit draft, change wording, resend after a proven failure). Creates a NEW version that needs its own approval; the old one is superseded and never changed. The recipient cannot be edited. Refuses machine clients. Bod",
     "params": [
       "id"
@@ -8042,8 +8062,8 @@
     "route": "/api/prepared-actions/:id/reject",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 89,
-    "description": "POST /api/prepared-actions/:id/reject. record Nick's rejection of a prepared action (reject draft); kept for audit, and NEURO will not prepare another for the same risk episode. Body: { note? }",
+    "line": 136,
+    "description": "POST /api/prepared-actions/:id/reject. Nick rejects a prepared action (reject draft); kept for audit with who rejected it, and NEURO will not prepare another for the same risk episode. Refuses machine clients. Body: { note? }",
     "params": [
       "id"
     ],
@@ -9872,8 +9892,8 @@
     "route": "/api/waiting-on/:key/chase",
     "domain": "waiting-on",
     "source": "routes/waiting-on.js",
-    "line": 50,
-    "description": "POST /api/waiting-on/:key/chase.",
+    "line": 49,
+    "description": "POST /api/waiting-on/:key/chase. the Chase button (chase someone, follow up, ask where it got to). Since Build 7 it PREPARES a governed chase_commitment in Actions → Drafted by NEURO: the exact email, to the one address NEURO resolved, waiting for Nick's approval. It sends nothing and calls no provi",
     "params": [
       "key"
     ],
@@ -9890,7 +9910,7 @@
     "route": "/api/waiting-on/:key/resolve",
     "domain": "waiting-on",
     "source": "routes/waiting-on.js",
-    "line": 84,
+    "line": 83,
     "description": "POST /api/waiting-on/:key/resolve.",
     "params": [
       "key"
@@ -9910,7 +9930,7 @@
     "route": "/api/waiting-on/:key/snooze",
     "domain": "waiting-on",
     "source": "routes/waiting-on.js",
-    "line": 73,
+    "line": 72,
     "description": "POST /api/waiting-on/:key/snooze.",
     "params": [
       "key"
@@ -9930,15 +9950,13 @@
     "route": "/api/waiting-on/chase/:actionId/channel",
     "domain": "waiting-on",
     "source": "routes/waiting-on.js",
-    "line": 97,
-    "description": "POST /api/waiting-on/chase/:actionId/channel. email or a Teams DM.",
+    "line": 94,
+    "description": "POST /api/waiting-on/chase/:actionId/channel.",
     "params": [
       "actionId"
     ],
     "query": [],
-    "body": [
-      "channel"
-    ],
+    "body": [],
     "queryOpen": false,
     "bodyOpen": false,
     "multipart": false,
@@ -9950,15 +9968,13 @@
     "route": "/api/waiting-on/chase/:actionId/recipient",
     "domain": "waiting-on",
     "source": "routes/waiting-on.js",
-    "line": 62,
-    "description": "POST /api/waiting-on/chase/:actionId/recipient. retarget a queued chase.",
+    "line": 68,
+    "description": "POST /api/waiting-on/chase/:actionId/recipient.",
     "params": [
       "actionId"
     ],
     "query": [],
-    "body": [
-      "email"
-    ],
+    "body": [],
     "queryOpen": false,
     "bodyOpen": false,
     "multipart": false,

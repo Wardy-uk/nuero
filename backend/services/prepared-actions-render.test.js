@@ -21,6 +21,7 @@ const esbuild = require('esbuild');
 
 const FILE = path.resolve(__dirname, '..', '..', 'frontend', 'src', 'components', 'PreparedActions.jsx');
 let PreparedCard;
+let LegacyCard;
 
 test.before(async () => {
   const out = await esbuild.build({
@@ -40,6 +41,7 @@ test.before(async () => {
   // eslint-disable-next-line no-new-func
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
   PreparedCard = mod.exports.PreparedCard;
+  LegacyCard = mod.exports.LegacyCard;
   assert.ok(PreparedCard, 'positive control: PreparedCard must be exported, or this passes by absence');
 });
 
@@ -52,8 +54,8 @@ const BASE = {
   evidence: { commitment: { description: 'Chris Middleton to send the rota' }, finding: { summary: 'Due today and still open' },
     progress: { state: 'no_evidence' } },
 };
-const render = (over = {}) => renderToString(React.createElement(PreparedCard, {
-  action: { ...BASE, ...over }, busy: false, onApprove: () => {}, onReject: () => {}, onEdit: async () => true,
+const render = (over = {}, props = {}) => renderToString(React.createElement(PreparedCard, {
+  action: { ...BASE, ...over }, busy: false, onApprove: () => {}, onReject: () => {}, onEdit: async () => true, ...props,
 }));
 
 test('the card shows the exact recipient, subject, body, authority, why and evidence before approval', () => {
@@ -85,10 +87,47 @@ test('a prepare-only type says nothing will be sent and does not offer "send"', 
   assert.doesNotMatch(html, /Approve &amp; send/);
 });
 
-test('the page approves with the DISPLAYED payload hash and is mounted on the Actions screen', () => {
+test('the page approves with a fresh challenge, the DISPLAYED payload hash and the typed code, and is mounted on the Actions screen', () => {
   const src = fs.readFileSync(FILE, 'utf8');
-  assert.match(src, /post\(a, 'approve', \{ payloadHash: a\.payloadHash \}\)/);
+  assert.match(src, /post\(a, 'approval-challenge', \{\}\)/);
+  assert.match(src, /post\(a, 'approve', \{ payloadHash: a\.payloadHash, challengeId: ch\.challengeId, approvalCode: code \}\)/);
   assert.match(src, /\/api\/prepared-actions\?limit=50/);
+  // The code is never stored: no localStorage/sessionStorage anywhere in the queue.
+  assert.doesNotMatch(src, /localStorage|sessionStorage|indexedDB/);
   const panel = fs.readFileSync(path.resolve(FILE, '..', 'ActionsPanel.jsx'), 'utf8');
   assert.match(panel, /<PreparedActions \/>/);
+});
+
+test('Build 7: approving opens a password field for the approval code, and a gate is said instead of a button', () => {
+  // The confirm step only renders after a click, which renderToString cannot do —
+  // so pin the field's attributes in source, with a positive control.
+  const src = fs.readFileSync(FILE, 'utf8');
+  const field = src.slice(src.indexOf('<label className="pa-code">'), src.indexOf('</label>', src.indexOf('<label className="pa-code">')));
+  assert.ok(field.length > 20, 'positive control: the approval-code field exists');
+  assert.match(field, /type="password"/);
+  assert.match(field, /autoComplete="off"/);
+  assert.match(src, /setCode\(''\);\s+\/\/ cleared before the request/);
+  // A gate disables the approve button and says why.
+  const gated = render({ }, { gate: 'Sending is switched off (Settings).' });
+  assert.match(gated, /Sending is switched off/);
+  assert.match(gated, /disabled=""[^>]*>Approve &amp; send…/);
+  const ungated = render({});
+  assert.doesNotMatch(ungated, /disabled=""[^>]*>Approve &amp; send…/);
+});
+
+test('Build 7: a chase from the old queue renders as legacy, unverified, pre-ledger — never as sent and confirmed', () => {
+  const html = renderToString(React.createElement(LegacyCard, { item: {
+    legacyRef: 'saim_actions:1', status: 'legacy_unverified', occurredAt: '2026-08-15 15:49:39',
+    target: { name: 'Naomi', email: 'nickw@nurtur.tech', source: 'manual' }, note: 'Delivery is NOT verified.',
+  } }));
+  assert.match(html, /legacy · unverified · pre-ledger/);
+  assert.match(html, /typed by hand/);
+  assert.doesNotMatch(html, /confirmed in Sent Items/);
+});
+
+test('Build 7: the People board shows the SAME queue filtered to chases — no second queue, no old approve or address doors', () => {
+  const wo = fs.readFileSync(path.resolve(FILE, '..', 'WaitingOn.jsx'), 'utf8');
+  assert.match(wo, /<PreparedActions[\s\S]*?filter=\{a => a\.actionType === 'chase_commitment'/);
+  assert.doesNotMatch(wo, /\/api\/actions|\/chase\/\$\{[^}]+\}\/(recipient|channel)|QueuedChase/);
+  assert.match(wo, /\/api\/waiting-on\/\$\{encodeURIComponent\(item\.key\)\}\/\$\{path\}/, 'positive control: the Chase button still posts to the waiting-on route');
 });

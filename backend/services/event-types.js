@@ -244,6 +244,16 @@ const TYPES = Object.freeze({
     'action.execution.started', 'action.execution.uncertain', 'action.executed',
     'action.verified', 'action.failed', 'action.expired', 'action.cancelled',
   ].map((t) => [t, { version: 1, provenance: 'fact', required: ['actionId', 'actionType', 'version'] }])),
+
+  // ── Build 7: the human-approval code ───────────────────────────────────────
+  // WHEN Nick's approval code was set or replaced — never the code or its hash.
+  // The only defence against someone with a shell on the Pi quietly setting a
+  // code of their own is that the change is visible; this is that record.
+  'action.approval_code.set': {
+    version: 1,
+    provenance: 'fact',
+    required: ['setAt', 'replaced'],
+  },
 });
 
 const PROVENANCE_KINDS = Object.freeze(['fact', 'observation', 'inference']);

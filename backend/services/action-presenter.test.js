@@ -47,7 +47,6 @@ test('outbound actions show the full stored body, not a summary', () => {
   const body = 'Hi Lucy,\n\nWhere did that get to?\n\nNick';
   for (const [type, payload] of [
     ['reply_email', { emailId: 'AAA', body, subject: 'Re: feeds' }],
-    ['chase_commitment', { waitingKey: 'lucy::x', person: 'Lucy', to: { email: 'l@nurtur.tech' }, body }],
     ['chase_agenda', { eventId: 'E1', body, organizer: { name: 'Sam', address: 's@nurtur.tech' } }],
   ]) {
     const d = presenter.describe({ type, payload });
@@ -77,11 +76,14 @@ test('a missing send field blocks approval and says why', () => {
   }
 });
 
-test('chase without a stored address warns but does not block — the executor re-resolves', () => {
-  const d = presenter.describe({ type: 'chase_commitment', payload: { waitingKey: 'lucy::x', person: 'Lucy' } });
-  assert.equal(d.canApprove, true, 'the executor falls back to the directory rather than refusing outright');
-  assert.ok(d.warnings.some(w => /ambiguous|address/i.test(w)), 'must say the address is not stored');
-  assert.equal(d.link?.view, 'people', 'point at where the address is actually set');
+test('a legacy chase card is RETIRED (Build 7): shown, outbound, never approvable, pointing at the Chase button', () => {
+  for (const payload of [{ waitingKey: 'lucy::x', person: 'Lucy' }, { waitingKey: 'lucy::x', person: 'Lucy', to: { email: 'l@nurtur.tech' }, body: 'hi' }]) {
+    const d = presenter.describe({ type: 'chase_commitment', payload });
+    assert.equal(d.kind, presenter.OUTBOUND);
+    assert.equal(d.canApprove, false, 'the old queue cannot approve a chase any more');
+    assert.ok(d.blockers.some(b => /Retired in Build 7/.test(b)));
+    assert.equal(d.link?.view, 'people');
+  }
 });
 
 test('schedule_focus_block is only outbound when it invites someone', () => {

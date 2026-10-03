@@ -177,15 +177,13 @@ const PRESENTERS = {
         field('From note', p.sourcePath),
       ],
       body: trimmed(p.body) || null,
-      bodyLabel: 'This is what will be sent',
-      blockers: p.waitingKey ? [] : ['No waiting-on key on this action — nothing to chase.'],
-      // NOT a blocker: the executor re-resolves a missing address and refuses
-      // rather than guessing. But an unresolvable name fails at approve time,
-      // so say where the address is set before that happens.
-      warnings: email ? [] : ['No address stored. Approving resolves it from the directory, and a name that comes back ambiguous will fail — set one on the People board under Waiting on.'],
-      // The address editor is scoped to chase_commitment and lives beside the
-      // commitment it belongs to. Point at it rather than building a second one.
-      link: email ? null : { view: 'people', text: 'Set the address on the People board' },
+      bodyLabel: 'This would have been sent — the old sender is retired',
+      // Build 7: this queue's chase sender is retired and refuses. A card here
+      // is history, never something to approve — chases are approved in
+      // Actions → Drafted by NEURO, against a governed, verified send.
+      blockers: ['Retired in Build 7: chases are no longer sent from this queue. Press Chase on the People board to draft one in "Drafted by NEURO".'],
+      warnings: [],
+      link: { view: 'people', text: 'Chase from the People board' },
     };
   },
 

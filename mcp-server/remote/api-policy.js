@@ -12,6 +12,18 @@ export const interactive = {
   // backend refuses the API token as well; this stops the gateway offering it.
   post_prepared_actions_by_id_approve: 'Approving a drafted action is Nick\'s decision and may send email as him. He approves it in NEURO → Actions, where the exact recipient and words are shown. An agent must never approve on his behalf.',
   post_prepared_actions_by_id_edit: 'Editing a drafted action creates a new version that Nick must approve in NEURO → Actions.',
+  // Build 7: the rest of the human half of the action queue. The challenge is
+  // useless without Nick's approval code, but offering it to an agent invites
+  // the attempt; rejecting is recorded as Nick's decision, so an agent must not
+  // make it either. Preparing a chase (post_waiting_on_by_key_chase) stays
+  // available: it drafts and sends nothing.
+  post_prepared_actions_by_id_approval_challenge: 'Approval challenges are for Nick approving in NEURO → Actions with his approval code. An agent cannot approve.',
+  post_prepared_actions_by_id_reject: 'Rejecting a drafted action is recorded as Nick\'s decision. He rejects it in NEURO → Actions.',
+  // The legacy approval queue: approving can send email as Nick (reply_email,
+  // chase_agenda, the weekly risk report). The backend refuses the API token
+  // for anything outbound; this stops the gateway offering approval at all.
+  post_actions_by_id_approve: 'Approving a queued action can send email or invites as Nick. He approves it in NEURO → Actions. An agent must never approve on his behalf.',
+  post_actions_batch: 'Batch approval can send email as Nick. He approves in NEURO → Actions.',
 };
 // Path params the backend accepts only from a closed set. The inventory is
 // generated from route strings and cannot see a handler's own validation, so a

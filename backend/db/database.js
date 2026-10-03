@@ -461,6 +461,10 @@ async function init() {
   // guards would be missing. Better the boot fails loudly than a sending path
   // runs without its database-level gate.
   require('./migrate-build6-actions').migrate(db);
+  // Build 7 — one chase path, one active chase per commitment, approval needs
+  // human proof. Same rule as above: not swallowed, because its triggers are
+  // the database half of "a machine client cannot approve".
+  require('./migrate-build7-actions').migrate(db);
 
   // health_daily: blood pressure and heart rate.
   //

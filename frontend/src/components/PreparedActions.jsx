@@ -3,24 +3,25 @@ import { apiUrl } from '../api';
 import './PreparedActions.css';
 
 /**
- * Drafted by NEURO — the governed approval queue (Build 6).
+ * Drafted by NEURO — THE queue for chases and drafted emails (Builds 6–7).
  *
- * Distinct from the cards below it on the Actions screen: those are the legacy
- * queue, whose approve runs an executor directly. These are prepared from a
- * commitment-at-risk finding, and since Build 6 ONE type (a chase) is sent
- * when Nick approves it — exactly the words shown, to exactly the address
- * shown — and then checked in Sent Items.
+ * One backend truth (`prepared_actions`), shown here on the Actions screen and,
+ * filtered to chases, beside the waiting-on list on the People board — the same
+ * card, the same approval step, never a second queue. Since Build 7 the Chase
+ * button lands here too; the old queue's chase sender is retired.
  *
  * Rules this screen keeps:
  *  1. Everything that would leave is shown verbatim before approval: recipient
  *     address, subject, full body, authority, why, evidence, expiry.
- *  2. Approve sends the payloadHash this screen DISPLAYED. If the draft changed
- *     underneath, the server refuses and the card reloads — you approve what
- *     you read.
- *  3. Edit makes a NEW version that needs its own approval. The recipient is
+ *  2. Approving takes TWO steps that only Nick can complete: NEURO issues a
+ *     single-use challenge for this exact version, and he types his approval
+ *     code. The code lives in a password field, is sent once, and is cleared
+ *     whatever happens — it is never stored by this app.
+ *  3. Approve sends the payloadHash this screen DISPLAYED; a changed draft is
+ *     refused and the card reloads — you approve what you read.
+ *  4. Edit makes a NEW version that needs its own approval. The recipient is
  *     not editable here.
- *  4. Executed is not verified. The status line says which, in words, and a
- *     send that could not be confirmed says it will not be resent.
+ *  5. Executed is not verified. The status line says which, in words.
  */
 
 const STATUS_WORDS = {
@@ -37,7 +38,13 @@ const STATUS_WORDS = {
   superseded: 'Replaced by an edited version',
 };
 
-const ACTIVE = new Set(['prepared', 'approved', 'executing', 'executed', 'execution_uncertain']);
+// The five views of one queue (Build 7I). Order is the reading order.
+const SECTIONS = [
+  ['needsApproval', 'Needs approval'],
+  ['approved', 'Approved — waiting to send'],
+  ['executing', 'Sending / checking Sent Items'],
+  ['needsReview', 'Needs your review'],
+];
 
 export function age(iso, now = Date.now()) {
   const t = Date.parse(iso);
@@ -48,8 +55,20 @@ export function age(iso, now = Date.now()) {
   return h < 48 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
 }
 
-export function PreparedCard({ action, busy, onApprove, onReject, onEdit }) {
+const ORIGIN_WORDS = {
+  'chase-button': 'You pressed Chase',
+  risk: 'NEURO saw it was at risk',
+};
+
+/**
+ * One drafted action. `gate` — when set — is the reason approval is not
+ * possible right now (sending off, no approval code, locked); the card says it
+ * instead of offering a button that would be refused.
+ */
+export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate = null }) {
   const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [code, setCode] = useState('');
   const [subject, setSubject] = useState(action.draft?.subject || '');
   const [body, setBody] = useState(action.draft?.body || '');
   const to = action.draft?.to?.[0] || {};
@@ -58,12 +77,20 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit }) {
   const open = action.status === 'prepared';
   const canEditFailed = action.status === 'failed' && action.retrySafe === true;
 
+  const confirm = async () => {
+    const typed = code;
+    setCode('');                       // cleared before the request, whatever it answers
+    const ok = await onApprove(typed);
+    if (ok) setConfirming(false);
+  };
+
   return (
     <div className="ap-card ap-kind-outbound pa-card">
       <div className="ap-card-head">
         <span className="ap-label">{sends ? 'Chase by email' : 'Holding note (prepare-only)'}</span>
         <span className="pa-authority" title="Consequential external action: needs your explicit approval of the exact message">A4</span>
         {action.version > 1 && <span className="pa-version">v{action.version}</span>}
+        {ORIGIN_WORDS[action.origin] && <span className="pa-origin">{ORIGIN_WORDS[action.origin]}</span>}
         <span className="ap-when">prepared {age(action.createdAt)}</span>
       </div>
 
@@ -81,6 +108,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit }) {
         {ev.finding?.summary && <div className="ap-field"><dt>Why now</dt><dd>{ev.finding.summary}</dd></div>}
         {ev.progress?.state && <div className="ap-field"><dt>Progress seen</dt><dd>{ev.progress.state === 'no_evidence' ? 'nothing suggests it moved (your sent mail was checked)' : ev.progress.state}</dd></div>}
         {open && action.expiresAt && <div className="ap-field"><dt>Expires</dt><dd>{new Date(action.expiresAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</dd></div>}
+        {action.approval?.mechanism && <div className="ap-field"><dt>Approved</dt><dd>{action.approval.by} · {action.approval.mechanism}</dd></div>}
       </dl>
 
       {!editing && (
@@ -99,8 +127,38 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit }) {
       )}
 
       {!sends && open && <div className="ap-warn">{action.notExecutableWhy}. Approving records your decision; nothing will be sent.</div>}
+      {open && gate && <div className="ap-warn pa-gate">{gate}</div>}
 
-      {(open || canEditFailed) && (
+      {confirming && open && (
+        <div className="pa-confirm">
+          <p className="pa-note">
+            {sends
+              ? <>This sends <strong>exactly the email above</strong> to <span className="mono">{to.email}</span>, as you, then checks Sent Items. It is never sent twice.</>
+              : 'This records your approval. Nothing will be sent.'}
+          </p>
+          <label className="pa-code">
+            Approval code
+            <input
+              type="password"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter' && code) confirm(); }}
+            />
+          </label>
+          <div className="ap-actions">
+            <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy || !code} onClick={confirm}>
+              {busy ? 'Working…' : sends ? 'Approve & send' : 'Approve'}
+            </button>
+            <button className="ap-btn ap-btn-ghost" disabled={busy} onClick={() => { setConfirming(false); setCode(''); }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {(open || canEditFailed) && !confirming && (
         <div className="ap-actions">
           {editing ? (
             <>
@@ -110,8 +168,8 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit }) {
           ) : (
             <>
               {open && (
-                <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy} onClick={onApprove}>
-                  {busy ? 'Working…' : sends ? 'Approve & send' : 'Approve (records only)'}
+                <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy || !!gate} onClick={() => setConfirming(true)}>
+                  {sends ? 'Approve & send…' : 'Approve (records only)…'}
                 </button>
               )}
               <button className="ap-btn ap-btn-ghost" disabled={busy} onClick={() => setEditing(true)}>{canEditFailed ? 'Edit & resend…' : 'Edit'}</button>
@@ -124,8 +182,30 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit }) {
   );
 }
 
-export default function PreparedActions() {
-  const [actions, setActions] = useState(null);
+/** A chase the retired old queue sent: history, never verified. */
+export function LegacyCard({ item }) {
+  return (
+    <div className="ap-card pa-card pa-legacy">
+      <div className="ap-card-head">
+        <span className="ap-label">Chase (old queue)</span>
+        <span className="pa-legacy-tag">legacy · unverified · pre-ledger</span>
+        <span className="ap-when">{item.occurredAt ? String(item.occurredAt).slice(0, 16) : 'date unknown'}</span>
+      </div>
+      <dl className="ap-fields">
+        <div className="ap-field"><dt>To</dt><dd className="mono">{item.target?.email || 'not recorded'}{item.target?.source === 'manual' ? ' (typed by hand)' : ''}</dd></div>
+        <div className="ap-field"><dt>About</dt><dd>{item.target?.name || '—'}</dd></div>
+      </dl>
+      <p className="pa-note">{item.note}</p>
+    </div>
+  );
+}
+
+/**
+ * The queue. Props let the People board show the same queue filtered to its
+ * chases: `filter(action)`, `title`, `showLegacy`.
+ */
+export default function PreparedActions({ filter = null, title = 'Drafted by NEURO', showLegacy = true, blurb = true }) {
+  const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [notes, setNotes] = useState([]);
@@ -134,22 +214,28 @@ export default function PreparedActions() {
   const load = useCallback(() => {
     fetch(apiUrl('/api/prepared-actions?limit=50'))
       .then((r) => r.json())
-      .then((d) => { if (!d.ok) throw new Error(d.error || 'could not read'); setActions(d.actions || []); setError(null); })
+      .then((d) => { if (!d.ok) throw new Error(d.error || 'could not read'); setData(d); setError(null); })
       .catch((e) => setError(e.message));
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  const say = (ok, text) => setNotes((n) => [{ ok, text }, ...n].slice(0, 5));
+
   const post = async (a, verb, body) => {
+    const res = await fetch(apiUrl(`/api/prepared-actions/${a.actionId}/${verb}`), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+    });
+    return res.json();
+  };
+
+  const act = async (a, verb, body) => {
     setBusyId(a.actionId);
     try {
-      const res = await fetch(apiUrl(`/api/prepared-actions/${a.actionId}/${verb}`), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
-      });
-      const d = await res.json();
-      setNotes((n) => [{ ok: !!d.ok, text: d.ok ? (d.detail || d.notice || (verb === 'edit' ? `Saved as version ${d.action?.version}` : 'Done')) : d.error }, ...n].slice(0, 5));
+      const d = await post(a, verb, body);
+      say(!!d.ok, d.ok ? (d.detail || d.notice || (verb === 'edit' ? `Saved as version ${d.action?.version}` : 'Done')) : d.error);
       return !!d.ok;
     } catch (e) {
-      setNotes((n) => [{ ok: false, text: e.message }, ...n].slice(0, 5));
+      say(false, e.message);
       return false;
     } finally {
       setBusyId(null);
@@ -157,45 +243,80 @@ export default function PreparedActions() {
     }
   };
 
-  const approve = (a) => {
-    const to = a.draft?.to?.[0]?.email;
-    const msg = a.executes
-      ? `Send this exact email to ${to}, as you?\n\nSubject: ${a.draft?.subject}\n\nNEURO will then check it arrived in Sent Items. It will not be sent twice.`
-      : 'Record your approval? Nothing will be sent.';
-    if (!window.confirm(msg)) return;
-    post(a, 'approve', { payloadHash: a.payloadHash });
+  // Approval: a fresh challenge for exactly what is on screen, then the code.
+  const approve = async (a, code) => {
+    setBusyId(a.actionId);
+    try {
+      const ch = await post(a, 'approval-challenge', {});
+      if (!ch.ok) { say(false, ch.error); return false; }
+      const d = await post(a, 'approve', { payloadHash: a.payloadHash, challengeId: ch.challengeId, approvalCode: code });
+      say(!!d.ok, d.ok ? (d.detail || d.notice || 'Approved') : d.error);
+      return !!d.ok;
+    } catch (e) {
+      say(false, e.message);
+      return false;
+    } finally {
+      setBusyId(null);
+      load();
+    }
   };
 
   if (error) return <section className="ap-group pa-section"><div className="ap-error">Drafted actions unavailable: {error}</div></section>;
-  if (!actions) return null;
-  const live = actions.filter((a) => ACTIVE.has(a.status) || (a.status === 'failed' && a.retrySafe === true));
-  const done = actions.filter((a) => !live.includes(a));
-  if (!live.length && !done.length) return null;
+  if (!data) return null;
+
+  const all = (data.actions || []).filter((a) => (filter ? filter(a) : true));
+  const byId = new Map(all.map((a) => [a.actionId, a]));
+  const buckets = data.buckets || {};
+  const pick = (k) => (buckets[k] || []).map((id) => byId.get(id)).filter(Boolean);
+  const history = pick('history');
+  const legacy = showLegacy ? (data.legacy || []) : [];
+  const liveCount = SECTIONS.reduce((n, [k]) => n + pick(k).length, 0);
+  if (!liveCount && !history.length && !legacy.length && !notes.length) return null;
+
+  const gateFor = (a) => {
+    if (data.approvalLock?.locked) return `Approval is locked after too many wrong codes, until ${String(data.approvalLock.lockedUntil).slice(11, 16)} UTC.`;
+    if (!data.approvalCode?.set) return 'No approval code is set yet, so nothing can be approved. On the Pi, run: node backend/scripts/set-approval-code.js';
+    if (a.executes && !data.sending?.enabled) return 'Sending is switched off (Settings → Switches → "Send a chase once you approve it"). You can read, edit or reject this; approving is off until sending is on.';
+    return null;
+  };
 
   return (
     <section className="ap-group pa-section">
-      <h3 className="ap-group-title ap-group-outbound">Drafted by NEURO<span className="ap-count">{live.length}</span></h3>
-      <p className="ap-group-blurb">
-        Prepared from a commitment that looks at risk. A chase is sent only when you approve its exact words, then confirmed in Sent Items.
-        Sending a chase does not mark the commitment done.
-      </p>
+      <h3 className="ap-group-title ap-group-outbound">{title}<span className="ap-count">{liveCount}</span></h3>
+      {blurb && (
+        <p className="ap-group-blurb">
+          Chases you asked for, and ones NEURO drafted for commitments at risk. One is sent only when you approve its exact words
+          with your approval code, then confirmed in Sent Items. Sending a chase does not mark the commitment done.
+        </p>
+      )}
       {notes.map((n, i) => <div key={i} className={`ap-outcome${n.ok ? '' : ' bad'}`}><span className="ap-outcome-mark">{n.ok ? '✓' : '✗'}</span><span className="ap-outcome-text">{n.text}</span></div>)}
-      {live.map((a) => (
-        <PreparedCard
-          key={a.actionId}
-          action={a}
-          busy={busyId === a.actionId}
-          onApprove={() => approve(a)}
-          onReject={() => post(a, 'reject', {})}
-          onEdit={(fields) => post(a, 'edit', { payloadHash: a.payloadHash, ...fields })}
-        />
-      ))}
-      {done.length > 0 && (
+      {SECTIONS.map(([k, label]) => {
+        const items = pick(k);
+        if (!items.length) return null;
+        return (
+          <div key={k} className="pa-bucket">
+            <h4 className="pa-bucket-title">{label}<span className="ap-count">{items.length}</span></h4>
+            {items.map((a) => (
+              <PreparedCard
+                key={a.actionId}
+                action={a}
+                busy={busyId === a.actionId}
+                gate={gateFor(a)}
+                onApprove={(code) => approve(a, code)}
+                onReject={() => act(a, 'reject', {})}
+                onEdit={(fields) => act(a, 'edit', { payloadHash: a.payloadHash, ...fields })}
+              />
+            ))}
+          </div>
+        );
+      })}
+      {(history.length > 0 || legacy.length > 0) && (
         <>
           <button className="ap-snoozed-toggle" onClick={() => setShowDone((v) => !v)}>
-            {showDone ? '▾' : '▸'} {done.length} finished (sent, rejected, expired, cancelled, replaced)
+            {showDone ? '▾' : '▸'} History — {history.length} finished{legacy.length ? `, ${legacy.length} from the old queue (unverified)` : ''}
           </button>
-          {showDone && done.map((a) => <PreparedCard key={a.actionId} action={a} busy={false} onApprove={() => {}} onReject={() => {}} onEdit={async () => false} />)}
+          {showDone && history.map((a) => <PreparedCard key={a.actionId} action={a} busy={false} onApprove={async () => false} onReject={() => {}} onEdit={async () => false} />)}
+          {showDone && legacy.map((l) => <LegacyCard key={l.legacyRef} item={l} />)}
         </>
       )}
     </section>

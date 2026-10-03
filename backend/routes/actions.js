@@ -198,11 +198,21 @@ router.get('/', (req, res) => {
 // to send or tally, so single and batch approval can't drift apart.
 // Async since the real actuators (reply_email, complete_task, schedule_focus_block)
 // go out over Graph.
-async function approveAction(id) {
+async function approveAction(id, { apiClient = null } = {}) {
   const action = db.getSaimAction(parseInt(id));
   if (!action) return { status: 404, body: { error: 'Action not found' } };
   if (action.status !== 'pending') {
     return { status: 400, body: { error: `Action is ${action.status}, not pending` } };
+  }
+  // Build 7: a machine client (the API token: n8n, the remote MCP gateway) may
+  // not approve anything that leaves the building as Nick. What counts as
+  // outbound is the presenter's call, never a list of type names here.
+  if (apiClient && actionPresenter.describe(action).kind === actionPresenter.OUTBOUND) {
+    return { status: 403, body: { error: 'Approving an outbound action needs Nick, in NEURO — a machine client cannot approve it on his behalf.' } };
+  }
+  // The legacy chase sender is retired; say so rather than running it to fail.
+  if (action.type === 'chase_commitment') {
+    return { status: 410, body: { error: 'Retired in Build 7: chases are approved in Actions → Drafted by NEURO. Press Chase on the People board to draft one.' } };
   }
 
   // Execute
@@ -368,7 +378,7 @@ router.delete('/:id/snooze', (req, res) => {
 
 router.post('/:id/approve', async (req, res) => {
   try {
-    const { status, body } = await approveAction(req.params.id);
+    const { status, body } = await approveAction(req.params.id, { apiClient: req.apiClient || null });
     // Invalidate working memory so focus fingerprint changes
     workingMemory.invalidate('saim action approved');
     res.status(status).json(body);
@@ -412,7 +422,7 @@ router.post('/batch', async (req, res) => {
     for (const id of ids) {
       let outcome;
       try {
-        outcome = verb === 'approve' ? await approveAction(id) : rejectAction(id);
+        outcome = verb === 'approve' ? await approveAction(id, { apiClient: req.apiClient || null }) : rejectAction(id);
       } catch (e) {
         outcome = { status: 500, body: { error: e.message } };
       }

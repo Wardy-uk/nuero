@@ -42,7 +42,13 @@ test('all registered operations bind to fixed routes and expose serializable inp
 });
 test('read aliases and classification respect mutations hidden behind GET and administrative changes', () => {
   for (const name of ['get_knowledge_memory_reflection', 'get_knowledge_memory_daily_report', 'get_pi_health_watchdog']) assert.equal(operations.find(o=>o.id===name).classification, 'action');
-  for (const name of ['post_rooms_by_key_accept','post_email_triage_by_emailId_reply','post_calendar_events','post_actions_by_id_approve']) assert.equal(operations.find(o=>o.id===name).classification, 'action');
+  for (const name of ['post_rooms_by_key_accept','post_email_triage_by_emailId_reply','post_calendar_events']) assert.equal(operations.find(o=>o.id===name).classification, 'action');
+  // Build 7: approving either queue can send email as Nick — interactive only, never callable by an agent.
+  for (const name of ['post_actions_by_id_approve','post_actions_batch','post_prepared_actions_by_id_approve','post_prepared_actions_by_id_approval_challenge','post_prepared_actions_by_id_reject']) {
+    const op = operations.find(o=>o.id===name);
+    assert.equal(op.classification, 'admin', name);
+    assert.ok(op.interactive, `${name} must be interactive-only`);
+  }
   assert.equal(operations.find(o=>o.id==='post_capture_links_by_username_scopes').classification, 'admin');
   assert.equal(bindOperation('post_chat',{}).route, '/api/chat/sync');
   assert.equal(bindOperation('get_nudges_stream',{}).route, '/api/nudges');

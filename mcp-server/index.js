@@ -338,7 +338,20 @@ server.tool('get_suggestions', 'Get SAiM action suggestions (pending)', {}, asyn
   return { content: [{ type: 'text', text: pending || 'No pending suggestions.' }] };
 });
 
-server.tool('approve_action', 'Approve a SAiM suggested action', { actionId: z.number().describe('Action ID to approve') }, async ({ actionId }) => {
+// ⚠ Build 7: this server authenticates with Nick's PIN, so NEURO cannot tell a
+// call from here from Nick himself. It must therefore never approve anything
+// that LEAVES THE BUILDING as him (an email, a chase, an invite) — those are
+// approved by Nick in NEURO → Actions. It looks the action up first and refuses
+// anything the server marks outbound, and anything it cannot find (fail
+// closed: "could not tell" is not "safe"). Chases (prepared actions) need
+// Nick's approval code and are not reachable from here at all.
+server.tool('approve_action', 'Approve an INTERNAL SAiM suggestion (e.g. add a captured task). Refuses anything that would send email, chase someone or invite people as Nick — those he approves himself in NEURO → Actions.', { actionId: z.number().describe('Action ID to approve') }, async ({ actionId }) => {
+  const list = await neuroApi('/api/actions?limit=500');
+  const action = [...(list.pending || []), ...(list.actions || [])].find(a => Number(a.id) === Number(actionId));
+  if (!action) return { content: [{ type: 'text', text: `Not approved: action ${actionId} is not in the pending queue, so I cannot check it is internal-only.` }] };
+  if (!action.presentation || !['write', 'navigate'].includes(action.presentation.kind)) {
+    return { content: [{ type: 'text', text: `Not approved: "${action.presentation?.label || action.type}" is ${action.presentation?.kind || 'unclassified'}. Only internal actions can be approved from here — Nick approves anything outbound in NEURO → Actions.` }] };
+  }
   const data = await neuroApi(`/api/actions/${actionId}/approve`, { method: 'POST' });
   return { content: [{ type: 'text', text: data.ok ? `Approved: ${data.detail}` : `Failed: ${data.error}` }] };
 });

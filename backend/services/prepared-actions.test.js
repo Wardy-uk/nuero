@@ -194,7 +194,8 @@ test('26. snoozed, deferred "not today", recently chased or already queued prepa
   assert.match(pa.shouldPrepare({ ...BASE, context: { deferred: true, nowMs } }).why, /not today/);
   assert.match(pa.shouldPrepare({ ...BASE, context: { snoozedUntil: '2026-10-10T09:00:00Z', nowMs } }).why, /snoozed/);
   assert.match(pa.shouldPrepare({ ...BASE, commitment: { ...BASE.commitment, lastProgressAt: '2026-10-01T09:00:00Z' }, context: { nowMs } }).why, /chased/);
-  assert.match(pa.shouldPrepare({ ...BASE, context: { pendingChase: true, nowMs } }).why, /approval queue/);
+  // Build 7: the central chaseBlock's answer, handed in as recentChase.
+  assert.match(pa.shouldPrepare({ ...BASE, context: { recentChase: 'chased 2 day(s) ago — wait 7 days between chases', nowMs } }).why, /chased 2 day/);
   assert.match(pa.shouldPrepare({ ...BASE, context: { existing: [{ status: 'rejected', findingId: 'f1' }], nowMs } }).why, /rejected/);
   // And through the real pass: Nick's "not today" on the strong one stops a new episode preparing.
   assert.equal(pa.shouldPrepare({ ...BASE, finding: { ...BASE.finding, level: 'elevated' } }).prepare, false, 'elevated is not enough');
@@ -214,7 +215,11 @@ test('29/31. (Build 6 contract) a NON-executable type is approval-recorded only;
   assert.equal(ed.ok, true, ed.error);
   assert.equal(pa.get(a.actionId).status, 'superseded');
   assert.equal(ed.action.version, 2);
-  const r = pa.approve(ed.action.actionId, { approver: 'nick', payloadHash: ed.action.payloadHash, note: 'looks right', now: NOW + 2000 });
+  // Build 7: approval needs human proof — a challenge for this exact version and the code.
+  const proofs = require('./approval-proof');
+  if (!proofs.codeStatus().set) proofs.setCode('b5-test-approval-code');
+  const ch = proofs.issue({ actionId: ed.action.actionId, version: ed.action.version, payloadHash: ed.action.payloadHash, now: NOW + 2000 });
+  const r = pa.approve(ed.action.actionId, { approver: 'nick', payloadHash: ed.action.payloadHash, challengeId: ch.challengeId, approvalCode: 'b5-test-approval-code', note: 'looks right', now: NOW + 2000 });
   assert.equal(r.ok, true, r.error);
   assert.equal(r.executable, false);
   assert.match(r.notice, /nothing has been sent/);

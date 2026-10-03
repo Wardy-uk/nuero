@@ -124,61 +124,8 @@ test('grouping by person is ordered by who has kept you waiting longest', () => 
   assert.equal(groups[0].oldestDays, 12);
 });
 
-test('chasing queues for approval and sends nothing', async () => {
-  waitingOn.record({ person: 'Abdi', text: 'Send the SLA figures' });
-  const key = waitingOn.list()[0].key;
-
-  const result = await waitingOn.queueChase(key);
-  assert.equal(result.ok, true);
-  assert.equal(result.sent, false);
-  assert.ok(result.queuedActionId);
-
-  const pending = db.getPendingSaimActions(50);
-  const queued = pending.find(a => a.id === result.queuedActionId);
-  assert.ok(queued && queued.type === 'chase_commitment');
-  // The words AND the address are stored at queue time, so the approval screen
-  // shows what will actually be sent and to whom rather than reconstructing it.
-  assert.match(queued.payload.body, /Send the SLA figures/);
-  assert.ok(queued.payload.to, 'the recipient is resolved and recorded up front');
-});
-
-test('a resolved item cannot be chased', async () => {
-  waitingOn.record({ person: 'Abdi', text: 'Send the SLA figures' });
-  const key = waitingOn.list()[0].key;
-  waitingOn.resolve(key, 'done');
-  assert.equal((await waitingOn.queueChase(key)).ok, false);
-});
-
-test('the recipient can be retargeted before approval, and only before', async () => {
-  waitingOn.record({ person: 'Abdi', text: 'Send the SLA figures' });
-  const { queuedActionId: id } = await waitingOn.queueChase(waitingOn.list()[0].key);
-
-  assert.equal(waitingOn.setChaseRecipient(id, 'not-an-address').ok, false);
-
-  const ok = waitingOn.setChaseRecipient(id, ' nickw@nurtur.tech ');
-  assert.equal(ok.ok, true);
-  assert.equal(ok.to.email, 'nickw@nurtur.tech');
-  // `manual` is what tells the executor this was chosen, not guessed — a guess
-  // has to clear the `resolved` gate, a choice does not.
-  assert.equal(ok.to.source, 'manual');
-  assert.equal(db.getSaimAction(id).payload.to.email, 'nickw@nurtur.tech');
-
-  db.updateSaimActionStatus(id, 'executed');
-  assert.equal(waitingOn.setChaseRecipient(id, 'someone@nurtur.tech').ok, false);
-});
-
-test('the chase asks where something got to, and never implies they failed', () => {
-  const item = { person: 'Heidi Power', text: 'Send the training matrix', sourceDate: '2026-08-01' };
-  const msg = waitingOn.buildChaseMessage(item);
-
-  assert.match(msg, /Hi Heidi,/);
-  assert.match(msg, /where has that got to/i);
-  // Same tone rule as the nudges and the agenda chaser — it goes to someone who
-  // works for him, so it must not read as an accusation.
-  assert.match(msg, /no rush/i);
-  assert.doesNotMatch(msg, /you (still )?(haven't|have not|failed|promised)|chasing you|overdue|as agreed/i);
-});
-
+// Chasing left waiting-on in Build 7: the Chase button prepares a governed
+// chase_commitment. Its tests (incl. the tone rule) are in build7-convergence.test.js.
 
 test('snooze hides an item without resolving it, and clears again', () => {
   waitingOn.record({ person: 'Naomi', text: 'Confirm the rota' });

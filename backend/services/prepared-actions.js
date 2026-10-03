@@ -32,8 +32,11 @@
  *   • The approval records approver, time, payload hash, evidence hash and an
  *     expiry, and is itself immutable (trigger). The trigger also refuses an
  *     approval whose hash is not the row's.
- *   • A machine client cannot approve (routes/prepared-actions.js refuses the
- *     API token): A4 approval is Nick's, in NEURO.
+ *   • A machine client cannot approve. The route refuses the API token, and
+ *     since Build 7 approve() itself requires a human-approval PROOF — a
+ *     server-issued single-use challenge for this exact action/version/hash
+ *     plus Nick's approval code (approval-proof.js) — which a DB trigger
+ *     repeats. Holding the PIN is not enough: the local MCP server has it.
  *   • Execution re-checks everything that could have changed (executor), and
  *     an action whose world moved is CANCELLED, never silently re-drafted.
  *
@@ -47,8 +50,9 @@
  *     Nick, with exactly one address
  *   • the action follows from the direction: owed TO Nick → chase_commitment;
  *     owed BY Nick to a named person → draft_update_email (prepare-only)
- *   • not chased in the last RECENT_CHASE_DAYS, no chase queued in the legacy
- *     approval queue, no live governed action already, not rejected this episode
+ *   • not chased in the last RECENT_CHASE_DAYS (chaseBlock — the ONE duplicate
+ *     check, shared with the Chase button), no live chase already, not
+ *     rejected this episode
  *   • not snoozed, not deferred "not today"
  *
  * Drafts are deterministic templates — no model call, no invented facts.
@@ -124,7 +128,7 @@ function shouldPrepare({ finding, commitment, progress, person, context = {} }) 
     const since = ((ctx.nowMs || Date.now()) - Date.parse(String(commitment.lastProgressAt).replace(' ', 'T'))) / 86400000;
     if (Number.isFinite(since) && since < RECENT_CHASE_DAYS) return no(`chased ${Math.floor(since)} day(s) ago`);
   }
-  if (ctx.pendingChase) return no('a chase for this is already waiting in the approval queue');
+  if (ctx.recentChase) return no(ctx.recentChase);
   const live = (ctx.existing || []).find((a) => LIVE.has(a.status));
   if (live) return no(`already ${live.status} as ${live.actionId}`);
   const refused = (ctx.existing || []).find((a) => a.status === 'rejected' && a.findingId === finding.findingId);
@@ -174,7 +178,10 @@ function draftFor(actionType, commitment, target) {
       channel: 'email', voice: 'nick', generatedBy: 'template (no model call)',
       to: [{ name: target.displayName, email: target.email }],
       subject: `Following up: ${subjectWhat}`,
-      body: `Hi ${first},\n\n${where ? `Following up from ${where}: ` : 'Following up: '}you were going to ${what}. Could you let me know where it's got to?\n\nThanks,\nNick`,
+      // The tone rule the retired waiting-on chase carried (Build 7 keeps it):
+      // it asks, it gives the out, and it never implies the person failed —
+      // these go to people who work for Nick.
+      body: `Hi ${first},\n\n${where ? `Following up from ${where}: ` : 'Following up: '}you were going to ${what}. Could you let me know where it's got to?\n\nNo rush if it's moved down the list — just let me know.\n\nThanks,\nNick`,
       placeholders: [],
     };
   }
@@ -198,10 +205,12 @@ function shape(r) {
     target: parse(r.target_json), reason: r.reason, evidence: parse(r.evidence_json), evidenceHash: r.evidence_hash || null,
     draft: parse(r.draft_json), payloadHash: r.payload_hash,
     authorityClass: r.authority_class, approvalRequired: r.approval_required === 1, status: r.status,
+    origin: r.origin || 'risk',
     createdAt: r.created_at, expiresAt: r.expires_at, decidedAt: r.decided_at, decisionNote: r.decision_note,
     approval: r.approved_payload_hash ? {
       by: r.approved_by, at: r.approved_at, payloadHash: r.approved_payload_hash,
       evidenceHash: r.approved_evidence_hash || null, expiresAt: r.approval_expires_at,
+      mechanism: r.approval_mechanism || null, challengeId: r.approval_challenge_id || null,
     } : null,
     executedAt: r.executed_at || null, verifiedAt: r.verified_at || null,
     outcomeDetail: r.outcome_detail || null, retrySafe: r.retry_safe === null || r.retry_safe === undefined ? null : r.retry_safe === 1,
@@ -299,16 +308,32 @@ function note(actionId, set) {
 
 // ── approval (6B) ───────────────────────────────────────────────────────────
 
+const sendingEnabled = () => require('./feature-flags').isEnabled('governed_execution');
+
 /**
  * Nick approves the EXACT payload he was shown.
  *
- *   payloadHash  the hash the screen displayed — REQUIRED, must equal the row's
- *   approver     who approved (the route sets it from the authenticated session)
+ *   payloadHash   the hash the screen displayed — REQUIRED, must equal the row's
+ *   challengeId   a challenge NEURO issued for this action/version/hash  ┐ the
+ *   approvalCode  the code Nick typed (services/approval-proof.js)       ┘ proof
+ *   approver      who approved (the route sets it)
+ *
+ * ⚠ Build 7: the human-approval proof is checked HERE, not only in the route,
+ * so no in-process caller can approve without it either; and a DB trigger
+ * refuses an approval whose challenge was not accepted for this exact payload.
+ *
+ * ⚠ An executable type cannot be approved while sending is switched off: an
+ * approval that sits held until it silently expires — or that sends hours later
+ * when the switch is flipped — is the confusing outcome, so it is refused with
+ * the reason before the code is even asked for.
  *
  * Approval of a non-executable type is recorded and runs nothing; the response
  * says which. Executing is the executor's job, triggered by the route.
  */
-function approve(actionId, { payloadHash = null, approver = null, note: why = null, now = Date.now() } = {}) {
+function approve(actionId, {
+  payloadHash = null, challengeId = null, approvalCode = null, approver = null, note: why = null,
+  now = Date.now(), sending = sendingEnabled,
+} = {}) {
   const nowMs = msOf(now);
   const cur = _row(actionId);
   if (!cur) return { ok: false, code: 404, error: 'no such prepared action' };
@@ -339,6 +364,14 @@ function approve(actionId, { payloadHash = null, approver = null, note: why = nu
   if (registry.hasUnfilledPlaceholder(draft.body) || registry.hasUnfilledPlaceholder(draft.subject)) {
     return { ok: false, code: 409, error: 'the draft still has a [placeholder] in it — edit it first; that creates a new version to approve' };
   }
+  if (policy.executable && !sending()) {
+    return { ok: false, code: 409, error: 'Sending is switched off (Settings → Switches → "Send a chase once you approve it"), so approving would send nothing. Turn it on first, then approve.' };
+  }
+  // The proof. Burns the challenge whatever the outcome.
+  const proof = require('./approval-proof').consume({
+    challengeId, approvalCode, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs,
+  });
+  if (!proof.ok) return { ok: false, code: proof.code || 403, error: proof.error };
   const r = transition(actionId, 'approved', {
     note: why, now: nowMs, allowedFrom: ['prepared'],
     set: {
@@ -347,7 +380,10 @@ function approve(actionId, { payloadHash = null, approver = null, note: why = nu
       approved_payload_hash: cur.payload_hash,
       approved_evidence_hash: cur.evidence_hash || null,
       approval_expires_at: new Date(nowMs + (policy.approvalTtlHours || 24) * 3600000).toISOString(),
+      approval_mechanism: proof.proof.mechanism,
+      approval_challenge_id: proof.proof.challengeId,
     },
+    eventExtra: { mechanism: proof.proof.mechanism, challengeRef: proof.proof.challengeId.slice(0, 11) },
   });
   return {
     ...r,
@@ -358,8 +394,10 @@ function approve(actionId, { payloadHash = null, approver = null, note: why = nu
   };
 }
 
-function reject(actionId, { note: why = null, now = Date.now() } = {}) {
-  return transition(actionId, 'rejected', { note: why, now, allowedFrom: ['prepared', 'approved'] });
+/** `actor` is recorded in the decision note: who refused it is part of the audit. */
+function reject(actionId, { note: why = null, now = Date.now(), actor = null } = {}) {
+  const text = actor ? `rejected by ${actor}${why ? ` — ${why}` : ''}` : why;
+  return transition(actionId, 'rejected', { note: text, now, allowedFrom: ['prepared', 'approved'] });
 }
 
 /**
@@ -400,19 +438,24 @@ function edit(actionId, { subject, body, payloadHash = null, editor = 'nick', no
     generatedBy: `${old.generatedBy || 'template'}; edited by ${editor}`, editedFrom: cur.action_id };
   const hash = registry.payloadHash({ actionType: cur.action_type, version, commitmentId: cur.commitment_id, target, draft });
 
+  // ⚠ Build 7: the old version is superseded BEFORE the new one is inserted.
+  // One active chase per commitment is a UNIQUE index now, so inserting first
+  // would collide with the version it replaces. Both happen in one transaction:
+  // a failed insert leaves the old version prepared, never neither.
   const tx = () => db.batchSaves(() => {
-    db.run(`INSERT INTO prepared_actions (action_id, idempotency_key, finding_id, commitment_id, subject_ref, action_type, version,
-              parent_action_id, target_json, reason, evidence_json, evidence_hash, draft_json, payload_hash, authority_class,
-              approval_required, status, created_at, expires_at, history_json, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'A4', 1, 'prepared', ?, ?, ?, ?)`,
-    [newId, key, cur.finding_id, cur.commitment_id, cur.subject_ref, cur.action_type, version, cur.action_id,
-      cur.target_json, cur.reason, cur.evidence_json, cur.evidence_hash, JSON.stringify(draft), hash, nowIso,
-      new Date(nowMs + EXPIRY_HOURS * 3600000).toISOString(),
-      JSON.stringify([{ at: nowIso, from: null, to: 'prepared', note: `version ${version}, edited by ${editor} from ${cur.action_id}` }]), nowIso]);
     if (cur.status === 'prepared') {
       const r = transition(actionId, 'superseded', { note: `edited — replaced by ${newId} (v${version})`, now: nowMs, allowedFrom: ['prepared'] });
       if (!r.ok) throw new Error(r.error);
-    } else {
+    }
+    db.run(`INSERT INTO prepared_actions (action_id, idempotency_key, finding_id, commitment_id, subject_ref, action_type, version,
+              parent_action_id, target_json, reason, evidence_json, evidence_hash, draft_json, payload_hash, authority_class,
+              approval_required, status, origin, created_at, expires_at, history_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'A4', 1, 'prepared', ?, ?, ?, ?, ?)`,
+    [newId, key, cur.finding_id, cur.commitment_id, cur.subject_ref, cur.action_type, version, cur.action_id,
+      cur.target_json, cur.reason, cur.evidence_json, cur.evidence_hash, JSON.stringify(draft), hash, cur.origin || null, nowIso,
+      new Date(nowMs + EXPIRY_HOURS * 3600000).toISOString(),
+      JSON.stringify([{ at: nowIso, from: null, to: 'prepared', note: `version ${version}, edited by ${editor} from ${cur.action_id}` }]), nowIso]);
+    if (cur.status !== 'prepared') {
       const history = parse(cur.history_json) || [];
       history.push({ at: nowIso, from: cur.status, to: cur.status, note: `resend prepared as ${newId} (v${version}) by ${editor}` });
       db.run('UPDATE prepared_actions SET history_json = ?, updated_at = ? WHERE action_id = ?', [JSON.stringify(history), nowIso, actionId]);
@@ -432,11 +475,15 @@ function sweep({ now = Date.now() } = {}) {
   const nowMs = msOf(now);
   const iso = new Date(nowMs).toISOString();
   let expired = 0; let cancelled = 0; let approvalsExpired = 0;
-  for (const r of db.all(`SELECT action_id, finding_id, expires_at FROM prepared_actions WHERE status = 'prepared'`)) {
+  for (const r of db.all(`SELECT action_id, finding_id, expires_at, origin FROM prepared_actions WHERE status = 'prepared'`)) {
     if (r.expires_at && r.expires_at <= iso) {
       if (transition(r.action_id, 'expired', { note: `not decided within ${EXPIRY_HOURS}h`, now: nowMs, allowedFrom: ['prepared'] }).ok) expired += 1;
       continue;
     }
+    // A chase Nick asked for answers no finding, so a finding resolving is not
+    // a reason to withdraw it. Only expiry (above) and the executor's own
+    // re-checks apply to it.
+    if (r.origin === 'chase-button') continue;
     const f = db.get('SELECT status, resolution FROM commitment_risk_findings WHERE finding_id = ?', [r.finding_id]);
     if (!f || f.status !== 'active') {
       if (transition(r.action_id, 'cancelled', { note: `the risk it answered resolved (${f ? f.resolution : 'finding gone'})`, now: nowMs, allowedFrom: ['prepared'] }).ok) cancelled += 1;
@@ -467,6 +514,156 @@ function governedChaseLive(subjectRef, { now = Date.now(), includePrepared = tru
   return shape(r);
 }
 
+// ── one chase episode at a time (7D) ────────────────────────────────────────
+
+/**
+ * THE duplicate check, shared by every way a chase can be prepared. Answers
+ * whether a new chase for (commitment, person) may be prepared now.
+ *
+ *   { block: false }                         — prepare
+ *   { block: true, live: action, why }       — one is already under way: show it
+ *   { block: true, why }                     — chased recently: do not prepare
+ *
+ * The database repeats the first rule as a partial UNIQUE index
+ * (ux_prepared_actions_one_active_chase), so a second live chase is refused
+ * even by a caller that forgot to ask. The recent-chase rule needs a clock, so
+ * it lives here only — and the executor checks `asked_at` again before sending.
+ */
+function chaseBlock({ commitmentId, personId, subjectRef = null, nowMs = Date.now() }) {
+  const live = db.get(`SELECT * FROM prepared_actions WHERE action_type = 'chase_commitment' AND commitment_id = ?
+                       AND json_extract(target_json, '$.personId') = ? AND status IN (${[...LIVE].map(() => '?').join(',')})
+                       ORDER BY updated_at DESC LIMIT 1`, [commitmentId, personId, ...LIVE]);
+  if (live) return { block: true, live: shape(live), why: `a chase for this is already ${live.status}` };
+  const since = new Date(nowMs - RECENT_CHASE_DAYS * 86400000).toISOString();
+  const verified = db.get(`SELECT action_id, verified_at FROM prepared_actions WHERE action_type = 'chase_commitment' AND commitment_id = ?
+                           AND status = 'verified' AND verified_at >= ? ORDER BY verified_at DESC LIMIT 1`, [commitmentId, since]);
+  if (verified) return { block: true, why: `chased on ${String(verified.verified_at).slice(0, 10)} (confirmed in Sent Items) — wait ${RECENT_CHASE_DAYS} days between chases` };
+  if (subjectRef && String(subjectRef).startsWith('waiting-on:')) {
+    const w = db.get('SELECT asked_at FROM waiting_on WHERE key = ?', [subjectRef.slice('waiting-on:'.length)]);
+    const t = w && w.asked_at ? Date.parse(String(w.asked_at).replace(' ', 'T')) : NaN;
+    if (Number.isFinite(t) && nowMs - t < RECENT_CHASE_DAYS * 86400000) {
+      return { block: true, why: `chased ${Math.floor((nowMs - t) / 86400000)} day(s) ago — wait ${RECENT_CHASE_DAYS} days between chases` };
+    }
+  }
+  return { block: false };
+}
+
+const isUniqueViolation = (e) => /UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/i.test(String((e && (e.code || '')) + ' ' + (e && e.message)));
+
+// ── from the Chase button (7B) ──────────────────────────────────────────────
+
+/**
+ * Should the Chase button prepare a chase? PURE. The same target rules as a
+ * risk-prepared chase (the executor re-checks them, so a looser rule here would
+ * only produce an action that is cancelled at send time), minus the risk
+ * finding: Nick asking is the reason.
+ */
+function shouldPrepareFromButton({ commitment, person, progress, waiting, deferred, nowMs = Date.now() }) {
+  const no = (why, code = 409) => ({ prepare: false, why, code });
+  if (!commitment) return no('NEURO has not modelled this commitment yet (its world model catches up every 10 minutes) — try again shortly', 404);
+  if (commitment.status !== 'open') return no(`the commitment is ${commitment.status} — nothing to chase`);
+  if (commitment.direction !== 'to-nick') return no('this is something you owe, not something owed to you');
+  if (waiting && waiting.status && waiting.status !== 'open') return no(`it is already ${waiting.status}`);
+  if (waiting && waiting.snoozedUntil && Date.parse(waiting.snoozedUntil) > nowMs) return no(`you snoozed it until ${String(waiting.snoozedUntil).slice(0, 10)} — unsnooze it first`);
+  if (deferred) return no('you deferred it "not today" — bring it back first');
+  if (progress && ['fulfilled', 'closed', 'likely_fulfilled'].includes(progress.state)) {
+    return no(`NEURO has evidence it may already be done (${(progress.reasons || []).join('; ') || progress.state}) — not drafting a chase for it`);
+  }
+  if (!person || !person.personId) return no(`NEURO cannot tell who "${(commitment.promisor && commitment.promisor.raw) || 'they'}" is (${(commitment.promisor && commitment.promisor.unresolvedWhy) || 'no single person matches'}) — add an alias or the full name to their People note`);
+  if (person.personId === SELF) return no('that resolves to you');
+  if (!ACCEPTED_TARGET_METHODS.has(person.method)) return no(`${person.displayName} is matched only by ${person.method} — add an alias to their People note so it is unambiguous`);
+  const emails = Array.isArray(person.emails) ? person.emails : [];
+  if (emails.length !== 1) return no(emails.length ? `${person.displayName} has ${emails.length} addresses on record — not choosing one` : `${person.displayName} has no email: in their People note`);
+  return { prepare: true, actionType: 'chase_commitment', target: { personId: person.personId, displayName: person.displayName, email: emails[0], method: person.method } };
+}
+
+const BUTTON_DEPS = {
+  commitmentByRef: (ref) => {
+    const r = db.get('SELECT commitment_id FROM wm_commitments WHERE source_ref = ? ORDER BY updated_at DESC LIMIT 1', [ref]);
+    return r ? require('./world-obligations').getCommitment(r.commitment_id) : null;
+  },
+  progress: (id) => require('./progress-evidence').progressFor(id),
+  counterparty: (c) => _counterparty(c),
+  waiting: (key) => {
+    const r = db.get('SELECT status, snoozed_until, first_seen, source_path FROM waiting_on WHERE key = ?', [key]);
+    return r ? { status: r.status, snoozedUntil: r.snoozed_until, firstSeen: r.first_seen, sourcePath: r.source_path } : null;
+  },
+  deferred: (c) => DEFAULT_DEPS.deferred(c),
+};
+
+/**
+ * The Chase button. PREPARES a governed chase_commitment — the same table, the
+ * same payload contract, the same approval and the same executor as a chase
+ * NEURO prepares from a risk finding. Sends nothing, calls no provider.
+ *
+ * Returns { ok, action, already } — `already` when a chase for this is already
+ * under way, so pressing twice shows the one that exists rather than a second.
+ */
+function prepareFromWaitingOn(key, { now = Date.now(), deps = {} } = {}) {
+  const d = { ...BUTTON_DEPS, ...deps };
+  const nowMs = msOf(now);
+  const nowIso = new Date(nowMs).toISOString();
+  const ref = `waiting-on:${key}`;
+  const waiting = d.waiting(key);
+  if (!waiting) return { ok: false, code: 404, error: 'no such waiting-on item' };
+  const c = d.commitmentByRef(ref);
+  let progress = null;
+  try { progress = c ? d.progress(c.commitmentId) : null; } catch { progress = null; }
+  const person = c ? d.counterparty(c) : null;
+  const decision = shouldPrepareFromButton({ commitment: c, person, progress, waiting, deferred: c ? d.deferred(c) : false, nowMs });
+  if (!decision.prepare) return { ok: false, code: decision.code, error: decision.why };
+
+  const block = chaseBlock({ commitmentId: c.commitmentId, personId: decision.target.personId, subjectRef: ref, nowMs });
+  if (block.block) {
+    return block.live ? { ok: true, already: true, action: block.live, notice: `${block.why} — it is in Actions` } : { ok: false, code: 409, error: block.why };
+  }
+
+  const draft = draftFor('chase_commitment', c, decision.target);
+  const evidence = {
+    origin: 'chase-button',
+    commitment: { commitmentId: c.commitmentId, description: c.description, direction: c.direction, source: c.source, due: c.due || null },
+    progress: progress ? { state: progress.state, reasons: progress.reasons, coverage: progress.coverage } : null,
+    target: decision.target,
+    waitingOn: { key, firstSeen: waiting.firstSeen || null, sourcePath: waiting.sourcePath || null },
+  };
+  const idemKey = `chase-button:${c.commitmentId}:${decision.target.personId}:${nowIso}`;
+  const actionId = `pa_${crypto.createHash('sha1').update(idemKey).digest('hex').slice(0, 16)}`;
+  const payloadHash = registry.payloadHash({ actionType: 'chase_commitment', version: 1, commitmentId: c.commitmentId, target: decision.target, draft });
+  try {
+    db.run(`INSERT INTO prepared_actions (action_id, idempotency_key, finding_id, commitment_id, subject_ref, action_type, version,
+              target_json, reason, evidence_json, evidence_hash, draft_json, payload_hash, authority_class, approval_required, status, origin,
+              created_at, expires_at, history_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'chase_commitment', 1, ?, ?, ?, ?, ?, ?, 'A4', 1, 'prepared', 'chase-button', ?, ?, ?, ?)`,
+    [actionId, idemKey, `chase-button:${c.commitmentId}`, c.commitmentId, ref, JSON.stringify(decision.target),
+      `You pressed Chase: ${decision.target.displayName} owes you this.`,
+      JSON.stringify(evidence), registry.evidenceHash(evidence), JSON.stringify(draft), payloadHash, nowIso,
+      new Date(nowMs + EXPIRY_HOURS * 3600000).toISOString(),
+      JSON.stringify([{ at: nowIso, from: null, to: 'prepared', note: 'prepared from the Chase button — awaiting approval, nothing sent' }]), nowIso]);
+  } catch (e) {
+    // The index: another path (or a double click) got there first.
+    if (isUniqueViolation(e)) {
+      const again = chaseBlock({ commitmentId: c.commitmentId, personId: decision.target.personId, subjectRef: ref, nowMs });
+      if (again.live) return { ok: true, already: true, action: again.live, notice: `${again.why} — it is in Actions` };
+    }
+    throw e;
+  }
+  _event(_row(actionId), 'prepared', nowIso, { origin: 'chase-button' });
+  console.log(`[PreparedActions] prepared chase_commitment (${actionId}) from the Chase button for ${decision.target.personId}; awaiting approval — NOT sent`);
+  return { ok: true, already: false, action: get(actionId) };
+}
+
+/** Chases the pre-Build-7 queue sent: recorded, never verified. */
+function legacyHistory() {
+  try {
+    return db.all('SELECT * FROM action_legacy_history ORDER BY occurred_at DESC').map((r) => ({
+      legacyRef: r.legacy_ref, actionType: r.action_type, status: r.status, provenance: r.provenance,
+      subjectRef: r.subject_ref, target: { name: r.target_name, email: r.target_email, source: r.target_source },
+      channelRequested: r.channel_requested, occurredAt: r.occurred_at, queuedAt: r.queued_at, note: r.note,
+      verified: false,
+    }));
+  } catch { return []; }
+}
+
 // ── from findings ───────────────────────────────────────────────────────────
 
 function _counterparty(c) {
@@ -484,11 +681,12 @@ const DEFAULT_DEPS = {
   commitment: (id) => require('./world-obligations').getCommitment(id),
   progress: (id) => require('./progress-evidence').progressFor(id),
   counterparty: _counterparty,
-  pendingChase: (c) => {
-    if (!String(c.source.ref || '').startsWith('waiting-on:')) return false;
-    const key = c.source.ref.slice('waiting-on:'.length);
-    return !!db.get(`SELECT id FROM saim_actions WHERE type = 'chase_commitment' AND status = 'pending'
-                     AND json_extract(payload, '$.waitingKey') = ?`, [key]);
+  // Build 7: the legacy queue no longer holds chases, so "a chase pending in
+  // the old queue" became "chased recently" — the central chaseBlock answers.
+  recentChase: (c, person, nowMs) => {
+    if (c.direction !== 'to-nick' || !person || !person.personId) return null;
+    const blk = chaseBlock({ commitmentId: c.commitmentId, personId: person.personId, subjectRef: c.source && c.source.ref, nowMs });
+    return blk.block && !blk.live ? blk.why : null;
   },
   snoozedUntil: (c) => {
     if (!String(c.source.ref || '').startsWith('waiting-on:')) return null;
@@ -524,7 +722,7 @@ function prepareFromRisk({ now = Date.now(), deps = {} } = {}) {
     const existing = forCommitment(c.commitmentId);
     const decision = shouldPrepare({
       finding: f, commitment: c, progress, person,
-      context: { existing, pendingChase: d.pendingChase(c), deferred: d.deferred(c), snoozedUntil: d.snoozedUntil(c), nowMs },
+      context: { existing, recentChase: d.recentChase(c, person, nowMs), deferred: d.deferred(c), snoozedUntil: d.snoozedUntil(c), nowMs },
     });
     if (!decision.prepare) { out.declined.push({ findingId: f.findingId, commitmentId: c.commitmentId, why: decision.why }); continue; }
 
@@ -566,7 +764,8 @@ function prepareFromRisk({ now = Date.now(), deps = {} } = {}) {
 module.exports = {
   MIN_CONFIDENCE, RECENT_CHASE_DAYS, EXPIRY_HOURS, STATUSES, TERMINAL, LIVE,
   shouldPrepare, draftFor, actionPhrase,
-  prepareFromRisk, approve, reject, edit, sweep, transition, note, governedChaseLive,
+  prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,
+  approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,
   get, forFinding, forCommitment, list, countsByStatus,
 };

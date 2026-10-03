@@ -289,154 +289,15 @@ function markChased(key, { now = Date.now() } = {}) {
   return item;
 }
 
-/**
- * Queue a chase for approval. Never sends: this goes to a direct report, and an
- * automated chase to someone who works for you reads as surveillance. Nick
- * approves every one.
+/*
+ * Chasing moved out of this module in Build 7 (3 Oct 2026). The Chase button
+ * now PREPARES a governed chase_commitment — services/prepared-actions.js
+ * prepareFromWaitingOn — approved with human proof and sent only by
+ * services/action-executor.js, which records the chase here via markChased.
+ * queueChase / setChaseRecipient / setChaseChannel / buildChaseMessage were the
+ * legacy path (a mutable saim_actions payload and a sender with no ledger) and
+ * are gone, not disabled: nothing left here can queue or send a chase.
  */
-async function queueChase(key) {
-  const item = _get(key);
-  if (!item) return { ok: false, error: 'No such item' };
-  if (item.status !== 'open') return { ok: false, error: `Already ${item.status}` };
-
-  // Build 6: NEURO's governed chase and this queue must not both reach the same
-  // person about the same thing. A governed chase already prepared, approved,
-  // in flight or recently sent for this item answers the question.
-  const governed = require('./prepared-actions').governedChaseLive(`waiting-on:${key}`);
-  if (governed) return { ok: false, error: `NEURO already has a chase for this (${governed.status}) — see Pending actions` };
-
-  // Resolve the address HERE rather than at send time, so the approval screen
-  // can show who it is actually going to. An address discovered only inside the
-  // executor is an address nobody ever saw before the email left. A failure to
-  // resolve is stored too, not thrown — it becomes a visible "set an address"
-  // on the card instead of an approve that silently does nothing.
-  let to = null;
-  try {
-    const r = await require('./contact-directory').resolveName(item.person);
-    to = {
-      email: r?.status === 'resolved' ? r.email : null,
-      status: r?.status || 'unresolved',
-      source: r?.status === 'resolved' ? 'directory' : null,
-    };
-  } catch (e) {
-    to = { email: null, status: 'lookup-failed', source: null, error: e.message };
-  }
-
-  // The words are built HERE too, at queue time, and stored on the action — the
-  // executor already prefers `payload.body` over rebuilding. That means the
-  // approval screen can show the exact text that will be sent rather than a
-  // client-side reconstruction of it, which would be free to drift from the
-  // template. You approve what you read.
-  const id = require('./suggestion-engine').queueAction(
-    'chase_commitment',
-    {
-      waitingKey: key,
-      person: item.person,
-      text: item.text,
-      sourcePath: item.sourcePath,
-      body: buildChaseMessage(item),
-      to,
-    },
-    `Ask ${item.person} about "${item.text.slice(0, 60)}" (${_ageDays(item.firstSeen)}d)`,
-    0.8
-  );
-  return { ok: true, queuedActionId: id, sent: false, to };
-}
-
-// Deliberately loose. This is a human typing a colleague's address they already
-// know, not a signup form — the job is to catch a slip, not to adjudicate RFC
-// 5322. Graph rejects anything genuinely malformed.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/**
- * Point a queued chase at a different address before it is approved.
- *
- * The directory resolves a first name and can be wrong or ambiguous, and the
- * only person who knows which Chris is which is Nick. An override is recorded
- * as `source: 'manual'` so the executor can tell a chosen address from a guessed
- * one — a guess still has to clear the `resolved` gate, a choice does not.
- *
- * Scoped to chase_commitment on purpose: `/api/actions/:id/approve` stays a
- * plain approve, with no general "edit any pending action's payload" door.
- */
-function setChaseRecipient(actionId, email) {
-  const action = db.getSaimAction(parseInt(actionId, 10));
-  if (!action) return { ok: false, error: 'No such action' };
-  if (action.type !== 'chase_commitment') return { ok: false, error: `That is a ${action.type}, not a chase` };
-  if (action.status !== 'pending') return { ok: false, error: `Already ${action.status}` };
-
-  const clean = String(email || '').trim();
-  if (!EMAIL_RE.test(clean)) return { ok: false, error: 'That does not look like an email address' };
-
-  const payload = { ...action.payload, to: { email: clean, status: 'resolved', source: 'manual' } };
-  if (!db.updateSaimActionPayload(action.id, payload)) {
-    return { ok: false, error: 'Could not update — it may have just been approved' };
-  }
-
-  // Feedback loop: remember the address so the next chase to this person does
-  // not ask again. 26 of 41 People notes carry no `email:`, so being asked is
-  // the normal case. Runs AFTER the payload is safely stored and is never
-  // allowed to fail the override — the useful work is already done, and a vault
-  // write failing must not read to Nick as "your correction didn't save" (#69).
-  // `learnEmail` writes only when the note has no address; it never overwrites
-  // one, so a one-off recipient cannot silently retarget future messages.
-  //
-  // Note `payload.person` is the CANONICAL FIRST NAME — that is all `waiting_on`
-  // stores. `learnEmail` accepts it only when it maps to exactly one person, so
-  // "Heidi" learns and "Chris" does not. That is the right way round: the
-  // ambiguous ones are precisely where writing to the wrong colleague's note
-  // would be worst, and they are also the ones Nick is most often correcting.
-  let learned = null;
-  try {
-    const person = action.payload?.person;
-    if (person) {
-      const r = require('./contact-directory').learnEmail(person, clean);
-      if (r.ok) learned = r.person;
-    }
-  } catch { /* bookkeeping only */ }
-
-  return { ok: true, to: payload.to, ...(learned ? { learned } : {}) };
-}
-
-/**
- * Choose email or a Teams DM for a queued chase (Q9 — email ships, Teams is a
- * preference layered on). Only ever a preference: if Teams cannot deliver at
- * approval time the executor falls back to email and says so, because the point
- * is that the person gets asked.
- */
-function setChaseChannel(actionId, channel) {
-  const want = String(channel || '').toLowerCase();
-  if (!['email', 'teams'].includes(want)) return { ok: false, error: 'channel must be email or teams' };
-
-  const action = db.getSaimAction(parseInt(actionId, 10));
-  if (!action) return { ok: false, error: 'No such action' };
-  if (action.type !== 'chase_commitment') return { ok: false, error: `That is a ${action.type}, not a chase` };
-  if (action.status !== 'pending') return { ok: false, error: `Already ${action.status}` };
-
-  const payload = { ...action.payload, channel: want };
-  if (!db.updateSaimActionPayload(action.id, payload)) {
-    return { ok: false, error: 'Could not update — it may have just been approved' };
-  }
-  return { ok: true, channel: want };
-}
-
-/**
- * The words. Asks rather than demands, gives the out, and never implies the
- * person has failed — same rule as the nudges and the agenda chaser. A chase
- * that lands as an accusation costs more than the update is worth.
- */
-function buildChaseMessage(item) {
-  const first = String(item.person || '').split(' ')[0] || 'there';
-  return [
-    `Hi ${first},`,
-    '',
-    `Just picking up on "${item.text}" from ${item.sourceDate || 'our last catch-up'} — where has that got to?`,
-    '',
-    `No rush if it's moved down the list, just let me know and I'll stop chasing it.`,
-    '',
-    'Nick',
-  ].join('\n');
-}
 
 /**
  * Populate from meeting notes already on disk.
@@ -504,6 +365,6 @@ function backfill({ days = 120, limit = 500 } = {}) {
 }
 
 module.exports = {
-  record, list, byPerson, resolve, snooze, markChased, queueChase, setChaseRecipient, setChaseChannel,
-  buildChaseMessage, backfill, migrateFromState, STALE_DAYS, _key,
+  record, list, byPerson, resolve, snooze, markChased,
+  backfill, migrateFromState, STALE_DAYS, _key,
 };

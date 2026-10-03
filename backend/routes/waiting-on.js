@@ -5,7 +5,7 @@
  *
  * GET  /api/waiting-on            — open items, oldest first
  * GET  /api/waiting-on/by-person  — grouped, which is how a 1-2-1 is prepared
- * POST /api/waiting-on/:key/chase — QUEUE a chase for approval (never sends)
+ * POST /api/waiting-on/:key/chase — PREPARE a governed chase for approval (never sends)
  * POST /api/waiting-on/:key/resolve — mark done or dropped
  * POST /api/waiting-on/:key/snooze  — hide until a date, or clear with no date
  */
@@ -45,28 +45,27 @@ router.post('/backfill', (req, res) => {
   }
 });
 
-// Async since 15 Aug: the recipient is resolved at QUEUE time so the approval
-// screen can show it, rather than inside the executor after approval.
-router.post('/:key/chase', async (req, res) => {
+// POST /api/waiting-on/:key/chase — the Chase button (chase someone, follow up, ask where it got to). Since Build 7 it PREPARES a governed chase_commitment in Actions → Drafted by NEURO: the exact email, to the one address NEURO resolved, waiting for Nick's approval. It sends nothing and calls no provider. Pressing it again while one is under way returns that one (already: true).
+router.post('/:key/chase', (req, res) => {
   try {
-    const result = await waitingOn.queueChase(decodeURIComponent(req.params.key));
-    res.status(result.ok ? 200 : 400).json(result);
+    const r = require('../services/prepared-actions').prepareFromWaitingOn(decodeURIComponent(req.params.key));
+    if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error, sent: false });
+    res.json({
+      ok: true, sent: false, already: !!r.already, actionId: r.action.actionId, status: r.action.status,
+      notice: r.notice || 'Drafted — read and approve it in Actions → Drafted by NEURO. Nothing has been sent.',
+      action: r.action,
+    });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ ok: false, error: e.message, sent: false });
   }
 });
 
-// POST /api/waiting-on/chase/:actionId/recipient — retarget a queued chase.
-// Scoped to chase_commitment deliberately; /api/actions/:id/approve stays a
-// plain approve with no general payload-editing door behind it.
-router.post('/chase/:actionId/recipient', (req, res) => {
-  try {
-    const result = waitingOn.setChaseRecipient(req.params.actionId, req.body?.email);
-    res.status(result.ok ? 200 : 400).json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+// The two payload-editing doors on the retired legacy chase. A governed chase's
+// recipient is resolved from the People note and cannot be typed in (a free
+// address would bypass the target rule); its words are edited as a new version
+// in Actions. 410 rather than 404, so a stale client is told why.
+const RETIRED = 'Retired in Build 7: chases are drafted in Actions → Drafted by NEURO. The recipient comes from the person\'s People note (add email: there); the wording is edited on the draft.';
+router.post('/chase/:actionId/recipient', (req, res) => res.status(410).json({ ok: false, error: RETIRED }));
 
 // Snooze is not resolve: the commitment is still outstanding and still ages,
 // it just stops being asked about until the date they actually gave.
@@ -91,16 +90,7 @@ router.post('/:key/resolve', (req, res) => {
   }
 });
 
-// POST /api/waiting-on/chase/:actionId/channel — email or a Teams DM.
-// The UI only offers this once ChatMessage.Send is consented; until then every
-// chase goes by email, which is the Q9 order regardless.
-router.post('/chase/:actionId/channel', (req, res) => {
-  try {
-    const result = waitingOn.setChaseChannel(req.params.actionId, req.body?.channel);
-    res.status(result.ok ? 200 : 400).json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+// Retired with the legacy sender: a governed chase is email only (Build 6/7).
+router.post('/chase/:actionId/channel', (req, res) => res.status(410).json({ ok: false, error: RETIRED }));
 
 module.exports = router;

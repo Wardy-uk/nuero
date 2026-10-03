@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
+import PreparedActions from './PreparedActions';
 import './WaitingOn.css';
 
 /**
@@ -12,9 +13,12 @@ import './WaitingOn.css';
  * because the question is never "what is the oldest commitment", it is "what
  * does Naomi owe me", asked once per 1-2-1.
  *
- * PULL-ONLY (Q14). Nothing here notifies, and `chase` QUEUES for approval — it
- * never sends. A chase goes to a direct report, and an automated one reads as
- * surveillance.
+ * PULL-ONLY (Q14). Nothing here notifies, and `Chase` DRAFTS for approval — it
+ * never sends. Since Build 7 it drafts a governed chase into the ONE action
+ * queue (Actions → Drafted by NEURO), shown again below filtered to chases, with
+ * the same card and the same approval step: the exact email, your approval
+ * code, then a check in Sent Items. A chase goes to a direct report, and an
+ * automated one reads as surveillance.
  */
 
 const SNOOZE_PRESETS = [
@@ -86,8 +90,8 @@ function WaitingRow({ item, onAct, busy }) {
         </div>
       ) : (
         <div className="wo-row-actions">
-          {/* Queues a pending action. It does not send — approve it in Actions. */}
-          <button className="wo-btn" disabled={busy} onClick={() => onAct('chase')} title="Queue a chase for your approval — nothing sends yet">
+          {/* Drafts a governed chase. It does not send — approve it below or in Actions. */}
+          <button className="wo-btn" disabled={busy} onClick={() => onAct('chase')} title="Draft a chase for your approval — nothing sends yet">
             Chase
           </button>
           <button className="wo-btn wo-btn-ok" disabled={busy} onClick={() => onAct('done')} title="They delivered">
@@ -106,108 +110,6 @@ function WaitingRow({ item, onAct, busy }) {
 }
 
 /**
- * A chase waiting to be approved. Shows the exact words and the exact address —
- * both were resolved and stored when the chase was queued, so this is what will
- * actually go out, not a reconstruction of it.
- *
- * The address is editable because the directory resolves a canonical FIRST name
- * and can be wrong or ambiguous ("Chris" comes back ambiguous), and the only one
- * who knows which Chris is which is Nick.
- */
-function QueuedChase({ action, busy, teamsAvailable, onResolve, onRetarget, onChannel }) {
-  const to = action.payload?.to || {};
-  const channel = action.payload?.channel === 'teams' ? 'teams' : 'email';
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(to.email || '');
-  const [err, setErr] = useState(null);
-
-  const save = async () => {
-    setErr(null);
-    const result = await onRetarget(draft);
-    if (result?.ok) setEditing(false);
-    else setErr(result?.error || 'Could not update the address');
-  };
-
-  return (
-    <div className="wo-queued-item">
-      <div className="wo-queued-to">
-        <span>To {action.payload?.person}</span>
-        {!editing && (
-          <>
-            {to.email
-              ? <span className="wo-queued-email">{to.email}</span>
-              : <span className="wo-queued-noemail">
-                  no address ({to.status || 'unresolved'}) — set one before sending
-                </span>}
-            <button className="wo-btn wo-btn-ghost" onClick={() => { setDraft(to.email || ''); setEditing(true); }}>
-              {to.email ? 'Change' : 'Set address'}
-            </button>
-            {to.source === 'manual' && <span className="wo-queued-manual">you set this</span>}
-          </>
-        )}
-      </div>
-
-      {editing && (
-        <div className="wo-queued-edit">
-          <input
-            type="email"
-            className="wo-queued-input"
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            placeholder="name@nurtur.tech"
-            spellCheck={false}
-            autoCapitalize="none"
-          />
-          <button className="wo-btn" onClick={save} disabled={!draft.trim()}>Save</button>
-          <button className="wo-btn wo-btn-ghost" onClick={() => { setEditing(false); setErr(null); }}>Cancel</button>
-        </div>
-      )}
-      {err && <div className="wo-queued-err">{err}</div>}
-
-      {/* Only offered once ChatMessage.Send is consented. A picker whose only
-          working option is the default is noise, and it would imply Teams works
-          when it does not. Until then every chase goes by email — the Q9 order
-          regardless. */}
-      {teamsAvailable && (
-        <div className="wo-queued-channel">
-          <span>Send via</span>
-          {['email', 'teams'].map(c => (
-            <button
-              key={c}
-              className={`wo-btn${channel === c ? ' is-on' : ''}`}
-              disabled={busy}
-              onClick={() => onChannel(c)}
-            >
-              {c === 'teams' ? 'Teams DM' : 'Email'}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <pre className="wo-queued-body">{action.payload?.body || '(no draft stored — approving will build one)'}</pre>
-
-      <div className="wo-row-actions">
-        <button
-          className="wo-btn wo-btn-ok"
-          disabled={busy || editing || !to.email}
-          title={!to.email ? 'Set an address first' : `Sends to ${to.email}`}
-          onClick={() => onResolve('approve')}
-        >
-          {busy
-            ? 'Sending…'
-            : to.email
-              ? `Approve & send ${channel === 'teams' ? 'as a Teams DM' : 'to'} ${to.email}`
-              : 'Approve & send'}
-        </button>
-        <button className="wo-btn wo-btn-ghost" disabled={busy} onClick={() => onResolve('reject')}>
-          Discard
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
  * @param {string}  [person]      canonical first name — renders one person only, unexpanded
  * @param {boolean} [embedded]    drop the section header (inside a person overlay)
  */
@@ -221,10 +123,7 @@ export default function WaitingOn({ person = null, embedded = false }) {
   const [busyKey, setBusyKey] = useState(null);
   const [flash, setFlash] = useState(null);       // { key, text }
 
-  const [queued, setQueued] = useState([]);       // pending chase_commitment actions
-  const [actingId, setActingId] = useState(null);
-  const [queuedFlash, setQueuedFlash] = useState(null);   // outcome of the last approve
-  const [teamsAvailable, setTeamsAvailable] = useState(false);
+  const [queueKey, setQueueKey] = useState(0);    // remounts the chase queue after a press
 
   const load = useCallback(() => {
     fetch(apiUrl('/api/waiting-on/by-person'))
@@ -232,71 +131,10 @@ export default function WaitingOn({ person = null, embedded = false }) {
       .then(d => setGroups(d.people || []))
       .catch(e => setError(e.message));
 
-    // A queued chase had nowhere to be approved — nothing in the app read
-    // /api/actions, so pressing Chase dropped the action into a hole. The
-    // approval belongs beside the thing being approved anyway.
-    fetch(apiUrl('/api/actions'))
-      .then(r => r.json())
-      .then(d => setQueued((d.pending || []).filter(a => a.type === 'chase_commitment')))
-      .catch(() => setQueued([]));
 
-    // Teams DM needs ChatMessage.Send, which is awaiting tenant admin approval.
-    // Asking rather than assuming is what makes the choice appear on its own the
-    // day consent lands — no code change, no redeploy.
-    fetch(apiUrl('/api/microsoft/teams-send-status'))
-      .then(r => r.json())
-      .then(d => setTeamsAvailable(Boolean(d.available)))
-      .catch(() => setTeamsAvailable(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  const retarget = async (id, email) => {
-    try {
-      const res = await fetch(apiUrl(`/api/waiting-on/chase/${id}/recipient`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (data.ok) load();
-      return data;
-    } catch (e) {
-      return { ok: false, error: e.message };
-    }
-  };
-
-  const setChannel = async (id, channel) => {
-    try {
-      await fetch(apiUrl(`/api/waiting-on/chase/${id}/channel`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel }),
-      });
-    } catch { /* the reload tells the truth */ }
-    load();
-  };
-
-  const resolveQueued = async (id, verb) => {
-    setActingId(id);
-    setQueuedFlash(null);
-    try {
-      const res = await fetch(apiUrl(`/api/actions/${id}/${verb}`), { method: 'POST' });
-      const data = await res.json();
-      // A failed send marks the action `failed`, so it drops straight out of
-      // pending and the card just vanishes. Say what happened, or "it didn't
-      // send" is indistinguishable from "it sent".
-      if (verb === 'approve') {
-        setQueuedFlash(data.ok
-          ? { ok: true, text: data.detail || 'Sent' }
-          : { ok: false, text: data.detail || data.error || 'Send failed' });
-      }
-    } catch (e) {
-      setQueuedFlash({ ok: false, text: e.message });
-    }
-    setActingId(null);
-    load();
-  };
 
   // Snoozed items still come back from the API — hiding them is the whole point
   // of snoozing, but they have to stay reachable or a mis-snooze is unrecoverable.
@@ -336,9 +174,10 @@ export default function WaitingOn({ person = null, embedded = false }) {
       if (!res.ok || data.ok === false) throw new Error(data.error || 'Failed');
 
       if (action === 'chase') {
-        // Deliberately says queued, not sent. Nothing leaves without approval,
-        // and the draft appears at the top of this panel for you to read.
-        setFlash({ key: item.key, text: 'Queued — read it at the top of this panel, then approve' });
+        // Says drafted, not sent. Nothing leaves without approval. `already`
+        // means a chase for this is under way — the same one is shown.
+        setFlash({ key: item.key, text: data.already ? `Already drafted — ${data.notice || 'see it below'}` : 'Drafted — read it below (or in Actions), then approve. Nothing has been sent.' });
+        setQueueKey(k => k + 1);
         load();
       } else {
         // done / drop / snooze all take it off this list; re-read rather than
@@ -351,13 +190,10 @@ export default function WaitingOn({ person = null, embedded = false }) {
     setBusyKey(null);
   };
 
-  const myQueued = queued.filter(a =>
-    !person || String(a.payload?.person || '').toLowerCase() === person.toLowerCase());
-
   if (error) return <div className="waiting-on wo-error">Waiting-on unavailable: {error}</div>;
   if (!groups) return null;
 
-  if (visible.length === 0 && myQueued.length === 0 && !queuedFlash) {
+  if (visible.length === 0) {
     if (person) return null;                        // person overlay: silent when clear
     if (snoozedCount > 0) {
       return (
@@ -394,35 +230,16 @@ export default function WaitingOn({ person = null, embedded = false }) {
         )}
       </div>
 
-      {/* Queued chases, awaiting approval. Shown in full: this sends a real
-          email to a direct report, so the exact words are on screen before the
-          approve button, not a summary of them. The body was built and stored
-          when the chase was queued, so this IS what goes out. */}
-      {(myQueued.length > 0 || queuedFlash) && (
-        <div className="wo-queued">
-          {queuedFlash && (
-            <div className={`wo-queued-flash${queuedFlash.ok ? '' : ' bad'}`}>
-              {queuedFlash.ok ? '✓ ' : '✗ '}{queuedFlash.text}
-            </div>
-          )}
-          {myQueued.length > 0 && (
-            <div className="wo-queued-h">
-              {myQueued.length} chase{myQueued.length === 1 ? '' : 's'} waiting for you — nothing has been sent
-            </div>
-          )}
-          {myQueued.map(a => (
-            <QueuedChase
-              key={a.id}
-              action={a}
-              busy={actingId === a.id}
-              teamsAvailable={teamsAvailable}
-              onResolve={verb => resolveQueued(a.id, verb)}
-              onRetarget={email => retarget(a.id, email)}
-              onChannel={c => setChannel(a.id, c)}
-            />
-          ))}
-        </div>
-      )}
+      {/* The ONE action queue, filtered to chases (and to this person in a
+          person overlay) — the same card and approval step as Actions. */}
+      <PreparedActions
+        key={queueKey}
+        title="Chases drafted for your approval"
+        blurb={false}
+        showLegacy={false}
+        filter={a => a.actionType === 'chase_commitment'
+          && (!person || String(a.target?.displayName || '').split(' ')[0].toLowerCase() === person.toLowerCase())}
+      />
 
       <div className="wo-groups">
         {shown.map((g, gi) => {

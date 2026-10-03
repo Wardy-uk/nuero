@@ -90,12 +90,21 @@ const FLAGS = [
   {
     key: 'governed_execution',
     env: 'GOVERNED_EXECUTION_ENABLED',
-    default: true,
+    // ⚠ Build 7: default FALSE. It shipped default-true in Build 6, but it
+    // sends email as Nick, and the rule at the top of this list says such a
+    // switch is turned ON deliberately. Measured before changing it: the live
+    // Pi had NO stored value — it was on purely by default, never chosen — so
+    // this changes no decision Nick made. A stored 'true' or 'false' (his
+    // choice in Settings) still wins over this default, and the env var wins
+    // over both.
+    default: false,
     label: 'Send a chase once you approve it',
-    description: 'When you approve a prepared chase, NEURO sends exactly that email as you and then '
-      + 'checks Sent Items to confirm it went. Nothing is ever sent without your approval of the exact '
-      + 'words. Turning this off is the emergency brake: approvals are still recorded, nothing is sent, '
-      + 'and an approval expires after 24 hours if the brake is still on.',
+    description: 'When this is on and you approve a drafted chase with your approval code, NEURO sends '
+      + 'exactly that email as you and then checks Sent Items to confirm it went. It never bypasses '
+      + 'approval: nothing is sent unless you approved those exact words. While it is off, NEURO still '
+      + 'drafts chases for you to read, edit or reject, but will not let you approve one — approving '
+      + 'would send nothing. Turning it off after approving holds the send; the approval then expires '
+      + 'after 24 hours.',
     impact: 'sends email as you, only after you approve it',
   },
   {

@@ -156,7 +156,16 @@ function world(fixture, mail, over = {}) {
   return { deps, chased };
 }
 
-const approve = (a, at = NOW + MIN) => pa.approve(a.actionId, { approver: 'nick', payloadHash: a.payloadHash, now: at });
+// Build 7: an approval carries human proof — a challenge NEURO issued for this
+// exact action, and the approval code. `sending: () => true` stands in for the
+// Settings switch (now default OFF), which these executor tests are not about.
+const proofs = require('./approval-proof');
+const CODE = 'b6-test-approval-code';
+test.before(() => { if (!proofs.codeStatus().set) assert.equal(proofs.setCode(CODE).ok, true); });
+const approve = (a, at = NOW + MIN) => {
+  const ch = proofs.issue({ actionId: a.actionId, version: a.version, payloadHash: a.payloadHash, now: at });
+  return pa.approve(a.actionId, { approver: 'nick', payloadHash: a.payloadHash, challengeId: ch.challengeId, approvalCode: CODE, now: at, sending: () => true });
+};
 
 // ── 6A AUTHORITY ────────────────────────────────────────────────────────────
 
@@ -186,7 +195,8 @@ test('2. A4 cannot execute unapproved — the executor says already/prepared, an
   assert.equal(r.status, 'prepared');
   assert.equal(mail.calls.create + mail.calls.send, 0);
   assert.throws(() => db.run(`UPDATE prepared_actions SET status = 'executing' WHERE action_id = ?`, [f.action.actionId]), /only an approved action/);
-  assert.throws(() => db.run(`UPDATE prepared_actions SET status = 'approved', approved_by = 'x', approved_payload_hash = 'wrong' WHERE action_id = ?`, [f.action.actionId]), /must bind the exact payload/);
+  // Two triggers refuse this (Build 6: the hash; Build 7: no human proof) — either message is the database refusing.
+  assert.throws(() => db.run(`UPDATE prepared_actions SET status = 'approved', approved_by = 'x', approved_payload_hash = 'wrong' WHERE action_id = ?`, [f.action.actionId]), /must bind the exact payload|human-approval proof/);
 });
 
 test('3. an unknown action type cannot be approved or executed', async () => {
@@ -668,9 +678,13 @@ test('the HTTP route: a machine client cannot approve or edit; Nick approving se
     assert.equal(machine.status, 403);
     assert.equal((await post(`/${f.action.actionId}/edit`, { payloadHash: shown.payloadHash, body: 'x' }, { 'x-neuro-api-token': 't' })).status, 403);
     assert.equal(pa.get(f.action.actionId).status, 'prepared');
+    // Build 7: Nick's path is challenge → approval code, with sending switched on.
+    require('./feature-flags').setEnabled('governed_execution', true);
+    const challenge = async () => (await (await post(`/${f.action.actionId}/approval-challenge`, {})).json()).challengeId;
+    const [c1, c2] = [await challenge(), await challenge()];
     const [a, b] = await Promise.all([
-      post(`/${f.action.actionId}/approve`, { payloadHash: shown.payloadHash }),
-      post(`/${f.action.actionId}/approve`, { payloadHash: shown.payloadHash }),
+      post(`/${f.action.actionId}/approve`, { payloadHash: shown.payloadHash, challengeId: c1, approvalCode: CODE }),
+      post(`/${f.action.actionId}/approve`, { payloadHash: shown.payloadHash, challengeId: c2, approvalCode: CODE }),
     ]);
     const bodies = [await a.json(), await b.json()];
     assert.ok(bodies.every((x) => x.ok), JSON.stringify(bodies));
