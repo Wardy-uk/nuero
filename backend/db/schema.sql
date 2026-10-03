@@ -1468,7 +1468,15 @@ CREATE TABLE IF NOT EXISTS source_health (
   -- so a phone draining a six-hour-old queue does not read as fresh. NULL for
   -- pull sources, which keep Build 1's behaviour exactly. (Existing databases
   -- gain it through the migration in database.js.)
-  last_observed_at     TEXT
+  last_observed_at     TEXT,
+  -- Build 3B. lifecycle: expected | optional | retired, from
+  -- source.lifecycle.changed (NULL = none recorded). quiet: the newest
+  -- observation is old but the app that sends it is alive on another channel
+  -- (freshness = 'quiet') — when, and which channel proved it.
+  lifecycle            TEXT,
+  quiet_since          TEXT,
+  transport_alive_at   TEXT,
+  transport_source_id  TEXT
 );
 
 -- Build 2: the latest native observation per thing observed, materialised from
@@ -1507,7 +1515,8 @@ CREATE TABLE IF NOT EXISTS source_blind_state (
   consecutive_failures INTEGER NOT NULL DEFAULT 0,
   last_failure         TEXT,
   active_finding_id    TEXT,
-  updated_at           TEXT NOT NULL
+  updated_at           TEXT NOT NULL,
+  lifecycle            TEXT                   -- Build 3B: a retired source never opens a finding
 );
 
 -- One row per EPISODE of blindness: opened on the transition into stale /
@@ -1530,7 +1539,8 @@ CREATE TABLE IF NOT EXISTS source_blind_findings (
   change               TEXT NOT NULL,         -- new | change | repeat | resolved
   repeats              INTEGER NOT NULL DEFAULT 0,
   evidence_json        TEXT NOT NULL,         -- event ids, capped
-  updated_at           TEXT NOT NULL
+  updated_at           TEXT NOT NULL,
+  resolution           TEXT                   -- Build 3B: recovered | transport-alive | retired
 );
 CREATE INDEX IF NOT EXISTS idx_source_blind_findings_status ON source_blind_findings(status, source_id);
 

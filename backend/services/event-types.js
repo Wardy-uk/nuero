@@ -51,6 +51,28 @@ const TYPES = Object.freeze({
     required: ['sourceId', 'lastSuccessAt', 'staleAfterMs'],
   },
 
+  // A push source's newest observation is old, BUT the app that sends it is
+  // demonstrably alive on another channel (Build 3B). For a significant-change
+  // sensor that is the normal shape of a day spent in one place: the fix is
+  // old because he has not moved, not because the sensor is blind. An
+  // INFERENCE, recorded once per transition for the same reason staleness is
+  // — a replay must reproduce it, not re-judge it against a different "now".
+  'source.observation.quiet': {
+    version: 1,
+    provenance: 'inference',
+    required: ['sourceId', 'lastObservedAt', 'transportAliveAt', 'transportSourceId'],
+  },
+  // Whether NEURO should EXPECT to hear from a source (Build 3B): expected |
+  // optional | retired. A declaration, not an observation — recorded in the log
+  // so source health and source blindness read retirement from the same place
+  // they read everything else, and a replay reproduces it. Retiring a source
+  // deletes nothing: its history stays and remains queryable.
+  'source.lifecycle.changed': {
+    version: 1,
+    provenance: 'fact',
+    required: ['sourceId', 'lifecycle'],
+  },
+
   // A PUSH source delivered observations (Build 2). Push sources — the phone
   // apps — have no "run": nothing on the server starts them, so a fake
   // `source.sync.started` would be a story told about a session that never

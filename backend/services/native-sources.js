@@ -121,10 +121,18 @@ const SOURCES = Object.freeze({
     importance: 'medium', group: 'health', expected: true, push: true,
     expectedIntervalMs: 1 * HOUR, staleAfterMs: 12 * HOUR,
   },
+  // ⚠ RETIRED, NOT DELETED (Build 3B, 3 Oct 2026). Nick deleted the FreeReps
+  // app; the NEURO and SAiM apps both read HealthKit. Its history stays in the
+  // log and in source_health and is still queryable — a retired source simply
+  // stops being EXPECTED: no stale verdicts, no blindness findings, and it no
+  // longer counts against current health. If it ever reports again the
+  // delivery is recorded as normal; only the expectation has gone.
   'healthkit.freereps-ios': {
     label: 'Health data from FreeReps',
     what: 'nothing on its own — it re-sends what the NEURO apps already send',
-    importance: 'low', group: 'health', expected: false, push: true,
+    importance: 'low', group: 'health', lifecycle: 'retired', push: true,
+    lifecycleSince: '2026-10-03T00:00:00.000Z',
+    lifecycleReason: 'FreeReps app deleted; HealthKit is covered by the NEURO and SAiM apps',
     expectedIntervalMs: 1 * HOUR, staleAfterMs: 12 * HOUR,
   },
   'device.neuro-ios': {
@@ -141,6 +149,22 @@ const SOURCES = Object.freeze({
     // hours. The existing position feed calls six hours stale; blindness is
     // judged at twelve so a quiet day at home is not an alarm.
     expectedIntervalMs: 6 * HOUR, staleAfterMs: 12 * HOUR,
+    // ⚠ Build 3B. LocationTracker.swift reports ONLY on a significant change
+    // (~500m) or a visit — it never asks for a fix on wake. So a phone that
+    // has not moved sends NO location at all, however alive it is, and an old
+    // fix is not evidence of a dead sensor. Blindness is therefore judged on
+    // the APP being heard from (any NEURO-app channel), not on the fix's age;
+    // an old fix from a live app is `quiet` — plausibly still current.
+    // Movement is the counter-check: a vehicle-scale motion report with no fix
+    // after it is suspicious however recently the app spoke.
+    liveness: {
+      peers: ['device.neuro-ios', 'healthkit.neuro-ios', 'eventkit.neuro-ios'],
+      movementFrom: 'device.neuro-ios',
+      // CoreMotion reports "Walking" for walking round the house, which never
+      // moves 500m — only vehicle-scale motion is evidence a fix is owed.
+      movingActivities: ['Automotive', 'Cycling'],
+      movingFixGraceMs: 45 * 60 * 1000,
+    },
   },
   'eventkit.neuro-ios': {
     label: 'Phone calendar push (NEURO app)',
@@ -164,13 +188,83 @@ const DEFAULT = Object.freeze({
   expectedIntervalMs: 1 * HOUR, staleAfterMs: 12 * HOUR,
 });
 
+// ── Lifecycle (Build 3B) ────────────────────────────────────────────────────
+//
+//   expected  NEURO should hear from it; silence is blindness
+//   optional  recorded when it reports; silence is not a finding
+//   retired   history kept and queryable; never judged stale, never a
+//             finding, never counted against current health
+//
+// The declared lifecycle is RECORDED as a source.lifecycle.changed event
+// (source-health.syncLifecycle) so every projection reads it from the log.
+const LIFECYCLES = ['expected', 'optional', 'retired'];
+
+function lifecycleOf(d) {
+  if (d && LIFECYCLES.includes(d.lifecycle)) return d.lifecycle;
+  return d && d.expected ? 'expected' : 'optional';
+}
+
 function describe(sourceId) {
   const d = SOURCES[sourceId] || DEFAULT;
-  return { sourceId, ...d, label: d.label || sourceId, declared: !!SOURCES[sourceId] };
+  const lifecycle = lifecycleOf(d);
+  return { sourceId, ...d, lifecycle, expected: lifecycle === 'expected', label: d.label || sourceId, declared: !!SOURCES[sourceId] };
 }
 
 function expectedSources() {
-  return Object.keys(SOURCES).filter((id) => SOURCES[id].expected);
+  return Object.keys(SOURCES).filter((id) => lifecycleOf(SOURCES[id]) === 'expected');
+}
+
+function declaredLifecycles() {
+  return Object.keys(SOURCES).map((id) => ({
+    sourceId: id,
+    lifecycle: lifecycleOf(SOURCES[id]),
+    since: SOURCES[id].lifecycleSince || null,
+    reason: SOURCES[id].lifecycleReason || null,
+  }));
+}
+
+// ── Observation freshness vs transport liveness (Build 3B) ──────────────────
+
+/**
+ * Is a push source with a `liveness` rule blind, quiet, or fine? PURE.
+ *
+ *   row          its source_health row (last_observed_at, last_success_at,
+ *                stale_after_ms)
+ *   peerDeliveries  { sourceId: lastSuccessAt } for its liveness peers
+ *   movingSince  the first vehicle-scale motion report observed AFTER the
+ *                newest fix, or null
+ *
+ * Returns { verdict: 'fresh' | 'quiet' | 'stale', reason, transportAliveAt,
+ * transportSourceId }. Unknown stays unknown: no fix ever and no row is
+ * 'fresh' here only because there is nothing to judge — the never-seen path
+ * owns that case.
+ */
+function judgeObservationFreshness({ sourceId, row, peerDeliveries = {}, movingSince = null, now }) {
+  const d = describe(sourceId);
+  const rule = d.liveness;
+  const nowMs = now instanceof Date ? now.getTime() : now;
+  const staleAfter = row.stale_after_ms || d.staleAfterMs;
+  const basis = row.last_observed_at;
+  if (!basis) return { verdict: 'fresh', reason: 'nothing observed yet' };
+
+  // Transport: the newest delivery from the source itself or any peer app channel.
+  let aliveAt = row.last_success_at || null;
+  let aliveFrom = aliveAt ? sourceId : null;
+  for (const [peer, at] of Object.entries(peerDeliveries)) {
+    if (at && (!aliveAt || at > aliveAt)) { aliveAt = at; aliveFrom = peer; }
+  }
+  const transportAlive = !!aliveAt && nowMs - Date.parse(aliveAt) <= staleAfter;
+  const ageMs = nowMs - Date.parse(basis);
+
+  if (rule && movingSince && Date.parse(movingSince) > Date.parse(basis)
+      && nowMs - Date.parse(movingSince) >= rule.movingFixGraceMs) {
+    return { verdict: 'stale', reason: 'moving-without-fix', movingSince, transportAliveAt: aliveAt, transportSourceId: aliveFrom };
+  }
+  if (!(ageMs > staleAfter)) return { verdict: 'fresh', reason: 'recent observation' };
+  if (rule && transportAlive) {
+    return { verdict: 'quiet', reason: 'transport-alive', transportAliveAt: aliveAt, transportSourceId: aliveFrom };
+  }
+  return { verdict: 'stale', reason: rule ? 'transport-silent' : 'observation-old', transportAliveAt: aliveAt, transportSourceId: aliveFrom };
 }
 
 function groupPeers(sourceId) {
@@ -188,6 +282,9 @@ function lowerImportance(level) {
 
 module.exports = {
   SOURCES,
+  LIFECYCLES,
+  declaredLifecycles,
+  judgeObservationFreshness,
   IMPORTANCE_ORDER,
   resolveClient,
   sourceIdFor,

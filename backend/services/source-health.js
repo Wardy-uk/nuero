@@ -41,7 +41,7 @@ const bus = require('./event-bus');
 
 const CONSUMER = 'source-health';
 const TYPES = ['source.sync.started', 'source.sync.succeeded', 'source.sync.failed', 'source.sync.stale',
-  'source.observation.received'];
+  'source.observation.received', 'source.observation.quiet', 'source.lifecycle.changed'];
 const SOURCE_ID = /^[a-z][a-z0-9_.-]{0,63}$/;
 
 // ── the projector ────────────────────────────────────────────────────────────
@@ -76,6 +76,7 @@ function applyEvent(ev) {
     last_attempt_at: null, last_success_at: null, last_failure_at: null, failure_detail: null,
     consecutive_failures: 0, expected_interval_ms: null, stale_after_ms: null, stale_since: null,
     last_detail: null, last_observed_at: null,
+    lifecycle: null, quiet_since: null, transport_alive_at: null, transport_source_id: null,
   };
   // A "never seen" stale verdict (Build 2B) is about a source with no row at
   // all. It changes nothing here — there is no success to be stale about, and
@@ -128,6 +129,7 @@ function applyEvent(ev) {
         if (cur.last_observed_at && p.lastObservedAt === cur.last_observed_at) {
           next.freshness = 'stale';
           next.stale_since = next.stale_since || at;
+          next.quiet_since = null;
         }
       } else if (cur.last_success_at && p.lastSuccessAt === cur.last_success_at) {
         next.freshness = 'stale';
@@ -164,10 +166,28 @@ function applyEvent(ev) {
           next.last_observed_at = observed;
           next.freshness = 'fresh';
           next.stale_since = null;
+          next.quiet_since = null;
         }
       }
       break;
     }
+
+    case 'source.observation.quiet':
+      // Build 3B: the observation is old, the app is alive. Only about the
+      // basis we still hold — a quiet verdict on a fix since superseded is out
+      // of date, exactly like a stale one.
+      if (cur.last_observed_at && p.lastObservedAt === cur.last_observed_at) {
+        next.freshness = 'quiet';
+        next.stale_since = null;
+        next.quiet_since = cur.freshness === 'quiet' && cur.quiet_since ? cur.quiet_since : at;
+        next.transport_alive_at = p.transportAliveAt;
+        next.transport_source_id = p.transportSourceId;
+      }
+      break;
+
+    case 'source.lifecycle.changed':
+      if (['expected', 'optional', 'retired'].includes(p.lifecycle)) next.lifecycle = p.lifecycle;
+      break;
 
     default:
       return; // not ours; the consumer's type filter means this cannot happen
@@ -178,10 +198,12 @@ function applyEvent(ev) {
   db.run(
     `INSERT INTO source_health (source_id, state, freshness, last_attempt_at, last_success_at, last_failure_at,
        failure_detail, consecutive_failures, expected_interval_ms, stale_after_ms, stale_since, last_detail,
-       last_event_seq, updated_at, last_observed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       last_event_seq, updated_at, last_observed_at, lifecycle, quiet_since, transport_alive_at, transport_source_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source_id) DO UPDATE SET
        last_observed_at = excluded.last_observed_at,
+       lifecycle = excluded.lifecycle, quiet_since = excluded.quiet_since,
+       transport_alive_at = excluded.transport_alive_at, transport_source_id = excluded.transport_source_id,
        state = excluded.state, freshness = excluded.freshness, last_attempt_at = excluded.last_attempt_at,
        last_success_at = excluded.last_success_at, last_failure_at = excluded.last_failure_at,
        failure_detail = excluded.failure_detail, consecutive_failures = excluded.consecutive_failures,
@@ -190,7 +212,8 @@ function applyEvent(ev) {
        last_event_seq = excluded.last_event_seq, updated_at = excluded.updated_at`,
     [sourceId, next.state, next.freshness, next.last_attempt_at, next.last_success_at, next.last_failure_at,
       next.failure_detail, next.consecutive_failures, next.expected_interval_ms, next.stale_after_ms,
-      next.stale_since, next.last_detail, next.last_event_seq, next.updated_at, next.last_observed_at || null]
+      next.stale_since, next.last_detail, next.last_event_seq, next.updated_at, next.last_observed_at || null,
+      next.lifecycle || null, next.quiet_since || null, next.transport_alive_at || null, next.transport_source_id || null]
   );
 }
 
@@ -292,6 +315,107 @@ function beginSourceRun(sourceId, opts = {}) {
 // ── staleness ────────────────────────────────────────────────────────────────
 
 /**
+ * Record each declared source lifecycle the projection does not yet hold
+ * (Build 3B). Declared in native-sources, RECORDED here, so source health and
+ * source blindness read retirement from the log like everything else and a
+ * replay reproduces it. `expected` is the default reading, so a source with no
+ * row and an expected declaration needs nothing.
+ */
+async function syncLifecycle(opts = {}) {
+  const nowMs = opts.now instanceof Date ? opts.now.getTime() : (typeof opts.now === 'number' ? opts.now : Date.now());
+  const nativeSources = require('./native-sources');
+  const recorded = [];
+  for (const d of nativeSources.declaredLifecycles()) {
+    const row = _row(d.sourceId);
+    const held = row && row.lifecycle ? row.lifecycle : 'expected';
+    if (held === d.lifecycle) continue;
+    const ev = _safePublish({
+      type: 'source.lifecycle.changed',
+      occurredAt: d.since || new Date(nowMs).toISOString(),
+      source: { system: 'neuro', recordId: d.sourceId },
+      subject: { entityType: 'source', entityId: d.sourceId },
+      idempotencyKey: `source-lifecycle:${d.sourceId}:${held}->${d.lifecycle}:${d.since || 'declared'}`,
+      payload: { sourceId: d.sourceId, lifecycle: d.lifecycle, previous: held, reason: d.reason || null },
+    });
+    if (ev) recorded.push(`${d.sourceId}:${d.lifecycle}`);
+  }
+  if (recorded.length) await bus.pumpConsumer(CONSUMER, { now: nowMs });
+  return recorded;
+}
+
+/**
+ * The first vehicle-scale motion report from `sourceId` OBSERVED after
+ * `afterIso`, or null. Read from the log (newest 500 device reports — a few a
+ * day, so months of history), never from device_status, which can be cleared.
+ */
+function _movingSince(sourceId, afterIso, activities) {
+  const rows = db.all(`SELECT occurred_at, payload FROM event_log WHERE type = 'observation.device.updated'
+                       ORDER BY seq DESC LIMIT 500`);
+  let first = null;
+  for (const r of rows) {
+    if (!(r.occurred_at > afterIso)) continue;
+    let p;
+    try { p = JSON.parse(r.payload); } catch { continue; }
+    if (p.sourceId !== sourceId) continue;
+    if (!p.fields || !activities.includes(p.fields.activity)) continue;
+    if (!first || r.occurred_at < first) first = r.occurred_at;
+  }
+  return first;
+}
+
+/**
+ * Judge a push source that has a liveness rule (location) — Build 3B. Two
+ * questions kept apart: is the APP alive on any channel, and how old is the
+ * FIX. Publishes stale or quiet on a transition; returns 'stale' | 'quiet' | null.
+ */
+function _judgeLiveness(r, d, nowMs) {
+  const nativeSources = require('./native-sources');
+  const peerDeliveries = {};
+  for (const peer of d.liveness.peers) {
+    const pr = _row(peer);
+    if (pr && pr.lifecycle !== 'retired') peerDeliveries[peer] = pr.last_success_at;
+  }
+  const movingSince = _movingSince(d.liveness.movementFrom, r.last_observed_at, d.liveness.movingActivities);
+  const j = nativeSources.judgeObservationFreshness({ sourceId: r.source_id, row: r, peerDeliveries, movingSince, now: nowMs });
+  const ageMs = nowMs - Date.parse(r.last_observed_at);
+  const base = {
+    occurredAt: new Date(nowMs).toISOString(),
+    source: { system: 'neuro', recordId: r.source_id },
+    subject: { entityType: 'source', entityId: r.source_id },
+  };
+  if (j.verdict === 'stale' && r.freshness !== 'stale') {
+    // Keyed on the basis, the reason AND the transport time: the same fix can
+    // legitimately go stale, quiet and stale again as the app comes and goes.
+    const ev = _safePublish({
+      ...base,
+      type: 'source.sync.stale',
+      idempotencyKey: `source-stale:${r.source_id}:obs:${r.last_observed_at}:${j.reason}:${j.transportAliveAt || 'none'}`,
+      payload: {
+        sourceId: r.source_id, lastSuccessAt: r.last_success_at, staleAfterMs: r.stale_after_ms, ageMs,
+        basis: 'observation', lastObservedAt: r.last_observed_at, reason: j.reason,
+        transportAliveAt: j.transportAliveAt || null, transportSourceId: j.transportSourceId || null,
+        ...(j.movingSince ? { movingSince: j.movingSince } : {}),
+      },
+    });
+    if (ev) console.warn(`[SourceHealth] ${r.source_id} is STALE (${j.reason}) — last fix ${Math.round(ageMs / 60000)} min ago`);
+    return ev ? 'stale' : null;
+  }
+  if (j.verdict === 'quiet' && r.freshness !== 'quiet') {
+    const ev = _safePublish({
+      ...base,
+      type: 'source.observation.quiet',
+      idempotencyKey: `source-quiet:${r.source_id}:obs:${r.last_observed_at}:${j.transportAliveAt}`,
+      payload: {
+        sourceId: r.source_id, lastObservedAt: r.last_observed_at, ageMs, reason: j.reason,
+        transportAliveAt: j.transportAliveAt, transportSourceId: j.transportSourceId,
+      },
+    });
+    return ev ? 'quiet' : null;
+  }
+  return null;
+}
+
+/**
  * Decide which sources have gone stale, and RECORD it.
  *
  * A source is stale when its last success is older than the stale threshold
@@ -299,16 +423,31 @@ function beginSourceRun(sourceId, opts = {}) {
  * success time, so a check every five minutes during a day-long outage still
  * writes one event, and the next success clears it.
  *
+ * ⚠ Build 3B: a RETIRED source is never judged; a source with a liveness rule
+ * goes through _judgeLiveness, where an old fix from a live app is `quiet`.
+ *
  * Returns the sources newly marked stale.
  */
 async function checkStaleness(opts = {}) {
   const nowMs = opts.now instanceof Date ? opts.now.getTime() : (typeof opts.now === 'number' ? opts.now : Date.now());
+  const nativeSources = require('./native-sources');
+  await syncLifecycle({ now: nowMs });
   // Judge the CURRENT projection, not one that is behind the log.
   await bus.pumpConsumer(CONSUMER, { now: nowMs });
   const marked = [];
+  let quieted = 0;
   const rows = db.all(`SELECT * FROM source_health WHERE stale_after_ms IS NOT NULL
-                       AND (last_success_at IS NOT NULL OR last_observed_at IS NOT NULL) AND freshness != 'stale'`);
+                       AND (last_success_at IS NOT NULL OR last_observed_at IS NOT NULL)`);
   for (const r of rows) {
+    if (r.lifecycle === 'retired') continue;
+    const d = nativeSources.describe(r.source_id);
+    if (r.last_observed_at && d.liveness) {
+      const out = _judgeLiveness(r, d, nowMs);
+      if (out === 'stale') marked.push(r.source_id);
+      if (out === 'quiet') quieted += 1;
+      continue;
+    }
+    if (r.freshness === 'stale') continue;
     // A push source is judged on its newest OBSERVATION; a pull source on its
     // last success, exactly as in Build 1 (same key, same payload).
     const byObservation = !!r.last_observed_at;
@@ -332,7 +471,7 @@ async function checkStaleness(opts = {}) {
       console.warn(`[SourceHealth] ${r.source_id} is STALE — last ${byObservation ? 'observation' : 'success'} ${Math.round(ageMs / 60000)} min ago (threshold ${Math.round(r.stale_after_ms / 60000)} min)`);
     }
   }
-  if (marked.length) await bus.pumpConsumer(CONSUMER, { now: nowMs });
+  if (marked.length || quieted) await bus.pumpConsumer(CONSUMER, { now: nowMs });
   return marked;
 }
 
@@ -360,6 +499,13 @@ function _shape(r, nowMs) {
     lastObservedAt: r.last_observed_at || null,
     observationAgeMs: r.last_observed_at ? nowMs - Date.parse(r.last_observed_at) : null,
     freshnessBasis: r.last_observed_at ? 'observation' : (r.last_success_at ? 'success' : null),
+    // Build 3B. `lifecycle` null = none recorded, read as the declared one.
+    // `quiet`: the observation is old and the app is provably alive — the
+    // channel and time that proved it travel with it.
+    lifecycle: r.lifecycle || null,
+    quietSince: r.quiet_since || null,
+    transportAliveAt: r.transport_alive_at || null,
+    transportSourceId: r.transport_source_id || null,
     // Started after the last outcome: a run in progress, or one that died
     // mid-way. Which of the two is for the stale check to say, not this flag.
     inProgress: !!(r.last_attempt_at && (!latestOutcome || r.last_attempt_at > latestOutcome)),
@@ -402,6 +548,7 @@ module.exports = {
   applyEvent,
   beginSourceRun,
   checkStaleness,
+  syncLifecycle,
   getSourceHealth,
   getSource,
 };

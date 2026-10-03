@@ -430,6 +430,27 @@ async function init() {
     console.error('[DB] source_health migration check failed:', e.message);
   }
 
+  // Migration: Build 3B — source lifecycle and the quiet state. Projected
+  // columns only (rebuildable from event_log); NULL on existing rows means
+  // "no lifecycle recorded yet", which the readers treat as the declared one.
+  try {
+    const addCols = (table, cols) => {
+      const have = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+      if (!have.length) return;
+      for (const [name, type] of cols) {
+        if (!have.includes(name)) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+          console.log(`[DB] ${table}.${name} added`);
+        }
+      }
+    };
+    addCols('source_health', [['lifecycle', 'TEXT'], ['quiet_since', 'TEXT'], ['transport_alive_at', 'TEXT'], ['transport_source_id', 'TEXT']]);
+    addCols('source_blind_state', [['lifecycle', 'TEXT']]);
+    addCols('source_blind_findings', [['resolution', 'TEXT']]);
+  } catch (e) {
+    console.error('[DB] Build 3B migration check failed:', e.message);
+  }
+
   // health_daily: blood pressure and heart rate.
   //
   // All three have been arriving for two years and had nowhere to land — the

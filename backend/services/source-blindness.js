@@ -44,7 +44,8 @@ const bus = require('./event-bus');
 const nativeSources = require('./native-sources');
 
 const CONSUMER = 'source-blindness';
-const TYPES = ['source.sync.succeeded', 'source.sync.failed', 'source.sync.stale', 'source.observation.received'];
+const TYPES = ['source.sync.succeeded', 'source.sync.failed', 'source.sync.stale', 'source.observation.received',
+  'source.observation.quiet', 'source.lifecycle.changed'];
 
 // Three failures in a row before a failing source is a finding. One failed
 // Graph call or one malformed phone POST is a hiccup; three is a pattern.
@@ -59,6 +60,10 @@ const CONFIDENCE = {
   failing: 0.95,
   // Never heard from at all: could be blind, could be not installed.
   'never-seen': 0.5,
+  // Build 3B: a vehicle-scale motion report and no fix after it. Suggestive —
+  // the app is alive, so this is a sensor that may have stopped, not a phone
+  // that has gone.
+  'moving-without-fix': 0.6,
 };
 
 function mode() {
@@ -77,21 +82,21 @@ function _later(a, b) {
 function _state(sourceId) {
   return db.get('SELECT * FROM source_blind_state WHERE source_id = ?', [sourceId]) || {
     source_id: sourceId, basis_at: null, last_success_at: null, last_outcome_at: null,
-    consecutive_failures: 0, last_failure: null, active_finding_id: null,
+    consecutive_failures: 0, last_failure: null, active_finding_id: null, lifecycle: null,
   };
 }
 
 function _saveState(s, at) {
   db.run(
     `INSERT INTO source_blind_state (source_id, basis_at, last_success_at, last_outcome_at, consecutive_failures,
-       last_failure, active_finding_id, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       last_failure, active_finding_id, updated_at, lifecycle)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source_id) DO UPDATE SET basis_at = excluded.basis_at, last_success_at = excluded.last_success_at,
        last_outcome_at = excluded.last_outcome_at, consecutive_failures = excluded.consecutive_failures,
        last_failure = excluded.last_failure, active_finding_id = excluded.active_finding_id,
-       updated_at = excluded.updated_at`,
+       updated_at = excluded.updated_at, lifecycle = excluded.lifecycle`,
     [s.source_id, s.basis_at, s.last_success_at, s.last_outcome_at, s.consecutive_failures,
-      s.last_failure, s.active_finding_id, at]
+      s.last_failure, s.active_finding_id, at, s.lifecycle || null]
   );
 }
 
@@ -101,6 +106,9 @@ function _finding(id) {
 
 function _open(s, ev, condition, extra = {}) {
   const id = `source-blind:${s.source_id}:${ev.seq}`;
+  // A retired source never opens a finding (Build 3B): its silence is the
+  // expected state, and its history stays in the log.
+  if (s.lifecycle === 'retired') return;
   const confidence = condition === 'stale' && extra.push ? CONFIDENCE['stale-push'] : CONFIDENCE[condition];
   db.run(
     `INSERT INTO source_blind_findings (finding_id, source_id, status, condition, first_detected_at, last_seen_at,
@@ -128,10 +136,10 @@ function _touch(f, ev, change, patch = {}) {
     [...keys.map((k) => fields[k]), f.finding_id]);
 }
 
-function _resolve(s, ev) {
+function _resolve(s, ev, resolution = 'recovered') {
   const f = _finding(s.active_finding_id);
   if (f && f.status === 'active') {
-    _touch(f, ev, 'resolved', { status: 'resolved', resolved_at: ev.occurredAt });
+    _touch(f, ev, 'resolved', { status: 'resolved', resolved_at: ev.occurredAt, resolution });
   }
   s.active_finding_id = null;
 }
@@ -193,11 +201,37 @@ function applyEvent(ev) {
       }
       const verdictBasis = p.basis === 'observation' ? p.lastObservedAt : p.lastSuccessAt;
       if (!verdictBasis || verdictBasis !== s.basis_at) break;
+      const condition = p.reason === 'moving-without-fix' ? 'moving-without-fix' : 'stale';
       if (active && active.status === 'active') {
-        _touch(active, ev, 'repeat');
+        // The only escalation a stale verdict can make is stale → moving
+        // (movement is new evidence). It never rewrites a FAILING finding:
+        // failures are the stronger fact, and a stale verdict on the same
+        // source must not turn them into something an older delivery can cure.
+        const escalate = condition === 'moving-without-fix' && active.condition === 'stale';
+        _touch(active, ev, escalate ? 'change' : 'repeat',
+          escalate ? { condition, confidence: CONFIDENCE[condition] } : {});
       } else {
-        _open(s, ev, 'stale', { staleAfterMs: p.staleAfterMs, push });
+        _open(s, ev, condition, { staleAfterMs: p.staleAfterMs, push });
       }
+      break;
+    }
+
+    case 'source.observation.quiet': {
+      // Build 3B: the fix is old but the app is alive on another channel — a
+      // phone that has not moved, not a blind sensor. Resolves a staleness
+      // finding about THAT fix; never opens one, and never cures a failing
+      // source or a moving-without-fix suspicion (movement is the evidence
+      // that a fix was owed, and liveness does not answer it).
+      if (active && active.status === 'active' && active.condition === 'stale'
+          && p.lastObservedAt === s.basis_at) {
+        _resolve(s, ev, 'transport-alive');
+      }
+      break;
+    }
+
+    case 'source.lifecycle.changed': {
+      s.lifecycle = p.lifecycle;
+      if (p.lifecycle === 'retired' && active && active.status === 'active') _resolve(s, ev, 'retired');
       break;
     }
 
@@ -290,7 +324,9 @@ function _effective(f, stateById) {
 function _shape(f, stateById, nowMs, attention) {
   const { d, severity, coveredBy } = _effective(f, stateById);
   const basisMs = f.basis_at ? Date.parse(f.basis_at) : null;
-  const why = f.condition === 'never-seen'
+  const why = f.condition === 'moving-without-fix'
+    ? `The phone reported travelling and no location fix has arrived since — the location sensor may have stopped (permission, or background location off) even though the app is still talking to NEURO.`
+    : f.condition === 'never-seen'
     ? `NEURO has never heard from it since it started watching — it may not be installed, or may never have been granted access. Without it, NEURO is missing ${d.what}.`
     : f.condition === 'failing'
       ? `${f.failure_count} deliveries in a row have failed. Until it recovers, NEURO is missing ${d.what}.`
@@ -306,6 +342,7 @@ function _shape(f, stateById, nowMs, attention) {
     firstDetectedAt: f.first_detected_at,
     lastSeenAt: f.last_seen_at,
     resolvedAt: f.resolved_at,
+    resolution: f.resolution || null,
     lastSuccessAt: f.last_success_at,
     lastObservedOrSuccessAt: f.basis_at,
     failureCount: f.failure_count,
@@ -380,7 +417,8 @@ function observations({ now = Date.now() } = {}) {
       source: f.source,
       severity: f.severity,
       confidence: f.confidence,
-      text: f.condition === 'failing' ? `${f.label} keeps failing.` : f.condition === 'never-seen'
+      text: f.condition === 'failing' ? `${f.label} keeps failing.` : f.condition === 'moving-without-fix'
+        ? `${f.label} has not sent a fix since you started travelling.` : f.condition === 'never-seen'
         ? `${f.label} has never reported.` : `${f.label} has gone quiet.`,
       detail: f.whyItMatters,
     });
