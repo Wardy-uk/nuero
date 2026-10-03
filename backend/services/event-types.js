@@ -178,6 +178,40 @@ const TYPES = Object.freeze({
     required: ['personId', 'displayName', 'emails', 'notePath', 'fingerprint'],
   },
 
+  // ── Obligations (Build 4B) ─────────────────────────────────────────────────
+  //
+  // ONE task record as the store that OWNS it holds it right now: NEURO's own
+  // `tasks` table, or a Microsoft Planner / To Do task as Graph returned it.
+  // A FACT: each system is the authority on its own records (a tick in NEURO
+  // is Nick's statement; `completedDateTime` from Planner is Microsoft's).
+  // Keyed on a fingerprint of that state, so a reconcile pass that finds
+  // nothing changed folds — the log records change, not polling. Transitions
+  // (created / completed / reopened) are DERIVED by the projector from
+  // consecutive observations and kept in wm_obligation_history, so a change is
+  // one fact in the log, not two.
+  'observation.task.observed': {
+    version: 1,
+    provenance: 'fact',
+    required: ['system', 'recordId', 'title', 'status', 'fingerprint'],
+  },
+  // A task a source held and, on a COMPLETE read, no longer does. The source
+  // cannot say whether it was completed or deleted (To Do only ever lists open
+  // tasks), so neither does this — it never means "completed".
+  'observation.task.removed': {
+    version: 1,
+    provenance: 'observation',
+    required: ['system', 'recordId', 'lastFingerprint'],
+  },
+  // An obligation one person took on, as a store derived from Nick's notes
+  // records it — today the waiting_on table (what somebody else said they
+  // would do, extracted from a meeting write-up). An OBSERVATION: it is a
+  // parse of a note, not the promisor's own record.
+  'observation.commitment.observed': {
+    version: 1,
+    provenance: 'observation',
+    required: ['system', 'recordId', 'description', 'status', 'fingerprint'],
+  },
+
   // What the Graph calendar window looked like on a successful sync. Keyed on a
   // fingerprint of the window's content, so re-observing an unchanged diary
   // folds into the existing event: the log records CHANGE, not polling.

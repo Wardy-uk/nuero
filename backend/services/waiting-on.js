@@ -87,6 +87,9 @@ function _upsert(item) {
       item.snoozedUntil ?? null,
     ],
   );
+  // Build 4B: the world model reads this table as commitments. Debounced, and
+  // never allowed to fail the write (the durable reconcile is the backstop).
+  try { require('./obligation-sources').schedulePublish('waiting-on'); } catch { /* reconcile catches it */ }
   return item;
 }
 

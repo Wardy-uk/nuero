@@ -784,19 +784,7 @@ function start() {
     }
   });
 
-  // Every 10 minutes — drain the Obsidian capture drop-box (route 3) into the task
-  // store. Cheap: it reads one small file and returns immediately when empty. The
-  // drain is what stops Tasks/Capture.md turning into a second source of truth.
-  cron.schedule('*/10 * * * *', () => {
-    try {
-      const result = require('./task-capture-drain').drainCaptureFile();
-      if (result.created || result.folded) {
-        console.log(`[Scheduler] Capture drained: ${result.created} new, ${result.folded} folded`);
-      }
-    } catch (e) {
-      console.error('[Scheduler] Capture drain failed:', e.message);
-    }
-  });
+  // (The */10 capture drain is a DURABLE job since Build 4 — see registerDurableJobs().)
 
   // Every 10 minutes — release any task block whose outcome note has been
   // written. This is the mechanism, not a backstop: Nick writes the note in
@@ -1105,22 +1093,9 @@ function start() {
     });
   }, 45 * 1000);
 
-  // Every 30 minutes 8am-6pm weekdays — sync Microsoft Tasks (Planner + ToDo) to vault
-  //
-  // ⚠ `recoverMissedExecutions` is load-bearing (23 Sep 2026). node-cron 3.0.3
-  // fires only if its 1-second timer lands INSIDE the matching second, and with
-  // recovery off a late timer skips the tick without a word. The Plaud job is
-  // scheduled on the same seconds and registered first; the MS job logged
-  // nothing from 13:15 to 16:45 (seven ticks) while Plaud went on logging, and
-  // three new Planner tasks stayed out of NEURO all afternoon. Recovery replays
-  // the missed second once the loop is free. watchdog.checkMicrosoftSync() is
-  // the backstop.
-  cron.schedule('15,45 8-18 * * 1-5', () => {
-    console.log('[Scheduler] Syncing Microsoft Tasks...');
-    require('./obsidian').syncMicrosoftTasks().catch(e => {
-      console.error('[Scheduler] MS Tasks sync failed:', e.message);
-    });
-  }, { recoverMissedExecutions: true });
+  // (The 15,45 8-18 Mon-Fri Microsoft Tasks sync is a DURABLE job since Build 4
+  // — see registerDurableJobs(). The 23 Sep note about node-cron dropping its
+  // ticks is why: recovery fixed the late timer, not the restart.)
 
   // Startup MS Tasks sync — 30s after start
   setTimeout(() => {
@@ -1382,6 +1357,93 @@ function registerDurableJobs() {
       const r = await require('./meeting-context').evaluate();
       return { mode: r.mode, considered: r.considered, created: r.created, updated: r.updated,
         withdrawn: r.withdrawn, expired: r.expired, decided: r.decided };
+    },
+  });
+
+  // ── Build 4 ───────────────────────────────────────────────────────────────
+  //
+  // Migrated because a silently missed run changes what NEURO believes about
+  // obligations or attention, not for consistency:
+  //   ms-tasks-sync   Microsoft completions/new cards reach the world model and
+  //                   the vault mirror only through this. 23 Sep: seven ticks
+  //                   lost in one afternoon on node-cron.
+  //   capture-drain   a capture waiting in Tasks/Capture.md is a commitment
+  //                   NEURO does not know about yet.
+  // NOT migrated: escalations. jira.startPolling() already runs syncEscalations
+  // on a 5-minute setInterval, all day — a late interval runs late, it is never
+  // dropped, so node-cron's failure cannot reach it (the cron entry is a second
+  // caller of the same idempotent sync).
+  // NOT migrated: the weekly risk report. It already has restart catch-up across
+  // the whole week (scheduleWeekly), its state-of-play freshness reads that
+  // stamp, and the durable runtime's 24h lookback would make a weekend outage
+  // WORSE (a gap record instead of a Monday-afternoon build).
+  runtime.defineJob({
+    name: 'ms-tasks-sync',
+    cron: '15,45 8-18 * * 1-5',
+    class: 'freshness-sensitive',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 2,
+    backoffMs: [2 * 60 * 1000],
+    timeoutMs: 5 * 60 * 1000,
+    why: 'Planner/To Do into the vault mirror and the world model. Replace-by-fetch: a late run is as good as an on-time one.',
+    run: async () => {
+      const r = await require('./obsidian').syncMicrosoftTasks();
+      // 'refusing-to-empty' is a correct decision, not a failure; Graph not
+      // answering IS one, and must be visible (and retried once).
+      if (r && r.ok === false && r.reason === 'graph-unavailable') throw new Error('Graph did not answer (auth expired?) — mirror kept as it was');
+      return r;
+    },
+  });
+
+  runtime.defineJob({
+    name: 'capture-drain',
+    cron: '*/10 * * * *',
+    class: 'correctness-critical',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 1,
+    timeoutMs: 60 * 1000,
+    why: 'Tasks/Capture.md into the task store. Idempotent; only the newest slot matters.',
+    run: async () => {
+      const result = require('./task-capture-drain').drainCaptureFile();
+      if (result && (result.created || result.folded)) {
+        console.log(`[Scheduler] Capture drained: ${result.created} new, ${result.folded} folded`);
+      }
+      return result;
+    },
+  });
+
+  runtime.defineJob({
+    name: 'world-obligations-sync',
+    cron: '*/10 * * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 1,
+    timeoutMs: 2 * 60 * 1000,
+    why: 'Build 4B: NEURO tasks and waiting-on into the world model. Content-keyed, so an unchanged store publishes nothing; the backstop behind the write hooks.',
+    run: async () => {
+      const r = require('./obligation-sources').reconcile();
+      if (r.tasks && r.tasks.error) throw new Error(`tasks: ${r.tasks.error}`);
+      if (r.waitingOn && r.waitingOn.error) throw new Error(`waiting-on: ${r.waitingOn.error}`);
+      return r;
+    },
+  });
+
+  runtime.defineJob({
+    name: 'commitment-risk',
+    cron: '*/15 * * * *',
+    class: 'freshness-sensitive',
+    catchUp: 'latest',
+    maxLagMs: 15 * 60 * 1000,
+    maxAttempts: 1,
+    timeoutMs: 2 * 60 * 1000,
+    why: 'Build 4D: which promises are about to matter and still look open? SHADOW — findings and recorded verdicts only, nothing is ever sent.',
+    run: async () => {
+      const r = await require('./commitment-risk').evaluate();
+      return { mode: r.mode, considered: r.considered, created: r.created, escalated: r.escalated, updated: r.updated,
+        resolved: r.resolved, held: r.held, decided: r.decided };
     },
   });
 

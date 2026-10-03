@@ -855,6 +855,7 @@ async function fetchTodoTasks(listId) {
       const data = await graphFetchAll(`/me/todo/lists/${listId}/tasks?$top=100&$filter=status ne 'completed'`, token);
       if (data && data.value) {
         _rememberTodoList(listId, data.value.map(t => t.id).filter(Boolean));
+        if (data.truncated) data.value.truncated = true; // Build 4B: see fetchPlannerTasks
         return data.value;
       }
     } catch (err) {
@@ -882,7 +883,13 @@ async function fetchPlannerTasks() {
       // 275 Planner tasks were readable against a $top of 200 — the same silent
       // truncation as the calendar, one endpoint over.
       const data = await graphFetchAll('/me/planner/tasks?$top=200', token);
-      if (data && data.value) return data.value;
+      if (data && data.value) {
+        // Build 4B: a capped walk is a SHORT list, and the world model concludes
+        // "no longer returned" from absence — so the cap rides on the array
+        // (the calendar's rule, Build 3C).
+        if (data.truncated) data.value.truncated = true;
+        return data.value;
+      }
     } catch (err) {
       console.error('[Microsoft] Planner fetch error:', err.message);
     }

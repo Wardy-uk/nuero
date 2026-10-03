@@ -1963,11 +1963,18 @@ async function syncMicrosoftTasks() {
   let heldIds = new Set();
   try { heldIds = require('./ms-push-queue').pendingIds(); } catch { heldIds = new Set(); }
   let heldSkipped = 0;
+  // Build 4B: what Graph returned, kept for the world model. Planner answers
+  // with every task (completed ones carry completedDateTime — a completion
+  // FACT); To Do with open ones only. `msComplete` stays true only while every
+  // fetch answered in full — absence is concluded from nothing less.
+  let msPlanner = null;
+  const msTodo = [];
+  let msComplete = true;
 
   // --- Planner ---
   try {
     const plannerTasks = await microsoft.fetchPlannerTasks();
-    if (Array.isArray(plannerTasks)) plannerOk = true;
+    if (Array.isArray(plannerTasks)) { plannerOk = true; msPlanner = plannerTasks; if (plannerTasks.truncated) msComplete = false; } else msComplete = false;
     if (plannerTasks && plannerTasks.length > 0) {
       lines.push('## Planner', '');
       // Filter to incomplete tasks only
@@ -2012,6 +2019,7 @@ async function syncMicrosoftTasks() {
       }
     }
   } catch (e) {
+    msComplete = false;
     console.error('[Sync] Planner fetch failed:', e.message);
     lines.push('## Planner', '', '*Failed to fetch — see logs*', '');
   }
@@ -2026,6 +2034,8 @@ async function syncMicrosoftTasks() {
         // Skip flagged emails list — that's handled by inbox scanner
         if (list.wellknownListName === 'flaggedEmails') continue;
         const tasks = await microsoft.fetchTodoTasks(list.id);
+        if (Array.isArray(tasks)) { msTodo.push({ listName: list.displayName || null, tasks }); if (tasks.truncated) msComplete = false; }
+        else msComplete = false;
         if (tasks && tasks.length > 0) {
           // Always name the list, including the default "Tasks". It used to be
           // omitted as noise, which left every task in it with no list at all —
@@ -2052,6 +2062,7 @@ async function syncMicrosoftTasks() {
       }
     }
   } catch (e) {
+    msComplete = false;
     console.error('[Sync] ToDo fetch failed:', e.message);
     lines.push('## ToDo', '', '*Failed to fetch — see logs*', '');
   }
@@ -2063,6 +2074,17 @@ async function syncMicrosoftTasks() {
   //
   // Only write when Graph actually answered. A genuine "you have zero tasks" still
   // writes (both fetches OK), but a failed fetch now leaves the last good file alone.
+  // Build 4B: publish what Graph returned BEFORE deciding about the mirror
+  // file — the world model's read does not depend on the file being writable.
+  // Never throws.
+  if (plannerOk || todoOk) {
+    require('./obligation-sources').publishMicrosoftTasks({
+      planner: msPlanner,
+      todo: todoOk ? msTodo : null,
+      complete: msComplete && plannerOk && todoOk,
+    });
+  }
+
   if (!plannerOk && !todoOk) {
     console.warn('[Sync] Microsoft Tasks NOT written — Graph returned nothing (auth expired?). Keeping existing file.');
     return { ok: false, skipped: true, reason: 'graph-unavailable' };

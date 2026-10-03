@@ -168,6 +168,19 @@ const RULES = {
     say: o => ({ title: 'SAiM', body: o.text }),
   },
 
+  // Build 4D — SHADOW ONLY, exactly like meeting-context. The commitment-risk
+  // evaluator asks what the policy WOULD do and records it; deliver() never
+  // offers a commitment-risk observation, so this rule cannot win a push.
+  // Not off duty (a promise due tomorrow is a thing to act on in working
+  // hours, never a reason to reach for the phone at 21:00). Low urgency: the
+  // finding's own `level` travels with it, and deciding whether a level earns
+  // more is the live-mode decision this shadow record exists to inform.
+  'commitment-risk': {
+    when: m => m.onDuty,
+    urgency: 'low',
+    say: o => ({ title: 'SAiM', body: o.text }),
+  },
+
   'health-signal': {
     // The one worth interrupting for on its own merits, and the only one allowed
     // during a focus session. Still never in a meeting.

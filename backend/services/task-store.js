@@ -195,6 +195,10 @@ let exportTimer = null;
 
 function scheduleExport(delayMs = 3000) {
   revision++;
+  // Build 4B: every task write is also a change the world model should see.
+  // Debounced and never allowed to fail the write; the durable reconcile job
+  // is the backstop for anything that writes the table without coming here.
+  try { require('./obligation-sources').schedulePublish('tasks'); } catch { /* the reconcile catches it */ }
   if (exportTimer) return;
   exportTimer = setTimeout(() => {
     exportTimer = null;

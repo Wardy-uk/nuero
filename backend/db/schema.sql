@@ -1708,6 +1708,183 @@ CREATE TABLE IF NOT EXISTS wm_meeting_participants (
 );
 CREATE INDEX IF NOT EXISTS idx_wm_participants_person ON wm_meeting_participants(person_id);
 
+-- ── The world model: Tasks and Commitments (Build 4B, 3 Oct 2026) ───────────
+-- Owned by the `world-model` projector (the SAME consumer as people and
+-- meetings, so identity resolution sees exactly the people that existed at
+-- that point in the log) and rebuildable entirely from event_log:
+-- observation.task.observed / .removed, observation.commitment.observed.
+--
+-- TASK = something to be done (any store). COMMITMENT = an obligation one
+-- person made to another or to a group. A WAITING-FOR is a commitment whose
+-- promisor is not Nick — a direction, not a third table. A task that a
+-- commitment is realised by is LINKED to it, never merged into it: "buy dog
+-- food" is a task and nobody is waiting on it.
+
+-- One row per real-world task. `task_id` is the canonical id of the record
+-- that LEADS (NEURO's own row when a Microsoft task is linked to one by ms_id;
+-- otherwise the source's own id). Every source record lives in wm_task_sources.
+CREATE TABLE IF NOT EXISTS wm_tasks (
+  task_id             TEXT PRIMARY KEY,      -- task:neuro:<id> | task:ms-planner:<id> | task:ms-todo:<id>
+  title               TEXT NOT NULL,
+  title_key           TEXT,                  -- normalised title: the possible-same rule (never a merge)
+  status              TEXT NOT NULL,         -- open | completed | cancelled | unknown
+  raw_status          TEXT,                  -- the leading source's own word (in-progress, notStarted…)
+  completion_authority TEXT,                 -- which source closed it (neuro | microsoft-planner | …)
+  moscow              TEXT,
+  priority            TEXT,
+  due_date            TEXT,                  -- YYYY-MM-DD, as the source holds it
+  due_basis           TEXT,                  -- stated | default | set | none (INFERENCE, see world-obligations)
+  owner_person_id     TEXT,
+  owner_raw           TEXT,
+  owner_method        TEXT,                  -- store-owner | source-query-scope | assignee | NULL
+  origin_kind         TEXT,                  -- meeting | email | jira | vantage | management-log | capture | microsoft | other
+  origin_path         TEXT,
+  origin_line         INTEGER,
+  meeting_json        TEXT,                  -- the write-up → calendar occurrence link, as the producer judged it
+  meeting_id          TEXT,                  -- graph:<occurrence id> when the link held
+  meeting_series_key  TEXT,                  -- normalised subject, for "the next one"
+  household           INTEGER NOT NULL DEFAULT 0,
+  created_at          TEXT,
+  updated_at          TEXT,
+  completed_at        TEXT,
+  possible_completion_json TEXT,             -- an INFERRED completion elsewhere; never changes status
+  provenance_kind     TEXT NOT NULL,
+  confidence          REAL,
+  observed_at         TEXT NOT NULL,
+  received_at         TEXT NOT NULL,
+  evidence_json       TEXT NOT NULL,
+  fingerprint         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_wm_tasks_status ON wm_tasks(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_wm_tasks_meeting ON wm_tasks(meeting_series_key);
+CREATE INDEX IF NOT EXISTS idx_wm_tasks_title_key ON wm_tasks(title_key);
+
+-- Every source record of a task, with that source's own latest statement.
+-- Completion holds while ANY authoritative source still says complete.
+CREATE TABLE IF NOT EXISTS wm_task_sources (
+  system            TEXT NOT NULL,           -- neuro | ms-planner | ms-todo
+  record_id         TEXT NOT NULL,
+  task_id           TEXT NOT NULL,
+  role              TEXT NOT NULL,           -- leading | synced
+  match_rule        TEXT NOT NULL,           -- own-id | explicit-external-id
+  status            TEXT NOT NULL,           -- open | completed | cancelled | unknown
+  raw_status        TEXT,
+  completed_at      TEXT,
+  fingerprint       TEXT,
+  removed           INTEGER NOT NULL DEFAULT 0,
+  payload_json      TEXT NOT NULL,
+  observed_at       TEXT NOT NULL,
+  evidence_event_id TEXT NOT NULL,
+  PRIMARY KEY (system, record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_wm_task_sources_task ON wm_task_sources(task_id);
+
+CREATE TABLE IF NOT EXISTS wm_commitments (
+  commitment_id        TEXT PRIMARY KEY,     -- commitment:task:<neuro id> | commitment:waiting:<hash>
+  description          TEXT NOT NULL,
+  direction            TEXT NOT NULL,        -- by-nick | to-nick | unknown
+  promisor_person_id   TEXT,
+  promisor_raw         TEXT,
+  promisor_method      TEXT,                 -- named-in-text | accepted-into-task-list | exact-name | exact-alias | unique-first-name | NULL
+  promisor_confidence  REAL,
+  promisor_why         TEXT,                 -- why it is unresolved, when it is
+  beneficiary_kind     TEXT NOT NULL,        -- person | meeting | unknown
+  beneficiary_person_id TEXT,
+  beneficiary_raw      TEXT,
+  beneficiary_method   TEXT,
+  waiting_party        TEXT,                 -- person:nick-ward for a waiting-for, as the source classified it
+  status               TEXT NOT NULL,        -- open | completed | cancelled | superseded | unknown
+  raw_status           TEXT,
+  completion_authority TEXT,
+  due_date             TEXT,
+  due_basis            TEXT,
+  source_kind          TEXT NOT NULL,        -- meeting-task | meeting-waiting-on
+  source_ref           TEXT NOT NULL,        -- the record it was read from
+  source_path          TEXT,
+  source_line          INTEGER,
+  source_date          TEXT,
+  meeting_json         TEXT,
+  meeting_id           TEXT,
+  meeting_series_key   TEXT,
+  related_task_id      TEXT,
+  created_at           TEXT,
+  updated_at           TEXT,
+  completed_at         TEXT,
+  last_progress_at     TEXT,                 -- the newest evidence the record moved (store update / re-sighting)
+  provenance_kind      TEXT NOT NULL,
+  confidence           REAL,
+  observed_at          TEXT NOT NULL,
+  received_at          TEXT NOT NULL,
+  evidence_json        TEXT NOT NULL,
+  fingerprint          TEXT,
+  payload_json         TEXT                  -- the observation the fold last applied (waiting-on); re-resolved on a person change
+);
+CREATE INDEX IF NOT EXISTS idx_wm_commitments_status ON wm_commitments(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_wm_commitments_series ON wm_commitments(meeting_series_key, status);
+CREATE INDEX IF NOT EXISTS idx_wm_commitments_promisor ON wm_commitments(promisor_person_id, status);
+
+-- Relationships between obligation records that are NOT merges: a commitment
+-- realised by a task, or two records that look like the same thing by a rule
+-- too weak to merge on (possible-same). Every one names its rule.
+CREATE TABLE IF NOT EXISTS wm_obligation_links (
+  a_id              TEXT NOT NULL,
+  b_id              TEXT NOT NULL,
+  relation          TEXT NOT NULL,           -- realised-by | possible-same
+  rule              TEXT NOT NULL,
+  confidence        REAL,
+  evidence_event_id TEXT NOT NULL,
+  at                TEXT NOT NULL,
+  PRIMARY KEY (a_id, b_id, relation)
+);
+
+-- Every state transition, with what said so: the audit trail behind "why is
+-- this closed?".
+CREATE TABLE IF NOT EXISTS wm_obligation_history (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_id         TEXT NOT NULL,
+  change            TEXT NOT NULL,           -- created | completed | cancelled | reopened | unknown | owner-linked | owner-unlinked | due-changed
+  from_value        TEXT,
+  to_value          TEXT,
+  authority         TEXT,
+  evidence_event_id TEXT NOT NULL,
+  at                TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wm_obligation_history_entity ON wm_obligation_history(entity_id, id);
+
+-- Build 4D: the commitment-at-risk evaluator's findings. Outside the event log
+-- like meeting_context_findings: a clock-driven judgement over the projection.
+-- One row per (commitment, episode). SHADOW only — the attention verdict is
+-- recorded, never sent.
+CREATE TABLE IF NOT EXISTS commitment_risk_findings (
+  finding_id            TEXT PRIMARY KEY,    -- commitment-risk:<commitment id>:<episode>
+  commitment_id         TEXT NOT NULL,
+  episode               INTEGER NOT NULL,
+  status                TEXT NOT NULL,       -- active | resolved
+  level                 TEXT NOT NULL,       -- elevated | high
+  triggers_json         TEXT NOT NULL,
+  summary               TEXT NOT NULL,
+  why                   TEXT NOT NULL,
+  evidence_json         TEXT NOT NULL,
+  unavailable_json      TEXT NOT NULL,
+  checked_json          TEXT NOT NULL,
+  confidence            REAL,
+  due_context           TEXT,
+  related_meeting_json  TEXT,
+  recommended_at        TEXT,
+  evidence_fingerprint  TEXT,
+  novelty               TEXT NOT NULL,       -- new | repeated | escalated
+  first_created_at      TEXT NOT NULL,
+  updated_at            TEXT NOT NULL,
+  resolved_at           TEXT,
+  resolution            TEXT,
+  attention_mode        TEXT,
+  attention_decided_at  TEXT,
+  attention_level       TEXT,                -- the level the recorded verdict was asked at
+  attention_json        TEXT,
+  decisions             INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_commitment_risk_status ON commitment_risk_findings(status, commitment_id);
+
 -- Build 3D: the meeting-context evaluator's findings. Outside the event log on
 -- purpose (like source_blind_attention): it is a clock-driven judgement over
 -- several stores. Each row names its evidence (task ids, waiting-on keys,

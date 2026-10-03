@@ -1456,6 +1456,61 @@
     "stream": false
   },
   {
+    "id": "get_events_world_commitment_risk",
+    "method": "GET",
+    "route": "/api/events/world/commitment-risk",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 162,
+    "description": "GET /api/events/world/commitment-risk. SHADOW commitment-at-risk findings: promises (Nick's, and what others owe him) that are about to matter and still look open — a stated deadline today/tomorrow or recently passed, or the next occurrence of the meeting they came from within 24h — with evidence, w",
+    "params": [],
+    "query": [
+      "status"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_events_world_commitments",
+    "method": "GET",
+    "route": "/api/events/world/commitments",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 121,
+    "description": "GET /api/events/world/commitments. Build 4 world-model commitments (promises, waiting-for, owed, obligations): who promised what to whom, from which meeting write-up or task, open or closed and by what authority, with the promisor resolved to a person only on an exact name. direction by-nick = Nick'",
+    "params": [],
+    "query": [
+      "direction",
+      "status"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_events_world_meeting_commitments",
+    "method": "GET",
+    "route": "/api/events/world/meeting-commitments",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 133,
+    "description": "GET /api/events/world/meeting-commitments. what came out of the last <meeting>: the commitments from the newest written-up occurrence of a recurring meeting, which are still open, who owns each, and which are due before the next occurrence. ?title=Tech Leadership",
+    "params": [],
+    "query": [
+      "title"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_events_world_meeting_context",
     "method": "GET",
     "route": "/api/events/world/meeting-context",
@@ -1490,6 +1545,22 @@
     "stream": false
   },
   {
+    "id": "get_events_world_obligations",
+    "method": "GET",
+    "route": "/api/events/world/obligations",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 173,
+    "description": "GET /api/events/world/obligations. counts across the Build 4 task and commitment projections: tasks by status, sources by system, commitments by direction/status/kind, how promisors were resolved, how many are linked to a meeting, and the relationship links (synced, realised-by, possible-same)",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_events_world_people",
     "method": "GET",
     "route": "/api/events/world/people",
@@ -1499,6 +1570,24 @@
     "description": "GET /api/events/world/people. people known to the world model (declared in People notes): names, email addresses, explicitly stated role/team/relationship, provenance; plus any address two notes both claim",
     "params": [],
     "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_events_world_tasks",
+    "method": "GET",
+    "route": "/api/events/world/tasks",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 110,
+    "description": "GET /api/events/world/tasks. Build 4 world-model tasks (obligation, todo, task): every task NEURO knows from its own task list and Microsoft Planner / To Do, one row per real task (a Microsoft task linked to a NEURO task by its id is one task, with both sources), status with which source closed it, ",
+    "params": [],
+    "query": [
+      "status"
+    ],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,

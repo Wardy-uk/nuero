@@ -106,4 +106,76 @@ router.get('/world/meeting-context', (req, res) => {
   }
 });
 
+// GET /api/events/world/tasks — Build 4 world-model tasks (obligation, todo, task): every task NEURO knows from its own task list and Microsoft Planner / To Do, one row per real task (a Microsoft task linked to a NEURO task by its id is one task, with both sources), status with which source closed it, due date and whether the date was stated or a placeholder, owner, meeting link and provenance. ?status=open|completed|cancelled|unknown|all
+router.get('/world/tasks', (req, res) => {
+  try {
+    const wo = require('../services/world-obligations');
+    const status = ['open', 'completed', 'cancelled', 'unknown', 'all'].includes(req.query.status) ? req.query.status : 'open';
+    res.json({ ok: true, status, tasks: wo.listTasks({ status, limit: 500 }) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/world/commitments — Build 4 world-model commitments (promises, waiting-for, owed, obligations): who promised what to whom, from which meeting write-up or task, open or closed and by what authority, with the promisor resolved to a person only on an exact name. direction by-nick = Nick's promises; to-nick = what others owe him. ?status=open|completed|cancelled|superseded|unknown|all&direction=by-nick|to-nick
+router.get('/world/commitments', (req, res) => {
+  try {
+    const wo = require('../services/world-obligations');
+    const status = ['open', 'completed', 'cancelled', 'superseded', 'unknown', 'all'].includes(req.query.status) ? req.query.status : 'open';
+    const direction = ['by-nick', 'to-nick'].includes(req.query.direction) ? req.query.direction : null;
+    res.json({ ok: true, status, direction, commitments: wo.listCommitments({ status, direction, limit: 1000 }) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/world/meeting-commitments — what came out of the last <meeting>: the commitments from the newest written-up occurrence of a recurring meeting, which are still open, who owns each, and which are due before the next occurrence. ?title=Tech Leadership
+router.get('/world/meeting-commitments', (req, res) => {
+  try {
+    const title = String(req.query.title || '').trim();
+    if (!title) return res.status(400).json({ ok: false, error: 'title is required (the meeting title, e.g. Tech Leadership)' });
+    const wm = require('../services/world-model');
+    const wo = require('../services/world-obligations');
+    const nowLocal = wm.localMinute(Date.now());
+    const prev = wo.fromPreviousOccurrence(title, { beforeLocal: nowLocal });
+    const next = wm.nextMeetings({ limit: 200 }).find((m) => m.title.trim().toLowerCase().replace(/\s+/g, ' ') === title.toLowerCase().replace(/\s+/g, ' ')) || null;
+    const nextDay = next ? next.start.slice(0, 10) : null;
+    const commitments = prev.commitments.map((c) => ({
+      ...c,
+      dueBeforeNext: nextDay && c.due && c.status === 'open' ? c.due.date <= nextDay : null,
+    }));
+    res.json({
+      ok: true,
+      title,
+      previous: prev.occurrence,
+      next: next ? { meetingId: next.meetingId, start: next.start, kind: next.kind } : null,
+      commitments,
+      open: commitments.filter((c) => c.status === 'open').length,
+      why: prev.occurrence ? null : 'no write-up of an earlier occurrence is linked to the calendar (history kept since 14 Sep 2026)',
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/world/commitment-risk — SHADOW commitment-at-risk findings: promises (Nick's, and what others owe him) that are about to matter and still look open — a stated deadline today/tomorrow or recently passed, or the next occurrence of the meeting they came from within 24h — with evidence, what could not be checked, confidence, level, novelty and what the attention policy would have done. Nothing is ever sent. ?status=active|resolved
+router.get('/world/commitment-risk', (req, res) => {
+  try {
+    const cr = require('../services/commitment-risk');
+    const status = ['active', 'resolved'].includes(req.query.status) ? req.query.status : null;
+    res.json({ ok: true, mode: cr.mode(), findings: cr.findings({ status }) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/world/obligations — counts across the Build 4 task and commitment projections: tasks by status, sources by system, commitments by direction/status/kind, how promisors were resolved, how many are linked to a meeting, and the relationship links (synced, realised-by, possible-same)
+router.get('/world/obligations', (req, res) => {
+  try {
+    res.json({ ok: true, ...require('../services/world-obligations').summary() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;

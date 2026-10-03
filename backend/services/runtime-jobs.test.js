@@ -270,7 +270,8 @@ test('10. the three production jobs register with their audited policies', () =>
   runtime._reset();
   require('./scheduler').registerDurableJobs();
   const j = runtime._jobs;
-  assert.deepEqual([...j.keys()].sort(), ['ambient-pass', 'calendar-sync', 'meeting-context', 'source-staleness', 'world-people-sync']);
+  assert.deepEqual([...j.keys()].sort(), ['ambient-pass', 'calendar-sync', 'capture-drain', 'commitment-risk', 'meeting-context',
+    'ms-tasks-sync', 'source-staleness', 'world-obligations-sync', 'world-people-sync']);
   assert.equal(j.get('calendar-sync').cron, '*/20 * * * *');
   assert.equal(j.get('calendar-sync').maxLagMs, null, 'a late calendar sync is as good as an on-time one');
   assert.equal(j.get('calendar-sync').maxAttempts, 2);
@@ -288,4 +289,10 @@ test('the scheduler wraps every node-cron job with in-process recovery', () => {
   assert.doesNotMatch(src, /cron\.schedule\('\*\/20 \* \* \* \*'/);
   assert.doesNotMatch(src, /cron\.schedule\('\*\/40 \* \* \* \*'/);
   assert.doesNotMatch(src, /checkStaleness\(\)\s*\n\s*\/\/ Build 2B/);
+  // Build 4: the Microsoft Tasks sync and the capture drain moved too.
+  assert.doesNotMatch(src, /cron\.schedule\('15,45 8-18 \* \* 1-5'/);
+  assert.ok(!src.includes("cron.schedule('*/10 * * * *', () => {\n    try {\n      const result = require('./task-capture-drain')"),
+    'the capture drain must not also be on node-cron');
+  // Positive control: the same scan does see the durable definitions.
+  assert.ok(src.includes("name: 'capture-drain'") && src.includes("name: 'ms-tasks-sync'"));
 });

@@ -53,7 +53,11 @@ const db = require('../db/database');
 const bus = require('./event-bus');
 
 const CONSUMER = 'world-model';
-const TYPES = ['observation.person.declared', 'observation.calendar.event_observed', 'observation.calendar.event_removed'];
+const TYPES = ['observation.person.declared', 'observation.calendar.event_observed', 'observation.calendar.event_removed',
+  // Build 4B: tasks and commitments fold in the SAME consumer, so owners resolve
+  // against exactly the people that existed at that point in the log.
+  'observation.task.observed', 'observation.task.removed', 'observation.commitment.observed'];
+const obligations = require('./world-obligations');
 const MAX_EVIDENCE = 10;
 const TIMEZONE = process.env.NEURO_TIMEZONE || 'Europe/London';
 
@@ -273,7 +277,10 @@ function _applyRemoved(ev) {
 
 function applyEvent(ev) {
   switch (ev.type) {
-    case 'observation.person.declared': return _applyPerson(ev);
+    case 'observation.person.declared': _applyPerson(ev); return obligations.relinkPeople(ev);
+    case 'observation.task.observed': return obligations.applyTaskObserved(ev);
+    case 'observation.task.removed': return obligations.applyTaskRemoved(ev);
+    case 'observation.commitment.observed': return obligations.applyCommitmentObserved(ev);
     case 'observation.calendar.event_observed': return _applyObserved(ev);
     case 'observation.calendar.event_removed': return _applyRemoved(ev);
     default: return undefined;
@@ -290,6 +297,7 @@ bus.registerConsumer({
     for (const t of ['wm_people', 'wm_person_identities', 'wm_identity_log', 'wm_meetings', 'wm_meeting_sources', 'wm_meeting_participants']) {
       db.run(`DELETE FROM ${t}`);
     }
+    obligations.reset();
   },
 });
 
