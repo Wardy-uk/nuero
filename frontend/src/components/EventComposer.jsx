@@ -132,6 +132,8 @@ export default function EventComposer({ defaultDate, onCreated, onClose }) {
       .then(r => r.json())
       .then(d => {
         if (!d.ok) throw new Error(d.error || 'Create failed');
+        // Build 11K: with attendees the answer is a PREPARED invite, not an event.
+        if (d.prepared) { setCreated({ subject, prepared: true, notice: d.notice }); return; }
         setCreated(d.event);
         onCreated?.(d.event);
       })
@@ -144,8 +146,9 @@ export default function EventComposer({ defaultDate, onCreated, onClose }) {
       <div className="composer">
         <div className="composer-done">
           <div className="composer-done-title">
-            Created — {created.subject}
-            {attendees.length > 0 && ` · invited ${attendees.length}`}
+            {created.prepared
+              ? <>Prepared, not sent — {created.subject} · {attendees.length} attendee{attendees.length === 1 ? '' : 's'} will be invited only when you approve it in Actions</>
+              : <>Created — {created.subject}</>}
           </div>
           <div className="composer-actions">
             {created.webLink && (

@@ -695,5 +695,5 @@ test('36/37/38. evaluators stay shadow; meeting-prep parity and the executor/rec
   const sched = fs.readFileSync(path.join(__dirname, 'scheduler.js'), 'utf8');
   for (const job of ["name: 'action-executor'", "name: 'meeting-intelligence'", "name: 'commitment-risk'"]) assert.ok(sched.includes(job), job);
   assert.match(fs.readFileSync(path.join(__dirname, 'meeting-prep.js'), 'utf8'), /meeting_prep_comparisons/);
-  assert.deepEqual(registry.executableTypes(), ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report'], 'Build 8: exactly the four outbound email types');
+  assert.deepEqual(registry.executableTypes(), ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report', 'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event'], 'Build 8: the four outbound email types; Build 11K: the three calendar changes');
 });

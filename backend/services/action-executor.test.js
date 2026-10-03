@@ -176,9 +176,10 @@ test('1/4. chase_commitment is A4; the registry is an allow-list (Build 8: the f
   assert.equal(p.executor, 'microsoft.mail');
   assert.equal(p.verification, 'sent-items');
   assert.equal(p.retryPolicy, 'human-review');
-  // Build 8 widened this on purpose: every email NEURO can send, and nothing else.
-  assert.deepEqual(registry.executableTypes(), ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report']);
-  assert.deepEqual(Object.keys(ex.EXECUTORS), ['microsoft.mail']);
+  // Build 8 widened this to every email NEURO can send; Build 11K adds the
+  // three calendar changes other people are told about — and nothing else.
+  assert.deepEqual(registry.executableTypes(), ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report', 'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event']);
+  assert.deepEqual(Object.keys(ex.EXECUTORS), ['microsoft.mail', 'microsoft.calendar']);
   assert.deepEqual(registry.validateRegistry(), []);
   assert.equal(registry.policyFor('respond_meeting'), null, 'a retired legacy type is not in the governed registry');
   assert.equal(registry.policyFor('__proto__'), null, 'no prototype leak through the lookup');
@@ -696,7 +697,7 @@ test('the HTTP route: a machine client cannot approve or edit; Nick approving se
     assert.equal(detail.verifications[0].outcome, 'verified');
     const st = await (await fetch(`${base}/status`)).json();
     assert.equal(st.ok, true);
-    assert.deepEqual(st.executableTypes, ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report']);
+    assert.deepEqual(st.executableTypes, ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report', 'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event']);
   } finally {
     server.close();
     executorModule.execute = realExecute;

@@ -219,13 +219,28 @@ const TOOLS = [
       required: ['subject'],
     },
   },
-  // ⚠ `create_meeting` WAS RETIRED HERE IN BUILD 9. It queued an attendee-
-  //   bearing `schedule_focus_block`, which Build 8 made un-approvable (410:
-  //   invites are outbound and not yet governed) — so every call produced a
-  //   card that could never be approved, and told the model "invites will go
-  //   out once Nick approves", which was false. Until invites are a governed
-  //   type (Build 10), chat books nothing with other people in it. The handler
-  //   below survives only to refuse in words if a stale caller asks.
+  // Build 11K: `create_meeting` is BACK, and only because invites are now a
+  // governed type. It was retired in Build 9 for queueing a card that could
+  // never be approved while telling the model invites "will go out once Nick
+  // approves" — false then. Now it PREPARES a create_calendar_event; Nick
+  // approves it with his code in Actions; only then is anyone invited. The
+  // tool says exactly that, and books nothing itself.
+  {
+    name: 'create_meeting',
+    tier: 'queued',
+    description: 'PREPARE a meeting invitation for Nick to approve. This does NOT invite anyone: it prepares the exact invite (title, time, attendees) in Actions, where Nick approves it with his approval code; only then is it sent and read back. Attendees must resolve to one exact address each — an ambiguous or unknown name is refused, never guessed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'The meeting title attendees will see.' },
+        start: { type: 'string', description: 'Local start, "YYYY-MM-DDTHH:mm".' },
+        minutes: { type: 'integer', description: 'Length in minutes (default 30).' },
+        attendees: { type: 'array', items: { type: 'string' }, description: 'Names or email addresses of the people to invite.' },
+        online: { type: 'boolean', description: 'Add a Teams link (default true).' },
+      },
+      required: ['title', 'start', 'attendees'],
+    },
+  },
   {
     name: 'escalate_ticket',
     tier: 'queued',
@@ -716,14 +731,34 @@ const HANDLERS = {
     };
   },
 
-  // Retired in Build 9 (see the note where its definition used to be). Refuses
-  // in words and queues NOTHING: a queued meeting with attendees can no longer
-  // be approved, so creating one would be a card that exists only to fail.
-  async create_meeting() {
+  // Build 11K: prepares a governed invite. Refuses — in words, preparing
+  // nothing — if any attendee does not resolve to exactly one address.
+  async create_meeting({ title, start, minutes, attendees, online }) {
+    const t = String(title || '').trim();
+    if (!t) return { ok: false, prepared: false, error: 'title is required' };
+    const st = String(start || '').replace(' ', 'T').slice(0, 16);
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(st)) return { ok: false, prepared: false, error: 'start must be "YYYY-MM-DDTHH:mm" (local time)' };
+    const len = Number(minutes) > 0 ? Math.min(Number(minutes), 480) : 30;
+    const ms = Date.UTC(+st.slice(0, 4), +st.slice(5, 7) - 1, +st.slice(8, 10), +st.slice(11, 13), +st.slice(14, 16)) + len * 60000;
+    const end = new Date(ms).toISOString().slice(0, 16);
+    const names = Array.isArray(attendees) ? attendees.map((x) => String(x || '').trim()).filter(Boolean) : [];
+    if (!names.length) return { ok: false, prepared: false, error: 'at least one attendee is required — a block with nobody else in it is not a meeting' };
+    const resolved = await require('./contact-directory').resolveNames(names);
+    const unresolved = resolved.filter((r) => r.status !== 'resolved' || !r.email);
+    if (unresolved.length) {
+      return {
+        ok: false, prepared: false, invited: false,
+        error: `Not prepared — these did not resolve to exactly one address: ${unresolved.map((r) => `${r.query} (${r.status}${r.candidates && r.candidates.length ? `: ${r.candidates.map((c) => c.name || c.email).slice(0, 3).join(', ')}` : ''})`).join('; ')}. Ask Nick which person he means, or for their address. Nobody was invited.`,
+      };
+    }
+    const r = require('./prepared-actions').prepareCalendarCreate({
+      title: t, start: st, end, attendees: resolved.map((x) => ({ email: x.email, name: x.name || null })),
+      isOnline: online !== false, origin: 'chat',
+    });
+    if (!r.ok) return { ok: false, prepared: false, invited: false, error: r.error };
     return {
-      ok: false,
-      booked: false,
-      error: "Setting up meetings with other people from chat is switched off: calendar invites are being moved behind the governed approval path, and until then nothing here can send one. Nothing was queued and nobody was invited. Nick can book it himself from Calendar in NEURO.",
+      ok: true, prepared: true, invited: false, action_id: r.action.actionId, already: !!r.already,
+      note: 'PREPARED, NOT SENT. Nobody has been invited. Nick must approve it in Actions (with his approval code); only then does NEURO send the invite and read it back from the calendar. Do not tell him it is booked.',
     };
   },
 };

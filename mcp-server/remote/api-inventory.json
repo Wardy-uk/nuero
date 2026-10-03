@@ -645,7 +645,7 @@
     "route": "/api/apple/status",
     "domain": "apple",
     "source": "routes/apple.js",
-    "line": 51,
+    "line": 53,
     "description": "GET /api/apple/status.",
     "params": [],
     "query": [],
@@ -812,7 +812,7 @@
     "route": "/api/calendar/agenda-check",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 114,
+    "line": 129,
     "description": "GET /api/calendar/agenda-check. what would be chased, and why each one was",
     "params": [],
     "query": [
@@ -836,6 +836,22 @@
     "query": [
       "q"
     ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_canonical_classifications",
+    "method": "GET",
+    "route": "/api/canonical/classifications",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 87,
+    "description": "GET /api/canonical/classifications. every calendar and reminder list the sources have shown, with what Nick classified each as (life domains, tracked), how it is keyed (id or title) and whether its title is ambiguous.",
+    "params": [],
+    "query": [],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -920,8 +936,8 @@
     "route": "/api/canonical/goals",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 76,
-    "description": "GET /api/canonical/goals. Nick's explicitly stored goals and intentions. Never inferred. Query: status=active|paused|done|dropped|all.",
+    "line": 106,
+    "description": "GET /api/canonical/goals. Nick's explicitly stored goals and intentions, with importance, dates and explicit links. Never inferred. Query: status=active|paused|achieved|dropped|all.",
     "params": [],
     "query": [
       "status"
@@ -976,6 +992,26 @@
     "description": "GET /api/canonical/sources. what NEURO can see, from SourceHealth only: each source's transport, freshness, lifecycle (expected/optional/retired), blindness finding, and one verdict (seeing/quiet/stale/failing/unknown/retired); plus runtime jobs.",
     "params": [],
     "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_canonical_tasks",
+    "method": "GET",
+    "route": "/api/canonical/tasks",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 76,
+    "description": "GET /api/canonical/tasks. tasks from the world model (NEURO, Microsoft, Apple Reminders) with due context, life domains (a reminder takes its list's classification) and personal importance. Query: system, domain, status.",
+    "params": [],
+    "query": [
+      "domain",
+      "status",
+      "system"
+    ],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -1236,7 +1272,7 @@
     "route": "/api/desktop/activity",
     "domain": "desktop",
     "source": "routes/desktop.js",
-    "line": 58,
+    "line": 60,
     "description": "GET /api/desktop/activity. the current read. Read-only, nothing notifies.",
     "params": [],
     "query": [],
@@ -1252,7 +1288,7 @@
     "route": "/api/desktop/daily",
     "domain": "desktop",
     "source": "routes/desktop.js",
-    "line": 85,
+    "line": 87,
     "description": "GET /api/desktop/daily. ?days=30 — the kept history, newest first, one row per",
     "params": [],
     "query": [
@@ -1272,7 +1308,7 @@
     "route": "/api/desktop/intents/:id",
     "domain": "desktop",
     "source": "routes/desktop.js",
-    "line": 199,
+    "line": 201,
     "description": "GET /api/desktop/intents/:id. what happened to it. `waiting` / `claimed` /",
     "params": [
       "id"
@@ -3254,7 +3290,7 @@
     "route": "/api/prepared-actions/:id",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 84,
+    "line": 85,
     "description": "GET /api/prepared-actions/:id. one prepared action with its evidence, exact draft, payloadHash, approval and its provenance, decision history, execution attempts and Sent Items verifications",
     "params": [
       "id"
@@ -3272,7 +3308,7 @@
     "route": "/api/prepared-actions/status",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 75,
+    "line": 76,
     "description": "GET /api/prepared-actions/status. the execution ledger at a glance (action ledger, execution status, stuck actions, uncertain sends, verification): counts by status, anything stuck, anything failed or uncertain that needs review, attempts made, sends requested",
     "params": [],
     "query": [],
@@ -5732,7 +5768,7 @@
     "route": "/api/calendar/agenda-check",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 125,
+    "line": 140,
     "description": "POST /api/calendar/agenda-check. queue chasers for approval. Queues only:",
     "params": [],
     "query": [],
@@ -5750,8 +5786,8 @@
     "route": "/api/calendar/events",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 46,
-    "description": "POST /api/calendar/events. create the event. Sends invites, so it only ever",
+    "line": 45,
+    "description": "POST /api/calendar/events. create an event. With nobody else in it, it is created in Nick's own diary at once. With attendees it is PREPARED as a governed invite (create_calendar_event): nothing is sent until Nick approves it with his approval code in Actions.",
     "params": [],
     "query": [],
     "body": [
@@ -5776,7 +5812,7 @@
     "route": "/api/calendar/events/:id/respond",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 142,
+    "line": 157,
     "description": "POST /api/calendar/events/:id/respond. RETIRED in Build 8 (answers 410 Gone, meeting response, decline, accept). Respond to meeting invites in Outlook.",
     "params": [
       "id"
@@ -5813,8 +5849,8 @@
     "route": "/api/canonical/annotations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 104,
-    "description": "POST /api/canonical/annotations. Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (work-critical|personally-important|restorative|optional, null clears). Omitted fields are left alone.",
+    "line": 137,
+    "description": "POST /api/canonical/annotations. Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.",
     "params": [],
     "query": [],
     "body": [
@@ -5828,18 +5864,45 @@
     "stream": false
   },
   {
+    "id": "post_canonical_classifications",
+    "method": "POST",
+    "route": "/api/canonical/classifications",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 95,
+    "description": "POST /api/canonical/classifications. Nick classifies a calendar or reminder list (life domains, and for a list whether it is tracked). Keywords: classify calendar, reminder list domain. Body: kind, sourceKey, domains, tracked, label.",
+    "params": [],
+    "query": [],
+    "body": [
+      "domains",
+      "kind",
+      "label",
+      "sourceKey",
+      "tracked"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_canonical_goals",
     "method": "POST",
     "route": "/api/canonical/goals",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 84,
-    "description": "POST /api/canonical/goals. store a goal or intention Nick states (hike more, finish the degree). Body: title, domains, note. Creates nothing else: no task, no nudge.",
+    "line": 115,
+    "description": "POST /api/canonical/goals. store a goal or intention Nick states (hike more, finish the degree). Body: title, description, domains, importance, startDate, reviewDate, links. Creates nothing else: no task, no nudge.",
     "params": [],
     "query": [],
     "body": [
+      "description",
       "domains",
+      "importance",
+      "links",
       "note",
+      "reviewDate",
+      "startDate",
       "title"
     ],
     "queryOpen": false,
@@ -5853,15 +5916,21 @@
     "route": "/api/canonical/goals/:id",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 94,
-    "description": "POST /api/canonical/goals/:id. update a stored goal: title, domains, note, status (active|paused|done|dropped).",
+    "line": 126,
+    "description": "POST /api/canonical/goals/:id. update a stored goal: title, description, domains, importance, status (active|paused|achieved|dropped), startDate, reviewDate, links (replaces), reviewed (stamps last reviewed).",
     "params": [
       "id"
     ],
     "query": [],
     "body": [
+      "description",
       "domains",
+      "importance",
+      "links",
       "note",
+      "reviewDate",
+      "reviewed",
+      "startDate",
       "status",
       "title"
     ],
@@ -6219,7 +6288,7 @@
     "route": "/api/desktop/daily/sync",
     "domain": "desktop",
     "source": "routes/desktop.js",
-    "line": 106,
+    "line": 108,
     "description": "POST /api/desktop/daily/sync. roll the live buffer now. The hourly job does",
     "params": [],
     "query": [],
@@ -6235,7 +6304,7 @@
     "route": "/api/desktop/intents",
     "domain": "desktop",
     "source": "routes/desktop.js",
-    "line": 161,
+    "line": 163,
     "description": "POST /api/desktop/intents.  { app, host? } — ask for something to be opened.",
     "params": [],
     "query": [],
@@ -6255,7 +6324,7 @@
     "route": "/api/desktop/intents/:id/done",
     "domain": "desktop",
     "source": "routes/desktop.js",
-    "line": 209,
+    "line": 211,
     "description": "POST /api/desktop/intents/:id/done.  { ok, detail } — the agent reporting back,",
     "params": [
       "id"
@@ -6276,7 +6345,7 @@
     "route": "/api/desktop/intents/claim",
     "domain": "desktop",
     "source": "routes/desktop.js",
-    "line": 145,
+    "line": 147,
     "description": "POST /api/desktop/intents/claim.",
     "params": [],
     "query": [],
@@ -7933,7 +8002,7 @@
     "route": "/api/prepared-actions/:id/approval-challenge",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 95,
+    "line": 96,
     "description": "POST /api/prepared-actions/:id/approval-challenge. step 1 of Nick approving a drafted action in NEURO: a single-use, five-minute challenge bound to this action's exact version and payload hash. Useless without Nick's approval code. Refuses machine clients, and refuses an executable type while sendin",
     "params": [
       "id"
@@ -7951,7 +8020,7 @@
     "route": "/api/prepared-actions/:id/approve",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 113,
+    "line": 115,
     "description": "POST /api/prepared-actions/:id/approve. step 2: Nick approves the EXACT draft he was shown, with the challenge from step 1 and his approval code. For chase_commitment this SENDS the email as Nick and then verifies it in Sent Items; other types record the approval only. Refuses machine clients; a PIN",
     "params": [
       "id"
@@ -7974,7 +8043,7 @@
     "route": "/api/prepared-actions/:id/edit",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 160,
+    "line": 162,
     "description": "POST /api/prepared-actions/:id/edit. Nick edits a prepared draft's subject or body (edit draft, change wording, resend after a proven failure). Creates a NEW version that needs its own approval; the old one is superseded and never changed. The recipient cannot be edited. Refuses machine clients. Bod",
     "params": [
       "id"
@@ -7996,7 +8065,7 @@
     "route": "/api/prepared-actions/:id/reject",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 147,
+    "line": 149,
     "description": "POST /api/prepared-actions/:id/reject. Nick rejects a prepared action (reject draft); kept for audit with who rejected it, and NEURO will not prepare another for the same risk episode. Refuses machine clients. Body: { note? }",
     "params": [
       "id"

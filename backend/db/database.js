@@ -470,6 +470,10 @@ async function init() {
   // sends recorded as unverified, and any pending legacy outbound superseded.
   // Not swallowed, for the same reason as the two above.
   require('./migrate-build8-actions').migrate(db);
+  // Build 11 — personal world model columns, and duplicate identity for the
+  // governed calendar actions. Not swallowed: its indexes are the database
+  // half of "one live invite per meeting".
+  require('./migrate-build11').migrate(db);
 
   // health_daily: blood pressure and heart rate.
   //

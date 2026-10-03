@@ -376,16 +376,19 @@ function BookAllDialog({ names, onClose, onBooked }) {
 
         {result ? (
           <div className="book-dialog-body">
-            <div className={result.booked ? 'book-ok' : 'book-error'}>
-              {result.booked} booked{result.invited ? `, ${result.invited} invite${result.invited === 1 ? '' : 's'} sent` : ''}
-              {result.failed ? ` · ${result.failed} failed` : ''}
+            <div className={result.prepared ? 'book-ok' : 'book-error'}>
+              {result.prepared || 0} invite{result.prepared === 1 ? '' : 's'} prepared — not sent
+              {result.failed ? ` · ${result.failed} not prepared` : ''}
             </div>
+            {/* Build 11K: an invite is a governed calendar action. Nothing is in
+                anyone's diary until Nick approves it in Actions. */}
+            {result.prepared > 0 && <div className="book-note">Approve them in Actions with your approval code; NEURO then sends each invite and reads it back.</div>}
             <ul className="book-results">
               {(result.results || []).map((r, i) => (
                 <li key={i} className={r.ok ? 'ok' : 'bad'}>
                   <span className="book-results-name">{r.person}</span>
                   {r.ok
-                    ? <span>{formatDate(r.start?.split('T')[0])} {r.start ? hhmm(r.start) : ''}{r.invited ? '' : ' — no invite'}</span>
+                    ? <span>{formatDate(r.start?.split('T')[0])} {r.start ? hhmm(r.start) : ''} — prepared, awaiting approval</span>
                     : <span>{r.error}</span>}
                 </li>
               ))}
@@ -513,9 +516,9 @@ function BookDialog({ name, onClose, onBooked }) {
     setBooking(false);
   };
 
-  // The booked-confirmation reads back from the response, not the proposal —
-  // Nick may have overridden the slot before confirming.
-  const bookedTime = booked?.event?.start?.split('T')[1]?.slice(0, 5) || slot?.time || '';
+  // Build 11K: the response is a PREPARED invite, not a booking — the slot
+  // shown is the one Nick chose, and the words say nothing has been sent.
+  const bookedTime = slot?.time || '';
 
   return (
     <div className="note-editor-overlay" onClick={onClose}>
@@ -528,9 +531,9 @@ function BookDialog({ name, onClose, onBooked }) {
         {booked ? (
           <div className="book-dialog-body">
             <div className="book-ok">
-              Booked for {formatDate(booked.event?.start?.split('T')[0])} at {bookedTime}.
-              {booked.invited ? ' Invite sent.' : ' No invite — no email address resolved.'}
+              Invite prepared for {formatDate(slot?.date)} at {bookedTime} — not sent.
             </div>
+            <div className="book-note">{booked.notice || 'Approve it in Actions with your approval code; NEURO then sends the invite and reads it back.'}</div>
             <div className="book-actions">
               <button className="btn btn-primary" onClick={onClose}>Done</button>
             </div>
@@ -651,9 +654,9 @@ function RescheduleDialog({ name, onClose, onMoved }) {
         {moved ? (
           <div className="book-dialog-body">
             <div className="book-ok">
-              Moved to {formatDate(moved.event?.start?.split('T')[0])} at{' '}
-              {moved.event?.start?.split('T')[1]?.slice(0, 5)}. {first} has been sent an update.
+              Move to {formatDate(slot?.date)} at {slot?.time} prepared — not sent. {first} is told only once you approve it.
             </div>
+            <div className="book-note">{moved.notice || 'Approve it in Actions with your approval code.'}</div>
             {moved.moveCount >= 3 && (
               <div className="book-warning">
                 That's {moved.moveCount} moves for this 1-2-1.

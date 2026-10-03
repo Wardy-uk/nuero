@@ -405,66 +405,71 @@ async function findClash(start, end) {
 }
 
 /**
- * Create the event. Only ever called after Nick has seen the proposal.
+ * PREPARE the invite (Build 11K). Only ever called after Nick has seen the
+ * proposal — and it still invites nobody: Graph emails a real invite to a
+ * real direct report, so the booking is a governed `create_calendar_event`
+ * that Nick approves with his approval code in Actions. The stamps that used
+ * to follow the create (1-2-1-booked, NOVA's session) now run when the invite
+ * has actually been made — afterGovernedCalendar() — never on a request.
+ *
+ * A 1-2-1 with no resolved address is refused: an invite to nobody is not a
+ * 1-2-1, and a block in Nick's own diary is not what "Book" means.
  */
 async function book({ person, start, end, email, subject, durationMinutes, skipClashCheck = false }) {
   if (!person || !start || !end) return { ok: false, error: 'person, start and end are required' };
+  if (!email) return { ok: false, error: `No address for ${person} — add their email to their People note, then book again. Nothing was prepared.` };
 
   // A hand-picked date/time bypasses the planner, so re-check the one rule that
-  // matters most here: never onto an existing meeting. Cheap, and it turns a
-  // silent double-booking into a message Nick can act on.
+  // matters most here: never onto an existing meeting.
   if (!skipClashCheck) {
     const clash = await findClash(start, end);
     if (clash) return { ok: false, error: `That slot clashes with "${clash}"` };
   }
 
-  const microsoft = require('./microsoft');
-  const result = await microsoft.createCalendarEvent({
-    subject: subject || `1-2-1 — Nick / ${person.split(' ')[0]}`,
-    start,
-    end,
-    attendees: email ? [email] : [],
+  const r = require('./prepared-actions').prepareCalendarCreate({
+    title: subject || `1-2-1 — Nick / ${person.split(' ')[0]}`,
+    start, end,
+    attendees: [{ email, name: person }],
     isOnline: true,
-    body: `Regular 1-2-1. Booked from NEURO.`,
+    body: 'Regular 1-2-1. Booked from NEURO.',
+    origin: '1to1-book',
+    context: { person, durationMinutes: durationMinutes || DEFAULT_DURATION_MIN },
   });
-
-  if (!result.created) {
-    return { ok: false, error: `Calendar create failed: ${result.reason}`, detail: result.detail || null };
-  }
-
-  // Record WHAT IS IN THE DIARY, in its own field. This used to write the
-  // booked date into `next-1-2-1-due`, but the detector writes that field as
-  // "when the next one is OWED" (last held + cadence) and both readers — the
-  // nudge and the Team board — read it that way. So every booking stamped a
-  // reminder to make the booking that had just been made, and turned into
-  // "these need booking now" the day after the meeting.
-  //
-  // `last-1-2-1` is still NOT touched — that only moves when a note proves the
-  // meeting actually happened, which is the whole point of the detector. A
-  // booked date that passes with no note reads as `unwritten`, not as held.
-  try {
-    require('./obsidian').updatePersonNote(person, { booked121: start.split('T')[0] });
-  } catch (e) {
-    console.warn('[1-2-1] Could not stamp 1-2-1-booked:', e.message);
-  }
-
-  // NOVA preps the 1-2-1 the day before, but only for a session it holds. Pushed after
-  // the event and the stamp so a NOVA outage can never cost us the booking itself; the
-  // morning reconciliation sweep re-sends anything that fails here.
-  const novaPush = await require('./nova-121-sync').pushBooking(person, start.split('T')[0], {
-    outlookEventId: result.event?.id || null,
-  });
-
+  if (!r.ok) return { ok: false, error: r.error };
   return {
     ok: true,
+    prepared: true,
+    already: !!r.already,
     person,
-    event: result.event,
-    invited: Boolean(email),
+    actionId: r.action.actionId,
+    status: r.action.status,
+    invited: false,
     durationMinutes: durationMinutes || DEFAULT_DURATION_MIN,
-    // Surfaced rather than swallowed: a booking NOVA never heard about is a 1-2-1 with
-    // no prep, and the caller is the only one still in a position to say so out loud.
-    novaSynced: novaPush.ok,
+    notice: 'Prepared, not sent: approve the invite in Actions (with your approval code) and NEURO sends it, then reads it back.',
   };
+}
+
+/**
+ * What a governed calendar change leaves behind, once it has actually HAPPENED
+ * (called by the executor on `executed`, and again — a no-op — on `verified`).
+ * Never allowed to fail: the change already went to other people.
+ */
+function afterGovernedCalendar(a) {
+  const t = (a && a.target) || {};
+  const person = t.person;
+  if (!person || !(a.origin === '1to1-book' || a.origin === '1to1-move')) return;
+  const start = (a.draft && a.draft.start) || '';
+  try { require('./obsidian').updatePersonNote(person, { booked121: start.slice(0, 10) }); }
+  catch (e) { console.warn('[1-2-1] Could not stamp 1-2-1-booked:', e.message); }
+  if (a.origin === '1to1-move') {
+    try { recordMove(person, { from: t.fromStart || null, to: start, reason: (a.evidence && a.evidence.context && a.evidence.context.reason) || null }); }
+    catch (e) { console.warn('[1-2-1] Could not record the move:', e.message); }
+  }
+  // NOVA preps the day before, for a session it holds. Fire and forget: the
+  // morning reconciliation re-sends anything that fails here.
+  Promise.resolve()
+    .then(() => require('./nova-121-sync').pushBooking(person, start.slice(0, 10), { outlookEventId: t.eventId || null }))
+    .catch((e) => console.warn('[1-2-1] NOVA push after the governed change failed:', e.message));
 }
 
 // ── Rescheduling ────────────────────────────────────────────────────────────
@@ -574,6 +579,7 @@ async function findOneToOne(name, { from = new Date(), days = SEARCH_DAYS } = {}
       end: event.end,
       date: event.date,
       attendees: event.attendees || [],
+      isOrganizer: typeof event.isOrganizer === 'boolean' ? event.isOrganizer : null,
     },
     addressable: isRealEventId(event.id),
     alsoFound: candidates.length - 1,
@@ -662,48 +668,37 @@ async function reschedule({ person, eventId, start, end, reason = null, skipClas
     return { ok: false, error: 'That event id cannot address a real calendar event' };
   }
 
-  // Re-check right before writing: the proposal may have sat on screen a while.
-  // The event being moved is excluded, or it always clashes with itself.
+  // Re-check right before preparing: the proposal may have sat on screen a while.
   if (!skipClashCheck) {
     const clash = await findClashExcluding(start, end, eventId);
     if (clash) return { ok: false, error: `That slot clashes with "${clash}"` };
   }
 
-  let previousStart = null;
-  try {
-    const found = await findOneToOne(person);
-    if (found.ok && found.event.id === eventId) previousStart = found.event.start;
-  } catch { /* best effort — the move matters more than the audit line */ }
-
-  const microsoft = require('./microsoft');
-  const result = await microsoft.updateCalendarEvent(eventId, { start, end });
-  if (!result.updated) {
-    return { ok: false, error: `Calendar update failed: ${result.reason}`, detail: result.detail || null };
+  // The event as it is NOW — time and attendees — is bound into the approval;
+  // the executor refuses if any of it changes before Nick approves.
+  const found = await findOneToOne(person);
+  if (!found.ok || found.event.id !== eventId) {
+    return { ok: false, error: found.ok ? 'That 1-2-1 is not the one found in the calendar now — reload and try again' : found.error };
   }
-
-  try {
-    require('./obsidian').updatePersonNote(person, { booked121: start.split('T')[0] });
-  } catch (e) {
-    console.warn('[1-2-1] Could not stamp 1-2-1-booked:', e.message);
-  }
-
-  const moves = recordMove(person, { from: previousStart, to: start, reason });
-  console.log(`[1-2-1] Moved ${person}: ${previousStart || '(unknown)'} -> ${start} (move ${moves.length})`);
-
-  // Moving the meeting has to move NOVA's session too, or the prep email goes out for
-  // the old date — or, worse, not at all, because NOVA already logged it as sent.
-  const novaPush = await require('./nova-121-sync').pushBooking(person, start.split('T')[0], {
-    outlookEventId: eventId,
+  const priorMoves = movesFor(person);
+  const r = require('./prepared-actions').prepareCalendarReschedule({
+    event: { ...found.event, isOrganizer: found.event.isOrganizer },
+    start, end, origin: '1to1-move', context: { person, reason },
   });
-
+  if (!r.ok) return { ok: false, error: r.error };
   return {
     ok: true,
+    prepared: true,
+    already: !!r.already,
     person,
-    event: result.event,
-    movedFrom: previousStart,
-    moveCount: moves.length,
-    previousMoves: moves.slice(0, 5),
-    novaSynced: novaPush.ok,
+    actionId: r.action.actionId,
+    status: r.action.status,
+    movedFrom: found.event.start,
+    // Unchanged: the count says how often it has ACTUALLY moved. This one is
+    // only prepared, so it is not counted until it happens.
+    moveCount: priorMoves.length,
+    previousMoves: priorMoves.slice(0, 5),
+    notice: 'Prepared, not sent: approve the move in Actions (with your approval code) and NEURO moves it — your colleague is told — then reads it back.',
   };
 }
 
@@ -789,13 +784,18 @@ async function bookAll(items = []) {
     if (outcome.ok && events) reserve(events, person, { date: start.split('T')[0], start, end });
   }
 
-  const booked = results.filter(r => r.ok);
+  // Build 11K: nothing here is booked or invited — each success is a PREPARED
+  // invite awaiting Nick's approval. Said in the counts, so no screen can read
+  // "booked" off a request that has not happened.
+  const prepared = results.filter(r => r.ok);
   return {
-    ok: booked.length > 0,
-    booked: booked.length,
-    failed: results.length - booked.length,
-    invited: booked.filter(r => r.invited).length,
+    ok: prepared.length > 0,
+    prepared: prepared.length,
+    booked: 0,
+    failed: results.length - prepared.length,
+    invited: 0,
     results,
+    notice: prepared.length ? `${prepared.length} invite${prepared.length === 1 ? '' : 's'} prepared — approve them in Actions with your approval code. Nobody has been invited yet.` : null,
   };
 }
 
@@ -808,6 +808,7 @@ module.exports = {
   proposeReschedule,
   reschedule,
   movesFor,
+  afterGovernedCalendar,
   // exported for tests
   _internals: {
     findGapInWindow, countOneToOnes, findSlot, reserve, subjectFor,

@@ -84,17 +84,6 @@ function _lastPush() {
   }
 }
 
-// Reminders live in lists, and the LIST is the evidence for the domain — the
-// same rule as the capture link's token. A list named here is work; everything
-// else on a personal iCloud account is personal, which is the safe default
-// because a personal task mis-filed as work is the visible mistake.
-function workListNames() {
-  return String(process.env.APPLE_WORK_LISTS || '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
-
 /**
  * Calendars whose events are never stored.
  *
@@ -140,48 +129,10 @@ function calendarIsSkipped(name) {
   return skipCalendarNames().includes(String(name).trim().toLowerCase());
 }
 
-function domainForList(listName) {
-  const name = String(listName || '').trim().toLowerCase();
-  return workListNames().includes(name) ? 'work' : 'personal';
-}
-
-/**
- * Which Reminders lists become NEURO tasks. A WHITELIST, empty by default.
- *
- * ⚠ This was the opposite way round on the first run and it was wrong. Ingesting
- * every list pulled in Nick's shopping list — peanut butter, mugs, dog treats,
- * coathangers — plus dictation debris like "1 Image" and "Flipping thing": 15
- * items, none of them a task, sitting alongside 152 real ones.
- *
- * The deeper problem was not the noise, it was that they could never LEAVE.
- * NEURO cannot write to iCloud, so a shopping item is ticked off in Apple while
- * standing in a shop, and NEURO's copy stays open for ever — an append-only
- * store with nothing closing it, growing every sync. That is the `inbox_items`
- * failure exactly, and it is why the default has to be "ingest nothing".
- *
- * A list named here is one Nick has decided he will actually manage from NEURO.
- * Anything else stays in Reminders, where he will actually use it.
- */
-// Defaults to the built-in list only — Nick's call: "only ingest anything in the
-// reminders folder itself". Everything else (Shopping, Groceries, whatever else
-// accumulates) stays on the phone where it is actually used.
-function ingestListNames() {
-  return String(process.env.APPLE_REMINDER_LISTS || 'Reminders')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function listIsIngested(listName) {
-  const allowed = ingestListNames();
-  if (!allowed.length) return false;
-  // ⚠ A reminder with NO list is never ingested. Scriptable does not always
-  // expose `calendar`, and treating unknown as the default list would quietly
-  // reopen the whole door this whitelist exists to close.
-  const name = String(listName || '').trim().toLowerCase();
-  if (!name) return false;
-  return allowed.includes(name);
-}
+// Build 11D: the reminders list whitelist and its `domainForList` ("work if
+// named in APPLE_WORK_LISTS, otherwise personal") are gone. Which lists are
+// tracked lives in source-classification (APPLE_REMINDER_LISTS is still the
+// default); a list's DOMAIN is only what Nick classified it as.
 
 /**
  * Normalise one pushed calendar event. PURE.
@@ -276,9 +227,32 @@ function normaliseEvent(raw) {
     // false would tell context-state "solo block" about a real meeting.
     // context-state requires exactly `true` to call something a meeting, so an
     // unknown fails closed on its own.
-    attendeesOther: typeof raw.attendeesOther === 'boolean' ? raw.attendeesOther : undefined,
+    // ⚠ The native client sends a COUNT (attendees minus Nick), the Scriptable
+    // one a boolean. A positive count is evidence other people are in it; zero
+    // is NOT evidence of a solo block — EventKit hands a personal appointment
+    // no attendee list at all — so it stays unknown rather than "block".
+    attendeesOther: typeof raw.attendeesOther === 'boolean' ? raw.attendeesOther
+      : (typeof raw.attendeesOther === 'number' && raw.attendeesOther > 0 ? true : undefined),
     source: SOURCE,
+    // Build 11C: WHICH calendar it came through — not stored in the cache (the
+    // cache answers "is Nick free"), carried to the world model, where Nick's
+    // classification of the calendar is applied at read time.
+    calendarId: raw.calendarId ? String(raw.calendarId).slice(0, 200) : null,
+    calendarTitle: raw.calendar ? String(raw.calendar).slice(0, 200) : null,
+    recurring: raw.recurring === true ? true : raw.recurring === false ? false : null,
   };
+}
+
+/**
+ * The calendars a push says the phone can see, as `{ id, title }`. Older
+ * clients send bare titles; Build 11 clients send objects with the
+ * calendarIdentifier. PURE.
+ */
+function visibleCalendars(calendars) {
+  if (!Array.isArray(calendars)) return null;
+  return calendars.map((c) => (c && typeof c === 'object'
+    ? { id: c.id ? String(c.id) : null, title: String(c.title || c.name || '') }
+    : { id: null, title: String(c) }));
 }
 
 /**
@@ -311,7 +285,8 @@ function ingestCalendar({ from, to, events, calendars, client } = {}) {
     const name = (e && e.calendar) ? String(e.calendar) : '(unknown)';
     byCalendar[name] = (byCalendar[name] || 0) + 1;
   }
-  const visible = Array.isArray(calendars) ? calendars.map(String) : null;
+  const visibleObjs = visibleCalendars(calendars);
+  const visible = visibleObjs ? visibleObjs.map((c) => c.title) : null;
   // ⚠ WHICH APP PUSHED — diagnostics, and NOT a second source. Both apps read
   // ONE EventKit store on one device, so they are two readers of one diary and
   // the rows stay under a single `apple` source; splitting them would put every
@@ -357,6 +332,17 @@ function ingestCalendar({ from, to, events, calendars, client } = {}) {
       visibleCalendars: visible,
       cleared: false,
     };
+  }
+
+  // Build 11B: which calendars exist, for the classification screen — and how
+  // many share a title, which is what makes a title-keyed classification
+  // ambiguous for a client too old to send calendar ids. Never fails the push.
+  if (visibleObjs) {
+    try {
+      const sc = require('./source-classification');
+      sc.observeContainers('calendar', visibleObjs.filter((c) => !calendarIsSkipped(c.title)), { client: who });
+      if (visibleObjs.every((c) => !c.id)) sc.noteDuplicateTitles('calendar', visible);
+    } catch (e) { console.warn('[Apple] calendar containers not recorded:', e.message); }
   }
 
   // Artefact calendars — holiday feed duplicates, app-written calendars. Counted
@@ -464,67 +450,85 @@ function ingestCalendar({ from, to, events, calendars, client } = {}) {
 }
 
 /**
- * Turn pushed reminders into tasks.
+ * Reminders, into the world model (Build 11D).
  *
- * Completed reminders are skipped outright rather than created-then-completed:
- * creating a task to immediately close it would put work in the wins ledger that
- * nobody did today, which is the rule "a win is DETECTED, not declared" protects.
+ * ⚠ THIS USED TO WRITE NEURO TASK ROWS, and that was the wrong shape twice.
+ * A reminder copied into `tasks` is a SECOND record of something Apple owns,
+ * with nothing closing it when it is ticked on the phone (the `inbox_items`
+ * failure), and it was stamped `domain: personal` by default — "personal
+ * because it came from the iPhone", which is exactly the inference Build 10
+ * ruled out. Live, it had produced ONE task in its whole life (3 Oct 2026).
+ *
+ * Now each reminder is a canonical TASK OBSERVATION under its own identity
+ * (`eventkit-reminders:<calendarItemIdentifier>`), exactly as a Planner card
+ * is: Apple is the authority on whether it is done, a tick on the phone is a
+ * completion here, an untick is a reopen, and a complete read that no longer
+ * lists it is a removal. Its domain is whatever Nick classified its LIST as —
+ * unknown until he does.
+ *
+ * Which lists: every list the phone can see is RECORDED (so the classification
+ * screen can offer it), but only TRACKED lists enter the world model — by
+ * default the built-in "Reminders" list (Nick's August call: a shopping list
+ * is not a task list), otherwise whatever he marks tracked.
+ *
+ * ⚠ A reminder with NO id (an app build older than Build 11) is counted and
+ * NOT projected: without Apple's identifier there is no identity, and
+ * inventing one from the wording is how two different reminders with the
+ * same words would become one.
  */
-function ingestReminders({ reminders } = {}) {
+function ingestReminders({ reminders, lists = null, complete = false, client = null } = {}, { now = Date.now() } = {}) {
   if (!Array.isArray(reminders)) return { ok: false, error: 'reminders must be an array' };
+  const sc = require('./source-classification');
+  const who = typeof client === 'string' && /^[a-z0-9_-]{1,20}$/i.test(client) ? client : null;
 
-  const taskStore = require('./task-store');
-  let created = 0;
-  let folded = 0;
-  let skipped = 0;
-  const rejected = [];
-  // Every list the phone offered, and how many came from each. Reported whether
-  // ingested or not, so "why has my reminder not appeared" is answerable without
-  // guessing — an ingest that silently drops most of its input looks identical
-  // to one that received nothing.
+  // The lists the phone could see. Older builds send none; derive them from
+  // the reminders then (titles only).
+  const listObjs = Array.isArray(lists)
+    ? lists.map((l) => (l && typeof l === 'object' ? { id: l.id ? String(l.id) : null, title: String(l.title || '') } : { id: null, title: String(l) }))
+    : [...new Map(reminders.filter((r) => r && r.list).map((r) => [String(r.listId || r.list), { id: r.listId ? String(r.listId) : null, title: String(r.list) }])).values()];
+  sc.observeContainers('reminder-list', listObjs, { client: who, now });
+
+  const byKey = sc.classificationMap('reminder-list');
+  const titleCount = sc.effectiveTitleCounts('reminder-list', { now });
   const seenLists = {};
   const skippedLists = {};
-
+  const tracked = [];
+  let unidentified = 0;
+  const rejected = [];
   for (const r of reminders) {
-    const list = r && r.list ? String(r.list) : '(no list)';
-    seenLists[list] = (seenLists[list] || 0) + 1;
-
-    if (!listIsIngested(r && r.list)) {
-      skippedLists[list] = (skippedLists[list] || 0) + 1;
-      continue;
-    }
-
-    const text = r && r.title ? String(r.title).trim() : '';
-    if (!text) { rejected.push('a reminder with no title'); continue; }
-    if (r.isCompleted === true) { skipped++; continue; }
-
-    try {
-      const res = taskStore.createTask({
-        text: text.slice(0, 500),
-        domain: domainForList(r.list),
-        // Apple's own due date, when it set one. `dueDate` arrives as a plain
-        // YYYY-MM-DD from the phone, never an instant — a reminder due "today"
-        // must not become tomorrow west of here, which is the bug Planner's
-        // midnight timestamps already caused once.
-        due_date: r.dueDate ? String(r.dueDate).slice(0, 10) : null,
-        source: 'apple-reminders',
-        notes: r.notes ? String(r.notes).slice(0, 1000) : null,
-      });
-      if (res.created) created++; else folded++;
-    } catch (e) {
-      rejected.push(`${text.slice(0, 40)}: ${e.message}`);
-    }
+    const listTitle = r && r.list ? String(r.list) : '(no list)';
+    seenLists[listTitle] = (seenLists[listTitle] || 0) + 1;
+    if (!r || !r.list) { skippedLists[listTitle] = (skippedLists[listTitle] || 0) + 1; continue; }
+    if (!sc.isTracked({ id: r.listId, title: r.list }, { byKey, titleCount })) { skippedLists[listTitle] = (skippedLists[listTitle] || 0) + 1; continue; }
+    if (!r.title || !String(r.title).trim()) { rejected.push('a reminder with no title'); continue; }
+    if (!r.id) { unidentified += 1; continue; }
+    tracked.push(r);
   }
 
+  // The lists this push covered completely: tracked, and actually read.
+  const coveredLists = new Set(listObjs
+    .filter((l) => sc.isTracked(l, { byKey, titleCount }))
+    .map((l) => sc.containerKey('reminder-list', { id: l.id, title: l.title }))
+    .filter(Boolean));
+  const pub = require('./obligation-sources').publishReminders({
+    reminders: tracked, complete: complete === true && Array.isArray(lists), coveredLists, now,
+  });
+
+  if (unidentified) {
+    console.warn(`[Apple] ${unidentified} reminder(s) carried no id — not projected (this app build predates Build 11; rebuild it)`);
+  }
   return {
-    ok: true,
-    created,
-    folded,
-    skippedCompleted: skipped,
+    ok: !pub.error,
+    error: pub.error || undefined,
+    projected: tracked.length,
+    changed: pub.changed || 0,
+    removed: pub.removed || 0,
+    complete: !!pub.complete,
+    unidentified,
     rejected,
     seenLists,
     skippedLists,
-    ingestingFrom: ingestListNames(),
+    client: who,
   };
 }
 
@@ -598,6 +602,6 @@ module.exports = {
   PUSH_STATE_KEY,
   // pure, exported for tests
   normaliseEvent,
+  visibleCalendars,
   toLocalWallClock,
-  domainForList,
 };

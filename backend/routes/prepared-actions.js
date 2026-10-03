@@ -62,7 +62,8 @@ router.get('/', (req, res) => {
       buckets: buckets(actions),
       needsYou: pa().needsYou(),
       legacy: pa().legacyHistory(),
-      sending: { enabled: require('../services/feature-flags').isEnabled('governed_execution') },
+      sending: { enabled: require('../services/feature-flags').isEnabled('governed_execution'),
+        calendar: require('../services/feature-flags').isEnabled('governed_calendar') },
       approvalCode: proofs().codeStatus(),
       approvalLock: proofs().lockStatus(),
     });
@@ -98,8 +99,9 @@ router.post('/:id/approval-challenge', (req, res) => {
     const a = pa().get(req.params.id);
     if (!a) return res.status(404).json({ ok: false, error: 'no such prepared action' });
     if (a.status !== 'prepared') return res.status(409).json({ ok: false, error: `it is ${a.status}; only a prepared action can be approved` });
-    if (a.executes && !require('../services/feature-flags').isEnabled('governed_execution')) {
-      return res.status(409).json({ ok: false, error: 'Sending is switched off (Settings → Switches → "Send approved emails"), so approving would send nothing. Turn it on first.' });
+    const reg = require('../services/action-registry');
+    if (a.executes && !require('../services/feature-flags').isEnabled(reg.switchFor(a.actionType))) {
+      return res.status(409).json({ ok: false, error: `"${reg.SWITCH_LABELS[reg.switchFor(a.actionType)]}" is switched off (Settings → Switches), so approving would change nothing. Turn it on first.` });
     }
     const r = proofs().issue({ actionId: a.actionId, version: a.version, payloadHash: a.payloadHash, issuedTo: 'pin-session' });
     if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });

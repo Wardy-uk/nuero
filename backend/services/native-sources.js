@@ -178,6 +178,34 @@ const SOURCES = Object.freeze({
     importance: 'medium', group: 'personal-calendar', expected: true, push: true,
     expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
   },
+  // Build 11D. Reminders are their OWN source: a calendar push that works says
+  // nothing about whether reminders reach NEURO. ⚠ OPTIONAL until the iOS
+  // Build 11 apps are built and installed — the builds on the phone today send
+  // reminders WITHOUT ids (not projectable) from the "Reminders" list only, and
+  // judging that as blind would be an alarm about a build nobody has made yet.
+  // Flip to expected once the rebuilt app is pushing (one line, here).
+  'reminders.neuro-ios': {
+    label: 'Phone reminders push (NEURO app)',
+    what: 'your reminders, as tasks with their due dates',
+    importance: 'medium', group: 'personal-reminders', lifecycle: 'optional', push: true,
+    expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
+  },
+  'reminders.saim-ios': {
+    label: 'Phone reminders push (SAiM app)',
+    what: 'your reminders, as tasks with their due dates',
+    importance: 'medium', group: 'personal-reminders', lifecycle: 'optional', push: true,
+    expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
+  },
+  // Build 11M: the laptop activity reporter, moved onto the spine. OPTIONAL: a
+  // laptop asleep for a weekend, or left at work on holiday, is not a blind
+  // sense — and the attention veto that matters ("is he at the laptop") is
+  // already judged by desktop-activity's own freshness.
+  'desktop.agent': {
+    label: 'Desktop activity agent',
+    what: 'whether you are working at the laptop, and on what',
+    importance: 'low', group: null, lifecycle: 'optional', push: true,
+    expectedIntervalMs: 10 * 60 * 1000, staleAfterMs: 24 * HOUR,
+  },
 });
 
 // Anything not declared: low importance, no group, not expected, with a

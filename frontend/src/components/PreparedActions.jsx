@@ -62,6 +62,12 @@ const ORIGIN_WORDS = {
   drafted: 'Drafted from an email card',
   'meeting-triage': 'The invite has no agenda',
   'weekly-risk': 'Queued from Weekly Risk',
+  // Build 11K: calendar changes.
+  '1to1-book': 'You pressed Book on a 1-2-1',
+  '1to1-move': 'You pressed Move on a 1-2-1',
+  'event-composer': 'You made it in Calendar',
+  chat: 'Asked for in chat',
+  'machine-client': 'Prepared by a connected tool',
 };
 
 // Build 8: every email NEURO can send is one of these, approved here.
@@ -70,7 +76,14 @@ const TYPE_WORDS = {
   reply_email: 'Reply to an email',
   chase_agenda: 'Ask an organiser for the agenda',
   send_weekly_risk_report: 'Weekly risk report',
+  create_calendar_event: 'Calendar invite',
+  reschedule_calendar_event: 'Move a meeting',
+  cancel_calendar_event: 'Cancel a meeting',
 };
+
+const CALENDAR_TYPES = new Set(['create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event']);
+// Wall-clock "YYYY-MM-DDTHH:MM" sliced, never parsed into a Date (the BST bug).
+const when = (s) => (s ? `${String(s).slice(0, 10)} ${String(s).slice(11, 16)}` : '—');
 
 const addr = (r) => (r?.name && r.name !== r.email ? `${r.name} <${r.email}>` : r?.email);
 
@@ -87,7 +100,8 @@ export function gateFor(data, a) {
   if (!data) return 'Checking whether approval is possible…';
   if (data.approvalLock?.locked) return `Approval is locked after too many wrong codes, until ${String(data.approvalLock.lockedUntil).slice(11, 16)} UTC.`;
   if (!data.approvalCode?.set) return 'No approval code is set yet, so nothing can be approved. On the Pi, run: node backend/scripts/set-approval-code.js';
-  if (a.executes && !data.sending?.enabled) return 'Sending is switched off (Settings → Switches → "Send approved emails"). You can read, edit or reject this; approving is off until sending is on.';
+  if (a.executes && CALENDAR_TYPES.has(a.actionType) && !data.sending?.calendar) return 'Calendar changes are switched off (Settings → Switches → "Send approved calendar changes"). You can read or reject this; approving is off until that switch is on.';
+  if (a.executes && !CALENDAR_TYPES.has(a.actionType) && !data.sending?.enabled) return 'Sending is switched off (Settings → Switches → "Send approved emails"). You can read, edit or reject this; approving is off until sending is on.';
   return null;
 }
 
@@ -138,7 +152,9 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
   const open = action.status === 'prepared';
   // The weekly report is generated: it is regenerated on its panel, never
   // hand-edited here (that would break the markdown/HTML the approval binds).
-  const editable = type !== 'send_weekly_risk_report';
+  const calendar = CALENDAR_TYPES.has(type);
+  const editable = type !== 'send_weekly_risk_report' && !calendar;
+  const d = action.draft || {};
   const canEditFailed = editable && action.status === 'failed' && action.retrySafe === true;
   const who = toAll.length + ccAll.length > 1 ? `${toAll.length + ccAll.length} people` : (to.email || 'them');
 
@@ -168,7 +184,18 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
       <div className="ap-reason">{action.reason}</div>
 
       <dl className="ap-fields">
-        <div className="ap-field"><dt>To</dt><dd className="mono">{toAll.join(', ')}</dd></div>
+        <div className="ap-field"><dt>{calendar ? 'Attendees' : 'To'}</dt><dd className="mono">{toAll.join(', ')}</dd></div>
+        {calendar && (
+          <>
+            <div className="ap-field"><dt>Title</dt><dd>{d.subject}</dd></div>
+            {type === 'reschedule_calendar_event' && <div className="ap-field"><dt>From</dt><dd>{when(t.fromStart)}–{String(t.fromEnd || '').slice(11, 16)}</dd></div>}
+            <div className="ap-field"><dt>{type === 'reschedule_calendar_event' ? 'To' : 'When'}</dt><dd>{when(d.start)}–{String(d.end || '').slice(11, 16)} <span className="pa-tz">({d.timeZone || 'Europe/London'})</span></dd></div>
+            <div className="ap-field"><dt>Calendar</dt><dd>{d.calendar?.name || 'Outlook (your default calendar)'}</dd></div>
+            {d.location && <div className="ap-field"><dt>Location</dt><dd>{d.location}</dd></div>}
+            {type === 'create_calendar_event' && <div className="ap-field"><dt>Online</dt><dd>{d.isOnline ? 'Teams link added' : 'No online link'}</dd></div>}
+            {d.recurrence && <div className="ap-field"><dt>Repeats</dt><dd>{typeof d.recurrence === 'string' ? d.recurrence : JSON.stringify(d.recurrence)}</dd></div>}
+          </>
+        )}
         {ccAll.length > 0 && <div className="ap-field"><dt>Cc</dt><dd className="mono">{ccAll.join(', ')}</dd></div>}
         {ev.commitment?.description && <div className="ap-field"><dt>Commitment</dt><dd>{ev.commitment.description}</dd></div>}
         {type === 'reply_email' && <div className="ap-field"><dt>In reply to</dt><dd>{t.fromName || t.from} — “{t.originalSubject || '(no subject)'}”{action.draft?.mode === 'replyAll' ? ' · reply-all' : ''}</dd></div>}
@@ -181,10 +208,16 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
         {action.approval?.mechanism && <div className="ap-field"><dt>Approved</dt><dd>{action.approval.by} · {action.approval.mechanism}</dd></div>}
       </dl>
 
-      {!editing && (
+      {!editing && !calendar && (
         <>
           <div className="ap-body-label">Subject: <strong>{action.draft?.subject}</strong></div>
           <pre className="ap-body">{action.draft?.body}</pre>
+        </>
+      )}
+      {!editing && calendar && d.body && (
+        <>
+          <div className="ap-body-label">{type === 'cancel_calendar_event' ? 'Cancellation note' : 'Agenda / body'} sent to attendees</div>
+          <pre className="ap-body">{d.body}</pre>
         </>
       )}
 
@@ -202,9 +235,11 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
       {confirming && open && (
         <div className="pa-confirm">
           <p className="pa-note">
-            {sends
-              ? <>This sends <strong>exactly the {type === 'send_weekly_risk_report' ? 'report' : 'email'} above</strong> to <span className="mono">{who}</span>, as you, then checks Sent Items. It is never sent twice.</>
-              : 'This records your approval. Nothing will be sent.'}
+            {sends && calendar
+              ? <>This makes <strong>exactly the calendar change above</strong> as you — Microsoft tells <span className="mono">{who}</span> — then reads the event back to confirm it. It is never done twice.</>
+              : sends
+                ? <>This sends <strong>exactly the {type === 'send_weekly_risk_report' ? 'report' : 'email'} above</strong> to <span className="mono">{who}</span>, as you, then checks Sent Items. It is never sent twice.</>
+                : 'This records your approval. Nothing will be sent.'}
           </p>
           <label className="pa-code">
             Approval code

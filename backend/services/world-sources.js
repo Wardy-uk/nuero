@@ -66,6 +66,14 @@ function calendarPayload(provider, e) {
     attendeesOther: typeof e.attendeesOther === 'boolean' ? e.attendeesOther : null,
     locationLabel: e.location ? String(e.location).slice(0, 120) : null,
   };
+  // Build 11C: the calendar a PHONE entry came through — the container Nick
+  // can classify. Added only when present, and never for Graph (one account,
+  // one calendar), so the ~100 Graph meetings in the window keep their
+  // fingerprints and do not all republish because of a field they lack.
+  if (e.calendarId || e.calendarTitle) {
+    body.calendar = { id: e.calendarId || null, title: e.calendarTitle || null };
+  }
+  if (typeof e.recurring === 'boolean') body.recurring = e.recurring;
   return { ...body, fingerprint: wm.fingerprintOf(body) };
 }
 
@@ -202,7 +210,22 @@ function personPayload(name, notePath, fm) {
     manager: typeof fm.manager === 'string' && fm.manager ? linkText(fm.manager) : null,
     status: typeof fm.status === 'string' && fm.status ? fm.status : null,
   };
+  // Build 11E: a relationship to Nick, ONLY as the note states it — never
+  // inferred from how often they email or meet. Added only when stated, so the
+  // fingerprint of every note that says nothing is unchanged.
+  const rel = relationshipOf(fm.relationship || fm.relation);
+  if (rel) body.relationship = rel;
+  const hh = String(fm.household || '').toLowerCase();
+  if (hh === 'true' || hh === 'false') body.household = hh === 'true';
   return { ...body, fingerprint: wm.fingerprintOf(body) };
+}
+
+// The relationship words a People note may use. Anything else is not a
+// relationship NEURO knows how to read and is ignored, never guessed at.
+const RELATIONSHIPS = Object.freeze(['spouse', 'partner', 'family', 'child', 'parent', 'sibling', 'friend', 'household', 'colleague']);
+function relationshipOf(v) {
+  const s = String(Array.isArray(v) ? v[0] || '' : v || '').trim().toLowerCase();
+  return RELATIONSHIPS.includes(s) ? s : null;
 }
 
 /**
@@ -242,4 +265,4 @@ function publishPeople({ vaultRoot = process.env.OBSIDIAN_VAULT_PATH, now = Date
   return { notes: files.length, changed };
 }
 
-module.exports = { calendarPayload, publishCalendarWindow, parseFrontmatter, personPayload, publishPeople, linkText };
+module.exports = { calendarPayload, publishCalendarWindow, parseFrontmatter, personPayload, publishPeople, linkText, relationshipOf, RELATIONSHIPS };

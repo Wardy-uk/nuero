@@ -158,18 +158,20 @@ test('annotations: declared domains and personal importance; unknown values refu
   assert.equal(bad.status, 400);
   const badImp = await post('/api/canonical/annotations', { entityId: id, importance: 'very' });
   assert.equal(badImp.status, 400);
+  // Build 10's word is still accepted on input (Build 11G alias).
   const ok = await post('/api/canonical/annotations', { entityId: id, domains: ['ember', 'fitness'], importance: 'personally-important' });
   assert.equal(ok.status, 200);
   // Omitting importance leaves it; null clears domains.
   await post('/api/canonical/annotations', { entityId: id, domains: null });
   const row = db.get('SELECT * FROM life_annotations WHERE entity_id = ?', [id]);
-  assert.equal(row.importance, 'personally-important');
+  assert.equal(row.importance, 'important-to-me', 'stored under the Build 11 name');
   assert.equal(row.domains_json, null);
   await post('/api/canonical/annotations', { entityId: id, domains: ['ember'] });
   const { json } = await get('/api/canonical/commitments?direction=owed-to-me');
   const one = json.items.find((i) => i.id === id);
   assert.deepEqual(one.domains.domains.map((d) => [d.domain, d.basis]), [['ember', 'declared']], 'declared replaces the work inference');
-  assert.equal(one.importance, 'personally-important');
+  assert.equal(one.importance, 'important-to-me');
+  assert.equal(one.importanceBasis, 'declared');
 });
 
 test('goals: only what was stored is shown; nothing invented', async () => {

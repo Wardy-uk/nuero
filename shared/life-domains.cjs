@@ -54,17 +54,40 @@ const LABELS = Object.freeze({
 const SENSITIVE = Object.freeze(new Set(['health', 'family', 'finance']));
 
 // How a domain came to be attached. Ordered strongest first.
-const BASES = Object.freeze(['declared', 'intrinsic', 'set', 'source-process', 'inference', 'default']);
+//   declared   Nick said so about THIS item (life_annotations)
+//   classified Nick said so about the CONTAINER it came from — a calendar or a
+//              reminder list he classified (Build 11B). Explicit, so it may
+//              carry a sensitive domain; weaker than a per-item declaration,
+//              which is why it does not replace other evidence the way
+//              `declared` does.
+//   intrinsic  what the data IS (a heart-rate reading is health)
+const BASES = Object.freeze(['declared', 'classified', 'intrinsic', 'set', 'source-process', 'inference', 'default']);
+// Bases that may carry a sensitive domain: Nick said it, or the data is it.
+const EXPLICIT_BASES = Object.freeze(['declared', 'classified', 'intrinsic']);
 
-// What Nick may say about how much a thing matters to HIM, beside urgency.
-// Explicit only — never computed. Absent means "not said", not "optional".
-const IMPORTANCE = Object.freeze(['work-critical', 'personally-important', 'restorative', 'optional']);
+// PersonalImportance (Build 10, formalised in Build 11G): how much a thing
+// matters to HIM, beside urgency, severity, due date and domain — never instead
+// of them. Explicit only — never computed, never inferred from a domain or a
+// source (health is not automatically critical; work is not automatically
+// important). Absent means "not said", which is NOT the same as `normal`.
+const IMPORTANCE = Object.freeze(['critical-to-me', 'important-to-me', 'normal', 'restorative', 'optional', 'work-critical']);
 const IMPORTANCE_LABELS = Object.freeze({
-  'work-critical': 'Work-critical',
-  'personally-important': 'Personally important',
+  'critical-to-me': 'Critical to me',
+  'important-to-me': 'Important to me',
+  normal: 'Normal',
   restorative: 'Restorative',
   optional: 'Optional',
+  'work-critical': 'Work-critical',
 });
+// The Build 10 name, still accepted on input and on read.
+const IMPORTANCE_ALIASES = Object.freeze({ 'personally-important': 'important-to-me' });
+// Ordering weight AFTER timing/eligibility — lower ranks first. Unsaid sits
+// with `normal`; restorative is not demoted (it is a reason to protect time,
+// not a reason to rank lower), optional is.
+const IMPORTANCE_RANK = Object.freeze({
+  'critical-to-me': 0, 'important-to-me': 1, 'work-critical': 1, normal: 2, restorative: 2, optional: 3,
+});
+function importanceRank(v) { const n = normaliseImportance(v); return n ? IMPORTANCE_RANK[n] : 2; }
 
 function normaliseDomain(d) {
   const v = typeof d === 'string' ? d.trim().toLowerCase() : '';
@@ -72,7 +95,8 @@ function normaliseDomain(d) {
 }
 
 function normaliseImportance(v) {
-  const s = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  const raw = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  const s = IMPORTANCE_ALIASES[raw] || raw;
   return IMPORTANCE.includes(s) ? s : null;
 }
 
@@ -99,7 +123,7 @@ function resolveDomains(evidence = [], { sphere = null } = {}) {
     const d = normaliseDomain(c.domain);
     if (!d) continue;
     const basis = BASES.includes(c.basis) ? c.basis : 'inference';
-    if (SENSITIVE.has(d) && !['declared', 'intrinsic'].includes(basis)) continue;
+    if (SENSITIVE.has(d) && !EXPLICIT_BASES.includes(basis)) continue;
     const held = byDomain.get(d);
     if (!held || BASES.indexOf(basis) < BASES.indexOf(held.basis)) byDomain.set(d, { domain: d, basis, why: c.why || null });
   }
@@ -119,6 +143,6 @@ function resolveDomains(evidence = [], { sphere = null } = {}) {
 }
 
 module.exports = {
-  DOMAINS, LABELS, SENSITIVE, BASES, IMPORTANCE, IMPORTANCE_LABELS,
-  normaliseDomain, normaliseImportance, domainLabel, resolveDomains,
+  DOMAINS, LABELS, SENSITIVE, BASES, EXPLICIT_BASES, IMPORTANCE, IMPORTANCE_LABELS, IMPORTANCE_ALIASES, IMPORTANCE_RANK,
+  normaliseDomain, normaliseImportance, importanceRank, domainLabel, resolveDomains,
 };

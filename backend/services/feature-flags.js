@@ -114,6 +114,23 @@ const FLAGS = [
     impact: 'sends email as you, only after you approve it',
   },
   {
+    key: 'governed_calendar',
+    env: 'GOVERNED_CALENDAR_ENABLED',
+    // ⚠ Build 11K: default FALSE, for the same reason as the email switch — it
+    // makes Microsoft send invitations, updates and cancellations to other
+    // people as Nick. Deliberately its OWN switch: turning email sending on
+    // must not quietly start sending calendar invites too.
+    default: false,
+    label: 'Send approved calendar changes',
+    description: 'Covers every calendar change NEURO can make that other people are told about: a new invite '
+      + '(1-2-1 Book, the event composer, a meeting from chat), moving a meeting, and cancelling one. When '
+      + 'this is on and you approve one with your approval code, NEURO makes exactly that change and then '
+      + 'reads the event back to confirm it. While it is off, NEURO still prepares them for you to read or '
+      + 'reject, but will not let you approve one. Your own solo blocks (focus blocks, Plaud admin blocks) are '
+      + 'not affected — nobody else is told about those.',
+    impact: 'invites, moves and cancels meetings as you, only after you approve it',
+  },
+  {
     key: 'dnd_vault_read_only',
     env: 'DND_VAULT_READ_ONLY',
     default: false,

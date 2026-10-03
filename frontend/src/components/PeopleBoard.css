@@ -612,6 +612,14 @@
   margin-bottom: 14px;
 }
 
+/* Build 11K: a prepared invite is not a booking — the note says where it goes next. */
+.book-note {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: -8px 0 14px;
+}
+
 .update-readonly {
   display: flex;
   gap: 8px;

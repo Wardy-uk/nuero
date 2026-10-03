@@ -279,7 +279,7 @@ test('the HTTP route refuses an approval without the displayed payload hash, and
   const base = `http://127.0.0.1:${server.address().port}/api/prepared-actions`;
   try {
     const list = await (await fetch(base)).json();
-    assert.deepEqual(list.executableTypes, ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report'], 'the registry allow-list, as published (Build 8)');
+    assert.deepEqual(list.executableTypes, ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report', 'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event'], 'the registry allow-list, as published (Build 8 + Build 11K)');
     assert.ok(list.actions.every((x) => x.executes === (x.actionType === 'chase_commitment')), 'executes is per type, from the registry');
     const target = list.actions.find((x) => x.status === 'prepared');
     assert.ok(target, 'positive control: this test needs a PREPARED action to reach the hash rule');

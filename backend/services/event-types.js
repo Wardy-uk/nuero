@@ -223,6 +223,28 @@ const TYPES = Object.freeze({
     required: ['commitmentId', 'kind', 'ref', 'at', 'polarity', 'strength', 'fingerprint'],
   },
 
+  // ── Build 11: the personal world model ─────────────────────────────────────
+  //
+  // A non-human member of the household as Nick's vault declares her (a note
+  // with frontmatter `type: pet`) — Ember. A FACT, keyed on its content like a
+  // People note. Deliberately its own type, not observation.person.declared:
+  // a person rule (address resolution, chasing, work evidence) must never be
+  // able to reach a dog.
+  'observation.companion.declared': {
+    version: 1,
+    provenance: 'fact',
+    required: ['companionId', 'name', 'notePath', 'fingerprint'],
+  },
+  // A goal or intention as Nick DECLARED it — its whole current state,
+  // including the things he explicitly linked to it. A FACT about his stated
+  // intent, never an inference: nothing in NEURO creates a goal. Keyed on the
+  // transition, so pausing and resuming a goal are two facts.
+  'intent.goal.declared': {
+    version: 1,
+    provenance: 'fact',
+    required: ['goalId', 'title', 'status', 'fingerprint'],
+  },
+
   // What the Graph calendar window looked like on a successful sync. Keyed on a
   // fingerprint of the window's content, so re-observing an unchanged diary
   // folds into the existing event: the log records CHANGE, not polling.

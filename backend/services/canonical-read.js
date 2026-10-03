@@ -98,6 +98,20 @@ function personWorkEvidence(person) {
   return null;
 }
 
+// Build 11E: a relationship a People note STATES. Family relationships give
+// the family domain on basis `classified` — Nick said who this person is to
+// him. Nothing is inferred from how often they talk, and `friend` names no
+// domain (a friend is not a part of life on their own).
+const FAMILY_RELATIONSHIPS = new Set(['spouse', 'partner', 'family', 'child', 'parent', 'sibling', 'household']);
+function personRelationshipEvidence(person) {
+  if (!person || !person.relationship) return null;
+  if (FAMILY_RELATIONSHIPS.has(person.relationship)) {
+    return { domain: 'family', basis: 'classified', why: `${person.displayName}'s People note says ${person.relationship}` };
+  }
+  if (person.relationship === 'colleague') return { domain: 'work', basis: 'inference', why: `${person.displayName}'s People note says colleague` };
+  return null;
+}
+
 /** Claims from an annotation row (declared by Nick). */
 function annotationClaims(annotation) {
   if (!annotation || !Array.isArray(annotation.domains)) return [];
@@ -135,12 +149,53 @@ function taskDomains(task, { annotation = null } = {}) {
   return domainsLib.resolveDomains(claims, { sphere: task && task.domain === 'personal' ? 'personal' : null });
 }
 
-/** Domain evidence for a meeting: declared, or through resolved colleagues in it. Never the calendar. */
-function meetingDomains(meeting, { annotation = null, people = new Map() } = {}) {
+/**
+ * Domain evidence for a meeting/event: declared; the CALENDAR it came through,
+ * when Nick classified that calendar (Build 11B — the transport still implies
+ * nothing); resolved colleagues or family in it.
+ *
+ * `calendar` is `{ claims, state, why }` from source-classification.claimsFor,
+ * resolved by the caller (the read context holds the maps).
+ */
+function meetingDomains(meeting, { annotation = null, people = new Map(), calendar = null } = {}) {
   const claims = [...annotationClaims(annotation)];
-  const colleague = (meeting.people || []).map((p) => personWorkEvidence(people.get(p.personId))).find(Boolean);
+  if (calendar && calendar.claims) claims.push(...calendar.claims);
+  const ppl = (meeting.people || []).map((p) => people.get(p.personId)).filter(Boolean);
+  const colleague = ppl.map(personWorkEvidence).find(Boolean);
   if (colleague) claims.push({ ...colleague, why: `${colleague.why}, and is in it` });
+  const rel = ppl.map(personRelationshipEvidence).find(Boolean);
+  if (rel) claims.push({ ...rel, why: `${rel.why}, and is in it` });
   return domainsLib.resolveDomains(claims);
+}
+
+/**
+ * Domain evidence for a world-model TASK (wm_tasks shape). A NEURO task keeps
+ * Build 10's rules (default work is a default); a reminder's domain is its
+ * LIST's classification, and nothing else — unclassified is unknown.
+ */
+function worldTaskDomains(task, { annotation = null, neuroRow = null, list = null } = {}) {
+  const claims = [...annotationClaims(annotation)];
+  if (list && list.claims) claims.push(...list.claims);
+  if (neuroRow && neuroRow.household) claims.push({ domain: 'home', basis: 'set', why: 'shared with the household' });
+  if (neuroRow && neuroRow.domain === 'work') claims.push({ domain: 'work', basis: 'default', why: 'tasks default to work until marked personal' });
+  return domainsLib.resolveDomains(claims, { sphere: neuroRow && neuroRow.domain === 'personal' ? 'personal' : null });
+}
+
+/**
+ * PersonalImportance for an item (Build 11G). Explicit only: Nick's own
+ * annotation on the item, else the importance of an ACTIVE goal he explicitly
+ * linked it to (basis `goal`). Never from a domain, a source or a severity.
+ * Returns `{ value, basis, goalId }` or nulls — null is "not said".
+ */
+function importanceFor(entityId, { annotation = null, goals = [] } = {}) {
+  const own = annotation && annotation.importance ? domainsLib.normaliseImportance(annotation.importance) : null;
+  if (own) return { value: own, basis: 'declared', goalId: null };
+  const linked = (goals || []).filter((g) => g.status === 'active' && g.importance && (g.links || []).some((l) => l.entityId === entityId));
+  if (linked.length) {
+    const best = linked.sort((a, b) => domainsLib.importanceRank(a.importance) - domainsLib.importanceRank(b.importance))[0];
+    return { value: domainsLib.normaliseImportance(best.importance), basis: 'goal', goalId: best.id };
+  }
+  return { value: null, basis: null, goalId: null };
 }
 
 // ── commitments (pure) ──────────────────────────────────────────────────────
@@ -153,7 +208,7 @@ function meetingDomains(meeting, { annotation = null, people = new Map() } = {})
  * did not resolve — it is never dropped and never guessed (a first name
  * shared by two colleagues stays unresolved).
  */
-function shapeCommitment(c, { today, annotation = null, people = new Map(), task = null, progress = null, meetingTitle = null } = {}) {
+function shapeCommitment(c, { today, annotation = null, people = new Map(), task = null, progress = null, meetingTitle = null, importance = null, goalIds = null } = {}) {
   const mine = c.direction === 'by-nick';
   const party = mine ? c.beneficiary : c.promisor;
   // Three states, not two. A name that did not resolve is an IDENTITY gap and
@@ -193,7 +248,9 @@ function shapeCommitment(c, { today, annotation = null, people = new Map(), task
     taskId: c.relatedTaskId || null,
     progress: progress ? { state: progress.state, basis: progress.basis, reasons: progress.reasons || [] } : null,
     domains: commitmentDomains(c, { annotation, people, task }),
-    importance: annotation && annotation.importance ? annotation.importance : null,
+    importance: importance ? importance.value : (annotation && annotation.importance ? domainsLib.normaliseImportance(annotation.importance) : null),
+    importanceBasis: importance ? importance.basis : (annotation && annotation.importance ? 'declared' : null),
+    goalIds: goalIds || [],
     provenance: {
       kind: c.provenance ? c.provenance.kind : null,
       confidence: c.provenance ? c.provenance.confidence : null,
@@ -276,7 +333,6 @@ const SOURCE_DOMAINS = Object.freeze({
 const OFF_SPINE = Object.freeze([
   { id: 'phone', label: 'Phone via Home Assistant', what: 'where you are, and whether the phone is with you' },
   { id: 'watch', label: 'Apple Watch on the wrist', what: 'whether you have been sitting' },
-  { id: 'laptop', label: 'Desktop agent', what: 'whether you are working, and what on' },
   { id: 'router', label: 'Home router', what: 'DHCP health' },
   { id: 'rooms', label: 'Room sensors', what: 'which room you are in' },
   { id: 'rescuetime', label: 'RescueTime', what: 'a second opinion on where the day went' },
@@ -341,6 +397,8 @@ const EVALUATORS = Object.freeze({
   'commitment-risk': { label: 'Commitment at risk', version: 'build4', modeEnv: 'COMMITMENT_RISK_MODE' },
   'meeting-intelligence': { label: 'Meeting intelligence', version: 'build5a', modeEnv: 'MEETING_INTELLIGENCE_MODE' },
   'meeting-context': { label: 'Meeting context (replaced)', version: 'build3d', modeEnv: 'MEETING_CONTEXT_MODE' },
+  // Build 11H: the first non-work evaluator. Its rows DO record the version.
+  'personal-deadline': { label: 'Personal deadline', version: 'build11h', modeEnv: 'PERSONAL_DEADLINE_MODE', recordsVersion: true },
 });
 
 /**
@@ -381,6 +439,14 @@ function shapeFinding(evaluator, f, mode) {
       lifecycle: f.status === 'active' ? (f.change || 'new') : `resolved${f.resolution ? `: ${f.resolution}` : ''}`,
       evidenceRefs: (f.evidence || []).map(String), subject: `source:${f.source}`,
       domains: (SOURCE_DOMAINS[f.source] || []).map((d) => ({ domain: d, basis: 'intrinsic' })) };
+  }
+  if (evaluator === 'personal-deadline') {
+    return { ...base, evaluatorVersion: f.evaluatorVersion || ev.version, versionRecorded: !!f.evaluatorVersion,
+      type: f.trigger, title: f.summary, summary: f.why, confidence: f.confidence, severity: f.level,
+      createdAt: f.firstCreatedAt, resolvedAt: f.resolvedAt,
+      lifecycle: f.status === 'active' ? (f.novelty || 'new') : `resolved${f.resolution ? `: ${f.resolution}` : ''}`,
+      evidenceRefs: [f.subjectId, ...((f.evidence && f.evidence.goalIds) || [])].filter(Boolean), subject: f.subjectId,
+      domains: f.domains || null, deadline: f.deadline || null, importance: f.importance || null };
   }
   if (evaluator === 'commitment-risk') {
     return { ...base, type: (f.triggers || []).map((t) => t.kind || t).join(', ') || 'risk', title: f.summary, summary: f.why,
@@ -446,10 +512,9 @@ function commitmentIsNowRelevant(item) {
  */
 function rankNowCommitments(items) {
   const when = { overdue: 0, today: 1, soon: 2, later: 3, none: 4, unknown: 5 };
-  const importance = { 'personally-important': 0, 'work-critical': 0, restorative: 1, optional: 3 };
   return [...items].sort((a, b) =>
     (when[a.due.relative] - when[b.due.relative])
-    || ((importance[a.importance] ?? 2) - (importance[b.importance] ?? 2))
+    || (domainsLib.importanceRank(a.importance) - domainsLib.importanceRank(b.importance))
     || String(a.due.date || '').localeCompare(String(b.due.date || ''))
     || String(a.id).localeCompare(String(b.id)));
 }
@@ -484,7 +549,43 @@ function isKnownWorkOnly(domains) {
   return !!domains && domains.domains.length > 0 && domains.domains.every((d) => d.domain === 'work');
 }
 
-function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitments = [], sources = [], approvals = null, goals = [], crowd = null, gaps = [] }) {
+// Build 11J. Off duty, an event of UNKNOWN domain may lead Now only when it is
+// near: today, or within this many minutes. Further out it is de-emphasised —
+// listed, never hidden — because "UAT Testing" on Wednesday is not what
+// Saturday is about, and hiding it would be a guess that it is work.
+const UNKNOWN_NEAR_MINUTES = 12 * 60;
+const IMPORTANT_TO_NICK = new Set(['critical-to-me', 'important-to-me']);
+
+/** Wall-clock minutes from a to b (YYYY-MM-DDTHH:MM, one zone). PURE. */
+function minutesFrom(a, b) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(a || '')) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(b || ''))) return null;
+  const t = (x) => Date.UTC(+x.slice(0, 4), +x.slice(5, 7) - 1, +x.slice(8, 10), +x.slice(11, 13), +x.slice(14, 16));
+  return Math.round((t(b) - t(a)) / 60000);
+}
+
+/**
+ * Off duty, how relevant is an UNKNOWN-domain event? PURE.
+ *   'lead'   may be Now's next event: today, within UNKNOWN_NEAR_MINUTES, or
+ *            Nick said it matters to him
+ *   'later'  shown de-emphasised, never hidden
+ * An unreadable time is treated as near — not knowing when is not a reason
+ * to push something out of sight.
+ */
+function unknownEventRelevance(e, nowLocal) {
+  if (e && IMPORTANT_TO_NICK.has(e.importance)) return 'lead';
+  const mins = minutesFrom(nowLocal, e && e.start);
+  if (mins === null) return 'lead';
+  if (String(e.start).slice(0, 10) === String(nowLocal).slice(0, 10)) return 'lead';
+  return mins <= UNKNOWN_NEAR_MINUTES ? 'lead' : 'later';
+}
+
+/** Does a world-model TASK belong on Now? A stated/set date today or tomorrow, or a stated one overdue ≤14d. */
+function taskIsNowRelevant(t) {
+  if (t.state !== 'open') return false;
+  return commitmentIsNowRelevant({ state: 'open', due: t.due });
+}
+
+function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitments = [], tasks = [], sources = [], approvals = null, goals = [], crowd = null, gaps = [], nowLocal = null }) {
   const shownTitles = new Set();
   const take = (t) => { if (t) shownTitles.add(String(t).trim().toLowerCase()); };
   take(decision.primary && decision.primary.title);
@@ -497,10 +598,19 @@ function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitme
   const showWork = !(decision.life && decision.life.showWork === false);
   const held = { work: 0 };
   const candidates = nextEvents.length ? nextEvents : (nextEvent ? [nextEvent] : []);
-  const eligible = candidates.filter((e) => showWork || !isKnownWorkOnly(e.domains));
+  const notWork = candidates.filter((e) => showWork || !isKnownWorkOnly(e.domains));
   // One event held, not every work meeting this week: the count says what Now
   // WOULD have led with, not how full the calendar is.
-  if (candidates.length && candidates[0] !== eligible[0]) held.work += 1;
+  if (candidates.length && candidates[0] !== notWork[0]) held.work += 1;
+  // Build 11J: off duty, an unknown-domain event far ahead does not lead —
+  // it is listed below as "later, domain unknown", never hidden.
+  const laterUnknown = [];
+  const eligible = notWork.filter((e) => {
+    if (showWork || (e.domains && e.domains.domains.length) || !nowLocal) return true;
+    if (unknownEventRelevance(e, nowLocal) === 'lead') return true;
+    laterUnknown.push(e);
+    return false;
+  });
   const first = eligible[0] || null;
   const next = first && !shownTitles.has(String(first.title || '').trim().toLowerCase()) ? first : null;
   const due = rankNowCommitments(commitments.filter(commitmentIsNowRelevant))
@@ -510,6 +620,15 @@ function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitme
     })
     .filter((c) => !shownTitles.has(String(c.description || '').trim().toLowerCase()))
     .slice(0, 5);
+  // Build 11D/P: tasks the attention pool cannot see (reminders — NEURO's own
+  // tasks are already the decision's), domain-blind, by when then importance.
+  const dueTasks = rankNowCommitments(tasks.filter(taskIsNowRelevant))
+    .filter((t) => {
+      if (!showWork && isKnownWorkOnly(t.domains)) { held.work += 1; return false; }
+      return true;
+    })
+    .filter((t) => !shownTitles.has(String(t.description || '').trim().toLowerCase()))
+    .slice(0, 5);
   const blind = sources.filter(sourceMatters).slice(0, 3);
   const needsYou = approvals && approvals.known && (approvals.needsApproval || approvals.needsReview) ? approvals : null;
 
@@ -518,12 +637,18 @@ function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitme
     nextEvent: next,
     needsYou,
     commitments: due.length ? due : null,
+    tasks: dueTasks.length ? dueTasks : null,
+    laterUnknown: laterUnknown.length ? {
+      count: laterUnknown.length,
+      items: laterUnknown.slice(0, 3).map((e) => ({ id: e.id, title: e.title, start: e.start })),
+      say: `${laterUnknown.length} later event${laterUnknown.length === 1 ? '' : 's'} of unknown domain — not leading while you're off duty.`,
+    } : null,
     blindness: blind.length ? blind : null,
     crowdedOut: crowd,
     goals: goals.length ? goals : null,
   };
   const meaningful = !!(decision.primary && decision.primary.kind === 'item') || !!sections.nextEvent || !!needsYou
-    || !!sections.commitments || !!sections.blindness || !!crowd;
+    || !!sections.commitments || !!sections.tasks || !!sections.blindness || !!crowd;
   const unreadable = (gaps || []).length > 0 || decision.poolAvailable === false;
   return {
     sections,
@@ -546,7 +671,9 @@ function getAnnotations(ids = null) {
     ? db.all(`SELECT * FROM life_annotations WHERE entity_id IN (${ids.map(() => '?').join(',')})`, ids)
     : db.all('SELECT * FROM life_annotations');
   const map = new Map();
-  for (const r of rows) map.set(r.entity_id, { domains: parseJson(r.domains_json, null), importance: r.importance || null, setAt: r.set_at });
+  // Importance normalised on READ, so a Build 10 'personally-important' row
+  // reads as Build 11's 'important-to-me' without a migration.
+  for (const r of rows) map.set(r.entity_id, { domains: parseJson(r.domains_json, null), importance: domainsLib.normaliseImportance(r.importance) || null, setAt: r.set_at });
   return map;
 }
 
@@ -623,6 +750,108 @@ function _progressMap() {
   } catch { return { map: new Map(), coverage: null }; }
 }
 
+/** Active goals with their explicit links, for importance inheritance. Never throws. */
+function _activeGoals() {
+  try { return listGoals({ status: 'active' }); } catch { return []; }
+}
+
+/**
+ * The classification maps one read needs, loaded ONCE (Build 11B). Each map is
+ * keyed by container key; the title counts say which title keys are ambiguous.
+ */
+function _classificationCtx() {
+  const sc = require('./source-classification');
+  try {
+    return {
+      sc,
+      cal: sc.classificationMap('calendar'), calTitles: sc.effectiveTitleCounts('calendar'),
+      list: sc.classificationMap('reminder-list'), listTitles: sc.effectiveTitleCounts('reminder-list'),
+    };
+  } catch { return { sc, cal: new Map(), calTitles: new Map(), list: new Map(), listTitles: new Map() }; }
+}
+
+/** The calendar claims for a meeting row/shape. `{ claims, state, why, key, name }`. */
+function _calendarFor(m, ctx) {
+  if (!m || !ctx) return null;
+  const cal = m.calendar || null;
+  const provider = m.provider || (String(m.meetingId || '').startsWith('graph:') ? 'graph' : 'apple');
+  if (!cal && provider !== 'graph') return { claims: [], state: 'unknown-calendar', why: 'this entry did not say which calendar it is on', key: null, name: null };
+  const item = provider === 'graph' ? { id: null, title: 'Outlook' }
+    : /:id:/.test(cal.key || '') ? { id: cal.key.replace(/^eventkit-cal:id:/, ''), title: cal.name } : { id: null, title: cal.name };
+  const r = ctx.sc.resolveFor('calendar', item, { byKey: ctx.cal, titleCount: ctx.calTitles, provider: provider === 'graph' ? 'graph' : 'eventkit' });
+  const c = ctx.sc.claimsFor(r.classification, { ambiguous: r.ambiguous, label: item.title });
+  return { ...c, key: r.key, name: provider === 'graph' ? 'Outlook' : item.title };
+}
+
+/** The list claims for a reminder task. */
+function _listFor(task, ctx) {
+  if (!task || !task.container || !ctx) return null;
+  const item = { id: task.container.id, title: task.container.title };
+  const r = ctx.sc.resolveFor('reminder-list', item, { byKey: ctx.list, titleCount: ctx.listTitles });
+  return { ...ctx.sc.claimsFor(r.classification, { ambiguous: r.ambiguous, label: item.title }), key: r.key, name: item.title };
+}
+
+/**
+ * One world-model task as a surface sees it (Build 11D). Same shape rules as a
+ * commitment: canonical id, due KIND, domains with their bases, importance
+ * with its basis, provenance.
+ */
+function shapeWorldTask(t, { today, annotation = null, neuroRow = null, list = null, importance = null, companions = [] } = {}) {
+  const lead = (t.sources || []).find((s) => s.role === 'leading') || (t.sources || [])[0] || null;
+  const due = dueContext(t.due, today);
+  if (t.dueTime && due.date) due.time = t.dueTime;
+  return {
+    id: t.taskId,
+    kind: 'task',
+    description: t.title,
+    state: t.status === 'completed' ? 'completed' : t.status === 'cancelled' ? 'cancelled' : t.status === 'unknown' ? 'unknown' : 'open',
+    system: lead ? lead.system : null,
+    sourceLabel: lead && lead.system === 'eventkit-reminders' ? 'Reminders' : lead && lead.system === 'neuro' ? 'NEURO' : lead && /^ms-/.test(lead.system) ? 'Microsoft' : null,
+    container: t.container ? { kind: t.container.kind, name: t.container.title, classification: list ? list.state : null } : null,
+    due,
+    domains: worldTaskDomains(t, { annotation, neuroRow, list }),
+    importance: importance ? importance.value : null,
+    importanceBasis: importance ? importance.basis : null,
+    // "Mentions Ember" — an INFERENCE from an exact name, never a fact about the task.
+    mentions: require('./personal-world').mentions(t.title, companions),
+    completionAuthority: t.completionAuthority || null,
+    provenance: { kind: t.provenance ? t.provenance.kind : null, origin: t.origin ? t.origin.kind : null,
+      evidenceCount: t.provenance && Array.isArray(t.provenance.evidence) ? t.provenance.evidence.length : 0 },
+    observedAt: t.observedAt || null,
+  };
+}
+
+/**
+ * GET tasks, canonical (Build 11D). `system` narrows ('eventkit-reminders'
+ * for the personal reminders); `domain` filters like commitments.
+ */
+function tasks({ status = 'open', system = null, domain = null, now = Date.now(), limit = 500 } = {}) {
+  const wo = require('./world-obligations');
+  const today = localDate(now);
+  const ctx = _classificationCtx();
+  const ann = getAnnotations();
+  const goals = _activeGoals();
+  let companions = [];
+  try { companions = require('./personal-world').listCompanions(); } catch { companions = []; }
+  let rows = wo.listTasks({ status: status === 'open' ? 'open' : status, limit: 2000 });
+  if (system) rows = rows.filter((t) => (t.sources || []).some((s) => s.system === system && s.role === 'leading'));
+  const neuroRows = _neuroTaskRows(rows.map((t) => t.taskId));
+  let items = rows.map((t) => shapeWorldTask(t, {
+    today, annotation: ann.get(t.taskId) || null, neuroRow: neuroRows.get(t.taskId) || null,
+    list: _listFor(t, ctx), importance: importanceFor(t.taskId, { annotation: ann.get(t.taskId) || null, goals }), companions,
+  }));
+  if (domain === 'unknown') items = items.filter((i) => !i.domains.domains.length);
+  else if (domain) items = items.filter((i) => i.domains.domains.some((d) => d.domain === domain));
+  items = items.slice(0, Math.max(1, Math.min(2000, limit)));
+  const counts = { total: items.length, bySystem: {}, domainUnknown: 0, byDomain: {} };
+  for (const i of items) {
+    counts.bySystem[i.system || 'unknown'] = (counts.bySystem[i.system || 'unknown'] || 0) + 1;
+    if (!i.domains.domains.length) counts.domainUnknown += 1;
+    for (const d of i.domains.domains) counts.byDomain[d.domain] = (counts.byDomain[d.domain] || 0) + 1;
+  }
+  return { contract: CONTRACT, asOf: new Date(now).toISOString(), freshness: _projection('world-model'), filter: { status, system, domain }, counts, items };
+}
+
 /** GET commitments, canonical. `direction` = i-owe | owed-to-me | null. */
 function commitments({ direction = null, status = 'open', now = Date.now(), domain = null } = {}) {
   const wo = require('./world-obligations');
@@ -631,11 +860,14 @@ function commitments({ direction = null, status = 'open', now = Date.now(), doma
   const today = localDate(now);
   const people = _peopleMap();
   const ann = getAnnotations();
-  const tasks = _neuroTaskRows(rows.map((r) => r.relatedTaskId));
+  const taskRows = _neuroTaskRows(rows.map((r) => r.relatedTaskId));
   const prog = _progressMap();
+  const goals = _activeGoals();
   let items = rows.map((c) => shapeCommitment(c, {
     today, people, annotation: ann.get(c.commitmentId) || null,
-    task: tasks.get(c.relatedTaskId) || null, progress: prog.map.get(c.commitmentId) || null,
+    task: taskRows.get(c.relatedTaskId) || null, progress: prog.map.get(c.commitmentId) || null,
+    importance: importanceFor(c.commitmentId, { annotation: ann.get(c.commitmentId) || null, goals }),
+    goalIds: goals.filter((g) => (g.links || []).some((l) => l.entityId === c.commitmentId)).map((g) => g.id),
   }));
   if (domain === 'unknown') items = items.filter((i) => !i.domains.domains.length);
   else if (domain) items = items.filter((i) => i.domains.domains.some((d) => d.domain === domain));
@@ -737,23 +969,58 @@ function findings({ status = 'active', limit = 100 } = {}) {
   add('commitment-risk', 'commitment-risk', (s) => require('./commitment-risk').findings({ status: s, limit }), (s) => (s === 'active' || s === 'resolved' ? s : null));
   add('meeting-intelligence', 'meeting-intelligence', (s) => require('./meeting-intelligence').findings({ status: s, limit }), (s) => (s === 'active' ? 'active' : s === 'resolved' ? 'expired' : null));
   add('meeting-context', 'meeting-context', (s) => require('./meeting-context').findings({ status: s, limit }), (s) => (s === 'active' ? 'active' : s === 'resolved' ? 'expired' : null));
+  add('personal-deadline', 'personal-deadline', (s) => require('./personal-deadline').findings({ status: s, limit }), (s) => (s === 'active' || s === 'resolved' ? s : null));
   out.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   return { contract: CONTRACT, status, evaluators, findings: out };
 }
 
-function listGoals({ status = 'active' } = {}) {
-  const db = _db();
-  const rows = status === 'all' ? db.all('SELECT * FROM goals ORDER BY created_at') : db.all('SELECT * FROM goals WHERE status = ? ORDER BY created_at', [status]);
-  return rows.map((r) => ({ id: r.goal_id, title: r.title, status: r.status, note: r.note || null,
-    domains: (parseJson(r.domains_json, []) || []).map((d) => ({ domain: d, basis: 'declared' })), createdAt: r.created_at, updatedAt: r.updated_at }));
+const GOAL_STATUSES = ['active', 'paused', 'achieved', 'dropped'];
+// Build 10's word for achieved, still accepted on input.
+const GOAL_STATUS_ALIASES = { done: 'achieved' };
+const GOAL_LINK_PREFIXES = /^(task|commitment|person|companion|meeting|goal):/;
+
+function _goalLinks(goalId) {
+  return _db().all('SELECT entity_id, relation, set_at FROM goal_links WHERE goal_id = ? ORDER BY entity_id', [goalId])
+    .map((l) => ({ entityId: l.entity_id, relation: l.relation, setAt: l.set_at }));
 }
 
-const GOAL_STATUSES = ['active', 'paused', 'done', 'dropped'];
+function _shapeGoalRow(r) {
+  return {
+    id: r.goal_id, kind: 'goal', title: r.title, status: r.status === 'done' ? 'achieved' : r.status,
+    description: r.description || r.note || null, note: r.note || null,
+    domains: (parseJson(r.domains_json, []) || []).map((d) => ({ domain: d, basis: 'declared' })),
+    importance: r.importance ? domainsLib.normaliseImportance(r.importance) : null,
+    startDate: r.start_date || null, reviewDate: r.review_date || null, lastReviewedAt: r.last_reviewed_at || null,
+    links: _goalLinks(r.goal_id),
+    // A goal is only ever Nick's statement. Nothing in NEURO writes this table
+    // except the route he calls (and its tests).
+    provenance: { kind: 'fact', declaredBy: 'nick', via: r.provenance || 'neuro' },
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
 
-function saveGoal({ id = null, title, domains, status, note } = {}, { now = Date.now() } = {}) {
+/** Goals as Nick declared them. `status` = active | paused | achieved | dropped | all. */
+function listGoals({ status = 'active' } = {}) {
+  const db = _db();
+  const want = GOAL_STATUS_ALIASES[status] || status;
+  const rows = want === 'all' ? db.all('SELECT * FROM goals ORDER BY created_at')
+    : db.all('SELECT * FROM goals WHERE status = ? OR (? = \'achieved\' AND status = \'done\') ORDER BY created_at', [want, want]);
+  return rows.map(_shapeGoalRow);
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Create or update a goal. Every field is explicit; OMITTED leaves a field,
+ * NULL clears it, an unrecognised value is REFUSED (never normalised away).
+ * `links`, when given, REPLACES the goal's explicit links. `reviewed: true`
+ * stamps lastReviewedAt. Publishes the goal to the event spine afterwards.
+ */
+function saveGoal({ id = null, title, domains, status, note, description, importance, startDate, reviewDate, links, reviewed } = {}, { now = Date.now() } = {}) {
   const db = _db();
   const iso = new Date(now).toISOString();
-  if (status !== undefined && !GOAL_STATUSES.includes(status)) return { ok: false, error: `status must be one of ${GOAL_STATUSES.join(', ')}` };
+  const st = status === undefined ? undefined : (GOAL_STATUS_ALIASES[status] || status);
+  if (st !== undefined && !GOAL_STATUSES.includes(st)) return { ok: false, error: `status must be one of ${GOAL_STATUSES.join(', ')}` };
   let domainsJson;
   if (domains !== undefined) {
     if (domains !== null && !Array.isArray(domains)) return { ok: false, error: 'domains must be a list' };
@@ -761,23 +1028,62 @@ function saveGoal({ id = null, title, domains, status, note } = {}, { now = Date
     if (norm.some((d) => !d)) return { ok: false, error: 'unknown domain' };
     domainsJson = norm.length ? JSON.stringify([...new Set(norm)]) : null;
   }
-  if (!id) {
-    const t = typeof title === 'string' ? title.trim() : '';
-    if (!t) return { ok: false, error: 'title is required' };
-    const gid = `goal:${require('crypto').randomUUID()}`;
-    db.run('INSERT INTO goals (goal_id, title, domains_json, status, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [gid, t.slice(0, 300), domainsJson || null, status || 'active', note ? String(note).slice(0, 2000) : null, iso, iso]);
-    return { ok: true, goal: listGoals({ status: 'all' }).find((g) => g.id === gid) };
+  let imp;
+  if (importance !== undefined) {
+    if (importance === null) imp = null;
+    else {
+      imp = domainsLib.normaliseImportance(importance);
+      if (!imp) return { ok: false, error: `unknown importance: ${importance}` };
+    }
   }
-  const held = db.get('SELECT * FROM goals WHERE goal_id = ?', [id]);
-  if (!held) return { ok: false, error: 'no such goal', status: 404 };
-  db.run('UPDATE goals SET title = ?, domains_json = ?, status = ?, note = ?, updated_at = ? WHERE goal_id = ?', [
-    typeof title === 'string' && title.trim() ? title.trim().slice(0, 300) : held.title,
-    domainsJson !== undefined ? domainsJson : held.domains_json,
-    status || held.status,
-    note !== undefined ? (note ? String(note).slice(0, 2000) : null) : held.note,
-    iso, id]);
-  return { ok: true, goal: listGoals({ status: 'all' }).find((g) => g.id === id) };
+  for (const [k, v] of [['startDate', startDate], ['reviewDate', reviewDate]]) {
+    if (v !== undefined && v !== null && !DATE_ONLY.test(String(v))) return { ok: false, error: `${k} must be YYYY-MM-DD` };
+  }
+  if (links !== undefined) {
+    if (!Array.isArray(links)) return { ok: false, error: 'links must be a list' };
+    const bad = links.filter((l) => !(typeof (l && (l.entityId || l)) === 'string' && GOAL_LINK_PREFIXES.test(String(l.entityId || l))));
+    if (bad.length) return { ok: false, error: 'a link must name a world-model id (task:…, commitment:…, person:…, companion:…, meeting:…)' };
+  }
+  const desc = description !== undefined ? description : note;
+
+  let gid = id;
+  const write = () => db.batchSaves(() => {
+    if (!gid) {
+      const t = typeof title === 'string' ? title.trim() : '';
+      if (!t) throw Object.assign(new Error('title is required'), { status: 400 });
+      gid = `goal:${require('crypto').randomUUID()}`;
+      db.run(`INSERT INTO goals (goal_id, title, domains_json, status, note, description, importance, start_date, review_date,
+                last_reviewed_at, provenance, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'neuro', ?, ?)`,
+      [gid, t.slice(0, 300), domainsJson || null, st || 'active', null, desc ? String(desc).slice(0, 2000) : null,
+        imp || null, startDate || null, reviewDate || null, reviewed ? iso : null, iso, iso]);
+    } else {
+      const held = db.get('SELECT * FROM goals WHERE goal_id = ?', [gid]);
+      if (!held) throw Object.assign(new Error('no such goal'), { status: 404 });
+      db.run(`UPDATE goals SET title = ?, domains_json = ?, status = ?, description = ?, importance = ?, start_date = ?,
+                review_date = ?, last_reviewed_at = ?, updated_at = ? WHERE goal_id = ?`, [
+        typeof title === 'string' && title.trim() ? title.trim().slice(0, 300) : held.title,
+        domainsJson !== undefined ? domainsJson : held.domains_json,
+        st || (held.status === 'done' ? 'achieved' : held.status),
+        desc !== undefined ? (desc ? String(desc).slice(0, 2000) : null) : (held.description || held.note || null),
+        imp !== undefined ? imp : held.importance,
+        startDate !== undefined ? startDate : held.start_date,
+        reviewDate !== undefined ? reviewDate : held.review_date,
+        reviewed ? iso : held.last_reviewed_at,
+        iso, gid]);
+    }
+    if (links !== undefined) {
+      db.run('DELETE FROM goal_links WHERE goal_id = ?', [gid]);
+      for (const l of links) {
+        const entityId = String(l.entityId || l).slice(0, 300);
+        db.run('INSERT OR IGNORE INTO goal_links (goal_id, entity_id, relation, set_at) VALUES (?, ?, ?, ?)',
+          [gid, entityId, (l && l.relation) || 'serves', iso]);
+      }
+    }
+  });
+  try { write(); } catch (e) { return { ok: false, error: e.message, status: e.status || 400 }; }
+  // Onto the spine, so the world model (and the personal evaluator) hold it.
+  try { require('./personal-world').publishGoals({ now }); } catch { /* the goal is saved; the projection catches up */ }
+  return { ok: true, goal: _shapeGoalRow(db.get('SELECT * FROM goals WHERE goal_id = ?', [gid])) };
 }
 
 /**
@@ -785,25 +1091,48 @@ function saveGoal({ id = null, title, domains, status, note } = {}, { now = Date
  * can currently SEE. Counts evidence, never judges the life. A domain with
  * nothing is reported with zeros, not dropped — an empty row is the finding.
  */
-function coverageByDomain({ commitmentItems = [], sourceItems = [], goals = [], events = [] }) {
-  const rows = Object.fromEntries(domainsLib.DOMAINS.map((d) => [d, { domain: d, label: domainsLib.LABELS[d], commitments: 0, sources: 0, goals: 0, upcoming: 0, declared: 0 }]));
+function coverageByDomain({ commitmentItems = [], sourceItems = [], goals = [], events = [], taskItems = [], containers = [] }) {
+  const rows = Object.fromEntries(domainsLib.DOMAINS.map((d) => [d, { domain: d, label: domainsLib.LABELS[d], commitments: 0, tasks: 0, sources: 0, containers: 0, goals: 0, upcoming: 0, declared: 0 }]));
   const bump = (doms, key) => {
     for (const d of (doms && doms.domains) || []) {
       if (!rows[d.domain]) continue;
       rows[d.domain][key] += 1;
-      if (d.basis === 'declared') rows[d.domain].declared += 1;
+      if (d.basis === 'declared' || d.basis === 'classified') rows[d.domain].declared += 1;
     }
   };
   for (const c of commitmentItems) bump(c.domains, 'commitments');
+  for (const t of taskItems) bump(t.domains, 'tasks');
   for (const s of sourceItems) if (s.lifecycle !== 'retired') bump({ domains: s.domains }, 'sources');
+  for (const c of containers) {
+    const doms = (c.classification && c.classification.domains) || [];
+    for (const d of doms) if (rows[d]) rows[d].containers += 1;
+  }
   for (const g of goals) bump({ domains: g.domains }, 'goals');
   for (const e of events) bump(e.domains, 'upcoming');
   return {
     domains: domainsLib.DOMAINS.map((d) => rows[d]),
     unknown: {
       commitments: commitmentItems.filter((c) => !c.domains.domains.length).length,
+      tasks: taskItems.filter((t) => !t.domains.domains.length).length,
       upcoming: events.filter((e) => !e.domains.domains.length).length,
+      containers: containers.filter((c) => !(c.classification && (c.classification.domains || []).length)).length,
     },
+  };
+}
+
+/** One upcoming diary entry as Now and Life see it, with its calendar's classification applied. */
+function _shapeEvent(m, { people, ann, ctx, goals, projectionCurrent = null }) {
+  const cal = _calendarFor(m, ctx);
+  const annotation = ann.get(m.meetingId) || null;
+  const imp = importanceFor(m.meetingId, { annotation, goals });
+  return {
+    id: m.meetingId, title: m.title, start: m.start, end: m.end, kind: m.kind, entryKind: m.entryKind || null,
+    withPeople: (m.people || []).map((p) => p.displayName), unresolvedPeople: m.unresolvedParticipants || 0,
+    calendar: cal ? { name: cal.name, classification: cal.state, why: cal.why || null } : null,
+    domains: meetingDomains(m, { people, annotation, calendar: cal }),
+    importance: imp.value, importanceBasis: imp.basis,
+    source: (m.sources || []).map((x) => x.provider), freshness: m.freshness ? m.freshness.freshness : null,
+    projectionCurrent,
   };
 }
 
@@ -811,20 +1140,40 @@ async function life({ now: nowMs = Date.now() } = {}) {
   const people = _peopleMap();
   const gaps = [];
   const safe = (name, fn, dflt) => { try { return fn(); } catch (e) { gaps.push({ input: name, why: e.message }); return dflt; } };
+  const pw = require('./personal-world');
+  const ctx = _classificationCtx();
   const commitmentItems = safe('commitments', () => commitments({ now: nowMs }).items, []);
+  const taskItems = safe('tasks', () => tasks({ now: nowMs }).items, []);
   const sourceItems = safe('sources', () => sources({ now: nowMs }).spine, []);
-  const goals = safe('goals', () => listGoals({ status: 'active' }), []);
+  const goals = safe('goals', () => listGoals({ status: 'all' }), []);
+  const active = goals.filter((g) => g.status === 'active');
+  const containers = safe('classifications', () => ctx.sc.listContainers({ now: nowMs }), []);
+  const companions = safe('companions', () => pw.listCompanions(), []);
   const events = safe('meetings', () => {
     const wm = require('./world-model');
     const up = wm.nextMeetings({ now: nowMs, limit: 60 }).filter((m) => m.kind !== 'block');
     const ann = getAnnotations(up.map((m) => m.meetingId));
-    return up.map((m) => ({ id: m.meetingId, domains: meetingDomains(m, { people, annotation: ann.get(m.meetingId) || null }) }));
+    return up.map((m) => _shapeEvent(m, { people, ann, ctx, goals: active }));
   }, []);
-  return { contract: CONTRACT, asOf: new Date(nowMs).toISOString(), goals, coverage: coverageByDomain({ commitmentItems, sourceItems, goals, events }), gaps };
+  // What each companion is connected to: explicit goal links (facts), and
+  // items that MENTION her by name (an inference, labelled as one).
+  const companionsOut = companions.map((c) => ({
+    ...c,
+    goals: active.filter((g) => g.links.some((l) => l.entityId === c.id)).map((g) => ({ id: g.id, title: g.title })),
+    mentionedBy: [...taskItems, ...commitmentItems].filter((i) => pw.mentions(i.description, [c]).length)
+      .slice(0, 20).map((i) => ({ id: i.id, kind: i.kind, description: i.description, basis: 'inference' })),
+    upcoming: events.filter((e) => pw.mentions(e.title, [c]).length).map((e) => ({ id: e.id, title: e.title, start: e.start, basis: 'inference' })),
+  }));
+  return {
+    contract: CONTRACT, asOf: new Date(nowMs).toISOString(),
+    goals, companions: companionsOut, containers,
+    coverage: coverageByDomain({ commitmentItems, sourceItems, goals: active, events, taskItems, containers }),
+    gaps,
+  };
 }
 
 /** Real-meeting minutes in today's working diary (work-domain meetings only). */
-function _workMeetingMinutesToday(nowMs, people) {
+function _workMeetingMinutesToday(nowMs, people, ctx = null) {
   const db = _db();
   const today = localDate(nowMs);
   const wm = require('./world-model');
@@ -833,7 +1182,7 @@ function _workMeetingMinutesToday(nowMs, people) {
   for (const r of rows) {
     const m = wm.shapeMeeting(r, nowMs);
     if (m.isAllDay) continue;
-    const doms = meetingDomains(m, { people });
+    const doms = meetingDomains(m, { people, calendar: _calendarFor(m, ctx) });
     if (!doms.domains.some((d) => d.domain === 'work')) continue;
     const s = Date.parse(`${m.start}:00`); const e = Date.parse(`${m.end}:00`);
     if (Number.isFinite(s) && Number.isFinite(e) && e > s) minutes += (e - s) / 60000;
@@ -853,6 +1202,9 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
     try { dec = await require('./attention').build({ now: new Date(nowMs) }); } catch (e) { dec = { poolAvailable: false, gaps: [{ input: 'attention', why: e.message }] }; }
   }
   const people = _peopleMap();
+  const ctx = _classificationCtx();
+  let goals = [];
+  try { goals = listGoals({ status: 'active' }); } catch (e) { gaps.push({ input: 'goals', why: e.message }); }
   let nextEvents = [];
   try {
     const wm = require('./world-model');
@@ -862,36 +1214,36 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
     // make the next meaningful event structurally a work one.
     const upcoming = wm.nextMeetings({ now: nowMs, limit: 20 }).filter((x) => x.kind !== 'block').slice(0, 10);
     const ann = getAnnotations(upcoming.map((m) => m.meetingId));
-    nextEvents = upcoming.map((m) => ({ id: m.meetingId, title: m.title, start: m.start, end: m.end, kind: m.kind,
-      withPeople: (m.people || []).map((p) => p.displayName), unresolvedPeople: m.unresolvedParticipants || 0,
-      domains: meetingDomains(m, { people, annotation: ann.get(m.meetingId) || null }),
-      source: (m.sources || []).map((s) => s.provider), freshness: m.freshness ? m.freshness.freshness : null,
-      projectionCurrent: st.projection.current }));
+    nextEvents = upcoming.map((m) => _shapeEvent(m, { people, ann, ctx, goals, projectionCurrent: st.projection.current }));
   } catch (e) { gaps.push({ input: 'meetings', why: e.message }); }
   let commitmentItems = [];
   try { commitmentItems = commitments({ now: nowMs }).items; } catch (e) { gaps.push({ input: 'commitments', why: e.message }); }
+  // Build 11D: reminders are tasks the attention pool cannot see.
+  let taskItems = [];
+  try { taskItems = tasks({ now: nowMs, system: 'eventkit-reminders' }).items; } catch (e) { gaps.push({ input: 'reminders', why: e.message }); }
   let sourceItems = [];
   try { sourceItems = sources({ now: nowMs }).spine; } catch (e) { gaps.push({ input: 'sources', why: e.message }); }
-  let goals = [];
-  try { goals = listGoals({ status: 'active' }); } catch (e) { gaps.push({ input: 'goals', why: e.message }); }
   let crowd = null;
   try {
-    const personalDue = commitmentItems.filter((i) => commitmentIsNowRelevant(i) && i.domains.domains.length
-      && i.domains.domains.every((d) => d.domain !== 'work') && i.domains.domains.some((d) => ['declared', 'set', 'intrinsic'].includes(d.basis)));
-    crowd = crowdedOut({ workMeetingMinutes: _workMeetingMinutesToday(nowMs, people), personalDue });
+    const known = (i) => i.domains.domains.length && i.domains.domains.every((d) => d.domain !== 'work')
+      && i.domains.domains.some((d) => ['declared', 'classified', 'set', 'intrinsic'].includes(d.basis));
+    const personalDue = [...commitmentItems.filter((i) => commitmentIsNowRelevant(i) && known(i)),
+      ...taskItems.filter((t) => taskIsNowRelevant(t) && known(t))];
+    crowd = crowdedOut({ workMeetingMinutes: _workMeetingMinutesToday(nowMs, people, ctx), personalDue });
   } catch (e) { gaps.push({ input: 'work-balance', why: e.message }); }
   const allGaps = [...(dec.gaps || []), ...gaps];
-  const composed = composeNow({ decision: dec, nextEvents, commitments: commitmentItems, sources: sourceItems,
-    approvals: dec.approvals || null, goals, crowd, gaps: allGaps });
+  const composed = composeNow({ decision: dec, nextEvents, commitments: commitmentItems, tasks: taskItems, sources: sourceItems,
+    approvals: dec.approvals || null, goals, crowd, gaps: allGaps, nowLocal: require('./world-model').localMinute(nowMs) });
   return { ...dec, contract: CONTRACT, situation: composed };
 }
 
 module.exports = {
   CONTRACT, SOON_DAYS, NOW_OVERDUE_DAYS, EVALUATORS, VERDICT_WORDS, SOURCE_DOMAINS, GOAL_STATUSES, OFF_SPINE,
   // pure
-  daysBetween, localDate, dueContext, personWorkEvidence, commitmentDomains, taskDomains, meetingDomains,
+  daysBetween, localDate, dueContext, personWorkEvidence, personRelationshipEvidence, commitmentDomains, taskDomains, meetingDomains,
+  worldTaskDomains, importanceFor, shapeWorldTask, minutesFrom, unknownEventRelevance, taskIsNowRelevant, UNKNOWN_NEAR_MINUTES,
   shapeCommitment, summariseCommitments, sourceVerdict, shapeSource, sourceMatters, attentionVerdict, shapeFinding,
   commitmentIsNowRelevant, rankNowCommitments, crowdedOut, composeNow, noteTitle, coverageByDomain, isKnownWorkOnly,
   // readers / writers
-  commitments, commitmentDetail, sources, findings, now, life, getAnnotations, setAnnotation, listGoals, saveGoal,
+  commitments, commitmentDetail, tasks, sources, findings, now, life, getAnnotations, setAnnotation, listGoals, saveGoal,
 };

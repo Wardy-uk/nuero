@@ -78,6 +78,12 @@ const normBody = (s) => String(s || '').replace(/\r\n/g, '\n').replace(/[ \t]+/g
 const DEFAULT_DEPS = {
   mail: () => require('./action-mail'),
   enabled: () => require('./feature-flags').isEnabled('governed_execution'),
+  // Build 11K: the calendar transport and its OWN switch.
+  calendar: () => require('./action-calendar'),
+  calendarEnabled: () => require('./feature-flags').isEnabled('governed_calendar'),
+  // What a calendar change leaves in NEURO's records (1-2-1 stamps, the move
+  // history, NOVA's session) — the work book()/reschedule() used to do inline.
+  recordCalendar: (a) => require('./one-to-one-booking').afterGovernedCalendar(a),
   commitment: (id) => require('./world-obligations').getCommitment(id),
   progress: (id) => require('./progress-evidence').progressFor(id),
   counterparty: (c) => pa.counterpartyFor(c),
@@ -119,9 +125,13 @@ const DEFAULT_DEPS = {
 };
 
 function _deps(over) {
-  if (over && over.mailApi) return over; // already resolved
+  if (over && over.mailApi && over.calApi) return over; // already resolved
   const d = { ...DEFAULT_DEPS, ...(over || {}) };
-  return { ...d, mailApi: typeof d.mail === 'function' ? d.mail() : d.mail };
+  return {
+    ...d,
+    mailApi: d.mailApi || (typeof d.mail === 'function' ? d.mail() : d.mail),
+    calApi: d.calApi || (typeof d.calendar === 'function' ? d.calendar() : d.calendar),
+  };
 }
 
 const waitingKey = (subjectRef) => (String(subjectRef || '').startsWith('waiting-on:') ? subjectRef.slice('waiting-on:'.length) : null);
@@ -318,6 +328,74 @@ const PREFLIGHT = {
   },
 };
 
+// ── Build 11K: calendar preflight ──────────────────────────────────────────
+
+const minuteOf = (s) => String(s || '').replace(' ', 'T').slice(0, 16);
+function _wallMinutes(a, b) {
+  const t = (x) => Date.UTC(+x.slice(0, 4), +x.slice(5, 7) - 1, +x.slice(8, 10), +x.slice(11, 13), +x.slice(14, 16));
+  return Math.round((t(b) - t(a)) / 60000);
+}
+function _nowLocal(nowMs) {
+  try { return require('./world-model').localMinute(nowMs); } catch { return new Date(nowMs).toISOString().slice(0, 16); }
+}
+const _sameSet = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+const _emails = (list) => (list || []).map((r) => lc(r && r.email)).filter(Boolean).sort();
+
+/**
+ * The checks every calendar change shares. PURE. The slot must still be in
+ * the future, and the event (for a move/cancel) must still be the one that
+ * was prepared: same id, same start, Nick its organiser, attendees unchanged.
+ */
+function calendarChecks({ action, policy, event, nowLocal }) {
+  const d = action.draft || {};
+  const t = action.target || {};
+  const op = policy.sendMode;
+  if (op === 'calendar-create' || op === 'calendar-update') {
+    if (!d.start || !d.end || minuteOf(d.end) <= minuteOf(d.start)) return stopWith('bad-times', 'the approved times are not a real slot');
+    if (_wallMinutes(nowLocal, minuteOf(d.start)) < 5) return stopWith('slot-passed', 'the approved slot has started or passed — too late to send it');
+  }
+  if (op === 'calendar-update' || op === 'calendar-cancel') {
+    if (!event) return stopWith('event-unreadable', 'could not read the meeting from the calendar', false);
+    if (event.exists === false) return stopWith('event-gone', 'the meeting no longer exists');
+    const e = event.event || {};
+    if (e.id && t.eventId && e.id !== t.eventId) return stopWith('event-changed', 'the calendar returned a different event');
+    if (e.isCancelled) return stopWith('event-cancelled', 'the meeting has already been cancelled');
+    if (e.isOrganizer === false) return stopWith('not-organiser', 'you are not the organiser any more — only the organiser can change it for everyone');
+    if (t.fromStart && e.start && e.start !== minuteOf(t.fromStart)) return stopWith('event-moved', `the meeting has moved since this was prepared (it is now ${e.start.replace('T', ' ')})`);
+    if (d.subject && e.subject !== undefined && e.subject !== d.subject) return stopWith('event-renamed', 'the meeting has been renamed since this was prepared');
+    if (!_sameSet(e.attendees || [], _emails(d.to))) return stopWith('attendees-changed', 'the people in the meeting have changed since this was prepared');
+    if (op === 'calendar-cancel' && _wallMinutes(nowLocal, e.start) < 0) return stopWith('slot-passed', 'the meeting has already started — not cancelling it now');
+  }
+  return { ok: true };
+}
+
+PREFLIGHT.create_calendar_event = async function createCalendarEvent(action, policy, d, nowMs) {
+  const other = _otherSent(action, { ever: true });
+  if (other) return stopWith('duplicate', `this booking was already made (${other.action_id}, ${other.status})`);
+  const sync = calendarChecks({ action, policy, event: null, nowLocal: _nowLocal(nowMs) });
+  if (!sync.ok) return sync;
+  // A LIVE read: an event with this title already at this start — booked by
+  // hand, or by a path NEURO does not see — is the duplicate that matters.
+  const at = await d.calApi.eventsAt(minuteOf(action.draft.start));
+  if (!at || !at.ok) return stopWith('calendar-unreadable', 'could not read the calendar to check it is not already booked', false);
+  const title = lc(action.draft.subject);
+  if (at.events.some((e) => lc(e.subject) === title && !e.isCancelled)) {
+    return stopWith('already-booked', 'an event with this title is already in the calendar at that time — not sending a second invite');
+  }
+  return { ok: true };
+};
+
+async function _calendarUpdatePreflight(action, policy, d, nowMs) {
+  const other = db.get(`SELECT action_id, status FROM prepared_actions WHERE action_type IN ('reschedule_calendar_event', 'cancel_calendar_event')
+                        AND commitment_id = ? AND action_id <> ? AND status IN ('executing', 'execution_uncertain', 'executed') LIMIT 1`,
+  [action.commitmentId, action.actionId]);
+  if (other) return stopWith('duplicate', `another change to this meeting (${other.action_id}) is already ${other.status}`);
+  const event = await d.calApi.readEvent(action.target.eventId);
+  return calendarChecks({ action, policy, event: event && event.ok ? event : null, nowLocal: _nowLocal(nowMs) });
+}
+PREFLIGHT.reschedule_calendar_event = _calendarUpdatePreflight;
+PREFLIGHT.cancel_calendar_event = _calendarUpdatePreflight;
+
 async function preflight(action, policy, d, nowMs) {
   const common = commonChecks({ action, policy, nowMs });
   if (!common.ok) return common;
@@ -401,6 +479,8 @@ function _recordChase(actionId, d, nowMs) {
       d.recordReply(a);
     } else if (a.actionType === 'send_weekly_risk_report') {
       d.recordReport(a);
+    } else if (registry.isCalendarType(a.actionType)) {
+      d.recordCalendar(a);
     }
     // chase_agenda: the governed row IS the record ("asked once, ever").
     pa.note(actionId, { chase_recorded_at: iso(nowMs) });
@@ -499,7 +579,65 @@ async function _mailExecutor(action, claim, d, clock) {
   return { ok: ['executed', 'verified', 'execution_uncertain'].includes(after.status), status: after.status, detail: after.outcomeDetail, action: after };
 }
 
-const EXECUTORS = Object.freeze({ 'microsoft.mail': _mailExecutor });
+/**
+ * Build 11K: the calendar executor. Same shape as the mail one — the HANDLE
+ * reaches the ledger before the provider is asked, one attempt per approved
+ * version, a definitive refusal is proven-not-made, anything else is verified
+ * and never retried.
+ *
+ * The handle is NEURO's marker (`neuro:<action>:<attempt>`), written to the
+ * ledger's message-id column; for a create it is stamped onto the event as an
+ * extended property AND sent as Graph's transactionId, so a retried POST
+ * cannot make a second event and a timed-out one can be found.
+ */
+async function _calendarExecutor(action, claim, d, clock) {
+  const id = action.actionId;
+  const cal = d.calApi;
+  const policy = registry.policyFor(action.actionType) || {};
+  const draft = action.draft || {};
+  const handle = `neuro:${id}:${claim.attempt}`;
+  _attemptSet(claim.attemptId, { internet_message_id: handle, draft_id: action.target && action.target.eventId ? action.target.eventId : null, draft_created_at: iso(clock()) });
+  _attemptSet(claim.attemptId, { send_requested_at: iso(clock()) });
+
+  let r;
+  if (policy.sendMode === 'calendar-create') {
+    r = await cal.createEvent(draft, { transactionId: crypto.createHash('sha256').update(handle).digest('hex').slice(0, 32), marker: handle });
+    if (r.outcome === 'accepted' && r.event && r.event.id) _attemptSet(claim.attemptId, { draft_id: r.event.id });
+  } else if (policy.sendMode === 'calendar-update') {
+    r = await cal.moveEvent(action.target.eventId, { start: draft.start, end: draft.end, timeZone: draft.timeZone });
+  } else {
+    r = await cal.cancelEvent(action.target.eventId, { comment: draft.body || '' });
+  }
+  const now = clock();
+  const what = policy.sendMode === 'calendar-create' ? 'invite' : policy.sendMode === 'calendar-update' ? 'move' : 'cancellation';
+  if (r.outcome === 'accepted') {
+    _attemptFinish(claim.attemptId, { send_outcome: 'accepted', send_http_status: r.status, retry_safe: 0, final_state: 'executed' }, now);
+    pa.transition(id, 'executed', { now, allowedFrom: ['executing'], note: `Microsoft accepted the ${what} (HTTP ${r.status}) — reading it back`,
+      set: { executed_at: iso(now), retry_safe: 0 }, eventExtra: { attempt: claim.attempt, messageRef: shortHash(handle) } });
+    _recordChase(id, d, now);
+    console.log(`[Executor] ${id} executed (calendar ${what} accepted); verifying by read-back`);
+  } else if (r.outcome === 'rejected') {
+    _attemptFinish(claim.attemptId, { send_outcome: 'rejected', send_http_status: r.status, error_category: r.category || null,
+      error_detail: `Microsoft refused the ${what}`, retry_safe: 1, final_state: 'failed' }, now);
+    pa.transition(id, 'failed', { now, allowedFrom: ['executing'], note: `Microsoft refused the ${what} (${r.category || r.status})`,
+      set: { retry_safe: 1, outcome_detail: `Microsoft refused the ${what} (${r.category || `HTTP ${r.status}`}) — nothing changed and nobody was told` },
+      eventExtra: { attempt: claim.attempt, code: r.category || `http_${r.status}` } });
+    console.log(`[Executor] ${id} failed: calendar ${what} refused; nothing changed`);
+    return { ok: false, status: 'failed', code: r.category || 'refused', detail: `Microsoft refused the ${what} — nothing changed`, action: pa.get(id) };
+  } else {
+    _attemptFinish(claim.attemptId, { send_outcome: 'uncertain', send_http_status: r.status, error_category: r.category || 'unknown',
+      error_detail: 'no definite answer from Microsoft', retry_safe: 0, final_state: 'execution_uncertain' }, now);
+    pa.transition(id, 'execution_uncertain', { now, allowedFrom: ['executing'], note: `no definite answer (${r.category || r.status}) — reading back, never repeating`,
+      set: { retry_safe: 0, outcome_detail: `Microsoft gave no definite answer, so the ${what} may have gone. NEURO is reading the calendar and will NOT try again.` },
+      eventExtra: { attempt: claim.attempt, code: r.category || 'unknown', messageRef: shortHash(handle) } });
+    console.log(`[Executor] ${id} calendar ${what} uncertain; verifying, will not repeat`);
+  }
+  try { await verify(id, { now: clock(), deps: d }); } catch (e) { console.warn(`[Executor] verify ${id}: ${e.message}`); }
+  const after = pa.get(id);
+  return { ok: ['executed', 'verified', 'execution_uncertain'].includes(after.status), status: after.status, detail: after.outcomeDetail, action: after };
+}
+
+const EXECUTORS = Object.freeze({ 'microsoft.mail': _mailExecutor, 'microsoft.calendar': _calendarExecutor });
 
 /**
  * Execute ONE approved action. Idempotent: anything but `approved` returns
@@ -518,9 +656,11 @@ async function execute(actionId, { now, deps } = {}) {
   }
   const run = EXECUTORS[policy.executor];
   if (!run) return { ok: false, code: 'no-executor', status: action.status, detail: `no executor named ${policy.executor}` };
-  if (!d.enabled()) {
-    pa.note(actionId, { last_block: 'sending is switched off (Settings → Switches → "Send approved emails")' });
-    return { ok: false, code: 'switched-off', transient: true, status: 'approved', detail: 'Approved, but sending is switched off — nothing was sent.' };
+  const calendarType = policy.executor === 'microsoft.calendar';
+  if (!(calendarType ? d.calendarEnabled() : d.enabled())) {
+    const label = registry.SWITCH_LABELS[registry.switchFor(action.actionType)];
+    pa.note(actionId, { last_block: `switched off (Settings → Switches → "${label}")` });
+    return { ok: false, code: 'switched-off', transient: true, status: 'approved', detail: `Approved, but "${label}" is switched off — nothing was sent.` };
   }
 
   inFlight.add(actionId);
@@ -598,6 +738,7 @@ async function verify(actionId, { now, deps } = {}) {
   const action = pa.get(actionId);
   if (!action) return { outcome: null, detail: 'no such action' };
   if (!['executed', 'execution_uncertain'].includes(action.status)) return { outcome: null, already: true, status: action.status };
+  if (registry.isCalendarType(action.actionType)) return _verifyCalendar(action, d, nowMs);
   const attempt = _latestAttempt(actionId);
   if (!attempt || !attempt.internet_message_id) {
     if (action.status === 'executed') {
@@ -666,6 +807,110 @@ async function verify(actionId, { now, deps } = {}) {
   return { outcome, proof, status: pa.get(actionId).status };
 }
 
+// ── Build 11L: calendar verification ────────────────────────────────────────
+
+/**
+ * Does the event the calendar holds match what was approved? PURE.
+ *   create      NEURO's marker, exact title, start, end, attendee set,
+ *               location (when one was approved), online flag, not cancelled
+ *   reschedule  the SAME event id, at the NEW approved time, attendee set
+ *               unchanged (nobody added or dropped by the move)
+ *   cancel      the event is gone or marked cancelled
+ */
+function judgeCalendarEvent(found, { action, handle }) {
+  const policy = registry.policyFor(action.actionType) || {};
+  const d = action.draft || {};
+  const t = action.target || {};
+  if (policy.sendMode === 'calendar-cancel') {
+    const done = found.exists === false || (found.event && found.event.isCancelled === true);
+    return { ok: done, checks: { gone: found.exists === false, cancelled: !!(found.event && found.event.isCancelled) } };
+  }
+  const e = found.event || {};
+  const checks = {
+    event: policy.sendMode === 'calendar-create' ? e.marker === handle : e.id === t.eventId,
+    title: (e.subject || '') === d.subject,
+    start: e.start === minuteOf(d.start),
+    end: e.end === minuteOf(d.end),
+    attendees: _sameSet(e.attendees || [], _emails(d.to)),
+    location: d.location ? lc(e.location) === lc(d.location) : null,
+    online: d.isOnline ? e.isOnline === true : null,
+    notCancelled: e.isCancelled !== true,
+  };
+  // A move never re-titles: the title check applies to what was approved, and
+  // a reschedule's draft carries the event's own title.
+  const ok = ['event', 'title', 'start', 'end', 'attendees', 'notCancelled'].every((k) => checks[k] === true)
+    && checks.location !== false && checks.online !== false;
+  return { ok, checks };
+}
+
+async function _verifyCalendar(action, d, nowMs) {
+  const actionId = action.actionId;
+  const attempt = _latestAttempt(actionId);
+  if (!attempt || !attempt.internet_message_id) {
+    if (action.status === 'executed') {
+      pa.transition(actionId, 'execution_uncertain', { now: nowMs, allowedFrom: ['executed'], note: 'no handle on record to read back',
+        set: { outcome_detail: 'There is no handle on record to check the calendar against. Look in Outlook; it will not be repeated.' } });
+    }
+    return { outcome: 'ambiguous', detail: 'no verification handle' };
+  }
+  const policy = registry.policyFor(action.actionType) || {};
+  const cal = d.calApi;
+  const handle = attempt.internet_message_id;
+  const proof = { attemptId: attempt.attempt_id, handleRef: shortHash(handle) };
+  let found = null;
+  let outcome;
+  if (policy.sendMode === 'calendar-create') {
+    const r = await cal.findByMarker(handle);
+    if (!r || !r.ok) { outcome = 'provider_unavailable'; proof.category = (r && r.category) || 'unavailable'; }
+    else if (r.events.length === 0) outcome = 'not_found';
+    else if (r.events.length > 1) { outcome = 'ambiguous'; proof.count = r.events.length; }
+    else found = { exists: true, event: r.events[0] };
+  } else {
+    const r = await cal.readEvent(action.target.eventId);
+    if (!r || !r.ok) { outcome = 'provider_unavailable'; proof.category = (r && r.category) || 'unavailable'; }
+    else found = r;
+  }
+  if (found) {
+    const j = judgeCalendarEvent(found, { action, handle });
+    proof.checks = j.checks;
+    if (found.event && found.event.id) proof.eventId = found.event.id;
+    if (j.ok) outcome = 'verified';
+    else if (policy.sendMode === 'calendar-update' && found.event && found.event.start === minuteOf(action.target.fromStart)) outcome = 'not_found';
+    else if (policy.sendMode === 'calendar-cancel' && found.event && !found.event.isCancelled) outcome = 'not_found';
+    else outcome = 'ambiguous';
+  }
+  _recordVerification(action, attempt, outcome, proof, nowMs);
+
+  const sendAt = Date.parse(attempt.send_requested_at || attempt.started_at);
+  if (outcome === 'verified') {
+    pa.transition(actionId, 'verified', { now: nowMs, allowedFrom: ['executed', 'execution_uncertain'],
+      note: 'read back from the calendar: exactly what was approved',
+      set: { verified_at: iso(nowMs), retry_safe: 0, outcome_detail: 'Done, and confirmed by reading the calendar back.' },
+      eventExtra: { attempt: attempt.attempt, messageRef: proof.handleRef } });
+    _recordChase(actionId, d, nowMs);
+    console.log(`[Executor] ${actionId} verified in the calendar`);
+  } else if (outcome === 'ambiguous') {
+    const detail = 'The calendar holds something that does not cleanly match what was approved. Check it in Outlook; it will not be repeated.';
+    if (action.status === 'executed') {
+      pa.transition(actionId, 'execution_uncertain', { now: nowMs, allowedFrom: ['executed'], note: 'calendar read-back does not match',
+        set: { outcome_detail: detail }, eventExtra: { attempt: attempt.attempt, code: 'ambiguous' } });
+    } else pa.note(actionId, { outcome_detail: detail });
+  } else if (outcome === 'not_found') {
+    // Proof it never happened: a successful read, long after the call, still
+    // shows the world as it was. Failed, proven unchanged — never retried here.
+    if (action.status === 'execution_uncertain' && nowMs - sendAt >= SETTLE_MS) {
+      pa.transition(actionId, 'failed', { now: nowMs, allowedFrom: ['execution_uncertain'], note: 'read back long after the call: nothing changed',
+        set: { retry_safe: 1, outcome_detail: 'The calendar shows nothing changed long after the request, so it never happened and nobody was told. Prepare it again to retry.' },
+        eventExtra: { attempt: attempt.attempt, code: 'never-happened' } });
+    } else if (action.status === 'executed' && nowMs - Date.parse(action.executedAt) >= VERIFY_GIVE_UP_MS) {
+      pa.transition(actionId, 'execution_uncertain', { now: nowMs, allowedFrom: ['executed'], note: 'accepted but never seen in the calendar',
+        set: { outcome_detail: 'Microsoft accepted it but the calendar does not show it after a day. Check Outlook; it will not be repeated.' },
+        eventExtra: { attempt: attempt.attempt, code: 'not-found' } });
+    }
+  }
+  return { outcome, proof, status: pa.get(actionId).status };
+}
+
 // ── recovery / reconciliation (6G) ──────────────────────────────────────────
 
 /**
@@ -687,7 +932,8 @@ async function _recoverInterrupted(row, d, nowMs) {
     pa.transition(row.action_id, 'failed', { now: nowMs, allowedFrom: ['executing'], note: 'interrupted before the send was requested',
       set: { retry_safe: 1, outcome_detail: 'NEURO stopped before asking Microsoft to send it. Nothing was sent. Edit it to send again.' },
       eventExtra: { attempt: att.attempt, code: 'interrupted-before-send' } });
-    if (att.draft_id) { try { await d.mailApi.deleteDraft(att.draft_id); } catch { /* best effort */ } }
+    const pol = registry.policyFor(row.action_type || (pa.get(row.action_id) || {}).actionType) || {};
+    if (att.draft_id && pol.executor === 'microsoft.mail') { try { await d.mailApi.deleteDraft(att.draft_id); } catch { /* best effort */ } }
     return 'failed-unsent';
   }
   _attemptFinish(att.attempt_id, { send_outcome: 'uncertain', error_category: 'interrupted', error_detail: 'interrupted after the send was requested',
@@ -749,6 +995,7 @@ function status({ now = Date.now() } = {}) {
 
 module.exports = {
   execute, verify, reconcile, status, executionChecks, commonChecks, judgeSentItem, preflight, PREFLIGHT,
+  calendarChecks, judgeCalendarEvent,
   attemptsFor, verificationsFor,
   EXECUTORS, STALE_EXECUTING_MS, SETTLE_MS, VERIFY_GIVE_UP_MS,
   _bootId: () => BOOT_ID,

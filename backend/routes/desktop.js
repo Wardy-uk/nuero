@@ -28,6 +28,8 @@ router.post('/activity', (req, res) => {
     if (batch.length > 60) return res.status(400).json({ error: 'at most 60 samples per call' });
 
     const stored = batch.map(s => desktop.record(s));
+    // Build 11M: the reporter is a sense on the spine now. Never throws.
+    require('../services/native-events').recordDesktopSample({ samples: stored.filter(Boolean) });
 
     // ⚠ THE PULL. The agent is outbound-only and stays that way: anything it
     // should do comes back on the RESPONSE to a connection it opened itself.

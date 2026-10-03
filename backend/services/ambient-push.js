@@ -181,6 +181,19 @@ const RULES = {
     say: o => ({ title: 'SAiM', body: o.text }),
   },
 
+  // Build 11H — SHADOW ONLY, like commitment-risk. The personal-deadline
+  // evaluator asks what the policy WOULD do and records it; deliver() never
+  // offers this kind, so the rule cannot win a push. ⚠ Deliberately NOT gated
+  // on duty: commitment-risk waits for working hours because a work promise is
+  // worked on at work; a personal deadline is exactly what an evening or a
+  // Saturday is for. Every universal veto above (meeting, Focus mode, driving,
+  // focus session, quiet) still applies.
+  'personal-deadline': {
+    when: () => true,
+    urgency: 'low',
+    say: o => ({ title: 'SAiM', body: o.text }),
+  },
+
   'health-signal': {
     // The one worth interrupting for on its own merits, and the only one allowed
     // during a focus session. Still never in a meeting.

@@ -72,35 +72,68 @@ router.get('/life', async (req, res) => {
   try { res.json({ ok: true, ...(await canonical.life()) }); } catch (e) { fail(res, e); }
 });
 
-// GET /api/canonical/goals —Nick's explicitly stored goals and intentions. Never inferred. Query: status=active|paused|done|dropped|all.
-router.get('/goals', (req, res) => {
+// GET /api/canonical/tasks — tasks from the world model (NEURO, Microsoft, Apple Reminders) with due context, life domains (a reminder takes its list's classification) and personal importance. Query: system, domain, status.
+router.get('/tasks', (req, res) => {
   try {
-    const status = [...canonical.GOAL_STATUSES, 'all'].includes(req.query.status) ? req.query.status : 'active';
-    res.json({ ok: true, contract: canonical.CONTRACT, goals: canonical.listGoals({ status }) });
+    const status = ['open', 'completed', 'cancelled', 'unknown', 'all'].includes(req.query.status) ? req.query.status : 'open';
+    const system = ['neuro', 'ms-planner', 'ms-todo', 'eventkit-reminders'].includes(req.query.system) ? req.query.system : null;
+    const domain = typeof req.query.domain === 'string' && (req.query.domain === 'unknown' || domains.normaliseDomain(req.query.domain))
+      ? (req.query.domain === 'unknown' ? 'unknown' : domains.normaliseDomain(req.query.domain)) : null;
+    res.json({ ok: true, ...canonical.tasks({ status, system, domain }) });
   } catch (e) { fail(res, e); }
 });
 
-// POST /api/canonical/goals — store a goal or intention Nick states (hike more, finish the degree). Body: title, domains, note. Creates nothing else: no task, no nudge.
-router.post('/goals', (req, res) => {
+// GET /api/canonical/classifications — every calendar and reminder list the sources have shown, with what Nick classified each as (life domains, tracked), how it is keyed (id or title) and whether its title is ambiguous.
+router.get('/classifications', (req, res) => {
   try {
-    const { title, domains: goalDomains, note } = req.body || {};
-    const out = canonical.saveGoal({ title, domains: goalDomains, note });
+    const sc = require('../services/source-classification');
+    res.json({ ok: true, contract: canonical.CONTRACT, containers: sc.listContainers() });
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/classifications — Nick classifies a calendar or reminder list (life domains, and for a list whether it is tracked). Keywords: classify calendar, reminder list domain. Body: kind, sourceKey, domains, tracked, label.
+router.post('/classifications', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { kind, sourceKey, domains: classDomains, tracked, label } = req.body;
+    const out = require('../services/source-classification').classify({ kind, sourceKey, domains: classDomains, tracked, label });
     if (!out.ok) return res.status(400).json(out);
     res.json(out);
   } catch (e) { fail(res, e); }
 });
 
-// POST /api/canonical/goals/:id — update a stored goal: title, domains, note, status (active|paused|done|dropped).
-router.post('/goals/:id', (req, res) => {
+// GET /api/canonical/goals — Nick's explicitly stored goals and intentions, with importance, dates and explicit links. Never inferred. Query: status=active|paused|achieved|dropped|all.
+router.get('/goals', (req, res) => {
   try {
-    const { title, domains: goalDomains, note, status } = req.body || {};
-    const out = canonical.saveGoal({ id: req.params.id, title, domains: goalDomains, note, status });
+    const raw = req.query.status === 'done' ? 'achieved' : req.query.status;
+    const status = [...canonical.GOAL_STATUSES, 'all'].includes(raw) ? raw : 'active';
+    res.json({ ok: true, contract: canonical.CONTRACT, goals: canonical.listGoals({ status }) });
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/goals — store a goal or intention Nick states (hike more, finish the degree). Body: title, description, domains, importance, startDate, reviewDate, links. Creates nothing else: no task, no nudge.
+router.post('/goals', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { title, description, domains: goalDomains, note, importance, startDate, reviewDate, links } = req.body;
+    const out = canonical.saveGoal({ title, description, domains: goalDomains, note, importance, startDate, reviewDate, links });
     if (!out.ok) return res.status(out.status || 400).json(out);
     res.json(out);
   } catch (e) { fail(res, e); }
 });
 
-// POST /api/canonical/annotations — Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (work-critical|personally-important|restorative|optional, null clears). Omitted fields are left alone.
+// POST /api/canonical/goals/:id — update a stored goal: title, description, domains, importance, status (active|paused|achieved|dropped), startDate, reviewDate, links (replaces), reviewed (stamps last reviewed).
+router.post('/goals/:id', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { title, description, domains: goalDomains, note, status, importance, startDate, reviewDate, links, reviewed } = req.body;
+    const out = canonical.saveGoal({ id: req.params.id, title, description, domains: goalDomains, note, status, importance, startDate, reviewDate, links, reviewed });
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/annotations — Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.
 router.post('/annotations', (req, res) => {
   try {
     const { entityId, domains: tagDomains, importance } = req.body || {};

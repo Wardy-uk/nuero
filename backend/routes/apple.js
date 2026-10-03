@@ -37,6 +37,8 @@ router.post('/calendar', (req, res) => {
 router.post('/reminders', (req, res) => {
   try {
     const result = appleIngest.ingestReminders(req.body || {});
+    // Build 11D: the push onto the spine as its own source. Never throws.
+    require('../services/native-events').recordRemindersPush({ headers: req.headers, body: req.body || {}, result });
     if (!result.ok) return res.status(400).json(result);
     if (result.rejected.length) {
       console.warn(`[Apple] ${result.rejected.length} reminder(s) rejected:`, result.rejected.slice(0, 5));

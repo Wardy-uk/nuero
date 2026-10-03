@@ -156,9 +156,12 @@ test('an escalation with no reason is blocked on the card, as NOVA would refuse 
 
 // ── create_meeting is retired from chat ─────────────────────────────────────
 
-test('chat no longer offers create_meeting, and a stale call queues nothing', async () => {
+// Build 11K: create_meeting is back — as a governed PREPARE (see
+// build11-personal-world.test.js 36). What this file pinned still holds: it
+// never queues on the legacy path, and an unresolved attendee prepares nothing.
+test('create_meeting never queues on the legacy path, and an unresolved attendee prepares nothing', async () => {
   const tools = require('./chat-tools');
-  assert.ok(!tools.toolDefinitions().some((t) => t.name === 'create_meeting'), 'not offered to the model');
+  assert.ok(tools.TOOLS.some((t) => t.name === 'create_meeting' && t.tier === 'queued'), 'offered only as a prepare');
   // Positive control: the list is real and still carries the other queued tools.
   assert.ok(tools.toolDefinitions().some((t) => t.name === 'escalate_ticket'));
   const engine = require('./suggestion-engine');
@@ -166,10 +169,10 @@ test('chat no longer offers create_meeting, and a stale call queues nothing', as
   let queued = 0;
   engine.queueAction = () => { queued++; return 'x'; };
   try {
-    const r = await tools.execute('create_meeting', { subject: 's', start: '2026-10-06T10:00', attendees: ['Chris'] });
+    const r = await tools.execute('create_meeting', { title: 's', start: '2026-10-06T10:00', attendees: ['Nobody By This Name'] });
     assert.equal(r.ok, false);
-    assert.equal(r.booked, false);
-    assert.match(r.error, /Nothing was queued/);
+    assert.equal(r.invited, false);
+    assert.match(r.error, /Nobody was invited/);
     assert.equal(queued, 0, 'no card that could only ever 410');
   } finally { engine.queueAction = original; }
 });

@@ -214,6 +214,12 @@ function neuroTaskPayload(row, { meeting = null, managementLog = null } = {}) {
 const TASK_TYPES = ['observation.task.observed', 'observation.task.removed'];
 const TASK_REMOVED = ['observation.task.removed'];
 
+function _sourceSystem(system) {
+  if (system === 'neuro') return 'neuro-tasks';
+  if (system === 'eventkit-reminders') return 'eventkit';
+  return 'microsoft-graph';
+}
+
 function _publishTask(payload, nowMs) {
   const subjectId = `${payload.system}:${payload.recordId}`.slice(0, 256);
   const held = ck.latest('task', subjectId, TASK_TYPES, TASK_REMOVED);
@@ -221,7 +227,7 @@ function _publishTask(payload, nowMs) {
   return _safe({
     type: 'observation.task.observed',
     occurredAt: new Date(nowMs).toISOString(),
-    source: { system: payload.system === 'neuro' ? 'neuro-tasks' : 'microsoft-graph', recordId: payload.recordId },
+    source: { system: _sourceSystem(payload.system), recordId: payload.recordId },
     subject: { entityType: 'task', entityId: subjectId },
     idempotencyKey: ck.observationKey(`task-observed:${payload.system}`, payload.recordId, held, payload.fingerprint),
     payload,
@@ -235,7 +241,7 @@ function _publishRemoved(system, recordId, heldRow, nowMs, why) {
   return _safe({
     type: 'observation.task.removed',
     occurredAt: new Date(nowMs).toISOString(),
-    source: { system: system === 'neuro' ? 'neuro-tasks' : 'microsoft-graph', recordId: String(recordId) },
+    source: { system: _sourceSystem(system), recordId: String(recordId) },
     subject: { entityType: 'task', entityId: subjectId },
     // Keyed on the observation that made it present: one removal per presence.
     idempotencyKey: ck.removalKey(`task-removed:${system}`, recordId, last),
@@ -430,6 +436,81 @@ function publishMicrosoftTasks({ planner = null, todo = null, complete = false, 
   }
 }
 
+// ── Apple Reminders (Build 11D) ─────────────────────────────────────────────
+
+/**
+ * One reminder as the phone holds it → payload. PURE.
+ *
+ * Reminders is the AUTHORITY on its own records (like Planner on its cards):
+ * the completion flag is Apple's, and NEURO never writes to iCloud. The
+ * reminder's NOTES are deliberately NOT carried: the log is immutable and a
+ * free-text note is exactly the content that should not be in it (the
+ * calendar body rule). Priority is carried only when Nick SET one — EventKit's
+ * 0 means none, and none is not "low".
+ */
+function reminderPayload(r) {
+  const pr = Number(r.priority);
+  const body = {
+    system: 'eventkit-reminders',
+    recordId: String(r.id),
+    title: String(r.title || '(untitled)').slice(0, MAX_TEXT),
+    status: r.isCompleted === true ? 'completed' : 'notStarted',
+    dueDate: r.dueDate ? String(r.dueDate).slice(0, 10) : null,
+    // Wall-clock HH:MM when the reminder has a time; absent for a date-only one.
+    dueTime: typeof r.dueTime === 'string' && /^\d{2}:\d{2}$/.test(r.dueTime) ? r.dueTime : null,
+    completedAt: r.isCompleted === true && r.completedAt ? String(r.completedAt) : null,
+    createdAt: r.createdAt ? String(r.createdAt) : null,
+    priority: Number.isFinite(pr) && pr > 0 ? (pr <= 4 ? 'high' : pr === 5 ? 'medium' : 'low') : null,
+    list: { id: r.listId ? String(r.listId) : null, title: r.list ? String(r.list).slice(0, 200) : null },
+  };
+  return { ...body, fingerprint: fingerprintOf(body) };
+}
+
+/**
+ * Publish what one Reminders push showed.
+ *
+ *   reminders   [{ id, title, list, listId, isCompleted, completedAt, dueDate, dueTime, priority }]
+ *               already filtered to TRACKED lists by the caller
+ *   complete    true ONLY when the phone read every tracked list in full —
+ *               absence is concluded only from a complete read (To Do's rule)
+ *   trackedKeys the list keys this push covered; a reminder held from a list
+ *               NOT covered is never concluded removed
+ */
+function publishReminders({ reminders = [], complete = false, coveredLists = null, now = Date.now() } = {}) {
+  try {
+    const nowMs = now instanceof Date ? now.getTime() : now;
+    let changed = 0;
+    const seen = new Set();
+    for (const r of Array.isArray(reminders) ? reminders : []) {
+      if (!r || !r.id) continue;
+      const p = reminderPayload(r);
+      seen.add(p.recordId);
+      const res = _publishTask(p, nowMs);
+      if (res && !res.duplicate) changed += 1;
+    }
+    let removed = 0;
+    if (complete === true && coveredLists instanceof Set) {
+      for (const h of _held('eventkit-reminders')) {
+        if (seen.has(h.record_id)) continue;
+        let listKey = null;
+        try {
+          const row = db.get(`SELECT payload_json FROM wm_task_sources WHERE system = 'eventkit-reminders' AND record_id = ?`, [h.record_id]);
+          const pl = row ? JSON.parse(row.payload_json) : null;
+          listKey = pl && pl.list ? require('./source-classification').containerKey('reminder-list', { id: pl.list.id, title: pl.list.title }) : null;
+        } catch { listKey = null; }
+        if (!listKey || !coveredLists.has(listKey)) continue;
+        const r = _publishRemoved('eventkit-reminders', h.record_id, h, nowMs,
+          'no longer in its list (deleted, or completed beyond the window the phone sends)');
+        if (r && !r.duplicate) removed += 1;
+      }
+    }
+    return { observed: seen.size, changed, removed, complete: !!complete };
+  } catch (e) {
+    console.warn(`[ObligationSources] reminders not recorded: ${e.message}`);
+    return { error: e.message };
+  }
+}
+
 // ── the backstop ────────────────────────────────────────────────────────────
 
 /** Publish the two NEURO-held stores. The durable job's body. */
@@ -456,6 +537,6 @@ function schedulePublish(which, delayMs = 4000) {
 
 module.exports = {
   isMeetingNote, linkOccurrence, meetingLinkFor, fingerprintOf,
-  neuroTaskPayload, waitingOnPayload, plannerPayload, todoPayload,
-  publishNeuroTasks, publishWaitingOn, publishMicrosoftTasks, reconcile, schedulePublish,
+  neuroTaskPayload, waitingOnPayload, plannerPayload, todoPayload, reminderPayload,
+  publishNeuroTasks, publishWaitingOn, publishMicrosoftTasks, publishReminders, reconcile, schedulePublish,
 };

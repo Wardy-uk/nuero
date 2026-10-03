@@ -264,8 +264,11 @@ function needsYou() {
         WHERE status IN ('prepared','execution_uncertain') OR (status = 'failed' AND retry_safe = 1)`,
     );
     let sendingEnabled = null;
+    let calendarEnabled = null;
     try { sendingEnabled = require('./feature-flags').isEnabled('governed_execution'); } catch { sendingEnabled = null; }
-    return summary.summarise(rows, { sendingEnabled });
+    try { calendarEnabled = require('./feature-flags').isEnabled('governed_calendar'); } catch { calendarEnabled = null; }
+    const out = summary.summarise(rows, { sendingEnabled });
+    return { ...out, calendarEnabled };
   } catch (e) {
     return summary.unknown(e.message);
   }
@@ -342,6 +345,8 @@ function note(actionId, set) {
 // ── approval (6B) ───────────────────────────────────────────────────────────
 
 const sendingEnabled = () => require('./feature-flags').isEnabled('governed_execution');
+// Build 11K: each executable type is governed by ITS switch (registry.switchFor).
+const switchOn = (type) => require('./feature-flags').isEnabled(registry.switchFor(type));
 
 /**
  * Nick approves the EXACT payload he was shown.
@@ -397,8 +402,12 @@ function approve(actionId, {
   if (registry.hasUnfilledPlaceholder(draft.body) || registry.hasUnfilledPlaceholder(draft.subject)) {
     return { ok: false, code: 409, error: 'the draft still has a [placeholder] in it — edit it first; that creates a new version to approve' };
   }
-  if (policy.executable && !sending()) {
-    return { ok: false, code: 409, error: 'Sending is switched off (Settings → Switches → "Send approved emails"), so approving would send nothing. Turn it on first, then approve.' };
+  // An injected `sending` (tests) answers for every type; otherwise the type's
+  // own switch decides — email and calendar changes are switched separately.
+  const on = sending === sendingEnabled ? switchOn(cur.action_type) : sending();
+  if (policy.executable && !on) {
+    const label = registry.SWITCH_LABELS[registry.switchFor(cur.action_type)];
+    return { ok: false, code: 409, error: `"${label}" is switched off (Settings → Switches), so approving would change nothing. Turn it on first, then approve.` };
   }
   // The proof. Burns the challenge whatever the outcome.
   const proof = require('./approval-proof').consume({
@@ -422,7 +431,9 @@ function approve(actionId, {
     ...r,
     executable: policy.executable,
     notice: policy.executable
-      ? `Approved. This exact ${cur.action_type === 'send_weekly_risk_report' ? 'report' : 'email'} is now sent as you, then checked in Sent Items.`
+      ? (registry.isCalendarType(cur.action_type)
+        ? 'Approved. This exact calendar change is now made as you (attendees are told), then read back from the calendar to confirm it.'
+        : `Approved. This exact ${cur.action_type === 'send_weekly_risk_report' ? 'report' : 'email'} is now sent as you, then checked in Sent Items.`)
       : `Approval recorded. ${policy.notExecutableWhy || 'This type does not execute'} — nothing has been sent and nothing will be sent from here.`,
   };
 }
@@ -900,6 +911,137 @@ function prepareAgendaChase({ event, body, why = null, now = Date.now() } = {}) 
   }
 }
 
+// ── Build 11K: calendar changes that reach other people ─────────────────────
+
+const WALL_MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+const _minute = (s) => String(s || '').replace(' ', 'T').slice(0, 16);
+const CAL_TZ = process.env.NEURO_TIMEZONE || 'Europe/London';
+
+/**
+ * The calendar draft every calendar type carries. PURE. `to` is the attendee
+ * list (the email field reused on purpose, so every common recipient check
+ * applies); times are wall clock in `timeZone`, never instants.
+ */
+function _calendarDraft({ title, start, end, attendees, location, isOnline, body, recurrence, calendar, generatedBy }) {
+  return {
+    channel: 'calendar', voice: 'nick', generatedBy,
+    to: attendees, subject: String(title || '').trim().slice(0, MAX_SUBJECT), body: body ? String(body).slice(0, MAX_BODY) : '',
+    start: _minute(start), end: _minute(end), timeZone: CAL_TZ,
+    location: location ? String(location).slice(0, 200) : null,
+    isOnline: isOnline === true,
+    recurrence: recurrence || null,
+    calendar: calendar || null,
+    placeholders: [],
+  };
+}
+
+function _calendarTimes(start, end) {
+  if (!WALL_MINUTE.test(String(start || '')) || !WALL_MINUTE.test(String(end || ''))) return 'start and end must be wall-clock YYYY-MM-DDTHH:MM';
+  if (_minute(end) <= _minute(start)) return 'the end must be after the start';
+  return null;
+}
+
+/**
+ * PREPARE an invitation. Creates nothing in the calendar and invites nobody:
+ * the approved version is what the executor sends. Attendees must ALL be real
+ * addresses — an unresolved one is refused, never dropped, because an invite
+ * that silently left somebody out is worse than none.
+ *
+ *   origin   '1to1-book' | 'event-composer' | 'chat' | …
+ *   context  free provenance carried in evidence and target (e.g. { person })
+ */
+function prepareCalendarCreate({ title, start, end, attendees, location = null, isOnline = false, body = null,
+  origin = 'event-composer', context = {}, now = Date.now() } = {}) {
+  const nowMs = msOf(now);
+  const t = String(title || '').trim();
+  if (!t) return { ok: false, code: 400, error: 'a title is required' };
+  const bad = _calendarTimes(start, end);
+  if (bad) return { ok: false, code: 400, error: bad };
+  const r = _recipients(attendees);
+  if (r.bad) return { ok: false, code: 400, error: `${r.bad} attendee(s) are not real addresses — resolve them first; nobody is invited by NEURO on a guess` };
+  if (!r.list.length) return { ok: false, code: 400, error: 'an invite needs at least one attendee — an event with nobody else in it is not governed and is created directly' };
+  const draft = _calendarDraft({ title: t, start, end, attendees: r.list, location, isOnline, body,
+    generatedBy: `${origin} (exact values Nick chose; no model call)` });
+  const ident = shortSha([draft.subject.toLowerCase(), draft.start, draft.end, r.list.map((x) => x.email).sort().join(',')].join('|'));
+  const subjectKey = `calendar-create:${ident}`;
+  const existing = _liveFor('create_calendar_event', subjectKey, { andSent: true });
+  if (existing) return { ok: true, already: true, action: shape(existing) };
+  const target = { kind: 'calendar-create', origin, person: context.person || null, durationMinutes: context.durationMinutes || null,
+    email: r.list.length === 1 ? r.list[0].email : null, displayName: context.person || null };
+  const evidence = { origin, context, calendar: { start: draft.start, end: draft.end, attendees: r.list.length } };
+  const when = `${draft.start.slice(0, 10)} ${draft.start.slice(11, 16)}–${draft.end.slice(11, 16)}`;
+  try {
+    const action = _insertPrepared({
+      actionType: 'create_calendar_event', subjectKey, findingId: `calendar:${origin}:${ident}`, subjectRef: subjectKey, target, draft, evidence,
+      origin, reason: `Invite ${r.list.length === 1 ? (r.list[0].name || r.list[0].email) : `${r.list.length} people`} to "${draft.subject}" on ${when}`,
+      idemRoot: `calendar-create:${ident}`, nowMs,
+    });
+    return { ok: true, already: false, action };
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      const again = _liveFor('create_calendar_event', subjectKey, { andSent: true });
+      if (again) return { ok: true, already: true, action: shape(again) };
+    }
+    return { ok: false, code: 409, error: e.message };
+  }
+}
+
+/**
+ * PREPARE a move or a cancellation of an EXISTING event. The event as it is
+ * NOW (id, time, title, attendees) is recorded and bound into the approval —
+ * the executor refuses if any of it has changed. A newer prepared move for the
+ * same meeting supersedes an older unapproved one; an approved one in flight
+ * is never replaced.
+ *
+ *   event  { id, subject, start, end, attendees: [{email,name}], isOrganizer }
+ */
+function _prepareCalendarChange(actionType, { event, start = null, end = null, comment = null, origin, context = {}, now = Date.now() }) {
+  const nowMs = msOf(now);
+  if (!event || !event.id) return { ok: false, code: 400, error: 'no meeting' };
+  if (/^graph-/.test(String(event.id))) return { ok: false, code: 409, error: 'that event id cannot address a real calendar event' };
+  if (event.isOrganizer === false) return { ok: false, code: 409, error: 'you are not the organiser of that meeting — only the organiser can change it for everyone' };
+  const r = _recipients(event.attendees);
+  if (!r.list.length) return { ok: false, code: 409, error: 'nobody else is in that meeting — it is your own block, and changing it is not governed' };
+  if (actionType === 'reschedule_calendar_event') {
+    const bad = _calendarTimes(start, end);
+    if (bad) return { ok: false, code: 400, error: bad };
+  }
+  const subjectKey = `calendar-event:${event.id}`;
+  const live = db.get(`SELECT * FROM prepared_actions WHERE commitment_id = ? AND action_type IN ('reschedule_calendar_event', 'cancel_calendar_event')
+                       AND status IN (${[...LIVE].map(() => '?').join(',')}) ORDER BY created_at DESC LIMIT 1`, [subjectKey, ...LIVE]);
+  const isMove = actionType === 'reschedule_calendar_event';
+  const draft = _calendarDraft({
+    title: event.subject, start: isMove ? start : event.start, end: isMove ? end : event.end, attendees: r.list,
+    location: null, isOnline: false, body: isMove ? null : (comment || ''),
+    generatedBy: `${origin} (exact values Nick chose; no model call)`,
+  });
+  if (live) {
+    const same = live.action_type === actionType && JSON.stringify(parse(live.draft_json)) === JSON.stringify(draft);
+    if (same) return { ok: true, already: true, action: shape(live) };
+    if (live.status !== 'prepared') return { ok: false, code: 409, error: `a change to this meeting is already ${live.status} (${live.action_id})` };
+  }
+  const target = { kind: isMove ? 'calendar-move' : 'calendar-cancel', origin, eventId: event.id,
+    fromStart: _minute(event.start), fromEnd: _minute(event.end), person: context.person || null, displayName: context.person || null };
+  const evidence = { origin, context, calendar: { eventId: event.id, from: _minute(event.start), attendees: r.list.length } };
+  const when = (x) => `${x.slice(0, 10)} ${x.slice(11, 16)}`;
+  const reason = isMove
+    ? `Move "${draft.subject}" from ${when(target.fromStart)} to ${when(draft.start)} — ${r.list.length} attendee(s) are told`
+    : `Cancel "${draft.subject}" on ${when(target.fromStart)} — ${r.list.length} attendee(s) are told`;
+  try {
+    const action = _insertPrepared({
+      actionType, subjectKey, findingId: `calendar:${origin}:${shortSha(event.id)}`, subjectRef: subjectKey, target, draft, evidence,
+      origin, reason, idemRoot: `${actionType}:${shortSha(`${event.id}|${draft.start}|${nowMs}`)}`, nowMs,
+      supersede: live ? { ...live, how: 'supersede', note: 'a newer change to this meeting was prepared' } : null,
+    });
+    return { ok: true, already: false, action };
+  } catch (e) {
+    return { ok: false, code: 409, error: e.message };
+  }
+}
+
+function prepareCalendarReschedule(args = {}) { return _prepareCalendarChange('reschedule_calendar_event', { origin: 'calendar', ...args }); }
+function prepareCalendarCancel(args = {}) { return _prepareCalendarChange('cancel_calendar_event', { origin: 'calendar', ...args }); }
+
 /**
  * 8E — prepare the weekly risk report send. The report is FROZEN into the row:
  * the markdown Nick reads and the exact HTML that is sent (hashed into the
@@ -1078,6 +1220,7 @@ module.exports = {
   shouldPrepare, draftFor, actionPhrase,
   prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,
   prepareReply, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, agendaAsked,
+  prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel,
   approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,
   get, forFinding, forCommitment, list, listLive, needsYou, countsByStatus,

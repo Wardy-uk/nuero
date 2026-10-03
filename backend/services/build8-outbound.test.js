@@ -274,7 +274,8 @@ const TOKEN = { 'x-neuro-api-token': 'tok' };
 // ═══ REGISTRY ═══════════════════════════════════════════════════════════════
 
 test('1. all four outbound email types are registered, executable, A4, verified in Sent Items, with a per-type policy', () => {
-  assert.deepEqual(registry.executableTypes(), FOUR);
+  // Build 11K added the three calendar types; the four EMAIL types are unchanged.
+  assert.deepEqual(registry.executableTypes().filter((t) => registry.policyFor(t).executor === 'microsoft.mail'), FOUR);
   assert.deepEqual(registry.validateRegistry(), []);
   for (const t of FOUR) {
     const p = registry.policyFor(t);
@@ -773,12 +774,17 @@ test('23. a machine client cannot approve, challenge, edit or reject any of the 
       }
       assert.equal(pa.get(a.actionId).status, 'prepared');
     }
-    // The invite-sending routes refuse the API token too.
+    // The 1-2-1 routes refuse the API token too.
     for (const [p, body] of [['/1to1/book', { person: 'x', start: 's', end: 'e' }], ['/1to1/book-all', { items: [{}] }],
-      ['/1to1/reschedule', { person: 'x', eventId: 'e', start: 's', end: 'e' }],
-      ['/calendar/events', { subject: 's', date: '2026-10-05', startTime: '10:00', endTime: '11:00', attendees: [{ email: 'a@nurtur.tech' }] }]]) {
+      ['/1to1/reschedule', { person: 'x', eventId: 'e', start: 's', end: 'e' }]]) {
       assert.equal((await call('POST', p, body, TOKEN)).status, 403, p);
     }
+    // Build 11K: the composer route PREPARES an invite for a machine client —
+    // it can never SEND one (approval needs Nick's code, refused above).
+    const prepared = await call('POST', '/calendar/events', { subject: 's', date: '2026-10-05', startTime: '10:00', endTime: '11:00', attendees: [{ email: 'a@nurtur.tech' }] }, TOKEN);
+    assert.equal(prepared.status, 200);
+    assert.equal(prepared.body.sent, false, 'prepared, never sent');
+    assert.equal(prepared.body.prepared, true);
   } finally { server.close(); }
   assert.deepEqual(realDoors.filter((d) => d !== 'microsoft.getAccessToken'), []);
 });

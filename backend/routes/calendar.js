@@ -41,12 +41,12 @@ router.get('/resolve', async (req, res) => {
   }
 });
 
-// POST /api/calendar/events — create the event. Sends invites, so it only ever
-// runs off an explicit confirm in the UI, never straight off a parse.
+// POST /api/calendar/events — create an event. With nobody else in it, it is created in Nick's own diary at once. With attendees it is PREPARED as a governed invite (create_calendar_event): nothing is sent until Nick approves it with his approval code in Actions.
 router.post('/events', async (req, res) => {
-  // Build 8: a machine client (the API token: n8n, the remote MCP gateway) may
-  // not make Graph email invites to real people. Nick, in NEURO, still can.
-  if (req.apiClient && Array.isArray(req.body?.attendees) && req.body.attendees.length) return res.status(403).json({ ok: false, sent: false, error: "Sending calendar invites as Nick needs Nick, in NEURO - a machine client cannot do it on his behalf (Build 8)." });
+  // Build 11K: an event WITH attendees is an invitation Graph emails to real
+  // people, so it is never created here — it is prepared, and only Nick's
+  // approval (which a machine client cannot give) makes it happen. A machine
+  // client may therefore prepare one: preparing changes nothing outside.
   try {
     const {
       subject, date, startTime, endTime,
@@ -88,8 +88,23 @@ router.post('/events', async (req, res) => {
       return res.status(400).json({ ok: false, error: `Unresolved attendee: ${invalid.join(', ')}` });
     }
 
+    if (attendees.length) {
+      const prepared = require('../services/prepared-actions').prepareCalendarCreate({
+        title: subject, start, end,
+        attendees: attendees.map((a) => (typeof a === 'string' ? { email: a } : { email: a.email, name: a.name || null })),
+        location, isOnline, body, origin: req.apiClient ? 'machine-client' : 'event-composer',
+      });
+      if (!prepared.ok) return res.status(prepared.code || 400).json({ ok: false, sent: false, error: prepared.error });
+      return res.json({
+        ok: true, prepared: true, sent: false, already: !!prepared.already, actionId: prepared.action.actionId,
+        notice: 'Prepared, not sent: approve it in Actions with your approval code and NEURO sends the invite, then reads it back.',
+      });
+    }
+
+    // Nobody else in it: Nick's own diary, created at once (not governed —
+    // nobody is told anything).
     const result = await microsoft.createCalendarEvent({
-      subject, start, end, attendees, location, body, isAllDay, isOnline,
+      subject, start, end, attendees: [], location, body, isAllDay, isOnline,
     });
 
     if (!result.created) {

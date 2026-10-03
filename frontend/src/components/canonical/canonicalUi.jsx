@@ -48,6 +48,7 @@ const DOMAIN_LABELS = {
 
 const BASIS_NOTE = {
   declared: 'you set this',
+  classified: 'you classified the calendar or list it is on',
   intrinsic: 'what the data is',
   set: 'a flag you set',
   'source-process': 'where it was recorded',
@@ -103,4 +104,25 @@ export function when(iso) {
 }
 
 export const DOMAIN_IDS = Object.keys(DOMAIN_LABELS);
+
+// PersonalImportance (Build 11G) — explicit only; absent means "not said".
+export const IMPORTANCE_LABELS = {
+  'critical-to-me': 'Critical to me',
+  'important-to-me': 'Important to me',
+  normal: 'Normal',
+  restorative: 'Restorative',
+  optional: 'Optional',
+  'work-critical': 'Work-critical',
+};
+export const IMPORTANCE_IDS = Object.keys(IMPORTANCE_LABELS);
+
+/** "Important to me" with where it came from (your own, or a goal you linked it to). */
+export function ImportanceChip({ value, basis }) {
+  if (!value) return null;
+  return (
+    <span className="cn-chip cn-chip--firm" title={basis === 'goal' ? 'from a goal you linked it to' : 'you set this'}>
+      {IMPORTANCE_LABELS[value] || value}{basis === 'goal' ? ' (via goal)' : ''}
+    </span>
+  );
+}
 export { DOMAIN_LABELS };

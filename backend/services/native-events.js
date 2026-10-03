@@ -327,6 +327,71 @@ function recordEventKitPush({ headers = {}, body = {}, result = {}, now = Date.n
   return out;
 }
 
+// ── Reminders push (Build 11D) ───────────────────────────────────────────────
+
+/**
+ * Record a Reminders push — its OWN source, `reminders.<client>`, beside the
+ * calendar's `eventkit.<client>`. One push carrying both used to be judged by
+ * the calendar alone, so a reminders sync that had stopped (no list access, an
+ * app build that never sends them) was invisible behind a healthy diary.
+ * A push the ingest could not use is a FAILURE here, by name.
+ */
+function recordRemindersPush({ headers = {}, body = {}, result = {}, now = Date.now() } = {}) {
+  const out = { sourceId: null, heartbeat: null, failure: null };
+  try {
+    const nowMs = now instanceof Date ? now.getTime() : now;
+    const { client, via } = nativeSources.resolveClient(headers, body.client);
+    out.sourceId = nativeSources.sourceIdFor('reminders', client);
+    if (!result || result.ok !== true) {
+      out.failure = recordDeliveryFailure({
+        kind: 'reminders', headers, bodyClient: body.client,
+        error: (result && result.error) || 'push refused', reason: 'rejected', now: nowMs,
+      });
+      return out;
+    }
+    const reminders = Array.isArray(body.reminders) ? body.reminders : [];
+    out.heartbeat = _heartbeat({
+      kind: 'reminders', client, via,
+      deliveryId: _hash([out.sourceId, ...reminders.map((r) => `${r && (r.id || r.title)}@${r && r.isCompleted ? 1 : 0}`).sort()]),
+      newestObservedAt: new Date(nowMs).toISOString(), nowMs,
+      detail: { reminders: reminders.length, projected: result.projected || 0, unidentified: result.unidentified || 0,
+        lists: Array.isArray(body.lists) ? body.lists.length : null, complete: !!result.complete },
+    });
+  } catch (e) {
+    console.warn('[NativeEvents] reminders push not recorded:', e.message);
+    out.error = e.message;
+  }
+  return out;
+}
+
+// ── Desktop agent (Build 11M) ────────────────────────────────────────────────
+
+/**
+ * The laptop's activity reporter onto the spine. Build 10 named it off-spine:
+ * its health was judged only by NEURO Health's older check, so Sources could
+ * say nothing about it. One source, `desktop.agent`, judged on the newest
+ * SAMPLE time (a reporter draining a backlog after sleep is late, not live).
+ * The sample's contents (app names) never enter the event — only that the
+ * sensor reported, and when.
+ */
+function recordDesktopSample({ samples = [], now = Date.now() } = {}) {
+  try {
+    const nowMs = now instanceof Date ? now.getTime() : now;
+    const times = (samples || []).map((s) => Date.parse(s && (s.at || s.ts || s.time))).filter(Number.isFinite);
+    const newest = times.length ? new Date(Math.min(Math.max(...times), nowMs)).toISOString() : new Date(nowMs).toISOString();
+    const hosts = [...new Set((samples || []).map((s) => (s && s.host ? String(s.host).toLowerCase() : 'unknown')))];
+    return _heartbeat({
+      kind: 'desktop', client: 'agent', via: 'route',
+      deliveryId: _hash(['desktop.agent', newest, ...hosts]),
+      newestObservedAt: newest, nowMs,
+      detail: { samples: (samples || []).length, hosts: hosts.length },
+    });
+  } catch (e) {
+    console.warn('[NativeEvents] desktop sample not recorded:', e.message);
+    return { error: e.message };
+  }
+}
+
 // ── Failures ─────────────────────────────────────────────────────────────────
 
 /**
@@ -364,5 +429,7 @@ module.exports = {
   recordDeviceReport,
   recordLocationBatch,
   recordEventKitPush,
+  recordRemindersPush,
+  recordDesktopSample,
   recordDeliveryFailure,
 };

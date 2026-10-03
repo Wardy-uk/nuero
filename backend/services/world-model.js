@@ -58,7 +58,9 @@ const TYPES = ['observation.person.declared', 'observation.calendar.event_observ
   // against exactly the people that existed at that point in the log.
   'observation.task.observed', 'observation.task.removed', 'observation.commitment.observed',
   // Build 5D: evidence about whether a commitment moved, folded beside it.
-  'observation.progress.evidence'];
+  'observation.progress.evidence',
+  // Build 11E/F: the personal entities — Ember, and Nick's declared goals.
+  'observation.companion.declared', 'intent.goal.declared'];
 const obligations = require('./world-obligations');
 const progress = require('./progress-evidence');
 const MAX_EVIDENCE = 10;
@@ -137,6 +139,9 @@ function _applyPerson(ev) {
     JSON.stringify(Array.isArray(p.aliases) ? p.aliases : []),
     cur ? cur.first_observed_at : ev.occurredAt, ev.occurredAt,
     _appendEvidence(cur && cur.evidence_json, ev.eventId), p.fingerprint, ev.receivedAt]);
+  // Build 11E: stated relationship to Nick (NULL = the note does not say).
+  db.run('UPDATE wm_people SET relationship = ?, household = ? WHERE person_id = ?',
+    [p.relationship || null, typeof p.household === 'boolean' ? (p.household ? 1 : 0) : null, id]);
 
   const wanted = new Set((Array.isArray(p.emails) ? p.emails : []).map(lower).filter((e) => e.includes('@')));
   // Addresses this person held (or contested) that the note no longer lists.
@@ -184,6 +189,14 @@ function _writeMeeting(meetingId, p, ev, prior) {
     p.organizer && p.organizer.email ? lower(p.organizer.email) : null, p.locationLabel || null,
     typeof p.isOnline === 'boolean' ? (p.isOnline ? 1 : 0) : null,
     ev.occurredAt, ev.receivedAt, _appendEvidence(prior && prior.evidence_json, ev.eventId), p.fingerprint, ev.receivedAt]);
+  // Build 11C: the container, as observed. The KEY is derived (identifier
+  // first, title only as a fallback); its classification is read, never stored.
+  const cal = p.calendar || null;
+  const key = p.provider === 'graph'
+    ? require('./source-classification').GRAPH_PRIMARY
+    : cal ? require('./source-classification').containerKey('calendar', { id: cal.id, title: cal.title }) : null;
+  db.run('UPDATE wm_meetings SET calendar_key = ?, calendar_name = ? WHERE meeting_id = ?',
+    [key, cal ? cal.title || null : (p.provider === 'graph' ? 'Outlook' : null), meetingId]);
 }
 
 function _writeParticipants(meetingId, p) {
@@ -287,6 +300,8 @@ function applyEvent(ev) {
     case 'observation.progress.evidence': return progress.applyEvidence(ev);
     case 'observation.calendar.event_observed': return _applyObserved(ev);
     case 'observation.calendar.event_removed': return _applyRemoved(ev);
+    case 'observation.companion.declared': return require('./personal-world').applyCompanion(ev);
+    case 'intent.goal.declared': return require('./personal-world').applyGoal(ev);
     default: return undefined;
   }
 }
@@ -303,6 +318,7 @@ bus.registerConsumer({
     }
     obligations.reset();
     progress.reset();
+    require('./personal-world').reset();
   },
 });
 
@@ -329,6 +345,7 @@ function _person(id) {
   return {
     personId: r.person_id, displayName: r.display_name, notePath: r.note_path, role: r.role, team: r.team,
     directReport: r.direct_report === null ? null : r.direct_report === 1, manager: r.manager, status: r.status,
+    relationship: r.relationship || null, household: r.household === null || r.household === undefined ? null : r.household === 1,
     aliases: JSON.parse(r.aliases_json), emails: db.all(`SELECT value FROM wm_person_identities WHERE person_id = ?`, [id]).map((x) => x.value),
     provenance: { kind: r.provenance_kind, confidence: r.confidence, evidence: JSON.parse(r.evidence_json), notePath: r.note_path },
     firstObservedAt: r.first_observed_at, lastObservedAt: r.last_observed_at,
@@ -373,6 +390,12 @@ function shapeMeeting(m, nowMs = Date.now()) {
     isOrganizer: m.is_organizer === null ? null : m.is_organizer === 1,
     // An INFERENCE from the attendee list; `unknown` when the source could not tell.
     kind: m.kind,
+    // Build 11C: what kind of diary entry this is in plain words. A phone
+    // entry whose attendees could not be judged is an EVENT (a dentist, a
+    // birthday), never forced into "meeting" or "block" semantics.
+    entryKind: m.kind === 'meeting' ? 'meeting' : m.kind === 'block' ? 'block' : (m.provider === 'apple' ? 'event' : 'unknown'),
+    provider: m.provider,
+    calendar: m.calendar_key ? { key: m.calendar_key, name: m.calendar_name || null } : null,
     seriesId: m.series_id,
     location: m.location_label,
     isOnline: m.is_online === null ? null : m.is_online === 1,

@@ -223,39 +223,47 @@ test('an all-day event is free, not a wall across the day', () => {
 
 // ── Reminders ────────────────────────────────────────────────────────────────
 
-test('⚠ only whitelisted lists are ingested, and the rest are REPORTED', () => {
+test('⚠ only TRACKED lists enter the world model, and the rest are REPORTED (Build 11D)', () => {
   // The first run pulled in every list — a shopping list of 15 items, none of
-  // them a task. The deeper problem was that they could never leave: NEURO
-  // cannot write to iCloud, so a shopping item is ticked off in a shop and
-  // NEURO's copy stays open for ever. An append-only store with nothing closing
-  // it, growing every sync — the inbox_items failure exactly.
+  // them a task. Nick's call stands: by default only the built-in "Reminders"
+  // list is tracked; a list is tracked otherwise only when he says so.
   const res = apple.ingestReminders({
     reminders: [
-      { title: 'Call the school', list: 'Reminders' },
-      { title: 'peanut butter', list: 'Shopping' },
-      { title: 'Mugs', list: 'Shopping' },
-      { title: 'orphan with no list' },
+      { id: 'r-school', title: 'Call the school', list: 'Reminders' },
+      { id: 'r-pb', title: 'peanut butter', list: 'Shopping' },
+      { id: 'r-mugs', title: 'Mugs', list: 'Shopping' },
+      { id: 'r-orphan', title: 'orphan with no list' },
     ],
   });
-
-  assert.equal(res.created, 1, 'only the built-in list is ingested by default');
-  // Reported, not silently dropped: an ingest that discards most of its input
-  // looks identical to one that received nothing, so "why has my reminder not
-  // appeared" has to be answerable without guessing.
+  assert.equal(res.projected, 1, 'only the built-in list is tracked by default');
+  // Reported, not silently dropped: "why has my reminder not appeared" has to
+  // be answerable without guessing.
   assert.deepEqual(res.skippedLists, { Shopping: 2, '(no list)': 1 });
   assert.deepEqual(res.seenLists, { Reminders: 1, Shopping: 2, '(no list)': 1 });
-
-  const taskStore = require('./task-store');
-  const texts = taskStore.listTasks({ status: 'open' }).map((t) => t.text);
-  assert.ok(texts.includes('Call the school'));
-  assert.equal(texts.includes('peanut butter'), false);
 });
 
-test('a reminder with no list is never ingested', () => {
+test('⚠ a reminder no longer becomes a NEURO task row (Build 11D)', () => {
+  // A copy in `tasks` was a second record of something Apple owns, stamped
+  // `personal` because it came from the iPhone — source is not domain.
+  const before = db.get('SELECT COUNT(*) n FROM tasks').n;
+  const res = apple.ingestReminders({ reminders: [{ id: 'r-tax', title: 'Renew the car tax', dueDate: '2026-09-05', list: 'Reminders' }] });
+  assert.equal(res.ok, true);
+  assert.equal(res.projected, 1);
+  assert.equal(db.get('SELECT COUNT(*) n FROM tasks').n, before, 'nothing is written to the tasks table');
+  assert.equal(db.get(`SELECT COUNT(*) n FROM tasks WHERE source = 'apple-reminders' AND text = 'Renew the car tax'`).n, 0);
+});
+
+test('⚠ a reminder with no id is counted and NOT projected — wording is not identity', () => {
+  const res = apple.ingestReminders({ reminders: [{ title: 'Old build reminder', list: 'Reminders' }] });
+  assert.equal(res.projected, 0);
+  assert.equal(res.unidentified, 1, 'an app build older than Build 11 is named, not silently dropped');
+});
+
+test('a reminder with no list is never projected', () => {
   // Scriptable does not always expose `calendar`. Treating unknown as the
-  // default list would quietly reopen the door the whitelist exists to close.
-  const res = apple.ingestReminders({ reminders: [{ title: 'unattributed' }] });
-  assert.equal(res.created, 0);
+  // default list would quietly reopen the door the default exists to close.
+  const res = apple.ingestReminders({ reminders: [{ id: 'r-x', title: 'unattributed' }] });
+  assert.equal(res.projected, 0);
 });
 
 test('⚠ the same meeting from both calendars is stored ONCE, and Graph wins', () => {
@@ -289,75 +297,13 @@ test('⚠ the same meeting from both calendars is stored ONCE, and Graph wins', 
   assert.ok(day.some((e) => e.subject === 'Swimming lesson'), 'a genuinely personal event still lands');
 });
 
-test('the LIST decides the domain, and personal is the default', () => {
-  delete process.env.APPLE_WORK_LISTS;
-  assert.equal(apple.domainForList('Shopping'), 'personal');
-  assert.equal(apple.domainForList(null), 'personal');
-
-  process.env.APPLE_WORK_LISTS = 'Nurtur, Work Stuff';
-  assert.equal(apple.domainForList('Nurtur'), 'work');
-  assert.equal(apple.domainForList('  nurtur  '), 'work', 'matching is case and space insensitive');
-  assert.equal(apple.domainForList('Shopping'), 'personal');
-  delete process.env.APPLE_WORK_LISTS;
-});
-
-test('a reminder becomes a personal task with its due date', () => {
-  const res = apple.ingestReminders({
-    reminders: [{ title: 'Renew the car tax', dueDate: '2026-09-05', list: 'Reminders' }],
-  });
-  assert.equal(res.created, 1);
-
-  const taskStore = require('./task-store');
-  const task = taskStore.listTasks({ status: 'open' }).find(t => t.text === 'Renew the car tax');
-  assert.ok(task);
-  assert.equal(task.domain, 'personal');
-  assert.equal(task.source, 'apple-reminders');
-  assert.equal(task.due_date, '2026-09-05');
-});
-
-test('⚠ a completed task is NOT resurrected by the next push', () => {
-  // This is the loop that would otherwise make the whole feature unusable.
-  // NEURO cannot write to iCloud, so a reminder Nick ticked off in NEURO stays
-  // open in Apple and keeps being pushed. It is safe only because createTask
-  // folds into the existing row WHATEVER its status, and the fold never touches
-  // status. Verified here rather than assumed.
-  const taskStore = require('./task-store');
-  apple.ingestReminders({ reminders: [{ title: 'Post the parcel', list: 'Reminders' }] });
-
-  const created = taskStore.listTasks({ status: 'open' }).find(t => t.text === 'Post the parcel');
-  taskStore.updateTask(created.id, { status: 'done' });
-
-  const again = apple.ingestReminders({ reminders: [{ title: 'Post the parcel', list: 'Reminders' }] });
-  assert.equal(again.created, 0, 'it must fold, not create a second task');
-  assert.equal(again.folded, 1);
-
-  const after = taskStore.getTask(created.id);
-  assert.equal(after.status, 'done', 'the completed task must stay completed');
-});
-
-test('a completed reminder is skipped, never created-then-closed', () => {
-  // Creating a task to immediately close it would put work in the wins ledger
-  // that nobody did today — "a win is DETECTED, not declared".
-  const res = apple.ingestReminders({
-    reminders: [{ title: 'Something already done', isCompleted: true, list: 'Reminders' }],
-  });
-  assert.equal(res.created, 0);
-  assert.equal(res.skippedCompleted, 1);
-
-  const taskStore = require('./task-store');
-  assert.equal(
-    taskStore.listTasks({ status: 'all', includeDone: true }).some(t => t.text === 'Something already done'),
-    false,
-  );
-});
-
 test('a titleless reminder is rejected and reported', () => {
-  // On an ingested list, or the whitelist would skip them before the title check
+  // On a tracked list, or the default would skip them before the title check
   // and the test would pass for the wrong reason.
   const res = apple.ingestReminders({
-    reminders: [{ notes: 'no title', list: 'Reminders' }, { title: '   ', list: 'Reminders' }],
+    reminders: [{ id: 'r-t1', notes: 'no title', list: 'Reminders' }, { id: 'r-t2', title: '   ', list: 'Reminders' }],
   });
-  assert.equal(res.created, 0);
+  assert.equal(res.projected, 0);
   assert.equal(res.rejected.length, 2);
 });
 

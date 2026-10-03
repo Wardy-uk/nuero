@@ -187,6 +187,108 @@ const ACTION_TYPES = Object.freeze({
     execution: 'week not already sent, no newer version of the report prepared, same recipient, Nick has not sent it by hand since',
     label: 'Send the weekly risk report',
   }),
+  // ── Build 11K: calendar changes that reach other people ──────────────────
+  //
+  // Creating, moving or cancelling an event WITH ATTENDEES makes Graph email
+  // every one of them as Nick — an invite, an update, a cancellation. Before
+  // Build 11 three UI paths did that on a PIN-only confirm with no ledger and
+  // no read-back: the 1-2-1 Book / Book all / Move buttons and the event
+  // composer. Each is now one of these, prepared and approved like an email.
+  //
+  // A change to NEURO's OWN solo blocks (task blocks, Plaud admin blocks) has
+  // nobody to notify and is not governed — that is the action-presenter
+  // "leaves the building" test, unchanged.
+  //
+  // Draft shape: { to: attendees[{email,name}], subject: title, body, start,
+  // end, timeZone, location, isOnline, recurrence, calendar }. `to` reuses the
+  // email field on purpose, so every common check (recipient shape, no bcc,
+  // no [placeholder]) applies to attendees too.
+  //
+  // ⚠ Their own switch, `governed_calendar` ("Send approved calendar
+  // changes"), default OFF. Build 8 kept ONE switch for every email because a
+  // second switch is a second way for one kind of email to be on; a calendar
+  // invite is not an email kind but a different consequence (a slot in other
+  // people's diaries), and turning email sending on must not silently start
+  // sending invites.
+  create_calendar_event: Object.freeze({
+    type: 'create_calendar_event',
+    authority: 'A4',
+    requiresApproval: true,
+    executable: true,
+    executor: 'microsoft.calendar',
+    verification: 'calendar-read-back',
+    channel: 'calendar',
+    switchFlag: 'governed_calendar',
+    retryPolicy: 'human-review',
+    uncertaintyPolicy: 'verify-only',
+    approvalTtlHours: 24,
+    preparedTtlHours: 72,
+    maxRecipients: 50,
+    targetIsRecipient: false,
+    cc: false,
+    attachments: false,
+    sendMode: 'calendar-create',
+    bodyFormat: 'text',
+    editable: false,
+    notEditableWhy: 'change the time, people or words where you booked it, which prepares a new version to approve',
+    duplicate: 'one live create per prepared booking; and refused if an event with the same title already sits at that start',
+    preparation: 'Book / Book all on a 1-2-1, the event composer with attendees, or chat create_meeting — exact attendees resolved first',
+    execution: 'start still in the future, no event with that title at that start already, the provider event created with NEURO\'s marker and read back exactly',
+    label: 'Send a calendar invite',
+  }),
+  reschedule_calendar_event: Object.freeze({
+    type: 'reschedule_calendar_event',
+    authority: 'A4',
+    requiresApproval: true,
+    executable: true,
+    executor: 'microsoft.calendar',
+    verification: 'calendar-read-back',
+    channel: 'calendar',
+    switchFlag: 'governed_calendar',
+    retryPolicy: 'human-review',
+    uncertaintyPolicy: 'verify-only',
+    approvalTtlHours: 24,
+    preparedTtlHours: 72,
+    maxRecipients: 50,
+    targetIsRecipient: false,
+    cc: false,
+    attachments: false,
+    sendMode: 'calendar-update',
+    bodyFormat: 'text',
+    editable: false,
+    notEditableWhy: 'pick a different slot with Move, which prepares a new version to approve',
+    duplicate: 'one live change per calendar event',
+    preparation: 'Move on a 1-2-1 — the event found by id, its current time and attendees recorded',
+    execution: 'the SAME event id, still at the time it was when prepared, Nick still its organiser, attendees unchanged, the new slot in the future; read back at the new time',
+    label: 'Move a meeting (attendees are told)',
+  }),
+  cancel_calendar_event: Object.freeze({
+    type: 'cancel_calendar_event',
+    authority: 'A4',
+    requiresApproval: true,
+    executable: true,
+    executor: 'microsoft.calendar',
+    verification: 'calendar-read-back',
+    channel: 'calendar',
+    switchFlag: 'governed_calendar',
+    retryPolicy: 'human-review',
+    uncertaintyPolicy: 'verify-only',
+    approvalTtlHours: 24,
+    preparedTtlHours: 72,
+    maxRecipients: 50,
+    targetIsRecipient: false,
+    cc: false,
+    attachments: false,
+    sendMode: 'calendar-cancel',
+    bodyFormat: 'text',
+    editable: false,
+    notEditableWhy: 'reject this and prepare the cancellation again with different words',
+    duplicate: 'one live change per calendar event',
+    preparation: 'Cancel on a meeting Nick organises — the event found by id, its time and attendees recorded',
+    execution: 'the SAME event id, still at the time it was when prepared, Nick still its organiser, not already cancelled; read back as cancelled or gone',
+    label: 'Cancel a meeting (attendees are told)',
+  }),
+
   // A holding note to someone Nick owes. Prepared and approvable since Build 5,
   // NOT executable: its draft carries a [date] only Nick can fill, and Build 6
   // ships one executor. Approving it records the decision and sends nothing.
@@ -223,8 +325,28 @@ const ACTION_TYPES = Object.freeze({
 
 // The only executor names that exist. An executable type naming anything else
 // fails validateRegistry(), and the executor refuses an unknown name.
-const EXECUTORS = Object.freeze(['microsoft.mail']);
-const SEND_MODES = Object.freeze(['new-message', 'reply']);
+const EXECUTORS = Object.freeze(['microsoft.mail', 'microsoft.calendar']);
+const SEND_MODES = Object.freeze(['new-message', 'reply', 'calendar-create', 'calendar-update', 'calendar-cancel']);
+// Which send modes each executor can perform — an entry pairing an executor
+// with a mode it does not have fails validateRegistry().
+const EXECUTOR_MODES = Object.freeze({
+  'microsoft.mail': ['new-message', 'reply'],
+  'microsoft.calendar': ['calendar-create', 'calendar-update', 'calendar-cancel'],
+});
+// The switch that governs each executable type. Email types share Build 8's
+// one switch; calendar types have their own (see create_calendar_event).
+const SWITCH_LABELS = Object.freeze({
+  governed_execution: 'Send approved emails',
+  governed_calendar: 'Send approved calendar changes',
+});
+function switchFor(type) {
+  const p = policyFor(type);
+  return (p && p.switchFlag) || 'governed_execution';
+}
+function isCalendarType(type) {
+  const p = policyFor(type);
+  return !!(p && p.executor === 'microsoft.calendar');
+}
 const BODY_FORMATS = Object.freeze(['text', 'html']);
 
 function policyFor(type) {
@@ -258,6 +380,8 @@ function validateRegistry(types = ACTION_TYPES) {
       // Build 8: every executable type states HOW it sends and what a duplicate
       // is — the executor reads these, so an entry missing one cannot run.
       if (!SEND_MODES.includes(p.sendMode)) problems.push(`${key}: executable with unknown sendMode ${p.sendMode}`);
+      else if (EXECUTOR_MODES[p.executor] && !EXECUTOR_MODES[p.executor].includes(p.sendMode)) problems.push(`${key}: ${p.executor} cannot ${p.sendMode}`);
+      if (p.switchFlag && !SWITCH_LABELS[p.switchFlag]) problems.push(`${key}: unknown switch ${p.switchFlag}`);
       if (!BODY_FORMATS.includes(p.bodyFormat)) problems.push(`${key}: executable with unknown bodyFormat ${p.bodyFormat}`);
       if (!(Number(p.maxRecipients) >= 1)) problems.push(`${key}: executable with no recipient limit`);
       if (!p.duplicate) problems.push(`${key}: executable with no duplicate rule`);
@@ -323,6 +447,22 @@ function bindFor(actionType, target, draft) {
   if (actionType === 'send_weekly_risk_report') {
     return { week: t.week || null, reportVersion: t.reportVersion || null, htmlHash: d.html ? sha256(String(d.html)) : null };
   }
+  // Build 11K: everything an attendee will see, or that decides which event
+  // changes. Times are wall-clock in the stated zone, compared as strings.
+  if (actionType === 'create_calendar_event' || actionType === 'reschedule_calendar_event' || actionType === 'cancel_calendar_event') {
+    return {
+      op: actionType,
+      eventId: t.eventId || null,
+      fromStart: t.fromStart || null,
+      start: d.start || null,
+      end: d.end || null,
+      timeZone: d.timeZone || null,
+      location: d.location || null,
+      isOnline: d.isOnline === true,
+      recurrence: d.recurrence || null,
+      calendar: d.calendar || null,
+    };
+  }
   return null;
 }
 
@@ -335,7 +475,7 @@ const PLACEHOLDER_RE = /\[(date|name|when|time|details?)\]/i;
 function hasUnfilledPlaceholder(body) { return PLACEHOLDER_RE.test(String(body || '')); }
 
 module.exports = {
-  AUTHORITY, ACTION_TYPES, EXECUTORS, SEND_MODES, BODY_FORMATS,
-  policyFor, isRegistered, canExecute, executableTypes, validateRegistry,
+  AUTHORITY, ACTION_TYPES, EXECUTORS, SEND_MODES, BODY_FORMATS, EXECUTOR_MODES, SWITCH_LABELS,
+  policyFor, isRegistered, canExecute, executableTypes, validateRegistry, switchFor, isCalendarType,
   canonical, payloadHash, bindFor, evidenceHash, hasUnfilledPlaceholder, sha256,
 };

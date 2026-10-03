@@ -192,6 +192,7 @@ function _taskIdFor(system, recordId) {
 }
 
 function _originKind(p) {
+  if (p.system === 'eventkit-reminders') return 'reminders';
   if (p.system !== 'neuro') return 'microsoft';
   const s = String(p.source || '');
   if (p.managementLog) return 'management-log';
@@ -222,7 +223,18 @@ function _recomputeTask(taskId, ev, idx) {
   let status; let authority = null; let completedAt = null;
   const closer = live.find((s) => s.status === 'completed');
   if (closer) { status = 'completed'; authority = closer.system; completedAt = closer.completed_at; }
-  else if (!live.length) { status = 'unknown'; authority = lead.system; }
+  // Build 11D: a record that was COMPLETED and then stopped being listed is
+  // still completed — the phone sends recently completed reminders and then
+  // stops, and that ageing-out is not evidence of anything new. A record that
+  // was OPEN when it vanished stays unknown (Build 4: deleted or completed, the
+  // source cannot say which).
+  else if (!live.length) {
+    // A removal overwrites `status` with 'unknown' and keeps `raw_status` —
+    // the source's own last word — which is what is read here.
+    const lastDone = sources.find((x) => _norm(x.system, x.raw_status) === 'completed');
+    if (lastDone) { status = 'completed'; authority = lastDone.system; completedAt = lastDone.completed_at; }
+    else { status = 'unknown'; authority = lead.system; }
+  }
   else if (!lead.removed) { status = lead.status; authority = lead.system; }
   else { status = live[0].status; authority = live[0].system; }
 
@@ -676,10 +688,25 @@ function shapeTask(r) {
     household: r.household === 1,
     createdAt: r.created_at, updatedAt: r.updated_at, completedAt: r.completed_at,
     possibleCompletion: _parse(r.possible_completion_json),
+    // Build 11D: the container the leading record lives in (a reminder list),
+    // so its classification can be applied at read time.
+    container: _containerOf(r.task_id),
+    dueTime: _leadField(r.task_id, 'dueTime'),
     sources,
     provenance: { kind: r.provenance_kind, confidence: r.confidence, evidence: _parse(r.evidence_json) || [] },
     observedAt: r.observed_at,
   };
+}
+
+function _leadPayload(taskId) {
+  const row = db.get(`SELECT payload_json FROM wm_task_sources WHERE task_id = ? ORDER BY CASE role WHEN 'leading' THEN 0 ELSE 1 END LIMIT 1`, [taskId]);
+  return row ? _parse(row.payload_json) : null;
+}
+function _leadField(taskId, key) { const p = _leadPayload(taskId); return p && p[key] != null ? p[key] : null; }
+function _containerOf(taskId) {
+  const p = _leadPayload(taskId);
+  if (!p || p.system !== 'eventkit-reminders' || !p.list) return null;
+  return { kind: 'reminder-list', id: p.list.id || null, title: p.list.title || null };
 }
 
 function getTask(id) { return shapeTask(db.get('SELECT * FROM wm_tasks WHERE task_id = ?', [id])); }

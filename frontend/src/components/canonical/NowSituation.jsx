@@ -1,5 +1,5 @@
 import React from 'react';
-import { DomainChips, when } from './canonicalUi';
+import { DomainChips, ImportanceChip, when } from './canonicalUi';
 import './Canonical.css';
 
 /**
@@ -33,7 +33,8 @@ export default function NowSituation({ situation, onNavigate }) {
             {s.nextEvent.withPeople && s.nextEvent.withPeople.length > 0 && <span className="cn-muted"> with {s.nextEvent.withPeople.join(', ')}</span>}
             {s.nextEvent.unresolvedPeople > 0 && <span className="cn-muted"> (+{s.nextEvent.unresolvedPeople} not matched to a person)</span>}
           </div>
-          <DomainChips domains={s.nextEvent.domains} />
+          <DomainChips domains={s.nextEvent.domains} /> <ImportanceChip value={s.nextEvent.importance} basis={s.nextEvent.importanceBasis} />
+          {s.nextEvent.calendar && s.nextEvent.calendar.name && <div className="cn-muted">On {s.nextEvent.calendar.name}{s.nextEvent.calendar.classification === 'unclassified' ? ' — a calendar you have not classified yet' : s.nextEvent.calendar.classification === 'ambiguous' ? ` — ${s.nextEvent.calendar.why}` : ''}</div>}
           {s.nextEvent.projectionCurrent === false && <div className="cn-muted">The diary in the world model is a little behind.</div>}
         </div>
       )}
@@ -47,6 +48,25 @@ export default function NowSituation({ situation, onNavigate }) {
             </div>
           ))}
           {onNavigate && <button type="button" className="cn-link" onClick={go('commitments')}>All commitments</button>}
+        </div>
+      )}
+      {s.tasks && (
+        <div className="cn-now-card">
+          <div className="cn-now-k">Reminders coming due</div>
+          {s.tasks.map((t) => (
+            <div key={t.id} className="cn-now-item">
+              {t.description}
+              <span className="cn-muted"> — {t.due.label}{t.due.time ? ` at ${t.due.time}` : ''}{t.container && t.container.name ? ` · ${t.container.name}` : ''}</span>{' '}
+              <DomainChips domains={t.domains} /> <ImportanceChip value={t.importance} basis={t.importanceBasis} />
+            </div>
+          ))}
+        </div>
+      )}
+      {s.laterUnknown && (
+        <div className="cn-now-card cn-now-card--quiet">
+          <div className="cn-now-k">Later</div>
+          <div className="cn-muted">{s.laterUnknown.say}</div>
+          {s.laterUnknown.items.map((e) => <div key={e.id} className="cn-muted">{when(e.start)} · {e.title}</div>)}
         </div>
       )}
       {s.crowdedOut && (

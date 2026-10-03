@@ -1336,11 +1336,32 @@ function registerDurableJobs() {
     maxLagMs: null,
     maxAttempts: 1,
     timeoutMs: 2 * 60 * 1000,
-    why: 'Build 3C: People notes into the world model. Idempotent (content-keyed), so only the newest slot matters.',
+    why: 'Build 3C: People notes into the world model. Build 11E/F: also pet notes (Ember) and Nick\'s declared goals. Idempotent (content-keyed), so only the newest slot matters.',
     run: async () => {
       const r = require('./world-sources').publishPeople();
       if (r.error) throw new Error(r.error);
+      // The personal entities ride the same pass. Their failure is reported in
+      // the result, never allowed to fail the People sync that already landed.
+      const pw = require('./personal-world');
+      r.companions = pw.publishCompanions();
+      r.goals = pw.publishGoals();
       return r;
+    },
+  });
+
+  runtime.defineJob({
+    name: 'personal-deadline',
+    cron: '*/15 * * * *',
+    class: 'freshness-sensitive',
+    catchUp: 'latest',
+    maxLagMs: 15 * 60 * 1000,
+    maxAttempts: 1,
+    timeoutMs: 2 * 60 * 1000,
+    why: 'Build 11H: the first non-work evaluator — a personal deadline (explicitly dated, evidenced non-work) about to matter and still open. SHADOW — findings and recorded verdicts only, nothing is ever sent.',
+    run: async () => {
+      const r = await require('./personal-deadline').evaluate();
+      return { mode: r.mode, considered: r.considered, created: r.created, escalated: r.escalated, updated: r.updated,
+        resolved: r.resolved, decided: r.decided, excluded: r.excluded };
     },
   });
 

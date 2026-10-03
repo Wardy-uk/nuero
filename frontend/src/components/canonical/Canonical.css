@@ -114,3 +114,11 @@
   .cn-dl { grid-template-columns: 1fr; }
   .cn-meeting { max-width: 100%; }
 }
+
+/* Build 11: the personal world model on Life and Now. */
+.cn-goal--paused .cn-rowtitle { color: var(--text-muted); }
+.cn-goal-desc { flex-basis: 100%; }
+.cn-class { flex-wrap: wrap; gap: 8px; }
+.cn-check { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.cn-details summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; margin-top: 8px; }
+.cn-now-card--quiet { opacity: 0.8; }

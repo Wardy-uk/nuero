@@ -272,7 +272,7 @@ test('10. the three production jobs register with their audited policies', () =>
   const j = runtime._jobs;
   // Build 5A: meeting-context's job was superseded by meeting-intelligence.
   assert.deepEqual([...j.keys()].sort(), ['action-executor', 'ambient-pass', 'calendar-sync', 'capture-drain', 'commitment-risk', 'meeting-intelligence',
-    'ms-tasks-sync', 'source-staleness', 'world-obligations-sync', 'world-people-sync']);
+    'ms-tasks-sync', 'personal-deadline', 'source-staleness', 'world-obligations-sync', 'world-people-sync']);
   // Build 6: the governed executor's reconciler. Correctness-critical, one
   // attempt per slot (a failed pass is simply the next slot — reconcile is
   // idempotent and never resends), and NOT also on node-cron.

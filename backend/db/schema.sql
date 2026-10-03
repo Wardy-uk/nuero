@@ -2113,3 +2113,125 @@ CREATE TABLE IF NOT EXISTS goals (
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 );
+
+-- ── Build 11: the personal world model ─────────────────────────────────────
+
+-- 11B. What each CONTAINER a source delivers through is for, as Nick said.
+-- A container is a calendar or a reminder list. NOT a projection (never reset
+-- by a replay) and never inferred: a row exists only because Nick set it.
+-- Applied at READ time, so reclassifying a calendar needs no replay.
+--   kind        calendar | reminder-list
+--   source_key  eventkit-cal:id:<calendarIdentifier>     (iOS builds after Build 11)
+--               eventkit-cal:title:<lower-cased title>   (older builds: titles only,
+--                                                        refused when two share one)
+--               graph-cal:primary                        (the Outlook calendar)
+--               reminders:id:<calendarIdentifier> / reminders:title:<title>
+--   domains_json  [] or NULL = unknown — never a default
+--   tracked     reminder lists only: 0 = not part of the world model at all
+CREATE TABLE IF NOT EXISTS source_classifications (
+  kind          TEXT NOT NULL,
+  source_key    TEXT NOT NULL,
+  label         TEXT,
+  domains_json  TEXT,
+  tracked       INTEGER,
+  set_at        TEXT NOT NULL,
+  set_via       TEXT NOT NULL DEFAULT 'neuro',
+  PRIMARY KEY (kind, source_key)
+);
+
+-- 11B. Which containers the sources have SHOWN — bookkeeping of the ingest,
+-- so the classification screen can list every calendar and list by name even
+-- when it has never had an event. Observed, never classified.
+CREATE TABLE IF NOT EXISTS source_containers (
+  kind           TEXT NOT NULL,
+  source_key     TEXT NOT NULL,
+  label          TEXT NOT NULL,
+  container_id   TEXT,                -- the provider's identifier, when the client sent one
+  provider       TEXT NOT NULL,       -- eventkit | graph
+  first_seen_at  TEXT NOT NULL,
+  last_seen_at   TEXT NOT NULL,
+  last_client    TEXT,
+  PRIMARY KEY (kind, source_key)
+);
+
+-- 11F. Which world-model things a goal is about. Explicit only — Nick links
+-- them; nothing links a task to a goal on wording.
+CREATE TABLE IF NOT EXISTS goal_links (
+  goal_id     TEXT NOT NULL,
+  entity_id   TEXT NOT NULL,          -- task:… commitment:… person:… companion:… meeting:…
+  relation    TEXT NOT NULL DEFAULT 'serves',
+  set_at      TEXT NOT NULL,
+  PRIMARY KEY (goal_id, entity_id)
+);
+
+-- 11F. Goals as the world model holds them — folded from intent.goal.declared,
+-- so a replay rebuilds them from the log.
+CREATE TABLE IF NOT EXISTS wm_goals (
+  goal_id          TEXT PRIMARY KEY,
+  title            TEXT NOT NULL,
+  description      TEXT,
+  domains_json     TEXT,
+  status           TEXT NOT NULL,        -- active | paused | achieved | dropped
+  importance       TEXT,                 -- PersonalImportance, explicit, or NULL (not said)
+  start_date       TEXT,
+  review_date      TEXT,
+  last_reviewed_at TEXT,
+  links_json       TEXT NOT NULL DEFAULT '[]',
+  provenance_kind  TEXT NOT NULL,        -- fact: Nick declared it
+  observed_at      TEXT NOT NULL,
+  evidence_json    TEXT NOT NULL,
+  fingerprint      TEXT,
+  updated_at       TEXT NOT NULL
+);
+
+-- 11E. Non-human members of the household — Ember. Declared by a vault note
+-- (frontmatter `type: pet`), never inferred. Deliberately NOT wm_people: a dog
+-- has no email, no team and no 1-2-1, and forcing her into Person would let
+-- every person rule (resolution, chase, work evidence) reach her.
+CREATE TABLE IF NOT EXISTS wm_companions (
+  companion_id     TEXT PRIMARY KEY,     -- companion:<slug>
+  name             TEXT NOT NULL,
+  species          TEXT,
+  breed            TEXT,
+  note_path        TEXT,
+  household        INTEGER,              -- 1 / 0 / NULL (not stated)
+  aliases_json     TEXT NOT NULL DEFAULT '[]',
+  provenance_kind  TEXT NOT NULL,
+  observed_at      TEXT NOT NULL,
+  evidence_json    TEXT NOT NULL,
+  fingerprint      TEXT,
+  updated_at       TEXT NOT NULL
+);
+
+-- 11H. The first non-work evaluator: a personal deadline at risk. SHADOW —
+-- the attention verdict is recorded, never sent. One row per (subject, episode).
+CREATE TABLE IF NOT EXISTS personal_deadline_findings (
+  finding_id            TEXT PRIMARY KEY,    -- personal-deadline:<subject id>:<episode>
+  subject_id            TEXT NOT NULL,       -- task:… or commitment:…
+  episode               INTEGER NOT NULL,
+  status                TEXT NOT NULL,       -- active | resolved
+  level                 TEXT NOT NULL,       -- elevated | high
+  trigger_kind          TEXT NOT NULL,       -- due-today | due-tomorrow | overdue
+  summary               TEXT NOT NULL,
+  why                   TEXT NOT NULL,
+  domains_json          TEXT NOT NULL,       -- the resolved domains AND their bases
+  deadline_json         TEXT NOT NULL,       -- { date, basis, source }
+  importance            TEXT,
+  importance_basis      TEXT,                -- declared | goal | NULL
+  evidence_json         TEXT NOT NULL,
+  unavailable_json      TEXT NOT NULL,
+  confidence            REAL,
+  evidence_fingerprint  TEXT,
+  novelty               TEXT NOT NULL,       -- new | repeated | escalated
+  evaluator_version     TEXT NOT NULL,       -- stamped (Build 10 found nothing recorded it)
+  first_created_at      TEXT NOT NULL,
+  updated_at            TEXT NOT NULL,
+  resolved_at           TEXT,
+  resolution            TEXT,
+  attention_mode        TEXT,
+  attention_decided_at  TEXT,
+  attention_level       TEXT,
+  attention_json        TEXT,
+  decisions             INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_personal_deadline_status ON personal_deadline_findings(status, subject_id);
