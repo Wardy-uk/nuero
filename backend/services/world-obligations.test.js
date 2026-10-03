@@ -162,6 +162,15 @@ test('4. same wording, no shared id: two tasks, a POSSIBLE-same link, never a me
   const link = db.get(`SELECT * FROM wm_obligation_links WHERE relation = 'possible-same' AND (a_id = ? OR b_id = ?)`, [`task:neuro:${id}`, `task:neuro:${id}`]);
   assert.ok(link, 'the relationship is exposed');
   assert.equal(link.rule, 'exact-normalised-title');
+  // Inside ONE store identical wording is a recurring series, not a copy.
+  src.publishMicrosoftTasks({ planner: [
+    { id: 'PL-R1', title: 'End-of-day risk sweep', percentComplete: 100, completedDateTime: '2026-10-01T17:00:00Z' },
+    { id: 'PL-R2', title: 'End-of-day risk sweep', percentComplete: 0 },
+  ], todo: [], now: tick() });
+  await pump();
+  assert.equal(db.all(`SELECT * FROM wm_obligation_links WHERE relation = 'possible-same' AND (a_id = 'task:ms-planner:PL-R2' OR b_id = 'task:ms-planner:PL-R2')`).length, 0,
+    'two instances of a recurring Planner card are not "possibly the same"');
+  assert.equal(wo.getTask('task:ms-planner:PL-R2').possibleCompletion, null, 'and last week\'s completed instance does not hint this one is done');
   const near = addTask({ text: 'Review the escalation matrix for Q3' });
   await reconcile();
   assert.equal(db.all(`SELECT * FROM wm_obligation_links WHERE relation = 'possible-same' AND (a_id = ? OR b_id = ?)`,

@@ -297,7 +297,14 @@ function _possibleSame(taskId, key, ev) {
   db.run(`DELETE FROM wm_obligation_links WHERE relation = 'possible-same' AND rule = 'exact-normalised-title'
             AND (a_id = ? OR b_id = ?)`, [taskId, taskId]);
   if (!key || key.length < 8) { _refreshPossibleCompletion(taskId); return; }
-  const others = db.all(`SELECT task_id, status FROM wm_tasks WHERE title_key = ? AND task_id != ?`, [key, taskId]);
+  // ACROSS STORES only. The question is "is this an unlinked copy of the same
+  // obligation in another system?". Inside one store, identical wording is
+  // either task-dedupe's business (NEURO folds same text by dedupe_key) or a
+  // RECURRING series — measured live on 3 Oct: 228 links, every one between
+  // completed instances of recurring Planner cards ("Align With Nathan" ×14).
+  const store = (id) => id.split(':').slice(0, 2).join(':');
+  const others = db.all(`SELECT task_id, status FROM wm_tasks WHERE title_key = ? AND task_id != ?`, [key, taskId])
+    .filter((o) => store(o.task_id) !== store(taskId));
   for (const o of others) {
     const [a, b] = [taskId, o.task_id].sort();
     db.run(`INSERT OR REPLACE INTO wm_obligation_links (a_id, b_id, relation, rule, confidence, evidence_event_id, at)
