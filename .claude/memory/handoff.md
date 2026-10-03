@@ -1,31 +1,63 @@
-# Session Handoff — 2026-09-24 15:14
+# Session Handoff — 2026-10-03 (Build 11: personal world model + governed calendar)
 
-## What was done
-Knowledge Memory promotion queue, four commits (`0bfd938` → `101661f`), **all deployed to pi5 and verified live**.
-- **Ranked the queue on the signal it already parsed.** `promotionSignal` has read topics / follow-ups / duration / conclusion since it was written and `scorePromotionCandidate` ignored all of it. Biggest tied block 189 → 87, distinct scores 5 → 14.
-- **Opened the back catalogue.** Queue defaulted to 21 days while `enrichPromotionCandidates` used 3650 — 775 notes were unreachable, not low-ranked. `daysBack` + a Last 21 days / All time toggle; default still 21.
-- **Knowledge only** (Nick's call): `## Open Loops` deleted from the promotion path — prompt, scoring arm, value shape, `## Still Open` in promoted notes, `loopToTask`, `POST /loop-to-task`, the card's origin question. Pinned as an absence.
-- **Insight cap 2 → 6**, and `PROMPT_VERSION` folded into the skip hash so the change reaches already-enriched notes.
-- **Added the enrich button** — the pass had no caller anywhere (no scheduler, no UI, MCP only).
+- Deployed nuero 87af6d5/83944da to pi5 (frontend built, tests 5042/0 fail on Pi, neuro-backend restarted, gated on tests). Kiosk untouched.
+- New: calendar/reminder-list classification (Life screen), reminders as canonical tasks (eventkit-reminders), stated relationships, Ember as a companion (type: pet), goals with importance/links on the spine, personal-deadline evaluator (SHADOW), off-duty later-unknown, governed create/reschedule/cancel_calendar_event behind NEW switch "Send approved calendar changes" (OFF). 1-2-1 Book/Move, composer with attendees and chat create_meeting now PREPARE.
+- nuero-ios f16b795 COMMITTED, UNBUILT: calendar ids, reminders with ids from every list, canonical Now in both apps. On the Mac: swift test, build both, install; then flip `reminders.*` to expected in backend/services/native-sources.js.
+- Live personal data is still empty: 0 goals, 0 companions, 0 classified calendars, 0 reminder tasks (old builds send no ids). Nick's to do: classify calendars/lists on Life, write goals, create Companions/Ember.md.
+- One validation invite (to nickw@, 2026-12-31) was prepared as a machine client and REJECTED with a note — expect it in Actions history.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 11 Personal World Model and Sensing (incl. restorative-drift readiness and updated domain matrix). Not published to Confluence (Atlassian MCP not authorised this session).
+- Not done: logged-in visual check of Life/Actions; mcp-server VANTAGE inventory gate still fails (pre-existing).
+
+---
+
+# Session Handoff — 2026-10-03 (Build 10: canonical UI + Nick-first Now)
+
+- Deployed nuero 4466f6c/9bb8da9 to pi5 (frontend + kiosk built, tests 5004/0 fail, neuro-backend + saim-backend restarted). Phone PWA live via Netlify.
+- New: /api/canonical/* (now, commitments, sources, findings, life, goals, annotations); NEURO screens Commitments, Sources, Findings, Life; Now reads /api/canonical/now.
+- Retired: Briefing/Focus (→ Now), SAiM Today/Focus, KPI Tracker (→ VANTAGE), QA, Strava, /api/focus (410), kiosk engine, sara/ + _incoming-daypilot-sara/ (docs archived into saim/attractor).
+- nuero-ios e329cd4 COMMITTED, UNBUILT: run `cd NeuroKit && swift test` + build both apps on the Mac.
+- ⚠ Obsidian Sync wedged both ways since ~14:28 3 Oct (Pi lacks Builds 6–10 notes; Pi had the newer Target Architecture, copied to Windows by hand). Restart Obsidian on Windows (see memory obsidian-sync-wedge).
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 10 Canonical UI and Nick-First Now (includes the life-domain maturity matrix and Build 11 plan).
+- Not done: logged-in visual check of new screens (browser harness wouldn't start); mcp-server VANTAGE inventory gate fails (pre-existing, VANTAGE's to refresh).
+
+---
+
+# Session Handoff — 2026-10-03 (Build 9: surface convergence)
+
+- Deployed nuero e0d1366 to pi5 (frontend + kiosk built, tests green, neuro-backend restarted). Phone PWA live via Netlify.
+- nuero-ios a3c7928 COMMITTED, UNBUILT: iOS Actions decode fix (pending vs actions), governed queue read-only, phone never approves outbound older-queue kinds, SAiM iOS approvals line. Run NeuroKit tests + build on the Mac.
+- First live sighting of the SAiM "Needs you" line will be Monday's weekly risk report once queued. Send switch is still OFF.
+- Record + target surface map: vault Projects/NEURO/NEURO-SAIM — Build 9 Surface Architecture and Convergence. Build 10 = govern invites, first world-model screens (Commitments, Sources), retire kiosk stateEngine.
+- For Nick: delete untracked sara/ and _incoming-daypilot-sara/; decide merges (Briefing/Focus/Today), KPI Tracker to VANTAGE, retire qa/strava.
+
+---
+
+# Session Handoff — 2026-10-02 16:00
+
+## What was done (all deployed to pi5 and verified live unless marked)
+- **Fire tablet layout** — headline clamp could shrink, shelf wrapped into the cards; fixed for short landscape (`Approach.css`).
+- **Screens follow place + time** — display verdict carries `place`/`area` + `night{dim}` (21:00–07:00, setting); NightDim overlay, Fully brightness and Pi backlight agent obey one flag; household board on home screens (`/api/rooms/board`, VESTA redaction); work Fire keeps its clock.
+- **Life-state** — `services/life-state.js`: what Nick is doing + evidence + `showWork`; asks "What are you up to?" when it's a guess; gate + surface hide work when he isn't working; off-duty view takes home/out/night shapes.
+- **Working hours 08:00–18:00** (setting); past 18:00 only a real meeting or focus session keeps him on duty.
+- **Voice** — useful or silent (greetings need a brief line; feed speech only critical/meeting/asked); living room greets nobody and replies in the natural voice via `saim-voice` Wyoming bridge (pi5 :10201); iOS + tablet play the natural clip.
+- **HA router integration** had frozen 16 days (person.nick "home" in Derby) — reloaded; watchdog script on pi5 cron.
+- **Senses watchdog** (`watchdog.checkSenses`, `sense_alert`); **rain-while-out** moment in ambient-push.
+- **CI** — android-sensor build fixed (dropped setup-android); tests workflow fixed (install web apps' deps) — first green run in 40+.
 
 ## What's still pending
-- **Nothing has been enriched yet.** All-time shows `243 of 243 summaries not yet read` (the PROMPT_VERSION bump correctly invalidated all 88 prior enrichments). ~10 presses at 25/press, spread over hours as the hourly cap rolls. Nick presses it; it is deliberately not scheduled.
-- **`enrichManagedNotes` still asks for open loops** — consolidated-notes path, different surface, no card. Left alone deliberately.
-- **The ranking is a measured proxy, not a measurement.** The model is never asked *how good* a note is, only for bullets. Asking for a 0–10 rating is what would make it real; costs another full re-enrich, so it is Nick's call.
+- **iOS build on the Mac** — natural voice + 90s unprompted gap (`nuero-ios` 79d78a6, c0687ae). Not built.
+- **Study tablet APK** — built on release `android-sensor-latest`, NOT installed: needs USB once at home (wireless ADB off), uninstall + re-provision. Exact steps in memory `study-tablet-saim`.
+- **Bedroom P30** — BLE deaf, not charging; needs hands.
+- **Decisions for Nick:** Apple Developer account (NOT bought); `SAIM_SENSOR_KEYSTORE_*` GitHub secrets; Focus-name Shortcuts (parked — helper `input_select.nick_focus` + scripts `nick_focus_on/off` exist).
+- **Not built:** "leave now" (no travel-time source), heading-home heat pre-warm, wind-down push, learned routines (spec Phase 5).
 
 ## Key decisions made
-- Signal bands are **percentiles of the live corpus, NOT outcome-validated** — the validation cannot be run (see mistakes.md, the degenerate `durable` count). Said so in the source rather than implying it was tested.
-- Signal arm **capped at 5 against the evidence arm's 8**, so a note something has read still outranks one that merely looks big.
-- Removing loops is safe because **`action-candidates` already mines the same notes for commitments** — it was a second extraction of the same material, not a unique capability.
-
-## Files changed
-- `backend/services/knowledge-memory.js` — `signalScore`, `needsEnrichment`, `PROMPT_VERSION`, loops removed, `daysBack`
-- `backend/routes/knowledge-memory.js` — `daysBack` on overview + enrich, `/loop-to-task` deleted
-- `frontend/src/components/InsightsPanel.{jsx,css}` — window toggle, enrich bar, loops block removed
-- 4 new test files (`knowledge-signal-rank`, `knowledge-window-source`, `knowledge-enrich-target`, `routes/knowledge-window-routing`); `knowledge-value.test.js` rewritten where it pinned loops
+- Kept router tracker on `person.nick` (fixed the integration instead) — the router beats the ~90m GPS offset at home.
+- Dead "held" UI branches left: `HoldNotice` is reused for MS failures and `held` is in API payloads iOS reads.
+- TV: the "Living room extension" plug is switch-only (no power meter); life-state uses socket-on + watch in living room.
 
 ## Gotchas for next session
-- **`npm run catalogue:refresh` rewrites VANTAGE's inventory too** — `git checkout -- mcp-server/remote/vantage-inventory.json` after, every time. Hit it twice this session.
-- **Two invented fixtures were caught by tests**: `note_type: "meeting-summary"` is NOT a summary (live notes use `"summary"` + `plaud_summary_type`), and no transcript anywhere carries `plaud_summary_type`. Copy fixtures off the live vault.
-- `backend/services/task-blocks.js` + its test were **already dirty on arrival** and are not mine — still uncommitted.
-- Python heredocs mangle `\n` inside JS template literals; use `chr(92)` or line-anchored edits.
+- Spec: vault `Projects/NEURO/SAiM — Situational Intelligence` (Phase 0 measurements + fixes recorded there).
+- Deploy: gate the pm2 restart on `npm test` (see mistakes.md, 2 Oct).
+- HomePod is NOT used; speakers are the living-room satellite + study tablet (memory `saim-voice-must-earn-it`).
+- `office` room sensor = WORK Fire; study tablet IP is now 192.168.1.200.
