@@ -203,7 +203,8 @@ export default function Approach({
   // Placement. `at` is minutes past midnight; null means no hour, which is
   // placed by pull alone and carries no tether.
   const placed = cards.map((card, i) => {
-    const at = minutesOf(card.at);
+    // An all-day entry has no hour to recede to — placed by rank, like a fact.
+    const at = card.allDay ? null : minutesOf(card.at);
     // ⚠ NOTHING IS EVER IN FRONT OF NOW. The first cut clamped a past hour to
     // sixty minutes ago, which makes `-Math.max(-60, …)` POSITIVE — so a 13:55
     // appointment at 17:28 was projected nearer than the now-plane, scaled up,
@@ -256,7 +257,11 @@ export default function Approach({
   // With no future hour anywhere the corridor STANDS DOWN: no hour marks, no
   // now-line, no hero. The cards are just quietly there, which is what a
   // finished day actually looks like.
-  const hasFuture = placed.some((p) => p.at != null && !p.past);
+  // ⚠ AN ALL-DAY ENTRY IS NOT AN HOUR. It is placed at 09:00 for order, and at
+  // 08:58 on a Saturday that pretend hour switched the whole corridor on —
+  // hour marks, a hero, cards stacked over her headline — then it stood down
+  // two minutes later (bedroom screen, photographed 3 Oct 2026).
+  const hasFuture = placed.some((p) => p.at != null && !p.past && !(p.card && p.card.allDay));
   placed.forEach((p) => { p.lead = false; });
   if (hasFuture) {
     // ⚠ The lead is the NEAREST card — depth is this layout's whole argument, so

@@ -346,6 +346,9 @@ export default function AttentionSurface({
         title: r.what,
         say: stamp ? null : (r.note || null),
         atLabel: r.countdown || (isAllDay ? 'all day' : iso ? iso.slice(11, 16) : null) || r.meta || null,
+        // An all-day entry is placed at 09:00 for ORDER only; it is never
+        // "coming at you", so it must not switch the corridor on (see Approach).
+        allDay: isAllDay,
         at: iso,
         // ⚠ THE WORD IS `crit`. `saim-surface` emits `level: 'crit'` — on the
         // `now` row above all, which is the PRIMARY — and this tested for
