@@ -1,5 +1,27 @@
-const cron = require('node-cron');
+const nodeCron = require('node-cron');
 const nudges = require('./nudges');
+
+// ── node-cron, with in-process recovery on every job (Build 3A) ─────────────
+//
+// node-cron 3.0.3 fires a task only if its one-second timer lands INSIDE the
+// matching second. Dozens of jobs below share :00 / :20 / :40, several do
+// seconds of synchronous SQLite or vault work, and on those minutes the later
+// timers wake late and the tick is silently dropped. Measured on pi5 overnight
+// 2–3 Oct 2026: 9 of 50 calendar syncs never ran, all on shared minutes.
+//
+// `recoverMissedExecutions` makes a late timer run the missed second once the
+// loop is free — the job runs a few seconds late instead of not at all. That is
+// strictly better for every job here: none of them is harmed by a few seconds'
+// lateness, and none is replayed (node-cron fires a matched second at most
+// once). It is NOT restart catch-up — a tick missed because the process was
+// down is still gone. Jobs where that matters run on the durable runtime
+// instead (services/runtime-jobs.js, registered at the end of start()).
+//
+// It was already on for the MS Tasks sync after the same failure was found
+// there on 23 Sep 2026; this makes it the default rather than the exception.
+const cron = {
+  schedule: (expr, fn, opts = {}) => nodeCron.schedule(expr, fn, { recoverMissedExecutions: true, ...opts }),
+};
 const jira = require('./jira');
 const imports = require('./imports');
 const db = require('../db/database');
@@ -210,14 +232,8 @@ function start() {
     }
   });
 
-  cron.schedule('*/40 * * * *', async () => {
-    try {
-      const result = await require('./ambient-push').deliver();
-      if (result.sent) console.log(`[Scheduler] Ambient push: ${result.chosen}`);
-    } catch (e) {
-      console.warn('[Scheduler] Ambient push failed:', e.message);
-    }
-  });
+  // (The */40 ambient push pass itself is a DURABLE job — see
+  // registerDurableJobs() below.)
 
   cron.schedule('0 9 * * 1-5', () => {
     console.log('[Scheduler] 9am — triggering standup + todo nudges');
@@ -1192,13 +1208,7 @@ function start() {
     });
   });
 
-  // Every 20 minutes — refresh the calendar cache. Nothing populated it before,
-  // so Focus, the meeting alerts and every calendar-aware tool ran blind.
-  cron.schedule('*/20 * * * *', async () => {
-    try {
-      await require('./calendar-sync').sync({ days: 14 });
-    } catch (e) { console.error('[Scheduler] Calendar sync failed:', e.message); }
-  });
+  // (The */20 calendar sync is a DURABLE job — see registerDurableJobs().)
 
   // Startup sync — 20s in, so the cache is warm before the first agent loop.
   setTimeout(() => {
@@ -1214,16 +1224,7 @@ function start() {
     require('./event-bus').start();
   } catch (e) { console.error('[Scheduler] Event bus failed to start:', e.message); }
 
-  // Every 5 minutes — has any source's last success gone stale? Recorded as an
-  // event when it has, so the SourceHealth projection can be rebuilt from the
-  // log without re-judging it against a different clock.
-  cron.schedule('*/5 * * * *', () => {
-    require('./source-health').checkStaleness()
-      // Build 2B: expected sources NEURO has never heard from. Recorded as an
-      // event too, so the source-blindness evaluator stays a function of the log.
-      .then(() => require('./source-blindness').checkExpected())
-      .catch(e => console.error('[Scheduler] Source staleness check failed:', e.message));
-  });
+  // (The */5 source-staleness check is a DURABLE job — see registerDurableJobs().)
 
   // 8:20am weekdays — safety net, not the main path. Invites are caught on
   // arrival: the calendar sync reports which events are new and checks those
@@ -1279,11 +1280,105 @@ function start() {
   // the whole vault, and a deploy should not cost a load spike on a Pi that is
   // also serving Focus and chat.
   runCatchUp();
+
+  // The durable runtime (Build 3A). Never allowed to stop startup.
+  try {
+    registerDurableJobs();
+    require('./runtime-jobs').start();
+  } catch (e) { console.error('[Scheduler] Durable runtime failed to start:', e.message); }
+}
+
+/**
+ * The jobs whose runs must not silently disappear. Each slot is a row in
+ * runtime_job_runs before it runs (services/runtime-jobs.js); a missed timer, a
+ * busy loop or a restart leaves the row pending and the next tick runs it.
+ *
+ * The policies are per job and deliberately different — see the Build 3 vault
+ * note for the full audit:
+ *
+ *   calendar-sync      replace-by-window and idempotent, so a late run is
+ *                      exactly as good as an on-time one: newest slot only,
+ *                      never too late, one retry two minutes on (the stale
+ *                      threshold is 60 min and the cadence 20, so a single
+ *                      failure must not cost a whole period).
+ *   source-staleness   judges the projection against NOW, so only the newest
+ *                      slot is worth running and it is never too late; the
+ *                      verdict is recorded with the time it was made.
+ *   ambient-pass       a judgement about THIS moment. Late by minutes it still
+ *                      reads the moment correctly (deliver() uses the real
+ *                      clock), but a pass due 40 minutes ago is a different
+ *                      decision from the one that was due — skipped as stale
+ *                      past 15 minutes, never retried, never replayed.
+ */
+function registerDurableJobs() {
+  const runtime = require('./runtime-jobs');
+
+  runtime.defineJob({
+    name: 'calendar-sync',
+    cron: '*/20 * * * *',
+    class: 'correctness-critical',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 2,
+    backoffMs: [2 * 60 * 1000],
+    timeoutMs: 5 * 60 * 1000,
+    why: 'Focus, meeting alerts, life-state and the world model read calendar_cache; source health calls it stale after 60 min.',
+    run: async () => {
+      const r = await require('./calendar-sync').sync({ days: 14 });
+      // calendar-sync reports failure as a value, not a throw (its callers
+      // must never crash). Here a failure must count as one, or it is never
+      // retried — so a zero-event result WITH a reason is raised.
+      if (r && !r.synced && r.reason) throw new Error(`calendar sync did not refresh the cache: ${r.reason}`);
+      return { synced: r ? r.synced : null, newEvents: r && r.newEventIds ? r.newEventIds.length : 0 };
+    },
+  });
+
+  runtime.defineJob({
+    name: 'source-staleness',
+    cron: '*/5 * * * *',
+    class: 'correctness-critical',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 2,
+    backoffMs: [30 * 1000],
+    timeoutMs: 2 * 60 * 1000,
+    why: 'Source health and source-blindness only learn a source has gone stale from the event this check records.',
+    run: async () => {
+      // Build 1: has any source's last success gone stale? Recorded as an event
+      // so the projection can be rebuilt from the log without re-judging it.
+      const stale = await require('./source-health').checkStaleness();
+      // Build 2B: expected sources NEURO has never heard from.
+      const neverSeen = await require('./source-blindness').checkExpected();
+      return { stale, neverSeen };
+    },
+  });
+
+  runtime.defineJob({
+    name: 'ambient-pass',
+    cron: '*/40 * * * *',
+    class: 'freshness-sensitive',
+    catchUp: 'latest',
+    maxLagMs: 15 * 60 * 1000,
+    maxAttempts: 1,
+    timeoutMs: 3 * 60 * 1000,
+    why: 'The one route by which SAiM comes to Nick unasked. Almost every pass decides to say nothing; the gates live in ambient-push.',
+    run: async () => {
+      // Every 40 minutes. ⚠ The CADENCE is not the frequency: almost every pass
+      // refuses (unconfident read, meeting, Focus, driving, a session, a quiet
+      // moment) and then sends AT MOST ONE through the governor and the
+      // attention lifecycle. 40 rather than 30 so it does not beat in step with
+      // the half-hourly syncs.
+      const result = await require('./ambient-push').deliver();
+      if (result.sent) console.log(`[Scheduler] Ambient push: ${result.chosen}`);
+      return { sent: result.sent || 0, chosen: result.chosen || null, skipped: result.skipped || null,
+        considered: Array.isArray(result.considered) ? result.considered.length : null };
+    },
+  });
 }
 
 module.exports = {
   start, runCatchUp, jobRunStatus, lastRunOf,
-  scheduleDaily, scheduleWeekly,
+  scheduleDaily, scheduleWeekly, registerDurableJobs,
   // exported for tests
   isDailyDue, isWeeklyDue, _dateStr,
 };

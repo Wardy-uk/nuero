@@ -67,6 +67,26 @@ const TYPES = Object.freeze({
     required: ['sourceId', 'deliveryId', 'newestObservedAt'],
   },
 
+  // ── Runtime (Build 3A): scheduled work that did NOT happen ─────────────────
+  // Only the two outcomes worth an immutable record. Routine successes live in
+  // runtime_job_runs, not here — hundreds a day of "the timer worked" would be
+  // noise in a log nothing can delete.
+  //
+  // A run that failed for good: every attempt used.
+  'runtime.job.failed': {
+    version: 1,
+    provenance: 'observation',
+    required: ['job', 'runId', 'scheduledFor', 'attempts', 'error'],
+  },
+  // A due run that was deliberately NOT run: too late to be worth running
+  // (`stale`), or one of many slots lost to an outage longer than the lookback
+  // (`gap`). Superseded slots are not recorded here — a newer run covered them.
+  'runtime.job.skipped': {
+    version: 1,
+    provenance: 'observation',
+    required: ['job', 'runId', 'scheduledFor', 'reason'],
+  },
+
   // ── Domain observations ────────────────────────────────────────────────────
 
   // Native sensing (Build 2). Small on purpose: one type per thing observed,

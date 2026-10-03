@@ -62,4 +62,18 @@ router.get('/observations', (req, res) => {
   }
 });
 
+// GET /api/events/runtime — durable scheduled jobs (calendar sync, source staleness check, ambient pass): due, running, succeeded, failed, skipped and overdue runs, scheduled vs actual start time, lag and duration. ?job=<name> adds that job's recent runs
+router.get('/runtime', (req, res) => {
+  try {
+    const runtime = require('../services/runtime-jobs');
+    const body = { ok: true, ...runtime.status() };
+    if (typeof req.query.job === 'string' && runtime._jobs.has(req.query.job)) {
+      body.runs = runtime.runs(req.query.job, { limit: 100 });
+    }
+    res.json(body);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;

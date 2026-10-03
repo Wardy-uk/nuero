@@ -1548,3 +1548,37 @@ CREATE TABLE IF NOT EXISTS source_blind_attention (
   pushed_at            TEXT,                  -- live mode only: actually sent
   last_decision_json   TEXT NOT NULL
 );
+
+-- ── Durable scheduled runs (Build 3A, 3 Oct 2026) ───────────────────────────
+-- node-cron 3.0.3 only fires a task if its one-second timer lands INSIDE the
+-- matching second; a busy event loop on a shared minute silently eats the tick
+-- (measured: 9 of 50 calendar syncs missed in one night, nothing logged).
+-- Correctness-critical jobs therefore run from THIS table, written by
+-- services/runtime-jobs.js only: every due slot becomes a row before it runs,
+-- so a run that did not happen is still a row that says so.
+--
+-- `run_id` is `<job>@<scheduled_for>` — deterministic, so materialising the
+-- same slot twice (a second tick, a restart) folds into one row and a slot can
+-- never execute twice. `scheduled_for` and `started_at` are different facts;
+-- their difference is the lag.
+CREATE TABLE IF NOT EXISTS runtime_job_runs (
+  run_id           TEXT PRIMARY KEY,
+  job              TEXT NOT NULL,
+  scheduled_for    TEXT NOT NULL,                -- the slot (ISO, UTC)
+  status           TEXT NOT NULL CHECK (status IN ('pending', 'running', 'succeeded', 'failed', 'skipped')),
+  attempts         INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at  TEXT NOT NULL,                -- not before this (retry back-off)
+  claim_token      TEXT,                         -- this attempt; a late finish from a timed-out attempt cannot overwrite
+  owner            TEXT,                         -- boot id of the process that claimed it
+  first_started_at TEXT,
+  started_at       TEXT,                         -- latest attempt
+  finished_at      TEXT,
+  duration_ms      INTEGER,
+  lag_ms           INTEGER,                      -- first start minus scheduled_for
+  skip_reason      TEXT,                         -- superseded | stale | gap
+  error            TEXT,
+  result_json      TEXT,
+  created_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_job_runs_job ON runtime_job_runs(job, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_runtime_job_runs_status ON runtime_job_runs(status, job);

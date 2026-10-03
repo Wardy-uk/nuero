@@ -418,6 +418,39 @@ function checkEventSpine() {
   }
 }
 
+/**
+ * The durable runtime (Build 3A): a job whose due run has not been claimed, or
+ * which has failed for good. WARNINGS only, never a push — like the event
+ * spine check: the briefing is where these belong, and the sources the jobs
+ * feed have their own blindness findings.
+ */
+function checkRuntimeJobs() {
+  try {
+    const st = require('./runtime-jobs').status();
+    if (!st.started) return [];
+    const out = [];
+    for (const j of st.jobs) {
+      if (j.overdue > 0) {
+        out.push({
+          key: `runtime:overdue:${j.name}`, level: 'warn',
+          title: `${j.name} has ${j.overdue} overdue run(s)`,
+          detail: `due but not started — last started ${j.lastActualStart || 'never'}`,
+        });
+      }
+      if (j.lastFailureAt && Date.now() - Date.parse(j.lastFailureAt) < 2 * 60 * 60 * 1000) {
+        out.push({
+          key: `runtime:failed:${j.name}`, level: 'warn',
+          title: `${j.name} failed after every retry`,
+          detail: j.lastError || 'see GET /api/events/runtime',
+        });
+      }
+    }
+    return out;
+  } catch (e) {
+    return [{ key: 'runtime:check-failed', level: 'warn', title: 'Durable runtime check failed', detail: e.message }];
+  }
+}
+
 // ── Runner ──────────────────────────────────────────────────────────────────
 
 /**
@@ -471,6 +504,7 @@ async function run({ notify = true } = {}) {
     ...checkTaskExport(),
     ...checkMicrosoftSync(),
     ...checkEventSpine(),
+    ...checkRuntimeJobs(),
     ...checkScheduledJobs(),
     ...(await checkAi()),
     ...(await checkHost()),
@@ -524,4 +558,4 @@ async function run({ notify = true } = {}) {
 
 module.exports = {
   checkSenses, run, checkBackups, checkTaskExport, checkScheduledJobs, checkAi, checkHost, checkMicrosoftSync, msSyncIssue,
-  checkEventSpine };
+  checkEventSpine, checkRuntimeJobs };

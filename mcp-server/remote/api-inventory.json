@@ -1406,6 +1406,24 @@
     "stream": false
   },
   {
+    "id": "get_events_runtime",
+    "method": "GET",
+    "route": "/api/events/runtime",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 66,
+    "description": "GET /api/events/runtime. durable scheduled jobs (calendar sync, source staleness check, ambient pass): due, running, succeeded, failed, skipped and overdue runs, scheduled vs actual start time, lag and duration. ?job=<name> adds that job's recent runs",
+    "params": [],
+    "query": [
+      "job"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_events_source_health",
     "method": "GET",
     "route": "/api/events/source-health",
