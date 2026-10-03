@@ -57,10 +57,12 @@ test('complete is gated on onAct, a record, and the record allowing it', () => {
   assert.match(surfaceSrc, /canComplete\(primary\) &&/, 'the button must be rendered behind the gate');
 });
 
-test('complete never falls back to the legacy dismissal', () => {
-  // A dismissal is not a completion; substituting one for the other is the bug
-  // the attention contract removed.
-  assert.match(phoneSrc, /action === 'complete' && !card\.recordId/);
+test('no action falls back to the legacy dismissal — /api/focus is retired', () => {
+  // A dismissal is not a completion, and since Build 10O there is no legacy
+  // suppression timer to fall back TO: a card without a record is refused.
+  assert.match(phoneSrc, /if \(!card\.recordId\) \{/);
+  const code = phoneSrc.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  assert.doesNotMatch(code, /\/api\/focus/, 'the Surface still calls the retired /api/focus');
 });
 
 test('the result is described from the response, never implied', () => {

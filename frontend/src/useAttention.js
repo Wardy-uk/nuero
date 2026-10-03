@@ -24,18 +24,14 @@ import { apiFetch } from './api';
  *    it a request is how it acquires a side effect later, which is exactly how
  *    Briefing's "Do it" came to log a completed outcome at the moment work
  *    STARTED.
- * 4. **The legacy path is a fallback, never a parallel.** `/api/focus/dismiss`
- *    is used ONLY when a card carries no `recordId` — an old cached payload, or
- *    a lifecycle that could not be reconciled. It is reported, not silent.
+ * 4. **There is no legacy path any more (Build 10O).** `/api/focus` is
+ *    retired; a card with no `recordId` cannot be acted on and SAYS so,
+ *    rather than writing to a suppression timer nothing else reads.
+ * 5. **The Now read model is the same decision.** `/api/canonical/now`
+ *    embeds `/api/attention`'s build verbatim and adds world-model
+ *    `situation`; Now reads it so the decision and the world come from one
+ *    moment.
  */
-
-// Only these two legacy calls survive, and only for a card with no record.
-// `action-done` is deliberately NOT among them: it logged an outcome, and there
-// is no state of the world in which "I am starting this" should do that.
-const LEGACY = {
-  dismiss: '/api/focus/dismiss',
-  defer: '/api/focus/snooze',
-};
 
 const DEFER_REASONS = {
   'not-now': 'Not now',
@@ -55,13 +51,13 @@ async function postJson(path, body) {
   return json;
 }
 
-export default function useAttention({ interval = 30000 } = {}) {
+export default function useAttention({ interval = 30000, path = '/api/attention' } = {}) {
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const timer = useRef(null);
 
   const load = useCallback(async () => {
     try {
-      const res = await apiFetch('/api/attention');
+      const res = await apiFetch(path);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `${res.status}`);
       setState({ loading: false, error: null, data: json });
@@ -71,7 +67,7 @@ export default function useAttention({ interval = 30000 } = {}) {
       // layer of this contract refuses to do.
       setState((s) => ({ loading: false, error: e.message, data: s.data }));
     }
-  }, []);
+  }, [path]);
 
   useEffect(() => {
     load();
@@ -108,22 +104,9 @@ export default function useAttention({ interval = 30000 } = {}) {
       };
     }
 
-    // ── Fallback ──────────────────────────────────────────────────────────────
-    // No record means the lifecycle could not be reconciled for this card. The
-    // engine's own suppression is all that is left, and it can express only
-    // "hide it" — so `complete` and `acknowledge` have no legacy equivalent and
-    // are refused with a reason rather than quietly mapped onto a dismissal.
-    const legacyPath = LEGACY[action];
-    if (!legacyPath) {
-      return { ok: false, canonical: false, why: `"${action}" needs a canonical attention record and this card has none` };
-    }
-    await postJson(legacyPath, {
-      itemId: card.id,
-      itemType: card.type,
-      ...(action === 'defer' ? { durationMinutes: opts.minutes || 60 } : {}),
-    });
-    await load();
-    return { ok: true, canonical: false, why: 'no attention record — used legacy suppression' };
+    // No record means the lifecycle could not be reconciled for this card.
+    // There is no fallback: the legacy /api/focus suppression timer is retired.
+    return { ok: false, canonical: false, why: `"${action}" needs a canonical attention record and this card has none` };
   }, [load]);
 
   const data = state.data;
@@ -147,6 +130,8 @@ export default function useAttention({ interval = 30000 } = {}) {
     gaps: data?.gaps || [],
     dropped: data?.dropped || [],
     transition: data?.transition || null,
+    // World-model situation (only when reading /api/canonical/now).
+    situation: data?.situation || null,
     lifecycleAvailable: data?.attention?.available ?? false,
     refresh: load,
     act,

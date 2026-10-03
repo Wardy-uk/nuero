@@ -18,8 +18,13 @@ export default function LockScreen({ onUnlock }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(apiUrl('/api/focus'), { headers: { 'X-Neuro-Pin': pin } });
-      if (res.status === 401) {
+      // Build 10O: the PIN is checked by NEURO's AUTH endpoint. It used to
+      // borrow GET /api/focus — a retired decision engine — purely because a
+      // 401 from it meant "wrong PIN". /api/auth/check answers that question
+      // and nothing else: {required, authenticated}.
+      const res = await fetch(apiUrl('/api/auth/check'), { headers: { 'X-Neuro-Pin': pin } });
+      const body = res.ok ? await res.json().catch(() => null) : null;
+      if (res.status === 401 || (body && body.required && body.authenticated === false)) {
         clearPin();
         setError('Incorrect PIN — try again.');
         return;

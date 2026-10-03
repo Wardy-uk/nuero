@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SaimStateProvider, useSaimState } from './state/saimState';
 import { useDisplayState } from './state/useDisplayState';
 import { PRIMARY, SECONDARY, TABS, DEFAULT_TAB, revealsSecondary } from '../../shared-ui/tabs';
 import { speechRecognitionCtor } from '../../app/src/speechRecognition';
@@ -86,8 +85,23 @@ const reportInteractions = ({ tab, surface, count, keepalive }) =>
     keepalive,
   });
 
+// ⚠ Build 10I: the kiosk's SaimStateProvider is RETIRED. It polled the old
+// /api/state model and /api/focus every 30s and ranked its own "urgent
+// snapshot" beside NEURO's attention decision — a second brain whose only
+// rendered output was this clock and one header pill. The clock is local now;
+// the pill (ConnectionStatus) asks NEURO's context passthrough. Nothing on the
+// kiosk decides what matters, whether to interrupt, severity or priority.
+function useNow(intervalMs = 1000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(t);
+  }, [intervalMs]);
+  return now;
+}
+
 function AppShell() {
-  const { now } = useSaimState();
+  const now = useNow();
   const [active, setActive] = useState(DEFAULT_TAB);
   const [navOpen, setNavOpen] = useState(false);
 
@@ -268,9 +282,5 @@ function AppShell() {
 }
 
 export default function App() {
-  return (
-    <SaimStateProvider>
-      <AppShell />
-    </SaimStateProvider>
-  );
+  return <AppShell />;
 }

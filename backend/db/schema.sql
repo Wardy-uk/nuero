@@ -2085,3 +2085,31 @@ CREATE TABLE IF NOT EXISTS meeting_context_findings (
   attention_json        TEXT,
   decisions             INTEGER NOT NULL DEFAULT 0
 );
+
+-- Build 10C/10F: what Nick has DECLARED about a thing's place in his life.
+-- Not a projection (never reset by a replay) and never inferred: a row exists
+-- only because Nick set it. `entity_id` is a canonical id from the world model
+-- (commitment:…, task:…, meeting:…, source:…, goal:…). `domains_json` is a
+-- list of life-domain ids (shared/life-domains.cjs); `importance` is one of
+-- work-critical | personally-important | restorative | optional, or NULL for
+-- "not said" — which is NOT the same as optional.
+CREATE TABLE IF NOT EXISTS life_annotations (
+  entity_id     TEXT PRIMARY KEY,
+  domains_json  TEXT,
+  importance    TEXT,
+  set_at        TEXT NOT NULL,
+  set_via       TEXT NOT NULL DEFAULT 'neuro'
+);
+
+-- Build 10G: goals and intentions — a PLACEHOLDER contract. Only what Nick
+-- has explicitly stored is ever shown; nothing creates a goal for him and
+-- nothing turns one into a task or a nudge.
+CREATE TABLE IF NOT EXISTS goals (
+  goal_id      TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  domains_json TEXT,
+  status       TEXT NOT NULL DEFAULT 'active',   -- active | paused | done | dropped
+  note         TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);

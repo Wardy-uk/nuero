@@ -32,13 +32,11 @@ const vaultRoutes = require('./routes/vault');
 const vaultDndRoutes = require('./routes/vault-dnd');
 const vaultHygieneRoutes = require('./routes/vault-hygiene');
 const contextRoutes = require('./routes/context');
-const qaRoutes = require('./routes/qa');
 const pushRoutes = require('./routes/push');
 const importsRoutes = require('./routes/imports');
 const captureRoutes = require('./routes/capture');
 const featureRoutes = require('./routes/features');
 const journalRoutes = require('./routes/journal');
-const stravaRoutes = require('./routes/strava');
 const healthRoutes = require('./routes/health');
 const appleHealthRoutes = require('./routes/apple-health');
 const locationRoutes = require('./routes/location');
@@ -84,8 +82,6 @@ app.use('/api', (req, res, next) => {
   // Allow SSE streams (nudges/stream) — they use EventSource which can't set headers
   if (req.path === '/nudges/stream') return next();
 
-  // Allow Strava OAuth flow (browser redirects can't send PIN header)
-  if (req.path === '/strava/auth' || req.path === '/strava/callback') return next();
 
   // The capture door. ⚠ Tailscale Funnel is ON, so this exemption publishes the
   // route to the PUBLIC INTERNET, not merely to the tailnet — which is the
@@ -176,7 +172,7 @@ app.use('/api/vault', vaultRoutes);
 app.use('/api/vault-dnd', vaultDndRoutes);
 app.use('/api/vault-hygiene', vaultHygieneRoutes);
 app.use('/api/context', contextRoutes);
-app.use('/api/qa', qaRoutes);
+// /api/qa retired (Build 10M): its upstream webhook answers 404; QA is departmental (VANTAGE).
 app.use('/api/push', pushRoutes);
 app.use('/api/imports', importsRoutes);
 app.use('/api/capture', captureRoutes);
@@ -188,7 +184,7 @@ app.use('/api/capture-links', require('./routes/capture-links'));
 app.use('/api/apple', require('./routes/apple'));
 app.use('/api/features', featureRoutes);
 app.use('/api/journal', journalRoutes);
-app.use('/api/strava', stravaRoutes);
+// /api/strava retired (Build 10M): never authenticated; workouts arrive via Apple Health.
 app.use('/api/health', healthRoutes);
 // Mounted at /api/v1 because the iOS app hard-codes that path — see
 // routes/apple-health.js. Exempt from the PIN middleware above, guarded by
@@ -253,6 +249,8 @@ app.use('/api/rescuetime', require('./routes/rescuetime'));
 app.use('/api/signals', require('./routes/signals'));
 // The nervous system (Build 1): event backbone + SourceHealth. Read-only.
 app.use('/api/events', require('./routes/events'));
+// Build 10A: the canonical UI read contract — what NEURO believes, for every surface.
+app.use('/api/canonical', require('./routes/canonical'));
 // Build 5E: drafts NEURO prepared for approval. Approval is RECORDED ONLY.
 app.use('/api/prepared-actions', require('./routes/prepared-actions'));
 app.use('/api/greeting', require('./routes/greeting'));
@@ -264,7 +262,7 @@ app.use('/api/weekly-risk', require('./routes/weekly-risk'));
 // numbers; neither proxies the other, so they cannot disagree about the figures
 // — only about presentation, which is the point of having both while Nick
 // decides which he actually opens.
-app.use('/api/kpi-tracker', require('./routes/kpi-tracker'));
+// /api/kpi-tracker moved to VANTAGE (Build 10L): departmental KPI management is not NEURO's.
 app.use('/api/tasks', require('./routes/tasks'));
 // Its own mount, deliberately NOT under /api/tasks — a sibling registered after
 // the parameterised /api/tasks/:id would have "task-dedupe" parsed as an id.
@@ -365,10 +363,6 @@ app.get('/api/status', async (req, res) => {
       configured: require('./services/webpush').isConfigured(),
       subscriptions: db.getAllPushSubscriptions().length
     },
-    strava: {
-      configured: require('./services/strava').isConfigured(),
-      authenticated: require('./services/strava').isAuthenticated()
-    },
     health: {
       hasToday: (() => {
         try {
@@ -455,8 +449,6 @@ async function start() {
   // Bootstrap admin-panel AI settings from DB into process.env
   require('./routes/ai-settings').bootstrap();
 
-  // Seed Strava tokens from env if not already in DB
-  require('./services/strava').seedTokensFromEnv();
 
   const webpushService = require('./services/webpush');
   webpushService.init();

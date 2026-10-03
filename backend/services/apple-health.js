@@ -681,7 +681,42 @@ function rollupSleepNights(rows) {
     .sort((a, b) => (a.night < b.night ? 1 : -1));
 }
 
+/**
+ * One workout as a line of chat/journal context. PURE.
+ * Replaces `strava.formatActivity()` (Build 10M): every field it read arrives
+ * in Apple Health. Absent values are omitted, never shown as zero.
+ */
+function formatWorkoutLine(w) {
+  if (!w || !w.activity_type) return null;
+  const bits = [];
+  if (w.distance_m != null && w.distance_m > 0) bits.push(`${(w.distance_m / 1000).toFixed(1)} km`);
+  if (w.duration_seconds != null && w.duration_seconds > 0) bits.push(`${Math.round(w.duration_seconds / 60)} min`);
+  if (w.elevation_m != null && w.elevation_m > 0) bits.push(`${Math.round(w.elevation_m)} m climb`);
+  if (w.avg_heart_rate != null && w.avg_heart_rate > 0) bits.push(`avg HR ${Math.round(w.avg_heart_rate)}`);
+  return `${w.activity_type}${bits.length ? ` — ${bits.join(', ')}` : ''}`;
+}
+
+/**
+ * Today's workouts (Nick's LOCAL day) as context text, or null when there
+ * were none. `started_at` is stored UTC ('YYYY-MM-DD HH:MM:SS'), so rows are
+ * read over a generous window and filtered by local date — never by slicing
+ * the UTC string, which files a late-evening walk under tomorrow in BST.
+ */
+function todaysWorkoutContext(now = new Date()) {
+  const db = require('../db/database');
+  const p = (n) => String(n).padStart(2, '0');
+  const localDay = (d) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const today = localDay(now);
+  const since = new Date(now.getTime() - 36 * 3600 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+  const rows = db.all('SELECT * FROM health_workouts WHERE started_at >= ? ORDER BY started_at', [since])
+    .filter((w) => localDay(new Date(`${String(w.started_at).replace(' ', 'T')}Z`)) === today);
+  const lines = rows.map(formatWorkoutLine).filter(Boolean);
+  return lines.length ? lines.join('\n') : null;
+}
+
 module.exports = {
+  formatWorkoutLine,
+  todaysWorkoutContext,
   rollupSleepNights,
   sleepStage,
   nightKey,

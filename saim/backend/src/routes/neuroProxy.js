@@ -52,7 +52,7 @@ const DOORS = new Set([
   'attention',       // the feed. Its own act route is mounted ahead of this.
   'adhd',            // the Now screen's session + recovery cards
   'session',         // focus sessions — start, pause, shrink, step away
-  'focus',           // the legacy focus read, still behind the Focus screen
+  // 'focus' was CLOSED in Build 10O: /api/focus is retired and no screen calls it.
   'todos',           // read + tick. ⚠ Not purely internal (corrected Build 9):
                      // complete-ms / wip-ms write to Microsoft To Do / Planner —
                      // Nick ticking his own task, same as every surface; no email.

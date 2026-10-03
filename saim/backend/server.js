@@ -35,13 +35,9 @@ const express = require('express');
 require('../../shared/legacy-env.cjs').applyLegacyEnv();
 
 const healthRoute = require('./src/routes/health');
-const stateRoute = require('./src/routes/state');
 const chatRoute = require('./src/routes/chat');
-const focusRoute = require('./src/routes/focus');
-const actionsRoute = require('./src/routes/actions');
 const neuroAuthRoute = require('./src/routes/neuroAuth');
 const telemetryRoute = require('./src/routes/telemetry');
-const inferenceRoute = require('./src/routes/inference');
 const kioskRoute = require('./src/routes/kiosk');
 const presenceRoute = require('./src/routes/presence');
 const locationRoute = require('./src/routes/location');
@@ -49,7 +45,7 @@ const cognitionGraphRoute = require('./src/routes/cognitionGraph');
 const captureRoute = require('./src/routes/capture');
 const attentionRoute = require('./src/routes/attention');
 const neuroProxyRoute = require('./src/routes/neuroProxy');
-const { RUNTIME_LABEL } = require('./src/state/stateEngine');
+const { RUNTIME_LABEL } = require('./src/runtime');
 const ha = require('./src/telemetry/homeAssistant');
 const neuro = require('./src/integrations/neuroSnapshot');
 const neuroConfig = require('./src/integrations/neuroConfig');
@@ -63,17 +59,17 @@ app.use(express.json());
 
 // --- API (the defined frontend <-> backend runtime path) ---
 app.use('/api/health', healthRoute);
-app.use('/api/state', stateRoute);
+// ⚠ /api/state, /api/inference, /api/focus and /api/actions were RETIRED in
+// Build 10I (3 Oct 2026). They served the kiosk's second decision engine
+// (stateEngine / inference / seed), which ranked and scored on its own beside
+// NEURO's attention decision. The kiosk now renders NEURO's decision only.
 app.use('/api/chat', chatRoute);
-app.use('/api/focus', focusRoute);
-app.use('/api/actions', actionsRoute);
 // ⚠ `/api/email` and `/api/jira` were mounted here, AHEAD of the allowlist, with no
 // screen calling either: they read email-triage summaries and ticket details to
 // anything on the tailnet, and wrote (run triage, dismiss mail, mark escalations
 // seen) with SAiM's credential. Removed 11 Sep 2026 — see routes/actions.js.
 app.use('/api/neuro-auth', neuroAuthRoute);
 app.use('/api/telemetry', telemetryRoute);
-app.use('/api/inference', inferenceRoute);
 app.use('/api/kiosk', kioskRoute);
 app.use('/api/presence', presenceRoute);
 app.use('/api/location', locationRoute);
@@ -113,7 +109,7 @@ if (fs.existsSync(distDir)) {
       `SAiM backend (${RUNTIME_LABEL}) is up on port ${PORT}.\n` +
         `Frontend build not found at ${distDir}.\n` +
         `Run the frontend dev server, or build it for production.\n` +
-        `API: GET /api/health , GET /api/state , GET /api/chat , GET /api/focus , GET /api/neuro-auth , GET /api/telemetry , GET /api/inference\n`
+        `API: GET /api/health , GET /api/attention , GET /api/chat , GET /api/neuro-auth , GET /api/telemetry\n`
     );
   });
 }

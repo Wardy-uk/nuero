@@ -4,6 +4,7 @@ import useAttention from '../useAttention';
 import AttentionCard from './AttentionCard';
 import FrictionSection from './FrictionSection';
 import AmbientSection from './AmbientSection';
+import NowSituation from './canonical/NowSituation';
 import { showable } from '../../../shared/task-links.cjs';
 import './AdhdPanel.css';
 
@@ -232,7 +233,10 @@ export default function AdhdPanel({ onNavigate }) {
   // here. `/api/adhd` keeps the session, momentum, quick wins and the wins
   // ledger — none of which the attention contract covers, and none of which is
   // a second opinion about what matters.
-  const attention = useAttention({ interval: 30000 });
+  // Build 10E: Now reads the canonical Now model — the attention decision
+  // verbatim plus the world-model situation — in ONE payload, so the decision
+  // and the world it sits in come from the same moment.
+  const attention = useAttention({ interval: 30000, path: '/api/canonical/now' });
   const [busy, setBusy] = useState({});
   const [win, setWin] = useState('');
 
@@ -807,6 +811,12 @@ export default function AdhdPanel({ onNavigate }) {
           </p>
         )}
       </section>
+
+      {/* ── What else matters now ──
+          The world-model half of Now (Build 10E/F): next meaningful event,
+          needs you, commitments coming due, blindness that matters — across
+          the whole of life, sparse, and calm when nothing is meaningful. */}
+      <NowSituation situation={attention.situation} onNavigate={onNavigate} />
 
       {/* ── Friction noticed ──
           Evidence only, and BELOW the work rather than above it. */}

@@ -53,7 +53,8 @@ function code(source) {
 
 // Every desktop file that renders work. Listed rather than globbed, so adding a
 // new work surface is a deliberate act that includes adding it here.
-const WORK_SURFACES = ['BriefingPanel.jsx', 'FocusPanel.jsx', 'AdhdPanel.jsx', 'AttentionCard.jsx'];
+// Build 10E: Briefing and Focus were MERGED into Now and deleted.
+const WORK_SURFACES = ['AdhdPanel.jsx', 'AttentionCard.jsx'];
 
 test('no desktop work surface logs an outcome — /api/focus/action-done is gone', () => {
   for (const file of WORK_SURFACES) {
@@ -63,18 +64,23 @@ test('no desktop work surface logs an outcome — /api/focus/action-done is gone
       `${file} still references /api/focus/action-done — that logs a completed outcome and dismisses the item`
     );
   }
-  // Positive control: the route itself still exists (it stays for backward
-  // compatibility), so a passing test above means the CALLERS were removed and
-  // not that the string vanished from the repo.
-  const routeSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'focus.js'), 'utf-8');
-  assert.ok(routeSource.includes('/action-done'), 'positive control: the legacy route should still be registered');
+  // Build 10O: the whole /api/focus route is RETIRED — every path answers 410
+  // naming its replacement. A passing test above therefore means the callers
+  // are gone AND the route that logged the outcome no longer exists.
+  const routeSource = code(fs.readFileSync(path.join(__dirname, '..', 'routes', 'focus.js'), 'utf-8'));
+  assert.ok(/router\.all\('\*'/.test(routeSource) && routeSource.includes('410'), 'positive control: /api/focus answers 410 for everything');
+  assert.ok(!routeSource.includes('logOutcome'), 'the retired route must not log an outcome');
 });
 
 test('the desktop work surfaces render the shared canonical card, not their own', () => {
-  for (const file of ['BriefingPanel.jsx', 'FocusPanel.jsx', 'AdhdPanel.jsx']) {
+  for (const file of ['AdhdPanel.jsx']) {
     const source = read(file);
     assert.ok(source.includes('AttentionCard'), `${file} must render the shared AttentionCard`);
     assert.ok(source.includes('useAttention'), `${file} must read the canonical feed`);
+  }
+  // Briefing and Focus are gone (merged into Now), not merely unlinked.
+  for (const file of ['BriefingPanel.jsx', 'FocusPanel.jsx']) {
+    assert.equal(fs.existsSync(path.join(COMPONENTS, file)), false, `${file} should be deleted, not left unreachable`);
   }
 });
 
@@ -99,22 +105,18 @@ test('starting a session tells the record and moves no state', () => {
   }
 });
 
-test('the legacy suppression path is reachable ONLY when a card has no record', () => {
+test('there is no legacy suppression path at all — a card without a record says so', () => {
   const hook = code(fs.readFileSync(path.join(SRC, 'useAttention.js'), 'utf-8'));
-  // The canonical branch is guarded on `card.recordId` and returns before the
-  // fallback. If that guard ever goes, both paths run and the surfaces silently
-  // drift back to the suppression timer.
   const actBody = hook.slice(hook.indexOf('const act = useCallback'));
-  const canonicalAt = actBody.indexOf('if (card.recordId)');
-  const legacyAt = actBody.indexOf('LEGACY[action]');
-  assert.ok(canonicalAt > -1, 'the canonical branch must be guarded on recordId');
-  assert.ok(legacyAt > canonicalAt, 'the legacy branch must sit after the canonical one');
-  // And `action-done` must not be among the legacy paths at all.
-  assert.ok(!hook.includes('action-done'));
+  assert.ok(actBody.indexOf('if (card.recordId)') > -1, 'positive control: the canonical branch is guarded on recordId');
+  // Build 10O: /api/focus is retired, so nothing may still write to it.
+  assert.ok(!hook.includes('/api/focus'), 'useAttention still calls the retired /api/focus');
+  assert.ok(!hook.includes('LEGACY'), 'the legacy path table is back');
+  assert.ok(/needs a canonical attention record/.test(actBody), 'a record-less card must be refused in words');
 });
 
 test('an unreadable pool is never rendered as a clear day on any desktop surface', () => {
-  for (const file of ['BriefingPanel.jsx', 'FocusPanel.jsx', 'AdhdPanel.jsx']) {
+  for (const file of ['AdhdPanel.jsx']) {
     const source = read(file);
     assert.ok(
       source.includes('poolAvailable === false'),

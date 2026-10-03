@@ -54,6 +54,20 @@ async function runCycle() {
     // 3. Compute next actions (includes auto-execution of safe actions)
     const actions = nextActionEngine.computeNextActions(result.items, ctx);
 
+    // 3b. Suggestions for the Actions queue (Build 10O). This ran ONLY as a side
+    //     effect of somebody loading GET /api/focus — in practice the kiosk's
+    //     30-second poll — so whether a card was offered depended on which screen
+    //     happened to be open. /api/focus is retired; the suggestion pass now runs
+    //     here, on the loop's own clock, with the same engine and the same
+    //     offered-once rules (suggestion-engine owns those). Never fails the cycle.
+    try {
+      const suggestionEngine = require('./suggestion-engine');
+      const raw = suggestionEngine.generateSuggestions(result.items);
+      if (raw.length > 0) suggestionEngine.persistSuggestions(raw);
+    } catch (e) {
+      console.warn('[AgentLoop] Suggestion pass failed:', e.message);
+    }
+
     // 4. Log auto-executed actions
     if (actions.autoExecuted.length > 0) {
       console.log(`[AgentLoop] Auto-executed ${actions.autoExecuted.length} safe action(s): ${actions.autoExecuted.map(a => a.type).join(', ')}`);

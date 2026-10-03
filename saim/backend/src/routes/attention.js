@@ -113,6 +113,41 @@ function createRouter(options = {}) {
   }
   });
 
+  // ── Context (Build 10I) ──────────────────────────────────────────────────
+  //
+  // The kiosk's connection banner used to read the RETIRED state engine's
+  // provenance. It now asks one cheap question of NEURO — the situational
+  // context alone — and reports only REACH, in the same failure vocabulary as
+  // the feed above. It decides nothing and ranks nothing.
+  router.get('/context', async (_req, res) => {
+    const ready = neuroConfig.readiness(env);
+    if (!ready.baseUrlConfigured || !ready.credentialConfigured) {
+      return fail(res, null, 'not-configured', ready.problems.join(' '));
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const upstream = await fetchImpl(`${neuroConfig.getBaseUrl(env)}/api/attention/context`, {
+        headers: { accept: 'application/json', ...neuroConfig.authHeaders(env) },
+        signal: controller.signal,
+      });
+      if (upstream.status === 401 || upstream.status === 403) {
+        return fail(res, upstream.status, 'unauthorized', 'NEURO refused SAiM’s credential.');
+      }
+      if (!upstream.ok) return fail(res, upstream.status, 'upstream-error');
+      const payload = await upstream.json();
+      if (!payload || typeof payload !== 'object' || !payload.context) {
+        return fail(res, upstream.status, 'unexpected-shape');
+      }
+      return res.json({ available: true, context: payload.context, gaps: payload.gaps || [] });
+    } catch (e) {
+      const aborted = e.name === 'AbortError';
+      return fail(res, null, aborted ? 'timeout' : 'unreachable', aborted ? null : e.message);
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
   // ── Records ────────────────────────────────────────────────────────────────
   //
   // ⚠ Why the kiosk needs this at all. `screens/focus/FocusView` is a legacy

@@ -39,8 +39,6 @@ const TodoPanel = lazy(() => import('./components/TodoPanel'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const InboxPanel = lazy(() => import('./components/InboxPanel'));
 const AdminPanel = lazy(() => import('./components/AdminPanel'));
-const QATab = lazy(() => import('./components/QATab'));
-const KpiTrackerPanel = lazy(() => import('./components/KpiTrackerPanel'));
 const EscalationPanel = lazy(() => import('./components/EscalationPanel'));
 const ActionsPanel = lazy(() => import('./components/ActionsPanel'));
 const DecisionsPanel = lazy(() => import('./components/DecisionsPanel'));
@@ -50,12 +48,9 @@ const ImportsPanel = lazy(() => import('./components/ImportsPanel'));
 const RecentPanel = lazy(() => import('./components/RecentPanel'));
 const VaultBrowser = lazy(() => import('./components/VaultBrowser'));
 const BrainHealthPanel = lazy(() => import('./components/BrainHealthPanel'));
-const StravaPanel = lazy(() => import('./components/StravaPanel'));
 const InsightsPanel = lazy(() => import('./components/InsightsPanel'));
 const StandupsPanel = lazy(() => import('./components/StandupsPanel'));
 const JournalPanel = lazy(() => import('./components/JournalPanel'));
-const FocusPanel = lazy(() => import('./components/FocusPanel'));
-const BriefingPanel = lazy(() => import('./components/BriefingPanel'));
 const PiHealthPanel = lazy(() => import('./components/PiHealthPanel'));
 const ScreenUsagePanel = lazy(() => import('./components/ScreenUsagePanel'));
 const NotionSyncPanel = lazy(() => import('./components/NotionSyncPanel'));
@@ -63,6 +58,24 @@ const CataloguesPanel = lazy(() => import('./components/CataloguesPanel'));
 const ProfilePanel = lazy(() => import('./components/ProfilePanel'));
 const HealthPanel = lazy(() => import('./components/HealthPanel'));
 const MeetingPrep = lazy(() => import('./components/MeetingPrep'));
+// Build 10: the first screens that read the canonical world model.
+const CommitmentsPanel = lazy(() => import('./components/canonical/CommitmentsPanel'));
+const SourcesPanel = lazy(() => import('./components/canonical/SourcesPanel'));
+const FindingsPanel = lazy(() => import('./components/canonical/FindingsPanel'));
+const LifePanel = lazy(() => import('./components/canonical/LifePanel'));
+
+import { canonicalView, VANTAGE_URL } from './viewIds';
+
+/** KPI Tracker moved to VANTAGE (Build 10L) — departmental, not personal. */
+function MovedToVantage() {
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 18 }}>KPI Tracker has moved</h2>
+      <p style={{ color: 'var(--text-secondary)' }}>The daily KPI sheet is departmental, so it lives in VANTAGE now (the KPIs tab), beside the findings it feeds. NEURO keeps anything from it that concerns you personally.</p>
+      <a href={VANTAGE_URL} target="_blank" rel="noreferrer">Open VANTAGE →</a>
+    </div>
+  );
+}
 
 function readNueroLaunchIntent() {
   const params = new URLSearchParams(window.location.search);
@@ -73,7 +86,7 @@ function readNueroLaunchIntent() {
   // that pinged him rather than on the general screen.
   if (!view) return { view: 'today', context: null };
   return {
-    view,
+    view: canonicalView(view),
     context: filter ? { filter } : null,
   };
 }
@@ -322,16 +335,16 @@ function AuthenticatedApp() {
     }
     setChatOpen(false); // close aside when navigating away
     setNavContext(context); // pass context to drill-down view (e.g. { filter: 'overdue' })
-    setActiveView(view);
-    syncNueroLaunchIntent(view, context);
+    // A retired id (briefing, focus, qa, strava, kpi-tracker) lands where it now lives.
+    const target = canonicalView(view);
+    setActiveView(target);
+    syncNueroLaunchIntent(target, context);
     setSidebarOpen(false);
   };
 
   const renderView = () => {
     switch (activeView) {
       case 'state': return <StateOfPlay onNavigate={handleNavigate} />;
-      case 'briefing': return <BriefingPanel onNavigate={handleNavigate} />;
-      case 'focus': return <FocusPanel onNavigate={handleNavigate} />;
       case 'today': return <AdhdPanel onNavigate={handleNavigate} />;
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;
       case 'standup': return <StandupEditor />;
@@ -347,16 +360,18 @@ function AuthenticatedApp() {
       case 'capture': return <CapturePanel />;
       case 'recent': return <RecentPanel onOpenFile={(path) => { setVaultOpenPath(path); setActiveView('vault'); }} />;
       case 'imports': return <ImportsPanel />;
-      case 'strava': return <StravaPanel />;
       case 'inbox': return <InboxPanel focusContext={navContext} />;
       case 'vault': return <VaultBrowser initialOpenPath={vaultOpenPath} onClearInitialPath={() => setVaultOpenPath(null)} />;
       case 'brain-health': return <BrainHealthPanel />;
-      case 'qa': return <QATab />;
       case 'escalations': return <EscalationPanel />;
       case 'actions': return <ActionsPanel onNavigate={handleNavigate} />;
       case 'decisions': return <DecisionsPanel />;
       case 'weekly-risk': return <WeeklyRiskPanel onNavigate={handleNavigate} />;
-      case 'kpi-tracker': return <KpiTrackerPanel />;
+      case 'moved-vantage': return <MovedToVantage />;
+      case 'commitments': return <CommitmentsPanel />;
+      case 'sources': return <SourcesPanel onNavigate={handleNavigate} />;
+      case 'findings': return <FindingsPanel />;
+      case 'life': return <LifePanel />;
       case 'management-log': return <ManagementLogPanel onNavigate={handleNavigate} />;
       case 'journal': return <JournalPanel />;
       case 'standups': return <StandupsPanel />;
@@ -403,7 +418,7 @@ function AuthenticatedApp() {
           <ChatPanel location={location} />
         </aside>
       </div>
-      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={(target) => { setNavContext(target || null); setActiveView('todos'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('journal'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} onGoToBriefing={() => { setActiveView('briefing'); setSidebarOpen(false); }} onGoToInbox={() => { setActiveView('inbox'); setSidebarOpen(false); }} />
+      <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={(target) => { setNavContext(target || null); setActiveView('todos'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('journal'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} onGoToBriefing={() => { setActiveView('today'); setSidebarOpen(false); }} onGoToInbox={() => { setActiveView('inbox'); setSidebarOpen(false); }} />
       <InstallBanner />
       {/* Mobile bottom nav */}
       <nav className={`mobile-bottom-nav ${chatOpen ? 'chat-active-hide' : ''}`}>

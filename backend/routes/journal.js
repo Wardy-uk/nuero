@@ -47,14 +47,12 @@ async function buildJournalContext() {
     }
   } catch {}
 
+  // Today's workouts, from Apple Health (Strava retired, Build 10M).
   try {
-    const stravaService = require('../services/strava');
-    if (stravaService.isConfigured() && stravaService.isAuthenticated()) {
-      const activityCtx = await stravaService.getActivityContext();
-      if (activityCtx) {
-        contextSummary = contextSummary === 'No daily note found for today.'
-          ? activityCtx : contextSummary + '\n\n' + activityCtx;
-      }
+    const activityCtx = require('../services/apple-health').todaysWorkoutContext();
+    if (activityCtx) {
+      contextSummary = contextSummary === 'No daily note found for today.'
+        ? activityCtx : contextSummary + '\n\n' + activityCtx;
     }
   } catch {}
 

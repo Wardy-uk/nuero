@@ -97,23 +97,12 @@ test('⚠ MoSCoW and domain keep THEIR colours — those are not her state', () 
   assert.match(sheet, /\.tasks__domain\s*\{[^}]*#0f766e/s, 'the personal badge lost its own meaning');
 });
 
-test('⚠ priority is named, not numbered — and in iOS\'s words', () => {
+test('⚠ priority is not edited on SAiM at all (Build 10H) — NEURO owns triage', () => {
   const src = jsx();
-  assert.match(src, /PRIORITY_OPTIONS/, 'could not find the priority control');  // positive control
-
-  // It said "P1 P2 P3" with the direction in a `title` a phone cannot show —
-  // and the scale runs BACKWARDS from the usual convention (P3 is highest), so
-  // the natural guess was wrong. iOS had already solved it, and better:
-  // `TaskEdit.priorityLabel` renders High / Normal / Low, which leaves nothing
-  // to explain. One vocabulary, taken verbatim.
-  assert.match(src, /function priorityLabel\(p\)/);
-  assert.match(src, /\{priorityLabel\(p\)\}/, 'the button must show the word');
-  assert.ok(!/>P\{p\}</.test(src), 'the bare number is back');
-  assert.ok(!/Most pressing/.test(src), 'the direction is back in a tooltip');
-
-  // ⚠ THE NUMBERS STAY ON THE WIRE. Sending the words would be two
-  // vocabularies for one field — iOS's own reason for keeping them.
-  assert.match(src, /priority: draft\.priority === p \? null : p/);
+  assert.match(src, /export default function Tasks\(/); // positive control
+  // The High / Normal / Low vocabulary lives where priority is edited now:
+  // NEURO's Tasks screen and iOS TaskEdit. SAiM shows MoSCoW and hands off.
+  assert.doesNotMatch(src, /PRIORITY_OPTIONS|priorityLabel/, 'a priority editor is back on SAiM');
 });
 
 test('⚠ the primitive carries the BOX, not only the light', () => {

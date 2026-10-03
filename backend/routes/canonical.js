@@ -1,0 +1,113 @@
+'use strict';
+
+/**
+ * /api/canonical — the UI read contract (Build 10A). What NEURO currently
+ * BELIEVES, read from its projections: Now, commitments, sources, findings,
+ * goals, and Nick's declared life domains. See services/canonical-read.js.
+ *
+ * Literal paths are registered before parameterised ones (Express matches in
+ * order, and this codebase has shipped a literal swallowed as a param).
+ */
+
+const express = require('express');
+const canonical = require('../services/canonical-read');
+const domains = require('../../shared/life-domains.cjs');
+
+const router = express.Router();
+
+function fail(res, e) {
+  res.status(500).json({ ok: false, error: e && e.message ? e.message : String(e) });
+}
+
+// GET /api/canonical/now — Nick-first Now: the attention decision verbatim plus world-model situation (next meaningful event, needs you, commitments becoming relevant, source blindness that matters, crowded-out, goals). Cross-domain; calm when nothing matters.
+router.get('/now', async (req, res) => {
+  try {
+    const view = typeof req.query.view === 'string' ? req.query.view : null;
+    const decision = view ? await require('../services/attention').build({ view }) : null;
+    res.json({ ok: true, ...(await canonical.now({ decision })) });
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/domains — the life-domain and personal-importance vocabulary every surface renders from.
+router.get('/domains', (req, res) => {
+  res.json({ ok: true, contract: canonical.CONTRACT, domains: domains.DOMAINS.map((d) => ({ id: d, label: domains.LABELS[d], sensitive: domains.SENSITIVE.has(d) })),
+    importance: domains.IMPORTANCE.map((i) => ({ id: i, label: domains.IMPORTANCE_LABELS[i] })) });
+});
+
+// GET /api/canonical/commitments — commitments from the world model (what I owe / what is owed to me), with counterpart, due context, meeting/task links, progress state and life domains. Query: direction=i-owe|owed-to-me, status, domain.
+router.get('/commitments', (req, res) => {
+  try {
+    const direction = ['i-owe', 'owed-to-me'].includes(req.query.direction) ? req.query.direction : null;
+    const status = ['open', 'completed', 'cancelled', 'superseded', 'unknown', 'all'].includes(req.query.status) ? req.query.status : 'open';
+    const domain = typeof req.query.domain === 'string' && (req.query.domain === 'unknown' || domains.normaliseDomain(req.query.domain))
+      ? (req.query.domain === 'unknown' ? 'unknown' : domains.normaliseDomain(req.query.domain)) : null;
+    res.json({ ok: true, ...canonical.commitments({ direction, status, domain }) });
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/commitments/:id — one commitment with its evidence trail: provenance, progress evidence, linked task, identity resolution.
+router.get('/commitments/:id', (req, res) => {
+  try {
+    const out = canonical.commitmentDetail(req.params.id);
+    if (!out) return res.status(404).json({ ok: false, error: 'no such commitment' });
+    res.json({ ok: true, ...out });
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/sources — what NEURO can see, from SourceHealth only: each source's transport, freshness, lifecycle (expected/optional/retired), blindness finding, and one verdict (seeing/quiet/stale/failing/unknown/retired); plus runtime jobs.
+router.get('/sources', (req, res) => {
+  try { res.json({ ok: true, ...canonical.sources() }); } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/findings — what NEURO is noticing and what attention decided: every evaluator's findings (source blindness, commitment risk, meeting intelligence) with status, shadow/live, verdict and suppression reason. Query: status=active|resolved|all.
+router.get('/findings', (req, res) => {
+  try {
+    const status = ['active', 'resolved', 'all'].includes(req.query.status) ? req.query.status : 'active';
+    res.json({ ok: true, ...canonical.findings({ status }) });
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/life — Nick's whole life as the world model sees it: stored goals, and per life domain how many commitments, sources, goals and upcoming events carry evidence of belonging to it (zeros kept; unknown counted).
+router.get('/life', async (req, res) => {
+  try { res.json({ ok: true, ...(await canonical.life()) }); } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/goals —Nick's explicitly stored goals and intentions. Never inferred. Query: status=active|paused|done|dropped|all.
+router.get('/goals', (req, res) => {
+  try {
+    const status = [...canonical.GOAL_STATUSES, 'all'].includes(req.query.status) ? req.query.status : 'active';
+    res.json({ ok: true, contract: canonical.CONTRACT, goals: canonical.listGoals({ status }) });
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/goals — store a goal or intention Nick states (hike more, finish the degree). Body: title, domains, note. Creates nothing else: no task, no nudge.
+router.post('/goals', (req, res) => {
+  try {
+    const { title, domains: goalDomains, note } = req.body || {};
+    const out = canonical.saveGoal({ title, domains: goalDomains, note });
+    if (!out.ok) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/goals/:id — update a stored goal: title, domains, note, status (active|paused|done|dropped).
+router.post('/goals/:id', (req, res) => {
+  try {
+    const { title, domains: goalDomains, note, status } = req.body || {};
+    const out = canonical.saveGoal({ id: req.params.id, title, domains: goalDomains, note, status });
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/annotations — Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (work-critical|personally-important|restorative|optional, null clears). Omitted fields are left alone.
+router.post('/annotations', (req, res) => {
+  try {
+    const { entityId, domains: tagDomains, importance } = req.body || {};
+    const out = canonical.setAnnotation(entityId, { domains: tagDomains, importance });
+    if (!out.ok) return res.status(400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+module.exports = router;

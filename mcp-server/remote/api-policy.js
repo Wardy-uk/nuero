@@ -4,8 +4,6 @@ export const interactive = {
   post_auth_login: 'NEURO browser login; MCP uses OAuth instead.',
   post_c_login: 'Sign into the capture application; configure NEURO_CAPTURE_SESSION in the gateway secret environment.',
   post_v_login: 'Sign into VESTA; configure NEURO_CAPTURE_SESSION in the gateway secret environment.',
-  get_strava_auth: 'Connect Strava in NEURO; the browser must follow the authorization redirect.',
-  get_strava_callback: 'OAuth callback consumed by the browser, not an independent user action.',
   post_pin: 'NEURO deliberately rejects machine clients for PIN changes. Use the signed-in NEURO settings screen.',
   // Build 6: approving a prepared action can SEND EMAIL AS NICK. A4 approval is
   // his, in NEURO, against the exact words he reads — never an agent's. The

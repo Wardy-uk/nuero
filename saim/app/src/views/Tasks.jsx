@@ -1,26 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import { completeTask } from '../completeTask';
-import DueControl from '../components/DueControl';
 import { msPlanBadge } from '../../../../shared/ms-task.cjs';
 import { domainBadge } from '../../../../shared/task-domain.cjs';
 import { Lit } from '../../../shared-ui/Lit.jsx';
 
-/**
- * What a priority NUMBER is called.
- *
- * ⚠ ONE VOCABULARY, and iOS's. `TaskEdit.priorityLabel` in NeuroKit says High
- * / Normal / Low; this screen said "P1 P2 P3" with the direction in a tooltip a
- * phone cannot show — and the scale runs backwards from the usual convention,
- * so the natural guess was wrong.
- *
- * ⚠ The numbers are still what the store keeps and what is sent. Only the
- * label changed: sending the words would be two vocabularies for one field,
- * which is the reason iOS kept the numbers on the wire too.
- */
-function priorityLabel(p) {
-  return p === 3 ? 'High' : p === 2 ? 'Normal' : p === 1 ? 'Low' : `P${p}`;
-}
 import './Tasks.css';
 
 // Tasks = the list you can actually work from on the phone.
@@ -36,21 +20,6 @@ const FILTERS = [
   { id: 'today', label: 'Today' },
   { id: 'all', label: 'All' },
 ];
-
-const MOSCOW_OPTIONS = [
-  { key: 'must', label: 'Must' },
-  { key: 'should', label: 'Should' },
-  { key: 'could', label: 'Could' },
-  { key: 'wont', label: "Won't" },
-];
-
-// Numeric on the wire: 3 is the most pressing (task-store's normPriority).
-const PRIORITY_OPTIONS = [3, 2, 1];
-
-// Presets snap to the task store's buckets anyway, so they go without
-// `estimateExact`. Only a number Nick TYPES is sent as exact — snapping that
-// would be the store disagreeing with him about his own work.
-const ESTIMATE_PRESETS = [5, 15, 30, 60, 120, 240];
 
 // The reasons are the product, not decoration: friction reads them back as
 // evidence about the WORK, so "Not today" opens these rather than snoozing
@@ -104,14 +73,6 @@ function errorText(e) {
   }
 }
 
-function formatMinutes(m) {
-  if (m == null) return 'none';
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  const rest = m % 60;
-  return rest ? `${h}h ${rest}m` : `${h}h`;
-}
-
 // Local getters throughout — the server stamps an instant, Nick reads a wall clock.
 function describeUntil(iso) {
   if (!iso) return '';
@@ -132,27 +93,10 @@ function heldLine(row) {
   return until ? `${reason}, ${until}` : reason;
 }
 
-// Drafted under the PATCH field names, never the row's display names — drafting
-// under a display name is how the wrong key gets sent and silently dropped.
-function neuroSnapshot(row) {
-  return {
-    moscow: row?.moscow || null,
-    priority: row?.priority || null,
-    estimateMinutes: row?.estimate_minutes == null ? null : row.estimate_minutes,
-  };
-}
-
-function describeChange(key, value, exact) {
-  if (key === 'moscow') return `MoSCoW → ${value ? (MOSCOW_OPTIONS.find((o) => o.key === value)?.label || value) : 'none'}`;
-  if (key === 'priority') return `priority → ${value ? `P${value}` : 'none'}`;
-  if (key === 'estimateMinutes') return `estimate → ${formatMinutes(value)}${exact && value != null ? ' (exact)' : ''}`;
-  return key;
-}
-
 /**
- * The open row. Everything here is gated on what the row's OWNER can accept:
- * NEURO tasks take status and triage fields, Microsoft takes progress (and
- * nothing else from here), a vault line takes neither. The lane's "not today" is
+ * The open row. SAiM's half of a task is deliberately small (Build 10H): tick,
+ * "working on it" for a NEURO task, and "not today". Triage fields and any
+ * write to Planner / To Do belong to NEURO and are handed off by name. The lane's "not today" is
  * about the lane, not the owner, so any lane row gets it.
  */
 function TaskPanel({ item, taskRow, taskRowsKnown, laneRow, heldRow, laneKnown, onChanged }) {
@@ -207,30 +151,10 @@ function TaskPanel({ item, taskRow, taskRowsKnown, laneRow, heldRow, laneKnown, 
     });
   });
 
-  // Microsoft's started-ness is Planner's percentComplete, which only the lane
-  // payload reads back (server-side, from the marker NEURO writes). Offered only
-  // where it is known AND is a value this button could have set (0 or 50):
-  // anything else came from someone setting the number on a board the team
-  // reads, and overwriting it throws away real progress.
-  const pct = laneRow ? laneRow.percentComplete : undefined;
-  const msProgressKnown = isMs && laneRow != null;
-  const msProgressIsOurs = pct == null || pct === 0 || pct === 50;
-  const msStarted = pct != null && pct > 0;
+  // ⚠ Build 10H: SAiM no longer writes to Planner or To Do. Marking a Planner
+  // card in progress is visible to the whole team, and that kind of change
+  // belongs in NEURO, where its consequence is shown beside it.
   const boardName = String(item.source || '').includes('Planner') ? 'Planner' : 'Microsoft To Do';
-  const setMsWip = (starting) => act(async () => {
-    await apiFetch('/api/todos/wip-ms', {
-      method: 'POST',
-      body: JSON.stringify({
-        msId: item.ms_id,
-        source: item.source,
-        started: starting,
-        // Lets the server repaint the mirror line the list reads from, or the
-        // push lands and the screen does not change for an hour.
-        filePath: item.filePath,
-        lineNumber: item.lineNumber,
-      }),
-    });
-  });
 
   return (
     <div className="tasks__panel">
@@ -273,190 +197,23 @@ function TaskPanel({ item, taskRow, taskRowsKnown, laneRow, heldRow, laneKnown, 
           )}
         </div>
       )}
-      {isMs && msProgressKnown && (
+      {isMs && (
         <div className="tasks__group">
           <span className="tasks__label">{boardName}</span>
-          {msProgressIsOurs ? (
-            <>
-              <button type="button" className={`tasks__btn${msStarted ? ' tasks__btn--on' : ''}`} disabled={acting} onClick={() => setMsWip(!msStarted)}>
-                {msStarted ? 'Mark not started' : 'Mark in progress'}
-              </button>
-              <span className="tasks__note">
-                {boardName === 'Planner'
-                  ? 'Writes to the Planner board — your team sees this.'
-                  : 'Writes to Microsoft To Do.'}
-              </span>
-            </>
-          ) : (
-            <span className="tasks__note">{boardName} says {pct}% — change it there.</span>
-          )}
+          <span className="tasks__note">Progress on a {boardName} item is changed in NEURO (Tasks), not here.</span>
         </div>
       )}
 
+      {/* Build 10H — SAiM is not the place for task administration. MoSCoW,
+          priority, estimate and due date are edited in NEURO's Tasks screen;
+          SAiM ticks, puts things off and hands off. */}
       {isNeuro && (
-        taskRow
-          ? <TaskFieldEditor taskId={item.task_id} row={taskRow} ranked={item} onSaved={onChanged} />
-          : null
+        <div className="tasks__group">
+          <span className="tasks__note">To change MoSCoW, priority, estimate or due date, open Tasks in NEURO.</span>
+        </div>
       )}
 
       {error && <div className="tasks__rowerr">{error}</div>}
-    </div>
-  );
-}
-
-/**
- * MoSCoW, priority and estimate — a DRAFT until Save, written in ONE PATCH.
- *
- * Each click writing on its own re-ranks the list, so the card moved out from
- * under the next tap. The draft is reset on the row's IDENTITY (the component is
- * keyed on it), never on its values: the list refetches after every write
- * elsewhere, and a reset keyed on `row.moscow` would wipe half-finished edits
- * whenever that landed. A failed save keeps the draft exactly as it was.
- */
-function TaskFieldEditor({ taskId, row, ranked, onSaved }) {
-  const [baseline, setBaseline] = useState(() => neuroSnapshot(row));
-  const [draft, setDraft] = useState(() => neuroSnapshot(row));
-  const [exact, setExact] = useState(false);
-  const [custom, setCustom] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
-  const changed = {};
-  for (const key of Object.keys(baseline)) {
-    if (draft[key] !== baseline[key]) changed[key] = draft[key];
-  }
-  const dirtyKeys = Object.keys(changed);
-  const edit = (fields) => setDraft((d) => ({ ...d, ...fields }));
-
-  function setPreset(minutes) {
-    setExact(false);
-    setCustom('');
-    edit({ estimateMinutes: draft.estimateMinutes === minutes ? null : minutes });
-  }
-
-  function typeMinutes(value) {
-    setCustom(value);
-    const n = Number(value);
-    if (value.trim() === '') return;
-    if (Number.isFinite(n) && n > 0) {
-      setExact(true);
-      edit({ estimateMinutes: Math.ceil(n) });
-    }
-  }
-
-  async function save() {
-    if (!dirtyKeys.length || saving) return;
-    setSaving(true);
-    setError(null);
-    const body = { ...changed };
-    if ('estimateMinutes' in body && exact && body.estimateMinutes != null) body.estimateExact = true;
-    try {
-      const res = await apiFetch(`/api/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(body) });
-      // What the store actually kept — an estimate may have snapped to a bucket —
-      // rather than what was typed.
-      const next = res?.task ? neuroSnapshot(res.task) : draft;
-      setBaseline(next);
-      setDraft(next);
-      setExact(false);
-      setCustom('');
-      onSaved();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function discard() {
-    setDraft(baseline);
-    setExact(false);
-    setCustom('');
-    setError(null);
-  }
-
-  return (
-    <div className="tasks__editor">
-      {/* ⚠ The badge on the row is the RANKED MoSCoW (overdue or due today
-          promotes a task), while these buttons are the call stored on the task.
-          Verified on a live row: stored Should, badge MUST, because it was a day
-          late — the two disagreeing with no explanation read as a broken editor. */}
-      {ranked?.moscow && baseline.moscow && ranked.moscow !== baseline.moscow && (
-        <p className="tasks__note">
-          Ranked {String(ranked.moscow).toUpperCase()} {ranked.overdue ? 'because it’s overdue' : ranked.dueToday ? 'because it’s due today' : 'by NEURO'} — your own call is {MOSCOW_OPTIONS.find((o) => o.key === baseline.moscow)?.label || baseline.moscow}.
-        </p>
-      )}
-      <div className="tasks__group">
-        <span className="tasks__label">{row.moscow_proposed ? 'MoSCoW?' : 'MoSCoW'}</span>
-        {MOSCOW_OPTIONS.map((o) => (
-          <button
-            key={o.key}
-            type="button"
-            className={`tasks__btn${draft.moscow === o.key ? ' tasks__btn--on' : ''}`}
-            disabled={saving}
-            onClick={() => edit({ moscow: draft.moscow === o.key ? null : o.key })}
-          >{o.label}</button>
-        ))}
-      </div>
-
-      {/* ⚠⚠ IT SAID "P1 P2 P3" AND THE SCALE RUNS BACKWARDS. P3 is the MOST
-          pressing, the opposite of the usual convention, and the only thing
-          that said so was a `title` — which a phone cannot show. So on the one
-          device this app is for there was no way to tell which end was which,
-          and the natural guess was wrong.
-
-          ⚠ iOS HAD ALREADY SOLVED IT, and better: `TaskEdit.priorityLabel`
-          renders High / Normal / Low, so the direction is not something to be
-          explained at all. The words are taken verbatim rather than captioning
-          the numbers — one vocabulary, and nothing left to get backwards. The
-          NUMBERS are still what is stored and sent; only the label changed. */}
-      <div className="tasks__group">
-        <span className="tasks__label">Priority</span>
-        {PRIORITY_OPTIONS.map((p) => (
-          <button
-            key={p}
-            type="button"
-            className={`tasks__btn${draft.priority === p ? ' tasks__btn--on' : ''}`}
-            disabled={saving}
-            onClick={() => edit({ priority: draft.priority === p ? null : p })}
-          >{priorityLabel(p)}</button>
-        ))}
-      </div>
-
-      <div className="tasks__group">
-        <span className="tasks__label">Estimate</span>
-        {ESTIMATE_PRESETS.map((m) => (
-          <button
-            key={m}
-            type="button"
-            className={`tasks__btn${draft.estimateMinutes === m && !exact ? ' tasks__btn--on' : ''}`}
-            disabled={saving}
-            onClick={() => setPreset(m)}
-          >{formatMinutes(m)}</button>
-        ))}
-        <input
-          className="tasks__mins"
-          type="number"
-          inputMode="numeric"
-          min="1"
-          placeholder="mins"
-          aria-label="Exact estimate in minutes"
-          value={custom}
-          disabled={saving}
-          onChange={(e) => typeMinutes(e.target.value)}
-        />
-        {draft.estimateMinutes != null && (
-          <button type="button" className="tasks__btn tasks__btn--quiet" disabled={saving} onClick={() => { setExact(false); setCustom(''); edit({ estimateMinutes: null }); }}>Clear</button>
-        )}
-      </div>
-
-      {dirtyKeys.length > 0 && (
-        <div className="tasks__save">
-          <span className="tasks__note">Unsaved: {dirtyKeys.map((k) => describeChange(k, changed[k], exact)).join(', ')}</span>
-          <button type="button" className="tasks__btn tasks__btn--on" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
-          <button type="button" className="tasks__btn tasks__btn--quiet" disabled={saving} onClick={discard}>Discard</button>
-        </div>
-      )}
-      {error && <div className="tasks__rowerr">Not saved — {error}</div>}
     </div>
   );
 }
@@ -725,9 +482,6 @@ export default function Tasks() {
                 {started && <span className="tasks__wip">Working on it</span>}
                 {heldRow && <span className="tasks__lane">Not today</span>}
                 {!heldRow && laneRow && <span className="tasks__lane">Must move today</span>}
-                {/* Dating a task is the cheapest way to stop it rotting undated,
-                    so it lives inline on the row rather than behind an edit view. */}
-                <DueControl task={item} onChanged={load} />
                 {/* Only PERSONAL is marked. Nearly every task is work, so a "Work"
                     chip on all of them is a label every row shares — it sorts
                     nothing and reads as noise. domainBadge owns that rule, so this

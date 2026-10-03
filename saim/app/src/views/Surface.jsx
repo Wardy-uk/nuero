@@ -391,25 +391,19 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     // ⚠ `complete` NEVER takes the legacy route. A dismissal is not a completion,
     // and substituting one for the other is the bug the attention contract
     // removed — so a card with no record says it could not be done.
-    if (action === 'complete' && !card.recordId) {
-      return { ok: false, error: 'This card has no record to complete — nothing was changed.' };
+    // Build 10O: the legacy /api/focus suppression timer is retired, so NO
+    // action has a fallback any more — a card without a record says so.
+    if (!card.recordId) {
+      return { ok: false, error: 'This card has no record to act on — nothing was changed.' };
     }
     setBusy(true);
     try {
-      let res = { ok: true };
-      if (card.recordId) {
-        // The response carries `taskCompleted` / `taskWhy` — what "done"
-        // actually closed — and is handed back so the surface can say it.
-        res = await apiFetch(`/api/attention/records/${card.recordId}/act`, {
-          method: 'POST',
-          body: JSON.stringify({ action, ...opts }),
-        });
-      } else {
-        await apiFetch('/api/focus/dismiss', {
-          method: 'POST',
-          body: JSON.stringify({ itemId: card.id, itemType: card.type }),
-        });
-      }
+      // The response carries `taskCompleted` / `taskWhy` — what "done"
+      // actually closed — and is handed back so the surface can say it.
+      const res = await apiFetch(`/api/attention/records/${card.recordId}/act`, {
+        method: 'POST',
+        body: JSON.stringify({ action, ...opts }),
+      });
       await load({ quiet: true });
       return res;
     } catch (e) {

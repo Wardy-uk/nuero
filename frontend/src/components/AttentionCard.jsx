@@ -69,7 +69,8 @@ const VIEW_LABELS = {
   standup: 'Open standup',
   inbox: 'Open inbox',
   imports: 'Open imports',
-  briefing: 'Open briefing',
+  // Briefing merged into Now (Build 10E); a card routed there opens Now.
+  today: 'Open Now',
   chat: 'Open chat',
 };
 

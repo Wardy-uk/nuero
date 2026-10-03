@@ -3,133 +3,83 @@ import { apiUrl } from '../api';
 import './Sidebar.css';
 
 const PRIMARY_ITEMS = [
-  // ── Now / Capture / Ask, in that order, and first ──────────────────────────
+  // ── Build 10P: Nick-first navigation ───────────────────────────────────────
   //
-  // `Now` is the execution surface and the default screen. It was the ADHD
-  // "Today" dashboard sitting under a collapsed MORE section — the one view
-  // built for the moment Nick cannot start, four clicks from the moment he
-  // cannot start. Capture and Ask sit beside it because those are the other two
-  // things done from a standing start.
-  //
-  // Briefing and Focus moved DOWN rather than away: they are supporting views
-  // now, and having three primary answers to "what should I do?" is what made
-  // them drift apart in the first place.
-  { id: 'today',      label: 'Now',       icon: '◐' },
-  { id: 'capture',    label: 'Capture',   icon: '+' },
-  { id: 'chat',       label: 'Ask',       icon: '›' },
-  // Above Briefing on purpose. Briefing answers "what about today"; this answers
-  // "what shape is everything in" — including the things no other screen looks
-  // at, like a Jira cache that had been stale for six weeks while every panel
-  // reading it rendered happily.
-  { id: 'state',      label: 'State of Play', icon: '◈' },
-  // Primary, not under MORE: MORE is collapsed by default, so a badge there is
-  // invisible until you already know to look — and this is the queue holding
-  // outbound email waiting on a second approval. An approval surface nobody can
-  // find is the hole it was built to close.
-  { id: 'actions',    label: 'Actions',   icon: '✓' },
+  // Work is ONE section below, not the root of the app (vault: JARVIS FRIDAY
+  // Target Architecture, "Nick-first operating model"). The primary row is the
+  // things done from a standing start whatever part of life they concern:
+  // Now (the one situational surface — Briefing and Focus merged into it),
+  // Capture, Ask, Actions (the governed approval queue — never under a
+  // collapsed group, or its badge is invisible) and Commitments (both
+  // directions, from the world model).
+  { id: 'today',       label: 'Now',         icon: '◐' },
+  { id: 'capture',     label: 'Capture',     icon: '+' },
+  { id: 'chat',        label: 'Ask',         icon: '›' },
+  { id: 'actions',     label: 'Actions',     icon: '✓' },
+  { id: 'commitments', label: 'Commitments', icon: '⇄' },
 ];
 
-const SECONDARY_ITEMS = [
-  // Both are SUPPORTING views now and both consume the canonical attention
-  // feed: Briefing frames the day, Focus pages through the pool one card at a
-  // time. Neither is a second opinion about what matters — that decision is
-  // made once, by the brain, and rendered identically on all three.
-  { id: 'briefing',   label: 'Briefing',  icon: '◉' },
-  { id: 'focus',      label: 'Focus',     icon: '◎' },
-  // TodoPanel has always been routable via App.jsx but had no menu entry, so the
-  // one consolidated task view was only reachable if a nudge banner sent you there.
-  { id: 'todos',      label: 'Tasks',     icon: '☑' },
-  { id: 'dashboard',  label: 'Review',    icon: '⬡' },
-  { id: 'people',     label: 'People',    icon: '>' },
-  { id: 'calendar',   label: 'Calendar',  icon: '>' },
-  { id: 'meeting-prep', label: 'Meeting Prep', icon: '>' },
-  { id: 'vault',      label: 'Vault',     icon: '>' },
-  { id: 'brain-health', label: 'Brain Health', icon: '⋈' },
-  { id: 'inbox',      label: 'Inbox',     icon: '>' },
-  { id: 'escalations', label: 'Escalations', icon: '▲' },
-  // 'standup' is the editor (start the guided standup / EOD); 'standups' is the
-  // read-only streak history. Only the history had a menu entry, so the ritual
-  // itself was reachable only from a nudge banner or a push notification.
-  { id: 'standup',    label: 'Standup',   icon: '✎' },
-  // Same reasoning one ritual later: EOD was reachable only from an "EOD"
-  // button inside the standup screen, so "how do I start end of day?" had no
-  // answer you could find by looking.
-  { id: 'eod',        label: 'End of day', icon: '✓' },
-  { id: 'standups',   label: 'Standup history', icon: '>' },
-  { id: 'journal',    label: 'Journal',   icon: '>' },
-  // #28 — the route and the table both existed and nothing read them. A panel
-  // with no menu entry is the same hole one step later (see 'todos'), so it
-  // gets one here rather than being routable-but-unreachable.
-  { id: 'decisions',  label: 'Decisions', icon: '>' },
-  // The Monday report to Chris. It has a deadline and a named recipient, so it
-  // gets a menu entry rather than being reachable only from the 07:30 push —
-  // which is the failure this list already documents twice above.
-  { id: 'weekly-risk', label: 'Weekly Risk', icon: '▲' },
-  // Next to Weekly Risk deliberately: both are numbers that leave the building.
-  // One is the Monday report, this is the daily sheet.
-  //
-  // ⚠ VANTAGE has the same screen. Both exist on purpose and temporarily
-  // (Nick, 17 Sep 2026) so he can find out which he actually opens; when he
-  // knows, the other goes.
-  { id: 'kpi-tracker', label: 'KPI Tracker', icon: '▦' },
-  // ⚠ Its own entry, not a section of the weekly report (Nick, 7 Sep 2026). It
-  // is a RUNNING RECORD — conversations get logged the day they happen, not on
-  // the Monday the report is built — and before this there was no way to add to
-  // it at all: the route existed and no screen called it, the same hole this
-  // list already documents for 'todos' and 'decisions'.
-  { id: 'management-log', label: 'Management Log', icon: '▤' },
-  { id: 'imports',    label: 'Imports',   icon: '>' },
-  { id: 'recent',     label: 'Recent',    icon: '>' },
-  { id: 'insights',   label: 'Insights',  icon: '◈' },
-  // Sits next to Pi Health deliberately: one is the machine's vitals, the other
-  // is Nick's, and both are "how is this thing running" rather than work.
-  { id: 'health',     label: 'My Health', icon: '♥' },
-  // Label only. The view id stays `pi-health` so every deep link, ?view= param
-  // and notification route keeps working — the same call as `today` for Now.
-  { id: 'pi-health',  label: 'NEURO Health', icon: '▚' },
-  // Which screens actually get opened, across NEURO, SAiM and VANTAGE. Beside
-  // the two health panels because it is the same kind of question — how is this
-  // estate being used — rather than work. ⚠ It is the ONLY reader `tab_open`
-  // has ever had: the event has been logged since 22 June 2026 and rendered
-  // nowhere, which is a writer with no reader, the mirror of the failure this
-  // codebase names everywhere else.
-  { id: 'screen-usage', label: 'Screen Usage', icon: '▦' },
-  // ⚠ Notion Sync USED to be an entry here and now lives inside Settings (Nick,
-  // 3 Sep 2026). Its view id still routes, so every deep link and ?view= param
-  // keeps working — the same call as `pi-health` and `today`. Do not re-add it
-  // without moving the panel back out of AdminPanel, or it mounts twice and two
-  // copies fight over one credential.
-  // `/api/catalogues` shipped with no UI at all — the routable-but-unreachable
-  // hole this list already documents for `todos` and `decisions`. Sits by Notion
-  // Sync because both are "a thing of Nick's kept somewhere else as well".
-  { id: 'catalogues', label: 'Catalogues', icon: '▤' },
-  // The profile + the get-to-know-you conversation. Shipped without a door
-  // first time round, which is the routable-but-unreachable hole this codebase
-  // has fallen into twice before.
-  { id: 'about-me',   label: 'About me', icon: '◍' },
-  { id: 'admin',      label: 'Settings',  icon: '>' },
+// Groups, in order. Each id appears exactly once across PRIMARY and GROUPS.
+// ⚠ Retired ids (briefing, focus, qa, strava, kpi-tracker) are NOT here; they
+// still route via viewIds.canonicalView so old links land somewhere real.
+const GROUPS = [
+  { id: 'life', label: 'LIFE', items: [
+    { id: 'life',       label: 'Life',       icon: '◍' },
+    // Tasks span every domain (work | personal), so they sit under Life.
+    { id: 'todos',      label: 'Tasks',      icon: '☑' },
+    { id: 'health',     label: 'My Health',  icon: '♥' },
+    { id: 'journal',    label: 'Journal',    icon: '>' },
+    { id: 'catalogues', label: 'Catalogues', icon: '▤' },
+    { id: 'about-me',   label: 'About me',   icon: '◍' },
+  ] },
+  { id: 'people', label: 'PEOPLE & MEETINGS', items: [
+    { id: 'people',       label: 'People',       icon: '>' },
+    { id: 'calendar',     label: 'Calendar',     icon: '>' },
+    { id: 'meeting-prep', label: 'Meeting Prep', icon: '>' },
+  ] },
+  { id: 'work', label: 'WORK', items: [
+    { id: 'dashboard',   label: 'Review',          icon: '⬡' },
+    { id: 'inbox',       label: 'Inbox',           icon: '>' },
+    { id: 'escalations', label: 'Escalations',     icon: '▲' },
+    // 'standup' is the editor; 'standups' the read-only history. Both rituals
+    // keep a door of their own (they were once reachable only from a nudge).
+    { id: 'standup',     label: 'Standup',         icon: '✎' },
+    { id: 'eod',         label: 'End of day',      icon: '✓' },
+    { id: 'standups',    label: 'Standup history', icon: '>' },
+  ] },
+  { id: 'reports', label: 'REPORTS', items: [
+    // The Monday report to Chris — a deadline and a named recipient.
+    { id: 'weekly-risk',    label: 'Weekly Risk',    icon: '▲' },
+    // A running record, logged the day it happens (Nick, 7 Sep 2026).
+    { id: 'management-log', label: 'Management Log', icon: '▤' },
+  ] },
+  { id: 'knowledge', label: 'KNOWLEDGE', items: [
+    { id: 'vault',        label: 'Vault',        icon: '>' },
+    { id: 'brain-health', label: 'Brain Health', icon: '⋈' },
+    { id: 'insights',     label: 'Insights',     icon: '◈' },
+    { id: 'decisions',    label: 'Decisions',    icon: '>' },
+    { id: 'imports',      label: 'Imports',      icon: '>' },
+    { id: 'recent',       label: 'Recent',       icon: '>' },
+  ] },
+  { id: 'system', label: 'SYSTEM', items: [
+    // Sources reads SourceHealth; Findings is what the evaluators noticed and
+    // what attention decided. Both are deep NEURO, never SAiM.
+    { id: 'sources',      label: 'Sources',       icon: '◎' },
+    { id: 'findings',     label: 'Findings',      icon: '◇' },
+    { id: 'state',        label: 'State of Play', icon: '◈' },
+    // Label only — the view id stays pi-health so deep links keep working.
+    { id: 'pi-health',    label: 'NEURO Health',  icon: '▚' },
+    { id: 'screen-usage', label: 'Screen Usage',  icon: '▦' },
+    // Notion Sync lives inside Settings (Nick, 3 Sep 2026); do not re-add it
+    // here without moving the panel out of AdminPanel.
+    { id: 'admin',        label: 'Settings',      icon: '>' },
+  ] },
 ];
 
-const SECONDARY_IDS = new Set(SECONDARY_ITEMS.map(i => i.id));
+const GROUP_OF = new Map(GROUPS.flatMap((g) => g.items.map((i) => [i.id, g.id])));
 
-function useTimeHighlight() {
-  const [highlight, setHighlight] = React.useState(null);
-  React.useEffect(() => {
-    function check() {
-      const now = new Date();
-      const h = now.getHours();
-      const day = now.getDay();
-      const isWeekday = day >= 1 && day <= 5;
-      if (!isWeekday) { setHighlight(null); return; }
-      if (h >= 8 && h < 10) { setHighlight('briefing'); return; }
-      if (h >= 21 && h < 23) { setHighlight('briefing'); return; }
-      setHighlight(null);
-    }
-    check();
-    const t = setInterval(check, 60000);
-    return () => clearInterval(t);
-  }, []);
-  return highlight;
+function readOpenGroups() {
+  try { return JSON.parse(localStorage.getItem('sidebar_groups_open') || '{}') || {}; } catch { return {}; }
 }
 
 export default function Sidebar({ activeView, onNavigate, open }) {
@@ -137,22 +87,21 @@ export default function Sidebar({ activeView, onNavigate, open }) {
   const [actionsCount, setActionsCount] = useState(0);
   const [actionsTitle, setActionsTitle] = useState('');
 
-  const [moreOpen, setMoreOpen] = useState(() => {
-    try { return localStorage.getItem('sidebar_more_open') === 'true'; }
-    catch { return false; }
-  });
+  const [openGroups, setOpenGroups] = useState(readOpenGroups);
 
-  const toggleMore = () => {
-    setMoreOpen(prev => {
-      const next = !prev;
-      try { localStorage.setItem('sidebar_more_open', String(next)); } catch {}
+  const toggleGroup = (id) => {
+    setOpenGroups(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      try { localStorage.setItem('sidebar_groups_open', JSON.stringify(next)); } catch {}
       return next;
     });
   };
 
-  // Auto-expand secondary if active view is inside it
+  // The group holding the active view is always open — a highlighted item
+  // inside a collapsed group is a screen you cannot see you are on.
   useEffect(() => {
-    if (SECONDARY_IDS.has(activeView)) setMoreOpen(true);
+    const g = GROUP_OF.get(activeView);
+    if (g) setOpenGroups(prev => (prev[g] ? prev : { ...prev, [g]: true }));
   }, [activeView]);
 
   useEffect(() => {
@@ -195,8 +144,6 @@ export default function Sidebar({ activeView, onNavigate, open }) {
     return () => clearInterval(interval);
   }, []);
 
-  const timeHighlight = useTimeHighlight();
-
   const renderItem = (item) => (
     <button
       key={item.id}
@@ -204,7 +151,6 @@ export default function Sidebar({ activeView, onNavigate, open }) {
         'sidebar-item',
         item.primary ? 'sidebar-item-primary' : '',
         activeView === item.id ? 'active' : '',
-        timeHighlight === item.id ? 'time-highlight' : ''
       ].filter(Boolean).join(' ')}
       onClick={() => onNavigate(item.id)}
     >
@@ -227,23 +173,24 @@ export default function Sidebar({ activeView, onNavigate, open }) {
   return (
     <nav className={`sidebar ${open ? 'sidebar-open' : ''}`}>
       <div className="sidebar-nav">
-        {/* Primary: Review / Ask / Capture */}
+        {/* Primary: Now / Capture / Ask / Actions / Commitments */}
         <div className="sidebar-group sidebar-group-primary">
           {PRIMARY_ITEMS.map(item => renderItem({ ...item, primary: true }))}
         </div>
 
-        {/* Secondary: collapsible */}
-        <div className="sidebar-group">
-          <button
-            className="sidebar-group-header sidebar-group-toggle"
-            onClick={toggleMore}
-          >
-            <span className="sidebar-group-label">MORE</span>
-            <span className="sidebar-group-chevron">{moreOpen ? '▾' : '▸'}</span>
-          </button>
-
-          {moreOpen && SECONDARY_ITEMS.map(item => renderItem(item))}
-        </div>
+        {GROUPS.map(group => (
+          <div className="sidebar-group" key={group.id}>
+            <button
+              className="sidebar-group-header sidebar-group-toggle"
+              onClick={() => toggleGroup(group.id)}
+              aria-expanded={!!openGroups[group.id]}
+            >
+              <span className="sidebar-group-label">{group.label}</span>
+              <span className="sidebar-group-chevron">{openGroups[group.id] ? '▾' : '▸'}</span>
+            </button>
+            {openGroups[group.id] && group.items.map(item => renderItem(item))}
+          </div>
+        ))}
       </div>
     </nav>
   );

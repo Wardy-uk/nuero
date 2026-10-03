@@ -174,6 +174,37 @@ function sensorRows(payload, now = new Date()) {
   }).concat(silent);
 }
 
+/**
+ * Build 10D — a sense that lives on the event spine is judged by SourceHealth
+ * and nothing else, through the SAME verdict the Sources screen renders
+ * (canonical-read.sourceVerdict), so the two can never disagree.
+ *
+ * `ids` is a redundant group (two phone apps carrying one feed): the BEST
+ * member answers, because one app reporting means the sense is not blind.
+ * Returns null when no member has ever been heard from — the caller's legacy
+ * check then answers and says it is the fallback (`basis: 'legacy'`).
+ */
+function spineVerdict(ids, now = new Date()) {
+  let sh; let canonical;
+  try { sh = require('./source-health'); canonical = require('./canonical-read'); } catch { return null; }
+  const nowMs = now instanceof Date ? now.getTime() : now;
+  const rank = { seeing: 0, quiet: 1, stale: 2, failing: 3 };
+  const known = ids.map((id) => {
+    const row = sh.getSource(id, { now: nowMs });
+    const verdict = canonical.sourceVerdict(row, row && row.lifecycle);
+    return { id, row, verdict };
+  }).filter((x) => x.verdict in rank);
+  if (!known.length) return null;
+  const best = known.sort((a, b) => rank[a.verdict] - rank[b.verdict])[0];
+  const ageMs = best.row.observationAgeMs != null ? best.row.observationAgeMs : best.row.successAgeMs;
+  const ageMinutes = ageMs == null ? null : Math.max(0, Math.round(ageMs / 60000));
+  const state = best.verdict === 'seeing' || best.verdict === 'quiet' ? 'live' : best.verdict === 'stale' ? 'stale' : 'error';
+  const why = best.verdict === 'quiet' ? 'quiet — no new reading, but the app is still talking to NEURO'
+    : best.verdict === 'stale' ? 'nothing new past its threshold on either app'
+      : best.verdict === 'failing' ? `${best.row.consecutiveFailures} deliveries in a row failed` : undefined;
+  return { state, ageMinutes, ...(why ? { why } : {}), basis: 'source-health', spine: ids, detail: `source health · ${best.id}` };
+}
+
 /** Worst state present, for the headline. `off` is NOT a fault and cannot win. */
 function overallOf(signals = []) {
   const order = ['error', 'stale', 'never', 'live', 'off'];
@@ -335,10 +366,15 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
 
   // ── Apple Health ingest ───────────────────────────────────────────────────
   guard('health', 'Health data', 'sleep, HRV, resting heart rate, exercise', () => {
-    const r = rate(_latestSample('hrv') || _latestSample('steps'), 60, now, { staleAfter: 12 * 60 });
     let days = null;
     try { days = require('./health-daily').recentDays(1).length; } catch { /* rolled up separately */ }
-    return { ...r, detail: days ? 'rolled up daily' : 'no daily rollup yet' };
+    // Build 10D: on the event spine, SourceHealth is the ONE truth for this
+    // sense (the Sources screen reads it). The sample-age check below is only
+    // the fallback when the spine has never heard from either app.
+    const spine = spineVerdict(['healthkit.neuro-ios', 'healthkit.saim-ios'], now);
+    if (spine) return { ...spine, detail: `${spine.detail} · ${days ? 'rolled up daily' : 'no daily rollup yet'}` };
+    const r = rate(_latestSample('hrv') || _latestSample('steps'), 60, now, { staleAfter: 12 * 60 });
+    return { ...r, basis: 'legacy', detail: days ? 'rolled up daily' : 'no daily rollup yet' };
   });
 
   // ── Diet logging ──────────────────────────────────────────────────────────
@@ -390,6 +426,12 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
       };
     }
 
+    // ⚠ Build 10D: the access refusal above stays — it is a fact about CONTENT
+    // (the app pushes and is given no calendars), which the spine, a fact about
+    // the TRANSPORT, cannot see. Everything else defers to SourceHealth.
+    const spine = spineVerdict(['eventkit.neuro-ios', 'eventkit.saim-ios'], now);
+    if (spine) return { ...spine, detail: `${spine.detail} · ${st.events} event(s) cached` };
+
     if (!st.lastPushAt && !st.lastAttemptAt) {
       // Configured or not, we cannot tell from here — the client lives on the
       // phone. "It has never pushed" is the honest statement, and it is not the
@@ -427,10 +469,11 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
       const n = row && row.n ? `${row.n} cached events` : 'no cached events';
       // One failed run with fresh data is a hiccup; three in a row is a fault.
       if (graph.state === 'failing' && graph.consecutiveFailures >= 3) {
-        return { state: 'error', ageMinutes, why: `the last ${graph.consecutiveFailures} Outlook syncs failed${graph.failure && graph.failure.error ? ` — ${graph.failure.error}` : ''}`, detail: `${n} · source health` };
+        return { state: 'error', basis: 'source-health', spine: ['microsoft.calendar'], ageMinutes, why: `the last ${graph.consecutiveFailures} Outlook syncs failed${graph.failure && graph.failure.error ? ` — ${graph.failure.error}` : ''}`, detail: `${n} · source health` };
       }
       return {
         state: graph.freshness === 'stale' ? 'stale' : 'live',
+        basis: 'source-health', spine: ['microsoft.calendar'],
         ageMinutes,
         ...(graph.freshness === 'stale' ? { why: 'Outlook has not synced successfully in over an hour' } : {}),
         detail: `${n} · source health`,
@@ -526,4 +569,4 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
   };
 }
 
-module.exports = { rate, age, overallOf, snapshot, sensorRows, roomLabel };
+module.exports = { rate, age, overallOf, snapshot, sensorRows, roomLabel, spineVerdict };

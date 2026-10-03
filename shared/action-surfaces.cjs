@@ -15,7 +15,12 @@
 // notification KIND 'brain' is unchanged and still routes the desktop to
 // Imports; only its SAiM destination is gone, so it now lands on the Surface
 // like everything else with no dedicated tab.
-const SAIM_LITE_TABS = new Set(['surface', 'now', 'review', 'today', 'focus', 'tasks', 'capture', 'voice', 'chat', 'prep', 'standup', 'controls']);
+// 'today' and 'focus' were REMOVED on 3 Oct 2026 (Build 10E): both were second
+// answers to "what should I do now?", which the Surface and Now answer
+// canonically. A notification or old link naming either still lands — see
+// RETIRED_TABS — rather than silently falling through.
+const SAIM_LITE_TABS = new Set(['surface', 'now', 'review', 'tasks', 'capture', 'voice', 'chat', 'prep', 'standup', 'controls']);
+const RETIRED_TABS = Object.freeze({ today: 'now', focus: 'surface' });
 
 function lower(value) {
   return String(value || '').trim().toLowerCase();
@@ -74,6 +79,7 @@ function resolveActionKind(raw = {}) {
 function resolveSaimLiteTab(raw = {}) {
   const tab = lower(raw.tab);
   if (SAIM_LITE_TABS.has(tab)) return tab;
+  if (RETIRED_TABS[tab]) return RETIRED_TABS[tab];
 
   const kind = resolveActionKind(raw);
   if (['standup', 'eod'].includes(kind)) return 'standup';
@@ -132,7 +138,8 @@ function resolveNueroNavigation(raw = {}) {
   if (kind === 'standup' || kind === 'eod') return { view: 'standup', context: {} };
   if (kind === 'email') return { view: 'inbox', context: { filter: 'urgent' } };
   if (kind === 'brain' || kind === 'journal') return { view: 'imports', context: {} };
-  if (kind === 'focus') return { view: 'briefing', context: {} };
+  // Briefing merged into Now (Build 10E).
+  if (kind === 'focus') return { view: 'today', context: {} };
   if (kind === 'capture') return { view: 'chat', context: { mode: 'capture' } };
   return null;
 }

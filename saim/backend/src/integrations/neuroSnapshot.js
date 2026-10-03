@@ -34,14 +34,14 @@ const MAX_STALE_MS = 15 * 60 * 1000;
 // and the readers were finally removed on 27 Aug 2026), so /api/queue/summary is gone.
 // It is still asked for, because a future NEURO may serve it again and the SAiM queue
 // domain degrades honestly without it — but its absence is normal, not a fault.
+// ⚠ Build 10I: trimmed to what is still READ. queue, focus, todos, team and
+// email fed only the retired state engine (stateEngine/inference/seed); the
+// one remaining reader, vaultGraph, seeds from `context` and `capture`.
+// Polling NEURO every 30s for data nothing reads was load with no purpose —
+// and kept a caller on /api/focus alive after its retirement.
 const ENDPOINTS = {
-  queue: { path: '/api/queue/summary', optional: true },
-  focus: { path: '/api/focus' },
-  todos: { path: '/api/todos' },
   context: { path: '/api/context' },
-  team: { path: '/api/team-health?severity=all' },
   capture: { path: '/api/capture/recent' },
-  email: { path: '/api/email/triage' },
 };
 
 const DATA_KEYS = Object.keys(ENDPOINTS);

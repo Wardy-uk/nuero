@@ -320,14 +320,27 @@ const server = new McpServer({
 // Tools: Focus / SAiM
 // ═══════════════════════════════════════════════════════
 
-server.tool('get_focus', 'Get current Focus — what matters now (prioritised items + SAiM directive)', {}, async () => {
-  const data = await neuroApi('/api/focus?noai=true');
-  const items = (data.items || []).map(i => `- [${i.type}] ${i.title}: ${i.reason}`).join('\n');
-  const saim = data.saim?.primary?.message || 'No directive';
+// Build 10O: reads the canonical Now model (/api/canonical/now) — NEURO's
+// attention decision plus world-model situation. /api/focus is retired (410).
+// The tool keeps its name because external sessions call it by that name.
+server.tool('get_focus', 'Get Now — what matters to Nick right now across his whole life: the attention decision, next meaningful event, commitments coming due, what NEURO cannot see', {}, async () => {
+  const data = await neuroApi('/api/canonical/now');
+  const card = (c) => `- [${c.type || c.kind}] ${c.title}${c.reason ? `: ${c.reason}` : ''}`;
+  const primary = data.primary ? card(data.primary) : '- nothing chosen';
+  const secondary = (data.secondary || []).map(card).join('\n');
+  const s = (data.situation && data.situation.sections) || {};
+  const lines = [];
+  if (s.nextEvent) lines.push(`Next: ${s.nextEvent.start} ${s.nextEvent.title}`);
+  if (s.needsYou) lines.push(`Needs you: ${s.needsYou.say}`);
+  for (const c of s.commitments || []) lines.push(`Due: ${c.description} (${c.due.label})`);
+  for (const b of s.blindness || []) lines.push(`Can't see: ${b.label} — ${b.verdictLabel}`);
+  if (s.crowdedOut) lines.push(s.crowdedOut.say);
+  const calm = data.situation && data.situation.calmSay ? `\n${data.situation.calmSay}` : '';
+  const gaps = (data.gaps || []).length ? `\n⚠ Could not read: ${(data.gaps || []).map(g => g.input).join(', ')} — not an all-clear.` : '';
   return {
     content: [{
       type: 'text',
-      text: `## Focus (${data.returned} items, ${data.suppressed} suppressed)\n\nSAiM: ${saim}\n${data.saim?.ignore || ''}\n\n${items}\n\nTone: ${data.tone}, Mode: ${data.mode}`,
+      text: `## Now — ${data.context?.label || 'context unknown'}\n\n${primary}\n${secondary}\n\n${lines.join('\n')}${calm}${gaps}`,
     }],
   };
 });

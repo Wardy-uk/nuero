@@ -31,8 +31,6 @@ import Capture from '../app/src/views/Capture';
 import Now from '../app/src/views/Now';
 import Review from '../app/src/views/Review';
 import Surface from '../app/src/views/Surface';
-import Today from '../app/src/views/Today';
-import Focus from '../app/src/views/Focus';
 import Tasks from '../app/src/views/Tasks';
 import Chat from '../app/src/views/Chat';
 import MeetingPrep from '../app/src/views/MeetingPrep';
@@ -49,8 +47,9 @@ export const SECONDARY = [
   // The ambient SAiM feed. Still the destination for notification routing, and
   // still what the KIOSK opens on — see DEFAULT_TAB below.
   { id: 'surface', label: 'SAiM', icon: '✦', Component: Surface },
-  { id: 'today', label: 'Today', icon: '☀', Component: Today },
-  { id: 'focus', label: 'Focus', icon: '🎯', Component: Focus },
+  // 'today' and 'focus' were removed (Build 10E, 3 Oct 2026). Both were second
+  // answers to "what should I do now?" — the Surface and Now answer it
+  // canonically. Old links resolve through RETIRED_TABS in action-surfaces.
   { id: 'tasks', label: 'Tasks', icon: '✓', Component: Tasks },
   { id: 'voice', label: 'Voice', icon: '🎙️', Component: Capture }, // jumps straight into recording
   { id: 'chat', label: 'Chat', icon: '💬', Component: Chat },

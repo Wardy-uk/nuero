@@ -40,30 +40,26 @@ test('⚠ server.js mounts no email or jira router ahead of the allowlist', () =
   assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'routes', 'jira.js')), false);
 });
 
-test('⚠ the actions router has NO approve, reject or pending-list route', async () => {
-  const seen = [];
-  const realFetch = global.fetch;
-  global.fetch = async (url, init) => { seen.push(url); return realFetch(url, init); };
-  const server = await serve(require('../src/routes/actions'), '/api/actions');
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
-    for (const [method, p] of [['POST', '/api/actions/12/approve'], ['POST', '/api/actions/12/reject'], ['GET', '/api/actions']]) {
-      const res = await realFetch(base + p, { method, headers: { 'content-type': 'application/json' }, body: method === 'POST' ? '{}' : undefined });
-      assert.equal(res.status, 404, `${method} ${p} still answers`);
-    }
-    // The one write kept is internal and reversible (a suppression timer), and it
-    // still validates rather than forwarding blind.
-    const kept = await realFetch(base + '/api/actions/focus/dismiss', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-    assert.equal(kept.status, 400);
-  } finally {
-    server.close();
-    global.fetch = realFetch;
-  }
-  assert.equal(seen.filter((u) => !String(u).startsWith(base)).length, 0, 'a refused route still reached NEURO');
+test('⚠ there is no actions router at all (Build 10I) — nothing to approve through', () => {
+  // It used to keep one write — POST /focus/dismiss, a suppression timer on the
+  // retired /api/focus. With that retired there is nothing left for the router
+  // to do, so it is gone, and with it any route that could grow an approve.
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', 'routes', 'actions.js')), false);
+  const src = fs.readFileSync(SERVER, 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.doesNotMatch(src, /app\.use\('\/api\/actions'/);
 });
 
-test('⚠ the kiosk frontend holds no approve/reject call to bring the route back for', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'src', 'state', 'saimState.jsx'), 'utf8');
-  assert.match(src, /\/api\/actions\/focus\/dismiss/); // positive control
-  assert.doesNotMatch(src, /\/approve`|\/reject`/);
+test('⚠ the kiosk frontend holds no approve/reject call anywhere', () => {
+  const root = path.join(__dirname, '..', '..', 'frontend', 'src');
+  const files = [];
+  (function walk(dir) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p); else if (/\.(jsx?|mjs)$/.test(e.name)) files.push(p);
+    }
+  }(root));
+  assert.ok(files.length > 5, 'positive control: the kiosk source was scanned');
+  for (const f of files) {
+    assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /\/approve`|\/reject`|\/approve'|\/reject'/, `${f} can approve or reject`);
+  }
 });

@@ -39,7 +39,7 @@ test('a good poll is LIVE and carries when it was taken', async () => {
   assert.equal(snap.available, true);
   assert.equal(snap.stale, false);
   assert.ok(snap.polledAt, 'a live read must say when it was taken');
-  assert.ok(snap.data.focus, 'the required endpoints must be folded in');
+  assert.ok(snap.data.context, 'the required endpoints must be folded in');
 });
 
 test('a failed poll degrades to STALE, keeping the last good data rather than blanking', async () => {
@@ -55,7 +55,7 @@ test('a failed poll degrades to STALE, keeping the last good data rather than bl
   assert.equal(snap.stale, true);
   // Still available — a reading from a minute ago is worth showing, LABELLED.
   assert.equal(snap.available, true);
-  assert.equal(snap.data.focus.marker, 'first-good-read');
+  assert.equal(snap.data.context.marker, 'first-good-read');
   assert.equal(snap.reason, 'unreachable');
   assert.ok(typeof snap.ageMs === 'number', 'a stale read must carry its age or nobody can judge it');
   assert.ok(snap.lastAttemptAt, 'and when we last tried');
@@ -75,7 +75,7 @@ test('stale data past its shelf life becomes UNAVAILABLE, not indefinitely stale
     reason: null,
     detail: null,
     polledAt: new Date(Date.now() - (neuroSnapshot.MAX_STALE_MS + 60000)).toISOString(),
-    data: { focus: { marker: 'ancient' } },
+    data: { context: { marker: 'ancient' } },
     errors: {},
   });
 
@@ -85,7 +85,7 @@ test('stale data past its shelf life becomes UNAVAILABLE, not indefinitely stale
 
   assert.equal(snap.state, 'unavailable');
   assert.equal(snap.available, false);
-  assert.equal(snap.data.focus, null, 'nothing ancient may survive into the model');
+  assert.equal(snap.data.context, null, 'nothing ancient may survive into the model');
 });
 
 test('losing the configuration is NOT an outage — stale data must not paper over it', async () => {
@@ -96,35 +96,34 @@ test('losing the configuration is NOT an outage — stale data must not paper ov
   const snap = await neuroSnapshot.refresh({ env: {} });
   assert.equal(snap.state, 'not-configured');
   assert.equal(snap.available, false);
-  assert.equal(snap.data.focus, null, 'data with no configured origin has no provenance left');
+  assert.equal(snap.data.context, null, 'data with no configured origin has no provenance left');
   assert.match(snap.detail, /NEURO_BASE_URL/);
 });
 
-// ⚠ NEURO DELETED its Jira queue feature in July 2026, so /api/queue/summary 404s on
-// every poll, for ever. Counting that against reach would pin the snapshot at
-// "partial" permanently and make the word useless for the failures that matter.
-test('a retired upstream endpoint does not make a healthy poll look partial', async () => {
-  const snap = await withFetch(async (url) => {
-    if (String(url).includes('/api/queue/summary')) return jsonResponse({ error: 'Not Found' }, 404);
-    return jsonResponse({ ok: true });
-  }, () => neuroSnapshot.refresh({ env: CONFIGURED }));
-
+// ⚠ Build 10I: the snapshot feeds only vaultGraph now (context + capture).
+// queue, focus, todos, team and email fed the retired state engine, and the
+// focus read kept a caller on /api/focus after it was retired. Pinned as an
+// absence: the poller must never ask for them again.
+test('the snapshot asks only for what is still read — never /api/focus or the dead queue', async () => {
+  const asked = [];
+  const snap = await withFetch(async (url) => { asked.push(String(url)); return jsonResponse({ ok: true }); },
+    () => neuroSnapshot.refresh({ env: CONFIGURED }));
   assert.equal(snap.state, 'live');
-  assert.equal(snap.reason, null, 'a known-absent optional endpoint is not a fault');
-  assert.equal(snap.data.queue, null, 'and it is still honestly absent, not invented');
-  assert.ok(snap.errors.queue, 'the failure is recorded rather than swallowed');
+  assert.ok(asked.some((u) => u.includes('/api/context')), 'positive control: the context read still happens');
+  for (const gone of ['/api/focus', '/api/queue/summary', '/api/todos', '/api/team-health', '/api/email/triage']) {
+    assert.ok(!asked.some((u) => u.includes(gone)), `the snapshot still polls ${gone}`);
+  }
 });
 
 test('a required endpoint going missing IS reported as partial, by name', async () => {
   const snap = await withFetch(async (url) => {
-    if (String(url).includes('/api/team-health')) throw new Error('boom');
-    if (String(url).includes('/api/queue/summary')) return jsonResponse({}, 404);
+    if (String(url).includes('/api/capture/recent')) throw new Error('boom');
     return jsonResponse({ ok: true });
   }, () => neuroSnapshot.refresh({ env: CONFIGURED }));
 
   assert.equal(snap.state, 'live');
   assert.equal(snap.reason, 'partial');
-  assert.match(snap.detail, /team/);
+  assert.match(snap.detail, /capture/);
 });
 
 test('the snapshot never sends a credential it was not given', async () => {

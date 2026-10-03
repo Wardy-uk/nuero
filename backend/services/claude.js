@@ -465,21 +465,19 @@ async function buildContextBlock(queueSummary, dailyNote, previousNote, standupC
     diagnostics.push('location: yes');
   }
 
-  // Strava — only for wellbeing intent
+  // Today's workouts — only for wellbeing intent. From Apple Health since
+  // Build 10M: Strava was retired (never authenticated; its API is a dead end).
   if (intent === 'wellbeing') try {
-    const stravaService = require('./strava');
-    if (stravaService.isConfigured() && stravaService.isAuthenticated()) {
-      const activityCtx = await stravaService.getActivityContext();
-      if (activityCtx) {
-        parts.push(`## Today's Activity\n${activityCtx}`);
-        diagnostics.push('strava: yes');
-      } else {
-        diagnostics.push('strava: no activity today');
-      }
+    const activityCtx = require('./apple-health').todaysWorkoutContext();
+    if (activityCtx) {
+      parts.push(`## Today's Activity\n${activityCtx}`);
+      diagnostics.push('workouts: yes');
+    } else {
+      diagnostics.push('workouts: none today');
     }
   } catch (e) {
-    diagnostics.push('strava: error');
-  } else { diagnostics.push('strava: skipped'); }
+    diagnostics.push('workouts: error');
+  } else { diagnostics.push('workouts: skipped'); }
 
   // Apple Health — only for wellbeing intent
   if (intent === 'wellbeing') try {
