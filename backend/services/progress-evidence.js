@@ -89,7 +89,7 @@ function applyEvidence(ev) {
             at = excluded.at, polarity = excluded.polarity, strength = excluded.strength, reason = excluded.reason,
             detail_json = excluded.detail_json, received_at = excluded.received_at`,
   [p.commitmentId, p.kind, String(p.ref), ev.eventId, p.at, p.polarity, p.strength, p.reason || null,
-    JSON.stringify(p.detail || {}), ev.receivedAt]);
+    JSON.stringify({ ...(p.detail || {}), rule: p.rule || null }), ev.receivedAt]);
 }
 
 function reset() { db.run('DELETE FROM wm_progress_evidence'); }
@@ -173,6 +173,21 @@ const dd = () => (_dedupe || (_dedupe = require('./task-dedupe')));
 // progress at most.
 const DELIVERY_VERB = /\b(send|share|provide|forward|email|e-mail|deliver|submit|circulate|confirm|reply|respond|update|inform|tell|feed\s*back|follow\s+up|let\s+\w+\s+know)\b/i;
 
+// Mail that left in Nick's name without Nick writing it: calendar responses,
+// sharing and comment notifications, auto-replies. Measured on the first live
+// pass (3 Oct): "Nicholas Ward has shared Power BI Report …", "Nick Ward left a
+// comment in …" and "Accepted: …" were 6 of the 8 rows recorded.
+const AUTOMATED_SUBJECT = /^(accepted|declined|tentative|tentatively accepted|canceled|cancelled|updated invitation|invitation|automatic reply|out of office|undeliverable|read)\s*:|\bhas shared\b|\bshared .* with you\b|\bleft a comment\b|\bmentioned you\b|\bassigned you\b/i;
+
+// Evidence carries the version of the rule that matched it. When a rule is
+// found wrong on live data the old rows stay in the append-only log — they
+// cannot be removed — but are no longer READ, and every read says how many it
+// set aside. Bump a version only with a written reason.
+//   sent-email@1 → @2 (3 Oct): one shared word ("team", "call") was enough,
+//                  and automated mail in Nick's name counted.
+const RULES = { 'sent-email': 'sent-email@2', 'later-note': 'later-note@2' };
+const CURRENT_RULES = new Set(Object.values(RULES));
+
 function contentTokens(text, exclude = new Set()) {
   const out = new Set();
   for (const t of dd().tokenize(text)) if (!exclude.has(t)) out.add(t);
@@ -197,11 +212,15 @@ function matchSentEmail(commitment, msg, { targets, names = [] }) {
   const recipients = [...(msg.to || []), ...(msg.cc || [])].map((a) => String(a).toLowerCase());
   const hit = recipients.find((a) => targets.has(a));
   if (!hit) return null;
+  if (AUTOMATED_SUBJECT.test(String(msg.subject || ''))) return null; // sent in his name, not by him
   const exclude = nameTokens(names);
   const a = contentTokens(commitment.description, exclude);
   const b = contentTokens(msg.subject, exclude);
   const shared = [...a].filter((t) => b.has(t));
   if (!shared.length) return null; // "sent Chris an email" is not evidence about this promise
+  // One shared word is a coincidence, not a reference: "team" and "call" are in
+  // half his mail (sent-email@2).
+  if (shared.length < 2) return null;
   const detail = { recipient: hit, subject: String(msg.subject || '').slice(0, 160), shared, hasAttachments: !!msg.hasAttachments };
   if (commitment.direction !== 'by-nick') {
     return { polarity: 'progress', strength: 'partial', reason: `chased by email: sent to the person who owes it, subject shares "${shared.join(', ')}"`, detail };
@@ -212,9 +231,7 @@ function matchSentEmail(commitment, msg, { targets, names = [] }) {
       detail };
   }
   return { polarity: 'progress', strength: 'partial',
-    reason: shared.length >= 2
-      ? `sent to the counterparty about "${shared.join(', ')}" — but the commitment is not a communication, so an email about it is not doing it`
-      : `sent to the counterparty; subject shares only "${shared[0]}"`,
+    reason: `sent to the counterparty about "${shared.join(', ')}" — but the commitment is not a communication, so an email about it is not doing it`,
     detail };
 }
 
@@ -282,7 +299,7 @@ function _fingerprint(x) { return crypto.createHash('sha256').update(JSON.string
 /** Publish one piece of evidence, change-keyed so a re-classified line is a new fact and a re-scan is nothing. */
 function publishEvidence(commitmentId, kind, ref, body, at, nowMs) {
   const ck = require('./change-key');
-  const payload = { commitmentId, kind, ref: String(ref), at, ...body };
+  const payload = { commitmentId, kind, ref: String(ref), at, rule: RULES[kind] || null, ...body };
   payload.fingerprint = _fingerprint(payload);
   const subjectId = `${commitmentId}|${kind}|${hash(ref)}`.slice(0, 256);
   const held = ck.latest('progress-evidence', subjectId, ['observation.progress.evidence']);
@@ -490,11 +507,20 @@ function coverage() {
 
 // ── reading ─────────────────────────────────────────────────────────────────
 
-function evidenceFor(commitmentId) {
+function _rows(commitmentId) {
   return db.all('SELECT * FROM wm_progress_evidence WHERE commitment_id = ? ORDER BY at DESC', [commitmentId]).map((r) => ({
     evidenceId: r.evidence_event_id, kind: r.kind, ref: r.ref, at: r.at, polarity: r.polarity, strength: r.strength,
     provenance: r.provenance_kind, reason: r.reason, detail: parse(r.detail_json) || {},
   }));
+}
+
+/** Evidence matched by a CURRENT rule. Rows from a retired rule are kept in the log and not read. */
+function evidenceFor(commitmentId) {
+  return _rows(commitmentId).filter((e) => CURRENT_RULES.has(e.detail.rule));
+}
+
+function retiredFor(commitmentId) {
+  return _rows(commitmentId).filter((e) => !CURRENT_RULES.has(e.detail.rule)).length;
 }
 
 /** The derived progress of one commitment, with its evidence. */
@@ -510,6 +536,7 @@ function progressFor(commitmentId, { cov = coverage() } = {}) {
     laterNotes: commitment.source.path || commitment.meeting ? cov.laterNotes : 'not-applicable',
   };
   return { commitmentId, ...deriveProgress({ commitment, task, evidence, history, coverage: applicable }), evidence,
+    retiredEvidence: retiredFor(commitmentId),
     coverage: { ...applicable, scannedAt: cov.scannedAt } };
 }
 
@@ -524,7 +551,8 @@ function summary() {
     byState[p.state] = (byState[p.state] || 0) + 1;
     items.push({ commitmentId: id, state: p.state, basis: p.basis, reasons: p.reasons, evidence: p.evidence.length });
   }
-  return { coverage: cov, withEvidence: ids.length, byState, items };
+  const retired = db.all('SELECT detail_json FROM wm_progress_evidence').filter((r) => !CURRENT_RULES.has((parse(r.detail_json) || {}).rule)).length;
+  return { coverage: cov, withEvidence: items.filter((i) => i.evidence > 0).length, byState, retiredRuleRows: retired, rules: RULES, items };
 }
 
 module.exports = {

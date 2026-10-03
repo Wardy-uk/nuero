@@ -89,8 +89,38 @@ test('a sent email is only evidence when it goes to the counterparty AND shares 
   const strong = pe.matchSentEmail(c, msg('5', 'September support figures', ['chris.middleton@nurtur.tech'], '2026-09-29T10:00:00Z'), { targets, names });
   assert.equal(strong.polarity, 'done');
   assert.equal(strong.strength, 'strong');
-  const one = pe.matchSentEmail(c, msg('6', 'Figures', ['chris.middleton@nurtur.tech'], '2026-09-29T10:00:00Z'), { targets, names });
-  assert.equal(one.polarity, 'progress', 'one shared word is progress, never done');
+  assert.equal(pe.matchSentEmail(c, msg('6', 'Figures', ['chris.middleton@nurtur.tech'], '2026-09-29T10:00:00Z'), { targets, names }), null,
+    'one shared word is a coincidence, not a reference (sent-email@2)');
+});
+
+test('mail sent IN his name but not BY him is never evidence — the live subjects from the first pass', () => {
+  const to = ['stephen.mitchell@nurtur.tech'];
+  const targets = new Set(to);
+  const c = { description: 'Stephen to build the Teams call reports dashboard', direction: 'to-nick', createdAt: '2026-09-20 10:00:00' };
+  for (const subject of [
+    "Nicholas Ward has shared Power BI Report 'Teams Call Reports' with you",
+    'Nick Ward left a comment in "Teams call reports"',
+    'Accepted: Teams Call Reports review',
+    'Automatic reply: Teams call reports',
+  ]) assert.equal(pe.matchSentEmail(c, msg('a', subject, to, '2026-09-29T10:00:00Z'), { targets, names: ['Stephen Mitchell'] }), null, subject);
+  const real = pe.matchSentEmail(c, msg('b', 'Where are we on the Teams call reports?', to, '2026-09-29T10:00:00Z'), { targets, names: ['Stephen Mitchell'] });
+  assert.equal(real.polarity, 'progress', 'positive control: a real chase about it still counts');
+});
+
+test('evidence from a RETIRED rule stays in the log but is not read — and the read says how many it set aside', async () => {
+  const id = addTask({ text: 'Nick to send the team call figures to Chris Middleton', origin_path: SRC_NOTE });
+  await reconcile();
+  const cid = `commitment:task:${id}`;
+  // An @1-era row: published without a rule, exactly as the first live pass did.
+  bus.publishEvent({ type: 'observation.progress.evidence', occurredAt: '2026-09-30T10:00:00.000Z', source: { system: 'microsoft-graph' },
+    subject: { entityType: 'progress-evidence', entityId: `${cid}|sent-email|old` }, idempotencyKey: `pe-old:${cid}`,
+    payload: { commitmentId: cid, kind: 'sent-email', ref: 'OLD-1', at: '2026-09-30T10:00:00.000Z', polarity: 'done', strength: 'strong',
+      reason: 'old rule', detail: { subject: 'Team call' }, fingerprint: 'old' } });
+  await pump();
+  const p = prog(cid);
+  assert.equal(p.state, 'no_evidence', 'a retired-rule row is not read');
+  assert.equal(p.retiredEvidence, 1, 'and the read says one was set aside');
+  assert.equal(db.get('SELECT COUNT(*) n FROM wm_progress_evidence WHERE commitment_id = ?', [cid]).n, 1, 'the row itself is kept');
 });
 
 test('an email about a commitment that is NOT a communication is progress at most', () => {
