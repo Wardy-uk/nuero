@@ -58,7 +58,64 @@ export function age(iso, now = Date.now()) {
 const ORIGIN_WORDS = {
   'chase-button': 'You pressed Chase',
   risk: 'NEURO saw it was at risk',
+  composer: 'You wrote it in the Inbox',
+  drafted: 'Drafted from an email card',
+  'meeting-triage': 'The invite has no agenda',
+  'weekly-risk': 'Queued from Weekly Risk',
 };
+
+// Build 8: every email NEURO can send is one of these, approved here.
+const TYPE_WORDS = {
+  chase_commitment: 'Chase by email',
+  reply_email: 'Reply to an email',
+  chase_agenda: 'Ask an organiser for the agenda',
+  send_weekly_risk_report: 'Weekly risk report',
+};
+
+const addr = (r) => (r?.name && r.name !== r.email ? `${r.name} <${r.email}>` : r?.email);
+
+// Sends made before the governed path existed: history, never verified.
+const LEGACY_WORDS = {
+  legacy_chase: 'Chase',
+  legacy_reply_email: 'Email reply',
+  legacy_chase_agenda: 'Agenda request',
+  legacy_weekly_risk_report: 'Weekly risk report',
+};
+
+/** Why approval is not possible right now, or null. Shared with the Inbox and Weekly Risk screens. */
+export function gateFor(data, a) {
+  if (!data) return 'Checking whether approval is possible…';
+  if (data.approvalLock?.locked) return `Approval is locked after too many wrong codes, until ${String(data.approvalLock.lockedUntil).slice(11, 16)} UTC.`;
+  if (!data.approvalCode?.set) return 'No approval code is set yet, so nothing can be approved. On the Pi, run: node backend/scripts/set-approval-code.js';
+  if (a.executes && !data.sending?.enabled) return 'Sending is switched off (Settings → Switches → "Send approved emails"). You can read, edit or reject this; approving is off until sending is on.';
+  return null;
+}
+
+async function postVerb(a, verb, body) {
+  const res = await fetch(apiUrl(`/api/prepared-actions/${a.actionId}/${verb}`), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+  });
+  return res.json();
+}
+
+/**
+ * Approve exactly what is on screen: a fresh challenge for this version and
+ * hash, then the code. Returns the route's answer ({ ok, error, status, ... }).
+ * The ONE approval path every screen uses — Actions, the Inbox composer, the
+ * Weekly Risk panel — so none can drift into a second way to send.
+ */
+export async function approveWithCode(a, code) {
+  const ch = await postVerb(a, 'approval-challenge', {});
+  if (!ch.ok) return ch;
+  return postVerb(a, 'approve', { payloadHash: a.payloadHash, challengeId: ch.challengeId, approvalCode: code });
+}
+
+/** The approval gate state (code set, sending switch, lock) from the queue route. */
+export async function fetchApprovalState() {
+  const d = await fetch(apiUrl('/api/prepared-actions?limit=1')).then((r) => r.json());
+  if (!d.ok) throw new Error(d.error || 'could not read');
+  return d;
+}
 
 /**
  * One drafted action. `gate` — when set — is the reason approval is not
@@ -72,10 +129,18 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
   const [subject, setSubject] = useState(action.draft?.subject || '');
   const [body, setBody] = useState(action.draft?.body || '');
   const to = action.draft?.to?.[0] || {};
+  const toAll = (action.draft?.to || []).map(addr).filter(Boolean);
+  const ccAll = (action.draft?.cc || []).map(addr).filter(Boolean);
   const ev = action.evidence || {};
+  const t = action.target || {};
+  const type = action.actionType;
   const sends = action.executes;
   const open = action.status === 'prepared';
-  const canEditFailed = action.status === 'failed' && action.retrySafe === true;
+  // The weekly report is generated: it is regenerated on its panel, never
+  // hand-edited here (that would break the markdown/HTML the approval binds).
+  const editable = type !== 'send_weekly_risk_report';
+  const canEditFailed = editable && action.status === 'failed' && action.retrySafe === true;
+  const who = toAll.length + ccAll.length > 1 ? `${toAll.length + ccAll.length} people` : (to.email || 'them');
 
   const confirm = async () => {
     const typed = code;
@@ -87,7 +152,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
   return (
     <div className="ap-card ap-kind-outbound pa-card">
       <div className="ap-card-head">
-        <span className="ap-label">{sends ? 'Chase by email' : 'Holding note (prepare-only)'}</span>
+        <span className="ap-label">{sends ? (TYPE_WORDS[type] || type) : 'Holding note (prepare-only)'}</span>
         <span className="pa-authority" title="Consequential external action: needs your explicit approval of the exact message">A4</span>
         {action.version > 1 && <span className="pa-version">v{action.version}</span>}
         {ORIGIN_WORDS[action.origin] && <span className="pa-origin">{ORIGIN_WORDS[action.origin]}</span>}
@@ -103,8 +168,13 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
       <div className="ap-reason">{action.reason}</div>
 
       <dl className="ap-fields">
-        <div className="ap-field"><dt>To</dt><dd className="mono">{to.name ? `${to.name} <${to.email}>` : to.email}</dd></div>
-        <div className="ap-field"><dt>Commitment</dt><dd>{ev.commitment?.description}</dd></div>
+        <div className="ap-field"><dt>To</dt><dd className="mono">{toAll.join(', ')}</dd></div>
+        {ccAll.length > 0 && <div className="ap-field"><dt>Cc</dt><dd className="mono">{ccAll.join(', ')}</dd></div>}
+        {ev.commitment?.description && <div className="ap-field"><dt>Commitment</dt><dd>{ev.commitment.description}</dd></div>}
+        {type === 'reply_email' && <div className="ap-field"><dt>In reply to</dt><dd>{t.fromName || t.from} — “{t.originalSubject || '(no subject)'}”{action.draft?.mode === 'replyAll' ? ' · reply-all' : ''}</dd></div>}
+        {type === 'reply_email' && ev.recipientsFrom && <div className="ap-field"><dt>Recipients from</dt><dd>{ev.recipientsFrom}</dd></div>}
+        {type === 'chase_agenda' && <div className="ap-field"><dt>Meeting</dt><dd>{t.subject} · {String(t.start || '').slice(0, 16).replace('T', ' ')}</dd></div>}
+        {type === 'send_weekly_risk_report' && <div className="ap-field"><dt>Report</dt><dd>w/c {t.week} · version {t.reportVersion}{t.snapshotDate ? ` · data as at ${t.snapshotDate}` : ''}{t.recipientSource === 'manual' ? ' · address typed by hand' : ''}</dd></div>}
         {ev.finding?.summary && <div className="ap-field"><dt>Why now</dt><dd>{ev.finding.summary}</dd></div>}
         {ev.progress?.state && <div className="ap-field"><dt>Progress seen</dt><dd>{ev.progress.state === 'no_evidence' ? 'nothing suggests it moved (your sent mail was checked)' : ev.progress.state}</dd></div>}
         {open && action.expiresAt && <div className="ap-field"><dt>Expires</dt><dd>{new Date(action.expiresAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</dd></div>}
@@ -122,7 +192,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
         <div className="pa-edit">
           <label>Subject<input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} /></label>
           <label>Message<textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} maxLength={5000} /></label>
-          <p className="pa-note">Saving makes a new version for you to approve. The recipient stays {to.email}.</p>
+          <p className="pa-note">Saving makes a new version for you to approve. The recipients stay {[...toAll, ...ccAll].join(', ')}.</p>
         </div>
       )}
 
@@ -133,7 +203,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
         <div className="pa-confirm">
           <p className="pa-note">
             {sends
-              ? <>This sends <strong>exactly the email above</strong> to <span className="mono">{to.email}</span>, as you, then checks Sent Items. It is never sent twice.</>
+              ? <>This sends <strong>exactly the {type === 'send_weekly_risk_report' ? 'report' : 'email'} above</strong> to <span className="mono">{who}</span>, as you, then checks Sent Items. It is never sent twice.</>
               : 'This records your approval. Nothing will be sent.'}
           </p>
           <label className="pa-code">
@@ -172,7 +242,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
                   {sends ? 'Approve & send…' : 'Approve (records only)…'}
                 </button>
               )}
-              <button className="ap-btn ap-btn-ghost" disabled={busy} onClick={() => setEditing(true)}>{canEditFailed ? 'Edit & resend…' : 'Edit'}</button>
+              {(editable && (open || canEditFailed)) && <button className="ap-btn ap-btn-ghost" disabled={busy} onClick={() => setEditing(true)}>{canEditFailed ? 'Edit & resend…' : 'Edit'}</button>}
               {open && <button className="ap-btn ap-btn-ghost" disabled={busy} onClick={onReject}>Reject</button>}
             </>
           )}
@@ -187,7 +257,7 @@ export function LegacyCard({ item }) {
   return (
     <div className="ap-card pa-card pa-legacy">
       <div className="ap-card-head">
-        <span className="ap-label">Chase (old queue)</span>
+        <span className="ap-label">{LEGACY_WORDS[item.actionType] || 'Old queue send'} ({item.provenance === 'inbox_composer' ? 'sent straight from the Inbox' : 'old queue'})</span>
         <span className="pa-legacy-tag">legacy · unverified · pre-ledger</span>
         <span className="ap-when">{item.occurredAt ? String(item.occurredAt).slice(0, 16) : 'date unknown'}</span>
       </div>
@@ -221,12 +291,7 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
 
   const say = (ok, text) => setNotes((n) => [{ ok, text }, ...n].slice(0, 5));
 
-  const post = async (a, verb, body) => {
-    const res = await fetch(apiUrl(`/api/prepared-actions/${a.actionId}/${verb}`), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
-    });
-    return res.json();
-  };
+  const post = postVerb;
 
   const act = async (a, verb, body) => {
     setBusyId(a.actionId);
@@ -247,9 +312,7 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
   const approve = async (a, code) => {
     setBusyId(a.actionId);
     try {
-      const ch = await post(a, 'approval-challenge', {});
-      if (!ch.ok) { say(false, ch.error); return false; }
-      const d = await post(a, 'approve', { payloadHash: a.payloadHash, challengeId: ch.challengeId, approvalCode: code });
+      const d = await approveWithCode(a, code);
       say(!!d.ok, d.ok ? (d.detail || d.notice || 'Approved') : d.error);
       return !!d.ok;
     } catch (e) {
@@ -273,20 +336,14 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
   const liveCount = SECTIONS.reduce((n, [k]) => n + pick(k).length, 0);
   if (!liveCount && !history.length && !legacy.length && !notes.length) return null;
 
-  const gateFor = (a) => {
-    if (data.approvalLock?.locked) return `Approval is locked after too many wrong codes, until ${String(data.approvalLock.lockedUntil).slice(11, 16)} UTC.`;
-    if (!data.approvalCode?.set) return 'No approval code is set yet, so nothing can be approved. On the Pi, run: node backend/scripts/set-approval-code.js';
-    if (a.executes && !data.sending?.enabled) return 'Sending is switched off (Settings → Switches → "Send a chase once you approve it"). You can read, edit or reject this; approving is off until sending is on.';
-    return null;
-  };
-
   return (
     <section className="ap-group pa-section">
       <h3 className="ap-group-title ap-group-outbound">{title}<span className="ap-count">{liveCount}</span></h3>
       {blurb && (
         <p className="ap-group-blurb">
-          Chases you asked for, and ones NEURO drafted for commitments at risk. One is sent only when you approve its exact words
-          with your approval code, then confirmed in Sent Items. Sending a chase does not mark the commitment done.
+          Every email NEURO can send as you: chases, replies you wrote in the Inbox, agenda requests and the weekly risk report.
+          One is sent only when you approve its exact words and recipients with your approval code, then confirmed in Sent Items.
+          Sending never marks anything done.
         </p>
       )}
       {notes.map((n, i) => <div key={i} className={`ap-outcome${n.ok ? '' : ' bad'}`}><span className="ap-outcome-mark">{n.ok ? '✓' : '✗'}</span><span className="ap-outcome-text">{n.text}</span></div>)}
@@ -301,7 +358,7 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
                 key={a.actionId}
                 action={a}
                 busy={busyId === a.actionId}
-                gate={gateFor(a)}
+                gate={gateFor(data, a)}
                 onApprove={(code) => approve(a, code)}
                 onReject={() => act(a, 'reject', {})}
                 onEdit={(fields) => act(a, 'edit', { payloadHash: a.payloadHash, ...fields })}

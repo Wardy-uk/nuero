@@ -308,76 +308,44 @@ ${trimText(merged.body || merged.preview || '', 4000)}`;
   }
 });
 
-// POST /api/email/triage/:emailId/reply — send the reply via Graph
+// ⚠ Build 8: until 3 Oct 2026 this route SENT the reply directly, on the PIN
+// alone, to whatever `to`/`cc` the caller supplied — and the remote MCP
+// gateway classed it as an ordinary action, so a machine client could send
+// email as Nick with no approval at all. It now only prepares; the send is
+// action-executor's, after human-proof approval, verified in Sent Items. The
+// sent-reply record (#69) and the triage dismissal ('replied', #70) moved to
+// the executor, so they describe a send that happened, not one requested.
+//
+// POST /api/email/triage/:emailId/reply — PREPARE a reply (prepare reply, draft reply, compose): binds the exact recipients and words as a governed action for Nick to approve with his approval code. Sends NOTHING. Body: { body, to?, cc?, replyAll? }
 router.post('/triage/:emailId/reply', async (req, res) => {
   try {
     const emailId = decodeURIComponent(req.params.emailId);
     const body = String(req.body?.body || '').trim();
-    if (!body) return res.status(400).json({ ok: false, error: 'Reply body is empty' });
+    if (!body) return res.status(400).json({ ok: false, sent: false, error: 'Reply body is empty' });
 
     const to = Array.isArray(req.body?.to) ? req.body.to : null;
     if (to && to.length === 0) {
-      return res.status(400).json({ ok: false, error: 'Add at least one recipient' });
+      return res.status(400).json({ ok: false, sent: false, error: 'Add at least one recipient' });
     }
 
-    const result = await microsoft.sendEmailReply(emailId, body, {
-      replyAll: Boolean(req.body?.replyAll),
+    const r = await require('../services/prepared-actions').prepareReply({
+      emailId,
+      body,
+      mode: req.body?.replyAll ? 'replyAll' : 'reply',
       to,
       cc: Array.isArray(req.body?.cc) ? req.body.cc : null,
+      origin: 'composer',
     });
-
-    if (!result.sent) {
-      const messages = {
-        auth: 'Not signed in to Microsoft — reconnect in settings.',
-        scope: 'Mail.Send permission not granted — re-consent to Microsoft.',
-        no_recipients: 'Add at least one recipient.',
-      };
-      return res.status(502).json({
-        ok: false,
-        error: messages[result.reason] || `Send failed (${result.reason})`,
-      });
-    }
-
-    // Keep a record of the reply itself (#69). Until this, dismissing was the
-    // ENTIRE trace — the only evidence a reply happened lived in Outlook's Sent
-    // Items, so "I answered that on Tuesday" was unanswerable from NEURO.
-    //
-    // Recorded AFTER the send and never allowed to fail the request: the mail
-    // has already left, and a bookkeeping error must not be reported to Nick as
-    // a failed send.
-    //
-    // Recipients carry their provenance rather than being stored as fact. On a
-    // plain reply/replyAll GRAPH chooses the addressees, not NEURO — only an
-    // explicit `to` from the composer is what was actually addressed. #65's
-    // rule: report what was observed.
-    const stored = emailTriage.getStoredTriage().find(e => e.id === emailId);
-    let recipients = to;
-    let recipientsSource = 'unknown';
-    if (Array.isArray(to) && to.length) {
-      recipientsSource = 'explicit';
-    } else if (stored?.fromEmail) {
-      recipients = [{ name: stored.from || stored.fromEmail, email: stored.fromEmail }];
-      recipientsSource = 'inferred';
-    }
-    sentReplies.record({
-      emailId,
-      subject: stored?.subject || null,
-      fromName: stored?.from || null,
-      fromEmail: stored?.fromEmail || null,
-      recipients,
-      recipientsSource,
-      replyAll: Boolean(req.body?.replyAll),
-      body,
+    if (!r.ok) return res.status(r.code || 400).json({ ok: false, sent: false, error: r.error, action: r.action || null });
+    res.json({
+      ok: true,
+      sent: false,
+      prepared: true,
+      action: r.action,
+      notice: 'Prepared — nothing has been sent. Approve this exact reply with your approval code to send it.',
     });
-
-    // Replied means handled — take it out of triage so it doesn't come back.
-    // Recorded as 'replied' rather than 'done': it is the strongest possible
-    // signal that triage was RIGHT to surface this one, and lumping it in with a
-    // manual dismiss would throw that away (#70).
-    emailTriage.dismissEmail(emailId, 'replied');
-    res.json({ ok: true, sent: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, sent: false, error: e.message });
   }
 });
 

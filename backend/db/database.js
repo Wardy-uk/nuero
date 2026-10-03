@@ -465,6 +465,11 @@ async function init() {
   // human proof. Same rule as above: not swallowed, because its triggers are
   // the database half of "a machine client cannot approve".
   require('./migrate-build7-actions').migrate(db);
+  // Build 8 — every outbound email is governed: per-type duplicate indexes,
+  // legacy history widened (a table rebuild that says so), the old queue's
+  // sends recorded as unverified, and any pending legacy outbound superseded.
+  // Not swallowed, for the same reason as the two above.
+  require('./migrate-build8-actions').migrate(db);
 
   // health_daily: blood pressure and heart rate.
   //

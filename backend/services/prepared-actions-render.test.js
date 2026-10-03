@@ -89,9 +89,16 @@ test('a prepare-only type says nothing will be sent and does not offer "send"', 
 
 test('the page approves with a fresh challenge, the DISPLAYED payload hash and the typed code, and is mounted on the Actions screen', () => {
   const src = fs.readFileSync(FILE, 'utf8');
-  assert.match(src, /post\(a, 'approval-challenge', \{\}\)/);
-  assert.match(src, /post\(a, 'approve', \{ payloadHash: a\.payloadHash, challengeId: ch\.challengeId, approvalCode: code \}\)/);
+  // Build 8: ONE exported helper (approveWithCode) does challenge + approve for
+  // every screen that approves an email — Actions, the Inbox, Weekly Risk.
+  assert.match(src, /postVerb\(a, 'approval-challenge', \{\}\)/);
+  assert.match(src, /postVerb\(a, 'approve', \{ payloadHash: a\.payloadHash, challengeId: ch\.challengeId, approvalCode: code \}\)/);
   assert.match(src, /\/api\/prepared-actions\?limit=50/);
+  for (const other of ['InboxPanel.jsx', 'WeeklyRiskPanel.jsx']) {
+    const s = fs.readFileSync(path.resolve(FILE, '..', other), 'utf8');
+    assert.match(s, /approveWithCode\(/, `${other} approves through the shared helper`);
+    assert.doesNotMatch(s, /\/api\/actions\/\$\{[^}]+\}\/approve/, `${other} has no old-queue approve door`);
+  }
   // The code is never stored: no localStorage/sessionStorage anywhere in the queue.
   assert.doesNotMatch(src, /localStorage|sessionStorage|indexedDB/);
   const panel = fs.readFileSync(path.resolve(FILE, '..', 'ActionsPanel.jsx'), 'utf8');

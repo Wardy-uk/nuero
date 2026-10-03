@@ -1575,64 +1575,11 @@ async function completeMicrosoftTask(taskId, source = null, listId = null) {
   return completeTodoTask(taskId, listId);
 }
 
-// Reply to a message via Graph. Needs Mail.Send — degrades with a reason
-// instead of throwing so the UI can tell Nick what to fix.
-//
-// The /reply action addresses the message itself and can only ever ADD
-// recipients, so when the composer hands us an explicit list we go the long way
-// round: createReply gives a draft (with the quoted original), we overwrite its
-// recipients and prepend the reply text, then send it.
-async function sendEmailReply(emailId, bodyText, { replyAll = false, to = null, cc = null } = {}) {
-  const text = String(bodyText || '').trim();
-  if (!emailId) return { sent: false, reason: 'no_email_id' };
-  if (!text) return { sent: false, reason: 'empty_body' };
-
-  let token;
-  try {
-    token = await getAccessToken();
-  } catch (e) {
-    console.warn('[Mail] Reply auth failed:', e.message);
-    return { sent: false, reason: 'auth' };
-  }
-  if (!token) return { sent: false, reason: 'auth' };
-
-  const html = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>');
-
-  if (Array.isArray(to)) {
-    return _sendReplyWithRecipients(emailId, html, to, cc || [], token);
-  }
-
-  const action = replyAll ? 'replyAll' : 'reply';
-  try {
-    const res = await fetch(
-      `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(emailId)}/${action}`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comment: html }),
-        signal: AbortSignal.timeout(30000)
-      }
-    );
-    if (res.status === 403) {
-      console.log('[Mail] Reply blocked — Mail.Send scope not granted');
-      return { sent: false, reason: 'scope' };
-    }
-    if (res.status === 202 || res.ok) {
-      console.log(`[Mail] Reply sent for ${emailId}`);
-      return { sent: true };
-    }
-    const detail = await res.text().catch(() => '');
-    console.error(`[Mail] Reply failed ${res.status}:`, detail.slice(0, 300));
-    return { sent: false, reason: `http_${res.status}` };
-  } catch (e) {
-    console.error('[Mail] Reply error:', e.message);
-    return { sent: false, reason: 'error', error: e.message };
-  }
-}
+// ⚠ Build 8 (3 Oct 2026): sendEmailReply and _sendReplyWithRecipients are
+// DELETED. They sent a reply directly on a PIN-only call, with caller-chosen
+// recipients, no ledger and no verification. Every reply NEURO sends is now a
+// governed reply_email: prepared-actions.prepareReply → approval proof →
+// action-executor (action-mail.createReplyDraft / patchDraft / sendDraft).
 
 function toGraphRecipients(list) {
   return (list || [])
@@ -1640,56 +1587,6 @@ function toGraphRecipients(list) {
     .map((address) => String(address || '').trim())
     .filter(Boolean)
     .map((address) => ({ emailAddress: { address } }));
-}
-
-// createReply → set recipients + body → send. Three calls, but it's the only
-// way to drop a recipient the original thread had.
-async function _sendReplyWithRecipients(emailId, html, to, cc, token) {
-  const toList = toGraphRecipients(to);
-  if (!toList.length) return { sent: false, reason: 'no_recipients' };
-
-  const draft = await graphWrite(
-    `/me/messages/${encodeURIComponent(emailId)}/createReply`,
-    'POST',
-    {},
-    token
-  );
-  if (!draft.ok || !draft.data?.id) {
-    console.error('[Mail] createReply failed:', draft.reason, draft.detail || '');
-    return { sent: false, reason: draft.reason || 'createreply_failed' };
-  }
-
-  const draftId = draft.data.id;
-  // Keep the quoted original the draft already carries, above it our text.
-  const quoted = draft.data.body?.content || '';
-  const patched = await graphWrite(
-    `/me/messages/${encodeURIComponent(draftId)}`,
-    'PATCH',
-    {
-      toRecipients: toList,
-      ccRecipients: toGraphRecipients(cc),
-      body: { contentType: 'HTML', content: `<div>${html}</div>${quoted}` },
-    },
-    token
-  );
-  if (!patched.ok) {
-    console.error('[Mail] Draft PATCH failed:', patched.reason, patched.detail || '');
-    return { sent: false, reason: patched.reason };
-  }
-
-  const sent = await graphWrite(
-    `/me/messages/${encodeURIComponent(draftId)}/send`,
-    'POST',
-    undefined,
-    token
-  );
-  if (!sent.ok) {
-    console.error('[Mail] Draft send failed:', sent.reason, sent.detail || '');
-    return { sent: false, reason: sent.reason };
-  }
-
-  console.log(`[Mail] Reply sent for ${emailId} to ${toList.length} recipient(s)`);
-  return { sent: true };
 }
 
 // Create an event on the default calendar. Needs Calendars.ReadWrite — degrades
@@ -1975,7 +1872,6 @@ module.exports = {
   fetchRecentEmailsDetailed,
   fetchSentMail,
   fetchEmailById,
-  sendEmailReply,
   markEmailRead,
   searchPeople,
   EVENT_TIMEZONE,

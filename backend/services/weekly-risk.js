@@ -2089,9 +2089,9 @@ async function publish({ week = weekCommencing(), force = false } = {}) {
  * `publish()` refuses while a manual section is unanswered — that is about the
  * report being finished. This refuses while it cannot say WHO it is going to —
  * that is about it leaving the building. The actual send happens only when Nick
- * approves the `send_weekly_risk_report` action, which is the same two-gate
- * shape as draft_reply → reply_email: the words and the recipient are settled
- * and shown, then a separate approval releases them.
+ * approves the GOVERNED `send_weekly_risk_report` prepared action (Build 8)
+ * with his approval code: the frozen report and the recipient are settled and
+ * shown, then action-executor sends exactly that once and checks Sent Items.
  *
  * The recipient is resolved HERE and stored on the payload, not re-resolved at
  * approval time, so the card shows the exact address the send will use.
@@ -2143,51 +2143,37 @@ async function queueSend({ week = weekCommencing(), to = null, force = false } =
 
   const subject = `Weekly Risk & Anomaly Summary — w/c ${formatUk(week)}`;
 
-  // One pending send per week. Without this, every press of the button queued
-  // another identical outbound email to Nick's manager — and the approval queue
-  // shows them as separate cards, so approving "the send" twice sends the report
-  // twice. Deduping on the WEEK rather than on the body is deliberate: a rebuilt
-  // report has different numbers but is still the same send, and two cards
-  // differing only in a percentage is worse than one.
-  const existing = db.getPendingSaimActionsByType
-    ? db.getPendingSaimActionsByType('send_weekly_risk_report', 50)
-    : [];
-  for (const action of existing || []) {
-    // getPendingSaimActionsByType ALREADY parses payload into an object. The
-    // first cut called JSON.parse on it again, threw, and a defensive
-    // `catch { continue }` swallowed the throw — so the dedupe skipped every
-    // row and silently never fired. Accept either shape; never swallow.
-    const payload = typeof action.payload === 'string'
-      ? JSON.parse(action.payload)
-      : action.payload;
-    if (payload?.week !== week) continue;
-    // Refresh the words and the address so the card is not stale, then hand
-    // back the SAME action rather than minting a second one.
-    try {
-      db.updateSaimActionPayload(action.id, {
-        ...payload, to: [recipient], subject, body: report.markdown,
-        escalateCount: report.escalateCount, snapshotDate: report.snapshotDate,
-        vaultPath: publishedAt(week)?.path || null,
-      });
-    } catch { /* a refresh failure is not a reason to duplicate the send */ }
-    return { ok: true, actionId: action.id, recipient, subject, report, alreadyQueued: true };
-  }
+  // ⚠ Build 8: PREPARED as a governed send_weekly_risk_report. The report is
+  // FROZEN into the action — the markdown shown on the card AND the exact HTML
+  // Chris receives, both bound into the approval hash — so an approval can only
+  // ever send the report Nick read. One send per week: pressing Queue again
+  // with an unchanged report hands back the same action; with a CHANGED report
+  // the old one is replaced (if still awaiting approval) or its approval is
+  // expired (if already approved) — a regenerated report never rides an old
+  // approval. It used to be a PIN-approvable card in the legacy queue whose
+  // payload was rewritten in place on every press.
+  const r = require('./prepared-actions').prepareWeeklyReport({
+    week,
+    recipient,
+    subject,
+    markdown: report.markdown,
+    html: toEmailHtml(report.markdown),
+    snapshotDate: report.snapshotDate || null,
+    escalateCount: report.escalateCount === undefined ? null : report.escalateCount,
+    vaultPath: publishedAt(week)?.path || null,
+  });
+  if (!r.ok) return { ok: false, blockers: [r.error], report, action: r.action || null };
 
-  const id = require('./suggestion-engine').queueAction(
-    'send_weekly_risk_report',
-    {
-      week,
-      to: [recipient],
-      subject,
-      body: report.markdown,
-      escalateCount: report.escalateCount,
-      snapshotDate: report.snapshotDate,
-      vaultPath: publishedAt(week)?.path || null,
-    },
-    `Weekly risk report for w/c ${week}, due to Chris by midday`,
-  );
-
-  return { ok: true, actionId: id, recipient, subject, report };
+  return {
+    ok: true,
+    actionId: r.action.actionId,
+    action: r.action,
+    recipient,
+    subject,
+    report,
+    alreadyQueued: Boolean(r.already),
+    superseded: r.superseded || null,
+  };
 }
 
 /**

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
+import { PreparedCard, approveWithCode, fetchApprovalState, gateFor } from './PreparedActions';
 import './InboxPanel.css';
 
 function timeAgo(timestamp) {
@@ -153,6 +154,14 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
       .finally(() => setDrafting(false));
   };
 
+  // ⚠ Build 8: this PREPARES the reply — nothing is sent by pressing it. The
+  // exact words and recipients become a governed action shown below; it is sent
+  // only when Nick approves it with his approval code (the same card, helper and
+  // route as Actions → Drafted by NEURO), then checked in Sent Items.
+  const [prepared, setPrepared] = useState(null);
+  const [approval, setApproval] = useState(null);
+  const [acting, setActing] = useState(false);
+
   const sendReply = () => {
     if (!replyText.trim()) return;
     setSending(true);
@@ -164,11 +173,40 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
     })
       .then(r => r.json())
       .then(d => {
-        if (d.ok) onReplied(email.id);
-        else setError(d.error || 'Send failed');
+        if (d.ok && d.action) {
+          setPrepared(d.action);
+          fetchApprovalState().then(setApproval).catch(() => setApproval(null));
+        } else setError(d.error || 'Could not prepare the reply — nothing was sent');
       })
-      .catch(() => setError('Send failed'))
+      .catch(() => setError('Could not prepare the reply — nothing was sent'))
       .finally(() => setSending(false));
+  };
+
+  const refreshPrepared = (id) => fetch(apiUrl(`/api/prepared-actions/${id}`)).then(r => r.json()).then(d => d.ok && setPrepared(d.action)).catch(() => {});
+
+  const approvePrepared = async (code) => {
+    setActing(true);
+    setError('');
+    try {
+      const d = await approveWithCode(prepared, code);
+      if (!d.ok) { setError(d.error || 'Not approved — nothing was sent'); return false; }
+      if (['executed', 'verified'].includes(d.status)) onReplied(email.id);
+      else { setError(d.detail || d.notice || `Approved — status: ${d.status}`); refreshPrepared(prepared.actionId); }
+      return true;
+    } catch (e) { setError(e.message); return false; } finally { setActing(false); }
+  };
+
+  const verbPrepared = async (verb, body) => {
+    setActing(true);
+    try {
+      const res = await fetch(apiUrl(`/api/prepared-actions/${prepared.actionId}/${verb}`), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+      });
+      const d = await res.json();
+      if (!d.ok) { setError(d.error); return false; }
+      if (verb === 'reject') setPrepared(null); else setPrepared(d.action);
+      return true;
+    } finally { setActing(false); }
   };
 
   const busy = dismissing === email.id;
@@ -309,18 +347,31 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
             placeholder="Write your reply..."
             rows={8}
           />
-          <div className="inbox-item-actions">
-            <button
-              className="inbox-action-btn inbox-action-done"
-              onClick={sendReply}
-              disabled={sending || drafting || !replyText.trim() || to.length === 0}
-            >
-              {sending ? 'Sending...' : `Send to ${to.length || 'nobody'}`}
-            </button>
-            <button className="inbox-action-btn inbox-action-ignore" onClick={() => setMode(null)} disabled={sending}>
-              Cancel
-            </button>
-          </div>
+          {!prepared && (
+            <div className="inbox-item-actions">
+              <button
+                className="inbox-action-btn inbox-action-done"
+                onClick={sendReply}
+                disabled={sending || drafting || !replyText.trim() || to.length === 0}
+                title="Prepares the exact reply for you to approve with your approval code — nothing is sent yet"
+              >
+                {sending ? 'Preparing...' : `Prepare reply to ${to.length + cc.length || 'nobody'}…`}
+              </button>
+              <button className="inbox-action-btn inbox-action-ignore" onClick={() => setMode(null)} disabled={sending}>
+                Cancel
+              </button>
+            </div>
+          )}
+          {prepared && (
+            <PreparedCard
+              action={prepared}
+              busy={acting}
+              gate={gateFor(approval, prepared)}
+              onApprove={approvePrepared}
+              onReject={() => verbPrepared('reject', {})}
+              onEdit={(fields) => verbPrepared('edit', { payloadHash: prepared.payloadHash, ...fields })}
+            />
+          )}
         </div>
       )}
 

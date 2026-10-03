@@ -169,17 +169,18 @@ const approve = (a, at = NOW + MIN) => {
 
 // ── 6A AUTHORITY ────────────────────────────────────────────────────────────
 
-test('1/4. chase_commitment is A4; the registry is an allow-list with ONE executable type and one executor', () => {
+test('1/4. chase_commitment is A4; the registry is an allow-list (Build 8: the four outbound email types) with ONE executor', () => {
   const p = registry.policyFor('chase_commitment');
   assert.equal(p.authority, 'A4');
   assert.equal(p.requiresApproval, true);
   assert.equal(p.executor, 'microsoft.mail');
   assert.equal(p.verification, 'sent-items');
   assert.equal(p.retryPolicy, 'human-review');
-  assert.deepEqual(registry.executableTypes(), ['chase_commitment']);
+  // Build 8 widened this on purpose: every email NEURO can send, and nothing else.
+  assert.deepEqual(registry.executableTypes(), ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report']);
   assert.deepEqual(Object.keys(ex.EXECUTORS), ['microsoft.mail']);
   assert.deepEqual(registry.validateRegistry(), []);
-  assert.equal(registry.policyFor('reply_email'), null, 'a legacy queue type is not in the governed registry');
+  assert.equal(registry.policyFor('respond_meeting'), null, 'a retired legacy type is not in the governed registry');
   assert.equal(registry.policyFor('__proto__'), null, 'no prototype leak through the lookup');
   // Every A0–A4 level exists; A4 carries its requirements.
   assert.deepEqual(Object.keys(registry.AUTHORITY), ['A0', 'A1', 'A2', 'A3', 'A4']);
@@ -695,7 +696,7 @@ test('the HTTP route: a machine client cannot approve or edit; Nick approving se
     assert.equal(detail.verifications[0].outcome, 'verified');
     const st = await (await fetch(`${base}/status`)).json();
     assert.equal(st.ok, true);
-    assert.deepEqual(st.executableTypes, ['chase_commitment']);
+    assert.deepEqual(st.executableTypes, ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report']);
   } finally {
     server.close();
     executorModule.execute = realExecute;

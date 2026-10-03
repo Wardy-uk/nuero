@@ -136,7 +136,7 @@ function buildChaser(event) {
 async function checkEvents(eventIds, { dryRun = false, now = new Date() } = {}) {
   const db = require('../db/database');
   const microsoft = require('./microsoft');
-  const suggestionEngine = require('./suggestion-engine');
+  const preparedActions = require('./prepared-actions');
 
   const ids = [...new Set((eventIds || []).filter(Boolean))];
   if (!ids.length) return { scanned: 0, queued: 0, skipped: [] };
@@ -162,7 +162,9 @@ async function checkEvents(eventIds, { dryRun = false, now = new Date() } = {}) 
   let scanned = 0;
 
   for (const eventId of ids) {
-    if (seen.has(eventId)) { skipped.push({ eventId, reason: 'already asked' }); continue; }
+    // The legacy queue's history above, AND the governed path (Build 8): one
+    // ask per meeting, whichever path asked.
+    if (seen.has(eventId) || preparedActions.agendaAsked(eventId)) { skipped.push({ eventId, reason: 'already asked' }); continue; }
 
     const event = await microsoft.fetchEventById(eventId);
     if (!event) { skipped.push({ eventId, reason: 'could not fetch detail' }); continue; }
@@ -173,19 +175,12 @@ async function checkEvents(eventIds, { dryRun = false, now = new Date() } = {}) 
 
     if (dryRun) { queued++; continue; }
 
-    suggestionEngine.queueAction(
-      'chase_agenda',
-      {
-        eventId,
-        subject: event.subject,
-        organizer: event.organizer,
-        start: event.start,
-        body: buildChaser(event),
-        why: verdict.reason,
-      },
-      `Ask ${event.organizer?.name || 'the organiser'} what "${event.subject}" is for`,
-      0.75
-    );
+    // ⚠ Build 8: PREPARED as a governed chase_agenda — exact organiser and
+    // words bound, approved with Nick's code, sent once, verified in Sent
+    // Items. It used to be a PIN-approvable card in the legacy queue.
+    const r = preparedActions.prepareAgendaChase({ event: { ...event, id: event.id || eventId }, body: buildChaser(event), why: verdict.reason, now: now.getTime() });
+    if (!r.ok) { skipped.push({ eventId, subject: event.subject, reason: r.error }); continue; }
+    if (r.already) { skipped.push({ eventId, reason: 'already asked' }); continue; }
     queued++;
   }
 

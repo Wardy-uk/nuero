@@ -294,6 +294,9 @@ router.post('/plan-all', async (req, res) => {
 // Create every event in a confirmed plan. Each is independent — one failure
 // does not abandon the rest, and nothing is retried.
 router.post('/book-all', async (req, res) => {
+  // Build 8: a machine client (the API token: n8n, the remote MCP gateway) may
+  // not make Graph email invites to real people. Nick, in NEURO, still can.
+  if (req.apiClient) return res.status(403).json({ ok: false, sent: false, error: "Sending calendar invites as Nick needs Nick, in NEURO - a machine client cannot do it on his behalf (Build 8)." });
   try {
     const { items } = req.body || {};
     if (!Array.isArray(items) || !items.length) {
@@ -309,6 +312,9 @@ router.post('/book-all', async (req, res) => {
 
 // Create the event. Only reached after Nick has confirmed a proposal.
 router.post('/book', async (req, res) => {
+  // Build 8: a machine client (the API token: n8n, the remote MCP gateway) may
+  // not make Graph email invites to real people. Nick, in NEURO, still can.
+  if (req.apiClient) return res.status(403).json({ ok: false, sent: false, error: "Sending calendar invites as Nick needs Nick, in NEURO - a machine client cannot do it on his behalf (Build 8)." });
   try {
     const { person, start, end, email, subject, durationMinutes } = req.body || {};
     if (!person || !start || !end) {
@@ -349,6 +355,9 @@ router.post('/propose-reschedule', async (req, res) => {
 // Move the event. Only reached after Nick has confirmed a proposal — Graph
 // emails the attendee an update, so nothing moves by looking.
 router.post('/reschedule', async (req, res) => {
+  // Build 8: a machine client (the API token: n8n, the remote MCP gateway) may
+  // not make Graph email invites to real people. Nick, in NEURO, still can.
+  if (req.apiClient) return res.status(403).json({ ok: false, sent: false, error: "Sending calendar invites as Nick needs Nick, in NEURO - a machine client cannot do it on his behalf (Build 8)." });
   try {
     const { person, eventId, start, end, reason } = req.body || {};
     if (!person || !eventId || !start || !end) {

@@ -88,7 +88,7 @@ router.post('/:id/approval-challenge', (req, res) => {
     if (!a) return res.status(404).json({ ok: false, error: 'no such prepared action' });
     if (a.status !== 'prepared') return res.status(409).json({ ok: false, error: `it is ${a.status}; only a prepared action can be approved` });
     if (a.executes && !require('../services/feature-flags').isEnabled('governed_execution')) {
-      return res.status(409).json({ ok: false, error: 'Sending is switched off (Settings → Switches → "Send a chase once you approve it"), so approving would send nothing. Turn it on first.' });
+      return res.status(409).json({ ok: false, error: 'Sending is switched off (Settings → Switches → "Send approved emails"), so approving would send nothing. Turn it on first.' });
     }
     const r = proofs().issue({ actionId: a.actionId, version: a.version, payloadHash: a.payloadHash, issuedTo: 'pin-session' });
     if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });

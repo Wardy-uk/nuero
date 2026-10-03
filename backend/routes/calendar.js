@@ -44,6 +44,9 @@ router.get('/resolve', async (req, res) => {
 // POST /api/calendar/events — create the event. Sends invites, so it only ever
 // runs off an explicit confirm in the UI, never straight off a parse.
 router.post('/events', async (req, res) => {
+  // Build 8: a machine client (the API token: n8n, the remote MCP gateway) may
+  // not make Graph email invites to real people. Nick, in NEURO, still can.
+  if (req.apiClient && Array.isArray(req.body?.attendees) && req.body.attendees.length) return res.status(403).json({ ok: false, sent: false, error: "Sending calendar invites as Nick needs Nick, in NEURO - a machine client cannot do it on his behalf (Build 8)." });
   try {
     const {
       subject, date, startTime, endTime,
@@ -128,25 +131,16 @@ router.post('/agenda-check', async (req, res) => {
   }
 });
 
-// POST /api/calendar/events/:id/respond — accept, decline or tentatively accept,
-// optionally proposing a different time. Queued for approval rather than sent
-// directly: declining a meeting is visible to everyone on the invite.
+// It queued a `respond_meeting` action whose approval made Graph send the
+// organiser a response (with any comment) as Nick — an outbound message on a
+// PIN-only approve, no ledger, no verification. It had never been used (0 rows
+// on the live Pi, 3 Oct 2026), so it is retired rather than migrated: adding a
+// governed type for it would be a new outbound capability, which Build 8 does
+// not add. Nothing is queued and nothing is sent.
+//
+// POST /api/calendar/events/:id/respond — RETIRED in Build 8 (answers 410 Gone, meeting response, decline, accept). Respond to meeting invites in Outlook.
 router.post('/events/:id/respond', (req, res) => {
-  try {
-    const { response = 'decline', comment = '', proposedNewTime = null, subject = null } = req.body || {};
-    if (!['accept', 'decline', 'tentative'].includes(response)) {
-      return res.status(400).json({ ok: false, error: 'response must be accept, decline or tentative' });
-    }
-    const id = require('../services/suggestion-engine').queueAction(
-      'respond_meeting',
-      { eventId: req.params.id, response, comment, proposedNewTime, subject },
-      `${response === 'decline' ? 'Decline' : response === 'accept' ? 'Accept' : 'Tentatively accept'} "${subject || req.params.id}"${proposedNewTime ? ' and propose a new time' : ''}`,
-      0.9
-    );
-    res.json({ ok: true, queuedActionId: id, sent: false });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
+  res.status(410).json({ ok: false, sent: false, error: require('../services/legacy-outbound').RETIRED.respond_meeting });
 });
 
 module.exports = router;

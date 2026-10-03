@@ -140,82 +140,11 @@ function _stripHtml(html) {
 
 /* ------------------------------------------------------------------ sending */
 
-function _escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/**
- * Find the existing 1:1 chat with someone, by address.
- *
- * Deliberately does NOT create one. Creating a chat needs `Chat.ReadWrite`,
- * which is also unconsented — requesting a second scope would double the
- * approval Teams is waiting on for a case email already covers. If there is no
- * existing chat, the caller falls back to email, which is the Q9 order anyway.
- *
- * Uses `Chat.Read`, which is already granted, so this half works today.
- */
-async function _findOneOnOneChat(email, token) {
-  const target = String(email || '').toLowerCase();
-  if (!target) return null;
-
-  const data = await _graphGet('/me/chats?$expand=members&$top=50', token);
-  for (const chat of data.value || []) {
-    if (chat.chatType !== 'oneOnOne') continue;
-    const addresses = (chat.members || [])
-      .map(m => String(m.email || m.userPrincipalName || '').toLowerCase())
-      .filter(Boolean);
-    if (addresses.includes(target)) return chat.id;
-  }
-  return null;
-}
-
-/**
- * Send a Teams DM as Nick.
- *
- * Mirrors `email-sender.sendMail`'s shape — `{ sent, reason }` — so a caller can
- * try one and fall back to the other without special-casing either. Never
- * throws: a delivery upgrade that can take down the thing it was upgrading is
- * worse than no upgrade.
- *
- * reason: 'disabled' | 'auth' | 'consent' | 'no-chat' | 'error'
- */
-async function sendDm({ email, text }) {
-  if (!sendEnabled()) return { sent: false, reason: 'disabled' };
-  if (!email || !String(text || '').trim()) {
-    return { sent: false, reason: 'error', error: 'sendDm needs an address and a body' };
-  }
-
-  const { token, reason, error } = await microsoft.getScopedToken([SEND_SCOPE]);
-  if (!token) return { sent: false, reason, error };
-
-  try {
-    const chatId = await _findOneOnOneChat(email, token);
-    if (!chatId) return { sent: false, reason: 'no-chat' };
-
-    // Teams renders HTML; the body is plain text with real newlines, so convert
-    // rather than posting it raw and losing every line break.
-    const html = _escapeHtml(text).replace(/\r?\n/g, '<br>');
-
-    const res = await fetch(`${GRAPH}/chats/${chatId}/messages`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: { contentType: 'html', content: html } }),
-    });
-
-    if (res.status === 401 || res.status === 403) {
-      return { sent: false, reason: 'consent', error: `Graph ${res.status}` };
-    }
-    if (!res.ok) {
-      return { sent: false, reason: 'error', error: `Graph ${res.status}: ${(await res.text()).slice(0, 200)}` };
-    }
-
-    const body = await res.json().catch(() => ({}));
-    return { sent: true, chatId, messageId: body.id || null };
-  } catch (e) {
-    return { sent: false, reason: 'error', error: e.message };
-  }
-}
+// ⚠ Build 8 (3 Oct 2026): sendDm is DELETED. It sent a Teams message as Nick
+// to a colleague, and its only caller — the legacy chase sender — was retired
+// in Build 7. Every message NEURO sends as Nick now goes through the governed
+// executor (approval proof, ledger, verification); Teams has no governed type,
+// so it has no sender. getSendStatus stays: it reports consent, it sends nothing.
 
 /**
  * Can Teams DMs be sent right now, and if not, what is it waiting on?
@@ -239,4 +168,4 @@ async function getSendStatus() {
   return { available: false, reason, scope: SEND_SCOPE, detail };
 }
 
-module.exports = { getRecentActivity, getNewMentions, sendDm, getSendStatus, SEND_SCOPE };
+module.exports = { getRecentActivity, getNewMentions, getSendStatus, SEND_SCOPE };

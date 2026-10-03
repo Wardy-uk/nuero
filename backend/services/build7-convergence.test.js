@@ -216,7 +216,7 @@ test('3. the legacy sender cannot send: executeAction refuses a complete old cha
   assert.deepEqual(realDoors, [], 'no sender was reached');
   const src = fs.readFileSync(path.join(__dirname, 'suggestion-engine.js'), 'utf8');
   const start = src.indexOf("case 'chase_commitment': {");
-  const end = src.indexOf("case 'chase_agenda': {");
+  const end = src.indexOf("case 'schedule_focus_block': {", start);
   assert.ok(start > 0 && end > start, 'positive control: the case is found');
   const body = src.slice(start, end);
   assert.doesNotMatch(body, /sendMail|sendDm|email-sender|teams|graphWrite|resolveName|markChased/);
@@ -695,5 +695,5 @@ test('36/37/38. evaluators stay shadow; meeting-prep parity and the executor/rec
   const sched = fs.readFileSync(path.join(__dirname, 'scheduler.js'), 'utf8');
   for (const job of ["name: 'action-executor'", "name: 'meeting-intelligence'", "name: 'commitment-risk'"]) assert.ok(sched.includes(job), job);
   assert.match(fs.readFileSync(path.join(__dirname, 'meeting-prep.js'), 'utf8'), /meeting_prep_comparisons/);
-  assert.deepEqual(registry.executableTypes(), ['chase_commitment'], 'still exactly one executable type');
+  assert.deepEqual(registry.executableTypes(), ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report'], 'Build 8: exactly the four outbound email types');
 });

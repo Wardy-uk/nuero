@@ -19,11 +19,18 @@ export const interactive = {
   // available: it drafts and sends nothing.
   post_prepared_actions_by_id_approval_challenge: 'Approval challenges are for Nick approving in NEURO → Actions with his approval code. An agent cannot approve.',
   post_prepared_actions_by_id_reject: 'Rejecting a drafted action is recorded as Nick\'s decision. He rejects it in NEURO → Actions.',
-  // The legacy approval queue: approving can send email as Nick (reply_email,
-  // chase_agenda, the weekly risk report). The backend refuses the API token
-  // for anything outbound; this stops the gateway offering approval at all.
-  post_actions_by_id_approve: 'Approving a queued action can send email or invites as Nick. He approves it in NEURO → Actions. An agent must never approve on his behalf.',
-  post_actions_batch: 'Batch approval can send email as Nick. He approves in NEURO → Actions.',
+  // The legacy approval queue. Since Build 8 it sends nothing outbound (those
+  // types answer 410), but approving still runs internal executors and is
+  // Nick's decision; the gateway does not offer it.
+  post_actions_by_id_approve: 'Approving a queued action is Nick\'s decision. He approves it in NEURO → Actions. An agent must never approve on his behalf.',
+  post_actions_batch: 'Batch approval is Nick\'s decision. He approves in NEURO → Actions.',
+  // Build 8: these make Graph email calendar invites (or updates) to real
+  // people as Nick. The backend refuses the API token; this stops the gateway
+  // offering them. Proposing (post_1to1_propose, post_1to1_plan_all) stays
+  // available — it reads the diary and books nothing.
+  post_1to1_book: 'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
+  post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',
+  post_1to1_reschedule: 'Moving a 1-2-1 emails the attendee an update as Nick. He confirms it in NEURO → Team.',
 };
 // Path params the backend accepts only from a closed set. The inventory is
 // generated from route strings and cannot see a handler's own validation, so a

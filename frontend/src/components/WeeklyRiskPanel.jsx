@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
+import { PreparedCard, approveWithCode, fetchApprovalState, gateFor } from './PreparedActions';
 import './WeeklyRiskPanel.css';
 
 /**
@@ -202,6 +203,7 @@ export default function WeeklyRiskPanel({ onNavigate }) {
   const [sendState, setSendState] = useState(null);
   const [deliverables, setDeliverables] = useState(null);
   const [showApproval, setShowApproval] = useState(false);
+  const [approvalState, setApprovalState] = useState(null);
   const [confirmReopen, setConfirmReopen] = useState(false);
 
   function confirmOn(key, text) {
@@ -226,6 +228,7 @@ export default function WeeklyRiskPanel({ onNavigate }) {
       setReport(r);
       setLog(l);
       setSendState(ss && !ss.error ? ss : null);
+      fetchApprovalState().then(setApprovalState).catch(() => setApprovalState(null));
       setDeliverables(dl && !dl.error ? dl : null);
       // Seed the form from what is stored, so a half-finished week reopens
       // where it was left rather than blank.
@@ -316,37 +319,37 @@ export default function WeeklyRiskPanel({ onNavigate }) {
   }
 
   /**
-   * Approve the queued send from here.
+   * Approve the prepared send from here (Build 8).
    *
-   * ⚠ This is NOT a second way to send. It posts to the same
-   * /api/actions/:id/approve the Actions queue posts to, running the same
-   * executor — all that has moved is WHERE the second gate is shown. The card
-   * above it renders `presentation` built by the server, so the two screens
-   * cannot describe the same send differently, and the full body is on screen
-   * before the button can be pressed.
+   * ⚠ NOT a second way to send. It is the SAME governed action Actions →
+   * Drafted by NEURO shows, approved through the SAME helper and route
+   * (challenge + Nick's approval code) and sent by the same executor, then
+   * checked in Sent Items. The card renders the frozen report exactly as the
+   * approval binds it.
    */
-  async function approveSend() {
-    const id = sendState?.queued?.actionId;
-    if (!id) return;
-    const out = await post(`/api/actions/${id}/approve`, {}, 'approve');
-    if (!out) return;
-    // The executor reports what actually happened; an `ok:false` here is a send
-    // that did not leave, and must not read as one that did.
-    if (out.ok === false || out.result?.ok === false) {
-      setNotice({ tone: 'bad', text: out.result?.detail || out.error || 'The send did not go through.' });
+  async function approveSend(code) {
+    if (!governed) return false;
+    setBusy('approve');
+    try {
+      const out = await approveWithCode(governed, code);
+      if (!out.ok) { setNotice({ tone: 'bad', text: out.error || 'Not approved — nothing was sent.' }); return false; }
+      const sent = ['executed', 'verified'].includes(out.status);
+      if (sent) confirmOn('approve', 'Sent to Chris');
+      setNotice({ tone: sent ? 'ok' : 'bad', text: out.detail || out.notice || `Approved — status: ${out.status}` });
+      if (sent) setShowApproval(false);
+      return true;
+    } catch (e) {
+      setNotice({ tone: 'bad', text: e.message });
+      return false;
+    } finally {
+      setBusy(null);
       await load();
-      return;
     }
-    confirmOn('approve', 'Sent to Chris');
-    setNotice({ tone: 'ok', text: out.result?.detail || 'Sent to Chris.' });
-    setShowApproval(false);
-    await load();
   }
 
   async function rejectSend() {
-    const id = sendState?.queued?.actionId;
-    if (!id) return;
-    const out = await post(`/api/actions/${id}/reject`, {}, 'reject');
+    if (!governed) return;
+    const out = await post(`/api/prepared-actions/${governed.actionId}/reject`, {}, 'reject');
     if (out) {
       setNotice({ tone: 'ok', text: 'Send cancelled — nothing was sent. Queue it again when you are ready.' });
       setShowApproval(false);
@@ -369,12 +372,13 @@ export default function WeeklyRiskPanel({ onNavigate }) {
   async function doQueueSend() {
     const out = await post('/api/weekly-risk/queue-send', {}, 'send');
     if (out?.ok) {
-      confirmOn('send', 'Queued');
+      confirmOn('send', 'Prepared');
       setShowApproval(true);
       setNotice({
         tone: 'ok',
-        text: `Queued for ${out.recipient?.email}. NOTHING HAS BEEN SENT — check it below and approve to send.`,
+        text: `${out.note || 'Prepared.'} To: ${out.recipient?.email}. NOTHING HAS BEEN SENT.`,
       });
+      await load();
     }
   }
 
@@ -421,6 +425,8 @@ export default function WeeklyRiskPanel({ onNavigate }) {
   // Durable facts, read back from the server rather than inferred from a click.
   const locked = Boolean(sendState?.locked);
   const queued = sendState?.queued || null;
+  // The governed send for this week, while it is live (Build 8).
+  const governed = sendState?.governed && ['prepared', 'approved', 'executing', 'executed', 'execution_uncertain'].includes(sendState.governed.status) ? sendState.governed : null;
   const published = Boolean(sendState?.published || report?.published);
   const sentWhen = sendState?.sent?.sentAt
     ? new Date(sendState.sent.sentAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
@@ -644,53 +650,25 @@ export default function WeeklyRiskPanel({ onNavigate }) {
           </div>
         )}
 
-        {/* The second gate, shown where the report is. It is the SAME action
-            the Actions queue holds and the same approve route — only the place
-            it is displayed has moved, so nothing here is a shortcut past a
-            check. Everything rendered comes from the server's `presentation`. */}
-        {queued && showApproval && !locked && (
-          <div className="wr-approval">
-            <div className="wr-approval-head">
-              <strong>{queued.presentation?.label || 'Send the weekly risk report'}</strong>
-              <span className="wr-approval-kind">Nothing has been sent yet</span>
-            </div>
-            <dl className="wr-approval-fields">
-              {(queued.presentation?.fields || []).map((f, i) => (
-                <div key={i}>
-                  <dt>{f.label}</dt>
-                  <dd className={f.mono ? 'mono' : undefined}>{f.value ?? '—'}</dd>
-                </div>
-              ))}
-            </dl>
-            {queued.presentation?.warnings?.length > 0 && (
-              <ul className="wr-approval-warn">{queued.presentation.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
-            )}
-            {/* ⚠ Approve is DISABLED while a blocker stands, and says why —
-                an approve that quietly fails is worse than one that refuses. */}
-            {queued.presentation?.blockers?.length > 0 && (
-              <ul className="wr-approval-block">{queued.presentation.blockers.map((b, i) => <li key={i}>{b}</li>)}</ul>
-            )}
-            {queued.presentation?.body && (
-              <details className="wr-approval-body">
-                <summary>The exact words that will be sent — {queued.presentation.body.length.toLocaleString()} characters</summary>
-                <pre>{queued.presentation.body}</pre>
-              </details>
-            )}
-            {queued.presentation?.note && <p className="wr-hint">{queued.presentation.note}</p>}
-            <div className="wr-confirm-row">
-              <button
-                type="button" className="wr-send"
-                onClick={approveSend}
-                disabled={busy === 'approve' || (queued.presentation?.blockers?.length > 0)}
-                title={queued.presentation?.blockers?.length ? 'Fix the blocker above first' : 'This sends the report to Chris'}
-              >
-                {busy === 'approve' ? 'Sending…' : 'Approve and send to Chris'}
-              </button>
-              <button type="button" onClick={rejectSend} disabled={busy === 'reject'}>
-                {busy === 'reject' ? 'Cancelling…' : 'Cancel this send'}
-              </button>
-            </div>
-          </div>
+        {/* The second gate, shown where the report is: the SAME governed action
+            and the same approval as Actions → Drafted by NEURO. The card shows
+            the frozen report exactly as the approval binds it. */}
+        {governed && showApproval && !locked && (
+          <PreparedCard
+            action={governed}
+            busy={busy === 'approve' || busy === 'reject'}
+            gate={gateFor(approvalState, governed)}
+            onApprove={approveSend}
+            onReject={rejectSend}
+            onEdit={async () => false}
+          />
+        )}
+        {governed && showApproval && !locked && ['prepared', 'approved'].includes(governed.status) && (
+          <p className="wr-hint">
+            The approval binds THIS version of the report. Changed a section since?{' '}
+            <button type="button" onClick={doQueueSend} disabled={busy === 'send'}>Re-prepare from the latest report</button>
+            {' '}— the version above then can no longer send{governed.status === 'approved' ? ' (its approval is expired)' : ''}.
+          </p>
         )}
 
         {locked ? (
@@ -706,8 +684,8 @@ export default function WeeklyRiskPanel({ onNavigate }) {
           </p>
         ) : (
           <p className="wr-hint">
-            Queueing sends nothing. It shows the exact report and address here for approval — the same card
-            also appears in <strong>Actions</strong>.
+            Queueing sends nothing. It freezes the exact report and address for you to approve with your approval
+            code — the same card also appears in <strong>Actions → Drafted by NEURO</strong>.
           </p>
         )}
 

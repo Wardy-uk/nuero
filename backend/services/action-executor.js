@@ -93,6 +93,29 @@ const DEFAULT_DEPS = {
     } catch { return null; }
   },
   markChased: (key, nowMs) => require('./waiting-on').markChased(key, { now: nowMs }),
+  agendaAssess: (ev, nowMs) => require('./meeting-triage').assess(ev, { now: new Date(nowMs) }),
+  reportLocked: (week) => require('./weekly-risk').isLocked(week),
+  // What a send leaves behind in NEURO's own records, per type. Never mutates a
+  // commitment, task or world-model row: sending is not finishing (8F).
+  recordReply: (a) => {
+    require('./sent-replies').record({
+      emailId: a.target.emailId, subject: a.target.originalSubject || null,
+      fromName: a.target.fromName || null, fromEmail: a.target.from || null,
+      recipients: [...(a.draft.to || []), ...(a.draft.cc || [])], recipientsSource: 'explicit',
+      replyAll: a.draft.mode === 'replyAll', body: a.draft.body,
+    });
+    try { require('./email-triage').dismissEmail(a.target.emailId, 'replied'); } catch { /* triage bookkeeping only */ }
+  },
+  recordReport: (a) => {
+    require('./weekly-risk').markSent(a.target.week, {
+      actionId: a.actionId, recipients: a.draft.to, subject: a.draft.subject, body: a.draft.body,
+    });
+    try {
+      const log = require('./management-log');
+      const open = log.list({ limit: 500 }).find((r) => r.status !== 'done' && /weekly team risk .* report to Chris/i.test(r.summary));
+      if (open) log.update(open.id, { status: 'done' });
+    } catch { /* bookkeeping must never fail a send that already happened */ }
+  },
 };
 
 function _deps(over) {
@@ -105,13 +128,16 @@ const waitingKey = (subjectRef) => (String(subjectRef || '').startsWith('waiting
 
 // ── preflight (PURE) ────────────────────────────────────────────────────────
 
+const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+const stopWith = (code, why, terminal = true) => ({ ok: false, code, why, terminal });
+
 /**
- * Every safety-critical check, repeated at execution. PURE.
- * Returns { ok: true } or { ok: false, code, why, terminal }.
- * `terminal: true` — the world moved; cancel. `false` — could not check; wait.
+ * The checks EVERY outbound type shares (Build 8F). PURE. The approval binds
+ * this exact payload and has not expired; the recipients are the approved
+ * shape for the type (count, copies, blind copies); no [placeholder] remains.
  */
-function executionChecks({ action, policy, commitment, progress, person, waiting, deferred, otherLive, nowMs }) {
-  const stop = (code, why, terminal = true) => ({ ok: false, code, why, terminal });
+function commonChecks({ action, policy, nowMs }) {
+  const stop = stopWith;
   if (!policy || !policy.executable) return stop('not-executable', `${action.actionType} is not executable`);
   const ap = action.approval;
   if (!ap || !ap.payloadHash) return stop('not-approved', 'there is no approval on record');
@@ -124,11 +150,33 @@ function executionChecks({ action, policy, commitment, progress, person, waiting
   const draft = action.draft || {};
   const target = action.target || {};
   const to = Array.isArray(draft.to) ? draft.to : [];
-  if (to.length !== 1 || to.length > (policy.maxRecipients || 1) || lc(to[0].email) !== lc(target.email) || !lc(target.email)) {
+  const cc = Array.isArray(draft.cc) ? draft.cc : [];
+  if (!to.length || to.length + cc.length > (policy.maxRecipients || 1) || to.some((r) => !EMAIL_RE.test(lc(r && r.email)))) {
+    return stop('recipient-mismatch', `the draft must go to between 1 and ${policy.maxRecipients || 1} valid address(es)`);
+  }
+  if (policy.targetIsRecipient && (to.length !== 1 || !lc(target.email) || lc(to[0].email) !== lc(target.email))) {
     return stop('recipient-mismatch', 'the draft must go to exactly the one person it was prepared for');
   }
-  if ((Array.isArray(draft.cc) && draft.cc.length) || (Array.isArray(draft.bcc) && draft.bcc.length)) return stop('cc-not-allowed', 'nobody is copied in Build 6');
+  if (cc.length && !policy.cc) return stop('cc-not-allowed', `nobody may be copied on ${action.actionType}`);
+  if (cc.some((r) => !EMAIL_RE.test(lc(r && r.email)))) return stop('recipient-mismatch', 'a copied address is not valid');
+  if (Array.isArray(draft.bcc) && draft.bcc.length) return stop('bcc-not-allowed', 'nothing NEURO sends has a blind copy');
   if (registry.hasUnfilledPlaceholder(draft.body) || registry.hasUnfilledPlaceholder(draft.subject)) return stop('placeholder', 'the draft still carries a [placeholder]');
+  if (policy.bodyFormat === 'html' && !String(draft.html || '').trim()) return stop('no-body', 'there is no frozen HTML to send');
+  return { ok: true };
+}
+
+/**
+ * chase_commitment's checks, repeated at execution. PURE. Kept under its
+ * Build 6 name (tests and the record refer to it): common checks first, then
+ * the commitment, the person and the waiting-on item.
+ * Returns { ok: true } or { ok: false, code, why, terminal }.
+ * `terminal: true` — the world moved; cancel. `false` — could not check; wait.
+ */
+function executionChecks({ action, policy, commitment, progress, person, waiting, deferred, otherLive, nowMs }) {
+  const stop = stopWith;
+  const common = commonChecks({ action, policy, nowMs });
+  if (!common.ok) return common;
+  const target = action.target || {};
 
   if (!commitment) return stop('commitment-gone', 'the commitment no longer exists');
   if (commitment.status !== 'open') return stop('commitment-closed', `the commitment is ${commitment.status} — nothing to chase`);
@@ -166,26 +214,117 @@ function _otherLive(action, nowMs) {
                  LIMIT 1`, [action.subjectRef, action.actionId, iso(nowMs - pa.RECENT_CHASE_DAYS * DAY)]);
 }
 
+/**
+ * Another action of the SAME type for the SAME subject that has gone, or is
+ * going (Build 8K). For reply/agenda/report the subject key is commitment_id
+ * (`email:…`, `meeting:…`, `weekly-risk:…`). A verified one counts when it was
+ * verified after this one was PREPARED — i.e. this draft was written without
+ * knowing about it; for the agenda chase any verified one counts, ever.
+ */
+function _otherSent(action, { ever = false } = {}) {
+  return db.get(`SELECT action_id, status FROM prepared_actions WHERE action_type = ? AND commitment_id = ? AND action_id <> ?
+                 AND (status IN ('executing', 'execution_uncertain', 'executed') OR (status = 'verified' AND (? = 1 OR verified_at >= ?)))
+                 LIMIT 1`, [action.actionType, action.commitmentId, action.actionId, ever ? 1 : 0, action.createdAt]);
+}
+
+/**
+ * Per-type preflight (Build 8F). Each returns { ok } or a stop — terminal when
+ * the world moved (cancel), not terminal when a check could not be made (wait).
+ * All run AFTER commonChecks, and each ends with a LIVE Sent Items read: the
+ * periodic scans are minutes behind, and a message Nick sent five minutes ago
+ * is the duplicate that matters.
+ */
+const PREFLIGHT = {
+  async chase_commitment(action, policy, d, nowMs) {
+    const commitment = d.commitment(action.commitmentId);
+    let progress = null;
+    try { progress = commitment ? d.progress(action.commitmentId) : null; } catch { progress = null; }
+    const person = commitment ? d.counterparty(commitment) : null;
+    const key = waitingKey(action.subjectRef);
+    const sync = executionChecks({
+      action, policy, commitment, progress, person,
+      waiting: key ? d.waiting(key) : null,
+      deferred: commitment ? d.deferred(commitment) : false,
+      otherLive: _otherLive(action, nowMs),
+      nowMs,
+    });
+    if (!sync.ok) return sync;
+    const sent = await d.mailApi.sentToSince(action.target.email, action.createdAt);
+    if (!sent) return stopWith('sent-mail-unreadable', 'could not read Sent Items to check you have not already written to them', false);
+    if (sent.count > 0) return stopWith('already-emailed', `you have emailed ${action.target.displayName || 'them'} since this was prepared — not sending; review it`);
+    return { ok: true };
+  },
+
+  // 8C: the thread must still be the one Nick approved a reply to.
+  async reply_email(action, policy, d) {
+    const t = action.target || {};
+    const other = _otherSent(action);
+    if (other) return stopWith('duplicate', `another reply to this email (${other.action_id}) is already ${other.status}`);
+    const m = await d.mailApi.readMessage(t.emailId);
+    if (!m || !m.ok) return stopWith('message-unreadable', 'could not read the email being replied to', false);
+    if (!m.exists) return stopWith('thread-gone', 'the email being replied to no longer exists');
+    if (t.conversationId && m.conversationId && m.conversationId !== t.conversationId) return stopWith('thread-changed', 'the email now belongs to a different thread');
+    if (t.from && lc(m.from) !== lc(t.from)) return stopWith('sender-changed', 'the email\'s sender is not the one the reply was prepared for');
+    const sent = await d.mailApi.sentInConversationSince(t.conversationId, action.createdAt);
+    if (!sent) return stopWith('sent-mail-unreadable', 'could not read Sent Items to check you have not already replied', false);
+    if (sent.count > 0) return stopWith('already-replied', 'you have already replied in this thread since this was prepared — not sending a second reply; review it');
+    return { ok: true };
+  },
+
+  // 8D: still a meeting worth asking about, still nobody has answered.
+  async chase_agenda(action, policy, d, nowMs) {
+    const t = action.target || {};
+    const other = _otherSent(action, { ever: true });
+    if (other) return stopWith('duplicate', `the organiser was already asked about this meeting (${other.action_id}, ${other.status})`);
+    const r = await d.mailApi.readEvent(t.eventId);
+    if (!r || !r.ok) return stopWith('meeting-unreadable', 'could not read the meeting from the calendar', false);
+    const ev = r.event || {};
+    if (ev.isCancelled) return stopWith('meeting-cancelled', 'the meeting has been cancelled');
+    const start = Date.parse(ev.start || t.start);
+    if (!Number.isFinite(start) || start - nowMs < 2 * HOUR) return stopWith('meeting-too-close', 'the meeting starts within two hours (or has passed) — too late to ask');
+    const organiser = lc((ev.organizer && (ev.organizer.email || ev.organizer.address)) || '');
+    if (organiser && organiser !== lc(t.email)) return stopWith('organiser-changed', 'the meeting has a different organiser now');
+    if (ev.responseStatus && !['none', 'notResponded'].includes(ev.responseStatus)) return stopWith('already-responded', `you have already responded to it (${ev.responseStatus})`);
+    let verdict = null;
+    try { verdict = d.agendaAssess(ev, nowMs); } catch { verdict = null; }
+    if (verdict && verdict.chase === false) return stopWith('agenda-arrived', `the invite no longer needs a chase (${verdict.reason})`);
+    const sent = await d.mailApi.sentToSince(t.email, action.createdAt);
+    if (!sent) return stopWith('sent-mail-unreadable', 'could not read Sent Items to check you have not already asked', false);
+    const subj = lc(t.subject);
+    if (sent.count > 0 && (!subj || (sent.subjects || []).some((s) => lc(s).includes(subj)))) {
+      return stopWith('already-emailed', 'you have written to the organiser about this meeting since this was prepared');
+    }
+    return { ok: true };
+  },
+
+  // 8E: the week must not already be sent, and this must be the newest report.
+  async send_weekly_risk_report(action, policy, d) {
+    const t = action.target || {};
+    const other = _otherSent(action);
+    if (other) return stopWith('duplicate', `this week's report is already ${other.status} (${other.action_id})`);
+    let locked = null;
+    try { locked = d.reportLocked(t.week); } catch { locked = null; }
+    if (locked === null) return stopWith('report-unreadable', 'could not read whether this week was already sent', false);
+    if (locked) return stopWith('already-sent', `the report for w/c ${t.week} is already recorded as sent`);
+    const newer = db.get(`SELECT action_id FROM prepared_actions WHERE action_type = 'send_weekly_risk_report' AND commitment_id = ?
+                          AND action_id <> ? AND created_at > ? AND status NOT IN ('rejected') LIMIT 1`,
+    [action.commitmentId, action.actionId, action.createdAt]);
+    if (newer) return stopWith('superseded-by-newer', `a newer version of this report was prepared (${newer.action_id}) — approve that one`);
+    const sent = await d.mailApi.sentToSince(t.email, action.createdAt);
+    if (!sent) return stopWith('sent-mail-unreadable', 'could not read Sent Items to check you have not sent it by hand', false);
+    const subj = lc(action.draft && action.draft.subject);
+    if ((sent.subjects || []).some((s) => lc(s) === subj)) return stopWith('already-emailed', 'you have already sent this report by hand since it was prepared');
+    return { ok: true };
+  },
+};
+
 async function preflight(action, policy, d, nowMs) {
-  const commitment = d.commitment(action.commitmentId);
-  let progress = null;
-  try { progress = commitment ? d.progress(action.commitmentId) : null; } catch { progress = null; }
-  const person = commitment ? d.counterparty(commitment) : null;
-  const key = waitingKey(action.subjectRef);
-  const sync = executionChecks({
-    action, policy, commitment, progress, person,
-    waiting: key ? d.waiting(key) : null,
-    deferred: commitment ? d.deferred(commitment) : false,
-    otherLive: _otherLive(action, nowMs),
-    nowMs,
-  });
-  if (!sync.ok) return sync;
-  // LIVE: has Nick emailed them since this was prepared? Progress evidence is a
-  // periodic scan; a message sent five minutes ago would not be in it yet.
-  const sent = await d.mailApi.sentToSince(action.target.email, action.createdAt);
-  if (!sent) return { ok: false, code: 'sent-mail-unreadable', why: 'could not read Sent Items to check you have not already written to them', terminal: false };
-  if (sent.count > 0) return { ok: false, code: 'already-emailed', why: `you have emailed ${action.target.displayName || 'them'} since this was prepared — not sending; review it`, terminal: true };
-  return { ok: true };
+  const common = commonChecks({ action, policy, nowMs });
+  if (!common.ok) return common;
+  const run = PREFLIGHT[action.actionType];
+  // An executable type with no preflight is refused, not waved through.
+  if (!run) return stopWith('no-preflight', `${action.actionType} has no execution checks — it cannot run`);
+  return run(action, policy, d, nowMs);
 }
 
 // ── the ledger ──────────────────────────────────────────────────────────────
@@ -242,15 +381,30 @@ function _claim(action, nowMs) {
   }
 }
 
+/**
+ * What a send leaves in NEURO's own records, once per action (the column is
+ * still called chase_recorded_at; since Build 8 it means "the after-send
+ * record was written" for every type). Runs on `executed` (Microsoft accepted
+ * it) and again on `verified` — the second is a no-op. Never allowed to fail
+ * the send: the mail has already left.
+ */
 function _recordChase(actionId, d, nowMs) {
   const a = pa.get(actionId);
-  if (!a || !waitingKey(a.subjectRef)) return;
+  if (!a) return;
   const row = db.get('SELECT chase_recorded_at FROM prepared_actions WHERE action_id = ?', [actionId]);
   if (row && row.chase_recorded_at) return;
   try {
-    d.markChased(waitingKey(a.subjectRef), nowMs);
+    if (a.actionType === 'chase_commitment') {
+      if (!waitingKey(a.subjectRef)) return;
+      d.markChased(waitingKey(a.subjectRef), nowMs);
+    } else if (a.actionType === 'reply_email') {
+      d.recordReply(a);
+    } else if (a.actionType === 'send_weekly_risk_report') {
+      d.recordReport(a);
+    }
+    // chase_agenda: the governed row IS the record ("asked once, ever").
     pa.note(actionId, { chase_recorded_at: iso(nowMs) });
-  } catch (e) { console.warn(`[Executor] could not record the chase for ${actionId}: ${e.message}`); }
+  } catch (e) { console.warn(`[Executor] could not record the send for ${actionId}: ${e.message}`); }
 }
 
 // ── the one executor ────────────────────────────────────────────────────────
@@ -267,12 +421,40 @@ async function _mailExecutor(action, claim, d, clock) {
     return { ok: false, status: 'failed', code: category, detail: `${detail} — nothing was sent`, action: t.action };
   };
 
-  // 3. DRAFT — nothing is sent by this.
-  const dr = await mail.createDraft({
-    to: [{ email: action.target.email, name: action.target.displayName }],
-    subject: action.draft.subject,
-    body: action.draft.body,
-  });
+  // 3. DRAFT — nothing is sent by this. How the draft is made is the type's
+  // registered sendMode; what goes in it is ONLY the approved payload.
+  const policy = registry.policyFor(action.actionType) || {};
+  const draft = action.draft || {};
+  const wantTo = (draft.to || []).map((r) => lc(r.email)).sort();
+  const wantCc = (draft.cc || []).map((r) => lc(r.email)).sort();
+  let dr;
+  if (policy.sendMode === 'reply') {
+    // Threaded under the source message; Graph's choice of addressees is then
+    // OVERWRITTEN with the approved list and READ BACK before anything is sent.
+    dr = await mail.createReplyDraft(action.target.emailId, { mode: draft.mode, comment: draft.body });
+    if (dr.ok && dr.id) {
+      _attemptSet(claim.attemptId, { draft_id: dr.id });
+      const p = await mail.patchDraft(dr.id, { to: draft.to, cc: draft.cc || [], subject: draft.subject });
+      const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+      if (!p.ok) {
+        try { await mail.deleteDraft(dr.id); } catch { /* best effort */ }
+        return failBeforeSend(p.category || 'unknown', 'Microsoft would not set the reply\'s recipients', p.status);
+      }
+      if (!same(p.to.map(lc).sort(), wantTo) || !same(p.cc.map(lc).sort(), wantCc) || (p.bcc && p.bcc.length) || p.subject !== draft.subject) {
+        try { await mail.deleteDraft(dr.id); } catch { /* best effort */ }
+        return failBeforeSend('recipient-mismatch', 'the reply draft did not hold exactly the approved recipients and subject');
+      }
+      if (!dr.internetMessageId && p.internetMessageId) dr.internetMessageId = p.internetMessageId;
+    }
+  } else {
+    dr = await mail.createDraft({
+      to: draft.to.map((r) => ({ email: r.email, name: r.name || (lc(r.email) === lc(action.target.email) ? action.target.displayName : undefined) })),
+      cc: draft.cc || [],
+      subject: draft.subject,
+      body: policy.bodyFormat === 'html' ? draft.html : draft.body,
+      contentType: policy.bodyFormat === 'html' ? 'HTML' : 'Text',
+    });
+  }
   if (!dr.ok) return failBeforeSend(dr.category || 'unknown', 'Microsoft would not create the draft', dr.status);
   if (!dr.id || !dr.internetMessageId) {
     if (dr.id) _attemptSet(claim.attemptId, { draft_id: dr.id });
@@ -337,7 +519,7 @@ async function execute(actionId, { now, deps } = {}) {
   const run = EXECUTORS[policy.executor];
   if (!run) return { ok: false, code: 'no-executor', status: action.status, detail: `no executor named ${policy.executor}` };
   if (!d.enabled()) {
-    pa.note(actionId, { last_block: 'sending is switched off (Settings → Switches → "Send a chase once you approve it")' });
+    pa.note(actionId, { last_block: 'sending is switched off (Settings → Switches → "Send approved emails")' });
     return { ok: false, code: 'switched-off', transient: true, status: 'approved', detail: 'Approved, but sending is switched off — nothing was sent.' };
   }
 
@@ -368,22 +550,31 @@ async function execute(actionId, { now, deps } = {}) {
 
 /** Does this Sent Items message match what was approved? PURE. */
 function judgeSentItem(m, { action, attempt, signedIn }) {
-  const target = lc(action.target && action.target.email);
   const started = Date.parse(attempt.started_at || attempt.startedAt);
   const sent = Date.parse(m.sentAt);
+  const draft = action.draft || {};
+  const policy = registry.policyFor(action.actionType) || {};
+  // The approved recipient SETS — exactly these, no more, no fewer (Build 8:
+  // a reply can go to several people; a chase still to exactly one).
+  const want = (list) => (list || []).map((r) => lc(r && r.email)).sort().join(',');
+  const got = (list) => (list || []).map(lc).sort().join(',');
   const checks = {
     messageId: lc(m.internetMessageId) === lc(attempt.internet_message_id || attempt.internetMessageId),
-    recipient: Array.isArray(m.to) && m.to.length === 1 && lc(m.to[0]) === target,
-    noCopies: !(m.cc && m.cc.length) && !(m.bcc && m.bcc.length),
-    subject: (m.subject || '') === (action.draft && action.draft.subject),
+    recipient: Array.isArray(m.to) && m.to.length > 0 && got(m.to) === want(draft.to)
+      && (!policy.targetIsRecipient || (m.to.length === 1 && lc(m.to[0]) === lc(action.target && action.target.email))),
+    noCopies: got(m.cc) === want(draft.cc) && !(m.bcc && m.bcc.length),
+    subject: (m.subject || '') === draft.subject,
     time: Number.isFinite(sent) && Number.isFinite(started) && sent >= started - CLOCK_SKEW_MS,
     sender: signedIn ? lc(m.from) === lc(signedIn) : null,
+    // A reply must have landed in the thread it was approved for.
+    thread: policy.sendMode === 'reply' ? (!!m.conversationId && m.conversationId === (action.target && action.target.conversationId)) : null,
     // Recorded, not required: the message id is the identity. A server-side
     // disclaimer would change the body without changing which message it is.
-    body: m.bodyText === null || m.bodyText === undefined ? null : normBody(m.bodyText).startsWith(normBody(action.draft && action.draft.body)),
+    // Not judged for HTML (the stored text is the markdown Nick read).
+    body: m.bodyText === null || m.bodyText === undefined || policy.bodyFormat === 'html' ? null : normBody(m.bodyText).startsWith(normBody(draft.body)),
   };
   const required = ['messageId', 'recipient', 'noCopies', 'subject', 'time'];
-  const ok = required.every((k) => checks[k] === true) && checks.sender !== false;
+  const ok = required.every((k) => checks[k] === true) && checks.sender !== false && checks.thread !== false;
   return { ok, checks };
 }
 
@@ -557,7 +748,7 @@ function status({ now = Date.now() } = {}) {
 }
 
 module.exports = {
-  execute, verify, reconcile, status, executionChecks, judgeSentItem,
+  execute, verify, reconcile, status, executionChecks, commonChecks, judgeSentItem, preflight, PREFLIGHT,
   attemptsFor, verificationsFor,
   EXECUTORS, STALE_EXECUTING_MS, SETTLE_MS, VERIFY_GIVE_UP_MS,
   _bootId: () => BOOT_ID,

@@ -542,7 +542,9 @@ test('the send action is classified outbound and shows the report in full', () =
     },
   });
   assert.equal(p.kind, 'outbound');
-  assert.deepEqual(p.blockers, []);
+  // Build 8: an OLD-QUEUE send card is history — refused with the reason. The
+  // governed send is the prepared action (build8-outbound.test.js).
+  assert.ok(p.blockers.some((b) => /Retired in Build 8/.test(b)), 'the old queue cannot send it');
   assert.match(p.body, /Every word of it/, 'the body is verbatim, never a summary');
   assert.ok(p.fields.some(f => f.value === 'chrism@nurtur.tech'));
 });
@@ -553,8 +555,7 @@ test('no recipient blocks the send rather than failing after approval', () => {
     type: 'send_weekly_risk_report',
     payload: { week: '2026-08-17', to: [], body: 'report' },
   });
-  assert.equal(p.blockers.length, 1);
-  assert.match(p.blockers[0], /nowhere to send/);
+  assert.ok(p.blockers.some((b) => /nowhere to send/.test(b)));
 });
 
 test('a clean week warns before approval — it reports an all-clear to Chris', () => {
@@ -721,9 +722,9 @@ test('markup in the report content is escaped, not rendered', () => {
 });
 
 test('the real send and the test send render through the same function', () => {
-  const engine = require('./suggestion-engine').executeAction.toString();
-  assert.match(engine, /toEmailHtml/, 'the executor converts rather than sending raw markdown');
-  assert.match(engine, /html:\s*true/);
+  // Build 8: the real send's HTML is rendered ONCE, when the governed action is
+  // prepared, and frozen into the approval — the executor sends that exact HTML.
+  assert.match(weeklyRisk.queueSend.toString(), /toEmailHtml\(report\.markdown\)/, 'the prepared send freezes the rendered HTML');
   assert.match(weeklyRisk.testSend.toString(), /toEmailHtml/);
 });
 

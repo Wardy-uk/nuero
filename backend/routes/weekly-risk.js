@@ -135,16 +135,20 @@ router.post('/queue-send', async (req, res) => {
       to: req.body?.to || null,
       force: Boolean(req.body?.force),
     });
-    if (!result.ok) return res.status(409).json({ error: 'Not ready to send', blockers: result.blockers });
+    if (!result.ok) return res.status(409).json({ error: 'Not ready to send', blockers: result.blockers, action: result.action || null });
     res.json({
       ok: true,
       actionId: result.actionId,
+      action: result.action,
       recipient: result.recipient,
       subject: result.subject,
       alreadyQueued: Boolean(result.alreadyQueued),
+      superseded: result.superseded || null,
       note: result.alreadyQueued
-        ? 'Already queued for this week — refreshed the existing card rather than adding a second. Approve it in Actions.'
-        : 'Queued for approval — nothing has been sent. Approve it in Actions.',
+        ? 'Already prepared for this week with the same report — nothing has been sent. Approve it with your approval code.'
+        : result.superseded
+          ? 'Prepared the regenerated report as a new version; the earlier one can no longer send. Nothing has been sent — approve this one with your approval code.'
+          : 'Prepared for approval — nothing has been sent. Approve this exact report with your approval code.',
     });
   } catch (err) { fail(res, err); }
 });
@@ -174,41 +178,28 @@ router.post('/test-send', async (req, res) => {
 
 /**
  * GET /api/weekly-risk/send-status -- everything the panel needs to approve in
- * place: the queued card, what it would send, and whether the week is finished.
+ * place: the governed send for this week, and whether the week is finished.
  *
- * The approval itself still goes through POST /api/actions/:id/approve, the
- * same executor and the same gate the Actions queue uses. This route exists so
- * the second gate can be SHOWN where the report is, not so a second way to send
- * can exist -- and it returns the presentation the Actions card is built from,
- * verbatim, so the two screens cannot describe the same send differently.
+ * ⚠ Build 8: the approval goes through POST /api/prepared-actions/:id/
+ * approval-challenge + /approve — the same route, proof and executor the
+ * Actions screen uses. `governed` is the prepared action itself (the SAME
+ * shape the Actions card renders), so the two screens cannot describe one send
+ * differently; `queued` is kept for older clients and names it.
  */
 router.get('/send-status', (req, res) => {
   try {
     const week = req.query.week || weeklyRisk.weekCommencing();
     const sent = weeklyRisk.sentSummary(weeklyRisk.sentRecord(week));
-    const actionPresenter = require('../services/action-presenter');
-    const pending = (db.getPendingSaimActionsByType
-      ? db.getPendingSaimActionsByType('send_weekly_risk_report', 50)
-      : []) || [];
-
-    let queued = null;
-    for (const action of pending) {
-      const payload = typeof action.payload === 'string' ? JSON.parse(action.payload) : action.payload;
-      if (!payload || payload.week !== week) continue;
-      queued = {
-        actionId: action.id,
-        createdAt: action.created_at || null,
-        // Built by the presenter, never re-derived here: the recipient, the
-        // blockers and the full body have to read identically wherever the
-        // approval happens.
-        presentation: actionPresenter.describe({ ...action, payload }),
-      };
-      break;
-    }
+    const pa = require('../services/prepared-actions');
+    const governed = pa.weeklyReportFor(week);
+    const live = governed && pa.LIVE.has(governed.status) ? governed : null;
+    const queued = live ? { actionId: live.actionId, createdAt: live.createdAt, status: live.status, governed: true } : null;
 
     res.json({
       week,
+      governed,
       queued,
+      sending: { enabled: require('../services/feature-flags').isEnabled('governed_execution') },
       sent,
       locked: weeklyRisk.isLocked(week),
       published: weeklyRisk.publishedAt(week),

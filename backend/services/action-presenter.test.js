@@ -43,23 +43,27 @@ test('no presenter describes a type the executor cannot run', () => {
   assert.deepEqual(orphans, [], `presenters for types executeAction has no case for: ${orphans.join(', ')}`);
 });
 
-test('outbound actions show the full stored body, not a summary', () => {
+test('outbound actions show the full stored body, not a summary — and since Build 8 an old-queue send is never approvable', () => {
   const body = 'Hi Lucy,\n\nWhere did that get to?\n\nNick';
   for (const [type, payload] of [
     ['reply_email', { emailId: 'AAA', body, subject: 'Re: feeds' }],
     ['chase_agenda', { eventId: 'E1', body, organizer: { name: 'Sam', address: 's@nurtur.tech' } }],
+    ['send_weekly_risk_report', { week: '2026-10-05', to: [{ email: 'c@nurtur.tech' }], body }],
   ]) {
     const d = presenter.describe({ type, payload });
     assert.equal(d.body, body, `${type} must render the stored body verbatim`);
     assert.equal(d.kind, presenter.OUTBOUND, `${type} is outbound`);
-    assert.equal(d.canApprove, true, `${type} with a complete payload should be approvable`);
+    // Build 8: the legacy queue's sender is retired — a COMPLETE payload is
+    // still refused, with the reason, never approvable from this queue.
+    assert.equal(d.canApprove, false, `${type} from the old queue must not be approvable`);
+    assert.ok(d.blockers.some((b) => /Retired in Build 8/.test(b)), `${type} says why`);
   }
 });
 
 test('a missing send field blocks approval and says why', () => {
   const cases = [
-    ['reply_email', { emailId: 'AAA' }, /nothing to send/i],
-    ['reply_email', { body: 'hi' }, /emailId/],
+    ['reply_email', { emailId: 'AAA' }, /Retired in Build 8/],
+    ['reply_email', { body: 'hi' }, /Retired in Build 8/],
     ['chase_agenda', { eventId: 'E1', body: 'hi' }, /organiser address/i],
     ['chase_agenda', { eventId: 'E1', organizer: { email: 'a@b.c' } }, /nothing to send/i],
     ['complete_task', { filePath: 'Tasks/x.md', lineNumber: 3 }, /taskId or an msId/],

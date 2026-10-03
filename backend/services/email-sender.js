@@ -145,12 +145,9 @@ function briefToHtml(brief) {
 }
 
 /**
- * Send a plain-text email to named recipients.
- *
- * Separate from sendBriefEmail, which always writes to Nick's own address — the
- * brief is a note to self and hardcoding that is a safety feature worth keeping.
- * This one goes to other people, so it takes explicit recipients and refuses
- * without them rather than defaulting anywhere.
+ * Send an email to Nick himself (see the Build 8 note below — it refuses
+ * anybody else). Takes explicit recipients so a caller states who it means,
+ * and refuses without them rather than defaulting anywhere.
  */
 /**
  * `html: true` switches the content type. Default stays Text, because the
@@ -159,9 +156,24 @@ function briefToHtml(brief) {
  * A rendered REPORT is the opposite case: as plain text its tables arrive as
  * pipe soup.
  */
+//
+// ⚠ BUILD 8 (3 Oct 2026): THIS IS NOW A SELF-ONLY SENDER. Its other callers —
+// the legacy queue's chase_agenda and weekly-report cases — are retired, and
+// every email NEURO sends to ANYONE ELSE goes through the governed executor
+// (prepared-actions → approval proof → action-executor, ledger + Sent Items
+// verification). A recipient or a copy that is not Nick's own address is
+// REFUSED here, before a token is even fetched, so this function cannot become
+// a second, ungoverned way out of the building. The one remaining caller is
+// weekly-risk.testSend, which mails Nick a [TEST] copy.
 async function sendMail({ to, subject, body, cc = null, html = false }) {
   const recipients = (Array.isArray(to) ? to : []).filter(r => r?.email);
   if (!recipients.length) return { sent: false, reason: 'no_recipients' };
+  const others = [...recipients, ...(Array.isArray(cc) ? cc : [])]
+    .filter(r => r && String(r.email || '').trim().toLowerCase() !== TO_ADDRESS);
+  if (others.length) {
+    console.error(`[EmailSender] REFUSED: sendMail is self-only since Build 8 (${others.length} other recipient(s)); use a governed prepared action`);
+    return { sent: false, reason: 'not_self' };
+  }
   if (!String(body || '').trim()) return { sent: false, reason: 'empty_body' };
 
   let token;

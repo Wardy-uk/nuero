@@ -210,10 +210,11 @@ async function approveAction(id, { apiClient = null } = {}) {
   if (apiClient && actionPresenter.describe(action).kind === actionPresenter.OUTBOUND) {
     return { status: 403, body: { error: 'Approving an outbound action needs Nick, in NEURO — a machine client cannot approve it on his behalf.' } };
   }
-  // The legacy chase sender is retired; say so rather than running it to fail.
-  if (action.type === 'chase_commitment') {
-    return { status: 410, body: { error: 'Retired in Build 7: chases are approved in Actions → Drafted by NEURO. Press Chase on the People board to draft one.' } };
-  }
+  // The legacy OUTBOUND sender is retired (chases in Build 7, every other email
+  // and invite in Build 8): say so with 410 rather than running it to fail.
+  // The action stays pending so Nick can still reject it.
+  const retired = suggestionEngine.legacyRetired(action);
+  if (retired) return { status: 410, body: { error: retired, retired: true } };
 
   // Execute
   const result = await suggestionEngine.executeAction(action);

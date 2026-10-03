@@ -61,17 +61,102 @@ async function _req(method, urlPath, body, extraHeaders = {}) {
   }
 }
 
-/** Create the draft. Nothing is sent. Returns { ok, id, internetMessageId } or { ok:false, category, status }. */
-async function createDraft({ to, subject, body }) {
+const _recips = (list) => (list || []).map((x) => ({ emailAddress: { address: x.email, name: x.name || undefined } }));
+
+/**
+ * Create a NEW message as a draft. Nothing is sent.
+ * `contentType` is 'Text' (default) or 'HTML' (the weekly report).
+ * Returns { ok, id, internetMessageId } or { ok:false, category, status }.
+ */
+async function createDraft({ to, cc = [], subject, body, contentType = 'Text' }) {
   const r = await _req('POST', '/me/messages', {
     subject,
-    body: { contentType: 'Text', content: body },
-    toRecipients: to.map((x) => ({ emailAddress: { address: x.email, name: x.name || undefined } })),
+    body: { contentType: contentType === 'HTML' ? 'HTML' : 'Text', content: body },
+    toRecipients: _recips(to),
+    ...(cc && cc.length ? { ccRecipients: _recips(cc) } : {}),
   });
   if (r.status === 201 || (r.status >= 200 && r.status < 300)) {
     return { ok: true, id: r.data && r.data.id, internetMessageId: r.data && r.data.internetMessageId, status: r.status };
   }
   return { ok: false, status: r.status, category: r.category || 'unknown' };
+}
+
+const _escapeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+
+/**
+ * Build 8: a REPLY draft in the original thread. Nothing is sent.
+ *
+ * createReply / createReplyAll make a draft carrying the quoted original and
+ * Nick's words on top, threaded under the source message. Graph picks the
+ * addressees on that draft — so the executor then OVERWRITES them with the
+ * exact approved list (patchDraft) and reads them back before any send. A
+ * reply never goes to whoever Graph happened to choose.
+ *
+ * Returns { ok, id, internetMessageId, conversationId } or { ok:false, category, status }.
+ */
+async function createReplyDraft(emailId, { mode = 'reply', comment = '' } = {}) {
+  const verb = mode === 'replyAll' ? 'createReplyAll' : 'createReply';
+  const r = await _req('POST', `/me/messages/${encodeURIComponent(emailId)}/${verb}`, { comment: _escapeHtml(comment) });
+  if (r.status >= 200 && r.status < 300 && r.data) {
+    return { ok: true, id: r.data.id, internetMessageId: r.data.internetMessageId || null, conversationId: r.data.conversationId || null, status: r.status };
+  }
+  return { ok: false, status: r.status, category: r.category || 'unknown' };
+}
+
+/**
+ * Set a draft's recipients and subject to EXACTLY the approved values, and
+ * report back what the draft now holds. Returns
+ * { ok, to:[addr], cc:[addr], subject, internetMessageId } or { ok:false, ... }.
+ */
+async function patchDraft(draftId, { to, cc = [], subject }) {
+  const r = await _req('PATCH', `/me/messages/${encodeURIComponent(draftId)}`, {
+    toRecipients: _recips(to),
+    ccRecipients: _recips(cc),
+    bccRecipients: [],
+    ...(subject !== undefined ? { subject } : {}),
+  });
+  if (r.status >= 200 && r.status < 300 && r.data) {
+    return {
+      ok: true,
+      to: (r.data.toRecipients || []).map(_addr).filter(Boolean),
+      cc: (r.data.ccRecipients || []).map(_addr).filter(Boolean),
+      bcc: (r.data.bccRecipients || []).map(_addr).filter(Boolean),
+      subject: r.data.subject || '',
+      internetMessageId: r.data.internetMessageId || null,
+    };
+  }
+  return { ok: false, status: r.status, category: r.category || 'unknown' };
+}
+
+// The message a reply answers: READ-ONLY, shared with prepared-actions via
+// mail-read.js (preparing must not import a sender).
+const { readMessage } = require('./mail-read');
+
+/**
+ * Has Nick sent anything in this thread since a moment? Live Sent Items read.
+ * Returns { count } or null when it could not be read.
+ */
+async function sentInConversationSince(conversationId, sinceIso) {
+  if (!conversationId) return null;
+  const filter = `conversationId eq '${String(conversationId).replace(/'/g, "''")}'`;
+  const r = await _req('GET', `/me/mailFolders/SentItems/messages?$filter=${encodeURIComponent(filter)}&$select=id,sentDateTime&$top=50`);
+  if (r.status !== 200 || !r.data || !Array.isArray(r.data.value)) return null;
+  const since = Date.parse(sinceIso);
+  const hits = r.data.value.filter((m) => Number.isFinite(since) ? Date.parse(m.sentDateTime) >= since : true);
+  return { count: hits.length };
+}
+
+/**
+ * A calendar event, for the agenda chase's re-checks. { ok:true, exists, event }
+ * or { ok:false } when it could not be read. Reuses microsoft.fetchEventById,
+ * which answers null for both "gone" and "could not look" — so a null is
+ * treated as COULD NOT LOOK (wait), never as gone (cancel).
+ */
+async function readEvent(eventId) {
+  try {
+    const ev = await require('./microsoft').fetchEventById(eventId);
+    return ev ? { ok: true, exists: true, event: ev } : { ok: false, category: 'unavailable' };
+  } catch { return { ok: false, category: 'unavailable' }; }
 }
 
 /** Ask Microsoft to send the draft. Returns { outcome: accepted|rejected|uncertain, status, category }. */
@@ -93,7 +178,7 @@ const _addr = (r) => (r && r.emailAddress && r.emailAddress.address ? String(r.e
 async function findSent(internetMessageId) {
   if (!internetMessageId) return { ok: false, category: 'no-handle' };
   const filter = `internetMessageId eq '${String(internetMessageId).replace(/'/g, "''")}'`;
-  const select = 'id,subject,toRecipients,ccRecipients,bccRecipients,from,sentDateTime,internetMessageId,body';
+  const select = 'id,subject,toRecipients,ccRecipients,bccRecipients,from,sentDateTime,internetMessageId,conversationId,body';
   const r = await _req('GET', `/me/mailFolders/SentItems/messages?$filter=${encodeURIComponent(filter)}&$select=${select}&$top=5`,
     undefined, { Prefer: 'outlook.body-content-type="text"' });
   if (r.status !== 200 || !r.data || !Array.isArray(r.data.value)) return { ok: false, category: r.category || 'unavailable', status: r.status };
@@ -108,6 +193,7 @@ async function findSent(internetMessageId) {
       bcc: (m.bccRecipients || []).map(_addr).filter(Boolean),
       from: _addr(m.from),
       sentAt: m.sentDateTime || null,
+      conversationId: m.conversationId || null,
       bodyText: m.body && typeof m.body.content === 'string' ? m.body.content : null,
     })),
   };
@@ -142,7 +228,10 @@ async function sentToSince(email, sinceIso) {
     if (!r || !Array.isArray(r.messages)) return null;
     const want = String(email || '').toLowerCase();
     const hits = r.messages.filter((m) => (m.to || []).includes(want) || (m.cc || []).includes(want));
-    return { count: hits.length, complete: r.complete !== false };
+    // Subjects travel (never logged) so a type can ask "did he send THIS by
+    // hand?" — Nick emails Chris often; only the report's subject means the
+    // report already went.
+    return { count: hits.length, subjects: hits.map((m) => m.subject || ''), complete: r.complete !== false };
   } catch { return null; }
 }
 
@@ -150,4 +239,7 @@ async function signedInAddress() {
   try { return await require('./microsoft').getSignedInAddress(); } catch { return null; }
 }
 
-module.exports = { createDraft, sendDraft, findSent, draftState, deleteDraft, sentToSince, signedInAddress, DEFINITIVE_SEND_REFUSALS };
+module.exports = {
+  createDraft, createReplyDraft, patchDraft, sendDraft, findSent, draftState, deleteDraft,
+  readMessage, readEvent, sentToSince, sentInConversationSince, signedInAddress, DEFINITIVE_SEND_REFUSALS,
+};

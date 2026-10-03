@@ -72,10 +72,12 @@ test('a send is recorded by the EXECUTOR, not by whichever screen approved it', 
   // The panel and the Actions queue both approve through the same executor, so
   // the freeze has to be recorded there. A hook in the route would be a hook
   // the other screen walks straight past — the task-store hold's lesson.
-  const engine = fs.readFileSync(path.join(__dirname, '..', 'services', 'suggestion-engine.js'), 'utf8');
-  const start = engine.indexOf("case 'send_weekly_risk_report'");
-  assert.ok(start > 0, 'the send executor is gone — this scan proves nothing');
-  const body = engine.slice(start, start + 3000);
+  // Build 8: the executor is the GOVERNED one (action-executor). It records the
+  // send once Microsoft accepts it; the legacy queue no longer sends at all.
+  const engine = fs.readFileSync(path.join(__dirname, '..', 'services', 'action-executor.js'), 'utf8');
+  const start = engine.indexOf('recordReport:');
+  assert.ok(start > 0, 'the send recorder is gone — this scan proves nothing');
+  const body = engine.slice(start, start + 800);
   assert.match(body, /markSent\(/, 'the executor must record the send, or the week never freezes');
 
   const routes = fs.readFileSync(path.join(__dirname, 'weekly-risk.js'), 'utf8');

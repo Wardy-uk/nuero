@@ -365,7 +365,7 @@ function approve(actionId, {
     return { ok: false, code: 409, error: 'the draft still has a [placeholder] in it — edit it first; that creates a new version to approve' };
   }
   if (policy.executable && !sending()) {
-    return { ok: false, code: 409, error: 'Sending is switched off (Settings → Switches → "Send a chase once you approve it"), so approving would send nothing. Turn it on first, then approve.' };
+    return { ok: false, code: 409, error: 'Sending is switched off (Settings → Switches → "Send approved emails"), so approving would send nothing. Turn it on first, then approve.' };
   }
   // The proof. Burns the challenge whatever the outcome.
   const proof = require('./approval-proof').consume({
@@ -389,7 +389,7 @@ function approve(actionId, {
     ...r,
     executable: policy.executable,
     notice: policy.executable
-      ? 'Approved. This exact message is now sent as you, then checked in Sent Items.'
+      ? `Approved. This exact ${cur.action_type === 'send_weekly_risk_report' ? 'report' : 'email'} is now sent as you, then checked in Sent Items.`
       : `Approval recorded. ${policy.notExecutableWhy || 'This type does not execute'} — nothing has been sent and nothing will be sent from here.`,
   };
 }
@@ -411,7 +411,9 @@ function edit(actionId, { subject, body, payloadHash = null, editor = 'nick', no
   const nowIso = new Date(nowMs).toISOString();
   const cur = _row(actionId);
   if (!cur) return { ok: false, code: 404, error: 'no such prepared action' };
-  if (!registry.isRegistered(cur.action_type)) return { ok: false, code: 409, error: 'not a registered action type' };
+  const policy = registry.policyFor(cur.action_type);
+  if (!policy) return { ok: false, code: 409, error: 'not a registered action type' };
+  if (policy.editable === false) return { ok: false, code: 409, error: `${policy.label} cannot be edited here: ${policy.notEditableWhy}` };
   const failedUnsent = cur.status === 'failed' && cur.retry_safe === 1;
   if (cur.status !== 'prepared' && !failedUnsent) {
     return { ok: false, code: 409, error: cur.status === 'failed'
@@ -480,10 +482,12 @@ function sweep({ now = Date.now() } = {}) {
       if (transition(r.action_id, 'expired', { note: `not decided within ${EXPIRY_HOURS}h`, now: nowMs, allowedFrom: ['prepared'] }).ok) expired += 1;
       continue;
     }
-    // A chase Nick asked for answers no finding, so a finding resolving is not
-    // a reason to withdraw it. Only expiry (above) and the executor's own
-    // re-checks apply to it.
-    if (r.origin === 'chase-button') continue;
+    // Only a RISK-prepared action answers a commitment-risk finding (Build 5/6
+    // rows carry no origin, which means risk). A chase Nick asked for, a reply
+    // he wrote, an agenda request or the weekly report answers no finding, so a
+    // finding resolving is not a reason to withdraw it — only expiry (above)
+    // and the executor's own re-checks apply to those.
+    if (r.origin && r.origin !== 'risk') continue;
     const f = db.get('SELECT status, resolution FROM commitment_risk_findings WHERE finding_id = ?', [r.finding_id]);
     if (!f || f.status !== 'active') {
       if (transition(r.action_id, 'cancelled', { note: `the risk it answered resolved (${f ? f.resolution : 'finding gone'})`, now: nowMs, allowedFrom: ['prepared'] }).ok) cancelled += 1;
@@ -652,6 +656,281 @@ function prepareFromWaitingOn(key, { now = Date.now(), deps = {} } = {}) {
   return { ok: true, already: false, action: get(actionId) };
 }
 
+// ── Build 8: the other outbound emails ──────────────────────────────────────
+//
+// Each producer that used to put a PIN-approvable send into the legacy
+// `saim_actions` queue now PREPARES one of these instead: the Inbox composer
+// and draft_reply (reply_email), meeting triage (chase_agenda), the Weekly Risk
+// panel (send_weekly_risk_report). Preparing sends nothing and calls no sender;
+// the exact recipients and words are bound into the row, and the same approval
+// proof, executor, ledger and Sent Items verification as a chase apply.
+
+const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+const lcs = (s) => String(s || '').trim().toLowerCase();
+const shortSha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex').slice(0, 16);
+
+/** Recipients as [{name,email}], from strings or objects; invalid ones dropped and counted. */
+function _recipients(list) {
+  const out = [];
+  let bad = 0;
+  for (const r of Array.isArray(list) ? list : []) {
+    const email = lcs(typeof r === 'string' ? r : r && (r.email || r.address));
+    if (!EMAIL_RE.test(email)) { bad += 1; continue; }
+    if (out.some((x) => x.email === email)) continue;
+    out.push({ name: (r && typeof r === 'object' && r.name) || null, email });
+  }
+  return { list: out, bad };
+}
+
+/**
+ * The one INSERT every Build 8 preparer uses. Born `prepared`, A4, approval
+ * required (the triggers repeat all three). `supersede` — an existing row this
+ * one replaces — is moved FIRST, in the same transaction, because the
+ * one-active-per-subject indexes would otherwise refuse the new row.
+ */
+function _insertPrepared({ actionType, subjectKey, findingId, subjectRef, target, reason, evidence, draft, origin,
+  idemRoot, nowMs, expiresMs = null, supersede = null }) {
+  const policy = registry.policyFor(actionType);
+  const nowIso = new Date(nowMs).toISOString();
+  const version = supersede ? (supersede.version || 1) + 1 : 1;
+  const key = supersede ? `${String(supersede.idempotency_key).replace(/#v\d+$/, '')}#v${version}` : idemRoot;
+  const actionId = `pa_${crypto.createHash('sha1').update(key).digest('hex').slice(0, 16)}`;
+  const payloadHash = registry.payloadHash({ actionType, version, commitmentId: subjectKey, target, draft });
+  const ttl = new Date(Math.min(nowMs + (policy.preparedTtlHours || EXPIRY_HOURS) * 3600000, expiresMs || Infinity)).toISOString();
+  db.batchSaves(() => {
+    if (supersede) {
+      const r = supersede.how === 'expire'
+        ? transition(supersede.action_id, 'expired', { now: nowMs, allowedFrom: ['approved'], note: supersede.note,
+          set: { retry_safe: 1, outcome_detail: `${supersede.note} — nothing was sent` } })
+        : transition(supersede.action_id, 'superseded', { now: nowMs, allowedFrom: ['prepared'], note: supersede.note });
+      if (!r.ok) throw new Error(r.error);
+    }
+    db.run(`INSERT INTO prepared_actions (action_id, idempotency_key, finding_id, commitment_id, subject_ref, action_type, version,
+              parent_action_id, target_json, reason, evidence_json, evidence_hash, draft_json, payload_hash, authority_class,
+              approval_required, status, origin, created_at, expires_at, history_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'A4', 1, 'prepared', ?, ?, ?, ?, ?)`,
+    [actionId, key, findingId, subjectKey, subjectRef, actionType, version, supersede ? supersede.action_id : null,
+      JSON.stringify(target), reason, JSON.stringify(evidence), registry.evidenceHash(evidence), JSON.stringify(draft), payloadHash,
+      origin, nowIso, ttl,
+      JSON.stringify([{ at: nowIso, from: null, to: 'prepared', note: `${supersede ? `version ${version}, replacing ${supersede.action_id}; ` : ''}prepared by ${origin} — awaiting approval, nothing sent` }]),
+      nowIso]);
+  });
+  _event(_row(actionId), 'prepared', nowIso, { origin });
+  // IDs only: never an address, a subject or the words.
+  console.log(`[PreparedActions] prepared ${actionType} (${actionId}, v${version}) from ${origin}; awaiting approval — NOT sent`);
+  return get(actionId);
+}
+
+/** The live (or, for `andSent`, sent) governed action of a type for a subject. */
+function _liveFor(actionType, subjectKey, { andSent = false } = {}) {
+  const states = andSent ? [...LIVE, 'verified'] : [...LIVE];
+  return db.get(`SELECT * FROM prepared_actions WHERE action_type = ? AND commitment_id = ? AND status IN (${states.map(() => '?').join(',')})
+                 ORDER BY created_at DESC, version DESC LIMIT 1`, [actionType, subjectKey, ...states]);
+}
+
+const REPLY_DEPS = {
+  // READ-ONLY (mail-read.js): preparing imports no sender — pinned since Build 5.
+  mail: () => require('./mail-read'),
+};
+
+/**
+ * 8C — prepare a reply, in the original thread, with EXACT recipients.
+ *
+ *   emailId   the Graph id of the message being answered
+ *   body      Nick's words (composer) or a model draft he has seen (draft_reply)
+ *   mode      'reply' | 'replyAll'
+ *   to, cc    optional explicit lists (the composer). Omitted → resolved now from
+ *             the original message: reply → its sender; reply-all → its sender,
+ *             plus everyone else on it except Nick.
+ *
+ * Async: the original message is READ (its thread, sender and recipients are
+ * what the approval binds). Could not read it → refuse; never a guessed thread.
+ * Pressing Send again while an earlier draft for the same email still awaits
+ * approval REPLACES it (a new version); one already approved or sending is
+ * refused — a second reply is worse than none.
+ */
+async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = null, origin = 'composer', now = Date.now(), deps = {} } = {}) {
+  const d = { ...REPLY_DEPS, ...deps };
+  const mail = typeof d.mail === 'function' ? d.mail() : d.mail;
+  const nowMs = msOf(now);
+  const text = String(body || '').replace(/\r\n/g, '\n').trim();
+  if (!emailId) return { ok: false, code: 400, error: 'which email is this a reply to? (no emailId)' };
+  if (!text) return { ok: false, code: 400, error: 'the reply is empty' };
+  if (text.length > MAX_BODY) return { ok: false, code: 400, error: `the reply must be at most ${MAX_BODY} characters` };
+  if (!['reply', 'replyAll'].includes(mode)) return { ok: false, code: 400, error: 'mode must be reply or replyAll' };
+
+  const orig = await mail.readMessage(emailId);
+  if (!orig || !orig.ok) return { ok: false, code: 503, error: 'could not read the email being replied to — nothing was prepared (try again)' };
+  if (!orig.exists) return { ok: false, code: 404, error: 'that email no longer exists in your mailbox' };
+  const self = lcs(await mail.signedInAddress());
+
+  let toList; let ccList;
+  if (Array.isArray(to)) {
+    const t = _recipients(to); const c = _recipients(cc);
+    if (t.bad || c.bad) return { ok: false, code: 400, error: 'one of the addresses is not a valid email address' };
+    toList = t.list; ccList = c.list.filter((x) => !toList.some((y) => y.email === x.email));
+  } else {
+    if (!orig.from) return { ok: false, code: 409, error: 'the email has no sender address to reply to' };
+    toList = [{ name: orig.fromName || null, email: lcs(orig.from) }];
+    ccList = [];
+    if (mode === 'replyAll') {
+      if (!self) return { ok: false, code: 503, error: 'could not tell which address is yours, so a reply-all\'s recipients cannot be worked out — nothing was prepared' };
+      ccList = _recipients([...(orig.to || []), ...(orig.cc || [])]).list.filter((x) => x.email !== self && x.email !== toList[0].email);
+    }
+  }
+  if (!toList.length) return { ok: false, code: 400, error: 'add at least one recipient' };
+  const policy = registry.policyFor('reply_email');
+  if (toList.length + ccList.length > policy.maxRecipients) return { ok: false, code: 400, error: `a reply may reach at most ${policy.maxRecipients} people` };
+
+  const subjectKey = `email:${emailId}`;
+  const live = _liveFor('reply_email', subjectKey);
+  let supersede = null;
+  if (live) {
+    if (live.status !== 'prepared') return { ok: false, code: 409, error: `a reply to this email is already ${live.status} — check Actions → Drafted by NEURO`, action: shape(live) };
+    supersede = { ...live, note: 'replaced by a newer reply to the same email' };
+  }
+  const subject = /^\s*re\s*:/i.test(orig.subject || '') ? orig.subject : `RE: ${orig.subject || ''}`.trim();
+  const target = {
+    kind: 'email-thread', emailId, conversationId: orig.conversationId, internetMessageId: orig.internetMessageId,
+    from: lcs(orig.from), fromName: orig.fromName || null, originalSubject: orig.subject || '', receivedAt: orig.receivedAt || null,
+  };
+  const draft = {
+    channel: 'email', voice: 'nick', mode,
+    generatedBy: origin === 'composer' ? 'typed by Nick in the Inbox composer' : 'model draft (draft_reply), shown before approval',
+    to: toList, cc: ccList, subject, body: text, placeholders: _placeholders(text),
+  };
+  const evidence = {
+    origin,
+    original: { from: target.from, fromName: target.fromName, subject: target.originalSubject, receivedAt: target.receivedAt },
+    recipientsFrom: Array.isArray(to) ? 'chosen in the composer' : (mode === 'replyAll' ? 'everyone on the original, except you' : 'the original sender'),
+  };
+  try {
+    const action = _insertPrepared({
+      actionType: 'reply_email', subjectKey, findingId: `reply:${emailId}`, subjectRef: subjectKey, target, draft, evidence, origin,
+      reason: `Reply to ${target.fromName || target.from} on "${target.originalSubject || '(no subject)'}"`,
+      idemRoot: `reply:${emailId}:${new Date(nowMs).toISOString()}:${shortSha(text)}`, nowMs, supersede,
+    });
+    return { ok: true, already: false, action };
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      const again = _liveFor('reply_email', subjectKey);
+      if (again) return { ok: false, code: 409, error: `a reply to this email is already ${again.status}`, action: shape(again) };
+    }
+    return { ok: false, code: 409, error: e.message };
+  }
+}
+
+/**
+ * 8D — prepare an agenda request for a meeting meeting-triage judged needs
+ * one. Sync: the caller has already fetched the event. ONE per meeting, ever
+ * (a sent one blocks for good; the database repeats it in an index).
+ */
+function prepareAgendaChase({ event, body, why = null, now = Date.now() } = {}) {
+  const nowMs = msOf(now);
+  if (!event || !event.id) return { ok: false, code: 400, error: 'no meeting' };
+  const organiser = lcs(event.organizer && (event.organizer.email || event.organizer.address));
+  if (!EMAIL_RE.test(organiser)) return { ok: false, code: 409, error: 'the meeting has no organiser address to ask' };
+  const text = String(body || '').trim();
+  if (!text) return { ok: false, code: 400, error: 'no request text' };
+  const start = Date.parse(event.start);
+  if (!Number.isFinite(start) || start - nowMs < 2 * 3600000) return { ok: false, code: 409, error: 'the meeting is less than two hours away — too late to ask' };
+  const subjectKey = `meeting:${event.id}`;
+  // Two guards, stated: this check, and ux_prepared_actions_one_agenda_chase
+  // (migrate-build8-actions), which refuses the insert below for a meeting
+  // already asked about — sent ones included. The index is mutation-checked;
+  // this check is belt and braces and is NOT, because the index catches the
+  // same case and the catch below hands back the existing action either way.
+  const existing = _liveFor('chase_agenda', subjectKey, { andSent: true });
+  if (existing) return { ok: true, already: true, action: shape(existing) };
+  const target = {
+    kind: 'meeting', eventId: event.id, start: event.start, subject: event.subject || '',
+    email: organiser, displayName: (event.organizer && event.organizer.name) || organiser,
+  };
+  const draft = {
+    channel: 'email', voice: 'nick', generatedBy: 'template (meeting-triage.buildChaser, no model call)',
+    to: [{ name: target.displayName, email: organiser }], subject: `Re: ${target.subject || 'your meeting'}`, body: text, placeholders: [],
+  };
+  const evidence = { origin: 'meeting-triage', meeting: { eventId: event.id, subject: target.subject, start: event.start }, why };
+  try {
+    const action = _insertPrepared({
+      actionType: 'chase_agenda', subjectKey, findingId: `agenda:${event.id}`, subjectRef: subjectKey, target, draft, evidence,
+      origin: 'meeting-triage', reason: `Ask ${target.displayName} what "${target.subject}" is for (${why || 'no agenda or outcome on the invite'})`,
+      idemRoot: `agenda:${event.id}`, nowMs, expiresMs: start - 2 * 3600000,
+    });
+    return { ok: true, already: false, action };
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      const again = _liveFor('chase_agenda', subjectKey, { andSent: true });
+      if (again) return { ok: true, already: true, action: shape(again) };
+    }
+    return { ok: false, code: 409, error: e.message };
+  }
+}
+
+/**
+ * 8E — prepare the weekly risk report send. The report is FROZEN into the row:
+ * the markdown Nick reads and the exact HTML that is sent (hashed into the
+ * approval). Queueing again after the report changed:
+ *   • the earlier one is still awaiting approval → it is superseded (new version)
+ *   • the earlier one is APPROVED but not sent → its approval is EXPIRED, so an
+ *     approval given for one report can never send another
+ *   • the earlier one is sending / sent → refused
+ * Queueing again with an identical report hands back the same action.
+ */
+function prepareWeeklyReport({ week, recipient, subject, markdown, html, snapshotDate = null, escalateCount = null,
+  vaultPath = null, generatedAt = null, now = Date.now() } = {}) {
+  const nowMs = msOf(now);
+  if (!week) return { ok: false, code: 400, error: 'no report week' };
+  const email = lcs(recipient && recipient.email);
+  if (!EMAIL_RE.test(email)) return { ok: false, code: 409, error: 'no valid recipient address' };
+  if (!String(markdown || '').trim() || !String(html || '').trim()) return { ok: false, code: 409, error: 'the report body is empty' };
+  const reportVersion = shortSha(markdown);
+  const subjectKey = `weekly-risk:${week}`;
+  const live = _liveFor('send_weekly_risk_report', subjectKey);
+  let supersede = null;
+  if (live) {
+    const lt = parse(live.target_json) || {};
+    if (['executing', 'executed', 'execution_uncertain'].includes(live.status)) {
+      return { ok: false, code: 409, error: `this week's report is already ${live.status} — check Actions → Drafted by NEURO`, action: shape(live) };
+    }
+    if (lt.reportVersion === reportVersion && lcs(lt.email) === email) return { ok: true, already: true, action: shape(live) };
+    supersede = live.status === 'approved'
+      ? { ...live, how: 'expire', note: 'the report was regenerated after this was approved — its approval cannot send the new report' }
+      : { ...live, note: 'replaced by a regenerated report' };
+  }
+  const target = {
+    kind: 'weekly-risk-report', week, reportVersion, snapshotDate, escalateCount, vaultPath,
+    generatedAt: generatedAt || new Date(nowMs).toISOString(),
+    email, displayName: (recipient && recipient.name) || email, recipientSource: (recipient && recipient.source) || null,
+  };
+  const draft = {
+    channel: 'email', voice: 'nick', format: 'html', generatedBy: 'weekly-risk.build (no model call)',
+    to: [{ name: target.displayName, email }], subject, body: String(markdown), html: String(html), placeholders: [],
+  };
+  const evidence = { origin: 'weekly-risk', week, reportVersion, snapshotDate, escalateCount, vaultPath, recipientSource: target.recipientSource };
+  try {
+    const action = _insertPrepared({
+      actionType: 'send_weekly_risk_report', subjectKey, findingId: `weekly-risk:${week}`, subjectRef: subjectKey, target, draft, evidence,
+      origin: 'weekly-risk', reason: `Weekly risk report for w/c ${week}, due to ${target.displayName} by midday`,
+      idemRoot: `weekly-risk:${week}:${reportVersion}:${new Date(nowMs).toISOString()}`, nowMs, supersede,
+    });
+    return { ok: true, already: false, action, superseded: supersede ? supersede.action_id : null };
+  } catch (e) {
+    return { ok: false, code: 409, error: e.message };
+  }
+}
+
+/** The governed weekly report action for a week, newest first (any status). */
+function weeklyReportFor(week) {
+  return shape(db.get(`SELECT * FROM prepared_actions WHERE action_type = 'send_weekly_risk_report' AND commitment_id = ?
+                       ORDER BY created_at DESC, version DESC LIMIT 1`, [`weekly-risk:${week}`]));
+}
+
+/** Has this meeting ever been asked about through the governed path? (meeting-triage's seen set) */
+function agendaAsked(eventId) {
+  return !!_liveFor('chase_agenda', `meeting:${eventId}`, { andSent: true });
+}
+
 /** Chases the pre-Build-7 queue sent: recorded, never verified. */
 function legacyHistory() {
   try {
@@ -765,6 +1044,7 @@ module.exports = {
   MIN_CONFIDENCE, RECENT_CHASE_DAYS, EXPIRY_HOURS, STATUSES, TERMINAL, LIVE,
   shouldPrepare, draftFor, actionPhrase,
   prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,
+  prepareReply, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, agendaAsked,
   approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,
   get, forFinding, forCommitment, list, countsByStatus,

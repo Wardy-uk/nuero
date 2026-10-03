@@ -5,7 +5,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 366,
+    "line": 367,
     "description": "DELETE /api/actions/:id/snooze. wake it now. Every other decision in NEURO",
     "params": [
       "id"
@@ -342,7 +342,7 @@
     "route": "/api/weekly-risk/log/:id",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 325,
+    "line": 316,
     "description": "DELETE /api/weekly-risk/log/:id.",
     "params": [
       "id"
@@ -394,7 +394,7 @@
     "route": "/api/1to1/find/:person",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 326,
+    "line": 332,
     "description": "GET /api/1to1/find/:person.",
     "params": [
       "person"
@@ -412,7 +412,7 @@
     "route": "/api/1to1/moves/:person",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 366,
+    "line": 375,
     "description": "GET /api/1to1/moves/:person.",
     "params": [
       "person"
@@ -812,7 +812,7 @@
     "route": "/api/calendar/agenda-check",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 111,
+    "line": 114,
     "description": "GET /api/calendar/agenda-check. what would be chased, and why each one was",
     "params": [],
     "query": [
@@ -4766,7 +4766,7 @@
     "route": "/api/weekly-risk/deliverables",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 249,
+    "line": 240,
     "description": "GET /api/weekly-risk/deliverables.",
     "params": [],
     "query": [],
@@ -4782,7 +4782,7 @@
     "route": "/api/weekly-risk/log",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 303,
+    "line": 294,
     "description": "GET /api/weekly-risk/log.",
     "params": [],
     "query": [
@@ -4800,7 +4800,7 @@
     "route": "/api/weekly-risk/log-suggestions",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 341,
+    "line": 332,
     "description": "GET /api/weekly-risk/log-suggestions.",
     "params": [],
     "query": [
@@ -4855,7 +4855,7 @@
     "route": "/api/weekly-risk/send-status",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 185,
+    "line": 189,
     "description": "GET /api/weekly-risk/send-status.",
     "params": [],
     "query": [
@@ -5114,7 +5114,7 @@
     "route": "/api/weekly-risk/log/:id",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 317,
+    "line": 308,
     "description": "PATCH /api/weekly-risk/log/:id.",
     "params": [
       "id"
@@ -5132,7 +5132,7 @@
     "route": "/api/1to1/book",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 311,
+    "line": 314,
     "description": "POST /api/1to1/book.",
     "params": [],
     "query": [],
@@ -5173,7 +5173,7 @@
     "route": "/api/1to1/notes",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 375,
+    "line": 384,
     "description": "POST /api/1to1/notes.",
     "params": [],
     "query": [],
@@ -5292,7 +5292,7 @@
     "route": "/api/1to1/propose-reschedule",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 337,
+    "line": 343,
     "description": "POST /api/1to1/propose-reschedule.",
     "params": [],
     "query": [],
@@ -5312,7 +5312,7 @@
     "route": "/api/1to1/reschedule",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 351,
+    "line": 357,
     "description": "POST /api/1to1/reschedule.",
     "params": [],
     "query": [],
@@ -5370,7 +5370,7 @@
     "route": "/api/actions",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 292,
+    "line": 293,
     "description": "POST /api/actions.",
     "params": [],
     "query": [],
@@ -5395,7 +5395,7 @@
     "route": "/api/actions/batch",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 406,
+    "line": 407,
     "description": "POST /api/actions/batch. approve or reject many at once",
     "params": [],
     "query": [],
@@ -5414,7 +5414,7 @@
     "route": "/api/actions/bulk-reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 454,
+    "line": 455,
     "description": "POST /api/actions/bulk-reject.",
     "params": [],
     "query": [],
@@ -5432,7 +5432,7 @@
     "route": "/api/actions/:id/approve",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 379,
+    "line": 380,
     "description": "POST /api/actions/:id/approve.",
     "params": [
       "id"
@@ -5450,7 +5450,7 @@
     "route": "/api/actions/:id/reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 391,
+    "line": 392,
     "description": "POST /api/actions/:id/reject. reject and optionally suppress",
     "params": [
       "id"
@@ -5468,7 +5468,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 338,
+    "line": 339,
     "description": "POST /api/actions/:id/snooze.   { minutes }  — \"not now\".",
     "params": [
       "id"
@@ -5777,7 +5777,7 @@
     "route": "/api/calendar/agenda-check",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 122,
+    "line": 125,
     "description": "POST /api/calendar/agenda-check. queue chasers for approval. Queues only:",
     "params": [],
     "query": [],
@@ -5821,20 +5821,15 @@
     "route": "/api/calendar/events/:id/respond",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 134,
-    "description": "POST /api/calendar/events/:id/respond. accept, decline or tentatively accept,",
+    "line": 142,
+    "description": "POST /api/calendar/events/:id/respond. RETIRED in Build 8 (answers 410 Gone, meeting response, decline, accept). Respond to meeting invites in Outlook.",
     "params": [
       "id"
     ],
     "query": [],
-    "body": [
-      "comment",
-      "proposedNewTime",
-      "response",
-      "subject"
-    ],
+    "body": [],
     "queryOpen": false,
-    "bodyOpen": true,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },
@@ -6360,8 +6355,8 @@
     "route": "/api/email/triage/:emailId/reply",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 312,
-    "description": "POST /api/email/triage/:emailId/reply. send the reply via Graph",
+    "line": 320,
+    "description": "POST /api/email/triage/:emailId/reply. PREPARE a reply (prepare reply, draft reply, compose): binds the exact recipients and words as a governed action for Nick to approve with his approval code. Sends NOTHING. Body: { body, to?, cc?, replyAll? }",
     "params": [
       "emailId"
     ],
@@ -6401,7 +6396,7 @@
     "route": "/api/email/triage/clear",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 458,
+    "line": 426,
     "description": "POST /api/email/triage/clear. clear all cached triage data and re-scan",
     "params": [],
     "query": [],
@@ -6435,7 +6430,7 @@
     "route": "/api/email/triage/dismiss/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 400,
+    "line": 368,
     "description": "POST /api/email/triage/dismiss/:emailId. dismiss an email from triage.",
     "params": [
       "emailId"
@@ -6456,7 +6451,7 @@
     "route": "/api/email/triage/promote/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 444,
+    "line": 412,
     "description": "POST /api/email/triage/promote/:emailId. \"this should have been an action\".",
     "params": [
       "emailId"
@@ -6493,7 +6488,7 @@
     "route": "/api/email/triage/run",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 387,
+    "line": 355,
     "description": "POST /api/email/triage/run. trigger a fresh triage cycle.",
     "params": [],
     "query": [],
@@ -10002,7 +9997,7 @@
     "route": "/api/weekly-risk/log",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 311,
+    "line": 302,
     "description": "POST /api/weekly-risk/log.",
     "params": [],
     "query": [],
@@ -10018,7 +10013,7 @@
     "route": "/api/weekly-risk/log-suggestions/accept",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 364,
+    "line": 355,
     "description": "POST /api/weekly-risk/log-suggestions/accept.",
     "params": [],
     "query": [],
@@ -10034,7 +10029,7 @@
     "route": "/api/weekly-risk/log-suggestions/dismiss",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 398,
+    "line": 389,
     "description": "POST /api/weekly-risk/log-suggestions/dismiss.",
     "params": [],
     "query": [],
@@ -10052,7 +10047,7 @@
     "route": "/api/weekly-risk/log-suggestions/restore",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 406,
+    "line": 397,
     "description": "POST /api/weekly-risk/log-suggestions/restore.",
     "params": [],
     "query": [],
@@ -10088,7 +10083,7 @@
     "route": "/api/weekly-risk/mark-sent",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 271,
+    "line": 262,
     "description": "POST /api/weekly-risk/mark-sent.",
     "params": [],
     "query": [],
@@ -10148,7 +10143,7 @@
     "route": "/api/weekly-risk/reopen",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 226,
+    "line": 217,
     "description": "POST /api/weekly-risk/reopen.",
     "params": [],
     "query": [],
@@ -10166,7 +10161,7 @@
     "route": "/api/weekly-risk/test-send",
     "domain": "weekly-risk",
     "source": "routes/weekly-risk.js",
-    "line": 161,
+    "line": 165,
     "description": "POST /api/weekly-risk/test-send.",
     "params": [],
     "query": [],

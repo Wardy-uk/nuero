@@ -34,6 +34,9 @@
 // Pure, no DB, no I/O — safe on a module that is otherwise a pile of pure
 // renderers and is parsed by its own test.
 const { describeCandidateSource } = require('./candidate-provenance');
+// Pure too: the legacy queue's retired outbound types and why (Build 7/8).
+const legacyOutbound = require('./legacy-outbound');
+const retiredBecause = (type) => legacyOutbound.RETIRED[type];
 
 const OUTBOUND = 'outbound';
 const WRITE = 'write';
@@ -123,7 +126,7 @@ const PRESENTERS = {
     label: 'Draft a reply',
     kind: WRITE,
     summary: `Write a reply to ${p.from || 'the sender'} — nothing is sent`,
-    note: 'Gate 1 of 2. This drafts the words and queues a separate send for you to approve. Nothing leaves until that second approval.',
+    note: 'Gate 1 of 2. This drafts the words into Actions → Drafted by NEURO. Nothing leaves until you approve that exact email there, with your approval code.',
     fields: [
       field('From', p.from),
       field('Subject', p.subject),
@@ -134,27 +137,28 @@ const PRESENTERS = {
     warnings: p.body ? [] : ['No draft stored yet, so approving asks the model to write one. You approve the words at gate 2.'],
   }),
 
-  // Gate 2. This one really sends.
+  // ── Build 8: the legacy queue's outbound sender is RETIRED ──────────────
+  // These cards exist only so an old row renders as history with the reason,
+  // never as something to approve. Every email NEURO sends is approved in
+  // Actions → Drafted by NEURO against a governed, verified send. The blocker
+  // text is suggestion-engine's own, so the card and the 410 cannot disagree.
+
   reply_email: (p) => {
     const explicit = Array.isArray(p.to) ? p.to.map(t => addressOf(t) || str(t)).filter(Boolean) : [];
-    const blockers = [];
-    if (!p.emailId) blockers.push('No emailId on this action — there is no thread to reply to.');
-    if (!trimmed(p.body)) blockers.push('No body stored — there is nothing to send.');
     return {
-      label: 'Send email reply',
+      label: 'Send email reply (old queue)',
       kind: OUTBOUND,
-      summary: `Send this reply${p.subject ? ` on "${p.subject}"` : ''}`,
+      summary: `A reply${p.subject ? ` on "${p.subject}"` : ''} from the retired queue`,
       fields: [
         field('Subject', p.subject),
-        // Empty means Graph replies to the thread's own participants. Say that
-        // rather than leaving the recipient line blank on an outbound send.
         { label: 'To', value: explicit.length ? explicit.join(', ') : 'the sender on the original thread', mono: explicit.length > 0 },
         p.replyAll ? field('Mode', 'reply-all') : null,
       ],
       body: trimmed(p.body) || null,
-      bodyLabel: 'This is what will be sent',
-      blockers,
-      warnings: p.replyAll ? ['Reply-all: everyone on the original thread receives this.'] : [],
+      bodyLabel: 'This would have been sent — the old sender is retired',
+      blockers: [retiredBecause('reply_email')],
+      warnings: [],
+      link: { view: 'inbox', text: 'Reply from the Inbox' },
     };
   },
 
@@ -193,11 +197,12 @@ const PRESENTERS = {
   // what sends, and a summary here would be a summary of a summary.
   send_weekly_risk_report: (p) => {
     const recipients = Array.isArray(p.to) ? p.to.filter(r => r?.email) : [];
-    const blockers = [];
+    const blockers = [retiredBecause('send_weekly_risk_report')];
     if (!recipients.length) blockers.push('No recipient stored — there is nowhere to send it.');
     if (!trimmed(p.body)) blockers.push('No report body stored — there is nothing to send.');
     return {
-      label: 'Send the weekly risk report',
+      link: { view: 'weekly-risk', text: 'Queue it from the Weekly Risk panel' },
+      label: 'Send the weekly risk report (old queue)',
       kind: OUTBOUND,
       summary: `Send the w/c ${p.week} risk summary to ${recipients.map(r => r.name || r.email).join(', ') || 'Chris'}`,
       fields: [
@@ -232,7 +237,7 @@ const PRESENTERS = {
 
   chase_agenda: (p) => {
     const email = addressOf(p.organizer);
-    const blockers = [];
+    const blockers = [retiredBecause('chase_agenda')];
     if (!p.eventId) blockers.push('No eventId on this action.');
     if (!trimmed(p.body)) blockers.push('No chaser text stored — there is nothing to send.');
     if (!email) blockers.push('No organiser address — there is nowhere to send it.');
@@ -246,7 +251,7 @@ const PRESENTERS = {
         field('Reply subject', p.subject ? `Re: ${p.subject}` : null),
       ],
       body: trimmed(p.body) || null,
-      bodyLabel: 'This is what will be sent',
+      bodyLabel: 'This would have been sent — the old sender is retired',
       blockers,
     };
   },
@@ -263,8 +268,8 @@ const PRESENTERS = {
         field('New time proposed', p.proposedNewTime),
       ],
       body: trimmed(p.comment) || null,
-      bodyLabel: p.comment ? 'Comment the organiser will see' : null,
-      blockers: p.eventId ? [] : ['No eventId on this action.'],
+      bodyLabel: p.comment ? 'Comment the organiser would have seen' : null,
+      blockers: [retiredBecause('respond_meeting'), p.eventId ? null : 'No eventId on this action.'],
       // Graph refuses a counter-proposal on an accept, and the executor reports
       // it as a failure. Cheaper to say so before the button than after.
       warnings: (p.response === 'accept' && p.proposedNewTime)
@@ -281,6 +286,7 @@ const PRESENTERS = {
     if (p.start && Number.isNaN(new Date(p.start).getTime())) {
       blockers.push(`Unparseable start time: ${p.start}`);
     }
+    if (attendees.length) blockers.push(retiredBecause('schedule_focus_block_invite'));
     const minutes = Number(p.minutes) > 0 ? Number(p.minutes) : 60;
     return {
       label: 'Book time in the diary',

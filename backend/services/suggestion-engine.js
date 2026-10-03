@@ -462,19 +462,24 @@ function expireStaleNavigation(now = new Date()) {
   return expired;
 }
 
+// Build 8: what this queue says about an outbound type it no longer sends —
+// one pure module shared with the approve route (410) and the presenter.
+const { RETIRED: LEGACY_OUTBOUND_RETIRED, legacyRetired } = require('./legacy-outbound');
+
 /**
  * Execute an approved action.
  *
  * Three kinds live here now:
  *   - navigation (open_*)     — the frontend moves; nothing is written
  *   - vault writes            — capture_todo
- *   - real actuators          — draft_reply, reply_email, complete_task,
+ *   - real actuators          — draft_reply (prepares, sends nothing), complete_task,
  *                               schedule_focus_block. These change the outside
  *                               world via Graph, which is why they are async.
  *
- * Outbound email is deliberately two-gated: approving `draft_reply` only writes
- * a draft and queues a `reply_email` action carrying it, so nothing is sent
- * until Nick has approved the actual words.
+ * Since Build 8 NOTHING here sends email or invites. Approving `draft_reply`
+ * writes the words and PREPARES a governed reply (prepared-actions), which is
+ * approved with Nick's approval code and sent by action-executor — the one
+ * outbound path. The old send cases below refuse (LEGACY_OUTBOUND_RETIRED).
  */
 async function executeAction(action) {
   const payload = action.payload;
@@ -521,116 +526,42 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
       }
       if (!draft) return { ok: false, detail: 'Could not draft a reply — open the composer instead' };
 
-      const replyId = db.createSaimAction(
-        'reply_email',
-        { emailId, body: draft, subject: payload.subject || null, to: payload.to || null },
-        0.9,
-        `Send reply to ${payload.from || 'sender'}: "${payload.subject || 'email'}"`,
-        action.focus_item_id || null
-      );
+      // ⚠ Build 8: gate 2 is no longer a PIN-approvable `reply_email` in this
+      // queue. The words become a GOVERNED prepared action with its exact
+      // recipients bound — approved with Nick's code, sent once, verified in
+      // Sent Items. Preparing it sends nothing.
+      const prep = await require('./prepared-actions').prepareReply({
+        emailId, body: draft, mode: payload.replyAll ? 'replyAll' : 'reply', origin: 'drafted',
+      });
+      if (!prep.ok) return { ok: false, detail: `Drafted the words, but could not prepare the reply: ${prep.error}`, draft };
 
       return {
         ok: true,
-        detail: `Drafted a reply — approve action #${replyId} to send it`,
+        detail: 'Drafted a reply — approve it in Actions → Drafted by NEURO, with your approval code, to send it',
         draft,
-        pendingActionId: replyId,
-        navigate: 'inbox',
+        preparedActionId: prep.action.actionId,
+        navigate: 'actions',
       };
     }
 
-    // Gate 2: the words have been seen and approved. This one really sends.
-    case 'reply_email': {
-      if (!payload.emailId) return { ok: false, detail: 'reply_email needs an emailId' };
-      if (!payload.body || !String(payload.body).trim()) {
-        return { ok: false, detail: 'reply_email has no body — nothing to send' };
-      }
-
-      const microsoft = require('./microsoft');
-      const result = await microsoft.sendEmailReply(payload.emailId, String(payload.body).trim(), {
-        replyAll: Boolean(payload.replyAll),
-        to: Array.isArray(payload.to) && payload.to.length ? payload.to : null,
-        cc: Array.isArray(payload.cc) && payload.cc.length ? payload.cc : null,
-      });
-
-      if (!result.sent) {
-        const reasons = {
-          auth: 'Not signed in to Microsoft — reconnect 365.',
-          scope: 'Mail.Send not granted — re-consent to Microsoft.',
-          no_recipients: 'No recipients resolved for that thread.',
-        };
-        return { ok: false, detail: reasons[result.reason] || `Send failed (${result.reason})` };
-      }
-
-      // Replied means handled — clear it from triage so it doesn't come back.
-      try { require('./email-triage').dismissEmail(payload.emailId); } catch {}
-      return { ok: true, detail: `Reply sent: "${payload.subject || payload.emailId}"`, navigate: 'inbox' };
-    }
-
-    // The weekly risk report going to Chris. Gate 2 of 2 — the report was built
-    // and the recipient resolved at queue time; this is the approval that
-    // actually releases it. Deliberately NOT written in SAiM's voice: this mail
-    // sends under Nick's name to the manager assessing his PIP, and the same
-    // rule holds here as for chase messages and 1-2-1 invites.
-    case 'send_weekly_risk_report': {
-      const recipients = Array.isArray(payload.to) ? payload.to.filter(r => r?.email) : [];
-      if (!recipients.length) return { ok: false, detail: 'No recipient stored — nothing to send to' };
-      if (!payload.body || !String(payload.body).trim()) {
-        return { ok: false, detail: 'No report body stored — nothing to send' };
-      }
-
-      // HTML, converted from the same markdown the vault note holds. As plain
-      // text the report's tables arrive as pipe soup and its frontmatter leads
-      // the mail — and the test send renders identically, so what Nick checks
-      // is what Chris gets.
-      const result = await require('./email-sender').sendMail({
-        to: recipients,
-        subject: payload.subject || `Weekly Risk & Anomaly Summary — w/c ${payload.week}`,
-        body: require('./weekly-risk').toEmailHtml(String(payload.body)),
-        html: true,
-      });
-
-      if (!result.sent) {
-        const reasons = {
-          auth: 'Not signed in to Microsoft — reconnect 365.',
-          scope: 'Mail.Send not granted — re-consent to Microsoft.',
-          no_recipients: 'No recipients resolved.',
-          empty_body: 'The report body was empty.',
-        };
-        return { ok: false, detail: reasons[result.reason] || `Send failed (${result.reason})` };
-      }
-
-      // Freeze the week. From here the report is a RECORD, not a draft: the
-      // screen must show what actually went to Chris rather than a rebuild that
-      // would quietly carry different numbers a week later.
-      //
-      // WARNING: recorded HERE rather than in the route, because the approval
-      // can come from the weekly risk panel or from the Actions queue, and a
-      // hook on one is a hook the other walks past. Never allowed to fail the
-      // send -- the mail has already left.
-      try {
-        require('./weekly-risk').markSent(payload.week, {
-          actionId: action && action.id ? action.id : null,
-          recipients,
-          subject: payload.subject || null,
-          body: String(payload.body),
-        });
-      } catch (e) {
-        console.warn('[SAiM] Weekly risk send recorded nowhere:', e.message);
-      }
-
-      // Close the log row that tracks the Monday cadence, so the commitment
-      // Nick made on 12 Aug is evidenced by the send rather than by memory.
-      try {
-        const log = require('./management-log');
-        const open = log.list({ limit: 500 }).find(r =>
-          r.status !== 'done' && /weekly team risk .* report to Chris/i.test(r.summary));
-        if (open) log.update(open.id, { status: 'done' });
-      } catch { /* bookkeeping must never fail a send that already happened */ }
-
-      return {
-        ok: true,
-        detail: `Weekly risk report for w/c ${payload.week} sent to ${recipients.map(r => r.email).join(', ')}`,
-      };
+    // ⚠ RETIRED IN BUILD 8 (3 Oct 2026) — the rest of this queue's OUTBOUND
+    // SENDER. These sent email (or a meeting response the organiser receives)
+    // as Nick on a PIN-only approve, with no attempt ledger, no provider id, no
+    // Sent Items check and no duplicate key. Every email NEURO can send now
+    // goes through ONE path — prepared-actions → human-proof approval →
+    // action-executor — and these cases REFUSE, loudly, reaching no sender.
+    // There is deliberately no flag that turns any of them back on. The labels
+    // stay only so the presenter-parity test keeps a card for an old row.
+    //   reply_email             → the Inbox composer / draft_reply prepare a governed reply
+    //   send_weekly_risk_report → the Weekly Risk panel prepares a governed send
+    //   chase_agenda            → meeting triage prepares a governed request
+    //   respond_meeting         → never used live (0 rows); retired, not migrated
+    case 'reply_email':
+    case 'send_weekly_risk_report':
+    case 'chase_agenda':
+    case 'respond_meeting': {
+      console.error(`[SAiM] REFUSED legacy ${action.type} #${action.id}: the legacy outbound sender was retired in Build 8`);
+      return { ok: false, code: 'LEGACY_OUTBOUND_RETIRED', detail: LEGACY_OUTBOUND_RETIRED[action.type] };
     }
 
     // Ticking a task off. NEURO-owned tasks go to the task store; Microsoft-owned
@@ -725,62 +656,18 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
       };
     }
 
-    // Ask the organiser what a meeting is for. An email to a real colleague —
-    // often a senior one — so it only ever runs on approval.
-    case 'chase_agenda': {
-      if (!payload.eventId) return { ok: false, detail: 'chase_agenda needs an eventId' };
-      const body = String(payload.body || '').trim();
-      if (!body) return { ok: false, detail: 'No chaser text to send' };
-
-      // Graph's emailAddress object is { name, address }; our own helpers use
-      // { name, email }. Accept either rather than silently finding neither.
-      const organiserEmail = payload.organizer?.email || payload.organizer?.address;
-      if (!organiserEmail) return { ok: false, detail: 'No organiser address to send to' };
-      const to = [{ name: payload.organizer.name || organiserEmail, email: organiserEmail }];
-
-      const result = await require('./email-sender').sendMail({
-        to,
-        subject: `Re: ${payload.subject || 'your meeting'}`,
-        body,
-      });
-      if (!result.sent) {
-        const reasons = {
-          auth: 'Not signed in to Microsoft — reconnect 365.',
-          scope: 'Mail.Send not granted — re-consent to Microsoft.',
-        };
-        return { ok: false, detail: reasons[result.reason] || `Send failed (${result.reason})` };
-      }
-      return { ok: true, detail: `Asked ${payload.organizer?.name || 'the organiser'} what "${payload.subject}" is for`, navigate: 'calendar' };
-    }
-
-    // Decline, or counter-propose a time. "No, but here" moves the meeting
-    // rather than bouncing it back for the organiser to solve.
-    case 'respond_meeting': {
-      if (!payload.eventId) return { ok: false, detail: 'respond_meeting needs an eventId' };
-      const microsoft = require('./microsoft');
-      const result = await microsoft.respondToEvent(payload.eventId, payload.response || 'decline', {
-        comment: payload.comment || '',
-        proposedNewTime: payload.proposedNewTime || null,
-      });
-      if (!result.ok) {
-        const reasons = {
-          auth: 'Not signed in to Microsoft — reconnect 365.',
-          scope: 'Calendars.ReadWrite not granted — re-consent to Microsoft.',
-          cannot_propose_on_accept: 'Graph will not take a counter-proposal on an accept.',
-        };
-        return { ok: false, detail: reasons[result.reason] || `Response failed (${result.reason})` };
-      }
-      const verb = { decline: 'Declined', accept: 'Accepted', tentative: 'Tentatively accepted' }[payload.response || 'decline'];
-      return {
-        ok: true,
-        detail: `${verb} "${payload.subject || payload.eventId}"${result.proposed ? ' with a new time proposed' : ''}`,
-        navigate: 'calendar',
-      };
-    }
-
     // Put the work in the diary. Defaults to a 60-minute block starting at the
     // next half hour, because "schedule it" with no time is the common case.
+    //
+    // ⚠ Build 8: a block WITH attendees is an invite Graph emails to real
+    // people — outbound, and this queue no longer sends anything outbound. It
+    // is refused; a block with nobody else in it is a write to Nick's own
+    // diary and still runs. (0 attendee-bearing rows ever existed live.)
     case 'schedule_focus_block': {
+      if (Array.isArray(payload.attendees) && payload.attendees.length) {
+        console.error(`[SAiM] REFUSED legacy schedule_focus_block #${action.id} with attendees: invites from this queue were retired in Build 8`);
+        return { ok: false, code: 'LEGACY_OUTBOUND_RETIRED', detail: LEGACY_OUTBOUND_RETIRED.schedule_focus_block_invite };
+      }
       const microsoft = require('./microsoft');
       const start = payload.start ? new Date(payload.start) : _nextHalfHour();
       if (Number.isNaN(start.getTime())) return { ok: false, detail: `Unparseable start time: ${payload.start}` };
@@ -793,7 +680,7 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
         end: _graphLocalTime(end),
         body: payload.body || null,
         location: payload.location || null,
-        attendees: payload.attendees || [],
+        attendees: [], // never: an invite from this queue is refused above
         isOnline: Boolean(payload.isOnline),
       });
 
@@ -963,4 +850,6 @@ module.exports = {
   // Pure, so the "offered once" rule pins without a database.
   suggestionIdentity,
   IDENTITY_FIELD,
+  LEGACY_OUTBOUND_RETIRED,
+  legacyRetired,
 };

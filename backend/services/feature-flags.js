@@ -97,14 +97,20 @@ const FLAGS = [
     // this changes no decision Nick made. A stored 'true' or 'false' (his
     // choice in Settings) still wins over this default, and the env var wins
     // over both.
+    //
+    // ⚠ Build 8: ONE switch for every governed outbound type — chases, email
+    // replies, agenda requests and the weekly risk report. There is
+    // deliberately no per-type switch: a second switch is a second way for one
+    // kind of email to be "on" while Nick believes sending is off.
     default: false,
-    label: 'Send a chase once you approve it',
-    description: 'When this is on and you approve a drafted chase with your approval code, NEURO sends '
-      + 'exactly that email as you and then checks Sent Items to confirm it went. It never bypasses '
-      + 'approval: nothing is sent unless you approved those exact words. While it is off, NEURO still '
-      + 'drafts chases for you to read, edit or reject, but will not let you approve one — approving '
-      + 'would send nothing. Turning it off after approving holds the send; the approval then expires '
-      + 'after 24 hours.',
+    label: 'Send approved emails',
+    description: 'Covers every email NEURO can send as you: chases, replies from the Inbox, agenda requests '
+      + 'to meeting organisers, and the weekly risk report. When this is on and you approve a drafted '
+      + 'email with your approval code, NEURO sends exactly that email and then checks Sent Items to '
+      + 'confirm it went. It never bypasses approval: nothing is sent unless you approved those exact '
+      + 'words and recipients. While it is off, NEURO still drafts them for you to read, edit or reject, '
+      + 'but will not let you approve one — approving would send nothing. Turning it off after approving '
+      + 'holds the send; the approval then expires after 24 hours.',
     impact: 'sends email as you, only after you approve it',
   },
   {

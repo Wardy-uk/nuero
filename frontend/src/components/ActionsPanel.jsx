@@ -13,12 +13,12 @@ import PreparedActions from './PreparedActions';
  * `chase_agenda`, `respond_meeting`, `schedule_focus_block`, `escalate_ticket`
  * — reached the queue and had no screen anywhere.
  *
- * The one that matters is outbound email. It is deliberately TWO-gated:
- * `draft_reply` writes the words and queues a separate `reply_email` carrying
- * them, so nothing sends until Nick has read the draft and approved again. That
- * second gate was reachable only through a push notification's action card,
- * which needed the notification to have fired and still be on screen. This is
- * the gate.
+ * ⚠ Since Build 8 (3 Oct 2026) NOTHING approved in this old queue sends email
+ * or invites. `draft_reply` writes the words into a GOVERNED reply in "Drafted
+ * by NEURO" (the PreparedActions section on this same screen), which is the
+ * only place any email is approved — with the approval code, sent once,
+ * checked in Sent Items. The old queue's outbound types render with the
+ * server's "Retired in Build 8" blocker and can only be rejected.
  *
  * Three rules it is built to, all learned by getting them wrong on the chase card:
  *
