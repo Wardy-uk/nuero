@@ -335,8 +335,11 @@ async function _execute(job, row, clock) {
     const result = await Promise.race([
       Promise.resolve().then(() => job.run(ctx)),
       new Promise((_, reject) => {
+        // Deliberately NOT unref'd: a run in flight is real work, and the timer
+        // is cleared in `finally` the moment the run ends, so it can never hold
+        // the process past one. (Unref'd, a hung run with nothing else on the
+        // loop let node exit mid-run — caught by the suite on the Pi.)
         timeoutHandle = setTimeout(() => reject(new Error(`timed out after ${Math.round(job.timeoutMs / 1000)}s`)), job.timeoutMs);
-        if (timeoutHandle.unref) timeoutHandle.unref();
       }),
     ]);
     const endMs = clock();
