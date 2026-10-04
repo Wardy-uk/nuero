@@ -196,7 +196,7 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
       ? { status: 'done', evidence: `Synthetic alert ${proof.dedupeKey} opened on ${proof.deviceId} at ${String(proof.openedAt).slice(0, 16).replace('T', ' ')}.` }
       : attempt
         ? { status: 'attention', evidence: `Last synthetic test ${attempt.outcome}${attempt.acceptedAt ? ' (iOS accepted it)' : ''} but was never opened — not proven.` }
-        : { status: 'todo', evidence: 'No synthetic test has been run.' }),
+        : { status: 'todo', evidence: 'No device has posted a synthetic alert yet (the phone posts it when SAiM next wakes or is opened).' }),
     fix: { where: 'desktop', steps: ['POST /api/canonical/needs-you/synthetic {"kind":"escalation"} with the PIN.', 'Lock the phone, wait for SAiM to wake (or open it), tap the alert on the watch, then DELETE /api/canonical/needs-you/synthetic.'] } });
 
   // ── Mac ──
