@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-04 (Build 12: adaptive ambient surface)
+
+- Deployed nuero b3973c3 → 640da96 → 7ad193e to pi5 (desktop + kiosk built, tests green on the Pi before each restart, neuro-backend + saim-backend online). PWA on Netlify serving the new bundle (verified by content, not by eye).
+- New: `presentation-v1` on /api/canonical/now (+ GET /api/canonical/presentation), shared `saim/shared-ui/presentation/` renderer + budgets, default `layout='situation'`, kiosk ambient chrome, desktop Now uses the desktop profile. Duplicate birthday folded live.
+- Pi 4 desk panel restarted and photographed — matches the target. Study tablet unreachable over ADB (no route); when back, add `?mic=1` to its start URL.
+- nuero-ios 9c49caf COMMITTED, UNBUILT: Presentation.swift, SituationView.swift, SurfaceView wiring, Build12PresentationTests. On the Mac: swift test, build, look at it.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 12 Adaptive Ambient Surface (screens in `Build 12 screens/`); Gap Analysis appended. Not on Confluence (Atlassian MCP not authorised).
+- Untracked `HANDOFF-neuro-mcp-claude-code.md` in repo root is not mine — left alone.
+
+---
+
 # Session Handoff — 2026-10-03 (Build 11: personal world model + governed calendar)
 
 - Deployed nuero 87af6d5/83944da to pi5 (frontend built, tests 5042/0 fail on Pi, neuro-backend restarted, gated on tests). Kiosk untouched.
