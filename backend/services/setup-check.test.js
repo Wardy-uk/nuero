@@ -145,3 +145,10 @@ test('both iOS apps reach the Set up screen (cross-repo guard)', (t) => {
   assert.match(saim, /SetupView\(client: state\.client, app: "saim"/);
   assert.match(saim, /\.sheet\(isPresented: \$showSetup\)/, 'SAiM Controls has no NavigationStack, so it must be a sheet');
 });
+
+test('an app that has delivered anything is signed in; push says when it is blocked on the Pi', () => {
+  const out = S.assess(base({ apns: false, sources: [{ sourceId: 'healthkit.saim-ios', verdict: 'seeing', transport: { lastSuccessAt: '2026-10-04T10:00:00Z' } }] }), { now: NOW });
+  assert.equal(item(out, 'iphone-saim.signed-in').status, 'done');
+  assert.equal(item(out, 'iphone-neuro.signed-in').status, 'unknown', 'positive control: the other app has delivered nothing');
+  assert.match(item(out, 'iphone-saim.push').evidence, /APNs key/);
+});

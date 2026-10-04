@@ -129,10 +129,13 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
   // ── iPhone apps ──
   const phone = (app, label) => {
     const sfx = `${app}-ios`;
+    // Anything this app has ever delivered proves it holds the PIN.
+    const delivered = (s.sources || []).find((x) => String(x.sourceId || '').endsWith(`.${sfx}`) && x.transport && x.transport.lastSuccessAt);
     add({ id: `iphone-${app}.signed-in`, surface: `iphone-${app}`, need: 'required', title: `Sign the ${label} app in`,
       why: 'Nothing on the phone reaches NEURO without its PIN.',
-      ...(s.clients && s.clients[app] ? { status: 'done', evidence: `${label} app has called NEURO (${s.clients[app].slice(0, 10)}).` }
-        : local(iosReport(app), 'signed-in', 'Open the app — its Setup screen checks this.')),
+      ...(delivered ? { status: 'done', evidence: `${label} app has delivered data (${delivered.label || delivered.sourceId}).` }
+        : s.clients && s.clients[app] ? { status: 'done', evidence: `${label} app has called NEURO (${s.clients[app].slice(0, 10)}).` }
+          : local(iosReport(app), 'signed-in', 'Open the app — its Setup screen checks this.')),
       fix: { where: 'iphone', steps: [`Open ${label} → enter the PIN.`] } });
     add({ id: `iphone-${app}.health`, surface: `iphone-${app}`, need: app === 'neuro' ? 'required' : 'recommended', title: `Health access (${label})`,
       why: 'Sleep, heart rate and readiness come only from here.', ...fromSource(src(`healthkit.${sfx}`)),
@@ -145,7 +148,8 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
       fix: { where: 'iphone', steps: [`${label} → Setup → Reminders → Allow Full Access.`] } });
     add({ id: `iphone-${app}.push`, surface: `iphone-${app}`, need: 'recommended', title: `Notifications (${label})`,
       why: 'How SAiM comes to you rather than waiting to be opened.',
-      ...(s.apnsApps && s.apnsApps.includes(app) ? { status: 'done', evidence: 'A push token is registered.' } : { status: 'todo', evidence: 'No push token from this app.' }),
+      ...(s.apnsApps && s.apnsApps.includes(app) ? { status: 'done', evidence: 'A push token is registered.' }
+        : { status: 'todo', evidence: s.apns ? 'No push token from this app.' : 'No push token — and the Pi has no APNs key yet, so set that up first.' }),
       fix: { where: 'iphone', steps: [`${label} → Setup → Notifications → Allow.`] } });
   };
   phone('neuro', 'NEURO');
