@@ -59,9 +59,13 @@ What to look for:
    it, the complication will show "Open SAiM to refresh". That's honest, but it means
    the group needs fixing.
 6. Deployment target watchOS 11 (to match SaimWatch).
-7. Build SaimWatch, install it on the paired watch, open the app once (this writes the
-   read), then long-press the face → Edit → Complications → **SAiM**. Add it to a circular
-   slot and a rectangular slot, and check that it renders.
+7. Install with **`./reinstall.sh watch`**, not Xcode. The watch runs watchOS 27 beta,
+   so Xcode's install route fails; see `nuero-ios/WATCH-WITHOUT-XCODE.md`. The script
+   builds SaimWatch.app, which now embeds the extension, and installs it directly with
+   pymobiledevice3. Check that `SaimWatch.app/PlugIns/SaimWatchComplication.appex` is in
+   the built product. Open the watch app once (that writes the read), then long-press
+   the face → Edit → Complications → **SAiM**. Add it to a circular slot and a
+   rectangular slot, and check that it renders.
 8. Re-run `swift test`. Test 17 should now pass.
 
 ## 4. Commit and record
