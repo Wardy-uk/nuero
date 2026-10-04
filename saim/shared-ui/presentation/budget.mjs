@@ -30,8 +30,11 @@ export const PROFILES = {
 };
 
 // Counts per block. 0 = not rendered. 'count' = a one-line count, no items.
+// ⚠ Phone context is 5, not 4 (Build 12.1): the activity annotation is drawn as
+//   the correction row, not a context line, yet it still takes a slot here — at
+//   4 the live Sunday read lost "18° outside" the moment SAiM inferred TV.
 export const BUDGETS = {
-  phone: { needsYou: 3, primary: 'card', focal: true, next: 2, offers: 2, observations: 2, context: 4, tracked: 'count', details: 'collapsed', correction: 'inline', ask: 'visible', actions: true },
+  phone: { needsYou: 3, primary: 'card', focal: true, next: 2, offers: 2, observations: 2, context: 5, tracked: 'count', details: 'collapsed', correction: 'inline', ask: 'visible', actions: true },
   kiosk: { needsYou: 1, primary: 'line', next: 1, offers: 0, observations: 1, context: 3, tracked: 0, details: 0, correction: 0, ask: 'ambient', actions: false },
   desktop: { needsYou: 5, primary: 'card', next: 5, offers: 3, observations: 4, context: 6, tracked: 'list', details: 'open', correction: 'inline', ask: 'rich', actions: true },
   watch: { needsYou: 1, primary: 'line', next: 0, offers: 0, observations: 0, context: 0, tracked: 0, details: 0, correction: 0, ask: 0, actions: false },

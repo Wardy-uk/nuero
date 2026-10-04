@@ -245,6 +245,19 @@ test('17. block order still follows the presentation, and the focal is the serve
   assert.equal(budget.composeForSurface(rev, 'phone').blocks.find((b) => b.type === 'focal').items[0].id, rev.next[0].id);
 });
 
+test('an inferred activity does not cost the phone its weather (the live Sunday read, 4 Oct)', () => {
+  // Place, room, activity, household, weather, sleep — activity is drawn as the
+  // correction row, so the four context lines must still include the weather.
+  const live = FIXTURES.find((f) => f.id === 'live-sunday');
+  const payload = { ...live.payload, life: { ...live.payload.life, doing: 'watching-tv', label: 'Watching TV', ask: null, confidence: 'likely' } };
+  const pres = composePresentation(payload, { now: live.at });
+  assert.deepEqual(pres.context.slice(0, 5).map((c) => c.kind), ['place', 'room', 'activity', 'household', 'weather'], 'fixture reaches the rule');
+  const html = render(pres);
+  const lines = [...html.matchAll(/<p class="sit__ctx-line">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]));
+  assert.ok(lines.some((l) => l.includes('outside')), JSON.stringify(lines));
+  assert.match(html, /Looks like you’re watching TV/);
+});
+
 test('the meeting-in-20 is the focal object, said once (summary dropped for it)', () => {
   const t = text(render(composed['meeting-soon']));
   assert.equal(count(t, 'Tech Leadership'), 1);
