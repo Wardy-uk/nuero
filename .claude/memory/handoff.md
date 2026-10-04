@@ -1,3 +1,22 @@
+# Session Handoff — 2026-10-04 (Build 12.4: watch proof prep + native makeover)
+
+- Windows only, no Mac route: NOTHING ran on a phone or watch. The acceptance test (SAiM in the real face picker) is NOT done. Mac steps: docs/build-12.4-mac-runbook.md.
+- Deployed nuero 6e006e8 to pi5 (tests 5166/0 fail on the Pi): synthesis themes carry `sentence` + `support`; verified live.
+- nuero-ios 10c8f42 PUSHED, UNBUILT: SituationScene beats, one hero per mode, chip correction, edgeless ask; SaimWatch now signed with its App Group (was missing, read returned silently); reinstall.sh warns when the complication appex/group is missing.
+- Still to do on the Mac: add the SaimWatchComplication target in Xcode, prove the group in the signed .appex, picker photo, synthetic P0 table, device screenshots vs vault 12.4-layout-MOCK-not-device.png.
+
+---
+
+# Session Handoff — 2026-10-04 (Build 12.3: synthesis + watch attention)
+
+- Deployed nuero a49a20a (+ wording fix) to pi5; tests green; live /api/canonical/presentation carries `synthesis` + `p0`. Live synthetic P0 inject → count 1 eligible → cleared → 0, verified.
+- nuero-ios 8626397 COMMITTED, UNBUILT: Mac must `swift test` (Build123SynthesisTests), build SAiM, screenshot the Sunday (12.3S acceptance: does it read as interpreted?).
+- Then E2E proof: POST /api/canonical/needs-you/synthetic {"kind":"escalation"} with PIN, lock phone, open/wait for SAiM, tap alert (watch or phone), DELETE the synthetic. Setup → "Prove an urgent alert" turns done only on opened.
+- Watch app still cannot install (free profile; WATCH-WITHOUT-XCODE.md) → 12.3T blocked; decision for Nick: paid Apple Developer account vs Xcode 27 Mac.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 12 Adaptive Ambient Surface.md § Build 12.3.
+
+---
+
 # Session Handoff — 2026-10-04 (Build 12.2: native composition reset + watch complication)
 
 - nuero-ios 0f43f2d PUSHED, UNBUILT. The Mac had Remote Login off, so nothing was compiled, installed or screenshotted. Steps are in `docs/build-12.2-mac-steps.md`.
