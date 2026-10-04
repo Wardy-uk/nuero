@@ -1234,7 +1234,17 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
   const allGaps = [...(dec.gaps || []), ...gaps];
   const composed = composeNow({ decision: dec, nextEvents, commitments: commitmentItems, tasks: taskItems, sources: sourceItems,
     approvals: dec.approvals || null, goals, crowd, gaps: allGaps, nowLocal: require('./world-model').localMinute(nowMs) });
-  return { ...dec, contract: CONTRACT, situation: composed };
+  const payload = { ...dec, contract: CONTRACT, situation: composed };
+  // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
+  // nowhere else, so every surface reading Now renders one presentation. Never
+  // allowed to fail the feed: null means "render the way you did before".
+  try {
+    payload.presentation = require('./presentation-intent').composePresentation(payload, { now: nowMs });
+  } catch (e) {
+    console.warn('[Canonical] presentation composition failed:', e.message);
+    payload.presentation = null;
+  }
+  return payload;
 }
 
 module.exports = {

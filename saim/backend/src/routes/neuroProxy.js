@@ -125,6 +125,11 @@ const EXACT_DOORS = new Set([
   // SAiM's Exertion card on Now. EXACT, not the segment: `performance` also
   // holds the logger-location and rebuild writes, which have no screen here.
   '/performance/today',
+  // Build 12: the Surface reads the canonical Now (attention decision + world
+  // model + presentation intent). EXACT, not the segment: `canonical` also holds
+  // the goal, annotation and classification WRITES into his life model, which
+  // have no screen here and do not belong behind an unauthenticated touchscreen.
+  '/canonical/now',
 ]);
 
 /**

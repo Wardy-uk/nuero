@@ -5,6 +5,9 @@ import AttentionCard from './AttentionCard';
 import FrictionSection from './FrictionSection';
 import AmbientSection from './AmbientSection';
 import NowSituation from './canonical/NowSituation';
+// Build 12M: the same adaptive composition the phone and the kiosk draw, in the
+// DESKTOP profile — richer, but one presentation from NEURO, never re-ranked.
+import Situation from '../../../saim/shared-ui/presentation/Situation.jsx';
 import { showable } from '../../../shared/task-links.cjs';
 import './AdhdPanel.css';
 
@@ -748,6 +751,32 @@ export default function AdhdPanel({ onNavigate }) {
           Canonical attention, rendered by the shared card so the five actions
           mean exactly what they mean on every other surface. Nothing here
           reranks, rewords or decides urgency. */}
+      {attention.data?.presentation && attention.data.presentation.contract === 'presentation-v1' ? (
+        <section className="adhd__now adhd__now--situation">
+          {attention.error && <p className="adhd__now-warn">Couldn&rsquo;t refresh — this is the last read.</p>}
+          <Situation
+            presentation={attention.data.presentation}
+            profile="desktop"
+            renderPrimary={attention.primary ? () => (
+              <AttentionCard card={attention.primary} onNavigate={onNavigate} onAct={attention.act} onStarted={load} />
+            ) : null}
+            onOpen={(it) => {
+              if (!onNavigate || !it) return;
+              if (it.kind === 'event') onNavigate('calendar');
+              else if (it.kind === 'commitment') onNavigate('commitments');
+              else if (it.kind === 'task') onNavigate('todos');
+            }}
+            onCorrect={async (doing) => {
+              try { await api('/api/signals/life/declare', { method: 'POST', body: JSON.stringify({ doing }) }); } catch { /* the question stays */ }
+              attention.refresh();
+            }}
+            onNotNow={async () => {
+              try { await api('/api/signals/life/not-now', { method: 'POST' }); } catch { /* stays */ }
+              attention.refresh();
+            }}
+          />
+        </section>
+      ) : (
       <section className="adhd__now adhd__now--canonical">
         <div className="adhd__now-label">
           Right now
@@ -811,12 +840,16 @@ export default function AdhdPanel({ onNavigate }) {
           </p>
         )}
       </section>
+      )}
 
       {/* ── What else matters now ──
-          The world-model half of Now (Build 10E/F): next meaningful event,
-          needs you, commitments coming due, blindness that matters — across
-          the whole of life, sparse, and calm when nothing is meaningful. */}
-      <NowSituation situation={attention.situation} onNavigate={onNavigate} />
+          The world-model half of Now (Build 10E/F). Build 12: when the
+          presentation intent is present it already carries all of this —
+          ranked, deduped, held-off-duty — so drawing NowSituation as well would
+          say every item twice. Kept as the fallback for an older payload. */}
+      {!(attention.data?.presentation && attention.data.presentation.contract === 'presentation-v1') && (
+        <NowSituation situation={attention.situation} onNavigate={onNavigate} />
+      )}
 
       {/* ── Friction noticed ──
           Evidence only, and BELOW the work rather than above it. */}

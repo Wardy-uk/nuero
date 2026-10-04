@@ -4,6 +4,9 @@ import Dashboard from './Dashboard';
 import Approach, { minutesOf } from './Approach';
 import Shelf from './Shelf';
 import LifeAsk from './LifeAsk';
+import Situation from './presentation/Situation.jsx';
+import { profileFor } from './presentation/budget.mjs';
+import { platformNow, viewportWidth } from './presentation/platform.mjs';
 import { isPressing } from './useFieldDrive';
 import { surfaceRgb } from './fieldDrive.mjs';
 // ⚠ ONE vocabulary, shared with the backend that composes the phase and with
@@ -167,6 +170,11 @@ export default function AttentionSurface({
   sayOverride = null,
   footAside = null,
   footExtra = null,
+  // ⚠ A control belonging to the DEVICE, not the payload — the mic. It used to
+  // be destructured out of `data`, where it never is, so the "Talk to me" the
+  // phone passes as a prop never reached the screen (found in Build 12). It is
+  // a PROP: whether a mic exists is a fact about the device.
+  deviceSlot = null,
   // How the feed is ARRANGED. 'list' is the original stack of rows; 'approach'
   // is the corridor — depth is time, pull is urgency, see saim/MANIFESTATION.md.
   //
@@ -178,6 +186,10 @@ export default function AttentionSurface({
   // one that needs a deploy to undo, on devices that are on a wall.
   layout = 'approach',
   hideSecondary = false,
+  // Build 12: which surface profile draws the 'situation' layout. Omitted, it
+  // is the shell's DECLARED platform (`presentation/platform.mjs`) plus the
+  // viewport class — never sniffed from the device.
+  profile = null,
 }) {
   const [showWhy, setShowWhy] = useState(false);
   const [deferring, setDeferring] = useState(false);
@@ -212,9 +224,6 @@ export default function AttentionSurface({
     // there is honest.
     work = null,
     dashboard = null, utterances = [], covered = null,
-    // ⚠ A control belonging to the DEVICE, not the payload — the mic. Passed
-    // through to the shelf, which is where hardware lives; see `Shelf.jsx`.
-    deviceSlot = null,
     // The sky. A top-level block (`{known, condition, tempC, unit, rain}`), read
     // here for the shelf — `known: false` is an unread sky, which is a different
     // fact from a clear one and is printed as such.
@@ -462,6 +471,111 @@ export default function AttentionSurface({
   const opDetail = localPhase ? null : (operation ? operation.detail : null);
   // "What are you up to?" — only when NEURO asked, only where it can be answered.
   const askLife = Boolean(onLifeAnswer && data.life && data.life.ask && !hideSecondary);
+
+  // ── Build 12: the adaptive composition ─────────────────────────────────────
+  //
+  // ONE presentation intent from NEURO, composed per device by `Situation`.
+  // Taken only when the payload carries a presentation this file understands;
+  // anything older falls through to the corridor/list below, unchanged — a new
+  // look must never be the reason an older backend renders a blank screen.
+  const presentation = data.presentation && data.presentation.contract === 'presentation-v1' ? data.presentation : null;
+  if (layout === 'situation' && presentation) {
+    const prof = profile || profileFor({ platform: platformNow(), width: viewportWidth() });
+    const primaryCard = primary && primary.kind === 'item' ? primary : null;
+    // The one current thing, with the same five verbs it has everywhere: open,
+    // that's done, not now (with durations and a reason), seen it, not mine.
+    const renderPrimary = primaryCard && onAct ? () => (
+      <article className={`sit__object sit__object--${presentation.primary && presentation.primary.priority === 'P0' ? 'p0' : 'p1'}`}>
+        <span className="sit__object-tag">{presentation.primary && presentation.primary.priority === 'P0' ? 'Needs you' : 'Now'}</span>
+        <p className="sit__object-title">{primaryCard.title}</p>
+        {primaryCard.session && (
+          <p className="sit__object-sub">
+            {primaryCard.session.status === 'active' ? 'You’re on it' : 'You started this'}
+            {Number.isFinite(primaryCard.session.elapsedMinutes) ? ` — ${primaryCard.session.elapsedMinutes} min in` : ''}
+          </p>
+        )}
+        {primaryCard.say && <p className="sit__object-sub">{primaryCard.say}</p>}
+        <div className="sit__object-acts">
+          <button type="button" className="sit__chip sit__chip--yes" onClick={() => onOpen && onOpen(primaryCard)}>
+            {primaryCard.actionHint || 'Open it'}
+          </button>
+          {canComplete(primaryCard) && (
+            <button type="button" className="sit__chip" disabled={busy}
+              onClick={() => { act(primaryCard, 'complete'); setDeferring(false); }}>That&rsquo;s done</button>
+          )}
+          <button type="button" className="sit__chip" disabled={busy} onClick={() => setDeferring((v) => !v)}
+            aria-expanded={deferring}>Not now</button>
+        </div>
+        {deferring && (
+          <div className="sit__object-acts">
+            {DEFERRALS.map((d) => (
+              <button key={d.label} type="button" className="sit__chip sit__chip--quiet" disabled={busy}
+                onClick={() => { act(primaryCard, 'defer', { minutes: d.minutes, reason: d.reason }); setDeferring(false); }}>{d.label}</button>
+            ))}
+            <button type="button" className="sit__chip sit__chip--quiet" disabled={busy}
+              onClick={() => { act(primaryCard, 'acknowledge'); setDeferring(false); }}>Seen it</button>
+            {(primaryCard.actions || []).includes('dismiss') && (
+              <button type="button" className="sit__chip sit__chip--quiet" disabled={busy}
+                onClick={() => { act(primaryCard, 'dismiss'); setDeferring(false); }}>Not mine</button>
+            )}
+          </div>
+        )}
+      </article>
+    ) : null;
+    // Opening a thing from Next goes where that thing lives. A transition keeps
+    // its own destination; an event is meeting prep; a commitment or a task is
+    // the task list. No new routing — the tabs are the ones that exist.
+    const openItem = (item) => {
+      if (!item) return;
+      if (item.kind === 'transition' && transition && transition.tab && onNavigate) { onNavigate(transition.tab); return; }
+      if (item.kind === 'attention' && primaryCard && onOpen) { onOpen(primaryCard); return; }
+      if (!onNavigate) return;
+      if (item.kind === 'event') onNavigate('prep');
+      else if (item.kind === 'commitment' || item.kind === 'task') onNavigate('tasks');
+    };
+    const deskRow = onDeskOpen && work && work.atDesk && work.deskOffer && work.deskOffer.known && (work.deskOffer.apps || []).length > 0 ? (
+      <p className="sit__desk">
+        <span className="sit__label">On the {work.deskOffer.host || 'laptop'}</span>
+        {work.deskOffer.apps.map((a) => (
+          <button key={a.id} type="button" className="sit__chip sit__chip--quiet" onClick={() => onDeskOpen(a.id)}>
+            {a.label}{deskStates[a.id] ? ` · ${deskStates[a.id]}` : ''}
+          </button>
+        ))}
+      </p>
+    ) : null;
+    return (
+      <div className={`${rootClassName} surface--situation`} style={{ '--approach-rgb': toneRgb, '--saim-rgb': toneRgb }}>
+        <Situation
+          presentation={presentation}
+          profile={prof}
+          field={(
+            <Field
+              activity={context?.activity}
+              confidenceLevel={context?.confidence?.level}
+              quiet={quiet}
+              degraded={!poolAvailable}
+              pressing={pressing}
+            />
+          )}
+          renderPrimary={renderPrimary}
+          onOpen={openItem}
+          onOffer={onRoomAct ? (it, yes) => onRoomAct(it.actionRef.offerKey, yes ? 'accept' : 'decline') : null}
+          onCorrect={onLifeAnswer ? (doing) => onLifeAnswer(doing) : null}
+          onNotNow={onLifeAnswer ? () => onLifeAnswer(null) : null}
+          correcting={lifeBusy}
+          lead={sayOverride || beforeSay || (outcome ? (
+            <button type="button" className={`surface__outcome surface__outcome--${outcome.tone}`} onClick={() => setOutcome(null)} aria-label="Clear this note">
+              <span className="surface__outcomelead">{outcome.lead}</span>
+              {outcome.sub && <span className="surface__outcomesub">{outcome.sub}</span>}
+            </button>
+          ) : null)}
+          ask={deviceSlot}
+          note={footAside}
+          foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}
+        />
+      </div>
+    );
+  }
 
   return (
     <div

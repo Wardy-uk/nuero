@@ -23,8 +23,18 @@ function fail(res, e) {
 router.get('/now', async (req, res) => {
   try {
     const view = typeof req.query.view === 'string' ? req.query.view : null;
-    const decision = view ? await require('../services/attention').build({ view }) : null;
+    // `ask` moves the dashboard to what was asked about (bounded as /api/attention bounds it).
+    const ask = typeof req.query.ask === 'string' && req.query.ask.trim() ? req.query.ask.trim().slice(0, 200) : null;
+    const decision = view || ask ? await require('../services/attention').build({ view, ask }) : null;
     res.json({ ok: true, ...(await canonical.now({ decision })) });
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/presentation — Build 12 presentation intent only: situation headline/summary, mode, P0-P4 needsYou/next/context/details, inferred activity + correction options. No layout; each renderer composes it.
+router.get('/presentation', async (req, res) => {
+  try {
+    const out = await canonical.now({});
+    res.json({ ok: true, contract: out.contract, presentation: out.presentation || null });
   } catch (e) { fail(res, e); }
 });
 

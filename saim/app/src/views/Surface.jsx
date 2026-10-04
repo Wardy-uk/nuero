@@ -109,7 +109,11 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
       // question streamed an answer while the screen went on showing whatever
       // it had been showing. The brain routes it deterministically; a question
       // it does not recognise leaves the dashboard exactly where it was.
-      const data = await apiFetch(`/api/attention${ask ? `?ask=${encodeURIComponent(ask)}` : ''}`);
+      // ⚠ Build 12: the CANONICAL Now — the attention decision verbatim plus
+      // the world model and the presentation intent, so the phone, the kiosk
+      // and the desktop render one presentation rather than each composing its
+      // own. A superset of /api/attention, so nothing older loses a field.
+      const data = await apiFetch(`/api/canonical/now${ask ? `?ask=${encodeURIComponent(ask)}` : ''}`);
       setState({ loading: false, error: null, data });
     } catch (error) {
       // An error is NOT an empty feed. Keep the last good payload on screen
@@ -594,9 +598,12 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
     : (busy || roomBusy) ? 'executing'
       : null;
 
-  const look = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('look') === 'list'
-    ? 'list' : 'approach';
+  // ⚠ Build 12: the adaptive 'situation' composition is the default on every
+  // device. `?look=approach` (the corridor) and `?look=list` stay as the way
+  // back, on the URL, for the same reason they always were: a look on a wall
+  // that cannot be put back needs a deploy to undo.
+  const lookParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('look') : null;
+  const look = lookParam === 'list' || lookParam === 'approach' ? lookParam : 'situation';
 
   // Does the brain's own sentence list already carry the way out?
   const hasRevealUtterance = Boolean(onSay)

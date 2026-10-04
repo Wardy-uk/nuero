@@ -13,6 +13,7 @@ import { FieldCover } from '../../shared-ui/FieldCover';
 import { useFieldDrive } from '../../shared-ui/useFieldDrive';
 import { useScreenTracking } from '../../shared-ui/useScreenTracking';
 import { surfaceRgb } from '../../shared-ui/fieldDrive.mjs';
+import { platformNow } from '../../shared-ui/presentation/platform.mjs';
 import '../../shared-ui/Lit.css';
 import ExitButton from './components/ExitButton';
 import RefreshButton from './components/RefreshButton';
@@ -183,8 +184,23 @@ function AppShell() {
   // which does the same on the same root. The kiosk mounts the same screens, so
   // a colour set on one and not the other is the two-products finding with a
   // wall display in it.
+  // ── Build 12J: ambient chrome ──────────────────────────────────────────────
+  // On a wall or tablet read from across the room, the Surface is the whole
+  // screen: no tab bar sized for a thumb, no second "where he is" line under the
+  // situation that already says it. The nav is one deliberate tap away (the
+  // corner), and folds itself again after a minute so the wall goes back to
+  // being ambient. Electron loads this same build and is NOT ambient.
+  const ambientChrome = active === 'surface' && platformNow() === 'kiosk';
+  const [chromeOpen, setChromeOpen] = useState(false);
+  useEffect(() => {
+    if (!chromeOpen) return undefined;
+    const t = setTimeout(() => setChromeOpen(false), 60000);
+    return () => clearTimeout(t);
+  }, [chromeOpen, active]);
+  const hideChrome = ambientChrome && !chromeOpen;
+
   return (
-    <div className="app lit-scope" style={{ '--saim-rgb': surfaceRgb(fieldDrive) }}>
+    <div className="app lit-scope" data-ambient={hideChrome ? '' : undefined} style={{ '--saim-rgb': surfaceRgb(fieldDrive) }}>
       {/* Her substrate, behind the whole shell — present on every screen, not
           only on her own (Nick, 31 Aug 2026). Suppressed on the Surface, which
           mounts its own driven by the real attention payload; two stacked
@@ -195,8 +211,8 @@ function AppShell() {
         )}
 
         <header className="app__header">
-          <span className="app__brand">SAiM</span>
-          <Whereabouts fetchJson={fetchWhereabouts} />
+          {!hideChrome && <span className="app__brand">SAiM</span>}
+          {!hideChrome && <Whereabouts fetchJson={fetchWhereabouts} />}
           {/* Not chrome. "This is demo data" and "nothing here is current" are
               facts about everything below, and this is the surface with nobody
               standing at it to ask. Silent when live. */}
@@ -218,7 +234,11 @@ function AppShell() {
             load-bearing — the rule above it is `display:flex`, which beats the
             bare `hidden` attribute. Without it this row renders permanently
             open. */}
-        <nav className="app__nav app__nav--more" aria-label="Everything else" hidden={!moreVisible}>
+        {hideChrome && (
+          <button type="button" className="app__reveal" aria-label="Show the menu" onClick={() => setChromeOpen(true)}>⋯</button>
+        )}
+
+        <nav className="app__nav app__nav--more" aria-label="Everything else" hidden={!moreVisible || hideChrome}>
           {SECONDARY.filter(canShowTab).map((t) => (
             <button
               key={t.id}
@@ -232,7 +252,7 @@ function AppShell() {
           ))}
         </nav>
 
-        <nav className="app__nav" aria-label="SAiM">
+        <nav className="app__nav" aria-label="SAiM" hidden={hideChrome}>
           {PRIMARY.map((t) => (
             <button
               key={t.id}

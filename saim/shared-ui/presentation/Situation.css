@@ -1,0 +1,216 @@
+/* Situation — Build 12 adaptive composition.
+ *
+ * ⚠ Self-contained tokens, scoped to .sit. This file is imported by three apps
+ *   (phone PWA, kiosk, NEURO desktop) whose own palettes differ; reading their
+ *   variables would make the shared renderer look different in each for no
+ *   semantic reason. SAiM's identity is kept: the dark ground, the field behind,
+ *   the restrained blue, Newsreader for her voice.
+ *
+ * Three visual levels: editorial (type, space, no box) → objects (the only
+ * cards) → annotations (inline text, lowest weight).
+ */
+
+.sit {
+  /* Every value below is a word in saim-palette.test.js's vocabulary — none is new. */
+  --sit-ink: #e6edf3;        /* text */
+  --sit-soft: #b7c2d0;       /* surface: text, second rank */
+  --sit-quiet: #9aa0b0;      /* surface: muted — 7:1 on her ground */
+  --sit-attn: #ffcf8a;       /* severity: high, text — "needs you", always with the words */
+  --sit-attn-edge: #ffb45c;  /* severity: high, edge */
+  --sit-gap: #f0d6a6;        /* GAP — unread, unreachable: what she cannot see */
+  --sit-object: rgba(255, 255, 255, 0.045);
+  position: relative;
+  color: var(--sit-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  isolation: isolate;
+  min-height: 100%;
+}
+
+.sit__field { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.sit__body { position: relative; z-index: 1; animation: sit-in 0.45s ease-out both; }
+
+@keyframes sit-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── Level 1: editorial ─────────────────────────────────────────────────── */
+.sit__situation { margin: 0 0 1.6rem; }
+.sit__headline {
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-weight: 300;
+  font-size: 2.5rem;
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+.sit__summary, .sit__handoff {
+  font-family: Newsreader, Georgia, "Times New Roman", serif;
+  font-weight: 300;
+  font-size: 1.28rem;
+  line-height: 1.35;
+  color: var(--sit-soft);
+  margin: 0.55rem 0 0;
+  text-wrap: pretty;
+}
+.sit__handoff { color: var(--sit-quiet); }
+
+.sit__label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sit-quiet);
+  margin: 0 0 0.5rem;
+}
+
+/* ── Level 2: objects — the only cards ──────────────────────────────────── */
+.sit__objects { display: grid; gap: 0.7rem; margin: 0 0 1.6rem; }
+.sit__object {
+  background: var(--sit-object);
+  border-radius: 14px;
+  padding: 0.95rem 1.1rem;
+  border-left: 3px solid rgba(var(--saim-rgb, 114, 150, 211), 0.7);
+}
+.sit__object--p0 { border-left-color: var(--sit-attn-edge); }
+.sit__object-tag {
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--sit-quiet);
+}
+.sit__object--p0 .sit__object-tag { color: var(--sit-attn); }
+.sit__object-title { font-size: 1.12rem; line-height: 1.35; margin: 0.25rem 0 0; }
+.sit__object-sub { color: var(--sit-soft); font-size: 0.95rem; margin: 0.3rem 0 0; }
+
+.sit__object-acts { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.75rem; }
+.sit__lead { margin-top: 1rem; }
+.sit__desk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.4rem 0 1rem; }
+.sit__desk .sit__label { margin: 0 0.4rem 0 0; }
+
+.sit__offers { list-style: none; margin: 0 0 1.4rem; padding: 0; display: grid; gap: 0.5rem; }
+.sit__offer { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.sit__offer-say { flex: 1 1 14rem; color: var(--sit-ink); }
+.sit__offer-acts { display: inline-flex; gap: 0.4rem; }
+
+/* ── Next: rows, not cards ──────────────────────────────────────────────── */
+.sit__nextblock { margin: 0 0 1.5rem; }
+.sit__nextlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
+.sit__next-btn {
+  display: grid;
+  grid-template-columns: minmax(4.6rem, auto) 1fr;
+  column-gap: 0.9rem;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding: 0.45rem 0;
+  min-height: 44px;
+}
+button.sit__next-btn { cursor: pointer; }
+button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-underline-offset: 3px; }
+.sit__when { color: rgb(var(--saim-rgb, 114, 150, 211)); font-size: 0.92rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sit__next-title { font-size: 1.05rem; }
+.sit__next-sub { grid-column: 2; color: var(--sit-quiet); font-size: 0.88rem; }
+
+/* ── Promoted observations: a line with weight, still not a tile ───────── */
+.sit__obs { list-style: none; margin: 0 0 1.3rem; padding: 0; display: grid; gap: 0.35rem; }
+.sit__ob-title { color: var(--sit-soft); }
+.sit__ob--promoted .sit__ob-title { color: var(--sit-ink); font-weight: 500; }
+.sit__ob-sub { display: block; color: var(--sit-quiet); font-size: 0.88rem; }
+
+/* ── Level 3: annotations ───────────────────────────────────────────────── */
+.sit__context { color: var(--sit-quiet); font-size: 0.94rem; line-height: 1.7; margin: 0 0 1.2rem; }
+.sit__ctx-item { white-space: normal; }
+.sit__ann { color: var(--sit-soft); }
+.sit__ann-detail { color: var(--sit-quiet); }
+.sit__inferred { color: var(--sit-quiet); }
+.sit__honesty { display: block; color: var(--sit-gap); font-size: 0.86rem; }
+
+.sit__correct { display: inline; }
+.sit__correct-btn {
+  background: none; border: 0; padding: 0.2rem 0.1rem; color: rgb(var(--saim-rgb, 114, 150, 211)); font: inherit;
+  text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; cursor: pointer;
+  min-height: 32px;
+}
+.sit__correct-btn--ask { color: var(--sit-soft); }
+.sit__correct-opts { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; margin-left: 0.2rem; vertical-align: middle; }
+.sit__chip {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--sit-ink);
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font: inherit;
+  font-size: 0.9rem;
+  min-height: 40px;
+  cursor: pointer;
+}
+.sit__chip--on, .sit__chip--yes { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.8); }
+.sit__chip--quiet { background: none; color: var(--sit-quiet); }
+.sit__chip:focus-visible, .sit__correct-btn:focus-visible, .sit__next-btn:focus-visible {
+  outline: 2px solid rgb(var(--saim-rgb, 114, 150, 211)); outline-offset: 2px;
+}
+
+.sit__more { color: var(--sit-quiet); font-size: 0.88rem; margin: 0.2rem 0 1rem; }
+.sit__details { color: var(--sit-quiet); font-size: 0.88rem; margin: 0 0 1rem; }
+.sit__details summary { cursor: pointer; min-height: 32px; }
+.sit__details ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+.sit__note { color: var(--sit-soft); margin: 0 0 1rem; }
+.sit__ask { margin: 0.6rem 0 1rem; }
+
+/* ── Profiles ───────────────────────────────────────────────────────────── */
+
+/* Phone: one column, conversational, calm space at the top. */
+.sit--phone .sit__body { max-width: 40rem; margin: 0 auto; padding: 9vh 1.25rem 1.5rem; }
+.sit--phone.sit--level-none .sit__body { padding-top: 16vh; }
+.sit--phone .sit__headline { font-size: clamp(2.2rem, 9vw, 2.9rem); }
+.sit--phone.sit--mode-needs-attention .sit__body { padding-top: 6vh; }
+
+/* Desktop: richer, but still one reading line; Next goes wide only where a
+   list scans better in columns. */
+.sit--desktop .sit__body { max-width: 62rem; padding: 0.5rem 0 0.5rem; }
+.sit--desktop .sit__headline { font-size: 2.3rem; }
+.sit--desktop .sit__nextlist { grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); column-gap: 2rem; }
+
+/* Kiosk: read from across the room. Type carries everything; no controls. */
+.sit--kiosk { min-height: 100vh; background: transparent; }
+.sit--kiosk .sit__body {
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 7vh 8vw 9vh;
+  max-width: 78rem;
+}
+.sit--kiosk .sit__headline {
+  font-size: clamp(3.2rem, 8.4vw, 7.4rem);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.sit--kiosk .sit__summary { font-size: clamp(1.7rem, 3.6vw, 3.1rem); color: var(--sit-ink); margin-top: 1.4rem; }
+.sit--kiosk .sit__handoff { font-size: clamp(1.3rem, 2.4vw, 2rem); }
+.sit--kiosk .sit__situation { margin-bottom: 3.2rem; }
+.sit--kiosk .sit__label { font-size: clamp(0.95rem, 1.5vw, 1.2rem); }
+.sit--kiosk .sit__next-btn { grid-template-columns: auto; padding: 0; }
+.sit--kiosk .sit__next-title { font-size: clamp(1.6rem, 2.9vw, 2.5rem); }
+.sit--kiosk .sit__when { font-size: clamp(1.2rem, 2vw, 1.7rem); }
+.sit--kiosk .sit__ob-title { font-size: clamp(1.4rem, 2.4vw, 2rem); }
+.sit--kiosk .sit__context { font-size: clamp(1.15rem, 2vw, 1.6rem); color: var(--sit-soft); margin-top: 1.6rem; }
+.sit--kiosk.sit--mode-needs-attention .sit__headline { color: var(--sit-attn); }
+.sit--kiosk.sit--mode-bedtime .sit__body { opacity: 0.72; }
+
+/* Watch / tiny: one thing. */
+.sit--watch .sit__body { padding: 0.6rem; }
+.sit--watch .sit__headline { font-size: 1.5rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sit__body { animation: none; }
+}
+@media (prefers-contrast: more) {
+  .sit { --sit-soft: #e6edf3; --sit-quiet: #b7c2d0; }
+}

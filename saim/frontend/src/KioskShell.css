@@ -40,3 +40,20 @@
 .navbtn {
   padding: 0.7rem 0.5rem;
 }
+
+/* Build 12J — ambient chrome. The deliberate way back to the menu on a wall
+   screen: a corner, low-contrast, but a full 56px target so it is not a hunt. */
+.app__reveal {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(230, 237, 243, 0.45);
+  font-size: 1.4rem;
+  z-index: 5;
+}
+.app[data-ambient] .app__header { min-height: 0; padding-top: 0; padding-bottom: 0; }
