@@ -569,7 +569,10 @@ export default function AttentionSurface({
               {outcome.sub && <span className="surface__outcomesub">{outcome.sub}</span>}
             </button>
           ) : null)}
-          ask={deviceSlot}
+          // ⚠ On a WALL the mic is opt-in by URL (`?mic=1`, the tablet's start
+          // address): Chromium on the Pi exposes speech recognition with no
+          // service behind it, so capability alone offers a control that fails.
+          ask={prof === 'kiosk' && !(typeof window !== 'undefined' && /[?&]mic=1/.test(window.location.search || '')) ? null : deviceSlot}
           note={footAside}
           foot={(deskRow || footExtra) ? <>{deskRow}{footExtra}</> : null}
         />

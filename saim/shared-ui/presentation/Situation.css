@@ -178,9 +178,9 @@ button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-u
 .sit--desktop .sit__nextlist { grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); column-gap: 2rem; }
 
 /* Kiosk: read from across the room. Type carries everything; no controls. */
-.sit--kiosk { min-height: 100vh; background: transparent; }
+.sit--kiosk { min-height: 0; background: transparent; overflow: hidden; }
 .sit--kiosk .sit__body {
-  min-height: 100vh;
+  min-height: 94vh;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;

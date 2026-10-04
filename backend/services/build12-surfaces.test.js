@@ -128,3 +128,11 @@ test('native iOS reads the same presentation and its budget only cuts (cross-rep
   assert.match(surface, /SituationView\(/);
   assert.match(surface, /Show me everything/, 'the classic surface stays one tap away');
 });
+
+test('a wall gets no mic from capability alone; the phone does', () => {
+  const mic = React.createElement('button', { className: 'mic-probe' }, 'TALK TO ME');
+  const wall = renderToString(React.createElement(Surface, { data: payloadFor('calm-saturday'), layout: 'situation', profile: 'kiosk', deviceSlot: mic }));
+  assert.doesNotMatch(wall, /mic-probe/);
+  const phone = renderToString(React.createElement(Surface, { data: payloadFor('calm-saturday'), layout: 'situation', profile: 'phone', deviceSlot: mic }));
+  assert.match(phone, /mic-probe/);
+});
