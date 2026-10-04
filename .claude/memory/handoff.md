@@ -1,3 +1,24 @@
+# Session Handoff — 2026-10-04 (Build 12.2: native composition reset + watch complication)
+
+- nuero-ios 0f43f2d PUSHED, UNBUILT. The Mac had Remote Login off, so nothing was compiled, installed or screenshotted. Steps are in `docs/build-12.2-mac-steps.md`.
+- New: `NativeComposition` (three compositions chosen by mode: calm, upcoming, attention), rewritten `SituationView`, ask moved into the flow, content-safe mesh frame, quieter nav, evidence in a sheet, ⋯ menu, a way back from the classic surface.
+- Watch: `ComplicationContent` + `WatchPresentationSnapshot` (App Group), complication rewritten to read presentation-v1, watch app writes on bootstrap/foreground, two new entitlements files. The TARGET still has to be added in Xcode. Test 17 stays red until it is.
+- PWA untouched by design (native first). Vault Build 12 note has a Build 12.2 section.
+- Next: on the Mac, swift test → build SAiM → iPhone screenshot vs IMG_0415 → iterate → add the watch target → install → put it on a face.
+
+---
+
+# Session Handoff — 2026-10-04 (Build 12.1: visual composition)
+
+- Deployed nuero d9ced5d + 2068bb0 to pi5 (desktop + kiosk built, 5124 tests 0 fail before restart). PWA on Netlify confirmed by bundle content. Pi 4 wall panel reloaded and captured — unchanged.
+- New: phone focal object, grouped context (`groupContext`), activity pill, "What this is based on" attached, "Show me everything" disclosure (was missing on the PWA situation layout), `AskDock`, reading scrim, field fills the screen, phone context cap 5. Household label now "X and Y are home".
+- nuero-ios b11aa1b + ba79179 COMMITTED, UNBUILT: SituationView rewrite, dock, quieter nav, `ContextGroups`/`.focal`, Build121CompositionTests. On the Mac: swift test, build SAiM, install, screenshot the live Quiet Sunday state and compare with vault `Build 12 screens/12.1-after-live-sunday-phone-440.png`.
+- Watch: `SaimWatchComplication/SaimComplication.swift` has NO target in Neuro.xcodeproj — never built, hence zero complications. Add a watchOS Widget Extension target on the Mac (Nick raised the watch being basic; not started).
+- Not done: looking at the real iPhone PWA; bedtime room duplicate (composer); Confluence (Atlassian MCP not authorised).
+- Harness for visual checks: render real Situation+Field+AskDock in headless Chrome (scratchpad, recipe in vault 12.1 section) — Chrome will not go below ~500px wide, so pin body width and crop.
+
+---
+
 # Session Handoff — 2026-10-04 (Set-up wizard)
 
 - Deployed nuero 8aefb5d + fix to pi5 (tests green before restart). NEURO desktop → SYSTEM → Set up; GET /api/setup. Windows: `powershell -ExecutionPolicy Bypass -File desktop-agent\setup.ps1` (laptop reports clean). nuero-ios 9c43a1c: Set up in NEURO menu + SAiM Controls (sheet) — UNBUILT.
