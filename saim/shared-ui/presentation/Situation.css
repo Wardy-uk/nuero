@@ -160,6 +160,8 @@ button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-u
 .sit__details ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
 .sit__note { color: var(--sit-soft); margin: 0 0 1rem; }
 .sit__ask { margin: 0.6rem 0 1rem; }
+/* On a wall the mic is an ambient affordance, not a control row. */
+.sit__ask--ambient { opacity: 0.55; margin-top: 2rem; }
 
 /* ── Profiles ───────────────────────────────────────────────────────────── */
 

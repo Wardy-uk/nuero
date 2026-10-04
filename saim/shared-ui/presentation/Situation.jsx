@@ -279,7 +279,9 @@ export default function Situation({
           }
         })}
         {note && <div className="sit__note">{note}</div>}
-        {foot && <div className="sit__foot">{foot}</div>}
+        {/* ⚠ The shell's foot (laptop launch row, escape hatch) is CONTROLS, so
+            it obeys the budget like everything else: never on a wall. */}
+        {foot && plan.actions && <div className="sit__foot">{foot}</div>}
       </div>
     </section>
   );

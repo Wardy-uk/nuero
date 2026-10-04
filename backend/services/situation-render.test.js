@@ -214,3 +214,9 @@ test('reduced motion is honoured and nothing pulses on a loop', () => {
   // ...and the renderer really does pair it: the P0 object carries the words.
   assert.match(fs.readFileSync(SITUATION, 'utf8'), /sit__object-tag">Needs you/);
 });
+
+test('the shell foot (laptop launch, escape hatch) never reaches the wall; it does reach the phone', () => {
+  const foot = React.createElement('button', { className: 'foot-probe' }, 'VS Code');
+  assert.doesNotMatch(render('live-sunday', 'kiosk', { foot }), /foot-probe/);
+  assert.match(render('live-sunday', 'phone', { foot }), /foot-probe/);
+});
