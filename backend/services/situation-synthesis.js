@@ -91,6 +91,45 @@ function scheduleTime(when) {
   return when;
 }
 
+// ── Build 12.4: one natural line per theme (display support, additive) ──────
+//
+// `sentence` is the theme said as ONE line ("Hiking on Saturday", "Recovery is
+// lower than usual.", "You’re home with Helen and Isaac."), and `support` the
+// facts under it the sentence did not already say. Both are composed HERE so a
+// renderer never writes grammar: the native phone draws them as a continuous
+// scene instead of label/headline/lines sections (IMG_0417 read as a report).
+// ⚠ Additive. Every existing field is unchanged and an older client ignores
+//   these; a client that wants them falls back to `headline` when absent.
+// ⚠ No new facts: every word is a value already on the theme, plus joining
+//   words ("on", "at", "is", "with").
+
+/** "hiking" → "Hiking". Only a leading lowercase letter changes. PURE. */
+function sentenceCase(s) {
+  const t = String(s || '');
+  return /^[a-z]/.test(t) ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
+/** "Saturday"+"09:00" → "on Saturday at 09:00"; "Tomorrow" → "tomorrow"; "Soon"+"in 20 min" → "in 20 min". PURE. */
+function whenPhrase(label, time) {
+  const at = time ? (/^\d{1,2}:\d{2}$/.test(time) ? ` at ${time}` : `, ${time}`) : '';
+  if (Object.values(DAY_ABBR).includes(label)) return `on ${label}${at}`;
+  if (/^(Today|Tomorrow|Now)$/.test(label)) return `${label.toLowerCase()}${at}`;
+  if (label === 'Soon') return time || null;
+  // A date past the coming week arrives as "3 Oct 12:30": "on 3 Oct at 12:30".
+  const dated = /^(\d{1,2} [A-Z][a-z]{2})(?: (\d{1,2}:\d{2}))?$/.exec(time || '');
+  if (dated) return `on ${dated[1]}${dated[2] ? ` at ${dated[2]}` : ''}`;
+  // A bare clock time is later today: "at 15:00".
+  if (/^\d{1,2}:\d{2}$/.test(time || '')) return `at ${time}`;
+  return time || null;
+}
+
+/** "Helen" / "Helen and Isaac" — the list householdSentence uses, without the clause. PURE. */
+function nameList(who) {
+  const names = (Array.isArray(who) ? who : []).filter((n) => typeof n === 'string' && n.trim());
+  if (!names.length) return null;
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 function ev(ref, kind, label, source) {
   return { ref, kind, label, source: source || null };
 }
@@ -107,6 +146,8 @@ function degradedTheme(pres) {
     headline: (pres.situation && pres.situation.summary) || 'I can’t read enough to be sure.',
     summary: h && h.cannotSee && h.cannotSee.length ? `Couldn’t read: ${h.cannotSee.join(', ')}.` : null,
     lines: [],
+    sentence: (pres.situation && pres.situation.summary) || 'I can’t read enough to be sure.',
+    support: h && h.cannotSee && h.cannotSee.length ? [`Couldn’t read: ${h.cannotSee.join(', ')}.`] : [],
     priority: 'P1',
     confidence: 'low',
     evidenceRefs: ['situation.honesty'],
@@ -127,7 +168,16 @@ function scheduleTheme(pres, used) {
   used.add(pick.id);
   const isCommitment = pick.kind === 'commitment' || pick.kind === 'task';
   const others = next.filter((n) => n.id !== pick.id).length;
+  const title = sentenceCase(pick.title || 'Untitled');
+  let sentence;
+  if (isCommitment) sentence = pick.when ? `${title} — due ${pick.when}` : title;
+  else {
+    const phrase = whenPhrase(scheduleLabel(pick.when), scheduleTime(pick.when));
+    sentence = phrase ? `${title} ${phrase}` : title;
+  }
   return {
+    sentence,
+    support: isCommitment && pick.summary ? [pick.summary] : [],
     id: `theme:${isCommitment ? 'commitments' : 'schedule'}`,
     type: isCommitment ? 'commitments' : 'schedule',
     label: isCommitment ? (pick.when ? `Due ${pick.when}` : 'Due') : scheduleLabel(pick.when),
@@ -150,6 +200,7 @@ function weatherTheme(pres, used) {
   return {
     id: 'theme:weather', type: 'weather', label: 'Weather',
     headline: rain.title, summary: rain.summary || null, lines: [],
+    sentence: rain.title, support: rain.summary ? [rain.summary] : [],
     priority: 'P2', confidence: 'medium',
     evidenceRefs: ['observation:rain'],
     evidence: [ev('observation:rain', 'weather', rain.title, 'forecast')],
@@ -193,8 +244,12 @@ function recoveryTheme(pres, payload, used) {
     used.add('sleep');
   }
   for (const c of (r && Array.isArray(r.caveats) ? r.caveats : [])) lines.push(c);
+  // "Recovery is lower than usual." — the readiness headline as a clause. A
+  // night-only theme's headline ("Slept 4h12") is already a sentence.
+  const sentence = readinessNotable ? `Recovery is ${headline.charAt(0).toLowerCase()}${headline.slice(1)}.` : headline;
   return {
     id: 'theme:recovery', type: 'recovery', label, headline, summary, lines,
+    sentence, support: [summary, ...lines].filter(Boolean),
     priority: 'P2',
     // A wrist sensor read against a personal baseline: never better than medium,
     // and stress-score's own caveat (exercise reads like stress) travels with it.
@@ -218,16 +273,22 @@ function presenceTheme(pres, payload, used) {
   evidence.push(ev('context:place', 'place', place.label || label, 'life-state'));
   used.add('place');
   const hh = life.household;
+  let sentence = headline;
   if (place.kind === 'home' && hh && hh.othersHome && Array.isArray(hh.who)) {
     const s = householdSentence(hh.who);
-    if (s) { lines.push(s); evidence.push(ev('context:household', 'household', s, 'home-assistant')); used.add('household'); }
+    if (s) {
+      lines.push(s); evidence.push(ev('context:household', 'household', s, 'home-assistant')); used.add('household');
+      sentence = `You’re home with ${nameList(hh.who)}.`;
+    }
   }
+  const support = [];
   // A room temperature presentation-intent PROMOTED (outside its band) belongs
   // here; an ordinary one is telemetry and stays hidden.
   const roomObs = (pres.observations || []).find((o) => o.id === 'room-temp' && o.promoted);
   let priority = 'P3';
   if (roomObs) {
     lines.push([roomObs.title, roomObs.summary].filter(Boolean).join('. '));
+    support.push(lines[lines.length - 1]);
     evidence.push(ev('observation:room-temp', 'room', roomObs.title, 'home-assistant'));
     used.add('room-temp');
     priority = 'P2';
@@ -235,6 +296,7 @@ function presenceTheme(pres, payload, used) {
   const conf = String(life.confidence || '').toLowerCase();
   return {
     id: 'theme:presence', type: 'presence', label, headline, summary: null, lines,
+    sentence, support,
     priority,
     confidence: life.declared ? 'high' : (['high', 'medium', 'low'].includes(conf) ? conf : 'medium'),
     evidenceRefs: evidence.map((e) => e.ref),
@@ -295,4 +357,4 @@ function synthesise(pres, payload = {}) {
   };
 }
 
-module.exports = { CONTRACT, THEME_TYPES, THEME_CAP, DEFAULT_CAP, synthesise, householdSentence, scheduleLabel, scheduleTime };
+module.exports = { CONTRACT, THEME_TYPES, THEME_CAP, DEFAULT_CAP, synthesise, householdSentence, scheduleLabel, scheduleTime, sentenceCase, whenPhrase };
