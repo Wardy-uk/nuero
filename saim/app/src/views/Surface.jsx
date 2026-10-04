@@ -14,6 +14,8 @@ import { speakIfEnabled, isAudioUnlocked, unlockAudio, isVoiceOutEnabled, setVoi
 // desk panel without re-tuning.
 import Field from '../../../shared-ui/Field';
 import AttentionSurface from '../../../shared-ui/AttentionSurface';
+import AskDock from '../../../shared-ui/presentation/AskDock';
+import { platformNow } from '../../../shared-ui/presentation/platform.mjs';
 import './Surface.css';
 import { speechRecognitionCtor, noMicReason } from '../speechRecognition';
 
@@ -605,8 +607,12 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
   const lookParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('look') : null;
   const look = lookParam === 'list' || lookParam === 'approach' ? lookParam : 'situation';
 
-  // Does the brain's own sentence list already carry the way out?
-  const hasRevealUtterance = Boolean(onSay)
+  // Does the brain's own sentence list already carry the way out — ON SCREEN?
+  // ⚠ The situation layout does not render the sentence list, so there the
+  //   reveal utterance existing proved nothing and the phone had NO way round
+  //   the surface (found in the Build 12.1 pass). Only a layout that draws the
+  //   sentences may stand the button down.
+  const hasRevealUtterance = look !== 'situation' && Boolean(onSay)
     && Array.isArray(data?.utterances)
     && data.utterances.some((u) => u && u.intent && u.intent.kind === 'reveal');
 
@@ -720,7 +726,20 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
           )}
         </>
       ) : null}
-      deviceSlot={micCard}
+      // Build 12.1J: on the phone's situation layout the conversation is ONE
+      // dock — a text field and the mic in the same object. The wall keeps the
+      // mic alone (and only with `?mic=1`): a text box on a wall is a control
+      // nobody can reach.
+      deviceSlot={look === 'situation' && platformNow() !== 'kiosk' ? (
+        <AskDock
+          placeholder={data?.presentation?.voicePrompt?.label || 'Ask SAiM'}
+          onAsk={(q) => ask(q)}
+          canListen={CAN_LISTEN}
+          listening={listening}
+          onMic={toggleMic}
+          busy={Boolean(exchange?.thinking)}
+        />
+      ) : micCard}
       footExtra={/* ⚠⚠ NOTHING, NOT AN EMPTY ROW. This rendered a flex row with
           `padding-top: 0.5rem` whether or not the hatch inside it was showing —
           and it usually is not, because the composer already ends the utterances

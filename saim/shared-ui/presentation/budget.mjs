@@ -31,7 +31,7 @@ export const PROFILES = {
 
 // Counts per block. 0 = not rendered. 'count' = a one-line count, no items.
 export const BUDGETS = {
-  phone: { needsYou: 3, primary: 'card', next: 2, offers: 2, observations: 2, context: 4, tracked: 'count', details: 'collapsed', correction: 'inline', ask: 'visible', actions: true },
+  phone: { needsYou: 3, primary: 'card', focal: true, next: 2, offers: 2, observations: 2, context: 4, tracked: 'count', details: 'collapsed', correction: 'inline', ask: 'visible', actions: true },
   kiosk: { needsYou: 1, primary: 'line', next: 1, offers: 0, observations: 1, context: 3, tracked: 0, details: 0, correction: 0, ask: 'ambient', actions: false },
   desktop: { needsYou: 5, primary: 'card', next: 5, offers: 3, observations: 4, context: 6, tracked: 'list', details: 'open', correction: 'inline', ask: 'rich', actions: true },
   watch: { needsYou: 1, primary: 'line', next: 0, offers: 0, observations: 0, context: 0, tracked: 0, details: 0, correction: 0, ask: 0, actions: false },
@@ -88,14 +88,30 @@ export function composeForSurface(presentation, profileId = 'phone') {
   const needs = take((pr.needsYou || []).filter((n) => !(ambient && about && n.id === about)), b.needsYou);
   if (needs.length) blocks.push({ type: 'needsYou', items: needs, overflow: Math.max(0, (pr.needsYou || []).length - needs.length) });
 
-  if (pr.primary && b.primary === 'card') blocks.push({ type: 'primary', items: [pr.primary] });
+  const hasPrimary = Boolean(pr.primary && b.primary === 'card');
+  if (hasPrimary) blocks.push({ type: 'primary', items: [pr.primary] });
+
+  // ── The focal object (Build 12.1) ──
+  // After the headline there must be ONE thing the eye lands on. Where nothing
+  // needs him and nothing is current, that is the next meaningful thing — the
+  // one the situation is ABOUT if the server named one, else the first of Next
+  // in the server's own order. Chosen, never ranked: `find` and `[0]`, no sort.
+  // The summary sentence about it is then dropped (the drawn-as-object rule),
+  // so the item is said once — as the object.
+  // Phone only: the wall draws Next as one big line already, and the desktop's
+  // primary slot is its own AttentionCard.
+  let focal = null;
+  if (b.focal && !needs.length && !hasPrimary) {
+    focal = (about && (pr.next || []).find((n) => n.id === about)) || (pr.next || []).find((n) => !(about && n.id === about)) || null;
+  }
 
   const offers = take(pr.offers, b.offers);
+  if (focal) blocks.push({ type: 'focal', items: [focal] });
   if (offers.length) blocks.push({ type: 'offers', items: offers });
 
   // The situation line already says the item it is about; listing it again
   // underneath is the "same thing three times" bug (8 Sep 2026).
-  const nextSrc = (pr.next || []).filter((n) => !(about && n.id === about));
+  const nextSrc = (pr.next || []).filter((n) => !(about && n.id === about) && !(focal && n.id === focal.id));
   const next = take(nextSrc, b.next);
   if (next.length) blocks.push({ type: 'next', items: next, overflow: Math.max(0, nextSrc.length - next.length) });
 
@@ -120,8 +136,36 @@ export function composeForSurface(presentation, profileId = 'phone') {
   return { profile, mode, actions: !!b.actions, blocks };
 }
 
+/**
+ * Group the context annotations for display (Build 12.1). PURE.
+ *
+ * The server sends P3 annotations as a flat list; read as one dot-separated
+ * line they look like telemetry. This only ARRANGES them, by the `kind` the
+ * server already set — it adds no words, drops nothing it was given and never
+ * re-orders within a line:
+ *   place     → the group's eyebrow ("Home")
+ *   room, weather → one line: where he is and what it is like outside
+ *   household → its own line (people are not a reading)
+ *   sleep     → its own line
+ *   activity  → NOT here: it is the correction row's subject
+ *   anything else → its own line, in the order it arrived
+ */
+export function groupContext(items) {
+  const list = Array.isArray(items) ? items : [];
+  const placeItem = list.find((c) => c.kind === 'place') || null;
+  const activity = list.find((c) => c.kind === 'activity') || null;
+  const lines = [];
+  const surroundings = list.filter((c) => c.kind === 'room' || c.kind === 'weather');
+  if (surroundings.length) lines.push({ id: 'surroundings', items: surroundings });
+  for (const c of list) {
+    if (['place', 'activity', 'room', 'weather'].includes(c.kind)) continue;
+    lines.push({ id: c.id, items: [c] });
+  }
+  return { place: placeItem ? placeItem.label : null, lines, activity };
+}
+
 /** Block types a profile may NEVER draw, whatever the mode. Pinned by tests. */
 export const FORBIDDEN = {
-  kiosk: ['details', 'tracked', 'primary'],
-  watch: ['details', 'tracked', 'primary', 'next', 'context', 'ask'],
+  kiosk: ['details', 'tracked', 'primary', 'focal'],
+  watch: ['details', 'tracked', 'primary', 'focal', 'next', 'context', 'ask'],
 };

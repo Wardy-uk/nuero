@@ -174,6 +174,23 @@ const FIXTURES = [
     },
   },
   {
+    id: 'many-next',
+    name: 'Working, several things coming, nothing current (Build 12.1)',
+    at: TUE_1030,
+    payload: {
+      context: workCtx(), life: workLife(), primary: { kind: 'context', title: 'Working' }, secondary: [],
+      poolAvailable: true, gaps: [], dropped: [], approvals: noApprovals,
+      agenda: { known: true, events: [
+        { start: '2026-10-06T12:00:00', end: '2026-10-06T12:30:00', subject: 'Standup', minutesAway: 90, attendeesOther: true },
+        { start: '2026-10-06T14:00:00', end: '2026-10-06T15:00:00', subject: 'Tech Leadership', minutesAway: 210, attendeesOther: true },
+        { start: '2026-10-06T15:30:00', end: '2026-10-06T16:00:00', subject: '1-2-1 Zoe', minutesAway: 300, attendeesOther: true },
+      ] },
+      rooms: room('Study', 20.6), weather, situation: situation({ commitments: [
+        { id: 'commitment:foc', description: 'Send the FOC numbers to Chris', direction: 'i-owe', due: { label: 'Friday', relative: 'later', days: 3 } },
+      ] }),
+    },
+  },
+  {
     id: 'live-sunday',
     name: 'Live read, Sun 4 Oct 2026 (duplicate birthday)',
     at: SUN_1020,

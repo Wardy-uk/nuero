@@ -36,8 +36,11 @@ test('⚠ the mic is one of the cards, not something that resembles one', () => 
   // It carries the shelf's own class. A second definition of "a card on the
   // shelf" is how the row comes to have two looks.
   assert.match(src, /className=\{`shelf__btn\$\{listening \? ' shelf__btn--live' : ''\}`\}/);
-  // And it is handed to the shelf, not left in the foot.
-  assert.match(src, /deviceSlot=\{micCard\}/);
+  // And it is handed to the shelf, not left in the foot. Build 12.1: on the
+  // situation layout (which has no shelf) the slot is the AskDock — one text
+  // field with the mic inside it; every shelf layout still gets this card.
+  assert.match(src, /deviceSlot=\{look === 'situation' && platformNow\(\) !== 'kiosk' \? \(/);
+  assert.match(src, /\) : micCard\}/);
   assert.ok(!/surface__mic/.test(src), 'the mic has its own styling again');
 });
 

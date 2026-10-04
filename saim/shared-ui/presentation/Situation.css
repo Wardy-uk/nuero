@@ -26,6 +26,11 @@
   min-height: 100%;
 }
 
+/* ⚠ The shells' surface root is a flex column with only a MIN-height, so
+   `min-height: 100%` above never resolves and the field ended where the content
+   ended — a flat dark band under every calm screen (Build 12's own screenshot
+   shows it). As a flex item it fills the screen instead. */
+.surface--situation > .sit { flex: 1 0 auto; }
 .sit__field { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
 .sit__body { position: relative; z-index: 1; animation: sit-in 0.45s ease-out both; }
 
@@ -73,13 +78,59 @@
   padding: 0.95rem 1.1rem;
   border-left: 3px solid rgba(var(--saim-rgb, 114, 150, 211), 0.7);
 }
-.sit__object--p0 { border-left-color: var(--sit-attn-edge); }
+/* ⚠ P0 OUTRANKS THE FOCAL OBJECT (12.1D): a tinted ground, a full attention
+   edge and a heavier title. The focal object below has neither tint nor edge
+   colour — only a low-contrast rim and one small marker. */
+.sit__object--p0 {
+  border-left-color: var(--sit-attn-edge);
+  background: rgba(255, 180, 92, 0.085);
+  box-shadow: inset 0 0 0 1px rgba(255, 180, 92, 0.22);
+}
 .sit__object-tag {
   font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--sit-quiet);
 }
 .sit__object--p0 .sit__object-tag { color: var(--sit-attn); }
 .sit__object-title { font-size: 1.12rem; line-height: 1.35; margin: 0.25rem 0 0; }
+.sit__object--p0 .sit__object-title { font-size: 1.2rem; font-weight: 500; }
+
+/* ── The focal object (12.1D): one restrained raised surface ────────────── */
+.sit__focal {
+  position: relative;
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 1rem 1.15rem 1.05rem 1.35rem;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(22, 28, 38, 0.82), rgba(14, 19, 26, 0.72));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  min-height: 44px;
+}
+/* The one accent: a short marker, not a full coloured edge (that is P0's). */
+.sit__focal::before {
+  content: '';
+  position: absolute;
+  left: 0.6rem; top: 1.05rem;
+  width: 3px; height: 1.1rem;
+  border-radius: 2px;
+  background: rgb(var(--saim-rgb, 114, 150, 211));
+}
+button.sit__focal { cursor: pointer; }
+button.sit__focal:hover { border-color: rgba(255, 255, 255, 0.16); }
+.sit__focal-eyebrow {
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--sit-quiet);
+}
+.sit__focal-title { font-size: 1.32rem; line-height: 1.25; font-weight: 450; color: var(--sit-ink); }
+.sit__focal-meta { font-size: 0.95rem; color: var(--sit-soft); }
+.sit__focal-when { color: rgb(var(--saim-rgb, 114, 150, 211)); font-variant-numeric: tabular-nums; }
 .sit__object-sub { color: var(--sit-soft); font-size: 0.95rem; margin: 0.3rem 0 0; }
 
 .sit__object-acts { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.75rem; }
@@ -117,6 +168,9 @@ button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-u
 
 /* ── Promoted observations: a line with weight, still not a tile ───────── */
 .sit__obs { list-style: none; margin: 0 0 1.3rem; padding: 0; display: grid; gap: 0.35rem; }
+/* 12.1: a promoted reading is a marked line beside the content, not a bare
+   bold sentence floating between the object and the context. */
+.sit--phone .sit__ob--promoted { padding-left: 0.95rem; border-left: 2px solid rgba(var(--saim-rgb, 114, 150, 211), 0.6); }
 .sit__ob-title { color: var(--sit-soft); }
 .sit__ob--promoted .sit__ob-title { color: var(--sit-ink); font-weight: 500; }
 .sit__ob-sub { display: block; color: var(--sit-quiet); font-size: 0.88rem; }
@@ -129,14 +183,34 @@ button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-u
 .sit__inferred { color: var(--sit-quiet); }
 .sit__honesty { display: block; color: var(--sit-gap); font-size: 0.86rem; }
 
-.sit__correct { display: inline; }
-.sit__correct-btn {
-  background: none; border: 0; padding: 0.2rem 0.1rem; color: rgb(var(--saim-rgb, 114, 150, 211)); font: inherit;
-  text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; cursor: pointer;
-  min-height: 32px;
+/* Grouped context (12.1F): an eyebrow and short lines, one hairline rule —
+   no card, no long dotted string. */
+.sit__ctxblock { margin: 0 0 1.4rem; }
+.sit__ctx { padding-left: 0.95rem; border-left: 1px solid rgba(255, 255, 255, 0.12); }
+.sit__ctx-place {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--sit-quiet);
 }
-.sit__correct-btn--ask { color: var(--sit-soft); }
-.sit__correct-opts { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; margin-left: 0.2rem; vertical-align: middle; }
+.sit__ctx-line { margin: 0; font-size: 0.98rem; line-height: 1.55; color: var(--sit-soft); }
+.sit__ctxblock .sit__details { margin: 0.55rem 0 0 0.95rem; }
+
+/* What SAiM thinks he is doing, and one pill to say she is wrong (12.1G). */
+.sit__activity { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.7rem; margin-top: 0.85rem; }
+.sit__activity-read { color: var(--sit-soft); font-size: 0.98rem; }
+.sit__pill {
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--sit-ink);
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.12);
+  border: 1px solid rgba(var(--saim-rgb, 114, 150, 211), 0.42);
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+.sit__pill:hover { background: rgba(var(--saim-rgb, 114, 150, 211), 0.2); }
+.sit__correct-opts { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; vertical-align: middle; }
 .sit__chip {
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -150,26 +224,105 @@ button.sit__next-btn:hover .sit__next-title { text-decoration: underline; text-u
 }
 .sit__chip--on, .sit__chip--yes { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.8); }
 .sit__chip--quiet { background: none; color: var(--sit-quiet); }
-.sit__chip:focus-visible, .sit__correct-btn:focus-visible, .sit__next-btn:focus-visible {
+.sit__chip:focus-visible, .sit__pill:focus-visible, .sit__focal:focus-visible, .sit__next-btn:focus-visible, .sit__details summary:focus-visible {
   outline: 2px solid rgb(var(--saim-rgb, 114, 150, 211)); outline-offset: 2px;
 }
 
 .sit__more { color: var(--sit-quiet); font-size: 0.88rem; margin: 0.2rem 0 1rem; }
 .sit__details { color: var(--sit-quiet); font-size: 0.88rem; margin: 0 0 1rem; }
-.sit__details summary { cursor: pointer; min-height: 32px; }
+.sit__details summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 0.4rem; list-style: none; }
+.sit__details summary::-webkit-details-marker { display: none; }
+.sit__details summary::before { content: '›'; font-size: 1.1rem; line-height: 1; transition: transform 0.15s ease; }
+.sit__details[open] summary::before { transform: rotate(90deg); }
 .sit__details ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
 .sit__note { color: var(--sit-soft); margin: 0 0 1rem; }
 .sit__ask { margin: 0.6rem 0 1rem; }
+
+/* The escape hatch is a disclosure row, left-aligned after the content (12.1I).
+   Shell buttons inside it are restyled here so they stop floating centred. */
+.sit__foot { margin: 0 0 0.9rem; }
+.sit--phone .sit__foot .surface__footrow { display: block; padding: 0; text-align: left; }
+.sit--phone .sit__foot .surface__all {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  background: none; border: 0; padding: 0.5rem 0; min-height: 44px;
+  font: inherit; font-size: 0.92rem; color: var(--sit-quiet); cursor: pointer;
+  text-decoration: none; letter-spacing: 0; text-transform: none;
+}
+.sit--phone .sit__foot .surface__all::after { content: '›'; font-size: 1.15rem; line-height: 1; }
+
+/* The conversation dock (12.1J): part of the same column, held at the bottom
+   only once there is more content than screen. */
+.sit--phone .sit__tail { position: sticky; bottom: 0; padding: 0.5rem 0 0.75rem; margin-top: 0.4rem; }
+.sit--phone .sit__ask { margin: 0; }
+.sit--phone .sit__tail { background: linear-gradient(to top, rgba(11, 15, 20, 0.94) 55%, rgba(11, 15, 20, 0)); }
+
+.sit-dock {
+  display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.3rem 0.3rem 0.3rem 1.05rem;
+  border-radius: 999px;
+  background: rgba(20, 26, 35, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+.sit-dock:focus-within { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.55); }
+.sit-dock--listening { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.8); }
+.sit-dock__input {
+  flex: 1 1 auto; min-width: 0;
+  background: none; border: 0; outline: none;
+  color: var(--sit-ink, #e6edf3);
+  font: inherit; font-size: 1rem;  /* ≥16px or iOS zooms the page on focus */
+  min-height: 44px;
+}
+.sit-dock__input::placeholder { color: var(--sit-quiet, #9aa0b0); }
+.sit-dock__btn {
+  flex: 0 0 auto;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; cursor: pointer;
+  color: var(--sit-ink, #e6edf3);
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.22);
+}
+.sit-dock__btn--live { background: rgba(var(--saim-rgb, 114, 150, 211), 0.6); }
+.sit-dock__btn:disabled { opacity: 0.4; cursor: default; }
+.sit-dock__btn:focus-visible { outline: 2px solid rgb(var(--saim-rgb, 114, 150, 211)); outline-offset: 2px; }
 /* On a wall the mic is an ambient affordance, not a control row. */
 .sit__ask--ambient { opacity: 0.55; margin-top: 2rem; }
 
 /* ── Profiles ───────────────────────────────────────────────────────────── */
 
-/* Phone: one column, conversational, calm space at the top. */
-.sit--phone .sit__body { max-width: 40rem; margin: 0 auto; padding: 9vh 1.25rem 1.5rem; }
-.sit--phone.sit--level-none .sit__body { padding-top: 16vh; }
-.sit--phone .sit__headline { font-size: clamp(2.2rem, 9vw, 2.9rem); }
-.sit--phone.sit--mode-needs-attention .sit__body { padding-top: 6vh; }
+/* `display: contents` so the dock's sticky containing block is the whole
+   column, not its own short wrapper. */
+.sit__tailwrap { display: contents; }
+
+/* Phone: one column, conversational. ⚠ CONTENT FLOWS UP (12.1M): a fixed
+   16vh drop above a three-block screen is what left the Build 12 phone looking
+   like text floating in space. A modest, constant top and a reading measure. */
+.sit--phone .sit__body {
+  max-width: 34rem; margin: 0 auto;
+  padding: clamp(1.75rem, 5vh, 3rem) 1.25rem 0.5rem;
+}
+.sit--phone .sit__situation { margin-bottom: 1.5rem; max-width: 26rem; }
+.sit--phone .sit__headline { font-size: clamp(2.3rem, 10vw, 3rem); }
+.sit--phone .sit__summary { margin-top: 0.4rem; color: var(--sit-ink); opacity: 0.86; }
+.sit--phone .sit__objects { margin-bottom: 1.4rem; }
+
+/* ⚠ THE READING SCRIM (12.1L). Field.css's rule is that legibility is bought
+   with the SCRIM, never by dimming the nodes: the ground is laid over the mesh
+   where the words sit — the headline band and the content beneath it — and
+   thinned below the content, so the open lower screen is HER, not a flat dark
+   band. The dock carries its own ground, so it needs no band of its own. */
+.sit--phone .sit__field::after {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg,
+    rgba(11, 15, 20, 0.80) 0%,
+    rgba(11, 15, 20, 0.64) 32%,
+    rgba(11, 15, 20, 0.30) 62%,
+    rgba(11, 15, 20, 0.12) 100%);
+}
 
 /* Desktop: richer, but still one reading line; Next goes wide only where a
    list scans better in columns. */

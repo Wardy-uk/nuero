@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { composeForSurface } from './budget.mjs';
+import { composeForSurface, groupContext } from './budget.mjs';
 import './Situation.css';
 
 // Situation — the adaptive SAiM composition (Build 12).
@@ -35,17 +35,31 @@ function Annotation({ item }) {
   );
 }
 
+// "Watching TV" → "watching TV": the server's label is a state phrase written
+// to stand alone; inside "Looks like you’re …" its first letter drops — unless
+// the word is an acronym. Wording only; nothing about WHAT is inferred changes.
+export function inSentence(label) {
+  const s = String(label || '');
+  if (s.length > 1 && s[1] === s[1].toUpperCase() && /[A-Z]/.test(s[1])) return s;
+  return s.charAt(0).toLowerCase() + s.slice(1);
+}
+
 function Correction({ correction, activity, onCorrect, onNotNow, busy }) {
   const [open, setOpen] = useState(false);
   if (!correction || !onCorrect) return null;
-  // ⚠ A CORRECTION, not a panel: one quiet affordance beside what SAiM thinks he
-  //   is doing. It only becomes a visible question when she genuinely cannot tell.
+  // ⚠ A CORRECTION, not a panel, and not a hyperlink: SAiM states her read in
+  //   words, with one pill to say she is wrong. Unknown is the pill alone. The
+  //   options appear only once he taps it.
+  const read = activity
+    ? `${activity.basis === 'declared' ? 'You said you’re' : 'Looks like you’re'} ${inSentence(activity.label)}`
+    : null;
   return (
-    <span className="sit__correct">
+    <div className={`sit__activity${read ? '' : ' sit__activity--unknown'}`}>
+      {read && !open && <span className="sit__activity-read">{read}</span>}
       {!open && (
         <button
           type="button"
-          className={`sit__correct-btn${correction.asking && !activity ? ' sit__correct-btn--ask' : ''}`}
+          className="sit__pill"
           onClick={() => setOpen(true)}
           aria-expanded="false"
         >
@@ -70,7 +84,79 @@ function Correction({ correction, activity, onCorrect, onNotNow, busy }) {
           >{correction.asking ? 'Not now' : 'Never mind'}</button>
         </span>
       )}
-    </span>
+    </div>
+  );
+}
+
+const FOCAL_EYEBROW = { event: 'Next', transition: 'Next', commitment: 'Due', task: 'Due' };
+
+// The one thing the eye lands on after the headline (12.1D): stronger than the
+// context, weaker than anything that needs him.
+function Focal({ item, onOpen, actions }) {
+  const eyebrow = (item.kind === 'commitment' || item.kind === 'task') && !item.when ? 'Next' : (FOCAL_EYEBROW[item.kind] || 'Next');
+  const inner = (
+    <>
+      <span className="sit__focal-eyebrow">{eyebrow}</span>
+      <span className="sit__focal-title">{item.title}</span>
+      {(item.when || item.summary) && (
+        <span className="sit__focal-meta">
+          {item.when && <span className="sit__focal-when">{item.when}</span>}
+          {item.when && item.summary && <span aria-hidden="true"> · </span>}
+          {item.summary && <span>{item.summary}</span>}
+        </span>
+      )}
+    </>
+  );
+  return (
+    <div className="sit__objects">
+      {actions && onOpen ? (
+        <button type="button" className="sit__focal" onClick={() => onOpen(item)}>{inner}</button>
+      ) : <div className="sit__focal">{inner}</div>}
+    </div>
+  );
+}
+
+function ContextGroup({ items, honesty, ambient }) {
+  const g = groupContext(items);
+  if (!g.place && !g.lines.length && !(honesty && honesty.say && !ambient)) return null;
+  // A place with nothing under it is a line, not an eyebrow over nothing.
+  const placeAsLine = g.place && !g.lines.length;
+  return (
+    <div className="sit__ctx" role="group" aria-label={g.place ? `Around you: ${g.place}` : 'Around you'}>
+      {g.place && !placeAsLine && <p className="sit__ctx-place">{g.place}</p>}
+      {placeAsLine && <p className="sit__ctx-line">{g.place}</p>}
+      {g.lines.map((line) => (
+        <p key={line.id} className="sit__ctx-line">
+          {line.items.map((c, j) => (
+            <span key={c.id}>
+              {j > 0 && <span className="sit__sep" aria-hidden="true"> · </span>}
+              <Annotation item={c} />
+            </span>
+          ))}
+        </p>
+      ))}
+      {!ambient && honesty && honesty.say && <p className="sit__honesty">{honesty.say}</p>}
+    </div>
+  );
+}
+
+function Details({ items, mode, open }) {
+  return (
+    <details className="sit__details" open={open}>
+      {/* What the read rests on, attached to the read — not a label floating in
+          space (12.1H). In a degraded read it is what she cannot see. */}
+      <summary>{mode === 'degraded' ? 'What I can’t see' : 'What this is based on'}</summary>
+      <ul>
+        {items.map((d) => (
+          <li key={d.id}>
+            {d.label}
+            {Array.isArray(d.items) && d.items.length > 0 && (
+              <ul>{d.items.map((x) => <li key={x.input}>{x.input}{x.why ? ` — ${x.why}` : ''}</li>)}</ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -122,8 +208,20 @@ export default function Situation({
 
   const drawnAsObject = new Set();
   for (const blk of plan.blocks) {
-    if (blk.type === 'needsYou' || blk.type === 'primary') for (const it of blk.items) drawnAsObject.add(it.id);
+    if (blk.type === 'needsYou' || blk.type === 'primary' || blk.type === 'focal') for (const it of blk.items) drawnAsObject.add(it.id);
   }
+  // Diagnostics attach to the read they explain (12.1H): drawn under the
+  // context group when there is one, on their own only when there is not.
+  const hasContext = plan.blocks.some((b) => b.type === 'context');
+  // The foot (escape hatch, laptop row) belongs after the content and before
+  // the dock — not stranded below the composer (12.1I).
+  const hasAsk = Boolean(ask) && plan.blocks.some((b) => b.type === 'ask');
+  const footEl = (note || (foot && plan.actions)) ? (
+    <>
+      {note && <div className="sit__note">{note}</div>}
+      {foot && plan.actions && <div className="sit__foot">{foot}</div>}
+    </>
+  ) : null;
   // The summary is dropped only when the thing it is about is drawn as an object
   // right beneath it — never otherwise.
   const showSummary = s.summary && !(about && drawnAsObject.has(about));
@@ -182,6 +280,8 @@ export default function Situation({
                 </div>
               );
             }
+            case 'focal':
+              return <Focal key={i} item={blk.items[0]} onOpen={onOpen} actions={plan.actions} />;
             case 'offers':
               return (
                 <ul key={i} className="sit__offers">
@@ -201,7 +301,8 @@ export default function Situation({
             case 'next':
               return (
                 <div key={i} className="sit__nextblock">
-                  <h3 className="sit__label">Next</h3>
+                  {/* Under a focal "Next" object the rest of the list is what comes after it. */}
+                  <h3 className="sit__label">{plan.blocks.some((b) => b.type === 'focal') ? 'Later' : 'Next'}</h3>
                   <ul className="sit__nextlist">
                     {blk.items.map((it) => <NextRow key={it.id} item={it} onOpen={onOpen} actions={plan.actions} />)}
                   </ul>
@@ -221,6 +322,19 @@ export default function Situation({
               );
             case 'context': {
               const activity = blk.items.find((c) => c.kind === 'activity') || null;
+              const detailsBlk = plan.blocks.find((b) => b.type === 'details');
+              if (!ambient) {
+                // Near surfaces: a small grouped block, then the correction row.
+                return (
+                  <div key={i} className="sit__ctxblock">
+                    <ContextGroup items={blk.items} honesty={blk.honesty} ambient={ambient} />
+                    {detailsBlk && <Details items={detailsBlk.items} mode={plan.mode} open={detailsBlk.variant === 'open'} />}
+                    {plan.actions && blk.correction && (
+                      <Correction correction={blk.correction} activity={activity} onCorrect={onCorrect} onNotNow={onNotNow} busy={correcting} />
+                    )}
+                  </div>
+                );
+              }
               return (
                 <p key={i} className="sit__context">
                   {blk.items.map((c, j) => (
@@ -228,20 +342,8 @@ export default function Situation({
                       {j > 0 && <span className="sit__sep" aria-hidden="true"> · </span>}
                       {c.kind === 'activity' && c.basis === 'inferred' && !ambient && <span className="sit__inferred">Inferred: </span>}
                       <Annotation item={c} />
-                      {c.kind === 'activity' && plan.actions && (
-                        <> <Correction correction={blk.correction} activity={activity} onCorrect={onCorrect} onNotNow={onNotNow} busy={correcting} /></>
-                      )}
                     </span>
                   ))}
-                  {!activity && plan.actions && blk.correction && (
-                    <span className="sit__ctx-item">
-                      {blk.items.length > 0 && <span className="sit__sep" aria-hidden="true"> · </span>}
-                      <Correction correction={blk.correction} activity={null} onCorrect={onCorrect} onNotNow={onNotNow} busy={correcting} />
-                    </span>
-                  )}
-                  {!ambient && blk.honesty && blk.honesty.say && (
-                    <span className="sit__honesty">{blk.honesty.say}</span>
-                  )}
                 </p>
               );
             }
@@ -257,31 +359,24 @@ export default function Situation({
                 </details>
               );
             case 'details':
-              return (
-                <details key={i} className="sit__details" open={blk.variant === 'open'}>
-                  <summary>{plan.mode === 'degraded' ? 'What I can’t see' : 'Behind this'}</summary>
-                  <ul>
-                    {blk.items.map((d) => (
-                      <li key={d.id}>
-                        {d.label}
-                        {Array.isArray(d.items) && d.items.length > 0 && (
-                          <ul>{d.items.map((g) => <li key={g.input}>{g.input}{g.why ? ` — ${g.why}` : ''}</li>)}</ul>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              );
+              // Attached under the context group when there is one (above).
+              if (hasContext && !ambient) return null;
+              return <Details key={i} items={blk.items} mode={plan.mode} open={blk.variant === 'open'} />;
             case 'ask':
-              return ask ? <div key={i} className={`sit__ask sit__ask--${blk.variant}`}>{ask}</div> : null;
+              return ask ? (
+                <div key={i} className="sit__tailwrap">
+                  {footEl}
+                  <div className="sit__tail"><div className={`sit__ask sit__ask--${blk.variant}`}>{ask}</div></div>
+                </div>
+              ) : null;
             default:
               return null;
           }
         })}
-        {note && <div className="sit__note">{note}</div>}
         {/* ⚠ The shell's foot (laptop launch row, escape hatch) is CONTROLS, so
-            it obeys the budget like everything else: never on a wall. */}
-        {foot && plan.actions && <div className="sit__foot">{foot}</div>}
+            it obeys the budget like everything else: never on a wall. With a
+            dock it was drawn above the dock, inside the 'ask' block. */}
+        {!hasAsk && footEl}
       </div>
     </section>
   );

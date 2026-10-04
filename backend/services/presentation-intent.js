@@ -373,7 +373,8 @@ function composePresentation(p, { now = Date.now() } = {}) {
   if (life.household && life.household.othersHome && Array.isArray(life.household.who) && life.household.who.length) {
     const who = life.household.who;
     context.push({ id: 'household', kind: 'household', priority: 'P3',
-      label: `${who.length === 1 ? who[0] : `${who.slice(0, -1).join(', ')} and ${who[who.length - 1]}`} home` });
+      // A sentence, not a tag (Build 12.1F): "Helen and Isaac are home".
+      label: `${who.length === 1 ? `${who[0]} is` : `${who.slice(0, -1).join(', ')} and ${who[who.length - 1]} are`} home` });
   }
   const w = p.weather;
   if (w && w.known !== false && Number.isFinite(w.tempC)) {

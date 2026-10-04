@@ -157,11 +157,13 @@ test('the meeting-in-20 is not listed under the situation that already says it',
 
 test('no oversized activity chooser: the correction is ONE quiet control until asked', () => {
   const html = render('live-sunday', 'phone');
-  assert.equal(count(html, 'class="sit__correct-btn'), 1);
+  // Build 12.1G: one pill, not a dotted hyperlink.
+  assert.equal(count(html, 'class="sit__pill"'), 1);
+  assert.doesNotMatch(html, /sit__correct-btn/);
   assert.ok(!text(html).includes('My own project'), 'options stay folded until he taps');
   assert.doesNotMatch(html, /surface__lifeask|LifeAsk/);
   const inferred = text(render('calm-saturday', 'phone'));
-  assert.ok(inferred.includes('Inferred: Watching TV'));
+  assert.ok(inferred.includes('Looks like you’re watching TV'));
   assert.ok(inferred.includes('Not quite?'));
 });
 
@@ -169,7 +171,10 @@ test('calm has negative space: few blocks, no objects, level none', () => {
   for (const id of ['calm-saturday', 'empty']) {
     const html = render(id, 'phone');
     assert.match(html, /sit--level-none/);
-    assert.doesNotMatch(html, /sit__object/);
+    // No card that claims his attention (P0 / current). Build 12.1 allows ONE
+    // focal object for the next thing — never more.
+    assert.doesNotMatch(html, /sit__object--/);
+    assert.ok(count(html, 'class="sit__focal"') <= 1, `${id}: at most one focal object`);
     assert.ok(budget.composeForSurface(composed[id], 'kiosk').blocks.filter((b) => b.type !== 'ask').length <= 3, `${id}: wall stays sparse`);
   }
 });
@@ -184,7 +189,8 @@ test('degraded never reads as an all-clear on any surface', () => {
 
 test('ordinary context is an annotation, not a card; a promoted reading has weight', () => {
   const calm = render('calm-saturday', 'phone');
-  assert.match(calm, /class="sit__context"/);
+  assert.match(calm, /class="sit__ctx"/, 'near surfaces group the context (12.1F)');
+  assert.match(render('calm-saturday', 'kiosk'), /class="sit__context"/, 'the wall keeps its one line');
   assert.doesNotMatch(calm, /sit__object[^"]*"[^>]*>[^<]*Living Room/);
   const bed = render('bedtime', 'phone');
   assert.match(bed, /sit__ob--promoted/);
