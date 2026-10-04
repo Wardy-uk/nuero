@@ -64,6 +64,8 @@ const GROUPS = [
   { id: 'system', label: 'SYSTEM', items: [
     // Sources reads SourceHealth; Findings is what the evaluators noticed and
     // what attention decided. Both are deep NEURO, never SAiM.
+    // What has not been set up yet, per device, judged from evidence.
+    { id: 'setup',        label: 'Set up',        icon: '✓' },
     { id: 'sources',      label: 'Sources',       icon: '◎' },
     { id: 'findings',     label: 'Findings',      icon: '◇' },
     { id: 'state',        label: 'State of Play', icon: '◈' },

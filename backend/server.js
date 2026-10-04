@@ -251,6 +251,7 @@ app.use('/api/signals', require('./routes/signals'));
 app.use('/api/events', require('./routes/events'));
 // Build 10A: the canonical UI read contract — what NEURO believes, for every surface.
 app.use('/api/canonical', require('./routes/canonical'));
+app.use('/api/setup', require('./routes/setup'));
 // Build 5E: drafts NEURO prepared for approval. Approval is RECORDED ONLY.
 app.use('/api/prepared-actions', require('./routes/prepared-actions'));
 app.use('/api/greeting', require('./routes/greeting'));

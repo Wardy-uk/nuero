@@ -228,6 +228,24 @@
     "stream": false
   },
   {
+    "id": "delete_setup_skip_by_id",
+    "method": "DELETE",
+    "route": "/api/setup/skip/:id",
+    "domain": "setup",
+    "source": "routes/setup.js",
+    "line": 34,
+    "description": "DELETE /api/setup/skip/:id. undo \"not needed\" on a set-up item.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "delete_signals_life_declare",
     "method": "DELETE",
     "route": "/api/signals/life/declare",
@@ -3639,6 +3657,22 @@
     "stream": false
   },
   {
+    "id": "get_setup",
+    "method": "GET",
+    "route": "/api/setup",
+    "domain": "setup",
+    "source": "routes/setup.js",
+    "line": 16,
+    "description": "GET /api/setup. set-up wizard / onboarding checklist: what is not set up yet on the Pi, Windows laptop, iPhone NEURO and SAiM apps, Mac, life model and home screens, with the next step and how to fix each.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_signals",
     "method": "GET",
     "route": "/api/signals",
@@ -3938,7 +3972,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 291,
+    "line": 292,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -8518,6 +8552,45 @@
       "detail",
       "source"
     ],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_setup_report",
+    "method": "POST",
+    "route": "/api/setup/report",
+    "domain": "setup",
+    "source": "routes/setup.js",
+    "line": 21,
+    "description": "POST /api/setup/report. a device's own local set-up checks (setup.ps1 on Windows, the iOS Setup screen): platform, app, host, checks[{id, ok, detail}].",
+    "params": [],
+    "query": [],
+    "body": [
+      "app",
+      "checks",
+      "host",
+      "platform"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_setup_skip_by_id",
+    "method": "POST",
+    "route": "/api/setup/skip/:id",
+    "domain": "setup",
+    "source": "routes/setup.js",
+    "line": 29,
+    "description": "POST /api/setup/skip/:id. mark a set-up item \"not needed\" (reversible; never marks it done).",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
     "queryOpen": false,
     "bodyOpen": false,
     "multipart": false,

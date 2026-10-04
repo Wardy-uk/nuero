@@ -550,6 +550,11 @@ function hosts() {
   })).sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
 }
 
+/** Which apps each machine says it can open (its apps.json), by host. */
+function capabilities() {
+  return _caps(_load());
+}
+
 /** The current run, read from stored samples, across every machine. */
 function run(now = new Date()) {
   const state = _load();
@@ -583,6 +588,7 @@ function longRunObservation(now = new Date()) {
 }
 
 module.exports = {
+  capabilities,
   // pure
   sanitiseApp,
   labelFor,
