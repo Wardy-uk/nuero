@@ -69,6 +69,30 @@ router.post('/note', (req, res) => {
   }
 });
 
+// POST /api/capture/voice — Apple Watch voice note: a WAV clip, transcribed on the Pi
+// (faster-whisper) and saved as a capture. Keywords: watch voice dictation audio transcribe.
+// Header X-Operation-Id makes a retried clip write once. 200 {success:true,text} = saved;
+// 200 {success:false,reason:'nothing-heard'} = drop the clip; 503 = keep it and retry.
+router.post('/voice', express.raw({ type: ['audio/wav', 'audio/x-wav', 'audio/wave', 'application/octet-stream'], limit: '12mb' }), async (req, res) => {
+  const voice = require('../services/voice-capture');
+  try {
+    const result = await voice.captureVoice({ wav: req.body, operationId: req.get('X-Operation-Id') });
+    if (result.success && !result.already) {
+      console.log(`[Capture] Voice note saved: ${result.filename} (${result.seconds}s, ${result.text.length} chars)`);
+      try { require('../services/activity').trackCapture('note'); } catch {}
+      try { require('../services/vault-hooks').onVaultWrite(result.filePath, 'capture-voice'); } catch {}
+    } else if (!result.success) {
+      console.log(`[Capture] Voice note: ${result.reason}${result.already ? ' (repeat)' : ''}`);
+    }
+    const { filePath, ...out } = result;
+    res.json(out);
+  } catch (e) {
+    const status = e.code === 'stt-unavailable' ? 503 : (e.code === 'bad-audio' || e.code === 'bad-request') ? 400 : 500;
+    console.error(`[Capture] Voice note failed (${e.code || 'error'}): ${e.message}`);
+    res.status(status).json({ success: false, reason: e.code || 'error', error: e.message });
+  }
+});
+
 // POST /api/capture/siri-note — Apple Watch / Siri Shortcut capture
 // Accepts a simple text payload and returns a short spoken confirmation.
 router.post('/siri-note', (req, res) => {
