@@ -313,9 +313,16 @@ function composePresentation(p, { now = Date.now() } = {}) {
   if (p.primary && p.primary.kind === 'item') {
     primary = attentionItem(p.primary, primaryPriority(p.primary, p));
   }
+  // Build 12.3: every P0 with the card behind it, for the notification policy.
+  // Primary first (it is attention's top pick), then Needs you in order.
+  const p0Entries = [];
+  if (primary && primary.priority === 'P0') p0Entries.push({ item: primary, card: p.primary });
+  for (const n of needsYou) p0Entries.push({ item: n, card: null });
   for (const s of p.secondary || []) {
     if (s && s.kind === 'item' && String(s.urgency || '').toLowerCase() === 'critical') {
-      needsYou.push(attentionItem(s, 'P0'));
+      const it = attentionItem(s, 'P0');
+      needsYou.push(it);
+      p0Entries.push({ item: it, card: s });
     }
   }
 
@@ -554,7 +561,7 @@ function composePresentation(p, { now = Date.now() } = {}) {
   };
 
   const cannotSee = gaps.map((g) => g.input);
-  return {
+  const out = {
     contract: CONTRACT,
     generatedAt: new Date(now).toISOString(),
     mode,
@@ -587,6 +594,26 @@ function composePresentation(p, { now = Date.now() } = {}) {
     correction,
     voicePrompt: { label: 'Ask SAiM', hint: mode === 'needs-attention' ? 'Ask about this' : mode === 'degraded' ? 'Ask what I can see' : 'Ask about your day' },
   };
+  // ── Build 12.3: the P0 digest (what the watch counts and the phone may
+  //    notify about) and the synthesis (what the calm screen draws). Both are
+  //    additive: a renderer that ignores them draws exactly what it drew before.
+  //    Each is fenced so a fault in one never costs the presentation.
+  try {
+    out.p0 = require('./notification-policy').p0Digest(p0Entries, {
+      known: !blind,
+      complete: !partial && !blind,
+      newestApprovalAt: (ap && ap.newestAt) || null,
+      asOf: out.generatedAt,
+    });
+  } catch (e) {
+    out.p0 = { known: false, complete: false, count: 0, items: [], asOf: out.generatedAt, why: e.message };
+  }
+  try {
+    out.synthesis = require('./situation-synthesis').synthesise(out, p);
+  } catch (e) {
+    out.synthesis = null;
+  }
+  return out;
 }
 
 module.exports = {

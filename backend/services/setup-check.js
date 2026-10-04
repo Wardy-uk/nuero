@@ -31,6 +31,7 @@ const SURFACES = [
   { id: 'windows', label: 'Windows laptop' },
   { id: 'iphone-neuro', label: 'iPhone — NEURO app' },
   { id: 'iphone-saim', label: 'iPhone — SAiM app' },
+  { id: 'watch', label: 'Apple Watch' },
   { id: 'mac', label: 'Mac' },
   { id: 'life', label: 'Your life model' },
   { id: 'home', label: 'Home screens (Pi panel, tablet)' },
@@ -161,6 +162,43 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
     fix: { where: 'iphone', steps: ['Open the NEURO app once after signing in; it reports on every wake.'] } });
   phone('saim', 'SAiM');
 
+  // ── Apple Watch (Build 12.3U) ──
+  // ⚠ Every item here is judged from something OBSERVED: the watch's own report
+  //   (it is the only thing that can see whether the complication is on a face)
+  //   or the notification ledger. Unknown is never done.
+  const watchReport = (s.reports || []).find((r) => r.platform === 'watchos') || null;
+  add({ id: 'watch.app', surface: 'watch', need: 'recommended', title: 'SAiM on the Watch',
+    why: 'The Needs You view and the complication live in the watch app.',
+    ...(watchReport && fromReport(watchReport, 'signed-in', now) ? fromReport(watchReport, 'signed-in', now)
+      : { status: 'unknown', evidence: 'The watch app has never reported. As of 4 Oct 2026 it cannot be installed: watchOS refuses a free-profile app arriving from the phone, and this Mac cannot install to watchOS 27 directly.' }),
+    // ⚠ Until the app installs, urgent alerts still reach the wrist by iOS
+    //   MIRRORING the phone's local notification — no watch app needed.
+    fix: { where: 'mac', steps: ['Needs either a paid Apple Developer account (companion install allowed) or a Mac running Xcode 27 (direct install) — see nuero-ios WATCH-WITHOUT-XCODE.md.', 'Then: bash reinstall.sh saim, and open SAiM on the watch once so it reports.'] } });
+  add({ id: 'watch.complication', surface: 'watch', need: 'recommended', title: 'Put the SAiM complication on a face',
+    why: 'The Needs You count is only glanceable if it is on the face you wear.',
+    ...local(watchReport, 'complication-on-face', 'Only the watch can see its faces — open SAiM on the watch.'),
+    fix: { where: 'watch', steps: ['Long-press the watch face → Edit → Complications → SAiM.'] } });
+  add({ id: 'watch.attention-sync', surface: 'watch', need: 'recommended', title: 'Watch reads Needs You',
+    why: 'The complication shows the last read; a watch that never reads shows an old one.',
+    ...local(watchReport, 'presentation-read', 'The watch has not reported a read.'),
+    fix: { where: 'watch', steps: ['Open SAiM on the watch while the phone or Wi-Fi is in reach.'] } });
+  add({ id: 'iphone-saim.local-alerts', surface: 'iphone-saim', need: 'recommended', title: 'Local alerts can be seen (SAiM)',
+    why: 'With no APNs key the phone posts urgent alerts itself; iOS mirrors them to the watch only if they can be shown at all.',
+    ...local(iosReport('saim'), 'local-notifications', 'Open SAiM → Setup; it checks banner style, Scheduled Summary and permission.'),
+    fix: { where: 'iphone', steps: ['Settings → SAiM → Notifications → Allow, Banners, Immediate Delivery.', 'Watch app on the phone → Notifications → SAiM → Mirror iPhone Alerts.'] } });
+  const proof = s.watchProof || null;
+  const attempt = s.watchLastSynthetic || null;
+  add({ id: 'watch.alerts-proven', surface: 'watch', need: 'recommended', title: 'Prove an urgent alert end to end',
+    why: s.apns
+      ? 'An urgent item should reach your wrist; only a tapped test proves it does.'
+      : 'Remote push is unavailable (no APNs key), so alerts are LOCAL: posted by the phone when iOS wakes SAiM — minutes to hours, not seconds — and on the watch only by iOS mirroring a phone alert (phone locked, watch on the wrist). Only a tapped test proves the path.',
+    ...(proof && now - Date.parse(proof.openedAt) <= REPORT_STALE_MS
+      ? { status: 'done', evidence: `Synthetic alert ${proof.dedupeKey} opened on ${proof.deviceId} at ${String(proof.openedAt).slice(0, 16).replace('T', ' ')}.` }
+      : attempt
+        ? { status: 'attention', evidence: `Last synthetic test ${attempt.outcome}${attempt.acceptedAt ? ' (iOS accepted it)' : ''} but was never opened — not proven.` }
+        : { status: 'todo', evidence: 'No synthetic test has been run.' }),
+    fix: { where: 'desktop', steps: ['POST /api/canonical/needs-you/synthetic {"kind":"escalation"} with the PIN.', 'Lock the phone, wait for SAiM to wake (or open it), tap the alert on the watch, then DELETE /api/canonical/needs-you/synthetic.'] } });
+
   // ── Mac ──
   const macHost = (s.desktopHosts || []).find((h) => /mac/i.test(h.host)) || null;
   add({ id: 'mac.agent', surface: 'mac', need: 'optional', title: 'Desktop agent on the Mac',
@@ -244,6 +282,11 @@ async function snapshot() {
   s.goals = _count("SELECT COUNT(*) AS n FROM goals WHERE status = 'active'");
   s.companions = _count('SELECT COUNT(*) AS n FROM wm_companions');
   s.reports = Object.values(_json(REPORT_KEY, {}));
+  try {
+    const an = require('./attention-notifications');
+    s.watchProof = an.lastProvenSynthetic();
+    s.watchLastSynthetic = an.recent({ limit: 50 }).find((r) => r.synthetic) || null;
+  } catch { s.watchProof = null; s.watchLastSynthetic = null; }
   for (const r of s.reports) if (r.platform === 'ios' && r.app && r.at) s.clients[r.app] = r.at;
   return s;
 }
@@ -255,7 +298,7 @@ async function check({ now = Date.now() } = {}) {
 
 /** A device's own local checks (setup.ps1, the iOS Setup screen). Bounded. */
 function report({ platform, app = null, host, checks }, { now = Date.now() } = {}) {
-  if (!['windows', 'ios', 'mac'].includes(platform)) throw Object.assign(new Error('platform must be windows, ios or mac'), { status: 400 });
+  if (!['windows', 'ios', 'mac', 'watchos'].includes(platform)) throw Object.assign(new Error('platform must be windows, ios, mac or watchos'), { status: 400 });
   if (typeof host !== 'string' || !host.trim()) throw Object.assign(new Error('host is required'), { status: 400 });
   if (!Array.isArray(checks)) throw Object.assign(new Error('checks must be an array'), { status: 400 });
   const clean = checks.slice(0, 40).filter((c) => c && typeof c.id === 'string')

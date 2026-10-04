@@ -268,7 +268,10 @@ function needsYou() {
     try { sendingEnabled = require('./feature-flags').isEnabled('governed_execution'); } catch { sendingEnabled = null; }
     try { calendarEnabled = require('./feature-flags').isEnabled('governed_calendar'); } catch { calendarEnabled = null; }
     const out = summary.summarise(rows, { sendingEnabled });
-    return { ...out, calendarEnabled };
+    // Build 12.3: the newest waiting row, so a P0 notification can be keyed on
+    // "a new draft arrived" rather than re-firing on every poll.
+    const newestAt = rows.reduce((m, r) => (r.created_at && (!m || r.created_at > m) ? r.created_at : m), null);
+    return { ...out, calendarEnabled, newestAt };
   } catch (e) {
     return summary.unknown(e.message);
   }

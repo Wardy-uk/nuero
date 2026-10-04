@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
   try { res.json(await setup.check()); } catch (e) { fail(res, e); }
 });
 
-// POST /api/setup/report — a device's own local set-up checks (setup.ps1 on Windows, the iOS Setup screen): platform, app, host, checks[{id, ok, detail}].
+// POST /api/setup/report — a device's own local set-up checks (setup.ps1 on Windows, the iOS Setup screen): platform (windows|ios|mac|watchos), app, host, checks[{id, ok, detail}].
 router.post('/report', (req, res) => {
   try {
     const { platform, app, host, checks } = req.body || {};

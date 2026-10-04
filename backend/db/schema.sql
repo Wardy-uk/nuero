@@ -2235,3 +2235,23 @@ CREATE TABLE IF NOT EXISTS personal_deadline_findings (
   decisions             INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_personal_deadline_status ON personal_deadline_findings(status, subject_id);
+
+-- Build 12.3N — the P0 notification ledger: one semantic urgent item, one
+-- notification, per device. `accepted` means iOS took the post, NEVER that it
+-- reached the wrist; only `opened_at` proves a human saw it.
+CREATE TABLE IF NOT EXISTS attention_notifications (
+  dedupe_key   TEXT NOT NULL,
+  device_id    TEXT NOT NULL,
+  channel      TEXT NOT NULL,
+  item_id      TEXT,
+  synthetic    INTEGER NOT NULL DEFAULT 0,
+  outcome      TEXT NOT NULL,
+  claimed_at   TEXT NOT NULL,
+  accepted_at  TEXT,
+  failed_at    TEXT,
+  opened_at    TEXT,
+  dismissed_at TEXT,
+  detail       TEXT,
+  UNIQUE(dedupe_key, device_id, channel)
+);
+CREATE INDEX IF NOT EXISTS idx_attention_notifications_claimed ON attention_notifications(claimed_at);

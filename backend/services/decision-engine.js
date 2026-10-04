@@ -920,6 +920,9 @@ async function evaluate(options = {}) {
     ...collectNudges(ctx),
     ...collectImports(ctx),
     ...collectSourceBlindness(),
+    // Build 12.3K: a synthetic P0 for proving the watch end to end. Built from
+    // its own store, contacts nothing, expires in minutes, titled "Test —".
+    ...require('./synthetic-attention').collect(),
   ];
 
   // Deduplicate, apply behaviour + time-of-day modifiers

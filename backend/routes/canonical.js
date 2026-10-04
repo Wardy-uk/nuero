@@ -38,6 +38,57 @@ router.get('/presentation', async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// GET /api/canonical/needs-you — Build 12.3 P0 digest: count and items that need Nick (approvals, escalations, critical items), each with its notification policy (eligible, channels, dedupeKey, reason). What the watch complication counts and the phone may notify about.
+router.get('/needs-you', async (req, res) => {
+  try {
+    const out = await canonical.now({});
+    const p = out.presentation;
+    res.json({ ok: true, contract: p ? p.contract : null, mode: p ? p.mode : null,
+      p0: p && p.p0 ? p.p0 : { known: false, complete: false, count: 0, items: [], why: 'presentation unavailable' } });
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/needs-you/notifications — recent P0 notification ledger rows: claimed, accepted by iOS, failed, opened (tapped), dismissed, per device. Accepted is never delivered-to-wrist.
+router.get('/needs-you/notifications', (req, res) => {
+  try {
+    const limit = Number.parseInt(req.query.limit, 10);
+    res.json({ ok: true, notifications: require('../services/attention-notifications').recent({ limit: Number.isFinite(limit) ? limit : 20 }) });
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/needs-you/notifications/claim — a device claims the right to post one P0 notification: dedupeKey, deviceId, channel, itemId, synthetic. First claim wins; repeats answer claim:false.
+router.post('/needs-you/notifications/claim', (req, res) => {
+  try {
+    const { dedupeKey, deviceId, channel, itemId, synthetic } = req.body || {};
+    res.json({ ok: true, ...require('../services/attention-notifications').claim({ dedupeKey, deviceId, channel, itemId, synthetic }) });
+  } catch (e) { res.status(e.status || 500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/canonical/needs-you/notifications/event — what happened to a claimed P0 notification: event accepted|failed|opened|dismissed, dedupeKey, deviceId, channel, detail. Failed releases the claim.
+router.post('/needs-you/notifications/event', (req, res) => {
+  try {
+    const { dedupeKey, deviceId, channel, event, detail } = req.body || {};
+    res.json({ ok: true, notification: require('../services/attention-notifications').record({ dedupeKey, deviceId, channel, event, detail }) });
+  } catch (e) { res.status(e.status || 500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/canonical/needs-you/synthetic — start a safe synthetic P0 test (kind escalation|email, ttlMinutes <= 60) through the real attention path; contacts no external system. PIN only.
+router.post('/needs-you/synthetic', (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: 'A synthetic P0 interrupts Nick — start it with the PIN, not the API token.' });
+  try {
+    const { kind, ttlMinutes } = req.body || {};
+    res.json({ ok: true, synthetic: require('../services/synthetic-attention').inject({ kind, ttlMinutes }) });
+  } catch (e) { res.status(e.status || 500).json({ ok: false, error: e.message }); }
+});
+
+// DELETE /api/canonical/needs-you/synthetic — clear every live synthetic P0 test item (or one, with ?id=).
+router.delete('/needs-you/synthetic', (req, res) => {
+  try {
+    const id = typeof req.query.id === 'string' ? req.query.id.slice(0, 40) : null;
+    res.json({ ok: true, ...require('../services/synthetic-attention').clear(id) });
+  } catch (e) { fail(res, e); }
+});
+
 // GET /api/canonical/domains — the life-domain and personal-importance vocabulary every surface renders from.
 router.get('/domains', (req, res) => {
   res.json({ ok: true, contract: canonical.CONTRACT, domains: domains.DOMAINS.map((d) => ({ id: d, label: domains.LABELS[d], sensitive: domains.SENSITIVE.has(d) })),
