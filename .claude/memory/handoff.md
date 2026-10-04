@@ -1,3 +1,10 @@
+# Session Handoff — 2026-10-04 (Set-up wizard)
+
+- Deployed nuero 8aefb5d + fix to pi5 (tests green before restart). NEURO desktop → SYSTEM → Set up; GET /api/setup. Windows: `powershell -ExecutionPolicy Bypass -File desktop-agent\setup.ps1` (laptop reports clean). nuero-ios 9c43a1c: Set up in NEURO menu + SAiM Controls (sheet) — UNBUILT.
+- Live open items: APNs key on the Pi (blocks push for both apps), approval code, reminders stale on both apps, 12 calendars unclassified, no goals, no Ember note.
+
+---
+
 # Session Handoff — 2026-10-04 (Build 12: adaptive ambient surface)
 
 - Deployed nuero b3973c3 → 640da96 → 7ad193e to pi5 (desktop + kiosk built, tests green on the Pi before each restart, neuro-backend + saim-backend online). PWA on Netlify serving the new bundle (verified by content, not by eye).
