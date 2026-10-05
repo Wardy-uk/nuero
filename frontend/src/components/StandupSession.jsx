@@ -167,7 +167,7 @@ export default function StandupSession({ kind = 'standup', onDone, onSwitchToMan
   }
 
   function onKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
       e.preventDefault();
       send();
     }

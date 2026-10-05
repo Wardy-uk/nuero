@@ -145,6 +145,18 @@ export default function Standup({ intentKind = null }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [session?.messages, sending]);
 
+  // A fine pointer with hover means a mouse/trackpad is the primary input, so a
+  // physical keyboard is the realistic one. Phones and the touch-only kiosk
+  // answer false and keep Enter as a new line.
+  function onComposerKeyDown(e) {
+    if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent?.isComposing) return;
+    const hasKeyboard = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    if (!hasKeyboard) return;
+    e.preventDefault();
+    send();
+  }
+
   async function send(text, { optimistic = true } = {}) {
     const message = (text ?? input).trim();
     if (!message || sending) return;
@@ -335,13 +347,15 @@ export default function Standup({ intentKind = null }) {
         </div>
       )}
 
-      {/* No Enter-to-send, unlike the desktop: on a phone keyboard Enter is how
-          you get a new line, and the arrow is the deliberate action. */}
+      {/* Enter sends where there is a physical keyboard (laptop window, kiosk
+          with a keyboard), Shift+Enter is a new line. On a touch keyboard Enter
+          stays a new line and the arrow is the deliberate action. */}
       <div className="su__composer">
         <textarea
           className="su__input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onComposerKeyDown}
           placeholder={sending ? 'Thinking…' : 'Type your answer…'}
           rows={2}
           disabled={sending}
