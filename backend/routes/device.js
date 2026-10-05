@@ -24,6 +24,25 @@ const router = express.Router();
 const deviceStatus = require('../services/device-status');
 const nativeEvents = require('../services/native-events');
 
+// POST /api/device/now-playing — what the iPhone's Music app is playing (Apple Music / library only; other apps are invisible to iOS apps). Keywords: now playing, music, track. Body: { state (playing|paused|stopped), title, artist, album, at, client }
+router.post('/now-playing', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { state, title, artist, album, at, client } = req.body;
+    const r = require('../services/now-playing').record({ state, title, artist, album, at, client });
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// GET /api/device/now-playing — the current track (only while playing and recently reported) and the latest report as sent.
+router.get('/now-playing', (req, res) => {
+  try {
+    const np = require('../services/now-playing');
+    res.json({ ok: true, current: np.current(), latest: np.latest() });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 /**
  * POST /api/device/status — the phone's current self-report.
  *

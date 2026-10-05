@@ -382,6 +382,23 @@ function composePresentation(p, { now = Date.now() } = {}) {
         summary: room.tempC > ROOM_PROMOTE_ABOVE ? 'Warmer than usual.' : 'Colder than usual.' });
     }
   }
+  // Away from home, the room line is the air WHERE HE IS (5 Oct 2026): the
+  // roaming logger he carries, else the phone's barometer. At home the rooms
+  // above already answer. Only a FRESH reading is "here"; stale says nothing.
+  const eh = p.environmentHere || null;
+  if (place.kind && place.kind !== 'home' && eh) {
+    const r = eh.roaming && eh.roaming.fresh ? eh.roaming : null;
+    const pr = r && r.pressureHpa != null ? r.pressureHpa : (eh.pressure && eh.pressure.fresh ? eh.pressure.pressureHpa : null);
+    const parts = [];
+    if (r && r.tempC != null) parts.push(temp(r.tempC));
+    if (r && r.humidityPct != null) parts.push(`${Math.round(r.humidityPct)}%`);
+    if (pr != null) parts.push(`${Math.round(pr)} hPa`);
+    if (parts.length) context.push({ id: 'here', kind: 'room', priority: 'P3', label: 'Here', value: parts.join(' · '), basis: r ? 'roaming logger' : 'phone barometer' });
+  }
+  if (p.nowPlaying && p.nowPlaying.title) {
+    context.push({ id: 'music', kind: 'music', priority: 'P3',
+      label: `Playing ${p.nowPlaying.title}${p.nowPlaying.artist ? ` — ${p.nowPlaying.artist}` : ''}` });
+  }
   const doing = life.declared ? life.declared.doing : life.doing;
   if (doing && doing !== 'unknown' && life.label) {
     context.push({ id: 'activity', kind: 'activity', priority: 'P3', label: life.label,

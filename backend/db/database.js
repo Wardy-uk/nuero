@@ -187,6 +187,22 @@ async function init() {
       db.exec('ALTER TABLE push_subscriptions ADD COLUMN audience TEXT');
     }
 
+    // Migration (5 Oct 2026): where a reading was taken, and what a sensor is
+    // FOR. A roaming logger records wherever Nick is; the outdoor sensor he is
+    // building will be the home baseline; Home Assistant's rooms stay indoor.
+    try {
+      const envCols = db.prepare('PRAGMA table_info(environment_readings)').all().map(r => r.name);
+      if (envCols.length && !envCols.includes('place')) {
+        db.exec('ALTER TABLE environment_readings ADD COLUMN place TEXT');
+        console.log('[DB] environment_readings.place added');
+      }
+      const senCols = db.prepare('PRAGMA table_info(environment_sensors)').all().map(r => r.name);
+      if (senCols.length && !senCols.includes('role')) {
+        db.exec('ALTER TABLE environment_sensors ADD COLUMN role TEXT');
+        console.log('[DB] environment_sensors.role added');
+      }
+    } catch (e) { console.warn('[DB] environment migration failed:', e.message); }
+
     const taskColumns = db.prepare('PRAGMA table_info(tasks)').all().map(r => r.name);
     if (taskColumns.length && !taskColumns.includes('moscow_proposed')) {
       db.exec('ALTER TABLE tasks ADD COLUMN moscow_proposed INTEGER NOT NULL DEFAULT 0');

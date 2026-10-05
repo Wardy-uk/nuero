@@ -551,6 +551,20 @@ CREATE TABLE IF NOT EXISTS environment_sensors (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Air pressure from a PHONE's barometer (5 Oct 2026). Its own table because a
+-- phone has no thermometer, and environment_readings requires a temperature.
+-- `place` is where NEURO believed Nick was when it arrived (home|work|out|…),
+-- null when unknown — never guessed afterwards.
+CREATE TABLE IF NOT EXISTS environment_pressure (
+  source TEXT NOT NULL,
+  t INTEGER NOT NULL,
+  pressure_hpa REAL NOT NULL,
+  place TEXT,
+  received_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(source, t)
+);
+CREATE INDEX IF NOT EXISTS idx_environment_pressure_t ON environment_pressure(t);
+
 -- What a device says about ITSELF — battery, motion, connectivity, focus.
 --
 -- Everything here is currently read out of Home Assistant's iOS Companion app

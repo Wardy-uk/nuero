@@ -13,6 +13,42 @@ const env = require('../services/environment');
 
 const router = express.Router();
 
+/** Where NEURO believes Nick is right now — home | work | out | elsewhere | null. */
+async function currentPlace() {
+  try {
+    const life = await require('../services/life-state').read(new Date());
+    const kind = life && life.place && life.place.kind;
+    return typeof kind === 'string' && kind !== 'unknown' ? kind : null;
+  } catch { return null; }
+}
+
+// POST /api/environment/pressure — air pressure from a phone's barometer, tagged with where Nick is when it is live. Keywords: barometer, phone pressure. Body: { source, readings: [{ t, pressureHpa }] }
+router.post('/pressure', async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { source, readings } = req.body;
+    const r = env.storePressure(source, readings, { place: await currentPlace() });
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (e) { res.status(503).json({ ok: false, error: e.message, retryable: true }); }
+});
+
+// GET /api/environment/here — the air where Nick is (roaming logger, phone barometer) and outside at home (outdoor baseline), each with its age and whether it is fresh. Keywords: temperature here, office temperature, roaming sensor.
+router.get('/here', (req, res) => {
+  try { res.json({ ok: true, ...env.here() }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/environment/sensors/:id/role — say what a sensor is for: roaming (carried), outdoor-baseline (outside the house), indoor. Body: { role }
+router.post('/sensors/:id/role', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { role } = req.body;
+    const r = env.setRole(req.params.id, role);
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 /**
  * POST /api/environment/readings
  * Body: `{ sensorId, model?, intervalSeconds?, readings: [{ t, tempC,
@@ -21,11 +57,14 @@ const router = express.Router();
  * Idempotent on (sensorId, t). `duplicate` is reported beside `stored` — a
  * phone whose every reading is a duplicate is failing to clear its queue.
  */
-router.post('/readings', (req, res) => {
+router.post('/readings', async (req, res) => {
   const v = env.validateBatch(req.body || {}, Math.floor(Date.now() / 1000));
   if (!v.ok) return res.status(400).json({ ok: false, error: v.reason });
   try {
-    const { stored, duplicate } = env.store(v.sensorId, v.model, v.accepted, { intervalSeconds: v.intervalSeconds });
+    // Live readings are tagged with where Nick is NOW (env.store only applies
+    // it to readings within LIVE_WINDOW_S of their own time).
+    const place = await currentPlace();
+    const { stored, duplicate } = env.store(v.sensorId, v.model, v.accepted, { intervalSeconds: v.intervalSeconds, place });
     // The cursor moves only AFTER the readings are stored, so a failure above
     // leaves it where it was and the next download fetches them again.
     let cursorMoved = null;

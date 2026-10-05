@@ -299,7 +299,18 @@ function dedupeToleranceSeconds(intervalSeconds) {
   return Math.min(30, Math.floor(intervalSeconds / 2));
 }
 
-function store(sensorId, model, accepted, { intervalSeconds = null } = {}) {
+// What a sensor is for (5 Oct 2026). `roaming` records wherever Nick is (the
+// Blue Maestro logger); `outdoor-baseline` will be the sensor outside the house;
+// `indoor` is a fixed room. An unset role on a Blue Maestro reads as roaming.
+const ROLES = Object.freeze(['roaming', 'outdoor-baseline', 'indoor']);
+// A live reading is "here, now" for this long. Past it, it says when it was.
+const HERE_FRESH_S = 30 * 60;
+// A reading arriving this close to its own time is LIVE, so it is tagged with
+// where Nick is now; an older one (a log download) is not, rather than tagging
+// last Tuesday's walk with today's office.
+const LIVE_WINDOW_S = 15 * 60;
+
+function store(sensorId, model, accepted, { intervalSeconds = null, place = null, nowSeconds = Math.floor(Date.now() / 1000) } = {}) {
   if (!accepted.length) return { stored: 0, duplicate: 0 };
   const db = require('../db/database');
   const tol = dedupeToleranceSeconds(intervalSeconds);
@@ -312,9 +323,10 @@ function store(sensorId, model, accepted, { intervalSeconds = null } = {}) {
       )) continue;
       const info = db.run(
         `INSERT OR IGNORE INTO environment_readings
-           (sensor_id, model, t, temperature_c, humidity_pct, pressure_hpa, timing_error_s)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [sensorId, model, r.t, r.tempC, r.humidityPct, r.pressureHpa, r.timingErrorSeconds]
+           (sensor_id, model, t, temperature_c, humidity_pct, pressure_hpa, timing_error_s, place)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [sensorId, model, r.t, r.tempC, r.humidityPct, r.pressureHpa, r.timingErrorSeconds,
+          place && nowSeconds - r.t <= LIVE_WINDOW_S ? place : null]
       );
       stored += info.changes;
     }
@@ -341,6 +353,74 @@ function advanceCursor(sensorId, model, cursor, { source = null, lastT = null, n
     [sensorId, model, cursor.intervalSeconds, cursor.logCount, syncedAt, lastT, source]
   );
   return info.changes > 0;
+}
+
+/** Set what a sensor is for. Refuses a role it does not know. */
+function setRole(sensorId, role) {
+  if (!ROLES.includes(role)) return { ok: false, error: `role must be one of ${ROLES.join(', ')}` };
+  const db = require('../db/database');
+  const info = db.run('UPDATE environment_sensors SET role = ? WHERE sensor_id = ?', [role, sensorId]);
+  if (!info.changes) {
+    db.run('INSERT INTO environment_sensors (sensor_id, role) VALUES (?, ?)', [sensorId, role]);
+  }
+  return { ok: true, sensorId, role };
+}
+
+function roleOf(row) {
+  if (row.role && ROLES.includes(row.role)) return row.role;
+  return /blue|maestro|disc/i.test(String(row.model || '')) ? 'roaming' : null;
+}
+
+/** Phone barometer readings. Idempotent on (source, t); place only when live. */
+function storePressure(source, readings, { place = null, nowSeconds = Math.floor(Date.now() / 1000) } = {}) {
+  const src = typeof source === 'string' && /^[a-z0-9._-]{1,60}$/i.test(source) ? source : null;
+  if (!src) return { ok: false, error: 'source must be a short id' };
+  if (!Array.isArray(readings) || !readings.length) return { ok: false, error: 'readings must be a non-empty list' };
+  const db = require('../db/database');
+  let stored = 0; let rejected = 0;
+  for (const r of readings.slice(0, 500)) {
+    const t = Number(r && r.t); const p = Number(r && r.pressureHpa);
+    // 870–1090 hPa covers every pressure recorded at the surface, and a hill.
+    if (!Number.isInteger(t) || t > nowSeconds + 300 || !Number.isFinite(p) || p < 500 || p > 1100) { rejected += 1; continue; }
+    stored += db.run('INSERT OR IGNORE INTO environment_pressure (source, t, pressure_hpa, place) VALUES (?, ?, ?, ?)',
+      [src, t, Math.round(p * 10) / 10, place && nowSeconds - t <= LIVE_WINDOW_S ? place : null]).changes;
+  }
+  return { ok: true, stored, rejected };
+}
+
+/**
+ * What the air is like where Nick is, and at home outside (5 Oct 2026).
+ *   roaming   the freshest roaming-sensor reading (the logger he carries)
+ *   pressure  the freshest phone barometer reading
+ *   outdoor   the freshest outdoor-baseline reading, once that sensor exists
+ * Each is null when there is none, and carries its age; `fresh` says whether
+ * it is recent enough to call "here, now". Never a stale value passed off as live.
+ */
+function here({ nowSeconds = Math.floor(Date.now() / 1000) } = {}) {
+  const db = require('../db/database');
+  // Sensors known from their readings too: a logger's first live readings can
+  // arrive before any download has written its sensor row.
+  const sensors = db.all(`SELECT r.sensor_id AS sensor_id, COALESCE(s.model, r.model) AS model, s.role FROM
+      (SELECT DISTINCT sensor_id, model FROM environment_readings) r
+      LEFT JOIN environment_sensors s ON s.sensor_id = r.sensor_id
+    UNION SELECT sensor_id, model, role FROM environment_sensors`);
+  const ids = (role) => sensors.filter((r) => roleOf(r) === role).map((r) => r.sensor_id);
+  const latestOf = (list) => {
+    if (!list.length) return null;
+    const row = db.get(`SELECT sensor_id, t, temperature_c, humidity_pct, pressure_hpa, place FROM environment_readings
+                         WHERE sensor_id IN (${list.map(() => '?').join(',')}) ORDER BY t DESC LIMIT 1`, list);
+    if (!row) return null;
+    const ageS = nowSeconds - row.t;
+    return { sensorId: row.sensor_id, at: new Date(row.t * 1000).toISOString(), ageMinutes: Math.round(ageS / 60),
+      fresh: ageS <= HERE_FRESH_S, tempC: row.temperature_c, humidityPct: row.humidity_pct, pressureHpa: row.pressure_hpa, place: row.place || null };
+  };
+  const p = db.get('SELECT source, t, pressure_hpa, place FROM environment_pressure ORDER BY t DESC LIMIT 1');
+  const pAge = p ? nowSeconds - p.t : null;
+  return {
+    roaming: latestOf(ids('roaming')),
+    outdoor: latestOf(ids('outdoor-baseline')),
+    pressure: p ? { source: p.source, at: new Date(p.t * 1000).toISOString(), ageMinutes: Math.round(pAge / 60), fresh: pAge <= HERE_FRESH_S, pressureHpa: p.pressure_hpa, place: p.place || null } : null,
+  };
 }
 
 function getSensor(sensorId) {
@@ -395,6 +475,7 @@ function hikes({ days = 60, types = HIKE_TYPES, now = new Date(), includeSeries 
 }
 
 module.exports = {
+  ROLES, HERE_FRESH_S, LIVE_WINDOW_S, setRole, roleOf, storePressure, here,
   MAX_READINGS_PER_REQUEST,
   HIKE_TYPES,
   validateReading,

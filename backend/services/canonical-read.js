@@ -1239,6 +1239,10 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
   const composed = composeNow({ decision: dec, nextEvents, commitments: commitmentItems, tasks: taskItems, sources: sourceItems,
     approvals: dec.approvals || null, goals, crowd, gaps: allGaps, nowLocal: require('./world-model').localMinute(nowMs) });
   const payload = { ...dec, contract: CONTRACT, situation: composed };
+  // 5 Oct 2026: the air where Nick is (roaming logger / phone barometer) and
+  // what the phone's Music app is playing. Read-only, never allowed to fail Now.
+  try { payload.environmentHere = require('./environment').here({ nowSeconds: Math.floor(nowMs / 1000) }); } catch (e) { gaps.push({ input: 'environment-here', why: e.message }); }
+  try { payload.nowPlaying = require('./now-playing').current({ now: nowMs }); } catch { payload.nowPlaying = null; }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
   // allowed to fail the feed: null means "render the way you did before".
