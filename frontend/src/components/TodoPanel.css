@@ -1573,3 +1573,4 @@
   .todo-suggestion-select,
   .todo-suggestion-date { flex: 1 1 auto; min-width: 0; }
 }
+.todo-filter-clearall { border-style: dashed; }

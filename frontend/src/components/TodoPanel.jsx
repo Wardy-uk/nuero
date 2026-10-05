@@ -97,6 +97,7 @@ const FILTER_GROUPS = {
   plan: 'source',
   vault: 'source',
   ms: 'source',
+  unestimated: 'size',
 };
 
 /**
@@ -139,6 +140,9 @@ export const FILTER_PREDICATES = {
   plan: t => getTopGroup(t.source) === 'plan',
   vault: t => getTopGroup(t.source) === 'vault',
   ms: t => getTopGroup(t.source) === 'ms',
+  // A NEURO task with no estimate (so no size). Only NEURO rows can carry one;
+  // a Microsoft or vault line is not "unestimated", it cannot be estimated here.
+  unestimated: t => Boolean(t.task_id) && t.estimateMinutes == null,
 };
 
 /** The sub-category a row falls under, within a selected source group. */
@@ -1890,7 +1894,9 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   // without hunting for "All".
   const [filters, setFilters] = useState({});
   const [subFilters, setSubFilters] = useState([]);
-  const sourceFilter = filters.source || null;
+  // Sub-categories belong to ONE source; with two sources selected there is no
+  // single set of sub-categories to offer.
+  const sourceFilter = filters.source && filters.source.length === 1 ? filters.source[0] : null;
   const [toggling, setToggling] = useState({});
   const [msPushWarning, setMsPushWarning] = useState(null);
   // Not a warning: the push LANDED. The task is open again because it recurs,
@@ -2574,7 +2580,13 @@ export default function TodoPanel({ focusContext, onClearContext }) {
   // may not be in the filter that happens to be selected.
   const pinnedTodo = pin ? findPinned(activeTodos, pin) : null;
 
-  const activeFilterKeys = Object.values(filters).filter(Boolean);
+  // Several chips may be on in one group (5 Oct 2026): a row matches a group if
+  // it matches ANY chip on in it, and must match every group that has one.
+  const activeFilterKeys = Object.values(filters).flat().filter(Boolean);
+  const matchesGroups = (t, skipGroup = null) => Object.entries(filters).every(([g, keys]) => {
+    if (g === skipGroup || !keys || !keys.length) return true;
+    return keys.some((k) => { const p = FILTER_PREDICATES[k]; return p ? p(t) : true; });
+  });
 
   let filtered = activeTodos;
   if (pin) {
@@ -2582,10 +2594,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     // here" and "it's finished or I couldn't read it" are different facts.
     filtered = pinnedTodo ? [pinnedTodo] : [];
   } else {
-    for (const key of activeFilterKeys) {
-      const predicate = FILTER_PREDICATES[key];
-      if (predicate) filtered = filtered.filter(predicate);
-    }
+    filtered = filtered.filter((t) => matchesGroups(t));
     if (sourceFilter && subFilters.length > 0) {
       filtered = filtered.filter(t => subFilters.includes(subCategoryOf(t, sourceFilter)));
     }
@@ -2607,10 +2616,10 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     if (!group) return;
     setFilters(prev => {
       const next = { ...prev };
-      // Pressing the selected chip again clears its dimension, so every state
-      // is reachable without going via "All".
-      if (next[group] === key) delete next[group];
-      else next[group] = key;
+      const on = next[group] || [];
+      // A chip toggles on its own; others in its group stay as they are.
+      next[group] = on.includes(key) ? on.filter((k) => k !== key) : [...on, key];
+      if (!next[group].length) delete next[group];
       return next;
     });
     // Sub-filters belong to whichever source is selected; they cannot survive
@@ -2631,12 +2640,7 @@ export default function TodoPanel({ focusContext, onClearContext }) {
    */
   const countFor = (key) => {
     const group = FILTER_GROUPS[key];
-    let rows = activeTodos;
-    for (const [g, k] of Object.entries(filters)) {
-      if (g === group || !k) continue;
-      const p = FILTER_PREDICATES[k];
-      if (p) rows = rows.filter(p);
-    }
+    const rows = activeTodos.filter((t) => matchesGroups(t, group));
     const own = FILTER_PREDICATES[key];
     return own ? rows.filter(own).length : rows.length;
   };
@@ -2773,20 +2777,26 @@ export default function TodoPanel({ focusContext, onClearContext }) {
           { key: 'unclassified', label: `${UNCLASSIFIED_LABEL} (${countFor('unclassified')})` },
           { key: 'vault', label: `Vault Todos (${countFor('vault')})` },
           { key: 'ms', label: `MS Tasks (${countFor('ms')})` },
+          { key: 'unestimated', label: `Not estimated (${countFor('unestimated')})` },
         ].map(f => (
           <button
             key={f.key}
             className={`todo-filter-btn ${
               f.key === 'all'
                 ? (activeFilterKeys.length === 0 ? 'active' : '')
-                : (filters[FILTER_GROUPS[f.key]] === f.key ? 'active' : '')
+                : ((filters[FILTER_GROUPS[f.key]] || []).includes(f.key) ? 'active' : '')
             }${f.key === 'mustdo' ? ' mustdo-filter' : ''}${['commitment', 'improvement', 'unclassified'].includes(f.key) ? ` origin-filter ${f.key}` : ''}`}
             onClick={() => setTopFilter(f.key)}
-            title={f.key === 'all' ? 'Clear all filters' : 'Filters stack — one per group. Press again to clear.'}
+            title={f.key === 'all' ? 'Clear all filters' : 'Select as many as you like: chips in the same group widen the list, different groups narrow it. Press again to turn off.'}
           >
             {f.label}
           </button>
         ))}
+        {activeFilterKeys.length > 0 && (
+          <button type="button" className="todo-filter-btn todo-filter-clearall" onClick={() => setTopFilter('all')}>
+            Clear all
+          </button>
+        )}
       </div>
 
       {/*
