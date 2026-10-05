@@ -133,13 +133,28 @@ router.get('/triage/feedback', (req, res) => {
   }
 });
 
-// GET /api/email/triage/muted — the senders "Not relevant" has silenced.
+// GET /api/email/triage/muted — what is muted: whole senders ("Mute sender") and single subjects from a sender ("Not relevant").
 //
 // A rule the panel cannot show is a rule Nick cannot revoke, and a first-click
 // mute with no way back is the shape of this that would actually be dangerous.
 router.get('/triage/muted', (req, res) => {
   try {
-    res.json({ ok: true, senders: emailTriage.listMutedSenders() });
+    res.json({ ok: true, senders: emailTriage.listMutedSenders(), subjects: emailTriage.listMutedSubjects() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/email/triage/muted-subjects/unmute — un-mute one subject. Keywords: unmute subject, email subject rule. Body: key (from the muted list).
+// A POST with the key in the body, not a DELETE with it in the path: the key
+// carries a subject line, which can hold slashes and anything else.
+router.post('/triage/muted-subjects/unmute', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { key } = req.body;
+    const result = emailTriage.unmuteSubject(typeof key === 'string' ? key : null);
+    if (!result.ok) return res.status(404).json({ ok: false, error: result.reason });
+    res.json(result);
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -395,7 +410,8 @@ router.post('/triage/dismiss/:emailId', async (req, res) => {
     let selfAddress = null;
     try { selfAddress = await microsoft.getSignedInAddress(); } catch { /* proceed */ }
 
-    const result = emailTriage.dismissEmail(emailId, req.body?.reason, { selfAddress });
+    // `mute`: 'subject' (default for not-relevant) or 'sender' (the Mute sender button).
+    const result = emailTriage.dismissEmail(emailId, req.body?.reason, { selfAddress, mute: req.body?.mute || null });
     res.json({ ok: true, markedRead, readError, muted: result?.muted || null });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

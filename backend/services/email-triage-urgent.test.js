@@ -669,6 +669,7 @@ const { applySenderMute, readSenderRules, SENDER_MUTED, LOOKBACK_DAYS,
 
 function clearRules() {
   db.setState('email_triage_muted_senders', '{}');
+  db.setState('email_triage_muted_subjects', '{}');
   db.setState('email_triage_feedback_rollup', '');
 }
 
@@ -689,7 +690,7 @@ test('"not relevant" mutes the sender, and sweeps what is already in the panel',
     email({ id: 'colleague', fromEmail: 'phillipa@example.com' }),
   ]);
 
-  const result = emailTriage.dismissEmail('golf-1', 'not-relevant');
+  const result = emailTriage.dismissEmail('golf-1', 'not-relevant', { mute: 'sender' });
   assert.equal(result.muted.ok, true);
   assert.equal(result.muted.muted, 'news@nationalclubgolfer.com', 'the address, lowercased');
 
@@ -705,7 +706,7 @@ test('"not relevant" mutes the sender, and sweeps what is already in the panel',
 test('the rule outlives the entries it produced - new mail is filed with no second press', () => {
   clearRules();
   seed([email({ id: 'golf-1', fromEmail: 'news@nationalclubgolfer.com' })]);
-  emailTriage.dismissEmail('golf-1', 'not-relevant');
+  emailTriage.dismissEmail('golf-1', 'not-relevant', { mute: 'sender' });
 
   // Tomorrow's edition: a different id, a different subject, and nothing left
   // in the store that remembers it - only the rule.
@@ -726,7 +727,7 @@ test('a muted sender is NOT a verdict Nick made about each message', () => {
     ...Array.from({ length: 12 }, (_, i) =>
       email({ id: 'golf-x' + i, fromEmail: 'news@nationalclubgolfer.com' })),
   ]);
-  emailTriage.dismissEmail('golf-1', 'not-relevant');
+  emailTriage.dismissEmail('golf-1', 'not-relevant', { mute: 'sender' });
 
   // One press, one verdict. Counting the twelve auto-filed ones would let a
   // single mute swamp the whole #70 feedback score.
@@ -742,7 +743,7 @@ test('a mute never overwrites what Nick already recorded about a message', () =>
     email({ id: 'golf-done', fromEmail: 'news@nationalclubgolfer.com',
       dismissed: true, dismissedAt: daysAgo(1), dismissReason: 'done' }),
   ]);
-  emailTriage.dismissEmail('golf-1', 'not-relevant');
+  emailTriage.dismissEmail('golf-1', 'not-relevant', { mute: 'sender' });
 
   const done = emailTriage.getStoredTriage().find(e => e.id === 'golf-done');
   assert.equal(done.dismissReason, 'done', 'his record of what he did with it stands');
@@ -752,7 +753,7 @@ test('an unusable sender is REFUSED, not muted as an empty rule', () => {
   clearRules();
   // A rule keyed on "" would match every email whose sender could not be read.
   seed([email({ id: 'nofrom', fromEmail: null }), email({ id: 'other', fromEmail: 'a@b.com' })]);
-  const result = emailTriage.dismissEmail('nofrom', 'not-relevant');
+  const result = emailTriage.dismissEmail('nofrom', 'not-relevant', { mute: 'sender' });
 
   assert.equal(result.muted.ok, false, 'and it says so rather than silently no-opping');
   assert.ok(result.muted.reason);
@@ -764,7 +765,7 @@ test('Nicks own address is refused - the one rule with unbounded blast radius', 
   clearRules();
   seed([email({ id: 'self', fromEmail: 'NickW@Nurtur.tech' })]);
   const result = emailTriage.dismissEmail('self', 'not-relevant',
-    { selfAddress: 'nickw@nurtur.tech' });
+    { selfAddress: 'nickw@nurtur.tech', mute: 'sender' });
 
   assert.equal(result.muted.ok, false);
   assert.deepEqual(readSenderRules(), {},
@@ -776,7 +777,7 @@ test('an unknown signed-in address does not break the button', () => {
   // expired. The recoverable half is the panel's list, not this check.
   clearRules();
   seed([email({ id: 'golf-1', fromEmail: 'news@nationalclubgolfer.com' })]);
-  const result = emailTriage.dismissEmail('golf-1', 'not-relevant', { selfAddress: null });
+  const result = emailTriage.dismissEmail('golf-1', 'not-relevant', { selfAddress: null, mute: 'sender' });
 
   assert.equal(result.muted.ok, true);
   assert.equal(emailTriage.listMutedSenders().length, 1, 'and it is listed, so it can be undone');
@@ -788,7 +789,7 @@ test('un-muting is possible, and does not resurrect what was filed', () => {
     email({ id: 'golf-1', fromEmail: 'news@nationalclubgolfer.com' }),
     email({ id: 'golf-2', fromEmail: 'news@nationalclubgolfer.com' }),
   ]);
-  emailTriage.dismissEmail('golf-1', 'not-relevant');
+  emailTriage.dismissEmail('golf-1', 'not-relevant', { mute: 'sender' });
   assert.equal(emailTriage.listMutedSenders().length, 1);
 
   assert.equal(emailTriage.unmuteSender('NEWS@nationalclubgolfer.com').ok, true, 'case-insensitive');
@@ -983,4 +984,47 @@ test('the section the sweep clears is the section the heading counts', () => {
     email({ id: 'c' }), info({ id: 'd', promoted: true })];
   const counted = items.filter(isInformational).length;
   assert.equal(clearOf(items).cleared, counted);
+});
+
+// ── Subject mutes (5 Oct 2026) ───────────────────────────────────────────────
+// "Not relevant" mutes THIS SUBJECT from THIS sender by default. A sender mute
+// on the first press silenced seven colleagues in one day.
+
+test('not relevant mutes the subject, not the sender', () => {
+  clearRules();
+  seed([
+    email({ id: 's1', fromEmail: 'steve.ryan@nurtur.tech', subject: 'RE: Weekly ops report' }),
+    email({ id: 's2', fromEmail: 'steve.ryan@nurtur.tech', subject: 'Fw: weekly  OPS report' }),
+    email({ id: 's3', fromEmail: 'steve.ryan@nurtur.tech', subject: 'Customer escalation' }),
+    email({ id: 's4', fromEmail: 'lucy.read@nurtur.tech', subject: 'Weekly ops report' }),
+  ]);
+  const r = emailTriage.dismissEmail('s1', 'not-relevant');
+  assert.equal(r.muted.ok, true);
+  assert.equal(r.muted.kind, 'subject');
+  assert.deepEqual(readSenderRules(), {}, 'no sender rule is written by the default press');
+  const by = Object.fromEntries(emailTriage.getStoredTriage().map((e) => [e.id, e]));
+  assert.equal(by.s2.dismissed, true, 'the same subject (prefixes and case aside) is filed');
+  assert.equal(by.s2.dismissReason, 'subject-muted');
+  assert.equal(by.s3.dismissed, false, 'the same person on another subject still comes through');
+  assert.equal(by.s4.dismissed, false, 'the same subject from someone else still comes through');
+});
+
+test('a subject mute is listed and reversible, and is never counted as a verdict', () => {
+  clearRules();
+  seed([email({ id: 'a1', fromEmail: 'x@y.com', subject: 'Alert: disk' }), email({ id: 'a2', fromEmail: 'x@y.com', subject: 're: alert: disk' })]);
+  emailTriage.dismissEmail('a1', 'not-relevant');
+  const list = emailTriage.listMutedSubjects();
+  assert.equal(list.length, 1);
+  assert.equal(emailTriage.unmuteSubject(list[0].key).ok, true);
+  assert.equal(emailTriage.listMutedSubjects().length, 0);
+  const fb = emailTriage.getDismissFeedback();
+  assert.equal(fb.judged, 1, 'the press is one verdict; the auto-filed one is not');
+});
+
+test('normaliseSubject strips stacked reply/forward prefixes and refuses an empty subject', () => {
+  const { normaliseSubject, subjectRuleKey } = emailTriage._internals;
+  assert.equal(normaliseSubject('RE: FW: Re[2]: Hello   World'), 'hello world');
+  assert.equal(normaliseSubject('   '), null);
+  assert.equal(subjectRuleKey('a@b.com', ''), null);
+  assert.equal(subjectRuleKey('', 'Hello'), null);
 });

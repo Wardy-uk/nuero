@@ -396,11 +396,23 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
         </button>
         <button
           className="inbox-action-btn inbox-action-ignore"
-          onClick={() => onDismiss(email.id, { reason: 'not-relevant' })}
+          onClick={() => onDismiss(email.id, { reason: 'not-relevant', mute: 'subject' })}
           disabled={busy}
-          title="Files this and mutes the sender — nothing from this address will reach the panel again"
+          title="Files this and mutes this subject from this sender — their other mail still comes through"
         >
-          {busy ? '...' : 'Not relevant'}
+          {busy ? '...' : 'Subject not relevant'}
+        </button>
+        <button
+          className="inbox-action-btn inbox-action-ignore"
+          onClick={() => {
+            if (window.confirm(`Mute ${email.from || email.fromEmail}? Nothing from ${email.fromEmail || 'this address'} will reach the panel until you un-mute them.`)) {
+              onDismiss(email.id, { reason: 'not-relevant', mute: 'sender' });
+            }
+          }}
+          disabled={busy}
+          title="Files this and mutes the whole sender — for newsletters and marketing"
+        >
+          {busy ? '...' : 'Mute sender'}
         </button>
         {/* The other direction. Only offered where there is somewhere to go:
             on an ACTION card it would be a no-op button. */}
@@ -481,7 +493,7 @@ export default function InboxPanel({ focusContext }) {
       .then(r => r.json())
       // null stays null on a failure: "I could not read the rules" and "there
       // are none" are different facts and only one of them is reassuring.
-      .then(data => setMuted(data?.ok ? (data.senders || []) : null))
+      .then(data => setMuted(data?.ok ? { senders: data.senders || [], subjects: data.subjects || [] } : null))
       .catch(() => setMuted(null));
   };
 
@@ -491,6 +503,19 @@ export default function InboxPanel({ focusContext }) {
       .then(({ ok, d }) => {
         if (!ok) setDismissNote(d?.error ? `Could not un-mute: ${d.error}` : 'Could not un-mute.');
         else setDismissNote(`${address} will show up again from now on. Mail already filed stays filed.`);
+        fetchMuted();
+      })
+      .catch(() => setDismissNote('Could not un-mute.'));
+  };
+
+  const unmuteSubject = (m) => {
+    fetch(apiUrl('/api/email/triage/muted-subjects/unmute'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: m.key }),
+    })
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (!ok) setDismissNote(d?.error ? `Could not un-mute: ${d.error}` : 'Could not un-mute.');
+        else setDismissNote(`"${m.subject}" from ${m.address} will show up again from now on. Mail already filed stays filed.`);
         fetchMuted();
       })
       .catch(() => setDismissNote('Could not un-mute.'));
@@ -548,13 +573,13 @@ export default function InboxPanel({ focusContext }) {
   // #70 — `reason` is what makes Done and Not relevant different buttons rather
   // than two labels on the same one. "Not relevant" is a misclassification
   // report and it is the only free feedback this classifier will ever get.
-  const dismiss = (emailId, { markRead = false, reason = 'done' } = {}) => {
+  const dismiss = (emailId, { markRead = false, reason = 'done', mute = null } = {}) => {
     setDismissing(emailId);
     setDismissNote('');
     fetch(apiUrl(`/api/email/triage/dismiss/${encodeURIComponent(emailId)}`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ markRead, reason }),
+      body: JSON.stringify({ markRead, reason, mute }),
     })
       .then(r => r.json())
       .then(d => {
@@ -564,12 +589,14 @@ export default function InboxPanel({ focusContext }) {
         // — and a REFUSED one especially, since a silent refusal is
         // indistinguishable from a mute that worked until the next edition
         // turns up, which is the bug this whole change exists to fix.
-        else if (d?.muted && d.muted.ok) {
+        else if (d?.muted && d.muted.ok && d.muted.kind === 'subject') {
+          setDismissNote(`Muted "${d.muted.subject}" from ${d.muted.address}. Their other mail still comes through.`);
+        } else if (d?.muted && d.muted.ok) {
           setDismissNote(d.muted.alreadyMuted
             ? `${d.muted.muted} was already muted — nothing from them will reach the panel.`
             : `Muted ${d.muted.muted}. Future mail from this sender is filed automatically.`);
         } else if (d?.muted && !d.muted.ok) {
-          setDismissNote(`Dismissed, but the sender was NOT muted — ${d.muted.reason}.`);
+          setDismissNote(`Dismissed, but nothing was muted — ${d.muted.reason}.`);
         }
         fetchTriage();
         fetchMuted();
@@ -645,19 +672,26 @@ export default function InboxPanel({ focusContext }) {
           rather than rendered as "no rules". */}
       {muted === null && (
         <div className="inbox-dismiss-note">
-          <span>Couldn't read your muted senders — this isn't confirmation there are none.</span>
+          <span>Couldn't read your muted senders and subjects — this isn't confirmation there are none.</span>
         </div>
       )}
-      {Array.isArray(muted) && muted.length > 0 && (
+      {muted && (muted.senders.length + muted.subjects.length) > 0 && (
         <div className="inbox-muted">
           <button className="inbox-muted-toggle" onClick={() => setMutedOpen(o => !o)}>
-            {mutedOpen ? '▾' : '▸'} {muted.length} muted sender{muted.length === 1 ? '' : 's'}
+            {mutedOpen ? '▾' : '▸'} {muted.subjects.length} muted subject{muted.subjects.length === 1 ? '' : 's'} · {muted.senders.length} muted sender{muted.senders.length === 1 ? '' : 's'}
           </button>
           {mutedOpen && (
             <ul className="inbox-muted-list">
-              {muted.map(m => (
+              {muted.subjects.map(m => (
+                <li key={m.key}>
+                  <span className="inbox-muted-addr">"{m.subject}"</span>
+                  <span className="inbox-muted-sample">from {m.name ? `${m.name} <${m.address}>` : m.address}</span>
+                  <button className="inbox-muted-undo" onClick={() => unmuteSubject(m)}>Un-mute</button>
+                </li>
+              ))}
+              {muted.senders.map(m => (
                 <li key={m.address}>
-                  <span className="inbox-muted-addr">{m.name ? `${m.name} <${m.address}>` : m.address}</span>
+                  <span className="inbox-muted-addr">Everything from {m.name ? `${m.name} <${m.address}>` : m.address}</span>
                   {m.sampleSubject && (
                     <span className="inbox-muted-sample">muted on "{m.sampleSubject}"</span>
                   )}

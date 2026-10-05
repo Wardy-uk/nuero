@@ -95,7 +95,7 @@
     "route": "/api/email/triage/muted/:address",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 152,
+    "line": 167,
     "description": "DELETE /api/email/triage/muted/:address. un-mute a sender.",
     "params": [
       "address"
@@ -1502,7 +1502,7 @@
     "route": "/api/email/triage/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 198,
+    "line": 213,
     "description": "GET /api/email/triage/:emailId. fetch email detail, summary, and suggested reply",
     "params": [
       "emailId"
@@ -1537,7 +1537,7 @@
     "domain": "email",
     "source": "routes/email-triage.js",
     "line": 140,
-    "description": "GET /api/email/triage/muted. the senders \"Not relevant\" has silenced.",
+    "description": "GET /api/email/triage/muted. what is muted: whole senders (\"Mute sender\") and single subjects from a sender (\"Not relevant\").",
     "params": [],
     "query": [],
     "body": [],
@@ -6685,7 +6685,7 @@
     "route": "/api/email/triage/:emailId/draft",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 278,
+    "line": 293,
     "description": "POST /api/email/triage/:emailId/draft. AI-drafted reply, falls back to the",
     "params": [
       "emailId"
@@ -6705,7 +6705,7 @@
     "route": "/api/email/triage/:emailId/reply",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 320,
+    "line": 335,
     "description": "POST /api/email/triage/:emailId/reply. PREPARE a reply (prepare reply, draft reply, compose): binds the exact recipients and words as a governed action for Nick to approve with his approval code. Sends NOTHING. Body: { body, to?, cc?, replyAll? }",
     "params": [
       "emailId"
@@ -6728,7 +6728,7 @@
     "route": "/api/email/triage/:emailId/summary",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 244,
+    "line": 259,
     "description": "POST /api/email/triage/:emailId/summary. AI summary, falls back to the",
     "params": [
       "emailId"
@@ -6746,7 +6746,7 @@
     "route": "/api/email/triage/clear",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 426,
+    "line": 442,
     "description": "POST /api/email/triage/clear. clear all cached triage data and re-scan",
     "params": [],
     "query": [],
@@ -6762,7 +6762,7 @@
     "route": "/api/email/triage/clear-fyi",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 189,
+    "line": 204,
     "description": "POST /api/email/triage/clear-fyi. clear the whole FYI section.",
     "params": [],
     "query": [],
@@ -6780,7 +6780,7 @@
     "route": "/api/email/triage/dismiss/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 368,
+    "line": 383,
     "description": "POST /api/email/triage/dismiss/:emailId. dismiss an email from triage.",
     "params": [
       "emailId"
@@ -6788,10 +6788,29 @@
     "query": [],
     "body": [
       "markRead",
+      "mute",
       "reason"
     ],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_email_triage_muted_subjects_unmute",
+    "method": "POST",
+    "route": "/api/email/triage/muted-subjects/unmute",
+    "domain": "email",
+    "source": "routes/email-triage.js",
+    "line": 151,
+    "description": "POST /api/email/triage/muted-subjects/unmute. un-mute one subject. Keywords: unmute subject, email subject rule. Body: key (from the muted list).",
+    "params": [],
+    "query": [],
+    "body": [
+      "key"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },
@@ -6801,7 +6820,7 @@
     "route": "/api/email/triage/promote/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 412,
+    "line": 428,
     "description": "POST /api/email/triage/promote/:emailId. \"this should have been an action\".",
     "params": [
       "emailId"
@@ -6819,7 +6838,7 @@
     "route": "/api/email/triage/purge-fyi",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 171,
+    "line": 186,
     "description": "POST /api/email/triage/purge-fyi.",
     "params": [],
     "query": [],
@@ -6838,7 +6857,7 @@
     "route": "/api/email/triage/run",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 355,
+    "line": 370,
     "description": "POST /api/email/triage/run. trigger a fresh triage cycle.",
     "params": [],
     "query": [],

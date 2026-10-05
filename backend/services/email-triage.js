@@ -411,6 +411,95 @@ function listMutedSenders() {
     .sort((a, b) => String(b.mutedAt || '').localeCompare(String(a.mutedAt || '')));
 }
 
+// -- Muting a SUBJECT (5 Oct 2026) ------------------------------------------
+//
+// Nick: "it shouldn't mute senders - it should mute the subject." A sender mute
+// on the first "Not relevant" press silenced seven colleagues in one day,
+// because the press was about one email, not about the person. "Not relevant"
+// now mutes THIS subject line from THIS sender: a thread or a repeating alert
+// stops, and nothing else that person sends is touched. Muting a whole sender
+// is still possible, but only from its own button.
+//
+// The subject is compared after stripping reply/forward prefixes and folding
+// case and spaces - "RE: Fw: Weekly report" is "weekly report". Scoped to the
+// sender, because "Weekly report" from two different people is two things.
+const SUBJECT_RULES_KEY = 'email_triage_muted_subjects';
+const SUBJECT_MUTED = 'subject-muted';
+
+function normaliseSubject(subject) {
+  let t = String(subject || '').toLowerCase();
+  let prev;
+  do { prev = t; t = t.replace(/^\s*(re|fw|fwd|aw|wg|tr)\s*(\[\d+\])?\s*:\s*/i, ''); } while (t !== prev);
+  t = t.replace(/\s+/g, ' ').trim();
+  return t || null;
+}
+
+function subjectRuleKey(address, subject) {
+  const a = normaliseSender(address);
+  const t = normaliseSubject(subject);
+  return a && t ? `${a}|${t}` : null;
+}
+
+function readSubjectRules() {
+  try {
+    const raw = db.getState(SUBJECT_RULES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+}
+
+function writeSubjectRules(rules) {
+  db.setState(SUBJECT_RULES_KEY, JSON.stringify(rules));
+}
+
+function muteSubject(address, subject, { name = null } = {}) {
+  const key = subjectRuleKey(address, subject);
+  if (!key) return { ok: false, reason: normaliseSender(address) ? 'that email has no subject to mute' : 'no sender address on that email' };
+  const rules = readSubjectRules();
+  const existing = rules[key];
+  rules[key] = {
+    key,
+    address: normaliseSender(address),
+    name: name || existing?.name || null,
+    subject: existing?.subject || String(subject || '').trim(),
+    mutedAt: existing?.mutedAt || new Date().toISOString(),
+  };
+  writeSubjectRules(rules);
+  return { ok: true, kind: 'subject', key, subject: rules[key].subject, address: rules[key].address, alreadyMuted: !!existing };
+}
+
+function unmuteSubject(key) {
+  const rules = readSubjectRules();
+  if (!key || !rules[key]) return { ok: false, reason: 'that subject is not muted' };
+  delete rules[key];
+  writeSubjectRules(rules);
+  return { ok: true, unmuted: key };
+}
+
+function listMutedSubjects() {
+  return Object.values(readSubjectRules())
+    .sort((a, b) => String(b.mutedAt || '').localeCompare(String(a.mutedAt || '')));
+}
+
+/** PURE. Applies both rule sets; never touches an entry Nick already acted on. */
+function applyMutes(entry, senderRules, subjectRules, now = new Date().toISOString()) {
+  if (entry.dismissed) return entry;
+  const bySender = applySenderMute(entry, senderRules || {}, now);
+  if (bySender !== entry) return bySender;
+  const key = subjectRuleKey(entry.fromEmail, entry.subject);
+  if (!key || !subjectRules || !subjectRules[key]) return entry;
+  return {
+    ...entry,
+    dismissed: true,
+    dismissedAt: now,
+    dismissReason: SUBJECT_MUTED,
+    category: 'IGNORE',
+    lane: 'ignore',
+    urgent: false,
+    needsReply: false,
+  };
+}
+
 /**
  * PURE. Applies the sender rules to one entry.
  *
@@ -620,6 +709,7 @@ function isJudged(e) {
     // afterwards is the same verdict being applied, not a new one being made -
     // counting them would let one mute press swamp the whole feedback score.
     && e.dismissReason !== SENDER_MUTED
+    && e.dismissReason !== SUBJECT_MUTED
     // Same again for the age-out sweep: a timed-out FYI is NEURO deciding
     // nobody was ever going to read it, not Nick saying it was misfiled.
     && e.dismissReason !== AGED_OUT
@@ -814,6 +904,7 @@ async function runTriage({ force = false } = {}) {
     // pruning of its own dismissed entries, and what files a muted sender's NEW
     // mail without Nick having to press anything again.
     const senderRules = readSenderRules();
+    const subjectRules = readSubjectRules();
     let autoFiled = 0;
 
     for (const e of classified) {
@@ -829,15 +920,15 @@ async function runTriage({ force = false } = {}) {
     }
 
     let updated = [...byId.values()];
-    if (Object.keys(senderRules).length) {
+    if (Object.keys(senderRules).length || Object.keys(subjectRules).length) {
       const stamp = new Date().toISOString();
       updated = updated.map((e) => {
-        const after = applySenderMute(e, senderRules, stamp);
+        const after = applyMutes(e, senderRules, subjectRules, stamp);
         if (after !== e) autoFiled++;
         return after;
       });
       if (autoFiled) {
-        console.log(`[EmailTriage] ${autoFiled} email(s) auto-filed by a muted-sender rule`);
+        console.log(`[EmailTriage] ${autoFiled} email(s) auto-filed by a mute rule (sender or subject)`);
       }
     }
     if (departed) {
@@ -1002,7 +1093,9 @@ function getFlaggedItems() {
 const DISMISS_REASONS = new Set(['done', 'not-relevant', 'replied', 'unspecified']);
 const LEFT_INBOX = 'left-inbox';
 
-function dismissEmail(emailId, reason = 'unspecified', { selfAddress = null } = {}) {
+const MUTE_KINDS = new Set(['subject', 'sender']);
+
+function dismissEmail(emailId, reason = 'unspecified', { selfAddress = null, mute = null } = {}) {
   const clean = DISMISS_REASONS.has(reason) ? reason : 'unspecified';
   const all = getStoredTriage();
   const item = all.find(e => e.id === emailId);
@@ -1013,27 +1106,30 @@ function dismissEmail(emailId, reason = 'unspecified', { selfAddress = null } = 
       : e
   );
 
-  // "Not relevant" mutes the sender on the first press, and the rule is applied
-  // to what is ALREADY in the panel in the same breath. The twelve editions
-  // that arrived before Nick got round to pressing it are precisely the mail he
-  // is telling us he does not want, and leaving them sitting there would make
-  // the button look like it had half worked.
+  // "Not relevant" mutes THIS SUBJECT from this sender by default; muting the
+  // whole sender is a separate, explicit choice (`mute: 'sender'`) since
+  // 5 Oct 2026, when the sender default had silenced seven colleagues in a day.
+  // The rule is applied to what is already in the panel in the same breath.
   let muted = null;
   if (clean === 'not-relevant' && item) {
-    muted = muteSender(item.fromEmail, { name: item.from, subject: item.subject, selfAddress });
+    const kind = MUTE_KINDS.has(mute) ? mute : 'subject';
+    muted = kind === 'sender'
+      ? { kind: 'sender', ...muteSender(item.fromEmail, { name: item.from, subject: item.subject, selfAddress }) }
+      : muteSubject(item.fromEmail, item.subject, { name: item.from });
     if (muted.ok) {
-      const rules = readSenderRules();
+      const senderRules = readSenderRules();
+      const subjectRules = readSubjectRules();
       let swept = 0;
       updated = updated.map((e) => {
         if (e.id === emailId) return e;
-        const after = applySenderMute(e, rules, now);
+        const after = applyMutes(e, senderRules, subjectRules, now);
         if (after !== e) swept++;
         return after;
       });
-      console.log(`[Triage] Muted ${muted.muted}`
+      console.log(`[Triage] Muted ${kind} ${kind === 'sender' ? muted.muted : `"${muted.subject}" from ${muted.address}`}`
         + (swept ? ` - filed ${swept} already in the panel` : ''));
     } else {
-      console.warn(`[Triage] Did NOT mute the sender of `
+      console.warn(`[Triage] Did NOT mute the ${kind} of `
         + `"${(item.subject || emailId).slice(0, 60)}" - ${muted.reason}`);
     }
   }
@@ -1198,6 +1294,9 @@ module.exports = {
   muteSender,
   unmuteSender,
   listMutedSenders,
+  muteSubject,
+  unmuteSubject,
+  listMutedSubjects,
   purgeAgedInformational,
   clearFyiSection,
   TRIAGE_CACHE_TTL,
@@ -1206,6 +1305,7 @@ module.exports = {
     ageOutInformational, AGE_OUT_DAYS, AGED_OUT, AGE_OUT_CATEGORIES,
     clearInformational, SECTION_CLEARED, isInformational,
     applySenderMute, normaliseSender, readSenderRules, SENDER_MUTED, LOOKBACK_DAYS,
+    applyMutes, normaliseSubject, subjectRuleKey, readSubjectRules, SUBJECT_MUTED,
     classifyEmails, DISMISSED_FIELDS,
   },
 };
