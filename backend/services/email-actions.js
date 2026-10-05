@@ -62,6 +62,9 @@ const LANES = new Set(['urgent', 'reply']);
 
 const LEDGER_KEY = 'email_actions_seen';
 
+/** Meeting invitations, updates, cancellations and responses — never an ask of Nick. */
+const CALENDAR_NOTICE = /^(canceled|cancelled|accepted|declined|tentative|updated invitation|invitation|new time proposed)\b\s*:?/i;
+
 /**
  * A ceiling on the confidence anything from here can carry.
  *
@@ -255,7 +258,9 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
   const live = (entries || []).filter((e) => e && e.id);
   const ledger = pruneLedger(readLedger(), new Set(live.map((e) => String(e.id))));
 
-  const eligible = live.filter((e) => LANES.has(e.lane) && !e.dismissed);
+  // Calendar notices are not asks (5 Oct 2026: "Canceled: Support Improvement
+  // Plan" became "Send update on key progress and blockers").
+  const eligible = live.filter((e) => LANES.has(e.lane) && !e.dismissed && !CALENDAR_NOTICE.test(String(e.subject || '')));
   const unread = eligible.filter((e) => !ledger[String(e.id)]);
   const batchable = unread.slice(0, limit);
 

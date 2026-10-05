@@ -709,7 +709,9 @@ function TaskControls({ todo, onPatch, busy, onRefresh }) {
       {todo.originPath && (
         <div className="todo-edit-group">
           <span className="todo-edit-label">From</span>
-          <span className="todo-source">{todo.originPath}</span>
+          {/^email:/.test(todo.originPath)
+            ? <EmailOrigin emailId={todo.originPath.slice('email:'.length)} />
+            : <span className="todo-source">{todo.originPath}</span>}
         </div>
       )}
 
@@ -1213,6 +1215,44 @@ function TaskProvenance({ todo, expanded }) {
  * says whose board the work is on, and get no id chip rather than a fake one.
  * `null` here means "NEURO has no id for this", never "no id was recorded".
  */
+/**
+ * The email a task came from (5 Oct 2026). The card used to print the raw
+ * Graph id — "email:AAMkAGI1…" — which identifies the message to Microsoft and
+ * to nobody else. It is read live (received or sent, any folder), so the card
+ * shows who, what and when, and the whole email on request. A message that has
+ * gone (deleted, or Graph unreachable) SAYS so rather than leaving a blank.
+ */
+function EmailOrigin({ emailId }) {
+  const [state, setState] = useState({ loading: true });
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetch(apiUrl(`/api/email/triage/${encodeURIComponent(emailId)}`))
+      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => { if (live) setState(ok && d.ok ? { email: d.email, live: d.live, detail: d.detail } : { error: d.error || 'not found' }); })
+      .catch((e) => live && setState({ error: e.message }));
+    return () => { live = false; };
+  }, [emailId]);
+  if (state.loading) return <span className="todo-edit-note">Reading the email…</span>;
+  if (state.error) return <span className="todo-edit-note">The email could not be read ({state.error}) — it may have been deleted or moved.</span>;
+  const e = state.email;
+  const when = e.received ? new Date(e.received).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
+  return (
+    <div className="todo-email-origin">
+      <div className="todo-email-head">
+        <strong>{e.subject}</strong>
+        <span className="todo-edit-note">{e.from}{e.fromEmail && e.from !== e.fromEmail ? ` <${e.fromEmail}>` : ''}{when ? ` · ${when}` : ''}</span>
+        {!state.live && state.detail && <span className="todo-edit-note">Cached copy — {state.detail}</span>}
+      </div>
+      <div className="todo-email-acts">
+        <button type="button" className="btn btn-sm" onClick={() => setOpen((v) => !v)}>{open ? 'Hide email' : 'Show email'}</button>
+        {e.webLink && <a className="btn btn-sm" href={e.webLink} target="_blank" rel="noreferrer">Open in Outlook</a>}
+      </div>
+      {open && <div className="todo-email-body">{e.body || e.preview || '(no text)'}</div>}
+    </div>
+  );
+}
+
 function taskIdBadge(todo) {
   return todo?.task_id ? `#${todo.task_id}` : null;
 }
