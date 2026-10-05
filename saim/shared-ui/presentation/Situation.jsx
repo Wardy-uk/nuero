@@ -216,10 +216,13 @@ export default function Situation({
   // The foot (escape hatch, laptop row) belongs after the content and before
   // the dock — not stranded below the composer (12.1I).
   const hasAsk = Boolean(ask) && plan.blocks.some((b) => b.type === 'ask');
-  const footEl = (note || (foot && plan.actions)) ? (
+  // The laptop launch row is about the desk you are sat at; the wall is not
+  // it, so the foot never renders there even now the wall carries full content.
+  const showFoot = foot && plan.actions && plan.profile !== 'kiosk';
+  const footEl = (note || showFoot) ? (
     <>
       {note && <div className="sit__note">{note}</div>}
-      {foot && plan.actions && <div className="sit__foot">{foot}</div>}
+      {showFoot && <div className="sit__foot">{foot}</div>}
     </>
   ) : null;
   // The summary is dropped only when the thing it is about is drawn as an object
@@ -230,7 +233,8 @@ export default function Situation({
   const aboutItem = about
     ? [...(presentation.needsYou || []), presentation.primary].filter(Boolean).find((i) => i.id === about)
     : null;
-  const ambient = plan.profile === 'kiosk' || plan.profile === 'watch';
+  // Only the watch is ambient now: the wall carries the desktop's content (5 Oct 2026).
+  const ambient = plan.profile === 'watch';
 
   return (
     <section

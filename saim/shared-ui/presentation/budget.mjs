@@ -33,9 +33,15 @@ export const PROFILES = {
 // ⚠ Phone context is 5, not 4 (Build 12.1): the activity annotation is drawn as
 //   the correction row, not a context line, yet it still takes a slot here — at
 //   4 the live Sunday read lost "18° outside" the moment SAiM inferred TV.
+// ⚠ SAME CONTENT ON EVERY SCREEN (Nick, 5 Oct 2026): "all three are still
+//   displaying different info" — and the desktop PWA was the best of them. The
+//   phone and the wall now carry the DESKTOP's content budget; only LAYOUT
+//   differs (details start collapsed on the phone; the wall has no keyboard,
+//   so its ask stays ambient). The watch keeps its glance: a wrist is not a
+//   screen to read a day off.
 export const BUDGETS = {
-  phone: { needsYou: 3, primary: 'card', focal: true, next: 2, offers: 2, observations: 2, context: 5, tracked: 'count', details: 'collapsed', correction: 'inline', ask: 'visible', actions: true },
-  kiosk: { needsYou: 1, primary: 'line', next: 1, offers: 0, observations: 1, context: 3, tracked: 0, details: 0, correction: 0, ask: 'ambient', actions: false },
+  phone: { needsYou: 5, primary: 'card', focal: true, next: 5, offers: 3, observations: 4, context: 6, tracked: 'list', details: 'collapsed', correction: 'inline', ask: 'visible', actions: true },
+  kiosk: { needsYou: 5, primary: 'card', next: 5, offers: 3, observations: 4, context: 6, tracked: 'list', details: 'collapsed', correction: 'inline', ask: 'ambient', actions: true },
   desktop: { needsYou: 5, primary: 'card', next: 5, offers: 3, observations: 4, context: 6, tracked: 'list', details: 'open', correction: 'inline', ask: 'rich', actions: true },
   watch: { needsYou: 1, primary: 'line', next: 0, offers: 0, observations: 0, context: 0, tracked: 0, details: 0, correction: 0, ask: 0, actions: false },
 };
@@ -69,12 +75,8 @@ export function composeForSurface(presentation, profileId = 'phone') {
 
   // ── State adapts the budget (12D). Only ever DOWN: a mode may quieten a
   //    surface; it never shows more than the profile allows. ──
-  if (mode === 'needs-attention' && profile === 'kiosk') { b.next = 0; b.observations = 0; b.context = 2; }
-  if (mode === 'needs-attention' && profile === 'phone') { b.next = 1; b.observations = 1; b.context = 3; }
   if (mode === 'degraded') { b.next = Math.min(b.next, 1); b.observations = 0; b.correction = 0; if (b.details) b.details = 'open'; }
   if (mode === 'in-meeting') { b.observations = 0; b.correction = 0; b.offers = 0; b.context = Math.min(b.context, 2); }
-  if (mode === 'bedtime' && profile === 'kiosk') { b.context = 1; }
-  if (mode === 'upcoming' && profile === 'kiosk') { b.context = 2; }
 
   const about = pr.situation && pr.situation.about;
   const blocks = [];
@@ -82,12 +84,12 @@ export function composeForSurface(presentation, profileId = 'phone') {
     type: 'situation',
     // The summary is the compact form of whatever item it is about. A surface
     // that ALSO draws that item as an object drops the sentence, not the item.
-    variant: profile === 'kiosk' || profile === 'watch' ? 'ambient' : 'editorial',
+    variant: profile === 'watch' ? 'ambient' : 'editorial',
   });
 
   // An ambient surface says the one thing that needs him in the situation line
   // itself, so the same item is not repeated as a block beneath it.
-  const ambient = profile === 'kiosk' || profile === 'watch';
+  const ambient = profile === 'watch';
   const needs = take((pr.needsYou || []).filter((n) => !(ambient && about && n.id === about)), b.needsYou);
   if (needs.length) blocks.push({ type: 'needsYou', items: needs, overflow: Math.max(0, (pr.needsYou || []).length - needs.length) });
 
@@ -120,7 +122,7 @@ export function composeForSurface(presentation, profileId = 'phone') {
 
   // Observations: only PROMOTED ones on an ambient surface — an ordinary
   // ambient nudge is a thing to read up close, not across a room.
-  const obsSrc = profile === 'kiosk' ? (pr.observations || []).filter((o) => o.promoted) : (pr.observations || []);
+  const obsSrc = pr.observations || [];
   const obs = take(obsSrc, b.observations);
   if (obs.length) blocks.push({ type: 'observations', items: obs });
 
@@ -169,6 +171,6 @@ export function groupContext(items) {
 
 /** Block types a profile may NEVER draw, whatever the mode. Pinned by tests. */
 export const FORBIDDEN = {
-  kiosk: ['details', 'tracked', 'primary', 'focal'],
+  kiosk: [],
   watch: ['details', 'tracked', 'primary', 'focal', 'next', 'context', 'ask'],
 };

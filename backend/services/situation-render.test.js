@@ -103,15 +103,12 @@ test('the budget only ever CUTS, never re-orders', () => {
   assert.doesNotMatch(src, /\.sort\(/, 'budget.mjs never sorts');
 });
 
-test('kiosk: no buttons, no details, no diagnostics, no tracked list — on any fixture', () => {
+test('the wall carries the same content as the desktop (Nick, 5 Oct 2026) — only layout differs', () => {
   for (const f of FIXTURES) {
-    const html = render(f.id, 'kiosk');
-    assert.doesNotMatch(html, /<button/, `${f.id}: kiosk has no controls`);
-    assert.doesNotMatch(html, /<details/, `${f.id}: kiosk has no drill-down`);
-    for (const d of composed[f.id].details) assert.ok(!text(html).includes(d.label), `${f.id}: kiosk shows no "${d.label}"`);
-    const plan = budget.composeForSurface(composed[f.id], 'kiosk');
-    for (const t of budget.FORBIDDEN.kiosk) assert.ok(!plan.blocks.some((b) => b.type === t), `${f.id}: kiosk never draws ${t}`);
-    assert.ok((plan.blocks.find((b) => b.type === 'next')?.items.length || 0) <= 1, `${f.id}: at most one next on the wall`);
+    const wall = budget.composeForSurface(composed[f.id], 'kiosk');
+    const desk = budget.composeForSurface(composed[f.id], 'desktop');
+    const ids = (plan) => plan.blocks.filter((b) => b.type !== 'details').flatMap((b) => (b.items || []).map((i) => `${b.type}:${i.id || i.title || ''}`));
+    assert.deepEqual(ids(wall), ids(desk), `${f.id}: the wall shows what the desktop shows`);
   }
 });
 
@@ -190,7 +187,7 @@ test('degraded never reads as an all-clear on any surface', () => {
 test('ordinary context is an annotation, not a card; a promoted reading has weight', () => {
   const calm = render('calm-saturday', 'phone');
   assert.match(calm, /class="sit__ctx"/, 'near surfaces group the context (12.1F)');
-  assert.match(render('calm-saturday', 'kiosk'), /class="sit__context"/, 'the wall keeps its one line');
+  assert.match(render('calm-saturday', 'kiosk'), /class="sit__ctx"/, 'the wall groups context like every other screen (5 Oct 2026)');
   assert.doesNotMatch(calm, /sit__object[^"]*"[^>]*>[^<]*Living Room/);
   const bed = render('bedtime', 'phone');
   assert.match(bed, /sit__ob--promoted/);
