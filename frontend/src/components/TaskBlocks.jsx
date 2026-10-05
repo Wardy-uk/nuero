@@ -359,6 +359,7 @@ export function BlockTimeControl({ todo, busy }) {
           {/* #87's rule, carried through: an assumed duration is stated every
               time it is used. A "this fits" that turns out to be a guess is the
               answer you stop trusting after the second time it is wrong. */}
+          {draft.windowNote && <span className="blocks-warn">{draft.windowNote}</span>}
           {draft.minutesAssumed && (
             <span className="blocks-warn" title="No estimate on this task — pick one above and it will be saved">
               assuming {draft.assumedMinutes} min

@@ -274,6 +274,65 @@ function VaultSyncCard({ vaultSync }) {
  * low-recovery-day rule), which made them exactly the wrong things to bury
  * behind six steps of SSH.
  */
+/**
+ * Browsers trusted to send replies Nick writes (5 Oct 2026). Typing the
+ * approval code once in the Inbox trusts a browser; this is where he sees each
+ * one and revokes it. Changing the code on the Pi revokes them all.
+ */
+function TrustedDevices() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const token = (() => { try { return localStorage.getItem('neuro_send_device'); } catch { return null; } })();
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(apiUrl('/api/prepared-actions/devices'), { headers: token ? { 'X-NEURO-SEND-DEVICE': token } : {} });
+      const d = await r.json();
+      if (d.ok) setData(d); else setError(d.error || 'could not read');
+    } catch (e) { setError(e.message); }
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  const revoke = async (id) => {
+    if (!window.confirm('Stop this browser sending replies? It will need the approval code again.')) return;
+    setBusy(id); setError(null);
+    try {
+      const r = await fetch(apiUrl(`/api/prepared-actions/devices/${encodeURIComponent(id)}/revoke`), { method: 'POST' });
+      const d = await r.json();
+      if (!d.ok) setError(d.error);
+      if (data && data.thisDevice && data.thisDevice.deviceId === id) { try { localStorage.removeItem('neuro_send_device'); } catch { /* ignore */ } }
+      await load();
+    } catch (e) { setError(e.message); } finally { setBusy(null); }
+  };
+
+  const when = (s) => (s ? String(s).slice(0, 16).replace('T', ' ') : 'never');
+  return (
+    <CollapsibleSection title="Browsers trusted to send">
+      <div className="admin-ms-section">
+        <p className="admin-hint">
+          A browser trusted here sends replies you write in the Inbox in one click. It was trusted by typing your approval code once.
+          Drafts NEURO wrote still need the code. Changing the code on the Pi revokes every browser.
+        </p>
+        {error && <p className="admin-hint" style={{ color: 'var(--danger)' }}>Couldn’t read or change this — {error}</p>}
+        {data && !data.devices.length && <p className="admin-hint">No browser is trusted yet.</p>}
+        {data && data.devices.map((d) => (
+          <div key={d.id} className="admin-flag">
+            <div className="admin-toggle" style={{ justifyContent: 'space-between' }}>
+              <span>
+                {d.label}
+                {data.thisDevice && data.thisDevice.deviceId === d.id && <span className="admin-flag-impact">this browser</span>}
+              </span>
+              <button className="btn btn-sm" disabled={busy === d.id} onClick={() => revoke(d.id)}>Revoke</button>
+            </div>
+            <p className="admin-hint">Trusted {when(d.createdAt)} · last sent {when(d.lastUsedAt)}</p>
+          </div>
+        ))}
+      </div>
+    </CollapsibleSection>
+  );
+}
+
 function FeatureSwitches() {
   const [flags, setFlags] = useState(null);
   const [error, setError] = useState(null);
@@ -1003,6 +1062,8 @@ export default function AdminPanel({ pushState = {} }) {
       <VestaAccounts />
 
       <FeatureSwitches />
+
+      <TrustedDevices />
 
       <div className="admin-section">
         <div className="admin-section-title">Push Notifications</div>

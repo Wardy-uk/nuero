@@ -4,6 +4,7 @@ import useCachedFetch from '../useCachedFetch';
 import { duePresets } from '../../../shared/due-dates.cjs';
 import { msPlanBadge, recurrenceLabel } from '../../../shared/ms-task.cjs';
 import { domainBadge } from '../../../shared/task-domain.cjs';
+import { SIZES, sizeOf, minutesFor } from '../../../shared/task-size.cjs';
 import { originBadge, ORIGINS, SHORT_LABELS, DESCRIPTIONS, LABELS, UNCLASSIFIED_LABEL } from '../../../shared/task-origin.cjs';
 import { describeTaskProvenance } from '../../../shared/task-provenance.cjs';
 import TimeFitCard from './TimeFitCard';
@@ -473,6 +474,8 @@ function TaskControls({ todo, onPatch, busy, onRefresh }) {
     origin: t.origin || null,
     priority: t.taskPriority || null,
     due_date: t.due_date ? t.due_date.split('T')[0] : null,
+    // A size is a band of the estimate (shared/task-size.cjs), not a field.
+    size: sizeOf(t.estimateMinutes),
   });
 
   const identity = rowKey(todo);
@@ -500,7 +503,15 @@ function TaskControls({ todo, onPatch, busy, onRefresh }) {
     if (!dirty) return;
     setSaving(true);
     try {
-      await onPatch(changed);
+      const body = { ...changed };
+      if ('size' in body) {
+        const m = body.size ? minutesFor(body.size) : null;
+        delete body.size;
+        // Exact: a chosen size is Nick's figure, never snapped or assumed.
+        body.estimateMinutes = m;
+        body.estimateExact = true;
+      }
+      await onPatch(body);
       // Optimistic, matching the parent's own localPatches: the row already
       // shows these values, so re-deriving from props that have not landed yet
       // would flash the card back to what it was.
@@ -592,6 +603,24 @@ function TaskControls({ todo, onPatch, busy, onRefresh }) {
         {todo.originProposed && (
           <span className="todo-origin-hint">NEURO&rsquo;s guess &mdash; tap to confirm</span>
         )}
+      </div>
+
+      {/* T-shirt size (5 Oct 2026). It IS the estimate: picking one sets the
+          task's estimate to the top of the band, so blocking time, the day
+          planner and "what fits" all honour it. */}
+      <div className="todo-edit-group">
+        <span className="todo-edit-label">Size</span>
+        {SIZES.map(sz => (
+          <button
+            key={sz.id}
+            className={`todo-edit-btn ${draft.size === sz.id ? 'active' : ''}`}
+            disabled={locked}
+            title={sz.desc}
+            onClick={() => edit({ size: draft.size === sz.id ? null : sz.id })}
+          >
+            {sz.label}
+          </button>
+        ))}
       </div>
 
       <div className="todo-edit-group">
@@ -1251,6 +1280,9 @@ function TodoItem({ todo, toggling, onToggle, expanded, onExpand, onPatch, onRef
           {taskIdBadge(todo) && (
             <span className="todo-task-id" title="NEURO task id — quote this to SAiM or in a commit">{taskIdBadge(todo)}</span>
           )}
+          {sizeOf(todo.estimateMinutes) && (
+            <span className="todo-task-id" title={`Size ${sizeOf(todo.estimateMinutes)}: estimated ${todo.estimateMinutes} min`}>{sizeOf(todo.estimateMinutes)}</span>
+          )}
           {todo.source && <span className={`todo-source ${sourceClass(todo.source)}`}>{todo.source}</span>}
           {/* NEURO's own state for a task Microsoft owns. First on the row,
               because it describes what is happening NOW rather than how the
@@ -1702,6 +1734,9 @@ function MustMoveLane({ items, held, gaps, toggling, onToggle, onSetWip, onDefer
                     same way in both places. */}
                 {taskIdBadge(item) && (
                   <span className="todo-task-id" title="NEURO task id — quote this to SAiM or in a commit">{taskIdBadge(item)}</span>
+                )}
+                {sizeOf(item.estimateMinutes) && (
+                  <span className="todo-task-id" title={`Size ${sizeOf(item.estimateMinutes)}: estimated ${item.estimateMinutes} min`}>{sizeOf(item.estimateMinutes)}</span>
                 )}
                 {/* WIP first, because it is the one tag that describes what is
                     happening now rather than how the task was filed. */}

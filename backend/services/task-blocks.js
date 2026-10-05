@@ -123,6 +123,8 @@ const MIN_OUTCOME_CHARS = 25;
 // of the day for no reason.
 const DAY_START_MIN = 9 * 60;         // 09:00
 const DAY_END_MIN = 17 * 60 + 30;     // 17:30
+// The longest single block: a working day (an L). Anything longer is an XL.
+const MAX_WINDOW_MINUTES = 8 * 60;
 
 // Don't offer a slot that starts in the next few minutes — by the time Nick has
 // read the suggestion and confirmed it, it has already started.
@@ -200,7 +202,15 @@ function resolveWindow(tasks, requestedMinutes) {
   }
   const estimates = tasks.map(t => t.estimate_minutes);
   if (estimates.length && estimates.every(e => e != null)) {
-    return { minutes: estimates.reduce((a, b) => a + b, 0), assumed: false, basis: 'estimates' };
+    const total = estimates.reduce((a, b) => a + b, 0);
+    // An XL task (more than a day, 5 Oct 2026) cannot fit in one working-day
+    // window, so findSlot would find nothing. Block the first full day and SAY
+    // it needs more, rather than refusing or silently booking a shorter window.
+    if (total > MAX_WINDOW_MINUTES) {
+      return { minutes: MAX_WINDOW_MINUTES, assumed: false, basis: 'estimates', capped: true, fullMinutes: total,
+        note: `Estimated at ${Math.round(total / 60)}h — more than a day. This blocks the first full day; book the rest separately.` };
+    }
+    return { minutes: total, assumed: false, basis: 'estimates' };
   }
   // Partly estimated still counts as not knowing: filling the gaps with the
   // assumption and presenting the total as a sum would launder a guess into a
@@ -650,6 +660,8 @@ function plan(taskIds, {
     minutes: window.minutes,
     minutesAssumed: window.assumed,
     minutesBasis: window.basis,
+    // An XL task: the window is capped at one day and this says so.
+    windowNote: window.note || null,
     assumedMinutes: window.assumed ? timeFit.ASSUMED_MINUTES : null,
     // What the window holds versus how long it is. Nick chooses the window, so
     // this is reported rather than enforced — a deliberately roomy block is a
