@@ -184,12 +184,24 @@ test('insight counting is bounded, so one note cannot run away with the queue', 
 // --- dismissal ----------------------------------------------------------------------------
 
 function scratchVault() {
+  // ⚠ CLOCK-DERIVED, never a literal (5 Oct 2026). This was dated 2026-09-14 and
+  // the queue window is 21 days, so the note aged out of the queue on 5 Oct and
+  // "a dismissed note leaves the queue" failed its own precondition.
+  const d = new Date(Date.now() - 2 * 86400000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = d.getFullYear(), m = pad(d.getMonth() + 1), day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'km-dismiss-'));
-  fs.mkdirSync(path.join(root, 'Meetings', '2026', '09'), { recursive: true });
-  const rel = 'Meetings/2026/09/2026-09-14 test.md';
+  fs.mkdirSync(path.join(root, 'Meetings', String(y), m), { recursive: true });
+  const rel = `Meetings/${y}/${m}/${day} test.md`;
   fs.writeFileSync(
     path.join(root, rel),
-    `---\nnote_type: summary\nsource: PLAUD\ndate: 2026-09-14\n---\n\n${SUMMARY_BODY}`,
+    `---
+note_type: summary
+source: PLAUD
+date: ${day}
+---
+
+${SUMMARY_BODY}`,
     'utf-8'
   );
   return { root, rel };

@@ -21,7 +21,7 @@ const raw = fs.readFileSync(path.join(__dirname, 'attention.js'), 'utf8');
 const src = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 test('the location gap is pushed only after the Home Assistant fallback', () => {
-  const fallback = src.indexOf("inputs.location = { known: true, place, source: 'home-assistant' }");
+  const fallback = src.indexOf("inputs.location = { ...inputs.location, known: true, place, source: 'home-assistant' }");
   assert.ok(fallback > 0, 'the HA fallback is still there — otherwise this scan proves nothing');
 
   const gapPushes = [...src.matchAll(/gaps\.push\(\{\s*input:\s*'location'/g)].map((m) => m.index);
@@ -33,7 +33,7 @@ test('the location gap is pushed only after the Home Assistant fallback', () => 
 });
 
 test('the gap is guarded on the location still being unknown', () => {
-  const fallback = src.indexOf("inputs.location = { known: true, place, source: 'home-assistant' }");
+  const fallback = src.indexOf("inputs.location = { ...inputs.location, known: true, place, source: 'home-assistant' }");
   const after = src.slice(fallback);
   assert.match(after, /if\s*\(!inputs\.location\.known\)\s*\{\s*gaps\.push\(\{\s*input:\s*'location'/,
     'the gap must be conditional on not knowing');

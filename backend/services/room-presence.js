@@ -73,6 +73,11 @@ async function read(now = new Date()) {
         room: d.room,
         confidence: d.confidence,
         margin: typeof d.margin === 'number' ? d.margin : null,
+        // SAiM's own word on whether this room is in the house (the work Fire's
+        // `office` is twenty miles away). Three-valued: undefined means SAiM did
+        // not say, and a caller using the room as proof of being HOME must treat
+        // that as "cannot tell", never as in-house.
+        offsite: typeof d.offsite === 'boolean' ? d.offsite : null,
         why: null,
         subject: 'watch',
         at: d.checkedAt || now.toISOString(),

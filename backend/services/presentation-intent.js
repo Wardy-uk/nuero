@@ -282,6 +282,13 @@ function roomReading(p) {
  * @param {object} p   the /api/canonical/now payload (attention decision + situation)
  * @param {{now?: number}} opts
  */
+function counterpartLine(c) {
+  const cp = c && c.counterpart;
+  const name = cp && typeof cp === 'object' ? cp.name : (typeof cp === 'string' ? cp : null);
+  if (!name || !String(name).trim()) return null;
+  return `${c.direction === 'owed-to-me' ? 'From' : 'For'} ${String(name).trim()}`;
+}
+
 function composePresentation(p, { now = Date.now() } = {}) {
   p = p || {};
   const clock = localParts(now);
@@ -344,7 +351,10 @@ function composePresentation(p, { now = Date.now() } = {}) {
   for (const c of sections.commitments || []) {
     if (shown.has(seen(c.description))) continue;
     next.push({ id: c.id, kind: 'commitment', priority: 'P2', title: c.description,
-      when: c.due ? c.due.label : null, summary: c.counterpart ? `${c.direction === 'owed-to-me' ? 'From' : 'For'} ${c.counterpart}` : null,
+      // ⚠ `counterpart` is an OBJECT ({ name, status, … }) and is present even
+      //   when nobody is named — interpolating it rendered "For [object Object]"
+      //   under every commitment (5 Oct 2026). The NAME, or no line at all.
+      when: c.due ? c.due.label : null, summary: counterpartLine(c),
       importance: c.importance || null });
   }
   for (const t of sections.tasks || []) {
@@ -617,6 +627,7 @@ function composePresentation(p, { now = Date.now() } = {}) {
 }
 
 module.exports = {
+  counterpartLine,
   CONTRACT, MODES, UPCOMING_MINUTES, ROOM_PROMOTE_BELOW, ROOM_PROMOTE_ABOVE, RAIN_PROMOTE_MINUTES,
   composePresentation, sameEvent, dedupeEvents, titleTokens, whenLabel, localParts, dayPart,
 };

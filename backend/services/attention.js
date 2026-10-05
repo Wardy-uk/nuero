@@ -61,6 +61,23 @@ const SECONDARY_MAX = 3;
 // bar `stress-score` applies to HRV, deliberately reused rather than re-picked.
 const PHONE_STALE_HOURS = 6;
 
+/**
+ * Presence from the BLE room read, ONLY where the phone could not answer.
+ * PURE — exported for tests.
+ *
+ * Three refusals. (1) A phone that DID answer wins, including `not_home`: the
+ * room tracks the WATCH, and a watch left on the bedside table while he is out
+ * must not put him back in the house. (2) `offsite` must be exactly `false` —
+ * the work Fire's `office` is a confident room twenty miles away, and SAiM not
+ * saying is "cannot tell", never "in the house". (3) Only a `known` (sure) room
+ * counts; a coin toss between two rooms is not evidence of either.
+ */
+function presenceFromRoom(presence, room) {
+  if (presence && presence.known) return null;
+  if (!room || room.known !== true || !room.room || room.offsite !== false) return null;
+  return { known: true, present: true, source: 'room-sensor', room: room.room, subject: 'watch' };
+}
+
 // Item types that ARE the queue catching fire, for the firefighting re-rank.
 const QUEUE_TYPES = new Set(['escalation', 'nova-flag', 'novaFlag']);
 
@@ -799,8 +816,11 @@ async function gather(now = new Date()) {
         ? { known: true, present: phone.presence === 'home' }
         : { known: false };
       if (stale) {
-        const days = Math.round(phone.presenceAgeHours / 24);
-        gaps.push({ input: 'presence', why: `Home Assistant's phone data is ${days} day${days === 1 ? '' : 's'} stale — the Companion app has stopped reporting` });
+        // Under two days it is hours: "0 days stale" over an 11-hour gap is a
+        // number that contradicts its own reason.
+        const h = phone.presenceAgeHours;
+        const age = h < 48 ? `${Math.round(h)} hours` : `${Math.round(h / 24)} days`;
+        gaps.push({ input: 'presence', why: `Home Assistant's presence data is ${age} old — no tracker has confirmed where you are since` });
       } else if (!phone || !phone.presence) {
         gaps.push({ input: 'presence', why: 'no presence entity reported' });
       }
@@ -841,9 +861,11 @@ async function gather(now = new Date()) {
   // ⚠ It tracks the WATCH: he showered on 31 Aug while it sat on a bedroom
   // surface and it reported `bedroom` for eight minutes. `subject` says so, and
   // nothing downstream may quietly promote that to a claim about the man.
+  let roomRead = null;
   try {
     const roomPresence = require('./room-presence');
     const r = await roomPresence.read(now);
+    roomRead = r;
     if (r.known) {
       inputs.location.room = r.room;
       inputs.location.roomSubject = r.subject;
@@ -856,6 +878,19 @@ async function gather(now = new Date()) {
     inputs.location.roomWhy = e.message;
   }
 
+  // A confident IN-HOUSE room is presence evidence in its own right (5 Oct 2026).
+  // It used to be attached to `location` and never consulted for presence, so a
+  // phone left still overnight made SAiM say "Couldn't read: presence" while the
+  // bedroom sensor — and the header on the same screen — said Bedroom.
+  const fromRoom = presenceFromRoom(inputs.presence, roomRead);
+  if (fromRoom) {
+    inputs.presence = fromRoom;
+    for (let i = gaps.length - 1; i >= 0; i--) if (gaps[i].input === 'presence') gaps.splice(i, 1);
+    if (!inputs.location.known) {
+      inputs.location = { ...inputs.location, known: true, place: 'home', source: 'room-sensor' };
+    }
+  }
+
   // The HA fallback inherits the same freshness rule by construction: a stale
   // `phone` has had its presence nulled above, so this cannot fire on it.
   if (!inputs.location.known && phone && phone.presence) {
@@ -866,7 +901,9 @@ async function gather(now = new Date()) {
     const place = p === 'home' ? 'home'
       : p === 'not_home' ? (phone.geocodedLocation || 'away')
       : phone.presence;
-    inputs.location = { known: true, place, source: 'home-assistant' };
+    // Spread, never replace: replacing dropped the room the BLE read had just
+    // attached, so a house-scale answer vanished whenever the town-scale one won.
+    inputs.location = { ...inputs.location, known: true, place, source: 'home-assistant' };
   }
 
   // Only now is "we do not know where he is" a true statement.
@@ -1709,4 +1746,4 @@ function sessionMatchesCard(session, card) {
   }
 }
 
-module.exports = { build, gather, gate, sayLine, agendaFor, currentMeetingEvent, sessionMatchesCard, SECONDARY_MAX };
+module.exports = { build, gather, gate, sayLine, agendaFor, currentMeetingEvent, sessionMatchesCard, presenceFromRoom, SECONDARY_MAX };

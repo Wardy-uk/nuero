@@ -79,6 +79,33 @@ function pickUpdatedAt(states, entityId) {
 }
 
 /**
+ * When the presence reading was last CONFIRMED — the newest report from the
+ * person entity or any tracker it lists in `device_trackers` that AGREES with it.
+ *
+ * ⚠ `person.nick.last_updated` alone is the wrong clock (5 Oct 2026). It moves
+ * only when the person's own state or attributes change, so a phone left still on
+ * a bedside table from 20:06 read as 11 hours stale at 07:25 and SAiM said
+ * "Couldn't read: presence" — while Life360, one of the person's own trackers,
+ * had reported "home" every hour all night. A heartbeat that agrees is evidence.
+ * One that DISAGREES is not: a fresh `not_home` from a router tracker must never
+ * refresh a stale "home". PURE — exported for tests.
+ */
+function presenceConfirmedAt(states, personId) {
+  const person = states.find(s => s.entity_id === personId);
+  if (!person) return null;
+  const sources = Array.isArray(person.attributes?.device_trackers) ? person.attributes.device_trackers : [];
+  let best = null;
+  for (const id of [personId, ...sources]) {
+    const e = states.find(s => s.entity_id === id);
+    if (!e || (id !== personId && e.state !== person.state)) continue;
+    const at = e.last_updated || e.last_changed;
+    const t = at ? new Date(at).getTime() : NaN;
+    if (Number.isFinite(t) && (!best || t > best.t)) best = { at, t };
+  }
+  return best ? best.at : null;
+}
+
+/**
  * When the entity last CHANGED VALUE, which is a different question from when
  * it last reported. HA keeps both, and the difference is the whole answer to
  * "how long has he been sitting still": `last_updated` moves on every report,
@@ -312,7 +339,7 @@ async function _haPhoneStatus(states) {
   // How old the presence reading is. Reported, never enforced here — what
   // counts as "too old" depends on the question being asked, so the caller
   // decides. This module's job is to stop pretending it doesn't matter.
-  const presenceUpdatedAt = pickUpdatedAt(states, `person.${PERSON_ID}`)
+  const presenceUpdatedAt = presenceConfirmedAt(states, `person.${PERSON_ID}`)
     || pickUpdatedAt(states, E('device_tracker', null));
   const ageMs = presenceUpdatedAt ? Date.now() - new Date(presenceUpdatedAt).getTime() : null;
 
@@ -466,4 +493,5 @@ module.exports = {
   getPhoneStatus,
   getLocationPoints,
   getHaContextBlock,
+  presenceConfirmedAt,
 };
