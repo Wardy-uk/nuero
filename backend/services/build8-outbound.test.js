@@ -983,3 +983,45 @@ test('42. chase_commitment is unchanged: its payload hash carries no Build 8 bin
   assert.match(mr, /method: 'GET'/, 'positive control');
   assert.doesNotMatch(mr, /method:\s*'(POST|PATCH|DELETE|PUT)'|sendDraft|sendMail|createDraft/);
 });
+
+// ── Trusted device (5 Oct 2026) ──────────────────────────────────────────────
+// The code typed ONCE trusts a browser; it then approves replies Nick WROTE
+// (origin composer) without the code. Never a NEURO draft; never without the code.
+
+test('T1. a device is trusted only for the code, and the token approves a reply Nick wrote', async () => {
+  assert.equal(proofs.trustDevice({ approvalCode: 'wrong code!!' }).ok, false);
+  const t = proofs.trustDevice({ approvalCode: CODE, label: 'laptop' });
+  assert.equal(t.ok, true);
+  assert.match(t.token, /^sd_[0-9a-f]{16}\.[0-9a-f]{64}$/);
+  const { action } = await prepReply();
+  const r = pa.approve(action.actionId, { approver: 'nick', payloadHash: action.payloadHash, deviceToken: t.token, now: NOW + MIN, sending: () => true });
+  assert.equal(r.ok, true, r.error);
+  const row = db.get('SELECT approval_mechanism, approval_challenge_id FROM prepared_actions WHERE action_id = ?', [action.actionId]);
+  assert.equal(row.approval_mechanism, 'trusted-device');
+  const ch = db.get('SELECT issued_to, used_outcome FROM approval_challenges WHERE challenge_id = ?', [row.approval_challenge_id]);
+  assert.equal(ch.used_outcome, 'accepted');
+  assert.equal(ch.issued_to, `device:${t.deviceId}`);
+  assert.equal(proofs.listDevices().find((d) => d.id === t.deviceId).lastUsedAt !== null, true);
+  assert.equal('hash' in proofs.listDevices()[0], false, 'the stored hash never leaves the service');
+});
+
+test('T2. a trusted device cannot approve a draft NEURO wrote, a forged token or a revoked one', async () => {
+  const t = proofs.trustDevice({ approvalCode: CODE });
+  const { action: agenda } = prepAgenda();
+  const a = pa.approve(agenda.actionId, { approver: 'nick', payloadHash: agenda.payloadHash, deviceToken: t.token, now: NOW + MIN, sending: () => true });
+  assert.equal(a.ok, false);
+  assert.match(a.error, /drafted by NEURO/);
+  const { action } = await prepReply();
+  const forged = `sd_${t.deviceId}.${'0'.repeat(64)}`;
+  assert.equal(pa.approve(action.actionId, { approver: 'nick', payloadHash: action.payloadHash, deviceToken: forged, now: NOW + MIN, sending: () => true }).ok, false);
+  assert.equal(proofs.revokeDevice(t.deviceId).ok, true);
+  assert.equal(pa.approve(action.actionId, { approver: 'nick', payloadHash: action.payloadHash, deviceToken: t.token, now: NOW + MIN, sending: () => true }).ok, false);
+});
+
+test('T3. changing the approval code revokes every trusted device', () => {
+  const t = proofs.trustDevice({ approvalCode: CODE });
+  assert.equal(proofs.deviceStatus(t.token).trusted, true);
+  assert.equal(proofs.setCode(CODE, { currentCode: CODE }).ok, true);
+  assert.equal(proofs.deviceStatus(t.token).trusted, false);
+  assert.deepEqual(proofs.listDevices(), []);
+});

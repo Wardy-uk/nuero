@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
-import { PreparedCard, approveWithCode, fetchApprovalState, gateFor } from './PreparedActions';
+import { PreparedCard, approveWithCode, fetchApprovalState, gateFor, checkTrustedDevice, trustThisDevice, approveWithDevice } from './PreparedActions';
 import './InboxPanel.css';
 
 function timeAgo(timestamp) {
@@ -161,6 +161,38 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
   const [prepared, setPrepared] = useState(null);
   const [approval, setApproval] = useState(null);
   const [acting, setActing] = useState(false);
+  // One-click Send: a browser trusted once with the approval code sends a reply
+  // Nick typed without asking again (see PreparedActions' trusted device).
+  const [trusted, setTrusted] = useState(false);
+  const [trustCode, setTrustCode] = useState('');
+  useEffect(() => { if (mode === 'reply') checkTrustedDevice().then(setTrusted); }, [mode]);
+
+  const sendWithDevice = async (action) => {
+    setActing(true);
+    try {
+      const d = await approveWithDevice(action);
+      if (d.ok && ['executed', 'verified'].includes(d.status)) { onReplied(email.id); return true; }
+      if (d.ok) { setError(d.detail || d.notice || `Sent for checking: status ${d.status}`); refreshPrepared(action.actionId); return true; }
+      setError(d.error || 'Not sent');
+      checkTrustedDevice().then(setTrusted);
+      return false;
+    } catch (e) { setError(e.message); return false; } finally { setActing(false); }
+  };
+
+  const trustAndSend = async () => {
+    const code = trustCode;
+    setTrustCode('');
+    setActing(true);
+    setError('');
+    let ok = false;
+    try {
+      const d = await trustThisDevice(code);
+      if (!d.ok) { setError(d.error || 'Not trusted'); return; }
+      setTrusted(true);
+      ok = true;
+    } finally { setActing(false); }
+    if (ok && prepared) await sendWithDevice(prepared);
+  };
 
   const sendReply = () => {
     if (!replyText.trim()) return;
@@ -175,7 +207,11 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
       .then(d => {
         if (d.ok && d.action) {
           setPrepared(d.action);
-          fetchApprovalState().then(setApproval).catch(() => setApproval(null));
+          fetchApprovalState().then((st) => {
+            setApproval(st);
+            // Trusted and nothing in the way: this press IS the send.
+            if (trusted && !gateFor(st, d.action)) sendWithDevice(d.action);
+          }).catch(() => setApproval(null));
         } else setError(d.error || 'Could not prepare the reply — nothing was sent');
       })
       .catch(() => setError('Could not prepare the reply — nothing was sent'))
@@ -353,9 +389,9 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
                 className="inbox-action-btn inbox-action-done"
                 onClick={sendReply}
                 disabled={sending || drafting || !replyText.trim() || to.length === 0}
-                title="Prepares the exact reply for you to approve with your approval code — nothing is sent yet"
+                title={trusted ? 'Sends this reply now: this browser is trusted to send replies you write' : 'Prepares the exact reply for you to approve with your approval code; nothing is sent yet'}
               >
-                {sending ? 'Preparing...' : `Prepare reply to ${to.length + cc.length || 'nobody'}…`}
+                {sending || acting ? (trusted ? 'Sending...' : 'Preparing...') : trusted ? `Send to ${to.length + cc.length}` : `Prepare reply to ${to.length + cc.length || 'nobody'}…`}
               </button>
               <button className="inbox-action-btn inbox-action-ignore" onClick={() => setMode(null)} disabled={sending}>
                 Cancel
@@ -371,6 +407,25 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
               onReject={() => verbPrepared('reject', {})}
               onEdit={(fields) => verbPrepared('edit', { payloadHash: prepared.payloadHash, ...fields })}
             />
+          )}
+          {prepared && prepared.status === 'prepared' && !gateFor(approval, prepared) && (
+            trusted ? (
+              <div className="inbox-item-actions">
+                <button className="inbox-action-btn inbox-action-done" disabled={acting} onClick={() => sendWithDevice(prepared)}>
+                  {acting ? 'Sending...' : 'Send now'}
+                </button>
+              </div>
+            ) : (
+              <div className="inbox-trust">
+                <span className="inbox-reply-hint">Send now, and stop asking for the code on this browser:</span>
+                <input type="password" className="inbox-trust-code" value={trustCode} autoComplete="off"
+                  onChange={(e) => setTrustCode(e.target.value)} placeholder="Approval code (once)"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && trustCode) trustAndSend(); }} />
+                <button className="inbox-action-btn inbox-action-done" disabled={acting || !trustCode} onClick={trustAndSend}>
+                  {acting ? 'Sending...' : 'Remember this browser & send'}
+                </button>
+              </div>
+            )
           )}
         </div>
       )}

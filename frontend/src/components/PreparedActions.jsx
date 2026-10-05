@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
+import './ActionsPanel.css'; // .ap-btn lives there; without it this card is unstyled anywhere but Actions
 import './PreparedActions.css';
 
 /**
@@ -122,6 +123,49 @@ export async function approveWithCode(a, code) {
   const ch = await postVerb(a, 'approval-challenge', {});
   if (!ch.ok) return ch;
   return postVerb(a, 'approve', { payloadHash: a.payloadHash, challengeId: ch.challengeId, approvalCode: code });
+}
+
+// -- Trusted device (5 Oct 2026) --------------------------------------------
+// The approval code typed ONCE trusts this browser; it then keeps a token and a
+// reply Nick typed himself sends in one click. The server only issues the token
+// for the code, and only lets it approve composer replies (his own words).
+const DEVICE_KEY = 'neuro_send_device';
+export function getDeviceToken() { try { return localStorage.getItem(DEVICE_KEY) || null; } catch { return null; } }
+function setDeviceToken(t) { try { if (t) localStorage.setItem(DEVICE_KEY, t); else localStorage.removeItem(DEVICE_KEY); } catch { /* private window: not remembered */ } }
+
+/** Is this browser still trusted? Clears a revoked token. */
+export async function checkTrustedDevice() {
+  const token = getDeviceToken();
+  if (!token) return false;
+  try {
+    const d = await fetch(apiUrl('/api/prepared-actions/devices'), { headers: { 'X-NEURO-SEND-DEVICE': token } }).then((r) => r.json());
+    const ok = !!(d && d.ok && d.thisDevice && d.thisDevice.trusted);
+    if (d && d.ok && !ok) setDeviceToken(null);
+    return ok;
+  } catch { return false; }
+}
+
+/** Type the code once; this browser is remembered until revoked. */
+export async function trustThisDevice(code) {
+  const label = `${navigator.platform || 'browser'} (trusted ${new Date().toLocaleDateString('en-GB')})`;
+  const d = await fetch(apiUrl('/api/prepared-actions/trust-device'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approvalCode: code, label }),
+  }).then((r) => r.json());
+  if (d && d.ok && d.token) setDeviceToken(d.token);
+  return d;
+}
+
+/** Approve a reply Nick wrote, with this browser's trust instead of the code. */
+export async function approveWithDevice(a) {
+  const token = getDeviceToken();
+  if (!token) return { ok: false, error: 'this browser is not trusted to send yet' };
+  const res = await fetch(apiUrl(`/api/prepared-actions/${a.actionId}/approve`), {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NEURO-SEND-DEVICE': token },
+    body: JSON.stringify({ payloadHash: a.payloadHash }),
+  });
+  const d = await res.json();
+  if (res.status === 403 && /not trusted|revoked/.test(String(d.error || ''))) setDeviceToken(null);
+  return d;
 }
 
 /** The approval gate state (code set, sending switch, lock) from the queue route. */

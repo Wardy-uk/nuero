@@ -3397,11 +3397,27 @@
     "route": "/api/prepared-actions/:id",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 85,
-    "description": "GET /api/prepared-actions/:id. one prepared action with its evidence, exact draft, payloadHash, approval and its provenance, decision history, execution attempts and Sent Items verifications",
+    "line": 115,
+    "description": "GET /api/prepared-actions/:id.",
     "params": [
       "id"
     ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_prepared_actions_devices",
+    "method": "GET",
+    "route": "/api/prepared-actions/devices",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 98,
+    "description": "GET /api/prepared-actions/devices. the browsers trusted to send replies Nick wrote, with when each was trusted and last used; plus whether THIS browser's token (X-NEURO-SEND-DEVICE) is still trusted.",
+    "params": [],
     "query": [],
     "body": [],
     "queryOpen": false,
@@ -8284,7 +8300,7 @@
     "route": "/api/prepared-actions/:id/approval-challenge",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 96,
+    "line": 126,
     "description": "POST /api/prepared-actions/:id/approval-challenge. step 1 of Nick approving a drafted action in NEURO: a single-use, five-minute challenge bound to this action's exact version and payload hash. Useless without Nick's approval code. Refuses machine clients, and refuses an executable type while sendin",
     "params": [
       "id"
@@ -8302,7 +8318,7 @@
     "route": "/api/prepared-actions/:id/approve",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 115,
+    "line": 145,
     "description": "POST /api/prepared-actions/:id/approve. step 2: Nick approves the EXACT draft he was shown, with the challenge from step 1 and his approval code. For chase_commitment this SENDS the email as Nick and then verifies it in Sent Items; other types record the approval only. Refuses machine clients; a PIN",
     "params": [
       "id"
@@ -8325,7 +8341,7 @@
     "route": "/api/prepared-actions/:id/edit",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 162,
+    "line": 196,
     "description": "POST /api/prepared-actions/:id/edit. Nick edits a prepared draft's subject or body (edit draft, change wording, resend after a proven failure). Creates a NEW version that needs its own approval; the old one is superseded and never changed. The recipient cannot be edited. Refuses machine clients. Bod",
     "params": [
       "id"
@@ -8347,7 +8363,7 @@
     "route": "/api/prepared-actions/:id/reject",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 149,
+    "line": 183,
     "description": "POST /api/prepared-actions/:id/reject. Nick rejects a prepared action (reject draft); kept for audit with who rejected it, and NEURO will not prepare another for the same risk episode. Refuses machine clients. Body: { note? }",
     "params": [
       "id"
@@ -8355,6 +8371,43 @@
     "query": [],
     "body": [
       "note"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_prepared_actions_devices_by_deviceId_revoke",
+    "method": "POST",
+    "route": "/api/prepared-actions/devices/:deviceId/revoke",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 106,
+    "description": "POST /api/prepared-actions/devices/:deviceId/revoke. stop a trusted browser sending. Keywords: revoke device, untrust browser.",
+    "params": [
+      "deviceId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_prepared_actions_trust_device",
+    "method": "POST",
+    "route": "/api/prepared-actions/trust-device",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 86,
+    "description": "POST /api/prepared-actions/trust-device. trust this browser to send replies Nick wrote, in exchange for the approval code (typed once). Returns a token the browser keeps. Refuses machine clients. Body: { approvalCode, label }",
+    "params": [],
+    "query": [],
+    "body": [
+      "approvalCode",
+      "label"
     ],
     "queryOpen": false,
     "bodyOpen": true,

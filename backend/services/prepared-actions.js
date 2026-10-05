@@ -372,7 +372,7 @@ const switchOn = (type) => require('./feature-flags').isEnabled(registry.switchF
  * says which. Executing is the executor's job, triggered by the route.
  */
 function approve(actionId, {
-  payloadHash = null, challengeId = null, approvalCode = null, approver = null, note: why = null,
+  payloadHash = null, challengeId = null, approvalCode = null, deviceToken = null, approver = null, note: why = null,
   now = Date.now(), sending = sendingEnabled,
 } = {}) {
   const nowMs = msOf(now);
@@ -412,10 +412,22 @@ function approve(actionId, {
     const label = registry.SWITCH_LABELS[registry.switchFor(cur.action_type)];
     return { ok: false, code: 409, error: `"${label}" is switched off (Settings → Switches), so approving would change nothing. Turn it on first, then approve.` };
   }
-  // The proof. Burns the challenge whatever the outcome.
-  const proof = require('./approval-proof').consume({
-    challengeId, approvalCode, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs,
-  });
+  // The proof. A trusted device (5 Oct 2026) may approve ONLY a reply Nick
+  // typed himself in the Inbox — words he has already read because he wrote
+  // them. Anything NEURO drafted still needs the code, typed now.
+  const proofs = require('./approval-proof');
+  let proof;
+  if (deviceToken && !approvalCode) {
+    if (cur.origin !== 'composer') {
+      return { ok: false, code: 403, error: 'a trusted device can send replies you wrote yourself; this one was drafted by NEURO — approve it with your code' };
+    }
+    proof = proofs.consumeDevice({ deviceToken, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
+  } else {
+    // Burns the challenge whatever the outcome.
+    proof = proofs.consume({
+      challengeId, approvalCode, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs,
+    });
+  }
   if (!proof.ok) return { ok: false, code: proof.code || 403, error: proof.error };
   const r = transition(actionId, 'approved', {
     note: why, now: nowMs, allowedFrom: ['prepared'],
