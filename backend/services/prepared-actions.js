@@ -412,15 +412,14 @@ function approve(actionId, {
     const label = registry.SWITCH_LABELS[registry.switchFor(cur.action_type)];
     return { ok: false, code: 409, error: `"${label}" is switched off (Settings → Switches), so approving would change nothing. Turn it on first, then approve.` };
   }
-  // The proof. A trusted device (5 Oct 2026) may approve ONLY a reply Nick
-  // typed himself in the Inbox — words he has already read because he wrote
-  // them. Anything NEURO drafted still needs the code, typed now.
+  // The proof. A trusted device (a browser Nick trusted by typing the code
+  // once) may approve ANY action it is showing him — Nick, 5 Oct 2026: the
+  // approval card shows the exact frozen words, so reading them there is the
+  // review. Still human proof: only the code can mint a device token, and the
+  // PIN / API token never can.
   const proofs = require('./approval-proof');
   let proof;
   if (deviceToken && !approvalCode) {
-    if (cur.origin !== 'composer') {
-      return { ok: false, code: 403, error: 'a trusted device can send replies you wrote yourself; this one was drafted by NEURO — approve it with your code' };
-    }
     proof = proofs.consumeDevice({ deviceToken, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
   } else {
     // Burns the challenge whatever the outcome.

@@ -120,6 +120,9 @@ async function postVerb(a, verb, body) {
  * Weekly Risk panel — so none can drift into a second way to send.
  */
 export async function approveWithCode(a, code) {
+  // No code typed: this browser's trust is the proof (only reachable from a
+  // press on a trusted browser — the card enables the button only then).
+  if (!code && getDeviceToken()) return approveWithDevice(a);
   const ch = await postVerb(a, 'approval-challenge', {});
   if (!ch.ok) return ch;
   return postVerb(a, 'approve', { payloadHash: a.payloadHash, challengeId: ch.challengeId, approvalCode: code });
@@ -184,6 +187,10 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [code, setCode] = useState('');
+  // A browser trusted with the code once approves on the press alone
+  // (5 Oct 2026). Checked with the server, so a revoked browser asks again.
+  const [trusted, setTrusted] = useState(false);
+  useEffect(() => { let live = true; checkTrustedDevice().then((t) => { if (live) setTrusted(t); }); return () => { live = false; }; }, []);
   const [subject, setSubject] = useState(action.draft?.subject || '');
   const [body, setBody] = useState(action.draft?.body || '');
   const to = action.draft?.to?.[0] || {};
@@ -285,6 +292,9 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
                 ? <>This sends <strong>exactly the {type === 'send_weekly_risk_report' ? 'report' : 'email'} above</strong> to <span className="mono">{who}</span>, as you, then checks Sent Items. It is never sent twice.</>
                 : 'This records your approval. Nothing will be sent.'}
           </p>
+          {trusted ? (
+            <p className="pa-note">This browser is trusted, so pressing the button is the approval.</p>
+          ) : (
           <label className="pa-code">
             Approval code
             <input
@@ -298,8 +308,9 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
               onKeyDown={(e) => { if (e.key === 'Enter' && code) confirm(); }}
             />
           </label>
+          )}
           <div className="ap-actions">
-            <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy || !code} onClick={confirm}>
+            <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy || (!code && !trusted)} onClick={confirm}>
               {busy ? 'Working…' : sends ? 'Approve & send' : 'Approve'}
             </button>
             <button className="ap-btn ap-btn-ghost" disabled={busy} onClick={() => { setConfirming(false); setCode(''); }}>Cancel</button>

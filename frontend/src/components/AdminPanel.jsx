@@ -403,8 +403,8 @@ function TrustedDevices() {
             </form>
           ))}
         <p className="admin-hint">
-          A browser trusted here sends replies you write in the Inbox in one click. It was trusted by typing your approval code once.
-          Drafts NEURO wrote still need the code. Changing the code on the Pi revokes every browser.
+          A browser trusted here approves with one press — your Inbox replies and anything NEURO drafted (the weekly report, chases) — once you have
+          read it on the card. It was trusted by typing your approval code once. Changing the code revokes every browser.
         </p>
         {error && <p className="admin-hint" style={{ color: 'var(--danger)' }}>Couldn’t read or change this — {error}</p>}
         {data && !data.devices.length && <p className="admin-hint">No browser is trusted yet.</p>}

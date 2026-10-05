@@ -1005,12 +1005,11 @@ test('T1. a device is trusted only for the code, and the token approves a reply 
   assert.equal('hash' in proofs.listDevices()[0], false, 'the stored hash never leaves the service');
 });
 
-test('T2. a trusted device cannot approve a draft NEURO wrote, a forged token or a revoked one', async () => {
+test('T2. a trusted device approves a NEURO draft too (5 Oct 2026), but never with a forged or revoked token', async () => {
   const t = proofs.trustDevice({ approvalCode: CODE });
   const { action: agenda } = prepAgenda();
   const a = pa.approve(agenda.actionId, { approver: 'nick', payloadHash: agenda.payloadHash, deviceToken: t.token, now: NOW + MIN, sending: () => true });
-  assert.equal(a.ok, false);
-  assert.match(a.error, /drafted by NEURO/);
+  assert.equal(a.ok, true, a.error);
   const { action } = await prepReply();
   const forged = `sd_${t.deviceId}.${'0'.repeat(64)}`;
   assert.equal(pa.approve(action.actionId, { approver: 'nick', payloadHash: action.payloadHash, deviceToken: forged, now: NOW + MIN, sending: () => true }).ok, false);
