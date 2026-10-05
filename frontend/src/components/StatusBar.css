@@ -1,0 +1,41 @@
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 3px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.statusbar-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.statusbar-spacer { flex: 1; }
+.statusbar-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.statusbar-dot--ok { background: var(--success, #3fb950); }
+.statusbar-dot--bad { background: var(--danger, #f85149); }
+.statusbar-update {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+  cursor: pointer;
+}
+.statusbar-update:hover { background: rgba(245, 158, 11, 0.3); }
+
+/* On a phone the bottom nav owns the bottom edge: the bar only appears when
+   there is a newer build to say so, sitting just above the nav. */
+@media (max-width: 768px) {
+  .statusbar { display: none; }
+  .statusbar.statusbar--newer {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0;
+    bottom: var(--bottom-nav-h);
+    z-index: 50;
+  }
+}

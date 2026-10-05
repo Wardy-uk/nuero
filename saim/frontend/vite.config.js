@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
+import { buildVersionPlugin } from '../../shared/build-version.mjs';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -33,6 +34,9 @@ export default defineConfig({
     'import.meta.env.VITE_BUILD_LABEL': JSON.stringify(resolveBuildLabel()),
   },
   plugins: [
+    // version.json + the loaded entry: the update chip says when a newer
+    // build is being served than the one on screen (5 Oct 2026).
+    buildVersionPlugin(resolveBuildLabel()),
     react(),
     // PWA: makes SAiM installable on iPad / iPhone (and any device). autoUpdate keeps a
     // freshly-deployed build from getting stuck behind a stale service-worker cache.

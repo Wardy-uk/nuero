@@ -17,6 +17,7 @@ import { platformNow } from '../../shared-ui/presentation/platform.mjs';
 import '../../shared-ui/Lit.css';
 import ExitButton from './components/ExitButton';
 import RefreshButton from './components/RefreshButton';
+import UpdateChip from '../../shared-ui/UpdateChip';
 import LockScreen from './components/LockScreen';
 import ClockScreen from './components/ClockScreen';
 import NightDim from './components/NightDim';
@@ -278,6 +279,7 @@ function AppShell() {
               the only ones that can get stuck on a build. The phone reloads
               every time it is opened. */}
           <RefreshButton buildLabel={import.meta.env.VITE_BUILD_LABEL} />
+          <UpdateChip />
           {/* ⚠ In the nav rather than the top bar (Nick, 31 Aug 2026), and LAST —
               it is the only way out of a keyboardless kiosk, so it must be
               findable, but it is not somewhere to go. Its two-step confirm is

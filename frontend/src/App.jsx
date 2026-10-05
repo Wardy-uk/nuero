@@ -5,6 +5,7 @@ import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
 import NudgeBanner from './components/NudgeBanner';
 import ErrorBoundary from './components/ErrorBoundary';
+import StatusBar from './components/StatusBar';
 import InstallBanner from './components/InstallBanner';
 import usePushNotifications from './usePushNotifications';
 import useCachedFetch from './useCachedFetch';
@@ -420,6 +421,7 @@ function AuthenticatedApp() {
           <ChatPanel location={location} />
         </aside>
       </div>
+      <StatusBar />
       <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={(target) => { setNavContext(target || null); setActiveView('todos'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('journal'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} onGoToBriefing={() => { setActiveView('today'); setSidebarOpen(false); }} onGoToInbox={() => { setActiveView('inbox'); setSidebarOpen(false); }} />
       <InstallBanner />
       {/* Mobile bottom nav */}

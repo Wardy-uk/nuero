@@ -25,6 +25,7 @@ const fetchWhereabouts = () => apiFetch('/api/signals/room');
 // still lands on Capture rather than falling through.
 const canShowTab = (t) => t.id !== 'voice' || Boolean(speechRecognitionCtor());
 import DeploymentGuard from './components/DeploymentGuard';
+import UpdateChip from '../../shared-ui/UpdateChip';
 import { readRuntime } from './runtime';
 import './App.css';
 
@@ -313,6 +314,7 @@ export default function App() {
         <Whereabouts fetchJson={fetchWhereabouts} />
         <span className="app__sub">mobile</span>
         {runtime.buildLabel && <span className="app__build">{runtime.buildLabel}</span>}
+        <UpdateChip onReload={refreshApp} />
         <button
           className="app__refresh"
           type="button"
