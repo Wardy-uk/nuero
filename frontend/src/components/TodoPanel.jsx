@@ -1242,6 +1242,8 @@ function EmailOrigin({ emailId }) {
       <div className="todo-email-head">
         <strong>{e.subject}</strong>
         <span className="todo-edit-note">{e.from}{e.fromEmail && e.from !== e.fromEmail ? ` <${e.fromEmail}>` : ''}{when ? ` · ${when}` : ''}</span>
+        {(e.to || []).length > 0 && <span className="todo-edit-note">To {e.to.join(', ')}</span>}
+        {(e.cc || []).length > 0 && <span className="todo-edit-note">Cc {e.cc.join(', ')}</span>}
         {!state.live && state.detail && <span className="todo-edit-note">Cached copy — {state.detail}</span>}
       </div>
       <div className="todo-email-acts">

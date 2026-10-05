@@ -282,6 +282,14 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
                 {detail.fromEmail && <span>{detail.fromEmail}</span>}
                 {detail.received && <span>{new Date(detail.received).toLocaleString('en-GB')}</span>}
               </div>
+              {/* Who it went to (5 Oct 2026) — a forward to the whole team and
+                  one sent to Nick alone ask different things of him. */}
+              {(detail.to || []).length > 0 && (
+                <div className="inbox-detail-recips"><span className="inbox-detail-recips-k">To</span> {detail.to.join(', ')}</div>
+              )}
+              {(detail.cc || []).length > 0 && (
+                <div className="inbox-detail-recips"><span className="inbox-detail-recips-k">Cc</span> {detail.cc.join(', ')}</div>
+              )}
               <div className="inbox-detail-body inbox-detail-full">{detail.body}</div>
               {detail.webLink && (
                 <a className="inbox-detail-link" href={detail.webLink} target="_blank" rel="noreferrer">
