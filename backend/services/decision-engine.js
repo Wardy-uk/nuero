@@ -168,7 +168,7 @@ function collectEscalations(ctx) {
       score: 95,
       urgency: 'critical',
       source: 'jira',
-      actionHint: 'Open Queue → Escalations',
+      actionHint: single && single.url ? `Open ${single.key} in Jira` : 'Open Queue → Escalations',
       meta: {
         escalations: list,
         ticket_key: single?.key || null,

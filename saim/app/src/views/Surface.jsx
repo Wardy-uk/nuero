@@ -425,7 +425,17 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
 
   function open(card) {
     const tab = tabFor(card);
-    if (tab) onNavigate?.(tab);
+    // A thing with no tab of its own (an escalation) resolves to 'surface' —
+    // the screen it was pressed on — so Open did nothing at all (5 Oct 2026).
+    // Where the card carries its own link (the Jira ticket), that IS where it
+    // lives. Not on the kiosk: a Jira tab would take over the wall display,
+    // which has no Jira login and no way back but Exit.
+    const url = card && card.meta && card.meta.url;
+    if ((!tab || tab === 'surface') && platformNow() !== 'kiosk' && typeof url === 'string' && /^https:\/\//i.test(url)) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    if (tab && tab !== 'surface') onNavigate?.(tab);
   }
 
   /**
