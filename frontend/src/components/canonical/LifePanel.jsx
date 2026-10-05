@@ -136,6 +136,7 @@ function Classifications({ data, busy, act }) {
   const lists = containers.filter((c) => c.kind === 'reminder-list');
   const save = (c, body) => act(() => postCanonical('/api/canonical/classifications', { kind: c.kind, sourceKey: c.sourceKey, label: c.label, ...body }));
 
+  const ignoredCal = (c) => c.kind === 'calendar' && !!c.classification && c.classification.tracked === false;
   const Row = ({ c }) => {
     const doms = (c.classification && c.classification.domains) || [];
     const tracked = c.kind === 'reminder-list'
@@ -156,11 +157,17 @@ function Classifications({ data, busy, act }) {
               tracked{c.classification && typeof c.classification.tracked === 'boolean' ? '' : ' (default)'}
             </label>
           )}
-          <select className="cn-select" value={doms[0] || ''} disabled={busy} aria-label={`What ${c.label} is for`}
+          {c.kind === 'calendar' && c.keyedBy !== 'account' && (
+            ignoredCal(c)
+              ? <button type="button" className="cn-btn" disabled={busy} onClick={() => save(c, { tracked: null })}>Restore</button>
+              : <button type="button" className="cn-btn" disabled={busy} title="Stop reading this calendar — its events no longer reach NEURO"
+                  onClick={() => save(c, { tracked: false })}>Ignore</button>
+          )}
+          {!ignoredCal(c) && <select className="cn-select" value={doms[0] || ''} disabled={busy} aria-label={`What ${c.label} is for`}
             onChange={(e) => save(c, { domains: e.target.value ? [e.target.value] : null })}>
             <option value="">Not classified</option>
             {DOMAIN_IDS.map((d) => <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>)}
-          </select>
+          </select>}
         </div>
       </li>
     );
@@ -183,7 +190,8 @@ function Classifications({ data, busy, act }) {
     });
     return { main: labelled, older };
   };
-  const cal = split(calendars);
+  const ignoredCals = calendars.filter(ignoredCal);
+  const cal = split(calendars.filter((c) => !ignoredCal(c)));
   const lst = split(lists);
   const older = [...cal.older, ...lst.older];
 
@@ -195,6 +203,12 @@ function Classifications({ data, busy, act }) {
       {cal.main.length > 0 && <><div className="cn-now-k cn-class-k">Calendars</div><ul className="cn-list cn-class-list">{cal.main.map((c) => <Row key={c.sourceKey} c={c} />)}</ul></>}
       {lst.main.length > 0 && <><div className="cn-now-k cn-class-k">Reminder lists</div><ul className="cn-list cn-class-list">{lst.main.map((c) => <Row key={c.sourceKey} c={c} />)}</ul></>}
       {data && lists.length === 0 && <div className="cn-muted">No reminder lists seen yet. The app builds before Build 11 only send the “Reminders” list, without ids.</div>}
+      {ignoredCals.length > 0 && (
+        <details className="cn-details">
+          <summary>{ignoredCals.length} ignored calendar{ignoredCals.length === 1 ? '' : 's'} — their events no longer reach NEURO</summary>
+          <ul className="cn-list cn-class-list">{ignoredCals.map((c) => <Row key={c.sourceKey} c={c} />)}</ul>
+        </details>
+      )}
       {older.length > 0 && (
         <details className="cn-details">
           <summary>{older.length} older name-only entr{older.length === 1 ? 'y' : 'ies'} (from app builds before ids)</summary>

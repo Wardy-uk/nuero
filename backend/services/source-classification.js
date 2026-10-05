@@ -65,7 +65,7 @@ function claimsFor(classification, { ambiguous = false, label = null } = {}) {
     return { claims: [], state: 'ambiguous', why: `more than one calendar is called "${label || '?'}" — classify it again once the app sends calendar ids` };
   }
   if (!classification) return { claims: [], state: 'unclassified', why: null };
-  if (classification.tracked === false) return { claims: [], state: 'not-tracked', why: 'you set this list as not tracked' };
+  if (classification.tracked === false) return { claims: [], state: 'not-tracked', why: 'you set this as not tracked' };
   const doms = (classification.domains || []).map(domainsLib.normaliseDomain).filter(Boolean);
   const name = label || classification.label || 'this container';
   return {
@@ -110,7 +110,10 @@ function validate({ kind, sourceKey, domains, tracked }) {
     if (bad.length) return { ok: false, error: `unknown domain: ${bad.join(', ')}` };
   }
   if (tracked !== undefined && tracked !== null && typeof tracked !== 'boolean') return { ok: false, error: 'tracked must be true or false' };
-  if (tracked !== undefined && tracked !== null && kind !== 'reminder-list') return { ok: false, error: 'only a reminder list can be untracked' };
+  // A phone calendar can be IGNORED (5 Oct 2026): untracked, its events stop
+  // arriving. The Outlook account cannot — it is the work diary every booking,
+  // planner and prep path reads, and ignoring it would blind all of them.
+  if (tracked !== undefined && tracked !== null && sourceKey === GRAPH_PRIMARY) return { ok: false, error: 'the Outlook calendar cannot be ignored' };
   return { ok: true };
 }
 
@@ -284,8 +287,18 @@ function isTracked(listItem, { byKey, titleCount } = {}) {
   return defaultTracked(listItem && listItem.title);
 }
 
+/**
+ * Has Nick ignored this phone calendar? Only an explicit `tracked: false` —
+ * unlike a reminder list, a calendar is tracked by default, and an unknown or
+ * ambiguous one is never ignored (losing a real event is the expensive error).
+ */
+function calendarIgnored(item, { byKey, titleCount } = {}) {
+  const r = resolveFor('calendar', item, { byKey: byKey || classificationMap('calendar'), titleCount: titleCount || new Map() });
+  return !!(r.classification && r.classification.tracked === false && !r.ambiguous);
+}
+
 module.exports = {
-  KINDS, GRAPH_PRIMARY,
+  KINDS, GRAPH_PRIMARY, calendarIgnored,
   // pure
   containerKey, titleKey, claimsFor, resolveFor, validate, defaultTracked,
   // store

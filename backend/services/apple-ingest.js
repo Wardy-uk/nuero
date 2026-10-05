@@ -349,14 +349,27 @@ function ingestCalendar({ from, to, events, calendars, client } = {}) {
   // per calendar rather than totalled, so a newly-noisy calendar is identifiable
   // rather than just a number going up.
   const skippedCalendars = {};
+  const ignoredCalendars = {};
+  // Calendars Nick ignored on Life. Read once per push; an unreadable store
+  // ignores NOTHING, since a dropped real event is worse than a stray one.
+  let ignored = () => false;
+  try {
+    const sc = require('./source-classification');
+    const byKey = sc.classificationMap('calendar');
+    const titleCount = sc.effectiveTitleCounts('calendar');
+    ignored = (e) => sc.calendarIgnored({ id: e.calendarId || null, title: e.calendar || null }, { byKey, titleCount });
+  } catch (err) { console.warn('[Apple] ignored calendars not read — keeping every event:', err.message); }
   const wanted = events.filter((e) => {
     const name = e && e.calendar ? String(e.calendar) : null;
-    if (!calendarIsSkipped(name)) return true;
-    skippedCalendars[name] = (skippedCalendars[name] || 0) + 1;
-    return false;
+    if (calendarIsSkipped(name)) { skippedCalendars[name] = (skippedCalendars[name] || 0) + 1; return false; }
+    if (e && ignored(e)) { ignoredCalendars[name] = (ignoredCalendars[name] || 0) + 1; return false; }
+    return true;
   });
   if (Object.keys(skippedCalendars).length) {
     console.log(`[Apple] skipped calendars: ${JSON.stringify(skippedCalendars)}`);
+  }
+  if (Object.keys(ignoredCalendars).length) {
+    console.log(`[Apple] ignored calendars (set on Life): ${JSON.stringify(ignoredCalendars)}`);
   }
 
   const normalised = wanted.map(normaliseEvent).filter(Boolean);
