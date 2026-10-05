@@ -23,8 +23,9 @@
  *      refused — and a challenge is BURNED on its first use, right or wrong.
  *   2. Nick's APPROVAL CODE: a secret he types at the moment of approval. It is
  *      stored only as an scrypt hash, it is set ONLY from a shell on the Pi
- *      (scripts/set-approval-code.js — there is deliberately no route that sets
- *      it, because a route is something a PIN holder can call), and no client
+ *      (Settings, or scripts/set-approval-code.js on the Pi — since 5 Oct 2026 a
+ *      route sets it, but only the FIRST time or with the current code; see
+ *      setCodeFromScreen), and no client
  *      stores it: the screen's field is a password input that is cleared after
  *      every use. Five wrong codes in fifteen minutes lock approval for fifteen
  *      minutes (persisted, so a restart does not reset the count).
@@ -92,8 +93,9 @@ function _derive(code, saltHex, p = SCRYPT) {
 }
 
 /**
- * Set (or replace) the approval code. Called ONLY by scripts/set-approval-code.js
- * on the Pi — never wire this to a route. Replacing requires the current code.
+ * Set (or replace) the approval code. Called by scripts/set-approval-code.js on
+ * the Pi and by setCodeFromScreen (the Settings route). Replacing requires the
+ * current code.
  */
 function setCode(code, { currentCode = null, now = Date.now(), by = 'pi-shell' } = {}) {
   const c = String(code || '');
@@ -160,7 +162,7 @@ function _recordFailure(nowMs) {
 function issue({ actionId, version, payloadHash, issuedTo = null, now = Date.now() }) {
   _ensureTable();
   if (!codeStatus().set) {
-    return { ok: false, code: 409, error: 'No approval code is set, so nothing can be approved yet. Set one on the Pi: node backend/scripts/set-approval-code.js' };
+    return { ok: false, code: 409, error: 'No approval code is set, so nothing can be approved yet. Set one in Settings → Approval code.' };
   }
   const nowMs = msOf(now);
   const lock = lockStatus({ now: nowMs });
@@ -212,6 +214,37 @@ function consume({ challengeId, approvalCode, actionId, version, payloadHash, no
   return { ok: true, proof: { mechanism: MECHANISM, challengeId, actionId, version: Number(version), payloadHash, at: iso(nowMs) } };
 }
 
+// ── setting the code from the NEURO screen (5 Oct 2026) ─────────────────────
+//
+// Nick: "I need to be able to set the approval code via the UI — not direct on
+// the Pi." So a ROUTE can now set it, which Build 7 deliberately refused, with
+// the guard that keeps it human proof:
+//   • FIRST set (no code yet): allowed from the screen. The exposure is the
+//     window before Nick sets it — something holding the PIN could set one
+//     first. Recorded, shown, and the code he then cannot use tells him.
+//   • CHANGE: needs the CURRENT code, with the same wrong-code lockout as an
+//     approval, so a PIN holder cannot replace it.
+//   • FORGOTTEN: the Pi shell (scripts/set-approval-code.js) stays the only
+//     reset, because a reset with no proof is exactly the hole.
+// Either way every trusted device is revoked (setCode does it).
+function setCodeFromScreen({ newCode, currentCode = null, now = Date.now() } = {}) {
+  const nowMs = msOf(now);
+  const existing = _stored();
+  if (existing) {
+    const lock = lockStatus({ now: nowMs });
+    if (lock.locked) return { ok: false, code: 429, error: `Too many wrong codes — locked until ${lock.lockedUntil.slice(11, 16)} UTC` };
+    if (typeof currentCode !== 'string' || !currentCode.length) return { ok: false, code: 403, error: 'enter your current approval code to change it' };
+    if (!_matches(currentCode, existing)) {
+      const f = _recordFailure(nowMs);
+      console.warn(`[ApprovalProof] wrong current code changing the approval code (${f.count} in this window)`);
+      return { ok: false, code: 403, error: f.lockedUntil ? 'Wrong current code. Too many attempts — locked for 15 minutes.' : 'Wrong current code.' };
+    }
+  }
+  const r = setCode(newCode, { currentCode, now: nowMs, by: 'neuro-settings' });
+  if (!r.ok) return { ok: false, code: 400, error: r.error };
+  return { ok: true, setAt: r.setAt, replaced: r.replaced };
+}
+
 // ── trusted devices (5 Oct 2026) ────────────────────────────────────────────
 //
 // Nick: "need a frictionless way for me to just send stuff" and "I don't want
@@ -242,7 +275,7 @@ function _saveDevices(d) { db.setState(DEVICES_KEY, JSON.stringify(d)); }
 function trustDevice({ approvalCode, label = null, now = Date.now() } = {}) {
   const nowMs = msOf(now);
   const stored = _stored();
-  if (!stored) return { ok: false, code: 409, error: 'No approval code is set yet. On the Pi, run: node backend/scripts/set-approval-code.js' };
+  if (!stored) return { ok: false, code: 409, error: 'No approval code is set yet. Set one in Settings → Approval code.' };
   const lock = lockStatus({ now: nowMs });
   if (lock.locked) return { ok: false, code: 429, error: `Too many wrong codes — locked until ${lock.lockedUntil.slice(11, 16)} UTC` };
   if (typeof approvalCode !== 'string' || !approvalCode.length) return { ok: false, code: 403, error: 'enter your approval code' };
@@ -316,5 +349,5 @@ function challenge(challengeId) {
 module.exports = {
   MECHANISM, DEVICE_MECHANISM, CHALLENGE_TTL_MS, MAX_FAILURES, LOCKOUT_MS, MIN_CODE_LENGTH,
   codeStatus, setCode, issue, consume, lockStatus, challenge, _ensureTable,
-  trustDevice, deviceStatus, consumeDevice, listDevices, revokeDevice,
+  trustDevice, deviceStatus, consumeDevice, listDevices, revokeDevice, setCodeFromScreen,
 };

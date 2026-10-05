@@ -100,7 +100,7 @@ const LEGACY_WORDS = {
 export function gateFor(data, a) {
   if (!data) return 'Checking whether approval is possible…';
   if (data.approvalLock?.locked) return `Approval is locked after too many wrong codes, until ${String(data.approvalLock.lockedUntil).slice(11, 16)} UTC.`;
-  if (!data.approvalCode?.set) return 'No approval code is set yet, so nothing can be approved. On the Pi, run: node backend/scripts/set-approval-code.js';
+  if (!data.approvalCode?.set) return 'No approval code is set yet, so nothing can be approved. Set one in Settings → Approval code.';
   if (a.executes && CALENDAR_TYPES.has(a.actionType) && !data.sending?.calendar) return 'Calendar changes are switched off (Settings → Switches → "Send approved calendar changes"). You can read or reject this; approving is off until that switch is on.';
   if (a.executes && !CALENDAR_TYPES.has(a.actionType) && !data.sending?.enabled) return 'Sending is switched off (Settings → Switches → "Send approved emails"). You can read, edit or reject this; approving is off until sending is on.';
   return null;

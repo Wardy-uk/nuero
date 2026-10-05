@@ -275,6 +275,74 @@ function VaultSyncCard({ vaultSync }) {
  * behind six steps of SSH.
  */
 /**
+ * The approval code, set from here (5 Oct 2026). First time: no proof needed.
+ * After that: the current code. A forgotten code is reset on the Pi. Neither
+ * field is ever stored by the browser; both are cleared after every attempt.
+ */
+function ApprovalCode() {
+  const [status, setStatus] = useState(null);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [again, setAgain] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const d = await fetch(apiUrl('/api/prepared-actions?limit=1')).then((r) => r.json());
+      setStatus(d && d.ok ? d.approvalCode || { set: false } : null);
+    } catch { setStatus(null); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setMsg(null);
+    if (next !== again) { setMsg({ bad: true, text: 'The two new codes do not match.' }); return; }
+    setBusy(true);
+    const body = { newCode: next, currentCode: status && status.set ? current : null };
+    setCurrent(''); setNext(''); setAgain('');
+    try {
+      const r = await fetch(apiUrl('/api/prepared-actions/approval-code'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!d.ok) setMsg({ bad: true, text: d.error || 'Not changed.' });
+      else {
+        try { localStorage.removeItem('neuro_send_device'); } catch { /* ignore */ }
+        setMsg({ bad: false, text: d.replaced ? 'Approval code changed. Every trusted browser has been untrusted.' : 'Approval code set.' });
+      }
+      await load();
+    } catch (err) { setMsg({ bad: true, text: err.message }); } finally { setBusy(false); }
+  };
+
+  if (status === null) return null;
+  const isSet = !!status.set;
+  const min = status.minLength || 6;
+  return (
+    <CollapsibleSection title="Approval code">
+      <div className="admin-ms-section">
+        <p className="admin-hint">
+          {isSet
+            ? `Set ${String(status.setAt || '').slice(0, 16).replace('T', ' ')}. This is what proves it is you approving an email NEURO sends as you. Changing it needs the current code and untrusts every browser.`
+            : 'Not set yet, so nothing can be sent. Choose a code only you know — NEURO stores only a hash of it.'}
+        </p>
+        <form onSubmit={save} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          {isSet && <input type="password" autoComplete="off" placeholder="Current code" value={current} onChange={(e) => setCurrent(e.target.value)} className="admin-input" />}
+          <input type="password" autoComplete="new-password" placeholder={`New code (${min}+ characters)`} value={next} onChange={(e) => setNext(e.target.value)} className="admin-input" />
+          <input type="password" autoComplete="new-password" placeholder="New code again" value={again} onChange={(e) => setAgain(e.target.value)} className="admin-input" />
+          <button type="submit" className="btn btn-sm" disabled={busy || next.length < min || !again || (isSet && !current)}>
+            {busy ? 'Saving…' : isSet ? 'Change code' : 'Set code'}
+          </button>
+        </form>
+        {msg && <p className="admin-hint" style={{ color: msg.bad ? 'var(--danger)' : 'var(--success, var(--accent))' }}>{msg.text}</p>}
+        {isSet && <p className="admin-hint">Forgotten it? Reset it on the Pi: <code>cd ~/nuero/backend &amp;&amp; node scripts/set-approval-code.js</code></p>}
+      </div>
+    </CollapsibleSection>
+  );
+}
+
+/**
  * Browsers trusted to send replies Nick writes (5 Oct 2026). Typing the
  * approval code once in the Inbox trusts a browser; this is where he sees each
  * one and revokes it. Changing the code on the Pi revokes them all.
@@ -1063,6 +1131,7 @@ export default function AdminPanel({ pushState = {} }) {
 
       <FeatureSwitches />
 
+      <ApprovalCode />
       <TrustedDevices />
 
       <div className="admin-section">

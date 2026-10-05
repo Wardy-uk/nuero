@@ -517,3 +517,4 @@
 /* A closed section is just its header, so it should not carry a card's worth of
    padding underneath. */
 .admin-collapsible:not(.is-open) { padding-bottom: 12px; }
+.admin-input { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); padding: 6px 8px; font-size: 12px; width: 190px; }

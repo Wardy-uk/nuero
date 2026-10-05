@@ -113,7 +113,7 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
   add({ id: 'server.approval-code', surface: 'server', need: 'recommended', title: 'Set your approval code',
     why: 'Nothing drafted by NEURO can be approved without it — even with sending switched on.',
     ...(s.approvalCode ? { status: 'done', evidence: 'An approval code is set.' } : { status: 'todo', evidence: 'No approval code.' }),
-    fix: { where: 'pi', command: 'cd ~/nuero/backend && node scripts/set-approval-code.js', steps: ['Only from a shell on the Pi — no route can set it, on purpose.'] } });
+    fix: { where: 'desktop', open: 'admin', steps: ['Settings → Approval code → set it (at least 6 characters).', 'Changing it later needs the current code; a forgotten one is reset on the Pi: cd ~/nuero/backend && node scripts/set-approval-code.js'] } });
   add({ id: 'server.sending', surface: 'server', need: 'optional', title: 'Decide whether approved emails may send',
     why: 'Off by design. Turning it on lets an approved draft leave the building; it is never needed for setup.',
     ...(s.sendingEnabled ? { status: 'done', evidence: '"Send approved emails" is on.' } : { status: 'todo', evidence: 'Off (the default).' }),

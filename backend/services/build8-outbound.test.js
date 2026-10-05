@@ -1025,3 +1025,27 @@ test('T3. changing the approval code revokes every trusted device', () => {
   assert.equal(proofs.deviceStatus(t.token).trusted, false);
   assert.deepEqual(proofs.listDevices(), []);
 });
+
+test('T4. from the screen: changing the code needs the current one, a wrong one counts towards lockout, and it untrusts browsers', () => {
+  db.setState('approval_code_failures', '');
+  const t = proofs.trustDevice({ approvalCode: CODE });
+  assert.equal(proofs.setCodeFromScreen({ newCode: 'a brand new code' }).ok, false, 'no current code: refused');
+  const wrong = proofs.setCodeFromScreen({ newCode: 'a brand new code', currentCode: 'not it at all' });
+  assert.equal(wrong.ok, false);
+  assert.equal(JSON.parse(db.getState('approval_code_failures')).count, 1, 'a wrong current code counts towards the lockout');
+  assert.equal(proofs.deviceStatus(t.token).trusted, true, 'a refused change revokes nothing');
+  const ok = proofs.setCodeFromScreen({ newCode: CODE, currentCode: CODE });
+  assert.equal(ok.ok, true, ok.error);
+  assert.equal(proofs.deviceStatus(t.token).trusted, false);
+  assert.equal(JSON.parse(db.getState('approval_code').replace(/^$/, '{}')).setBy, 'neuro-settings');
+});
+
+test('T5. from the screen: the FIRST code needs no proof', () => {
+  const saved = db.getState('approval_code');
+  db.setState('approval_code', '');
+  try {
+    assert.equal(proofs.setCodeFromScreen({ newCode: 'short' }).ok, false, 'too short is refused');
+    assert.equal(proofs.setCodeFromScreen({ newCode: 'first code here' }).ok, true);
+    assert.equal(proofs.codeStatus().set, true);
+  } finally { db.setState('approval_code', saved); }
+});

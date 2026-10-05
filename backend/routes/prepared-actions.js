@@ -82,6 +82,18 @@ router.get('/status', (req, res) => {
 });
 
 // GET /api/prepared-actions/:id — one prepared action with its evidence, exact draft, payloadHash, approval and its provenance, decision history, execution attempts and Sent Items verifications
+// POST /api/prepared-actions/approval-code — set Nick's approval code from Settings: the first time with no proof, afterwards only with the current code (wrong-code lockout applies). A forgotten code is reset on the Pi. Refuses machine clients. Keywords: set approval code, change approval code. Body: { newCode, currentCode }
+router.post('/approval-code', (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: HUMAN_ONLY });
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { newCode, currentCode } = req.body;
+    const r = proofs().setCodeFromScreen({ newCode: typeof newCode === 'string' ? newCode : '', currentCode: typeof currentCode === 'string' ? currentCode : null });
+    if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // POST /api/prepared-actions/trust-device — trust this browser to send replies Nick wrote, in exchange for the approval code (typed once). Returns a token the browser keeps. Refuses machine clients. Body: { approvalCode, label }
 router.post('/trust-device', (req, res) => {
   if (req.apiClient) return res.status(403).json({ ok: false, error: HUMAN_ONLY });
