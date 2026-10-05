@@ -39,7 +39,9 @@ const MIN_TEXT = 8;
 const MAX_TEXT = 220;
 
 // Mail sent in his name that is not him writing.
-const AUTOMATED = /^(accepted|declined|tentative|canceled|cancelled|automatic reply|out of office)\b|has shared|shared .* with you|left a comment|invitation:/i;
+const AUTOMATED = /^(accepted|declined|tentative|canceled|cancelled|automatic reply|out of office)\b|has shared|shared .* with you|left a comment|invitation:|weekly risk & anomaly summary/i;
+// ^ The weekly risk report is NEURO's generated text sent in his name, not his
+//   words — its "escalate to Chris" lines are report content, not promises.
 
 function sourcePathFor(id) { return `email:${String(id)}`; }
 

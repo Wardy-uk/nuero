@@ -14,6 +14,7 @@ test('only his own words are asked about; automated mail in his name and seen ma
     msg(),
     msg({ id: 'seen' }),
     msg({ id: 'acc', subject: 'Accepted: Support leadership' }),
+    msg({ id: 'wr', subject: 'Weekly Risk & Anomaly Summary — w/c 5 Oct 2026' }),
     msg({ id: 'empty', text: 'ok' }),
   ], ledger);
   assert.deepEqual(out.map((m) => m.id), ['AAMk1']);
