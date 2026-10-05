@@ -250,8 +250,39 @@ function scheduleGoalPublish(delayMs = 1500) {
   if (goalTimer.unref) goalTimer.unref();
 }
 
+/**
+ * Create a companion note from the Life page (5 Oct 2026). The vault note is
+ * still the ONE source of truth — this only writes it for Nick, in the shape
+ * publishCompanions already reads, then publishes. It never overwrites a note
+ * that exists (a pet note is his writing), and an unreadable vault refuses.
+ */
+function yamlStr(s) { return JSON.stringify(String(s)); }
+function createCompanion({ name, species, breed, household, vaultRoot = process.env.OBSIDIAN_VAULT_PATH, now = Date.now(), publish = true } = {}) {
+  const clean = typeof name === 'string' ? name.trim().replace(/\s+/g, ' ') : '';
+  if (!clean) return { ok: false, status: 400, error: 'a name is required' };
+  if (clean.length > 60 || /[\\/:*?"<>|#^[\]\u0000-\u001f]/.test(clean) || clean.startsWith('.') || clean.startsWith('_')) {
+    return { ok: false, status: 400, error: 'that name cannot be a note title' };
+  }
+  if (!vaultRoot || !path.isAbsolute(vaultRoot) || !fs.existsSync(vaultRoot)) {
+    return { ok: false, status: 503, error: 'the vault is not reachable' };
+  }
+  const dir = path.join(vaultRoot, 'Companions');
+  const file = path.join(dir, `${clean}.md`);
+  if (fs.existsSync(file)) return { ok: false, status: 409, error: `Companions/${clean}.md already exists` };
+  const opt = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 60) : null);
+  const lines = ['---', 'type: pet'];
+  if (opt(species)) lines.push(`species: ${yamlStr(opt(species))}`);
+  if (opt(breed)) lines.push(`breed: ${yamlStr(opt(breed))}`);
+  if (household === true || household === false) lines.push(`household: ${household}`);
+  lines.push(`created: ${new Date(now instanceof Date ? now.getTime() : now).toISOString().slice(0, 10)}`, '---', '', `# ${clean}`, '');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, lines.join('\n'), { flag: 'wx' });
+  const published = publish ? publishCompanions({ vaultRoot, now }) : null;
+  return { ok: true, notePath: `Companions/${clean}.md`, published };
+}
+
 module.exports = {
-  GOAL_STATUSES, TABLES,
+  GOAL_STATUSES, TABLES, createCompanion,
   companionPayload, goalPayload, mentions,
   publishCompanions, publishGoals, scheduleGoalPublish,
   applyCompanion, applyGoal, reset,

@@ -51,7 +51,7 @@ function fromSource(src) {
   const last = src.transport && src.transport.lastSuccessAt;
   if (v === 'seeing' || v === 'quiet') return { status: 'done', evidence: `Reporting (${src.verdictLabel || v}).` };
   if (!last) return { status: 'todo', evidence: 'NEURO has never heard from it.' };
-  return { status: 'attention', evidence: `Set up, but ${String(src.verdictLabel || v).toLowerCase()} — last heard ${last.slice(0, 16).replace('T', ' ')}.` };
+  return { status: 'attention', stale: true, evidence: `Set up, but ${String(src.verdictLabel || v).toLowerCase()} — last heard ${last.slice(0, 16).replace('T', ' ')}.` };
 }
 
 function fromReport(report, checkId, now) {
@@ -70,6 +70,18 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
   const items = [];
   const add = (it) => {
     const skip = skipped[it.id];
+    // A phone sense that WAS set up and has gone quiet does not need permission
+    // again — the first-time step ("Allow Full Access") reads as an instruction
+    // with nothing to do. Say what actually moves it: open the app.
+    if (it.status === 'attention' && it.stale && it.fix && it.fix.where === 'iphone') {
+      const app = /\(([^)]+)\)/.exec(it.title || '');
+      const label = app ? app[1].replace(/ app$/, '') : 'the app';
+      it = { ...it, fix: { ...it.fix, steps: [
+        `Open ${label} on the phone — it sends on every open, and this clears once it does.`,
+        `Still stale after that? Check Settings → ${label} still has access; if it was turned off: ${it.fix.steps[0]}`,
+      ] } };
+    }
+    delete it.stale;
     items.push({ ...it, status: skip && it.status !== 'done' ? 'skipped' : it.status, skippedAt: skip ? skip.at || null : null });
   };
   const winReport = (s.reports || []).find((r) => r.platform === 'windows') || null;

@@ -5952,7 +5952,7 @@
     "route": "/api/canonical/annotations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 198,
+    "line": 209,
     "description": "POST /api/canonical/annotations. Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.",
     "params": [],
     "query": [],
@@ -5982,6 +5982,27 @@
       "label",
       "sourceKey",
       "tracked"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_companions",
+    "method": "POST",
+    "route": "/api/canonical/companions",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 198,
+    "description": "POST /api/canonical/companions. create a companion (pet) by writing Companions/<name>.md with type: pet. Keywords: add pet, create companion, Ember. Body: name, species, breed, household. Never overwrites an existing note.",
+    "params": [],
+    "query": [],
+    "body": [
+      "breed",
+      "household",
+      "name",
+      "species"
     ],
     "queryOpen": false,
     "bodyOpen": true,

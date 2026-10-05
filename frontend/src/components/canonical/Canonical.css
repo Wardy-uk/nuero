@@ -122,3 +122,21 @@
 .cn-check { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); }
 .cn-details summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; margin-top: 8px; }
 .cn-now-card--quiet { opacity: 0.8; }
+
+/* Life page (5 Oct 2026): native selects rendered white-on-dark and rows had no
+   padding or layout, so every calendar ran its name, key and control together. */
+.cn-panel select { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); padding: 5px 8px; font-size: 12px; color-scheme: dark; }
+.cn-panel select:disabled { opacity: 0.6; }
+.cn-class-k { margin-top: 12px; }
+.cn-class-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px; }
+.cn-class { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; }
+.cn-class-name { min-width: 0; }
+.cn-class-name .cn-rowtitle { overflow-wrap: anywhere; }
+.cn-class-note { font-size: 11px; margin-top: 2px; }
+.cn-class-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.cn-section .cn-list > .cn-row:not(.cn-class):not(.cn-goal):not(.cn-finding) { padding: 10px 12px; }
+.cn-goalform input.cn-input--short { flex: 0 1 160px; }
+.cn-goalform input[type="date"] { flex: 0 0 auto; color-scheme: dark; }
+.cn-details { margin-top: 10px; }
+.cn-details > summary { cursor: pointer; font-size: 12px; color: var(--text-muted); }
+.cn-details > .cn-list { margin-top: 8px; }

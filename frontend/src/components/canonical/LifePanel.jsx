@@ -42,7 +42,7 @@ export default function LifePanel() {
 
       <Goals data={data} busy={busy} act={act} />
       <Classifications data={data} busy={busy} act={act} />
-      <Companions data={data} />
+      <Companions data={data} busy={busy} act={act} />
       <Coverage data={data} />
     </div>
   );
@@ -143,44 +143,89 @@ function Classifications({ data, busy, act }) {
       : null;
     return (
       <li className="cn-row cn-class">
-        <span className="cn-rowtitle">{c.label}</span>
-        <span className="cn-muted">{c.keyedBy === 'id' ? 'by id' : c.keyedBy === 'account' ? 'account' : 'by name'}</span>
-        {c.ambiguous && <span className="cn-chip cn-chip--unknown" title="Two calendars share this name; a classification by name cannot tell them apart">same name as another — rebuild the app to tell them apart</span>}
-        {c.notSeen && <span className="cn-muted">not seen recently</span>}
-        <select value={doms[0] || ''} disabled={busy} aria-label={`What ${c.label} is for`}
-          onChange={(e) => save(c, { domains: e.target.value ? [e.target.value] : null })}>
-          <option value="">unknown — not classified</option>
-          {DOMAIN_IDS.map((d) => <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>)}
-        </select>
-        {c.kind === 'reminder-list' && (
-          <label className="cn-check">
-            <input type="checkbox" checked={!!tracked} disabled={busy} onChange={(e) => save(c, { tracked: e.target.checked })} />
-            tracked{c.classification && typeof c.classification.tracked === 'boolean' ? '' : ' (default)'}
-          </label>
-        )}
-        {c.classification && <span className="cn-muted" title={`set ${c.classification.setAt}`}>set by you</span>}
+        <div className="cn-class-name">
+          <span className="cn-rowtitle">{c.label}</span>
+          {c.twinIndex && <span className="cn-muted"> · {c.twinIndex}</span>}
+          {c.ambiguous && <div className="cn-muted cn-class-note">Two calendars share this name, so a choice here cannot tell them apart.</div>}
+          {c.notSeen && <div className="cn-muted cn-class-note">not seen recently</div>}
+        </div>
+        <div className="cn-class-controls">
+          {c.kind === 'reminder-list' && (
+            <label className="cn-check">
+              <input type="checkbox" checked={!!tracked} disabled={busy} onChange={(e) => save(c, { tracked: e.target.checked })} />
+              tracked{c.classification && typeof c.classification.tracked === 'boolean' ? '' : ' (default)'}
+            </label>
+          )}
+          <select className="cn-select" value={doms[0] || ''} disabled={busy} aria-label={`What ${c.label} is for`}
+            onChange={(e) => save(c, { domains: e.target.value ? [e.target.value] : null })}>
+            <option value="">Not classified</option>
+            {DOMAIN_IDS.map((d) => <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>)}
+          </select>
+        </div>
       </li>
     );
   };
+
+  // A calendar seen by id AND by name is one calendar: the by-name entry only
+  // exists for pushes from app builds before ids were sent. Show the id rows;
+  // fold the name-only twins away (still classifiable) so each appears once.
+  const split = (rows) => {
+    const idLabels = new Set(rows.filter((c) => c.keyedBy === 'id').map((c) => c.label));
+    const main = rows.filter((c) => c.keyedBy !== 'title' || !idLabels.has(c.label));
+    const older = rows.filter((c) => !main.includes(c));
+    const counts = {};
+    main.forEach((c) => { counts[c.label] = (counts[c.label] || 0) + 1; });
+    const seen = {};
+    const labelled = main.map((c) => {
+      if (counts[c.label] < 2) return c;
+      seen[c.label] = (seen[c.label] || 0) + 1;
+      return { ...c, twinIndex: `${seen[c.label]} of ${counts[c.label]}` };
+    });
+    return { main: labelled, older };
+  };
+  const cal = split(calendars);
+  const lst = split(lists);
+  const older = [...cal.older, ...lst.older];
 
   return (
     <section className="cn-section">
       <h3 className="cn-h3">What each calendar and list is for</h3>
       <p className="cn-muted">A calendar or a reminder list says nothing about your life until you say so here — the phone is not "personal" and Outlook is not "work" by themselves. Unclassified stays unknown.</p>
       {data && !containers.length && <div className="cn-empty">No calendars or lists seen yet — they appear after the phone next pushes.</div>}
-      {calendars.length > 0 && <><div className="cn-now-k">Calendars</div><ul className="cn-list">{calendars.map((c) => <Row key={c.sourceKey} c={c} />)}</ul></>}
-      {lists.length > 0 && <><div className="cn-now-k">Reminder lists</div><ul className="cn-list">{lists.map((c) => <Row key={c.sourceKey} c={c} />)}</ul></>}
+      {cal.main.length > 0 && <><div className="cn-now-k cn-class-k">Calendars</div><ul className="cn-list cn-class-list">{cal.main.map((c) => <Row key={c.sourceKey} c={c} />)}</ul></>}
+      {lst.main.length > 0 && <><div className="cn-now-k cn-class-k">Reminder lists</div><ul className="cn-list cn-class-list">{lst.main.map((c) => <Row key={c.sourceKey} c={c} />)}</ul></>}
       {data && lists.length === 0 && <div className="cn-muted">No reminder lists seen yet. The app builds before Build 11 only send the “Reminders” list, without ids.</div>}
+      {older.length > 0 && (
+        <details className="cn-details">
+          <summary>{older.length} older name-only entr{older.length === 1 ? 'y' : 'ies'} (from app builds before ids)</summary>
+          <ul className="cn-list cn-class-list">{older.map((c) => <Row key={c.sourceKey} c={c} />)}</ul>
+        </details>
+      )}
     </section>
   );
 }
 
-function Companions({ data }) {
+function Companions({ data, busy, act }) {
   const companions = data ? data.companions || [] : [];
+  const [name, setName] = useState('');
+  const [species, setSpecies] = useState('');
+  const [breed, setBreed] = useState('');
+  const [household, setHousehold] = useState(true);
+  const [made, setMade] = useState(null);
+  const create = (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    act(async () => {
+      const r = await postCanonical('/api/canonical/companions', { name, species, breed, household });
+      setMade(r && r.notePath); setName(''); setSpecies(''); setBreed('');
+      // The note is published at once; the world model folds it in a moment later.
+      await new Promise((ok) => setTimeout(ok, 1500));
+    });
+  };
   return (
     <section className="cn-section">
       <h3 className="cn-h3">Companions</h3>
-      {data && !companions.length && <div className="cn-empty">None declared. A vault note with <code>type: pet</code> in its frontmatter (in Companions/) is how NEURO learns about one — it never guesses.</div>}
+      {data && !companions.length && <div className="cn-empty">None yet. Add one below — NEURO writes a note in Companions/ marked <code>type: pet</code>, and never guesses one for you.</div>}
       <ul className="cn-list">
         {companions.map((c) => (
           <li key={c.id} className="cn-row">
@@ -193,6 +238,14 @@ function Companions({ data }) {
           </li>
         ))}
       </ul>
+      <form className="cn-goalform" onSubmit={create}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. Ember" maxLength={60} aria-label="Companion name" />
+        <input className="cn-input--short" value={species} onChange={(e) => setSpecies(e.target.value)} placeholder="Species (dog)" maxLength={60} aria-label="Species" />
+        <input className="cn-input--short" value={breed} onChange={(e) => setBreed(e.target.value)} placeholder="Breed (optional)" maxLength={60} aria-label="Breed" />
+        <label className="cn-check"><input type="checkbox" checked={household} onChange={(e) => setHousehold(e.target.checked)} /> lives with you</label>
+        <button type="submit" className="cn-btn" disabled={busy || !name.trim()}>Create</button>
+      </form>
+      {made && <div className="cn-muted">Written to {made}.</div>}
     </section>
   );
 }

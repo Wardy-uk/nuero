@@ -194,6 +194,17 @@ router.post('/goals/:id', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// POST /api/canonical/companions — create a companion (pet) by writing Companions/<name>.md with type: pet. Keywords: add pet, create companion, Ember. Body: name, species, breed, household. Never overwrites an existing note.
+router.post('/companions', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { name, species, breed, household } = req.body;
+    const out = require('../services/personal-world').createCompanion({ name, species, breed, household });
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
 // POST /api/canonical/annotations — Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.
 router.post('/annotations', (req, res) => {
   try {

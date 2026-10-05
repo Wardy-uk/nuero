@@ -350,10 +350,16 @@ function recordRemindersPush({ headers = {}, body = {}, result = {}, now = Date.
       return out;
     }
     const reminders = Array.isArray(body.reminders) ? body.reminders : [];
+    // The key carries the HOUR as well as the list. Keyed on the list alone, an
+    // unchanged set of reminders folded every later push into the first one, so
+    // a phone pushing on every wake read STALE after 12h (5 Oct 2026). The hour
+    // bucket is also the observed time, so a retry inside the hour folds with an
+    // identical payload rather than reporting a conflict.
+    const hour = Math.floor(nowMs / 3600000) * 3600000;
     out.heartbeat = _heartbeat({
       kind: 'reminders', client, via,
-      deliveryId: _hash([out.sourceId, ...reminders.map((r) => `${r && (r.id || r.title)}@${r && r.isCompleted ? 1 : 0}`).sort()]),
-      newestObservedAt: new Date(nowMs).toISOString(), nowMs,
+      deliveryId: _hash([out.sourceId, String(hour), ...reminders.map((r) => `${r && (r.id || r.title)}@${r && r.isCompleted ? 1 : 0}`).sort()]),
+      newestObservedAt: new Date(hour).toISOString(), nowMs,
       detail: { reminders: reminders.length, projected: result.projected || 0, unidentified: result.unidentified || 0,
         lists: Array.isArray(body.lists) ? body.lists.length : null, complete: !!result.complete },
     });
