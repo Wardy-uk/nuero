@@ -107,6 +107,28 @@ router.get('/commitments', (req, res) => {
 });
 
 // GET /api/canonical/commitments/:id — one commitment with its evidence trail: provenance, progress evidence, linked task, identity resolution.
+// POST /api/canonical/commitments/:id/resolve — close a commitment at its owner: done, or not-owed (dropped). Keywords: mark commitment done, not owed, close commitment. Body: outcome (done|not-owed).
+router.post('/commitments/:id/resolve', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { outcome } = req.body;
+    const out = require('../services/commitment-actions').resolve(req.params.id, outcome);
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/commitments/:id/who — say who owes a commitment owed to you, by the full name of a People note. Keywords: resolve who, set promisor, unresolved person. Body: name.
+router.post('/commitments/:id/who', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { name } = req.body;
+    const out = require('../services/commitment-actions').setPromisor(req.params.id, name);
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
 router.get('/commitments/:id', (req, res) => {
   try {
     const out = canonical.commitmentDetail(req.params.id);

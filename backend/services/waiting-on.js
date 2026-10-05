@@ -266,6 +266,19 @@ function resolve(key, status = 'done') {
 }
 
 /**
+ * Nick says who this is with, by full name (from the Commitments screen). The
+ * key keeps its first-name form, so later sightings still fold onto this row;
+ * record() never overwrites person_full on a re-sighting.
+ */
+function setPersonFull(key, fullName) {
+  const item = _get(key);
+  if (!item) return null;
+  item.personFull = String(fullName || '').trim() || null;
+  _upsert(item);
+  return item;
+}
+
+/**
  * Hide until a date — "they said next Friday". Distinct from resolving: the
  * commitment is still outstanding and still ages, it just stops being asked
  * about. Clearing is passing no date.
@@ -365,6 +378,7 @@ function backfill({ days = 120, limit = 500 } = {}) {
 }
 
 module.exports = {
+  setPersonFull,
   record, list, byPerson, resolve, snooze, markChased,
   backfill, migrateFromState, STALE_DAYS, _key,
 };

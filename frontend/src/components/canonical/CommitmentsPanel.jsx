@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DomainChips, ProvenanceBadge, Freshness, when, DOMAIN_IDS, DOMAIN_LABELS } from './canonicalUi';
 import './Canonical.css';
 
@@ -42,10 +43,29 @@ const PROGRESS_WORDS = {
   progress_observed: 'moving', no_evidence: 'no sign of movement', unknown: 'could not check',
 };
 
-function Detail({ id, onClose }) {
+function Detail({ id, onClose, onChanged }) {
   const { data, error, loading, reload } = useCanonical(`/api/canonical/commitments/${encodeURIComponent(id)}`);
   const [saving, setSaving] = useState(null);
   const [saveError, setSaveError] = useState(null);
+  const [people, setPeople] = useState(null);
+  const [closed, setClosed] = useState(null);
+  const resolveAs = async (outcome) => {
+    setSaving(outcome); setSaveError(null);
+    try {
+      await postCanonical(`/api/canonical/commitments/${encodeURIComponent(id)}/resolve`, { outcome });
+      setClosed(outcome === 'done' ? 'Marked done.' : 'Marked not owed.');
+      // The world model follows the owner a moment later.
+      setTimeout(() => onChanged && onChanged(), 1500);
+    } catch (e) { setSaveError(e.message); }
+    setSaving(null);
+  };
+  const setWho = async (name) => {
+    if (!name) return;
+    setSaving('who'); setSaveError(null);
+    try { await postCanonical(`/api/canonical/commitments/${encodeURIComponent(id)}/who`, { name }); setTimeout(() => { reload(); onChanged && onChanged(); }, 1500); }
+    catch (e) { setSaveError(e.message); }
+    setSaving(null);
+  };
   if (loading && !data) return <div className="cn-detail">Loading evidence…</div>;
   if (error && !data) return <div className="cn-detail cn-error">Couldn’t read the evidence — {error}</div>;
   const { item, evidence } = data;
@@ -67,11 +87,22 @@ function Detail({ id, onClose }) {
     <div className="cn-detail">
       <div className="cn-detail-head">
         <strong>Evidence</strong>
-        <button type="button" className="cn-btn" onClick={onClose}>Close</button>
+        <span className="cn-detail-acts">
+          {closed ? <span className="cn-muted">{closed}</span> : <>
+            <button type="button" className="cn-btn" disabled={!!saving} onClick={() => resolveAs('done')}>Done</button>
+            <button type="button" className="cn-btn" disabled={!!saving} title="It was never owed, or it was a misread of the meeting"
+              onClick={() => resolveAs('not-owed')}>Not owed</button>
+          </>}
+          <button type="button" className="cn-btn" onClick={onClose}>Close</button>
+        </span>
       </div>
       <dl className="cn-dl">
         <dt>Belief</dt><dd><ProvenanceBadge kind={evidence.provenance.kind} confidence={evidence.provenance.confidence} /> from {evidence.source.kind}{evidence.source.date ? ` on ${evidence.source.date}` : ''}{evidence.source.path ? <span className="cn-path"> · {evidence.source.path}</span> : null}</dd>
-        <dt>Who</dt><dd>{item.counterpart.status === 'resolved' ? `${item.counterpart.name} (${item.counterpart.method || 'matched'})` : item.counterpart.why}</dd>
+        <dt>Who</dt><dd>{item.counterpart.status === 'resolved' ? `${item.counterpart.name} (${item.counterpart.method || 'matched'})` : item.counterpart.why}
+          {item.counterpart.status !== 'resolved' && evidence.source && evidence.source.kind === 'meeting-waiting-on' && (
+            <WhoPicker raw={item.counterpart.name} people={people} setPeople={setPeople} disabled={!!saving} onPick={setWho} />
+          )}
+        </dd>
         {item.meeting && <><dt>Meeting</dt><dd>{item.meeting.title}{item.meeting.start ? ` · ${when(item.meeting.start)}` : ''}{item.meeting.linked ? '' : <span className="cn-muted"> — not tied to a calendar occurrence: {item.meeting.why}</span>}</dd></>}
         {evidence.task && <><dt>Task</dt><dd>{evidence.task.title} · {evidence.task.state}{evidence.task.possibleCompletion ? <span className="cn-muted"> · possibly done elsewhere (inference): {evidence.task.possibleCompletion.note || 'same wording completed'}</span> : null}</dd></>}
         <dt>Still open because</dt>
@@ -113,6 +144,30 @@ function Detail({ id, onClose }) {
   );
 }
 
+// Only People notes are offered: a typed name with no note would stay
+// unresolved and look as though it worked. Same first name first.
+function WhoPicker({ raw, people, setPeople, disabled, onPick }) {
+  useEffect(() => {
+    if (people) return;
+    apiFetch('/api/events/world/people').then((r) => r.json())
+      .then((j) => setPeople((j.people || []).map((p) => p.displayName).filter(Boolean)))
+      .catch(() => setPeople([]));
+  }, [people, setPeople]);
+  const first = String(raw || '').trim().split(/\s+/)[0].toLowerCase();
+  const names = (people || []).slice().sort((a, b) => {
+    const am = a.toLowerCase().startsWith(first) ? 0 : 1; const bm = b.toLowerCase().startsWith(first) ? 0 : 1;
+    return am - bm || a.localeCompare(b);
+  });
+  return (
+    <div className="cn-tagpick" style={{ padding: '6px 0 0' }}>
+      <select className="cn-select" value="" disabled={disabled || !people} onChange={(e) => onPick(e.target.value)} aria-label="Who owes this">
+        <option value="">{people ? 'Who is it?' : 'Reading people…'}</option>
+        {names.map((n) => <option key={n} value={n}>{n}</option>)}
+      </select>
+    </div>
+  );
+}
+
 export default function CommitmentsPanel({ focusContext = null } = {}) {
   const [direction, setDirection] = useState((focusContext && focusContext.direction) || 'i-owe');
   const [domain, setDomain] = useState((focusContext && focusContext.domain) || '');
@@ -120,6 +175,19 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
   const [tagError, setTagError] = useState(null);
   // One step per item while reviewing unknowns: pick a domain on the row, it is
   // saved as Nick's declaration and the row leaves the "unknown" list.
+  const [tagProgress, setTagProgress] = useState('');
+  const tagAll = async (list, d) => {
+    if (!window.confirm(`Mark all ${list.length} as ${DOMAIN_LABELS[d] || d}?`)) return;
+    setTagging('all'); setTagError(null);
+    let n = 0; let failed = 0;
+    for (const c of list) {
+      try { await postCanonical('/api/canonical/annotations', { entityId: c.id, domains: [d] }); } catch { failed += 1; }
+      n += 1; setTagProgress(`${n}/${list.length}`);
+    }
+    if (failed) setTagError(`${failed} of ${list.length} were not saved`);
+    setTagging(null); setTagProgress('');
+    await reload();
+  };
   const tag = async (c, d) => {
     if (!d) return;
     setTagging(c.id); setTagError(null);
@@ -186,6 +254,14 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
         </div>
       )}
 
+      {domain === 'unknown' && items.length > 0 && (
+        <div className="cn-tagpick" style={{ padding: '0 0 8px' }}>
+          <button type="button" className="cn-btn" disabled={!!tagging} onClick={() => tagAll(items, 'work')}>
+            {tagging === 'all' ? `Tagging… ${tagProgress}` : `Mark all ${items.length} as Work`}
+          </button>
+          <span className="cn-muted">Every one shown here, on this tab.</span>
+        </div>
+      )}
       {tagError && <div className="cn-error">Not saved — {tagError}</div>}
       {loading && !data && <div className="cn-muted">Reading the world model…</div>}
       {error && <div className="cn-error">Couldn’t read commitments — {error}. This is not the same as having none.</div>}
@@ -207,7 +283,7 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
               </div>
             </button>
             {domain === 'unknown' && (
-              <div className="cn-tagrow">
+              <div className="cn-tagpick">
                 <select className="cn-select" value="" disabled={tagging === c.id} aria-label={`Which part of life: ${c.description}`}
                   onChange={(e) => tag(c, e.target.value)}>
                   <option value="">{tagging === c.id ? 'Saving…' : 'Which part of life?'}</option>
@@ -215,7 +291,7 @@ export default function CommitmentsPanel({ focusContext = null } = {}) {
                 </select>
               </div>
             )}
-            {open === c.id && <Detail id={c.id} onClose={() => setOpen(null)} />}
+            {open === c.id && <Detail id={c.id} onClose={() => setOpen(null)} onChanged={() => { setOpen(null); reload(); }} />}
           </li>
         ))}
       </ul>

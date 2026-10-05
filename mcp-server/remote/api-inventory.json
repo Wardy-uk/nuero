@@ -884,7 +884,7 @@
     "route": "/api/canonical/classifications",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 148,
+    "line": 170,
     "description": "GET /api/canonical/classifications. every calendar and reminder list the sources have shown, with what Nick classified each as (life domains, tracked), how it is keyed (id or title) and whether its title is ambiguous.",
     "params": [],
     "query": [],
@@ -900,7 +900,7 @@
     "route": "/api/canonical/classifications/entries",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 156,
+    "line": 178,
     "description": "GET /api/canonical/classifications/entries. what one calendar or reminder list holds: upcoming/open entries and past/completed ones, titles and dates only. Keywords: calendar entries, reminder list items, view calendar. Query: kind (calendar|reminder-list), sourceKey, limit.",
     "params": [],
     "query": [
@@ -940,8 +940,8 @@
     "route": "/api/canonical/commitments/:id",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 110,
-    "description": "GET /api/canonical/commitments/:id. one commitment with its evidence trail: provenance, progress evidence, linked task, identity resolution.",
+    "line": 132,
+    "description": "GET /api/canonical/commitments/:id.",
     "params": [
       "id"
     ],
@@ -974,7 +974,7 @@
     "route": "/api/canonical/findings",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 124,
+    "line": 146,
     "description": "GET /api/canonical/findings. what NEURO is noticing and what attention decided: every evaluator's findings (source blindness, commitment risk, meeting intelligence) with status, shadow/live, verdict and suppression reason. Query: status=active|resolved|all.",
     "params": [],
     "query": [
@@ -992,7 +992,7 @@
     "route": "/api/canonical/goals",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 178,
+    "line": 200,
     "description": "GET /api/canonical/goals. Nick's explicitly stored goals and intentions, with importance, dates and explicit links. Never inferred. Query: status=active|paused|achieved|dropped|all.",
     "params": [],
     "query": [
@@ -1010,7 +1010,7 @@
     "route": "/api/canonical/life",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 132,
+    "line": 154,
     "description": "GET /api/canonical/life. Nick's whole life as the world model sees it: stored goals, and per life domain how many commitments, sources, goals and upcoming events carry evidence of belonging to it (zeros kept; unknown counted).",
     "params": [],
     "query": [],
@@ -1095,7 +1095,7 @@
     "route": "/api/canonical/sources",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 119,
+    "line": 141,
     "description": "GET /api/canonical/sources. what NEURO can see, from SourceHealth only: each source's transport, freshness, lifecycle (expected/optional/retired), blindness finding, and one verdict (seeing/quiet/stale/failing/unknown/retired); plus runtime jobs.",
     "params": [],
     "query": [],
@@ -1111,7 +1111,7 @@
     "route": "/api/canonical/tasks",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 137,
+    "line": 159,
     "description": "GET /api/canonical/tasks. tasks from the world model (NEURO, Microsoft, Apple Reminders) with due context, life domains (a reminder takes its list's classification) and personal importance. Query: system, domain, status.",
     "params": [],
     "query": [
@@ -5972,7 +5972,7 @@
     "route": "/api/canonical/annotations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 220,
+    "line": 242,
     "description": "POST /api/canonical/annotations. Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.",
     "params": [],
     "query": [],
@@ -5992,7 +5992,7 @@
     "route": "/api/canonical/classifications",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 167,
+    "line": 189,
     "description": "POST /api/canonical/classifications. Nick classifies a calendar or reminder list (life domains, and for a list whether it is tracked). Keywords: classify calendar, reminder list domain. Body: kind, sourceKey, domains, tracked, label.",
     "params": [],
     "query": [],
@@ -6009,12 +6009,52 @@
     "stream": false
   },
   {
+    "id": "post_canonical_commitments_by_id_resolve",
+    "method": "POST",
+    "route": "/api/canonical/commitments/:id/resolve",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 111,
+    "description": "POST /api/canonical/commitments/:id/resolve. close a commitment at its owner: done, or not-owed (dropped). Keywords: mark commitment done, not owed, close commitment. Body: outcome (done|not-owed).",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "outcome"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_commitments_by_id_who",
+    "method": "POST",
+    "route": "/api/canonical/commitments/:id/who",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 122,
+    "description": "POST /api/canonical/commitments/:id/who. say who owes a commitment owed to you, by the full name of a People note. Keywords: resolve who, set promisor, unresolved person. Body: name.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "name"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_canonical_companions",
     "method": "POST",
     "route": "/api/canonical/companions",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 209,
+    "line": 231,
     "description": "POST /api/canonical/companions. create a companion (pet) by writing Companions/<name>.md with type: pet. Keywords: add pet, create companion, Ember. Body: name, species, breed, household. Never overwrites an existing note.",
     "params": [],
     "query": [],
@@ -6035,7 +6075,7 @@
     "route": "/api/canonical/goals",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 187,
+    "line": 209,
     "description": "POST /api/canonical/goals. store a goal or intention Nick states (hike more, finish the degree). Body: title, description, domains, importance, startDate, reviewDate, links. Creates nothing else: no task, no nudge.",
     "params": [],
     "query": [],
@@ -6060,7 +6100,7 @@
     "route": "/api/canonical/goals/:id",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 198,
+    "line": 220,
     "description": "POST /api/canonical/goals/:id. update a stored goal: title, description, domains, importance, status (active|paused|achieved|dropped), startDate, reviewDate, links (replaces), reviewed (stamps last reviewed).",
     "params": [
       "id"
