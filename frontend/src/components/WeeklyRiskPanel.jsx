@@ -171,6 +171,54 @@ function DeliverableTracker({ data, onMarkSent, busy }) {
 }
 
 /** A delta that says which way is good. Compliance is higher-is-better. */
+/**
+ * Record the competency-4 baseline (5 Oct 2026). The route existed with no
+ * screen. The figure is a DECISION, so it is typed, not counted; the report
+ * labels it "agreed with Chris" — the note says what it is, in Nick's words.
+ * Clearing is its own button: an empty box is not zero.
+ */
+function BaselineForm({ baseline, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [count, setCount] = useState(baseline && baseline.source === 'agreed' ? String(baseline.count) : '');
+  const [agreedOn, setAgreedOn] = useState(baseline && baseline.agreedOn ? baseline.agreedOn : '');
+  const [note, setNote] = useState(baseline && baseline.note ? baseline.note : '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const send = async (body) => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(apiUrl('/api/weekly-risk/baseline'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (!r.ok || d.ok === false) { setErr(d.error || 'Not saved'); return; }
+      setOpen(false);
+      onSaved && onSaved();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  if (!open) {
+    return <button type="button" className="wr-toggle" onClick={() => setOpen(true)}>{baseline && baseline.source === 'agreed' ? 'change baseline' : 'record the baseline'}</button>;
+  }
+  const n = Number(count);
+  const valid = count.trim() !== '' && Number.isInteger(n) && n >= 0;
+  return (
+    <div className="wr-baseline-form">
+      <label>Figure at {fmtUk(baseline.date)} <input type="number" min="0" step="1" value={count} onChange={(e) => setCount(e.target.value)} /></label>
+      <label>Agreed with Chris on <input type="date" value={agreedOn} onChange={(e) => setAgreedOn(e.target.value)} /></label>
+      <label className="wr-baseline-note">Note (goes in the report)
+        <input type="text" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. 378 open actions, none with an agreed due date" />
+      </label>
+      <p className="wr-hint">The report says this figure was agreed with Chris. Record it once he has agreed it.</p>
+      {err && <p className="wr-warn-line">{err}</p>}
+      <div>
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy || !valid} onClick={() => send({ count: n, agreedOn: agreedOn || undefined, note })}>Save</button>
+        {' '}<button type="button" className="btn btn-sm" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
+        {baseline && baseline.source === 'agreed' && (
+          <>{' '}<button type="button" className="btn btn-sm" disabled={busy} onClick={() => send({ count: null })}>Clear (back to not recorded)</button></>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Delta({ value }) {
   if (value === null || value === undefined) return <span className="wr-delta wr-delta-none">—</span>;
   if (value === 0) return <span className="wr-delta wr-delta-flat">no change</span>;
@@ -894,6 +942,9 @@ export default function WeeklyRiskPanel({ onNavigate }) {
                 {log.baseline.source === 'agreed' ? ' (agreed with Chris)' : ' (counted from the log)'}
                 {' '}({log.baseline.stillOpen} still open) · target 0 by {fmtUk(log.baseline.targetDate)}
               </p>
+            )}
+            {(log.baseline.known === false || log.baseline.source === 'agreed') && (
+              <BaselineForm baseline={log.baseline} onSaved={load} />
             )}
             {log.missingDue.length > 0 && (
               <p className="wr-warn-line">
