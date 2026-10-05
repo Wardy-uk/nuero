@@ -118,6 +118,17 @@ async function snapshot({ now = new Date() } = {}) {
     return { known: false, room: null, episode: null, offers: [], decided: [], household: house.household || null, gaps, considered: [] };
   }
 
+  // ⚠ A WORK room is not a room at home (5 Oct 2026). `office` is the work
+  // Fire tablet's sensor, but the same word is a Home Assistant area at home,
+  // so with Nick at his desk at work SAiM showed the HOME office radiator as
+  // "Office 22°" and could have offered to heat it. Nothing in the house is
+  // about where he is when he is in an offsite room: no reading, no offers.
+  const here = house.presence && house.presence.room ? String(house.presence.room).toLowerCase() : null;
+  if (here && require('./life-state').OFFSITE_ROOMS.includes(here)) {
+    return { known: true, room: visit.room, episode: visit.episode, offers: [], decided: [],
+      household: house.household, gaps, considered: [], offsite: true };
+  }
+
   const judged = offers.assess({
     rooms: house.rooms,
     presence: house.presence,

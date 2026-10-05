@@ -283,7 +283,12 @@ function collectMeetings(ctx) {
     if (minutesAway > 60) continue;
     if (isFinishedTaskBlock(event.event_id)) continue;
 
-    const imminent = minutesAway <= 10;
+    // A block with nobody else in it (Risk Meeting Prep, a focus slot) is not
+    // something people are waiting on, so it never becomes critical — no
+    // "Needs you", no "Join". Only a real meeting does (attendees_other must be
+    // exactly 1; unknown stays solo, the safe side for an interruption).
+    const withOthers = event.attendees_other === 1 || event.attendees_other === true;
+    const imminent = minutesAway <= 10 && withOthers;
     const soon = minutesAway <= 30;
 
     items.push({
@@ -294,7 +299,7 @@ function collectMeetings(ctx) {
       score: imminent ? 88 : soon ? 72 : 55,
       urgency: imminent ? 'critical' : soon ? 'high' : 'medium',
       source: 'calendar',
-      actionHint: imminent ? 'Join / prep now' : 'Coming up',
+      actionHint: imminent ? 'Join / prep now' : (withOthers ? 'Coming up' : (minutesAway <= 10 ? 'Starts soon' : 'Coming up')),
       meta: {
         start: event.start_time, end: event.end_time, location: event.location, minutesAway,
         blockTaskIds: openBlockTaskIds(event.event_id),

@@ -102,14 +102,31 @@ function bandFor(now, { hours = '08:00-18:00', night = '21:00-07:00' } = {}) {
   return h && mins < h.start ? 'early' : 'evening';
 }
 
-/** Where he is. PURE. Room beats zone beats Wi-Fi beats town. */
-function placeFor({ room, phone }) {
+/**
+ * Where he is. PURE. Room beats saved-place geofence beats zone beats Wi-Fi
+ * beats town.
+ *
+ * The geofence (5 Oct 2026, the NEURO iOS app's region monitoring of
+ * `saved_places`) sits under the room sensor — which is finer and measures the
+ * watch on his wrist — and above Home Assistant's zone, because it is the phone
+ * itself answering for a place Nick named. A place is WORK if he marked it
+ * `kind: work` or its name is one of the work zone names; HOME if `kind: home`.
+ * Only a believable "inside" counts (place-sensing goes `stale` rather than
+ * holding an old answer), so a dead app falls through to the zone as before.
+ */
+function placeFor({ room, phone, region }) {
   const zone = lower(phone && phone.zone);
   const ssid = lower(phone && phone.ssid);
   if (room && room.known && room.room && OFFSITE_ROOMS.includes(lower(room.room))) {
     return { kind: 'work', label: 'your desk', basis: 'watch at the work desk sensor' };
   }
   if (room && room.known && room.room) return { kind: 'home', label: room.room, basis: 'watch room sensor' };
+  if (region && region.known && region.place && region.place.name) {
+    const { name, kind } = region.place;
+    if (kind === 'work' || (!kind && WORK_ZONES.includes(lower(name)))) return { kind: 'work', label: name, basis: 'phone geofence' };
+    if (kind === 'home') return { kind: 'home', label: null, basis: 'phone geofence' };
+    return { kind: 'elsewhere', label: name, basis: 'phone geofence' };
+  }
   if (WORK_ZONES.includes(zone)) return { kind: 'work', label: phone.zone, basis: 'phone zone' };
   if (ssid && WORK_SSIDS.includes(ssid)) return { kind: 'work', label: 'Office', basis: 'office Wi-Fi' };
   if (zone === 'home') return { kind: 'home', label: null, basis: 'phone zone' };
@@ -130,6 +147,7 @@ const CONF_RANK = { unknown: 0, guess: 1, likely: 2, sure: 3 };
  *   desk {known, app, label, minutes} — app null = not at a machine
  *   phone {zone, ssid, activity, audioOutput, locality, focusMode}
  *   room {known, room} · tv {known, on} · household {known, othersHome, who}
+ *   region {known, place:{name,kind}} — the phone's saved-place geofence
  */
 function infer(s = {}, now = new Date()) {
   const evidence = [];
@@ -145,7 +163,7 @@ function infer(s = {}, now = new Date()) {
 
   const band = bandFor(now, { hours: s.hours, night: s.night });
   const workingDay = s.workingDay && s.workingDay.known ? s.workingDay.isWorkingDay : null;
-  const place = placeFor({ room, phone });
+  const place = placeFor({ room, phone, region: s.region || null });
   const activity = lower(phone && phone.activity);
   const audio = lower(phone && phone.audioOutput);
   const atDesk = !!(desk && desk.known && desk.app);
@@ -411,7 +429,12 @@ async function read(now = new Date(), { ignoreDeclared = false } = {}) {
     s.room = r && r.known ? { known: true, room: r.room } : { known: false };
   } catch { s.room = { known: false }; }
 
+  try {
+    const g = require('./place-sensing').readCurrentPlace(now);
+    s.region = g && g.known && g.place ? { known: true, place: g.place } : { known: false };
+  } catch { s.region = { known: false }; }
+
   return infer(s, now);
 }
 
-module.exports = { infer, read, declare, clearDeclared, snoozeAsk, bandFor, placeFor, meetingNow, optionsFor, activeDeclaration, DOING, LABEL, ANSWER_LABEL, WORK_APPS, MAKER_APPS, DECLARE_KEY, HISTORY_KEY };
+module.exports = { OFFSITE_ROOMS, infer, read, declare, clearDeclared, snoozeAsk, bandFor, placeFor, meetingNow, optionsFor, activeDeclaration, DOING, LABEL, ANSWER_LABEL, WORK_APPS, MAKER_APPS, DECLARE_KEY, HISTORY_KEY };

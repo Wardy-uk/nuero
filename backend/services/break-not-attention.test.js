@@ -18,3 +18,20 @@ test('real meetings and work blocks still count', () => {
   assert.equal(isNotForAttention({ subject: 'Risk Meeting Prep', show_as: 'busy', attendees_other: 0 }), false);
   assert.equal(isNotForAttention({ subject: 'Breakdown review', show_as: 'busy', attendees_other: 0 }), false, 'whole words only');
 });
+
+test('a solo block never becomes critical; a real meeting does at 10 minutes', () => {
+  const { collectMeetings } = require('./decision-engine');
+  const soon = new Date(Date.now() + 8 * 60000).toISOString();
+  const later = new Date(Date.now() + 70 * 60000).toISOString();
+  const items = collectMeetings({ calendar: [
+    { event_id: 'solo', subject: 'Risk Meeting Prep', start_time: soon, end_time: later, show_as: 'busy', attendees_other: 0 },
+    { event_id: 'real', subject: 'Support leadership', start_time: soon, end_time: later, show_as: 'busy', attendees_other: 1 },
+    { event_id: 'brk', subject: 'Take a break', start_time: soon, end_time: later, show_as: 'free', attendees_other: 0 },
+  ] });
+  const by = Object.fromEntries(items.map((i) => [i.id, i]));
+  assert.ok(by['cal-solo'], 'a solo block is still listed');
+  assert.notEqual(by['cal-solo'].urgency, 'critical');
+  assert.equal(by['cal-solo'].actionHint, 'Starts soon');
+  assert.equal(by['cal-real'].urgency, 'critical');
+  assert.equal(by['cal-brk'], undefined, 'a free break is not listed at all');
+});
