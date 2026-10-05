@@ -253,6 +253,19 @@ function openBlockTaskIds(eventId) {
   }
 }
 
+// A break is not something that needs Nick (5 Oct 2026: "Take a break — In 8
+// minutes" led SAiM as "Needs you" with Join / prep now). Two rules, either
+// is enough: the diary marks it FREE (it blocks nothing, so nothing is owed),
+// or it reads as a break/lunch AND nobody else is in it. A lunch WITH someone
+// (attendees_other === 1) is a meeting and still counts.
+const BREAK_RE = /\b(break|lunch|breakfast|coffee|walk|gym|school run|pick ?up)\b/i;
+function isNotForAttention(event) {
+  const showAs = String(event.show_as || event.showAs || '').toLowerCase();
+  if (showAs === 'free') return true;
+  const withOthers = event.attendees_other === 1 || event.attendees_other === true;
+  return !withOthers && BREAK_RE.test(String(event.subject || ''));
+}
+
 function collectMeetings(ctx) {
   const items = [];
   if (!ctx.calendar || ctx.calendar.length === 0) return items;
@@ -262,6 +275,7 @@ function collectMeetings(ctx) {
 
   for (const event of ctx.calendar) {
     if (event.is_all_day) continue;
+    if (isNotForAttention(event)) continue;
     const start = new Date(event.start_time);
     if (start <= now || start > twoHours) continue;
 
@@ -1129,6 +1143,7 @@ function _countTiers(items) {
 }
 
 module.exports = {
+  isNotForAttention,
   evaluate,
   dismiss,
   snooze,
