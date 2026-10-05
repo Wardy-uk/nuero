@@ -370,10 +370,10 @@ function AuthenticatedApp() {
       case 'decisions': return <DecisionsPanel />;
       case 'weekly-risk': return <WeeklyRiskPanel onNavigate={handleNavigate} />;
       case 'moved-vantage': return <MovedToVantage />;
-      case 'commitments': return <CommitmentsPanel />;
+      case 'commitments': return <CommitmentsPanel focusContext={navContext} />;
       case 'sources': return <SourcesPanel onNavigate={handleNavigate} />;
       case 'findings': return <FindingsPanel />;
-      case 'life': return <LifePanel />;
+      case 'life': return <LifePanel onNavigate={handleNavigate} />;
       case 'management-log': return <ManagementLogPanel onNavigate={handleNavigate} />;
       case 'journal': return <JournalPanel />;
       case 'standups': return <StandupsPanel />;

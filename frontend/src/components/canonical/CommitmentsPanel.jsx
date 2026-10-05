@@ -113,9 +113,20 @@ function Detail({ id, onClose }) {
   );
 }
 
-export default function CommitmentsPanel() {
-  const [direction, setDirection] = useState('i-owe');
-  const [domain, setDomain] = useState('');
+export default function CommitmentsPanel({ focusContext = null } = {}) {
+  const [direction, setDirection] = useState((focusContext && focusContext.direction) || 'i-owe');
+  const [domain, setDomain] = useState((focusContext && focusContext.domain) || '');
+  const [tagging, setTagging] = useState(null);
+  const [tagError, setTagError] = useState(null);
+  // One step per item while reviewing unknowns: pick a domain on the row, it is
+  // saved as Nick's declaration and the row leaves the "unknown" list.
+  const tag = async (c, d) => {
+    if (!d) return;
+    setTagging(c.id); setTagError(null);
+    try { await postCanonical('/api/canonical/annotations', { entityId: c.id, domains: [d] }); await reload(); }
+    catch (e) { setTagError(e.message); }
+    setTagging(null);
+  };
   const [dueFilter, setDueFilter] = useState('all');
   const [open, setOpen] = useState(null);
   const [limit, setLimit] = useState(PAGE);
@@ -175,6 +186,7 @@ export default function CommitmentsPanel() {
         </div>
       )}
 
+      {tagError && <div className="cn-error">Not saved — {tagError}</div>}
       {loading && !data && <div className="cn-muted">Reading the world model…</div>}
       {error && <div className="cn-error">Couldn’t read commitments — {error}. This is not the same as having none.</div>}
       {data && !items.length && !error && <div className="cn-empty">Nothing here — the world model holds no open commitments matching this.</div>}
@@ -194,6 +206,15 @@ export default function CommitmentsPanel() {
                 <ProvenanceBadge kind={c.provenance.kind} confidence={c.provenance.confidence} />
               </div>
             </button>
+            {domain === 'unknown' && (
+              <div className="cn-tagrow">
+                <select className="cn-select" value="" disabled={tagging === c.id} aria-label={`Which part of life: ${c.description}`}
+                  onChange={(e) => tag(c, e.target.value)}>
+                  <option value="">{tagging === c.id ? 'Saving…' : 'Which part of life?'}</option>
+                  {DOMAIN_IDS.map((d) => <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>)}
+                </select>
+              </div>
+            )}
             {open === c.id && <Detail id={c.id} onClose={() => setOpen(null)} />}
           </li>
         ))}

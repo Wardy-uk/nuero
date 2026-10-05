@@ -19,7 +19,7 @@ import './Canonical.css';
  *    her by name is shown as exactly that (a mention, not a fact).
  *  • Coverage by life domain — counts of evidence. A row of zeros is kept.
  */
-export default function LifePanel() {
+export default function LifePanel({ onNavigate = null } = {}) {
   const { data, error, loading, reload } = useCanonical('/api/canonical/life');
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -44,7 +44,7 @@ export default function LifePanel() {
       <Goals data={data} busy={busy} act={act} />
       <Classifications data={data} busy={busy} act={act} />
       <Companions data={data} busy={busy} act={act} />
-      <Coverage data={data} />
+      <Coverage data={data} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -337,7 +337,7 @@ function Companions({ data, busy, act }) {
   );
 }
 
-function Coverage({ data }) {
+function Coverage({ data, onNavigate }) {
   if (!data) return null;
   return (
     <section className="cn-section">
@@ -353,9 +353,14 @@ function Coverage({ data }) {
               </tr>
             );
           })}
-          <tr className="cn-tr--unknown"><td>domain unknown</td><td>{data.coverage.unknown.commitments}</td><td>{data.coverage.unknown.tasks}</td><td>{data.coverage.unknown.upcoming}</td><td>—</td><td>{data.coverage.unknown.containers}</td><td>—</td><td>—</td></tr>
+          <tr className="cn-tr--unknown"><td>domain unknown</td><td>{data.coverage.unknown.commitments > 0 && onNavigate
+                ? <button type="button" className="cn-linkbtn" title="Review them in Commitments" onClick={() => onNavigate('commitments', { domain: 'unknown' })}>{data.coverage.unknown.commitments}</button>
+                : data.coverage.unknown.commitments}</td><td>{data.coverage.unknown.tasks}</td><td>{data.coverage.unknown.upcoming}</td><td>—</td><td>{data.coverage.unknown.containers}</td><td>—</td><td>—</td></tr>
         </tbody>
       </table>
+      {data.coverage.unknown.commitments > 0 && onNavigate && (
+        <p className="cn-muted">Click the unknown commitments figure to tag them in Commitments, one pick per row (it opens on "I owe"; "Owed to me" has its own).</p>
+      )}
       <p className="cn-muted">These are counts of evidence, not judgements. Work leans on a colleague’s People note or a task’s default; nothing is guessed for health, family or money.</p>
       {data.gaps && data.gaps.length > 0 && <div className="cn-error">Couldn’t read: {data.gaps.map((g) => g.input).join(', ')}</div>}
     </section>
