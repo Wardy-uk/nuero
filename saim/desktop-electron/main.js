@@ -7,7 +7,7 @@
 // behaves exactly as the kiosk does today.
 //
 // Backend is assumed already running at SAIM_URL (Phase 2 bundles/spawns it).
-const { app, BrowserWindow, ipcMain, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, powerMonitor, shell } = require('electron');
 const lockAdapter = require('./lock');
 
 const SAIM_URL = process.env.SAIM_URL || 'http://localhost:3005/';
@@ -44,6 +44,21 @@ async function createWindow() {
   await ses.clearStorageData({
     storages: ['serviceworkers', 'cachestorage'],
   }).catch(() => {});
+  // ⚠ A link SAiM opens (an escalation's Jira ticket) belongs in the real
+  // browser. Opened as an Electron child window it had none of his sessions and
+  // Atlassian's "Sign in with Microsoft" popup could not complete (5 Oct 2026).
+  // Same-origin pages stay in SAiM; anything else goes to the default browser.
+  const external = (url) => {
+    try { return new URL(url).origin !== new URL(SAIM_URL).origin && /^https?:$/.test(new URL(url).protocol); }
+    catch { return false; }
+  };
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (external(url)) { shell.openExternal(url); return { action: 'deny' }; }
+    return { action: 'allow' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (external(url)) { e.preventDefault(); shell.openExternal(url); }
+  });
   win.loadURL(SAIM_URL);
   lastLoadedAt = Date.now();
 
