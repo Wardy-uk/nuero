@@ -7,6 +7,7 @@ import './AdminPanel.css';
 // configuration, and configuration lives here.
 import NotionSyncPanel from './NotionSyncPanel';
 import VestaAccounts from './VestaAccounts';
+import { trustThisDevice } from './PreparedActions';
 
 
 /**
@@ -374,10 +375,33 @@ function TrustedDevices() {
     } catch (e) { setError(e.message); } finally { setBusy(null); }
   };
 
+  const [code, setCode] = useState('');
+  const trustHere = async (e) => {
+    e.preventDefault();
+    const typed = code;
+    setCode('');
+    setBusy('trust'); setError(null);
+    try {
+      const d = await trustThisDevice(typed);
+      if (!d.ok) setError(d.error || 'Not trusted');
+      await load();
+    } catch (err) { setError(err.message); } finally { setBusy(null); }
+  };
+
   const when = (s) => (s ? String(s).slice(0, 16).replace('T', ' ') : 'never');
+  const here = !!(data && data.thisDevice && data.thisDevice.trusted);
   return (
     <CollapsibleSection title="Browsers trusted to send">
       <div className="admin-ms-section">
+        {data && (here
+          ? <p className="admin-hint">This browser is trusted: replies you write in the Inbox send in one click.</p>
+          : (
+            <form onSubmit={trustHere} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <span className="admin-hint" style={{ margin: 0 }}>This browser is not trusted.</span>
+              <input type="password" autoComplete="off" className="admin-input" placeholder="Approval code" value={code} onChange={(e) => setCode(e.target.value)} />
+              <button type="submit" className="btn btn-sm" disabled={busy === 'trust' || !code}>{busy === 'trust' ? 'Trusting…' : 'Trust this browser'}</button>
+            </form>
+          ))}
         <p className="admin-hint">
           A browser trusted here sends replies you write in the Inbox in one click. It was trusted by typing your approval code once.
           Drafts NEURO wrote still need the code. Changing the code on the Pi revokes every browser.
