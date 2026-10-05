@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when } from './canonicalUi';
 import './Canonical.css';
 
@@ -136,6 +137,7 @@ function Classifications({ data, busy, act }) {
   const lists = containers.filter((c) => c.kind === 'reminder-list');
   const save = (c, body) => act(() => postCanonical('/api/canonical/classifications', { kind: c.kind, sourceKey: c.sourceKey, label: c.label, ...body }));
 
+  const [viewing, setViewing] = useState(null);
   const ignoredCal = (c) => c.kind === 'calendar' && !!c.classification && c.classification.tracked === false;
   const Row = ({ c }) => {
     const doms = (c.classification && c.classification.domains) || [];
@@ -149,8 +151,12 @@ function Classifications({ data, busy, act }) {
           {c.twinIndex && <span className="cn-muted"> · {c.twinIndex}</span>}
           {c.ambiguous && <div className="cn-muted cn-class-note">Two calendars share this name, so a choice here cannot tell them apart.</div>}
           {c.notSeen && <div className="cn-muted cn-class-note">not seen recently</div>}
+          <div className="cn-muted cn-class-note">{entryLine(c)}</div>
         </div>
         <div className="cn-class-controls">
+          {c.entries && c.entries.total > 0 && (
+            <button type="button" className="cn-btn" onClick={() => setViewing(c)}>View</button>
+          )}
           {c.kind === 'reminder-list' && (
             <label className="cn-check">
               <input type="checkbox" checked={!!tracked} disabled={busy} onChange={(e) => save(c, { tracked: e.target.checked })} />
@@ -173,27 +179,24 @@ function Classifications({ data, busy, act }) {
     );
   };
 
-  // A calendar seen by id AND by name is one calendar: the by-name entry only
-  // exists for pushes from app builds before ids were sent. Show the id rows;
-  // fold the name-only twins away (still classifiable) so each appears once.
+  // A by-name container from an app build before ids is SUPERSEDED by the
+  // id-keyed one with the same name — the same calendar seen the old way. The
+  // backend marks it; it is not listed, and its items use the id one's choice.
   const split = (rows) => {
-    const idLabels = new Set(rows.filter((c) => c.keyedBy === 'id').map((c) => c.label));
-    const main = rows.filter((c) => c.keyedBy !== 'title' || !idLabels.has(c.label));
-    const older = rows.filter((c) => !main.includes(c));
+    const main = rows.filter((c) => !c.superseded);
     const counts = {};
     main.forEach((c) => { counts[c.label] = (counts[c.label] || 0) + 1; });
     const seen = {};
-    const labelled = main.map((c) => {
+    return main.map((c) => {
       if (counts[c.label] < 2) return c;
       seen[c.label] = (seen[c.label] || 0) + 1;
       return { ...c, twinIndex: `${seen[c.label]} of ${counts[c.label]}` };
     });
-    return { main: labelled, older };
   };
   const ignoredCals = calendars.filter(ignoredCal);
-  const cal = split(calendars.filter((c) => !ignoredCal(c)));
-  const lst = split(lists);
-  const older = [...cal.older, ...lst.older];
+  const cal = { main: split(calendars.filter((c) => !ignoredCal(c))) };
+  const lst = { main: split(lists) };
+  const superseded = containers.filter((c) => c.superseded).length;
 
   return (
     <section className="cn-section">
@@ -209,13 +212,74 @@ function Classifications({ data, busy, act }) {
           <ul className="cn-list cn-class-list">{ignoredCals.map((c) => <Row key={c.sourceKey} c={c} />)}</ul>
         </details>
       )}
-      {older.length > 0 && (
-        <details className="cn-details">
-          <summary>{older.length} older name-only entr{older.length === 1 ? 'y' : 'ies'} (from app builds before ids)</summary>
-          <ul className="cn-list cn-class-list">{older.map((c) => <Row key={c.sourceKey} c={c} />)}</ul>
-        </details>
-      )}
+      {superseded > 0 && <p className="cn-muted cn-class-k">{superseded} name-only entr{superseded === 1 ? 'y' : 'ies'} from older app builds are the same calendars and lists as above, and use their choices.</p>}
+      {viewing && <EntriesModal c={viewing} onClose={() => setViewing(null)} />}
     </section>
+  );
+}
+
+// "12 upcoming · 40 in total" — from the world model. null is "not counted",
+// never 0: an unreadable count must not read as an empty calendar.
+function entryLine(c) {
+  const e = c.entries;
+  if (e == null) return 'entries not counted';
+  if (!e.total) return 'no entries seen';
+  return c.kind === 'calendar'
+    ? `${e.current} upcoming · ${e.total} in total`
+    : `${e.current} open · ${e.total} in total`;
+}
+
+// Event times are SLICED out of the wall-clock string, never parsed (BST rule).
+const dayTime = (s, allDay) => {
+  if (!s) return '';
+  const d = String(s).slice(0, 10);
+  const t = String(s).slice(11, 16);
+  return allDay || !t ? d : `${d} ${t}`;
+};
+
+function EntriesModal({ c, onClose }) {
+  const [res, setRes] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    let live = true;
+    apiFetch(`/api/canonical/classifications/entries?kind=${encodeURIComponent(c.kind)}&sourceKey=${encodeURIComponent(c.sourceKey)}`)
+      .then((r) => r.json())
+      .then((j) => { if (!live) return; if (j && j.ok) setRes(j); else setError((j && j.error) || 'no answer'); })
+      .catch((e) => live && setError(e.message));
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => { live = false; window.removeEventListener('keydown', onKey); };
+  }, [c.kind, c.sourceKey, onClose]);
+  const cal = c.kind === 'calendar';
+  const line = (x, i) => (
+    <li key={i} className="cn-entry">
+      <span className="cn-entry-when">{cal ? dayTime(x.start, x.allDay) : (x.due ? String(x.due).slice(0, 10) : x.completedAt ? `done ${String(x.completedAt).slice(0, 10)}` : 'no date')}</span>
+      <span className="cn-entry-title">{x.title}</span>
+    </li>
+  );
+  return (
+    <div className="cn-modal-back" onClick={onClose}>
+      <div className="cn-modal" role="dialog" aria-label={`${c.label} entries`} onClick={(e) => e.stopPropagation()}>
+        <div className="cn-head">
+          <h3 className="cn-h3">{c.label}</h3>
+          <button type="button" className="cn-btn" onClick={onClose}>Close</button>
+        </div>
+        {!res && !error && <div className="cn-muted">Reading…</div>}
+        {error && <div className="cn-error">Couldn’t read this — {error}</div>}
+        {res && (
+          <>
+            <div className="cn-now-k">{cal ? 'Upcoming' : 'Open'} ({res.current.length})</div>
+            {res.current.length ? <ul className="cn-entries">{res.current.map(line)}</ul> : <div className="cn-muted">None.</div>}
+            {res.past.length > 0 && (
+              <details className="cn-details">
+                <summary>{cal ? 'Earlier' : 'Completed'} ({res.past.length})</summary>
+                <ul className="cn-entries">{res.past.map(line)}</ul>
+              </details>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -94,6 +94,15 @@ function resolveFor(kind, item, { byKey = new Map(), titleCount = new Map(), pro
     if (n > 1) return { key: tKey, classification: null, ambiguous: true };
     return { key: tKey, classification: byKey.get(tKey), ambiguous: false };
   }
+  // An item from an old build names only a title. If exactly ONE id-keyed
+  // container of this kind carries that name and Nick classified it, that is
+  // the same calendar/list — use its classification. Two with the name is
+  // ambiguous and takes neither.
+  if (!item.id && item.title) {
+    const prefix = kind === 'calendar' ? 'eventkit-cal:id:' : 'reminders:id:';
+    const same = [...byKey.values()].filter((c) => String(c.sourceKey || '').startsWith(prefix) && lc(c.label) === lc(item.title));
+    if (same.length === 1) return { key: same[0].sourceKey, classification: same[0], ambiguous: false };
+  }
   return { key: idKey || tKey, classification: null, ambiguous: false };
 }
 
@@ -268,7 +277,77 @@ function listContainers({ now = Date.now() } = {}) {
     out.push({ kind: 'calendar', sourceKey: GRAPH_PRIMARY, label: 'Outlook calendar (work account)', containerId: null, provider: 'graph',
       keyedBy: 'account', ambiguous: false, firstSeenAt: null, lastSeenAt: null, classification: null, defaultTracked: null });
   }
+  // A by-name container from an app build before ids is SUPERSEDED once the
+  // same kind has an id-keyed container with that name: it is the same
+  // calendar/list seen the old way. It is not listed, not counted as unknown,
+  // and its items take the id-keyed classification (resolveFor) (5 Oct 2026).
+  const idLabels = new Set(out.filter((o) => o.keyedBy === 'id').map((o) => `${o.kind}|${lc(o.label)}`));
+  for (const o of out) o.superseded = o.keyedBy === 'title' && idLabels.has(`${o.kind}|${lc(o.label)}`);
+  // How many entries the world model holds per container (5 Oct 2026). An
+  // unreadable count is `null` — "not counted" — never 0, which reads as empty.
+  let counts = null;
+  try { counts = entryCounts({ now }); } catch (e) { console.warn('[SourceClassification] entry counts unreadable:', e.message); }
+  for (const o of out) o.entries = counts ? (counts.get(o.sourceKey) || { total: 0, current: 0 }) : null;
   return out;
+}
+
+// ── entries per container ────────────────────────────────────────────────────
+//
+// Calendars: wm_meetings rows (scheduled only) by their stored calendar_key —
+// derived id-first, so a by-name container from an old app build only counts
+// what that old build delivered. `current` = from today on.
+// Reminder lists: open/completed Apple reminders by their list. `current` = open.
+// Both read the world model, so they agree with what Now and Tasks can see.
+
+const todayLocal = (now) => {
+  const d = new Date(now instanceof Date ? now.getTime() : now);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+function _reminderRows() {
+  return _db().all(`SELECT record_id, task_id, status, completed_at, payload_json FROM wm_task_sources
+                     WHERE system = 'eventkit-reminders' AND removed = 0`).map((r) => {
+    let p = {}; try { p = JSON.parse(r.payload_json || '{}'); } catch { p = {}; }
+    const l = p.list || {};
+    return { key: containerKey('reminder-list', { id: l.id || null, title: l.title || null }), row: r, p };
+  });
+}
+
+function entryCounts({ now = Date.now() } = {}) {
+  const db = _db();
+  const today = todayLocal(now);
+  const out = new Map();
+  for (const r of db.all(`SELECT calendar_key AS k, COUNT(*) AS total, SUM(CASE WHEN start_local >= ? THEN 1 ELSE 0 END) AS cur
+                            FROM wm_meetings WHERE status = 'scheduled' AND calendar_key IS NOT NULL GROUP BY calendar_key`, [today])) {
+    out.set(r.k, { total: r.total, current: r.cur || 0 });
+  }
+  for (const { key, row } of _reminderRows()) {
+    if (!key) continue;
+    const c = out.get(key) || { total: 0, current: 0 };
+    c.total += 1; if (row.status === 'open') c.current += 1;
+    out.set(key, c);
+  }
+  return out;
+}
+
+/** The entries behind one container, newest-relevant first. Titles and dates only. */
+function containerEntries(kind, sourceKey, { limit = 200, now = Date.now() } = {}) {
+  if (!KINDS.includes(kind) || typeof sourceKey !== 'string' || !sourceKey) return { ok: false, status: 400, error: 'kind and sourceKey are required' };
+  const today = todayLocal(now);
+  if (kind === 'calendar') {
+    const db = _db();
+    const upcoming = db.all(`SELECT title, start_local, end_local, is_all_day FROM wm_meetings
+                              WHERE status = 'scheduled' AND calendar_key = ? AND start_local >= ? ORDER BY start_local LIMIT ?`, [sourceKey, today, limit]);
+    const past = db.all(`SELECT title, start_local, end_local, is_all_day FROM wm_meetings
+                          WHERE status = 'scheduled' AND calendar_key = ? AND start_local < ? ORDER BY start_local DESC LIMIT ?`, [sourceKey, today, limit]);
+    const shape = (r) => ({ title: r.title, start: r.start_local, end: r.end_local || null, allDay: r.is_all_day === 1 });
+    return { ok: true, kind, sourceKey, current: upcoming.map(shape), past: past.map(shape) };
+  }
+  const rows = _reminderRows().filter((x) => x.key === sourceKey);
+  const shape = ({ row, p }) => ({ title: p.title || p.text || '(untitled)', due: p.due || p.dueDate || null, status: row.status, completedAt: row.completed_at || null });
+  const open = rows.filter((x) => x.row.status === 'open').map(shape).sort((a, b) => String(a.due || '9999').localeCompare(String(b.due || '9999')));
+  const done = rows.filter((x) => x.row.status !== 'open').map(shape).sort((a, b) => String(b.completedAt || '').localeCompare(String(a.completedAt || '')));
+  return { ok: true, kind, sourceKey, current: open.slice(0, limit), past: done.slice(0, limit) };
 }
 
 /**
@@ -303,5 +382,5 @@ module.exports = {
   containerKey, titleKey, claimsFor, resolveFor, validate, defaultTracked,
   // store
   listClassifications, classificationMap, classify, observeContainers, titleCounts, effectiveTitleCounts,
-  noteDuplicateTitles, listContainers, isTracked,
+  noteDuplicateTitles, listContainers, isTracked, entryCounts, containerEntries,
 };

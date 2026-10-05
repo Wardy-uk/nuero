@@ -1115,7 +1115,11 @@ function coverageByDomain({ commitmentItems = [], sourceItems = [], goals = [], 
       commitments: commitmentItems.filter((c) => !c.domains.domains.length).length,
       tasks: taskItems.filter((t) => !t.domains.domains.length).length,
       upcoming: events.filter((e) => !e.domains.domains.length).length,
-      containers: containers.filter((c) => !(c.classification && (c.classification.domains || []).length)).length,
+      // Superseded name-only twins and anything Nick set as not tracked are
+      // not unknowns — there is nothing left for him to say about them.
+      containers: containers.filter((c) => !c.superseded && !(c.classification && c.classification.tracked === false)
+        && !(c.kind === 'reminder-list' && !(c.classification && typeof c.classification.tracked === 'boolean') && c.defaultTracked === false)
+        && !(c.classification && (c.classification.domains || []).length)).length,
     },
   };
 }

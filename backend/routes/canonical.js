@@ -152,6 +152,17 @@ router.get('/classifications', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// GET /api/canonical/classifications/entries — what one calendar or reminder list holds: upcoming/open entries and past/completed ones, titles and dates only. Keywords: calendar entries, reminder list items, view calendar. Query: kind (calendar|reminder-list), sourceKey, limit.
+router.get('/classifications/entries', (req, res) => {
+  try {
+    const sc = require('../services/source-classification');
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 500);
+    const out = sc.containerEntries(String(req.query.kind || ''), String(req.query.sourceKey || ''), { limit });
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json({ ...out, contract: canonical.CONTRACT });
+  } catch (e) { fail(res, e); }
+});
+
 // POST /api/canonical/classifications — Nick classifies a calendar or reminder list (life domains, and for a list whether it is tracked). Keywords: classify calendar, reminder list domain. Body: kind, sourceKey, domains, tracked, label.
 router.post('/classifications', (req, res) => {
   try {

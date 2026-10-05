@@ -140,3 +140,9 @@
 .cn-details { margin-top: 10px; }
 .cn-details > summary { cursor: pointer; font-size: 12px; color: var(--text-muted); }
 .cn-details > .cn-list { margin-top: 8px; }
+.cn-modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.cn-modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); width: min(640px, 100%); max-height: 80vh; overflow-y: auto; padding: 14px 16px; }
+.cn-entries { list-style: none; margin: 4px 0 8px; padding: 0; }
+.cn-entry { display: flex; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.cn-entry-when { flex: 0 0 120px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cn-entry-title { color: var(--text-primary); overflow-wrap: anywhere; }
