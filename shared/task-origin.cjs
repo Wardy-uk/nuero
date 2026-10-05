@@ -178,6 +178,13 @@ function inferOrigin(task = {}) {
     return { origin: COMMITMENT, basis: 'promoted from a meeting note — said in front of others' };
   }
 
+  // Something Nick said HE would do in an email he sent (5 Oct 2026): a
+  // promise in his own words to a named recipient — somebody is waiting on it,
+  // which is his own test for a commitment.
+  if (source === 'sent-email-promotion') {
+    return { origin: COMMITMENT, basis: 'promoted from an email you sent — you told someone you would' };
+  }
+
   // A card on a Planner board. Boards are shared and somebody else maintains
   // them, so a card sitting on one is work other people can see is assigned.
   //

@@ -972,6 +972,13 @@ async function runTriage({ force = false } = {}) {
     } catch (e) {
       console.warn('[EmailTriage] Obligation extraction failed:', e.message);
     }
+    // And what Nick said HE would do, in what he sent (5 Oct 2026). Same
+    // passenger rule: never allowed to fail triage.
+    try {
+      await require('./sent-commitments').scan();
+    } catch (e) {
+      console.warn('[EmailTriage] Sent-mail commitment scan failed:', e.message);
+    }
 
     const urgentCount = classified.filter(e => e.lane === 'urgent').length;
     const replyCount = classified.filter(e => e.lane === 'reply').length;

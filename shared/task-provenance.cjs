@@ -128,6 +128,19 @@ function describeNote(sourcePath, sourceLine) {
  * ⚠ Subject and sender are read from the recorded metadata, NEVER sliced out of
  * the source path — that field holds the Graph id and holds nothing else.
  */
+/** An email Nick SENT, where he said he would do something (5 Oct 2026). */
+function describeSentEmail(email, sourcePath) {
+  const to = str(email && email.to);
+  const subject = str(email && email.subject);
+  return {
+    kind: 'email',
+    label: to ? `Email you sent to ${to}` : 'An email you sent',
+    context: 'Email',
+    detail: subject ? `${String.fromCharCode(8220)}${subject}${String.fromCharCode(8221)}` : null,
+    ref: str(sourcePath),
+  };
+}
+
 function describeEmail(email, sourcePath) {
   const from = str(email && email.from) || str(email && email.fromEmail);
   const subject = str(email && email.subject);
@@ -172,6 +185,7 @@ const SOURCE_HOW = {
   'master-todo-import': 'Imported from your old Master Todo list',
   'meeting-promotion': 'Promoted from a meeting note',
   'email-promotion': 'Promoted from an email that asked you for something',
+  'sent-email-promotion': 'Promoted from an email you sent, where you said you would',
   'management-log': 'Mirrored from your management log',
   'nova-121': 'An action from a 1-2-1 in NOVA',
   'vantage-finding': 'Raised by VANTAGE from something it spotted on the service desk',
@@ -301,6 +315,7 @@ function describeTaskProvenance(task = {}, { now = null } = {}) {
 }
 
 module.exports = {
+  describeSentEmail,
   describeTaskProvenance,
   describeDate,
   describeNote,

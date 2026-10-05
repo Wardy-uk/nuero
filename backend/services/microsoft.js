@@ -671,6 +671,44 @@ async function fetchSentMail({ sinceIso, maxResults = 200 } = {}) {
   }
 }
 
+/**
+ * What Nick WROTE in his sent mail (5 Oct 2026), for finding what he said he
+ * would do. `uniqueBody` is only the new part of a reply — never the thread
+ * quoted beneath it — so somebody else's promise further down cannot be read as
+ * his. Plain text, trimmed to 2,000 characters: a commitment is a sentence, not
+ * an attachment. GET only. Null when Graph could not be asked.
+ */
+async function fetchSentMailText({ sinceIso, maxResults = 100 } = {}) {
+  const token = await getAccessToken();
+  if (!token || !sinceIso) return null;
+  try {
+    const filter = `sentDateTime ge ${sinceIso}`;
+    const select = 'id,subject,toRecipients,ccRecipients,sentDateTime,uniqueBody,conversationId';
+    const pageSize = Math.min(50, Math.max(1, maxResults));
+    const data = await graphFetchAll(
+      `/me/mailFolders/SentItems/messages?$filter=${encodeURIComponent(filter)}&$top=${pageSize}&$orderby=sentDateTime desc&$select=${select}`,
+      token, { Prefer: 'outlook.body-content-type="text"' }, Math.max(1, Math.ceil(maxResults / pageSize))
+    );
+    if (!data || !Array.isArray(data.value)) return null;
+    const who = (r) => (r && r.emailAddress ? { name: r.emailAddress.name || null, email: r.emailAddress.address ? String(r.emailAddress.address).toLowerCase() : null } : null);
+    return {
+      messages: data.value.slice(0, maxResults).map((m) => ({
+        id: m.id,
+        subject: m.subject || '',
+        to: (m.toRecipients || []).map(who).filter(Boolean),
+        cc: (m.ccRecipients || []).map(who).filter(Boolean),
+        sentAt: m.sentDateTime,
+        conversationId: m.conversationId || null,
+        text: String((m.uniqueBody && m.uniqueBody.content) || '').split(String.fromCharCode(13)).join('').trim().slice(0, 2000),
+      })),
+      complete: !data.truncated,
+    };
+  } catch (err) {
+    console.warn('[Microsoft] Sent mail text fetch error:', err.message);
+    return null;
+  }
+}
+
 // Array-or-null shape, kept for callers that only want the mail.
 async function fetchRecentEmails(hoursBack = 24, maxResults = 500) {
   const { emails } = await fetchRecentEmailsDetailed(hoursBack, maxResults);
@@ -1871,6 +1909,7 @@ module.exports = {
   fetchRecentEmails,
   fetchRecentEmailsDetailed,
   fetchSentMail,
+  fetchSentMailText,
   fetchEmailById,
   markEmailRead,
   searchPeople,

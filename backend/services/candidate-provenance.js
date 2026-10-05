@@ -44,7 +44,7 @@
 // card come to name different senders for one commitment. This module keeps its
 // own API — what a *candidate payload* looks like is its business — and borrows
 // the phrasing rather than restating it.
-const { describeNote, describeEmail } = require('../../shared/task-provenance.cjs');
+const { describeNote, describeEmail, describeSentEmail } = require('../../shared/task-provenance.cjs');
 
 /** Trim to something, or null. Never the empty string, which renders as a gap. */
 function str(v) {
@@ -64,6 +64,7 @@ function describeCandidateSource(payload = {}) {
 
   // The producer says what it is; the path shape is only a fallback for rows
   // written before `extractedFrom` existed.
+  if (p.extractedFrom === 'sent-email') return describeSentEmail(p.email, sourcePath);
   const isEmail = p.extractedFrom === 'email' || (sourcePath && sourcePath.startsWith('email:'));
   if (isEmail) return describeEmail(p.email, sourcePath);
 
