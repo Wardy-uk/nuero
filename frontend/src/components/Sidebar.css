@@ -92,7 +92,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 20px 4px;
+  padding: 12px 20px 6px;
   background: none;
   border: none;
   width: 100%;
@@ -109,17 +109,23 @@
 }
 
 .sidebar-group-label {
-  font-size: 9px;
+  font-size: 12px;
   font-family: var(--font-mono);
   font-weight: 600;
   letter-spacing: 0.12em;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-transform: uppercase;
 }
 
 .sidebar-group-chevron {
-  font-size: 9px;
-  color: var(--text-muted);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* A group's items sit INSIDE its heading (5 Oct 2026): the heading was 9px
+   muted against 13px items, so WORK read as a footnote rather than a section. */
+.sidebar-group:not(.sidebar-group-primary) .sidebar-item {
+  padding-left: 32px;
 }
 
 .sidebar-item.time-highlight {
