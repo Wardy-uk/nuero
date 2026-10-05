@@ -141,6 +141,7 @@ function resolveNueroNavigation(raw = {}) {
   // Briefing merged into Now (Build 10E).
   if (kind === 'focus') return { view: 'today', context: {} };
   if (kind === 'capture') return { view: 'chat', context: { mode: 'capture' } };
+  if (kind === 'weekly_risk') return { view: 'weekly-risk', context: {} };
   return null;
 }
 

@@ -599,6 +599,37 @@ function collectNudges(ctx) {
  * and the next one are two records, and one episode is one record however
  * many times the staleness check runs.
  */
+// The Monday report to Chris (5 Oct 2026). It is a PIP deliverable with a named
+// recipient and a midday deadline, and SAiM had no rule that surfaced it — the
+// week it was found it was late and unbuilt while SAiM led with an overdue task.
+// Read from pip-deliverables (the one tracker), never re-derived here.
+function collectWeeklyReport(now = new Date()) {
+  let d;
+  try { d = require('./pip-deliverables').build(now); } catch { return []; }
+  const cur = d && d.weekly && d.weekly.current;
+  if (!cur || cur.sendRecorded) return [];
+  if (cur.state !== 'late' && cur.state !== 'due') return [];
+  const late = cur.state === 'late';
+  const daysToEnd = d.window && Number.isFinite(d.window.daysToEnd) ? d.window.daysToEnd : null;
+  const missed = Array.isArray(d.weekly.notBuilt) ? d.weekly.notBuilt.filter((w) => w !== cur.week).length : 0;
+  return [{
+    type: 'weekly_risk',
+    id: `weekly-risk-${cur.week}`,
+    dedupeKey: `weekly-risk:${cur.week}`,
+    title: late ? 'Weekly Risk report for Chris is late' : 'Weekly Risk report for Chris is due by midday',
+    reason: [
+      cur.built ? 'Built, not sent yet.' : 'Not built yet.',
+      daysToEnd != null && daysToEnd >= 0 ? `PIP ends in ${daysToEnd} day${daysToEnd === 1 ? '' : 's'}.` : null,
+      missed ? `${missed} earlier week${missed === 1 ? '' : 's'} not built.` : null,
+    ].filter(Boolean).join(' '),
+    score: late ? 97 : 86,
+    urgency: late ? 'critical' : 'high',
+    source: 'neuro',
+    actionHint: 'Open Weekly Risk',
+    meta: { week: cur.week, built: !!cur.built, state: cur.state },
+  }];
+}
+
 function collectSourceBlindness() {
   let sb;
   try { sb = require('./source-blindness'); } catch { return []; }
@@ -939,6 +970,7 @@ async function evaluate(options = {}) {
     ...collectNudges(ctx),
     ...collectImports(ctx),
     ...collectSourceBlindness(),
+    ...collectWeeklyReport(),
     // Build 12.3K: a synthetic P0 for proving the watch end to end. Built from
     // its own store, contacts nothing, expires in minutes, titled "Test —".
     ...require('./synthetic-attention').collect(),
@@ -1162,6 +1194,7 @@ module.exports = {
   collectMeetings,
   // Exported for the test that shadow mode adds nothing to the pool.
   collectSourceBlindness,
+  collectWeeklyReport,
   FOCUS_DEFAULT,
   FOCUS_MAX,
 };
