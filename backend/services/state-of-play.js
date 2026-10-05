@@ -412,6 +412,9 @@ function snapshot(opts = {}) {
     poolReason: pool.known ? null : pool.reason,
     overdueByOrigin: pool.known ? tallyOrigins(active.filter(t => t.due_date && t.due_date < today)) : null,
     dueAhead: dueAhead(today, active),
+    // Can the work due be done in the free time there is (5 Oct 2026)? Read
+    // separately and never allowed to fail the panel.
+    capacity: (() => { try { return require('./task-capacity').read(); } catch (e) { return { known: false, why: e.message }; } })(),
   };
 
   const commitments = {

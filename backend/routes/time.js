@@ -116,6 +116,12 @@ router.get('/what-fits', (req, res) => {
  * one until the day it books a meeting on Christmas, so `source` and `ageDays`
  * are the answer, not a bare boolean.
  */
+// GET /api/time/capacity — can the work due be done? Cumulative work due by each of the next 7 days (from task sizes) against free diary time, the first day it runs out, and big tasks that must start today or cannot finish by their due date. Keywords: over capacity, start by, workload.
+router.get('/capacity', (req, res) => {
+  try { res.json({ ok: true, ...require('../services/task-capacity').read() }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 router.get('/working-days', (req, res) => {
   try {
     const wd = require('../services/working-days');

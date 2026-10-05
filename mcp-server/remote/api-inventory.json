@@ -4299,6 +4299,22 @@
     "stream": false
   },
   {
+    "id": "get_time_capacity",
+    "method": "GET",
+    "route": "/api/time/capacity",
+    "domain": "time",
+    "source": "routes/time.js",
+    "line": 120,
+    "description": "GET /api/time/capacity. can the work due be done? Cumulative work due by each of the next 7 days (from task sizes) against free diary time, the first day it runs out, and big tasks that must start today or cannot finish by their due date. Keywords: over capacity, start by, workload.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_time_gap",
     "method": "GET",
     "route": "/api/time/gap",
@@ -4339,7 +4355,7 @@
     "route": "/api/time/working-days",
     "domain": "time",
     "source": "routes/time.js",
-    "line": 119,
+    "line": 125,
     "description": "GET /api/time/working-days.",
     "params": [],
     "query": [],

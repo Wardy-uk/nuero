@@ -630,6 +630,44 @@ function collectWeeklyReport(now = new Date()) {
   }];
 }
 
+// More work due than free time, and big tasks that must start now
+// (5 Oct 2026). From task-capacity (sizes against the diary); never re-derived
+// here, and an unreadable read adds nothing rather than an all-clear.
+function collectCapacity() {
+  let c;
+  try { c = require('./task-capacity').read(); } catch { return []; }
+  if (!c || c.known === false) return [];
+  const hrs = (m) => (m >= 60 ? `${Math.round((m / 60) * 10) / 10}h` : `${m} min`);
+  const day = (k) => new Date(`${k}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' });
+  const items = [];
+  const big = (c.startBy || [])[0];
+  if (big) {
+    const title = big.status === 'start-today'
+      ? `Start "${big.text}" by ${big.latestStart.time} to finish by ${day(big.due)}`
+      : big.status === 'overdue'
+        ? `"${big.text}" is overdue — ${hrs(big.minutes)} of work`
+        : `"${big.text}" can't be finished by ${day(big.due)} on free time`;
+    items.push({
+      type: 'capacity', id: `capacity-start-${big.id}-${big.due}`, dedupeKey: `capacity:start:${big.id}:${big.due}`,
+      title,
+      reason: big.status === 'cannot-finish' ? `${hrs(big.shortMinutes)} short even starting now — re-date it, shrink it or hand some of it on.` : `Sized at ${hrs(big.minutes)}.`,
+      score: 84, urgency: 'high', source: 'neuro', actionHint: 'Open State of Play',
+      meta: { taskId: big.id, status: big.status, due: big.due },
+    });
+  }
+  if (c.overload) {
+    const o = c.overload;
+    items.push({
+      type: 'capacity', id: `capacity-over-${o.by}`, dedupeKey: `capacity:over:${o.by}`,
+      title: `More work due by ${day(o.by)} than you have time for`,
+      reason: `${hrs(o.dueMinutes)} due, ${hrs(o.freeMinutes)} free in your diary — ${hrs(o.shortMinutes)} short.`,
+      score: 80, urgency: 'high', source: 'neuro', actionHint: 'Open State of Play',
+      meta: { by: o.by, shortMinutes: o.shortMinutes },
+    });
+  }
+  return items;
+}
+
 function collectSourceBlindness() {
   let sb;
   try { sb = require('./source-blindness'); } catch { return []; }
@@ -971,6 +1009,7 @@ async function evaluate(options = {}) {
     ...collectImports(ctx),
     ...collectSourceBlindness(),
     ...collectWeeklyReport(),
+    ...collectCapacity(),
     // Build 12.3K: a synthetic P0 for proving the watch end to end. Built from
     // its own store, contacts nothing, expires in minutes, titled "Test —".
     ...require('./synthetic-attention').collect(),
@@ -1195,6 +1234,7 @@ module.exports = {
   // Exported for the test that shadow mode adds nothing to the pool.
   collectSourceBlindness,
   collectWeeklyReport,
+  collectCapacity,
   FOCUS_DEFAULT,
   FOCUS_MAX,
 };

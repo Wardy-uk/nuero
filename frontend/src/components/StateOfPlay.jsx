@@ -142,6 +142,46 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  */
 const ORIGIN_LABEL = { neuro: 'NEURO', microsoft: 'Microsoft', note: 'Daily note' };
 
+const hrs = (m) => (m >= 60 ? `${Math.round((m / 60) * 10) / 10}h` : `${m} min`);
+const dayLabel = (k) => new Date(`${k}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+
+/**
+ * Over capacity, and big tasks that must start now (5 Oct 2026). Sizes are the
+ * top of each band; free time is the diary's. An unreadable input SAYS so —
+ * never a "you're fine".
+ */
+function Capacity({ data }) {
+  if (!data) return null;
+  if (data.known === false) return <p className="sop-due-gap">⚠ Couldn't work out capacity — {data.why}.</p>;
+  const o = data.overload;
+  const start = data.startBy || [];
+  if (!o && !start.length) {
+    return <p className="sop-cap sop-cap--ok">The work due this week fits the free time in your diary.{data.assumedCount ? ` (${data.assumedCount} task${data.assumedCount === 1 ? '' : 's'} counted at 30 min — no size set.)` : ''}</p>;
+  }
+  const WORDS = { overdue: 'overdue — start it now', 'cannot-finish': "can't be finished by its date on free time alone", 'start-today': 'must start today to finish in time' };
+  return (
+    <section className="sop-cap">
+      {o && (
+        <p className="sop-cap-head">
+          <strong>Over capacity by {dayLabel(o.by)}:</strong> {hrs(o.dueMinutes)} of work due, {hrs(o.freeMinutes)} free — {hrs(o.shortMinutes)} short.
+          {data.assumedCount ? ` ${data.assumedCount} task${data.assumedCount === 1 ? ' has' : 's have'} no size and count as 30 min.` : ''}
+        </p>
+      )}
+      {start.length > 0 && (
+        <ul className="sop-cap-list">
+          {start.slice(0, 6).map((t) => (
+            <li key={`${t.id}-${t.due}`}>
+              <span className={`sop-cap-tag sop-cap-tag--${t.status}`}>{t.status === 'start-today' ? `start by ${t.latestStart.time}` : t.status === 'overdue' ? 'overdue' : 'too late'}</span>
+              {t.text} <span className="sop-cap-meta">· {hrs(t.minutes)} · due {dayLabel(t.due)} — {WORDS[t.status]}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="sop-cap-hint">Re-date, re-size, delegate or drop — the numbers come from each task's size and your diary's free time (09:00–17:30, working days).</p>
+    </section>
+  );
+}
+
 export function DueAhead({ data, overdue, overdueByOrigin, noDueDate, poolKnown, poolReason, onNavigate }) {
   if (!data || !Array.isArray(data.days) || data.days.length === 0) return null;
 
@@ -321,6 +361,7 @@ export default function StateOfPlay({ onNavigate }) {
       {/* ⚠ Directly under the focus band and ABOVE the stat row — Nick asked
           for it prominent, and the week ahead is the one thing on this panel he
           acts on rather than reads. The stats stay below it. */}
+      <Capacity data={tasks.capacity} />
       <DueAhead
         data={tasks.dueAhead}
         overdue={tasks.overdue}

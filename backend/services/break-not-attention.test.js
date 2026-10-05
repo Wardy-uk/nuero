@@ -51,3 +51,19 @@ test('the weekly report to Chris surfaces when late and unsent, never once sent'
     assert.deepEqual(collectWeeklyReport(), [], 'an unreadable tracker adds nothing rather than failing the pool');
   } finally { pd.build = real; }
 });
+
+test('capacity: a big task that must start now and an overload each become one card; unreadable adds nothing', () => {
+  const tc = require('./task-capacity');
+  const { collectCapacity } = require('./decision-engine');
+  const real = tc.read;
+  try {
+    tc.read = () => ({ known: true, overload: { by: '2026-10-09', dueMinutes: 1800, freeMinutes: 480, shortMinutes: 1320 },
+      startBy: [{ id: 350, text: 'Build call metrics in Nova', due: '2026-10-09', minutes: 480, status: 'start-today', latestStart: { date: '2026-10-05', time: '14:00' } }] });
+    const items = collectCapacity();
+    assert.equal(items.length, 2);
+    assert.match(items[0].title, /^Start "Build call metrics in Nova" by 14:00 to finish by Friday/);
+    assert.match(items[1].reason, /30h due, 8h free in your diary — 22h short/);
+    tc.read = () => ({ known: false, why: 'diary unreadable' });
+    assert.deepEqual(collectCapacity(), []);
+  } finally { tc.read = real; }
+});

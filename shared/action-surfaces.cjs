@@ -142,6 +142,7 @@ function resolveNueroNavigation(raw = {}) {
   if (kind === 'focus') return { view: 'today', context: {} };
   if (kind === 'capture') return { view: 'chat', context: { mode: 'capture' } };
   if (kind === 'weekly_risk') return { view: 'weekly-risk', context: {} };
+  if (kind === 'capacity') return { view: 'state', context: {} };
   return null;
 }
 

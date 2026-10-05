@@ -450,3 +450,13 @@ button.sop-stat:hover { border-color: var(--accent-dim); }
   .sop-due-track { height: 60px; }
   .sop-due-date { display: none; }
 }
+
+/* Capacity (5 Oct 2026) */
+.sop-cap { margin: 0 0 14px; padding: 10px 14px; border: 1px solid rgba(248, 81, 73, 0.4); border-radius: var(--radius); background: rgba(248, 81, 73, 0.07); font-size: 13px; }
+.sop-cap--ok { border-color: var(--border); background: var(--bg-card); color: var(--text-secondary); }
+.sop-cap-head { margin: 0 0 6px; color: var(--text-primary); }
+.sop-cap-list { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.sop-cap-tag { display: inline-block; min-width: 92px; margin-right: 8px; font-family: var(--font-mono); font-size: 11px; color: #fca5a5; }
+.sop-cap-tag--start-today { color: #fcd34d; }
+.sop-cap-meta { color: var(--text-muted); }
+.sop-cap-hint { margin: 0; color: var(--text-muted); font-size: 11px; }
