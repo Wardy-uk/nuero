@@ -220,13 +220,22 @@ function Classifications({ data, busy, act }) {
 
 // "12 upcoming · 40 in total" — from the world model. null is "not counted",
 // never 0: an unreadable count must not read as an empty calendar.
+// The phone sends its diary from yesterday to two weeks ahead, so a phone
+// calendar's count is the next fortnight — never its whole history. An
+// untracked reminder list is never read, so 0 there means "not read".
 function entryLine(c) {
   const e = c.entries;
+  if (c.kind === 'reminder-list') {
+    const tracked = c.classification && typeof c.classification.tracked === 'boolean' ? c.classification.tracked : c.defaultTracked;
+    if (!tracked) return 'not tracked — NEURO does not read this list';
+  }
+  if (c.kind === 'calendar' && c.classification && c.classification.tracked === false) return 'ignored';
   if (e == null) return 'entries not counted';
-  if (!e.total) return 'no entries seen';
-  return c.kind === 'calendar'
-    ? `${e.current} upcoming · ${e.total} in total`
-    : `${e.current} open · ${e.total} in total`;
+  if (c.kind === 'calendar') {
+    const span = c.keyedBy === 'account' ? 'coming up' : 'in the next two weeks';
+    return e.current ? `${e.current} ${span}` : `nothing ${span}`;
+  }
+  return e.total ? `${e.current} open · ${e.total - e.current} done` : 'empty';
 }
 
 // Event times are SLICED out of the wall-clock string, never parsed (BST rule).

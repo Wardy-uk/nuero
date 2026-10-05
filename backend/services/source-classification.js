@@ -268,7 +268,7 @@ function listContainers({ now = Date.now() } = {}) {
     for (const c of map.values()) {
       if (!rows.some((r) => r.source_key === c.sourceKey)) {
         out.push({ kind, sourceKey: c.sourceKey, label: c.label || c.sourceKey, containerId: null, provider: c.sourceKey === GRAPH_PRIMARY ? 'graph' : 'eventkit',
-          keyedBy: /:id:/.test(c.sourceKey) ? 'id' : 'title', ambiguous: false, firstSeenAt: null, lastSeenAt: null, classification: c,
+          keyedBy: /:id:/.test(c.sourceKey) ? 'id' : c.sourceKey === GRAPH_PRIMARY ? 'account' : 'title', ambiguous: false, firstSeenAt: null, lastSeenAt: null, classification: c,
           defaultTracked: kind === 'reminder-list' ? defaultTracked(c.label) : null, notSeen: true });
       }
     }
@@ -321,6 +321,11 @@ function entryCounts({ now = Date.now() } = {}) {
                             FROM wm_meetings WHERE status = 'scheduled' AND calendar_key IS NOT NULL GROUP BY calendar_key`, [today])) {
     out.set(r.k, { total: r.total, current: r.cur || 0 });
   }
+  // Outlook rows projected before Build 11C carry no calendar_key; every Graph
+  // meeting IS the work account, so count by provider instead.
+  const g = db.get(`SELECT COUNT(*) AS total, SUM(CASE WHEN start_local >= ? THEN 1 ELSE 0 END) AS cur
+                      FROM wm_meetings WHERE status = 'scheduled' AND provider = 'graph'`, [today]);
+  out.set(GRAPH_PRIMARY, { total: (g && g.total) || 0, current: (g && g.cur) || 0 });
   for (const { key, row } of _reminderRows()) {
     if (!key) continue;
     const c = out.get(key) || { total: 0, current: 0 };
@@ -336,10 +341,12 @@ function containerEntries(kind, sourceKey, { limit = 200, now = Date.now() } = {
   const today = todayLocal(now);
   if (kind === 'calendar') {
     const db = _db();
+    const where = sourceKey === GRAPH_PRIMARY ? "provider = 'graph'" : 'calendar_key = ?';
+    const args = sourceKey === GRAPH_PRIMARY ? [] : [sourceKey];
     const upcoming = db.all(`SELECT title, start_local, end_local, is_all_day FROM wm_meetings
-                              WHERE status = 'scheduled' AND calendar_key = ? AND start_local >= ? ORDER BY start_local LIMIT ?`, [sourceKey, today, limit]);
+                              WHERE status = 'scheduled' AND ${where} AND start_local >= ? ORDER BY start_local LIMIT ?`, [...args, today, limit]);
     const past = db.all(`SELECT title, start_local, end_local, is_all_day FROM wm_meetings
-                          WHERE status = 'scheduled' AND calendar_key = ? AND start_local < ? ORDER BY start_local DESC LIMIT ?`, [sourceKey, today, limit]);
+                          WHERE status = 'scheduled' AND ${where} AND start_local < ? ORDER BY start_local DESC LIMIT ?`, [...args, today, limit]);
     const shape = (r) => ({ title: r.title, start: r.start_local, end: r.end_local || null, allDay: r.is_all_day === 1 });
     return { ok: true, kind, sourceKey, current: upcoming.map(shape), past: past.map(shape) };
   }
