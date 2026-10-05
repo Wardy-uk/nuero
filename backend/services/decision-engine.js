@@ -638,15 +638,21 @@ function collectCapacity() {
   try { c = require('./task-capacity').read(); } catch { return []; }
   if (!c || c.known === false) return [];
   const hrs = (m) => (m >= 60 ? `${Math.round((m / 60) * 10) / 10}h` : `${m} min`);
-  const day = (k) => new Date(`${k}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' });
+  const keyOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const now = new Date();
+  const todayK = keyOf(now);
+  const tomorrowK = keyOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+  const day = (k) => (k === todayK ? 'today' : k === tomorrowK ? 'tomorrow'
+    : new Date(`${k}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' }));
+  const by = (k) => (k === todayK || k === tomorrowK ? `by ${day(k)}`.replace('by today', 'by the end of today') : `by ${day(k)}`);
   const items = [];
   const big = (c.startBy || [])[0];
   if (big) {
     const title = big.status === 'start-today'
-      ? `Start "${big.text}" by ${big.latestStart.time} to finish by ${day(big.due)}`
+      ? `Start "${big.text}" by ${big.latestStart.time} to finish ${by(big.due)}`
       : big.status === 'overdue'
         ? `"${big.text}" is overdue — ${hrs(big.minutes)} of work`
-        : `"${big.text}" can't be finished by ${day(big.due)} on free time`;
+        : `"${big.text}" can't be finished ${by(big.due)} on free time`;
     items.push({
       type: 'capacity', id: `capacity-start-${big.id}-${big.due}`, dedupeKey: `capacity:start:${big.id}:${big.due}`,
       title,
@@ -659,7 +665,7 @@ function collectCapacity() {
     const o = c.overload;
     items.push({
       type: 'capacity', id: `capacity-over-${o.by}`, dedupeKey: `capacity:over:${o.by}`,
-      title: `More work due by ${day(o.by)} than you have time for`,
+      title: `More work due ${by(o.by)} than you have time for`,
       reason: `${hrs(o.dueMinutes)} due, ${hrs(o.freeMinutes)} free in your diary — ${hrs(o.shortMinutes)} short.`,
       score: 80, urgency: 'high', source: 'neuro', actionHint: 'Open State of Play',
       meta: { by: o.by, shortMinutes: o.shortMinutes },
