@@ -83,9 +83,20 @@ function Outcome({ result, onDismiss, onNavigate }) {
         {result.text}
       </span>
       {result.ok && result.navigate && onNavigate && (
-        <button className="ap-btn ap-btn-ghost" onClick={() => onNavigate(result.navigate)}>
-          Go to {result.navigate}
-        </button>
+        // ⚠ "actions" IS this screen: navigating to it did nothing (5 Oct 2026).
+        // The draft it points at is in Drafted by NEURO above — scroll there.
+        result.navigate === 'actions' ? (
+          <button className="ap-btn ap-btn-ghost" onClick={() => {
+            const el = document.getElementById('drafted-by-neuro');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}>
+            Show the draft
+          </button>
+        ) : (
+          <button className="ap-btn ap-btn-ghost" onClick={() => onNavigate(result.navigate)}>
+            Go to {result.navigate}
+          </button>
+        )
       )}
       {result.url && (
         <a className="ap-btn ap-btn-ghost" href={result.url} target="_blank" rel="noreferrer">Open</a>
@@ -272,6 +283,10 @@ function TriageBar({ facets, filter, filteredTotal, onFilter, onBulkReject, busy
 }
 
 export default function ActionsPanel({ onNavigate }) {
+  // Bumped after any approve/reject here, so Drafted by NEURO re-reads: an
+  // approved "Draft a reply" CREATES a governed draft, and the section had
+  // already loaded without it (5 Oct 2026).
+  const [draftsKey, setDraftsKey] = useState(0);
   const [data, setData] = useState(null);
   const [items, setItems] = useState([]);         // the pending rows on screen
   const [error, setError] = useState(null);
@@ -308,6 +323,7 @@ export default function ActionsPanel({ onNavigate }) {
       if (verb === 'reject') {
         setOutcomes(o => [{ id: action.id, ok: true, label, text: 'Rejected' }, ...o]);
       } else {
+        setDraftsKey(k => k + 1);
         setOutcomes(o => [{
           id: action.id,
           ok: Boolean(body.ok),
@@ -451,7 +467,7 @@ export default function ActionsPanel({ onNavigate }) {
 
       {/* Build 6: NEURO's governed drafts — the one queue whose approval can
           SEND (a chase), and only the exact words shown. Above the legacy queue. */}
-      <PreparedActions />
+      <div id="drafted-by-neuro"><PreparedActions key={draftsKey} /></div>
 
       {/* Only worth the space once the queue is past what one screen can hold.
           Below that, filters are clutter in front of a list you can just read. */}
