@@ -460,9 +460,25 @@ function observations({ now = Date.now() } = {}) {
         ? `${f.label} has not sent a fix since you started travelling.` : f.condition === 'never-seen'
         ? `${f.label} has never reported.` : `${f.label} has gone quiet.`,
       detail: f.whyItMatters,
+      // Build 14Q: what the bounded investigation found, if one ran — so IF
+      // the attention policy decides to say something, it says the useful
+      // thing ("open SAiM on the phone"). It changes no decision.
+      investigation: _investigationFor(f),
     });
   }
   return out;
+}
+
+function _investigationFor(f) {
+  try {
+    const investigations = require('./investigations');
+    const inv = investigations.byDedupe(`${investigations.TYPE}:${f.source}:${f.findingId}`);
+    if (!inv) return null;
+    const s = investigations.summaryFor(inv);
+    return { id: inv.id, state: inv.state, likelyCause: s.likelyCause, confidence: s.confidence, recommended: s.recommended, eligible: s.attention.eligible };
+  } catch {
+    return null; // a missing table or bad row must never cost the attention pass
+  }
 }
 
 /**

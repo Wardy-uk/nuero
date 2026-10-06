@@ -52,6 +52,29 @@ router.get('/findings', (req, res) => {
   }
 });
 
+// GET /api/events/investigations — bounded investigations of a sense that went blind: state, evidence, hypotheses, confidence, recommended fix (never executed), stop reason, and a short summary. ?open=1 for open ones only
+router.get('/investigations', (req, res) => {
+  try {
+    const investigations = require('../services/investigations');
+    const rows = investigations.list({ open: req.query.open === '1' ? true : null, limit: Math.min(Number(req.query.limit) || 50, 200) });
+    res.json({ ok: true, investigations: rows.map((i) => ({ ...i, summary: investigations.summaryFor(i) })) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/events/investigations/:id — one investigation with its full audit trail (detected, evidence refs, hypotheses, decision, fix, approval hand-off, resolution, expiry)
+router.get('/investigations/:id', (req, res) => {
+  try {
+    const investigations = require('../services/investigations');
+    const one = investigations.get(req.params.id);
+    if (!one) return res.status(404).json({ ok: false, error: 'no such investigation' });
+    res.json({ ok: true, investigation: { ...one, summary: investigations.summaryFor(one) }, events: investigations.events(one.id) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // GET /api/events/observations — latest native observation per thing (health metric, device, location fix time), with source app, observed vs received time, freshness and evidence event. No coordinates. ?kind=health|device|location
 router.get('/observations', (req, res) => {
   try {

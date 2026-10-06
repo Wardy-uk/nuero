@@ -139,8 +139,13 @@ async function fireWebhook(taskId, source) {
  *   client may treat its presence as the whole signal that the task is open
  *   again on purpose rather than because the tick was lost.
  */
-async function completeMicrosoftTask({ msId, source = null, listId = null }) {
+async function completeMicrosoftTask({ msId, source = null, listId = null, initiatedBy = 'nick' }) {
   if (!msId) return { ok: false, error: 'msId required' };
+  // Build 14D: the EXACT Graph id, or nothing. A machine caller cannot reach a
+  // task by wording or by a file offset — and an id is one opaque token.
+  if (typeof msId !== 'string' || /\s/.test(msId) || msId.length > 512) {
+    return { ok: false, error: 'msId must be the exact Microsoft task id' };
+  }
 
   // Build 13M: ledgered BEFORE anything is touched. The same task completed
   // twice on one day is a duplicate and does nothing — which matters doubly
@@ -149,12 +154,19 @@ async function completeMicrosoftTask({ msId, source = null, listId = null }) {
   const ext = require('./external-writes');
   const claim = ext.begin({
     writer: 'microsoft.task.complete', key: `ms-complete:${msId}:${ext.localDate()}`, target: msId,
-    request: { msId, source: source || null, listId: listId || null },
+    request: { msId, source: source || null, listId: listId || null }, initiatedBy,
   });
   if (!claim.ok && claim.duplicate) {
     const prior = claim.entry.result || {};
     return { ok: true, pushed: prior.pushed || 'graph', rolled: prior.rolled || null, held: false, warning: null,
       mirrored: false, text: null, duplicate: true };
+  }
+  // Build 14D: an unknown earlier outcome HOLDS (a machine never re-attempts
+  // one — external-writes decides), and a refused claim does nothing. Before
+  // this the code fell through and completed with no ledger row at all.
+  if (!claim.ok) {
+    return { ok: false, blocked: !!claim.blocked, pushed: 'none', rolled: null, held: true, mirrored: false, text: null,
+      error: claim.blocked ? 'The last completion of this task has an unknown outcome — NEURO holds it rather than retrying. Check the board.' : claim.why };
   }
   const ledgerId = claim.ok ? claim.entry.id : null;
   const settle = (status, result, readback) => { if (ledgerId) ext.settle(ledgerId, { status, result, readback }); };
@@ -162,7 +174,10 @@ async function completeMicrosoftTask({ msId, source = null, listId = null }) {
   const mirror = resolveMirror({ msId });
   let mirrorText = null;
   let mirrored = false;
-  if (mirror) {
+  // ⚠ Build 14D: completion only, never a toggle. A line already ticked is
+  // left alone — flipping it would UN-complete the task in the mirror.
+  if (mirror && mirror.done) mirrorText = mirror.text;
+  if (mirror && !mirror.done) {
     try {
       // The id is passed as the expectation as well as being how the line was
       // found — belt and braces, and it costs one regex.

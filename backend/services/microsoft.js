@@ -1073,62 +1073,8 @@ async function fetchPlannerPlanNames(planIds, now = Date.now()) {
   return out;
 }
 
-// Create a To-Do task via bridge
-async function createTodoTask(listId, title, body) {
-  if (isBridgeConfigured()) {
-    const baseUrl = process.env.NOVA_BRIDGE_URL;
-    const secret = process.env.NOVA_BRIDGE_SECRET;
-    try {
-      const res = await fetch(`${baseUrl}/api/neuro-bridge/todo/tasks`, {
-        method: 'POST',
-        headers: { 'x-neuro-bridge-secret': secret, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ todoTaskListId: listId, title, body: body || '' }),
-        signal: AbortSignal.timeout(10000)
-      });
-      const json = await res.json();
-      return json.ok ? json.data : null;
-    } catch (e) { console.warn('[ToDo] Create failed:', e.message); }
-  }
-  return null;
-}
-
-// Update a To-Do task via bridge (e.g. mark complete)
-async function updateTodoTask(taskId, listId, updates) {
-  if (isBridgeConfigured()) {
-    const baseUrl = process.env.NOVA_BRIDGE_URL;
-    const secret = process.env.NOVA_BRIDGE_SECRET;
-    try {
-      const res = await fetch(`${baseUrl}/api/neuro-bridge/todo/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers: { 'x-neuro-bridge-secret': secret, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ todoTaskListId: listId, ...updates }),
-        signal: AbortSignal.timeout(10000)
-      });
-      const json = await res.json();
-      return json.ok ? json.data : null;
-    } catch (e) { console.warn('[ToDo] Update failed:', e.message); }
-  }
-  return null;
-}
-
-// Update a Planner task via bridge
-async function updatePlannerTask(taskId, updates) {
-  if (isBridgeConfigured()) {
-    const baseUrl = process.env.NOVA_BRIDGE_URL;
-    const secret = process.env.NOVA_BRIDGE_SECRET;
-    try {
-      const res = await fetch(`${baseUrl}/api/neuro-bridge/planner/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers: { 'x-neuro-bridge-secret': secret, 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-        signal: AbortSignal.timeout(10000)
-      });
-      const json = await res.json();
-      return json.ok ? json.data : null;
-    } catch (e) { console.warn('[Planner] Update failed:', e.message); }
-  }
-  return null;
-}
+// Build 14B: createTodoTask / updateTodoTask / updatePlannerTask (bridge
+// passthroughs that forwarded an arbitrary body to NOVA) were deleted.
 
 // graphFetch is GET-only (https.get), so writes go through this.
 async function graphWrite(urlPath, method, body, token, extraHeaders = {}) {
@@ -1948,9 +1894,6 @@ module.exports = {
   fetchTodoTasks,
   fetchPlannerTasks,
   fetchPlannerPlanNames,
-  createTodoTask,
-  updateTodoTask,
-  updatePlannerTask,
   completeTodoTask,
   completePlannerTask,
   completeMicrosoftTask,

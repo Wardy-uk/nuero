@@ -5,7 +5,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 367,
+    "line": 374,
     "description": "DELETE /api/actions/:id/snooze. wake it now. Every other decision in NEURO",
     "params": [
       "id"
@@ -322,7 +322,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 861,
+    "line": 888,
     "description": "DELETE /api/todos/moscow. remove MoSCoW rating for a task",
     "params": [],
     "query": [],
@@ -798,7 +798,7 @@
     "route": "/api/auth/check",
     "domain": "auth",
     "source": "server.js",
-    "line": 155,
+    "line": 96,
     "description": "GET /api/auth/check.",
     "params": [],
     "query": [
@@ -1721,12 +1721,49 @@
     "stream": false
   },
   {
+    "id": "get_events_investigations",
+    "method": "GET",
+    "route": "/api/events/investigations",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 56,
+    "description": "GET /api/events/investigations. bounded investigations of a sense that went blind: state, evidence, hypotheses, confidence, recommended fix (never executed), stop reason, and a short summary. ?open=1 for open ones only",
+    "params": [],
+    "query": [
+      "limit",
+      "open"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_events_investigations_by_id",
+    "method": "GET",
+    "route": "/api/events/investigations/:id",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 67,
+    "description": "GET /api/events/investigations/:id. one investigation with its full audit trail (detected, evidence refs, hypotheses, decision, fix, approval hand-off, resolution, expiry)",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_events_observations",
     "method": "GET",
     "route": "/api/events/observations",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 56,
+    "line": 79,
     "description": "GET /api/events/observations. latest native observation per thing (health metric, device, location fix time), with source app, observed vs received time, freshness and evidence event. No coordinates. ?kind=health|device|location",
     "params": [],
     "query": [
@@ -1744,7 +1781,7 @@
     "route": "/api/events/runtime",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 66,
+    "line": 89,
     "description": "GET /api/events/runtime. durable scheduled jobs (calendar sync, source staleness check, ambient pass): due, running, succeeded, failed, skipped and overdue runs, scheduled vs actual start time, lag and duration. ?job=<name> adds that job's recent runs",
     "params": [],
     "query": [
@@ -1794,7 +1831,7 @@
     "route": "/api/events/world/commitment-risk",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 168,
+    "line": 191,
     "description": "GET /api/events/world/commitment-risk. SHADOW commitment-at-risk findings: promises (Nick's, and what others owe him) that are about to matter and still look open — a stated deadline today/tomorrow or recently passed, or the next occurrence of the meeting they came from within 24h — with evidence, w",
     "params": [],
     "query": [
@@ -1812,7 +1849,7 @@
     "route": "/api/events/world/commitments",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 127,
+    "line": 150,
     "description": "GET /api/events/world/commitments. Build 4 world-model commitments (promises, waiting-for, owed, obligations): who promised what to whom, from which meeting write-up or task, open or closed and by what authority, with the promisor resolved to a person only on an exact name. direction by-nick = Nick'",
     "params": [],
     "query": [
@@ -1831,7 +1868,7 @@
     "route": "/api/events/world/meeting-commitments",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 139,
+    "line": 162,
     "description": "GET /api/events/world/meeting-commitments. what came out of the last <meeting>: the commitments from the newest written-up occurrence of a recurring meeting, which are still open, who owns each, and which are due before the next occurrence. ?title=Tech Leadership",
     "params": [],
     "query": [
@@ -1849,7 +1886,7 @@
     "route": "/api/events/world/meeting-context",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 105,
+    "line": 128,
     "description": "GET /api/events/world/meeting-context. SHADOW meeting-context findings: before a real meeting, what NEURO holds about it (open actions from the last occurrence, items owed from it, urgent emails from attendees), the evidence and missing evidence, confidence, recommended timing and what the attention",
     "params": [],
     "query": [
@@ -1867,7 +1904,7 @@
     "route": "/api/events/world/meeting-intelligence",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 179,
+    "line": 202,
     "description": "GET /api/events/world/meeting-intelligence. SHADOW meeting findings (Build 5A), one per upcoming real meeting: your actions and items owed from the last occurrence with their progress state, linked commitment-risk findings (by id, not restated), related urgent email, what could not be read, confiden",
     "params": [],
     "query": [
@@ -1885,7 +1922,7 @@
     "route": "/api/events/world/meeting-prep-parity",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 190,
+    "line": 213,
     "description": "GET /api/events/world/meeting-prep-parity. the old live meeting-prep push beside the unified meeting pipeline, per meeting: both said something, only one did, or neither; and whether the record supports retiring meeting-prep (it is never retired automatically). ?days=14",
     "params": [],
     "query": [
@@ -1903,7 +1940,7 @@
     "route": "/api/events/world/meetings",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 80,
+    "line": 103,
     "description": "GET /api/events/world/meetings. the world model's meeting state: what meeting is happening now, what is next, who is in it (mapped to known people), which calendar sources support it, and how fresh each source is",
     "params": [],
     "query": [],
@@ -1919,7 +1956,7 @@
     "route": "/api/events/world/obligations",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 217,
+    "line": 240,
     "description": "GET /api/events/world/obligations. counts across the Build 4 task and commitment projections: tasks by status, sources by system, commitments by direction/status/kind, how promisors were resolved, how many are linked to a meeting, and the relationship links (synced, realised-by, possible-same)",
     "params": [],
     "query": [],
@@ -1935,7 +1972,7 @@
     "route": "/api/events/world/people",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 95,
+    "line": 118,
     "description": "GET /api/events/world/people. people known to the world model (declared in People notes): names, email addresses, explicitly stated role/team/relationship, provenance; plus any address two notes both claim",
     "params": [],
     "query": [],
@@ -1951,7 +1988,7 @@
     "route": "/api/events/world/presence",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 89,
+    "line": 112,
     "description": "GET /api/events/world/presence. Build 13H: who is home, from Home Assistant on the event spine: Nick home/away/work/zone/unknown, whether anyone else is in and who HA names, when each last changed, and the source's health (a source that has not answered makes every answer unknown, never away)",
     "params": [],
     "query": [],
@@ -1967,7 +2004,7 @@
     "route": "/api/events/world/progress",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 201,
+    "line": 224,
     "description": "GET /api/events/world/progress. Build 5D progress evidence (did it happen, sent email, later note, fulfilled, likely done): with ?commitmentId=…, one commitment's derived state (fulfilled = fact; likely_fulfilled = an inference that never completes it; contradicted; progress_observed; no_evidence; u",
     "params": [],
     "query": [
@@ -1985,7 +2022,7 @@
     "route": "/api/events/world/tasks",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 116,
+    "line": 139,
     "description": "GET /api/events/world/tasks. Build 4 world-model tasks (obligation, todo, task): every task NEURO knows from its own task list and Microsoft Planner / To Do, one row per real task (a Microsoft task linked to a NEURO task by its id is one task, with both sources), status with which source closed it, ",
     "params": [],
     "query": [
@@ -4176,7 +4213,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 292,
+    "line": 233,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -4493,7 +4530,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 810,
+    "line": 837,
     "description": "GET /api/todos/moscow. MoSCoW ratings, keyed by task id for the tasks NEURO owns",
     "params": [],
     "query": [],
@@ -4509,7 +4546,7 @@
     "route": "/api/todos/moscow/review",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 875,
+    "line": 902,
     "description": "GET /api/todos/moscow/review. untriaged tasks for the swipe review.",
     "params": [],
     "query": [],
@@ -5253,44 +5290,6 @@
     "stream": false
   },
   {
-    "id": "patch_microsoft_planner_tasks_by_taskId",
-    "method": "PATCH",
-    "route": "/api/microsoft/planner/tasks/:taskId",
-    "domain": "microsoft",
-    "source": "routes/microsoft.js",
-    "line": 123,
-    "description": "PATCH /api/microsoft/planner/tasks/:taskId. update a Planner task",
-    "params": [
-      "taskId"
-    ],
-    "query": [],
-    "body": [],
-    "queryOpen": false,
-    "bodyOpen": true,
-    "multipart": false,
-    "stream": false
-  },
-  {
-    "id": "patch_microsoft_todo_tasks_by_taskId",
-    "method": "PATCH",
-    "route": "/api/microsoft/todo/tasks/:taskId",
-    "domain": "microsoft",
-    "source": "routes/microsoft.js",
-    "line": 110,
-    "description": "PATCH /api/microsoft/todo/tasks/:taskId. update a To-Do task",
-    "params": [
-      "taskId"
-    ],
-    "query": [],
-    "body": [
-      "listId"
-    ],
-    "queryOpen": false,
-    "bodyOpen": true,
-    "multipart": false,
-    "stream": false
-  },
-  {
     "id": "patch_tasks_by_id",
     "method": "PATCH",
     "route": "/api/tasks/:id",
@@ -5314,7 +5313,7 @@
     "route": "/api/todos/ms/:msId",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 705,
+    "line": 720,
     "description": "PATCH /api/todos/ms/:msId.",
     "params": [
       "msId"
@@ -5632,7 +5631,7 @@
     "route": "/api/actions",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 293,
+    "line": 300,
     "description": "POST /api/actions.",
     "params": [],
     "query": [],
@@ -5657,7 +5656,7 @@
     "route": "/api/actions/batch",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 407,
+    "line": 414,
     "description": "POST /api/actions/batch. approve or reject many at once",
     "params": [],
     "query": [],
@@ -5676,7 +5675,7 @@
     "route": "/api/actions/bulk-reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 455,
+    "line": 462,
     "description": "POST /api/actions/bulk-reject.",
     "params": [],
     "query": [],
@@ -5694,7 +5693,7 @@
     "route": "/api/actions/:id/approve",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 380,
+    "line": 387,
     "description": "POST /api/actions/:id/approve.",
     "params": [
       "id"
@@ -5712,7 +5711,7 @@
     "route": "/api/actions/:id/reject",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 392,
+    "line": 399,
     "description": "POST /api/actions/:id/reject. reject and optionally suppress",
     "params": [
       "id"
@@ -5730,7 +5729,7 @@
     "route": "/api/actions/:id/snooze",
     "domain": "actions",
     "source": "routes/actions.js",
-    "line": 339,
+    "line": 346,
     "description": "POST /api/actions/:id/snooze.   { minutes }  — \"not now\".",
     "params": [
       "id"
@@ -5907,7 +5906,7 @@
     "route": "/api/attention/meeting/finished",
     "domain": "attention",
     "source": "routes/attention.js",
-    "line": 265,
+    "line": 266,
     "description": "POST /api/attention/meeting/finished.",
     "params": [],
     "query": [],
@@ -5925,7 +5924,7 @@
     "route": "/api/attention/meeting/resume",
     "domain": "attention",
     "source": "routes/attention.js",
-    "line": 305,
+    "line": 306,
     "description": "POST /api/attention/meeting/resume.",
     "params": [],
     "query": [],
@@ -5966,7 +5965,7 @@
     "route": "/api/auth/login",
     "domain": "auth",
     "source": "server.js",
-    "line": 147,
+    "line": 88,
     "description": "POST /api/auth/login.",
     "params": [],
     "query": [],
@@ -7840,33 +7839,13 @@
     "route": "/api/microsoft/tasks/sync",
     "domain": "microsoft",
     "source": "routes/microsoft.js",
-    "line": 134,
+    "line": 105,
     "description": "POST /api/microsoft/tasks/sync. sync MS tasks to Obsidian vault",
     "params": [],
     "query": [],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
-    "multipart": false,
-    "stream": false
-  },
-  {
-    "id": "post_microsoft_todo_tasks",
-    "method": "POST",
-    "route": "/api/microsoft/todo/tasks",
-    "domain": "microsoft",
-    "source": "routes/microsoft.js",
-    "line": 97,
-    "description": "POST /api/microsoft/todo/tasks. create a To-Do task",
-    "params": [],
-    "query": [],
-    "body": [
-      "body",
-      "listId",
-      "title"
-    ],
-    "queryOpen": false,
-    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },
@@ -9973,7 +9952,7 @@
     "route": "/api/todos/complete-ms",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 774,
+    "line": 797,
     "description": "POST /api/todos/complete-ms. complete a Microsoft To-Do/Planner task and",
     "params": [],
     "query": [],
@@ -10031,7 +10010,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 839,
+    "line": 866,
     "description": "POST /api/todos/moscow.",
     "params": [],
     "query": [],
@@ -10066,7 +10045,7 @@
     "route": "/api/todos/suggestions/:actionId/fields",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 934,
+    "line": 961,
     "description": "POST /api/todos/suggestions/:actionId/fields. set the moscow, priority and",
     "params": [
       "actionId"

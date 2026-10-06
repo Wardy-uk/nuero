@@ -702,11 +702,34 @@ router.get('/ms/:msId', async (req, res) => {
  * accepted it would show an edit that may never have landed. Only a field that
  * actually SAVED reaches the mirror.
  */
+const MS_EDIT_FIELDS = new Set(['source', 'listId', 'title', 'dueDate', 'notes', 'filePath', 'lineNumber']);
+/** Pure. Null when the body is a well-formed explicit edit, else the reason. */
+function msEditShapeProblem(body) {
+  if (body == null) return null;
+  if (typeof body !== 'object' || Array.isArray(body)) return 'the body must be an object';
+  const unknown = Object.keys(body).filter((k) => !MS_EDIT_FIELDS.has(k));
+  if (unknown.length) return `unknown field(s): ${unknown.join(', ')} — only title, dueDate and notes can be changed`;
+  for (const k of ['title', 'notes', 'dueDate', 'source', 'listId', 'filePath']) {
+    const v = body[k];
+    if (v !== undefined && v !== null && typeof v !== 'string') return `${k} must be a string`;
+  }
+  if (body.lineNumber !== undefined && body.lineNumber !== null && !Number.isInteger(body.lineNumber)) return 'lineNumber must be an integer';
+  return null;
+}
+
 router.patch('/ms/:msId', async (req, res) => {
   try {
     const { msId } = req.params;
     const { source, listId, title, dueDate, notes, filePath, lineNumber } = req.body || {};
     if (!msId) return res.status(400).json({ error: 'msId required' });
+    // Build 14B: this is the ONE explicit Microsoft edit, so its shape is closed.
+    // An unknown key or a nested value is refused (and logged) rather than
+    // silently dropped — a caller that sent `assignments` must hear "no", not "ok".
+    const bad = msEditShapeProblem(req.body);
+    if (bad) {
+      console.warn(`[Todos] refused MS edit on ${msId}: ${bad}`);
+      return res.status(400).json({ ok: false, error: bad });
+    }
 
     const patch = {};
     if (title !== undefined) patch.title = title;
@@ -780,7 +803,11 @@ router.post('/complete-ms', async (req, res) => {
     // resolves the mirror line by ID, because an offset captured before the last
     // `syncMicrosoftTasks` can now name a different task and this path TICKS it.
     // The client still sends them; they are ignored rather than trusted.
-    const result = await msComplete.completeMicrosoftTask({ msId, source, listId: listId || null });
+    const result = await msComplete.completeMicrosoftTask({
+      msId, source, listId: listId || null,
+      // Build 14D: a machine caller is bounded — an unknown outcome is held, never retried.
+      initiatedBy: req.apiClient ? `machine:${req.apiClient}` : 'nick',
+    });
     if (!result.ok) return res.status(400).json({ error: result.error });
 
     res.json({

@@ -120,7 +120,12 @@ function begin({ writer, key, target, request, initiatedBy = 'nick', now = Date.
     if (held.status === 'confirmed' || held.status === 'applied-unverified') {
       return { ok: false, duplicate: true, entry: _shape(held), why: 'already done — not repeated' };
     }
-    if ((held.status === 'requested' || held.status === 'uncertain') && !w.idempotentTarget) {
+    // Build 14D: `idempotentTarget` lets NICK re-attempt an unknown outcome
+    // (setting 100% twice is harmless). A MACHINE never does — an agent that
+    // retries whatever it was not sure about is exactly how "do it once"
+    // becomes "do it until it answers". Its unknown outcome is held.
+    if ((held.status === 'requested' || held.status === 'uncertain')
+        && (!w.idempotentTarget || String(initiatedBy).startsWith('machine'))) {
       return { ok: false, blocked: true, entry: _shape(held), why: 'the last attempt\'s outcome is unknown — verify it before repeating' };
     }
     // failed (provably not applied), or an unknown outcome on a target where

@@ -62,13 +62,48 @@ const DEFAULT_DEPS = {
   riskFindings: () => require('./commitment-risk').findings({ status: 'active', limit: 500 }),
   waitingCommitmentId: (key) => require('./world-obligations').waitingCommitmentId(key),
   preparedFor: (findingId) => require('./prepared-actions').forFinding(findingId),
+  personContext: (name) => readPersonContext(name),
 };
+
+/**
+ * Build 14T: the two things the old meeting-prep push carried that this
+ * pipeline did not — a People note's ROLE and the LAST 1-2-1. Read from the
+ * person's own note (People/<name>.md), the last 1-2-1 folded with what
+ * one-to-one-detect has seen written up since (the stamp lags by a day).
+ * Unknown stays null; nothing is inferred.
+ */
+function readPersonContext(name) {
+  const fs = require('fs');
+  const path = require('path');
+  const root = process.env.OBSIDIAN_VAULT_PATH;
+  if (!root || !name || /[\\/]|\.\./.test(name)) return null;
+  let content;
+  try { content = fs.readFileSync(path.join(root, 'People', `${name}.md`), 'utf8'); } catch { return null; }
+  const fm = {};
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (m) for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^([A-Za-z0-9_-]+):[ \t]*(.*)$/.exec(line);
+    if (kv) fm[kv[1]] = kv[2].trim().replace(/^["']|["']$/g, '');
+  }
+  let last121 = fm['last-1-2-1'] || null;
+  try { last121 = require('./one-to-one-detect').effectiveCadenceFields(name, fm)['last-1-2-1'] || last121; } catch { /* the stamp stands */ }
+  return { role: fm.role || fm.title || null, team: fm.team || null, last121: /^\d{4}-\d{2}-\d{2}$/.test(String(last121 || '')) ? last121 : null };
+}
+
+/** PURE. Role / team / last 1-2-1 for each person in the meeting. */
+function attendeeContext(people, personContext) {
+  return (people || []).filter((p) => p.displayName).map((p) => {
+    let c = null;
+    try { c = personContext ? personContext(p.displayName) : null; } catch { c = null; }
+    return { personId: p.personId, name: p.displayName, role: c ? c.role : null, team: c ? c.team : null, last121: c ? c.last121 : null, known: !!c };
+  });
+}
 
 /**
  * Build the sections and the decision for one meeting. PURE over its inputs
  * (gathered evidence, progress lookups and the risk findings passed in).
  */
-function compose(meeting, gathered, { progressOf, risks, waitingIdOf, preparedOf }) {
+function compose(meeting, gathered, { progressOf, risks, waitingIdOf, preparedOf, personContext = null }) {
   const e = gathered.evidence;
   const atRiskByCommitment = new Map();
   const linkedHere = []; const linkedElsewhere = [];
@@ -111,7 +146,9 @@ function compose(meeting, gathered, { progressOf, risks, waitingIdOf, preparedOf
     yourActions, owedToYou, atRiskOther,
     emails: e.emails,
     supporting: { attendeeOwed: e.attendeeOwed, otherUrgentEmails: e.otherEmails,
-      people: (meeting.people || []).map((p) => ({ personId: p.personId, displayName: p.displayName })) },
+      people: (meeting.people || []).map((p) => ({ personId: p.personId, displayName: p.displayName })),
+      // Build 14T: context, never a trigger — a role is not a reason to interrupt.
+      attendeeContext: attendeeContext(meeting.people, personContext) },
   };
   return { triggers, sections, linked: { here: linkedHere, elsewhere: linkedElsewhere } };
 }
@@ -190,14 +227,18 @@ async function evaluate({ now = Date.now(), deps = {} } = {}) {
         progressOf: (cid) => { try { return d.progress(cid); } catch { return null; } },
         risks, waitingIdOf: d.waitingCommitmentId,
         preparedOf: (fid) => { try { return d.preparedFor(fid); } catch { return null; } },
+        personContext: d.personContext,
       });
       if (!composed.triggers.length) why = 'nothing NEURO holds is specific to this meeting (or what it holds looks already done)';
     }
 
     if (minsAway >= OLD_PREP_WINDOW[0] && minsAway <= OLD_PREP_WINDOW[1]) {
+      // Build 14T: the attendee context travels on the comparison either way,
+      // so a divergence can say whether the new side HOLDS what the old pushed.
+      const context = composed ? composed.sections.supporting.attendeeContext : attendeeContext(meeting.people, d.personContext);
       recordComparison(meeting, why
-        ? { finding: false, why }
-        : { finding: true, findingId: id, triggers: composed.triggers, summary: summarise(meeting, composed) }, iso);
+        ? { finding: false, why, context }
+        : { finding: true, findingId: id, triggers: composed.triggers, summary: summarise(meeting, composed), context }, iso);
       out.compared += 1;
     }
 
@@ -284,7 +325,22 @@ function classifyComparison(row) {
   if (!o) kind = 'old-not-recorded';
   else if (!n) kind = 'new-not-recorded';
   else if (oldSaid && newSaid) kind = 'both';
-  else if (oldSaid) kind = (o.matchedPeople || []).every((p) => /^nick\b/i.test(p)) ? 'old-only-self-match' : 'old-only';
+  else if (oldSaid) {
+    const matched = o.matchedPeople || [];
+    if (matched.every((p) => /^nick\b/i.test(p))) kind = 'old-only-self-match';
+    else {
+      // Build 14T: the new side HOLDS the old push's content (role and/or last
+      // 1-2-1 for every person the old path matched) but chose not to raise a
+      // finding. Still a divergence — whether that content earns a push is
+      // Nick's call — but a different one from "the new side knows nothing".
+      const ctx = new Map(((n && n.context) || []).map((c) => [String(c.name).toLowerCase(), c]));
+      const covered = matched.length > 0 && matched.filter((p) => !/^nick\b/i.test(p)).every((p) => {
+        const c = ctx.get(String(p).toLowerCase());
+        return c && (c.role || c.last121);
+      });
+      kind = covered ? 'old-only-covered' : 'old-only';
+    }
+  }
   else if (newSaid) kind = 'new-only';
   else kind = 'neither';
   return { meetingKey: row.meeting_key, title: row.title, start: row.start_local, kind, old: o, new: n };
@@ -305,10 +361,11 @@ function parityVerdict(rows, { minDays = 5 } = {}) {
   const reasons = [];
   if (days.size < minDays) reasons.push(`only ${days.size} day(s) of comparisons; ${minDays} needed`);
   if (count('old-only')) reasons.push(`${count('old-only')} meeting(s) where the live push said something the new pipeline would not`);
+  if (count('old-only-covered')) reasons.push(`${count('old-only-covered')} meeting(s) where only the old path would push — the new pipeline holds the role / last 1-2-1 but raises no finding; whether that earns a push is Nick's call`);
   if (count('old-not-recorded') || count('new-not-recorded')) reasons.push('some meetings were seen by only one side');
   return {
     retireSafe: reasons.length === 0, reasons, days: days.size,
-    counts: { both: count('both'), oldOnly: count('old-only'), oldOnlySelfMatch: count('old-only-self-match'),
+    counts: { both: count('both'), oldOnly: count('old-only'), oldOnlyCovered: count('old-only-covered'), oldOnlySelfMatch: count('old-only-self-match'),
       newOnly: count('new-only'), neither: count('neither'), oneSided: count('old-not-recorded') + count('new-not-recorded') },
     rows: classified,
   };
@@ -321,5 +378,5 @@ function parity({ sinceDays = 14, now = Date.now() } = {}) {
 
 module.exports = {
   mode, compose, summarise, evaluate, findings, activeFindingFor, recordComparison,
-  classifyComparison, parityVerdict, parity, OLD_PREP_WINDOW,
+  classifyComparison, parityVerdict, parity, OLD_PREP_WINDOW, attendeeContext, readPersonContext,
 };

@@ -2348,3 +2348,48 @@ CREATE TABLE IF NOT EXISTS wm_presence (
   event_id         TEXT,
   why              TEXT
 );
+
+-- ── Bounded autonomous investigations (Build 14G, 6 Oct 2026) ──────────────
+-- One row per investigation. The first and only supported type is
+-- source_blindness: one per source outage EPISODE (dedupe_key = type + source
+-- + the finding id, which is source + the seq that opened it). Evidence and
+-- hypotheses are STRUCTURED JSON (probe, signal, refs) — never free reasoning.
+CREATE TABLE IF NOT EXISTS investigations (
+  id                   TEXT PRIMARY KEY,
+  type                 TEXT NOT NULL,
+  state                TEXT NOT NULL,
+  subject_ref          TEXT NOT NULL,
+  trigger_ref          TEXT NOT NULL,
+  trigger_signature    TEXT,
+  dedupe_key           TEXT NOT NULL UNIQUE,
+  started_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL,
+  completed_at         TEXT,
+  evidence_json        TEXT NOT NULL DEFAULT '[]',
+  hypotheses_json      TEXT NOT NULL DEFAULT '[]',
+  confidence           REAL,
+  decision             TEXT,
+  recommended_action   TEXT,
+  prepared_action_json TEXT,
+  stop_reason          TEXT,
+  budget_json          TEXT,
+  expires_at           TEXT NOT NULL,
+  version              INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_investigations_open ON investigations(state);
+
+-- Append-only audit of every transition. Refs, not copies of sensitive data.
+CREATE TABLE IF NOT EXISTS investigation_events (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  investigation_id TEXT NOT NULL,
+  at               TEXT NOT NULL,
+  transition       TEXT NOT NULL,
+  from_state       TEXT,
+  to_state         TEXT,
+  detail_json      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_investigation_events_inv ON investigation_events(investigation_id, id);
+CREATE TRIGGER IF NOT EXISTS investigation_events_no_update BEFORE UPDATE ON investigation_events
+BEGIN SELECT RAISE(ABORT, 'investigation_events is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS investigation_events_no_delete BEFORE DELETE ON investigation_events
+BEGIN SELECT RAISE(ABORT, 'investigation_events is append-only'); END;

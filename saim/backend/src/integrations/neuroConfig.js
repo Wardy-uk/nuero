@@ -42,6 +42,17 @@ function getApiToken(env = process.env) {
   return String(env.NEURO_API_TOKEN || '').trim();
 }
 
+/**
+ * Build 14C: the kiosk's OWN credential. The kiosk forwards what a PERSON at the
+ * living-room screen pressed, which is not what an agent holding the API token
+ * does — and NEURO's authority guard refuses machine callers on human-only routes
+ * (an accepted room offer, a Planner progress tick). A separate token lets NEURO
+ * tell the two apart. Preferred over the API token when set.
+ */
+function getKioskToken(env = process.env) {
+  return String(env.NEURO_KIOSK_TOKEN || '').trim();
+}
+
 function setPin(pin) {
   overridePin = String(pin || '').trim() || null;
 }
@@ -67,6 +78,8 @@ function pinSource(env = process.env) {
  * expected to have checked `readiness()` and refused rather than firing blind.
  */
 function authHeaders(env = process.env) {
+  const kiosk = getKioskToken(env);
+  if (kiosk) return { 'x-neuro-kiosk-token': kiosk };
   const token = getApiToken(env);
   if (token) return { 'x-neuro-api-token': token };
   const pin = getPin(env);
@@ -90,7 +103,7 @@ function isDemoMode(env = process.env) {
  */
 function readiness(env = process.env) {
   const baseUrl = getBaseUrl(env);
-  const hasCredential = Boolean(getApiToken(env) || getPin(env));
+  const hasCredential = Boolean(getKioskToken(env) || getApiToken(env) || getPin(env));
   const problems = [];
   if (!baseUrl) problems.push('NEURO_BASE_URL is not set — SAiM does not know where NEURO is.');
   if (!hasCredential) problems.push('Neither NEURO_API_TOKEN nor NEURO_PIN is set — NEURO will refuse SAiM.');
@@ -99,7 +112,7 @@ function readiness(env = process.env) {
     baseUrl: baseUrl || null,
     baseUrlConfigured: Boolean(baseUrl),
     credentialConfigured: hasCredential,
-    credentialKind: getApiToken(env) ? 'api-token' : getPin(env) ? 'pin' : 'none',
+    credentialKind: getKioskToken(env) ? 'kiosk-token' : getApiToken(env) ? 'api-token' : getPin(env) ? 'pin' : 'none',
     pinSource: pinSource(env),
     demoMode: isDemoMode(env),
     ready: problems.length === 0,
@@ -127,6 +140,7 @@ function logStartupValidation(env = process.env, log = console) {
 }
 
 module.exports = {
+  getKioskToken,
   getBaseUrl,
   getPin,
   getApiToken,

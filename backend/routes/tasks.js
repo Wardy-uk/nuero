@@ -114,7 +114,7 @@ router.patch('/:id', async (req, res) => {
     // well as by the button, and a link that only worked down one of those two
     // paths is a link Nick cannot trust.
     const msPush = (task.status === 'done' && before && before.status !== 'done')
-      ? await pushCompletionToMicrosoft(task)
+      ? await pushCompletionToMicrosoft(task, req.apiClient ? `machine:${req.apiClient}` : 'nick')
       : null;
     res.json({ ok: true, task, msPush });
   } catch (e) {
@@ -131,7 +131,7 @@ router.patch('/:id', async (req, res) => {
  * What the push actually did is returned so the client can say so rather than
  * quietly implying Microsoft agrees.
  */
-async function pushCompletionToMicrosoft(task) {
+async function pushCompletionToMicrosoft(task, initiatedBy = 'nick') {
   if (!task || !task.ms_id) return null;
   // A tick that was HELD for a write-up has not completed anything, so pushing
   // it out would close the linked Planner / To Do task while the NEURO one is
@@ -141,7 +141,7 @@ async function pushCompletionToMicrosoft(task) {
   try {
     // Build 13M: through ms-complete, so a refused push is HELD and retried
     // (this path used to log and forget), ledgered, and read back.
-    const r = await require('../services/ms-complete').completeMicrosoftTask({ msId: task.ms_id, source: task.ms_source || null });
+    const r = await require('../services/ms-complete').completeMicrosoftTask({ msId: task.ms_id, source: task.ms_source || null, initiatedBy });
     const result = { completed: r.pushed !== 'none', kind: r.pushed, rolled: r.rolled || null, held: !!r.held, reason: r.pushed === 'none' ? (r.warning || 'push failed') : null };
     if (!result.completed) {
       console.warn(`[Tasks] #${task.id} done in NEURO but Microsoft push failed: ${result.reason}`);
@@ -160,7 +160,7 @@ router.post('/:id/complete', async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     // Linked to a Microsoft task, so completing it here completes it there too —
     // that is the whole point of confirming the pair (17 Aug 2026).
-    const msPush = await pushCompletionToMicrosoft(task);
+    const msPush = await pushCompletionToMicrosoft(task, req.apiClient ? `machine:${req.apiClient}` : 'nick');
     res.json({ ok: true, task, msPush });
   } catch (e) {
     res.status(400).json({ error: e.message });

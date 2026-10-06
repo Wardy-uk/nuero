@@ -1237,7 +1237,10 @@ function findMsTaskLine(msId) {
     if (onLine !== msId) continue;
     let text = null;
     try { text = parseTaskLine(lines[i])?.text || null; } catch { text = null; }
-    return { filePath, lineNumber: i, text };
+    // Build 14D: whether the line is ALREADY ticked, so a completion never
+    // flips a done line back open (toggleTask is a toggle).
+    const done = /^\s*-\s+\[x\]/i.test(lines[i]);
+    return { filePath, lineNumber: i, text, done };
   }
   return null;
 }

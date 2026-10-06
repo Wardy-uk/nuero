@@ -1357,6 +1357,18 @@ function registerDurableJobs() {
   });
 
   runtime.defineJob({
+    name: 'source-blind-investigation',
+    cron: '2-59/5 * * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: 10 * 60 * 1000,
+    maxAttempts: 1,
+    timeoutMs: 60 * 1000,
+    why: 'Build 14H: a LIVE source-blind finding gets one bounded investigation (fixed probes, fixed hypotheses, counted confidence); recovery closes it. It prepares recommendations and never executes or notifies.',
+    run: async () => require('./investigations').runSourceBlindInvestigations(),
+  });
+
+  runtime.defineJob({
     name: 'personal-deadline',
     cron: '*/15 * * * *',
     class: 'freshness-sensitive',

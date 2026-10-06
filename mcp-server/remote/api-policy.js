@@ -35,6 +35,29 @@ export const interactive = {
   post_1to1_book:'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
   post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',
   post_1to1_reschedule: 'Moving a 1-2-1 emails the attendee an update as Nick. He confirms it in NEURO → Team.',
+  // Build 14C: everything backend/services/authority-matrix.js refuses to a
+  // machine caller. The backend refuses these BEFORE any router runs; this stops
+  // the gateway offering them. authority-matrix.test.js fails if the two lists
+  // drift — a route the matrix refuses must be here.
+  ...Object.fromEntries([
+    'post_todos_wip_ms', 'patch_todos_ms_by_msId',
+  ].map(id => [id, 'Changing progress or wording on a Microsoft task is visible to Nick\'s team on a shared board. He does it in NEURO → Tasks. (Completing one with the exact id is post_todos_complete_ms.)'])),
+  post_rooms_by_key_accept: 'Turning lights or heating on in the house is Nick accepting an offer in the room, in SAiM. An agent cannot do it.',
+  post_catalogues_by_slug_shared: 'Sharing a catalogue publishes it on VESTA, read by the household on the public internet. Nick shares it in NEURO → Catalogues.',
+  post_1to1_nova_sync: 'Reconciling 1-2-1 sessions writes to NOVA. It runs on its own timer; Nick can run it in NEURO.',
+  post_1to1_nova_transcripts: 'Offering transcripts writes candidates into NOVA. It runs on its own timer.',
+  post_notion_sync_run: 'Publishing to Notion puts vault notes in front of an external AI. Nick runs it in NEURO → Notion Sync.',
+  post_notion_sync_auto: 'Turning the Notion publish timer on or off is Nick\'s decision, in NEURO → Notion Sync.',
+  post_calendar_events_by_id_respond: 'Retired since Build 8: responding to an invite as Nick is not done from NEURO.',
+  post_canonical_needs_you_synthetic: 'A synthetic P0 interrupts Nick\'s phone. He starts it himself in NEURO → Set up.',
+  ...Object.fromEntries([
+    'post_ai_settings', 'post_feature_flags_by_key', 'post_capture_links', 'delete_capture_links_by_username',
+    'post_capture_links_by_username_pin', 'post_capture_links_by_username_scopes', 'post_microsoft_auth',
+    'post_notion_sync_token', 'delete_notion_sync_token', 'put_notion_sync_mappings', 'post_notion_sync_unlock',
+    'post_prepared_actions_approval_code', 'post_prepared_actions_trust_device', 'post_prepared_actions_devices_by_deviceId_revoke',
+    'post_push_subscribe', 'post_push_unsubscribe', 'post_push_apns_register', 'delete_push_apns_register', 'delete_push_subscriptions',
+    'post_rescuetime_key', 'delete_rescuetime_key',
+  ].map(id => [id, 'Credentials, switches, accounts, trusted devices and push endpoints are Nick\'s to change, in NEURO → Settings. An agent cannot.'])),
 };
 // Path params the backend accepts only from a closed set. The inventory is
 // generated from route strings and cannot see a handler's own validation, so a

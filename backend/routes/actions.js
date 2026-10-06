@@ -210,6 +210,13 @@ async function approveAction(id, { apiClient = null } = {}) {
   if (apiClient && actionPresenter.describe(action).kind === actionPresenter.OUTBOUND) {
     return { status: 403, body: { error: 'Approving an outbound action needs Nick, in NEURO — a machine client cannot approve it on his behalf.' } };
   }
+  // Build 14D: a queued complete_task carrying an msId completes a card on a
+  // shared Microsoft board. A machine reaches that ONLY through the bounded path
+  // (POST /api/todos/complete-ms: exact id, ledger, read-back, no blind retry),
+  // never by approving a stored suggestion whose payload it did not write.
+  if (apiClient && action.type === 'complete_task' && action.payload && action.payload.msId) {
+    return { status: 403, body: { error: 'This completes a Microsoft task. A machine client completes one through /api/todos/complete-ms with the exact task id, not by approving a queued suggestion.' } };
+  }
   // The legacy OUTBOUND sender is retired (chases in Build 7, every other email
   // and invite in Build 8): say so with 410 rather than running it to fail.
   // The action stays pending so Nick can still reject it.

@@ -577,7 +577,11 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
         detail.push(`Completed: ${task.text}`);
       }
 
-      if (payload.filePath && payload.lineNumber != null) {
+      // ⚠ Build 14D: NOT when an msId is present. ms-complete flips the mirror
+      // line BY ID; flipping it here as well by a stored offset toggled it
+      // twice — the completion un-ticked its own line (or ticked a different
+      // task, the offset being hours old).
+      if (!payload.msId && payload.filePath && payload.lineNumber != null) {
         try { require('./obsidian').toggleTask(payload.filePath, payload.lineNumber); } catch (e) {
           detail.push(`(vault line not toggled: ${e.message})`);
         }

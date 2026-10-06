@@ -93,42 +93,13 @@ router.get('/todo/tasks', async (req, res) => {
   }
 });
 
-// POST /api/microsoft/todo/tasks — create a To-Do task
-router.post('/todo/tasks', async (req, res) => {
-  try {
-    const { listId, title, body } = req.body;
-    if (!listId || !title) return res.status(400).json({ error: 'listId and title required' });
-    const result = await microsoft.createTodoTask(listId, title, body);
-    if (!result) return res.status(502).json({ error: 'Bridge unavailable' });
-    res.json({ ok: true, task: result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PATCH /api/microsoft/todo/tasks/:taskId — update a To-Do task
-router.patch('/todo/tasks/:taskId', async (req, res) => {
-  try {
-    const { listId, ...updates } = req.body;
-    if (!listId) return res.status(400).json({ error: 'listId required in body' });
-    const result = await microsoft.updateTodoTask(req.params.taskId, listId, updates);
-    if (!result) return res.status(502).json({ error: 'Bridge unavailable' });
-    res.json({ ok: true, task: result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PATCH /api/microsoft/planner/tasks/:taskId — update a Planner task
-router.patch('/planner/tasks/:taskId', async (req, res) => {
-  try {
-    const result = await microsoft.updatePlannerTask(req.params.taskId, req.body);
-    if (!result) return res.status(502).json({ error: 'Bridge unavailable' });
-    res.json({ ok: true, task: result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Build 14B: POST /todo/tasks and PATCH /todo/tasks/:id + /planner/tasks/:id are
+// RETIRED. They forwarded the request body to NOVA's bridge unchecked — a "send
+// whatever JSON to Microsoft via NOVA" primitive any machine client could reach,
+// with no caller in any surface (and NOVA serves no /todo or /planner routes, so
+// every call answered 401). The authority guard answers 410 and logs the attempt.
+// Editing a Microsoft task is PATCH /api/todos/ms/:msId (title / due / notes,
+// whitelisted, Planner guarded by If-Match); completing one is ms-complete.
 
 // POST /api/microsoft/tasks/sync — sync MS tasks to Obsidian vault
 router.post('/tasks/sync', async (req, res) => {

@@ -42,7 +42,9 @@ test('all registered operations bind to fixed routes and expose serializable inp
 });
 test('read aliases and classification respect mutations hidden behind GET and administrative changes', () => {
   for (const name of ['get_knowledge_memory_reflection', 'get_knowledge_memory_daily_report', 'get_pi_health_watchdog']) assert.equal(operations.find(o=>o.id===name).classification, 'action');
-  for (const name of ['post_rooms_by_key_accept','post_email_triage_by_emailId_reply','post_calendar_events']) assert.equal(operations.find(o=>o.id===name).classification, 'action');
+  for (const name of ['post_day_plan_apply','post_email_triage_by_emailId_reply','post_calendar_events']) assert.equal(operations.find(o=>o.id===name).classification, 'action');
+  // Build 14C: what backend/services/authority-matrix.js refuses to a machine is interactive here.
+  for (const name of ['post_rooms_by_key_accept','post_todos_wip_ms','patch_todos_ms_by_msId','post_notion_sync_run','post_feature_flags_by_key']) assert.ok(operations.find(o=>o.id===name).interactive, name);
   // Build 7: approving either queue can send email as Nick — interactive only, never callable by an agent.
   for (const name of ['post_actions_by_id_approve','post_actions_batch','post_prepared_actions_by_id_approve','post_prepared_actions_by_id_approval_challenge','post_prepared_actions_by_id_reject']) {
     const op = operations.find(o=>o.id===name);
@@ -95,8 +97,8 @@ test('large write results are paged without replay; all pages preserve original 
 });
 test('write scope alone cannot execute external or administrative operations', async () => {
   const tools=fullAccessTools(config,async()=>assert.fail('must not execute'),{scopes:['neuro:read','neuro:write']},createResultStore(),v=>v);
-  for (const [tool,operation] of [['neuro_action','post_rooms_by_key_accept'],['neuro_admin','post_ai_settings']]) {
-    await assert.rejects(()=>tools.find(v=>v.name===tool).run({operation,...(tool==='neuro_action'?{params:{key:'offer-id'}}:{})}),/insufficient_scope/);
+  for (const [tool,operation] of [['neuro_action','post_day_plan_apply'],['neuro_admin','post_capture_links']]) {
+    await assert.rejects(()=>tools.find(v=>v.name===tool).run({operation,...{}}),/insufficient_scope/);
   }
 });
 test('HTTP transport correctly sends PATCH, DELETE and multipart; handles text and binary responses',async t=>{

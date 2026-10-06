@@ -68,6 +68,10 @@ async function neuroApi(path, options = {}) {
     ...(NEURO_PIN ? { 'X-Neuro-Pin': NEURO_PIN } : {}),
     ...(VAULT_API_KEY && path.startsWith(VAULT_API_BASE) ? { 'X-Api-Key': VAULT_API_KEY } : {}),
     ...options.headers,
+    // Build 14C: this server authenticates with the PIN, which NEURO cannot tell
+    // from Nick. It declares itself a machine so the authority matrix applies to
+    // it like any other agent. Last, so no tool can override it.
+    'X-Neuro-Machine-Client': 'mcp-local',
   };
 
   let res;

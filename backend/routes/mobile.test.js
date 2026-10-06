@@ -131,8 +131,9 @@ test('a malformed batch is refused with 400, not silently accepted', async () =>
 test('/api/mobile is NOT in server.js\'s auth exemption list', () => {
   // The exemptions are narrow and deliberate (push, SSE, Strava, /c/, /v1/).
   // Mobile carries the PIN like every other client, so it must not appear here.
-  const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf-8');
-  const authBlock = src.slice(src.indexOf("app.use('/api', (req, res, next)"), src.indexOf("const providedPin"));
+  // Build 14C moved the middleware out of server.js verbatim.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'services', 'api-auth.js'), 'utf-8');
+  const authBlock = src.slice(src.indexOf('function apiAuth(req, res, next)'), src.indexOf('const providedPin'));
   assert.ok(!authBlock.includes('/mobile'), 'the mobile contract must stay behind auth');
   // A positive control, so a broken slice cannot pass by absence.
   assert.ok(authBlock.includes('/push/'), 'the slice must actually contain the exemption list');

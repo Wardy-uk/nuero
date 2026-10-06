@@ -192,6 +192,7 @@ router.post('/records/:id/act', async (req, res) => {
         const push = await msComplete.completeMicrosoftTask({
           msId: result.pendingMicrosoft.msId,
           source: result.pendingMicrosoft.msSource || null,
+          initiatedBy: req.apiClient ? `machine:${req.apiClient}` : 'nick',
         });
         msPush = { pushed: push.pushed, held: push.held, rolled: push.rolled || null, warning: push.warning || null };
         // ⚠ What "completed" MEANS here: the work is closed somewhere that
