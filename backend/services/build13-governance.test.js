@@ -70,6 +70,18 @@ test('15/16. an UNCERTAIN escalation blocks a repeat until Nick says what is on 
   assert.equal(r3.ledger.attempts, 2);
 });
 
+test('27. a restart BETWEEN the ledger write and the call leaves the write blocked, never re-sent blind', async () => {
+  // Simulate the crash: the row was claimed, NOVA may have been called, the
+  // process died before settle(). A fresh attempt must not escalate again.
+  const crashed = ext.begin({ writer: 'nova.escalate', key: `escalate:NT-600:vip:${ext.localDate(NOW)}`, target: 'NT-600', request: {}, now: NOW });
+  assert.equal(crashed.ok, true);
+  const nova = fakeNova();
+  const after = await esc.escalate({ ticketKey: 'NT-600', reasonCode: 'vip' }, { now: () => NOW, deps: { nova } });
+  assert.equal(after.outcome, 'blocked');
+  assert.equal(nova.calls.length, 0);
+  assert.ok(ext.unresolved().some((e) => e.target === 'NT-600'), 'and it is listed as waiting for Nick');
+});
+
 test('a refusal NOVA returned (4xx) is provably not applied, so it may be retried', async () => {
   let n = 0;
   const nova = fakeNova({ escalate: () => { n += 1; if (n === 1) throw new Error('NOVA 400: unknown reason code'); return {}; } });
