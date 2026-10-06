@@ -358,6 +358,28 @@ test('13. a consumer restart resumes exactly where it stopped (a second process)
   assert.equal(bus.getStatus().consumers.find((c) => c.name === 'observation-state').lag, 0);
 });
 
+test('a records-only post reports what it stored AND what it already had (the 5 Oct stand-hour false alarm)', async () => {
+  // The exact shape of the 16:01 sync: no quantity readings, one closed stand hour.
+  const body = {
+    data: {
+      category_samples: [{
+        id: 'STAND-1', type: 'HKCategoryTypeIdentifierAppleStandHour', value: 1,
+        start_date: hd(T), end_date: hd(T + H),
+      }],
+    },
+  };
+  const first = await post('/api/v1/ingest', body, { 'user-agent': UA.saim });
+  assert.equal(first.status, 200);
+  assert.equal(first.json.metrics_inserted, 0, 'no readings — the phone cannot judge on metrics alone');
+  assert.equal(first.json.neuro.recordsInserted, 1);
+  assert.equal(first.json.neuro.recordsSkipped, 0);
+
+  // ⚠ The resend after a "failed" sync: nothing new, but it DID land — skipped, not lost.
+  const again = await post('/api/v1/ingest', body, { 'user-agent': UA.saim });
+  assert.equal(again.json.neuro.recordsInserted, 0);
+  assert.equal(again.json.neuro.recordsSkipped, 1, 'a duplicate record must be said out loud, or 0-and-0 reads as nothing landed');
+});
+
 test('no dead letters were produced by any of the above', () => {
   assert.equal(bus.getStatus().failures.dead, 0);
 });

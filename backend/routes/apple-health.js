@@ -149,9 +149,20 @@ router.post('/ingest', (req, res) => {
     // Document-shaped records: ECG, audiograms, activity summaries,
     // medications, vision prescriptions, state of mind, and every non-sleep
     // category sample. All of it was counted and discarded until 5 Sep 2026.
+    // ⚠ SKIPPED IS COUNTED, not left to the reader to infer. A sync that only
+    // carried an already-stored stand hour answered "0 inserted" with no
+    // skipped count, and the phone — which must treat 0-and-0 as a contract
+    // failure — reported "NEURO accepted the post and stored nothing" over a
+    // record that was sitting in the table (5 Oct 2026). Only rows that
+    // actually reached the INSERT can be "already had"; a row with no kind or
+    // key was never offered to the table, and if the insert threw nothing was
+    // decided at all, so skipped stays 0 in both cases.
     let recordsInserted = 0;
+    let recordsSkipped = 0;
     try {
       recordsInserted = db.insertHealthRecords(parsed.records);
+      const offered = parsed.records.filter((r) => r && r.kind && r.dedupeKey).length;
+      recordsSkipped = Math.max(0, offered - recordsInserted);
     } catch (e) {
       console.error('[AppleHealth] Record insert failed:', e.message);
       parsed.rejected.push({ metric: 'record', reason: e.message });
@@ -205,7 +216,8 @@ router.post('/ingest', (req, res) => {
       `[AppleHealth] ${parsed.received} points → ${inserted} new, ${skipped} already had, ` +
       `${parsed.rejected.length} rejected; workouts ${parsed.workoutsReceived} received → ` +
       `${workoutsInserted} new, ${parsed.workouts.length - workoutsInserted} already had, ` +
-      `${workoutsRejected} rejected [${agent}] (${Date.now() - started}ms)`
+      `${workoutsRejected} rejected; records ${parsed.recordsReceived} received → ` +
+      `${recordsInserted} new, ${recordsSkipped} already had [${agent}] (${Date.now() - started}ms)`
     );
 
     // Field names match the app's IngestResult so it can render a real summary.
@@ -227,6 +239,7 @@ router.post('/ingest', (req, res) => {
         unknownWorkoutFields: parsed.unknownWorkoutFields,
         recordsReceived: parsed.recordsReceived,
         recordsInserted,
+        recordsSkipped,
         recordsWithoutDate: parsed.recordsWithoutDate,
       },
     });
