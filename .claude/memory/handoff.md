@@ -1,3 +1,13 @@
+# Session Handoff — 2026-10-06 (Build 14: authority matrix + bounded investigation)
+
+- Deployed nuero f8dca93 to pi5 (Pi gate 5320/0; local 5335/0). SAiM backend restarted (now authenticates with NEURO_KIOSK_TOKEN, added to BOTH .env files). MCP gateway container rebuilt; live gateway shows post_rooms_by_key_accept interactive. Local MCP server change takes effect on next Claude Code restart.
+- Live checks: passthrough 410 (token and PIN), machine approve/flag/escalation/room 403, declared machine + PIN 403, kiosk room accept reaches the route, machine reads 200, investigations route 200 (empty).
+- Investigation: durable job source-blind-investigation live; historical replay 13 findings → 0; controlled run on a DB snapshot copy proved detect → high-confidence agent-not-running → open-app (not executed) → recovery resolves + cancels. Copy deleted.
+- Not done / for Nick: merge duplicate tasks #283/#333 (Parsons breakdown); old meeting-prep stays live (parity evidence continues); commitment-risk latest-occurrence rule has no age bound (Build 15); iOS homework untouched (nuero-ios 9ac7f0f + other session's uncommitted 5 Oct place-sensing files).
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 14 Bounded Autonomous Investigation.md; gap analysis appended.
+
+---
+
 # Session Handoff — 2026-10-06 (Build 13: activation + autonomous reliability)
 
 - Deployed nuero 01398c7 + 0711948 to pi5 (full suite green locally 5289/0; Pi test gate passed before each restart). nuero-ios 9ac7f0f pushed, UNBUILT.
