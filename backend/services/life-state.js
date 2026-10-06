@@ -75,6 +75,23 @@ const SLEEP_ROOM = process.env.LIFE_SLEEP_ROOM || 'bedroom';
 const OFFSITE_ROOMS = (process.env.LIFE_OFFSITE_ROOMS || 'office,work-office').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const TV_ROOM = process.env.LIFE_TV_ROOM || 'living-room';
 
+// TVs are per ROOM: a plug per room, read as on/off. `s.tv.rooms` maps room →
+// boolean; the older single-plug shape `{known, on}` means the TV_ROOM set.
+// An unavailable plug is simply absent — unknown, never off.
+function tvOnIn(tv, roomName) {
+  if (!tv || !tv.known || !roomName) return false;
+  if (tv.rooms && typeof tv.rooms === 'object') return tv.rooms[roomName] === true;
+  return roomName === TV_ROOM && tv.on === true;
+}
+function parseTvEntities(raw) {
+  const out = {};
+  for (const part of String(raw || '').split(',')) {
+    const [r, e] = part.split('=').map((x) => (x || '').trim());
+    if (r && e) out[r.toLowerCase()] = e;
+  }
+  return out;
+}
+
 function lower(v) { return String(v == null ? '' : v).toLowerCase(); }
 function matchesApp(app, list) {
   const a = lower(app).replace(/\.exe$/, '');
@@ -176,6 +193,7 @@ function infer(s = {}, now = new Date()) {
   let confidence = 'unknown';
   const say = (why) => evidence.push(why);
   const declared = activeDeclaration(s.declared, place, now);
+  const tvHere = !!(room && room.known && room.room && tvOnIn(s.tv, room.room));
 
   if (declared) {
     // ⚠ HIS WORD BEATS EVERY INFERENCE — he is the one signal that is never
@@ -198,10 +216,21 @@ function infer(s = {}, now = new Date()) {
     doing = DOING.WALKING; confidence = 'likely';
     say('the phone says you are walking');
     say(place.label ? `and you are out, near ${place.label}` : 'and you are away from home and work');
+  } else if (tvHere && place.kind === 'home' && !atDesk) {
+    // ⚠ A TV ON IN THE ROOM HIS WATCH IS IN IS HIS EVENING — and it is checked
+    // BEFORE the bedroom-at-night rule, because that rule alone called him
+    // asleep at 21:18 while he watched the bedroom TV (5 Oct 2026).
+    doing = DOING.WATCHING_TV; confidence = 'sure';
+    say(`the ${room.room.replace(/-/g, ' ')} TV is on`);
+    say('and your watch is in there with it');
   } else if (band === 'night' && room && room.known && room.room === SLEEP_ROOM) {
-    doing = DOING.SLEEPING; confidence = atDesk ? 'guess' : 'likely';
+    // ⚠ A GUESS, ALWAYS. The night band is when the screens dim (21:00), not
+    // evidence of sleep, and the bedroom is where he also reads and watches TV.
+    // Nothing here can see sleep in real time (Watch stages arrive on the next
+    // phone sync), so it asks rather than asserting "asleep".
+    doing = DOING.SLEEPING; confidence = 'guess';
     say('it is night and your watch is in the bedroom');
-    if (atDesk) say('but a laptop is active, so this is a guess');
+    say('nothing confirms you are asleep, so this is a guess');
   } else if (workApp && (inHours || atWorkPlace || band === 'evening' || band === 'early')) {
     doing = DOING.WORKING; confidence = inHours || atWorkPlace ? 'sure' : 'likely';
     say(`${desk.label || desk.app} is in front of you`);
@@ -220,7 +249,7 @@ function infer(s = {}, now = new Date()) {
     doing = DOING.WORKING; confidence = 'guess';
     say(`a laptop is active during working hours (${desk.label || desk.app})`);
     say('nothing proves it is work — it could be your own project');
-  } else if (s.tv && s.tv.on && place.kind === 'home' && !atDesk
+  } else if (tvOnIn(s.tv, TV_ROOM) && place.kind === 'home' && !atDesk
       && !(room && room.known && room.room && room.room !== TV_ROOM)) {
     // ⚠ Nick, 2 Oct 2026: "you only need to know if it's on or off — if it's on,
     // the TV is on." The plug is the TV. What it cannot say is who is watching,
@@ -369,6 +398,11 @@ function meetingNow(rows, now) {
 }
 
 const TV_ENTITY = process.env.LIFE_TV_ENTITY || 'switch.living_room_extension_socket_1';
+// Room → plug. `switch.bedroom_socket_1` is the bedroom TV's plug (friendly name
+// "Bedroom TV"); `switch.bedroom_tv_socket` has been unavailable since 27 Sep and
+// `media_player.main_bedroom` reads `on` permanently, so neither is used.
+const TV_ENTITIES = parseTvEntities(process.env.LIFE_TV_ENTITIES
+  || `${TV_ROOM}=${TV_ENTITY},bedroom=switch.bedroom_socket_1`);
 const HOUSEHOLD_ENTITY = process.env.HA_HOUSEHOLD_SENSOR || 'binary_sensor.household_others_home';
 
 async function read(now = new Date(), { ignoreDeclared = false } = {}) {
@@ -415,9 +449,14 @@ async function read(now = new Date(), { ignoreDeclared = false } = {}) {
       };
     }
     const states = (ha.cachedStates && ha.cachedStates()) || [];
-    const tvRow = states.find((x) => x && x.entity_id === TV_ENTITY);
-    const tv = tvRow && (tvRow.state === 'on' || tvRow.state === 'off') ? tvRow.state : null;
-    s.tv = tv == null ? { known: false } : { known: true, on: tv === 'on' };
+    const rooms = {};
+    for (const [roomName, entity] of Object.entries(TV_ENTITIES)) {
+      const row = states.find((x) => x && x.entity_id === entity);
+      if (row && (row.state === 'on' || row.state === 'off')) rooms[roomName] = row.state === 'on';
+    }
+    s.tv = Object.keys(rooms).length
+      ? { known: true, on: Object.values(rooms).some(Boolean), rooms }
+      : { known: false };
     const hh = (states || []).find((x) => x && x.entity_id === HOUSEHOLD_ENTITY);
     s.household = hh && (hh.state === 'on' || hh.state === 'off')
       ? { known: true, othersHome: hh.state === 'on', who: (hh.attributes && hh.attributes.who_is_home) || [] }
@@ -437,4 +476,4 @@ async function read(now = new Date(), { ignoreDeclared = false } = {}) {
   return infer(s, now);
 }
 
-module.exports = { OFFSITE_ROOMS, infer, read, declare, clearDeclared, snoozeAsk, bandFor, placeFor, meetingNow, optionsFor, activeDeclaration, DOING, LABEL, ANSWER_LABEL, WORK_APPS, MAKER_APPS, DECLARE_KEY, HISTORY_KEY };
+module.exports = { OFFSITE_ROOMS, tvOnIn, parseTvEntities, infer, read, declare, clearDeclared, snoozeAsk, bandFor, placeFor, meetingNow, optionsFor, activeDeclaration, DOING, LABEL, ANSWER_LABEL, WORK_APPS, MAKER_APPS, DECLARE_KEY, HISTORY_KEY };

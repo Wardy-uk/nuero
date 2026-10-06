@@ -107,11 +107,45 @@ test('CarPlay is driving', () => {
   assert.equal(r.confidence, 'sure');
 });
 
-test('night with the watch in the bedroom is asleep', () => {
+test('night with the watch in the bedroom is asleep — as a GUESS that asks', () => {
   const r = life.infer(base({ room: { known: true, room: 'bedroom' } }), at(3, 2));
   assert.equal(r.doing, 'sleeping');
   assert.equal(r.band, 'night');
   assert.equal(r.showWork, false);
+  assert.equal(r.confidence, 'guess');
+  assert.ok(r.ask, 'a guess must ask, never assert asleep');
+});
+
+// ⚠ 5 Oct 2026, 21:18: watching the bedroom TV, and SAiM said "asleep".
+test('⚠ the bedroom TV on with the watch in the bedroom is watching TV, not asleep', () => {
+  const r = life.infer(base({
+    room: { known: true, room: 'bedroom' },
+    tv: { known: true, on: true, rooms: { 'living-room': false, bedroom: true } },
+  }), at(5, 21, 18));
+  assert.equal(r.doing, 'watching-tv');
+  assert.equal(r.confidence, 'sure');
+  assert.equal(r.ask, null);
+});
+
+test('a TV on in ANOTHER room is not his evening', () => {
+  const r = life.infer(base({
+    room: { known: true, room: 'bedroom' },
+    tv: { known: true, on: true, rooms: { 'living-room': true, bedroom: false } },
+  }), at(5, 21, 18));
+  assert.equal(r.doing, 'sleeping');
+  assert.equal(r.confidence, 'guess');
+});
+
+test('an unread bedroom plug is unknown, never "off" and never "on"', () => {
+  assert.equal(life.tvOnIn({ known: true, on: true, rooms: { 'living-room': true } }, 'bedroom'), false);
+  assert.equal(life.tvOnIn({ known: false }, 'bedroom'), false);
+  // the legacy single-plug shape still means the living room
+  assert.equal(life.tvOnIn({ known: true, on: true }, 'living-room'), true);
+  assert.equal(life.tvOnIn({ known: true, on: true }, 'bedroom'), false);
+});
+
+test('TV entity map parses room=entity pairs', () => {
+  assert.deepEqual(life.parseTvEntities('living-room=switch.a, Bedroom=switch.b,junk'), { 'living-room': 'switch.a', bedroom: 'switch.b' });
 });
 
 test('⚠ nothing legible is UNKNOWN, said out loud — never a guess at "relaxing"', () => {

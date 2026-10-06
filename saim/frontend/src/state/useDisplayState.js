@@ -26,6 +26,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // stayed on. The backlight agent makes the same choice for the same reason.
 
 const ROOM = resolveRoom();
+// Mirrors `display/night.js` DEFAULT_SHARED; used only when no verdict says.
+const SHARED_FALLBACK = ['living-room', 'bedroom'];
 const POLL_MS = 4000;
 
 // Which room this screen is in. `?room=study` on the URL wins and is remembered, so
@@ -105,6 +107,11 @@ export function useDisplayState() {
     room: ROOM,
     place: detail && (detail.place === 'home' || detail.place === 'work') ? detail.place : null,
     area: detail && typeof detail.area === 'string' ? detail.area : null,
+    // ⚠ FAILS TOWARDS PRIVATE, the one place this hook does not fail towards
+    // lit: a missing verdict (backend down, or one predating `shared`) falls
+    // back to this screen's own room, so a shared room never shows work just
+    // because the verdict could not be read.
+    shared: detail && typeof detail.shared === 'boolean' ? detail.shared : SHARED_FALLBACK.includes(ROOM),
     night,
     dim,
     wake,

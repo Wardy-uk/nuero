@@ -108,10 +108,28 @@ function screenAreas(env = process.env) {
   return out;
 }
 
-/** Where a screen is. PURE given the offsite test and the env. */
-function placeFor(room, { offsite, env = process.env } = {}) {
-  if (offsite) return { place: 'work', area: null };
-  return { place: 'home', area: screenAreas(env)[room] || null };
+// ⚠ SHARED SCREENS SHOW NO WORK (Nick, 6 Oct 2026). The living room and the
+// bedroom are rooms other people are in, so their screens open on the household
+// board (work is "Busy", no subjects — `home-board.js`) even when he is there,
+// and work is shown only when he asks for it on the screen. The study, the work
+// office, the laptop and the phone are his alone and are unaffected.
+// `SAIM_SHARED_SCREENS=living-room,bedroom` overrides.
+const DEFAULT_SHARED = ['living-room', 'bedroom'];
+
+function sharedScreens(env = process.env) {
+  const raw = env.SAIM_SHARED_SCREENS;
+  if (raw == null || !String(raw).trim()) return DEFAULT_SHARED.slice();
+  return String(raw).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 
-module.exports = { inNight, nightFor, night, wake, placeFor, screenAreas, DEFAULT_WINDOW, WAKE_MS, _settings: settings };
+/** Where a screen is. PURE given the offsite test and the env. */
+function placeFor(room, { offsite, env = process.env } = {}) {
+  if (offsite) return { place: 'work', area: null, shared: false };
+  return {
+    place: 'home',
+    area: screenAreas(env)[room] || null,
+    shared: sharedScreens(env).includes(String(room || '').toLowerCase()),
+  };
+}
+
+module.exports = { inNight, nightFor, night, wake, placeFor, screenAreas, sharedScreens, DEFAULT_WINDOW, WAKE_MS, _settings: settings };

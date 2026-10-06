@@ -87,3 +87,20 @@
 @media (max-aspect-ratio: 1/1) {
   .homeboard { grid-template-columns: 1fr; align-content: center; }
 }
+
+/* Shared-room screens (6 Oct 2026): the one way from the household board to the
+   work surface, offered only while Nick is in the room. A full 56px target. */
+.homeboard__work {
+  margin-top: 2.2rem;
+  min-height: 56px;
+  padding: 0 1.6rem;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(230, 237, 243, 0.45);
+  font: inherit;
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  touch-action: manipulation;
+}

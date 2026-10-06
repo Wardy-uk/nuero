@@ -90,8 +90,8 @@ test('⚠ ONE field at a time — an overlay owns the screen, or the shell does'
   assert.ok(guard.includes('overlayOwnsScreen'),
     'the shell field is not suppressed while a lock/clock overlay owns the screen');
   // BOTH overlays, not just the lock — the clock screen mounts a Field too.
-  assert.ok(src.includes('const overlayOwnsScreen = locked || showClock;'),
-    'overlayOwnsScreen must cover both overlays, each of which mounts its own Field');
+  assert.ok(src.includes('const overlayOwnsScreen = locked || showClock || homeView;'),
+    'overlayOwnsScreen must cover every overlay (lock, clock, shared-room board), each of which mounts its own Field');
 });
 
 test('⚠ the covered subtree stops animating, and the overlays are OUTSIDE it', () => {

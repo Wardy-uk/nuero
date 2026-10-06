@@ -49,11 +49,11 @@ test('by day nothing dims, touched or not', () => {
 });
 
 test('home screens know their Home Assistant area; the work screen has none', () => {
-  assert.deepEqual(night.placeFor('study', { offsite: false, env: {} }), { place: 'home', area: 'Office' });
-  assert.deepEqual(night.placeFor('bedroom', { offsite: false, env: {} }), { place: 'home', area: "Mum's Room" });
-  assert.deepEqual(night.placeFor('living-room', { offsite: false, env: {} }), { place: 'home', area: 'Living Room' });
+  assert.deepEqual(night.placeFor('study', { offsite: false, env: {} }), { place: 'home', area: 'Office', shared: false });
+  assert.deepEqual(night.placeFor('bedroom', { offsite: false, env: {} }), { place: 'home', area: "Mum's Room", shared: true });
+  assert.deepEqual(night.placeFor('living-room', { offsite: false, env: {} }), { place: 'home', area: 'Living Room', shared: true });
   // ⚠ The office Fire is not in this house, so it must never be handed a room of it.
-  assert.deepEqual(night.placeFor('office', { offsite: true, env: {} }), { place: 'work', area: null });
+  assert.deepEqual(night.placeFor('office', { offsite: true, env: {} }), { place: 'work', area: null, shared: false });
 });
 
 test('the area map can be overridden without a code change', () => {
@@ -109,4 +109,15 @@ test('out of the house with someone else in: the board, not a dark screen', () =
   // An empty house, or one Home Assistant could not read, still goes dark.
   assert.equal(displayState('living-room', arb, { away: true }).state, 'locked');
   assert.equal(displayState('living-room', arb, { away: true }, null, null, { othersHome: null }).state, 'locked');
+});
+
+// ⚠ Nick, 6 Oct 2026: the living room and bedroom are shared rooms — no work
+// on their screens unless he asks. Study, office, laptop and phone are his.
+test('shared screens are the living room and bedroom by default, and overridable', () => {
+  assert.deepEqual(night.sharedScreens({}), ['living-room', 'bedroom']);
+  assert.equal(night.placeFor('kitchen', { offsite: false, env: {} }).shared, false);
+  assert.equal(night.placeFor('study', { offsite: false, env: { SAIM_SHARED_SCREENS: 'study' } }).shared, true);
+  assert.equal(night.placeFor('living-room', { offsite: false, env: { SAIM_SHARED_SCREENS: 'study' } }).shared, false);
+  // an offsite screen is never shared — it is not in this house
+  assert.equal(night.placeFor('office', { offsite: true, env: { SAIM_SHARED_SCREENS: 'office' } }).shared, false);
 });

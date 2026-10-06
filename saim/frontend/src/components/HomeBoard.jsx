@@ -60,7 +60,7 @@ function houseLines(house) {
   return out;
 }
 
-export default function HomeBoard({ now, area, say }) {
+export default function HomeBoard({ now, area, say, onWork = null }) {
   const board = useBoard(area);
   const d = now instanceof Date ? now : new Date();
   const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
@@ -80,6 +80,9 @@ export default function HomeBoard({ now, area, say }) {
         <div className="homeboard__date">{date}</div>
         {message && <div className="homeboard__say">{message}</div>}
         {room && <div className={`homeboard__room${room.gap ? ' homeboard__gap' : ''}`}>{room.text}</div>}
+        {onWork && (
+          <button type="button" className="homeboard__work" onClick={onWork}>Work</button>
+        )}
       </div>
 
       <div className="homeboard__side">

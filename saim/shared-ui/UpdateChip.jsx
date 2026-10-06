@@ -27,9 +27,30 @@ async function hardReload() {
   window.location.reload();
 }
 
-export default function UpdateChip({ onReload = hardReload }) {
+// ⚠ A WALL SCREEN NOBODY TOUCHES CANNOT ANSWER A CHIP. The living-room kiosk
+// ran a superseded build (huge across-the-room type) for a day after the fix
+// shipped, because nothing ever reloads it (6 Oct 2026). With `autoReload` it
+// reloads itself once a newer build is served AND nobody has touched it for
+// AUTO_RELOAD_IDLE_MS AND no text box has focus — so a half-typed capture is
+// never thrown away. Kiosk only; a phone keeps the chip and its owner decides.
+const AUTO_RELOAD_IDLE_MS = 3 * 60 * 1000;
+
+export default function UpdateChip({ onReload = hardReload, autoReload = false }) {
   const [newer, setNewer] = useState(null);
   useEffect(() => watchVersion({ current: BUILD, url: `${import.meta.env.BASE_URL || '/'}version.json`, onState: (s) => setNewer(s.newer) }), []);
+  useEffect(() => {
+    if (!autoReload || !newer) return undefined;
+    let last = Date.now();
+    const touched = () => { last = Date.now(); };
+    const evs = ['pointerdown', 'keydown', 'touchstart'];
+    evs.forEach((e) => window.addEventListener(e, touched, { passive: true }));
+    const t = setInterval(() => {
+      const el = document.activeElement;
+      const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (!typing && Date.now() - last >= AUTO_RELOAD_IDLE_MS) { clearInterval(t); onReload(); }
+    }, 30 * 1000);
+    return () => { clearInterval(t); evs.forEach((e) => window.removeEventListener(e, touched)); };
+  }, [autoReload, newer, onReload]);
   if (!newer) return null;
   return (
     <button type="button" className="update-chip" onClick={onReload}

@@ -64,3 +64,21 @@ test('a row with nothing to say emits no badges at all', () => {
   assert.equal(_informativePriority('Unset'), null);
   assert.equal(_informativeAssignee('Nick Ward'), null);
 });
+
+// ⚠ 6 Oct 2026 — NT-32499 led the Surface as "Something needs you … still no
+// reply from you" while it sat with Stephen Mitchell, assigned to him. Nothing
+// in the needs-you path ever looked at the assignee.
+test('⚠ an escalation assigned to someone else is delegated, not waiting on Nick', () => {
+  const row = { hasComment: false, seen: false, assignee: 'Stephen Mitchell' };
+  assert.equal(jira.isDelegated(row), true);
+  assert.equal(jira.needsNick(row), false);
+});
+
+test('unassigned or assigned to Nick still waits on Nick — nobody else has it', () => {
+  assert.equal(jira.needsNick({ hasComment: false, seen: false, assignee: null }), true);
+  assert.equal(jira.needsNick({ hasComment: false, seen: false, assignee: 'Nick Ward' }), true);
+  assert.equal(jira.needsNick({ hasComment: false, seen: false, assignee: 'nick ward' }), true);
+  // positive controls: a reply or a seen stamp still clears it
+  assert.equal(jira.needsNick({ hasComment: true, seen: false, assignee: null }), false);
+  assert.equal(jira.needsNick({ hasComment: false, seen: true, assignee: null }), false);
+});

@@ -102,6 +102,9 @@ function useNow(intervalMs = 1000) {
   return now;
 }
 
+// How long "Work" stays up on a shared screen without a touch.
+const WORK_SHOWN_MS = 10 * 60 * 1000;
+
 function AppShell() {
   const now = useNow();
   const [active, setActive] = useState(DEFAULT_TAB);
@@ -111,7 +114,7 @@ function AppShell() {
   // verdict, so this screen, the phone and the widget cannot each invent their
   // own idea of what a missing watch means: watch here → SAiM, watch elsewhere
   // → clock, out of the house → off.
-  const { state: displayState, detail: displayDetail, place, area, night, dim, wake } = useDisplayState();
+  const { state: displayState, detail: displayDetail, place, area, shared, night, dim, wake } = useDisplayState();
   // The room line belongs on HOME screens only; the work Fire has no area.
   const homeArea = place === 'home' ? area : null;
   const locked = displayState === 'locked';
@@ -127,7 +130,30 @@ function AppShell() {
   // stops and the overlays' own fields — which ARE visible, and in the clock's
   // case lit — are untouched. The shell field stays suppressed as well: two
   // stacked fields is a separate wrong, about layering rather than cost.
-  const overlayOwnsScreen = locked || showClock;
+  // ⚠ A SHARED ROOM SHOWS NO WORK (Nick, 6 Oct 2026). The living room and the
+  // bedroom have other people in them, so even with him in the room their screen
+  // is the household board — work as "Busy", no subjects, composed server-side by
+  // `home-board.js` — and the work surface appears only when he presses "Work"
+  // on it. It folds back on its own after WORK_SHOWN_MS without a touch, so
+  // walking away cannot leave a customer name on the wall. Study, office, laptop
+  // and phone are not shared and never see this.
+  const [workUntil, setWorkUntil] = useState(0);
+  const workShown = shared && now.getTime() < workUntil;
+  const homeView = shared && displayState === 'full' && !workShown;
+  useEffect(() => {
+    if (!workShown) return undefined;
+    const touched = () => setWorkUntil(Date.now() + WORK_SHOWN_MS);
+    window.addEventListener('pointerdown', touched, { passive: true });
+    window.addEventListener('keydown', touched);
+    return () => {
+      window.removeEventListener('pointerdown', touched);
+      window.removeEventListener('keydown', touched);
+    };
+  }, [workShown]);
+  // Leaving the room ends it: coming back opens on home again, not on work
+  // left showing from before.
+  useEffect(() => { if (displayState !== 'full') setWorkUntil(0); }, [displayState]);
+  const overlayOwnsScreen = locked || showClock || homeView;
 
   const ActiveView = useMemo(
     // Falls back to the default tab's component rather than a named import, so
@@ -279,7 +305,7 @@ function AppShell() {
               the only ones that can get stuck on a build. The phone reloads
               every time it is opened. */}
           <RefreshButton buildLabel={import.meta.env.VITE_BUILD_LABEL} />
-          <UpdateChip />
+          <UpdateChip autoReload />
           {/* ⚠ In the nav rather than the top bar (Nick, 31 Aug 2026), and LAST —
               it is the only way out of a keyboardless kiosk, so it must be
               findable, but it is not somewhere to go. Its two-step confirm is
@@ -297,6 +323,15 @@ function AppShell() {
       {showClock && (place === 'home'
         ? <HomeBoard now={now} area={homeArea} say={displayDetail?.say} />
         : <ClockScreen now={now} say={displayDetail?.say} area={homeArea} />)}
+      {/* The work button is offered ONLY while he is in the room (the verdict
+          is `full`); the board shown while he is elsewhere still swallows every
+          tap, so it cannot be opened by whoever is passing. */}
+      {homeView && (
+        <HomeBoard now={now} area={homeArea} onWork={() => setWorkUntil(Date.now() + WORK_SHOWN_MS)} />
+      )}
+      {workShown && !overlayOwnsScreen && (
+        <button type="button" className="app__home" onClick={() => setWorkUntil(0)}>Home</button>
+      )}
       {locked && <LockScreen reason={displayDetail?.reason} now={now} area={homeArea} />}
       <NightDim dim={dim} nightActive={Boolean(night && night.active)} onWake={wake} />
     </div>

@@ -57,3 +57,18 @@
   z-index: 5;
 }
 .app[data-ambient] .app__header { min-height: 0; padding-top: 0; padding-bottom: 0; }
+
+/* Back from the work surface to the household board on a shared-room screen. */
+.app__home {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  min-height: 56px;
+  padding: 0 1.3rem;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(230, 237, 243, 0.45);
+  font-size: 1rem;
+  z-index: 5;
+}

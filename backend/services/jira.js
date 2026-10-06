@@ -481,7 +481,7 @@ function getUnseenEscalationCount() {
   try {
     const raw = db.getState('escalation_seen');
     const known = raw ? JSON.parse(raw) : {};
-    return Object.values(known).filter(v => !v.hasComment && !v.seen).length;
+    return Object.values(known).filter(needsNick).length;
   } catch { return 0; }
 }
 
@@ -498,6 +498,24 @@ function getUnseenEscalationCount() {
 // a real priority, and an assignee who is someone other than Nick — including
 // nobody, which on an escalation is the loudest of the three.
 const ESCALATION_OWNER = 'Nick Ward';
+
+/**
+ * Delegated: assigned to a NAMED person who is not Nick. An escalation Nick has
+ * handed to one of his team is theirs to answer — "still no reply from you" on
+ * it is false, and it was leading the Surface as a P0 (NT-32499, assigned to
+ * Stephen Mitchell, 6 Oct 2026). Unassigned is NOT delegated: nobody has it, so
+ * it stays Nick's. Matched on display name, the field `escalation_seen` stores;
+ * an unreadable assignee reads as not delegated, so an unknown never hides one.
+ */
+function isDelegated(row) {
+  const a = row && typeof row.assignee === 'string' ? row.assignee.trim() : '';
+  return !!a && a.toLowerCase() !== ESCALATION_OWNER.toLowerCase();
+}
+
+/** The one predicate for "this escalation is waiting on NICK". */
+function needsNick(row) {
+  return !!row && !row.hasComment && !row.seen && !isDelegated(row);
+}
 
 function _informativeStatus(status) {
   if (!status || status === 'Open') return null;
@@ -523,7 +541,7 @@ function getUnseenEscalations() {
     const raw = db.getState('escalation_seen');
     const known = raw ? JSON.parse(raw) : {};
     return Object.entries(known)
-      .filter(([, v]) => !v.hasComment && !v.seen)
+      .filter(([, v]) => needsNick(v))
       .map(([key, v]) => ({
         key,
         summary: v.summary || '',
@@ -565,10 +583,11 @@ function decorateWithReplyState(escalations) {
   return (escalations || []).map(e => {
     const row = known[e.key];
     if (!row) return { ...e, replyState: 'unknown', needsReply: false };
+    const delegated = !row.hasComment && isDelegated(row);
     return {
       ...e,
-      replyState: row.hasComment ? 'replied' : 'awaiting-you',
-      needsReply: !row.hasComment,
+      replyState: row.hasComment ? 'replied' : delegated ? 'with-assignee' : 'awaiting-you',
+      needsReply: !row.hasComment && !delegated,
       acknowledged: !!row.seen,
     };
   });
@@ -628,6 +647,8 @@ module.exports = {
   markEscalationsHandled,
   getUnseenEscalationCount,
   getUnseenEscalations,
+  isDelegated,
+  needsNick,
   decorateWithReplyState,
   // pure, exported for the tests — what counts as informative is the decision
   _mapEscalationIssue: mapEscalationIssue,
