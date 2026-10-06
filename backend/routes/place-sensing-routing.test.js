@@ -90,7 +90,16 @@ test('region events: stored, unsaved place refused by name, replay folds, state 
 });
 
 test('the life-state read picks the geofence up as WORK', async () => {
-  const life = await require('../services/life-state').read(new Date(), { ignoreDeclared: true });
+  // ⚠ The room sensor outranks the geofence BY DESIGN, and on the Pi this read
+  // reached the LIVE SAiM sensor ("watch at the work desk sensor") and passed
+  // through it. Stubbed to "no room reading" so this tests the geofence only.
+  const roomPresence = require('../services/room-presence');
+  const realRead = roomPresence.read;
+  roomPresence.read = async () => ({ known: false });
+  let life;
+  try {
+    life = await require('../services/life-state').read(new Date(), { ignoreDeclared: true });
+  } finally { roomPresence.read = realRead; }
   assert.equal(life.place.kind, 'work');
   assert.equal(life.place.basis, 'phone geofence');
 });
