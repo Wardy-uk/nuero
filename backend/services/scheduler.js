@@ -573,6 +573,24 @@ function start() {
     }
   });
 
+  // Hourly at :07 — snapshot the forecast the Weather screen overlays. Every
+  // snapshot is kept, so a past hour can be compared with the forecast that was
+  // standing at the time. Skips itself if one was taken in the last 45 minutes.
+  cron.schedule('7 * * * *', async () => {
+    try {
+      const r = await require('./weather-forecast').snapshot();
+      if (!r.ok) console.warn(`[Scheduler] Weather forecast: ${r.why}`);
+    } catch (e) {
+      console.warn('[Scheduler] Weather forecast failed:', e.message);
+    }
+  });
+  // And once shortly after boot, so a fresh install has an overlay within a minute.
+  setTimeout(() => {
+    require('./weather-forecast').snapshot().then((r) => {
+      if (!r.ok) console.warn(`[Scheduler] Weather forecast (startup): ${r.why}`);
+    }).catch(() => {});
+  }, 50 * 1000).unref?.();
+
   // Hourly at :29 — copy the bedroom radiator's hourly temperature from Home
   // Assistant's long-term statistics. Three days each pass, so an HA outage of a
   // day or two heals itself; the first run after deploy is a manual full copy.

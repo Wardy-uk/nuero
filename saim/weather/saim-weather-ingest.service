@@ -1,0 +1,22 @@
+# /etc/systemd/system/saim-weather-ingest.service
+[Unit]
+Description=SAiM outdoor weather serial ingestor (journals and forwards to NEURO)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/saim-weather-ingest.env
+ExecStart=/usr/bin/python3 /opt/saim-weather/serial_ingest.py
+Restart=always
+RestartSec=5
+User=saimweather
+Group=saimweather
+NoNewPrivileges=true
+PrivateTmp=true
+# The forwarding spool lives here: /var/lib/saim-weather/spool.db, owned by the
+# service user and kept across restarts and reboots.
+StateDirectory=saim-weather
+
+[Install]
+WantedBy=multi-user.target

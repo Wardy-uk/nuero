@@ -608,6 +608,64 @@ CREATE TABLE IF NOT EXISTS environment_pressure (
 );
 CREATE INDEX IF NOT EXISTS idx_environment_pressure_t ON environment_pressure(t);
 
+-- The outdoor weather station (6 Oct 2026): ESP32-C3/BME280 → ESP-NOW → the
+-- receiver on pi5's USB → `saim-weather-ingest`, which forwards each accepted
+-- `saim.weather.v1` record here. One row per minute, kept INDEFINITELY.
+--
+-- ⚠ THE KEY IS (node_id, boot, sequence), NOT (node_id, sequence). The
+-- transmitter restarts its sequence at 1 every time it reboots (seen on the
+-- first evening: 1..9 after a power cycle), so the raw pair repeats. `boot` is
+-- assigned by NEURO: a NEWER reading carrying a sequence at or below the last
+-- one seen opens the next boot. A forwarder retry carries the same sequence and
+-- the same received_at, and is folded by the duplicate check before the insert.
+-- `observed_at` is the Pi's receipt time in epoch MILLISECONDS (UTC); the node
+-- has no clock, so receipt IS the observation time, to within the radio hop.
+CREATE TABLE IF NOT EXISTS weather_observations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  node_id TEXT NOT NULL,
+  boot INTEGER NOT NULL DEFAULT 1,
+  sequence INTEGER NOT NULL,
+  observed_at INTEGER NOT NULL,
+  temperature_c REAL NOT NULL,
+  humidity_pct REAL NOT NULL,
+  pressure_hpa REAL NOT NULL,
+  battery_mv INTEGER,
+  rssi INTEGER,
+  schema_version TEXT NOT NULL,
+  source TEXT,
+  ingested_at INTEGER NOT NULL,
+  UNIQUE(node_id, boot, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_weather_obs_node_t ON weather_observations(node_id, observed_at);
+CREATE INDEX IF NOT EXISTS idx_weather_obs_node_seq ON weather_observations(node_id, sequence);
+
+-- Where each node's sequence has got to, so a reboot can be told from a retry.
+CREATE TABLE IF NOT EXISTS weather_nodes (
+  node_id TEXT PRIMARY KEY,
+  boot INTEGER NOT NULL DEFAULT 1,
+  last_sequence INTEGER,
+  last_observed_at INTEGER,
+  first_seen_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Forecast SNAPSHOTS. Each fetch is stored as issued, never overwritten, so a
+-- past hour can be compared against the forecast that was STANDING at the time
+-- rather than against whatever the provider says about it now (which, for a
+-- past hour, is an analysis, not a forecast). Times in epoch ms (UTC).
+CREATE TABLE IF NOT EXISTS weather_forecast_points (
+  provider TEXT NOT NULL,
+  issued_at INTEGER NOT NULL,
+  valid_at INTEGER NOT NULL,
+  temperature_c REAL,
+  humidity_pct REAL,
+  pressure_hpa REAL,
+  precip_mm REAL,
+  precip_prob REAL,
+  PRIMARY KEY (provider, issued_at, valid_at)
+);
+CREATE INDEX IF NOT EXISTS idx_weather_fc_valid ON weather_forecast_points(valid_at);
+
 -- What a device says about ITSELF — battery, motion, connectivity, focus.
 --
 -- Everything here is currently read out of Home Assistant's iOS Companion app

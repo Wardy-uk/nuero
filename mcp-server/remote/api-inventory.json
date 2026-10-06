@@ -4266,7 +4266,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 237,
+    "line": 240,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -5071,6 +5071,25 @@
     "description": "GET /api/waiting-on/by-person.",
     "params": [],
     "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_weather_overview",
+    "method": "GET",
+    "route": "/api/weather/overview",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 41,
+    "description": "GET /api/weather/overview. the Weather screen: station readings bucketed for a range (hour|day|week|month|year) with the standing forecast aligned onto the same buckets, the latest reading and its staleness, and the 6/12/24 hour trend summary. Keywords: weather, temperature, humidity, pressure, fore",
+    "params": [],
+    "query": [
+      "node",
+      "range"
+    ],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -10693,6 +10712,44 @@
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_weather_forecast_refresh",
+    "method": "POST",
+    "route": "/api/weather/forecast/refresh",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 95,
+    "description": "POST /api/weather/forecast/refresh. take a forecast snapshot now rather than waiting for the hourly one. Keywords: weather forecast refresh. Body: { force }",
+    "params": [],
+    "query": [],
+    "body": [
+      "force"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_weather_observations",
+    "method": "POST",
+    "route": "/api/weather/observations",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 23,
+    "description": "POST /api/weather/observations. outdoor weather station readings (saim.weather.v1) forwarded from pi5's saim-weather-ingest. Idempotent; each record gets an outcome (stored | duplicate | rejected | conflict). Keywords: weather station, outdoor sensor, BME280, ingest. Body: { observations: [record], ",
+    "params": [],
+    "query": [],
+    "body": [
+      "observations",
+      "schema",
+      "source"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

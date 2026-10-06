@@ -399,8 +399,28 @@ async function readDailyForecast() {
     return { known: false, why: err.message };
   }
 }
+/**
+ * Where home is, from Home Assistant's own `zone.home` — so a forecast can be
+ * fetched for the house without coordinates being written into a public repo.
+ * Unreadable is { known:false, why }, never a default location.
+ */
+async function readHomeLocation() {
+  if (!isConfigured()) return { known: false, why: 'Home Assistant is not configured' };
+  try {
+    const z = await haGet('/api/states/zone.home');
+    const a = (z && z.attributes) || {};
+    if (typeof a.latitude !== 'number' || typeof a.longitude !== 'number') {
+      return { known: false, why: 'zone.home carries no coordinates' };
+    }
+    return { known: true, latitude: a.latitude, longitude: a.longitude };
+  } catch (err) {
+    return { known: false, why: err.message };
+  }
+}
+
 module.exports = {
   readDailyForecast,
+  readHomeLocation,
   readHouse,
   readWeather,
   turnOnLights,
