@@ -2312,3 +2312,39 @@ CREATE TABLE IF NOT EXISTS attention_notifications (
   UNIQUE(dedupe_key, device_id, channel)
 );
 CREATE INDEX IF NOT EXISTS idx_attention_notifications_claimed ON attention_notifications(claimed_at);
+
+-- Build 13K — the ledger for DIRECT external writes (A2/A3: no approval, but
+-- they still leave the building). One row per idempotency key: written BEFORE
+-- the call, settled after it. `uncertain` blocks a repeat until verified —
+-- an unknown outcome is never retried by the same request.
+CREATE TABLE IF NOT EXISTS external_write_ledger (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  writer           TEXT NOT NULL,
+  idempotency_key  TEXT NOT NULL UNIQUE,
+  target           TEXT NOT NULL,
+  authority        TEXT NOT NULL,
+  initiated_by     TEXT NOT NULL,
+  status           TEXT NOT NULL CHECK (status IN ('requested','confirmed','applied-unverified','failed','uncertain')),
+  attempts         INTEGER NOT NULL DEFAULT 1,
+  request_json     TEXT NOT NULL,
+  result_json      TEXT,
+  readback         TEXT,
+  requested_at     TEXT NOT NULL,
+  settled_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_external_write_ledger_writer ON external_write_ledger(writer, requested_at);
+
+-- Build 13H — who is home, projected from observation.presence.changed by the
+-- world-model consumer (replayable). One row per configured HA entity; `state`
+-- is a class, never a place name or a coordinate.
+CREATE TABLE IF NOT EXISTS wm_presence (
+  entity_id        TEXT PRIMARY KEY,
+  subject_kind     TEXT NOT NULL,
+  state            TEXT NOT NULL,
+  who_json         TEXT NOT NULL DEFAULT '[]',
+  unreadable_json  TEXT NOT NULL DEFAULT '[]',
+  observed_at      TEXT,
+  received_at      TEXT NOT NULL,
+  event_id         TEXT,
+  why              TEXT
+);

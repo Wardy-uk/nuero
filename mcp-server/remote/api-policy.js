@@ -26,7 +26,13 @@ export const interactive = {
   // people as Nick. The backend refuses the API token; this stops the gateway
   // offering them. Proposing (post_1to1_propose, post_1to1_plan_all) stays
   // available — it reads the diary and books nothing.
-  post_1to1_book: 'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
+  // Build 13L: escalating raises a real Jira ticket's priority and posts an
+  // internal comment through NOVA. The backend refuses the API token; this
+  // stops the gateway offering it. Resolving an unknown outcome is Nick saying
+  // what is on the ticket, which an agent cannot know.
+  post_escalation: 'Escalating a Jira ticket is Nick\'s decision. He escalates it in NEURO → Escalation, where the ticket is shown first.',
+  post_escalation_ledger_resolve: 'Only Nick can say what is on the ticket after an unknown escalation outcome.',
+  post_1to1_book:'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
   post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',
   post_1to1_reschedule: 'Moving a 1-2-1 emails the attendee an update as Nick. He confirms it in NEURO → Team.',
 };

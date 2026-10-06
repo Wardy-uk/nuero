@@ -197,6 +197,14 @@ async function drain({ now = new Date(), microsoft = require('./microsoft') } = 
         item.lastReason = null;
         completed++;
         console.log(`[MSQueue] Completed ${item.msId} on retry ${item.attempts}`);
+        // Build 13M: settle the ledger row the first attempt left as failed.
+        try {
+          require('./external-writes').settleLatestFailed('microsoft.task.complete', item.msId, {
+            status: result.readback === 'confirmed' ? 'confirmed' : 'applied-unverified',
+            result: { pushed: result.kind || 'graph', viaQueue: true, attempt: item.attempts },
+            readback: result.readback || 'unreadable',
+          });
+        } catch (e) { console.warn(`[MSQueue] ledger not settled for ${item.msId}: ${e.message}`); }
         continue;
       }
       item.lastReason = result?.reason || 'unknown';

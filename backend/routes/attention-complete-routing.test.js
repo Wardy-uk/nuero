@@ -84,6 +84,9 @@ function seed(owner) {
 }
 
 const MS = { kind: 'microsoft', msId: 'BsfHOFyEGEC1KvEnPZzbtZcAIJCy', msSource: 'MS ToDo' };
+// Build 13M: completing one Microsoft task twice in a day is a ledgered
+// DUPLICATE, so each scenario below completes a task of its own.
+const msCard = (suffix) => ({ ...MS, msId: `${MS.msId}${suffix}` });
 
 test('Done on a Microsoft card actually reaches Graph, with the id from the card', async () => {
   const rec = seed(MS);
@@ -99,7 +102,7 @@ test('Done on a Microsoft card actually reaches Graph, with the id from the card
 
 test('a push Microsoft refuses is reported as NOT completed, and never as cleared', async () => {
   answer = { completed: false, reason: 'auth' };
-  const rec = seed(MS);
+  const rec = seed(msCard('-refused'));
   const { body } = await post(`/api/attention/records/${rec.id}/act`, { action: 'complete' });
 
   assert.equal(body.msPush.pushed, 'none');
@@ -117,7 +120,7 @@ test('a recurrence is a completion that says the task comes back — not a failu
   // as a failure it reads exactly like a lost tick, which is how three recurring
   // tasks got ticked over and over.
   answer = { completed: true, kind: 'todo', rolled: { nextDue: '2026-10-04' } };
-  const rec = seed(MS);
+  const rec = seed(msCard('-recurring'));
   const { body } = await post(`/api/attention/records/${rec.id}/act`, { action: 'complete' });
 
   assert.equal(body.taskCompleted, true);

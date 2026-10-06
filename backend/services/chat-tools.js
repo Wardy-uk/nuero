@@ -440,8 +440,11 @@ const HANDLERS = {
     // Microsoft-owned tasks have to be completed there too, or the next sync
     // brings them straight back.
     if (existing.ms_id) {
-      const result = await require('./microsoft').completeMicrosoftTask(existing.ms_id, existing.source || null);
-      out.microsoft = result.completed ? 'completed' : `failed (${result.reason})`;
+      // Build 13M: the one completion path — ledger, readback, retry queue —
+      // and the stored ms_source as the hint (it used to pass `source`, i.e.
+      // 'NEURO', so every call guessed Planner first).
+      const result = await require('./ms-complete').completeMicrosoftTask({ msId: existing.ms_id, source: existing.ms_source || null });
+      out.microsoft = result.pushed !== 'none' ? 'completed' : `not yet (${result.warning || 'push failed'})`;
     }
     return out;
   },

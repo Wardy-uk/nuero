@@ -1201,6 +1201,13 @@ function start() {
 
   // (The */5 source-staleness check is a DURABLE job — see registerDurableJobs().)
 
+  // Build 13G: Home Assistant presence onto the event spine, every 2 minutes.
+  // Deliberately NOT durable: a missed poll is corrected by the next one, and
+  // a slot row every 2 minutes is 720 rows a day for nothing.
+  cron.schedule('*/2 * * * *', () => {
+    require('./ha-presence').poll().catch((e) => console.warn('[HaPresence] poll failed:', e.message));
+  });
+
   // 8:20am weekdays — safety net, not the main path. Invites are caught on
   // arrival: the calendar sync reports which events are new and checks those
   // immediately, and email triage triggers a sync because an invite arrives as

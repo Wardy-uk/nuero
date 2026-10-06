@@ -45,6 +45,7 @@ const REASONS = {
   scope: 'Tasks permission not granted — re-consent to Microsoft.',
   list_not_found: 'Could not find the task in any To Do list.',
   not_found: 'Task not found in Planner.',
+  readback_disagrees: 'Microsoft accepted it but still shows the task open.',
 };
 
 /**
@@ -141,6 +142,23 @@ async function fireWebhook(taskId, source) {
 async function completeMicrosoftTask({ msId, source = null, listId = null }) {
   if (!msId) return { ok: false, error: 'msId required' };
 
+  // Build 13M: ledgered BEFORE anything is touched. The same task completed
+  // twice on one day is a duplicate and does nothing — which matters doubly
+  // here, because the mirror flip below is a TOGGLE: a second call used to
+  // UN-tick the line it had just ticked.
+  const ext = require('./external-writes');
+  const claim = ext.begin({
+    writer: 'microsoft.task.complete', key: `ms-complete:${msId}:${ext.localDate()}`, target: msId,
+    request: { msId, source: source || null, listId: listId || null },
+  });
+  if (!claim.ok && claim.duplicate) {
+    const prior = claim.entry.result || {};
+    return { ok: true, pushed: prior.pushed || 'graph', rolled: prior.rolled || null, held: false, warning: null,
+      mirrored: false, text: null, duplicate: true };
+  }
+  const ledgerId = claim.ok ? claim.entry.id : null;
+  const settle = (status, result, readback) => { if (ledgerId) ext.settle(ledgerId, { status, result, readback }); };
+
   const mirror = resolveMirror({ msId });
   let mirrorText = null;
   let mirrored = false;
@@ -194,6 +212,12 @@ async function completeMicrosoftTask({ msId, source = null, listId = null }) {
         console.warn('[MsComplete] Could not repaint the rolled mirror line:', e.message);
       }
     }
+    settle(result.readback === 'confirmed' ? 'confirmed' : 'applied-unverified',
+      { pushed: result.kind || 'graph', rolled: result.rolled || null }, result.readback || 'unreadable');
+    // A recurrence rolled forward: the next tick is a DIFFERENT occurrence
+    // (Nick catches up on months-behind tasks by ticking repeatedly), so this
+    // occurrence's key is released rather than blocking the next one.
+    if (result.rolled && ledgerId) ext.releaseKey(ledgerId, `occurrence-${ledgerId}`);
     return {
       ok: true,
       pushed: result.kind || 'graph',
@@ -218,6 +242,11 @@ async function completeMicrosoftTask({ msId, source = null, listId = null }) {
   if (!webhookOk) {
     held = !!msQueue.enqueue({ msId, source, listId: listId || null, text: mirrorText, reason: result.reason });
   }
+  // A webhook 200 is transport evidence from Power Automate, never a readback;
+  // a refusal Graph RETURNED (auth, not found, readback disagrees) is provably
+  // not applied, so the push queue's retry is a new attempt on the same row.
+  if (webhookOk) settle('applied-unverified', { pushed: 'webhook' }, 'webhook accepted; not read back');
+  else settle('failed', { pushed: 'none', reason: result.reason, held }, null);
 
   return {
     ok: true,

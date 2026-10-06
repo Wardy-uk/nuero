@@ -318,11 +318,13 @@ function sourceBlindVerdicts(moment, { now = new Date() } = {}) {
   }
   for (const o of obs) {
     const verdict = worthInterrupting(o, moment);
-    const decision = { push: !!verdict.push, why: verdict.why || null, severity: o.severity, mode, at: now.toISOString() };
+    const decision = { push: !!verdict.push, why: verdict.why || null, severity: o.severity, mode, liveEligible: o.liveEligible !== false, liveWhy: o.liveWhy || null, at: now.toISOString() };
     sb.recordAttention(o.findingId, decision, { now });
     out.push({
       observation: o,
-      result: { kind: o.kind, findingId: o.findingId, ...verdict, ...(mode === 'shadow' ? { shadow: true } : {}) },
+      // Build 13O: in live mode a finding under the live threshold is still
+      // recorded, but as shadow — it cannot win the push.
+      result: { kind: o.kind, findingId: o.findingId, ...verdict, ...(mode === 'shadow' || o.liveEligible === false ? { shadow: true } : {}) },
     });
   }
   return out;

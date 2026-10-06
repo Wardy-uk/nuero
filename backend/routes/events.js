@@ -85,6 +85,12 @@ router.get('/world/meetings', (req, res) => {
   }
 });
 
+// GET /api/events/world/presence — Build 13H: who is home, from Home Assistant on the event spine: Nick home/away/work/zone/unknown, whether anyone else is in and who HA names, when each last changed, and the source's health (a source that has not answered makes every answer unknown, never away)
+router.get('/world/presence', (req, res) => {
+  try { res.json(require('../services/ha-presence').read()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/events/world/people — people known to the world model (declared in People notes): names, email addresses, explicitly stated role/team/relationship, provenance; plus any address two notes both claim
 router.get('/world/people', (req, res) => {
   try {

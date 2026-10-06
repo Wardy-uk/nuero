@@ -66,9 +66,44 @@ const CONFIDENCE = {
   'moving-without-fix': 0.6,
 };
 
+// ── Build 13O: shadow → live, behind an explicit threshold ───────────────────
+//
+// Replayed against all 12 findings on the live Pi (2–6 Oct 2026): every one
+// that healed did so by itself within 23.9h (an app iOS had not woken
+// overnight), and the two that never healed were pre-identity buckets now
+// RETIRED. So "stale" alone is not something to surface. Live surfaces only:
+//   • an EXPECTED source (optional/retired never), and
+//   • `failing` (FAIL_THRESHOLD consecutive delivery failures — real breakage), or
+//   • stale for LIVE_MIN_SILENCE_MS (30h: a full day plus margin over the
+//     longest self-healed gap observed).
+// never-seen and moving-without-fix stay shadow: both are weaker reads
+// (confidence 0.5 / 0.6) and "not installed" is not "broken".
+const LIVE_MIN_SILENCE_MS = 30 * 60 * 60 * 1000;
+const LIVE_CONDITIONS = Object.freeze(['failing', 'stale']);
+
+/** Pure. Would this shaped finding be surfaced in live mode? */
+function liveEligible(f, nowMs) {
+  if (!f || f.status !== 'active') return { eligible: false, why: 'not active' };
+  const lifecycle = nativeSources.describe(f.source).lifecycle;
+  if (lifecycle !== 'expected') return { eligible: false, why: `source is ${lifecycle}` };
+  if (!LIVE_CONDITIONS.includes(f.condition)) return { eligible: false, why: `${f.condition} is too weak a read to surface` };
+  if (f.condition === 'failing') return { eligible: true, why: 'deliveries keep failing' };
+  const basis = f.lastObservedOrSuccessAt ? Date.parse(f.lastObservedOrSuccessAt) : NaN;
+  if (!Number.isFinite(basis)) return { eligible: false, why: 'silence cannot be dated' };
+  const silence = nowMs - basis;
+  return silence >= LIVE_MIN_SILENCE_MS
+    ? { eligible: true, why: `silent for ${Math.round(silence / 36e5)}h` }
+    : { eligible: false, why: `silent ${Math.round(silence / 36e5)}h, under the 30h live threshold` };
+}
+
 function mode() {
-  const m = String(process.env.SOURCE_BLIND_MODE || 'shadow').toLowerCase();
-  return ['shadow', 'live', 'off'].includes(m) ? m : 'shadow';
+  // An explicit environment value wins (shadow | live | off); otherwise the
+  // Settings kill switch decides between live and shadow.
+  const env = String(process.env.SOURCE_BLIND_MODE || '').trim().toLowerCase();
+  if (env) return ['shadow', 'live', 'off'].includes(env) ? env : 'shadow';
+  let on = false;
+  try { on = require('./feature-flags').isEnabled('source_blind_live'); } catch { on = false; }
+  return on ? 'live' : 'shadow';
 }
 
 function _later(a, b) {
@@ -411,9 +446,13 @@ function observations({ now = Date.now() } = {}) {
   for (const f of getFindings({ status: 'active', now })) {
     const a = f.attention;
     if (a && a.pushedAt && f.change !== 'change') continue;
+    const nowMs = now instanceof Date ? now.getTime() : now;
+    const live = liveEligible(f, nowMs);
     out.push({
       kind: 'source-blind',
       findingId: f.findingId,
+      liveEligible: live.eligible,
+      liveWhy: live.why,
       source: f.source,
       severity: f.severity,
       confidence: f.confidence,
@@ -449,6 +488,6 @@ function recordAttention(findingId, decision, { now = Date.now(), pushed = false
 }
 
 module.exports = {
-  CONSUMER, TYPES, FAIL_THRESHOLD, CONFIDENCE,
-  mode, applyEvent, checkExpected, getFindings, status, observations, recordAttention,
+  CONSUMER, TYPES, FAIL_THRESHOLD, CONFIDENCE, LIVE_MIN_SILENCE_MS,
+  mode, liveEligible, applyEvent, checkExpected, getFindings, status, observations, recordAttention,
 };

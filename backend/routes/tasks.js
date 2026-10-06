@@ -139,8 +139,10 @@ async function pushCompletionToMicrosoft(task) {
   // to prevent, and in Microsoft, where NEURO cannot put it back.
   if (task.status !== 'done') return null;
   try {
-    const microsoft = require('../services/microsoft');
-    const result = await microsoft.completeMicrosoftTask(task.ms_id, task.ms_source || null);
+    // Build 13M: through ms-complete, so a refused push is HELD and retried
+    // (this path used to log and forget), ledgered, and read back.
+    const r = await require('../services/ms-complete').completeMicrosoftTask({ msId: task.ms_id, source: task.ms_source || null });
+    const result = { completed: r.pushed !== 'none', kind: r.pushed, rolled: r.rolled || null, held: !!r.held, reason: r.pushed === 'none' ? (r.warning || 'push failed') : null };
     if (!result.completed) {
       console.warn(`[Tasks] #${task.id} done in NEURO but Microsoft push failed: ${result.reason}`);
     }

@@ -131,6 +131,21 @@ const FLAGS = [
     impact: 'invites, moves and cancels meetings as you, only after you approve it',
   },
   {
+    key: 'source_blind_live',
+    env: 'SOURCE_BLIND_LIVE',
+    // ⚠ Build 13O: the ONE evaluator promoted from shadow to live, and this is
+    // its kill switch. Default FALSE so a fresh install stays in shadow; on the
+    // Pi it is stored ON. `SOURCE_BLIND_MODE` (shadow|live|off), when set in
+    // the environment, still wins over this switch.
+    default: false,
+    label: 'Tell me when a sense has really stopped',
+    description: 'Lets the source-blindness check put a card on Now, and offer one push, when a sense NEURO '
+      + 'depends on has genuinely stopped: three deliveries in a row failing, or nothing heard for 30 hours. '
+      + 'An app iOS simply has not woken overnight is NOT raised (measured: every such gap healed within 24h). '
+      + 'The attention rules still decide whether it interrupts you. Off = record only, as before.',
+    impact: 'may notify you on your own devices; never contacts anyone else',
+  },
+  {
     key: 'dnd_vault_read_only',
     env: 'DND_VAULT_READ_ONLY',
     default: false,

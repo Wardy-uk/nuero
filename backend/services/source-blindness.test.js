@@ -139,7 +139,9 @@ test('a success that is NEWER than the failures resolves a failing finding; an o
 
 test('an expected source never heard from is flagged ONCE, only after its own window, at low confidence', async () => {
   const since = iso(T0);
-  assert.deepEqual(await sb.checkExpected({ now: T0 + H, since }), [], 'too early to say');
+  // Each source on ITS OWN window: the 12h phone sources are too early to say
+  // at one hour; HA presence (polled every 2 min, stale after 30) is not.
+  assert.deepEqual(await sb.checkExpected({ now: T0 + H, since }), ['homeassistant.presence'], 'too early to say for the 12h sources');
   const marked = await sb.checkExpected({ now: T0 + 13 * H, since });
   assert.ok(marked.includes('location.neuro-ios'));
   assert.ok(!marked.includes('healthkit.neuro-ios'), 'heard from — not never-seen');
@@ -223,10 +225,55 @@ test('LIVE: a delivered episode is not offered again unless its condition change
     const offered = sb.observations().map((o) => o.findingId);
     assert.ok(!offered.includes(f.findingId), 'pushed once: not again');
     const v = ambient.sourceBlindVerdicts(OPEN_MOMENT);
-    assert.ok(v.every((x) => x.result.shadow !== true), 'live verdicts can win');
+    assert.ok(v.some((x) => x.observation.liveEligible), 'positive control: something clears the threshold');
+    for (const x of v) {
+      assert.equal(x.result.shadow === true, !x.observation.liveEligible,
+        'live: eligible verdicts can win, ineligible ones stay shadow');
+    }
   } finally {
     delete process.env.SOURCE_BLIND_MODE;
   }
+});
+
+// ── Build 13O: the live threshold and its kill switch ────────────────────────
+
+test('13O live threshold: expected source, and failing or silent ≥ 30h — nothing else', () => {
+  const now = Date.parse('2026-10-06T12:00:00Z');
+  const base = { status: 'active', source: 'eventkit.neuro-ios', condition: 'stale' };
+  const at = (h) => new Date(now - h * H).toISOString();
+  assert.equal(sb.liveEligible({ ...base, lastObservedOrSuccessAt: at(23.9) }, now).eligible, false,
+    'the longest gap that healed by itself on the live Pi stays shadow');
+  assert.equal(sb.liveEligible({ ...base, lastObservedOrSuccessAt: at(30) }, now).eligible, true);
+  assert.equal(sb.liveEligible({ ...base, condition: 'failing', lastObservedOrSuccessAt: at(1) }, now).eligible, true,
+    'repeated delivery failure is real breakage whatever the age');
+  for (const condition of ['never-seen', 'moving-without-fix']) {
+    assert.equal(sb.liveEligible({ ...base, condition, lastObservedOrSuccessAt: at(48) }, now).eligible, false, condition);
+  }
+  assert.equal(sb.liveEligible({ ...base, source: 'reminders.unknown', lastObservedOrSuccessAt: at(48) }, now).eligible, false,
+    'a retired source is never surfaced');
+  assert.equal(sb.liveEligible({ ...base, source: 'desktop.agent', lastObservedOrSuccessAt: at(48) }, now).eligible, false,
+    'an optional source is never surfaced');
+  assert.equal(sb.liveEligible({ ...base, lastObservedOrSuccessAt: null }, now).eligible, false, 'undatable silence is not evidence');
+  assert.equal(sb.liveEligible({ ...base, status: 'resolved', lastObservedOrSuccessAt: at(48) }, now).eligible, false);
+});
+
+test('13O kill switch: the Settings flag moves shadow ↔ live, and an env value still wins', () => {
+  const flags = require('./feature-flags');
+  delete process.env.SOURCE_BLIND_MODE;
+  delete process.env.SOURCE_BLIND_LIVE;
+  try {
+    flags.setEnabled('source_blind_live', false);
+    assert.equal(sb.mode(), 'shadow');
+    assert.deepEqual(require('./decision-engine').collectSourceBlindness(), [], 'switched off: nothing reaches the pool');
+    flags.setEnabled('source_blind_live', true);
+    assert.equal(sb.mode(), 'live', 'one switch promotes it');
+    process.env.SOURCE_BLIND_MODE = 'off';
+    assert.equal(sb.mode(), 'off', 'an explicit env value wins over the switch');
+  } finally {
+    delete process.env.SOURCE_BLIND_MODE;
+    flags.setEnabled('source_blind_live', false);
+  }
+  assert.equal(sb.mode(), 'shadow', 'kill switch returns it to shadow');
 });
 
 // ── replay ───────────────────────────────────────────────────────────────────

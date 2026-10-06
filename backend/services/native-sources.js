@@ -196,17 +196,53 @@ const SOURCES = Object.freeze({
   // reminders WITHOUT ids (not projectable) from the "Reminders" list only, and
   // judging that as blind would be an alarm about a build nobody has made yet.
   // Flip to expected once the rebuilt app is pushing (one line, here).
+  // ⚠ EXPECTED from Build 13 (6 Oct 2026), on evidence: both rebuilt apps
+  // have pushed reminders WITH ids from every list since 4 Oct (source_health
+  // fresh for both, 7 lists seen by id), which is the condition this comment
+  // used to wait for.
   'reminders.neuro-ios': {
     label: 'Phone reminders push (NEURO app)',
     what: 'your reminders, as tasks with their due dates',
-    importance: 'medium', group: 'personal-reminders', lifecycle: 'optional', push: true,
+    importance: 'medium', group: 'personal-reminders', lifecycle: 'expected', push: true,
     expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
   },
   'reminders.saim-ios': {
     label: 'Phone reminders push (SAiM app)',
     what: 'your reminders, as tasks with their due dates',
-    importance: 'medium', group: 'personal-reminders', lifecycle: 'optional', push: true,
+    importance: 'medium', group: 'personal-reminders', lifecycle: 'expected', push: true,
     expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
+  },
+  // ⚠ RETIRED (Build 13, 6 Oct 2026). Deliveries from builds that sent no
+  // X-Neuro-Client and no recognisable User-Agent were bucketed as
+  // `<kind>.unknown`. Every installed build now identifies itself (both apps
+  // have pushed as neuro-ios / saim-ios since 4 Oct), so these buckets can
+  // never be heard from again — and judged as expected-by-default they were
+  // the only ACTIVE blindness findings on the live Pi (64 shadow decisions
+  // each, about a client that no longer exists). History is kept.
+  'eventkit.unknown': {
+    label: 'Phone calendar push (unidentified old build)',
+    what: 'nothing now — superseded by the NEURO and SAiM app sources',
+    importance: 'low', group: 'personal-calendar', lifecycle: 'retired', push: true,
+    lifecycleSince: '2026-10-06T00:00:00.000Z',
+    lifecycleReason: 'pre-identity app builds; every installed build now sends its client id',
+    expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
+  },
+  'reminders.unknown': {
+    label: 'Phone reminders push (unidentified old build)',
+    what: 'nothing now — superseded by the NEURO and SAiM app sources',
+    importance: 'low', group: 'personal-reminders', lifecycle: 'retired', push: true,
+    lifecycleSince: '2026-10-06T00:00:00.000Z',
+    lifecycleReason: 'pre-identity app builds; every installed build now sends its client id',
+    expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
+  },
+  // Build 13G: Home Assistant presence, a PULL source (polled every 2 min).
+  // Grouped with nothing: the phone apps say where the PHONE is, this says what
+  // the house's own trackers (router + Life360) decided about the people.
+  'homeassistant.presence': {
+    label: 'Home Assistant presence',
+    what: 'whether you are home, and whether anyone else is in',
+    importance: 'medium', group: null, expected: true, push: false,
+    expectedIntervalMs: 2 * 60 * 1000, staleAfterMs: 30 * 60 * 1000,
   },
   // Build 11M: the laptop activity reporter, moved onto the spine. OPTIONAL: a
   // laptop asleep for a weekend, or left at work on holiday, is not a blind

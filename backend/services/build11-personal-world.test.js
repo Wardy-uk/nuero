@@ -652,14 +652,15 @@ test('no calendar write to other people exists outside the governed executor', (
 
 // ═══ SOURCEHEALTH ════════════════════════════════════════════════════════════
 
-test('37/38. reminders and calendar are DISTINCT sources; reminders is optional until the app is rebuilt', () => {
+test('37/38. reminders and calendar are DISTINCT sources; reminders is expected now the apps are rebuilt (Build 13)', () => {
   const ne = require('./native-events');
   const r = ne.recordRemindersPush({ headers: { 'x-neuro-client': 'neuro-ios' }, body: { reminders: [], client: 'neuro' }, result: { ok: true, projected: 0 }, now: NOW });
   const c = ne.recordEventKitPush({ headers: { 'x-neuro-client': 'neuro-ios' }, body: { events: [], from: 'a', to: 'b', calendars: ['x'] }, result: { ok: true }, now: NOW });
   assert.equal(r.sourceId, 'reminders.neuro-ios');
   assert.equal(c.sourceId, 'eventkit.neuro-ios');
   const ns = require('./native-sources');
-  assert.equal(ns.describe('reminders.neuro-ios').lifecycle, 'optional');
+  assert.equal(ns.describe('reminders.neuro-ios').lifecycle, 'expected');
+  assert.equal(ns.describe('reminders.unknown').lifecycle, 'retired', 'pre-identity buckets are retired, never judged');
   assert.equal(cr.sourceVerdict(null, 'optional'), 'unknown', 'never heard from is unknown, never a green light');
   assert.equal(cr.sourceVerdict({ known: true, state: 'healthy', freshness: 'quiet' }, 'expected'), 'quiet');
   assert.equal(cr.sourceVerdict({ known: true, state: 'healthy', freshness: 'stale' }, 'expected'), 'stale');

@@ -680,8 +680,11 @@ function collectSourceBlindness() {
   if (sb.mode() !== 'live') return [];
   let findings = [];
   try { findings = sb.getFindings({ status: 'active' }); } catch { return []; }
+  const nowMs = Date.now();
   return findings
     .filter((f) => f.severity !== 'low')
+    // Build 13O: only what clears the explicit live threshold reaches the pool.
+    .filter((f) => sb.liveEligible(f, nowMs).eligible)
     .map((f) => ({
       type: 'source-blind',
       id: f.findingId,

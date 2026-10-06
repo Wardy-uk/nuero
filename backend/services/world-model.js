@@ -60,7 +60,9 @@ const TYPES = ['observation.person.declared', 'observation.calendar.event_observ
   // Build 5D: evidence about whether a commitment moved, folded beside it.
   'observation.progress.evidence',
   // Build 11E/F: the personal entities — Ember, and Nick's declared goals.
-  'observation.companion.declared', 'intent.goal.declared'];
+  'observation.companion.declared', 'intent.goal.declared',
+  // Build 13H: who is home, from Home Assistant.
+  'observation.presence.changed'];
 const obligations = require('./world-obligations');
 const progress = require('./progress-evidence');
 const MAX_EVIDENCE = 10;
@@ -302,6 +304,7 @@ function applyEvent(ev) {
     case 'observation.calendar.event_removed': return _applyRemoved(ev);
     case 'observation.companion.declared': return require('./personal-world').applyCompanion(ev);
     case 'intent.goal.declared': return require('./personal-world').applyGoal(ev);
+    case 'observation.presence.changed': return require('./ha-presence').applyPresence(ev);
     default: return undefined;
   }
 }
@@ -319,6 +322,7 @@ bus.registerConsumer({
     obligations.reset();
     progress.reset();
     require('./personal-world').reset();
+    require('./ha-presence').reset();
   },
 });
 

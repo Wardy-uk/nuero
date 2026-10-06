@@ -152,3 +152,40 @@ test('an app that has delivered anything is signed in; push says when it is bloc
   assert.equal(item(out, 'iphone-neuro.signed-in').status, 'unknown', 'positive control: the other app has delivered nothing');
   assert.match(item(out, 'iphone-saim.push').evidence, /APNs key/);
 });
+
+// ── Build 13S ────────────────────────────────────────────────────────────────
+
+test('13S/26. a governed action is "proven" only on an OBSERVED verification, never on a switch being on', () => {
+  const off = item(S.assess(base({ sendingEnabled: true, proven: { email: 3, calendar: 0 } }), { now: NOW }), 'server.governed-proof');
+  assert.equal(off.status, 'todo', 'switches on and emails proven still does not prove a calendar change');
+  assert.match(off.evidence, /3 approved email/);
+  const on = item(S.assess(base({ proven: { email: 3, calendar: 1 } }), { now: NOW }), 'server.governed-proof');
+  assert.equal(on.status, 'done');
+  assert.equal(on.need, 'optional', 'never nags');
+});
+
+test('13S. HA presence is judged from SourceHealth; never heard from is todo, not done', () => {
+  assert.equal(item(S.assess(base(), { now: NOW }), 'server.ha-presence').status, 'todo');
+  const ok = S.assess(base({ sources: [{ sourceId: 'homeassistant.presence', verdict: 'seeing', verdictLabel: 'Seeing', transport: { lastSuccessAt: '2026-10-04T11:58:00Z' } }] }), { now: NOW });
+  assert.equal(item(ok, 'server.ha-presence').status, 'done');
+});
+
+test('13S. an unreadable external-write ledger is UNKNOWN, an unresolved write needs attention', () => {
+  assert.equal(item(S.assess(base({ unknownWrites: null }), { now: NOW }), 'server.unknown-writes').status, 'unknown');
+  assert.equal(item(S.assess(base({ unknownWrites: 0 }), { now: NOW }), 'server.unknown-writes').status, 'done');
+  assert.equal(item(S.assess(base({ unknownWrites: 1 }), { now: NOW }), 'server.unknown-writes').status, 'attention');
+});
+
+test('13B/1. duplicate container names are called out — classify each, the name cannot tell them apart', () => {
+  const it = item(S.assess(base({ containers: 21, unclassified: 7, unclassifiedCalendars: 0, unclassifiedLists: 7, duplicateNames: ['Reminders'] }), { now: NOW }), 'life.calendars');
+  assert.equal(it.status, 'todo');
+  assert.match(it.evidence, /0 calendar\(s\) and 7 reminder list\(s\)/);
+  assert.match(it.evidence, /Same name twice: Reminders/);
+});
+
+test('13S. relationships are optional and done only when a People note SAYS so', () => {
+  const none = item(S.assess(base({ relationships: 0 }), { now: NOW }), 'life.relationships');
+  assert.equal(none.status, 'todo');
+  assert.equal(none.need, 'optional');
+  assert.equal(item(S.assess(base({ relationships: 2 }), { now: NOW }), 'life.relationships').status, 'done');
+});

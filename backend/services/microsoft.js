@@ -1229,9 +1229,19 @@ async function completeTodoTask(taskId, listId = null) {
   // next", not "that did not work" — so it returns completed with `rolled: null`
   // and the caller says nothing rather than something untrue.
   let rolled = null;
+  // Build 13M: what the source says now. 'confirmed' (completed, or a real
+  // recurrence rolled forward), 'disagrees' (still open with NO recurrence —
+  // the PATCH did not land, whatever its status code said), 'unreadable'.
+  let readback = 'unreadable';
   try {
     const after = await graphFetch(`/me/todo/lists/${patchedList}/tasks/${encodeURIComponent(taskId)}`, token);
-    if (after && after.status && after.status !== 'completed') {
+    if (after && after.status === 'completed') readback = 'confirmed';
+    else if (after && after.status && !after.recurrence) {
+      readback = 'disagrees';
+      console.warn(`[ToDo] ${taskId} reads back as ${after.status} with no recurrence — the completion did not land`);
+    }
+    if (after && after.status && after.status !== 'completed' && after.recurrence) {
+      readback = 'confirmed';
       rolled = {
         nextDue: after.dueDateTime?.dateTime ? after.dueDateTime.dateTime.split('T')[0] : null,
         recurrence: require('../../shared/ms-task.cjs').recurrenceToken(after.recurrence),
@@ -1243,7 +1253,8 @@ async function completeTodoTask(taskId, listId = null) {
     console.warn(`[ToDo] Could not re-read ${taskId} after completing: ${e.message}`);
   }
 
-  return { completed: true, kind: 'todo', rolled };
+  if (readback === 'disagrees') return { completed: false, reason: 'readback_disagrees', kind: 'todo', readback };
+  return { completed: true, kind: 'todo', rolled, readback };
 }
 
 // Planner PATCHes are optimistically concurrent — Graph rejects them without a
@@ -1287,7 +1298,25 @@ async function setPlannerPercent(taskId, percent) {
 
 async function completePlannerTask(taskId) {
   const r = await setPlannerPercent(taskId, 100);
-  return r.ok ? { completed: true, kind: 'planner' } : { completed: false, reason: r.reason };
+  if (!r.ok) return { completed: false, reason: r.reason };
+  // Build 13M: a 2xx is transport evidence, not proof — a shared board is read
+  // back. Unreadable never fails the completion (the PATCH was accepted); a
+  // read that DISAGREES does, so the push queue holds it and tries again.
+  let readback = 'unreadable';
+  try {
+    const token = await getAccessToken();
+    const after = token ? await graphFetch(`/planner/tasks/${encodeURIComponent(taskId)}`, token) : null;
+    if (after && typeof after.percentComplete === 'number') {
+      readback = after.percentComplete === 100 ? 'confirmed' : 'disagrees';
+    }
+  } catch (e) {
+    console.warn(`[Planner] Could not re-read ${taskId} after completing: ${e.message}`);
+  }
+  if (readback === 'disagrees') {
+    console.warn(`[Planner] ${taskId} reads back below 100% after a 2xx — not treated as complete`);
+    return { completed: false, reason: 'readback_disagrees', kind: 'planner', readback };
+  }
+  return { completed: true, kind: 'planner', readback };
 }
 
 /**

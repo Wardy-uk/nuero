@@ -223,24 +223,46 @@ router.get('/ticket/:key', requireNova, async (req, res) => {
 });
 
 // POST /api/escalation — do it. NOVA applies the rules and reports what changed.
+//
+// Build 13L: this writes to Jira (raise-only priority, tighten-only due date,
+// one internal comment, through NOVA). It is registered as `nova.escalate` in
+// services/external-writes.js — A3, human-only: Nick's submit of the exact
+// ticket and reason IS the approval, so a machine client (API token) is
+// refused; the ledger row is written BEFORE NOVA is called, the same ticket +
+// reason on the same day is never escalated twice, an unknown outcome blocks
+// a repeat until Nick resolves it, and the ticket is read back afterwards.
 router.post('/', requireNova, async (req, res) => {
+  if (req.apiClient) {
+    return res.status(403).json({ error: 'Escalating a Jira ticket needs Nick, in NEURO — a machine client cannot do it on his behalf (Build 13L).' });
+  }
   const { ticket_key, reason_code, needed_by, notes } = req.body || {};
   if (!ticket_key) return res.status(400).json({ error: 'ticket_key is required' });
   if (!reason_code) return res.status(400).json({ error: 'reason_code is required' });
   if (needed_by && !/^\d{4}-\d{2}-\d{2}$/.test(needed_by)) {
     return res.status(400).json({ error: 'needed_by must be YYYY-MM-DD' });
   }
-  try {
-    const result = await nova.escalate({
-      ticketKey: String(ticket_key).trim().toUpperCase(),
-      reasonCode: reason_code,
-      neededBy: needed_by || null,
-      notes: notes || null,
-    });
-    res.json({ result });
-  } catch (e) {
-    res.status(502).json({ error: e.message });
-  }
+  const r = await require('../services/nova-escalation').escalate({
+    ticketKey: ticket_key, reasonCode: reason_code, neededBy: needed_by || null, notes: notes || null,
+  });
+  if (r.ok) return res.json({ result: r.result, ledger: r.ledger, outcome: r.outcome, duplicate: !!r.duplicate, note: r.note || null });
+  const code = r.outcome === 'blocked' ? 409 : r.outcome === 'refused' ? 400 : 502;
+  return res.status(code).json({ error: r.error, outcome: r.outcome, ledger: r.ledger || null, note: r.note || null });
+});
+
+// GET /api/escalation/ledger — every escalation NEURO has made, newest first.
+router.get('/ledger', (req, res) => {
+  const ext = require('../services/external-writes');
+  res.json({ escalations: ext.recent({ writer: 'nova.escalate', limit: Math.min(Number(req.query.limit) || 50, 200) }) });
+});
+
+// POST /api/escalation/ledger/resolve — Nick checked the ticket after an
+// unknown outcome; body { key, applied: true|false, note? }. Human only.
+router.post('/ledger/resolve', (req, res) => {
+  if (req.apiClient) return res.status(403).json({ error: 'Only Nick can say what is on the ticket.' });
+  const { key, applied, note } = req.body || {};
+  if (typeof key !== 'string' || typeof applied !== 'boolean') return res.status(400).json({ error: 'key and applied (boolean) are required' });
+  const r = require('../services/external-writes').resolveUnknown(key, { applied, note: note || null });
+  res.status(r.ok ? 200 : 409).json(r);
 });
 
 module.exports = router;

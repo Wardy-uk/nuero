@@ -119,6 +119,25 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
     ...(s.sendingEnabled ? { status: 'done', evidence: '"Send approved emails" is on.' } : { status: 'todo', evidence: 'Off (the default).' }),
     fix: { where: 'desktop', open: 'admin', steps: ['Settings → Switches → "Send approved emails". Leave it off until you want it.'] } });
 
+  // Build 13G: presence from the house itself, on the event spine.
+  add({ id: 'server.ha-presence', surface: 'server', need: 'recommended', title: 'Home Assistant presence',
+    why: 'Whether you are home and whether anyone else is in — read from the house, not guessed from the phone.',
+    ...fromSource(src('homeassistant.presence')),
+    fix: { where: 'pi', steps: ['Check HA_URL / HA_TOKEN in backend/.env and that Home Assistant is up; NEURO polls it every 2 minutes.'] } });
+  // Build 13I: has the governed path actually been proven, end to end?
+  add({ id: 'server.governed-proof', surface: 'server', need: 'optional', title: 'Prove an approved calendar change end to end',
+    why: 'Email is proven when one approved send is verified in Sent Items; a calendar change only when one approved invite is read back from Outlook.',
+    ...(s.proven && s.proven.calendar > 0 ? { status: 'done', evidence: `${s.proven.calendar} calendar change(s) verified; ${s.proven.email} email(s) verified.` }
+      : { status: 'todo', evidence: `${s.proven ? s.proven.email : 0} approved email(s) verified; no approved calendar change verified yet.` }),
+    fix: { where: 'desktop', open: 'actions', steps: ['Actions → Drafted by NEURO → approve the prepared test invite with your approval code; it is verified by reading it back.'] } });
+  // Build 13K: an external write whose outcome is unknown waits for Nick.
+  add({ id: 'server.unknown-writes', surface: 'server', need: 'recommended', title: 'External changes with an unknown outcome',
+    why: 'A ticket escalation that timed out may or may not have landed; NEURO will not repeat it until you say.',
+    ...(s.unknownWrites == null ? { status: 'unknown', evidence: 'The ledger could not be read.' }
+      : s.unknownWrites === 0 ? { status: 'done', evidence: 'Nothing waiting.' }
+        : { status: 'attention', evidence: `${s.unknownWrites} waiting for you to check.` }),
+    fix: { where: 'desktop', steps: ['Check the ticket, then POST /api/escalation/ledger/resolve with { key, applied }.'] } });
+
   // ── Windows laptop ──
   const winHost = (s.desktopHosts || []).find((h) => !/mac/i.test(h.host)) || null;
   add({ id: 'windows.agent', surface: 'windows', need: 'recommended', title: 'Install the desktop activity agent',
@@ -219,12 +238,21 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
     fix: { where: 'mac', command: 'bash desktop-agent/install.sh', steps: ['From the nuero checkout on the Mac.'] } });
 
   // ── Life model ──
+  // Build 13B/S: counted by STABLE ID only — title-keyed rows are what builds
+  // before Build 11 sent, and counting them made the job look twice its size.
+  const dupNote = (s.duplicateNames || []).length
+    ? ` Same name twice: ${s.duplicateNames.join(', ')} — classify each one, the name alone cannot tell them apart.` : '';
   add({ id: 'life.calendars', surface: 'life', need: 'recommended', title: 'Say what your calendars and lists are',
-    why: 'A phone calendar says nothing about your life until you classify it — so it never counts as family, health or home.',
+    why: 'A phone calendar or reminder list says nothing about your life until you classify it — so it never counts as family, health or home.',
     ...(s.containers === 0 ? { status: 'unknown', evidence: 'No calendars or lists have arrived yet — set up phone calendar access first.' }
       : s.unclassified === 0 ? { status: 'done', evidence: `All ${s.containers} classified.` }
-        : { status: 'todo', evidence: `${s.unclassified} of ${s.containers} not classified.` }),
-    fix: { where: 'desktop', open: 'life', steps: ['Life → Calendars & lists → pick a domain for each.'] } });
+        : { status: 'todo', evidence: `${s.unclassifiedCalendars || 0} calendar(s) and ${s.unclassifiedLists || 0} reminder list(s) not classified.${dupNote}` }),
+    fix: { where: 'desktop', open: 'life', steps: ['Life → Calendars & lists → pick a domain (or Ignore) for each.'] } });
+  add({ id: 'life.relationships', surface: 'life', need: 'optional', title: 'Say who your family is',
+    why: 'NEURO never infers family from sharing a house or a calendar — only a People note that says so counts.',
+    ...(s.relationships > 0 ? { status: 'done', evidence: `${s.relationships} People note(s) state a relationship or household.` }
+      : { status: 'todo', evidence: 'No People note states `relationship:` or `household:`.' }),
+    fix: { where: 'desktop', steps: ["In each family member's People note, add `relationship: partner` (or son, daughter…) and `household: true` to the frontmatter."] } });
   add({ id: 'life.goals', surface: 'life', need: 'optional', title: 'Write down a goal or two',
     why: 'Personal importance can only be inherited from a goal you stated.',
     ...(s.goals > 0 ? { status: 'done', evidence: `${s.goals} active.` } : { status: 'todo', evidence: 'No goals.' }),
@@ -288,9 +316,23 @@ async function snapshot() {
     s.desktopHosts = da.hosts().map((h) => ({ ...h, canOpen: (caps && caps[h.host]) || null }));
   } catch { s.desktopHosts = []; }
   try { s.apnsApps = _db().all('SELECT DISTINCT app FROM apns_tokens').map((r) => r.app); } catch { s.apnsApps = []; }
-  s.containers = _count('SELECT COUNT(*) AS n FROM source_containers');
-  s.unclassified = _count(`SELECT COUNT(*) AS n FROM source_containers c WHERE NOT EXISTS
-    (SELECT 1 FROM source_classifications k WHERE k.kind = c.kind AND k.source_key = c.source_key)`);
+  // Stable ids only: a `:title:` row is a pre-Build-11 fallback, not a container.
+  const live = "source_key NOT LIKE '%:title:%'";
+  const unc = `NOT EXISTS (SELECT 1 FROM source_classifications k WHERE k.kind = c.kind AND k.source_key = c.source_key)`;
+  s.containers = _count(`SELECT COUNT(*) AS n FROM source_containers c WHERE ${live}`);
+  s.unclassified = _count(`SELECT COUNT(*) AS n FROM source_containers c WHERE ${live} AND ${unc}`);
+  s.unclassifiedCalendars = _count(`SELECT COUNT(*) AS n FROM source_containers c WHERE ${live} AND kind = 'calendar' AND ${unc}`);
+  s.unclassifiedLists = _count(`SELECT COUNT(*) AS n FROM source_containers c WHERE ${live} AND kind = 'reminder-list' AND ${unc}`);
+  try {
+    s.duplicateNames = _db().all(`SELECT label FROM source_containers c WHERE ${live} AND ${unc}
+      GROUP BY kind, lower(label) HAVING COUNT(*) > 1`).map((r) => r.label);
+  } catch { s.duplicateNames = []; }
+  s.relationships = _count('SELECT COUNT(*) AS n FROM wm_people WHERE relationship IS NOT NULL OR household IS NOT NULL');
+  s.proven = {
+    email: _count("SELECT COUNT(*) AS n FROM prepared_actions WHERE status = 'verified' AND action_type IN ('chase_commitment','reply_email','chase_agenda','send_weekly_risk_report')"),
+    calendar: _count("SELECT COUNT(*) AS n FROM prepared_actions WHERE status = 'verified' AND action_type IN ('create_calendar_event','reschedule_calendar_event','cancel_calendar_event')"),
+  };
+  try { s.unknownWrites = require('./external-writes').unresolved().length; } catch { s.unknownWrites = null; }
   s.goals = _count("SELECT COUNT(*) AS n FROM goals WHERE status = 'active'");
   s.companions = _count('SELECT COUNT(*) AS n FROM wm_companions');
   s.reports = Object.values(_json(REPORT_KEY, {}));

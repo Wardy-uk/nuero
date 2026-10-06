@@ -142,6 +142,15 @@ const TYPES = Object.freeze({
     provenance: 'observation',
     required: ['deviceId', 'observedAt'],
   },
+  // Build 13G: Home Assistant presence, as a STATE CLASS per configured entity
+  // (home | away | work | zone | unavailable for a person; others-home |
+  // nobody-else | unavailable for the household sensor). ⚠ Never coordinates,
+  // never a zone's name, never any HA attribute beyond `who_is_home`.
+  'observation.presence.changed': {
+    version: 1,
+    provenance: 'observation',
+    required: ['entityId', 'subjectKind', 'state'],
+  },
   // ── The world model (Build 3C) ─────────────────────────────────────────────
   //
   // ONE calendar entry as a source showed it — subject, times, status and the

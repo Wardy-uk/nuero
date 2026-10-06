@@ -584,11 +584,11 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
       }
 
       if (payload.msId) {
-        const microsoft = require('./microsoft');
-        const result = await microsoft.completeMicrosoftTask(payload.msId, payload.source || null, payload.listId || null);
-        detail.push(result.completed
-          ? `pushed to Microsoft (${result.kind || 'graph'})`
-          : `Microsoft push failed (${result.reason}) — complete it there manually`);
+        // Build 13M: the one Microsoft completion path (ledger, readback, retry queue).
+        const result = await require('./ms-complete').completeMicrosoftTask({ msId: payload.msId, source: payload.source || null, listId: payload.listId || null });
+        detail.push(result.pushed !== 'none'
+          ? `pushed to Microsoft (${result.pushed})`
+          : (result.warning || 'Microsoft push failed'));
       }
 
       if (!detail.length) return { ok: false, detail: 'complete_task needs a taskId or msId' };
@@ -608,17 +608,16 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
       if (!nova.isConfigured()) return { ok: false, detail: 'NOVA is not configured — cannot escalate' };
       if (!payload.ticketKey) return { ok: false, detail: 'escalate_ticket needs a ticketKey' };
 
-      let result;
-      try {
-        result = await nova.escalate({
-          ticketKey: payload.ticketKey,
-          reasonCode: payload.reasonCode,
-          neededBy: payload.neededBy,
-          notes: payload.notes,
-        });
-      } catch (e) {
-        return { ok: false, detail: `NOVA refused the escalation: ${e.message}` };
-      }
+      // Build 13L: the same ledgered, read-back write the Escalation form uses.
+      const r = await require('./nova-escalation').escalate({
+        ticketKey: payload.ticketKey,
+        reasonCode: payload.reasonCode,
+        neededBy: payload.neededBy,
+        notes: payload.notes,
+      });
+      if (r.outcome === 'duplicate') return { ok: true, detail: r.note, navigate: 'queue' };
+      if (!r.ok) return { ok: false, detail: `NOVA did not escalate it (${r.outcome}): ${r.error}${r.note ? ` — ${r.note}` : ''}` };
+      const result = r.result;
 
       const changed = [];
       if (result.priority?.changed) changed.push(`priority ${result.priority.from || 'unset'} → ${result.priority.to}`);

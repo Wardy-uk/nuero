@@ -304,7 +304,7 @@
     "route": "/api/tasks/:id",
     "domain": "tasks",
     "source": "routes/tasks.js",
-    "line": 180,
+    "line": 182,
     "description": "DELETE /api/tasks/:id.",
     "params": [
       "id"
@@ -1651,6 +1651,24 @@
     "stream": false
   },
   {
+    "id": "get_escalation_ledger",
+    "method": "GET",
+    "route": "/api/escalation/ledger",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 253,
+    "description": "GET /api/escalation/ledger. every escalation NEURO has made, newest first.",
+    "params": [],
+    "query": [
+      "limit"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_escalation_reasons",
     "method": "GET",
     "route": "/api/escalation/reasons",
@@ -1776,7 +1794,7 @@
     "route": "/api/events/world/commitment-risk",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 162,
+    "line": 168,
     "description": "GET /api/events/world/commitment-risk. SHADOW commitment-at-risk findings: promises (Nick's, and what others owe him) that are about to matter and still look open — a stated deadline today/tomorrow or recently passed, or the next occurrence of the meeting they came from within 24h — with evidence, w",
     "params": [],
     "query": [
@@ -1794,7 +1812,7 @@
     "route": "/api/events/world/commitments",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 121,
+    "line": 127,
     "description": "GET /api/events/world/commitments. Build 4 world-model commitments (promises, waiting-for, owed, obligations): who promised what to whom, from which meeting write-up or task, open or closed and by what authority, with the promisor resolved to a person only on an exact name. direction by-nick = Nick'",
     "params": [],
     "query": [
@@ -1813,7 +1831,7 @@
     "route": "/api/events/world/meeting-commitments",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 133,
+    "line": 139,
     "description": "GET /api/events/world/meeting-commitments. what came out of the last <meeting>: the commitments from the newest written-up occurrence of a recurring meeting, which are still open, who owns each, and which are due before the next occurrence. ?title=Tech Leadership",
     "params": [],
     "query": [
@@ -1831,7 +1849,7 @@
     "route": "/api/events/world/meeting-context",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 99,
+    "line": 105,
     "description": "GET /api/events/world/meeting-context. SHADOW meeting-context findings: before a real meeting, what NEURO holds about it (open actions from the last occurrence, items owed from it, urgent emails from attendees), the evidence and missing evidence, confidence, recommended timing and what the attention",
     "params": [],
     "query": [
@@ -1849,7 +1867,7 @@
     "route": "/api/events/world/meeting-intelligence",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 173,
+    "line": 179,
     "description": "GET /api/events/world/meeting-intelligence. SHADOW meeting findings (Build 5A), one per upcoming real meeting: your actions and items owed from the last occurrence with their progress state, linked commitment-risk findings (by id, not restated), related urgent email, what could not be read, confiden",
     "params": [],
     "query": [
@@ -1867,7 +1885,7 @@
     "route": "/api/events/world/meeting-prep-parity",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 184,
+    "line": 190,
     "description": "GET /api/events/world/meeting-prep-parity. the old live meeting-prep push beside the unified meeting pipeline, per meeting: both said something, only one did, or neither; and whether the record supports retiring meeting-prep (it is never retired automatically). ?days=14",
     "params": [],
     "query": [
@@ -1901,7 +1919,7 @@
     "route": "/api/events/world/obligations",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 211,
+    "line": 217,
     "description": "GET /api/events/world/obligations. counts across the Build 4 task and commitment projections: tasks by status, sources by system, commitments by direction/status/kind, how promisors were resolved, how many are linked to a meeting, and the relationship links (synced, realised-by, possible-same)",
     "params": [],
     "query": [],
@@ -1917,8 +1935,24 @@
     "route": "/api/events/world/people",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 89,
+    "line": 95,
     "description": "GET /api/events/world/people. people known to the world model (declared in People notes): names, email addresses, explicitly stated role/team/relationship, provenance; plus any address two notes both claim",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_events_world_presence",
+    "method": "GET",
+    "route": "/api/events/world/presence",
+    "domain": "events",
+    "source": "routes/events.js",
+    "line": 89,
+    "description": "GET /api/events/world/presence. Build 13H: who is home, from Home Assistant on the event spine: Nick home/away/work/zone/unknown, whether anyone else is in and who HA names, when each last changed, and the source's health (a source that has not answered makes every answer unknown, never away)",
     "params": [],
     "query": [],
     "body": [],
@@ -1933,7 +1967,7 @@
     "route": "/api/events/world/progress",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 195,
+    "line": 201,
     "description": "GET /api/events/world/progress. Build 5D progress evidence (did it happen, sent email, later note, fulfilled, likely done): with ?commitmentId=…, one commitment's derived state (fulfilled = fact; likely_fulfilled = an inference that never completes it; contradicted; progress_observed; no_evidence; u",
     "params": [],
     "query": [
@@ -1951,7 +1985,7 @@
     "route": "/api/events/world/tasks",
     "domain": "events",
     "source": "routes/events.js",
-    "line": 110,
+    "line": 116,
     "description": "GET /api/events/world/tasks. Build 4 world-model tasks (obligation, todo, task): every task NEURO knows from its own task list and Microsoft Planner / To Do, one row per real task (a Microsoft task linked to a NEURO task by its id is one task, with both sources), status with which source closed it, ",
     "params": [],
     "query": [
@@ -4255,7 +4289,7 @@
     "route": "/api/tasks/export/verify",
     "domain": "tasks",
     "source": "routes/tasks.js",
-    "line": 217,
+    "line": 219,
     "description": "GET /api/tasks/export/verify. does the note match the DB exactly?",
     "params": [],
     "query": [],
@@ -4271,7 +4305,7 @@
     "route": "/api/tasks/status",
     "domain": "tasks",
     "source": "routes/tasks.js",
-    "line": 239,
+    "line": 241,
     "description": "GET /api/tasks/status. one call that answers \"is the migration healthy?\"",
     "params": [],
     "query": [],
@@ -7065,8 +7099,8 @@
     "route": "/api/escalation",
     "domain": "escalation",
     "source": "routes/escalation.js",
-    "line": 226,
-    "description": "POST /api/escalation. do it. NOVA applies the rules and reports what changed.",
+    "line": 234,
+    "description": "POST /api/escalation.",
     "params": [],
     "query": [],
     "body": [
@@ -7074,6 +7108,26 @@
       "notes",
       "reason_code",
       "ticket_key"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_escalation_ledger_resolve",
+    "method": "POST",
+    "route": "/api/escalation/ledger/resolve",
+    "domain": "escalation",
+    "source": "routes/escalation.js",
+    "line": 260,
+    "description": "POST /api/escalation/ledger/resolve. Nick checked the ticket after an",
+    "params": [],
+    "query": [],
+    "body": [
+      "applied",
+      "key",
+      "note"
     ],
     "queryOpen": false,
     "bodyOpen": true,
@@ -9810,7 +9864,7 @@
     "route": "/api/tasks/:id/complete",
     "domain": "tasks",
     "source": "routes/tasks.js",
-    "line": 155,
+    "line": 157,
     "description": "POST /api/tasks/:id/complete.",
     "params": [
       "id"
@@ -9828,7 +9882,7 @@
     "route": "/api/tasks/:id/reopen",
     "domain": "tasks",
     "source": "routes/tasks.js",
-    "line": 169,
+    "line": 171,
     "description": "POST /api/tasks/:id/reopen.",
     "params": [
       "id"
@@ -9846,7 +9900,7 @@
     "route": "/api/tasks/drain",
     "domain": "tasks",
     "source": "routes/tasks.js",
-    "line": 226,
+    "line": 228,
     "description": "POST /api/tasks/drain. route 3: pull Tasks/Capture.md into the store and clear it",
     "params": [],
     "query": [],
@@ -9865,7 +9919,7 @@
     "route": "/api/tasks/export",
     "domain": "tasks",
     "source": "routes/tasks.js",
-    "line": 208,
+    "line": 210,
     "description": "POST /api/tasks/export. regenerate the vault export note",
     "params": [],
     "query": [],
@@ -9881,7 +9935,7 @@
     "route": "/api/tasks/import",
     "domain": "tasks",
     "source": "routes/tasks.js",
-    "line": 194,
+    "line": 196,
     "description": "POST /api/tasks/import. seed from Master Todo + the triage worksheets.",
     "params": [],
     "query": [],
@@ -9900,7 +9954,7 @@
     "route": "/api/tasks/retire-master",
     "domain": "tasks",
     "source": "routes/tasks.js",
-    "line": 256,
+    "line": 258,
     "description": "POST /api/tasks/retire-master. step 6. Stops Master Todo.md being parsed and moves",
     "params": [],
     "query": [],
