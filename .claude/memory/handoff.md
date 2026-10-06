@@ -2,9 +2,9 @@
 
 - Deployed nuero 01398c7 + 0711948 to pi5 (full suite green locally 5289/0; Pi test gate passed before each restart). nuero-ios 9ac7f0f pushed, UNBUILT.
 - Live now: HA presence on the spine (/api/events/world/presence: Nick work, household Helen+Isaac); source-blind LIVE behind 30h/failing threshold, kill switch Settings → "Tell me when a sense has really stopped" (ON); Jira escalation human-only + ledgered; Planner/To Do completion converged + read back.
-- WAITING ON NICK: approve pa_ea693960ea35d2ad (governed calendar proof, Fri 9 Oct 17:30, only attendee ward.nickj@gmail.com) in Actions with the approval code; then record the verified result in the Build 13 vault note §13I. Also: classify 7 reminder lists (Reminders x2), add relationship:/household: to family People notes.
+- DONE: governed calendar proof pa_ea693960ea35d2ad approved 12:35 and VERIFIED by read-back (201, all checks true). Still for Nick: classify 7 reminder lists (Reminders x2), add relationship:/household: to family People notes.
 - ⚠ nuero-ios has ANOTHER session's 5 Oct place-sensing changes UNCOMMITTED (LocationTracker, AppState, SaimState, APIClient, HealthSync, DeviceReporter, PlacePayload). Location durable queue + the two `transient: OutboxQueue.isTransient(error)` call sites (AppState ~230, SaimState ~1339) are blocked until that is committed or dropped.
-- Not done: legacy meeting-prep parity (needs role + last-1-2-1 in meeting-intelligence); NOVA PATCH passthrough unwhitelisted; MCP gateway too broad on action routes; household sensor last changed 15 Sep (maybe stuck); Confluence not published (record contains household/family details — Nick's call).
+- Not done: legacy meeting-prep parity (needs role + last-1-2-1 in meeting-intelligence); NOVA PATCH passthrough unwhitelisted; MCP gateway too broad on action routes; Confluence not published (record contains household/family details — Nick's call).
 - client-routes.test.js flaked once in a full parallel run (subtests all passed; passes alone).
 - Record: vault Projects/NEURO/NEURO-SAIM — Build 13 Activation and Autonomous Reliability.md; gap analysis appended.
 
