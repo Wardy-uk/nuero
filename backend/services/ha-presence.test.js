@@ -17,6 +17,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'neuro-hapres-'));
 process.env.NEURO_DB_PATH = path.join(tmp, 'scratch.db');
 process.env.HA_PRESENCE_ENTITIES = 'person.nick,binary_sensor.household_others_home';
 process.env.LIFE_WORK_ZONES = 'Office,Work';
+process.env.HA_URL = 'http://ha.test:8123';
+process.env.HA_TOKEN = 'test-token';
 
 const db = require('../db/database');
 const bus = require('./event-bus');
@@ -138,4 +140,17 @@ test('replay rebuilds wm_presence identically', async () => {
   await bus.replayConsumer('world-model');
   const after = db.all('SELECT entity_id, subject_kind, state, who_json, observed_at FROM wm_presence ORDER BY entity_id');
   assert.deepEqual(after, snap);
+});
+
+test('the REAL ha.fetchStates is wired (every other test injects a fake — that is how this shipped broken)', async () => {
+  const realFetch = global.fetch;
+  let asked = null;
+  global.fetch = async (url, opts) => { asked = { url: String(url), auth: opts && opts.headers && opts.headers.Authorization };
+    return { ok: true, status: 200, json: async () => states({ nickChanged: T0 + 5000e3 }) }; };
+  try {
+    const r = await hp.poll({ now: T0 + 5000e3 });
+    assert.equal(r.ok, true, r.error);
+    assert.equal(asked.url, 'http://ha.test:8123/api/states');
+    assert.equal(asked.auth, 'Bearer test-token');
+  } finally { global.fetch = realFetch; }
 });

@@ -485,6 +485,9 @@ async function getHaContextBlock() {
 
 module.exports = {
   isConfigured,
+  // Build 13G: exported for ha-presence, which needs a FRESH read (a dead HA
+  // must fail the run, not be answered from the 60s cache).
+  fetchStates,
   cachedStates,
   resolvePhoneEntities,
   phoneEntity,
