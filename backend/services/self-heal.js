@@ -45,6 +45,7 @@ const ALLOWLIST = Object.freeze({
   'retry-sync': Object.freeze({
     capability: 'source.retry-sync',
     hypotheses: Object.freeze(['upstream-unavailable', 'sync-job-failed']),
+    requiresSignal: 'provider-answering',
     reversible: true,
     rollback: Object.freeze({
       method: 'nothing to roll back: it re-runs the source\'s own read-only sync once, which changes nothing its next scheduled run would not',
@@ -114,6 +115,13 @@ function assess({ isEnabled, inv, sourceId, sourceRow, findingActive, existingAt
   if (!rule.hypotheses.includes(top.type)) return fail('confidence', `${fix.kind} does not answer "${top.type}"`);
   if ((inv.evidence || []).some((e) => e.status === 'unavailable' || e.status === 'refused')) return fail('evidence', 'part of the evidence could not be read');
   pass('confidence');
+  // A retry needs something to answer it. While the provider is still down the
+  // one attempt for this outage is NOT spent: the source's own schedule will
+  // recover it when the provider returns, and that is recorded as a recovery.
+  if (rule.requiresSignal && !(inv.evidence || []).some((e) => e.signal === rule.requiresSignal)) {
+    return fail('provider-now', 'the provider is not known to be answering now — a retry would fail, so the attempt is not spent');
+  }
+  pass('provider-now');
   if (!findingActive) return fail('still-failing', 'the outage has already closed');
   if (!sourceRow) return fail('still-failing', 'source health unreadable — not acting blind');
   if (!(sourceRow.state === 'failing' || sourceRow.freshness === 'stale')) return fail('still-failing', `source is ${sourceRow.state}/${sourceRow.freshness} — it recovered before NEURO acted`);

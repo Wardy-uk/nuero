@@ -38,7 +38,15 @@ const SIBLING_WINDOW_MS = 2 * 60 * 60 * 1000;
 const INGEST_ALIVE_MS = 60 * 60 * 1000;
 const RESTART_WINDOW_MS = 30 * 60 * 1000;
 
-const PROBES = Object.freeze(['source-health', 'blind-state', 'app-siblings', 'group-peers', 'ingest-alive', 'event-spine', 'sync-job', 'process-uptime']);
+// Build 15K adds ONE probe, `provider-check`, and only for a RETRYABLE pull
+// source: is the provider answering right now? Measured on the live Pi (6 Oct):
+// every real producer passes a reason CODE with a failure ('fetch-threw',
+// 'unreachable', 'empty-response'), and source-blindness stores that code, so
+// the blind-state probe can never classify a failure — the provider's error
+// class is ONE fact (source-health), and counting a second fold of the same
+// message would be double-counting. "Is it answering now?" is the independent
+// second fact a person would check, and the one a retry decision needs.
+const PROBES = Object.freeze(['source-health', 'blind-state', 'app-siblings', 'group-peers', 'ingest-alive', 'event-spine', 'sync-job', 'process-uptime', 'provider-check']);
 
 const HYPOTHESES = Object.freeze([
   'source-offline',      // the sensor stopped while its app is alive (permission, background off)
@@ -67,6 +75,7 @@ function plan(sourceId, describe) {
   if (d.push) out.push('app-siblings', 'ingest-alive');
   if (d.group) out.push('group-peers');
   if (!d.push && SOURCE_JOB[sourceId]) out.push('sync-job');
+  if (!d.push && RETRYABLE_SOURCES.includes(sourceId)) out.push('provider-check');
   out.push('event-spine', 'process-uptime');
   return out.slice(0, MAX_PROBES);
 }
@@ -172,6 +181,13 @@ function toEvidence(sourceId, finding, results, nowMs) {
         add(r.probe, 'ok', near ? 'restart-near-silence' : 'no-restart-near-silence', { startedAt: new Date(startedAt).toISOString() });
         break;
       }
+      case 'provider-check': {
+        // { answering: true | false | null, auth: 'refused' | null, status }
+        const signal = d.auth === 'refused' ? 'provider-auth-refused' : d.answering === true ? 'provider-answering'
+          : d.answering === false ? 'provider-down' : null;
+        add(r.probe, 'ok', signal, { answering: d.answering === undefined ? null : d.answering, status: d.status || null });
+        break;
+      }
       default:
         add(r.probe, 'skipped', null, null);
     }
@@ -183,8 +199,11 @@ function toEvidence(sourceId, finding, results, nowMs) {
 const RULES = Object.freeze({
   'agent-not-running': { support: ['stale', 'siblings-stopped-together', 'ingest-alive'], contra: ['siblings-fresh', 'ingest-silent'], pushOnly: true },
   'source-offline': { support: ['stale', 'siblings-fresh', 'ingest-alive'], contra: ['siblings-stopped-together', 'ingest-silent'], pushOnly: true },
-  'upstream-unavailable': { support: ['failing-upstream'], contra: ['failing-auth'] },
-  'auth-expired': { support: ['failing-auth'], contra: ['failing-upstream'] },
+  // `anchor`: the hypothesis is not considered at all without one of these. A
+  // provider answering (or not) says nothing about WHY a source failed unless
+  // its own error said "upstream" or "auth" first.
+  'upstream-unavailable': { support: ['failing-upstream', 'provider-answering', 'provider-down'], contra: ['failing-auth', 'provider-auth-refused'], anchor: ['failing-upstream'] },
+  'auth-expired': { support: ['failing-auth', 'provider-auth-refused'], contra: ['failing-upstream'], anchor: ['failing-auth'] },
   'sync-job-failed': { support: ['job-failing', 'job-stalled', 'failing-neuro-code'], contra: ['job-healthy'] },
   'consumer-failed': { support: ['consumer-unhealthy'], contra: ['consumer-healthy'] },
   'delivery-delayed': { support: ['ingest-silent', 'restart-near-silence'], contra: ['ingest-alive'], pushOnly: true },
@@ -211,6 +230,7 @@ function hypothesise(items, { push = false, lifecycle = 'expected', findingActiv
     const sup = ok.filter((i) => rule.support.includes(i.signal));
     const con = ok.filter((i) => rule.contra.includes(i.signal));
     if (!sup.length) continue;
+    if (rule.anchor && !sup.some((i) => rule.anchor.includes(i.signal))) continue;
     // "stale" alone says only that the source is silent — it is the PREMISE
     // of every push hypothesis, so it cannot be one of the two agreeing probes.
     const independent = new Set(sup.filter((i) => i.signal !== 'stale').map((i) => i.probe)).size;
@@ -316,6 +336,9 @@ function _facts(items) {
       case 'job-failing': lines.push(`sync job ${f.job} failing (last success ${f.lastSuccessAt || 'never'})`); break;
       case 'job-stalled': lines.push(`sync job ${f.job} has not succeeded recently`); break;
       case 'restart-near-silence': lines.push(`NEURO restarted near when it went quiet (${f.startedAt})`); break;
+      case 'provider-answering': lines.push('the provider is answering again now'); break;
+      case 'provider-down': lines.push(`the provider is still not answering${f.status ? ` (${f.status})` : ''}`); break;
+      case 'provider-auth-refused': lines.push('the provider refuses NEURO\'s sign-in'); break;
       default:
         if (i.signal.startsWith('failing-')) lines.push(`${f.consecutiveFailures} failures in a row (${f.failureClass || 'unclassified'})`);
     }

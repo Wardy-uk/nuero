@@ -117,6 +117,11 @@ test('10. "Today NEURO…" is counted off the entries, and an empty day says so 
   // An attempted-but-failed fix is not counted as fixed.
   const failed = tl.summarise([entries[2], tl.entry({ id: 'e', occurredAt: at(3), category: 'verified', type: 'selfheal.failed', headline: '', status: 'failed' })]);
   assert.equal(failed.counts.fixed, 0);
+  // "Can't tell whether the hike happened" is not an uncertain outcome of NEURO's (caught live, 6 Oct).
+  const hike = tl.entry({ id: 'g', occurredAt: at(4), category: 'sensed', type: 'goal.hike.uncertain', headline: '', status: 'uncertain' });
+  const ext = tl.entry({ id: 'x', occurredAt: at(4), category: 'acted', type: 'external.nova.escalate', headline: '', status: 'uncertain' });
+  assert.equal(tl.summarise([hike]).counts.uncertain, 0);
+  assert.equal(tl.summarise([hike, ext]).counts.uncertain, 1, 'positive control');
   assert.match(failed.lines[1], /fixed 0 low-risk problems \(1 attempted\)/);
 });
 

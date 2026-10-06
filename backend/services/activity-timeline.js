@@ -427,7 +427,9 @@ function summarise(entries) {
     verified: entries.filter((e) => e.category === 'verified' || e.type === 'selfheal.recovered').filter((e) => ['recovered', 'verified', 'confirmed'].includes(e.status)).length,
     recovered: entries.filter((e) => e.category === 'recovered').length,
     prepared: entries.filter((e) => e.category === 'prepared' && e.authority === 'A4').length,
-    uncertain: entries.filter((e) => e.status === 'uncertain').length,
+    // An uncertain OUTCOME is about something NEURO did; "can't tell whether a
+    // hike happened" is about Nick's week, not an outcome of NEURO's.
+    uncertain: entries.filter((e) => e.status === 'uncertain' && !e.type.startsWith('goal.')).length,
     failed: entries.filter((e) => e.status === 'failed').length,
     approvals: entries.filter((e) => e.actor === 'nick' && e.authority === 'A4' && e.category === 'decided').length,
     blocked: entries.filter((e) => e.category === 'blocked').reduce((n, e) => n + ((e.metadata && e.metadata.count) || 1), 0),

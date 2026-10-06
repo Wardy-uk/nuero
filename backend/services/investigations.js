@@ -94,8 +94,13 @@ function defaultProbes() {
       return { job: (st.jobs || []).find((j) => j.name === name) || null };
     },
     'process-uptime': () => ({ uptimeMs: Math.round(process.uptime() * 1000) }),
+    // Build 15K: is the provider answering NOW? One bounded read, only for the
+    // retryable pull sources (the plan never asks for any other).
+    // Lives in provider-check.js: this module imports no network client.
+    'provider-check': ({ sourceId }) => require('./provider-check').check(sourceId),
   };
 }
+
 
 function _withTimeout(p, ms) {
   let t;
