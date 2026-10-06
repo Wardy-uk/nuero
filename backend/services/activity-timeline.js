@@ -141,7 +141,8 @@ function fromInvestigations(invs, eventsById, { healedInvestigations = new Set()
         if (d.fix && d.fix.kind && !(d.fix.kind === 'retry-sync' && healedInvestigations.has(inv.id))) {
           out.push(entry({
             id: `inv:${inv.id}:${ev.id}:rec`, occurredAt: ev.at, category: 'decided', type: 'investigation.recommended',
-            headline: `NEURO recommended: ${FIX_WORDS[d.fix.kind] || d.fix.kind}`, summary: 'A manual step — NEURO cannot do this itself.',
+            headline: `NEURO recommended: ${FIX_WORDS[d.fix.kind] || d.fix.kind}`,
+            summary: d.fix.kind === 'retry-sync' ? 'Not done automatically — the diagnosis was not certain enough to act on.' : 'A manual step — NEURO cannot do this itself.',
             status: 'recommended', authority: d.fix.authority || null, investigationRef: inv.id, findingRef: inv.trigger_ref,
             sourceRefs: [`source:${sourceId}`], metadata: { fixKind: d.fix.kind },
           }));

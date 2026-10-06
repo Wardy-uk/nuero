@@ -1,3 +1,15 @@
+# Session Handoff — 2026-10-06 (Build 15: Activity, safe self-heal, meeting age bound, hiking loop)
+
+- Deployed nuero 5ba6338 → 2922a68 to pi5 (Pi gate 5361/0 before restart; local 5376/0). MCP gateway rebuilt (hike-write routes interactive). No iOS work.
+- Live: SYSTEM → Activity (`/api/activity/timeline`); Life → hiking card (`/api/loops/hiking`, this week "Saturday hike planned", forecast rain 13.5°C); canary source `neuro.selftest`; self-heal switch "Let NEURO retry a stopped sync by itself" (default ON).
+- Commitment-risk: the 22 findings from the 21 Sep standup resolved on the first pass (dry-run on a snapshot first: 28 → 6, nothing else moved). Standup write-ups can link again (free is a tie-breaker).
+- Self-heal proof: first live run came back MEDIUM and correctly refused — blind-state holds reason codes, so a failure class was one fact. Fixed with ONE new probe (provider-check). Second run: see the vault record for the outcome.
+- Not done / for Nick: old meeting-prep stays live (parity 2/5 days, 3 old-only — two are the old pipeline firing on solo blocks); confirm or plan hikes on Life; iOS homework untouched (nuero-ios 9ac7f0f + other session's uncommitted 5 Oct place-sensing files).
+- Known: `one-to-one-cadence-routing.test.js` fails as a whole file intermittently in parallel runs (pre-existing, passes alone); `due-ahead-render.test.js` and `one-to-one-cadence-state.test.js` contain literal backspace bytes (pre-existing, untouched); mcp-server's VANTAGE inventory test is stale (known, out of deploy path).
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 15 Safe Self-Healing and Activity.md; gap analysis appended.
+
+---
+
 # Session Handoff — 2026-10-06 (Build 14: authority matrix + bounded investigation)
 
 - Deployed nuero f8dca93 to pi5 (Pi gate 5320/0; local 5335/0). SAiM backend restarted (now authenticates with NEURO_KIOSK_TOKEN, added to BOTH .env files). MCP gateway container rebuilt; live gateway shows post_rooms_by_key_accept interactive. Local MCP server change takes effect on next Claude Code restart.

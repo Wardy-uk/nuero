@@ -41,7 +41,9 @@ test('3. a recommendation is ONE entry, and a retry that self-heal ran is not sh
   assert.equal(tl.fromInvestigations([INV], new Map([['inv1', e]])).filter((x) => x.type === 'investigation.recommended').length, 1);
   const r = evs([['hypothesised', { top: 'upstream-unavailable', level: 'high' }], ['decided', { decision: 'PREPARE', fix: { kind: 'retry-sync', authority: 'A1' } }]]);
   assert.equal(tl.fromInvestigations([INV], new Map([['inv1', r]]), { healedInvestigations: new Set(['inv1']) }).filter((x) => x.type === 'investigation.recommended').length, 0);
-  assert.equal(tl.fromInvestigations([INV], new Map([['inv1', r]])).filter((x) => x.type === 'investigation.recommended').length, 1, 'positive control: un-run, it IS advice');
+  const advice = tl.fromInvestigations([INV], new Map([['inv1', r]])).filter((x) => x.type === 'investigation.recommended');
+  assert.equal(advice.length, 1, 'positive control: un-run, it IS advice');
+  assert.match(advice[0].summary, /not certain enough/, 'a retry NEURO chose not to run is not "something NEURO cannot do" (live wording, 6 Oct)');
 });
 
 const PA = { action_id: 'pa1', action_type: 'reply_email', version: 1, origin: 'inbox', status: 'verified', created_at: at(0), approved_at: at(5), decided_at: at(5), executed_at: at(6), verified_at: at(9) };
