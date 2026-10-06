@@ -99,7 +99,7 @@ function fakeMail(opts = {}) {
   const drafts = new Map();
   const sentItems = [];
   const calls = { create: 0, send: 0, find: 0, deleted: [] };
-  let clockMs = NOW;
+  let clockMs = opts.clockMs ?? NOW;
   const moveToSent = (id) => {
     const d = drafts.get(id);
     sentItems.push({ id: `sent-${id}`, internetMessageId: d.imid, subject: d.subject, to: d.to.map((x) => x.email.toLowerCase()),
@@ -656,13 +656,18 @@ test('the Build 6 migration rebuilds a Build 5 table, carries every row with a p
 // ── the route ───────────────────────────────────────────────────────────────
 
 test('the HTTP route: a machine client cannot approve or edit; Nick approving sends once and answers with the verified status', async () => {
-  const f = makeChase();
-  const mail = fakeMail();
+  // ⚠ THE ROUTE READS THE WALL CLOCK (approve judges expiry against now), so
+  // this one test is anchored to it. Built at the fixed NOW it was a date bomb:
+  // the action expires 72h after creation, and the suite went red at 09:00 on
+  // 6 Oct 2026 with nothing changed.
+  const REAL = Date.now();
+  const f = makeChase({ createdAt: REAL - MIN });
+  const mail = fakeMail({ clockMs: REAL + 2 * MIN });
   const w = world(f, mail);
   // Point the executor's DEFAULT deps at the fake for this route test.
   const executorModule = require('./action-executor');
   const realExecute = executorModule.execute;
-  executorModule.execute = (id, opts = {}) => realExecute(id, { ...opts, now: NOW + 2 * MIN, deps: w.deps });
+  executorModule.execute = (id, opts = {}) => realExecute(id, { ...opts, now: REAL + 2 * MIN, deps: w.deps });
   const express = require('express');
   const app = express();
   app.use(express.json());

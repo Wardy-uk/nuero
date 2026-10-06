@@ -82,15 +82,22 @@ test('nothing on the card writes until Save — the ONE call site', () => {
   // carry a caller's fields without inventing any.
   const sites = [...SOURCE.matchAll(/onPatch\(([^)]*)\)/g)].map(m => m[1].trim());
   assert.ok(sites.length >= 2, 'onPatch should still be both written and wired');
+  // Since e868225 (t-shirt sizes) the draft is translated before it is sent —
+  // `size` becomes an exact estimate — so the write may be `body`, but ONLY a
+  // `body` that is a copy of the accumulated draft. Any other name is a control
+  // writing on its own again.
+  const bodyIsTheDraft = /const body = \{ \.\.\.changed \};/.test(SOURCE);
   for (const args of sites) {
     assert.ok(
-      args === 'changed' || /^[A-Za-z_$][\w$]*, fields$/.test(args),
+      args === 'changed' || (args === 'body' && bodyIsTheDraft) || /^[A-Za-z_$][\w$]*, fields$/.test(args),
       `onPatch(${args}) writes something other than the accumulated draft — a control `
       + 'is patching on click again, which re-sorts the card out from under the cursor',
     );
   }
-  assert.ok(sites.includes('changed'), 'the single write should send the whole accumulated draft');
-  assert.ok(SOURCE.includes('await onPatch(changed)'), 'the single write should send the whole accumulated draft');
+  assert.ok(
+    SOURCE.includes('await onPatch(changed)') || (bodyIsTheDraft && SOURCE.includes('await onPatch(body)')),
+    'the single write should send the whole accumulated draft',
+  );
 });
 
 test('clearing a date stays an EXPLICIT act, not an inference from an empty box', () => {

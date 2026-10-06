@@ -99,10 +99,21 @@ test('the page approves with a fresh challenge, the DISPLAYED payload hash and t
     assert.match(s, /approveWithCode\(/, `${other} approves through the shared helper`);
     assert.doesNotMatch(s, /\/api\/actions\/\$\{[^}]+\}\/approve/, `${other} has no old-queue approve door`);
   }
-  // The code is never stored: no localStorage/sessionStorage anywhere in the queue.
-  assert.doesNotMatch(src, /localStorage|sessionStorage|indexedDB/);
+  // The CODE is never stored. Since 5 Oct 2026 (fed2834, trusted browsers) the
+  // page keeps ONE thing in localStorage: the server-issued, revocable device
+  // TOKEN under DEVICE_KEY. So every storage call must name that key, the
+  // only value ever written is the token the server returned, and nothing
+  // else (session storage, IndexedDB) is touched.
+  assert.doesNotMatch(src, /sessionStorage|indexedDB/);
+  const storageCalls = src.match(/localStorage\.\w+\([^)]*\)/g) || [];
+  assert.ok(storageCalls.length >= 2, 'positive control: the trusted-device token is stored');
+  for (const call of storageCalls) assert.match(call, /^localStorage\.\w+\(DEVICE_KEY/, `storage touches only the device token: ${call}`);
+  assert.match(src, /localStorage\.setItem\(DEVICE_KEY, t\)/);
+  assert.match(src, /if \(d && d\.ok && d\.token\) setDeviceToken\(d\.token\)/, 'only the token the server issued is saved');
+  assert.doesNotMatch(src, /setDeviceToken\(\s*code\s*\)|setItem\([^)]*code/i, 'the approval code itself is never written');
   const panel = fs.readFileSync(path.resolve(FILE, '..', 'ActionsPanel.jsx'), 'utf8');
-  assert.match(panel, /<PreparedActions \/>/);
+  // Mounted, with whatever props (f94d946 added a `key` so it reloads after an approve).
+  assert.match(panel, /<PreparedActions(\s[^>]*)?\/>/);
 });
 
 test('Build 7: approving opens a password field for the approval code, and a gate is said instead of a button', () => {
