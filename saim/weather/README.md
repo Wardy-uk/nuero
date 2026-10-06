@@ -9,12 +9,13 @@ It keeps the existing behaviour (validate, journal `Accepted {...}`, optional MQ
 forwarding through a durable SQLite spool at `/var/lib/saim-weather/spool.db`:
 
 - a reading is spooled **before** it is sent, and leaves the spool only when NEURO answers
-  with an outcome for it (`stored` / `duplicate` → done; `rejected` / `conflict` → moved to
-  the spool's `dead` table and logged);
+  with an outcome for it (`stored` / `duplicate` → done; `rejected` → moved to the spool's
+  `dead` table and logged);
 - NEURO down, network down, or a 4xx (bad token) → nothing is lost; it backs off 5 s → 5 min
   and drains the backlog when NEURO is back;
-- a resend is safe: NEURO folds the same node + sequence + `received_at` as a duplicate, and
-  a transmitter reboot (sequence back to 1) opens a new `boot` instead of colliding.
+- a resend is safe: a reading's identity is node + sequence + `received_at` (stamped once
+  here, resent verbatim), so a retry folds as a duplicate while a transmitter reboot's
+  repeated sequence numbers are new readings.
 
 With `NEURO_WEATHER_URL` empty it is exactly the old journal-only service.
 

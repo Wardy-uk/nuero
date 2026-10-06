@@ -612,12 +612,13 @@ CREATE INDEX IF NOT EXISTS idx_environment_pressure_t ON environment_pressure(t)
 -- receiver on pi5's USB → `saim-weather-ingest`, which forwards each accepted
 -- `saim.weather.v1` record here. One row per minute, kept INDEFINITELY.
 --
--- ⚠ THE KEY IS (node_id, boot, sequence), NOT (node_id, sequence). The
--- transmitter restarts its sequence at 1 every time it reboots (seen on the
--- first evening: 1..9 after a power cycle), so the raw pair repeats. `boot` is
--- assigned by NEURO: a NEWER reading carrying a sequence at or below the last
--- one seen opens the next boot. A forwarder retry carries the same sequence and
--- the same received_at, and is folded by the duplicate check before the insert.
+-- ⚠ THE KEY IS (node_id, sequence, observed_at), NOT (node_id, sequence). The
+-- transmitter restarts its sequence at 1 on every reboot — on the first evening
+-- it rebooted every 10-30 s during bring-up — so the raw pair repeats within
+-- seconds. What does NOT repeat is the receipt time the Pi stamps once and a
+-- retry resends verbatim, so a forwarder retry is an exact duplicate and two
+-- genuine readings never are. `boot` is ADVISORY: NEURO's best guess at which
+-- run of the node a reading came from, never part of identity.
 -- `observed_at` is the Pi's receipt time in epoch MILLISECONDS (UTC); the node
 -- has no clock, so receipt IS the observation time, to within the radio hop.
 CREATE TABLE IF NOT EXISTS weather_observations (
@@ -634,7 +635,7 @@ CREATE TABLE IF NOT EXISTS weather_observations (
   schema_version TEXT NOT NULL,
   source TEXT,
   ingested_at INTEGER NOT NULL,
-  UNIQUE(node_id, boot, sequence)
+  UNIQUE(node_id, sequence, observed_at)
 );
 CREATE INDEX IF NOT EXISTS idx_weather_obs_node_t ON weather_observations(node_id, observed_at);
 CREATE INDEX IF NOT EXISTS idx_weather_obs_node_seq ON weather_observations(node_id, sequence);

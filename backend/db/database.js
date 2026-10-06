@@ -378,6 +378,41 @@ async function init() {
     console.error('[DB] calendar_cache migration check failed:', e.message);
   }
 
+  // Migration: weather_observations re-keyed (6 Oct 2026, the day it shipped).
+  //
+  // The first key was UNIQUE(node_id, boot, sequence) with `boot` INFERRED from
+  // arrival order. Real data broke it within the hour: a journal backfill of
+  // older readings across a reboot collided with newer ones, and during bring-up
+  // the node rebooted every 10-30 s, so two genuine `sequence 1` readings were
+  // folded as one. A reading's identity is what the Pi stamps once and resends
+  // verbatim — (node_id, sequence, observed_at) — so that is the key now and
+  // `boot` is advisory metadata. LOSSLESS: every row is copied before the swap,
+  // and the whole rebuild is one transaction.
+  try {
+    const t = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'weather_observations'").get();
+    if (t && /UNIQUE\s*\(\s*node_id\s*,\s*boot\s*,\s*sequence\s*\)/i.test(t.sql)) {
+      db.transaction(() => {
+        db.exec('ALTER TABLE weather_observations RENAME TO weather_observations_old');
+        // The old table's indexes keep their names across the rename; drop them so
+        // schema.sql can recreate them against the new table.
+        db.exec('DROP INDEX IF EXISTS idx_weather_obs_node_t');
+        db.exec('DROP INDEX IF EXISTS idx_weather_obs_node_seq');
+        db.exec(schema);
+        db.exec(`INSERT OR IGNORE INTO weather_observations
+          (id, node_id, boot, sequence, observed_at, temperature_c, humidity_pct, pressure_hpa, battery_mv, rssi, schema_version, source, ingested_at)
+          SELECT id, node_id, boot, sequence, observed_at, temperature_c, humidity_pct, pressure_hpa, battery_mv, rssi, schema_version, source, ingested_at
+            FROM weather_observations_old`);
+        const a = db.prepare('SELECT COUNT(*) AS n FROM weather_observations_old').get().n;
+        const b = db.prepare('SELECT COUNT(*) AS n FROM weather_observations').get().n;
+        if (a !== b) throw new Error(`weather_observations rebuild copied ${b} of ${a} rows — rolled back`);
+        db.exec('DROP TABLE weather_observations_old');
+        console.log(`[DB] weather_observations re-keyed on (node_id, sequence, observed_at) — ${b} rows kept`);
+      })();
+    }
+  } catch (e) {
+    console.error('[DB] weather_observations re-key failed (table left as it was):', e.message);
+  }
+
   // Migration: task_blocks gains many-tasks-per-block (18 Aug 2026).
   //
   // The first shape keyed a block on one task_id. Batching several short tasks

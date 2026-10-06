@@ -83,6 +83,23 @@ test('⚠ a reboot restarts the sequence at 1 — those are NEW readings in a ne
   assert.equal((await (await post({ observations: reboot })).json()).duplicate, 2);
 });
 
+test('⚠ the real bring-up pattern: sequence 1 eight times in six minutes is EIGHT readings', async () => {
+  const t0 = NOW - 40 * 60000;
+  const ones = [0, 8, 116, 137, 158, 169, 323, 339].map((sec) => rec(1, t0 + sec * 1000, { node_id: 'bringup-1' }));
+  assert.equal((await (await post({ observations: ones })).json()).stored, 8);
+  assert.equal((await (await post({ observations: ones })).json()).duplicate, 8, 'a resend of all eight folds');
+});
+
+test('⚠ a backfill of OLDER readings across a reboot, sent after newer ones, stores every reading', async () => {
+  const base = NOW - 50 * 60000;
+  const run1 = Array.from({ length: 23 }, (_, i) => rec(i + 1, base + i * 60000, { node_id: 'backfill-1' }));
+  const run2 = Array.from({ length: 17 }, (_, i) => rec(i + 1, base + 25 * 60000 + i * 60000, { node_id: 'backfill-1' }));
+  // Newest first: the forwarder went live mid-run 2, the journal backfill came later.
+  assert.equal((await (await post({ observations: run2.slice(14) })).json()).stored, 3);
+  const r = await (await post({ observations: [...run1, ...run2.slice(0, 14)] })).json();
+  assert.deepEqual([r.stored, r.duplicate, r.rejected], [37, 0, 0]);
+});
+
 test('a bad record is rejected with a reason without failing the rest of the batch', async () => {
   const r = await (await post({ observations: [rec(3, NOW - 5000, { humidity_pct: 140 }), rec(4, NOW - 4000)] })).json();
   assert.equal(r.rejected, 1);
@@ -100,11 +117,11 @@ test('⚠ the history survives a restart — a second process reads every stored
     process.env.NEURO_DB_PATH = ${JSON.stringify(DB_PATH)};
     const db = require(${JSON.stringify(path.join(__dirname, '..', 'db', 'database'))});
     db.init().then(() => {
-      const r = db.get('SELECT COUNT(*) AS n, MAX(boot) AS b FROM weather_observations', []);
+      const r = db.get("SELECT COUNT(*) AS n, (SELECT MAX(boot) FROM weather_observations WHERE node_id = 'outdoor-1') AS b FROM weather_observations", []);
       process.stdout.write('RESULT ' + JSON.stringify(r));
     });
   `], { encoding: 'utf8' });
-  assert.deepEqual(JSON.parse(out.split('RESULT ').pop()), { n: 184, b: 2 });
+  assert.deepEqual(JSON.parse(out.split('RESULT ').pop()), { n: 184 + 8 + 40, b: 2 });
 });
 
 test('the overview answers every range with all three metrics charted', async () => {

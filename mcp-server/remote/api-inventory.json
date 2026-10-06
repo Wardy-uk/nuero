@@ -10740,7 +10740,7 @@
     "domain": "weather",
     "source": "routes/weather.js",
     "line": 23,
-    "description": "POST /api/weather/observations. outdoor weather station readings (saim.weather.v1) forwarded from pi5's saim-weather-ingest. Idempotent; each record gets an outcome (stored | duplicate | rejected | conflict). Keywords: weather station, outdoor sensor, BME280, ingest. Body: { observations: [record], ",
+    "description": "POST /api/weather/observations. outdoor weather station readings (saim.weather.v1) forwarded from pi5's saim-weather-ingest. Idempotent; each record gets an outcome (stored | duplicate | rejected); identity is node + sequence + received_at. Keywords: weather station, outdoor sensor, BME280, ingest. ",
     "params": [],
     "query": [],
     "body": [

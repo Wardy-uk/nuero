@@ -19,7 +19,7 @@ const trend = require('../services/weather-trend');
 
 const router = express.Router();
 
-// POST /api/weather/observations — outdoor weather station readings (saim.weather.v1) forwarded from pi5's saim-weather-ingest. Idempotent; each record gets an outcome (stored | duplicate | rejected | conflict). Keywords: weather station, outdoor sensor, BME280, ingest. Body: { observations: [record], source }
+// POST /api/weather/observations — outdoor weather station readings (saim.weather.v1) forwarded from pi5's saim-weather-ingest. Idempotent; each record gets an outcome (stored | duplicate | rejected); identity is node + sequence + received_at. Keywords: weather station, outdoor sensor, BME280, ingest. Body: { observations: [record], source }
 router.post('/observations', (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });

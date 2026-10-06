@@ -78,9 +78,15 @@ test('a first-ever reading opens boot 1', () => {
   assert.deepEqual(s.assignBoot(null, { sequence: 42, observedAt: NOW }), { boot: 1, advancesCursor: true });
 });
 
-test('an OLDER reading (spool draining late) joins the boot before it and does not move the cursor', () => {
-  const b = s.assignBoot({ ...node, boot: 3 }, { sequence: 4, observedAt: node.lastObservedAt - 600000 }, { boot: 2 });
+test('an OLDER reading that continues the run before it joins that boot and does not move the cursor', () => {
+  const b = s.assignBoot({ ...node, boot: 3 }, { sequence: 4, observedAt: node.lastObservedAt - 600000 }, { boot: 2, sequence: 3 });
   assert.deepEqual(b, { boot: 2, advancesCursor: false });
+});
+
+test('⚠ an OLDER reading after a reboot it cannot place is boot 0 ("could not tell")', () => {
+  const b = s.assignBoot({ ...node, boot: 3 }, { sequence: 1, observedAt: node.lastObservedAt - 600000 }, { boot: 2, sequence: 23 });
+  assert.deepEqual(b, { boot: 0, advancesCursor: false });
+  assert.equal(s.assignBoot(node, { sequence: 1, observedAt: node.lastObservedAt - 600000 }, null).boot, 0);
 });
 
 // ── Ranges ──────────────────────────────────────────────────────────────────

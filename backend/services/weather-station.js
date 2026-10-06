@@ -14,13 +14,19 @@
  *   • Storage and reads live at the bottom and require the DB lazily.
  *
  * ⚠ IDEMPOTENCY. The obvious key is (node_id, sequence) and it is wrong on the
- * first evening: the transmitter restarts its sequence at 1 on every reboot, so
- * the pair repeats. Two facts tell a retry from a reboot:
- *   • a RETRY carries the same sequence AND the same received_at (the Pi stamps
- *     it once, then the spool resends the identical payload) — so the same node +
- *     sequence within DUPLICATE_WINDOW_MS of a stored row is that row again;
- *   • a REBOOT is a NEWER reading whose sequence is at or below the last one seen
- *     — it opens the next `boot`, and (node_id, boot, sequence) is UNIQUE.
+ * first evening: the transmitter restarts its sequence at 1 on every reboot,
+ * and during bring-up it rebooted every 10–30 s, so `sequence 1` arrived eight
+ * times in six minutes — eight genuine readings. What a RETRY shares with the
+ * original, and two genuine readings never do, is the receipt time: the Pi
+ * stamps `received_at` once and the spool resends the payload verbatim. So
+ * identity is (node_id, sequence, observed_at), exact, and UNIQUE in the table.
+ *
+ * ⚠ The first cut keyed on (node_id, boot, sequence) with a ±5 min window and
+ * boot inferred from arrival order. A journal backfill on the day it shipped
+ * returned 23 conflicts and 3 false duplicates out of 47 real readings, because
+ * readings arriving out of order cannot tell where a reboot fell. `boot` is now
+ * ADVISORY — NEURO's best guess at which run a reading belongs to, 0 when it
+ * cannot tell — and never part of identity.
  */
 
 const SCHEMA = 'saim.weather.v1';
@@ -28,11 +34,6 @@ const SCHEMA = 'saim.weather.v1';
 // The Pi applies the same bounds before it forwards; restated here because a
 // future forwarder must not be trusted to have.
 const BOUNDS = { temp: [-80, 80], humidity: [0, 100], pressure: [800, 1200], battery: [0, 10000], rssi: [-150, 0] };
-
-// ±5 min. The node reports once a minute, so the same sequence twice inside five
-// minutes is only possible as a resend — a reboot cannot climb back to the same
-// number that fast.
-const DUPLICATE_WINDOW_MS = 5 * 60 * 1000;
 
 // A reading stamped further ahead than this is a broken clock on the Pi, not
 // weather from the future.
@@ -97,8 +98,9 @@ function validateObservation(raw, nowMs) {
  * Which boot does a NEW (non-duplicate) reading belong to? PURE.
  *
  * `node` is the stored cursor `{boot, lastSequence, lastObservedAt}` or null.
- * `earlier` is the stored row immediately BEFORE this reading in time, used only
- * for a reading that arrives out of order (older than the cursor).
+ * `earlier` is the stored row immediately BEFORE this reading in time
+ * (`{boot, sequence}`), used only for a reading that arrives out of order.
+ * ADVISORY: identity never depends on the boot.
  */
 function assignBoot(node, obs, earlier = null) {
   if (!node) return { boot: 1, advancesCursor: true };
@@ -107,11 +109,12 @@ function assignBoot(node, obs, earlier = null) {
     const restarted = node.lastSequence != null && obs.sequence <= node.lastSequence;
     return { boot: restarted ? node.boot + 1 : node.boot, advancesCursor: true, restarted };
   }
-  // Older than the cursor — a spool draining late. It belongs with whichever
-  // boot was running just before it, unless that boot had already passed this
-  // sequence (then it was a boot of its own; give it the earlier row's boot
-  // anyway and let the UNIQUE index refuse a genuine collision rather than guess).
-  return { boot: earlier ? earlier.boot : node.boot, advancesCursor: false };
+  // Older than the cursor — a spool or a backfill draining late. It continues
+  // the run before it only if that run's sequence was still below this one;
+  // otherwise a reboot fell somewhere between, and 0 says "could not tell"
+  // rather than renumbering readings already stored.
+  const continues = earlier && earlier.sequence != null && earlier.sequence < obs.sequence;
+  return { boot: continues ? earlier.boot : 0, advancesCursor: false };
 }
 
 // ── Time ranges ──────────────────────────────────────────────────────────────
@@ -158,8 +161,7 @@ function _node(db, nodeId) {
 /**
  * Store a batch. Each record gets its own outcome so the forwarder knows which
  * spool rows to drop: `stored` and `duplicate` are both DONE; `rejected` is a
- * permanent no (resending will not help); `conflict` is a collision the boot
- * rule could not resolve — kept by the forwarder for a human, logged here.
+ * permanent no (resending will not help).
  *
  * ⚠ SYNCHRONOUS from the cursor read to the cursor write. better-sqlite3 is
  * synchronous and this is one Node process, so two batches cannot interleave
@@ -170,7 +172,7 @@ function ingest(records, { source = null, nowMs = Date.now() } = {}) {
   if (records.length > MAX_BATCH) return { ok: false, reason: `too many observations — max ${MAX_BATCH} per request` };
   const db = _db();
   const results = [];
-  const counts = { stored: 0, duplicate: 0, rejected: 0, conflict: 0 };
+  const counts = { stored: 0, duplicate: 0, rejected: 0 };
   const src = typeof source === 'string' ? source.slice(0, 64) : null;
 
   db.batchSaves(() => {
@@ -181,15 +183,14 @@ function ingest(records, { source = null, nowMs = Date.now() } = {}) {
       const o = v.obs;
 
       const dup = db.get(
-        `SELECT id FROM weather_observations
-          WHERE node_id = ? AND sequence = ? AND observed_at BETWEEN ? AND ? LIMIT 1`,
-        [o.nodeId, o.sequence, o.observedAt - DUPLICATE_WINDOW_MS, o.observedAt + DUPLICATE_WINDOW_MS]
+        'SELECT id FROM weather_observations WHERE node_id = ? AND sequence = ? AND observed_at = ? LIMIT 1',
+        [o.nodeId, o.sequence, o.observedAt]
       );
       if (dup) { counts.duplicate++; results.push({ ...ref, outcome: 'duplicate', id: dup.id }); continue; }
 
       const node = _node(db, o.nodeId);
       const earlier = node && o.observedAt < node.lastObservedAt
-        ? db.get('SELECT boot FROM weather_observations WHERE node_id = ? AND observed_at < ? ORDER BY observed_at DESC LIMIT 1', [o.nodeId, o.observedAt])
+        ? db.get('SELECT boot, sequence FROM weather_observations WHERE node_id = ? AND observed_at < ? ORDER BY observed_at DESC LIMIT 1', [o.nodeId, o.observedAt])
         : null;
       const b = assignBoot(node, o, earlier);
 
@@ -201,12 +202,8 @@ function ingest(records, { source = null, nowMs = Date.now() } = {}) {
         [o.nodeId, b.boot, o.sequence, o.observedAt, o.temperatureC, o.humidityPct, o.pressureHpa,
           o.batteryMv, o.rssi, o.schema, src, nowMs]
       );
-      if (!info.changes) {
-        counts.conflict++;
-        console.warn(`[Weather] ${o.nodeId} seq ${o.sequence} at ${new Date(o.observedAt).toISOString()} collides with boot ${b.boot} — not stored`);
-        results.push({ ...ref, outcome: 'conflict', reason: 'sequence already used in this boot' });
-        continue;
-      }
+      // Only an identical reading can be refused by the UNIQUE index: same identity.
+      if (!info.changes) { counts.duplicate++; results.push({ ...ref, outcome: 'duplicate' }); continue; }
       if (b.advancesCursor) {
         db.run(
           `INSERT INTO weather_nodes (node_id, boot, last_sequence, last_observed_at, first_seen_at, updated_at)
@@ -310,7 +307,7 @@ function count(nodeId) {
 }
 
 module.exports = {
-  SCHEMA, BOUNDS, DUPLICATE_WINDOW_MS, STALE_AFTER_MS, MAX_BATCH, RANGES,
+  SCHEMA, BOUNDS, STALE_AFTER_MS, MAX_BATCH, RANGES,
   validateObservation, assignBoot, bucketPlan,
   ingest, nodes, defaultNode, latest, buckets, recent, count,
 };
