@@ -72,7 +72,7 @@ function assess({ sourceStart, held = [], carried = [], progressSince = [], rest
   }
   if (orphanDays.length) {
     return { ...base, state: 'orphaned', riskProducing: false, orphanDays,
-      why: `a newer occurrence (${orphanDays[orphanDays.length - 1]}) was written up but its write-up is not linked — not raising the older one` };
+      why: `a meeting write-up from ${orphanDays[orphanDays.length - 1]}, when a newer occurrence was held, could not be linked to the calendar — it may be this meeting's, so the older one is not raised` };
   }
   return { ...base, state: 'no-newer-evidence', riskProducing: false,
     why: `${intervening} newer occurrence${intervening === 1 ? '' : 's'} held since it was taken on with no write-up, carry-forward or progress — history, not the next meeting's agenda` };
