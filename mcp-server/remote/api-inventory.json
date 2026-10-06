@@ -580,6 +580,43 @@
     "stream": false
   },
   {
+    "id": "get_activity_timeline",
+    "method": "GET",
+    "route": "/api/activity/timeline",
+    "domain": "activity",
+    "source": "routes/activity-timeline.js",
+    "line": 23,
+    "description": "GET /api/activity/timeline. Activity: what NEURO noticed, investigated, decided, changed and verified (activity, audit, timeline, what has NEURO done).",
+    "params": [],
+    "query": [
+      "filter",
+      "from",
+      "limit",
+      "to"
+    ],
+    "body": [],
+    "queryOpen": true,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_activity_timeline_summary",
+    "method": "GET",
+    "route": "/api/activity/timeline/summary",
+    "domain": "activity",
+    "source": "routes/activity-timeline.js",
+    "line": 38,
+    "description": "GET /api/activity/timeline/summary. Today NEURO: investigated, fixed, verified, prepared, uncertain (activity summary, today).",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_activity_today",
     "method": "GET",
     "route": "/api/activity/today",
@@ -2766,6 +2803,22 @@
     "stream": false
   },
   {
+    "id": "get_loops_hiking",
+    "method": "GET",
+    "route": "/api/loops/hiking",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 21,
+    "description": "GET /api/loops/hiking. the weekly hiking goal loop: planned vs recorded vs unknown, recording confidence, weather for a planned day.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_meeting_prep",
     "method": "GET",
     "route": "/api/meeting-prep",
@@ -4213,7 +4266,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 233,
+    "line": 237,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -7812,6 +7865,62 @@
     "params": [],
     "query": [],
     "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_loops_hiking_confirm",
+    "method": "POST",
+    "route": "/api/loops/hiking/confirm",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 43,
+    "description": "POST /api/loops/hiking/confirm. Nick confirms a hike happened on a day (hike done, confirm hike).",
+    "params": [],
+    "query": [],
+    "body": [
+      "day",
+      "note"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_loops_hiking_entries_by_id_withdraw",
+    "method": "POST",
+    "route": "/api/loops/hiking/entries/:id/withdraw",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 57,
+    "description": "POST /api/loops/hiking/entries/:id/withdraw. take back a hike confirmation or plan.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_loops_hiking_plan",
+    "method": "POST",
+    "route": "/api/loops/hiking/plan",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 50,
+    "description": "POST /api/loops/hiking/plan. Nick plans a hike for a day (plan hike).",
+    "params": [],
+    "query": [],
+    "body": [
+      "day",
+      "note"
+    ],
     "queryOpen": false,
     "bodyOpen": true,
     "multipart": false,

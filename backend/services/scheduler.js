@@ -1369,6 +1369,30 @@ function registerDurableJobs() {
   });
 
   runtime.defineJob({
+    name: 'selftest-sync',
+    cron: '11 * * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 1,
+    timeoutMs: 30 * 1000,
+    why: 'Build 15L: the canary source neuro.selftest. Hourly; it only ever fails when a script on the Pi arms its fault, which is how self-healing is proven without breaking a real sense.',
+    run: async () => require('./selftest-source').sync(),
+  });
+
+  runtime.defineJob({
+    name: 'personal-loops',
+    cron: '23,53 * * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 1,
+    timeoutMs: 60 * 1000,
+    why: 'Build 15S: the "hike weekly" loop records what CHANGED (a plan appearing, the week done, the week uncertain, a prompt prepared) for Activity. Idempotent; nothing is sent.',
+    run: async () => require('./hiking-loop').refresh(),
+  });
+
+  runtime.defineJob({
     name: 'personal-deadline',
     cron: '*/15 * * * *',
     class: 'freshness-sensitive',

@@ -2393,3 +2393,63 @@ CREATE TRIGGER IF NOT EXISTS investigation_events_no_update BEFORE UPDATE ON inv
 BEGIN SELECT RAISE(ABORT, 'investigation_events is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS investigation_events_no_delete BEFORE DELETE ON investigation_events
 BEGIN SELECT RAISE(ABORT, 'investigation_events is append-only'); END;
+
+-- Build 15H–N — safe self-healing. One row per (outage, fix kind): the UNIQUE
+-- index IS the no-loop guarantee. Written BEFORE the op runs; verified from
+-- SourceHealth + the blindness fold, never from the op's own return value.
+CREATE TABLE IF NOT EXISTS self_heal_attempts (
+  attempt_id        TEXT PRIMARY KEY,          -- heal:<findingId>:<fixKind>
+  outage_key        TEXT NOT NULL,             -- the source-blind finding id (one episode)
+  fix_kind          TEXT NOT NULL,             -- self-heal ALLOWLIST kind
+  op                TEXT NOT NULL,             -- the named, typed operation
+  investigation_id  TEXT NOT NULL,
+  source_id         TEXT NOT NULL,
+  authority         TEXT NOT NULL,             -- read from the authority matrix
+  capability        TEXT NOT NULL,
+  hypothesis        TEXT,
+  confidence        REAL,
+  status            TEXT NOT NULL CHECK (status IN ('requested','executing','verifying','recovered','failed','uncertain','cancelled')),
+  boot_id           TEXT,
+  requested_at      TEXT NOT NULL,
+  started_at        TEXT,
+  executed_at       TEXT,
+  op_outcome        TEXT,                      -- ok | error | unknown
+  op_detail         TEXT,
+  verify_by         TEXT,
+  verified_at       TEXT,
+  verification_json TEXT,
+  reason            TEXT,
+  UNIQUE (outage_key, fix_kind)
+);
+CREATE TRIGGER IF NOT EXISTS self_heal_attempts_no_delete BEFORE DELETE ON self_heal_attempts
+BEGIN SELECT RAISE(ABORT, 'self_heal_attempts is an audit ledger'); END;
+CREATE TRIGGER IF NOT EXISTS self_heal_attempts_terminal BEFORE UPDATE ON self_heal_attempts
+  WHEN OLD.status IN ('recovered','failed','uncertain','cancelled')
+BEGIN SELECT RAISE(ABORT, 'a settled self-heal attempt is immutable'); END;
+
+-- Build 15S–X — the "hike weekly" loop. Nick's own statements (a hike he
+-- confirms, one he plans) and the loop's meaningful transitions. Never sensor
+-- samples, never every recompute: dedupe_key makes each transition once.
+CREATE TABLE IF NOT EXISTS goal_loop_entries (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  goal_id       TEXT NOT NULL,
+  kind          TEXT NOT NULL CHECK (kind IN ('confirm','plan')),
+  day           TEXT NOT NULL,
+  note          TEXT,
+  created_at    TEXT NOT NULL,
+  withdrawn_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_goal_loop_entries_goal ON goal_loop_entries(goal_id, day);
+CREATE TABLE IF NOT EXISTS goal_loop_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  goal_id     TEXT NOT NULL,
+  week_start  TEXT NOT NULL,
+  kind        TEXT NOT NULL,          -- planned | achieved | likely | recording-uncertain | reminder-prepared
+  dedupe_key  TEXT NOT NULL UNIQUE,
+  actor       TEXT NOT NULL,          -- neuro | nick
+  at          TEXT NOT NULL,
+  detail_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_goal_loop_events_at ON goal_loop_events(at);
+CREATE TRIGGER IF NOT EXISTS goal_loop_events_no_update BEFORE UPDATE ON goal_loop_events
+BEGIN SELECT RAISE(ABORT, 'goal_loop_events is append-only'); END;

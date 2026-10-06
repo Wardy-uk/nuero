@@ -335,7 +335,7 @@ test('the write-up link refuses to guess when two occurrences START near the rec
   assert.equal(mid.occurrence, null, 'a recording 40 minutes into a meeting is not taken to be that meeting');
 });
 
-test('a FREE entry, and the stale slots of a MOVED occurrence, are not candidates (live 3 Oct shapes)', () => {
+test('a FREE placeholder beside a real meeting does not make it ambiguous (Build 15R: free is a tie-breaker), and the stale slots of a MOVED occurrence are not candidates (live 3 Oct shapes)', () => {
   const occ = [
     { event_id: 'TL', start_time: '2026-09-14T09:00:00', end_time: '2026-09-14T10:00:00', subject: 'Tech Leadership', source: 'graph', show_as: 'tentative', first_seen: '2026-09-14T06:00:00Z' },
     { event_id: 'KPI', start_time: '2026-09-14T09:15:00', end_time: '2026-09-14T09:45:00', subject: 'KPI Meet', source: 'graph', show_as: 'free', first_seen: '2026-09-14T06:00:00Z' },

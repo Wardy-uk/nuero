@@ -64,6 +64,7 @@ const MeetingPrep = lazy(() => import('./components/MeetingPrep'));
 const CommitmentsPanel = lazy(() => import('./components/canonical/CommitmentsPanel'));
 const SourcesPanel = lazy(() => import('./components/canonical/SourcesPanel'));
 const FindingsPanel = lazy(() => import('./components/canonical/FindingsPanel'));
+const ActivityPanel = lazy(() => import('./components/canonical/ActivityPanel'));
 const LifePanel = lazy(() => import('./components/canonical/LifePanel'));
 
 import { canonicalView, VANTAGE_URL } from './viewIds';
@@ -374,6 +375,7 @@ function AuthenticatedApp() {
       case 'commitments': return <CommitmentsPanel focusContext={navContext} />;
       case 'sources': return <SourcesPanel onNavigate={handleNavigate} />;
       case 'findings': return <FindingsPanel />;
+      case 'activity': return <ActivityPanel />;
       case 'life': return <LifePanel onNavigate={handleNavigate} />;
       case 'management-log': return <ManagementLogPanel onNavigate={handleNavigate} />;
       case 'journal': return <JournalPanel />;

@@ -146,6 +146,19 @@ const FLAGS = [
     impact: 'may notify you on your own devices; never contacts anyone else',
   },
   {
+    // Build 15: a KILL SWITCH (default on). Self-healing is one named,
+    // read-only retry of a source's own sync, once per outage, only at high
+    // confidence, and it is only called a recovery when the source is seen to
+    // recover. Off = every fix stays a recommendation.
+    key: 'self_heal',
+    env: 'SELF_HEAL_ENABLED',
+    default: true,
+    label: 'Let NEURO retry a stopped sync by itself',
+    description: 'When a sense stops and NEURO is confident why, it may re-run that '
+      + "source's own sync ONCE, then checks it really recovered. Nothing that "
+      + 'sends, invites or changes anything outside NEURO ever runs by itself.',
+  },
+  {
     key: 'dnd_vault_read_only',
     env: 'DND_VAULT_READ_ONLY',
     default: false,
@@ -204,8 +217,15 @@ function setEnabled(key, on) {
       error: `${flag.env} is set in the environment, so it cannot be changed here.`,
     };
   }
+  const before = isEnabled(key);
   db.setState(`${STATE_PREFIX}${flag.key}`, on ? 'true' : 'false');
-  return { ok: true, key, enabled: isEnabled(key) };
+  const after = isEnabled(key);
+  // Build 15: a switch Nick flips is an Activity fact ("manual override").
+  // Only a real change is recorded; never the env values.
+  if (before !== after) {
+    try { db.logActivity('feature_flag_changed', { key, label: flag.label, from: before, to: after }); } catch { /* never fails the toggle */ }
+  }
+  return { ok: true, key, enabled: after };
 }
 
 /** Everything the panel needs — never the raw env values. */

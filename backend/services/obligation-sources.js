@@ -85,11 +85,20 @@ function linkOccurrence(notePath, startAt, occurrences) {
   // calendar_history keeps EVERY slot an occurrence was ever seen at (UNIQUE on
   // event id + start), so a 1-2-1 moved twice is three rows. Measured on the
   // live store (3 Oct): that ghosting made 7 of 8 recent write-ups ambiguous.
-  // Only the NEWEST reported slot of each occurrence id is a candidate, and an
-  // entry marked free or cancelled never is.
+  // Only the NEWEST reported slot of each occurrence id is a candidate, and a
+  // cancelled entry never is.
+  //
+  // ⚠ Build 15R: "free" is NOT excluded any more. Free/busy is how an
+  // occurrence BLOCKS Nick's time, not whether it is that meeting — on 6 Oct
+  // the Team Standup series was re-saved as `free`, so from that day no
+  // standup write-up could link and its commitments would attach to nothing.
+  // (The 21 Sep staleness itself was ten unwritten standups — meeting-currency.)
+  // Identity
+  // still needs other people in it (attendees_other), one start within ±20
+  // min of the recording, and ambiguity is still refused.
   const newest = new Map();
   for (const o of occurrences || []) {
-    if (o.show_as === 'free' || o.show_as === 'cancelled') continue;
+    if (o.show_as === 'cancelled') continue;
     const cur = newest.get(o.event_id);
     if (!cur || String(o.first_seen || '') > String(cur.first_seen || '')) newest.set(o.event_id, o);
   }
@@ -103,10 +112,17 @@ function linkOccurrence(notePath, startAt, occurrences) {
   // A recording starts when the meeting does: the link is the ONE occurrence
   // whose start is within 20 minutes of it. Two such starts is ambiguity, and
   // ambiguity is refused, never ranked.
-  const starting = overlaps.filter((o) => {
+  let starting = overlaps.filter((o) => {
     const s = String(o.start_time).slice(0, 16);
     return local >= _shift(s, -NOTE_SLACK_MIN) && local <= _shift(s, NOTE_SLACK_MIN);
   });
+  // Free is a TIE-BREAKER, never an exclusion: a free placeholder beside a real
+  // meeting (the live 3 Oct "KPI Meet") must not make it ambiguous, and a lone
+  // free occurrence (the standup series since 6 Oct) is still that meeting.
+  if (starting.length > 1) {
+    const blocking = starting.filter((o) => o.show_as !== 'free');
+    if (blocking.length === 1) starting = blocking;
+  }
   if (starting.length > 1) return { ...base, noteStartLocal: local, why: `${starting.length} calendar occurrences start within ${NOTE_SLACK_MIN} min of the recording — not guessing which` };
   if (!starting.length) return { ...base, noteStartLocal: local, why: `${overlaps.length} occurrence(s) span the recording but none started within ${NOTE_SLACK_MIN} min of it — not guessing` };
   const o = starting[0];

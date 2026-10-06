@@ -406,6 +406,34 @@ async function tick({ now = null } = {}) {
   return results;
 }
 
+/**
+ * Build 15L: run ONE named job's function now, outside its schedule, for a
+ * self-heal retry. It shares the in-flight guard, so it can never overlap the
+ * scheduled run (and a scheduled tick waits for it), and it writes NO
+ * runtime_job_runs row — an off-schedule run must not move MAX(scheduled_for),
+ * or the next due slot would never be materialised.
+ * @returns {{ ok:boolean, busy?:true, result?, error? }}
+ */
+async function runNow(name, { timeoutMs = null } = {}) {
+  const job = jobs.get(name);
+  if (!job) return { ok: false, error: `no such durable job: ${name}` };
+  if (inFlight.has(name)) return { ok: false, busy: true, error: `${name} is already running` };
+  const limit = timeoutMs || job.timeoutMs;
+  let t;
+  const p = Promise.race([
+    Promise.resolve().then(() => job.run()),
+    new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`timed out after ${Math.round(limit / 1000)}s`)), limit); }),
+  ]).finally(() => clearTimeout(t));
+  inFlight.set(name, p);
+  try {
+    return { ok: true, result: await p };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e).slice(0, MAX_RESULT_CHARS) };
+  } finally {
+    inFlight.delete(name);
+  }
+}
+
 // ── lifecycle ───────────────────────────────────────────────────────────────
 
 function start({ intervalMs = DEFAULT_TICK_MS } = {}) {
@@ -500,6 +528,7 @@ module.exports = {
   CLASSES,
   defineJob,
   tick,
+  runNow,
   start,
   stop,
   status,

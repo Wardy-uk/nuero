@@ -32,6 +32,11 @@ export const interactive = {
   // what is on the ticket, which an agent cannot know.
   post_escalation: 'Escalating a Jira ticket is Nick\'s decision. He escalates it in NEURO → Escalation, where the ticket is shown first.',
   post_escalation_ledger_resolve: 'Only Nick can say what is on the ticket after an unknown escalation outcome.',
+  // Build 15S: a hike confirmed, planned or taken back is Nick's statement
+  // about his own goal. An agent must not be able to write one into his record.
+  post_loops_hiking_confirm: 'Confirming a hike is Nick\'s own statement. He confirms it in NEURO → Life.',
+  post_loops_hiking_plan: 'Planning a hike is Nick\'s own statement. He plans it in NEURO → Life or his calendar.',
+  post_loops_hiking_entries_by_id_withdraw: 'Taking back a hike confirmation or plan is Nick\'s statement. He does it in NEURO → Life.',
   post_1to1_book:'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
   post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',
   post_1to1_reschedule: 'Moving a 1-2-1 emails the attendee an update as Nick. He confirms it in NEURO → Team.',

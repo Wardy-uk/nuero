@@ -157,6 +157,9 @@ app.use('/api/ai/settings', require('./routes/ai-settings'));
 app.use('/api/pin', require('./routes/pin'));
 app.use('/api/meeting-prep', require('./routes/meeting-prep-view'));
 app.use('/api/person', require('./routes/person-detail'));
+// Build 15D: the Activity timeline. Mounted ahead of the activity router so a
+// future parameterised path there can never swallow /timeline.
+app.use('/api/activity/timeline', require('./routes/activity-timeline'));
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/screen-usage', require('./routes/screen-usage'));
 app.use('/api/1to1', require('./routes/one-to-one'));
@@ -190,6 +193,7 @@ app.use('/api/rescuetime', require('./routes/rescuetime'));
 app.use('/api/signals', require('./routes/signals'));
 // The nervous system (Build 1): event backbone + SourceHealth. Read-only.
 app.use('/api/events', require('./routes/events'));
+app.use('/api/loops', require('./routes/loops'));
 // Build 10A: the canonical UI read contract — what NEURO believes, for every surface.
 app.use('/api/canonical', require('./routes/canonical'));
 app.use('/api/setup', require('./routes/setup'));

@@ -27,7 +27,8 @@ const sbi = require('./source-blind-investigation');
 const matrix = require('./authority-matrix');
 
 const TYPE = 'source_blindness';
-const OPEN_STATES = ['detected', 'gathering', 'hypothesised', 'monitoring', 'prepared', 'awaiting_approval'];
+// Build 15: `fixing` = a self-heal attempt is executing or being verified.
+const OPEN_STATES = ['detected', 'gathering', 'hypothesised', 'monitoring', 'prepared', 'awaiting_approval', 'fixing'];
 const TERMINAL_STATES = ['resolved', 'dismissed', 'inconclusive'];
 
 function _iso(ms) { return new Date(ms).toISOString(); }
@@ -240,6 +241,9 @@ async function runSourceBlindInvestigations({ now = Date.now(), deps = {} } = {}
       out.started += 1;
       continue;
     }
+    // A self-heal attempt in flight is never re-gathered underneath itself —
+    // the attempt's verification decides what happens next (Build 15).
+    if (inv.state === 'fixing') { out.unchanged += 1; continue; }
     // A pass interrupted mid-gather resumes; otherwise only a CHANGED finding re-gathers.
     if (inv.state === 'gathering' || inv.state === 'detected' || inv.triggerSignature !== _signature(f)) {
       await _investigate(inv, f, { nowMs, deps: runDeps });
@@ -248,7 +252,27 @@ async function runSourceBlindInvestigations({ now = Date.now(), deps = {} } = {}
       out.unchanged += 1;
     }
   }
+
+  // 3 — Build 15: verify self-heal attempts in flight (restart-safe), then let
+  // an eligible high-confidence fix run once. Never allowed to fail the pass.
+  if (deps.selfHeal !== false) {
+    try {
+      out.selfHeal = await require('./self-heal').pass({ now: nowMs, deps: deps.selfHealDeps || {} });
+    } catch (e) {
+      console.warn(`[Investigations] self-heal pass failed: ${e.message}`);
+      out.selfHeal = { error: e.message };
+    }
+  }
   return out;
+}
+
+/** Build 15: a self-heal transition — fields + one append-only event. */
+function applySelfHeal(id, { fields = {}, transition, to = null, detail = null, nowMs = Date.now() }) {
+  const inv = get(id);
+  if (!inv) return null;
+  _update(id, { ...fields, updated_at: _iso(nowMs) });
+  _event(id, _iso(nowMs), transition, inv.state, to || fields.state || inv.state, detail);
+  return get(id);
 }
 
 /** Which investigations may be offered to Nick — the attention policy still decides. */
@@ -256,6 +280,7 @@ function attentionView(inv) {
   if (!inv || !OPEN_STATES.includes(inv.state)) return { eligible: false, why: 'closed' };
   const fix = inv.preparedAction;
   const top = (inv.hypotheses || [])[0];
+  if (inv.state === 'fixing') return { eligible: false, why: 'NEURO is trying a safe fix and verifying it' };
   if (!fix || fix.status !== 'prepared') return { eligible: false, why: 'nothing for Nick to do' };
   if (!top || top.level === 'low') return { eligible: false, why: 'confidence too low to ask' };
   if (!fix.requiresHuman) return { eligible: false, why: 'no manual step' };
@@ -268,4 +293,4 @@ function summaryFor(inv) {
   return { ...sbi.summarise(inv, label), attention: attentionView(inv) };
 }
 
-module.exports = { TYPE, OPEN_STATES, TERMINAL_STATES, runSourceBlindInvestigations, gather, defaultProbes, get, byDedupe, list, events, attentionView, summaryFor };
+module.exports = { TYPE, OPEN_STATES, TERMINAL_STATES, runSourceBlindInvestigations, gather, defaultProbes, get, byDedupe, list, events, attentionView, summaryFor, applySelfHeal };

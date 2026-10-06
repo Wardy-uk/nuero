@@ -65,6 +65,8 @@ const GROUPS = [
     // Sources reads SourceHealth; Findings is what the evaluators noticed and
     // what attention decided. Both are deep NEURO, never SAiM.
     // What has not been set up yet, per device, judged from evidence.
+    // Build 15D: "what has NEURO done?" — one semantic timeline, first in SYSTEM.
+    { id: 'activity',     label: 'Activity',      icon: '≡' },
     { id: 'setup',        label: 'Set up',        icon: '✓' },
     { id: 'sources',      label: 'Sources',       icon: '◎' },
     { id: 'findings',     label: 'Findings',      icon: '◇' },

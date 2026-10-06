@@ -23,8 +23,11 @@
  *
  * ── What it may prepare ─────────────────────────────────────────────────────
  * `FIXES` is a closed allowlist of enum kinds, each classified through the
- * authority matrix. A fix is a recommendation with `executes: false`; nothing
- * in Build 14 runs one. There is no command string anywhere to run.
+ * authority matrix. A fix is a recommendation with `executes: false`. Build 15:
+ * ONE kind (`retry-sync`) may be run by self-heal.js — only for a source with a
+ * named op, only at high confidence, once per outage, and only counted as
+ * working when the source is SEEN to recover. There is still no command string
+ * anywhere to run.
  */
 
 const MAX_PROBES = 8;
@@ -50,7 +53,12 @@ const HYPOTHESES = Object.freeze([
 ]);
 
 // Which pull job feeds which source (only pull sources have one).
-const SOURCE_JOB = Object.freeze({ 'microsoft.calendar': 'calendar-sync' });
+const SOURCE_JOB = Object.freeze({ 'microsoft.calendar': 'calendar-sync', 'neuro.selftest': 'selftest-sync' });
+
+// Build 15: pull sources whose own sync NEURO can re-run (self-heal.OPS keys —
+// a test pins the two lists equal). Only these get a retry for a transient
+// upstream failure; for anything else that cause is watched, not acted on.
+const RETRYABLE_SOURCES = Object.freeze(['microsoft.calendar', 'homeassistant.presence', 'neuro.selftest']);
 
 /** The probe plan for one source. Bounded by construction. */
 function plan(sourceId, describe) {
@@ -225,7 +233,7 @@ const FIXES = Object.freeze({
   'check-sensor-permission': { capability: 'push.self', requiresHuman: true, kind: 'manual-device-action' },
   'relaunch-agent': { capability: 'push.self', requiresHuman: true, kind: 'manual-device-action' },
   'reconnect-account': { capability: 'config.security', requiresHuman: true, kind: 'reauth-request' },
-  'retry-sync': { capability: 'internal.state', requiresHuman: false, kind: 'retry' },
+  'retry-sync': { capability: 'source.retry-sync', requiresHuman: false, kind: 'retry' },
   'retry-consumer': { capability: 'internal.state', requiresHuman: false, kind: 'retry' },
 });
 
@@ -233,6 +241,9 @@ const FIX_FOR = Object.freeze({
   'agent-not-running': (sourceId) => (sourceId === 'desktop.agent' ? 'relaunch-agent' : 'open-app'),
   'source-offline': () => 'check-sensor-permission',
   'auth-expired': () => 'reconnect-account',
+  // Build 15: a provider answering with errors is usually transient; for a
+  // source NEURO pulls itself, one retry is the proportionate response.
+  'upstream-unavailable': (sourceId) => (RETRYABLE_SOURCES.includes(sourceId) ? 'retry-sync' : null),
   'sync-job-failed': () => 'retry-sync',
   'consumer-failed': () => 'retry-consumer',
 });
@@ -262,8 +273,9 @@ function decide({ hypotheses, sourceId, findingActive, evidenceAvailable }) {
     return { decision: 'MONITOR', state: 'monitoring', stopReason: evidenceAvailable ? 'inconclusive' : 'evidence-unavailable', fixKind: null };
   }
   const make = FIX_FOR[top.type];
-  if (!make) return { decision: 'MONITOR', state: 'monitoring', stopReason: 'cause-identified', fixKind: null };
-  return { decision: 'PREPARE', state: 'prepared', stopReason: 'cause-identified', fixKind: make(sourceId) };
+  const kind = make ? make(sourceId) : null;
+  if (!kind) return { decision: 'MONITOR', state: 'monitoring', stopReason: 'cause-identified', fixKind: null };
+  return { decision: 'PREPARE', state: 'prepared', stopReason: 'cause-identified', fixKind: kind };
 }
 
 // Human-facing words, from templates only — no generated prose is stored.
@@ -311,6 +323,18 @@ function _facts(items) {
   return [...new Set(lines)];
 }
 
+/** Pure. What NEURO did about it — never "fixed" without a verified recovery. */
+function actionTakenText(fix) {
+  if (!fix) return 'No action taken.';
+  const attempt = fix.autoAttempt;
+  if (fix.status === 'executing') return 'NEURO is retrying it now.';
+  if (fix.status === 'verifying') return 'NEURO retried it and is checking whether it recovered.';
+  if (fix.status === 'verified') return 'NEURO retried it, and it recovered after the retry.';
+  if (attempt && attempt.outcome === 'failed') return 'NEURO retried it once; it did not recover. Over to you.';
+  if (attempt && attempt.outcome === 'uncertain') return 'NEURO retried it once and could not verify the result.';
+  return 'No action taken.';
+}
+
 /** Pure. The concise summary the spec asks for — evidence and conclusion only. */
 function summarise(inv, label) {
   const top = (inv.hypotheses || [])[0] || { type: 'unknown', level: 'low' };
@@ -320,11 +344,11 @@ function summarise(inv, label) {
     likelyCause: CAUSE_TEXT[top.type],
     confidence: top.level === 'high' ? 'High' : top.level === 'medium' ? 'Medium' : 'Low',
     recommended: inv.preparedAction && inv.preparedAction.status === 'prepared' ? FIX_TEXT[inv.preparedAction.kind] : (inv.state === 'monitoring' ? 'Nothing yet — watching.' : null),
-    actionTaken: 'No action taken.',
+    actionTaken: actionTakenText(inv.preparedAction),
   };
 }
 
 module.exports = {
-  MAX_PROBES, PROBE_TIMEOUT_MS, TOTAL_TIMEOUT_MS, EXPIRY_MS, PROBES, HYPOTHESES, FIXES, LEVEL, SOURCE_JOB,
-  plan, appSiblings, classifyFailure, toEvidence, hypothesise, confidenceFor, prepareFix, decide, summarise,
+  MAX_PROBES, PROBE_TIMEOUT_MS, TOTAL_TIMEOUT_MS, EXPIRY_MS, PROBES, HYPOTHESES, FIXES, LEVEL, SOURCE_JOB, RETRYABLE_SOURCES,
+  plan, appSiblings, classifyFailure, toEvidence, hypothesise, confidenceFor, prepareFix, decide, summarise, actionTakenText,
 };

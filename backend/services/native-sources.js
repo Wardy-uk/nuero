@@ -244,6 +244,17 @@ const SOURCES = Object.freeze({
     importance: 'medium', group: null, expected: true, push: false,
     expectedIntervalMs: 2 * 60 * 1000, staleAfterMs: 30 * 60 * 1000,
   },
+  // Build 15L: a canary PULL source (selftest-source.js) whose only purpose is
+  // to let self-healing be proven in production without breaking a real sense.
+  // Expected, so a fault on it is investigated like any other; LOW importance,
+  // so a finding about it can never interrupt (the source-blind rule refuses
+  // low severity).
+  'neuro.selftest': {
+    label: 'NEURO self-test',
+    what: 'nothing about you — it proves NEURO can notice, diagnose and fix a stopped source',
+    importance: 'low', group: null, expected: true, push: false,
+    expectedIntervalMs: 1 * HOUR, staleAfterMs: 3 * HOUR,
+  },
   // Build 11M: the laptop activity reporter, moved onto the spine. OPTIONAL: a
   // laptop asleep for a weekend, or left at work on holiday, is not a blind
   // sense — and the attention veto that matters ("is he at the laptop") is

@@ -362,7 +362,45 @@ async function readWeather() {
     return { known: false, why: err.message };
   }
 }
+
+/**
+ * Build 15W: the DAILY forecast, for a planned hike a few days out. Same
+ * service call as the hourly one with type 'daily'. Days are keyed by the
+ * forecast's own date string (sliced, never re-zoned). Unreadable says so.
+ */
+async function readDailyForecast() {
+  if (!isConfigured()) return { known: false, why: 'Home Assistant is not configured' };
+  const id = process.env.HA_WEATHER_ENTITY || 'weather.forecast_home';
+  try {
+    const res = await fetch(HA_URL + '/api/services/weather/get_forecasts?return_response', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + HA_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity_id: id, type: 'daily' }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) return { known: false, why: 'daily forecast answered HTTP ' + res.status };
+    const body = await res.json();
+    const one = ((body || {}).service_response || {})[id];
+    const raw = Array.isArray(one && one.forecast) ? one.forecast : [];
+    if (!raw.length) return { known: false, why: 'no daily forecast returned' };
+    return {
+      known: true,
+      days: raw.map((d) => ({
+        date: String(d.datetime || '').slice(0, 10),
+        condition: d.condition || null,
+        tempHighC: typeof d.temperature === 'number' ? d.temperature : null,
+        tempLowC: typeof d.templow === 'number' ? d.templow : null,
+        precipitationMm: typeof d.precipitation === 'number' ? d.precipitation : null,
+        precipitationProbability: typeof d.precipitation_probability === 'number' ? d.precipitation_probability : null,
+        windKmh: typeof d.wind_speed === 'number' ? d.wind_speed : null,
+      })),
+    };
+  } catch (err) {
+    return { known: false, why: err.message };
+  }
+}
 module.exports = {
+  readDailyForecast,
   readHouse,
   readWeather,
   turnOnLights,

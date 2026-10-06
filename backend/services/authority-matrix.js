@@ -43,6 +43,9 @@ const CAPABILITIES = Object.freeze({
   'task.status': { authority: 'A1', effect: 'NEURO task create / edit / complete / reopen (a linked Microsoft task follows via microsoft.task.complete)', machine: 'execute', approval: 'none', registry: null, ledger: false, verification: null, idempotent: 'dedupe_key folds a repeat create' },
   ingest: { authority: 'A1', effect: 'sensor and device ingest (location, health, device, desktop, environment, apple)', machine: 'execute', approval: 'none', registry: null, ledger: false, verification: null, idempotent: 'content-keyed' },
   'push.self': { authority: 'A1', effect: "a notification to Nick's own devices", machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'push_log', idempotent: 'governor dedupe' },
+  // Build 15: the ONE self-heal operation. No route reaches it; self-heal.js
+  // runs it, once per outage, only at high confidence, and verifies recovery.
+  'source.retry-sync': { authority: 'A1', effect: "re-run one source's own read-only sync, once, for a self-heal", machine: 'execute', approval: 'none', registry: 'self-heal:retry-sync', ledger: true, verification: 'SourceHealth success after the attempt + the blind finding closed', idempotent: 'one attempt per outage (UNIQUE)' },
   'config.preference': { authority: 'A1', effect: 'preferences and setup state (quiet hours, weekly target, skip a setup step)', machine: 'execute', approval: 'none', registry: null, ledger: false, verification: null, idempotent: true },
 
   'vault.write': { authority: 'A2', effect: 'Vault write (append/surgical, backed up)', machine: 'execute', approval: 'none', registry: null, ledger: false, verification: 'vault-hooks re-index', idempotent: 'per route' },
@@ -164,6 +167,10 @@ const ROUTE_RULES = Object.freeze([
   R('*', '/api/push/apns/register', 'config.security'),
   R('DELETE', '/api/push/subscriptions', 'config.security'),
   R('*', '/api/rescuetime/key', 'config.security'),
+  // Build 15: Nick's own statements about his goal — never a machine's.
+  R('POST', '/api/loops/hiking/confirm', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/loops/hiking/plan', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/loops/hiking/entries/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   R('*', '/api/capture/file', 'file.write'),
   R('*', '/api/capture/photo', 'file.write'),
   R('POST', '/api/vault/export-docx', 'file.write'),

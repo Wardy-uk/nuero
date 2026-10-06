@@ -109,6 +109,9 @@ const DEFAULT_DEPS = {
   task: (id) => require('./world-obligations').getTask(id),
   previousOccurrence: (seriesKey, beforeLocal) => require('./world-obligations').fromPreviousOccurrence(seriesKey, { beforeLocal }),
   nextOccurrence: _nextOccurrence,
+  // Build 15P: is the meeting this came from still current, measured in
+  // occurrences of the series (calendar) and newer evidence — not in days?
+  meetingCurrency: (c, nowLocal) => require('./meeting-currency').currencyFor(c, { nowLocal }),
   calendarFreshness: (nowMs) => {
     try { return require('./source-health').getSource('microsoft.calendar', { now: nowMs }).freshness; } catch { return 'unknown'; }
   },
@@ -226,7 +229,13 @@ function assess(c, { nowLocal, nowMs, deps }) {
           if (c.direction !== 'by-nick') {
             promisorThere = !!c.promisor.personId && next.participants.some((p) => p.personId === c.promisor.personId);
           }
+          let currency = null;
+          if (fromLatest && promisorThere && deps.meetingCurrency) {
+            try { currency = deps.meetingCurrency(c, nowLocal); } catch (e) { currency = { state: 'unknown', riskProducing: false, why: `currency unreadable: ${e.message}` }; }
+            if (currency) relatedMeeting.currency = { state: currency.state, intervening: currency.intervening, why: currency.why || null, basis: currency.basis || null };
+          }
           if (!fromLatest) relatedMeeting.why = 'from an older occurrence, not the last one written up';
+          else if (currency && !currency.riskProducing) relatedMeeting.why = currency.why;
           else if (!promisorThere) relatedMeeting.why = c.promisor.personId ? 'the person who owes it is not in the next one' : 'who owes it is unresolved, so it cannot be tied to the next meeting';
           else triggers.push({ kind: 'meeting-near', level: mins <= MEETING_HIGH_MIN ? 'high' : 'elevated', detail: `${next.title} in ${mins} min` });
         }
