@@ -263,18 +263,89 @@ export function WeatherChart({ metric, series, plan, range, forecastLabel }) {
   );
 }
 
-function Summary({ summary }) {
-  if (!summary) return null;
+// ── The outlook, split ──────────────────────────────────────────────────────
+//
+// What the SENSOR says and what the FORECAST says are two cards, never one
+// blended paragraph — so every claim on screen has an obvious source. A third
+// strip says whether they agree. All wording is the server's.
+
+const VERDICT_LABEL = {
+  agree: 'Agree', partial: 'Partly agree', disagree: 'Disagree',
+  'forecast-only': 'Forecast only', 'sensor-only': 'Sensor only', none: 'Nothing to compare',
+};
+const CONFIDENCE_LABEL = { good: 'Good confidence', moderate: 'Moderate confidence', low: 'Low confidence' };
+const HORIZON_LABEL = { 6: 'Next 6 h', 12: 'Next 12 h', 24: 'Next 24 h' };
+
+function SensorCard({ sensor }) {
   return (
-    <section className="wx-summary" aria-label="Outlook">
-      <div className="wx-summary-head">
-        <h2>Outlook</h2>
-        <span className={`wx-conf wx-conf--${summary.confidence}`}>
-          {summary.confidence === 'good' ? 'Signals agree' : summary.confidence === 'moderate' ? 'Moderate confidence' : 'Low confidence'}
-        </span>
-      </div>
-      <p className="wx-summary-text">{summary.paragraph}</p>
+    <section className="wx-card wx-card--sensor" aria-label="What the sensor says">
+      <h2><span className="wx-key wx-key--local" />What the sensor says</h2>
+      <p className="wx-verdict">{sensor.verdict}</p>
+      {sensor.available && <p className="wx-scope">A barometer speaks for the next few hours (about {sensor.horizonHours}).</p>}
+      {sensor.lines?.length > 0 && (
+        <ul className="wx-lines">
+          {sensor.lines.map((l) => (
+            <li key={l.label} className={l.used ? '' : 'wx-line-item--unused'}>
+              <div className="wx-line-row">
+                <span className="wx-line-label">{l.label}</span>
+                <span className="wx-line-value">{l.value}</span>
+                {!l.used && <span className="wx-tag">not used</span>}
+              </div>
+              <div className="wx-line-note">{l.note}</div>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
+  );
+}
+
+function ForecastCard({ forecast, nowMs }) {
+  return (
+    <section className="wx-card wx-card--forecast" aria-label="What the forecast says">
+      <h2><span className="wx-key wx-key--forecast" />What the forecast says</h2>
+      {!forecast.available ? <p className="wx-verdict">No forecast available.</p> : (
+        <>
+          <ul className="wx-horizons">
+            {forecast.horizons.map((h) => (
+              <li key={h.hours}>
+                <span className="wx-line-label">{HORIZON_LABEL[h.hours] || `Next ${h.hours} h`}</span>
+                <span className={`wx-horizon-words wx-rain--${h.rain}`}>{h.words || 'no data'}</span>
+                {h.temperature && <span className="wx-horizon-temp">{h.temperature}</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="wx-scope">
+            {forecast.provider}{Number.isFinite(forecast.issuedAt) ? `, fetched ${ageWords(nowMs - forecast.issuedAt)}` : ''}.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+export function Outlook({ summary, nowMs }) {
+  if (!summary) return null;
+  // A backend older than the split sends only the paragraph — render that rather than nothing.
+  if (!summary.sensor || !summary.forecast) {
+    return <section className="wx-summary" aria-label="Outlook"><p className="wx-summary-text">{summary.paragraph}</p></section>;
+  }
+  const c = summary.comparison || {};
+  return (
+    <div className="wx-outlook" aria-label="Outlook">
+      <div className="wx-outlook-cards">
+        <SensorCard sensor={summary.sensor} />
+        <ForecastCard forecast={summary.forecast} nowMs={nowMs} />
+      </div>
+      <section className={`wx-together wx-together--${c.verdict || 'none'}`} aria-label="Together">
+        <div className="wx-together-head">
+          <h2>Together</h2>
+          <span className="wx-conf">{VERDICT_LABEL[c.verdict] || '—'} · {CONFIDENCE_LABEL[summary.confidence] || 'Low confidence'}</span>
+        </div>
+        <p className="wx-summary-text">{c.text}</p>
+        {c.watch && <p className="wx-watch"><strong>Watch for:</strong> {c.watch}</p>}
+      </section>
+    </div>
   );
 }
 
@@ -362,7 +433,7 @@ export function WeatherView({ data, range, onRange, error, loading, onRetry }) {
 
       {data && data.node && (
         <>
-          <Summary summary={data.summary} />
+          <Outlook summary={data.summary} nowMs={data.plan?.nowMs} />
           <Latest latest={data.latest} staleAfterMs={data.staleAfterMs} />
           <div className="wx-meta">
             <span>Node <strong>{data.node}</strong> · {data.history?.n?.toLocaleString('en-GB') ?? 0} readings kept

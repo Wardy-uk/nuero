@@ -158,7 +158,8 @@ test('an unknown range is refused', async () => {
 test('with no forecast stored, the overlay is null-valued and the summary says so', async () => {
   const o = await overview('?range=day');
   assert.ok(o.series.every((s) => s.forecast.temperatureC === null));
-  assert.match(o.summary.paragraph, /no forecast available/);
+  assert.equal(o.summary.forecast.available, false);
+  assert.equal(o.summary.comparison.verdict, 'sensor-only');
 });
 
 test('⚠ a stored snapshot overlays the chart — standing values for the past, the newest for the future', async () => {
@@ -175,6 +176,7 @@ test('⚠ a stored snapshot overlays the chart — standing values for the past,
   assert.equal(future.forecast.temperatureC, 14, 'future hour shows the newest forecast');
   assert.equal(future.local.temperatureC, null, 'no local reading in the future');
   assert.equal(o.forecast.provider, 'open-meteo');
-  assert.doesNotMatch(o.summary.paragraph, /no forecast available/);
-  assert.match(o.summary.paragraph, /Next 6 hours/);
+  assert.equal(o.summary.forecast.available, true);
+  assert.equal(o.summary.forecast.horizons.length, 3);
+  assert.ok(o.summary.sensor.verdict.length > 0);
 });

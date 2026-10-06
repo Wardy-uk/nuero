@@ -69,6 +69,7 @@ router.get('/overview', (req, res) => {
       forecast: ahead,
       nowMs,
       providerLabel: fc.label || 'the forecast',
+      issuedAt: fc.lastIssuedAt ?? null,
       latestStale: latest ? latest.stale : true,
     });
 

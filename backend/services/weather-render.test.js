@@ -44,6 +44,14 @@ async function load() {
 }
 
 const NOW = Date.parse('2026-10-06T18:00:00Z');
+
+/** The real summarise() output for the 6 Oct case: steady pressure, sensor indoors, rain overnight. */
+function liveSummary() {
+  const obs = Array.from({ length: 181 }, (_, i) => ({ t: NOW - (180 - i) * 60000, pressureHpa: 999.85, temperatureC: 23.2, humidityPct: 54.5 }));
+  const forecast = [{ validAt: NOW, temperatureC: 16.4, precipMm: 0, precipProb: 10 },
+    ...Array.from({ length: 24 }, (_, i) => ({ validAt: NOW + (i + 1) * 3600000, temperatureC: 15 - i * 0.2, precipMm: i >= 9 ? 1 : 0, precipProb: i >= 9 ? 95 : 20 }))];
+  return require('./weather-trend').summarise({ obs, forecast, nowMs: NOW, providerLabel: 'Open-Meteo', issuedAt: NOW - 600000 });
+}
 const B = 5 * 60000;
 function payload(over = {}) {
   const fromMs = NOW - 24 * 3600000;
@@ -62,7 +70,7 @@ function payload(over = {}) {
     plan: { fromMs, toMs: fromMs + 30 * B * 10, bucketMs: B * 10, nowMs: NOW },
     forecast: { provider: 'open-meteo', label: 'Open-Meteo', lastIssuedAt: NOW - 600000, points: 48 },
     series,
-    summary: { paragraph: 'Next 6 hours: settling, 12–15°C. Based on pressure +1.2 hPa/3h, rising slowly.', confidence: 'moderate' },
+    summary: liveSummary(),
     ...over,
   };
 }
@@ -86,9 +94,24 @@ test('three charts draw, each with a SOLID local line and a DASHED forecast line
   assert.match(html, /d="M[\d.]+ [\d.]+ L/);
 });
 
-test('the summary paragraph leads the screen', async () => {
+test('⚠ the outlook is SPLIT: a sensor card and a forecast card, then "together" — above the charts', async () => {
   const html = render(await load(), { data: payload() });
-  assert.ok(html.indexOf('Next 6 hours') < html.indexOf('<h3>Temperature</h3>'));
+  const s = html.indexOf('What the sensor says');
+  const f = html.indexOf('What the forecast says');
+  const t = html.indexOf('>Together<');
+  assert.ok(s > 0 && f > s && t > f, 'sensor, then forecast, then together');
+  assert.ok(t < html.indexOf('<h3>Temperature</h3>'));
+  // The fixture is the REAL summarise() output for the live indoor case.
+  assert.match(html, /Pressure steady — no sign of a change/);
+  assert.match(html, /probably indoors/);
+  assert.equal((html.match(/>not used</g) || []).length, 2, 'temperature and humidity marked not used');
+  assert.match(html, /Next 6 h/);
+  assert.match(html, /Next 24 h/);
+});
+
+test('a backend older than the split still shows its paragraph rather than nothing', async () => {
+  const html = render(await load(), { data: payload({ summary: { paragraph: 'Old-style outlook text.', confidence: 'low' } }) });
+  assert.match(html, /Old-style outlook text\./);
 });
 
 test('⚠ a stale station SAYS so and names what to check', async () => {
