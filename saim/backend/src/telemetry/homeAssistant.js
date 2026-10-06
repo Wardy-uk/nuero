@@ -107,15 +107,29 @@ function mapPresence(ha) {
   };
 }
 
+// ⚠ HIVE TEMPERATURE `sensor.*` ENTITIES ARE FAHRENHEIT (NEURO's ha-rooms.js
+// records the measurement: 68.0 °F beside 20.0 °C on the same radiator). The
+// configured slot is one of them, so the kiosk read "Office: 68°F". A °F
+// reading is converted to °C here, once, with the raw value kept beside it.
 function mapEnvironment(ha) {
   if (!ha || typeof ha.state === 'undefined') return null;
-  const unit = ha.attributes?.unit_of_measurement || null;
+  const rawUnit = ha.attributes?.unit_of_measurement || null;
   const name = ha.attributes?.friendly_name || ha.entity_id || 'environment';
+  let state = ha.state;
+  let unit = rawUnit;
+  let raw = null;
+  const n = Number(ha.state);
+  if (rawUnit === '°F' && ha.state !== '' && Number.isFinite(n)) {
+    raw = { state: ha.state, unit: rawUnit };
+    state = String(Math.round(((n - 32) * 5 / 9) * 10) / 10);
+    unit = '°C';
+  }
   return {
     entityId: ha.entity_id || null,
-    state: ha.state,
+    state,
     unit,
-    label: unit ? `${name}: ${ha.state}${unit}` : `${name}: ${ha.state}`,
+    ...(raw ? { raw } : {}),
+    label: unit ? `${name}: ${state}${unit}` : `${name}: ${state}`,
   };
 }
 

@@ -205,6 +205,50 @@ function spineVerdict(ids, now = new Date()) {
   return { state, ageMinutes, ...(why ? { why } : {}), basis: 'source-health', spine: ids, detail: `source health · ${best.id}` };
 }
 
+/** The Home Assistant Companion half of the Phone row. Throws only on a bug. */
+function phoneViaHomeAssistant(now = new Date()) {
+  const ha = require('./ha');
+  if (!ha.isConfigured()) return { state: 'off', why: 'Home Assistant is not configured' };
+  // Cached states — this is a status page and must not add a network round
+  // trip per render. `getStates` holds a 60s cache of its own.
+  const cached = ha.cachedStates();
+  // Not yet fetched is not a fault — the first read of the process has simply
+  // not happened. Distinct from "fetched and found nothing".
+  if (!cached) return { state: 'never', why: 'not read yet since the backend restarted' };
+  const resolved = ha.resolvePhoneEntities(cached);
+  if (resolved.source === 'none') {
+    return { state: 'never', why: `no reporting entities for "${resolved.base}"`, detail: 'the phone may have re-registered' };
+  }
+  // The Companion app reports on significant change, not on a timer, so a
+  // motionless hour is quiet by design — but battery keeps ticking.
+  const r = rate(resolved.reportingAt, 30, now, { staleAfter: 120 });
+  return { ...r, detail: `${resolved.base}${resolved.suffix}` };
+}
+
+/**
+ * Combine the Companion app's verdict with the NEURO/SAiM apps' one. PURE.
+ *
+ * `apps` is a `spineVerdict` result, or null when neither app has ever
+ * reported. The better state answers; the other is named in `detail`, and a
+ * Companion app that has stopped while the apps are live is called out in
+ * `why`, because zone, Wi-Fi and CarPlay go with it.
+ */
+function phoneRow(companion, apps) {
+  if (!apps) return companion;
+  const rank = { live: 0, stale: 1, error: 2, never: 3, off: 4 };
+  const companionText = companion.state === 'off' ? 'Home Assistant: not configured'
+    : `Home Assistant: ${companion.state}${companion.ageMinutes != null ? ` ${age(companion.ageMinutes)}` : ''}`;
+  const appsText = `phone apps: ${apps.state}${apps.ageMinutes != null ? ` ${age(apps.ageMinutes)}` : ''}`;
+  const detail = `${appsText} · ${companionText}`;
+  if ((rank[apps.state] ?? 9) < (rank[companion.state] ?? 9)) {
+    const why = companion.state === 'stale' || companion.state === 'error' || companion.state === 'never'
+      ? "Home Assistant's Companion app is not reporting — zone, Wi-Fi name and CarPlay come only from it"
+      : apps.why;
+    return { state: apps.state, ageMinutes: apps.ageMinutes, ...(why ? { why } : {}), basis: 'source-health', detail };
+  }
+  return { ...companion, detail: companion.detail ? `${companion.detail} · ${appsText}` : detail };
+}
+
 /** Worst state present, for the headline. `off` is NOT a fault and cannot win. */
 function overallOf(signals = []) {
   const order = ['error', 'stale', 'never', 'live', 'off'];
@@ -244,22 +288,15 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
 
   // ── Phone ─────────────────────────────────────────────────────────────────
   guard('phone', 'Phone', 'where you are, and whether you have the phone with you', () => {
-    const ha = require('./ha');
-    if (!ha.isConfigured()) return { state: 'off', why: 'Home Assistant is not configured' };
-    // Cached states — this is a status page and must not add a network round
-    // trip per render. `getStates` holds a 60s cache of its own.
-    const cached = ha.cachedStates();
-    // Not yet fetched is not a fault — the first read of the process has simply
-    // not happened. Distinct from "fetched and found nothing".
-    if (!cached) return { state: 'never', why: 'not read yet since the backend restarted' };
-    const resolved = ha.resolvePhoneEntities(cached);
-    if (resolved.source === 'none') {
-      return { state: 'never', why: `no reporting entities for "${resolved.base}"`, detail: 'the phone may have re-registered' };
-    }
-    // The Companion app reports on significant change, not on a timer, so a
-    // motionless hour is quiet by design — but battery keeps ticking.
-    const r = rate(resolved.reportingAt, 30, now, { staleAfter: 120 });
-    return { ...r, detail: `${resolved.base}${resolved.suffix}` };
+    // ⚠ TWO REPORTERS, ONE PHONE (5 Oct 2026). This row read Home Assistant
+    // alone, so a dead Companion app went red while the NEURO and SAiM apps
+    // were reporting the same phone's battery and motion perfectly well. The
+    // phone is judged on the BETTER of the two — but Home Assistant is the only
+    // source of the zone, the Wi-Fi name and CarPlay, so when it is the one
+    // that has stopped, the row says so rather than hiding behind the apps.
+    const companion = phoneViaHomeAssistant(now);
+    const apps = spineVerdict(['device.neuro-ios', 'device.saim-ios'], now);
+    return phoneRow(companion, apps);
   });
 
   // ── Watch ─────────────────────────────────────────────────────────────────
@@ -569,4 +606,4 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
   };
 }
 
-module.exports = { rate, age, overallOf, snapshot, sensorRows, roomLabel, spineVerdict };
+module.exports = { rate, age, overallOf, snapshot, sensorRows, roomLabel, spineVerdict, phoneRow };

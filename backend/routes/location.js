@@ -103,6 +103,103 @@ router.get('/points/status', (req, res) => {
   res.json({ ok: true, feed: locationPoints.freshness() });
 });
 
+// ── Visits and geofences (5 Oct 2026) ───────────────────────────────────────
+//
+// What the phone knows that a position point cannot carry: that he is STILL
+// somewhere (an open CLVisit), and that he is inside one of his saved places
+// (region monitoring). See services/place-sensing.js. Same receipt discipline
+// as /points: a batch is 200 with every item accounted for, only a malformed
+// batch is a 400, only a failed write is a 503. Nothing here logs a coordinate
+// or a place name.
+
+/**
+ * POST /api/location/visits — CLVisit records from the phone.
+ *
+ * Body: `{ deviceId, visits: [{ lat, lon, arrival, departure, acc? }] }`,
+ * times in unix SECONDS, `departure: null` while he is still there. The second
+ * delivery of a visit (with its departure) updates the first.
+ */
+router.post('/visits', (req, res) => {
+  const placeSensing = require('../services/place-sensing');
+  const body = req.body || {};
+  const batch = placeSensing.validateVisits({
+    deviceId: body.deviceId, visits: body.visits, nowSeconds: Math.floor(Date.now() / 1000),
+  });
+  if (!batch.ok) return res.status(400).json({ ok: false, error: batch.reason });
+  try {
+    const r = placeSensing.storeVisits(batch.deviceId, batch.accepted);
+    if (r.stored || r.updated) console.log(`[Location] visits from ${batch.deviceId}: ${r.stored} new, ${r.updated} closed`);
+    res.json({ ok: true, received: batch.received, ...r, rejected: batch.rejected, rejectedReasons: batch.rejectedReasons });
+  } catch (e) {
+    console.error('[Location] visit ingest failed:', e.message);
+    res.status(503).json({ ok: false, error: e.message, retryable: true });
+  }
+});
+
+/**
+ * GET /api/location/visits?hours=24 — visits in the window, plus whether he is
+ * mid-visit now (`current`). `current.known:false` means no visit has arrived,
+ * which is a different fact from `current.stay: null` (the last one closed).
+ */
+router.get('/visits', (req, res) => {
+  const placeSensing = require('../services/place-sensing');
+  const hours = req.query.hours === undefined ? 24 : Number(req.query.hours);
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 24 * 31) {
+    return res.status(400).json({ ok: false, error: 'hours must be a number above 0 and at most 744' });
+  }
+  try {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const visits = placeSensing.visitsBetween(nowSeconds - Math.round(hours * 3600), nowSeconds);
+    res.json({ ok: true, hours, visits, current: placeSensing.readCurrentStay() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/**
+ * GET /api/location/regions — the saved places the phone should geofence.
+ *
+ * `truncated` is how many saved places did NOT fit under iOS's 20-region cap,
+ * so a place that is never monitored is visible rather than silently skipped.
+ */
+router.get('/regions', (req, res) => {
+  const placeSensing = require('../services/place-sensing');
+  const saved = placeSensing.savedPlaces();
+  if (!saved.ok) return res.status(503).json({ ok: false, error: `could not read saved places: ${saved.why}` });
+  res.json({ ok: true, ...placeSensing.monitorablePlaces(saved.places) });
+});
+
+/**
+ * POST /api/location/regions/events — geofence crossings and determinations.
+ *
+ * Body: `{ deviceId, events: [{ place, kind: enter|exit|inside|outside, tst }] }`.
+ * An event about a place that is not saved is refused by name.
+ */
+router.post('/regions/events', (req, res) => {
+  const placeSensing = require('../services/place-sensing');
+  const body = req.body || {};
+  const saved = placeSensing.savedPlaces();
+  if (!saved.ok) return res.status(503).json({ ok: false, error: `could not read saved places: ${saved.why}`, retryable: true });
+  const batch = placeSensing.validateRegionEvents({
+    deviceId: body.deviceId, events: body.events,
+    placeNames: saved.places.map((p) => p.name), nowSeconds: Math.floor(Date.now() / 1000),
+  });
+  if (!batch.ok) return res.status(400).json({ ok: false, error: batch.reason });
+  try {
+    const r = placeSensing.storeRegionEvents(batch.deviceId, batch.accepted);
+    res.json({ ok: true, received: batch.received, ...r, rejected: batch.rejected, rejectedReasons: batch.rejectedReasons });
+  } catch (e) {
+    console.error('[Location] region event ingest failed:', e.message);
+    res.status(503).json({ ok: false, error: e.message, retryable: true });
+  }
+});
+
+/** GET /api/location/regions/state — which saved place the phone says he is in. */
+router.get('/regions/state', (req, res) => {
+  const placeSensing = require('../services/place-sensing');
+  res.json({ ok: true, ...placeSensing.readCurrentPlace() });
+});
+
 // GET /api/location/places — list saved named places
 router.get('/places', (req, res) => {
   try {
@@ -116,9 +213,19 @@ router.get('/places', (req, res) => {
 
 // POST /api/location/places — save a named place
 router.post('/places', (req, res) => {
-  const { name, lat, lng } = req.body;
+  const { name, lat, lng, kind, radius } = req.body;
   if (!name || lat === undefined || lng === undefined) {
     return res.status(400).json({ error: 'name, lat, and lng required' });
+  }
+  // `kind` and `radius` are optional; OMITTED leaves what is stored alone, while
+  // a present-but-invalid value is refused rather than quietly ignored. `kind`
+  // is what lets a geofence say "work" — see place-sensing / life-state.
+  const { PLACE_KINDS, MIN_RADIUS_M, MAX_RADIUS_M } = require('../services/place-sensing');
+  if (kind !== undefined && kind !== null && !PLACE_KINDS.includes(kind)) {
+    return res.status(400).json({ error: `kind must be one of ${PLACE_KINDS.join(', ')}` });
+  }
+  if (radius !== undefined && (typeof radius !== 'number' || !Number.isFinite(radius) || radius < MIN_RADIUS_M || radius > MAX_RADIUS_M)) {
+    return res.status(400).json({ error: `radius must be a number of metres from ${MIN_RADIUS_M} to ${MAX_RADIUS_M}` });
   }
 
   try {
@@ -130,13 +237,16 @@ router.post('/places', (req, res) => {
     if (existing) {
       existing.lat = lat;
       existing.lng = lng;
+      if (kind !== undefined) existing.kind = kind;
+      if (radius !== undefined) existing.radius = radius;
       existing.updatedAt = new Date().toISOString();
     } else {
       places.push({
         name: name.trim(),
         lat,
         lng,
-        radius: 200, // metres
+        radius: radius !== undefined ? radius : 200, // metres
+        ...(kind ? { kind } : {}),
         createdAt: new Date().toISOString()
       });
     }

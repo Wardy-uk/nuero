@@ -138,7 +138,19 @@ const SOURCES = Object.freeze({
   'device.neuro-ios': {
     label: 'Phone self-report (NEURO app)',
     what: 'battery, motion and connectivity — Home Assistant covers some of it',
-    importance: 'medium', group: null, expected: true, push: true,
+    importance: 'medium', group: 'phone-self-report', expected: true, push: true,
+    expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
+  },
+  // 5 Oct 2026: SAiM reports the phone's self-status too (shared
+  // DeviceReporter in NeuroKit), because SAiM is the app Nick opens most and a
+  // report only arrives when an app is awake. Grouped with the NEURO app's: one
+  // phone, two reporters — either one being heard means the sense is not blind.
+  // ⚠ OPTIONAL until the iOS build carrying it is installed; flip to expected
+  // then (one line, here), as with reminders.
+  'device.saim-ios': {
+    label: 'Phone self-report (SAiM app)',
+    what: 'battery, motion and connectivity — Home Assistant covers some of it',
+    importance: 'medium', group: 'phone-self-report', lifecycle: 'optional', push: true,
     expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
   },
   'location.neuro-ios': {

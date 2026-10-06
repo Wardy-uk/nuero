@@ -217,26 +217,44 @@ async function getTodayDwells() {
   const points = await getTodayPoints();
   if (points.length === 0) return [];
 
-  const clusters = clusterPoints(points);
+  const clusters = clusterPoints(points).map((cluster) => ({
+    // Centre of the cluster, for geocoding.
+    lat: cluster.reduce((s, p) => s + p.lat, 0) / cluster.length,
+    lon: cluster.reduce((s, p) => s + p.lon, 0) / cluster.length,
+    fromTst: cluster[0].tst,
+    toTst: cluster[cluster.length - 1].tst,
+    points: cluster.length,
+  }));
+
+  // The phone's own visits (5 Oct 2026). A stay whose only point is its arrival
+  // — he sat still, so nothing fired — used to be dropped as a single-point
+  // cluster; a closed visit now carries its departure. Only the ios source has
+  // visits; for OwnTracks/HA this is a no-op. Rules in place-sensing.mergeVisitSpans.
+  let spans = clusters.filter((c) => c.points >= 2).map((c) => ({ ...c, basis: 'points' }));
+  if (_lastSource === 'ios') {
+    try {
+      const { from, to } = _todayBoundsSeconds();
+      const placeSensing = require('./place-sensing');
+      spans = placeSensing.mergeVisitSpans(clusters, placeSensing.visitsBetween(from, to));
+    } catch (e) {
+      console.warn('[Location] visit merge failed, points only:', e.message);
+    }
+  }
+
   const dwells = [];
 
-  for (const cluster of clusters) {
-    if (cluster.length < 2) continue; // single point — ignore
-
-    const first = cluster[0];
-    const last = cluster[cluster.length - 1];
-    const durationMinutes = Math.round((last.tst - first.tst) / 60);
+  for (const span of spans) {
+    const durationMinutes = Math.round((span.toTst - span.fromTst) / 60);
 
     if (durationMinutes < MIN_DWELL_MINUTES) continue; // brief stop — ignore
 
-    // Use centre of cluster for geocoding
-    const avgLat = cluster.reduce((s, p) => s + p.lat, 0) / cluster.length;
-    const avgLng = cluster.reduce((s, p) => s + p.lon, 0) / cluster.length;
+    const avgLat = span.lat;
+    const avgLng = span.lon;
 
     const placeName = await reverseGeocode(avgLat, avgLng);
 
-    const arrival = new Date(first.tst * 1000);
-    const departure = new Date(last.tst * 1000);
+    const arrival = new Date(span.fromTst * 1000);
+    const departure = new Date(span.toTst * 1000);
     const arrivalStr = arrival.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     const departureStr = departure.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
@@ -316,7 +334,8 @@ async function getLocationContextBlock() {
   if (!isConfigured()) return null;
   try {
     const dwells = await getCachedDwells();
-    if (dwells.length === 0) return null;
+    const now = _nowLine();
+    if (dwells.length === 0 && !now) return null;
 
     const lines = dwells.map(d => {
       const hrs = Math.floor(d.durationMinutes / 60);
@@ -325,10 +344,32 @@ async function getLocationContextBlock() {
       return `- ${d.arrivalTime}–${d.departureTime}: ${d.placeName} (${duration})`;
     });
 
-    return `## Today's Locations\n${lines.join('\n')}`;
+    return `## Today's Locations\n${now ? `${now}\n` : ''}${lines.join('\n')}`.trim();
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * One line on where the PHONE says he is right now, or null. A saved-place
+ * geofence beats an open visit (it names the place); an open visit at an
+ * unsaved place says only when he got there, never a guessed name. Times are
+ * Europe/London, matching the dwell lines below it.
+ */
+function _nowLine(now = new Date()) {
+  try {
+    const ps = require('./place-sensing');
+    const hhmm = (iso) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: process.env.NEURO_TIMEZONE || 'Europe/London' });
+    const place = ps.readCurrentPlace(now);
+    if (place.known && place.place) {
+      return `- Now: at ${place.place.name}${place.since ? ` (${place.sinceExact ? 'since' : 'at least since'} ${hhmm(place.since)})` : ''} — phone geofence`;
+    }
+    const current = ps.readCurrentStay(now);
+    if (current.known && current.stay) {
+      return `- Now: ${current.stay.place ? `at ${current.stay.place}` : 'at an unsaved place'}, arrived ${hhmm(current.stay.arrivedAt)} — phone visit`;
+    }
+  } catch { /* the dwell lines still stand */ }
+  return null;
 }
 
 module.exports = {

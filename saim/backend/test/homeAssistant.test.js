@@ -36,6 +36,21 @@ test('maps a full set of HA states into the three bounded signals', () => {
   assert.equal(t.signals.environment.label, 'Office temp: 21.4°C');
 });
 
+test('a Hive °F environment sensor is shown in °C, with the raw reading kept', () => {
+  // The real pair, from ha-rooms.js: 68.0 °F on the sensor, 20.0 °C on the climate entity.
+  const e = ha.mapEnvironment({ entity_id: 'sensor.office_rad_current_temperature', state: '68.0', attributes: { friendly_name: 'Office', unit_of_measurement: '°F' } });
+  assert.equal(e.state, '20');
+  assert.equal(e.unit, '°C');
+  assert.equal(e.label, 'Office: 20°C');
+  assert.deepEqual(e.raw, { state: '68.0', unit: '°F' });
+  // Positive control: a °C reading passes through untouched, and an unreadable
+  // °F state is not invented into a number.
+  assert.equal(ha.mapEnvironment({ entity_id: 's', state: '21.4', attributes: { unit_of_measurement: '°C' } }).label, 's: 21.4°C');
+  const bad = ha.mapEnvironment({ entity_id: 's', state: 'unavailable', attributes: { unit_of_measurement: '°F' } });
+  assert.equal(bad.state, 'unavailable');
+  assert.equal(bad.unit, '°F');
+});
+
 test('partial reach is surfaced honestly as "partial", not hidden', () => {
   const cfg = { entities: { location: 'person.nick', presence: 'binary_sensor.occ', environment: 'sensor.temp' } };
   // HA up, but only the location entity could be read this poll.

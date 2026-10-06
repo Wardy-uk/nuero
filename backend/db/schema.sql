@@ -416,6 +416,49 @@ CREATE TABLE IF NOT EXISTS location_points (
 CREATE INDEX IF NOT EXISTS idx_location_points_tst ON location_points(tst);
 CREATE INDEX IF NOT EXISTS idx_location_points_device ON location_points(device_id, tst);
 
+-- CLVisit records from the phone, kept AS visits (5 Oct 2026).
+--
+-- ⚠ NOT `location_visits`, which is the DERIVED dwell history (place names,
+-- durations) written by location-history. This table is the phone's own
+-- arrival/departure record, before NEURO has interpreted it.
+--
+-- iOS delivers a visit TWICE: once on arrival (departure unknown — Apple's
+-- `distantFuture`, sent here as null) and again on departure with the same
+-- arrival. `visit_key` is `a:<arrival>` so the second delivery UPDATES the
+-- first rather than adding a row. A visit whose arrival iOS missed
+-- (`distantPast`) is keyed `d:<departure>` instead.
+CREATE TABLE IF NOT EXISTS device_visits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  visit_key TEXT NOT NULL,
+  lat REAL NOT NULL,
+  lng REAL NOT NULL,
+  accuracy REAL,
+  arrival_tst INTEGER,
+  departure_tst INTEGER,
+  received_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(device_id, visit_key)
+);
+CREATE INDEX IF NOT EXISTS idx_device_visits_arrival ON device_visits(arrival_tst);
+CREATE INDEX IF NOT EXISTS idx_device_visits_departure ON device_visits(departure_tst);
+
+-- Geofence crossings for Nick's saved places (5 Oct 2026). `kind` is enter /
+-- exit (a crossing) or inside / outside (the phone asking "where am I relative
+-- to this place" on registration and on each wake — iOS raises no enter event
+-- for a region you are already in). The place is stored by NAME because that
+-- is what `saved_places` is keyed on.
+CREATE TABLE IF NOT EXISTS place_region_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  place TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('enter', 'exit', 'inside', 'outside')),
+  tst INTEGER NOT NULL,
+  received_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(device_id, place, kind, tst)
+);
+CREATE INDEX IF NOT EXISTS idx_place_region_events_place ON place_region_events(place, tst);
+
 -- Everything Apple Health sends that is a DOCUMENT rather than a number.
 --
 -- ECG traces, audiograms, activity summaries, medications, vision
