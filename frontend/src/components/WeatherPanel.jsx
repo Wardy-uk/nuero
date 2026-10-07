@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../api';
 import './WeatherPanel.css';
+import { RainChart, SourcesStrip, rainQuery } from './WeatherRain';
 
 // ── The Weather screen ──────────────────────────────────────────────────────
 //
@@ -393,7 +394,7 @@ function DataTable({ data }) {
 }
 
 /** The screen, given a payload. Exported so a render test reaches every state. */
-export function WeatherView({ data, range, onRange, error, loading, onRetry }) {
+export function WeatherView({ data, range, onRange, error, loading, onRetry, rain = null, sources = null, nowMs = Date.now() }) {
   const [table, setTable] = useState(false);
   const ranges = data?.ranges || [
     { id: 'hour', label: 'Hourly' }, { id: 'day', label: 'Daily' }, { id: 'week', label: 'Weekly' },
@@ -449,6 +450,11 @@ export function WeatherView({ data, range, onRange, error, loading, onRetry }) {
           ))}
         </>
       )}
+
+      {/* Rain comes from the EA gauge, not the home station, so it shows
+          whether or not the station has ever reported. */}
+      {rain && <RainChart data={rain} range={range} nowMs={nowMs} />}
+      <SourcesStrip sources={sources} nowMs={nowMs} />
     </div>
   );
 }
@@ -462,8 +468,32 @@ export default function WeatherPanel() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [rain, setRain] = useState(null);
+  const [sources, setSources] = useState(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  // Rain and source health load on their own: a failure in either is shown
+  // where it belongs and never takes the station charts down with it.
+  const loadRain = useCallback(async () => {
+    const now = Date.now();
+    setNowMs(now);
+    const q = rainQuery(range, now);
+    const get = async (url) => {
+      const res = await apiFetch(url);
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body || body.ok === false) throw new Error((body && body.error) || `HTTP ${res.status}`);
+      return body;
+    };
+    const [r, s] = await Promise.allSettled([
+      get(`/api/weather/rainfall?period=${q.period}&from=${q.fromMs}&to=${q.toMs}`),
+      get('/api/weather/sources'),
+    ]);
+    setRain(r.status === 'fulfilled' ? { ...r.value, query: q } : { error: r.reason?.message || 'request failed', query: q });
+    setSources(s.status === 'fulfilled' ? s.value : { error: s.reason?.message || 'request failed' });
+  }, [range]);
 
   const load = useCallback(async () => {
+    loadRain();
     setLoading(true);
     try {
       const res = await apiFetch(`/api/weather/overview?range=${encodeURIComponent(range)}`);
@@ -476,7 +506,7 @@ export default function WeatherPanel() {
     } finally {
       setLoading(false);
     }
-  }, [range]);
+  }, [range, loadRain]);
 
   useEffect(() => {
     load();
@@ -489,5 +519,5 @@ export default function WeatherPanel() {
     try { localStorage.setItem('neuro_weather_range', r); } catch { /* per-viewer convenience only */ }
   };
 
-  return <WeatherView data={data} range={range} onRange={pick} error={error} loading={loading} onRetry={load} />;
+  return <WeatherView data={data} range={range} onRange={pick} error={error} loading={loading} onRetry={load} rain={rain} sources={sources} nowMs={nowMs} />;
 }
