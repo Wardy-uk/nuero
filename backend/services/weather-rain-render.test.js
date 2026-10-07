@@ -194,3 +194,15 @@ test('no nearby card when no station is configured or the sources read failed', 
   assert.doesNotMatch(view(m, { data: { node: null }, rain: rainPayload(), sources: { ...SOURCES, nearby: [] } }), /Nearby stations/);
   assert.doesNotMatch(view(m, { data: { node: null }, rain: rainPayload(), sources: { error: 'HTTP 500' } }), /Nearby stations/);
 });
+
+test('elevation on the card: ground height, with the owner figure beside it only when it is wrong', async () => {
+  const r = await loadRain();
+  assert.equal(r.elevationText({ reportedM: 143.9, groundM: 142, mismatch: false }), '142 m');
+  assert.equal(r.elevationText({ reportedM: 47.9, groundM: 168, mismatch: true }), '168 m ground · owner says 48 m');
+  assert.equal(r.elevationText({ reportedM: 50, groundM: null, mismatch: false }), '50 m (owner’s figure, unchecked)');
+  assert.equal(r.elevationText(null), '—');
+  const m = await load();
+  const nearby = [{ station: 'ICOALV16', name: 'Coalville', offline: false, error: null, elevation: { reportedM: 47.9, groundM: 168, mismatch: true },
+    latest: { observedAt: NOW - 4 * MIN, ageMs: 4 * MIN, stale: false, temperatureC: 12.7, humidityPct: 80, pressureHpa: 1022, windMs: 1, gustMs: 2, windDirectionDeg: 0, rainRateMmH: 0, rainTodayMm: 4, qc: 'good' } }];
+  assert.match(view(m, { data: { node: null }, rain: rainPayload(), sources: { ...SOURCES, nearby } }), /Elevation<\/dt><dd>168 m ground · owner says 48 m/);
+});

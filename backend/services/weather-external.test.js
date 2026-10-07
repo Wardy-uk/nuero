@@ -133,10 +133,10 @@ test('WU current: km/h → m/s, precipTotal is an accumulation, rain_mm stays nu
   assert.equal(ext.validate(o, NOW).ok, true);
 });
 
-test('WU import is blocked, not failed, without a key — and the default stations are the three named', () => {
+test('WU import is blocked, not failed, without a key — and the default stations are the three chosen', () => {
   assert.match(wu.importBlocked({}), /WU_API_KEY/);
   assert.equal(wu.importBlocked({ WU_API_KEY: 'k' }), null);
-  assert.deepEqual(wu.importStations({}), ['ICOALV53', 'ICOALV50', 'ICOALV19']);
+  assert.deepEqual(wu.importStations({}), ['ICOALV2', 'ICOALV16', 'ICOALV19']);
 });
 
 test('WU upload params convert SI → imperial at the boundary, and omit what was not measured', () => {
@@ -336,4 +336,19 @@ test('nearby(): each configured neighbour with its latest reading and name; offl
   assert.equal(by.ICOALV99.latest, null, 'a configured station never imported is listed, not dropped');
   assert.equal(by.ICOALV53.latest.stale, false);
   assert.equal(wu.nearby(NOW + 3 * 3600000, { WU_IMPORT_STATIONS: 'ICOALV53' })[0].latest.stale, true);
+});
+
+test('ground elevation: looked up once per station, cached, and a wrong owner figure is flagged', async () => {
+  let calls = 0;
+  const f = fakeFetch((url) => { calls++; assert.match(url, /open-meteo\.com\/v1\/elevation\?latitude=52\.74191&longitude=-1\.365108/); return { body: { elevation: [131] } }; });
+  await wu.refreshGroundElevation([{ id: 'ICOALV53', lat: 52.74191, lon: -1.365108 }], { nowMs: NOW, fetchImpl: f });
+  await wu.refreshGroundElevation([{ id: 'ICOALV53', lat: 52.74191, lon: -1.365108 }], { nowMs: NOW + 3600000, fetchImpl: f });
+  assert.equal(calls, 1, 'cached, not re-asked every import');
+  const n = wu.nearby(NOW + 300000, { WU_IMPORT_STATIONS: 'ICOALV53' })[0];
+  assert.deepEqual(n.elevation, { reportedM: 41.8, groundM: 131, mismatch: true }, "the owner's 41.8 m against 131 m of ground");
+  // A failed lookup never throws and never blanks what is cached.
+  const bad = fakeFetch(() => ({ status: 500, body: {} }));
+  const r = await wu.refreshGroundElevation([{ id: 'ICOALV19', lat: 52.726, lon: -1.335 }], { nowMs: NOW, fetchImpl: bad, sleep: noSleep });
+  assert.ok(r.error);
+  assert.equal(wu.nearby(NOW, { WU_IMPORT_STATIONS: 'ICOALV53' })[0].elevation.groundM, 131);
 });

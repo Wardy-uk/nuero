@@ -43,7 +43,11 @@ const ext = require('./weather-external');
 const API = 'https://api.weather.com/v2/pws';
 const UPLOAD = 'https://weatherstation.wunderground.com/weatherstation/updateweatherstation.php';
 const FEED = 'wu-pws-v2';
-const DEFAULT_IMPORT = ['ICOALV53', 'ICOALV50', 'ICOALV19'];
+// Chosen 7 Oct 2026 on a week of evidence (hours reported, WU QC failures,
+// owner-entered elevation vs terrain): ICOALV2 over ICOALV53 (elevation right to
+// 2 m vs 89 m out), ICOALV16 (closest), ICOALV19 over ICOALV57 (161/161 hours,
+// 0 QC failures vs a 33 h gap). WU_IMPORT_STATIONS overrides.
+const DEFAULT_IMPORT = ['ICOALV2', 'ICOALV16', 'ICOALV19'];
 const STATION_ID = /^[A-Z0-9]{4,20}$/;
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -157,6 +161,7 @@ async function syncImport({ nowMs = Date.now(), env = process.env, fetchImpl, sl
   const blocked = importBlocked(env);
   if (blocked) return { ok: false, blocked };
   const results = [];
+  const located = [];
   for (const sid of importStations(env)) {
     const sourceId = `wu:${sid}`;
     const st = ext.syncState(sourceId, FEED);
@@ -179,6 +184,7 @@ async function syncImport({ nowMs = Date.now(), env = process.env, fetchImpl, sl
       ext.recordSuccess(sourceId, FEED, { nowMs, newestObservedAt: r.newestObservedAt, stats });
       run.succeed(stats);
       results.push({ station: sid, ...stats });
+      if (shaped[0]) located.push({ id: sid, lat: shaped[0].lat, lon: shaped[0].lon });
     } catch (e) {
       // ⚠ The key is in the URL; never let a message that might echo it out.
       const msg = e.status ? `HTTP ${e.status}` : 'network error';
@@ -187,7 +193,42 @@ async function syncImport({ nowMs = Date.now(), env = process.env, fetchImpl, sl
       results.push({ station: sid, error: msg, ...b });
     }
   }
+  await refreshGroundElevation(located, { nowMs, fetchImpl });
   return { ok: true, results };
+}
+
+// ── Ground elevation ─────────────────────────────────────────────────────────
+//
+// The elevation a WU station reports is whatever its owner typed, and three of
+// five checked were wrong by 89–120 m. So the card shows the TERRAIN height at
+// the station's coordinates (Open-Meteo's elevation service, keyless) beside it.
+// Looked up once per station and cached for 30 days in agent_state.
+const GROUND_STATE = 'wu_ground_elevation';
+const GROUND_TTL_MS = 30 * 24 * 3600 * 1000;
+// Owner figure and terrain further apart than this are both shown.
+const ELEVATION_MISMATCH_M = 25;
+
+function _groundCache() {
+  try { return JSON.parse(require('../db/database').getState(GROUND_STATE) || '{}') || {}; } catch { return {}; }
+}
+
+/** Fill in terrain height for stations missing or stale in the cache. Never throws. */
+async function refreshGroundElevation(stations, { nowMs = Date.now(), fetchImpl } = {}) {
+  const cache = _groundCache();
+  const need = stations.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon)
+    && !(cache[s.id] && nowMs - cache[s.id].at < GROUND_TTL_MS && cache[s.id].lat === s.lat && cache[s.id].lon === s.lon));
+  if (!need.length) return { updated: 0 };
+  try {
+    const url = 'https://api.open-meteo.com/v1/elevation?latitude=' + need.map((s) => s.lat).join(',') + '&longitude=' + need.map((s) => s.lon).join(',');
+    const body = await ext.getJson(url, { fetchImpl, attempts: 2, timeoutMs: 15000 });
+    const el = body && Array.isArray(body.elevation) ? body.elevation : [];
+    need.forEach((s, i) => { if (Number.isFinite(el[i])) cache[s.id] = { m: el[i], lat: s.lat, lon: s.lon, at: nowMs }; });
+    require('../db/database').setState(GROUND_STATE, JSON.stringify(cache));
+    return { updated: need.length };
+  } catch (e) {
+    console.warn('[WeatherWU] ground elevation lookup failed:', e.message);
+    return { updated: 0, error: e.message };
+  }
 }
 
 // A neighbour's reading older than this is shown as stale, not as now. Imports
@@ -201,6 +242,7 @@ const NEARBY_STALE_MS = 30 * 60 * 1000;
  */
 function nearby(nowMs = Date.now(), env = process.env) {
   const db = require('../db/database');
+  const ground = _groundCache();
   return importStations(env).map((sid) => {
     const sourceId = `wu:${sid}`;
     const l = ext.latest(sourceId, { feed: FEED });
@@ -219,8 +261,16 @@ function nearby(nowMs = Date.now(), env = process.env) {
         observedAt: l.observedAt, ageMs, stale: ageMs > NEARBY_STALE_MS,
         temperatureC: l.temperature_c, humidityPct: l.humidity_pct, dewpointC: l.dewpoint_c, pressureHpa: l.pressure_hpa,
         windMs: l.wind_ms, gustMs: l.gust_ms, windDirectionDeg: l.wind_direction_deg,
-        rainRateMmH: l.rain_rate_mm_h, rainTodayMm: l.rain_accum_mm, elevationM: l.elevation_m, qc: l.qc,
+        rainRateMmH: l.rain_rate_mm_h, rainTodayMm: l.rain_accum_mm, qc: l.qc,
       } : null,
+      // What the owner told WU, and the ground height where the station is.
+      // `elevationMismatch` is the server's judgement, so no renderer re-derives it.
+      elevation: (() => {
+        const reported = l && Number.isFinite(l.elevation_m) ? l.elevation_m : null;
+        const g = ground[sid] && Number.isFinite(ground[sid].m) ? ground[sid].m : null;
+        return { reportedM: reported, groundM: g,
+          mismatch: reported != null && g != null && Math.abs(reported - g) > ELEVATION_MISMATCH_M };
+      })(),
     };
   });
 }
@@ -319,7 +369,7 @@ async function publishLatest({ nowMs = Date.now(), env = process.env, fetchImpl 
 module.exports = {
   FEED, DEFAULT_IMPORT, UPLOAD,
   apiKey, credentialSource, setStoredKey, clearStoredKey,
-  NEARBY_STALE_MS, nearby,
+  NEARBY_STALE_MS, ELEVATION_MISMATCH_M, nearby, refreshGroundElevation,
   importStations, importBlocked, mapQc, shapeCurrent, shapeSummary, syncImport,
   publishConfig, toWuParams, previewUpload, publish, publishLatest,
 };

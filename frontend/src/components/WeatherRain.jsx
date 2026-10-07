@@ -268,6 +268,16 @@ const mph = (ms) => (Number.isFinite(ms) ? Math.round(ms * 2.2369363) : null);
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 export const compass = (deg) => (Number.isFinite(deg) ? COMPASS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16] : null);
 
+/** Ground height first; the owner's figure only beside it when they disagree. PURE. */
+export function elevationText(e) {
+  if (!e) return '—';
+  const r = Number.isFinite(e.reportedM) ? Math.round(e.reportedM) : null;
+  const g = Number.isFinite(e.groundM) ? Math.round(e.groundM) : null;
+  if (g == null) return r == null ? '—' : `${r} m (owner’s figure, unchecked)`;
+  if (e.mismatch) return `${g} m ground · owner says ${r} m`;
+  return `${g} m`;
+}
+
 export function NearbyStations({ nearby, nowMs }) {
   if (!Array.isArray(nearby) || !nearby.length) return null;
   return (
@@ -293,6 +303,7 @@ export function NearbyStations({ nearby, nowMs }) {
                     <dt>Pressure</dt><dd>{one(l.pressureHpa)} hPa</dd>
                     <dt>Wind</dt><dd>{mph(l.windMs) ?? '—'} mph{compass(l.windDirectionDeg) ? ` ${compass(l.windDirectionDeg)}` : ''}{Number.isFinite(l.gustMs) ? `, gust ${mph(l.gustMs)}` : ''}</dd>
                     <dt>Rain today</dt><dd>{one(l.rainTodayMm)} mm{l.rainRateMmH > 0 ? ` · ${one(l.rainRateMmH)} mm/h now` : ''}</dd>
+                    <dt>Elevation</dt><dd>{elevationText(n.elevation)}</dd>
                   </dl>
                   <div className="wx-nb-age">
                     {l.stale ? '⚠ ' : ''}{ageWords(nowMs - l.observedAt)}
