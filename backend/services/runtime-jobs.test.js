@@ -299,7 +299,11 @@ test('10. the three production jobs register with their audited policies', () =>
 
 test('the scheduler wraps every node-cron job with in-process recovery', () => {
   const src = fs.readFileSync(path.join(__dirname, 'scheduler.js'), 'utf8');
-  assert.match(src, /recoverMissedExecutions: true, \.\.\.opts/);
+  // The wrapper lives in cron-once.js (7 Oct 2026: it also holds each task to
+  // one run per matched second); the scheduler must route every job through it.
+  assert.match(src, /const cron = require\('\.\/cron-once'\)\.createCron\(nodeCron\)/);
+  const once = fs.readFileSync(path.join(__dirname, 'cron-once.js'), 'utf8');
+  assert.match(once, /recoverMissedExecutions: true, \.\.\.opts/);
   // The three durable jobs must not ALSO be on node-cron — that would run them twice.
   assert.doesNotMatch(src, /cron\.schedule\('\*\/20 \* \* \* \*'/);
   assert.doesNotMatch(src, /cron\.schedule\('\*\/40 \* \* \* \*'/);
