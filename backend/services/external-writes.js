@@ -81,6 +81,10 @@ const WRITERS = Object.freeze({
     effect: 'session booked/cancelled, cadence, transcript candidate (NOVA holds it for a human)',
     why: 'idempotent at the far end; reconciled each morning.', readback: 'morning reconcile',
   },
+  'wunderground.publish': {
+    target: 'Weather Underground (our own station ICOALV59)', authority: 'A2', initiation: 'timer', ledger: false,
+    effect: "upload the home station's newest reading", why: 'our own public weather station; WU folds a repeat dateutc; off unless WU_PUBLISH_ENABLED.', readback: 'external_weather_sync wu-upload row',
+  },
   'email.self': {
     target: 'Nick\'s own mailbox', authority: 'A2', initiation: 'timer', ledger: false,
     effect: 'briefing / [TEST] copy to Nick only (refuses any other recipient)', why: 'nobody else is told.', readback: 'none',

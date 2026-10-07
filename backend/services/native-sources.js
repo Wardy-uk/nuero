@@ -244,6 +244,24 @@ const SOURCES = Object.freeze({
     importance: 'medium', group: null, expected: true, push: false,
     expectedIntervalMs: 2 * 60 * 1000, staleAfterMs: 30 * 60 * 1000,
   },
+  // External weather (7 Oct 2026, weather-ea.js). The EA gauge is EXPECTED:
+  // live telemetry publishes every 15 min, and silence for three hours is a
+  // stopped feed, not a dry spell (a dry gauge still reports zeros). LOW
+  // importance: nothing about Nick's day rests on it, so a finding never
+  // interrupts. The qualified record is optional — it arrives on the EA's
+  // schedule, not ours.
+  'weather.ea-3641': {
+    label: 'EA rain gauge (Mount St Bernards) — live',
+    what: 'local rainfall every 15 minutes',
+    importance: 'low', group: 'local-weather', expected: true, push: false,
+    expectedIntervalMs: 15 * 60 * 1000, staleAfterMs: 3 * HOUR,
+  },
+  'weather.ea-3641-qualified': {
+    label: 'EA rain gauge (Mount St Bernards) — qualified record',
+    what: 'the quality-checked rainfall history',
+    importance: 'low', group: 'local-weather', lifecycle: 'optional', push: false,
+    expectedIntervalMs: 24 * HOUR, staleAfterMs: 72 * HOUR,
+  },
   // Build 15L: a canary PULL source (selftest-source.js) whose only purpose is
   // to let self-healing be proven in production without breaking a real sense.
   // Expected, so a fault on it is investigated like any other; LOW importance,

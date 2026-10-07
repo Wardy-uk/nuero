@@ -671,6 +671,71 @@ CREATE TABLE IF NOT EXISTS weather_forecast_points (
 );
 CREATE INDEX IF NOT EXISTS idx_weather_fc_valid ON weather_forecast_points(valid_at);
 
+-- EXTERNAL weather sources (7 Oct 2026) — services/weather-external.js.
+-- Everything NEURO reads about local weather that it did not measure itself:
+-- the Environment Agency's Mount St Bernards rain gauge (live + qualified) and
+-- Weather Underground PWS stations. NEURO is the store; these are inputs.
+-- SI units throughout, epoch ms UTC, every measure nullable (sources differ).
+--   feed      which API answered — the same instant from two feeds is TWO rows
+--             (live telemetry vs the qualified record), and a read chooses.
+--   period_s  the accumulation period of rain_mm (900 = 15 min, 86400 = a
+--             water day); 0 = an instantaneous observation. NOT NULL, because
+--             SQLite treats NULLs as distinct and the UNIQUE would not hold.
+--   raw_payload  the source's own item, verbatim minus fields constant per
+--             feed. provenance is a short code the adapter resolves
+--             (weather-ea.PROVENANCE). A revised value keeps the one
+--             it replaced in previous_payload and bumps revision.
+CREATE TABLE IF NOT EXISTS external_weather_observations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  feed TEXT NOT NULL,
+  observed_at INTEGER NOT NULL,
+  period_s INTEGER NOT NULL DEFAULT 0,
+  received_at INTEGER NOT NULL,
+  temperature_c REAL,
+  humidity_pct REAL,
+  dewpoint_c REAL,
+  pressure_hpa REAL,
+  wind_ms REAL,
+  gust_ms REAL,
+  wind_direction_deg REAL,
+  rain_mm REAL,
+  rain_rate_mm_h REAL,
+  rain_accum_mm REAL,
+  lat REAL,
+  lon REAL,
+  elevation_m REAL,
+  qc_status TEXT,
+  qc_detail TEXT,
+  raw_payload TEXT NOT NULL,
+  provenance TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 0,
+  previous_payload TEXT,
+  updated_at INTEGER NOT NULL,
+  -- Column order serves the reads too (source + period + time range), so no
+  -- second index is needed.
+  UNIQUE (source_id, period_s, observed_at, feed)
+);
+
+-- One row per (source, feed): when it last worked, why it last failed, how
+-- long it is backing off, and how far a backfill has walked.
+CREATE TABLE IF NOT EXISTS external_weather_sync (
+  source_id TEXT NOT NULL,
+  feed TEXT NOT NULL,
+  last_attempt_at INTEGER,
+  last_success_at INTEGER,
+  last_failure_at INTEGER,
+  last_error TEXT,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  error_count INTEGER NOT NULL DEFAULT 0,
+  retry_after INTEGER,
+  last_observed_at INTEGER,
+  last_stats TEXT,
+  backfill_state TEXT,
+  PRIMARY KEY (source_id, feed)
+);
+
 -- What a device says about ITSELF — battery, motion, connectivity, focus.
 --
 -- Everything here is currently read out of Home Assistant's iOS Companion app

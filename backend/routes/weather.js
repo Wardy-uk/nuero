@@ -105,4 +105,91 @@ router.post('/forecast/refresh', async (req, res) => {
   }
 });
 
+// ── External sources (EA rain gauge, Weather Underground) ────────────────────
+
+// GET /api/weather/sources — external weather source health: per source and feed the last successful ingest, ingestion lag, stale verdict, error count, retry/backoff state, backfill progress and stored coverage. Keywords: weather sources, rain gauge, Environment Agency, Weather Underground, source health, backfill.
+router.get('/sources', (req, res) => {
+  try {
+    const nowMs = Date.now();
+    const ext = require('../services/weather-external');
+    const ea = require('../services/weather-ea');
+    const wu = require('../services/weather-wu');
+    const sh = require('../services/source-health');
+    const spine = (sh.getSourceHealth({}).sources || []).filter((s) => String(s.sourceId).startsWith('weather.'));
+    res.json({
+      ok: true,
+      nowMs,
+      feeds: ext.health(nowMs),
+      coverage: ext.coverage(),
+      backfill: (ext.syncState(ea.STATION.sourceId, ea.FEED_HY) || {}).backfill || null,
+      sourceHealth: spine,
+      wu: { importStations: wu.importStations(), importBlocked: wu.importBlocked(), publish: wu.publishConfig() },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/weather/rainfall — rainfall for an external source (default the EA Mount St Bernards gauge ea:3641) as one series, choosing per instant between the live and qualified feeds and saying which answered and its quality flag. Gaps are absent, never zero. Keywords: rain, rainfall, rain gauge history. Query: source, period (900|86400), from, to (ISO or epoch ms)
+router.get('/rainfall', (req, res) => {
+  try {
+    const source = typeof req.query.source === 'string' && req.query.source ? req.query.source : 'ea:3641';
+    const period = Number(req.query.period || 900);
+    if (![900, 86400].includes(period)) return res.status(400).json({ ok: false, error: 'period must be 900 or 86400' });
+    const parse = (v) => (v == null || v === '' ? null : /^\d+$/.test(String(v)) ? Number(v) : Date.parse(String(v)));
+    const nowMs = Date.now();
+    const toMs = req.query.to != null ? parse(req.query.to) : nowMs + 1;
+    const fromMs = req.query.from != null ? parse(req.query.from) : toMs - (period === 900 ? 2 : 90) * 86400000;
+    // ⚠ Refused, never defaulted: an unparseable bound would silently widen the search.
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) return res.status(400).json({ ok: false, error: 'from/to must be valid and from < to' });
+    const maxSpan = period === 900 ? 92 : 366 * 45;
+    if (toMs - fromMs > maxSpan * 86400000) return res.status(400).json({ ok: false, error: `span too long for this period (max ${maxSpan} days)` });
+    const points = require('../services/weather-external').canonicalRain(source, { periodS: period, fromMs, toMs });
+    const total = points.reduce((a, p) => a + (p.rainMm || 0), 0);
+    res.json({ ok: true, source, periodS: period, fromMs, toMs, count: points.length, totalMm: Math.round(total * 100) / 100, points });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/weather/sources/ea/sync — run an Environment Agency rain gauge sync now: feed live (Flood Monitoring), qualified (recent hydrology record) or backfill (walk history back a few chunks). Keywords: EA sync, rain gauge refresh, backfill rainfall history. Body: { feed, force, maxChunks }
+router.post('/sources/ea/sync', async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { feed, force, maxChunks } = req.body;
+    const ea = require('../services/weather-ea');
+    let r;
+    if (feed === 'live') r = await ea.syncLive({ force: force === true });
+    else if (feed === 'qualified') r = await ea.syncQualifiedRecent({ force: force === true });
+    else if (feed === 'backfill') r = await ea.backfillStep({ maxChunks: Number.isInteger(maxChunks) && maxChunks > 0 && maxChunks <= 50 ? maxChunks : 4 });
+    else return res.status(400).json({ ok: false, error: 'feed must be live | qualified | backfill' });
+    res.json({ ok: r.ok !== false, result: r });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/weather/sources/wu/sync — import the configured neighbouring Weather Underground stations now. Answers blocked (not an error) until WU_API_KEY is set. Keywords: Weather Underground import, PWS. Body: {}
+router.post('/sources/wu/sync', async (req, res) => {
+  try {
+    const r = await require('../services/weather-wu').syncImport();
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/weather/wu/publish/preview — the Weather Underground upload that WOULD be sent for the home station's newest reading, imperial units, station key redacted. Sends nothing. Keywords: Weather Underground publish, ICOALV59, upload preview. Query: node
+router.get('/wu/publish/preview', (req, res) => {
+  try {
+    const node = typeof req.query.node === 'string' && req.query.node ? req.query.node : station.defaultNode();
+    const latest = station.latest(node);
+    const wu = require('../services/weather-wu');
+    if (!latest) return res.json({ ok: false, reason: 'the home station has never reported', config: wu.publishConfig() });
+    res.json({ ...wu.previewUpload(latest), node, stale: latest.stale, ageMs: latest.ageMs });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;

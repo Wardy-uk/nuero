@@ -5197,6 +5197,61 @@
     "stream": false
   },
   {
+    "id": "get_weather_rainfall",
+    "method": "GET",
+    "route": "/api/weather/rainfall",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 134,
+    "description": "GET /api/weather/rainfall. rainfall for an external source (default the EA Mount St Bernards gauge ea:3641) as one series, choosing per instant between the live and qualified feeds and saying which answered and its quality flag. Gaps are absent, never zero. Keywords: rain, rainfall, rain gauge histo",
+    "params": [],
+    "query": [
+      "from",
+      "period",
+      "source",
+      "to"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_weather_sources",
+    "method": "GET",
+    "route": "/api/weather/sources",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 111,
+    "description": "GET /api/weather/sources. external weather source health: per source and feed the last successful ingest, ingestion lag, stale verdict, error count, retry/backoff state, backfill progress and stored coverage. Keywords: weather sources, rain gauge, Environment Agency, Weather Underground, source heal",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_weather_wu_publish_preview",
+    "method": "GET",
+    "route": "/api/weather/wu/publish/preview",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 183,
+    "description": "GET /api/weather/wu/publish/preview. the Weather Underground upload that WOULD be sent for the home station's newest reading, imperial units, station key redacted. Sends nothing. Keywords: Weather Underground publish, ICOALV59, upload preview. Query: node",
+    "params": [],
+    "query": [
+      "node"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_weekly_risk",
     "method": "GET",
     "route": "/api/weekly-risk",
@@ -10926,6 +10981,42 @@
     ],
     "queryOpen": false,
     "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_weather_sources_ea_sync",
+    "method": "POST",
+    "route": "/api/weather/sources/ea/sync",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 156,
+    "description": "POST /api/weather/sources/ea/sync. run an Environment Agency rain gauge sync now: feed live (Flood Monitoring), qualified (recent hydrology record) or backfill (walk history back a few chunks). Keywords: EA sync, rain gauge refresh, backfill rainfall history. Body: { feed, force, maxChunks }",
+    "params": [],
+    "query": [],
+    "body": [
+      "feed",
+      "force",
+      "maxChunks"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_weather_sources_wu_sync",
+    "method": "POST",
+    "route": "/api/weather/sources/wu/sync",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 173,
+    "description": "POST /api/weather/sources/wu/sync. import the configured neighbouring Weather Underground stations now. Answers blocked (not an error) until WU_API_KEY is set. Keywords: Weather Underground import, PWS. Body: {}",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },

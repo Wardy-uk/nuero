@@ -1284,6 +1284,9 @@ function start() {
   // The durable runtime (Build 3A). Never allowed to stop startup.
   try {
     registerDurableJobs();
+    // External weather (EA rain gauge, WU) registers its own jobs, kept out of
+    // registerDurableJobs() so runtime tests that register it make no network calls.
+    require('./weather-jobs').register();
     require('./runtime-jobs').start();
   } catch (e) { console.error('[Scheduler] Durable runtime failed to start:', e.message); }
 }
