@@ -65,7 +65,13 @@ test('a wrong username and a wrong PIN are indistinguishable', () => {
 test('the PIN is never stored in the clear, and never returned', () => {
   newAccount({ username: 'vera', label: 'Vera', pin: '9137' });
   const raw = db.getState('capture_links');
-  assert.equal(raw.indexOf('9137'), -1, 'the PIN must not appear in storage');
+  // ⚠ Not a bare substring test: epoch-ms stamps in the blob contain "9137"
+  // for ~2.8h at a time (1791372740483, 7 Oct 2026), which failed every deploy
+  // in that window. The PIN must never be a stored VALUE.
+  const values = [];
+  JSON.parse(raw, (k, v) => { values.push(String(v)); return v; });
+  assert.ok(!values.includes('9137'), 'the PIN must not appear in storage');
+  assert.equal(raw.indexOf('"9137"'), -1, 'the PIN must not appear in storage');
 
   const listed = capture.list().find(a => a.username === 'vera');
   assert.equal(listed.pin, undefined);
