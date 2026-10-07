@@ -168,6 +168,7 @@ const ROUTE_RULES = Object.freeze([
   R('*', '/api/push/apns/register', 'config.security'),
   R('DELETE', '/api/push/subscriptions', 'config.security'),
   R('*', '/api/rescuetime/key', 'config.security'),
+  R('*', '/api/weather/wu/key', 'config.security'),
   // Build 15: Nick's own statements about his goal — never a machine's.
   R('POST', '/api/loops/hiking/confirm', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/plan', 'internal.state', { machine: 'refuse' }),

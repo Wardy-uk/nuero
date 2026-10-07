@@ -122,7 +122,7 @@ test('the sources strip names each feed, says WU is not set up rather than broke
   assert.match(html, /EA gauge — quality-checked record/);
   assert.match(html, /wx-src-state--ok/);
   assert.match(html, /Not set up/);
-  assert.match(html, /needs your WU owner key/);
+  assert.match(html, /needs an API key — Settings → Integrations → Weather Underground/);
   assert.match(html, /needs the station key, and the home station back online/);
   assert.match(html, /15-minute history: back to 5 Oct 2025, still walking to 1 Jan 2021/);
   assert.match(html, /Daily history: complete back to 24 Oct 1985/);

@@ -488,6 +488,103 @@ function FeatureSwitches() {
 }
 
 /**
+ * Weather Underground — the API key that imports neighbouring PWS stations
+ * (ICOALV53 / 50 / 19) into NEURO's weather store. Same contract as RescueTime:
+ * pasted here, stored on the Pi, never shown again; an .env WU_API_KEY wins.
+ * "Import now" runs the real import and shows what each station answered, so a
+ * key that works and a key WU refuses are told apart on the spot.
+ */
+export function WeatherUndergroundCard() {
+  const [wu, setWu] = useState(null);
+  const [key, setKey] = useState('');
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(apiUrl('/api/weather/sources'));
+      const d = await r.json();
+      setWu(d.wu || null);
+    } catch (e) { setError(e.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const call = async (path, method, body) => {
+    setBusy(true); setError(null);
+    try {
+      const r = await fetch(apiUrl(path), {
+        method, headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const d = await r.json();
+      if (d.ok === false && !d.blocked) setError(d.error || 'That did not work.');
+      return d;
+    } catch (e) { setError(e.message); return null; } finally { setBusy(false); }
+  };
+
+  const save = async () => {
+    const d = await call('/api/weather/wu/key', 'POST', { key });
+    if (d && d.ok) { setKey(''); await load(); }
+  };
+  const importNow = async () => {
+    const d = await call('/api/weather/sources/wu/sync', 'POST', {});
+    setResult(d);
+    await load();
+  };
+  const forget = async () => { await call('/api/weather/wu/key', 'DELETE'); setResult(null); await load(); };
+
+  const src = wu?.credentialSource;
+  return (
+    <div className="admin-section">
+      <div className="admin-section-title">Weather Underground</div>
+      <div className="admin-ms-section">
+        {!src ? (
+          <>
+            <p className="admin-hint">
+              Paste a Weather Underground API key to import the nearby stations
+              ({(wu?.importStations || []).join(', ') || 'ICOALV53, ICOALV50, ICOALV19'}) every 10 minutes.
+              It is stored on the Pi and never shown again.
+            </p>
+            <div className="admin-inline-form">
+              <input type="password" value={key} placeholder="API key" autoComplete="off" spellCheck="false"
+                onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && key && save()} />
+              <button className="admin-btn" disabled={!key || busy} onClick={save}>{busy ? 'Saving…' : 'Save key'}</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="admin-hint">
+              Key {src === 'env' ? 'set in the Pi’s .env (change it there)' : 'saved'}. Imports run every 10 minutes;
+              results show on the Weather screen under Sources.
+            </p>
+            <div className="admin-inline-form">
+              <button className="admin-btn" disabled={busy} onClick={importNow}>{busy ? 'Importing…' : 'Import now'}</button>
+              {src === 'stored' && <button className="admin-btn" disabled={busy} onClick={forget}>Remove key</button>}
+            </div>
+          </>
+        )}
+        {result?.results && (
+          <ul className="admin-hint" style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            {result.results.map((r) => (
+              <li key={r.station}>
+                <strong>{r.station}</strong>:{' '}
+                {r.error ? `refused — ${r.error}${/401|403/.test(r.error) ? ' (WU did not accept this key for this station)' : ''}`
+                  : r.offline ? 'station offline (no current reading)'
+                  : r.skipped ? `skipped — ${r.skipped}`
+                  : r.stored ? 'new reading stored' : r.duplicate ? 'reading already held' : 'answered'}
+              </li>
+            ))}
+          </ul>
+        )}
+        {result?.blocked && <div className="admin-error">{result.blocked}</div>}
+        {error && <div className="admin-error">{error}</div>}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Notion — the credential and the automatic-sync switch, in Settings.
  *
  * Both used to require an SSH session, an .env edit and a pm2 restart. They live
@@ -1150,6 +1247,7 @@ export default function AdminPanel({ pushState = {} }) {
         <NotionSyncPanel embedded />
       </CollapsibleSection>
       <RescueTimeCard />
+      <WeatherUndergroundCard />
 
       <VestaAccounts />
 

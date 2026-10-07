@@ -373,6 +373,22 @@
     "stream": false
   },
   {
+    "id": "delete_weather_wu_key",
+    "method": "DELETE",
+    "route": "/api/weather/wu/key",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 193,
+    "description": "DELETE /api/weather/wu/key. forget the stored Weather Underground API key (an .env WU_API_KEY still wins). Keywords: Weather Underground key remove.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "delete_weekly_risk_log_by_id",
     "method": "DELETE",
     "route": "/api/weekly-risk/log/:id",
@@ -5239,7 +5255,7 @@
     "route": "/api/weather/wu/publish/preview",
     "domain": "weather",
     "source": "routes/weather.js",
-    "line": 183,
+    "line": 199,
     "description": "GET /api/weather/wu/publish/preview. the Weather Underground upload that WOULD be sent for the home station's newest reading, imperial units, station key redacted. Sends nothing. Keywords: Weather Underground publish, ICOALV59, upload preview. Query: node",
     "params": [],
     "query": [
@@ -11017,6 +11033,24 @@
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_weather_wu_key",
+    "method": "POST",
+    "route": "/api/weather/wu/key",
+    "domain": "weather",
+    "source": "routes/weather.js",
+    "line": 183,
+    "description": "POST /api/weather/wu/key. store the Weather Underground API key used to import neighbouring PWS stations. Answers only whether it was accepted and where the key now comes from; the value is never returned. Keywords: Weather Underground key, WU API key, settings. Body: { key }",
+    "params": [],
+    "query": [],
+    "body": [
+      "key"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

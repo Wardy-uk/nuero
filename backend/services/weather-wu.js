@@ -50,6 +50,41 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const num = (v) => (isNum(v) ? v : null);
 const kmhToMs = (v) => (isNum(v) ? Math.round((v / 3.6) * 1000) / 1000 : null);
 
+// ── Credential ───────────────────────────────────────────────────────────────
+//
+// The rescuetime.js pattern: pasted in Settings and stored in agent_state, read
+// at CALL time so it works with no restart; `.env` WU_API_KEY wins where set.
+// No route ever returns the value, not even masked — only where it came from.
+const KEY_STATE = 'wu_api_key';
+
+function _stored() {
+  try { return require('../db/database').getState(KEY_STATE) || ''; } catch { return ''; }
+}
+
+function apiKey(env = process.env) {
+  return env.WU_API_KEY || _stored();
+}
+
+/** WHERE the key came from — 'env' | 'stored' | null. Never what it is. */
+function credentialSource(env = process.env) {
+  if (env.WU_API_KEY) return 'env';
+  return _stored() ? 'stored' : null;
+}
+
+/** Shape-checked only; a wrong-but-well-formed key is caught by the first import. */
+function setStoredKey(value) {
+  const k = String(value || '').trim();
+  if (!k) return { ok: false, error: 'No key given.' };
+  if (!/^[A-Za-z0-9]{20,64}$/.test(k)) return { ok: false, error: 'That does not look like a Weather Underground API key (a run of 32 letters and digits).' };
+  require('../db/database').setState(KEY_STATE, k);
+  return { ok: true };
+}
+
+function clearStoredKey(env = process.env) {
+  require('../db/database').setState(KEY_STATE, '');
+  return { ok: true, stillInEnv: Boolean(env.WU_API_KEY) };
+}
+
 function importStations(env = process.env) {
   const raw = (env.WU_IMPORT_STATIONS || '').trim();
   const list = raw ? raw.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) : DEFAULT_IMPORT;
@@ -58,7 +93,7 @@ function importStations(env = process.env) {
 
 /** Why import cannot run, or null. PURE. */
 function importBlocked(env = process.env) {
-  if (!env.WU_API_KEY) return 'WU_API_KEY is not set — import needs the key WU issues to a PWS owner (see weather-wu.js)';
+  if (!apiKey(env)) return 'No Weather Underground API key — add one in Settings → Integrations (or WU_API_KEY in .env)';
   return null;
 }
 
@@ -127,7 +162,7 @@ async function syncImport({ nowMs = Date.now(), env = process.env, fetchImpl, sl
     const st = ext.syncState(sourceId, FEED);
     if (ext.backingOff(st, nowMs)) { results.push({ station: sid, skipped: 'backing-off', retryAfter: st.retryAfter }); continue; }
     const run = require('./source-health').beginSourceRun(`weather.wu-${sid.toLowerCase()}`, { system: 'weather-underground', expectedIntervalMs: 10 * 60 * 1000, staleAfterMs: 3 * 3600 * 1000 });
-    const url = `${API}/observations/current?stationId=${encodeURIComponent(sid)}&format=json&units=m&numericPrecision=decimal&apiKey=${encodeURIComponent(env.WU_API_KEY)}`;
+    const url = `${API}/observations/current?stationId=${encodeURIComponent(sid)}&format=json&units=m&numericPrecision=decimal&apiKey=${encodeURIComponent(apiKey(env))}`;
     try {
       const body = await ext.getJson(url, { fetchImpl, sleep, timeoutMs: 20000 });
       // 204: the station has nothing current. An answer about the station,
@@ -248,6 +283,7 @@ async function publishLatest({ nowMs = Date.now(), env = process.env, fetchImpl 
 
 module.exports = {
   FEED, DEFAULT_IMPORT, UPLOAD,
+  apiKey, credentialSource, setStoredKey, clearStoredKey,
   importStations, importBlocked, mapQc, shapeCurrent, shapeSummary, syncImport,
   publishConfig, toWuParams, previewUpload, publish, publishLatest,
 };

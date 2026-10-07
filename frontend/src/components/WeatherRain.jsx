@@ -237,7 +237,7 @@ export function SourcesStrip({ sources, nowMs }) {
           <li className="wx-src wx-src--off">
             <span className="wx-src-name">Weather Underground neighbours ({(wu.importStations || []).join(', ')})</span>
             <span className="wx-src-state wx-src-state--off">Not set up</span>
-            <span className="wx-src-detail">{wu.importBlocked ? 'needs your WU owner key (WU_API_KEY)' : 'waiting for the first import'}</span>
+            <span className="wx-src-detail">{wu.importBlocked ? 'needs an API key — Settings → Integrations → Weather Underground' : 'waiting for the first import'}</span>
           </li>
         )}
         {wu.publish && !(feeds.some((s) => s.feed === 'wu-upload')) && (

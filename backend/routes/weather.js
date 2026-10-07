@@ -123,7 +123,7 @@ router.get('/sources', (req, res) => {
       coverage: ext.coverage(),
       backfill: (ext.syncState(ea.STATION.sourceId, ea.FEED_HY) || {}).backfill || null,
       sourceHealth: spine,
-      wu: { importStations: wu.importStations(), importBlocked: wu.importBlocked(), publish: wu.publishConfig() },
+      wu: { importStations: wu.importStations(), importBlocked: wu.importBlocked(), credentialSource: wu.credentialSource(), publish: wu.publishConfig() },
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -177,6 +177,22 @@ router.post('/sources/wu/sync', async (req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+// POST /api/weather/wu/key — store the Weather Underground API key used to import neighbouring PWS stations. Answers only whether it was accepted and where the key now comes from; the value is never returned. Keywords: Weather Underground key, WU API key, settings. Body: { key }
+router.post('/wu/key', (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+  const { key } = req.body;
+  const wu = require('../services/weather-wu');
+  const r = wu.setStoredKey(key);
+  if (!r.ok) return res.status(400).json(r);
+  res.json({ ok: true, credentialSource: wu.credentialSource() });
+});
+
+// DELETE /api/weather/wu/key — forget the stored Weather Underground API key (an .env WU_API_KEY still wins). Keywords: Weather Underground key remove.
+router.delete('/wu/key', (req, res) => {
+  const wu = require('../services/weather-wu');
+  res.json({ ...wu.clearStoredKey(), credentialSource: wu.credentialSource() });
 });
 
 // GET /api/weather/wu/publish/preview — the Weather Underground upload that WOULD be sent for the home station's newest reading, imperial units, station key redacted. Sends nothing. Keywords: Weather Underground publish, ICOALV59, upload preview. Query: node

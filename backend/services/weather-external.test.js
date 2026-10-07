@@ -284,3 +284,43 @@ test('every registry agrees: the publisher is a declared external writer with a 
   assert.equal(src.describe('weather.ea-3641').expected, true);
   assert.equal(src.describe('weather.ea-3641-qualified').expected, false);
 });
+
+test('a key pasted in Settings is stored, used by the import, and an .env key still wins', async () => {
+  const K = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+  assert.equal(wu.setStoredKey('short').ok, false, 'a malformed key is refused, not stored');
+  assert.equal(wu.credentialSource({}), null);
+  assert.equal(wu.setStoredKey(K).ok, true);
+  assert.equal(wu.credentialSource({}), 'stored');
+  assert.equal(wu.importBlocked({}), null);
+  const f = fakeFetch(() => ({ body: { observations: [WU_CURRENT] } }));
+  await wu.syncImport({ nowMs: NOW + 900000, env: { WU_IMPORT_STATIONS: 'ICOALV53' }, fetchImpl: f, sleep: noSleep });
+  assert.ok(f.calls[0].includes(`apiKey=${K}`), 'the stored key is the one sent');
+  assert.equal(wu.credentialSource({ WU_API_KEY: 'envkey' }), 'env');
+  assert.equal(wu.apiKey({ WU_API_KEY: 'envkey' }), 'envkey');
+  assert.deepEqual(wu.clearStoredKey({}), { ok: true, stillInEnv: false });
+  assert.equal(wu.credentialSource({}), null);
+});
+
+test('no weather route ever returns the stored key', async () => {
+  const express = require('express');
+  const http = require('http');
+  const app = express(); app.use(express.json()); app.use('/api/weather', require('../routes/weather'));
+  const server = http.createServer(app); await new Promise((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${server.address().port}/api/weather`;
+  const K = 'f0e1d2c3b4a5968778695a4b3c2d1e0f';
+  try {
+    const bad = await fetch(base + '/wu/key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'nope' }) });
+    assert.equal(bad.status, 400);
+    const ok = await fetch(base + '/wu/key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: K }) });
+    const okText = await ok.text();
+    assert.equal(ok.status, 200);
+    assert.equal(JSON.parse(okText).credentialSource, process.env.WU_API_KEY ? 'env' : 'stored');
+    const src = await (await fetch(base + '/sources')).text();
+    for (const body of [okText, src]) {
+      assert.ok(!body.includes(K) && !body.includes(K.slice(0, 8)), 'neither the key nor a prefix of it is returned');
+    }
+    assert.equal(JSON.parse(src).wu.credentialSource, 'stored');
+    const del = await (await fetch(base + '/wu/key', { method: 'DELETE' })).json();
+    assert.equal(del.credentialSource, null);
+  } finally { server.close(); }
+});
