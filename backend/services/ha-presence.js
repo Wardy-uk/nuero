@@ -58,6 +58,17 @@ function _names(v) {
   return [];
 }
 
+// 7 Oct 2026: the sensor names everyone it counts, with a role and a state
+// CLASS (never a place). Anything not in that shape is dropped, not guessed.
+const MEMBER_ROLES = new Set(['resident', 'visitor']);
+const MEMBER_STATES = new Set(['home', 'away', 'unknown']);
+function _members(v) {
+  if (!Array.isArray(v)) return [];
+  return v.filter((m) => m && typeof m.name === 'string' && m.name.trim() && MEMBER_ROLES.has(m.role) && MEMBER_STATES.has(m.state))
+    .map((m) => ({ name: m.name.trim().slice(0, 40), role: m.role, state: m.state }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /**
  * PURE. One HA state object → the presence observation, or null if the entity
  * is not presence-shaped. Copies nothing it does not name.
@@ -65,14 +76,15 @@ function _names(v) {
 function shape(entityId, st) {
   const domain = entityId.split('.')[0];
   if (!st) {
-    return { entityId, subjectKind: domain === 'binary_sensor' ? 'household' : 'person', stateClass: 'unavailable', who: [], unreadable: [], observedAt: null, why: 'entity not found in Home Assistant' };
+    return { entityId, subjectKind: domain === 'binary_sensor' ? 'household' : 'person', stateClass: 'unavailable', who: [], unreadable: [], unreadableVisitors: [], members: [], observedAt: null, why: 'entity not found in Home Assistant' };
   }
   const raw = String(st.state || '').trim().toLowerCase();
   const observedAt = st.last_changed || st.last_updated || null;
   if (domain === 'binary_sensor') {
     const a = st.attributes || {};
     const stateClass = raw === 'on' ? 'others-home' : raw === 'off' ? 'nobody-else' : 'unavailable';
-    return { entityId, subjectKind: 'household', stateClass, who: stateClass === 'others-home' ? _names(a.who_is_home) : [], unreadable: _names(a.unreadable), observedAt, why: null };
+    return { entityId, subjectKind: 'household', stateClass, who: stateClass === 'others-home' ? _names(a.who_is_home) : [],
+      unreadable: _names(a.unreadable), unreadableVisitors: _names(a.unreadable_visitors), members: _members(a.members), observedAt, why: null };
   }
   let stateClass;
   if (UNREADABLE.has(raw)) stateClass = 'unavailable';
@@ -80,11 +92,12 @@ function shape(entityId, st) {
   else if (raw === 'not_home' || raw === 'away') stateClass = 'away';
   else if (workZones().includes(raw)) stateClass = 'work';
   else stateClass = 'zone'; // a configured HA zone; its name stays out of the log
-  return { entityId, subjectKind: 'person', stateClass, who: [], unreadable: [], observedAt, why: null };
+  return { entityId, subjectKind: 'person', stateClass, who: [], unreadable: [], unreadableVisitors: [], members: [], observedAt, why: null };
 }
 
 function idempotencyKey(o) {
-  const who = crypto.createHash('sha1').update(o.who.join('|') + '#' + o.unreadable.join('|')).digest('hex').slice(0, 10);
+  const members = (o.members || []).map((m) => `${m.name}:${m.role}:${m.state}`).join('|');
+  const who = crypto.createHash('sha1').update(o.who.join('|') + '#' + o.unreadable.join('|') + '#' + (o.unreadableVisitors || []).join('|') + '#' + members).digest('hex').slice(0, 10);
   return `ha-presence:${o.entityId}:${o.observedAt || 'never'}:${o.stateClass}:${who}`;
 }
 
@@ -125,7 +138,8 @@ async function poll({ now = Date.now(), deps = {} } = {}) {
         source: { system: 'homeassistant', recordId: id },
         subject: { entityType: 'presence', entityId: id },
         idempotencyKey: idempotencyKey(o),
-        payload: { entityId: id, subjectKind: o.subjectKind, state: o.stateClass, who: o.who, unreadable: o.unreadable, observedAt: o.observedAt, why: o.why },
+        payload: { entityId: id, subjectKind: o.subjectKind, state: o.stateClass, who: o.who, unreadable: o.unreadable,
+          unreadableVisitors: o.unreadableVisitors || [], members: o.members || [], observedAt: o.observedAt, why: o.why },
         provenance: { kind: 'observation', confidence: o.stateClass === 'unavailable' ? 0 : 0.8 },
       });
       if (r && r.duplicate) folded += 1; else published += 1;
@@ -146,12 +160,15 @@ function applyPresence(ev) {
   const obs = p.observedAt || ev.occurredAt;
   // An older observation never overwrites a newer one (late delivery, replay).
   if (held && held.observed_at && obs && obs < held.observed_at) return;
-  db.run(`INSERT INTO wm_presence (entity_id, subject_kind, state, who_json, unreadable_json, observed_at, received_at, event_id, why)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  // Same last_changed with a newer roster still lands (members change while
+  // the on/off state does not) — the guard above is `<`, not `<=`.
+  db.run(`INSERT INTO wm_presence (entity_id, subject_kind, state, who_json, unreadable_json, members_json, observed_at, received_at, event_id, why)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(entity_id) DO UPDATE SET subject_kind = excluded.subject_kind, state = excluded.state,
-            who_json = excluded.who_json, unreadable_json = excluded.unreadable_json, observed_at = excluded.observed_at,
-            received_at = excluded.received_at, event_id = excluded.event_id, why = excluded.why`,
-  [p.entityId, p.subjectKind || 'person', p.state, JSON.stringify(p.who || []), JSON.stringify(p.unreadable || []), obs, ev.receivedAt, ev.eventId, p.why || null]);
+            who_json = excluded.who_json, unreadable_json = excluded.unreadable_json, members_json = excluded.members_json,
+            observed_at = excluded.observed_at, received_at = excluded.received_at, event_id = excluded.event_id, why = excluded.why`,
+  [p.entityId, p.subjectKind || 'person', p.state, JSON.stringify(p.who || []), JSON.stringify([...(p.unreadable || []), ...(p.unreadableVisitors || [])]),
+    JSON.stringify(p.members || []), obs, ev.receivedAt, ev.eventId, p.why || null]);
 }
 
 function reset() { db.run('DELETE FROM wm_presence'); }
@@ -176,6 +193,8 @@ function read({ now = Date.now() } = {}) {
       state: current ? r.state : 'unknown',
       heldState: r.state,
       who: current ? parse(r.who_json) : [],
+      // A member's state is only as good as the source: unknown when it is not.
+      members: parse(r.members_json || '[]').map((m) => ({ ...m, state: current ? m.state : 'unknown' })),
       unreadable: parse(r.unreadable_json),
       since: r.observed_at,
       lastRead: source ? source.lastSuccessAt || null : null,
@@ -190,6 +209,8 @@ function read({ now = Date.now() } = {}) {
     nick: nick ? nick.state : 'unknown',
     householdOthers: household ? household.state : 'unknown',
     householdWho: household ? household.who : [],
+    householdMembers: household ? household.members : [],
+    nickSince: nick ? nick.since : null,
     subjects,
   };
 }

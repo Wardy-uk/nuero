@@ -2341,6 +2341,40 @@
     "stream": false
   },
   {
+    "id": "get_household",
+    "method": "GET",
+    "route": "/api/household",
+    "domain": "household",
+    "source": "routes/household.js",
+    "line": 9,
+    "description": "GET /api/household. who's in the house: Nick, the people who live here, visitors (Lizzy, Daniel) and Ember, each home / away / unknown / untracked from Home Assistant presence, with whether a photo exists. Unknown when presence cannot be read, never away.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_household_photo_by_id",
+    "method": "GET",
+    "route": "/api/household/photo/:id",
+    "domain": "household",
+    "source": "routes/household.js",
+    "line": 14,
+    "description": "GET /api/household/photo/:id. one household member's photo (served from outside the repo, behind the PIN). 404 when none has been added.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_imports_pending",
     "method": "GET",
     "route": "/api/imports/pending",
@@ -4266,7 +4300,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 240,
+    "line": 241,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -10721,7 +10755,7 @@
     "route": "/api/weather/forecast/refresh",
     "domain": "weather",
     "source": "routes/weather.js",
-    "line": 95,
+    "line": 96,
     "description": "POST /api/weather/forecast/refresh. take a forecast snapshot now rather than waiting for the hourly one. Keywords: weather forecast refresh. Body: { force }",
     "params": [],
     "query": [],

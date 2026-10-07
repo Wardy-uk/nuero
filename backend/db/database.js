@@ -187,6 +187,15 @@ async function init() {
       db.exec('ALTER TABLE push_subscriptions ADD COLUMN audience TEXT');
     }
 
+    // Migration (7 Oct 2026): the household roster on wm_presence (Build 13H).
+    try {
+      const presCols = db.prepare('PRAGMA table_info(wm_presence)').all().map(r => r.name);
+      if (presCols.length && !presCols.includes('members_json')) {
+        db.exec("ALTER TABLE wm_presence ADD COLUMN members_json TEXT NOT NULL DEFAULT '[]'");
+        console.log('[DB] wm_presence.members_json added');
+      }
+    } catch (e) { console.warn('[DB] wm_presence.members_json migration:', e.message); }
+
     // Migration (5 Oct 2026): where a reading was taken, and what a sensor is
     // FOR. A roaming logger records wherever Nick is; the outdoor sensor he is
     // building will be the home baseline; Home Assistant's rooms stay indoor.

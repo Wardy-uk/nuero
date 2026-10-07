@@ -1,0 +1,51 @@
+/* Who's in the house — one card for every shell. States read without colour:
+   ring solid / dashed / none, and greyscale for "out". */
+
+.hh-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.hh-card__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.hh-card__head h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+.hh-card__count { font-size: 0.85rem; color: var(--muted, rgba(255, 255, 255, 0.6)); }
+.hh-card__note { margin: 0 0 10px; font-size: 0.85rem; color: var(--muted, rgba(255, 255, 255, 0.6)); }
+.hh-card__note--gap { color: #f0d6a6; } /* GAP — notice this, nothing is broken */
+
+.hh-card__grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 14px 10px;
+}
+.hh-card--compact .hh-card__grid { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 10px 8px; }
+
+.hh-member { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+.hh-member__name { margin-top: 6px; font-size: 0.9rem; font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hh-member__state { font-size: 0.75rem; color: var(--muted, rgba(255, 255, 255, 0.6)); }
+.hh-member__role { font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.55; margin-top: 1px; }
+
+.hh-face {
+  position: relative; border-radius: 50%; overflow: hidden; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(120, 150, 200, 0.22);
+  box-sizing: border-box;
+  transition: opacity 0.3s, filter 0.3s;
+}
+.hh-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hh-face__initial { font-size: 1.5rem; font-weight: 600; opacity: 0.85; }
+.hh-card--compact .hh-face__initial { font-size: 1.1rem; }
+
+/* home: solid ring */
+.hh-face--home { outline: 3px solid rgba(110, 200, 140, 0.95); outline-offset: 2px; }
+/* away: faded + grey, thin ring */
+.hh-face--away { opacity: 0.45; filter: grayscale(1); outline: 1px solid rgba(255, 255, 255, 0.25); outline-offset: 2px; }
+/* unknown: dashed ring — "can't tell", never "out" */
+.hh-face--unknown { opacity: 0.7; outline: 2px dashed rgba(232, 176, 74, 0.9); outline-offset: 2px; }
+/* untracked (Ember): no ring, no claim */
+.hh-face--untracked { outline: none; }
+
+@media (prefers-color-scheme: light) {
+  .hh-card { background: rgba(0, 0, 0, 0.03); border-color: rgba(0, 0, 0, 0.08); }
+  .hh-face { background: rgba(60, 90, 140, 0.15); }
+  .hh-face--away { outline-color: rgba(0, 0, 0, 0.2); }
+}

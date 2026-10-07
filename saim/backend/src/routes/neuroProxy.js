@@ -50,6 +50,7 @@ const neuroConfig = require('../integrations/neuroConfig');
  */
 const DOORS = new Set([
   'attention',       // the feed. Its own act route is mounted ahead of this.
+  'household',       // who's in the house + photos (7 Oct 2026). READ-ONLY routes; nothing leaves the building.
   'adhd',            // the Now screen's session + recovery cards
   'session',         // focus sessions — start, pause, shrink, step away
   // 'focus' was CLOSED in Build 10O: /api/focus is retired and no screen calls it.

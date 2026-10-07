@@ -2402,6 +2402,7 @@ CREATE TABLE IF NOT EXISTS wm_presence (
   state            TEXT NOT NULL,
   who_json         TEXT NOT NULL DEFAULT '[]',
   unreadable_json  TEXT NOT NULL DEFAULT '[]',
+  members_json     TEXT NOT NULL DEFAULT '[]',
   observed_at      TEXT,
   received_at      TEXT NOT NULL,
   event_id         TEXT,

@@ -19,7 +19,7 @@
 // answers to "what should I do now?", which the Surface and Now answer
 // canonically. A notification or old link naming either still lands — see
 // RETIRED_TABS — rather than silently falling through.
-const SAIM_LITE_TABS = new Set(['surface', 'now', 'review', 'tasks', 'capture', 'voice', 'chat', 'prep', 'standup', 'controls']);
+const SAIM_LITE_TABS = new Set(['surface', 'now', 'review', 'tasks', 'capture', 'voice', 'chat', 'prep', 'standup', 'controls', 'household']);
 const RETIRED_TABS = Object.freeze({ today: 'now', focus: 'surface' });
 
 function lower(value) {

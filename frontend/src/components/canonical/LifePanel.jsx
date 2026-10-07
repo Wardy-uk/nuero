@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
+import HouseholdCard from '../../../../saim/shared-ui/HouseholdCard';
 import './Canonical.css';
 
 /**
@@ -20,6 +21,13 @@ import './Canonical.css';
  *    her by name is shown as exactly that (a mention, not a fact).
  *  • Coverage by life domain — counts of evidence. A row of zeros is kept.
  */
+// Who's in the house — the shared card (7 Oct 2026). Module scope: stable transports.
+const fetchHousehold = async () => { const r = await apiFetch('/api/household'); return r.ok ? r.json() : null; };
+const fetchHouseholdPhoto = async (id, version) => {
+  const r = await apiFetch(`/api/household/photo/${encodeURIComponent(id)}?v=${version}`);
+  return r.ok ? URL.createObjectURL(await r.blob()) : null;
+};
+
 export default function LifePanel({ onNavigate = null } = {}) {
   const { data, error, loading, reload } = useCanonical('/api/canonical/life');
   const [busy, setBusy] = useState(false);
@@ -42,6 +50,7 @@ export default function LifePanel({ onNavigate = null } = {}) {
       {error && <div className="cn-error">Couldn’t read this — {error}</div>}
       {saveError && <div className="cn-error">Not saved — {saveError}</div>}
 
+      <div className="cn-section"><HouseholdCard fetchJson={fetchHousehold} fetchPhoto={fetchHouseholdPhoto} /></div>
       <Goals data={data} busy={busy} act={act} />
       <Classifications data={data} busy={busy} act={act} />
       <Companions data={data} busy={busy} act={act} />

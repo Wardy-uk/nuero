@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Field from '../../../shared-ui/Field';
+import HouseholdCard from '../../../shared-ui/HouseholdCard';
 import './HomeBoard.css';
 
 // The household board — a HOME screen when Nick is not in its room.
@@ -56,9 +57,17 @@ function houseLines(house) {
   if (on.length) out.push({ text: `Lights on: ${on.join(', ')}` });
   if (house.tvOn === true) out.push({ text: 'TV on' });
   const hh = house.household || {};
-  if (hh.known && Array.isArray(hh.who) && hh.who.length) out.push({ text: `Home: ${hh.who.join(', ')}` });
+  // Who is home is drawn as faces by HouseholdCard below (7 Oct 2026), not a line.
   return out;
 }
+
+// Through saim/backend's `household` door; module scope so the card's effects stay put.
+const fetchHousehold = () => fetch('/api/household').then((r) => (r.ok ? r.json() : null));
+const fetchHouseholdPhoto = async (id, version) => {
+  const r = await fetch(`/api/household/photo/${encodeURIComponent(id)}?v=${version}`);
+  if (!r.ok) return null;
+  return URL.createObjectURL(await r.blob());
+};
 
 export default function HomeBoard({ now, area, say, onWork = null }) {
   const board = useBoard(area);
@@ -115,6 +124,8 @@ export default function HomeBoard({ now, area, say, onWork = null }) {
             ))
           )}
         </section>
+
+        <HouseholdCard fetchJson={fetchHousehold} fetchPhoto={fetchHouseholdPhoto} compact />
 
         {house.length > 0 && (
           <section className="homeboard__block">

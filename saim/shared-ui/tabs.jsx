@@ -36,6 +36,7 @@ import Chat from '../app/src/views/Chat';
 import MeetingPrep from '../app/src/views/MeetingPrep';
 import Standup from '../app/src/views/Standup';
 import Controls from '../app/src/views/Controls';
+import Household from '../app/src/views/Household';
 
 export const PRIMARY = [
   { id: 'capture', label: 'Capture', icon: '➕', Component: Capture },
@@ -55,6 +56,8 @@ export const SECONDARY = [
   { id: 'chat', label: 'Chat', icon: '💬', Component: Chat },
   { id: 'prep', label: 'Prep', icon: '📅', Component: MeetingPrep },
   { id: 'standup', label: 'Ritual', icon: '📝', Component: Standup },
+  // Who's in the house (7 Oct 2026): faces, from HA presence.
+  { id: 'household', label: "Who's in", icon: '🏠', Component: Household },
   { id: 'controls', label: 'Controls', icon: '⚙', Component: Controls },
 ];
 
