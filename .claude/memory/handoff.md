@@ -1,6 +1,6 @@
 # Session Handoff — 2026-10-07 (Build 17: repeated degradation, personal dates, hiking rule, legacy prep retired)
 
-- Deployed nuero Build 17 to pi5. nuero-ios route-summary commit PUSHED, UNBUILT (Mac tonight: build + swift test + install; prove a Hiking workout route arrives with pointCount and confirms without Nick; Health permission prompt for routes; .r1 anchor re-read).
+- Deployed nuero 25f2f27 to pi5 (gate 5510/0; MCP gateway rebuilt). nuero-ios dbf53da (route summary) PUSHED, UNBUILT (Mac tonight: build + swift test + install; prove a Hiking workout route arrives with pointCount and confirms without Nick; Health permission prompt for routes; .r1 anchor re-read).
 - Hiking: GPS track within 24h or Nick only. Live reclassification: 6/13/19/26 Sep + 3 Oct = not a hike; 6 Aug + 29 Aug = can't tell. No route reaches NEURO until the iOS build.
 - Degradation investigation live (job :17/:47); replay on 5 days of spine: threshold 3 → 0 investigations. Re-replay in a fortnight (di.replay()).
 - Personal dates live: wedding anniversary 19 Oct (nothing needed). Tracey Allen's 16th (Fri 9 Oct) was REMOVED from the phone's diary on 4 Oct — tell Nick; the phone's push is thin (4 events / 23 calendars).
