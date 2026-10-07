@@ -238,3 +238,14 @@ test('elevation text: ground height, with the owner figure only when it is wrong
   assert.equal(r.elevationText({ reportedM: 50, groundM: null }), '50 m (owner’s figure, unchecked)');
   assert.equal(r.elevationText(null), '—');
 });
+
+test('sources strip: WU stations are one line, and a station that is not OK is named, never folded away', async () => {
+  const m = await load();
+  const wuFeed = (id, state, extra = {}) => ({ sourceId: `wu:${id}`, feed: 'wu-pws-v2', state, lastObservedAt: NOW - MIN, lastSuccessAt: NOW - MIN, consecutiveFailures: state === 'failing' ? 2 : 0, ...extra });
+  const s = { ...SOURCES, feeds: [...SOURCES.feeds, wuFeed('IA', 'ok'), wuFeed('IB', 'ok'), wuFeed('IC', 'failing', { lastError: 'HTTP 401' })] };
+  const html = view(m, { data: { node: null }, sources: s });
+  assert.match(html, /Weather Underground nearby stations/);
+  assert.match(html, /2 of 3 OK · IC failing \(HTTP 401\)/);
+  assert.doesNotMatch(html, /Weather Underground IA/);
+  assert.doesNotMatch(html, /Not set up/, 'with stations imported, the not-set-up line is gone');
+});

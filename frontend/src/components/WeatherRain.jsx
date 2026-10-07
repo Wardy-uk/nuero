@@ -215,8 +215,13 @@ export function backfillWords(backfill) {
 export function SourcesStrip({ sources, nowMs }) {
   if (!sources) return null;
   if (sources.error) return <section className="wx-sources" aria-label="Weather sources"><p className="wx-rain-err">Couldn’t read source health: {sources.error}</p></section>;
-  const feeds = sources.feeds || [];
+  const all = sources.feeds || [];
   const wu = sources.wu || {};
+  // Sixteen WU stations as sixteen lines would bury the EA gauge. One summary
+  // line, naming only the stations that are not OK — a problem is never folded away.
+  const wuFeeds = all.filter((s) => s.feed === 'wu-pws-v2');
+  const feeds = all.filter((s) => s.feed !== 'wu-pws-v2');
+  const wuBad = wuFeeds.filter((s) => s.state !== 'ok');
   return (
     <section className="wx-sources" aria-label="Weather sources">
       <h2>Sources</h2>
@@ -233,7 +238,17 @@ export function SourcesStrip({ sources, nowMs }) {
             </span>
           </li>
         ))}
-        {!(feeds.some((s) => s.feed === 'wu-pws-v2')) && (
+        {wuFeeds.length > 0 && (
+          <li className={`wx-src wx-src--${wuBad.length ? 'stale' : 'ok'}`}>
+            <span className="wx-src-name">Weather Underground nearby stations</span>
+            <span className={`wx-src-state wx-src-state--${wuBad.length ? 'stale' : 'ok'}`}>{wuBad.length ? `${wuBad.length} not OK` : 'OK'}</span>
+            <span className="wx-src-detail">
+              {wuFeeds.length - wuBad.length} of {wuFeeds.length} OK
+              {wuBad.length > 0 && ` · ${wuBad.map((s) => `${s.sourceId.replace(/^wu:/, '')} ${(STATE_WORDS[s.state] || s.state).toLowerCase()}${s.lastError ? ` (${s.lastError})` : ''}`).join(', ')}`}
+            </span>
+          </li>
+        )}
+        {wuFeeds.length === 0 && (
           <li className="wx-src wx-src--off">
             <span className="wx-src-name">Weather Underground neighbours ({(wu.importStations || []).join(', ')})</span>
             <span className="wx-src-state wx-src-state--off">Not set up</span>
