@@ -249,3 +249,20 @@ test('sources strip: WU stations are one line, and a station that is not OK is n
   assert.doesNotMatch(html, /Weather Underground IA/);
   assert.doesNotMatch(html, /Not set up/, 'with stations imported, the not-set-up line is gone');
 });
+
+test('layout: sensor|forecast then tiles|together, stale warning, nowcast, station charts, rain, nearby, sources — in that order', async () => {
+  const m = await load();
+  const S = require('./weather-trend').summarise({ obs: [], forecast: [], nowMs: NOW, providerLabel: 'Open-Meteo' });
+  const data = {
+    node: 'outdoor-1', range: 'day', ranges: null, summary: S, staleAfterMs: 300000, history: { n: 261 }, forecast: { label: 'Open-Meteo' },
+    latest: { observedAt: NOW - 17 * 3600000, ageMs: 17 * 3600000, stale: true, temperatureC: 22.2, humidityPct: 57, pressureHpa: 999.3, rssi: -51 },
+    plan: { fromMs: NOW - 24 * 3600000, toMs: NOW + 12 * 3600000, bucketMs: 300000, nowMs: NOW }, series: [],
+  };
+  const html = view(m, { data, rain: rainPayload(), sources: SOURCES, nowcast: nowcastPayload() });
+  const at = (re) => { const i = html.search(re); assert.ok(i >= 0, `missing ${re}`); return i; };
+  const order = [/wx-area-sensor/, /wx-area-forecast/, /wx-area-tiles/, /wx-area-together/, /class="wx-stale"/,
+    /aria-label="Local nowcast"/, /aria-label="Temperature chart"/, /aria-label="Rain chart"/, /aria-label="Nearby stations"/, /aria-label="Weather sources"/].map(at);
+  for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1], `item ${i} is out of order`);
+  assert.match(html, /wx-latest--2x2/);
+  assert.equal(html.match(/aria-label="Local nowcast"/g).length, 1, 'the nowcast is drawn once');
+});

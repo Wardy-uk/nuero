@@ -325,20 +325,26 @@ function ForecastCard({ forecast, nowMs }) {
   );
 }
 
-export function Outlook({ summary, nowMs }) {
-  if (!summary) return null;
+/**
+ * The top of the screen as a 2×2 grid (Nick, 7 Oct 2026):
+ *   What the sensor says | What the forecast says
+ *   the station's tiles  | Together
+ * Rows share a height, so Together sits directly under the forecast at its
+ * width. `tiles` is the station's latest-reading block, passed in.
+ */
+export function Outlook({ summary, nowMs, tiles = null }) {
+  if (!summary) return tiles;
   // A backend older than the split sends only the paragraph — render that rather than nothing.
   if (!summary.sensor || !summary.forecast) {
-    return <section className="wx-summary" aria-label="Outlook"><p className="wx-summary-text">{summary.paragraph}</p></section>;
+    return <><section className="wx-summary" aria-label="Outlook"><p className="wx-summary-text">{summary.paragraph}</p></section>{tiles}</>;
   }
   const c = summary.comparison || {};
   return (
-    <div className="wx-outlook" aria-label="Outlook">
-      <div className="wx-outlook-cards">
-        <SensorCard sensor={summary.sensor} />
-        <ForecastCard forecast={summary.forecast} nowMs={nowMs} />
-      </div>
-      <section className={`wx-together wx-together--${c.verdict || 'none'}`} aria-label="Together">
+    <div className="wx-outlook wx-outlook--grid" aria-label="Outlook">
+      <div className="wx-area-sensor"><SensorCard sensor={summary.sensor} /></div>
+      <div className="wx-area-forecast"><ForecastCard forecast={summary.forecast} nowMs={nowMs} /></div>
+      {tiles && <div className="wx-area-tiles">{tiles}</div>}
+      <section className={`wx-area-together wx-together wx-together--${c.verdict || 'none'}`} aria-label="Together">
         <div className="wx-together-head">
           <h2>Together</h2>
           <span className="wx-conf">{VERDICT_LABEL[c.verdict] || '—'} · {CONFIDENCE_LABEL[summary.confidence] || 'Low confidence'}</span>
@@ -353,7 +359,7 @@ export function Outlook({ summary, nowMs }) {
 function Latest({ latest, staleAfterMs }) {
   if (!latest) return null;
   return (
-    <section className={`wx-latest${latest.stale ? ' wx-latest--stale' : ''}`} aria-label="Latest reading">
+    <section className={`wx-latest wx-latest--2x2${latest.stale ? ' wx-latest--stale' : ''}`} aria-label="Latest reading">
       <div className="wx-tile"><span className="wx-tile-label">Temperature</span><span className="wx-tile-value">{num(latest.temperatureC, 1)}°C</span></div>
       <div className="wx-tile"><span className="wx-tile-label">Humidity</span><span className="wx-tile-value">{num(latest.humidityPct, 0)}%</span></div>
       <div className="wx-tile"><span className="wx-tile-label">Pressure</span><span className="wx-tile-value">{num(latest.pressureHpa, 1)} hPa</span></div>
@@ -362,13 +368,17 @@ function Latest({ latest, staleAfterMs }) {
         <span className="wx-tile-value wx-tile-value--small">{ageWords(latest.ageMs)}</span>
         <span className="wx-tile-sub">{exactTime(latest.observedAt, 60000)}{Number.isFinite(latest.rssi) ? ` · ${latest.rssi} dBm` : ''}</span>
       </div>
-      {latest.stale && (
-        <p className="wx-stale" role="alert">
-          ⚠ The station has not reported for {ageWords(latest.ageMs).replace(' ago', '')} (it normally reports every minute; stale after {Math.round(staleAfterMs / 60000)} min).
-          These are the last values it sent, not current conditions — check the transmitter battery, the receiver on pi5 and the saim-weather-ingest service.
-        </p>
-      )}
     </section>
+  );
+}
+
+function StaleWarning({ latest, staleAfterMs }) {
+  if (!latest || !latest.stale) return null;
+  return (
+    <p className="wx-stale" role="alert">
+      ⚠ The station has not reported for {ageWords(latest.ageMs).replace(' ago', '')} (it normally reports every minute; stale after {Math.round(staleAfterMs / 60000)} min).
+      These are the last values it sent, not current conditions — check the transmitter battery, the receiver on pi5 and the saim-weather-ingest service.
+    </p>
   );
 }
 
@@ -434,8 +444,10 @@ export function WeatherView({ data, range, onRange, error, loading, onRetry, rai
 
       {data && data.node && (
         <>
-          <Outlook summary={data.summary} nowMs={data.plan?.nowMs} />
-          <Latest latest={data.latest} staleAfterMs={data.staleAfterMs} />
+          <Outlook summary={data.summary} nowMs={data.plan?.nowMs}
+            tiles={<Latest latest={data.latest} staleAfterMs={data.staleAfterMs} />} />
+          <StaleWarning latest={data.latest} staleAfterMs={data.staleAfterMs} />
+          <NowcastCard nowcast={nowcast} />
           <div className="wx-meta">
             <span>Node <strong>{data.node}</strong> · {data.history?.n?.toLocaleString('en-GB') ?? 0} readings kept
               {data.history?.firstObservedAt ? ` since ${exactTime(data.history.firstObservedAt, 24 * 3600000)}` : ''}</span>
@@ -451,11 +463,12 @@ export function WeatherView({ data, range, onRange, error, loading, onRetry, rai
         </>
       )}
 
-      {/* Rain comes from the EA gauge, not the home station, so it shows
-          whether or not the station has ever reported. */}
-      <NowcastCard nowcast={nowcast} />
-      <NearbyStations nowcast={nowcast} nowMs={nowMs} />
+      {/* The nowcast sits under the station's own readings; with no station
+          it still shows, first. Rain comes from the EA gauge, not the home
+          station, so it shows whether or not the station has ever reported. */}
+      {!(data && data.node) && <NowcastCard nowcast={nowcast} />}
       {rain && <RainChart data={rain} range={range} nowMs={nowMs} />}
+      <NearbyStations nowcast={nowcast} nowMs={nowMs} />
       <SourcesStrip sources={sources} nowMs={nowMs} />
     </div>
   );

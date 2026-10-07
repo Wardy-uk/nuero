@@ -201,3 +201,20 @@
 .wx-st-meta { grid-column: 1 / -1; font-size: 0.7rem; color: var(--text-muted); }
 .wx-st--none .wx-st-vals { color: var(--text-muted); font-family: inherit; }
 @media (max-width: 640px) { .wx-ring { grid-template-columns: 1fr; } }
+
+/* ── Top layout (7 Oct 2026): sensor | forecast, tiles | together ── */
+.wx-outlook--grid {
+  display: grid; gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas: "sensor forecast" "tiles together";
+  align-items: stretch;
+}
+.wx-area-sensor { grid-area: sensor; display: flex; }
+.wx-area-forecast { grid-area: forecast; display: flex; }
+.wx-area-tiles { grid-area: tiles; }
+.wx-area-together { grid-area: together; }
+.wx-area-sensor > .wx-card, .wx-area-forecast > .wx-card { flex: 1; }
+.wx-latest--2x2 { grid-template-columns: 1fr 1fr; height: 100%; }
+@media (max-width: 720px) {
+  .wx-outlook--grid { grid-template-columns: 1fr; grid-template-areas: "sensor" "tiles" "forecast" "together"; }
+}
