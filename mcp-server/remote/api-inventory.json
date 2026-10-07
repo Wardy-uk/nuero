@@ -2855,6 +2855,22 @@
     "stream": false
   },
   {
+    "id": "get_loops_personal_dates",
+    "method": "GET",
+    "route": "/api/loops/personal-dates",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 76,
+    "description": "GET /api/loops/personal-dates. birthdays and anniversaries coming up (lead time, linked preparation, state). Explicit dates only.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_meeting_prep",
     "method": "GET",
     "route": "/api/meeting-prep",
@@ -7945,12 +7961,49 @@
     "stream": false
   },
   {
+    "id": "post_loops_hiking_denials_by_id_withdraw",
+    "method": "POST",
+    "route": "/api/loops/hiking/denials/:id/withdraw",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 68,
+    "description": "POST /api/loops/hiking/denials/:id/withdraw. take back a \"not a hike\".",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_loops_hiking_deny",
+    "method": "POST",
+    "route": "/api/loops/hiking/deny",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 61,
+    "description": "POST /api/loops/hiking/deny. Nick says a day was NOT a hike (not a hike, rule out hike); beats a GPS track.",
+    "params": [],
+    "query": [],
+    "body": [
+      "day",
+      "note"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_loops_hiking_entries_by_id_withdraw",
     "method": "POST",
     "route": "/api/loops/hiking/entries/:id/withdraw",
     "domain": "loops",
     "source": "routes/loops.js",
-    "line": 61,
+    "line": 92,
     "description": "POST /api/loops/hiking/entries/:id/withdraw. take back a hike confirmation or plan.",
     "params": [
       "id"
@@ -7975,6 +8028,25 @@
     "body": [
       "day",
       "note"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_loops_personal_dates_lead",
+    "method": "POST",
+    "route": "/api/loops/personal-dates/lead",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 85,
+    "description": "POST /api/loops/personal-dates/lead. Nick sets how many days ahead a personal date shows (birthday lead time). Body: id, days (1-60, null = default).",
+    "params": [],
+    "query": [],
+    "body": [
+      "days",
+      "id"
     ],
     "queryOpen": false,
     "bodyOpen": true,

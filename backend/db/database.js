@@ -2179,9 +2179,22 @@ function getHealthRecordCounts() {
 function insertWorkouts(rows) {
   if (!rows || !rows.length) return 0;
   let inserted = 0;
+  const receivedAt = new Date().toISOString();
   batchSaves(() => {
     for (const w of rows) {
       if (!w.activityType || !w.startedAt) continue;
+      // Build 17B: a workout's GPS route is stamped with WHEN NEURO RECEIVED it —
+      // a track counts towards a hike only if it arrived within 24h. A route
+      // re-sent later for a workout already stored is attached with ITS arrival
+      // time, so a late backfill can never pass for an on-time track.
+      if (w.payload && w.payload.route && typeof w.payload.route === 'object') {
+        w.payload = { ...w.payload, route: { ...w.payload.route, receivedAt } };
+        if (w.sourceUuid) {
+          run(`UPDATE health_workouts SET payload = json_set(COALESCE(payload, '{}'), '$.route', json(?))
+                WHERE source_uuid = ? AND (payload IS NULL OR json_extract(payload, '$.route') IS NULL)`,
+          [JSON.stringify(w.payload.route), w.sourceUuid]);
+        }
+      }
       const info = run(
         `INSERT OR IGNORE INTO health_workouts
            (source_uuid, activity_type, started_at, ended_at, duration_seconds,

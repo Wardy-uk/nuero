@@ -1387,6 +1387,18 @@ function registerDurableJobs() {
   });
 
   runtime.defineJob({
+    name: 'source-degradation-investigation',
+    cron: '17,47 * * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: 30 * 60 * 1000,
+    maxAttempts: 1,
+    timeoutMs: 60 * 1000,
+    why: 'Build 17E: an expected source that keeps dropping out and recovering (3 counted episodes, the last 3 within 7 days — chosen by replay) gets ONE bounded investigation per cluster. IGNORE | MONITOR | PREPARE a manual step; never executes, never notifies.',
+    run: async () => require('./degradation-investigations').run(),
+  });
+
+  runtime.defineJob({
     name: 'selftest-sync',
     cron: '11 * * * *',
     class: 'best-effort',
@@ -1408,6 +1420,18 @@ function registerDurableJobs() {
     timeoutMs: 60 * 1000,
     why: 'Build 15S: the "hike weekly" loop records what CHANGED (a plan appearing, the week done, the week uncertain, a prompt prepared) for Activity. Idempotent; nothing is sent.',
     run: async () => require('./hiking-loop').refresh(),
+  });
+
+  runtime.defineJob({
+    name: 'personal-dates',
+    cron: '8,38 * * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 1,
+    timeoutMs: 60 * 1000,
+    why: 'Build 17L: birthdays and anniversaries NEURO is explicitly told about. Records prep linked/completed and the action window once each, and asks the attention policy (shadow) only when linked prep is still open ≤2 days out. Never creates a task, never sends.',
+    run: async () => require('./personal-dates').refresh(),
   });
 
   runtime.defineJob({

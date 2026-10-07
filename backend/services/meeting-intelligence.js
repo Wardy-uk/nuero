@@ -348,8 +348,33 @@ function classifyComparison(row) {
   }
   else if (newSaid) kind = 'new-only';
   else kind = 'neither';
-  return { meetingKey: row.meeting_key, title: row.title, start: row.start_local, kind, old: o, new: n };
+  return { meetingKey: row.meeting_key, title: row.title, start: row.start_local, kind, pushValue: pushValue(kind, o, n), old: o, new: n };
 }
+
+/**
+ * Build 17S — what an old-only push was WORTH as an interruption. PURE.
+ *
+ * Nick, 7 Oct 2026: "context belongs in prep; risk/actionability earns
+ * interruption." The legacy push body is, by construction, a People note's
+ * role, its last 1-2-1 date and a note excerpt (meeting-prep.js
+ * `OLD_PUSH_FIELDS`) — it carries no risk and no action, so an old-only push
+ * can be noise or context, never actionable. Parity is judged on that, not on
+ * how much text either side produced.
+ *   noise        the old path matched Nick's own name, or fired on a solo block
+ *   context-only role / last 1-2-1 / excerpt — belongs in prep, earns no push
+ *   duplicate    both sides raised it
+ *   actionable   reserved; the legacy body cannot carry it
+ */
+function pushValue(kind, o, n) {
+  if (kind === 'both') return 'duplicate';
+  if (!['old-only', 'old-only-covered', 'old-only-self-match'].includes(kind)) return null;
+  if (kind === 'old-only-self-match') return 'noise';
+  if (n && /not a meeting with other people/.test(n.why || '')) return 'noise';
+  const fields = Object.keys((o && o.content) || {});
+  if (fields.some((f) => !OLD_PUSH_FIELDS.includes(f))) return 'actionable';
+  return 'context-only';
+}
+const OLD_PUSH_FIELDS = Object.freeze(['role', 'last121', 'notes']);
 
 /**
  * Can meeting-prep be retired? PURE over the comparison rows. Retirement needs
@@ -359,29 +384,64 @@ function classifyComparison(row) {
  * and last 1-2-1); deciding that is not worth a push is Nick's call, so any
  * such row blocks the automatic verdict.
  */
-function parityVerdict(rows, { minDays = 5 } = {}) {
+/**
+ * Can meeting-prep be retired? PURE over the comparison rows (Build 17R/U —
+ * interruption parity, replacing Build 5A's text parity).
+ *
+ * Retire-safe when, over at least `minDays` days of real meetings:
+ *   • no old-only push was ACTIONABLE (the unified pipeline would have missed
+ *     a risk the old one raised);
+ *   • every person a CONTEXT-ONLY old push named still has that context in
+ *     prep (`contextAvailable(name)` — the People note's role / last 1-2-1,
+ *     which the prep view and the unified finding both read);
+ *   • the old path no longer fires on solo blocks since the Build 16K fix;
+ *   • no meeting was seen by only ONE side while the old side spoke.
+ * Byte-for-byte parity is NOT required: context-only and noise rows do not
+ * count as missing push parity.
+ */
+function parityVerdict(rows, { minDays = 3, contextAvailable = null, soloFixedFrom = '2026-10-07' } = {}) {
   const classified = rows.map(classifyComparison);
   const days = new Set(classified.map((c) => String(c.start || '').slice(0, 10)).filter(Boolean));
   const count = (k) => classified.filter((c) => c.kind === k).length;
+  const value = (v) => classified.filter((c) => c.pushValue === v);
   const reasons = [];
   if (days.size < minDays) reasons.push(`only ${days.size} day(s) of comparisons; ${minDays} needed`);
-  if (count('old-only')) reasons.push(`${count('old-only')} meeting(s) where the live push said something the new pipeline would not`);
-  if (count('old-only-covered')) reasons.push(`${count('old-only-covered')} meeting(s) where only the old path would push — the new pipeline holds the role / last 1-2-1 but raises no finding; whether that earns a push is Nick's call`);
-  if (count('old-not-recorded') || count('new-not-recorded')) reasons.push('some meetings were seen by only one side');
+  const actionable = value('actionable');
+  if (actionable.length) reasons.push(`${actionable.length} old-only push(es) carried more than context — the unified pipeline would have missed them`);
+  const contextRows = value('context-only');
+  const missingContext = [];
+  for (const c of contextRows) {
+    for (const p of (c.old && c.old.matchedPeople) || []) {
+      if (/^nick\b/i.test(p)) continue;
+      const ok = contextAvailable ? contextAvailable(p) : false;
+      if (!ok) missingContext.push({ meeting: c.title, start: c.start, person: p });
+    }
+  }
+  if (missingContext.length) reasons.push(`${missingContext.length} person(s) the old push named have no role / last 1-2-1 in prep`);
+  const soloAfterFix = classified.filter((c) => c.pushValue === 'noise' && c.old && c.old.sent && String(c.start) >= soloFixedFrom
+    && c.new && /not a meeting with other people/.test(c.new.why || ''));
+  if (soloAfterFix.length) reasons.push(`${soloAfterFix.length} solo block(s) still pushed after the fix`);
+  const oneSidedSpoke = classified.filter((c) => (c.kind === 'new-not-recorded' && c.old && c.old.wouldNotify) || c.kind === 'old-not-recorded');
+  if (oneSidedSpoke.length) reasons.push(`${oneSidedSpoke.length} meeting(s) seen by only one side while it spoke`);
   return {
-    retireSafe: reasons.length === 0, reasons, days: days.size,
+    retireSafe: reasons.length === 0, reasons, days: days.size, methodology: 'interruption-value',
     counts: { both: count('both'), oldOnly: count('old-only'), oldOnlyCovered: count('old-only-covered'), oldOnlySelfMatch: count('old-only-self-match'),
       newOnly: count('new-only'), neither: count('neither'), oneSided: count('old-not-recorded') + count('new-not-recorded') },
+    pushValue: { actionable: actionable.length, contextOnly: contextRows.length, noise: value('noise').length, duplicate: value('duplicate').length },
+    newOnlyMaterial: classified.filter((c) => c.kind === 'new-only').map((c) => ({ title: c.title, start: c.start, triggers: ((c.new && c.new.triggers) || []).map((t) => t.kind || t) })),
+    missingContext, soloAfterFix: soloAfterFix.length,
     rows: classified,
   };
 }
 
-function parity({ sinceDays = 14, now = Date.now() } = {}) {
+function parity({ sinceDays = 30, now = Date.now(), personContext = readPersonContext } = {}) {
   const since = new Date(now - sinceDays * 86400000).toISOString().slice(0, 10);
-  return parityVerdict(db.all('SELECT * FROM meeting_prep_comparisons WHERE start_local >= ? ORDER BY start_local', [since]));
+  // Context is "available in prep" when the person's own note gives a role or a last 1-2-1.
+  const contextAvailable = (name) => { try { const c = personContext(name); return !!(c && (c.role || c.last121)); } catch { return false; } };
+  return parityVerdict(db.all('SELECT * FROM meeting_prep_comparisons WHERE start_local >= ? ORDER BY start_local', [since]), { contextAvailable });
 }
 
 module.exports = {
   mode, compose, summarise, evaluate, findings, activeFindingFor, recordComparison,
-  classifyComparison, parityVerdict, parity, OLD_PREP_WINDOW, attendeeContext, readPersonContext,
+  classifyComparison, parityVerdict, parity, pushValue, OLD_PUSH_FIELDS, OLD_PREP_WINDOW, attendeeContext, readPersonContext,
 };

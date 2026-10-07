@@ -159,6 +159,19 @@ const FLAGS = [
       + 'sends, invites or changes anything outside NEURO ever runs by itself.',
   },
   {
+    // Build 17U: the way back from retiring the legacy meeting push. Default
+    // OFF — retired on measured interruption parity. MEETING_PREP_MODE
+    // (live|retired), when set, still wins over this switch.
+    key: 'meeting_prep_legacy',
+    env: 'MEETING_PREP_LEGACY',
+    default: false,
+    label: 'Legacy meeting-prep pushes',
+    description: 'The old "Meeting in 20 min" push that named a colleague\'s role and last 1-2-1. Retired '
+      + 'in Build 17: that context is in meeting prep, and the unified meeting check raises anything at risk. '
+      + 'Turn this on to bring the old push back alongside it.',
+    impact: 'may notify you before meetings; never contacts anyone else',
+  },
+  {
     key: 'dnd_vault_read_only',
     env: 'DND_VAULT_READ_ONLY',
     default: false,

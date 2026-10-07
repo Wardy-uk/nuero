@@ -6,13 +6,23 @@ const webpush = require('./webpush');
 
 const LOOK_AHEAD_MINUTES = 25;
 
-// Build 5A: this is still the LIVE meeting push, and is NOT retired until the
-// comparison record (meeting_prep_comparisons, read by
-// meeting-intelligence.parity) shows the unified pipeline covers what it says.
-// `retired` stops the send and keeps the record; anything else is live.
+// Build 17U: RETIRED by default. Interruption parity on real meetings (5–7 Oct
+// 2026) found every old-only push was context (a role, a last 1-2-1) or noise
+// (Nick's own name, solo blocks) — never a risk the unified pipeline missed —
+// and the context still lives in prep (the prep view and meeting-intelligence
+// read the same People notes). Retired = the comparison is still recorded,
+// nothing is sent. The way back is the Settings switch "Legacy meeting-prep
+// pushes" (`meeting_prep_legacy`), or MEETING_PREP_MODE=live|retired, which
+// wins when set.
 function prepMode() {
-  return String(process.env.MEETING_PREP_MODE || 'live').toLowerCase() === 'retired' ? 'retired' : 'live';
+  const env = String(process.env.MEETING_PREP_MODE || '').toLowerCase();
+  if (env === 'live' || env === 'retired') return env;
+  try { return require('./feature-flags').isEnabled('meeting_prep_legacy') ? 'live' : 'retired'; } catch { return 'retired'; }
 }
+
+// The ONLY things the legacy push body is built from — so it can carry
+// context, never a risk or an action (pinned by a test).
+const OLD_PUSH_FIELDS = Object.freeze(['role', 'last121', 'notes']);
 
 /** Record what this path decided about one meeting, beside the new pipeline's answer. Never throws. */
 function recordOldSide(event, side) {
@@ -27,7 +37,19 @@ function recordOldSide(event, side) {
   } catch (e) { console.warn('[MeetingPrep] comparison not recorded:', e.message); }
 }
 
+/** Build 17W: record a CHANGE of mode once, for Activity. Never throws. */
+function noteModeChange() {
+  try {
+    const mode = prepMode();
+    if (db.getState('meeting_prep_mode_last') === mode) return;
+    db.setState('meeting_prep_mode_last', mode);
+    const env = String(process.env.MEETING_PREP_MODE || '').toLowerCase();
+    db.logActivity('meeting_prep_mode', { mode, basis: env ? 'MEETING_PREP_MODE' : 'meeting_prep_legacy switch (default off since Build 17)' });
+  } catch { /* bookkeeping only */ }
+}
+
 async function checkUpcomingMeetings({ now = new Date() } = {}) {
+  noteModeChange();
   if (!obsidian.isConfigured()) return;
 
   const isWeekday = now.getDay() >= 1 && now.getDay() <= 5;
@@ -138,7 +160,8 @@ async function checkUpcomingMeetings({ now = new Date() } = {}) {
     // Mark as notified before sending (prevent double-fire)
     db.setState(notifyKey, new Date().toISOString());
 
-    const side = { wouldNotify: true, matchedPeople: matchedPeople.map(p => p.name), title, body, mode: prepMode(), sent: false };
+    const content = Object.fromEntries(OLD_PUSH_FIELDS.filter(f => person[f]).map(f => [f, true]));
+    const side = { wouldNotify: true, matchedPeople: matchedPeople.map(p => p.name), title, body, content, mode: prepMode(), sent: false };
     if (prepMode() === 'retired') {
       console.log(`[MeetingPrep] (retired) would have notified for: ${event.subject} at ${timeStr} — not sent`);
       recordOldSide(event, side);
@@ -176,4 +199,4 @@ function soloBlock(event, me) {
   } catch { return false; }
 }
 
-module.exports = { checkUpcomingMeetings, prepMode, occurrenceKey, soloBlock };
+module.exports = { checkUpcomingMeetings, prepMode, occurrenceKey, soloBlock, noteModeChange, OLD_PUSH_FIELDS };

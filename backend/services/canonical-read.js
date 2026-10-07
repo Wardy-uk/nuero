@@ -1243,6 +1243,12 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
   // what the phone's Music app is playing. Read-only, never allowed to fail Now.
   try { payload.environmentHere = require('./environment').here({ nowSeconds: Math.floor(nowMs / 1000) }); } catch (e) { gaps.push({ input: 'environment-here', why: e.message }); }
   try { payload.nowPlaying = require('./now-playing').current({ now: nowMs }); } catch { payload.nowPlaying = null; }
+  // Build 17O: personal dates inside their lead window — context on Now, never
+  // a ranked item. `later` dates stay off Now. Never allowed to fail Now.
+  try {
+    const pd = require('./personal-dates').read({ now: nowMs });
+    payload.personalDates = { active: pd.active.map((d) => ({ id: d.id, kind: d.kind, date: d.date, person: d.person, state: d.state, away: d.away, line: d.line, importance: d.importance })), gaps: pd.gaps };
+  } catch (e) { payload.personalDates = null; gaps.push({ input: 'personal-dates', why: e.message }); }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
   // allowed to fail the feed: null means "render the way you did before".

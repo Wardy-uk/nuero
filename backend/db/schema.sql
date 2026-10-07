@@ -2504,6 +2504,35 @@ CREATE TABLE IF NOT EXISTS goal_loop_entries (
   withdrawn_at  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_goal_loop_entries_goal ON goal_loop_entries(goal_id, day);
+-- Build 17A: Nick saying a day was NOT a hike — his word beats a GPS track.
+-- Its own table because goal_loop_entries.kind carries a CHECK that SQLite
+-- cannot widen without a rebuild.
+CREATE TABLE IF NOT EXISTS goal_loop_denials (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  goal_id       TEXT NOT NULL,
+  day           TEXT NOT NULL,
+  note          TEXT,
+  created_at    TEXT NOT NULL,
+  withdrawn_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_goal_loop_denials_goal ON goal_loop_denials(goal_id, day);
+
+-- Build 17L: personal dates with lead time. The dates themselves are computed
+-- at read time from the calendar and Nick's notes (no second calendar); this
+-- holds only what CHANGED (prep linked / completed, the action window) and
+-- what the attention policy said, once each. Append-only.
+CREATE TABLE IF NOT EXISTS personal_date_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  date_id     TEXT NOT NULL,
+  kind        TEXT NOT NULL,          -- prep-linked | prep-completed | action-window | attention | lead-set
+  dedupe_key  TEXT NOT NULL UNIQUE,
+  actor       TEXT NOT NULL,          -- neuro | nick
+  at          TEXT NOT NULL,
+  detail_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_personal_date_events_at ON personal_date_events(at);
+CREATE TRIGGER IF NOT EXISTS personal_date_events_no_update BEFORE UPDATE ON personal_date_events
+BEGIN SELECT RAISE(ABORT, 'personal_date_events is append-only'); END;
 CREATE TABLE IF NOT EXISTS goal_loop_events (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   goal_id     TEXT NOT NULL,

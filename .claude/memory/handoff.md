@@ -1,3 +1,15 @@
+# Session Handoff — 2026-10-07 (Build 17: repeated degradation, personal dates, hiking rule, legacy prep retired)
+
+- Deployed nuero Build 17 to pi5. nuero-ios route-summary commit PUSHED, UNBUILT (Mac tonight: build + swift test + install; prove a Hiking workout route arrives with pointCount and confirms without Nick; Health permission prompt for routes; .r1 anchor re-read).
+- Hiking: GPS track within 24h or Nick only. Live reclassification: 6/13/19/26 Sep + 3 Oct = not a hike; 6 Aug + 29 Aug = can't tell. No route reaches NEURO until the iOS build.
+- Degradation investigation live (job :17/:47); replay on 5 days of spine: threshold 3 → 0 investigations. Re-replay in a fortnight (di.replay()).
+- Personal dates live: wedding anniversary 19 Oct (nothing needed). Tracey Allen's 16th (Fri 9 Oct) was REMOVED from the phone's diary on 4 Oct — tell Nick; the phone's push is thin (4 events / 23 calendars).
+- Legacy meeting-prep RETIRED (switch 'Legacy meeting-prep pushes' brings it back).
+- ⚠ ANOTHER SESSION has uncommitted backend/services/cron-once.js (+test) and a scheduler.js top hunk (node-cron double-fire fix); runtime-jobs 'wraps every node-cron job' test fails until they update it. I committed ONLY my scheduler hunks. HANDOFF-neuro-mcp-claude-code.md is not mine either.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 17 Repeated Degradation and Personal Dates.md; gap analysis appended.
+
+---
+
 # Session Handoff — 2026-10-07 (Build 16: native reliability + convergence)
 
 - Deployed nuero 2eddf98 + 1e241ce to pi5 (Pi gate 5458/0 on 2eddf98). nuero-ios 8733c2c PUSHED, UNBUILT (Mac: swift test, build both apps, install, then the real-device runbook in the vault Build 16 note section 5).

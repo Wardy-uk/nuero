@@ -113,7 +113,7 @@ function _withTimeout(p, ms) {
  * MAX_PROBES, each ≤ PROBE_TIMEOUT_MS, all ≤ TOTAL_TIMEOUT_MS. A probe that
  * throws or times out is `unavailable` — never a guess.
  */
-async function gather(sourceId, plannedProbes, { probes = defaultProbes(), clock = Date.now, budget = {} } = {}) {
+async function gather(sourceId, plannedProbes, { probes = defaultProbes(), clock = Date.now, budget = {}, allowed = sbi.PROBES, context = {} } = {}) {
   const maxProbes = budget.maxProbes || sbi.MAX_PROBES;
   const perProbe = budget.probeTimeoutMs || sbi.PROBE_TIMEOUT_MS;
   const total = budget.totalTimeoutMs || sbi.TOTAL_TIMEOUT_MS;
@@ -122,11 +122,12 @@ async function gather(sourceId, plannedProbes, { probes = defaultProbes(), clock
   let calls = 0;
   let exhausted = false;
   for (const name of plannedProbes) {
-    if (!sbi.PROBES.includes(name) || typeof probes[name] !== 'function') { results.push({ probe: name, status: 'refused' }); continue; }
+    // Build 17: each investigation type passes its OWN closed probe list.
+    if (!allowed.includes(name) || typeof probes[name] !== 'function') { results.push({ probe: name, status: 'refused' }); continue; }
     if (calls >= maxProbes || clock() - start >= total) { exhausted = true; results.push({ probe: name, status: 'skipped' }); continue; }
     calls += 1;
     try {
-      const data = await _withTimeout(probes[name]({ sourceId }), Math.min(perProbe, Math.max(1, total - (clock() - start))));
+      const data = await _withTimeout(probes[name]({ sourceId, ...context }),Math.min(perProbe, Math.max(1, total - (clock() - start))));
       results.push({ probe: name, status: 'ok', data });
     } catch {
       results.push({ probe: name, status: 'unavailable' });
@@ -295,7 +296,9 @@ function attentionView(inv) {
 function summaryFor(inv) {
   const native = require('./native-sources');
   const label = native.describe(String(inv.subjectRef || '').replace(/^source:/, '')).label;
+  // Build 17: a repeated-degradation investigation has its own summary and attention rule.
+  if (inv.type === require('./source-degradation').TYPE) return require('./degradation-investigations').summaryFor(inv);
   return { ...sbi.summarise(inv, label), attention: attentionView(inv) };
 }
 
-module.exports = { TYPE, OPEN_STATES, TERMINAL_STATES, runSourceBlindInvestigations, gather, defaultProbes, get, byDedupe, list, events, attentionView, summaryFor, applySelfHeal };
+module.exports = { TYPE, OPEN_STATES, TERMINAL_STATES, runSourceBlindInvestigations, gather, defaultProbes, get, byDedupe, list, events, attentionView, summaryFor, applySelfHeal, _update, _event };

@@ -183,6 +183,29 @@ function fromInvestigations(invs, eventsById, { healedInvestigations = new Set()
       // The conclusion of THIS pass is the hypothesis recorded just before its
       // decision — never the investigation's current one, which may be newer.
       if (ev.transition === 'hypothesised') { lastHyp = d; continue; }
+      // Build 17W: the repeated-degradation type has its own wording — a sense
+      // that keeps wobbling, never "stopped". Conclusion and the close only.
+      if (inv.type === 'repeated_source_degradation') {
+        if (ev.transition === 'decided') {
+          const top = (lastHyp && lastHyp.top) || 'unknown';
+          const lvl = (lastHyp && lastHyp.level) || 'low';
+          const dg = require('./source-degradation');
+          out.push(entry({
+            id: `inv:${inv.id}:${ev.id}`, occurredAt: ev.at, category: 'investigated', type: 'investigation.degradation',
+            headline: `NEURO investigated why ${label} keeps dropping out`,
+            summary: `${top === 'unknown' ? 'Not enough evidence to say yet — watching.' : `Likely cause: ${dg.CAUSE_TEXT[top] || top}. Confidence: ${LEVEL[lvl] || lvl}.`}${d.fix && d.fix.kind ? ` Recommended: ${dg.FIX_TEXT[d.fix.kind] || d.fix.kind}` : ''}`,
+            status: d.decision ? String(d.decision).toLowerCase() : null, investigationRef: inv.id, findingRef: inv.trigger_ref,
+            sourceRefs: [`source:${sourceId}`], metadata: { decision: d.decision || null, stopReason: d.stopReason || null, cause: top, confidence: lvl },
+          }));
+        } else if (ev.transition === 'resolved' && ['stable-again', 'cluster-ended'].includes(d.stopReason)) {
+          out.push(entry({
+            id: `inv:${inv.id}:${ev.id}`, occurredAt: ev.at, category: 'recovered', type: 'investigation.degradation-closed',
+            headline: `${label} has been steady for a week`, summary: 'NEURO closed its investigation of the drop-outs.',
+            status: 'resolved', investigationRef: inv.id, findingRef: inv.trigger_ref, sourceRefs: [`source:${sourceId}`],
+          }));
+        }
+        continue;
+      }
       if (ev.transition === 'decided') {
         const top = (lastHyp && lastHyp.top) || 'unknown';
         const lvl = (lastHyp && lastHyp.level) || 'low';
@@ -396,6 +419,27 @@ function fromEventLog(rows) {
 const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 function _dayName(d) { return d ? DAY[new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))).getUTCDay()] : ''; }
 
+/**
+ * Build 17W: personal dates — preparation linked or completed, and a date
+ * entering its action window. Never "checked a date"; the attention verdict
+ * and lead settings are bookkeeping, not activity.
+ */
+function fromPersonalDates(rows) {
+  return rows.map((r) => {
+    const d = _json(r.detail_json, {}) || {};
+    const base = { id: `pdate:${r.id}`, occurredAt: r.at, subjectRefs: [`personal-date:${r.date_id}`], metadata: { kind: r.kind, date: d.date || null } };
+    switch (r.kind) {
+      case 'prep-linked': return entry({ ...base, category: 'sensed', type: 'personal-date.prep',
+        headline: `Preparation found for ${d.title}`, summary: `"${d.task}" — linked because it ${d.link}.`, status: 'linked' });
+      case 'prep-completed': return entry({ ...base, category: 'verified', type: 'personal-date.prep-done',
+        headline: `Preparation done for ${d.title}`, summary: `"${d.task}" is complete.`, status: 'done' });
+      case 'action-window': return entry({ ...base, category: 'sensed', type: 'personal-date.action',
+        headline: d.line || `${d.title} is close`, summary: 'Shown on Now. Whether it interrupts is the attention policy\'s call.', status: 'action-may-be-needed' });
+      default: return null;
+    }
+  }).filter(Boolean);
+}
+
 function fromGoalLoop(rows) {
   return rows.map((r) => {
     const d = _json(r.detail_json, {}) || {};
@@ -404,13 +448,26 @@ function fromGoalLoop(rows) {
       case 'planned': return entry({ ...base, category: r.actor === 'nick' ? 'configured' : 'sensed', type: 'goal.hike.planned', actor: r.actor,
         headline: r.actor === 'nick' ? `You planned a hike for ${_dayName(d.day)}` : `${_dayName(d.day)} hike planned (in your calendar)`, status: 'planned' });
       case 'achieved': return entry({ ...base, category: r.actor === 'nick' ? 'configured' : 'verified', type: 'goal.hike.done', actor: r.actor,
-        headline: 'Weekly hike done', summary: d.by === 'you' ? `${_dayName(d.day)} — you confirmed it.` : `${_dayName(d.day)} — recorded as a workout.`, status: 'confirmed' });
-      case 'likely': return entry({ ...base, category: 'sensed', type: 'goal.hike.likely',
-        headline: `${_dayName(d.day)} looks like it might have been a hike`, summary: 'Not recorded as one — worth confirming.', status: 'likely' });
+        headline: 'Hike confirmed', summary: d.by === 'you' ? `${_dayName(d.day)} — you confirmed it.` : `${_dayName(d.day)} — recorded as a workout.`, status: 'confirmed' });
+      // Build 17A: a day's verdict once its 24h window closed — one line per
+      // day and verdict, never per sample.
+      case 'resolved': {
+        if (d.state === 'confirmed') return entry({ ...base, category: 'verified', type: 'goal.hike.done', actor: r.actor,
+          headline: 'Hike confirmed', summary: `${_dayName(d.day)} — a GPS track recorded it.`, status: 'confirmed' });
+        if (d.state === 'not_hike') return entry({ ...base, category: r.actor === 'nick' ? 'configured' : 'sensed', type: 'goal.hike.resolved', actor: r.actor,
+          headline: r.actor === 'nick' ? `You said ${_dayName(d.day)} was not a hike` : `${_dayName(d.day)}: no hike recorded`,
+          summary: r.actor === 'nick' ? null : 'No GPS track within 24 hours, and location recording was working.', status: 'not_hike' });
+        return entry({ ...base, category: 'sensed', type: 'goal.hike.uncertain',
+          headline: `NEURO can't tell whether ${_dayName(d.day)} was a hike`, summary: d.why ? `${d.why[0].toUpperCase()}${d.why.slice(1)}.` : null, status: 'recording_gap' });
+      }
+      // Before Build 17 the loop called a big-step day "likely". Kept as the
+      // history it is; the day's real verdict follows it as `resolved`.
+      case 'likely': return entry({ ...base, category: 'sensed', type: 'goal.hike.asked',
+        headline: `NEURO asked whether ${_dayName(d.day)} was a hike`, summary: null, status: 'asked' });
       case 'recording-uncertain': return entry({ ...base, category: 'sensed', type: 'goal.hike.uncertain',
         headline: `NEURO can't tell whether ${_dayName(d.day)}'s hike happened`, summary: 'Nothing recorded it — which is not the same as it not happening.', status: 'uncertain' });
       case 'withdrawn': return entry({ ...base, category: 'configured', type: 'goal.hike.withdrawn', actor: 'nick',
-        headline: d.kind === 'plan' ? `You took back the plan for ${_dayName(d.day)}` : `You took back the hike confirmation for ${_dayName(d.day)}`, status: 'withdrawn' });
+        headline: d.kind === 'plan' ? `You took back the plan for ${_dayName(d.day)}` : d.kind === 'deny' ? `You took back "not a hike" for ${_dayName(d.day)}` : `You took back the hike confirmation for ${_dayName(d.day)}`, status: 'withdrawn' });
       case 'reminder-prepared': return entry({ ...base, category: 'prepared', type: 'goal.hike.reminder',
         headline: 'NEURO prepared a gentle hiking prompt', summary: 'Nothing is planned this week yet. Shown on the hiking loop, not pushed.', status: 'prepared' });
       default: return null;
@@ -441,7 +498,7 @@ function collect({ fromIso, toIso }) {
   const all = [
     ..._safe('source_blind_findings', () => fromFindings(db.all(`SELECT * FROM source_blind_findings WHERE ${between('first_detected_at')} OR ${between('resolved_at')}`, [...w, ...w]), { healedOutages: healed }), gaps),
     ..._safe('investigations', () => {
-      const evs = db.all(`SELECT * FROM investigation_events WHERE ${between('at')} AND transition IN ('hypothesised','decided','inconclusive','self-heal-failed','self-heal-uncertain') ORDER BY id`, w);
+      const evs = db.all(`SELECT * FROM investigation_events WHERE ${between('at')} AND transition IN ('hypothesised','decided','inconclusive','self-heal-failed','self-heal-uncertain','resolved') ORDER BY id`, w);
       const ids = [...new Set(evs.map((e) => e.investigation_id))];
       if (!ids.length) return [];
       const invs = db.all(`SELECT * FROM investigations WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
@@ -465,11 +522,19 @@ function collect({ fromIso, toIso }) {
     ..._safe('external_write_ledger', () => fromExternalWrites(db.all(`SELECT * FROM external_write_ledger WHERE ${between('requested_at')}`, w)), gaps),
     ..._safe('activity_log', () => {
       const day = (iso) => String(iso).slice(0, 10);
-      const rows = db.all(`SELECT id, event_type, event_data, date_key, created_at FROM activity_log WHERE event_type IN ('authority_refused','feature_flag_changed') AND date_key >= ? AND date_key <= ?`, [day(fromIso), day(toIso)]);
-      return [...fromRefusals(rows.filter((r) => r.event_type === 'authority_refused')), ...fromFlagChanges(rows.filter((r) => r.event_type === 'feature_flag_changed'))];
+      const rows = db.all(`SELECT id, event_type, event_data, date_key, created_at FROM activity_log WHERE event_type IN ('authority_refused','feature_flag_changed','meeting_prep_mode') AND date_key >= ? AND date_key <= ?`, [day(fromIso), day(toIso)]);
+      return [...fromRefusals(rows.filter((r) => r.event_type === 'authority_refused')), ...fromFlagChanges(rows.filter((r) => r.event_type === 'feature_flag_changed')),
+        ...rows.filter((r) => r.event_type === 'meeting_prep_mode').map((r) => {
+          const d = _json(r.event_data, {}) || {};
+          return entry({ id: `prepmode:${r.id}`, occurredAt: _sqliteIso(r.created_at), category: 'configured', type: 'meeting-prep.mode', actor: 'neuro',
+            headline: d.mode === 'retired' ? 'The old meeting-prep push is retired' : 'The old meeting-prep push is back on',
+            summary: d.mode === 'retired' ? 'Replaced by meeting intelligence (risks) and meeting prep (role, last 1-2-1). Switch: "Legacy meeting-prep pushes".' : `Turned back on (${d.basis || 'switch'}).`,
+            status: d.mode, metadata: { mode: d.mode, basis: d.basis || null } });
+        })];
     }, gaps),
     ..._safe('event_log', () => fromEventLog(db.all(`SELECT event_id, type, occurred_at, payload FROM event_log WHERE type IN ('runtime.job.skipped','runtime.job.failed','source.lifecycle.changed','native.queue.replayed','native.queue.degraded') AND ${between('occurred_at')}`, w)), gaps),
     ..._safe('goal_loop_events', () => fromGoalLoop(db.all(`SELECT * FROM goal_loop_events WHERE ${between('at')}`, w)), gaps),
+    ..._safe('personal_date_events', () => fromPersonalDates(db.all(`SELECT * FROM personal_date_events WHERE ${between('at')}`, w)), gaps),
   ].filter((e) => e && e.occurredAt && e.occurredAt >= fromIso && e.occurredAt <= toIso);
   // Stable: newest first, then id — the same rows always come back in the same order.
   all.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : a.id.localeCompare(b.id)));

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
+import PersonalDatesCard from './PersonalDatesCard';
 import HouseholdCard from '../../../../saim/shared-ui/HouseholdCard';
 import './Canonical.css';
 
@@ -115,6 +116,7 @@ function Goals({ data, busy, act }) {
       </ul>
       {/* Build 15S: draws nothing unless a "hike weekly" goal is active. */}
       <HikingLoopCard />
+      <PersonalDatesCard />
       <form className="cn-goalform" onSubmit={add}>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. hike once a fortnight" maxLength={300} aria-label="Goal" />
         <select value={domain} onChange={(e) => setDomain(e.target.value)} aria-label="Life domain">

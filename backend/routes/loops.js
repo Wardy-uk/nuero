@@ -57,6 +57,37 @@ router.post('/hiking/plan', (req, res) => {
   res.status(r.ok ? 200 : r.status || 400).json(r);
 });
 
+// POST /api/loops/hiking/deny — Nick says a day was NOT a hike (not a hike, rule out hike); beats a GPS track.
+router.post('/hiking/deny', (req, res) => {
+  const { day, note } = req.body;
+  const r = loop.addEntry('deny', { day, note });
+  res.status(r.ok ? 200 : r.status || 400).json(r);
+});
+
+// POST /api/loops/hiking/denials/:id/withdraw — take back a "not a hike".
+router.post('/hiking/denials/:id/withdraw', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ ok: false, error: 'id must be a number' });
+  const r = loop.withdrawDenial(id);
+  res.status(r.ok ? 200 : r.status || 400).json(r);
+});
+
+// GET /api/loops/personal-dates — birthdays and anniversaries coming up (lead time, linked preparation, state). Explicit dates only.
+router.get('/personal-dates', (req, res) => {
+  try {
+    res.json({ ok: true, ...require('../services/personal-dates').read() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/loops/personal-dates/lead — Nick sets how many days ahead a personal date shows (birthday lead time). Body: id, days (1-60, null = default).
+router.post('/personal-dates/lead', (req, res) => {
+  const { id, days } = req.body;
+  const r = require('../services/personal-dates').setLead(id, days === null ? null : Number(days));
+  res.status(r.ok ? 200 : r.status || 400).json(r);
+});
+
 // POST /api/loops/hiking/entries/:id/withdraw — take back a hike confirmation or plan.
 router.post('/hiking/entries/:id/withdraw', (req, res) => {
   const id = Number(req.params.id);

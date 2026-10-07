@@ -194,6 +194,28 @@ const RULES = {
     say: o => ({ title: 'SAiM', body: o.text }),
   },
 
+  // Build 17P — SHADOW ONLY. A personal date (birthday, anniversary) whose
+  // linked preparation is still open with ≤2 days to go. Asked once per date;
+  // deliver() never offers this kind. Not duty-gated — like personal-deadline,
+  // an evening is exactly when a birthday is dealt with. Every universal veto
+  // above still applies.
+  'personal-date': {
+    when: () => true,
+    urgency: 'low',
+    say: o => ({ title: 'SAiM', body: o.text }),
+  },
+
+  // Build 17K — SHADOW ONLY. A sense that keeps dropping out and recovering,
+  // asked about only when the investigation is ELIGIBLE (a manual step, at a
+  // consequential recurrence, medium confidence or better). deliver() never
+  // offers this kind, so it cannot win a push. On duty only: a flaky sync is
+  // a working-hours problem, never a reason to reach for the phone at 21:00.
+  'source-degradation': {
+    when: m => m.onDuty,
+    urgency: 'low',
+    say: o => ({ title: 'SAiM', body: [o.text, o.detail].filter(Boolean).join(' ') }),
+  },
+
   'health-signal': {
     // The one worth interrupting for on its own merits, and the only one allowed
     // during a focus session. Still never in a meeting.

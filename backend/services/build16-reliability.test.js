@@ -83,12 +83,13 @@ test('parity: an old-side "no" on a meeting the new side never evaluated is agre
   assert.equal(d.kind, 'new-not-recorded');
 });
 
-test('19. retirement only after the parity threshold — four clean days are not enough', () => {
-  const rows = ['01', '02', '03', '04'].map((d) => ({ meeting_key: `k${d}`, title: 't', start_local: `2026-10-${d}T10:00`,
+// Build 17R: the threshold is now 3 days of INTERRUPTION parity (was 5 days of text parity).
+test('19. retirement only after the parity threshold — two clean days are not enough', () => {
+  const rows = ['01', '02'].map((d) => ({ meeting_key: `k${d}`, title: 't', start_local: `2026-10-${d}T10:00`,
     old_json: JSON.stringify({ wouldNotify: false }), new_json: JSON.stringify({ finding: null }) }));
   const v = mi.parityVerdict(rows);
   assert.equal(v.retireSafe, false);
-  assert.ok(v.reasons.some((r) => /4 day/.test(r)));
+  assert.ok(v.reasons.some((r) => /2 day/.test(r)));
   assert.equal(mi.parityVerdict([...rows, { ...rows[0], meeting_key: 'k5', start_local: '2026-10-05T10:00' }]).retireSafe, true, 'positive control');
 });
 
@@ -195,41 +196,8 @@ test('16Z. autonomy today: counts from entries, and an unreadable part is null, 
 
 // ── 16L–P: hiking evidence ───────────────────────────────────────────────────
 
-const rel = { level: 'unreliable' };
-const SAT = '2026-09-19';
-const base = { start: '2026-09-14', today: '2026-10-07', rel };
-
-test('20/23. steps alone cannot confirm a hike — 18,122 steps stays LIKELY, with distance as corroboration only', () => {
-  const w = loop.weekState({ ...base, steps: { [SAT]: 18122 }, distance: { [SAT]: 8.3 } });
-  assert.equal(w.recording, 'likely');
-  assert.equal(w.confirmed.length, 0);
-  assert.match(w.line, /18,122 steps \(8.3 km\)/);
-  assert.equal(w.needsNick.evidence.distanceKm, 8.3);
-});
-
-test('distance alone cannot even make a day likely', () => {
-  const w = loop.weekState({ ...base, steps: { [SAT]: 9000 }, distance: { [SAT]: 25 } });
-  assert.notEqual(w.recording, 'likely');
-  assert.notEqual(w.recording, 'confirmed');
-});
-
-test('21/22. an explicit confirmation or a Hiking workout confirms', () => {
-  assert.equal(loop.weekState({ ...base, confirms: [{ day: SAT, id: 1 }] }).recording, 'confirmed');
-  assert.equal(loop.weekState({ ...base, workouts: [{ day: SAT, type: 'Hiking', mins: 290 }] }).recording, 'confirmed');
-});
-
-test('24. a 0-step planned day is a RECORDING GAP, not an ordinary day', () => {
-  const w = loop.weekState({ ...base, plans: [{ day: SAT, source: 'calendar' }], steps: { [SAT]: 0 }, distance: { [SAT]: 3.1 } });
-  assert.equal(w.recording, 'recording-gap');
-  const ok = loop.weekState({ ...base, plans: [{ day: SAT, source: 'calendar' }], steps: { [SAT]: 5010 }, distance: { [SAT]: 2.4 } });
-  assert.notEqual(ok.recording, 'recording-gap', 'positive control: a real 5,010-step day is measured');
-  assert.match(ok.line, /phone: 5,010 steps, 2.4 km/);
-});
-
-test('25. the weekly state is stable — the same evidence gives the same answer', () => {
-  const i = { ...base, plans: [{ day: SAT, source: 'calendar' }], steps: { [SAT]: 18122 } };
-  assert.deepEqual(loop.weekState(i), loop.weekState(i));
-});
+// 16L–P's step/distance/workout tests were REPLACED by Build 17A's rule (a GPS
+// track within 24h, or Nick) — see hiking-loop.test.js.
 
 test('16M. a past hike can be confirmed ~4 months back; 26. and taken back; 27. Activity logs no sensor noise', () => {
   db.run('DELETE FROM goals');
@@ -249,7 +217,7 @@ test('16M. a past hike can be confirmed ~4 months back; 26. and taken back; 27. 
   loop.refresh({ now });
   assert.equal(loop.refresh({ now }).written, 0, 'a rerun writes nothing');
   const kinds = new Set(db.all('SELECT kind FROM goal_loop_events').map((x) => x.kind));
-  for (const k of kinds) assert.ok(['planned', 'achieved', 'likely', 'recording-uncertain', 'reminder-prepared', 'withdrawn'].includes(k), k);
+  for (const k of kinds) assert.ok(['planned', 'achieved', 'resolved', 'reminder-prepared', 'withdrawn'].includes(k), k);
 });
 
 // ── 16Q–S: no second self-heal without evidence ──────────────────────────────

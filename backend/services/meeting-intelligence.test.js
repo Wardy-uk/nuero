@@ -141,8 +141,11 @@ test('a prior action that progress evidence says is LIKELY DONE does not make a 
 });
 
 test('1/5. the old live push and the new pipeline are COMPARED for the same meeting — and only the old one sends', async () => {
+  // Build 17U: legacy prep is RETIRED by default; MEETING_PREP_MODE=live is the way back, and is what this test exercises.
+  assert.equal(prep.prepMode(), 'retired', 'retired by default');
+  process.env.MEETING_PREP_MODE = 'live';
   calendarToday = [EVENT];
-  await prep.checkUpcomingMeetings({ now: new Date(NOW) });
+  try { await prep.checkUpcomingMeetings({ now: new Date(NOW) }); } finally { delete process.env.MEETING_PREP_MODE; }
   assert.equal(pushes.length, 1, 'old meeting-prep is still LIVE: exactly its one push');
   assert.equal(pushes[0][2].type, 'meeting_prep');
   // The new side records its answer for the same occurrence.
@@ -157,7 +160,6 @@ test('1/5. the old live push and the new pipeline are COMPARED for the same meet
   const v = mi.parity({ now: NOW });
   assert.equal(v.retireSafe, false);
   assert.match(v.reasons.join(' '), /day/);
-  assert.equal(prep.prepMode(), 'live');
 });
 
 test('6. parity CAN be proven — and when retired, meeting-prep records but never sends', async () => {
