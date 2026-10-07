@@ -390,10 +390,19 @@ function headingName(line) {
   return match ? match[1].trim().toLowerCase() : null;
 }
 
+// ⚠ PLAUD's auto_sum_note template heads its list `## Action Items`, and that was
+// never in ACTION_TYPES — so 95 meeting notes (7 Oct 2026, incl. that morning's
+// 90-minute consolidation meeting) had their actions read by NOTHING, silently:
+// the note was reviewed, its hash stored, zero candidates, no log line. Matched as
+// a PREFIX on purpose, because PLAUD qualifies it ("Action Items from this 1:1",
+// "Follow-up Actions") and an exact list has to anticipate every variant.
+const ACTION_HEADING_PREFIX_RE = /^(?:action items?|action points?|follow[- ]up actions?)\b/;
+
 function isActionHeading(line) {
   const heading = headingName(line);
   if (!heading) return false;
-  return ACTION_TYPES.has(heading.replace(/\s+/g, ' '));
+  const normalised = heading.replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+  return ACTION_TYPES.has(normalised) || ACTION_HEADING_PREFIX_RE.test(normalised);
 }
 
 function startsWithActionVerb(text) {
