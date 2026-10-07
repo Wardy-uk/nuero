@@ -251,8 +251,52 @@ function normaliseEvent(raw) {
 function visibleCalendars(calendars) {
   if (!Array.isArray(calendars)) return null;
   return calendars.map((c) => (c && typeof c === 'object'
-    ? { id: c.id ? String(c.id) : null, title: String(c.title || c.name || '') }
-    : { id: null, title: String(c) }));
+    ? { id: c.id ? String(c.id) : null, title: String(c.title || c.name || ''),
+      // Build 18N: EventKit's own calendar kind, when the client sends it.
+      type: typeof c.type === 'string' && /^[a-z]{1,16}$/.test(c.type) ? c.type : null }
+    : { id: null, title: String(c), type: null }));
+}
+
+// ── Build 18M: coverage, measured per push and per app ──────────────────────
+//
+// "The phone sends very few events" was a number with no denominator. What a
+// push can say is: the window it looked at, which calendars it could see, and
+// how many events each one had in that window (all-day and recurring counted
+// separately, because EventKit expands recurrences into occurrences and a
+// quiet calendar of yearly birthdays looks empty in two weeks). Kept PER APP,
+// because iOS 17 partial access can give the two apps different views.
+const PUSH_BY_CLIENT_KEY = 'apple_push_by_client';
+
+/** PURE. The coverage half of a push record. */
+function coverageOf({ from, to, events, calendars, at }) {
+  const perCalendar = {};
+  for (const c of calendars || []) {
+    const k = c.id || `title:${c.title}`;
+    perCalendar[k] = { id: c.id || null, title: c.title, type: c.type || null, events: 0, allDay: 0, recurring: 0 };
+  }
+  for (const e of events || []) {
+    if (!e) continue;
+    const k = e.calendarId ? String(e.calendarId) : `title:${e.calendar || '(unknown)'}`;
+    const row = perCalendar[k] || (perCalendar[k] = { id: e.calendarId || null, title: e.calendar || '(unknown)', type: null, events: 0, allDay: 0, recurring: 0, notListed: true });
+    row.events += 1;
+    if (e.isAllDay === true) row.allDay += 1;
+    if (e.recurring === true) row.recurring += 1;
+  }
+  const fromMs = Date.parse(String(from)); const toMs = Date.parse(String(to)); const atMs = Date.parse(String(at));
+  return {
+    window: { from, to },
+    backDays: Number.isFinite(fromMs) && Number.isFinite(atMs) ? Math.round((atMs - fromMs) / 86400000) : null,
+    aheadDays: Number.isFinite(toMs) && Number.isFinite(atMs) ? Math.round((toMs - atMs) / 86400000) : null,
+    perCalendar: Object.values(perCalendar),
+  };
+}
+
+function _recordClientPush(client, record) {
+  try {
+    const all = JSON.parse(db.getState(PUSH_BY_CLIENT_KEY) || '{}') || {};
+    all[client || 'unknown'] = record;
+    db.setState(PUSH_BY_CLIENT_KEY, JSON.stringify(all));
+  } catch (e) { console.warn('[Apple] could not record per-app coverage:', e.message); }
 }
 
 /**
@@ -434,14 +478,19 @@ function ingestCalendar({ from, to, events, calendars, client } = {}) {
     console.warn('[Apple] world model not updated:', e.message);
   }
 
+  const pushedAt = new Date().toISOString();
   _recordPush({
-    at: new Date().toISOString(),
+    at: pushedAt,
     client: who,
     visibleCalendars: visible ? visible.length : null,
     events: events.length,
     stored: rows.length,
     refused: null,
   });
+  if (visibleObjs) {
+    _recordClientPush(who, { at: pushedAt, client: who, events: events.length, stored: rows.length,
+      ...coverageOf({ from, to, events, calendars: visibleObjs, at: pushedAt }) });
+  }
 
   return {
     ok: true,
@@ -607,7 +656,54 @@ function status(now = new Date()) {
   }
 }
 
+/**
+ * Build 18M/N: the calendar coverage audit — every phone calendar, per app,
+ * with what it is, whether NEURO keeps it, and how many events it had in the
+ * last window pushed. Measured, never assumed: a calendar with 0 events is
+ * reported as 0 IN THAT WINDOW, which is not the same as empty.
+ */
+function calendarCoverage({ now = Date.now() } = {}) {
+  let byClient = {};
+  try { byClient = JSON.parse(db.getState(PUSH_BY_CLIENT_KEY) || '{}') || {}; } catch { byClient = {}; }
+  let sc = null; let byKey = new Map(); let titleCount = new Map();
+  try { sc = require('./source-classification'); byKey = sc.classificationMap('calendar'); titleCount = sc.effectiveTitleCounts('calendar'); } catch { sc = null; }
+  const clients = Object.entries(byClient).map(([client, p]) => {
+    const ageH = p.at ? Math.round((now - Date.parse(p.at)) / 36e5 * 10) / 10 : null;
+    const calendars = (p.perCalendar || []).map((c) => {
+      const r = sc ? sc.resolveFor('calendar', { id: c.id, title: c.title }, { byKey, titleCount }) : { classification: null, ambiguous: false };
+      const cls = r.classification;
+      const skipped = calendarIsSkipped(c.title);
+      return { ...c,
+        kept: skipped ? 'skipped-artefact' : cls && cls.tracked === false ? 'ignored-by-you' : 'kept',
+        classification: cls ? { domains: cls.domains, tracked: cls.tracked } : null,
+        classified: !!cls, ambiguousTitle: !!r.ambiguous };
+    }).sort((a, b) => b.events - a.events || String(a.title).localeCompare(String(b.title)));
+    return { client, at: p.at || null, ageHours: ageH, window: p.window || null, backDays: p.backDays, aheadDays: p.aheadDays,
+      events: p.events, stored: p.stored, calendars,
+      withEvents: calendars.filter((c) => c.events > 0).length, empty: calendars.filter((c) => c.events === 0).length,
+      typesReported: calendars.some((c) => c.type) };
+  });
+  const horizons = clients.filter((c) => Number.isFinite(c.aheadDays)).map((c) => c.aheadDays);
+  return {
+    clients,
+    measuredAt: new Date(now).toISOString(),
+    // The policy as it stands, stated rather than left in two codebases.
+    policy: {
+      window: horizons.length ? `the phone looks ${Math.max(...horizons)} day(s) ahead and ${Math.max(...clients.map((c) => c.backDays || 0))} back` : 'no measured push yet',
+      recurring: 'EventKit expands a recurring event into one row per occurrence inside the window; each occurrence is keyed apple:<id>:<start>',
+      allDay: 'included, flagged isAllDay',
+      deleted: 'replace-by-window: an event missing from a later push of the same window is removed; nothing outside the window is touched',
+      skipped: 'two UK holiday feeds and app-written calendars (Zendone, Nozbe, Garmin) are never stored; anything you set to Ignore on Life is dropped',
+      hidden: 'a calendar the app cannot see (iOS partial access) is absent from the push, which is a permission answer, not an empty diary',
+    },
+    note: clients.length ? null : 'No push has recorded coverage yet — this fills from the next phone push.',
+  };
+}
+
 module.exports = {
+  calendarCoverage,
+  coverageOf,
+  PUSH_BY_CLIENT_KEY,
   ingestCalendar,
   ingestReminders,
   status,

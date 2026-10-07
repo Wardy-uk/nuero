@@ -50,6 +50,15 @@ router.post('/reminders', (req, res) => {
   }
 });
 
+// GET /api/apple/calendar/coverage — phone calendar coverage audit: per app, the window the phone pushed (days back/ahead), every calendar it could see with its kind, classification, whether NEURO keeps it, and events / all-day / recurring counts in that window.
+router.get('/calendar/coverage', (req, res) => {
+  try {
+    res.json({ ok: true, ...appleIngest.calendarCoverage() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 router.get('/status', (req, res) => {
   try {
     res.json(appleIngest.status());

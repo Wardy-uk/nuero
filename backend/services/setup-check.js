@@ -159,8 +159,27 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
     fix: { where: 'windows', steps: ['setup.ps1 reports whether a NEURO MCP server is configured; add it with: claude mcp add neuro -- node <nuero>\\mcp-server\\index.js'] } });
 
   // ── iPhone apps ──
+  // Build 18U: a sense that reports from a build DEFINITELY missing what it
+  // needs is not healthy — "reporting" is not "doing what Build 16/17 promised".
+  // An UNKNOWN build is said once, on the build item, not on every sense.
+  const nativeApp = (client) => ((s.native && s.native.apps) || []).find((a) => a.client === client) || null;
+  const withBuild = (sourceId, client, judged) => {
+    const a = nativeApp(client);
+    const assess = a && (a.sources || []).find((x) => x.sourceId === sourceId);
+    if (!assess || assess.state !== 'old' || judged.status !== 'done') return judged;
+    return { status: 'attention', evidence: `${judged.evidence} ${assess.line}` };
+  };
   const phone = (app, label) => {
     const sfx = `${app}-ios`;
+    // Build 18D/Y: which build is installed — the answer to "was it deployed?".
+    const na = nativeApp(sfx);
+    const old = na ? (na.sources || []).filter((x) => x.state === 'old') : [];
+    add({ id: `iphone-${app}.build`, surface: `iphone-${app}`, need: 'recommended', title: `Current ${label} build installed`,
+      why: 'NEURO can only trust what a build can do once the build says which one it is.',
+      ...(na && na.build
+        ? (old.length ? { status: 'attention', evidence: `${na.line} ${old.map((x) => x.line).join(' ')}` } : { status: 'done', evidence: na.line })
+        : { status: na && na.lastHeardAt ? 'todo' : 'unknown', evidence: na ? na.line : `${label} has never reported a build.` }),
+      fix: { where: 'mac', steps: [`On the Mac: pull nuero-ios, run the tests, then bash reinstall.sh ${app}.`, `Open ${label} once — it reports its build on its first request.`] } });
     // Anything this app has ever delivered proves it holds the PIN.
     const delivered = (s.sources || []).find((x) => String(x.sourceId || '').endsWith(`.${sfx}`) && x.transport && x.transport.lastSuccessAt);
     add({ id: `iphone-${app}.signed-in`, surface: `iphone-${app}`, need: 'required', title: `Sign the ${label} app in`,
@@ -170,10 +189,10 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
           : local(iosReport(app), 'signed-in', 'Open the app — its Setup screen checks this.')),
       fix: { where: 'iphone', steps: [`Open ${label} → enter the PIN.`] } });
     add({ id: `iphone-${app}.health`, surface: `iphone-${app}`, need: app === 'neuro' ? 'required' : 'recommended', title: `Health access (${label})`,
-      why: 'Sleep, heart rate and readiness come only from here.', ...fromSource(src(`healthkit.${sfx}`)),
+      why: 'Sleep, heart rate and readiness come only from here.', ...withBuild(`healthkit.${sfx}`, sfx, fromSource(src(`healthkit.${sfx}`))),
       fix: { where: 'iphone', steps: [`${label} → Setup → Health → Allow.`, 'If you said no once: Settings → Health → Data Access & Devices → ' + label + ' → Turn On All.'] } });
     add({ id: `iphone-${app}.calendar`, surface: `iphone-${app}`, need: 'recommended', title: `Calendar access (${label})`,
-      why: 'Your personal diary lives only on the phone; NEURO cannot reach iCloud.', ...fromSource(src(`eventkit.${sfx}`)),
+      why: 'Your personal diary lives only on the phone; NEURO cannot reach iCloud.', ...withBuild(`eventkit.${sfx}`, sfx, fromSource(src(`eventkit.${sfx}`))),
       fix: { where: 'iphone', steps: [`${label} → Setup → Calendars → Allow Full Access.`] } });
     add({ id: `iphone-${app}.reminders`, surface: `iphone-${app}`, need: 'optional', title: `Reminders access (${label})`,
       why: 'Reminders become canonical tasks.', ...fromSource(src(`reminders.${sfx}`)),
@@ -183,15 +202,45 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
       ...(s.apnsApps && s.apnsApps.includes(app) ? { status: 'done', evidence: 'A push token is registered.' }
         : { status: 'todo', evidence: s.apns ? 'No push token from this app.' : 'No push token — and the Pi has no APNs key yet, so set that up first.' }),
       fix: { where: 'iphone', steps: [`${label} → Setup → Notifications → Allow.`] } });
+    // Build 18J: workout ROUTES are a separate HealthKit type, and iOS never
+    // says whether READ access was granted — only whether it was ever asked.
+    // So "allowed" is earned by a route arriving, nothing else.
+    const rep = fromReport(iosReport(app), 'workout-routes', now);
+    const repCheck = rep && ((iosReport(app).checks || []).find((c) => c.id === 'workout-routes') || {});
+    const routeState = repCheck && repCheck.state ? repCheck.state : null;
+    add({ id: `iphone-${app}.workout-routes`, surface: `iphone-${app}`, need: 'optional', title: `Workout routes (${label})`,
+      why: 'A hike is confirmed by its GPS route — workout access alone does not include routes.',
+      ...(s.routesReceived > 0 ? { status: 'done', evidence: `Proven: ${s.routesReceived} workout route summary(ies) have arrived.` }
+        : routeState === 'unavailable' ? { status: 'attention', evidence: 'Health data is unavailable on this device.' }
+          : routeState === 'not-asked' ? { status: 'todo', evidence: 'Never asked for — the app has not requested workout-route access.' }
+            : routeState === 'asked' ? { status: 'unknown', evidence: 'Asked for. iOS hides whether reading was allowed, so it is unproven until a route arrives with a hike or long walk.' }
+              : { status: 'unknown', evidence: 'This build does not report route permission, and no route has arrived.' }),
+      fix: { where: 'iphone', steps: [`Settings → Health → Data Access & Devices → ${label} → turn on Workout Routes.`, 'Record a Hiking workout (or a walk of an hour or more) on the Watch; the route summary arrives on the next sync.'] } });
   };
   phone('neuro', 'NEURO');
   add({ id: 'iphone-neuro.location', surface: 'iphone-neuro', need: 'recommended', title: 'Location (NEURO app)',
-    why: 'Home, work and out — and the weather where you are.', ...fromSource(src('location.neuro-ios')),
+    why: 'Home, work and out — and the weather where you are.', ...withBuild('location.neuro-ios', 'neuro-ios', fromSource(src('location.neuro-ios'))),
     fix: { where: 'iphone', steps: ['NEURO → Setup → Location → Allow While Using, then Change to Always.'] } });
+  // Build 18T: visits and geofences are CAPABILITIES of the location source,
+  // never stale for being quiet — only proven, unproven or unavailable.
+  const capStatus = { proven: 'done', 'proven-quiet': 'done', unproven: 'unknown', unavailable: 'attention', 'parent-stale': 'attention' };
+  for (const [key, title, why] of [['visits', 'Visits (NEURO app)', 'Arrivals and departures, so a stay is known while you are still there.'],
+    ['geofence', 'Saved-place geofences (NEURO app)', 'Enter/exit at home and work, the strongest "where am I" answer.']]) {
+    const c = s.placeCaps && s.placeCaps[key];
+    add({ id: `iphone-neuro.${key}`, surface: 'iphone-neuro', need: 'optional', title, why,
+      ...(c ? { status: capStatus[c.state] || 'unknown', evidence: c.line } : { status: 'unknown', evidence: 'Could not read place events.' }),
+      fix: { where: 'iphone', steps: ['Install the current NEURO build, allow Location → Always, and save Home/Work places on Life → Places.'] } });
+  }
   add({ id: 'iphone-neuro.device', surface: 'iphone-neuro', need: 'optional', title: 'Phone self-report (NEURO app)',
-    why: 'Battery, focus mode and motion for the ambient read.', ...fromSource(src('device.neuro-ios')),
+    why: 'Battery, focus mode and motion for the ambient read.', ...withBuild('device.neuro-ios', 'neuro-ios', fromSource(src('device.neuro-ios'))),
     fix: { where: 'iphone', steps: ['Open the NEURO app once after signing in; it reports on every wake.'] } });
   phone('saim', 'SAiM');
+  // Build 18I: SAiM's phone self-report had never been seen before the build
+  // carrying it. Optional until that build is installed (native-sources).
+  add({ id: 'iphone-saim.device', surface: 'iphone-saim', need: 'optional', title: 'Phone self-report (SAiM app)',
+    why: 'SAiM is the app you open most; when she reports the phone too, the ambient read is fresher.',
+    ...withBuild('device.saim-ios', 'saim-ios', fromSource(src('device.saim-ios'))),
+    fix: { where: 'iphone', steps: ['Install the current SAiM build and open SAiM; it reports on every wake.'] } });
 
   // ── Apple Watch (Build 12.3U) ──
   // ⚠ Every item here is judged from something OBSERVED: the watch's own report
@@ -342,6 +391,14 @@ async function snapshot() {
     s.watchLastSynthetic = an.recent({ limit: 50 }).find((r) => r.synthetic) || null;
   } catch { s.watchProof = null; s.watchLastSynthetic = null; }
   for (const r of s.reports) if (r.platform === 'ios' && r.app && r.at) s.clients[r.app] = r.at;
+  // Build 18: which native build is installed, and the place capabilities.
+  try { s.native = require('./native-build').status({ sources: s.sources }); } catch { s.native = null; }
+  try {
+    const loc = (s.sources || []).find((x) => x.sourceId === 'location.neuro-ios');
+    const nb = s.native && (s.native.apps || []).find((a) => a.client === 'neuro-ios');
+    s.placeCaps = require('./place-sensing').placeCapabilities({ build: nb ? nb.build : null, parentVerdict: loc ? loc.verdict : null });
+  } catch { s.placeCaps = null; }
+  s.routesReceived = _count("SELECT COUNT(*) AS n FROM health_workouts WHERE json_extract(payload, '$.route.pointCount') IS NOT NULL");
   return s;
 }
 
@@ -356,7 +413,10 @@ function report({ platform, app = null, host, checks }, { now = Date.now() } = {
   if (typeof host !== 'string' || !host.trim()) throw Object.assign(new Error('host is required'), { status: 400 });
   if (!Array.isArray(checks)) throw Object.assign(new Error('checks must be an array'), { status: 400 });
   const clean = checks.slice(0, 40).filter((c) => c && typeof c.id === 'string')
-    .map((c) => ({ id: c.id.slice(0, 40), ok: c.ok === true, detail: typeof c.detail === 'string' ? c.detail.slice(0, 160) : null }));
+    .map((c) => ({ id: c.id.slice(0, 40), ok: c.ok === true, detail: typeof c.detail === 'string' ? c.detail.slice(0, 160) : null,
+      // Build 18J: some permissions have more than two honest answers (iOS
+      // hides HealthKit READ grants), so a check may carry a bounded state word.
+      ...(typeof c.state === 'string' && /^[a-z][a-z-]{0,23}$/.test(c.state) ? { state: c.state } : {}) }));
   const all = _json(REPORT_KEY, {});
   const key = `${platform}:${app || ''}:${host.trim().slice(0, 60)}`;
   all[key] = { platform, app, host: host.trim().slice(0, 60), at: new Date(now).toISOString(), checks: clean };

@@ -2546,3 +2546,22 @@ CREATE TABLE IF NOT EXISTS goal_loop_events (
 CREATE INDEX IF NOT EXISTS idx_goal_loop_events_at ON goal_loop_events(at);
 CREATE TRIGGER IF NOT EXISTS goal_loop_events_no_update BEFORE UPDATE ON goal_loop_events
 BEGIN SELECT RAISE(ABORT, 'goal_loop_events is append-only'); END;
+
+-- ── Build 18D: which native build is talking ──────────────────────────────
+-- One row per distinct (client, version, build, commit) a native app has
+-- reported in its X-Neuro-Build header. first_seen_at is "this build was
+-- installed and ran"; last_seen_at is touched at most every 10 minutes.
+-- Nothing about the device is stored — a build describes a binary.
+CREATE TABLE IF NOT EXISTS native_builds (
+  build_key         TEXT PRIMARY KEY,
+  client            TEXT NOT NULL,
+  version           TEXT,
+  build             TEXT,
+  git_commit        TEXT,
+  dirty             INTEGER NOT NULL DEFAULT 0,
+  protocol          INTEGER,
+  capabilities_json TEXT NOT NULL DEFAULT '[]',
+  first_seen_at     TEXT NOT NULL,
+  last_seen_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_native_builds_client ON native_builds(client, last_seen_at);

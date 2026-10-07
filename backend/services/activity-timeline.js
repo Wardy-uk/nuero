@@ -435,9 +435,26 @@ function fromPersonalDates(rows) {
         headline: `Preparation done for ${d.title}`, summary: `"${d.task}" is complete.`, status: 'done' });
       case 'action-window': return entry({ ...base, category: 'sensed', type: 'personal-date.action',
         headline: d.line || `${d.title} is close`, summary: 'Shown on Now. Whether it interrupts is the attention policy\'s call.', status: 'action-may-be-needed' });
+      // Build 18Q: Nick's explicit edits — the date written into the note.
+      case 'declared-set': return entry({ ...base, category: 'configured', type: 'personal-date.declared', actor: 'nick',
+        headline: `You ${d.previous ? 'changed' : 'added'} ${d.title}`, summary: `Written to ${d.entity}${d.previous ? ` (was ${d.previous})` : ''}.`, status: 'set' });
+      case 'declared-removed': return entry({ ...base, category: 'configured', type: 'personal-date.declared', actor: 'nick',
+        headline: `You removed ${d.title}`, summary: `Taken off ${d.entity}. NEURO will not bring it back.`, status: 'removed' });
       default: return null;
     }
   }).filter(Boolean);
+}
+
+/** Build 18V: a native build seen for the FIRST time — "it was installed and ran". One line per build, ever. */
+function fromNativeBuilds(rows) {
+  const apps = { 'neuro-ios': 'NEURO iOS', 'saim-ios': 'SAiM iOS', 'saim-watch': 'SAiM Watch', 'saim-widgets': 'SAiM widgets' };
+  return rows.map((r) => {
+    const name = apps[r.client] || r.client;
+    const lbl = [r.version, r.build ? `(${r.build})` : null].filter(Boolean).join(' ') || 'unversioned';
+    return entry({ id: `build:${r.build_key}`, occurredAt: r.first_seen_at, category: 'sensed', type: 'native.build.first-seen',
+      headline: `${name} ${lbl} is running`, summary: r.git_commit ? `Commit ${String(r.git_commit).slice(0, 7)} — first heard from now.` : 'First heard from now (no commit stamped in this build).',
+      status: 'installed', sourceRefs: [r.client], metadata: { client: r.client, version: r.version, build: r.build, commit: r.git_commit } });
+  });
 }
 
 function fromGoalLoop(rows) {
@@ -535,6 +552,7 @@ function collect({ fromIso, toIso }) {
     ..._safe('event_log', () => fromEventLog(db.all(`SELECT event_id, type, occurred_at, payload FROM event_log WHERE type IN ('runtime.job.skipped','runtime.job.failed','source.lifecycle.changed','native.queue.replayed','native.queue.degraded') AND ${between('occurred_at')}`, w)), gaps),
     ..._safe('goal_loop_events', () => fromGoalLoop(db.all(`SELECT * FROM goal_loop_events WHERE ${between('at')}`, w)), gaps),
     ..._safe('personal_date_events', () => fromPersonalDates(db.all(`SELECT * FROM personal_date_events WHERE ${between('at')}`, w)), gaps),
+    ..._safe('native_builds', () => fromNativeBuilds(db.all(`SELECT * FROM native_builds WHERE ${between('first_seen_at')}`, w)), gaps),
   ].filter((e) => e && e.occurredAt && e.occurredAt >= fromIso && e.occurredAt <= toIso);
   // Stable: newest first, then id — the same rows always come back in the same order.
   all.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : a.id.localeCompare(b.id)));
@@ -648,6 +666,6 @@ function read({ now = Date.now(), from = null, to = null, filter = 'all', limit 
 
 module.exports = {
   CATEGORIES, ACTORS, FILTERS, PENDING, AUTONOMY_SWITCHES, autonomy,
-  entry, fromFindings, fromInvestigations, fromSelfHeal, fromPreparedActions, fromExternalWrites, fromRefusals, fromFlagChanges, fromEventLog, fromGoalLoop,
+  entry, fromNativeBuilds, fromPersonalDates, fromFindings, fromInvestigations, fromSelfHeal, fromPreparedActions, fromExternalWrites, fromRefusals, fromFlagChanges, fromEventLog, fromGoalLoop,
   collect, matches, summarise, read,
 };

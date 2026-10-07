@@ -74,6 +74,9 @@ app.use('/api', require('./services/api-auth'));
 // router runs. A retired route answers 410 to everyone. See
 // services/authority-matrix.js (what) and services/authority-guard.js (how).
 app.use('/api', require('./services/authority-guard').guard);
+// Build 18D: record which native build is talking (X-Neuro-Build), after auth
+// so nobody unauthenticated can plant one. Never blocks or fails a request.
+app.use('/api', require('./services/native-build').middleware);
 
 // Helper for routes that should ONLY be callable by machine clients
 // (rejects interactive/PIN auth). Use: router.post('/x', requireApiClient, handler).

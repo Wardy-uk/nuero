@@ -469,7 +469,62 @@ function readCurrentStay(now = new Date()) {
   }
 }
 
+// ── Build 18T: visits and geofences as CAPABILITIES of location.neuro-ios ──
+//
+// ⚠ THE CHOSEN MODEL: child capabilities, NOT sources of their own. A visit or
+// a geofence event arrives through the same app, the same durable queue and
+// the same POST as a location fix — they cannot go blind separately from it,
+// so a second SourceHealth row would only be a second opinion about one
+// transport. Liveness stays location.neuro-ios's, judged as before.
+//
+// ⚠ AND THEREFORE THEY ARE NEVER STALE. "No visit since Tuesday" is what a
+// week at home looks like; it says nothing about whether the capability works.
+// What a capability CAN say is whether it has ever been PROVEN (an event
+// arrived), whether the build behind it HAS it, and whether its parent
+// transport is alive. Frequency is never a verdict.
+//
+//   unavailable   the reported build lacks the capability (definite)
+//   unproven      never seen an event — build unknown, or has it but no event yet
+//   proven-quiet  an event has arrived before; nothing recent; parent alive
+//   proven        an event arrived recently
+//   parent-stale  proven once, but location.neuro-ios itself has gone stale —
+//                 the PARENT's verdict owns that, this only points at it
+const CAPABILITY_RECENT_MS = 7 * 86400000;
+
+/** PURE. One place capability's state. */
+function placeCapabilityState({ capability, build = null, lastEventAt = null, parentVerdict = null, now = Date.now() } = {}) {
+  const has = build ? (build.capabilities || []).includes(capability) : null;
+  if (build && !has) return { state: 'unavailable', line: `The installed build cannot send ${capability === 'geofence' ? 'geofence events' : 'visits'}.` };
+  if (!lastEventAt) {
+    return { state: 'unproven', line: has
+      ? `The build has it; no ${capability === 'geofence' ? 'geofence event' : 'visit'} has arrived yet — not proven.`
+      : `No ${capability === 'geofence' ? 'geofence event' : 'visit'} has ever arrived, and the build is unknown — not proven.` };
+  }
+  if (parentVerdict === 'stale' || parentVerdict === 'failing') {
+    return { state: 'parent-stale', line: 'Location itself has gone stale, so nothing new can arrive — see the location source.' };
+  }
+  const age = now - Date.parse(lastEventAt);
+  if (Number.isFinite(age) && age <= CAPABILITY_RECENT_MS) return { state: 'proven', line: `Last one ${String(lastEventAt).slice(0, 16).replace('T', ' ')}.` };
+  return { state: 'proven-quiet', line: `Proven before (last ${String(lastEventAt).slice(0, 10)}); nothing recent — quiet is normal, not a fault.` };
+}
+
+/** Reader: both capabilities, from what is stored. Never throws. */
+function placeCapabilities({ build = null, parentVerdict = null, now = Date.now() } = {}) {
+  const db = require('../db/database');
+  let lastVisit = null; let lastRegion = null;
+  try { const r = db.get('SELECT MAX(received_at) AS at FROM device_visits'); lastVisit = r && r.at ? `${String(r.at).replace(' ', 'T')}${/Z$/.test(r.at) ? '' : 'Z'}` : null; } catch { /* unread */ }
+  try { const r = db.get('SELECT MAX(received_at) AS at FROM place_region_events'); lastRegion = r && r.at ? `${String(r.at).replace(' ', 'T')}${/Z$/.test(r.at) ? '' : 'Z'}` : null; } catch { /* unread */ }
+  return {
+    parent: 'location.neuro-ios',
+    visits: { capability: 'place-visits', lastEventAt: lastVisit, ...placeCapabilityState({ capability: 'place-visits', build, lastEventAt: lastVisit, parentVerdict, now }) },
+    geofence: { capability: 'geofence', lastEventAt: lastRegion, ...placeCapabilityState({ capability: 'geofence', build, lastEventAt: lastRegion, parentVerdict, now }) },
+  };
+}
+
 module.exports = {
+  placeCapabilityState,
+  placeCapabilities,
+  CAPABILITY_RECENT_MS,
   MAX_VISITS_PER_REQUEST,
   MAX_EVENTS_PER_REQUEST,
   MAX_MONITORED,

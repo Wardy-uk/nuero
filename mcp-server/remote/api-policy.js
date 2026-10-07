@@ -38,6 +38,7 @@ export const interactive = {
   post_loops_hiking_plan: 'Planning a hike is Nick\'s own statement. He plans it in NEURO → Life or his calendar.',
   post_loops_hiking_entries_by_id_withdraw: 'Taking back a hike confirmation or plan is Nick\'s statement. He does it in NEURO → Life.',
   post_loops_personal_dates_lead: 'How far ahead a personal date shows is Nick\'s own setting. He sets it in NEURO → Life.',
+  post_loops_personal_dates_declared: 'A birthday or anniversary written into a People or Companions note is Nick\'s own statement. He sets it in NEURO → Life.',
   post_loops_hiking_deny:'Saying a day was not a hike is Nick\'s own statement. He does it in NEURO → Life.',
   post_loops_hiking_denials_by_id_withdraw: 'Taking back a "not a hike" is Nick\'s statement. He does it in NEURO → Life.',
   post_1to1_book:'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',

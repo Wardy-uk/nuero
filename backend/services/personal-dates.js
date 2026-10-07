@@ -208,6 +208,89 @@ function _declaredSightings(today) {
   return { sightings: out, gaps };
 }
 
+// ── Build 18P: how much of the truth this list can see ─────────────────────
+//
+// "These are all your upcoming birthdays" is a claim about COVERAGE, and the
+// list had no idea what it covered. Measured 7 Oct 2026: the phone pushes 14
+// days ahead while this reads 45 ahead and a lead can be 60 — so a birthday
+// 20 days out in the phone's Birthdays calendar was simply invisible, and the
+// list looked complete anyway. Now the list says what it is.
+//
+//   complete  a phone calendar push is fresh, it looks at least as far ahead
+//             as the furthest lead in use, the Birthdays calendar is visible,
+//             and the notes were readable
+//   partial   any of those is false — and each reason is named
+//   unknown   no push has ever recorded coverage (an older app build)
+const HEADING_COMPLETE = 'Upcoming birthdays and anniversaries';
+const HEADING_PARTIAL = 'Known dates from currently available sources';
+
+/**
+ * PURE. calendar: [{ client, fresh, aheadDays, birthdays: 'seen'|'kept-out'|'not-visible'|null }]
+ */
+function coverageVerdict({ calendar = [], notesReadable = true, neededAhead = DEFAULT_LEAD.anniversary } = {}) {
+  const reasons = [];
+  const measured = calendar.filter((c) => Number.isFinite(c.aheadDays));
+  const fresh = measured.filter((c) => c.fresh);
+  if (!calendar.length || !measured.length) {
+    reasons.push('No phone calendar push has reported what it covers yet (the installed app predates Build 18 coverage), so dates from the phone may be missing.');
+  } else if (!fresh.length) {
+    reasons.push('The phone calendar has not pushed recently, so anything added or removed on the phone since then is not reflected.');
+  }
+  const horizon = fresh.length ? Math.max(...fresh.map((c) => c.aheadDays)) : measured.length ? Math.max(...measured.map((c) => c.aheadDays)) : null;
+  if (horizon != null && horizon < neededAhead) {
+    reasons.push(`The phone only sends ${horizon} days ahead, but a date can need ${neededAhead} days' notice — anything further out on the phone cannot be seen yet.`);
+  }
+  const bd = calendar.map((c) => c.birthdays).filter(Boolean);
+  if (bd.length && !bd.includes('seen')) {
+    reasons.push(bd.includes('kept-out') ? 'The Birthdays calendar is set to Ignore on Life, so contacts\' birthdays are not read.'
+      : 'The phone is not showing NEURO a Birthdays calendar, so contacts\' birthdays are not read.');
+  }
+  if (!notesReadable) reasons.push('The vault could not be read, so birthdays written in People and Companions notes are missing.');
+  const state = !measured.length ? 'unknown' : reasons.length ? 'partial' : 'complete';
+  return { state, heading: state === 'complete' ? HEADING_COMPLETE : HEADING_PARTIAL, reasons, horizonDays: horizon, neededAhead };
+}
+
+function _coverage(neededAhead) {
+  const calendar = [];
+  try {
+    const cov = require('./apple-ingest').calendarCoverage();
+    const health = Object.fromEntries(db.all("SELECT source_id, freshness FROM source_health WHERE source_id LIKE 'eventkit.%'").map((r) => [r.source_id, r.freshness]));
+    for (const c of cov.clients) {
+      const bdays = c.calendars.filter((k) => k.type === 'birthday' || String(k.title || '').trim().toLowerCase() === 'birthdays');
+      calendar.push({ client: c.client, aheadDays: c.aheadDays, at: c.at,
+        fresh: health[`eventkit.${/-ios$/.test(c.client) ? c.client : `${c.client}-ios`}`] === 'fresh' || (c.ageHours != null && c.ageHours <= 12),
+        birthdays: !bdays.length ? 'not-visible' : bdays.some((k) => k.kept === 'kept') ? 'seen' : 'kept-out' });
+    }
+  } catch { /* no coverage readable → unknown */ }
+  const notesReadable = !!process.env.OBSIDIAN_VAULT_PATH && (() => { try { require('fs').accessSync(require('path').join(process.env.OBSIDIAN_VAULT_PATH, 'People')); return true; } catch { return false; } })();
+  return { ...coverageVerdict({ calendar, notesReadable, neededAhead }), calendar };
+}
+
+/**
+ * Build 18S, PURE. The same person and kind on DIFFERENT days across explicit
+ * sources is a CONFLICT: shown, never resolved by picking one. Only a full
+ * name can make two sightings "the same person" (personKey).
+ */
+function markConflicts(dates) {
+  const groups = new Map();
+  for (const d of dates) {
+    const pk = personKey(d.person);
+    if (!pk) continue;
+    const k = `${d.kind}:${pk}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(d);
+  }
+  for (const list of groups.values()) {
+    const days = [...new Set(list.map((d) => d.date.slice(5)))];
+    if (days.length < 2) continue;
+    for (const d of list) {
+      d.conflict = { otherDates: list.filter((o) => o !== d).map((o) => ({ date: o.date, sources: o.sources.map((s) => s.basis) })),
+        note: `Your sources disagree about ${d.person}'s ${d.kind} — NEURO has not picked one.` };
+    }
+  }
+  return dates;
+}
+
 function _leads() { try { return JSON.parse(db.getState(LEADS_KEY) || '{}') || {}; } catch { return {}; } }
 
 function _importance(ids) {
@@ -219,7 +302,7 @@ function _importance(ids) {
 }
 
 /** The loop, read now. */
-function read({ now = Date.now(), tasks = null } = {}) {
+function read({ now = Date.now(), tasks = null, deps = {} } = {}) {
   const nowMs = now instanceof Date ? now.getTime() : now;
   const today = require('./world-model').localMinute(nowMs).slice(0, 10);
   const gaps = [];
@@ -232,7 +315,7 @@ function read({ now = Date.now(), tasks = null } = {}) {
     try { taskList = require('./world-obligations').listTasks({ status: 'all', limit: 2000 }).filter((t) => t.status === 'open' || (t.completedAt && Date.parse(t.completedAt) >= nowMs - 60 * DAY_MS)); } catch (e) { taskList = []; gaps.push({ input: 'tasks', why: e.message }); }
   }
   const leads = _leads();
-  const dates = dedupe(sightings);
+  const dates = markConflicts(dedupe(sightings));
   const imp = _importance(dates.map((d) => d.id));
   const shaped = dates.map((d) => {
     const lead = Number.isInteger(leads[d.id]) ? leads[d.id] : DEFAULT_LEAD[d.kind] || DEFAULT_LEAD.other;
@@ -240,10 +323,16 @@ function read({ now = Date.now(), tasks = null } = {}) {
     const full = { ...d, lead, leadBasis: Number.isInteger(leads[d.id]) ? 'set' : 'default', importance: imp[d.id] || null,
       importanceBasis: imp[d.id] ? 'declared' : null, relationship, relationshipBasis: relationship ? 'declared' : null, prep: linkPrep(d, taskList) };
     const st = stateFor(full, { today, lead });
-    return { ...full, ...st, line: lineFor(full, st) };
+    const line = lineFor(full, st);
+    return { ...full, ...st, line: full.conflict ? `${line} ${full.conflict.note}` : line };
   }).sort((a, b) => a.date.localeCompare(b.date));
+  const neededAhead = Math.max(DEFAULT_LEAD.anniversary, ...Object.values(leads).filter(Number.isInteger));
+  const coverage = deps.coverage || _coverage(neededAhead);
   return {
     today,
+    heading: coverage.heading,
+    coverage,
+    complete: coverage.state === 'complete',
     active: shaped.filter((d) => !['later', 'passed'].includes(d.state)),
     later: shaped.filter((d) => d.state === 'later'),
     passed: shaped.filter((d) => d.state === 'passed' && d.away === -1),
@@ -303,6 +392,103 @@ function setLead(id, days, { now = Date.now() } = {}) {
   return { ok: true, id, days };
 }
 
+// ── Build 18Q: Nick states a birthday or anniversary on a People/Companion note ──
+//
+// ⚠ EXPLICIT ONLY, AND ON A NOTE THAT ALREADY EXISTS. This never creates a
+// person, never infers a date from anything, and never creates a calendar
+// event. The note is the record (it is Nick's own declaration in his own
+// vault); `personal_date_events` records that NEURO wrote it, and when.
+// ⚠ REMOVAL REMOVES THE LINE and nothing recreates it: read() derives dates
+// from what the note says NOW, and never from the event history.
+// ⚠ A CONFLICT IS REPORTED, NOT REFUSED: if the phone's calendar names the same
+// person (by full name) on another day, Nick's declaration is still written —
+// it is his — and read() shows both, unresolved.
+
+const DECLARED_DIRS = ['People', 'Companions'];
+
+/** PURE. A date Nick typed → the stored form, or an error. YYYY-MM-DD or MM-DD. */
+function parseDeclaredDate(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  const m = s.match(/^(?:(\d{4})-)?(\d{2})-(\d{2})$/);
+  if (!m) return { ok: false, error: 'date must be YYYY-MM-DD or MM-DD' };
+  const y = m[1] ? +m[1] : 2000; // a leap year, so 02-29 is allowed without a year
+  const d = new Date(Date.UTC(y, +m[2] - 1, +m[3]));
+  if (d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return { ok: false, error: `${s} is not a real date` };
+  if (m[1] && (y < 1900 || y > 2100)) return { ok: false, error: 'year must be between 1900 and 2100' };
+  return { ok: true, value: s };
+}
+
+function _notePath(entity) {
+  const path = require('path');
+  const root = process.env.OBSIDIAN_VAULT_PATH;
+  if (!root) return { ok: false, status: 503, error: 'vault not configured' };
+  const m = String(entity || '').match(/^(People|Companions)\/([^/\\]{1,120})$/);
+  if (!m || m[2].includes('..') || m[2].startsWith('_') || m[2].startsWith('.')) return { ok: false, status: 400, error: 'entity must be People/<Name> or Companions/<Name>' };
+  const file = path.join(root, m[1], `${m[2]}.md`);
+  if (!require('fs').existsSync(file)) return { ok: false, status: 404, error: `${entity} has no note — create the note first; NEURO does not create people` };
+  return { ok: true, file, dir: m[1], name: m[2] };
+}
+
+/** The People and Companions NEURO could attach a date to, with what each declares. */
+function declaredEntities() {
+  const fs = require('fs'); const path = require('path');
+  const root = process.env.OBSIDIAN_VAULT_PATH;
+  if (!root) return { ok: false, error: 'vault not configured', entities: [] };
+  const out = [];
+  for (const dir of DECLARED_DIRS) {
+    let files = [];
+    try { files = fs.readdirSync(path.join(root, dir)).filter((f) => f.endsWith('.md') && !f.startsWith('_')); } catch { continue; }
+    for (const f of files) {
+      let fm = '';
+      try { const t = fs.readFileSync(path.join(root, dir, f), 'utf8'); fm = t.startsWith('---') ? t.slice(3, Math.max(3, t.indexOf('\n---', 3))) : ''; } catch { continue; }
+      const val = (k) => ((fm.match(new RegExp(`^${k}:[ \\t]*["']?([0-9-]+)["']?[ \\t]*$`, 'm')) || [])[1] || null);
+      out.push({ entity: `${dir}/${f.replace(/\.md$/, '')}`, kind: dir === 'People' ? 'person' : 'companion', birthday: val('birthday'), anniversary: val('anniversary') });
+    }
+  }
+  return { ok: true, entities: out.sort((a, b) => a.entity.localeCompare(b.entity)) };
+}
+
+/**
+ * Set (date) or remove (date === null) a declared birthday/anniversary.
+ * Returns { ok, changed, previous, value, conflicts }.
+ */
+function setDeclared({ entity, kind, date } = {}, { now = Date.now() } = {}) {
+  if (!['birthday', 'anniversary'].includes(kind)) return { ok: false, status: 400, error: 'kind must be birthday or anniversary' };
+  const where = _notePath(entity);
+  if (!where.ok) return where;
+  let value = null;
+  if (date !== null) {
+    const p = parseDeclaredDate(date);
+    if (!p.ok) return { ok: false, status: 400, error: p.error };
+    value = p.value;
+  }
+  const fs = require('fs');
+  const fe = require('./frontmatter-edit');
+  const text = fs.readFileSync(where.file, 'utf8');
+  const fm = text.startsWith('---') ? text.slice(3, Math.max(3, text.indexOf('\n---', 3))) : '';
+  const previous = (fm.match(new RegExp(`^${kind}:[ \\t]*["']?([0-9-]+)["']?[ \\t]*$`, 'm')) || [])[1] || null;
+  const hasLine = new RegExp(`^${kind}:`, 'm').test(fm);
+  if (value === previous && (value !== null || !hasLine)) return { ok: true, changed: false, previous, value, conflicts: [] };
+  const next = value === null ? fe.removeFrontmatterKey(text, kind) : fe.upsertFrontmatterValue(text, kind, value);
+  fs.writeFileSync(where.file, next, 'utf8');
+  const at = new Date(now instanceof Date ? now.getTime() : now).toISOString();
+  _event(`declared:${entity}:${kind}`, value === null ? 'declared-removed' : 'declared-set', `${value}:${at}`,
+    { entity, kind, date: value, previous, title: `${where.name}'s ${kind}` }, at, 'nick');
+  // Conservative duplicate/conflict check — FULL-name match only, against what
+  // the phone's calendars currently say. Reported, never auto-resolved.
+  let conflicts = [];
+  if (value) {
+    try {
+      const pk = personKey(where.name);
+      const today = require('./world-model').localMinute(Date.now()).slice(0, 10);
+      conflicts = _calendarSightings(addDays(today, -1), addDays(today, 400))
+        .filter((s) => s.kind === kind && pk && personKey(s.person) === pk && s.date.slice(5) !== value.slice(-5))
+        .map((s) => ({ date: s.date, calendar: s.source.calendar }));
+    } catch { conflicts = []; }
+  }
+  return { ok: true, changed: true, previous, value, conflicts };
+}
+
 function events({ since = null, limit = 200 } = {}) {
   return (since
     ? db.all('SELECT * FROM personal_date_events WHERE at >= ? ORDER BY at DESC, id DESC LIMIT ?', [since, limit])
@@ -314,4 +500,7 @@ module.exports = {
   DEFAULT_LEAD, MAX_LEAD, ACTION_DAYS, KINDS, STATES,
   kindFromTitle, personFromTitle, personKey, dedupe, nextOccurrence, linkPrep, stateFor, lineFor,
   read, refresh, setLead, events,
+  // Build 18
+  HEADING_COMPLETE, HEADING_PARTIAL, coverageVerdict, markConflicts,
+  parseDeclaredDate, declaredEntities, setDeclared,
 };

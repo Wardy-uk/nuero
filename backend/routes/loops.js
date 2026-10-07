@@ -88,6 +88,28 @@ router.post('/personal-dates/lead', (req, res) => {
   res.status(r.ok ? 200 : r.status || 400).json(r);
 });
 
+// GET /api/loops/personal-dates/entities — the People and Companions notes a birthday or anniversary can be set on, with the dates each note declares now.
+router.get('/personal-dates/entities', (req, res) => {
+  try {
+    const r = require('../services/personal-dates').declaredEntities();
+    res.status(r.ok ? 200 : 503).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/loops/personal-dates/declared — add, edit or remove a birthday/anniversary on a People or Companions note (Nick only). Body: entity (People/<Name>|Companions/<Name>), kind (birthday|anniversary), date (YYYY-MM-DD or MM-DD; null removes it).
+router.post('/personal-dates/declared', (req, res) => {
+  const { entity, kind, date } = req.body || {};
+  if (date === undefined) return res.status(400).json({ ok: false, error: 'date is required (null removes the date)' });
+  try {
+    const r = require('../services/personal-dates').setDeclared({ entity, kind, date });
+    res.status(r.ok ? 200 : r.status || 400).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // POST /api/loops/hiking/entries/:id/withdraw — take back a hike confirmation or plan.
 router.post('/hiking/entries/:id/withdraw', (req, res) => {
   const id = Number(req.params.id);

@@ -173,6 +173,8 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/loops/hiking/entries/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/deny', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/loops/personal-dates/lead', 'internal.state', { machine: 'refuse' }),
+  // Build 18Q: a birthday written into Nick's own People/Companion note.
+  R('POST', '/api/loops/personal-dates/declared', 'vault.write', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/denials/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   R('*', '/api/capture/file', 'file.write'),
   R('*', '/api/capture/photo', 'file.write'),

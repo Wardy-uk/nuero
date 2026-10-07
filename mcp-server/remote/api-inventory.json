@@ -251,7 +251,7 @@
     "route": "/api/setup/skip/:id",
     "domain": "setup",
     "source": "routes/setup.js",
-    "line": 34,
+    "line": 48,
     "description": "DELETE /api/setup/skip/:id. undo \"not needed\" on a set-up item.",
     "params": [
       "id"
@@ -713,12 +713,28 @@
     "stream": false
   },
   {
+    "id": "get_apple_calendar_coverage",
+    "method": "GET",
+    "route": "/api/apple/calendar/coverage",
+    "domain": "apple",
+    "source": "routes/apple.js",
+    "line": 54,
+    "description": "GET /api/apple/calendar/coverage. phone calendar coverage audit: per app, the window the phone pushed (days back/ahead), every calendar it could see with its kind, classification, whether NEURO keeps it, and events / all-day / recurring counts in that window.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_apple_status",
     "method": "GET",
     "route": "/api/apple/status",
     "domain": "apple",
     "source": "routes/apple.js",
-    "line": 53,
+    "line": 62,
     "description": "GET /api/apple/status.",
     "params": [],
     "query": [],
@@ -835,7 +851,7 @@
     "route": "/api/auth/check",
     "domain": "auth",
     "source": "server.js",
-    "line": 96,
+    "line": 99,
     "description": "GET /api/auth/check.",
     "params": [],
     "query": [
@@ -2871,6 +2887,22 @@
     "stream": false
   },
   {
+    "id": "get_loops_personal_dates_entities",
+    "method": "GET",
+    "route": "/api/loops/personal-dates/entities",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 92,
+    "description": "GET /api/loops/personal-dates/entities. the People and Companions notes a birthday or anniversary can be set on, with the dates each note declares now.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_meeting_prep",
     "method": "GET",
     "route": "/api/meeting-prep",
@@ -4019,6 +4051,22 @@
     "stream": false
   },
   {
+    "id": "get_setup_native",
+    "method": "GET",
+    "route": "/api/setup/native",
+    "domain": "setup",
+    "source": "routes/setup.js",
+    "line": 21,
+    "description": "GET /api/setup/native. what build am I running: the NEURO and SAiM iOS app version, build number and git commit each last reported, when first and last seen, and whether each phone source's build has the capabilities it needs (durable location, routes, visits, geofence). Also the place-capability st",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_signals",
     "method": "GET",
     "route": "/api/signals",
@@ -4318,7 +4366,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 241,
+    "line": 244,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -6089,7 +6137,7 @@
     "route": "/api/auth/login",
     "domain": "auth",
     "source": "server.js",
-    "line": 88,
+    "line": 91,
     "description": "POST /api/auth/login.",
     "params": [],
     "query": [],
@@ -8003,7 +8051,7 @@
     "route": "/api/loops/hiking/entries/:id/withdraw",
     "domain": "loops",
     "source": "routes/loops.js",
-    "line": 92,
+    "line": 114,
     "description": "POST /api/loops/hiking/entries/:id/withdraw. take back a hike confirmation or plan.",
     "params": [
       "id"
@@ -8028,6 +8076,26 @@
     "body": [
       "day",
       "note"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_loops_personal_dates_declared",
+    "method": "POST",
+    "route": "/api/loops/personal-dates/declared",
+    "domain": "loops",
+    "source": "routes/loops.js",
+    "line": 102,
+    "description": "POST /api/loops/personal-dates/declared. add, edit or remove a birthday/anniversary on a People or Companions note (Nick only). Body: entity (People/<Name>|Companions/<Name>), kind (birthday|anniversary), date (YYYY-MM-DD or MM-DD; null removes it).",
+    "params": [],
+    "query": [],
+    "body": [
+      "date",
+      "entity",
+      "kind"
     ],
     "queryOpen": false,
     "bodyOpen": true,
@@ -9329,7 +9397,7 @@
     "route": "/api/setup/report",
     "domain": "setup",
     "source": "routes/setup.js",
-    "line": 21,
+    "line": 35,
     "description": "POST /api/setup/report. a device's own local set-up checks (setup.ps1 on Windows, the iOS Setup screen): platform (windows|ios|mac|watchos), app, host, checks[{id, ok, detail}].",
     "params": [],
     "query": [],
@@ -9350,7 +9418,7 @@
     "route": "/api/setup/skip/:id",
     "domain": "setup",
     "source": "routes/setup.js",
-    "line": 29,
+    "line": 43,
     "description": "POST /api/setup/skip/:id. mark a set-up item \"not needed\" (reversible; never marks it done).",
     "params": [
       "id"

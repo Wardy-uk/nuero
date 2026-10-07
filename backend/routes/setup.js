@@ -17,6 +17,20 @@ router.get('/', async (req, res) => {
   try { res.json(await setup.check()); } catch (e) { fail(res, e); }
 });
 
+// GET /api/setup/native — what build am I running: the NEURO and SAiM iOS app version, build number and git commit each last reported, when first and last seen, and whether each phone source's build has the capabilities it needs (durable location, routes, visits, geofence). Also the place-capability states.
+router.get('/native', (req, res) => {
+  try {
+    const nb = require('../services/native-build');
+    let spine = [];
+    try { spine = require('../services/canonical-read').sources({}).spine || []; } catch { spine = []; }
+    const st = nb.status({ sources: spine });
+    const loc = spine.find((x) => x.sourceId === 'location.neuro-ios');
+    const neuro = st.apps.find((a) => a.client === 'neuro-ios');
+    const places = require('../services/place-sensing').placeCapabilities({ build: neuro ? neuro.build : null, parentVerdict: loc ? loc.verdict : null });
+    res.json({ ok: true, ...st, places, history: nb.history({ limit: 20 }) });
+  } catch (e) { fail(res, e); }
+});
+
 // POST /api/setup/report — a device's own local set-up checks (setup.ps1 on Windows, the iOS Setup screen): platform (windows|ios|mac|watchos), app, host, checks[{id, ok, detail}].
 router.post('/report', (req, res) => {
   try {
