@@ -37,6 +37,14 @@ const BUCKETS = [
 // A working week, matching task-store's own ceiling. Past that it is a project.
 const MAX_ESTIMATE_MINUTES = 2400;
 
+// "I have some time" — the answers to "how long have you got?". Coarse for the
+// same reason the estimate buckets are: it is a judgement made in a second.
+const TIME_PRESETS = [15, 30, 45, 60, 90, 120, 180];
+
+// When Nick says how long he has, he wants EVERYTHING that fits, not a top five.
+// Bounded server-side at 50.
+const ASKED_LIMIT = 50;
+
 // "420 min" is a number you have to do arithmetic on to understand.
 function formatMinutes(m) {
   if (m == null) return '—';
@@ -58,9 +66,12 @@ export default function TimeFitCard({ onStarted, onCompleted }) {
   // The row currently showing the "how many hours?" box, if any.
   const [customId, setCustomId] = useState(null);
   const [customHours, setCustomHours] = useState('');
+  // "I have some time" — the picker is open, and what is typed in its box.
+  const [asking, setAsking] = useState(false);
+  const [askMinutes, setAskMinutes] = useState('');
 
   const load = useCallback((minutes = override) => {
-    const qs = minutes ? `?minutes=${minutes}` : '';
+    const qs = minutes ? `?minutes=${minutes}&limit=${ASKED_LIMIT}` : '';
     fetch(apiUrl(`/api/time/what-fits${qs}`))
       .then(r => r.json())
       .then(d => { setData(d); setError(null); })
@@ -169,6 +180,44 @@ export default function TimeFitCard({ onStarted, onCompleted }) {
     setActingId(null);
   };
 
+  const chooseTime = (m) => {
+    const minutes = Math.round(Number(m));
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    setOverride(Math.min(minutes, MAX_ESTIMATE_MINUTES));
+    setAsking(false);
+    setAskMinutes('');
+  };
+
+  // Asked, never inferred: the diary says when the next wall is, only Nick
+  // knows how much of the time before it is actually his.
+  const askButton = !asking && (
+    <button className="tf-inline tf-ask-btn" onClick={() => setAsking(true)}>I have some time</button>
+  );
+  const askRow = asking && (
+    <div className="tf-ask">
+      <span className="tf-ask-q">How long have you got?</span>
+      {TIME_PRESETS.map(m => (
+        <button key={m} className="tf-chip" onClick={() => chooseTime(m)}>{formatMinutes(m)}</button>
+      ))}
+      <input
+        className="tf-custom-input"
+        type="number"
+        min="5"
+        step="5"
+        value={askMinutes}
+        placeholder="min"
+        onChange={e => setAskMinutes(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') chooseTime(askMinutes);
+          if (e.key === 'Escape') { setAsking(false); setAskMinutes(''); }
+        }}
+        aria-label="How many minutes have you got?"
+      />
+      <button className="tf-inline" onClick={() => chooseTime(askMinutes)}>Go</button>
+      <button className="tf-inline" onClick={() => { setAsking(false); setAskMinutes(''); }}>Cancel</button>
+    </div>
+  );
+
   if (error) return null;          // never let this push a real error at anyone
   if (!data) return null;
 
@@ -178,14 +227,17 @@ export default function TimeFitCard({ onStarted, onCompleted }) {
   // same — one of them means calendar-sync has stopped. The backend decides
   // which it is from the cache as a whole, NOT from today's event count: a
   // Saturday with nothing on it is not a broken sync.
-  if (!calendarKnown) {
+  // Once Nick has SAID how long he has, the diary no longer decides anything,
+  // so an unreadable calendar must not hide his answer.
+  if (!calendarKnown && !override) {
     return (
       <section className="tf-card tf-unknown">
-        <div className="tf-head">Can't see your diary</div>
+        <div className="tf-head">Can't see your diary {askButton}</div>
         <p className="tf-blurb">
           The calendar cache is empty or stale, so I don't know what's ahead —
           this isn't the same as a clear afternoon.
         </p>
+        {askRow}
       </section>
     );
   }
@@ -193,19 +245,28 @@ export default function TimeFitCard({ onStarted, onCompleted }) {
   if (gap?.openEnded && !override) {
     return (
       <section className="tf-card">
-        <div className="tf-head">Nothing left in the diary today</div>
+        <div className="tf-head">Nothing left in the diary today {askButton}</div>
         <p className="tf-blurb">
           So nothing here has to fit around anything.
-          {' '}
-          <button className="tf-inline" onClick={() => { setOverride(30); }}>
-            Got half an hour?
-          </button>
         </p>
+        {askRow}
       </section>
     );
   }
 
   const minutes = data.minutes ?? gap?.minutes;
+
+  // Every item fits ON ITS OWN; together they may not. When Nick has said how
+  // long he has, mark where the running total (in priority order) passes it, so
+  // "all of these fit" is never read as "you can do all of these".
+  let fillIndex = -1;
+  if (override) {
+    let total = 0;
+    for (let i = 0; i < items.length; i++) {
+      total += items[i].minutes || 0;
+      if (total > minutes) { fillIndex = i; break; }
+    }
+  }
 
   return (
     <section className="tf-card">
@@ -214,7 +275,12 @@ export default function TimeFitCard({ onStarted, onCompleted }) {
           ? `${minutes} minutes`
           : `${minutes} minutes before ${gap?.nextEvent?.subject || 'your next meeting'}`}
         {!override && gap?.until && <span className="tf-until">until {gap.until}</span>}
+        {override && items.length > 0 && (
+          <span className="tf-until">{items.length} fit · priority order</span>
+        )}
+        {askButton}
       </div>
+      {askRow}
 
       {items.length === 0 ? (
         <p className="tf-blurb">
@@ -223,8 +289,11 @@ export default function TimeFitCard({ onStarted, onCompleted }) {
         </p>
       ) : (
         <ul className="tf-list">
-          {items.map(item => (
-            <li className="tf-row" key={item.task_id || item.text}>
+          {items.map((item, i) => (
+            <li className={`tf-row${i === fillIndex ? ' tf-row-overflow' : ''}`} key={item.task_id || item.text}>
+              {i === fillIndex && (
+                <span className="tf-fill">The ones above fill your {formatMinutes(minutes)} — these fit on their own.</span>
+              )}
               <span className="tf-text">{item.text}</span>
               <span className={`tf-mins${item.assumed ? ' tf-assumed' : ''}`}>
                 {formatMinutes(item.minutes)}{item.assumed && <em> assumed</em>}

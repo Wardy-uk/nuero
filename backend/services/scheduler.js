@@ -12,16 +12,16 @@ const nudges = require('./nudges');
 // `recoverMissedExecutions` makes a late timer run the missed second once the
 // loop is free — the job runs a few seconds late instead of not at all. That is
 // strictly better for every job here: none of them is harmed by a few seconds'
-// lateness, and none is replayed (node-cron fires a matched second at most
-// once). It is NOT restart catch-up — a tick missed because the process was
+// lateness. ⚠ node-cron does NOT fire a matched second at most once with this
+// on — it double-fired the 9am and 1pm briefs on 7 Oct 2026 — so the wrapper
+// in cron-once.js holds each task to one run per matched second. It is NOT
+// restart catch-up — a tick missed because the process was
 // down is still gone. Jobs where that matters run on the durable runtime
 // instead (services/runtime-jobs.js, registered at the end of start()).
 //
 // It was already on for the MS Tasks sync after the same failure was found
 // there on 23 Sep 2026; this makes it the default rather than the exception.
-const cron = {
-  schedule: (expr, fn, opts = {}) => nodeCron.schedule(expr, fn, { recoverMissedExecutions: true, ...opts }),
-};
+const cron = require('./cron-once').createCron(nodeCron);
 const jira = require('./jira');
 const imports = require('./imports');
 const db = require('../db/database');

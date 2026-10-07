@@ -4,7 +4,7 @@
  * Time — how long until the next thing, and what fits in the gap.
  *
  * GET /api/time/gap        — minutes until the next meeting today
- * GET /api/time/what-fits  — open tasks that fit, ?minutes= to override the gap
+ * GET /api/time/what-fits  — open tasks that fit, ?minutes= to override the gap, ?limit= (max 50)
  *
  * Reads `calendar_cache`, not Graph. The whole point is an instant answer: a
  * surface that hesitates is one Nick has already navigated away from, and this
@@ -19,6 +19,8 @@ const db = require('../db/database');
 const timeFit = require('../services/time-fit');
 const taskStore = require('../services/task-store');
 const taskScoring = require('../services/task-scoring');
+
+const MAX_FIT_LIMIT = 50;
 
 /**
  * Is the cache actually populated, and how recently?
@@ -92,7 +94,10 @@ router.get('/what-fits', (req, res) => {
     // what matters — it only cuts that order down to what fits.
     const ranked = taskScoring.rankTasks(taskStore.activeTodos());
 
-    const fit = timeFit.whatFits(ranked, minutes, { limit: parseInt(req.query.limit) || 5 });
+    // "I have some time" asks for every task that fits, not the top five, so the
+    // limit can be raised — but bounded, because a list of 150 is the task list.
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 5, 1), MAX_FIT_LIMIT);
+    const fit = timeFit.whatFits(ranked, minutes, { limit });
 
     const cal = calendarKnown();
     res.json({
