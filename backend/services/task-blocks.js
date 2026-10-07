@@ -565,6 +565,66 @@ function findSlot({ minutes, events = [], now = new Date(), nonWorking = null } 
   };
 }
 
+/**
+ * One day's diary and the gaps in it, inside the working window.
+ *
+ * PURE. Same wall rule as `findSlot` (cancelled/free are not walls, tentative
+ * ones are; all-day events are listed but never block) so "where does it fit"
+ * and the slot `findSlot` would pick cannot disagree. Today's gaps start from
+ * now + lead, because a gap that has already gone is not one.
+ */
+function freeGapsOn({ dateKey, events = [], now = new Date(), minGap = 15 } = {}) {
+  const shared = require('../../shared/working-days.cjs');
+  const meetings = [];
+  const busy = [];
+  for (const ev of events || []) {
+    if (!ev) continue;
+    const day = String(ev.date || String(ev.start).split('T')[0]);
+    if (day !== dateKey) continue;
+    if (ev.showAs === 'cancelled') continue;
+    // Sliced, never parsed — the cache already holds Europe/London wall-clock.
+    const s = String(ev.start || '').slice(11, 16);
+    const e = String(ev.end || '').slice(11, 16);
+    meetings.push({ start: ev.isAllDay ? 'all day' : s, end: ev.isAllDay ? null : e, subject: ev.subject || '(no subject)', showAs: ev.showAs || 'busy' });
+    if (ev.isAllDay || ev.showAs === 'free') continue;
+    const a = timeFit.minutesIntoDay(ev.start);
+    const b = timeFit.minutesIntoDay(ev.end);
+    if (a != null && b != null) busy.push([a, b]);
+  }
+  meetings.sort((x, y) => String(x.start).localeCompare(String(y.start)));
+  busy.sort((x, y) => x[0] - y[0]);
+
+  let cursor = DAY_START_MIN;
+  if (dateKey === shared.toDateStr(now)) {
+    const nowMin = now.getHours() * 60 + now.getMinutes() + LEAD_MINUTES;
+    cursor = Math.max(cursor, Math.ceil(nowMin / 5) * 5);
+  }
+  const gaps = [];
+  const push = (a, b) => { if (b - a >= minGap) gaps.push({ start: hhmm(a), end: hhmm(b), minutes: b - a }); };
+  for (const [a, b] of busy) {
+    if (a > cursor) push(cursor, Math.min(a, DAY_END_MIN));
+    cursor = Math.max(cursor, b);
+    if (cursor >= DAY_END_MIN) break;
+  }
+  if (cursor < DAY_END_MIN) push(cursor, DAY_END_MIN);
+  return { meetings, gaps };
+}
+
+/**
+ * The diary for one day, as the standup needs it. `known:false` means the cache
+ * could not be read OR the day is past the synced window — never "you're free".
+ */
+function diaryFor(dateKey, { now = new Date() } = {}) {
+  const shared = require('../../shared/working-days.cjs');
+  const from = shared.toDateStr(now);
+  const to = shared.toDateStr(shared.addDays(now, SEARCH_DAYS));
+  if (dateKey < from) return { known: false, reason: 'that day has already gone' };
+  if (dateKey > to) return { known: false, reason: `the calendar cache only covers the next ${SEARCH_DAYS} days` };
+  const cal = readCalendar(now);
+  if (!cal.known) return { known: false, reason: 'the calendar cache could not be read' };
+  return { known: true, ...freeGapsOn({ dateKey, events: cal.rows, now }) };
+}
+
 // ── Scheduling ───────────────────────────────────────────────────────────────
 
 /**
@@ -2316,6 +2376,8 @@ module.exports = {
   slugify,
   blockSubject,
   findSlot,
+  freeGapsOn,
+  diaryFor,
   blockedElsewhere,
   blockedTaskIds,
   plan,

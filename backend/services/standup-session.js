@@ -503,7 +503,9 @@ Run it roughly like this, adapting to his answers:
 - If he says he is struggling, drop the process. Ask what is in the way. The ritual matters less than the answer.
 - Never guess a commitment key or task id — use the ones in the context.
 - A carried line marked [task #N] or [likely task #N] IS that task, not a new one. Pass its task_id to resolve_commitment, and name the task in passing ("that's #30, the Krista one") so he can say if it is not. If he says it is not, resolve it without task_id. Never call create_task for work that is already a task.
-- When he gives a time for work ("put it in 14:30 to 16:00"), call block_time with the task ids of everything going in that window — the existing tasks, not copies of them. Only if something has no task at all, call create_task first and use the id it returns. If he names no start time, ask once; if he still does not, do not book it.
+- When he gives a time for work ("put it in 14:30 to 16:00"), call block_time with the task ids of everything going in that window — the existing tasks, not copies of them. Only if something has no task at all, call create_task first and use the id it returns. If he names no start time, call check_diary for that day and offer him a real gap ("tomorrow 09:30-11:00 is free — want it there?"); book it only once he agrees.
+- You can see his calendar for the next fortnight through check_diary. Never say you don't have a day's calendar without calling it first.
+- When he wants a meeting WITH someone, get the title, time, length and who, then call create_meeting. It prepares the invite for him to approve in Actions with his approval code — say exactly that ("it's in Actions for you to approve"). Never say it is booked or sent, and never tell him you can't create invites. If a name does not resolve, ask him which person or for their address.
 - Never say something is booked, blocked or in the diary unless block_time came back ok. If it refused, tell him why in plain words.
 - Do not write the daily note yourself. When the focus is agreed, call set_focus; the system writes the note.
 - Keep every message under about 60 words.
@@ -570,6 +572,11 @@ there is nothing.
 - He is tired. Be shorter than you are in the morning. Under 50 words a message.
 - Do not open new work at 6pm. If he raises something big, park it: capture it
   and say it is tomorrow's problem.
+- If he wants something put in tomorrow's diary, call check_diary for that day,
+  offer him a real free gap, and book it with block_time once he agrees. You can
+  see a fortnight of his calendar — never say you can't without checking.
+- A meeting with someone else goes through create_meeting: it prepares the invite
+  for him to approve in Actions, it does not send it. Say that, never "booked".
 - Never end without acknowledging something that went right, even on a bad day.
   Especially on a bad day.`;
 
@@ -595,6 +602,31 @@ const SESSION_TOOLS = [
         reopen: { type: 'boolean', description: 'ONLY when he has explicitly asked to change a commitment that is ALREADY CLOSED. Requires his words in note. Never set it because he said "continue" or "move on".' },
       },
       required: ['key', 'decision'],
+    },
+  },
+  {
+    name: 'check_diary',
+    description: 'Read his calendar for any day in the next fortnight (today, tomorrow, next week): the meetings, and the free gaps between 09:00 and 17:30. Use this BEFORE asking him for a time, and whenever he asks "where does it fit" or "when am I free". Reads only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'YYYY-MM-DD. Omit for today.' },
+      },
+    },
+  },
+  {
+    name: 'create_meeting',
+    description: 'PREPARE a meeting invite with other people (title, time, attendees). This does NOT invite anyone: it puts the exact invite in Actions, where Nick approves it with his approval code; only then is it sent. Attendees must resolve to one exact address each — an ambiguous name is refused, never guessed. For time on his own, use block_time instead.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'The meeting title attendees will see.' },
+        start: { type: 'string', description: 'Local start, "YYYY-MM-DDTHH:mm".' },
+        minutes: { type: 'integer', description: 'Length in minutes (default 30).' },
+        attendees: { type: 'array', items: { type: 'string' }, description: 'Names or email addresses of the people to invite.' },
+        online: { type: 'boolean', description: 'Add a Teams link (default true).' },
+      },
+      required: ['title', 'start', 'attendees'],
     },
   },
   {
@@ -734,6 +766,10 @@ function _describeToolResult(name, input = {}, result = {}) {
   switch (name) {
     case 'block_time':
       return `block_time: ${result.already ? 'already booked' : 'BOOKED'} ${result.booked} for ${(result.tasks || []).join('; ') || (input.task_ids || []).map(id => `#${id}`).join(', ')}`;
+    case 'create_meeting':
+      return `create_meeting: PREPARED (not sent — awaiting approval in Actions) "${input.title}" ${input.start}${result.already ? ' (already prepared)' : ''}`;
+    case 'check_diary':
+      return `check_diary ${result.date}: free ${(result.freeGaps || []).join(', ') || 'none'}`;
     case 'create_task':
       return `create_task: CREATED #${result.task_id ?? '?'} "${result.text || input.text || ''}"`;
     case 'set_weekly_target':
@@ -847,6 +883,28 @@ async function _executeTool(session, name, input = {}) {
         }
       }
       return { ok: true, recorded: input.decision, task_id: taskId };
+    }
+
+    case 'check_diary': {
+      // ⚠ 7 Oct 2026: asked "where does it fit — morning if I have a slot", the
+      // EOD said "I don't have tomorrow's calendar in front of me" and carried
+      // the task unscheduled. The cache holds a fortnight; only TODAY was ever
+      // put in the context, and nothing could read another day.
+      const date = input.date || session.dateKey;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: 'date must be YYYY-MM-DD.' };
+      const diary = require('./task-blocks').diaryFor(date);
+      if (!diary.known) {
+        return { ok: false, error: `Cannot see the diary for ${date}: ${diary.reason}. Say so — do not treat it as free.` };
+      }
+      return {
+        ok: true,
+        date,
+        meetings: diary.meetings.map(m => `${m.start}${m.end ? `-${m.end}` : ''} ${m.subject}${m.showAs !== 'busy' ? ` (${m.showAs})` : ''}`),
+        freeGaps: diary.gaps.map(g => `${g.start}-${g.end} (${g.minutes} min)`),
+        note: diary.gaps.length
+          ? 'Offer him a specific gap that fits what he asked for (morning = before 12:00), then book it with block_time once he agrees.'
+          : 'No free gap of 15+ minutes in the working day. Say so and offer another day.',
+      };
     }
 
     case 'block_time': {
@@ -965,6 +1023,10 @@ async function _executeTool(session, name, input = {}) {
 
     case 'complete_task':
       return chatTools.execute(name, input);
+
+    case 'create_meeting':
+      // Governed (Build 11): prepares an invite for approval, sends nothing.
+      return chatTools.prepareMeeting(input, session.kind === KIND_EOD ? 'eod' : 'standup');
 
     default:
       return { ok: false, error: `Unknown tool: ${name}` };

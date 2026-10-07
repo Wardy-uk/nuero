@@ -736,7 +736,14 @@ const HANDLERS = {
 
   // Build 11K: prepares a governed invite. Refuses — in words, preparing
   // nothing — if any attendee does not resolve to exactly one address.
-  async create_meeting({ title, start, minutes, attendees, online }) {
+  async create_meeting(input) {
+    return prepareMeeting(input, 'chat');
+  },
+};
+
+// Shared with the standup/EOD session, so the two surfaces cannot disagree
+// about how a name resolves or what "prepared, not sent" means.
+async function prepareMeeting({ title, start, minutes, attendees, online } = {}, origin = 'chat') {
     const t = String(title || '').trim();
     if (!t) return { ok: false, prepared: false, error: 'title is required' };
     const st = String(start || '').replace(' ', 'T').slice(0, 16);
@@ -756,14 +763,13 @@ const HANDLERS = {
     }
     const r = require('./prepared-actions').prepareCalendarCreate({
       title: t, start: st, end, attendees: resolved.map((x) => ({ email: x.email, name: x.name || null })),
-      isOnline: online !== false, origin: 'chat',
+      isOnline: online !== false, origin,
     });
     if (!r.ok) return { ok: false, prepared: false, invited: false, error: r.error };
     return {
       ok: true, prepared: true, invited: false, action_id: r.action.actionId, already: !!r.already,
       note: 'PREPARED, NOT SENT. Nobody has been invited. Nick must approve it in Actions (with his approval code); only then does NEURO send the invite and read it back from the calendar. Do not tell him it is booked.',
     };
-  },
-};
+}
 
-module.exports = { TOOLS, toolDefinitions, execute };
+module.exports = { TOOLS, toolDefinitions, execute, prepareMeeting };
