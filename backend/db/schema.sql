@@ -87,6 +87,10 @@ CREATE TABLE IF NOT EXISTS calendar_cache (
   -- no attendee list, and with no signed-in address Nick's own entry cannot be
   -- told from anyone else's. See calendar-sync + plaud-admin-blocks.attendeesOther.
   attendees_other INTEGER,
+  -- Build 16I: Graph's isOrganizer. 1 / 0 / NULL (could not tell). See
+  -- context-state.heldDespiteFree — a `free` entry Nick organises with other
+  -- people in it is still a meeting.
+  is_organizer INTEGER,
   -- Which calendar this row came from: 'graph' (work, via MSAL or the NOVA
   -- bridge), 'apple' (pushed from the phone by Scriptable), 'ics'.
   --

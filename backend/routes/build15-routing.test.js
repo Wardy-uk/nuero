@@ -53,7 +53,7 @@ test('GET /api/activity/timeline answers the timeline (not swallowed by /api/act
   assert.equal(r.status, 200);
   assert.equal(r.body.contract, 'activity-v1');
   assert.deepEqual(r.body.today.lines, ['No autonomous actions today.']);
-  assert.ok(Array.isArray(r.body.pending) && r.body.pending.some((p) => /iOS reliability update pending build/.test(p.text)));
+  assert.ok(Array.isArray(r.body.pending) && r.body.pending.some((p) => /iOS Build 16 .* not yet built/.test(p.text)));
   const s = await call('GET', '/api/activity/timeline/summary', 'nick');
   assert.equal(s.status, 200);
   assert.ok(s.body.today);

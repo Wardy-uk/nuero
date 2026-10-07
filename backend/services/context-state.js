@@ -245,8 +245,30 @@ function toDate(v) {
 function isRealMeeting(ev) {
   if (!isObject(ev)) return false;
   if (ev.isAllDay || ev.isCancelled) return false;
-  if (ev.showAs === 'free') return false;
+  if (ev.showAs === 'free' && !heldDespiteFree(ev)) return false;
   return ev.attendeesOther === true;
+}
+
+/**
+ * Is a `free` diary entry still a meeting? (Build 16I.)
+ *
+ * `free` is an AVAILABILITY setting, not a statement that nothing is happening.
+ * Nick flipped his own Team Standup to free on 6 Oct, and from that morning
+ * SAiM stopped treating it as a meeting — no quiet, no in-meeting surface — and
+ * the day planner saw the slot as bookable. Measured over 30 days, the free
+ * entries with other people in them were three series: Team Standup (Nick
+ * organises), KPI Meet (someone else's 32-person broadcast, marked free by its
+ * organiser) and "Following: LSL/Nurtur" (Outlook's follow-only, not
+ * attending). Only the first is a meeting Nick is in.
+ *
+ * So the rule is: other people (exactly true) AND Nick organises it — he called
+ * it, it is happening. ⚠ Both halves are three-valued and fail CLOSED: an
+ * unknown organiser or attendee list stays "free" (the old answer), because a
+ * placeholder announced as "you're in a meeting" is the worse error. PURE.
+ */
+function heldDespiteFree(ev) {
+  if (!isObject(ev)) return false;
+  return ev.showAs === 'free' && ev.attendeesOther === true && ev.isOrganizer === true;
 }
 
 function readMeetings(calendar, now) {
@@ -262,7 +284,7 @@ function readMeetings(calendar, now) {
     if (!isObject(ev)) continue;
     if (ev.isAllDay) continue;
     if (ev.isCancelled) continue;
-    if (ev.showAs === 'free') continue;
+    if (ev.showAs === 'free' && !heldDespiteFree(ev)) continue;
 
     const start = toDate(ev.start);
     const end = toDate(ev.end);
@@ -578,6 +600,7 @@ function resolveContext(inputs = {}, now = new Date()) {
 module.exports = {
   resolveContext,
   isRealMeeting,
+  heldDespiteFree,
   resolveDuty,
   cannotSee,
   ON_DUTY_START_HOUR,

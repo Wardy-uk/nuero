@@ -323,6 +323,11 @@ function classifyComparison(row) {
   const newSaid = !!(n && n.finding);
   let kind;
   if (!o) kind = 'old-not-recorded';
+  // Build 16H: the old push looked and said NOTHING, and the new pipeline never
+  // evaluated it (the 8 such rows on 5-7 Oct were all free entries it filtered
+  // out). Both sides were silent, so there is no old value the new side lacks:
+  // that is agreement, not a one-sided gap that blocks retirement.
+  else if (!n && !oldSaid) kind = 'neither';
   else if (!n) kind = 'new-not-recorded';
   else if (oldSaid && newSaid) kind = 'both';
   else if (oldSaid) {

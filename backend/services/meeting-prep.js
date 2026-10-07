@@ -45,6 +45,11 @@ async function checkUpcomingMeetings({ now = new Date() } = {}) {
     return;
   }
 
+  // Build 16K: who Nick is, to tell a meeting from a solo block. Unknown is
+  // fine — see soloBlock() below.
+  let me = null;
+  try { me = await require('./microsoft').getSignedInAddress(); } catch { me = null; }
+
   for (const event of events) {
     if (event.showAs === 'cancelled') continue;
 
@@ -104,6 +109,16 @@ async function checkUpcomingMeetings({ now = new Date() } = {}) {
       });
     }
 
+    // ⚠ Build 16K: a SOLO block is not a meeting. Measured since 7 Sep: 31 of
+    // this path's 42 sends (74%) were "Task block" / "Plaud admin" entries whose
+    // titles happen to contain a colleague's name. Skipped only when the
+    // attendee list POSITIVELY says nobody else is in it; an undecidable event
+    // keeps the old behaviour, so this can only remove false positives.
+    if (soloBlock(event, me)) {
+      recordOldSide(event, { wouldNotify: false, why: 'solo block — nobody else is in it', matchedPeople: matchedPeople.map(p => p.name), mode: prepMode(), sent: false });
+      continue;
+    }
+
     if (matchedPeople.length === 0) {
       recordOldSide(event, { wouldNotify: false, why: 'no People note name part in the title', matchedPeople: [], mode: prepMode(), sent: false });
       continue;
@@ -135,9 +150,30 @@ async function checkUpcomingMeetings({ now = new Date() } = {}) {
 
     await webpush.sendToAll(title, body, {
       type: 'meeting_prep',
-      url: '/people'
+      url: '/people',
+      // ⚠ Build 16K: the attention record is keyed on THIS OCCURRENCE. Keyed on
+      // the title (the old default), a weekly 1-2-1 was "already notified,
+      // nothing changed" for ever — Nick Catch Up was suppressed 7 of 7 times.
+      key: occurrenceKey(event),
     }).catch(e => console.warn('[MeetingPrep] Push failed:', e.message));
   }
 }
 
-module.exports = { checkUpcomingMeetings, prepMode };
+/** One meeting occurrence, for the push's attention identity. PURE. */
+function occurrenceKey(event) {
+  return `meeting_prep:${event.id || event.subject || 'meeting'}@${String(event.start || '').slice(0, 16)}`;
+}
+
+/**
+ * Is this POSITIVELY a solo block? PURE. Only a readable attendee list and a
+ * known signed-in address can say so; anything undecidable is `false` (not
+ * known solo), which keeps the legacy behaviour rather than inventing a skip.
+ */
+function soloBlock(event, me) {
+  if (!me || !event || !Array.isArray(event.attendees)) return false;
+  try {
+    return require('./plaud-admin-blocks').attendeesOther(event, me).length === 0;
+  } catch { return false; }
+}
+
+module.exports = { checkUpcomingMeetings, prepMode, occurrenceKey, soloBlock };

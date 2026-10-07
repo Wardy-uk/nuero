@@ -65,6 +65,23 @@ function Entry({ e }) {
   );
 }
 
+/**
+ * Build 16Z: autonomy today, in one read-only line. An unreadable count is
+ * "?", never 0 — "could not look" is not "nothing waiting".
+ */
+export function AutonomyLine({ a }) {
+  const n = (v) => (v === null || v === undefined ? '?' : v);
+  const off = Array.isArray(a.switchesOff) ? a.switchesOff : null;
+  return (
+    <div className="cn-act-autonomy" aria-label="Autonomy today">
+      <span className="cn-k">Autonomy today</span>{' '}
+      Investigations {n(a.investigations)} · Automatic fixes {n(a.automaticFixes)} · Verified recoveries {n(a.verifiedRecoveries)}
+      {' '}· Waiting on you {n(a.awaitingNick)} · Failed or uncertain {n(a.failedOrUncertain)}
+      {' '}· Switched off {off === null ? '?' : off.length ? off.map((s) => s.label).join(', ') : 'none'}
+    </div>
+  );
+}
+
 /** The page, pure over its props — exported so it can be rendered in a test. */
 export function ActivityView({ data, error, loading, filter, setFilter, reload }) {
   return (
@@ -81,6 +98,7 @@ export function ActivityView({ data, error, loading, filter, setFilter, reload }
           <ul className="cn-act-lines">
             {data.today.lines.map((l) => <li key={l}>{l}</li>)}
           </ul>
+          {data.today.autonomy && <AutonomyLine a={data.today.autonomy} />}
         </section>
       )}
 

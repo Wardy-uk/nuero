@@ -46,7 +46,7 @@
  * CommonJS only — NEURO backend convention.
  */
 
-const { resolveContext, ACTIVITY, isRealMeeting } = require('./context-state');
+const { resolveContext, ACTIVITY, isRealMeeting, heldDespiteFree } = require('./context-state');
 const { resolveSaimLiteTab } = require('../../shared/action-surfaces.cjs');
 const { describeDeferral } = require('../../shared/deferral-line.cjs');
 
@@ -426,6 +426,8 @@ function _calendarInput(gaps) {
         showAs: r.show_as,
         isAllDay: r.is_all_day === 1,
         isCancelled: r.show_as === 'cancelled',
+        // Build 16I: three-valued, like attendees_other — see heldDespiteFree.
+        isOrganizer: r.is_organizer === 1 ? true : r.is_organizer === 0 ? false : null,
         // 'graph' = the work diary, 'apple' = the phone. The agenda needs this
         // to answer a personal question with personal events.
         source: r.source || null,
@@ -542,7 +544,7 @@ function agendaFor(calendar, now, limit = 4, tomorrow = null, opts = {}) {
   const personal = opts.personal === true;
   const keep = personal
     ? (e) => !e.isCancelled && e.source === 'apple'
-    : (e) => !e.isCancelled && !e.isAllDay && e.showAs !== 'free';
+    : (e) => !e.isCancelled && !e.isAllDay && (e.showAs !== 'free' || heldDespiteFree(e));
 
   const nowMs = now.getTime();
   const events = (calendar.events || [])
@@ -669,6 +671,7 @@ function _tomorrowEvents(days = LOOKAHEAD_DAYS) {
       showAs: r.show_as,
       isAllDay: r.is_all_day === 1,
       isCancelled: r.show_as === 'cancelled',
+      isOrganizer: r.is_organizer === 1 ? true : r.is_organizer === 0 ? false : null,
       source: r.source || null,
       attendeesOther: r.attendees_other === 1 ? true : r.attendees_other === 0 ? false : null,
     }));

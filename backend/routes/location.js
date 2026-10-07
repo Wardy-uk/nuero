@@ -66,6 +66,10 @@ router.post('/points', (req, res) => {
     // Build 2: WHEN and how accurately — never where — onto the event spine,
     // after the write, and never able to fail it.
     nativeEvents.recordLocationBatch({ headers: req.headers, deviceId: batch.deviceId, accepted: batch.accepted, stored });
+    // Build 16G: the phone's durable-queue report (counts only) — a late replay
+    // or a quarantine becomes ONE Activity line, never one per upload.
+    nativeEvents.recordQueueReport({ headers: req.headers, deviceId: batch.deviceId, report: body.queue,
+      acceptedTsts: batch.accepted.map((p) => p.tst), stored });
     // Never log a coordinate. Counts describe the health of the feed without
     // writing where Nick was into the process log.
     if (stored > 0) console.log(`[Location] ${stored} new points from ${batch.deviceId}`);

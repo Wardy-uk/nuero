@@ -415,7 +415,11 @@ function shapeMeeting(m, nowMs = Date.now()) {
 }
 
 // Entries that occupy time: not all-day, not marked free, not cancelled/removed/merged.
-const LIVE = `status = 'scheduled' AND is_all_day = 0 AND COALESCE(show_as, 'busy') NOT IN ('free', 'cancelled')`;
+// Build 16I: `free` is availability, not absence. A free entry Nick organises
+// with other people in it (kind 'meeting' = attendees_other exactly true) is
+// still a meeting — context-state.heldDespiteFree is the same rule on the cache.
+const LIVE = `status = 'scheduled' AND is_all_day = 0 AND COALESCE(show_as, 'busy') <> 'cancelled'
+  AND (COALESCE(show_as, 'busy') <> 'free' OR (kind = 'meeting' AND is_organizer = 1))`;
 
 /** What is on right now. Real meetings first; a solo block is still an answer, labelled as one. */
 function currentMeetings({ now = Date.now() } = {}) {

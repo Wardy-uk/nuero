@@ -20,7 +20,11 @@ const router = express.Router();
 // GET /api/loops/hiking — the weekly hiking goal loop: planned vs recorded vs unknown, recording confidence, weather for a planned day.
 router.get('/hiking', async (req, res) => {
   try {
-    const r = loop.read({});
+    // Build 16M: ?weeks= reaches back (max 26) so a past hike can be confirmed.
+    if (req.query.weeks !== undefined && (!/^\d{1,2}$/.test(String(req.query.weeks)) || +req.query.weeks < 1 || +req.query.weeks > loop.MAX_WEEKS)) {
+      return res.status(400).json({ ok: false, error: 'weeks must be a whole number from 1 to 26' });
+    }
+    const r = loop.read({ weeks: req.query.weeks === undefined ? 6 : Number(req.query.weeks) });
     if (r.active && r.current) {
       const next = r.current.planned.find((p) => p.day >= r.today);
       if (next) {

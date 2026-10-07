@@ -13,7 +13,9 @@ import { useCanonical, postCanonical } from './canonicalUi';
 const RESULT_WORD = { done: 'done', likely: 'likely — unconfirmed', 'cant-tell': "can't tell", 'none-recorded': 'none recorded', 'in-progress': 'this week' };
 
 export default function HikingLoopCard() {
-  const { data, error, reload } = useCanonical('/api/loops/hiking');
+  // Build 16M: earlier weeks on demand, so a past Saturday can be confirmed.
+  const [earlier, setEarlier] = useState(false);
+  const { data, error, reload } = useCanonical(earlier ? '/api/loops/hiking?weeks=17' : '/api/loops/hiking');
   const [day, setDay] = useState('');
   const [msg, setMsg] = useState(null);
   if (error && !data) return <div className="cn-error">Couldn’t read the hiking loop — {error}.</div>;
@@ -22,6 +24,10 @@ export default function HikingLoopCard() {
   const act = async (kind, d) => {
     setMsg(null);
     try { await postCanonical(`/api/loops/hiking/${kind}`, { day: d }); setDay(''); reload(); } catch (e) { setMsg(e.message); }
+  };
+  const undo = async (id) => {
+    setMsg(null);
+    try { await postCanonical(`/api/loops/hiking/entries/${id}/withdraw`, {}); reload(); } catch (e) { setMsg(e.message); }
   };
   const ask = cur.needsNick && cur.needsNick.kind === 'confirm' ? cur.needsNick.day : null;
   return (
@@ -33,7 +39,18 @@ export default function HikingLoopCard() {
         : <div className="cn-muted">No forecast for {cur.weather.day} yet ({cur.weather.why}).</div>)}
       <div className="cn-muted">Recording: {data.reliability.why}.{data.lastConfirmed ? ` Last confirmed hike ${data.lastConfirmed}.` : ''}</div>
       <div className="cn-hike-weeks">
-        {data.weeks.slice(1).map((w) => <span key={w.start} className="cn-chip" title={w.line}>w/c {w.start.slice(5)} · {RESULT_WORD[w.result] || w.result}</span>)}
+        {data.weeks.slice(1).map((w) => {
+          const asks = w.needsNick && w.needsNick.kind === 'confirm' ? w.needsNick.day : null;
+          const mine = (w.confirmed || []).find((c) => c.by === 'you' && c.entryId);
+          return (
+            <span key={w.start} className="cn-chip" title={w.line}>
+              w/c {w.start.slice(5)} · {RESULT_WORD[w.result] || w.result}
+              {asks && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => act('confirm', asks)}>Yes, {asks.slice(5)}</button>}
+              {mine && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => undo(mine.entryId)}>Undo</button>}
+            </span>
+          );
+        })}
+        <button type="button" className="cn-btn cn-btn--tiny" onClick={() => setEarlier((v) => !v)}>{earlier ? 'Fewer weeks' : 'Earlier weeks'}</button>
       </div>
       <div className="cn-hike-form">
         {ask && <button type="button" className="cn-btn" onClick={() => act('confirm', ask)}>Yes, I hiked on {ask}</button>}

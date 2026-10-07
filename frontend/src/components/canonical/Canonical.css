@@ -158,6 +158,8 @@
 .cn-act-detail { border-top: 1px solid var(--border); padding: 8px 12px; font-size: 12px; }
 .cn-act-today { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; }
 .cn-act-lines { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.cn-btn--tiny { padding: 1px 6px; font-size: 11px; margin-left: 6px; }
+.cn-act-autonomy { margin-top: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
 
 /* Build 15S — the hiking loop card on Life. */
 .cn-hike { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-top: 10px; }

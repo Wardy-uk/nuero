@@ -428,7 +428,107 @@ function recordDeliveryFailure({ kind, headers = {}, bodyClient = null, deviceId
   }
 }
 
+// ── Durable queue reports (Build 16G) ───────────────────────────────────────
+
+/** A delivery is a REPLAY when what arrived had waited at least this long. */
+const REPLAY_MIN_MINUTES = 60;
+
+function _int(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+}
+
+/**
+ * Sanitise the phone's queue report. Counts and an age only; anything else in
+ * the object is dropped, and an unreadable report is null (a build that does not
+ * send one is not a queue with nothing in it). PURE.
+ */
+function sanitiseQueueReport(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const pending = _int(raw.pending);
+  const quarantined = _int(raw.quarantined);
+  const evicted = _int(raw.evicted);
+  if (pending == null || quarantined == null || evicted == null) return null;
+  const age = Number(raw.oldestPendingAgeSeconds);
+  return { pending, quarantined, evicted, oldestPendingAgeSeconds: Number.isFinite(age) && age >= 0 ? age : null };
+}
+
+/**
+ * What, if anything, about this delivery is worth an Activity line? PURE.
+ *
+ * - replayed: NEW rows landed (`stored` > 0 — a resend of what NEURO already
+ *   had is not a replay) AND what arrived had waited ≥ 60 min, judged by the
+ *   phone's own queue age when it sent one, else by the oldest point's age.
+ * - degraded: the phone's cumulative quarantined / evicted counters went UP
+ *   since the last report. The first report from a device sets the baseline
+ *   and says nothing — a counter that was already 3 is not news today.
+ */
+function queueSignals({ prev = null, report = null, acceptedTsts = [], stored = 0, nowMs }) {
+  const out = { replayed: null, degraded: null };
+  const lagFromPoints = acceptedTsts.length ? (nowMs / 1000 - Math.min(...acceptedTsts)) / 60 : 0;
+  const lagFromQueue = report && report.oldestPendingAgeSeconds != null ? report.oldestPendingAgeSeconds / 60 : 0;
+  const lag = Math.max(lagFromPoints, lagFromQueue);
+  if (stored > 0 && lag >= REPLAY_MIN_MINUTES) {
+    out.replayed = { delivered: stored, oldestAgeMinutes: Math.round(lag) };
+  }
+  if (prev && report) {
+    const q = Math.max(0, report.quarantined - prev.quarantined);
+    const e = Math.max(0, report.evicted - prev.evicted);
+    if (q > 0 || e > 0) out.degraded = { quarantinedAdded: q, evictedAdded: e, quarantinedTotal: report.quarantined, evictedTotal: report.evicted };
+  }
+  return out;
+}
+
+/**
+ * Record a location delivery's queue facts: remember the report, publish a
+ * replay / degradation when there is one. ⚠ NEVER THROWS — this runs after the
+ * points are stored and must never cost the delivery.
+ */
+function recordQueueReport({ headers = {}, deviceId, report: raw, acceptedTsts = [], stored = 0, now = Date.now() } = {}) {
+  const out = { report: null, signals: null };
+  try {
+    const nowMs = now instanceof Date ? now.getTime() : now;
+    const { client } = nativeSources.resolveClient(headers);
+    const sourceId = nativeSources.sourceIdFor('location', client);
+    const report = sanitiseQueueReport(raw);
+    const db = require('../db/database');
+    const key = `native_queue_report:${sourceId}:${deviceId}`;
+    let prev = null;
+    try { prev = JSON.parse(db.getState(key) || 'null'); } catch { prev = null; }
+    const signals = queueSignals({ prev, report, acceptedTsts, stored, nowMs });
+    if (report) db.setState(key, JSON.stringify({ ...report, at: new Date(nowMs).toISOString() }));
+    const minTst = acceptedTsts.length ? Math.min(...acceptedTsts) : 0;
+    const maxTst = acceptedTsts.length ? Math.max(...acceptedTsts) : 0;
+    if (signals.replayed) {
+      _publish({
+        type: 'native.queue.replayed', occurredAt: new Date(nowMs).toISOString(),
+        source: { system: 'location', deviceId }, subject: { entityType: 'device', entityId: deviceId },
+        idempotencyKey: `queue-replay:${sourceId}:${deviceId}:${minTst}:${maxTst}`,
+        payload: { sourceId, deviceId, ...signals.replayed },
+      }, nowMs);
+    }
+    if (signals.degraded) {
+      _publish({
+        type: 'native.queue.degraded', occurredAt: new Date(nowMs).toISOString(),
+        source: { system: 'location', deviceId }, subject: { entityType: 'device', entityId: deviceId },
+        idempotencyKey: `queue-degraded:${sourceId}:${deviceId}:${signals.degraded.quarantinedTotal}:${signals.degraded.evictedTotal}`,
+        payload: { sourceId, deviceId, ...signals.degraded },
+      }, nowMs);
+    }
+    out.report = report;
+    out.signals = signals;
+  } catch (e) {
+    console.warn('[NativeEvents] queue report not recorded:', e.message);
+    out.error = e.message;
+  }
+  return out;
+}
+
 module.exports = {
+  REPLAY_MIN_MINUTES,
+  sanitiseQueueReport,
+  queueSignals,
+  recordQueueReport,
   DEVICE_FIELDS,
   sqlUtcToIso,
   recordHealthDelivery,

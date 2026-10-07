@@ -62,7 +62,7 @@ test('the core experience: noticed → retried (A1) → recovered after the retr
   assert.match(html, />A1</);
   assert.match(html, /NEURO self-test recovered after the retry/);
   assert.ok(html.indexOf('recovered after the retry') < html.indexOf('NEURO noticed NEURO self-test'), 'newest first');
-  assert.match(html, /iOS reliability update pending build/, 'deferred work is said, not hidden');
+  assert.match(html, /iOS Build 16 .* not yet built/, 'deferred work is said, not hidden');
 });
 
 test('an empty day says so; a failed read is an ERROR, never "nothing happened"; a partial read names the gap', () => {

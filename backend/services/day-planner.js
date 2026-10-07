@@ -543,7 +543,13 @@ function gather(now = new Date()) {
     for (const row of db.getCalendarEvents(`${dateKey}T00:00:00`, `${dateKey}T23:59:59`)) {
       if (row.is_all_day) continue;
       const showAs = row.show_as || 'busy';
-      if (showAs === 'cancelled' || showAs === 'free') continue;
+      if (showAs === 'cancelled') continue;
+      // Build 16I: a free entry Nick organises with other people in it (his
+      // standup) is a meeting, not a bookable gap.
+      if (showAs === 'free' && !require('./context-state').heldDespiteFree({
+        showAs, attendeesOther: row.attendees_other === 1 ? true : row.attendees_other === 0 ? false : null,
+        isOrganizer: row.is_organizer === 1 ? true : row.is_organizer === 0 ? false : null,
+      })) continue;
       const startMin = timeFit.minutesIntoDay(row.start_time);
       const endMin = timeFit.minutesIntoDay(row.end_time);
       if (startMin == null || endMin == null) continue;

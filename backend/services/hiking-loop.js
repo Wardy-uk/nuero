@@ -33,7 +33,15 @@ const db = require('../db/database');
 const LIKELY_STEPS = 18000;
 const LIKELY_WALK_MIN = 120;
 const RELIABLE_MIN_RECORDED_90D = 3;
-const CONFIRM_BACK_DAYS = 14;
+// Build 16M: a past hike can be confirmed up to ~4 months back — the planned
+// Saturdays since late August were never confirmed, and a 14-day window made
+// most of them impossible to put right.
+const CONFIRM_BACK_DAYS = 120;
+// Build 16N: below this a day's steps mean the phone was not carried or the
+// data did not land — a RECORDING GAP, not an ordinary day. Measured: 9 Jul and
+// 7 Sep read 0 steps and 8 Aug read 14, each with walking distance present.
+const MIN_RECORDED_STEPS = 200;
+const MAX_WEEKS = 26;
 const PLAN_AHEAD_DAYS = 60;
 const HIKE_WORDS = /\bhik(e|es|ing)\b/i;
 const WEEKLY_WORDS = /\bweekly\b|\bevery week\b|\beach week\b|\ba week\b|\bper week\b/i;
@@ -84,7 +92,30 @@ function reliability({ recorded90 = 0, plannedPast = [], recordedOnPlanned = 0 }
  * @param i { start, today, plans:[{day,source,id?}], workouts:[{day,type,mins}], confirms:[{day,id,note}],
  *            steps:{day:number|null|undefined}, rel }
  */
-function weekState({ start, today, plans = [], workouts = [], confirms = [], steps = {}, rel }) {
+/**
+ * Build 16N: the bounded evidence for one day. Facts only — steps, walking
+ * distance (km, NeuroKit's `walking_running_distance`; never summed with the
+ * retired FreeReps metres metric), and any hike/walk workouts. Distance and
+ * steps CORROBORATE; neither can confirm. PURE.
+ */
+function evidenceFor(day, { steps = {}, distance = {}, workouts = [] } = {}) {
+  const s = steps[day];
+  const km = distance[day];
+  return {
+    day,
+    steps: typeof s === 'number' ? Math.round(s) : null,
+    distanceKm: typeof km === 'number' ? Math.round(km * 10) / 10 : null,
+    workouts: workouts.filter((w) => w.day === day && /hik|walk/i.test(w.type)).map((w) => ({ type: w.type, minutes: w.mins || null })),
+    recorded: typeof s === 'number' && s >= MIN_RECORDED_STEPS,
+  };
+}
+
+function _evidenceWords(ev) {
+  if (!ev || ev.steps == null) return '';
+  return ` (phone: ${ev.steps.toLocaleString('en-GB')} steps${ev.distanceKm != null ? `, ${ev.distanceKm} km` : ''})`;
+}
+
+function weekState({ start, today, plans = [], workouts = [], confirms = [], steps = {}, distance = {}, rel }) {
   const days = weekDays(start);
   const inWeek = (d) => d >= days[0] && d <= days[6];
   const closed = today > days[6];
@@ -106,7 +137,10 @@ function weekState({ start, today, plans = [], workouts = [], confirms = [], ste
   // Health data that never arrived, on a day that matters (a planned day, or
   // any elapsed day when nothing is planned).
   const relevant = planned.length ? planned.map((p) => p.day) : days;
-  const gaps = relevant.filter((d) => d < today && (steps[d] === null || steps[d] === undefined));
+  // ⚠ Build 16N: null/absent OR implausibly low — 0 steps is the phone not
+  // carried, not a day spent sitting still.
+  const gaps = relevant.filter((d) => d < today && !(typeof steps[d] === 'number' && steps[d] >= MIN_RECORDED_STEPS));
+  const bundle = (d) => evidenceFor(d, { steps, distance, workouts });
 
   const nextPlan = planned.find((p) => p.day >= today) || null;
   const pastPlan = [...planned].reverse().find((p) => p.day < today) || null;
@@ -121,10 +155,11 @@ function weekState({ start, today, plans = [], workouts = [], confirms = [], ste
   } else if (likely.length) {
     recording = 'likely';
     const l = likely[0];
+    const km = bundle(l.day).distanceKm;
     line = l.by === 'steps'
-      ? `${dayName(l.day)} had ${l.steps.toLocaleString('en-GB')} steps — was that a hike? It is not recorded as one.`
+      ? `${dayName(l.day)} had ${l.steps.toLocaleString('en-GB')} steps${km != null ? ` (${km} km)` : ''} — was that a hike? It is not recorded as one.`
       : `A ${Math.round(l.minutes / 60 * 10) / 10}h walk on ${dayName(l.day)} — was that a hike?`;
-    needsNick = { kind: 'confirm', day: l.day, why: 'likely but unconfirmed' };
+    needsNick = { kind: 'confirm', day: l.day, why: 'likely but unconfirmed', evidence: bundle(l.day) };
     result = 'likely';
   } else if (gaps.length) {
     recording = 'recording-gap';
@@ -137,8 +172,8 @@ function weekState({ start, today, plans = [], workouts = [], confirms = [], ste
       line = `${dayName(nextPlan.day)} hike planned.`;
       result = 'in-progress';
     } else if (pastPlan && rel.level !== 'ok') {
-      line = `I can't tell whether ${dayName(pastPlan.day)}'s hike happened — it isn't recorded as a workout.`;
-      needsNick = { kind: 'confirm', day: pastPlan.day, why: 'planned, not recorded, recording unreliable' };
+      line = `I can't tell whether ${dayName(pastPlan.day)}'s hike happened — it isn't recorded as a workout${_evidenceWords(bundle(pastPlan.day))}.`;
+      needsNick = { kind: 'confirm', day: pastPlan.day, why: 'planned, not recorded, recording unreliable', evidence: bundle(pastPlan.day) };
       result = closed ? 'cant-tell' : 'in-progress';
     } else if (pastPlan) {
       line = `No hike recorded for ${dayName(pastPlan.day)}.`;
@@ -153,7 +188,8 @@ function weekState({ start, today, plans = [], workouts = [], confirms = [], ste
       result = 'in-progress';
     }
   }
-  return { start, end: days[6], closed, planned, confirmed, likely, gaps, recording, reliability: rel.level, line, needsNick, result };
+  return { start, end: days[6], closed, planned, confirmed, likely, gaps, recording, reliability: rel.level, line, needsNick, result,
+    evidence: (planned.length ? planned.map((p) => p.day) : likely.map((l) => l.day)).filter((d) => d < today).map(bundle) };
 }
 
 // ── readers ─────────────────────────────────────────────────────────────────
@@ -197,6 +233,17 @@ function _steps(fromDay, toDay) {
   return out;
 }
 
+/** Daily walking distance in km from NeuroKit's metric. Absent = not measured. */
+function _distance(fromDay, toDay) {
+  const out = {};
+  try {
+    for (const r of db.all(`SELECT substr(recorded_at,1,10) day, SUM(value) km FROM health_samples
+                             WHERE metric = 'walking_running_distance' AND recorded_at >= ? AND recorded_at < ?
+                             GROUP BY 1`, [fromDay, addDays(toDay, 1)])) out[r.day] = Number(r.km);
+  } catch { /* unreadable: distance stays unknown */ }
+  return out;
+}
+
 function _reliability(today) {
   const from = addDays(today, -90);
   const recorded90 = db.get(`SELECT COUNT(*) n FROM health_workouts WHERE activity_type LIKE '%hik%' AND substr(started_at,1,10) >= ?`, [from]).n;
@@ -214,6 +261,7 @@ function _goals() {
 /** The loop, read now. `{ active:false }` when there is no explicit goal. */
 function read({ now = Date.now(), weeks = 6 } = {}) {
   const nowMs = now instanceof Date ? now.getTime() : now;
+  weeks = Math.max(1, Math.min(MAX_WEEKS, Math.floor(Number(weeks)) || 6));
   const goal = findGoal(_goals());
   if (!goal) return { active: false, why: 'no active "hike weekly" goal — the loop only runs for an explicit goal' };
   const today = localDay(nowMs);
@@ -226,10 +274,11 @@ function read({ now = Date.now(), weeks = 6 } = {}) {
   const confirms = manual.filter((e) => e.kind === 'confirm');
   const workouts = _workouts(first, addDays(thisWeek, 6));
   const steps = _steps(first, addDays(thisWeek, 6));
+  const distance = _distance(first, addDays(thisWeek, 6));
   const out = [];
   for (let i = 0; i < weeks; i += 1) {
     const start = addDays(first, 7 * i);
-    out.push(weekState({ start, today, plans, workouts, confirms, steps, rel }));
+    out.push(weekState({ start, today, plans, workouts, confirms, steps, distance, rel }));
   }
   const confirmedDays = [...workouts.filter((w) => /hik/i.test(w.type)).map((w) => w.day), ...confirms.map((c) => c.day)].sort();
   const lastConfirmed = confirmedDays.length ? confirmedDays[confirmedDays.length - 1] : rel.lastRecorded;
@@ -237,6 +286,7 @@ function read({ now = Date.now(), weeks = 6 } = {}) {
     active: true, goal, today, weekStart: thisWeek,
     current: out[out.length - 1], weeks: out.slice().reverse(),
     reliability: rel, lastConfirmed: lastConfirmed || null, entries: manual,
+    confirmBackDays: CONFIRM_BACK_DAYS,
   };
 }
 
@@ -308,7 +358,7 @@ function events({ since = null, limit = 200 } = {}) {
 }
 
 module.exports = {
-  LIKELY_STEPS, LIKELY_WALK_MIN, RELIABLE_MIN_RECORDED_90D, HIKE_WORDS,
-  localDay, addDays, weekStart, weekDays, dayName, entryDay, findGoal, reliability, weekState,
+  LIKELY_STEPS, LIKELY_WALK_MIN, RELIABLE_MIN_RECORDED_90D, HIKE_WORDS, CONFIRM_BACK_DAYS, MIN_RECORDED_STEPS, MAX_WEEKS,
+  localDay, addDays, weekStart, weekDays, dayName, entryDay, findGoal, reliability, weekState, evidenceFor,
   read, refresh, addEntry, withdraw, entries, events,
 };

@@ -93,9 +93,53 @@ const FIX_WORDS = {
   'retry-consumer': 'retry the stuck event consumer',
 };
 
-function fromFindings(rows, { healedOutages = new Set() } = {}) {
-  const out = [];
+function _hhmm(iso) {
+  try { return require('./world-model').localMinute(Date.parse(iso)).slice(11, 16); } catch { return String(iso).slice(11, 16); }
+}
+
+/**
+ * Build 16Y: a QUIET episode that came back on its own is ONE line, not two.
+ * Measured over Activity's first days: 45% of all entries were "X went quiet" /
+ * "X recovered" pairs, 12 of 16 of them the phone asleep overnight, and the two
+ * apps on one phone always move in the same minute — one wake, four lines.
+ * So a resolved stale/never-seen finding (not FAILING — failures stay loud, and
+ * not one a self-heal fixed, whose recovery is its own entry) becomes one
+ * `source.quiet-episode` entry at the recovery time, and episodes whose start
+ * AND end fall in the same minutes are merged under one headline.
+ */
+function _foldQuietEpisodes(rows, healedOutages) {
+  const groups = new Map();
+  const rest = [];
   for (const f of rows) {
+    const foldable = f.status === 'resolved' && f.resolved_at && f.resolution !== 'retired'
+      && f.condition !== 'failing' && !healedOutages.has(f.finding_id);
+    if (!foldable) { rest.push(f); continue; }
+    const k = `${String(f.first_detected_at).slice(0, 16)}|${String(f.resolved_at).slice(0, 16)}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(f);
+  }
+  const folded = [];
+  for (const g of groups.values()) {
+    const labels = [...new Set(g.map((f) => _label(f.source_id)))];
+    const first = g[0];
+    const names = labels.length <= 2 ? labels.join(' and ') : `${labels.slice(0, 2).join(', ')} and ${labels.length - 2} more`;
+    const one = labels.length === 1;
+    folded.push(entry({
+      id: `finding:${first.finding_id}:episode`, occurredAt: first.resolved_at, category: 'recovered', type: 'source.quiet-episode',
+      headline: `${names} ${one ? 'was' : 'were'} quiet ${_hhmm(first.first_detected_at)}–${_hhmm(first.resolved_at)} and came back on ${one ? 'its' : 'their'} own`,
+      summary: first.resolution === 'transport-alive' ? 'The app was reporting throughout.' : null,
+      status: 'recovered', severity: 'info',
+      sourceRefs: g.map((f) => `source:${f.source_id}`), findingRef: first.finding_id,
+      metadata: { folded: g.length, findingIds: g.map((f) => f.finding_id), condition: first.condition },
+    }));
+  }
+  return { folded, rest };
+}
+
+function fromFindings(rows, { healedOutages = new Set() } = {}) {
+  const { folded, rest } = _foldQuietEpisodes(rows, healedOutages);
+  const out = [...folded];
+  for (const f of rest) {
     const label = _label(f.source_id);
     const sev = f.condition === 'failing' ? 'warning' : 'notice';
     out.push(entry({
@@ -312,6 +356,21 @@ function fromEventLog(rows) {
     } else if (r.type === 'runtime.job.failed') {
       out.push(entry({ id: `ev:${r.event_id}`, occurredAt: r.occurred_at, category: 'sensed', type: 'runtime.failed', actor: 'system-runtime',
         headline: `A scheduled job failed after ${p.attempts} attempt${p.attempts === 1 ? '' : 's'}: ${p.job}`, status: 'failed', severity: 'warning', metadata: { job: p.job } }));
+    } else if (r.type === 'native.queue.replayed') {
+      // Build 16G: the phone held a backlog while offline and it has landed.
+      const age = p.oldestAgeMinutes >= 120 ? `${Math.round(p.oldestAgeMinutes / 60)}h` : `${p.oldestAgeMinutes} min`;
+      out.push(entry({ id: `ev:${r.event_id}`, occurredAt: r.occurred_at, category: 'recovered', type: 'native.replayed', actor: 'external-system',
+        headline: `${_label(p.sourceId)}: ${p.delivered} queued event${p.delivered === 1 ? '' : 's'} replayed after reconnect (oldest ${age})`,
+        status: 'recovered', sourceRefs: [`source:${p.sourceId}`], metadata: { delivered: p.delivered, oldestAgeMinutes: p.oldestAgeMinutes } }));
+    } else if (r.type === 'native.queue.degraded') {
+      const parts = [];
+      if (p.quarantinedAdded) parts.push(`${p.quarantinedAdded} unreadable event${p.quarantinedAdded === 1 ? ' was' : 's were'} quarantined`);
+      if (p.evictedAdded) parts.push(`${p.evictedAdded} event${p.evictedAdded === 1 ? ' was' : 's were'} dropped past the retention limit`);
+      out.push(entry({ id: `ev:${r.event_id}`, occurredAt: r.occurred_at, category: 'sensed', type: 'native.degraded', actor: 'external-system',
+        headline: `${_label(p.sourceId)} queue on the phone: ${parts.join('; ')}`,
+        summary: p.quarantinedAdded ? 'Kept aside on the phone, not lost; the good events around it were delivered.' : null,
+        status: p.evictedAdded ? 'failed' : 'noticed', severity: 'warning', sourceRefs: [`source:${p.sourceId}`],
+        metadata: { quarantinedAdded: p.quarantinedAdded, evictedAdded: p.evictedAdded } }));
     } else if (r.type === 'source.lifecycle.changed') {
       const label = _label(p.sourceId);
       out.push(entry({ id: `ev:${r.event_id}`, occurredAt: r.occurred_at, category: 'configured', type: 'source.lifecycle',
@@ -397,7 +456,7 @@ function collect({ fromIso, toIso }) {
       const rows = db.all(`SELECT id, event_type, event_data, date_key, created_at FROM activity_log WHERE event_type IN ('authority_refused','feature_flag_changed') AND date_key >= ? AND date_key <= ?`, [day(fromIso), day(toIso)]);
       return [...fromRefusals(rows.filter((r) => r.event_type === 'authority_refused')), ...fromFlagChanges(rows.filter((r) => r.event_type === 'feature_flag_changed'))];
     }, gaps),
-    ..._safe('event_log', () => fromEventLog(db.all(`SELECT event_id, type, occurred_at, payload FROM event_log WHERE type IN ('runtime.job.skipped','runtime.job.failed','source.lifecycle.changed') AND ${between('occurred_at')}`, w)), gaps),
+    ..._safe('event_log', () => fromEventLog(db.all(`SELECT event_id, type, occurred_at, payload FROM event_log WHERE type IN ('runtime.job.skipped','runtime.job.failed','source.lifecycle.changed','native.queue.replayed','native.queue.degraded') AND ${between('occurred_at')}`, w)), gaps),
     ..._safe('goal_loop_events', () => fromGoalLoop(db.all(`SELECT * FROM goal_loop_events WHERE ${between('at')}`, w)), gaps),
   ].filter((e) => e && e.occurredAt && e.occurredAt >= fromIso && e.occurredAt <= toIso);
   // Stable: newest first, then id — the same rows always come back in the same order.
@@ -421,7 +480,9 @@ function matches(e, filter) {
 /** Pure. "Today NEURO…" — counts read off the entries, never invented. */
 function summarise(entries) {
   const c = {
-    noticed: entries.filter((e) => e.type === 'source.stopped').length,
+    // An episode folded into one line is still a thing NEURO noticed (16Y).
+    noticed: entries.filter((e) => e.type === 'source.stopped').length
+      + entries.filter((e) => e.type === 'source.quiet-episode').reduce((n, e) => n + ((e.metadata && e.metadata.folded) || 1), 0),
     investigated: new Set(entries.filter((e) => e.category === 'investigated').map((e) => e.investigationRef)).size,
     fixed: entries.filter((e) => e.type === 'selfheal.recovered').length,
     fixAttempts: entries.filter((e) => e.type === 'selfheal.executed').length,
@@ -452,11 +513,38 @@ function summarise(entries) {
 
 /** Declared, not discovered: work deliberately left for later (15Z). */
 const PENDING = Object.freeze([
-  { id: 'ios-9ac7f0f', text: 'iOS reliability update pending build (nuero-ios 9ac7f0f: outbox quarantine + transient failures)' },
-  { id: 'ios-place-sensing', text: 'iOS 5 Oct place-sensing changes are uncommitted in nuero-ios and need resolving' },
-  { id: 'ios-location-outbox', text: 'Durable location / visit / geofence outbox on iOS is unfinished' },
-  { id: 'ios-swift-tests', text: 'Swift tests for Builds 12–14 have not been run (needs the Mac)' },
+  { id: 'ios-build16', text: 'iOS Build 16 (durable location queue, visits, geofences, SAiM device reports) is committed but not yet built and installed (needs the Mac)' },
+  { id: 'ios-device-proof', text: 'Offline / kill / reboot replay has not yet been proven on the real phone' },
 ]);
+
+/**
+ * Build 16Z: "Autonomy today" — read-only, counted off today's entries plus two
+ * live reads (what waits for Nick, which switches hold autonomy back). Never
+ * throws; an unreadable part is null, never zero.
+ */
+const AUTONOMY_SWITCHES = Object.freeze(['self_heal', 'source_blind_live', 'governed_execution', 'governed_calendar']);
+function autonomy(todayCounts) {
+  const out = {
+    investigations: todayCounts.investigated,
+    automaticFixes: todayCounts.fixAttempts,
+    verifiedRecoveries: todayCounts.fixed,
+    awaitingNick: null,
+    failedOrUncertain: todayCounts.failed + todayCounts.uncertain,
+    switchesOff: null,
+  };
+  try {
+    const n = require('./prepared-actions').needsYou();
+    out.awaitingNick = n && n.known !== false ? (n.needsApproval || 0) + (n.needsReview || 0) : null;
+  } catch { out.awaitingNick = null; }
+  try {
+    const flags = require('./feature-flags');
+    out.switchesOff = AUTONOMY_SWITCHES
+      .map((k) => ({ key: k, flag: flags.FLAGS.find((f) => f.key === k) }))
+      .filter((x) => x.flag && flags.isEnabled(x.key) === false)
+      .map((x) => ({ key: x.key, label: x.flag.label }));
+  } catch { out.switchesOff = null; }
+  return out;
+}
 
 function _localDayStartIso(nowMs) {
   const local = require('./world-model').localMinute(nowMs);
@@ -477,12 +565,12 @@ function read({ now = Date.now(), from = null, to = null, filter = 'all', limit 
   const kept = entries.filter((e) => matches(e, f));
   return {
     contract: 'activity-v1', from: fromIso, to: toIso, filter: f, filters: FILTERS,
-    today, total: kept.length, entries: kept.slice(0, Math.max(1, Math.min(MAX_ENTRIES, limit))), gaps, pending: PENDING,
+    today: { ...today, autonomy: autonomy(today.counts) }, total: kept.length, entries: kept.slice(0, Math.max(1, Math.min(MAX_ENTRIES, limit))), gaps, pending: PENDING,
   };
 }
 
 module.exports = {
-  CATEGORIES, ACTORS, FILTERS, PENDING,
+  CATEGORIES, ACTORS, FILTERS, PENDING, AUTONOMY_SWITCHES, autonomy,
   entry, fromFindings, fromInvestigations, fromSelfHeal, fromPreparedActions, fromExternalWrites, fromRefusals, fromFlagChanges, fromEventLog, fromGoalLoop,
   collect, matches, summarise, read,
 };

@@ -89,6 +89,23 @@ const TYPES = Object.freeze({
     required: ['sourceId', 'deliveryId', 'newestObservedAt'],
   },
 
+  // ── Native delivery queues (Build 16G) ─────────────────────────────────────
+  // Only the two things about a phone's durable queue worth an immutable line:
+  // a BACKLOG was delivered late (it was offline, and the queue held it), and
+  // the queue lost something (quarantined a corrupt item, or evicted past its
+  // retention bound). Never a line per upload or per retry tick. Counts and
+  // ages only — never a coordinate or a place name.
+  'native.queue.replayed': {
+    version: 1,
+    provenance: 'observation',
+    required: ['sourceId', 'deviceId', 'delivered', 'oldestAgeMinutes'],
+  },
+  'native.queue.degraded': {
+    version: 1,
+    provenance: 'observation',
+    required: ['sourceId', 'deviceId', 'quarantinedAdded', 'evictedAdded'],
+  },
+
   // ── Runtime (Build 3A): scheduled work that did NOT happen ─────────────────
   // Only the two outcomes worth an immutable record. Routine successes live in
   // runtime_job_runs, not here — hundreds a day of "the timer worked" would be

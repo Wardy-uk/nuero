@@ -366,6 +366,13 @@ async function init() {
       db.exec("ALTER TABLE calendar_cache ADD COLUMN source TEXT NOT NULL DEFAULT 'graph'");
       console.log('[DB] calendar_cache.source added — existing rows stamped graph');
     }
+    // Migration (Build 16I): calendar_cache.is_organizer — Graph's own
+    // isOrganizer, three-valued (NULL = the bridge/ICS path could not say).
+    // Filled by the next sync, which is replace-by-window.
+    if (calColumns.length && !calColumns.includes('is_organizer')) {
+      db.exec('ALTER TABLE calendar_cache ADD COLUMN is_organizer INTEGER');
+      console.log('[DB] calendar_cache.is_organizer added');
+    }
     // ⚠ OUTSIDE the guard above, and NOT in schema.sql. Two reasons, and both
     // have teeth:
     //
@@ -893,15 +900,17 @@ function upsertCalendarEvent(event) {
     : null;
   run(`
     INSERT OR REPLACE INTO calendar_cache
-      (event_id, subject, start_time, end_time, is_all_day, location, organizer, show_as, attendees_other, source, fetched_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      (event_id, subject, start_time, end_time, is_all_day, location, organizer, show_as, attendees_other, source, is_organizer, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `, [
     event.id, event.subject, event.start, event.end,
     event.isAllDay ? 1 : 0, event.location, event.organizer, event.showAs,
     attendeesOther,
     // Which calendar this came from. Defaulted rather than left to the caller,
     // because the value decides what a sync is allowed to DELETE — see below.
-    event.source || 'graph'
+    event.source || 'graph',
+    // Build 16I: Graph's isOrganizer, three-valued — see heldDespiteFree.
+    typeof event.isOrganizer === 'boolean' ? (event.isOrganizer ? 1 : 0) : null,
   ]);
 }
 
