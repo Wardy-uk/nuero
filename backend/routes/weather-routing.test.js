@@ -150,6 +150,19 @@ test('latest reading is current and not stale', async () => {
   assert.equal(o.latest.boot, 2);
 });
 
+test('/latest: the reading Home Assistant polls — current values, its age, and the pressure tendency', async () => {
+  const l = await (await fetch(`${base}/api/weather/latest`)).json();
+  assert.equal(l.ok, true);
+  assert.equal(l.known, true);
+  assert.equal(l.stale, false);
+  for (const k of ['temperatureC', 'humidityPct', 'pressureHpa']) assert.equal(typeof l[k], 'number', k);
+  assert.ok(l.ageSeconds >= 0 && l.ageSeconds < 600);
+  assert.match(l.tendency, /falling/, 'the fixture pressure falls 0.01 hPa a minute');
+  const none = await (await fetch(`${base}/api/weather/latest?node=no-such-node`)).json();
+  assert.equal(none.known, false);
+  assert.equal(none.stale, true, 'a station that never reported is stale, never a reading of nothing');
+});
+
 test('an unknown range is refused', async () => {
   const res = await fetch(`${base}/api/weather/overview?range=fortnight`);
   assert.equal(res.status, 400);

@@ -6,6 +6,7 @@
  *
  *   POST /api/weather/observations      the Pi's forwarder (API token; ingest tier)
  *   GET  /api/weather/overview          one payload for the Weather screen
+ *   GET  /api/weather/latest            the latest reading, for polling (Home Assistant)
  *   POST /api/weather/forecast/refresh  take a forecast snapshot now
  *
  * ⚠ ROUTE ORDER: literals only. Register literals before any parameterised
@@ -34,6 +35,42 @@ router.post('/observations', (req, res) => {
     res.json(r);
   } catch (e) {
     res.status(503).json({ ok: false, error: e.message, retryable: true });
+  }
+});
+
+// GET /api/weather/latest — the outdoor weather station's latest reading, cheap enough to poll every minute (Home Assistant's REST sensors read it): temperature, humidity, pressure, battery, its age, whether it is stale, and the 3-hour pressure tendency. Stale readings are flagged, never presented as current. Keywords: weather station, latest reading, home assistant, temperature, humidity, pressure. Query: node
+router.get('/latest', (req, res) => {
+  try {
+    const nowMs = Date.now();
+    const node = typeof req.query.node === 'string' && req.query.node ? req.query.node : station.defaultNode();
+    const latest = station.latest(node, nowMs);
+    if (!latest) return res.json({ ok: true, node, known: false, stale: true, why: 'the station has never reported' });
+    let tendency = null;
+    let pressureDelta3h = null;
+    if (!latest.stale) {
+      const c = trend.changeOver(station.recent(node, nowMs - 4 * forecast.HOUR, nowMs), 'pressureHpa', nowMs);
+      const t = trend.tendencyBand(c.delta3h);
+      tendency = t ? t.word : null;
+      pressureDelta3h = c.delta3h == null ? null : Math.round(c.delta3h * 100) / 100;
+    }
+    const r1 = (v) => (typeof v === 'number' ? Math.round(v * 10) / 10 : null);
+    res.json({
+      ok: true,
+      node,
+      known: true,
+      stale: latest.stale,
+      observedAt: new Date(latest.observedAt).toISOString(),
+      ageSeconds: Math.round(latest.ageMs / 1000),
+      temperatureC: r1(latest.temperatureC),
+      humidityPct: r1(latest.humidityPct),
+      pressureHpa: r1(latest.pressureHpa),
+      batteryMv: latest.batteryMv ?? null,
+      rssi: latest.rssi ?? null,
+      tendency,
+      pressureDelta3h,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
