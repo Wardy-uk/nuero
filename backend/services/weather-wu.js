@@ -43,11 +43,19 @@ const ext = require('./weather-external');
 const API = 'https://api.weather.com/v2/pws';
 const UPLOAD = 'https://weatherstation.wunderground.com/weatherstation/updateweatherstation.php';
 const FEED = 'wu-pws-v2';
-// Chosen 7 Oct 2026 on a week of evidence (hours reported, WU QC failures,
-// owner-entered elevation vs terrain): ICOALV2 over ICOALV53 (elevation right to
-// 2 m vs 89 m out), ICOALV16 (closest), ICOALV19 over ICOALV57 (161/161 hours,
-// 0 QC failures vs a 33 h gap). WU_IMPORT_STATIONS overrides.
-const DEFAULT_IMPORT = ['ICOALV2', 'ICOALV16', 'ICOALV19'];
+// The ring (7 Oct 2026): two stations per compass direction at ~2 mi and two at
+// ~5 mi, chosen on a week of evidence — hours reported, WU QC failures, owner
+// elevation vs terrain. North is sparse and "south" at 5 mi is really SE (the
+// Markfield pair); see the CLAUDE.md entry. Direction and distance are NOT
+// stored here: they are computed from home at run time (weather-nowcast), so no
+// home coordinates live in this public repo. WU_IMPORT_STATIONS overrides.
+// 16 stations every 20 min ≈ 1,150 calls a day.
+const DEFAULT_IMPORT = [
+  'ICOALV16', 'ILOUGH43', 'IASHBY23', 'IDERBY127',   // N
+  'ILOUGH52', 'ISHEPSHE3', 'IENGLAND505', 'ILOUGH46', // E
+  'ICOALV19', 'IIBSTO2', 'IMARKF3', 'IMARKF2',        // S (far pair is SE)
+  'ICOALV2', 'ICOALV52', 'IASHBY12', 'IASHBY24',      // W
+];
 const STATION_ID = /^[A-Z0-9]{4,20}$/;
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);

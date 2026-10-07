@@ -63,14 +63,43 @@ function register() {
 
   runtime.defineJob({
     name: 'weather-wu-import',
-    cron: '*/10 * * * *',
+    // 16 stations, one call each: every 20 min is ~1,150 calls a day, under
+    // WU's daily allowance for an owner key with room for ad-hoc imports.
+    cron: '2,22,42 * * * *',
     class: 'best-effort',
     catchUp: 'latest',
-    maxLagMs: 10 * 60 * 1000,
+    maxLagMs: 20 * 60 * 1000,
     maxAttempts: 1,
     timeoutMs: 2 * 60 * 1000,
-    why: 'Neighbouring Weather Underground stations. Blocked (recorded as such, not failed) until WU_API_KEY is set.',
+    why: 'Neighbouring Weather Underground stations. Blocked (recorded as such, not failed) until a key is set.',
     run: async () => require('./weather-wu').syncImport(),
+  });
+
+  runtime.defineJob({
+    name: 'weather-nowcast',
+    cron: '6,26,46 * * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: 20 * 60 * 1000,
+    maxAttempts: 1,
+    timeoutMs: 60 * 1000,
+    why: 'Four minutes after each import: score rain calls whose window has closed, record rain starting at home, and record a new rain call when upwind stations are wet.',
+    run: async () => {
+      const r = await require('./weather-nowcast').pass();
+      return { arrival: r.arrival.state, reporting: r.reporting, resolved: r.resolved, recorded: r.recorded };
+    },
+  });
+
+  runtime.defineJob({
+    name: 'weather-retention',
+    cron: '55 3 * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 1,
+    timeoutMs: 5 * 60 * 1000,
+    why: 'Daily summaries of each WU station (kept for good), then raw WU readings older than 30 days deleted. EA data is never deleted.',
+    run: async () => require('./weather-nowcast').retain(),
   });
 
   runtime.defineJob({

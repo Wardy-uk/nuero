@@ -278,44 +278,133 @@ export function elevationText(e) {
   return `${g} m`;
 }
 
-export function NearbyStations({ nearby, nowMs }) {
-  if (!Array.isArray(nearby) || !nearby.length) return null;
+const SECTOR_NAMES = { N: 'North', E: 'East', S: 'South', W: 'West' };
+const RAIN_CLASS = (st) => (st.raining === true ? 'wet' : st.raining === false ? 'dry' : 'quiet');
+
+/** Compass plot of the ring, to scale from home. */
+export function RingCompass({ stations, wind, size = 220 }) {
+  const placed = (stations || []).filter((s) => s.geo);
+  const maxMi = Math.max(6, ...placed.map((s) => s.geo.mi));
+  const c = size / 2, R = c - 18;
+  const pt = (mi, b) => [c + (mi / maxMi) * R * Math.sin((b * Math.PI) / 180), c - (mi / maxMi) * R * Math.cos((b * Math.PI) / 180)];
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="wx-compass" role="img"
+      aria-label={`Nearby stations around home${wind && wind.trusted ? `, wind from ${wind.from}` : ''}`}>
+      <defs><marker id="wx-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" className="wx-cmp-head" /></marker></defs>
+      {[2, 5].filter((m) => m <= maxMi).map((m) => (
+        <g key={m}><circle cx={c} cy={c} r={(m / maxMi) * R} className="wx-cmp-ring" />
+          <text x={c + 3} y={c - (m / maxMi) * R + 10} className="wx-cmp-lbl">{m} mi</text></g>
+      ))}
+      {['N', 'E', 'S', 'W'].map((d, i) => {
+        const [x, y] = pt(maxMi * 1.1, i * 90);
+        return <text key={d} x={x} y={y + 4} textAnchor="middle" className="wx-cmp-dir">{d}</text>;
+      })}
+      {wind && wind.trusted && (() => {
+        // From the side the wind comes FROM, pointing at home.
+        const [x1, y1] = pt(maxMi * 0.95, wind.fromDeg);
+        const [x2, y2] = pt(maxMi * 0.35, wind.fromDeg);
+        return <line x1={x1} y1={y1} x2={x2} y2={y2} className="wx-cmp-wind" markerEnd="url(#wx-arrow)" />;
+      })()}
+      {placed.map((s) => {
+        const [x, y] = pt(s.geo.mi, s.geo.bearing);
+        return <circle key={s.id} cx={x} cy={y} r={4.5} className={`wx-cmp-st wx-cmp-st--${RAIN_CLASS(s)}`}><title>{`${s.id} · ${s.geo.mi.toFixed(1)} mi ${s.geo.dir}`}</title></circle>;
+      })}
+      <circle cx={c} cy={c} r={4} className="wx-cmp-home" />
+    </svg>
+  );
+}
+
+function StationRow({ s, nowMs }) {
+  const l = s.latest;
+  return (
+    <li className={`wx-st wx-st--${RAIN_CLASS(s)}${!l ? ' wx-st--none' : ''}`}>
+      <span className="wx-st-name"><span className={`wx-dot wx-dot--${RAIN_CLASS(s)}`} />{s.name && s.name !== s.id ? s.name : s.id}
+        <span className="wx-nb-id">{s.id}</span></span>
+      <span className="wx-st-where">{s.geo ? `${s.geo.mi.toFixed(1)} mi ${s.geo.dir}` : '—'}</span>
+      {!l ? <span className="wx-st-vals">{s.lastSeenAt ? `last heard ${ageWords(nowMs - s.lastSeenAt)}` : 'no reading yet'}</span> : (
+        <span className="wx-st-vals">
+          {one(l.temperatureC)}°C · {one(l.humidityPct, 0)}% · {mph(l.windMs) ?? '—'} mph{compass(l.windDirectionDeg) ? ` ${compass(l.windDirectionDeg)}` : ''}
+          {' · '}{one(l.rainAccumMm)} mm today{s.raining ? ' · raining' : ''}
+        </span>
+      )}
+      <span className="wx-st-meta">{elevationText(s.elevation)}{l ? ` · ${ageWords(nowMs - l.t)}` : ''}</span>
+    </li>
+  );
+}
+
+export function NearbyStations({ nowcast, nowMs }) {
+  if (!nowcast || nowcast.error || !Array.isArray(nowcast.stations) || !nowcast.stations.length) return null;
+  const by = { N: [], E: [], S: [], W: [], '?': [] };
+  for (const s of nowcast.stations) (by[s.geo ? s.geo.sector : '?'] || by['?']).push(s);
+  for (const k of Object.keys(by)) by[k].sort((a, b) => (a.geo ? a.geo.mi : 99) - (b.geo ? b.geo.mi : 99));
   return (
     <section className="wx-nearby" aria-label="Nearby stations">
       <div className="wx-nearby-head">
         <h2>Nearby stations</h2>
-        <span className="wx-nearby-src">Weather Underground · other people’s stations</span>
+        <span className="wx-nearby-src">Weather Underground · {nowcast.reporting} of {nowcast.stations.length} reporting · other people’s stations</span>
       </div>
-      <div className="wx-nearby-grid">
-        {nearby.map((n) => {
-          const l = n.latest;
-          const quiet = !l || n.offline;
-          return (
-            <div key={n.station} className={`wx-nb${l && l.stale ? ' wx-nb--stale' : ''}${quiet ? ' wx-nb--quiet' : ''}`}>
-              <div className="wx-nb-name">{n.name || n.station}<span className="wx-nb-id">{n.station}</span></div>
-              {!l ? (
-                <div className="wx-nb-msg">{n.error ? `Couldn’t import: ${n.error}` : n.offline ? 'Offline — no current reading' : 'No reading yet'}</div>
-              ) : (
-                <>
-                  <div className="wx-nb-temp">{one(l.temperatureC)}°C</div>
-                  <dl className="wx-nb-vals">
-                    <dt>Humidity</dt><dd>{one(l.humidityPct, 0)}%</dd>
-                    <dt>Pressure</dt><dd>{one(l.pressureHpa)} hPa</dd>
-                    <dt>Wind</dt><dd>{mph(l.windMs) ?? '—'} mph{compass(l.windDirectionDeg) ? ` ${compass(l.windDirectionDeg)}` : ''}{Number.isFinite(l.gustMs) ? `, gust ${mph(l.gustMs)}` : ''}</dd>
-                    <dt>Rain today</dt><dd>{one(l.rainTodayMm)} mm{l.rainRateMmH > 0 ? ` · ${one(l.rainRateMmH)} mm/h now` : ''}</dd>
-                    <dt>Elevation</dt><dd>{elevationText(n.elevation)}</dd>
-                  </dl>
-                  <div className="wx-nb-age">
-                    {l.stale ? '⚠ ' : ''}{ageWords(nowMs - l.observedAt)}
-                    {n.offline ? ' · now offline' : ''}
-                    {l.qc && l.qc !== 'good' ? ` · WU quality: ${l.qc}` : ''}
-                  </div>
-                </>
-              )}
+      <div className="wx-ring">
+        <div className="wx-ring-plot">
+          <RingCompass stations={nowcast.stations} wind={nowcast.wind} />
+          <div className="wx-ring-key">
+            <span><span className="wx-dot wx-dot--wet" />raining</span>
+            <span><span className="wx-dot wx-dot--dry" />dry</span>
+            <span><span className="wx-dot wx-dot--quiet" />no recent reading</span>
+          </div>
+        </div>
+        <div className="wx-ring-lists">
+          {['N', 'E', 'S', 'W', '?'].filter((k) => by[k].length).map((k) => (
+            <div key={k} className="wx-sector">
+              <h3>{SECTOR_NAMES[k] || 'Position unknown'}</h3>
+              <ul>{by[k].map((s) => <StationRow key={s.id} s={s} nowMs={nowMs} />)}</ul>
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
+    </section>
+  );
+}
+
+const ARRIVAL_WORDS = {
+  'raining-here': () => 'Raining here now.',
+  'no-wind': (a) => `Can’t call rain arriving: ${a.why}.`,
+  'no-upwind': (a) => `Can’t call rain arriving: ${a.why}.`,
+  'no-home': () => 'Can’t call rain arriving: home location unknown.',
+  'dry-upwind': (a) => `No rain upwind — ${a.reporting} of ${a.upwind.length} upwind stations reporting, all dry.`,
+};
+
+/** The local nowcast: the next hour or so, from the stations, with its record. */
+export function NowcastCard({ nowcast }) {
+  if (!nowcast) return null;
+  if (nowcast.error) return <section className="wx-nowcast" aria-label="Local nowcast"><p className="wx-rain-err">Couldn’t read the local nowcast: {nowcast.error}</p></section>;
+  const a = nowcast.arrival || {};
+  const w = nowcast.wind;
+  const p = nowcast.pressure || {};
+  const rec = nowcast.record || {};
+  const scored = (rec.hits || 0) + (rec.misses || 0) + (rec.unknown || 0);
+  return (
+    <section className={`wx-nowcast wx-nowcast--${a.state}`} aria-label="Local nowcast">
+      <div className="wx-nearby-head">
+        <h2>Local nowcast</h2>
+        <span className="wx-nearby-src">next hour or so · from {nowcast.reporting} nearby stations</span>
+      </div>
+      <p className="wx-nc-main">
+        {a.state === 'rain-likely'
+          ? <>Rain likely in about <strong>{a.etaMin[0]}–{a.etaMin[1]} min</strong> — {a.raining.length === 1 ? 'a station' : `${a.raining.length} stations`} upwind {a.raining.length === 1 ? 'is' : 'are'} reporting rain, nearest {a.nearest.id} ({a.nearest.mi} mi {a.nearest.dir}). {a.confidence === 'moderate' ? 'Moderate' : 'Low'} confidence.</>
+          : (ARRIVAL_WORDS[a.state] ? ARRIVAL_WORDS[a.state](a) : '—')}
+      </p>
+      <ul className="wx-nc-lines">
+        <li><span className="wx-line-label">Wind</span>
+          {w ? (w.trusted ? `from ${w.from}, ${w.mph} mph (median of ${w.stations} stations)` : `no settled direction across ${w.stations} stations`) : 'too few stations reporting wind'}</li>
+        <li><span className="wx-line-label">Pressure</span>
+          {p.known ? `${p.word} across the ring (${p.delta3h > 0 ? '+' : ''}${p.delta3h} hPa in 3 h; ${p.agree} of ${p.stations} agree)` : `not enough history yet (${p.why || 'no data'})`}</li>
+        <li><span className="wx-line-label">Track record</span>
+          {scored || rec.onsets
+            ? `rain calls ${rec.hits} right, ${rec.misses} wrong${rec.unknown ? `, ${rec.unknown} couldn’t tell` : ''}; rain started here ${rec.onsets} time${rec.onsets === 1 ? '' : 's'}, ${rec.onsetsPredicted} called in advance`
+            : 'no rain calls yet — each one is recorded and checked against the EA gauge and the nearest stations'}</li>
+      </ul>
+      <p className="wx-scope">Covers the next hour or so; beyond that the forecast is the better guide. Rain moves faster than the wind at a garden station, so arrival is a window, not a minute.</p>
     </section>
   );
 }

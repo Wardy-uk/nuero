@@ -133,10 +133,11 @@ test('WU current: km/h → m/s, precipTotal is an accumulation, rain_mm stays nu
   assert.equal(ext.validate(o, NOW).ok, true);
 });
 
-test('WU import is blocked, not failed, without a key — and the default stations are the three chosen', () => {
+test('WU import is blocked, not failed, without a key — and the default ring is the sixteen chosen', () => {
   assert.match(wu.importBlocked({}), /WU_API_KEY/);
   assert.equal(wu.importBlocked({ WU_API_KEY: 'k' }), null);
-  assert.deepEqual(wu.importStations({}), ['ICOALV2', 'ICOALV16', 'ICOALV19']);
+  assert.equal(wu.importStations({}).length, 16);
+  assert.deepEqual(wu.importStations({}).slice(0, 4), ['ICOALV16', 'ILOUGH43', 'IASHBY23', 'IDERBY127']);
 });
 
 test('WU upload params convert SI → imperial at the boundary, and omit what was not measured', () => {

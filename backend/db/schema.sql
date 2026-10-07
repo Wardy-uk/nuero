@@ -736,6 +736,48 @@ CREATE TABLE IF NOT EXISTS external_weather_sync (
   PRIMARY KEY (source_id, feed)
 );
 
+-- Daily summaries of each neighbouring WU station (services/weather-nowcast.js).
+-- Raw WU readings are kept 30 days; these are kept for good, so a station's
+-- long-run behaviour (its offsets, its rain) outlives the raw rows. Days are
+-- Europe/London dates. rain_mm is the station's own since-midnight total at its
+-- last reading of the day.
+CREATE TABLE IF NOT EXISTS weather_station_daily (
+  source_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  t_min REAL, t_max REAL, t_mean REAL,
+  rh_mean REAL, p_mean REAL,
+  wind_mean_ms REAL, gust_max_ms REAL,
+  rain_mm REAL,
+  PRIMARY KEY (source_id, day)
+);
+
+-- Every local nowcast NEURO makes is RECORDED and later SCORED against what the
+-- EA gauge and the near stations measured — the only way to know whether it is
+-- any good. Kept for good. status: open | hit | miss | unknown (could not tell).
+CREATE TABLE IF NOT EXISTS weather_nowcast_predictions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  made_at INTEGER NOT NULL,
+  valid_from INTEGER NOT NULL,
+  valid_to INTEGER NOT NULL,
+  claim TEXT NOT NULL,
+  evidence TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  resolved_at INTEGER,
+  outcome TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_wx_nowcast_status ON weather_nowcast_predictions(status, kind);
+
+-- Rain STARTING at home, whether or not it was predicted. Without these the
+-- record could only ever count hits and false alarms, never the rain it missed.
+CREATE TABLE IF NOT EXISTS weather_nowcast_onsets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at INTEGER NOT NULL,
+  predicted_by INTEGER,
+  evidence TEXT
+);
+
 -- What a device says about ITSELF — battery, motion, connectivity, focus.
 --
 -- Everything here is currently read out of Home Assistant's iOS Companion app

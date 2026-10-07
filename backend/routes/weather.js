@@ -182,6 +182,20 @@ router.post('/sources/wu/sync', async (req, res) => {
   }
 });
 
+// GET /api/weather/nowcast — the local nowcast from the ring of neighbouring stations: wind the stations measure, rain upwind and its rough arrival window, the pressure consensus, each station's direction/distance/latest reading, and the track record of past rain calls. Read-only: only the scheduled pass records predictions. Keywords: nowcast, rain arriving, upwind, pressure trend, nearby stations.
+router.get('/nowcast', async (req, res) => {
+  try {
+    const nc = require('../services/weather-nowcast');
+    const loc = await forecast.location().catch(() => ({ known: false }));
+    const home = loc && loc.known ? { lat: loc.latitude, lon: loc.longitude } : null;
+    const out = nc.build({ home });
+    // ⚠ Home's coordinates are used and never returned.
+    res.json({ ok: true, ...out, record: nc.record() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // POST /api/weather/wu/key — store the Weather Underground API key used to import neighbouring PWS stations. Answers only whether it was accepted and where the key now comes from; the value is never returned. Keywords: Weather Underground key, WU API key, settings. Body: { key }
 router.post('/wu/key', (req, res) => {
   if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });

@@ -169,40 +169,72 @@ test('the query a range asks for: 15-minute data up to a week, daily totals beyo
   assert.ok(q.toMs >= NOW && q.fromMs < NOW);
 });
 
-test('nearby stations: a reading shows with its age, an offline station says so, a stale one is marked', async () => {
+function nowcastPayload(over = {}) {
+  const st = (id, mi, bearing, sector, dir, raining, latest, extra = {}) => ({
+    id, name: id === 'ICOALV2' ? 'Coalville' : null, raining, lastSeenAt: latest ? latest.t : NOW - 5 * 3600000,
+    geo: { mi, bearing, dir, sector, ring: mi <= 3.5 ? 'near' : 'far' },
+    latest, elevation: { reportedM: 143.9, groundM: 142 }, ...extra,
+  });
+  const L = (t, temp, rain = 0) => ({ t: NOW - t * MIN, temperatureC: temp, humidityPct: 80, windMs: 4, windDirectionDeg: 260, rainAccumMm: rain, rainRateMmH: 0 });
+  return {
+    ok: true, nowMs: NOW, homeKnown: true, reporting: 3,
+    wind: { fromDeg: 260, from: 'W', speedMs: 4, mph: 9, stations: 12, steadiness: 0.8, trusted: true },
+    home: { raining: false },
+    arrival: { state: 'rain-likely', etaMin: [12, 30], raining: ['ICOALV52'], upwind: ['ICOALV52', 'IASHBY12'], nearest: { id: 'ICOALV52', mi: 3.3, dir: 'WSW' }, confidence: 'low' },
+    pressure: { known: true, delta3h: -2.1, word: 'falling slowly', band: 'slow', stations: 14, agree: 11 },
+    stations: [
+      st('ICOALV2', 0.7, 305, 'W', 'NW', false, L(4, 13.2)),
+      st('ICOALV52', 3.3, 238, 'W', 'WSW', true, L(6, 12.1, 1.4)),
+      st('ILOUGH46', 5.3, 98, 'E', 'E', false, L(5, 13.8)),
+      st('IDERBY127', 5.0, 335, 'N', 'NNW', null, null, { elevation: { reportedM: 47.9, groundM: 168, mismatch: true } }),
+    ],
+    record: { hits: 0, misses: 0, unknown: 0, open: 1, onsets: 0, onsetsPredicted: 0 },
+    ...over,
+  };
+}
+
+test('the nowcast card names the rain window, the wind, the pressure consensus and the record', async () => {
   const m = await load();
-  const nearby = [
-    { station: 'ICOALV53', name: 'Whitwick', offline: false, error: null,
-      latest: { observedAt: NOW - 4 * MIN, ageMs: 4 * MIN, stale: false, temperatureC: 13.5, humidityPct: 65, pressureHpa: 996.95, windMs: 2.194, gustMs: 2.361, windDirectionDeg: 292, rainRateMmH: 0, rainTodayMm: 5.84, qc: 'good' } },
-    { station: 'ICOALV50', name: null, offline: true, error: null, latest: null },
-    { station: 'ICOALV19', name: 'Coalville', offline: false, error: null,
-      latest: { observedAt: NOW - 90 * MIN, ageMs: 90 * MIN, stale: true, temperatureC: 13.5, humidityPct: 71, pressureHpa: 999.66, windMs: 1.389, gustMs: 2.194, windDirectionDeg: 298, rainRateMmH: 0, rainTodayMm: 5.08, qc: 'good' } },
-  ];
-  const html = view(m, { data: { node: null }, rain: rainPayload(), sources: { ...SOURCES, nearby } });
+  const html = view(m, { data: { node: null }, rain: rainPayload(), sources: SOURCES, nowcast: nowcastPayload() });
+  assert.match(html, /aria-label="Local nowcast"/);
+  assert.match(html, /Rain likely in about <strong>12–30 min<\/strong>/);
+  assert.match(html, /nearest ICOALV52 \(3\.3 mi WSW\)\. Low confidence/);
+  assert.match(html, /from W, 9 mph \(median of 12 stations\)/);
+  assert.match(html, /falling slowly across the ring \(-2\.1 hPa in 3 h; 11 of 14 agree\)/);
+  assert.match(html, /no rain calls yet — each one is recorded and checked/);
+});
+
+test('the nowcast never pretends: no wind, home raining and a failed read each say so', async () => {
+  const m = await load();
+  const v = (arrival) => view(m, { data: { node: null }, nowcast: nowcastPayload({ arrival }) });
+  assert.match(v({ state: 'no-wind', why: 'the stations disagree on the wind direction' }), /Can’t call rain arriving: the stations disagree/);
+  assert.match(v({ state: 'raining-here' }), /Raining here now\./);
+  assert.match(v({ state: 'dry-upwind', upwind: ['A', 'B'], reporting: 2 }), /No rain upwind — 2 of 2 upwind stations reporting, all dry\./);
+  assert.match(view(m, { data: { node: null }, nowcast: { error: 'HTTP 500' } }), /Couldn’t read the local nowcast: HTTP 500/);
+  const rec = view(m, { data: { node: null }, nowcast: nowcastPayload({ record: { hits: 3, misses: 1, unknown: 1, onsets: 5, onsetsPredicted: 3 } }) });
+  assert.match(rec, /rain calls 3 right, 1 wrong, 1 couldn’t tell; rain started here 5 times, 3 called in advance/);
+});
+
+test('nearby stations: grouped by direction, plotted on the compass, wet / dry / quiet told apart', async () => {
+  const m = await load();
+  const html = view(m, { data: { node: null }, nowcast: nowcastPayload() });
   assert.match(html, /aria-label="Nearby stations"/);
-  assert.match(html, /Whitwick/);
-  assert.match(html, /13\.5°C/);
-  assert.match(html, /5 mph WNW, gust 5/);
-  assert.match(html, /5\.8 mm/);
-  assert.match(html, /Offline — no current reading/);
-  assert.match(html, /wx-nb--stale/);
-  assert.match(html, /⚠ /);
+  assert.match(html, /3 of 4 reporting/);
+  for (const h of ['North', 'East', 'West']) assert.match(html, new RegExp(`<h3>${h}</h3>`));
+  assert.doesNotMatch(html, /<h3>South<\/h3>/, 'an empty direction is not drawn');
+  assert.match(html, /wx-cmp-st--wet/);
+  assert.match(html, /wx-cmp-st--quiet/, 'a station with no recent reading is hollow, not dry');
+  assert.match(html, /1\.4 mm today · raining/);
+  assert.match(html, /last heard/);
+  assert.match(html, /168 m ground · owner says 48 m/);
+  assert.match(html, /wx-cmp-wind/, 'the wind arrow is drawn when the wind is trusted');
+  assert.doesNotMatch(view(m, { data: { node: null }, nowcast: nowcastPayload({ wind: { ...nowcastPayload().wind, trusted: false } }) }), /wx-cmp-wind/);
 });
 
-test('no nearby card when no station is configured or the sources read failed', async () => {
-  const m = await load();
-  assert.doesNotMatch(view(m, { data: { node: null }, rain: rainPayload(), sources: { ...SOURCES, nearby: [] } }), /Nearby stations/);
-  assert.doesNotMatch(view(m, { data: { node: null }, rain: rainPayload(), sources: { error: 'HTTP 500' } }), /Nearby stations/);
-});
-
-test('elevation on the card: ground height, with the owner figure beside it only when it is wrong', async () => {
+test('elevation text: ground height, with the owner figure only when it is wrong', async () => {
   const r = await loadRain();
   assert.equal(r.elevationText({ reportedM: 143.9, groundM: 142, mismatch: false }), '142 m');
   assert.equal(r.elevationText({ reportedM: 47.9, groundM: 168, mismatch: true }), '168 m ground · owner says 48 m');
-  assert.equal(r.elevationText({ reportedM: 50, groundM: null, mismatch: false }), '50 m (owner’s figure, unchecked)');
+  assert.equal(r.elevationText({ reportedM: 50, groundM: null }), '50 m (owner’s figure, unchecked)');
   assert.equal(r.elevationText(null), '—');
-  const m = await load();
-  const nearby = [{ station: 'ICOALV16', name: 'Coalville', offline: false, error: null, elevation: { reportedM: 47.9, groundM: 168, mismatch: true },
-    latest: { observedAt: NOW - 4 * MIN, ageMs: 4 * MIN, stale: false, temperatureC: 12.7, humidityPct: 80, pressureHpa: 1022, windMs: 1, gustMs: 2, windDirectionDeg: 0, rainRateMmH: 0, rainTodayMm: 4, qc: 'good' } }];
-  assert.match(view(m, { data: { node: null }, rain: rainPayload(), sources: { ...SOURCES, nearby } }), /Elevation<\/dt><dd>168 m ground · owner says 48 m/);
 });
