@@ -65,7 +65,7 @@ export const interactive = {
     'post_notion_sync_token', 'delete_notion_sync_token', 'put_notion_sync_mappings', 'post_notion_sync_unlock',
     'post_prepared_actions_approval_code', 'post_prepared_actions_trust_device', 'post_prepared_actions_devices_by_deviceId_revoke',
     'post_push_subscribe', 'post_push_unsubscribe', 'post_push_apns_register', 'delete_push_apns_register', 'delete_push_subscriptions',
-    'post_rescuetime_key', 'delete_rescuetime_key',
+    'post_rescuetime_key', 'delete_rescuetime_key', 'post_weather_wu_key', 'delete_weather_wu_key',
   ].map(id => [id, 'Credentials, switches, accounts, trusted devices and push endpoints are Nick\'s to change, in NEURO → Settings. An agent cannot.'])),
 };
 // Path params the backend accepts only from a closed set. The inventory is
