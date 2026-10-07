@@ -232,7 +232,7 @@ function coverageVerdict({ calendar = [], notesReadable = true, neededAhead = DE
   const measured = calendar.filter((c) => Number.isFinite(c.aheadDays));
   const fresh = measured.filter((c) => c.fresh);
   if (!calendar.length || !measured.length) {
-    reasons.push('No phone calendar push has reported what it covers yet (the installed app predates Build 18 coverage), so dates from the phone may be missing.');
+    reasons.push('NEURO has not yet measured what the phone\'s calendar push covers — that starts with its next push — so dates from the phone may be missing.');
   } else if (!fresh.length) {
     reasons.push('The phone calendar has not pushed recently, so anything added or removed on the phone since then is not reflected.');
   }
