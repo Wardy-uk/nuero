@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-07 (Build 16: native reliability + convergence)
+
+- Deployed nuero 2eddf98 + 1e241ce to pi5 (Pi gate 5458/0 on 2eddf98). nuero-ios 8733c2c PUSHED, UNBUILT (Mac: swift test, build both apps, install, then the real-device runbook in the vault Build 16 note section 5).
+- Phone runs 58df50a (inferred; apps send Neuro/1 so the server can't name it). Place-sensing was never installed (0 visits, 0 region events).
+- Durable location queue (NeuroKit DurableQueue) compiled + tested under swift:6.0 in docker on pi5 (27 pass, 2 mutations) — scratch package recipe: copy the Foundation-only files + a stub NeuroAPIClient.APIError, `docker run --rm -v /tmp/nk:/nk -w /nk swift:6.0 swift test`.
+- Free standup is a meeting again (calendar_cache.is_organizer fills on next sync — verify Team Standup row shows 1). Legacy meeting-prep stays live, fixed (solo blocks, per-occurrence key). Hiking confirm window 120 days.
+- For Nick: confirm/deny 19 Sep (likely) + planned Saturdays; product call on "role + last 1-2-1" pushes (that retires legacy prep); Build 17 = Mac day, then repeated-source-degradation investigation, then personal dates.
+- Another session was editing standup-session.js / task-blocks.js / chat-tools.js concurrently — not touched, not committed by me.
+
+---
+
 # Session Handoff — 2026-10-06 (Build 15: Activity, safe self-heal, meeting age bound, hiking loop)
 
 - Deployed nuero 5ba6338 → 2922a68 to pi5 (Pi gate 5361/0 before restart; local 5376/0). MCP gateway rebuilt (hike-write routes interactive). No iOS work.
