@@ -93,8 +93,20 @@ const FIX_WORDS = {
   'retry-consumer': 'retry the stuck event consumer',
 };
 
-function _hhmm(iso) {
-  try { return require('./world-model').localMinute(Date.parse(iso)).slice(11, 16); } catch { return String(iso).slice(11, 16); }
+function _local(iso) {
+  try { return require('./world-model').localMinute(Date.parse(iso)); } catch { return String(iso).slice(0, 16); }
+}
+
+/**
+ * "07:00–19:00", or "Mon 19:00–Tue 07:35" when the span crosses midnight. The
+ * span runs from when the source was LAST HEARD (`basis_at`) — not when NEURO
+ * noticed — to the observation that ended it. PURE.
+ */
+function _span(fromIso, toIso) {
+  const a = _local(fromIso); const b = _local(toIso);
+  if (a.slice(0, 10) === b.slice(0, 10)) return `${a.slice(11, 16)}–${b.slice(11, 16)}`;
+  const dn = (d) => DAY[new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))).getUTCDay()].slice(0, 3);
+  return `${dn(a)} ${a.slice(11, 16)}–${dn(b)} ${b.slice(11, 16)}`;
 }
 
 /**
@@ -126,7 +138,7 @@ function _foldQuietEpisodes(rows, healedOutages) {
     const one = labels.length === 1;
     folded.push(entry({
       id: `finding:${first.finding_id}:episode`, occurredAt: first.resolved_at, category: 'recovered', type: 'source.quiet-episode',
-      headline: `${names} ${one ? 'was' : 'were'} quiet ${_hhmm(first.first_detected_at)}–${_hhmm(first.resolved_at)} and came back on ${one ? 'its' : 'their'} own`,
+      headline: `${names} ${one ? 'was' : 'were'} quiet ${_span(first.basis_at || first.first_detected_at, first.resolved_at)} and came back on ${one ? 'its' : 'their'} own`,
       summary: first.resolution === 'transport-alive' ? 'The app was reporting throughout.' : null,
       status: 'recovered', severity: 'info',
       sourceRefs: g.map((f) => `source:${f.source_id}`), findingRef: first.finding_id,

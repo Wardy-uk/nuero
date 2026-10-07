@@ -170,7 +170,10 @@ test('a quiet episode that came back on its own is ONE line, and two apps on one
   ]);
   assert.equal(out.length, 1);
   assert.equal(out[0].type, 'source.quiet-episode');
-  assert.match(out[0].headline, /were quiet 20:35–07:35 and came back on their own/);
+  assert.match(out[0].headline, /were quiet Tue 20:35–Wed 07:35 and came back on their own/);
+  // The span starts when the source was last HEARD, not when NEURO noticed.
+  const same = tl.fromFindings([finding('f9', 'reminders.neuro-ios', '2026-10-06T18:00:07Z', '2026-10-06T18:00:00Z', { basis_at: '2026-10-06T06:00:00Z' })]);
+  assert.match(same[0].headline, /quiet 07:00–19:00/);
   assert.equal(tl.summarise(out).counts.noticed, 2, 'still two things noticed');
 });
 
