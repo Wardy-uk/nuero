@@ -192,3 +192,25 @@ test("each station in the nowcast carries the server's elevation judgement", asy
   assert.equal(w.elevation.groundM, 200);
   assert.equal(typeof w.elevation.mismatch, 'boolean');
 });
+
+test('the real route resolves home through weather-forecast.location() — and never returns the coordinates', async () => {
+  // ⚠ Every other test hands the pass a home; the route asks the real lookup,
+  //   which shipped unexported and 500'd on the first live call (7 Oct 2026).
+  assert.equal(typeof require('./weather-forecast').location, 'function');
+  process.env.WEATHER_LAT = String(HOME.lat); process.env.WEATHER_LON = String(HOME.lon);
+  const express = require('express'); const http = require('http');
+  const app = express(); app.use(express.json()); app.use('/api/weather', require('../routes/weather'));
+  const server = http.createServer(app); await new Promise((r) => server.listen(0, r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/weather/nowcast`);
+    const text = await res.text();
+    assert.equal(res.status, 200, text.slice(0, 200));
+    const j = JSON.parse(text);
+    assert.equal(j.homeKnown, true);
+    assert.ok(j.stations.some((s) => s.geo), 'stations placed relative to home');
+    // Home's own coordinates are not in the payload. (Stations' public positions
+    // plus their distance and bearing would let anyone holding this PIN-gated
+    // payload work home out — accepted, and not claimed otherwise.)
+    assert.ok(!('lat' in j.home) && !('lon' in j.home) && !('lat' in j) && !('location' in j), 'no home coordinates in the payload');
+  } finally { server.close(); delete process.env.WEATHER_LAT; delete process.env.WEATHER_LON; }
+});

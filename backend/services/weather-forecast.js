@@ -259,4 +259,6 @@ module.exports = {
   PROVIDERS, HOUR, SNAPSHOT_MIN_GAP_MS,
   shapeOpenMeteo, shapeHomeAssistant, pickStanding, alignToBuckets,
   providerName, snapshot, standingBetween, storeSnapshot,
+  // Also the home location for weather-nowcast's station geometry.
+  location,
 };
