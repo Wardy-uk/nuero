@@ -70,3 +70,33 @@ test('the house line says when the TV is on', () => {
   const s = board.houseSummary({ known: true, rooms: [], household: { known: false } }, 'Office', { tvOn: true });
   assert.equal(s.tvOn, true);
 });
+
+// ── the weather station card ────────────────────────────────────────────────
+
+test('station: a live reading becomes temperature, humidity, pressure and the trend', () => {
+  const nowMs = NOW.getTime();
+  const latest = { observedAt: nowMs - 60000, temperatureC: 11.26, humidityPct: 82.4, pressureHpa: 1008.6, stale: false };
+  const summary = { evidence: { pressureTendency: 'falling slowly' }, sensor: { available: true, verdict: 'Pressure falling slowly — possibly turning less settled.', indoorLikely: false } };
+  const c = board.stationCard(latest, summary, nowMs);
+  assert.equal(c.known, true);
+  assert.equal(c.tempC, 11.3);
+  assert.equal(c.humidityPct, 82);
+  assert.equal(c.pressureHpa, 1009);
+  assert.equal(c.tendency, 'falling slowly');
+  assert.match(c.verdict, /falling slowly/);
+});
+
+test('⚠ station: a stale reading is a named gap with its age, never old numbers as now', () => {
+  const nowMs = NOW.getTime();
+  const c = board.stationCard({ observedAt: nowMs - 3 * 3600000, temperatureC: 4, stale: true }, null, nowMs);
+  assert.equal(c.known, false);
+  assert.equal(c.tempC, undefined, 'no temperature leaks through');
+  assert.match(c.why, /3 h/);
+  assert.equal(board.stationCard(null, null, nowMs).known, false);
+});
+
+test('station: no verdict line until the sensor has enough history to have one', () => {
+  const nowMs = NOW.getTime();
+  const c = board.stationCard({ observedAt: nowMs, temperatureC: 10, stale: false }, { evidence: {}, sensor: { available: false, verdict: 'Too little history…' } }, nowMs);
+  assert.equal(c.verdict, null);
+});

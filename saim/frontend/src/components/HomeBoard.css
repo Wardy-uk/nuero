@@ -75,6 +75,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.homeboard__line--wrap { white-space: normal; }
+.homeboard__wx--station span { text-transform: none; }
 .homeboard__when {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.85em;

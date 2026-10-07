@@ -77,6 +77,7 @@ export default function HomeBoard({ now, area, say, onWork = null }) {
 
   const room = roomLine(board && board.room);
   const w = board && board.weather;
+  const st = board && board.station;
   const events = (board && board.diary && board.diary.known && board.diary.events) || [];
   const house = houseLines(board && board.house);
   const message = typeof say === 'string' && say.trim() ? say.trim() : null;
@@ -95,8 +96,28 @@ export default function HomeBoard({ now, area, say, onWork = null }) {
       </div>
 
       <div className="homeboard__side">
+        {st && (
+          <section className="homeboard__block">
+            <h3 className="homeboard__h">Weather station</h3>
+            {st.known ? (
+              <>
+                <div className="homeboard__wx homeboard__wx--station">
+                  {typeof st.tempC === 'number' ? `${st.tempC.toFixed(1)}°` : ''}{' '}
+                  <span>{[
+                    typeof st.humidityPct === 'number' ? `${st.humidityPct}%` : null,
+                    typeof st.pressureHpa === 'number' ? `${st.pressureHpa} hPa${st.tendency ? `, ${st.tendency}` : ''}` : null,
+                  ].filter(Boolean).join(' · ')}</span>
+                </div>
+                {st.verdict && <div className="homeboard__line homeboard__line--wrap">{st.verdict}</div>}
+              </>
+            ) : (
+              <div className="homeboard__line homeboard__gap">Can't read the weather station — {st.why}.</div>
+            )}
+          </section>
+        )}
+
         <section className="homeboard__block">
-          <h3 className="homeboard__h">Weather</h3>
+          <h3 className="homeboard__h">Forecast</h3>
           {w && w.known ? (
             <>
               <div className="homeboard__wx">
@@ -125,7 +146,7 @@ export default function HomeBoard({ now, area, say, onWork = null }) {
           )}
         </section>
 
-        <HouseholdCard fetchJson={fetchHousehold} fetchPhoto={fetchHouseholdPhoto} compact />
+        <HouseholdCard fetchJson={fetchHousehold} fetchPhoto={fetchHouseholdPhoto} compact visitorsOnlyWhenHome />
 
         {house.length > 0 && (
           <section className="homeboard__block">

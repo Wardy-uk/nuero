@@ -69,7 +69,7 @@ function Face({ member, fetchPhoto, size }) {
 }
 
 /** PURE-ish view: renders a household payload. Exported for tests. */
-export function HouseholdView({ data, error = false, fetchPhoto = null, compact = false, title = "Who's in" }) {
+export function HouseholdView({ data, error = false, fetchPhoto = null, compact = false, title = "Who's in", visitorsOnlyWhenHome = false }) {
   if (!data) {
     return (
       <section className="hh-card" aria-label="Who's in the house">
@@ -78,7 +78,11 @@ export function HouseholdView({ data, error = false, fetchPhoto = null, compact 
       </section>
     );
   }
-  const members = data.members || [];
+  // Visitors (Lizzy, Daniel) don't live here, so a board in the house shows
+  // them only while they are actually in it — "Out" for someone who is always
+  // out is noise. ⚠ Only a positive `home` shows them; `unknown` hides them
+  // too, and the "can't see the house" note above still says why.
+  const members = (data.members || []).filter((m) => !visitorsOnlyWhenHome || m.role !== 'visitor' || m.state === 'home');
   const people = members.filter((m) => m.role !== 'companion');
   const homeCount = people.filter((m) => m.state === 'home').length;
   const size = compact ? 48 : 72;
@@ -105,7 +109,7 @@ export function HouseholdView({ data, error = false, fetchPhoto = null, compact 
   );
 }
 
-export default function HouseholdCard({ fetchJson, fetchPhoto = null, compact = false, title }) {
+export default function HouseholdCard({ fetchJson, fetchPhoto = null, compact = false, title, visitorsOnlyWhenHome = false }) {
   const { data, error } = useHousehold(fetchJson);
-  return <HouseholdView data={data} error={error} fetchPhoto={fetchPhoto} compact={compact} title={title} />;
+  return <HouseholdView data={data} error={error} fetchPhoto={fetchPhoto} compact={compact} title={title} visitorsOnlyWhenHome={visitorsOnlyWhenHome} />;
 }

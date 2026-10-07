@@ -97,6 +97,59 @@ function weatherLines(weather, outlookFn, now) {
   return { known: true, condition: conditionLabel(weather.condition), tempC, lines: lines.slice(0, 2) };
 }
 
+/**
+ * The outdoor weather station, shaped for a wall. PURE given the latest reading
+ * and the trend summary (`weather-trend.summarise`).
+ *
+ * ⚠ A station that has stopped reporting is a NAMED gap with its age, never
+ * its last numbers presented as now — a temperature from yesterday afternoon
+ * reads exactly like a current one on a wall nobody interrogates.
+ */
+function stationCard(latest, summary, nowMs) {
+  if (!latest) return { known: false, why: 'the weather station has never reported' };
+  const ageMin = Math.max(0, Math.round((nowMs - latest.observedAt) / 60000));
+  if (latest.stale) {
+    const ago = ageMin < 120 ? `${ageMin} min` : ageMin < 2880 ? `${Math.round(ageMin / 60)} h` : `${Math.round(ageMin / 1440)} days`;
+    return { known: false, why: `the weather station has not reported for ${ago}`, ageMin };
+  }
+  const ev = (summary && summary.evidence) || {};
+  const sensor = (summary && summary.sensor) || {};
+  return {
+    known: true,
+    tempC: typeof latest.temperatureC === 'number' ? Math.round(latest.temperatureC * 10) / 10 : null,
+    humidityPct: typeof latest.humidityPct === 'number' ? Math.round(latest.humidityPct) : null,
+    pressureHpa: typeof latest.pressureHpa === 'number' ? Math.round(latest.pressureHpa) : null,
+    tendency: ev.pressureTendency || null,
+    // The sensor's own verdict only when it has one — "too little history" is
+    // not worth a line on a wall.
+    verdict: sensor.available ? sensor.verdict || null : null,
+    indoorLikely: !!sensor.indoorLikely,
+    ageMin,
+  };
+}
+
+function readStation(nowMs) {
+  const station = require('./weather-station');
+  const node = station.defaultNode();
+  const latest = station.latest(node, nowMs);
+  let summary = null;
+  if (latest && !latest.stale) {
+    try {
+      const trend = require('./weather-trend');
+      const forecast = require('./weather-forecast');
+      const fc = forecast.standingBetween(nowMs, nowMs + 25 * forecast.HOUR, nowMs);
+      summary = trend.summarise({
+        obs: station.recent(node, nowMs - 6 * forecast.HOUR, nowMs),
+        forecast: fc.points.filter((p) => p.validAt > nowMs - forecast.HOUR),
+        nowMs,
+        providerLabel: fc.label || 'the forecast',
+        latestStale: false,
+      });
+    } catch { summary = null; }
+  }
+  return stationCard(latest, summary, nowMs);
+}
+
 async function build({ area = null, now = new Date() } = {}) {
   const gaps = [];
   const haRooms = require('./ha-rooms');
@@ -111,6 +164,10 @@ async function build({ area = null, now = new Date() } = {}) {
     weather = weatherLines(await haRooms.readWeather(), outlook, now);
   } catch (e) { weather = { known: false, why: e.message }; }
   if (!weather.known) gaps.push('weather');
+
+  let station;
+  try { station = readStation(now.getTime()); } catch (e) { station = { known: false, why: 'the weather station could not be read' }; }
+  if (!station.known) gaps.push('station');
 
   let diary;
   try {
@@ -130,7 +187,7 @@ async function build({ area = null, now = new Date() } = {}) {
   const houseLine = houseSummary(house, area, { tvOn });
   if (!houseLine.known) gaps.push('house');
 
-  return { area, room, weather, house: houseLine, diary, gaps: [...new Set(gaps)], at: now.toISOString() };
+  return { area, room, weather, station, house: houseLine, diary, gaps: [...new Set(gaps)], at: now.toISOString() };
 }
 
-module.exports = { build, restOfDay, houseSummary, weatherLines, conditionLabel, MAX_EVENTS };
+module.exports = { build, restOfDay, houseSummary, weatherLines, stationCard, conditionLabel, MAX_EVENTS };

@@ -133,4 +133,16 @@ test('the card renders every state in words, and a down source is not an empty h
   const down = renderToString(React.createElement(HouseholdView, { data: { known: false, members: data.members.map((m) => ({ ...m, state: m.role === 'companion' ? 'untracked' : 'unknown' })) } }));
   assert.ok(down.includes('isn&#x27;t “everyone&#x27;s out”'), 'says the house could not be read');
   assert.doesNotMatch(down, /Nobody home/);
+
+  // The home board: a visitor shows ONLY while positively home. Lizzy is home,
+  // Daniel is "unknown" — he must not appear; residents always do.
+  const board = renderToString(React.createElement(HouseholdView, { data, visitorsOnlyWhenHome: true }));
+  assert.ok(board.includes('Lizzy'), 'a visitor who is home is shown');
+  assert.ok(!board.includes('Daniel'), 'a visitor not known to be home is hidden');
+  assert.ok(board.includes('Isaac'), 'a resident who is out is still shown');
+  const away = renderToString(React.createElement(HouseholdView, {
+    data: { ...data, members: data.members.map((m) => (m.role === 'visitor' ? { ...m, state: 'away' } : m)) },
+    visitorsOnlyWhenHome: true,
+  }));
+  assert.ok(!away.includes('Lizzy') && !away.includes('visiting'), 'visitors who are out are hidden');
 });
