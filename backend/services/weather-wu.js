@@ -190,6 +190,41 @@ async function syncImport({ nowMs = Date.now(), env = process.env, fetchImpl, sl
   return { ok: true, results };
 }
 
+// A neighbour's reading older than this is shown as stale, not as now. Imports
+// run every 10 minutes and WU stations report every few; 30 min is missed passes.
+const NEARBY_STALE_MS = 30 * 60 * 1000;
+
+/**
+ * The latest reading of each configured neighbour, for the Weather screen.
+ * A station with nothing stored is listed with latest:null, never dropped —
+ * "offline" and "not configured" must stay visible as themselves.
+ */
+function nearby(nowMs = Date.now(), env = process.env) {
+  const db = require('../db/database');
+  return importStations(env).map((sid) => {
+    const sourceId = `wu:${sid}`;
+    const l = ext.latest(sourceId, { feed: FEED });
+    const st = ext.syncState(sourceId, FEED);
+    let name = null;
+    try {
+      const r = db.get('SELECT raw_payload FROM external_weather_observations WHERE source_id = ? ORDER BY observed_at DESC LIMIT 1', [sourceId]);
+      if (r) name = JSON.parse(r.raw_payload).neighborhood || null;
+    } catch { /* a label is a nicety */ }
+    const ageMs = l ? nowMs - l.observedAt : null;
+    return {
+      station: sid, name,
+      offline: !!(st && st.lastStats && st.lastStats.offline),
+      error: st && st.consecutiveFailures > 0 ? st.lastError : null,
+      latest: l ? {
+        observedAt: l.observedAt, ageMs, stale: ageMs > NEARBY_STALE_MS,
+        temperatureC: l.temperature_c, humidityPct: l.humidity_pct, dewpointC: l.dewpoint_c, pressureHpa: l.pressure_hpa,
+        windMs: l.wind_ms, gustMs: l.gust_ms, windDirectionDeg: l.wind_direction_deg,
+        rainRateMmH: l.rain_rate_mm_h, rainTodayMm: l.rain_accum_mm, elevationM: l.elevation_m, qc: l.qc,
+      } : null,
+    };
+  });
+}
+
 // ── Publish ──────────────────────────────────────────────────────────────────
 
 const cToF = (c) => Math.round((c * 9 / 5 + 32) * 10) / 10;
@@ -284,6 +319,7 @@ async function publishLatest({ nowMs = Date.now(), env = process.env, fetchImpl 
 module.exports = {
   FEED, DEFAULT_IMPORT, UPLOAD,
   apiKey, credentialSource, setStoredKey, clearStoredKey,
+  NEARBY_STALE_MS, nearby,
   importStations, importBlocked, mapQc, shapeCurrent, shapeSummary, syncImport,
   publishConfig, toWuParams, previewUpload, publish, publishLatest,
 };

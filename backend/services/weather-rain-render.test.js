@@ -168,3 +168,29 @@ test('the query a range asks for: 15-minute data up to a week, daily totals beyo
   assert.ok(q.toMs - q.fromMs <= 92 * 86400000, "inside the route's 15-minute span limit");
   assert.ok(q.toMs >= NOW && q.fromMs < NOW);
 });
+
+test('nearby stations: a reading shows with its age, an offline station says so, a stale one is marked', async () => {
+  const m = await load();
+  const nearby = [
+    { station: 'ICOALV53', name: 'Whitwick', offline: false, error: null,
+      latest: { observedAt: NOW - 4 * MIN, ageMs: 4 * MIN, stale: false, temperatureC: 13.5, humidityPct: 65, pressureHpa: 996.95, windMs: 2.194, gustMs: 2.361, windDirectionDeg: 292, rainRateMmH: 0, rainTodayMm: 5.84, qc: 'good' } },
+    { station: 'ICOALV50', name: null, offline: true, error: null, latest: null },
+    { station: 'ICOALV19', name: 'Coalville', offline: false, error: null,
+      latest: { observedAt: NOW - 90 * MIN, ageMs: 90 * MIN, stale: true, temperatureC: 13.5, humidityPct: 71, pressureHpa: 999.66, windMs: 1.389, gustMs: 2.194, windDirectionDeg: 298, rainRateMmH: 0, rainTodayMm: 5.08, qc: 'good' } },
+  ];
+  const html = view(m, { data: { node: null }, rain: rainPayload(), sources: { ...SOURCES, nearby } });
+  assert.match(html, /aria-label="Nearby stations"/);
+  assert.match(html, /Whitwick/);
+  assert.match(html, /13\.5°C/);
+  assert.match(html, /5 mph WNW, gust 5/);
+  assert.match(html, /5\.8 mm/);
+  assert.match(html, /Offline — no current reading/);
+  assert.match(html, /wx-nb--stale/);
+  assert.match(html, /⚠ /);
+});
+
+test('no nearby card when no station is configured or the sources read failed', async () => {
+  const m = await load();
+  assert.doesNotMatch(view(m, { data: { node: null }, rain: rainPayload(), sources: { ...SOURCES, nearby: [] } }), /Nearby stations/);
+  assert.doesNotMatch(view(m, { data: { node: null }, rain: rainPayload(), sources: { error: 'HTTP 500' } }), /Nearby stations/);
+});

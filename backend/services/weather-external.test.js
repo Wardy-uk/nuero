@@ -324,3 +324,16 @@ test('no weather route ever returns the stored key', async () => {
     assert.equal(del.credentialSource, null);
   } finally { server.close(); }
 });
+
+test('nearby(): each configured neighbour with its latest reading and name; offline listed, not dropped', () => {
+  const n = wu.nearby(NOW + 300000, { WU_IMPORT_STATIONS: 'ICOALV53,ICOALV50,ICOALV99' });
+  const by = Object.fromEntries(n.map((x) => [x.station, x]));
+  assert.equal(by.ICOALV53.name, 'Whitwick');
+  assert.equal(by.ICOALV53.latest.temperatureC, 10.8);
+  assert.equal(by.ICOALV53.latest.rainTodayMm, 5.84);
+  assert.equal(by.ICOALV50.latest, null);
+  assert.equal(by.ICOALV50.offline, true);
+  assert.equal(by.ICOALV99.latest, null, 'a configured station never imported is listed, not dropped');
+  assert.equal(by.ICOALV53.latest.stale, false);
+  assert.equal(wu.nearby(NOW + 3 * 3600000, { WU_IMPORT_STATIONS: 'ICOALV53' })[0].latest.stale, true);
+});

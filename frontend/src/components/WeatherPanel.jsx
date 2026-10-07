@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../api';
 import './WeatherPanel.css';
-import { RainChart, SourcesStrip, rainQuery } from './WeatherRain';
+import { RainChart, SourcesStrip, NearbyStations, rainQuery } from './WeatherRain';
 
 // ── The Weather screen ──────────────────────────────────────────────────────
 //
@@ -453,6 +453,7 @@ export function WeatherView({ data, range, onRange, error, loading, onRetry, rai
 
       {/* Rain comes from the EA gauge, not the home station, so it shows
           whether or not the station has ever reported. */}
+      {sources && !sources.error && <NearbyStations nearby={sources.nearby} nowMs={nowMs} />}
       {rain && <RainChart data={rain} range={range} nowMs={nowMs} />}
       <SourcesStrip sources={sources} nowMs={nowMs} />
     </div>

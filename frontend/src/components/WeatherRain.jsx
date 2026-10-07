@@ -254,3 +254,57 @@ export function SourcesStrip({ sources, nowMs }) {
     </section>
   );
 }
+
+// ── Nearby stations (Weather Underground) ────────────────────────────────────
+//
+// Other people's stations, so their numbers are THEIRS: each tile names the
+// station and says how old its reading is. "Rain today" is WU's since-midnight
+// accumulation as the station reports it. Wind is shown in mph (what a UK
+// reader thinks in) from the SI value NEURO stores. A stale or offline station
+// says so instead of showing old numbers as current.
+
+const one = (v, dp = 1) => (Number.isFinite(v) ? v.toFixed(dp) : '—');
+const mph = (ms) => (Number.isFinite(ms) ? Math.round(ms * 2.2369363) : null);
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+export const compass = (deg) => (Number.isFinite(deg) ? COMPASS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16] : null);
+
+export function NearbyStations({ nearby, nowMs }) {
+  if (!Array.isArray(nearby) || !nearby.length) return null;
+  return (
+    <section className="wx-nearby" aria-label="Nearby stations">
+      <div className="wx-nearby-head">
+        <h2>Nearby stations</h2>
+        <span className="wx-nearby-src">Weather Underground · other people’s stations</span>
+      </div>
+      <div className="wx-nearby-grid">
+        {nearby.map((n) => {
+          const l = n.latest;
+          const quiet = !l || n.offline;
+          return (
+            <div key={n.station} className={`wx-nb${l && l.stale ? ' wx-nb--stale' : ''}${quiet ? ' wx-nb--quiet' : ''}`}>
+              <div className="wx-nb-name">{n.name || n.station}<span className="wx-nb-id">{n.station}</span></div>
+              {!l ? (
+                <div className="wx-nb-msg">{n.error ? `Couldn’t import: ${n.error}` : n.offline ? 'Offline — no current reading' : 'No reading yet'}</div>
+              ) : (
+                <>
+                  <div className="wx-nb-temp">{one(l.temperatureC)}°C</div>
+                  <dl className="wx-nb-vals">
+                    <dt>Humidity</dt><dd>{one(l.humidityPct, 0)}%</dd>
+                    <dt>Pressure</dt><dd>{one(l.pressureHpa)} hPa</dd>
+                    <dt>Wind</dt><dd>{mph(l.windMs) ?? '—'} mph{compass(l.windDirectionDeg) ? ` ${compass(l.windDirectionDeg)}` : ''}{Number.isFinite(l.gustMs) ? `, gust ${mph(l.gustMs)}` : ''}</dd>
+                    <dt>Rain today</dt><dd>{one(l.rainTodayMm)} mm{l.rainRateMmH > 0 ? ` · ${one(l.rainRateMmH)} mm/h now` : ''}</dd>
+                  </dl>
+                  <div className="wx-nb-age">
+                    {l.stale ? '⚠ ' : ''}{ageWords(nowMs - l.observedAt)}
+                    {n.offline ? ' · now offline' : ''}
+                    {l.qc && l.qc !== 'good' ? ` · WU quality: ${l.qc}` : ''}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}

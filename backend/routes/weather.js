@@ -123,6 +123,9 @@ router.get('/sources', (req, res) => {
       coverage: ext.coverage(),
       backfill: (ext.syncState(ea.STATION.sourceId, ea.FEED_HY) || {}).backfill || null,
       sourceHealth: spine,
+      // The latest reading of each imported neighbour, for the Nearby stations
+      // card. A configured station with no reading yet is listed with null.
+      nearby: wu.nearby(nowMs),
       wu: { importStations: wu.importStations(), importBlocked: wu.importBlocked(), credentialSource: wu.credentialSource(), publish: wu.publishConfig() },
     });
   } catch (e) {
