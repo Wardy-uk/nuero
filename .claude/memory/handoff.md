@@ -1,3 +1,15 @@
+# Session Handoff — 2026-10-07 (Build 18: native identity + personal-data integrity — SERVER HALF)
+
+- Mac OFFLINE all session → NOTHING native proven. Build 18 is NOT complete. Do docs/build-18-mac-runbook.md on the Mac (18A–18M), record evidence in vault Build 18 note § Mac day.
+- nuero 709b3a4 (Pi gate 5528/0, frontend built on Pi); weather session's f29e06a on top, THEY own the restart. nuero-ios 77f90fc pushed, UNBUILT (X-Neuro-Build, 60-day calendar window + kinds, route permission report, reinstall.sh stamps commit/dirty/commit-count).
+- New: /api/setup/native (builds + capability states + visits/geofence), /api/apple/calendar/coverage, /api/loops/personal-dates/{entities,declared}. Setup: build items, SAiM device status, workout routes (done only when a route arrives).
+- Live facts: 0 visits/region events ever, 0/53 workouts with a route, phone diary pushed only 15 days (4 events) — thin is explained, not proven broken.
+- Degradation replay 17 Aug–7 Oct: threshold 3 → 0 investigations; left unchanged.
+- After the Mac day: flip device.saim-ios to expected in native-sources.js.
+- Shared working tree: cron-once.js + scheduler hunk (another session) still uncommitted; runtime-jobs "wraps every node-cron job" fails locally until they land it.
+
+---
+
 # Session Handoff — 2026-10-07 (Build 17: repeated degradation, personal dates, hiking rule, legacy prep retired)
 
 - Deployed nuero 25f2f27 to pi5 (gate 5510/0; MCP gateway rebuilt). nuero-ios dbf53da (route summary) PUSHED, UNBUILT (Mac tonight: build + swift test + install; prove a Hiking workout route arrives with pointCount and confirms without Nick; Health permission prompt for routes; .r1 anchor re-read).
