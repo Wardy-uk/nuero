@@ -375,7 +375,9 @@ test('the Swift capability names are exactly the server\'s, and every requiremen
   if (!fs.existsSync(file)) { t.skip('no nuero-ios checkout beside this repo'); return; }
   const src = fs.readFileSync(file, 'utf8');
   const swiftCaps = [...src.matchAll(/"([a-z0-9-]+)",?\s*\/\/ Build/g)].map((m) => m[1])
-    .concat(...[...src.matchAll(/caps \+= \[([^\]]+)\]/g)].map((m) => [...m[1].matchAll(/"([a-z0-9-]+)"/g)].map((x) => x[1])));
+    .concat(...[...src.matchAll(/caps \+= \[([^\]]+)\]/g)].map((m) => [...m[1].matchAll(/"([a-z0-9-]+)"/g)].map((x) => x[1])))
+    .concat([...src.matchAll(/caps\.append\("([a-z0-9-]+)"\)/g)].map((m) => m[1]));
+  assert.ok(swiftCaps.includes('geofence'), 'geofence is still a capability name Swift can declare (switched, not deleted)');
   assert.ok(swiftCaps.length >= 8, `positive control: parsed ${swiftCaps.join(',')}`);
   for (const c of swiftCaps) assert.ok(nb.CAPABILITIES[c], `Swift declares "${c}", which the server does not define`);
   for (const need of new Set(Object.values(nb.REQUIREMENTS).flat())) assert.ok(swiftCaps.includes(need), `the server requires "${need}" but no Swift build declares it`);

@@ -64,7 +64,12 @@ const CAPABILITIES = Object.freeze({
  * REPORTING but not HEALTHY in the way Build 16/17/18 promised (18U).
  */
 const REQUIREMENTS = Object.freeze({
-  'location.neuro-ios': ['durable-location-queue', 'place-visits', 'geofence'],
+  // ⚠ NOT geofence (8 Oct 2026): it is judged as a place CAPABILITY
+  // (place-sensing.placeCapabilities → "unavailable" when the build does not
+  // declare it). Requiring it here turned location amber with "predates"
+  // wording on a build where geofencing was merely switched off after it
+  // crashed the app at launch.
+  'location.neuro-ios': ['durable-location-queue', 'place-visits'],
   'device.neuro-ios': ['device-status'],
   'device.saim-ios': ['device-status'],
   'healthkit.neuro-ios': ['workout-route-summary'],
