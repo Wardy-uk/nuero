@@ -151,3 +151,13 @@ part worth keeping:
 And then the fault MOVED: with chat answering correctly, the agent was still
 saying "No", because Home Assistant was matching the question first. That is
 the people rule above.
+
+## Weather station sensors (7 Oct 2026)
+
+`rest_weather_station.yaml` is a copy of the file live at `/config/rest_weather_station.yaml`,
+included from `configuration.yaml` as `rest: !include rest_weather_station.yaml`. It polls
+NEURO's `GET /api/weather/latest` every 60s with `!secret neuro_api_token` and creates
+`sensor.weather_station_{temperature,humidity,pressure,pressure_trend,pressure_change_3h,signal}`.
+A stale station makes them unavailable, never last-known. The config dir is root-owned: edit
+through `docker cp` / `docker exec homeassistant`, check with `POST /api/config/core/check_config`,
+apply with `rest.reload` (no restart needed). REST sensors do not accept `entity_category`.

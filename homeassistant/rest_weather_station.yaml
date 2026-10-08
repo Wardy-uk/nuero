@@ -1,0 +1,48 @@
+# The outdoor weather station, read from NEURO (7 Oct 2026).
+# NEURO is the store: ESP32 -> pi5 saim-weather-ingest -> NEURO -> here.
+# A stale or never-seen station makes the readings UNAVAILABLE rather than
+# holding the last value, which would look current.
+- resource: http://127.0.0.1:3001/api/weather/latest
+  headers:
+    x-neuro-api-token: !secret neuro_api_token
+  scan_interval: 60
+  timeout: 15
+  sensor:
+    - name: Weather station temperature
+      unique_id: neuro_weather_station_temperature
+      value_template: "{{ value_json.temperatureC }}"
+      availability: "{{ value_json.known and not value_json.stale }}"
+      device_class: temperature
+      unit_of_measurement: "°C"
+      state_class: measurement
+    - name: Weather station humidity
+      unique_id: neuro_weather_station_humidity
+      value_template: "{{ value_json.humidityPct }}"
+      availability: "{{ value_json.known and not value_json.stale }}"
+      device_class: humidity
+      unit_of_measurement: "%"
+      state_class: measurement
+    - name: Weather station pressure
+      unique_id: neuro_weather_station_pressure
+      value_template: "{{ value_json.pressureHpa }}"
+      availability: "{{ value_json.known and not value_json.stale }}"
+      device_class: atmospheric_pressure
+      unit_of_measurement: "hPa"
+      state_class: measurement
+    - name: Weather station pressure trend
+      unique_id: neuro_weather_station_pressure_trend
+      value_template: "{{ value_json.tendency or 'unknown' }}"
+      availability: "{{ value_json.known and not value_json.stale }}"
+    - name: Weather station pressure change 3h
+      unique_id: neuro_weather_station_pressure_change_3h
+      value_template: "{{ value_json.pressureDelta3h }}"
+      availability: "{{ value_json.known and not value_json.stale and value_json.pressureDelta3h is not none }}"
+      unit_of_measurement: "hPa"
+      state_class: measurement
+    - name: Weather station signal
+      unique_id: neuro_weather_station_rssi
+      value_template: "{{ value_json.rssi }}"
+      availability: "{{ value_json.known and value_json.rssi is not none }}"
+      device_class: signal_strength
+      unit_of_measurement: "dBm"
+      state_class: measurement
