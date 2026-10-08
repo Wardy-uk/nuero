@@ -1249,6 +1249,7 @@ function _workMeetingMinutesToday(nowMs, people, ctx = null) {
  * cannot show the decision from one moment and the world from another.
  */
 let _radarMemo = null;
+let _homeMemo = null;
 async function now({ now: nowMs = Date.now(), decision = null } = {}) {
   const gaps = [];
   let dec = decision;
@@ -1310,6 +1311,23 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
     payload.radar = { heading: r.heading, summary: r.summary, complete: r.coverage.complete,
       needsYou: r.items.filter((i) => i.actionState === 'needs_you').slice(0, 3).map((i) => ({ id: i.id, title: i.title, kind: i.kind, when: i.when, why: i.whyVisible })) };
   } catch (e) { payload.radar = null; gaps.push({ input: 'radar', why: e.message }); }
+  // Build 22G: household CONTEXT on Now — occupancy, household tasks, device
+  // watchdog, hazards. No network (HA states from cache), memoised per minute
+  // like the Radar, never a ranked item, never a push. Never fails Now.
+  try {
+    const minute = Math.floor(nowMs / 60000);
+    if (!_homeMemo || _homeMemo.minute !== minute) {
+      _homeMemo = { minute, h: require('./home').readCached({ now: nowMs, radarItems: _radarMemo && _radarMemo.r ? _radarMemo.r.items : [] }) };
+    }
+    const h = _homeMemo.h;
+    payload.home = {
+      occupancy: { state: h.occupancy.state, why: h.occupancy.why },
+      tasks: h.obligations.length, tasksDue: h.obligations.filter((o) => o.needsNow).length,
+      upcoming: h.upcoming.slice(0, 3).map((u) => ({ id: u.id, title: u.title, when: u.when })),
+      lowBatteries: h.devices.known ? h.devices.lowBatteries : null,
+      safety: h.safety.capability, needsYou: h.needsYou, summary: h.summary,
+    };
+  } catch (e) { payload.home = null; gaps.push({ input: 'home', why: e.message }); }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
   // allowed to fail the feed: null means "render the way you did before".

@@ -5,6 +5,7 @@ import HikingLoopCard from './HikingLoopCard';
 import PersonalDatesCard from './PersonalDatesCard';
 import CompanionCareCard from './CompanionCareCard';
 import VehicleCard from './VehicleCard';
+import HomeCard from './HomeCard';
 import { FutureRadarCard, PersonalAdminCard, ReminderListsCard } from './FutureRadar';
 import HouseholdCard from '../../../../saim/shared-ui/HouseholdCard';
 import './Canonical.css';
@@ -55,6 +56,7 @@ export default function LifePanel({ onNavigate = null } = {}) {
       {saveError && <div className="cn-error">Not saved — {saveError}</div>}
 
       <div className="cn-section"><HouseholdCard fetchJson={fetchHousehold} fetchPhoto={fetchHouseholdPhoto} /></div>
+      <HomeCard />
       <FutureRadarCard />
       <Goals data={data} busy={busy} act={act} />
       <PersonalAdminCard />

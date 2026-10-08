@@ -10,6 +10,11 @@ router.get('/', (req, res) => {
   try { res.json(household.read()); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/household/home — household/home read model: occupancy (occupied/empty/unknown, conservative), household tasks classified as Home, dated home items from the Radar, Home Assistant's device watchdog, hazard-sensor capability, source health. Keywords: home, house, household, occupancy, chores, batteries.
+router.get('/home', async (req, res) => {
+  try { res.json(await require('../services/home').read({ live: true })); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/household/photo/:id — one household member's photo (served from outside the repo, behind the PIN). 404 when none has been added.
 router.get('/photo/:id', (req, res) => {
   const f = household.photoFile(req.params.id);

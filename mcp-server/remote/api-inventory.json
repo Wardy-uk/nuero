@@ -2509,12 +2509,28 @@
     "stream": false
   },
   {
+    "id": "get_household_home",
+    "method": "GET",
+    "route": "/api/household/home",
+    "domain": "household",
+    "source": "routes/household.js",
+    "line": 14,
+    "description": "GET /api/household/home. household/home read model: occupancy (occupied/empty/unknown, conservative), household tasks classified as Home, dated home items from the Radar, Home Assistant's device watchdog, hazard-sensor capability, source health. Keywords: home, house, household, occupancy, chores, b",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_household_photo_by_id",
     "method": "GET",
     "route": "/api/household/photo/:id",
     "domain": "household",
     "source": "routes/household.js",
-    "line": 14,
+    "line": 19,
     "description": "GET /api/household/photo/:id. one household member's photo (served from outside the repo, behind the PIN). 404 when none has been added.",
     "params": [
       "id"

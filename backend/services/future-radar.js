@@ -456,7 +456,7 @@ function refresh({ now = Date.now() } = {}) {
   try { held = JSON.parse(db.getState(KEY) || 'null'); } catch { held = null; }
   const obl = po.read({ now: nowMs });
   const radar = read({ now: nowMs, horizonDays: 30 });
-  const open = Object.fromEntries(obl.items.filter((o) => o.actionState !== 'unknown').map((o) => [o.id, { title: o.what, admin: o.admin }]));
+  const open = Object.fromEntries(obl.items.filter((o) => o.actionState !== 'unknown').map((o) => [o.id, { title: o.what, admin: o.admin, ...((o.domains || []).some((d) => d.domain === 'home') ? { home: true } : {}) }]));
   const needs = Object.fromEntries(radar.items.filter((i) => i.actionState === 'needs_you').map((i) => [i.id, { title: i.title, kind: i.kind, date: i.date }]));
   let logged = 0;
   if (held && held.baselined) {
