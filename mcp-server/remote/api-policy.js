@@ -91,7 +91,6 @@ export const interactive = {
     'post_todos_wip_ms', 'patch_todos_ms_by_msId',
   ].map(id => [id, 'Changing progress or wording on a Microsoft task is visible to Nick\'s team on a shared board. He does it in NEURO → Tasks. (Completing one with the exact id is post_todos_complete_ms.)'])),
   delete_medical_records_by_id: 'Deleting a medical record is Nick\'s decision. He removes it in NEURO → Medical. (Saving records is open: post_medical_records.)',
-  post_medical_records: 'Prefer the typed medical_records_save tool: same route, but it reads every record back and only reports saved when the stored values match. GP comments ("No further action") go in followUp, not status.',
   post_rooms_by_key_accept: 'Turning lights or heating on in the house is Nick accepting an offer in the room, in SAiM. An agent cannot do it.',
   post_catalogues_by_slug_shared: 'Sharing a catalogue publishes it on VESTA, read by the household on the public internet. Nick shares it in NEURO → Catalogues.',
   post_1to1_nova_sync: 'Reconciling 1-2-1 sessions writes to NOVA. It runs on its own timer; Nick can run it in NEURO.',
@@ -133,6 +132,7 @@ const SESSION_NOTE = 'Opens a standup conversation driven by NEURO\'s own AI (st
 // that exists and is not discoverable as the right one is a route nobody uses.
 const RECORD_NOTE = 'THE canonical way to complete this ritual when you have already run it with the user in conversation. Do not use capture_note / post_capture_note for a standup or EOD: that files prose the ritual system cannot see. This writes NEURO\'s own daily-note format (the same one its native standup writes), preserves everything else already in the note, and is idempotent — calling it again replaces today\'s ritual rather than duplicating it.';
 export const notes = {
+  post_medical_records: 'Prefer the typed medical_records_save tool: same route, but it reads every record back and only reports saved when the stored values match. GP comments ("No further action") go in followUp, not status.',
   post_standup_session_by_kind_start: SESSION_NOTE,
   post_standup_session_by_kind_reply: SESSION_NOTE,
   post_standup_session_by_kind_finish: SESSION_NOTE,
