@@ -658,8 +658,69 @@ async function offerTranscripts({ apply = false, days = DEFAULT_DAYS } = {}) {
   return { ok: true, dryRun: !apply, offered, skipped, ignored, scanned, reports: reports.length };
 }
 
+/**
+ * One-off: send NOVA the repaired transcript for every recording it has APPROVED.
+ *
+ * The 2026-10-08 Plaud paging bug wrote long transcripts as their first ~50 utterances
+ * repeated, and 18 approved 1-2-1s / conversations in NOVA hold that text. `offerTranscripts`
+ * skips anything NOVA has resolved (correctly — re-offering would re-ask Nick), and NOVA's
+ * candidate route ignores a resolved recording, so they could never be refreshed.
+ *
+ * Pending candidates need nothing: the normal sweep re-pushes them from the vault and NOVA
+ * updates a pending row. Rejected ones are not 1-2-1s and are never read, so they are left.
+ *
+ * Dry run by default. A transcript that STILL repeats in the vault (not yet repaired) is
+ * never sent. NOVA re-checks that the new text completes what it holds, so a mismatch is
+ * refused there too.
+ */
+async function correctNovaTranscripts({ apply = false, ids = null } = {}) {
+  if (!VAULT_PATH()) return { ok: false, error: 'OBSIDIAN_VAULT_PATH not configured' };
+  if (!nova.isConfigured()) return { ok: false, error: 'NOVA bridge is not configured' };
+
+  let approved;
+  try {
+    approved = (await nova.get121KnownRecordings()).approved || [];
+  } catch (e) {
+    return { ok: false, error: `Could not read what NOVA holds: ${e.message}` };
+  }
+  const strip = (x) => String(x).replace(/^of_/, '');
+  const wanted = ids ? new Set(ids.map(strip)) : null;
+
+  transcriptIndex = buildTranscriptIndex();
+  const byBare = new Map([...transcriptIndex].map(([id, file]) => [strip(id), file]));
+  const segmentLine = /^\*\*.+?\*\* `[0-9:]+` {2}.*$/gm;
+
+  const results = [];
+  for (const raw of approved) {
+    const id = strip(raw);
+    if (wanted && !wanted.has(id)) continue;
+    const file = byBare.get(id);
+    if (!file) { results.push({ id, status: 'no-vault-transcript' }); continue; }
+    const body = readTranscriptBody(file);
+    if (!body) { results.push({ id, status: 'empty-in-vault' }); continue; }
+    const lines = body.match(segmentLine) || [];
+    if (new Set(lines).size < lines.length) { results.push({ id, status: 'still-repeated-in-vault' }); continue; }
+    const rel = path.relative(VAULT_PATH(), file).replace(/\\/g, '/');
+    if (!apply) { results.push({ id, rel, status: 'would-send', lines: lines.length }); continue; }
+    try {
+      const r = await nova.push121TranscriptCorrection({ plaudId: id, transcript: body });
+      const data = (r && r.data) || r || {};
+      results.push({ id, rel, status: data.corrected ? 'corrected' : 'unchanged', corrected: data.corrected || 0, matched: data.matched || 0, rows: data.rows });
+    } catch (e) {
+      results.push({ id, rel, status: 'failed', error: e.message });
+    }
+  }
+  const count = (s) => results.filter((r) => r.status === s).length;
+  return {
+    ok: true, dryRun: !apply, approved: approved.length,
+    wouldSend: count('would-send'), corrected: count('corrected'), unchanged: count('unchanged'),
+    stillRepeated: count('still-repeated-in-vault'), failed: count('failed'), results,
+  };
+}
+
 module.exports = {
   offerTranscripts,
+  correctNovaTranscripts,
   _internals: {
     attribute, readNote, peopleLinks, participantsFrom, summaryExcerptFrom, oneToOneSignal,
     attributeFromEvents, plaudInstantMs, londonDateStr, conversationType,

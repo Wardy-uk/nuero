@@ -199,6 +199,19 @@ async function get121PendingCandidates() {
 }
 
 /** Recordings NOVA has already resolved, so a rejected one is never re-offered. */
+/**
+ * Replace a transcript NOVA already holds with the repaired one (2026-10-08 paging bug).
+ * NOVA accepts it only where the new text provably completes what it holds, and never
+ * re-extracts actions from it.
+ */
+async function push121TranscriptCorrection({ plaudId, transcript }) {
+  return call('/api/neuro-bridge/121/transcript-correction', {
+    method: 'POST',
+    timeoutMs: 60000,
+    body: { plaudId, transcript },
+  });
+}
+
 async function get121KnownRecordings() {
   return call('/api/neuro-bridge/121/known-recordings');
 }
@@ -207,5 +220,5 @@ module.exports = {
   isConfigured, listUrgencyReasons, listEscalations, getTicket, escalate, call,
   push121Booking, cancel121, push121Cadence, get121State, get121Completed,
   push121SweepStats,
-  push121TranscriptCandidate, get121KnownRecordings, get121PendingCandidates,
+  push121TranscriptCandidate, push121TranscriptCorrection, get121KnownRecordings, get121PendingCandidates,
 };

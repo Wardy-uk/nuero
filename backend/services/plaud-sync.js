@@ -632,13 +632,24 @@ const MAX_TRANSCRIPT_PAGES = 40;
 // and allowing the bare word, so "speaker" alone is not mistaken for somebody called it.
 const GENERIC_SPEAKER_RE = /^speaker[ _-]*[0-9]*$/i;
 
+// mm:ss under an hour, h:mm:ss from the hour on. It was always mm:ss, which WRAPPED at
+// the hour — 01:26:24 rendered as 26:24, so a long meeting's timestamps went backwards
+// halfway through. Under an hour the output is unchanged, byte for byte.
+function formatSegmentTime(ms) {
+  const total = Math.max(0, Math.floor(Number(ms) / 1000) || 0);
+  const h = Math.floor(total / 3600);
+  const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+  const s = String(total % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+}
+
 // Render segments using the real `speaker` name (NOT original_speaker, the raw
-// "Speaker N" label) with an mm:ss timestamp.
+// "Speaker N" label) with a timestamp.
 function renderTranscript(segments) {
   return (Array.isArray(segments) ? segments : [])
     .filter((s) => s && (s.content || '').trim())
     .map((s) => {
-      const t = new Date(s.start_time).toISOString().substr(14, 5); // mm:ss
+      const t = formatSegmentTime(s.start_time);
       return `**${s.speaker || 'Speaker'}** \`${t}\`  ${s.content.trim()}`;
     })
     .join('\n\n');
@@ -1025,6 +1036,7 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
           const summaryBody = renderNote(noteList);
           // Retry on empty — PLAUD returns nothing while a recording is still transcribing.
           const transcriptSegments = await fetchTranscriptSegments(client, recording.id);
+          checkTranscriptCoverage(recording.id, transcriptSegments, details.duration);
           const transcriptBody = renderTranscript(transcriptSegments);
 
           // Not ready: PLAUD has produced neither transcript nor summary yet (a premature
@@ -1430,6 +1442,7 @@ async function processRecordingFresh(client, recording, syncState) {
   // get_transcript returns empty intermittently under load even when a transcript
   // exists; fetchTranscriptBody retries on empty before giving up (prevents stubs).
   const transcriptSegments = await fetchTranscriptSegments(client, recording.id);
+  checkTranscriptCoverage(recording.id, transcriptSegments, details.duration);
   const transcriptBody = renderTranscript(transcriptSegments);
   // ⚠ Repull is a deliberate manual recovery for a recording that is MISSING, so it
   // never waits for naming — it pulls and stamps what it found. Holding here would make
@@ -1582,24 +1595,7 @@ const PLAUD_BACKUP_REL = ['Scripts', '.lint-backups'];
  */
 async function fetchTranscriptSegments(client, id, { emptyRetries = 3, emptyDelayMs = 2500 } = {}) {
   for (let attempt = 0; attempt <= emptyRetries; attempt += 1) {
-    const segments = [];
-    let offset = 0;
-
-    for (let page = 0; page < MAX_TRANSCRIPT_PAGES; page += 1) {
-      const args = offset ? { file_id: id, offset } : { file_id: id };
-      const payload = await withRetry(`get_transcript ${id}@${offset}`, () => callTool(client, 'get_transcript', args));
-      const batch = extractTranscriptSegments(payload);
-      if (!batch.length) break;
-      segments.push(...batch);
-
-      // Stop on the totals rather than on the cursor alone: a server that stops sending
-      // `next_cursor` but still has rows would silently truncate, and one that repeats a
-      // cursor would loop.
-      const total = Number(payload && payload.total);
-      const next = offset + batch.length;
-      if (!Number.isFinite(total) || next >= total) break;
-      offset = next;
-    }
+    const segments = await fetchTranscriptPages(client, id);
 
     // ⚠ Retry on an empty RENDER, not an empty segment list: a page of segments that all
     // render blank is the same "still transcribing" state, and was the original bug here.
@@ -1607,6 +1603,128 @@ async function fetchTranscriptSegments(client, id, { emptyRetries = 3, emptyDela
     if (attempt < emptyRetries) await sleep(emptyDelayMs * (attempt + 1));
   }
   return [];
+}
+
+/**
+ * Thrown when a transcript fetch cannot PROVE it holds the whole meeting. Never caught
+ * and written anyway: every caller lets it fail the recording, which is logged, recorded
+ * in `failedRecordings` and retried next cycle.
+ */
+class TranscriptIncompleteError extends Error {
+  constructor(id, reason) {
+    super(`Transcript for ${id} refused — ${reason}`);
+    this.name = 'TranscriptIncompleteError';
+    this.reason = reason;
+  }
+}
+
+/** Page size asked for. The schema allows 1–500 (verified live 2026-10-08); a server
+ *  that returns fewer is fine — the cursor and the total decide when to stop. */
+const TRANSCRIPT_PAGE_LIMIT = 500;
+
+function segmentKey(s) {
+  return `${s && s.start_time}|${s && s.speaker}|${String((s && s.content) || '').trim()}`;
+}
+
+/**
+ * Every page of a transcript, by CURSOR, with proof of progress at each step.
+ *
+ * ⚠ THIS USED TO PAGE BY `offset`, WHICH get_transcript DOES NOT TAKE. The tool pages
+ * with an opaque `cursor` (the previous call's `next_cursor`). An unknown `offset` is
+ * ignored, so every call returned page ONE, and the loop — which stopped on its OWN
+ * counter reaching `total` — wrote the first 50 segments ceil(total/50) times. Measured
+ * 2026-10-08: 145 of 263 vault transcripts, ~85 hours of meetings, each holding only
+ * its first few minutes repeated. Nothing errored: the file had the right size.
+ *
+ * So the loop no longer trusts its own arithmetic. A page must ADVANCE — the server's
+ * reported `offset` (when it sends one) must equal what we already hold, and no segment
+ * may be one we have already seen — and the collected count must reach the server's
+ * `total`. Anything else throws TranscriptIncompleteError rather than writing half a
+ * meeting, or the same seven minutes fourteen times, as though it were the whole thing.
+ */
+async function fetchTranscriptPages(client, id) {
+  const segments = [];
+  const seen = new Set();
+  let cursor = null;
+  let total = null;
+
+  for (let page = 0; page < MAX_TRANSCRIPT_PAGES; page += 1) {
+    const args = { file_id: id, limit: TRANSCRIPT_PAGE_LIMIT };
+    if (cursor) args.cursor = cursor;
+    const payload = await withRetry(`get_transcript ${id}#${page}`, () => callTool(client, 'get_transcript', args));
+    const batch = extractTranscriptSegments(payload);
+    if (!batch.length) break;
+
+    const reportedOffset = Number(payload && payload.offset);
+    if (payload && payload.offset != null && Number.isFinite(reportedOffset) && reportedOffset !== segments.length) {
+      throw new TranscriptIncompleteError(id, `page ${page + 1} starts at segment ${reportedOffset}, expected ${segments.length} — the server did not advance`);
+    }
+    for (const s of batch) {
+      const k = segmentKey(s);
+      if (seen.has(k)) {
+        throw new TranscriptIncompleteError(id, `segment at ${s && s.start_time}ms arrived twice — pages are repeating`);
+      }
+      seen.add(k);
+      segments.push(s);
+    }
+
+    const t = Number(payload && payload.total);
+    if (payload && payload.total != null && Number.isFinite(t)) total = t;
+    const next = payload && payload.next_cursor;
+    if (total != null && segments.length >= total) break;
+    if (!next) break;
+    if (next === cursor) {
+      throw new TranscriptIncompleteError(id, `next_cursor did not change after page ${page + 1}`);
+    }
+    cursor = next;
+  }
+
+  // An empty result is handled by the caller's empty-retry (PLAUD still transcribing).
+  if (segments.length && total != null && segments.length < total) {
+    throw new TranscriptIncompleteError(id, `${segments.length} of ${total} segments fetched`);
+  }
+  return segments;
+}
+
+/** Below this share of the recording, on a recording at least this long, a transcript is
+ *  refused even with a matching count — the backstop for a server whose `total` is itself
+ *  wrong. MEASURED on the 118 healthy transcripts (2026-10-08): no recording of 10 min or
+ *  more had its last utterance before 80% of the duration. */
+const COVERAGE_REFUSE_RATIO = 0.5;
+const COVERAGE_REFUSE_MIN_MS = 10 * 60 * 1000;
+/** Below this, the gap is LOGGED, never refused: 16 of 118 healthy transcripts (14%) end
+ *  their last utterance before 95% of the recording — a device left running after people
+ *  stop talking. A hard 95% rule would refuse honest transcripts. */
+const COVERAGE_WARN_RATIO = 0.95;
+
+/**
+ * How much of the recording the transcript reaches, judged on the LAST utterance's start.
+ * Pure. `durationMs` unknown → never refuses (cannot judge).
+ */
+function assessTranscriptCoverage(segments, durationMs) {
+  const starts = (Array.isArray(segments) ? segments : [])
+    .map((s) => Number(s && s.start_time))
+    .filter(Number.isFinite);
+  const lastStartMs = starts.length ? Math.max(...starts) : null;
+  const duration = Number(durationMs);
+  if (!Number.isFinite(duration) || duration <= 0 || lastStartMs == null) {
+    return { known: false, ratio: null, lastStartMs, refuse: false, warn: false };
+  }
+  const ratio = lastStartMs / duration;
+  const refuse = duration >= COVERAGE_REFUSE_MIN_MS && ratio < COVERAGE_REFUSE_RATIO;
+  return { known: true, ratio, lastStartMs, refuse, warn: !refuse && ratio < COVERAGE_WARN_RATIO };
+}
+
+/** Throws on a refused coverage; logs a short one. Shared by every write path. */
+function checkTranscriptCoverage(id, segments, durationMs) {
+  const c = assessTranscriptCoverage(segments, durationMs);
+  if (c.refuse) {
+    throw new TranscriptIncompleteError(id, `last utterance at ${Math.round(c.ratio * 100)}% of a ${Math.round(durationMs / 60000)}-minute recording`);
+  }
+  if (c.warn) {
+    console.warn(`[PlaudSync] ${id} transcript ends at ${Math.round(c.ratio * 100)}% of the recording — written (trailing silence is normal)`);
+  }
+  return c;
 }
 
 async function fetchTranscriptBody(client, id, options = {}) {
@@ -1655,9 +1773,16 @@ async function repullStubTranscripts({ limit = null } = {}) {
   try {
     const { client, transport } = await createClient();
     try {
+      const apiIds = await buildApiIdMap(client);
       for (const s of stubs) {
         try {
-          const body = await fetchTranscriptBody(client, s.plaud_id);
+          // ⚠ The frontmatter id is CANONICAL (bare); PLAUD now answers a bare id with 404
+          // and only takes the `of_` id list_files returns. Never fetch by the canonical id.
+          const file = apiIds.get(canonicalPlaudId(s.plaud_id));
+          if (!file) throw new Error(`recording ${s.plaud_id} not in PLAUD's file list`);
+          const segments = await fetchTranscriptSegments(client, file.id);
+          checkTranscriptCoverage(file.id, segments, file.duration);
+          const body = renderTranscript(segments);
           if (!body) { stillEmpty += 1; results.push({ rel: s.rel, status: 'still-empty' }); }
           else {
             const bk = path.join(backupDir, s.rel);
@@ -1683,8 +1808,162 @@ async function repullStubTranscripts({ limit = null } = {}) {
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// Repeated-transcript repair (2026-10-08)
+//
+// The offset-paging bug wrote ceil(total/50) copies of each long transcript's first
+// page. This re-fetches each damaged transcript through the fixed, guarded path and
+// rewrites ONLY its segment lines — frontmatter, title, the Summary link and any
+// speaker-naming warning are kept byte for byte — so nothing downstream of the
+// transcript file is touched: no summary note, no routing, no task discovery
+// (action-candidates skips Plaud/ outright).
+// ═══════════════════════════════════════════════════════
+
+const SEGMENT_LINE_RE = /^\*\*.+?\*\* `[0-9:]+` {2}.*$/gm;
+
+/**
+ * Does this transcript note hold a repeated block? Pure.
+ * `repeated` is the damage signature: the same segment line more than once. A
+ * genuine transcript never repeats a line, because each carries its own start time.
+ */
+function assessVaultTranscript(content) {
+  const lines = String(content || '').match(SEGMENT_LINE_RE) || [];
+  const unique = new Set(lines).size;
+  const last = lines.length ? (lines[lines.length - 1].match(/`([0-9:]+)`/) || [])[1] : null;
+  return { segments: lines.length, unique, repeated: unique < lines.length, coveredTo: last || null };
+}
+
+/** The note with its segment lines replaced. Everything before the first segment line is
+ *  kept verbatim; a note with no segment lines keeps everything up to `## Transcript`. Pure. */
+function replaceTranscriptBody(content, body) {
+  const text = String(content || '');
+  SEGMENT_LINE_RE.lastIndex = 0;
+  const first = SEGMENT_LINE_RE.exec(text);
+  SEGMENT_LINE_RE.lastIndex = 0;
+  let head;
+  if (first) head = text.slice(0, first.index);
+  else {
+    const idx = text.indexOf('## Transcript');
+    head = idx >= 0 ? `${text.slice(0, idx)}## Transcript\n\n` : `${text.replace(/\n*$/, '')}\n\n## Transcript\n\n`;
+  }
+  return `${head}${String(body || '').trim()}\n`;
+}
+
+/** canonical id → PLAUD file (with the API `id` and `duration`), from every page of list_files. */
+async function buildApiIdMap(client) {
+  const files = await listRecordings(client, null);
+  const map = new Map();
+  for (const f of files) if (f && f.id) map.set(canonicalPlaudId(f.id), f);
+  return map;
+}
+
+function localDateKey(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function findRepeatedTranscriptNotes({ ids = null } = {}) {
+  const vaultPath = getVaultPath();
+  const wanted = ids ? new Set(ids.map((i) => canonicalPlaudId(i))) : null;
+  const out = [];
+  for (const fp of readMarkdownFiles(vaultPath)) {
+    const rel = path.relative(vaultPath, fp).replace(/\\/g, '/');
+    if (rel.split('/').some((seg) => RECONCILE_EXCLUDE.has(seg))) continue;
+    let content = '';
+    try { content = fs.readFileSync(fp, 'utf-8'); } catch { continue; }
+    if (!/^type: transcript\s*$/m.test(content)) continue;
+    const pid = extractFrontmatterValue(content, 'plaud_id');
+    if (!pid) continue;
+    const id = canonicalPlaudId(pid);
+    const assessed = assessVaultTranscript(content);
+    if (wanted ? !wanted.has(id) : !assessed.repeated) continue;
+    out.push({ path: fp, rel, id, content, before: assessed });
+  }
+  return out;
+}
+
+/**
+ * Re-fetch and rewrite every transcript that holds a repeated block.
+ *
+ * DRY RUN BY DEFAULT: it still READS PLAUD (to report what the repaired file would hold),
+ * and writes nothing. With `dryRun:false`, each file is copied first to
+ * Scripts/.lint-backups/plaud-repair-<date>/<same relative path> (an existing backup is
+ * never overwritten — on a re-run the first copy is the original) and then rewritten in
+ * place, same name, same folder. ⚠ NOT under Imports/: the import pipeline walks that
+ * folder recursively and would route 145 PLAUD transcripts back in as new notes.
+ *
+ * Idempotent: a repaired note has no repeated line, so a second run finds nothing to do.
+ * A fetch that cannot prove it is complete is REFUSED for that file and reported; the
+ * file is left exactly as it was.
+ */
+async function repairRepeatedTranscripts({ dryRun = true, limit = null, ids = null } = {}) {
+  const runningState = readRunningState();
+  if (runningState.active && !runningState.stale) {
+    return { started: false, skipped: true, reason: 'PLAUD sync/repull already running' };
+  }
+  let notes = findRepeatedTranscriptNotes({ ids });
+  const found = notes.length;
+  if (limit && notes.length > limit) notes = notes.slice(0, limit);
+  const backupRel = ['Scripts', '.lint-backups', `plaud-repair-${localDateKey()}`];
+  const summary = { started: true, dryRun, found, scanned: notes.length, repaired: 0, wouldRepair: 0, refused: 0, failed: 0, backupDir: backupRel.join('/'), results: [] };
+  if (!notes.length) return summary;
+
+  writeRunningState(true);
+  try {
+    const { client, transport } = await createClient();
+    try {
+      const apiIds = await buildApiIdMap(client);
+      for (const n of notes) {
+        const row = { rel: n.rel, id: n.id, before: n.before };
+        try {
+          const file = apiIds.get(n.id);
+          if (!file) throw new Error('recording not in PLAUD\'s file list');
+          const segments = await fetchTranscriptSegments(client, file.id);
+          const coverage = checkTranscriptCoverage(file.id, segments, file.duration);
+          const body = renderTranscript(segments);
+          if (!body.trim()) throw new TranscriptIncompleteError(file.id, 'PLAUD returned no transcript');
+          const next = replaceTranscriptBody(n.content, body);
+          const after = assessVaultTranscript(next);
+          if (after.repeated) throw new TranscriptIncompleteError(file.id, 'rendered result still repeats');
+          Object.assign(row, {
+            after,
+            durationMs: file.duration ?? null,
+            coverage: coverage.known ? Math.round(coverage.ratio * 1000) / 1000 : null,
+            bytesBefore: Buffer.byteLength(n.content),
+            bytesAfter: Buffer.byteLength(next),
+          });
+          if (dryRun) {
+            row.status = 'would-repair';
+            summary.wouldRepair += 1;
+          } else {
+            const bk = path.join(getVaultPath(), ...backupRel, n.rel);
+            fs.mkdirSync(path.dirname(bk), { recursive: true });
+            if (!fs.existsSync(bk)) fs.copyFileSync(n.path, bk);
+            fs.writeFileSync(n.path, next, 'utf-8');
+            try { require('./vault-hooks').onVaultWrite(n.path, 'plaud-transcript-repair'); } catch {}
+            row.status = 'repaired';
+            summary.repaired += 1;
+          }
+        } catch (error) {
+          row.status = error instanceof TranscriptIncompleteError ? 'refused' : 'failed';
+          row.error = error.message;
+          if (row.status === 'refused') summary.refused += 1; else summary.failed += 1;
+          console.warn(`[PlaudSync] repair ${row.status} ${n.rel}: ${error.message}`);
+        }
+        summary.results.push(row);
+        if (DEFAULT_BETWEEN_RECORDINGS_MS > 0) await sleep(DEFAULT_BETWEEN_RECORDINGS_MS);
+      }
+    } finally {
+      await transport.close();
+    }
+    return summary;
+  } finally {
+    writeRunningState(false);
+  }
+}
+
 module.exports = {
   getStatus,
+  repairRepeatedTranscripts,
   syncPlaudRecordings,
   reconcilePlaudRecordings,
   repullPlaudRecordings,
@@ -1697,6 +1976,14 @@ module.exports = {
   htmlUnescape,
   // exported for tests / reuse
   _internal: {
+    // Transcript paging + guard (2026-10-08) — pinned by plaud-transcript-paging.test.js.
+    fetchTranscriptPages,
+    fetchTranscriptSegments,
+    assessTranscriptCoverage,
+    assessVaultTranscript,
+    replaceTranscriptBody,
+    formatSegmentTime,
+    TranscriptIncompleteError,
     recordingKey,
     // Exported so the archive-loop pin is a real test rather than one that
     // passes by absence: these two decide WHERE a summary is written, and an
