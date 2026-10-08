@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-08 (Build 20: Ember care + personal-ops activation + anniversary lead reminders)
+
+- Deployed nuero caf5ac9 then 4222399 to pi5 (gate 5678/0, gateway 49/0, frontend built, MCP gateway rebuilt). Record: vault Projects/NEURO/NEURO-SAIM — Build 20 Ember Care and Personal Operations Activation.md; gap analysis appended.
+- Reminder lists: name rule GONE. Live: Alexa Shopping List, Family, Shopping tracked; both "Reminders" (List 1/2 of 2), Bathroom, Ikea UNDECIDED until Nick chooses — the one reminder NEURO used to read is hidden until he tracks List 1.
+- Open Uni reclassified Home -> Learning (as Nick). Anniversary lead reminders [10,5,1] set live: Radar context from 9 Oct, prompt 14 Oct, one push 18 Oct 09:00 unless linked prep is done.
+- Waiting on Nick's data: Personal Admin list + MOT/insurance dates, Ember care items, anniversary prep task. Next domain recommended: transport/vehicle.
+- ⚠ The MAIN working tree (C:/Users/NickW/Claude/nuero) is behind origin and holds another session's uncommitted training-sync removal, which overlaps scheduler.js, authority-matrix.js, api-inventory.json and CLAUDE.md that Build 20 changed: stash, pull --ff-only, pop, then regenerate the inventory. Build 20 was built in worktree C:/Users/NickW/Claude/nuero-b20 (branch build20) — remove it once main is synced.
+- nuero-63 (medical records session) was told to rebase onto 4222399 and regenerate the inventory.
+
+---
+
 # Session Handoff — 2026-10-08 (Build 18 follow-up: NEURO iOS launch crash)
 
 - SAiM 0.1 (241) installed and reporting: build identity, device status, 60-day calendar coverage and personal-date coverage all PROVEN live. It was built from a DIRTY Mac tree (77f90fc + uncommitted changes) — check `git status` on the Mac first.
