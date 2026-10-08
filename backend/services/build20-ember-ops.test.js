@@ -93,8 +93,12 @@ const LISTS = [
   { id: 'L-REM-1', title: 'Reminders' }, { id: 'L-REM-2', title: 'Reminders' },
   { id: 'L-BATH', title: 'Bathroom' }, { id: 'L-ADMIN', title: 'Personal Admin' }, { id: 'L-EMBER', title: 'Ember' },
 ];
+// The phone sends EVERY reminder on every push (a complete read concludes
+// removals), so the fixture keeps a running phone and always sends all of it.
+const PHONE = new Map();
 function pushReminders(reminders, { complete = true, lists = LISTS } = {}) {
-  const r = apple.ingestReminders({ reminders, lists, complete, client: 'neuro' }, { now: NOW });
+  for (const x of reminders) PHONE.set(x.id, x);
+  const r = apple.ingestReminders({ reminders: [...PHONE.values()], lists, complete, client: 'neuro' }, { now: NOW });
   assert.equal(r.ok, true, r.error);
   return r;
 }
@@ -306,9 +310,13 @@ test('15. a dog walk is never inferred from Nick walking', async () => {
   const care = cc.read(EMBER, { now: NOW });
   assert.notEqual(care.walk.today.state, 'confirmed');
   const src = stripComments(fs.readFileSync(path.join(__dirname, 'companion-care.js'), 'utf8'));
-  for (const word of ['health_workouts', 'health_samples', 'apple-health', 'location', 'steps', 'workout']) {
-    assert.equal(new RegExp(word, 'i').test(src), false, `companion-care reads ${word}`);
+  // Code reads, not English: the rule sentence shown to Nick names these things
+  // precisely in order to say they are NOT read.
+  for (const token of ['health_workouts', 'health_samples', 'health_daily', 'apple-health', "'./location", 'location-history', 'place-sensing', 'activity_type', 'device-status']) {
+    assert.equal(src.includes(token), false, `companion-care reads ${token}`);
   }
+  // Positive control: the scan does see a read when one is there.
+  assert.equal(stripComments("db.all('SELECT * FROM health_workouts')").includes('health_workouts'), true);
 });
 
 test('16. an explicit walk confirmation works — and only for a day that has happened', async () => {
