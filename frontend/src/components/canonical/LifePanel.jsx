@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../api';
-import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when } from './canonicalUi';
+import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when, Fold } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
 import PersonalDatesCard from './PersonalDatesCard';
 import CompanionCareCard from './CompanionCareCard';
@@ -329,23 +329,26 @@ function Companions({ data, busy, act }) {
       <ul className="cn-list">
         {companions.map((c) => (
           <li key={c.id} className="cn-row">
-            <span className="cn-rowtitle">{c.name}</span>
-            {c.species && <span className="cn-muted">{c.species}{c.breed ? ` · ${c.breed}` : ''}</span>}
-            {c.household === true && <span className="cn-chip cn-chip--firm">household</span>}
-            {c.goals && c.goals.length > 0 && <span className="cn-muted">goals: {c.goals.map((g) => g.title).join(', ')}</span>}
+            <div className="cn-comp-head">
+              <span className="cn-rowtitle">{c.name}</span>
+              {c.species && <span className="cn-muted">{c.species}{c.breed ? ` · ${c.breed}` : ''}</span>}
+              {c.household === true && <span className="cn-chip cn-chip--soft">lives with you</span>}
+              {c.goals && c.goals.length > 0 && <span className="cn-muted">goals: {c.goals.map((g) => g.title).join(', ')}</span>}
+            </div>
             {c.upcoming && c.upcoming.length > 0 && <div className="cn-muted">Coming up (mentions {c.name}): {c.upcoming.map((e) => `${when(e.start)} ${e.title}`).join('; ')}</div>}
-            {c.mentionedBy && c.mentionedBy.length > 0 && <div className="cn-muted">Mentioned by {c.mentionedBy.length} open item{c.mentionedBy.length === 1 ? '' : 's'} — a mention, not a link you made</div>}
             <CompanionCareCard companion={c} />
           </li>
         ))}
       </ul>
+      <Fold title="Add a companion" meta="NEURO writes a note in Companions/">
       <form className="cn-goalform" onSubmit={create}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. Ember" maxLength={60} aria-label="Companion name" />
+        <input className="cn-input--short" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" maxLength={60} aria-label="Companion name" />
         <input className="cn-input--short" value={species} onChange={(e) => setSpecies(e.target.value)} placeholder="Species (dog)" maxLength={60} aria-label="Species" />
         <input className="cn-input--short" value={breed} onChange={(e) => setBreed(e.target.value)} placeholder="Breed (optional)" maxLength={60} aria-label="Breed" />
         <label className="cn-check"><input type="checkbox" checked={household} onChange={(e) => setHousehold(e.target.checked)} /> lives with you</label>
         <button type="submit" className="cn-btn" disabled={busy || !name.trim()}>Create</button>
       </form>
+      </Fold>
       {made && <div className="cn-muted">Written to {made}.</div>}
     </section>
   );

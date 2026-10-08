@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, HowItWorks } from './canonicalUi';
+import { useCanonical, postCanonical, Fold } from './canonicalUi';
 
 /**
  * Personal dates with lead time (Build 17L–Q), on Life.
@@ -59,29 +59,29 @@ export default function PersonalDatesCard() {
       )}
       {gaps.map((g) => <div key={g.input} className="cn-muted">Couldn’t read {g.input}: {g.why}.</div>)}
 
-      <div className="cn-k">Dates you have written down</div>
-      {declared.length === 0 && <div className="cn-muted">None yet.</div>}
-      {declared.map((e) => ['birthday', 'anniversary'].filter((k) => e[k]).map((k) => (
-        <div key={`${e.entity}:${k}`} className="cn-hike-line">
-          {e.entity.split('/')[1]} — {k} {e[k]}{' '}
-          <button type="button" className="cn-btn cn-btn--tiny" onClick={() => save({ entity: e.entity, kind: k, date: null })}>Remove</button>
+      <Fold title="Your dates and reminders" meta={`${declared.length ? `${declared.length} written down` : 'none written down'}`}>
+        {declared.map((e) => ['birthday', 'anniversary'].filter((k) => e[k]).map((k) => (
+          <div key={`${e.entity}:${k}`} className="cn-hike-line">
+            {e.entity.split('/')[1]} — {k} {e[k]}{' '}
+            <button type="button" className="cn-btn cn-btn--tiny" onClick={() => save({ entity: e.entity, kind: k, date: null })}>Remove</button>
+          </div>
+        )))}
+        <div className="cn-goalform">
+          <select value={entity} onChange={(e) => setEntity(e.target.value)} aria-label="Person or companion">
+            <option value="">Person or companion…</option>
+            {entities.map((e) => <option key={e.entity} value={e.entity}>{e.entity.split('/')[1]}{e.kind === 'companion' ? ' (companion)' : ''}</option>)}
+          </select>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Kind">
+            <option value="birthday">Birthday</option>
+            <option value="anniversary">Anniversary</option>
+          </select>
+          <input className="cn-input--short" value={date} onChange={(e) => setDate(e.target.value)} placeholder="YYYY-MM-DD or MM-DD" aria-label="Date" />
+          <button type="button" className="cn-btn" disabled={!entity || !date} onClick={() => save({ entity, kind, date })}>Save date</button>
         </div>
-      )))}
-      <div className="cn-goalform">
-        <select value={entity} onChange={(e) => setEntity(e.target.value)} aria-label="Person or companion">
-          <option value="">Person or companion…</option>
-          {entities.map((e) => <option key={e.entity} value={e.entity}>{e.entity.split('/')[1]}{e.kind === 'companion' ? ' (companion)' : ''}</option>)}
-        </select>
-        <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Kind">
-          <option value="birthday">Birthday</option>
-          <option value="anniversary">Anniversary</option>
-        </select>
-        <input className="cn-input--short" value={date} onChange={(e) => setDate(e.target.value)} placeholder="YYYY-MM-DD or MM-DD" aria-label="Date" />
-        <button type="button" className="cn-btn" disabled={!entity || !date} onClick={() => save({ entity, kind, date })}>Save date</button>
-      </div>
-      {msg && <div className="cn-muted">{msg}</div>}
-      <LeadReminders />
-      <HowItWorks>{data.rule} A date you remove is gone — NEURO never restores it.</HowItWorks>
+        {msg && <div className="cn-muted">{msg}</div>}
+        <LeadReminders />
+        <div className="cn-small cn-muted">{data.rule} Lead reminders: the first shows on the Radar only, the middle ones prompt harder, the last is Needs You and one notification — skipped if the prep you linked is done. A date you remove is gone — NEURO never restores it.</div>
+      </Fold>
     </div>
   );
 }
@@ -103,13 +103,13 @@ function LeadReminders() {
   const parse = (s) => String(s || '').split(/[ ,]+/).filter(Boolean).map(Number);
   return (
     <>
-      <div className="cn-k">Lead reminders</div>
+      <div className="cn-k">Lead reminders (days before)</div>
       {['anniversary', 'birthday'].map((k) => {
         const held = data.cadences[k];
         const val = draft[k] !== undefined ? draft[k] : held ? held.join(', ') : '';
         return (
-          <div key={k} className="cn-hike-line">
-            {k === 'anniversary' ? 'Anniversaries' : 'Birthdays'}: {held ? `${held.join(', ')} days before` : 'none'}{' '}
+          <div key={k} className="cn-hike-form">
+            <span style={{ display: 'inline-block', minWidth: 100 }}>{k === 'anniversary' ? 'Anniversaries' : 'Birthdays'}</span>{' '}
             <input className="cn-input--short" value={val} placeholder="e.g. 10, 5, 1" aria-label={`${k} lead reminders, days before`}
               onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} />
             <button type="button" className="cn-btn cn-btn--tiny" disabled={!val.trim()} onClick={() => save(k, parse(val))}>Set</button>
@@ -118,7 +118,6 @@ function LeadReminders() {
         );
       })}
       {note && <div className="cn-error">{note}</div>}
-      <HowItWorks>First step: on the Radar only. Middle: a stronger prompt. Last: Needs You and one notification — skipped if the prep you linked is done.</HowItWorks>
     </>
   );
 }

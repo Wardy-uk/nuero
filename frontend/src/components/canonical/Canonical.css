@@ -207,3 +207,25 @@
 .cn-spend-rows li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--text-secondary); }
 .cn-how summary { font-size: 11px; }
 .cn-radar-line .cn-rowbtn { flex: 1 1 auto; min-width: 0; }
+
+/* 8 Oct 2026 (second pass): compact forms everywhere, folds for editing. */
+.cn-goalform, .cn-hike-form { align-items: center; }
+.cn-goalform input, .cn-goalform select, .cn-hike-form input, .cn-hike-form select, .cn-select {
+  font-size: 12px; padding: 4px 8px; line-height: 1.4; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary);
+}
+.cn-goalform input { flex: 0 1 200px; min-width: 0; }
+.cn-goalform input.cn-input--short, .cn-hike-form input.cn-input--short { flex: 0 1 130px; width: 130px; }
+.cn-goalform input.cn-input--tiny, .cn-hike-form input.cn-input--tiny, .cn-input--tiny { flex: 0 0 4.5em; width: 4.5em; }
+.cn-goalform select, .cn-hike-form select { max-width: 280px; }
+.cn-goalform input[type="date"], .cn-hike-form input[type="date"] { flex: 0 0 auto; color-scheme: dark; }
+.cn-check { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; color: var(--text-secondary); }
+.cn-fold { border-top: 1px solid var(--border); padding: 6px 0; }
+.cn-fold > summary { cursor: pointer; display: flex; gap: 10px; align-items: baseline; list-style: none; font-size: 13px; }
+.cn-fold > summary::-webkit-details-marker { display: none; }
+.cn-fold > summary::before { content: '▸'; color: var(--text-muted); font-size: 11px; width: 10px; }
+.cn-fold[open] > summary::before { content: '▾'; }
+.cn-fold-title { color: var(--text-primary); font-weight: 600; min-width: 130px; }
+.cn-fold-meta { color: var(--text-muted); font-size: 12px; }
+.cn-fold-body { padding: 6px 0 4px 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.cn-glance { display: flex; flex-wrap: wrap; gap: 6px; }
+.cn-comp-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }

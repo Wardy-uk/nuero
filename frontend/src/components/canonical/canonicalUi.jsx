@@ -153,3 +153,18 @@ export function HowItWorks({ children }) {
   if (!children) return null;
   return <details className="cn-details cn-how"><summary>How this works</summary><div className="cn-small cn-muted">{children}</div></details>;
 }
+
+/**
+ * 8 Oct 2026 (second pass) — every card had its add/edit forms permanently
+ * open, so the Life page read as a wall of empty inputs. A Fold shows the
+ * STATE in its summary line ("Mileage — not recorded") and keeps the editing
+ * one click away. `open` only for something that needs Nick now.
+ */
+export function Fold({ title, meta = null, open = false, children }) {
+  return (
+    <details className="cn-fold" open={open}>
+      <summary><span className="cn-fold-title">{title}</span>{meta != null && meta !== '' && <span className="cn-fold-meta">{meta}</span>}</summary>
+      <div className="cn-fold-body">{children}</div>
+    </details>
+  );
+}

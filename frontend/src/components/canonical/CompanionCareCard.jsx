@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical } from './canonicalUi';
+import { useCanonical, postCanonical, Fold, HowItWorks } from './canonicalUi';
 
 /**
  * Build 20K — a companion's care, compact, under Life → Companions.
@@ -66,7 +66,7 @@ export default function CompanionCareCard({ companion }) {
       <div className="cn-care-row">
         <span className="cn-now-k">Walk today</span>
         <span className={`cn-chip ${walk.state === 'confirmed' ? 'cn-chip--firm' : 'cn-chip--soft'}`}>{WALK_WORDS[walk.state] || walk.state}</span>
-        <span className="cn-muted">{walk.why}</span>
+        {walk.state !== 'not_applicable' && <span className="cn-muted cn-small">{walk.why}</span>}
         {walk.state !== 'confirmed' && <button type="button" className="cn-btn" disabled={busy} onClick={() => act(() => postCanonical(`${path.replace('/care', '/walks')}`, { mark: 'walked' }))}>Walked</button>}
         {walk.state !== 'not_applicable' && walk.state !== 'confirmed' && data.walk.setUp && (
           <button type="button" className="cn-btn" disabled={busy} onClick={() => act(() => postCanonical(`${path.replace('/care', '/walks')}`, { mark: 'not-applicable' }))}>No walk needed</button>
@@ -85,7 +85,7 @@ export default function CompanionCareCard({ companion }) {
         <span className="cn-now-k">Next</span>
         {data.next
           ? <span>{data.next.title} — {data.next.dueDate}{data.next.dueTime ? ` ${data.next.dueTime}` : ''}{data.next.recurrenceWords ? ` (${data.next.recurrenceWords})` : ''}</span>
-          : <span className="cn-muted">Nothing dated. NEURO schedules nothing for {name} by itself.</span>}
+          : <span className="cn-muted">Nothing dated.</span>}
       </div>
 
       {data.open.length > 0 && (
@@ -102,6 +102,7 @@ export default function CompanionCareCard({ companion }) {
         </ul>
       )}
 
+      <Fold title="Add care" meta="vet, vaccination, flea, worming…">
       <form className="cn-goalform" onSubmit={add}>
         <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} aria-label="Kind of care">
           {KINDS.map(([k, w]) => <option key={k} value={k}>{w}</option>)}
@@ -115,11 +116,9 @@ export default function CompanionCareCard({ companion }) {
         </select>
         <button type="submit" className="cn-btn" disabled={busy || !form.title.trim() || (!!form.every && !form.dueDate)}>Add</button>
       </form>
+      </Fold>
 
-      <div className="cn-care-row">
-        <span className="cn-now-k">Linked to {name}</span>
-        {!data.linked.length && <span className="cn-muted">Nothing. A task or calendar entry counts as her care only when you link it here.</span>}
-      </div>
+      <Fold title={`Linked to ${name}`} meta={data.linked.length ? `${data.linked.length}` : 'nothing linked'}>
       {data.linked.length > 0 && (
         <ul className="cn-list">
           {data.linked.map((l) => (
@@ -144,6 +143,10 @@ export default function CompanionCareCard({ companion }) {
         <button type="button" className="cn-btn" disabled={busy || !linkTo}
           onClick={() => act(async () => { await postCanonical(path.replace('/care', '/links'), { entityId: linkTo, careKind: linkKind, label: (candidates.find((c) => c.id === linkTo) || {}).label }); setLinkTo(''); })}>Link</button>
       </div>
+      {data.mentions.length > 0 && (
+        <div className="cn-small cn-muted">Mentioned (not linked): {data.mentions.map((m) => m.title).join('; ')}</div>
+      )}
+      </Fold>
 
       {data.recent.length > 0 && (
         <details className="cn-details">
@@ -151,13 +154,7 @@ export default function CompanionCareCard({ companion }) {
           <ul className="cn-act-lines">{data.recent.map((r, i) => <li key={`${r.careId}-${i}`}>{r.doneOn} — {r.title}{r.nextDue ? ` (next ${r.nextDue})` : ''}</li>)}</ul>
         </details>
       )}
-      {data.mentions.length > 0 && (
-        <details className="cn-details">
-          <summary>{data.mentions.length} open item{data.mentions.length === 1 ? '' : 's'} mention {name} — not linked</summary>
-          <ul className="cn-act-lines">{data.mentions.map((m) => <li key={m.entityId}>{m.title}</li>)}</ul>
-        </details>
-      )}
-      <div className="cn-small cn-muted">{data.walk.rule}</div>
+      <HowItWorks>{data.walk.rule} NEURO schedules nothing for {name} by itself; a task or calendar entry counts as her care only when you link it.</HowItWorks>
     </div>
   );
 }

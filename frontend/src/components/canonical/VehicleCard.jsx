@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, HowItWorks } from './canonicalUi';
+import { useCanonical, postCanonical, HowItWorks, Fold } from './canonicalUi';
 
 /**
  * Build 21 — the Captur under Life → Vehicle.
@@ -74,47 +74,72 @@ export function OneVehicle({ r, review, tasks, busy, act }) {
   const name = `${v.make} ${v.model}`;
   const open = r.obligations.filter((o) => o.recordStatus === 'open');
   const done = r.obligations.filter((o) => o.recordStatus !== 'open');
+  const urgent = open.some((o) => o.status === 'needs_you' || o.status === 'overdue');
+  const latest = r.official.latest;
+  const own = r.finance.ownership12m;
+  const pending = review ? review.pending.length : null;
+  const readings = r.mileage.readings.length;
+  // 8 Oct 2026 (second pass): state up top, every editor folded behind a
+  // one-line summary — the card used to open as eight empty forms.
   return (
     <div className="cn-care">
       <div className="cn-care-row">
         <span className="cn-rowtitle">{name}</span>
-        <span className="cn-muted">{[v.plateDescriptor, v.fuelType, v.registration].filter(Boolean).join(' · ')}</span>
-        <span className="cn-muted">{v.currentMileage != null ? `${v.currentMileage.toLocaleString()} mi (${v.mileageObservedAt})` : 'mileage not recorded'}</span>
+        <span className="cn-muted">{[v.registration, v.plateDescriptor, v.fuelType].filter(Boolean).join(' · ')}</span>
+        <span className="cn-muted">{v.currentMileage != null ? `${v.currentMileage.toLocaleString()} mi` : ''}</span>
       </div>
-      {v.unknown.length > 0 && <div className="cn-small cn-muted">Not known: {v.unknown.join(', ')}.</div>}
-      <VehicleFacts v={v} base={base} busy={busy} act={act} />
+      <div className="cn-glance">
+        {!open.length && <span className="cn-muted">No MOT, tax, insurance or service date recorded yet.</span>}
+        {open.map((o) => (
+          <span key={o.id} className={`cn-chip ${o.status === 'needs_you' || o.status === 'overdue' ? 'cn-chip--firm' : 'cn-chip--soft'}`} title={o.statusWhy}>
+            {o.label} {o.dueDate || '—'} · {STATE_WORDS[o.status] || o.status}
+          </span>
+        ))}
+      </div>
 
-      <h4 className="cn-subhead">Dates</h4>
-      {!open.length && <div className="cn-muted">No MOT, tax, insurance or service date recorded. NEURO assumes none.</div>}
-      <ul className="cn-list">
-        {open.map((o) => <Obligation key={o.id} o={o} busy={busy} act={act} />)}
-      </ul>
-      <AddObligation base={base} tasks={tasks} busy={busy} act={act} />
-      {done.length > 0 && (
-        <details className="cn-details"><summary>Done ({done.length})</summary>
-          <ul className="cn-act-lines">{done.map((o) => <li key={o.id}>{o.label} — {o.statusWhy}</li>)}</ul>
-        </details>
-      )}
+      <Fold title="Dates" meta={open.length ? `${open.length} recorded${urgent ? ' — one needs you' : ''}` : 'none recorded'} open={urgent}>
+        <ul className="cn-list">
+          {open.map((o) => <Obligation key={o.id} o={o} busy={busy} act={act} />)}
+        </ul>
+        <AddObligation base={base} tasks={tasks} busy={busy} act={act} />
+        {done.length > 0 && (
+          <details className="cn-details"><summary>Done ({done.length})</summary>
+            <ul className="cn-act-lines">{done.map((o) => <li key={o.id}>{o.label} — {o.statusWhy}</li>)}</ul>
+          </details>
+        )}
+      </Fold>
 
-      <h4 className="cn-subhead">Official record</h4>
-      <Official r={r} base={base} busy={busy} act={act} />
+      <Fold title="Details" meta={v.unknown.length ? `Not known: ${v.unknown.join(', ')}` : 'complete'}>
+        <VehicleFacts v={v} base={base} busy={busy} act={act} />
+      </Fold>
 
-      <h4 className="cn-subhead">Mileage</h4>
-      <Mileage r={r} base={base} busy={busy} act={act} />
+      <Fold title="Mileage" meta={v.currentMileage != null ? `${v.currentMileage.toLocaleString()} mi on ${v.mileageObservedAt}` : 'not recorded'}>
+        <Mileage r={r} base={base} busy={busy} act={act} />
+      </Fold>
 
-      <h4 className="cn-subhead">History</h4>
-      <History r={r} base={base} busy={busy} act={act} />
+      <Fold title="History" meta={r.history.length ? `${r.history.length} entr${r.history.length === 1 ? 'y' : 'ies'}` : 'nothing recorded'}>
+        <History r={r} base={base} busy={busy} act={act} />
+      </Fold>
 
-      <h4 className="cn-subhead">Running costs</h4>
-      <Costs r={r} />
+      <Fold title="Official record" meta={latest ? `MOT ${latest.mot_status || '—'}${latest.mot_expiry_date ? ` to ${latest.mot_expiry_date}` : ''} · checked ${latest.checked_at.slice(0, 10)}` : 'no reading yet'}>
+        <Official r={r} base={base} busy={busy} act={act} />
+      </Fold>
 
-      <h4 className="cn-subhead">Possible car spending</h4>
-      <SpendReview review={review} vehicleId={v.id} busy={busy} act={act} />
+      <Fold title="Running costs" meta={`${money(own.totalPence)} in 12 months${own.coverage === 'complete' ? '' : ' (partial)'}`}>
+        <Costs r={r} />
+      </Fold>
 
-      <h4 className="cn-subhead">Health — evidence only</h4>
-      <Health h={r.health} />
+      <Fold title="Possible car spending" meta={pending == null ? 'reading Tally…' : pending ? `${pending} payment${pending === 1 ? '' : 's'} to sort` : 'nothing to sort'}>
+        <SpendReview review={review} vehicleId={v.id} busy={busy} act={act} />
+      </Fold>
 
-      <Links r={r} name={name} tasks={tasks} busy={busy} act={act} />
+      <Fold title="Health" meta={`evidence only — ${r.health.costPressure.state}`}>
+        <Health h={r.health} />
+      </Fold>
+
+      <Fold title={`Linked to the ${v.model}`} meta={r.links.length ? `${r.links.length} task${r.links.length === 1 ? '' : 's'}` : 'nothing linked'}>
+        <Links r={r} name={name} tasks={tasks} busy={busy} act={act} />
+      </Fold>
     </div>
   );
 }
@@ -332,8 +357,8 @@ function SpendReview({ review, vehicleId, busy, act }) {
     <>
       {!review.pending.length && <div className="cn-muted">Nothing waiting.</div>}
       {review.pending.length > 0 && (
-        <details className="cn-details">
-          <summary>{review.pending.length} payment{review.pending.length === 1 ? '' : 's'} ({money(totalPence)}) from {groups.length} place{groups.length === 1 ? '' : 's'} to sort</summary>
+        <>
+          <div className="cn-muted cn-small">{review.pending.length} payment{review.pending.length === 1 ? '' : 's'} ({money(totalPence)}) from {groups.length} place{groups.length === 1 ? '' : 's'}.</div>
           <ul className="cn-list">
             {groups.map((g) => {
               const sum = g.rows.reduce((n, t) => n - t.amountPence, 0);
@@ -372,7 +397,7 @@ function SpendReview({ review, vehicleId, busy, act }) {
               );
             })}
           </ul>
-        </details>
+        </>
       )}
       {review.rules.length > 0 && (
         <details className="cn-details"><summary>Rules you confirmed ({review.rules.length})</summary>
@@ -404,8 +429,7 @@ function Links({ r, name, tasks = [], busy, act }) {
   const describe = (id) => (r.linkSuggestions.find((x) => x.id === id) || tasks.find((t) => t.id === id) || {}).description;
   return (
     <>
-      <h4 className="cn-subhead">Linked to the {r.vehicle.model}</h4>
-      {!r.links.length && <div className="cn-muted">Nothing linked. A task counts as the car’s only when you link it.</div>}
+      {!r.links.length && <div className="cn-muted">A task counts as the car’s only when you link it.</div>}
       <ul className="cn-act-lines">{r.links.map((l) => <li key={l.entityId}>{l.label || describe(l.entityId) || l.entityId} <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical('/api/canonical/vehicle-links/remove', { vehicle: r.vehicle.id, entityId: l.entityId }))}>Unlink</button></li>)}</ul>
       {(r.linkSuggestions.length > 0 || others.length > 0) && (
         <div className="cn-hike-form">
