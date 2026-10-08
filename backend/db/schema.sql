@@ -2759,3 +2759,21 @@ CREATE TABLE IF NOT EXISTS companion_walk_marks (
   set_at        TEXT NOT NULL,
   PRIMARY KEY (companion_id, day)
 );
+
+-- Lead reminders (8 Oct 2026): the cadence Nick SETS per kind of personal
+-- date (anniversary: [10,5,1]). First step = Radar context, last = Needs You
+-- and the one push. Nothing sets a row except his route (date-nags.js).
+CREATE TABLE IF NOT EXISTS personal_date_nags (
+  nag_key       TEXT PRIMARY KEY,             -- kind:<birthday|anniversary|other>
+  title         TEXT NOT NULL,
+  offsets_json  TEXT NOT NULL,                -- [10,5,1] days before
+  set_at        TEXT NOT NULL
+);
+-- One row per nag SENT: claimed before the push, released only if it throws.
+CREATE TABLE IF NOT EXISTS personal_date_nag_sends (
+  send_key     TEXT PRIMARY KEY,              -- <date id incl. year>@needs_you
+  nag_key      TEXT NOT NULL,
+  date         TEXT NOT NULL,
+  offset_days  INTEGER NOT NULL,
+  at           TEXT NOT NULL
+);

@@ -438,6 +438,22 @@ router.post('/vehicle-links/remove', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// GET /api/canonical/lead-reminders — the lead-reminder cadence Nick set per kind of personal date (e.g. anniversary: 10, 5, 1 days before). Keywords: anniversary reminder, birthday nag.
+router.get('/lead-reminders', (req, res) => {
+  try { res.json({ ok: true, cadences: require('../services/date-nags').cadences(), kinds: require('../services/date-nags').KINDS }); } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/lead-reminders — Nick sets the lead reminders for a kind of personal date: first step is Radar context, middle steps a stronger prompt, the last step Needs You and the only push (skipped when linked prep is done). Body: kind (birthday|anniversary|other), offsets (days before, e.g. [10,5,1]; null clears). Keywords: anniversary nag.
+router.post('/lead-reminders', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { kind, offsets } = req.body;
+    const out = require('../services/date-nags').setCadence({ kind, offsets });
+    if (!out.ok) return failWith(res, out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
 // POST /api/canonical/annotations — Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.
 router.post('/annotations', (req, res) => {
   try {

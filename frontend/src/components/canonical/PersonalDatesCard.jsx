@@ -80,7 +80,45 @@ export default function PersonalDatesCard() {
         <button type="button" className="cn-btn" disabled={!entity || !date} onClick={() => save({ entity, kind, date })}>Save date</button>
       </div>
       {msg && <div className="cn-muted">{msg}</div>}
+      <LeadReminders />
       <div className="cn-muted">{data.rule} A date you remove is gone — NEURO never restores it.</div>
     </div>
+  );
+}
+
+/**
+ * Lead reminders, per kind of date — Nick's cadence, e.g. anniversary 10, 5, 1.
+ * The first step shows on the Radar, middle steps prompt harder, the last is
+ * Needs You and the ONLY push — and it stays quiet when the prep is done.
+ */
+function LeadReminders() {
+  const { data, reload } = useCanonical('/api/canonical/lead-reminders');
+  const [draft, setDraft] = useState({});
+  const [note, setNote] = useState(null);
+  if (!data) return null;
+  const save = async (kind, offsets) => {
+    setNote(null);
+    try { await postCanonical('/api/canonical/lead-reminders', { kind, offsets }); setDraft({ ...draft, [kind]: undefined }); reload(); } catch (e) { setNote(e.message); }
+  };
+  const parse = (s) => String(s || '').split(/[ ,]+/).filter(Boolean).map(Number);
+  return (
+    <>
+      <div className="cn-k">Lead reminders</div>
+      {['anniversary', 'birthday'].map((k) => {
+        const held = data.cadences[k];
+        const val = draft[k] !== undefined ? draft[k] : held ? held.join(', ') : '';
+        return (
+          <div key={k} className="cn-hike-line">
+            {k === 'anniversary' ? 'Anniversaries' : 'Birthdays'}: {held ? `${held.join(', ')} days before` : 'none'}{' '}
+            <input className="cn-input--short" value={val} placeholder="e.g. 10, 5, 1" aria-label={`${k} lead reminders, days before`}
+              onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} />
+            <button type="button" className="cn-btn cn-btn--tiny" disabled={!val.trim()} onClick={() => save(k, parse(val))}>Set</button>
+            {held && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => save(k, null)}>Clear</button>}
+          </div>
+        );
+      })}
+      {note && <div className="cn-error">{note}</div>}
+      <div className="cn-muted">First step: on the Radar only. Middle: a stronger prompt. Last: Needs You and one notification — skipped if the prep you linked is done.</div>
+    </>
   );
 }

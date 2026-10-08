@@ -527,6 +527,9 @@ function fromPersonalOps(rows) {
       case 'care-link-removed': return entry({ ...base, category: 'configured', type: 'companion.link', headline: `You unlinked ${d.label ? `"${d.label}"` : 'an item'} from ${d.companion || 'a companion'}'s care`, status: 'unlinked' });
       case 'vehicle-link-added': return entry({ ...base, category: 'configured', type: 'personal.vehicle-link', headline: `You linked ${d.label ? `"${d.label}"` : 'an item'} to the ${d.vehicle}`, status: 'linked' });
       case 'vehicle-link-removed': return entry({ ...base, category: 'configured', type: 'personal.vehicle-link', headline: `You unlinked ${d.label ? `"${d.label}"` : 'an item'} from the ${d.vehicle}`, status: 'unlinked' });
+      case 'lead-reminders-set': return entry({ ...base, category: 'configured', type: 'personal.lead-reminders',
+        headline: d.offsets ? `You set ${d.kind} lead reminders: ${d.offsets.join(', ')} days before` : `You cleared ${d.kind} lead reminders`,
+        summary: d.offsets ? 'First step shows on the Radar, the last is the only push — skipped when the prep is done.' : null, status: 'set' });
       case 'radar-needs-you': return entry({ ...base, category: 'sensed', type: 'personal.radar', headline: `Coming up and needs you: ${d.title}`, summary: 'Shown on the Future Radar. It does not interrupt on its own.', status: 'needs-you' });
       default: return null;
     }

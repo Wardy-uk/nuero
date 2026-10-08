@@ -1445,8 +1445,13 @@ function registerDurableJobs() {
     maxLagMs: null,
     maxAttempts: 1,
     timeoutMs: 60 * 1000,
-    why: 'Build 19W: records what CHANGED in personal operations for Activity — a personal obligation opened or completed, a Future Radar item that started needing Nick. The first run is a baseline. Reads only; never creates a task, never sends.',
-    run: async () => require('./future-radar').refresh(),
+    why: 'Build 19W: records what CHANGED in personal operations for Activity — a personal obligation opened or completed, a Future Radar item that started needing Nick. The first run is a baseline. Never creates a task. The ONLY send is a date nag Nick set himself (date-nags: e.g. his anniversary at 10/5/1 days out), once per offset, from 09:00.',
+    run: async () => {
+      const radar = require('./future-radar').refresh();
+      let nags = null;
+      try { nags = await require('./date-nags').run(); } catch (e) { nags = { ok: false, error: e.message }; }
+      return { ...radar, nags };
+    },
   });
 
   runtime.defineJob({

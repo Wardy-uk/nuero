@@ -62,6 +62,7 @@ export const interactive = {
   post_canonical_companions_by_id_walks_remove: 'Taking back a walk mark is Nick\'s statement. He does it in NEURO → Life → Companions.',
   post_canonical_vehicle_links: 'Which vehicle an admin item concerns is Nick\'s explicit choice. He links it in NEURO → Life → Personal admin.',
   post_canonical_vehicle_links_remove: 'Removing a vehicle link is Nick\'s choice. He does it in NEURO → Life → Personal admin.',
+  post_canonical_lead_reminders: 'When NEURO may remind Nick about a birthday or anniversary is his own setting. He sets it in NEURO → Life → Personal dates.',
   post_1to1_book:'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
   post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',
   post_1to1_reschedule: 'Moving a 1-2-1 emails the attendee an update as Nick. He confirms it in NEURO → Team.',

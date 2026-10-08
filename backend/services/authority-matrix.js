@@ -195,6 +195,8 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/canonical/companions/:id/walks/remove', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/canonical/vehicle-links', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/canonical/vehicle-links/remove', 'internal.state', { machine: 'refuse' }),
+  // A lead-reminder cadence decides when NEURO may push to Nick about a date.
+  R('POST', '/api/canonical/lead-reminders', 'internal.state', { machine: 'refuse' }),
   // Build 18Q: a birthday written into Nick's own People/Companion note.
   R('POST', '/api/loops/personal-dates/declared', 'vault.write', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/denials/:id/withdraw', 'internal.state', { machine: 'refuse' }),

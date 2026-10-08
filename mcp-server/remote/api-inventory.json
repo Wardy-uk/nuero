@@ -1092,6 +1092,22 @@
     "stream": false
   },
   {
+    "id": "get_canonical_lead_reminders",
+    "method": "GET",
+    "route": "/api/canonical/lead-reminders",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 442,
+    "description": "GET /api/canonical/lead-reminders. the lead-reminder cadence Nick set per kind of personal date (e.g. anniversary: 10, 5, 1 days before). Keywords: anniversary reminder, birthday nag.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_canonical_life",
     "method": "GET",
     "route": "/api/canonical/life",
@@ -6482,7 +6498,7 @@
     "route": "/api/canonical/annotations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 442,
+    "line": 458,
     "description": "POST /api/canonical/annotations. Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.",
     "params": [],
     "query": [],
@@ -6817,6 +6833,25 @@
     "body": [
       "entityId",
       "label"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_lead_reminders",
+    "method": "POST",
+    "route": "/api/canonical/lead-reminders",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 447,
+    "description": "POST /api/canonical/lead-reminders. Nick sets the lead reminders for a kind of personal date: first step is Radar context, middle steps a stronger prompt, the last step Needs You and the only push (skipped when linked prep is done). Body: kind (birthday|anniversary|other), offsets (days before, e.g.",
+    "params": [],
+    "query": [],
+    "body": [
+      "kind",
+      "offsets"
     ],
     "queryOpen": false,
     "bodyOpen": true,

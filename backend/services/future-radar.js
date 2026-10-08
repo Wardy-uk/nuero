@@ -116,7 +116,7 @@ function _prepState(prep, away) {
  */
 function composeRadar({ today, horizonDays = 14, events = [], dates = [], obligations = [], goals = [], hikeGoal = null,
   prepBySubject = new Map(), goalsByEntity = new Map(), coverage = {}, undatedObligations = 0, workExcluded = 0,
-  care = [], careByEntity = new Map() } = {}) {
+  care = [], careByEntity = new Map(), leadReminders = {} } = {}) {
   const last = addDays(today, horizonDays);
   const inWindow = (d) => d && d >= today && d <= last;
   const items = [];
@@ -131,13 +131,20 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     const explicit = (prepBySubject.get(d.id) || []).map((p) => ({ ...p, link: 'linked by you' }));
     const named = (d.prep || []).filter((p) => !explicit.some((e) => e.taskId === p.taskId)).map((p) => ({ ...p, link: `linked by name (${p.link})` }));
     const prep = [...explicit, ...named];
-    const st = _prepState(prep, away);
+    let st = _prepState(prep, away);
+    // Lead reminders Nick set for this KIND of date (date-nags): context →
+    // prompt → needs you. The same pure function decides the one push.
+    const lead = require('./date-nags').reminderStage(d, { today, offsets: leadReminders[d.kind] || null, prep });
+    if (lead && lead.stage === 'needs_you') st = { actionState: 'needs_you', why: lead.line };
     const src = (d.sources || [])[0] || {};
     const why = [src.basis === 'declared' ? `you declared it in ${src.note || 'your notes'}`
       : src.basis === 'birthdays-calendar' ? 'from your Birthdays calendar'
         : `your "${src.calendar || 'calendar'}" entry calls it ${d.kind === 'birthday' ? 'a birthday' : d.kind === 'anniversary' ? 'an anniversary' : 'this'}`];
     if (st.why) why.push(st.why);
+    if (lead && lead.stage !== 'needs_you') why.push(lead.line);
+    if (lead) why.push(`your ${d.kind} lead reminders: ${leadReminders[d.kind].join(', ')} days before`);
     items.push({
+      reminder: lead ? { stage: lead.stage, line: lead.line, step: lead.step, push: lead.push } : null,
       id: d.id, title: d.title, date: d.date, time: null, window: null,
       domain: null, sphere: 'personal', kind: d.kind === 'birthday' || d.kind === 'anniversary' ? d.kind : 'personal-date',
       sourceRefs: (d.sources || []).map((s) => s.meetingId || s.note).filter(Boolean),
@@ -402,7 +409,7 @@ function read({ now = Date.now(), horizonDays = 14 } = {}) {
     today, horizonDays, events, dates, obligations: obl ? obl.items : [], goals, hikeGoal,
     prepBySubject: _prepBySubject(prep.bySubject, taskIndex), goalsByEntity, coverage: cov,
     undatedObligations: obl ? obl.counts.undated : 0, workExcluded: obl ? obl.counts.workExcluded : 0,
-    care: careRead.items, careByEntity: cc.linkMap(),
+    care: careRead.items, careByEntity: cc.linkMap(), leadReminders: require('./date-nags').cadences(),
   });
   const progress = goals.map((g) => {
     const linked = (g.links || []).map((l) => taskIndex.get(l.entityId)).filter(Boolean).map((t) => ({ id: t.taskId, completedAt: t.completedAt || null }));

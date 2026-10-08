@@ -531,3 +531,78 @@ test('20U. Activity is semantic — care and links are lines; walks and reads ar
   assert.equal(act.length, rows.length, 'every kind has a template');
   for (const a of act) assert.ok(a.headline && !/undefined|null/.test(a.headline), a.headline);
 });
+
+// ═══ LEAD REMINDERS (Nick, 8 Oct 2026: anniversary at 10 / 5 / 1 days) ══════
+
+const dn = require('./date-nags');
+const ANN = (away) => ({ id: `pd:anniversary:title:x:${plus(away)}`, title: 'Wedding anniversary', date: plus(away), kind: 'anniversary' });
+const stageAt = (away, prep = []) => dn.reminderStage(ANN(away), { today: TODAY, offsets: [10, 5, 1], prep });
+
+test('L1. graduated steps — 10 is context, 5 a stronger prompt, 1 Needs You and the only push', () => {
+  assert.equal(stageAt(11), null, 'before the first step: nothing');
+  assert.deepEqual([stageAt(10).stage, stageAt(10).push], ['context', false]);
+  assert.match(stageAt(10).line, /in 10 days/);
+  assert.equal(stageAt(7).stage, 'context');
+  assert.deepEqual([stageAt(5).stage, stageAt(5).push], ['prompt', false]);
+  assert.match(stageAt(5).line, /in 5 days .*Nothing prepared yet\.$/);
+  assert.equal(stageAt(3).stage, 'prompt');
+  assert.deepEqual([stageAt(1).stage, stageAt(1).push], ['needs_you', true]);
+  assert.match(stageAt(1).line, /is tomorrow/);
+  assert.equal(stageAt(0).stage, 'needs_you');
+  assert.equal(stageAt(-1), null, 'a passed date says nothing');
+  assert.equal(dn.reminderStage(ANN(1), { today: TODAY, offsets: null }), null, 'no cadence set → nothing at all');
+});
+
+test('L2. completed prep suppresses the prompt and the push; open prep is named instead of "nothing prepared"', () => {
+  const done = [{ title: 'Book the meal', status: 'completed' }];
+  const open = [{ title: 'Buy a card', status: 'open' }];
+  assert.equal(stageAt(5, done).stage, 'context');
+  assert.match(stageAt(5, done).line, /Prep done: "Book the meal"/);
+  assert.equal(stageAt(1, done).push, false, 'prep done → no notification');
+  assert.equal(stageAt(5, open).stage, 'prompt');
+  assert.match(stageAt(5, open).line, /Still open: "Buy a card"\.$/);
+  assert.equal(stageAt(1, open).push, true);
+  assert.doesNotMatch(stageAt(1, open).line, /Nothing prepared/);
+});
+
+test('L3. the cadence is per kind, Nick-only, refused not clamped', async () => {
+  assert.equal(dn.parseOffsets([10, 5, 1, 99]).ok, false);
+  assert.deepEqual(dn.parseOffsets([1, 10, 5, 5]).value, [10, 5, 1]);
+  const m = await call('POST', '/api/canonical/lead-reminders', 'machine', { kind: 'anniversary', offsets: [10, 5, 1] });
+  assert.equal(m.status, 403);
+  const bad = await call('POST', '/api/canonical/lead-reminders', 'nick', { kind: 'wedding', offsets: [1] });
+  assert.equal(bad.status, 400);
+  const r = await call('POST', '/api/canonical/lead-reminders', 'nick', { kind: 'anniversary', offsets: [10, 5, 1] });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual(dn.cadences(), { anniversary: [10, 5, 1] }, 'birthdays untouched');
+  const act = require('./activity-timeline').fromPersonalOps(db.all("SELECT * FROM personal_ops_events WHERE kind = 'lead-reminders-set'"));
+  assert.match(act[0].headline, /anniversary lead reminders: 10, 5, 1 days before/);
+});
+
+test('L4. the Radar and the push agree — Needs You at 1 day, pushed ONCE, and a failed push is retried', async () => {
+  pushCalendar([timed('E-VET', 'Vets — booster', plus(4), '10:30', CALS[0]), allDay('E-ANN', 'Wedding anniversary', plus(11), CALS[0]),
+    timed('E-TMA', 'TMA 02 due', plus(6), '12:00', CALS[1]), allDay('E-ANN2', 'Mum and Dad anniversary', plus(1), CALS[0])]);
+  await pump();
+  const item = radarItems(14).find((i) => i.title === 'Mum and Dad anniversary');
+  assert.equal(item.actionState, 'needs_you');
+  assert.equal(item.reminder.stage, 'needs_you');
+  assert.equal(item.attention.eligible, true);
+  const far = radarItems(14).find((i) => i.title === 'Wedding anniversary');
+  assert.equal(far.reminder, null, '11 days out is before the first step');
+  const noon = Date.parse(`${TODAY}T12:00:00Z`);
+  const early = Date.parse(`${TODAY}T06:00:00Z`);
+  const sent = [];
+  assert.equal((await dn.run({ now: early, send: async (t, b) => sent.push(b) })).sent, 0, 'nothing before 09:00');
+  const failed = await dn.run({ now: noon, send: async () => { throw new Error('push down'); } });
+  assert.equal(failed.sent, 0);
+  assert.equal(db.get('SELECT COUNT(*) n FROM personal_date_nag_sends').n, 0, 'a failed push releases its claim');
+  const r1 = await dn.run({ now: noon, send: async (t, b, data) => sent.push({ t, b, data }) });
+  const r2 = await dn.run({ now: noon + 1800000, send: async (t, b, data) => sent.push({ t, b, data }) });
+  assert.equal(r1.sent, 1);
+  assert.equal(r2.sent, 0, 'never twice');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].t, 'SAiM — Mum and Dad anniversary');
+  assert.match(sent[0].b, /is tomorrow .*Nothing prepared yet\./);
+  assert.equal(sent[0].data.type, 'personal_date');
+  assert.deepEqual(realDoors, [], 'the real push door was never reached by tests');
+});
