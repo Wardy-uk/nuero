@@ -104,23 +104,18 @@ function verify(followups = []) {
  * his own words.
  */
 const BUILD_23 = Object.freeze([
-  { key: 'reconnect-nick-natwest', build: 'Build 23', title: 'Reconnect my NatWest bank feed in Tally (TrueLayer)',
-    why: 'Both NatWest connections stopped refreshing on 27 Jun 2026. Finance in NEURO shows "reconnect required" until the feed is re-approved at NatWest. Tally backfills from each account\'s newest transaction.',
-    alsoMatches: ['Reconnect TrueLayer in Tally', 'Reconnect NatWest'] },
-  { key: 'helen-reconnect-natwest', build: 'Build 23', title: 'Ask Helen to reconnect her NatWest account in Tally when convenient',
-    why: 'Helen\'s account needs her own approval. Until then household finance stays partial.' },
-  { key: 'create-personal-admin-list', build: 'Build 23', title: 'Create a "Personal Admin" list in Apple Reminders, then classify and track it in NEURO',
-    why: 'NEURO cannot create Apple lists. Then: open NEURO/SAiM on the phone, set the list as Admin and Track it in Life → Reminder lists.',
-    alsoMatches: ['Create Personal Admin list'] },
-  { key: 'captur-registration', build: 'Build 23', title: 'Add the Captur registration in NEURO (Life → Vehicle)',
-    why: 'From the V5C. Unlocks the official MOT/tax checks.', alsoMatches: ['Add Captur registration'] },
-  { key: 'captur-mileage', build: 'Build 23', title: 'Add a Captur odometer reading in NEURO (Life → Vehicle)', alsoMatches: ['Add Captur mileage'] },
-  { key: 'captur-dates', build: 'Build 23', title: 'Add the Captur MOT, tax and insurance dates in NEURO (Life → Vehicle)', alsoMatches: ['Add MOT tax insurance dates'] },
-  { key: 'link-mot-task-captur', build: 'Build 23', title: 'Link the MOT booking task to the Captur in NEURO',
-    why: 'Life → Vehicle → link "Book my car in for its MOT" as the MOT\'s action.' },
-  { key: 'build18-native-proof', build: 'Build 23', title: 'Finish the Build 18 native proof on the Mac (docs/build-18-mac-runbook.md)',
-    why: 'Rebuild NEURO iOS from a clean tree, confirm /api/setup/native, then read the CLMonitor assertion before re-enabling geofences.',
-    alsoMatches: ['Build 18 native proof', 'Complete remaining Build 18 native proof'] },
+  { key: 'reconnect-nick-natwest', build: 'Build 23', title: 'Reconnect my NatWest accounts to Tally via TrueLayer',
+    why: "Both NatWest connections stopped refreshing on 27 Jun 2026. Finance in NEURO shows reconnect required until the feed is re-approved at NatWest. Tally backfills from each account's newest transaction; NEURO then measures relink, backfill and gaps." },
+  { key: 'helen-reconnect-natwest', build: 'Build 23', title: 'Ask Helen to reconnect her NatWest account in Tally via TrueLayer',
+    why: "Helen's account needs her own approval. Until then household finance stays partial." },
+  { key: 'classify-personal-admin-list', build: 'Build 23', title: 'Classify and track the new Personal Admin Apple Reminders list in NEURO',
+    why: 'The list reached NEURO on 8 Oct 2026. Life → Reminder lists: set it as Admin and Track it. NEURO never infers that from the name.' },
+  { key: 'captur-basics', build: 'Build 23', title: 'Fill in the Captur basics in NEURO: registration, current mileage, MOT, tax and insurance',
+    why: 'Life → Vehicle. Real or official values only.' },
+  { key: 'link-mot-task-captur', build: 'Build 23', title: 'Link the existing car MOT booking task to the Renault Captur in NEURO' },
+  { key: 'review-vehicle-spend', build: 'Build 23', title: "Review and confirm Tally's pending vehicle-spend transactions and merchant rules" },
+  { key: 'build18-native-proof', build: 'Build 23', title: 'Complete the remaining Build 18 native iPhone proof with Claude',
+    why: 'docs/build-18-mac-runbook.md: rebuild NEURO iOS from a clean tree, confirm /api/setup/native, read the CLMonitor assertion before re-enabling geofences.' },
 ]);
 
 module.exports = { LEDGER_KEY, BUILD_23, validate, reconcile, verify };

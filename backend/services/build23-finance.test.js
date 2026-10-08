@@ -623,6 +623,29 @@ test('38/39/40/41. build follow-ups become real tasks: existing reused, resolved
   for (const f of fu.BUILD_23) assert.equal(fu.validate(f), null, f.key);
 });
 
+test('39 (live). the real Build 23 list reuses the tasks Nick already has — copied from the live store, 8 Oct 2026', () => {
+  const LIVE = [
+    'Reconnect my NatWest accounts to Tally via TrueLayer',
+    'Ask Helen to reconnect her NatWest account in Tally via TrueLayer',
+    'Classify and track the new Personal Admin Apple Reminders list in NEURO',
+    'Fill in the Captur basics in NEURO: registration, current mileage, MOT, tax and insurance',
+    'Link the existing car MOT booking task to the Renault Captur in NEURO',
+    "Review and confirm Tally's pending vehicle-spend transactions and merchant rules",
+    'Complete the remaining Build 18 native iPhone proof with Claude',
+    'Book my car in for its MOT tomorrow (8 October 2026). Must do tomorrow.',
+    'After TrueLayer reconnect is verified, have Claude push the deployed Tally security commits to GitHub',
+  ];
+  db.setState(fu.LEDGER_KEY, '{}'); // the test above shares two keys
+  const ids = LIVE.map((text) => store.createTask({ text, source: 'chatgpt-build-followup' }).id);
+  const before = db.listTaskRows({ status: 'all' }).length;
+  const dry = fu.reconcile(fu.BUILD_23, { now: NOW });
+  assert.deepEqual(dry.results.filter((x) => x.outcome !== 'reused').map((x) => x.key), [], 'nothing would be created');
+  const byKey = Object.fromEntries(dry.results.map((x) => [x.key, x.taskId]));
+  assert.equal(byKey['captur-basics'], ids[3]);
+  assert.equal(byKey['link-mot-task-captur'], ids[4], 'the link task, not the MOT booking itself');
+  assert.equal(db.listTaskRows({ status: 'all' }).length, before);
+});
+
 test('render: the Finance card shows feed state, a complete month, coverage, recurring and review — and Helen only as a total', async () => {
   const React = require('react');
   const { renderToString } = require('react-dom/server');
