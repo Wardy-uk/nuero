@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-08 (Build 21: vehicle intelligence + Tally finance ingestion)
+
+- Deployed nuero 9a4ae3f + 133e6be to pi5 (gate 5736/0, frontend built, neuro-backend restarted, MCP gateway rebuilt). Built in worktree `nuero-b21` (own `npm ci --ignore-scripts`). Record: vault Projects/NEURO/NEURO-SAIM — Build 21 Vehicle Intelligence and Tally Finance Ingestion.md; gap analysis appended.
+- Live: all 7 reminder lists tracked (21A done). Captur created (Renault, 65-plate, diesel; reg/mileage/dates unknown). First Tally read: 1,150 → 44 kept, 43 awaiting Nick, 0 confirmed. No Personal Admin list on the phone yet.
+- ⚠ Tally JWT secret is the public fallback 'dev-insecure-secret' (finance repo auth.ts:16) and Tally is public — told Nick; NOT changed (Build 21 forbids Tally changes). Tally's TrueLayer sync dead since 26 Jun.
+- ⚠ Main tree `node_modules` was broken at 11:15 (unmet deps everywhere, likely another session's install ~10:25). I restored only array-flatten@1.1.1 there. Whoever owns that tree: `npm ci --ignore-scripts` fixes it (better-sqlite3 13 ships prebuilds; a source build fails on Node 25 ARM64).
+- Other session's training-sync removal still uncommitted in the main tree — untouched.
+- Next: Nick's ten minutes (vault note §21), then Build 22 = Household/Home.
+
+---
+
 # Session Handoff — 2026-10-08 (Build 20: Ember care + personal-ops activation + anniversary lead reminders)
 
 - Deployed nuero caf5ac9 then 4222399 to pi5 (gate 5678/0, gateway 49/0, frontend built, MCP gateway rebuilt). Record: vault Projects/NEURO/NEURO-SAIM — Build 20 Ember Care and Personal Operations Activation.md; gap analysis appended.
