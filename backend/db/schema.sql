@@ -2804,6 +2804,7 @@ CREATE TABLE IF NOT EXISTS medical_records (
   directions TEXT,
   quantity TEXT,
   notes TEXT,
+  follow_up TEXT,
   source TEXT,
   content_json TEXT NOT NULL,
   previous_json TEXT,

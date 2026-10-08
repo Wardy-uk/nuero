@@ -54,7 +54,7 @@ router.get('/tests/:name', (req, res) => {
   }
 });
 
-// POST /api/medical/records — save NHS app records already parsed from screenshots. record: {kind: test_result|diagnosis|prescription, name, date YYYY-MM-DD, value, unit, referenceRange, flag (only if shown), status, panel, dose, directions, quantity, notes}. Copy values exactly. Resends fold. Keywords: medical, NHS, upload, blood test, diagnosis, prescription. Body: { records: [record], client }
+// POST /api/medical/records — save parsed NHS app records. record: {kind: test_result|diagnosis|prescription, name, date YYYY-MM-DD, value, unit, referenceRange, flag (if shown), status, followUp (GP comment e.g. "No further action"), panel, dose, directions, quantity, notes}. Copy exactly; resends fold. Keywords: medical, NHS, blood test, prescription. Body: { records: [record], client }
 router.post('/records', (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });

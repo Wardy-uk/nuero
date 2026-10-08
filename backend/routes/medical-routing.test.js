@@ -142,3 +142,18 @@ test('scan through the REAL routing + provider defaults refuses honestly with no
   assert.ok(!JSON.stringify(body).includes(png));
   assert.equal((await post('/scan', { images: [] })).status, 422);
 });
+
+test('followUp round-trips, and a resend with only the GP comment changed is a revision', async () => {
+  const rec = { kind: 'test_result', name: 'Synthetic Panel Value', date: '2026-07-30', value: '0', notes: 'synthetic fixture', followUp: 'Satisfactory' };
+  const first = await (await post('/records', { records: [rec] }, { 'x-test-machine': 'gateway' })).json();
+  assert.equal(first.created, 1);
+  const read = await get('/records?name=Synthetic%20Panel%20Value');
+  assert.equal(read.records.length, 1);
+  assert.equal(read.records[0].followUp, 'Satisfactory');
+  assert.equal(read.records[0].value, '0');
+  const changed = await (await post('/records', { records: [{ ...rec, followUp: 'No further action' }] })).json();
+  assert.equal(changed.revised, 1);
+  const after = await get('/records?name=Synthetic%20Panel%20Value');
+  assert.equal(after.records[0].followUp, 'No further action');
+  assert.equal(after.records[0].revisions, 1);
+});

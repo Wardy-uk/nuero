@@ -164,3 +164,19 @@ test('scan: a provider error is generalised, never passed through', async () => 
     assert.ok(!/sk-ant|401/.test(r.why));
   } finally { console.warn = warn; }
 });
+
+test('the GP comment is followUp, kept as text; sent as status it is refused with the field to use', () => {
+  const ok = m.normaliseRecord({ kind: 'test_result', name: 'Synthetic Test A', date: '2026-07-30', value: '30', unit: 'mmol/mol', flag: 'Normal', followUp: 'No Further Action' }, { today: TODAY });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.record.followUp, 'No Further Action', 'copied, never normalised');
+  assert.equal(ok.record.flag, 'normal');
+  assert.equal(ok.record.status, null, 'a GP comment never becomes a lab status');
+  for (const said of ['No Further Action', 'Satisfactory']) {
+    const r = m.normaliseRecord({ kind: 'test_result', name: 'Synthetic Test A', date: '2026-07-30', value: '30', status: said }, { today: TODAY });
+    assert.equal(r.ok, false, `"${said}" as status is still refused`);
+    assert.match(r.why, /followUp/, 'the reason names the field to use');
+  }
+  const typo = m.normaliseRecord({ kind: 'test_result', name: 'X', date: '2026-07-30', value: '1', status: 'finl' }, { today: TODAY });
+  assert.equal(typo.ok, false);
+  assert.doesNotMatch(typo.why, /followUp/, 'a misspelt status is not offered as a GP comment');
+});

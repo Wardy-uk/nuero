@@ -124,6 +124,58 @@ export function toolDefinitions(config, api) {
     const filtered = query ? mapped.filter(r => JSON.stringify(r).toLowerCase().includes(query.toLowerCase())) : mapped;
     return { results: filtered.slice(0, limit), coverage: 'Today only (backend UTC day); logged activity only, not all meetings or conversations', partial: false, truncated: filtered.length > limit };
   };
+  // ── Medical records (8 Oct 2026) ─────────────────────────────────────────────
+  // A typed door for Nick's own NHS app results, beside the generic
+  // post_medical_records operation. The first ChatGPT attempt never reached this
+  // gateway: ChatGPT's own safety layer stopped it before sending (no tool_call
+  // was logged). The generic neuro_action is declared destructive + open-world
+  // with an untyped body, which is the wrong description of this write. This
+  // tool says what it really is — additive, idempotent (a resend folds), and
+  // contained to NEURO's own table. Same backend route, same validation, same
+  // scopes as the operation; nothing is widened.
+  // ⚠ "Saved" is only claimed after the stored rows are READ BACK and compared.
+  const s = z.string().optional();
+  const medicalRecord = z.strictObject({
+    kind: z.enum(['test_result', 'diagnosis', 'prescription']), name: z.string(), date: s,
+    value: s, unit: s, referenceRange: s, flag: s, status: s, followUp: s,
+    panel: s, dose: s, directions: s, quantity: s, notes: s,
+  });
+  const COMPARED = ['name', 'date', 'value', 'unit', 'referenceRange', 'flag', 'status', 'followUp', 'panel', 'dose', 'directions', 'quantity', 'notes'];
+  const norm = (field, v) => {
+    if (v === undefined || v === null) return null;
+    const t = String(v).replace(/\s+/g, ' ').trim();
+    if (!t) return null;
+    return field === 'flag' || field === 'status' ? t.toLowerCase() : t;
+  };
+  tools.push({
+    name: 'medical_records_save',
+    description: 'Save Nick\'s own NHS app records into NEURO when he asks. Copy values exactly; date YYYY-MM-DD; flag only if shown; GP comment ("No further action") is followUp, not status. Resends fold. saved=true only after read-back matches.',
+    input: z.strictObject({ records: z.array(medicalRecord).min(1).max(50) }),
+    output: z.object({ saved: z.boolean(), partial: z.boolean(), counts: z.unknown(), results: z.array(z.unknown()) }),
+    write: true,
+    classification: 'action',
+    scopes: ['neuro:read', 'neuro:write', 'neuro:action'],
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    run: async ({ records }) => {
+      const saved = await api('/api/medical/records', { records, client: 'mcp' });
+      const rows = requireArray(saved.results);
+      const results = await Promise.all(rows.map(async r => {
+        const sent = records[r.index] || {};
+        const base = { index: r.index, name: String(sent.name || ''), outcome: String(r.outcome), id: typeof r.id === 'number' ? r.id : null, why: asText(r.why) };
+        if (r.outcome === 'refused') return { ...base, verified: false, mismatches: [] };
+        // Read back by name (+ date) rather than the whole table, so the check
+        // never depends on how many records Nick has.
+        const stored = requireArray((await api(`/api/medical/records?${qs({ kind: sent.kind, name: sent.name, ...(sent.date ? { from: sent.date, to: sent.date } : {}), limit: '50' })}`)).records);
+        const row = stored.find(s => s.id === r.id);
+        if (!row) return { ...base, verified: false, mismatches: ['not found on read-back'] };
+        const mismatches = COMPARED.filter(f => norm(f, sent[f]) !== norm(f, row[f]));
+        return { ...base, verified: mismatches.length === 0, mismatches };
+      }));
+      const counts = { created: Number(saved.created) || 0, unchanged: Number(saved.unchanged) || 0, revised: Number(saved.revised) || 0, refused: Number(saved.refused) || 0 };
+      const allVerified = results.length === records.length && results.every(r => r.verified);
+      return { saved: allVerified, partial: !allVerified && results.some(r => r.verified), counts, results };
+    },
+  });
   add('events_recent', 'Recent events logged today; coverage is explicitly limited to the backend activity log.', { limit }, listOutput, events);
   add('events_search', 'Text search over today’s logged activity only.', { query, limit }, listOutput, events);
   add('timeline_get', 'Timeline of today’s logged activity, newest first.', { limit }, listOutput, events);
@@ -153,7 +205,7 @@ export function createToolServer(config, api, auth, log, store = createResultSto
     const scopes = tool.scopes || (tool.write ? ['neuro:read', 'neuro:write'] : ['neuro:read']);
     server.registerTool(tool.name, {
       description: tool.description, inputSchema: tool.input, outputSchema: tool.output,
-      annotations: { readOnlyHint: !tool.write, destructiveHint: tool.write, idempotentHint: !tool.write, openWorldHint: ['action','admin'].includes(tool.classification) },
+      annotations: tool.annotations || { readOnlyHint: !tool.write, destructiveHint: tool.write, idempotentHint: !tool.write, openWorldHint: ['action','admin'].includes(tool.classification) },
       _meta: { securitySchemes: [{ type: 'oauth2', scopes }] },
     }, async args => {
       const start = performance.now(); let code = 'ok';

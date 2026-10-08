@@ -8786,7 +8786,7 @@
     "domain": "medical",
     "source": "routes/medical.js",
     "line": 58,
-    "description": "POST /api/medical/records. save NHS app records already parsed from screenshots. record: {kind: test_result|diagnosis|prescription, name, date YYYY-MM-DD, value, unit, referenceRange, flag (only if shown), status, panel, dose, directions, quantity, notes}. Copy values exactly. Resends fold. Keywords",
+    "description": "POST /api/medical/records. save parsed NHS app records. record: {kind: test_result|diagnosis|prescription, name, date YYYY-MM-DD, value, unit, referenceRange, flag (if shown), status, followUp (GP comment e.g. \"No further action\"), panel, dose, directions, quantity, notes}. Copy exactly; resends fol",
     "params": [],
     "query": [],
     "body": [

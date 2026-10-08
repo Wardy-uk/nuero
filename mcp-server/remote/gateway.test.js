@@ -22,6 +22,8 @@ async function listen(server, t) {
   t.after(() => { server.closeAllConnections(); server.close(); });
   return `http://127.0.0.1:${server.address().port}`;
 }
+// What the fake NEURO "stored" for the medical tool's read-back; tests change it.
+let medicalStored = {};
 async function fixture(t, options = {}) {
   const calls = []; let mode = 'ok';
   const upstream = http.createServer(async (req, res) => {
@@ -39,6 +41,8 @@ async function fixture(t, options = {}) {
     if (req.url === '/api/capture/todo') data = { success: true, taskId: 8, vault: { written: false } };
     if (req.url === '/api/capture/recent') data = { items: [] };
     if (req.url === '/api/activity/today') data = { events: [{ id: 1, event_type: 'capture', created_at: '2026-09-15 12:00:00', event_data: 'note' }] };
+    if (req.url === '/api/medical/records') data = { ok: true, created: 1, unchanged: 0, revised: 0, refused: 0, results: [{ index: 0, outcome: 'created', id: 5 }] };
+    if (req.url.startsWith('/api/medical/records?')) data = { ok: true, records: [{ id: 5, ...medicalStored }] };
     if (req.url === '/api/signals/room') data = { known: false, room: null, why: 'no observations', api_key: 'vault-secret' };
     res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data));
   });
@@ -46,7 +50,7 @@ async function fixture(t, options = {}) {
   const localConfig = { ...config, NEURO_API_URL: upstreamUrl, MCP_UPSTREAM_TIMEOUT_MS: 100, ...options };
   const logs = [];
   const url = await listen(http.createServer(createApp(localConfig, { verify, log: (event, fields) => logs.push({ event, ...fields }) })), t);
-  const accessToken = await token();
+  const accessToken = await token(options.scope ? { scope: options.scope } : {});
   const client = new Client({ name: 'integration-test', version: '1' });
   await client.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${accessToken}` } } }));
   t.after(() => client.close());
@@ -65,8 +69,8 @@ test('unauthenticated MCP and readiness are denied; metadata and liveness are pu
 });
 test('real SDK initialize, discovery, read, write and stateless reconnect', async t => {
   const f = await fixture(t); const tools = (await f.client.listTools()).tools;
-  // 18 named + 6 NEURO full-access + 5 VANTAGE (vantage_capabilities, _read, _write, _action, _admin).
-  assert.equal(tools.length, 29);
+  // 19 named (incl. medical_records_save) + 6 NEURO full-access + 5 VANTAGE (vantage_capabilities, _read, _write, _action, _admin).
+  assert.equal(tools.length, 30);
   assert.ok(tools.every(v => v.inputSchema && v.outputSchema && v.annotations));
   assert.ok(!tools.some(v => /delete|approve|shell|http_request/.test(v.name)));
   const read = await f.client.callTool({ name: 'memory_search', arguments: { query: 'hello' } });
@@ -83,13 +87,15 @@ test('real SDK initialize, discovery, read, write and stateless reconnect', asyn
   assert.doesNotMatch(JSON.stringify(f.logs), /Remember this|upstream-secret|vault-secret|Bearer/);
 });
 test('all tool adapters execute with typed output; unknown context stays unknown', async t => {
-  const f = await fixture(t);
+  // medical_records_save carries the same action scope as post_medical_records.
+  const f = await fixture(t, { scope: 'neuro:read neuro:write neuro:action' });
   for (const tool of toolDefinitions(config, () => {})) {
     const args = tool.name === 'memory_update' ? { id: 'MCP Memories/12345678-1234-1234-1234-123456789abc.md', content: 'Updated' }
       : tool.name === 'memory_get' ? { id: 'Notes/Test.md' }
       : ['memory_search', 'neuro_search', 'events_search'].includes(tool.name) ? { query: 'note' }
       : ['memory_create', 'capture_memory', 'capture_note'].includes(tool.name) ? { title: 'Test', content: 'Test content' }
-      : tool.name === 'capture_task' ? { text: 'Task' } : {};
+      : tool.name === 'capture_task' ? { text: 'Task' }
+      : tool.name === 'medical_records_save' ? (medicalStored = { kind: 'test_result', name: 'Synthetic', date: '2026-07-30', value: '1' }, { records: [medicalStored] }) : {};
     const result = await f.client.callTool({ name: tool.name, arguments: args });
     assert.equal(result.isError, undefined, `${tool.name}: ${JSON.stringify(result)}`);
     tool.output.parse(result.structuredContent);
@@ -204,7 +210,42 @@ test('the advertised tool catalogue stays inside a client tool-schema budget', a
   const f = await fixture(t);
   const tools = (await f.client.listTools()).tools;
   const bytes = Buffer.byteLength(JSON.stringify({ tools }));
-  assert.ok(bytes < 45000, `tools/list is ${bytes} bytes; a client dropped the tail at 55403`);
+  // 46000 since 8 Oct 2026 (was 45000): medical_records_save needed ~1.5KB after
+  // trimming. The measured failure is 55403, so 17% headroom is kept.
+  assert.ok(bytes < 46000, `tools/list is ${bytes} bytes; a client dropped the tail at 55403`);
   // Nothing may quietly become enormous on its own either.
   for (const tool of tools) assert.ok(Buffer.byteLength(JSON.stringify(tool)) < 4000, `${tool.name} schema is too large`);
+});
+
+test('medical_records_save: declared non-destructive and closed-world; saved only when the read-back matches', async t => {
+  const f = await fixture(t, { scope: 'neuro:read neuro:write neuro:action' });
+  const tool = (await f.client.listTools()).tools.find(v => v.name === 'medical_records_save');
+  assert.deepEqual(tool.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false });
+  const sent = { kind: 'test_result', name: 'Synthetic Test', date: '2026-07-30', value: '30', unit: 'mmol/mol', referenceRange: '20.0 - 41.0', flag: 'Normal', followUp: 'No Further Action' };
+  medicalStored = { ...sent, flag: 'normal' };
+  const ok = await f.client.callTool({ name: 'medical_records_save', arguments: { records: [sent] } });
+  assert.equal(ok.isError, undefined, JSON.stringify(ok));
+  assert.equal(ok.structuredContent.saved, true);
+  assert.equal(ok.structuredContent.results[0].verified, true);
+  const post = f.calls.find(c => c.url === '/api/medical/records');
+  assert.deepEqual(post.body.records, [sent], 'the record reaches NEURO exactly as sent');
+  // A stored value that does not match what was sent is NOT saved=true.
+  medicalStored = { ...sent, value: '31' };
+  const bad = await f.client.callTool({ name: 'medical_records_save', arguments: { records: [sent] } });
+  assert.equal(bad.structuredContent.saved, false);
+  assert.deepEqual(bad.structuredContent.results[0].mismatches, ['value']);
+  // A stray field is refused before anything is sent.
+  const before = f.calls.length;
+  const stray = await f.client.callTool({ name: 'medical_records_save', arguments: { records: [{ ...sent, colour: 'red' }] } });
+  assert.equal(stray.isError, true);
+  assert.equal(f.calls.length, before);
+  assert.doesNotMatch(JSON.stringify(f.logs), /Synthetic Test|mmol/, 'no medical content in the gateway log');
+});
+
+test('medical_records_save needs the same action scope as post_medical_records; a write-only token is refused before NEURO', async t => {
+  const f = await fixture(t);
+  const r = await f.client.callTool({ name: 'medical_records_save', arguments: { records: [{ kind: 'test_result', name: 'Synthetic', date: '2026-07-30', value: '1' }] } });
+  assert.equal(r.isError, true);
+  assert.match(JSON.stringify(r), /insufficient_scope/);
+  assert.equal(f.calls.filter(c => c.url.startsWith('/api/medical')).length, 0);
 });

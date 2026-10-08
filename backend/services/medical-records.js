@@ -58,7 +58,12 @@ const MAX_IMAGE_BYTES = 4.5 * 1024 * 1024;
 const MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 const CONTENT_FIELDS = ['kind', 'name', 'date', 'value', 'unit', 'referenceRange', 'flag', 'status',
-  'panel', 'code', 'dose', 'directions', 'quantity', 'notes', 'source'];
+  'panel', 'code', 'dose', 'directions', 'quantity', 'notes', 'source', 'followUp'];
+
+// The GP's filing comment as the NHS app prints it beside a result ("No Further
+// Action", "Satisfactory"). It is NOT a lab status and NOT a flag: it is copied
+// as text and never read for meaning. This pattern only words a refusal.
+const FOLLOW_UP_HINT = /no further action|no action|satisfactory|filed|discuss|contact|routine|reviewed|borderline|repeat|speak to/i;
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -167,7 +172,13 @@ function normaliseRecord(input, { today = new Date() } = {}) {
   if (status) {
     status = status.toLowerCase();
     if (!STATUSES[k].includes(status)) {
-      return { ok: false, why: `status for a ${k.replace('_', ' ')} must be one of ${STATUSES[k].join(', ')} or omitted (got "${input.status}")` };
+      // ⚠ Still refused, never moved into followUp on the caller's behalf: a
+      // misspelt "finl" silently becoming a GP comment is a guess. The reason
+      // names the field to use, so the resend is one edit.
+      const hint = FOLLOW_UP_HINT.test(String(input.status))
+        ? ` — "${input.status}" reads like the GP's comment; send it as followUp instead`
+        : '';
+      return { ok: false, why: `status for a ${k.replace('_', ' ')} must be one of ${STATUSES[k].join(', ')} or omitted (got "${input.status}")${hint}` };
     }
   }
 
@@ -189,6 +200,7 @@ function normaliseRecord(input, { today = new Date() } = {}) {
     directions: _str(input.directions, 300),
     quantity: _str(input.quantity, 80),
     notes: _str(input.notes, 1000),
+    followUp: _str(input.followUp ?? input.follow_up, 200),
     source: _str(input.source, 60) || 'nhs-app',
   };
   if (!rec.nameKey) return { ok: false, why: 'a record needs a name made of letters or numbers' };
@@ -272,6 +284,7 @@ function buildPrompt(count) {
     '- Copy names, values, units and ranges EXACTLY as printed. Keep qualifiers like "<0.5" in the value.',
     '- flag: only if the screen itself says so (e.g. "High", "Low", "Abnormal", "Normal"). Never work it out from the range.',
     '- date: the date shown for that item, as YYYY-MM-DD (or YYYY-MM / YYYY if that is all it shows). If a date applies to a group of rows, use it for each.',
+    '- followUp: the GP\'s comment printed beside a result (e.g. "No further action", "Satisfactory"), copied as shown. It is NOT the status. Omit it if there is none.',
     '- If a value or date is cut off or unreadable, leave that record out and describe it in "unreadable" instead of guessing.',
     '- Do not include anything that is not a test result, diagnosis or prescription (no navigation, adverts or GP practice details).',
     '',
@@ -314,6 +327,7 @@ function _rowToRecord(r) {
     directions: r.directions,
     quantity: r.quantity,
     notes: r.notes,
+    followUp: r.follow_up ?? null,
     source: r.source,
     enteredVia: r.entered_via,
     enteredBy: r.entered_by,
@@ -351,11 +365,11 @@ function upsert(inputs, { via = 'structured', by = 'nick', today = new Date() } 
         const info = db.run(
           `INSERT INTO medical_records (dedupe_key, kind, name, name_key, record_date, date_precision,
              value_text, value_num, unit, reference_range, flag, status, panel, code, dose, directions,
-             quantity, notes, source, content_json, entered_via, entered_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             quantity, notes, follow_up, source, content_json, entered_via, entered_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [key, rec.kind, rec.name, rec.nameKey, rec.date, rec.datePrecision, rec.value, rec.valueNum,
             rec.unit, rec.referenceRange, rec.flag, rec.status, rec.panel, rec.code, rec.dose,
-            rec.directions, rec.quantity, rec.notes, rec.source, JSON.stringify(content), via, by]
+            rec.directions, rec.quantity, rec.notes, rec.followUp, rec.source, JSON.stringify(content), via, by]
         );
         counts.created++;
         results.push({ index, outcome: 'created', id: Number(info.lastInsertRowid), key });
@@ -372,12 +386,12 @@ function upsert(inputs, { via = 'structured', by = 'nick', today = new Date() } 
       db.run(
         `UPDATE medical_records SET name = ?, record_date = ?, date_precision = ?, value_text = ?, value_num = ?,
            unit = ?, reference_range = ?, flag = ?, status = ?, panel = ?, code = ?, dose = ?, directions = ?,
-           quantity = ?, notes = ?, source = ?, content_json = ?, previous_json = ?, entered_via = ?,
+           quantity = ?, notes = ?, follow_up = ?, source = ?, content_json = ?, previous_json = ?, entered_via = ?,
            entered_by = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
         [rec.name, rec.date, rec.datePrecision, rec.value, rec.valueNum, rec.unit, rec.referenceRange,
           rec.flag, rec.status, rec.panel, rec.code, rec.dose, rec.directions, rec.quantity, rec.notes,
-          rec.source, JSON.stringify(content), JSON.stringify(previous), via, by, existing.id]
+          rec.followUp, rec.source, JSON.stringify(content), JSON.stringify(previous), via, by, existing.id]
       );
       counts.revised++;
       results.push({ index, outcome: 'revised', id: existing.id, key });

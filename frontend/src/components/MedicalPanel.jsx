@@ -273,6 +273,7 @@ export default function MedicalPanel() {
                   {r.referenceRange && <span className="med-range">range {r.referenceRange}</span>}
                   <FlagBadge flag={r.flag} />
                   {r.panel && <span className="med-range">{r.panel}</span>}
+                  {r.followUp && <span className="med-range">GP: {r.followUp}</span>}
                   <span className="med-date">{r.date || 'no date'}</span>
                 </div>
                 <div className="med-row-meta">

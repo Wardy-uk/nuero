@@ -196,6 +196,17 @@ async function init() {
       }
     } catch (e) { console.warn('[DB] wm_presence.members_json migration:', e.message); }
 
+    // Migration (8 Oct 2026): the GP's filing comment on a medical record
+    // ("No further action", "Satisfactory"). It is not a lab status, and the
+    // first ChatGPT batch was refused for sending it as one.
+    try {
+      const medCols = db.prepare('PRAGMA table_info(medical_records)').all().map(r => r.name);
+      if (medCols.length && !medCols.includes('follow_up')) {
+        db.exec('ALTER TABLE medical_records ADD COLUMN follow_up TEXT');
+        console.log('[DB] medical_records.follow_up added');
+      }
+    } catch (e) { console.warn('[DB] medical_records.follow_up migration:', e.message); }
+
     // Migration (5 Oct 2026): where a reading was taken, and what a sensor is
     // FOR. A roaming logger records wherever Nick is; the outdoor sensor he is
     // building will be the home baseline; Home Assistant's rooms stay indoor.
