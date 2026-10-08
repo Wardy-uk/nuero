@@ -214,7 +214,9 @@ function assess(s, { now = Date.now(), skipped = {} } = {}) {
         : routeState === 'unavailable' ? { status: 'attention', evidence: 'Health data is unavailable on this device.' }
           : routeState === 'not-asked' ? { status: 'todo', evidence: 'Never asked for — the app has not requested workout-route access.' }
             : routeState === 'asked' ? { status: 'unknown', evidence: 'Asked for. iOS hides whether reading was allowed, so it is unproven until a route arrives with a hike or long walk.' }
-              : { status: 'unknown', evidence: 'This build does not report route permission, and no route has arrived.' }),
+              : (na && na.build && (na.build.capabilities || []).includes('route-permission-report'))
+                ? { status: 'unknown', evidence: `This build can report route permission but has not yet — open ${label} → Setup once.` }
+                : { status: 'unknown', evidence: 'This build does not report route permission, and no route has arrived.' }),
       fix: { where: 'iphone', steps: [`Settings → Health → Data Access & Devices → ${label} → turn on Workout Routes.`, 'Record a Hiking workout (or a walk of an hour or more) on the Watch; the route summary arrives on the next sync.'] } });
   };
   phone('neuro', 'NEURO');

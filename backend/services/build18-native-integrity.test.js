@@ -381,3 +381,13 @@ test('the Swift capability names are exactly the server\'s, and every requiremen
   for (const need of new Set(Object.values(nb.REQUIREMENTS).flat())) assert.ok(swiftCaps.includes(need), `the server requires "${need}" but no Swift build declares it`);
   assert.match(src, /protocolVersion = 18/);
 });
+
+test('a build that CAN report route permission but has not is told to open Setup, not called incapable', () => {
+  const b = nb.parseBuildHeader('v=0.1;b=241;c=77f90fc369;cap=route-permission-report,workout-route-summary,device-status,calendar-window-60d');
+  const native = { apps: [{ client: 'saim-ios', build: { ...b, label: nb.label(b), firstSeenAt: 'x', lastSeenAt: 'x' }, line: 'SAiM', sources: [] }] };
+  const it = setup.assess(baseSnapshot({ native }), { now: NOW }).items.find((i) => i.id === 'iphone-saim.workout-routes');
+  assert.equal(it.status, 'unknown');
+  assert.match(it.evidence, /can report route permission but has not yet/);
+  const old = setup.assess(baseSnapshot({}), { now: NOW }).items.find((i) => i.id === 'iphone-saim.workout-routes');
+  assert.match(old.evidence, /does not report route permission/, 'positive control: an unknown build keeps the old wording');
+});
