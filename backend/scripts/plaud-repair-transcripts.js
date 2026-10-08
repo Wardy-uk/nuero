@@ -66,6 +66,9 @@ function arg(name) {
     const after = r.after ? `${r.after.segments} to ${r.after.coveredTo}` : '-';
     console.log(`  ${r.status.padEnd(12)} ${before.padEnd(18)} -> ${after.padEnd(14)} ${r.rel}${r.error ? `  (${r.error})` : ''}`);
   }
+  // vault-hooks debounces each write (2 s) and then re-embeds asynchronously, so exiting
+  // straight away killed the LAST file's refresh (2026-10-08: 144 of 145 re-embedded).
+  if (apply && result.repaired) await new Promise((r) => setTimeout(r, 30000));
   process.exit(result.refused || result.failed ? 1 : 0);
 })().catch((e) => {
   console.error(e);
