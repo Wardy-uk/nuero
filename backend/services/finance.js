@@ -216,6 +216,8 @@ function compose(read, { now, rules: rs = [], decisions = new Map(), recurringDe
       statuses: rows.reduce((o, t) => { o[t.status] = (o[t.status] || 0) + 1; return o; }, {}),
       types: rows.reduce((o, t) => { o[t.transactionType] = (o[t.transactionType] || 0) + 1; return o; }, {}),
       transfersExcluded: rows.filter((t) => t.transactionType === 'transfer').length,
+      transfersInferred: (() => { const inf = rows.filter((t) => t.transferInferred && M.COUNTS(t.status)); return { count: inf.length, outPence: inf.filter((t) => t.amountPence < 0).reduce((a, t) => a - t.amountPence, 0), inPence: inf.filter((t) => t.amountPence > 0).reduce((a, t) => a + t.amountPence, 0),
+        why: inf.length ? 'Transfers to or from an account Tally used to pair them with (whose feed is not refreshing) — excluded from spending and income.' : null }; })(),
       cardRepayments: rows.filter((t) => t.transactionType === 'card_repayment').length,
       refunds: rows.filter((t) => t.transactionType === 'refund' || t.transactionType === 'reversal').length,
     },

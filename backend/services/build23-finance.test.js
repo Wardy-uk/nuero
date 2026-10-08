@@ -582,6 +582,34 @@ test('37b. while Helen is stale the household months stay partial; a separate co
   assert.doesNotMatch(JSON.stringify(s.comparison), /MATTHEW WARD|JUNIPER/);
 });
 
+test('4b (live). a transfer whose other side stopped arriving is still a transfer — on evidence Tally itself gave', () => {
+  // Live 8 Oct 2026: "To A/C 26752131 WARD HE Via Mobile Xfer" (Helen's account)
+  // paired by Tally while her feed was live, unpaired from 30 Jun.
+  const r = staleRead();
+  const row = (id, acct, date, amount, desc, pair) => tx(acct, date, amount, desc, { id, transfer: !!pair, pair: pair || null, cat: pair ? 'Transfer' : null, kind: pair ? 'transfer' : null });
+  r.transactions.push(
+    row(7101, JOINT, '2026-03-20', -25000, 'To A/C 26752131 WARD HE Via Mobile Xfer', 7201),
+    row(7102, JOINT, '2026-03-25', -20000, 'To A/C 26752131 WARD HE Via Mobile Xfer', 7202),
+    row(7103, JOINT, '2026-03-31', -30000, 'To A/C 26752131 WARD HE Via Mobile Xfer', 7203),
+    row(7104, JOINT, '2026-06-17', -15000, 'To A/C 26752131 WARD HE Via Mobile Xfer', 7204),
+    row(7105, JOINT, '2026-06-22', -120000, 'To A/C 26752131 WARD HE Via Mobile Xfer', null),
+    // a one-off bank transfer to someone else is NOT inferred
+    row(7106, JOINT, '2026-06-22', -4500, 'To A/C 12345678 J SMITH Via Mobile Xfer', null),
+  );
+  const rows = M.normalise(r);
+  const unpaired = rows.find((t) => t.sourceTransactionId === 7105);
+  assert.equal(unpaired.transactionType, 'transfer');
+  assert.match(unpaired.transferInferred.basis, /paired 4 earlier payments/);
+  assert.equal(rows.find((t) => t.sourceTransactionId === 7106).transactionType, 'spend');
+  assert.doesNotMatch(unpaired.merchantKey, /26752131/, 'the account number is masked');
+  const s = fin.compose(r, { now: NOW });
+  assert.equal(s.counts.transfersInferred.count, 1);
+  assert.equal(s.counts.transfersInferred.outPence, 120000);
+  assert.ok(!s.review.unusual.some((u) => u.txn.sourceTransactionId === 7105), 'no longer "unusual spending"');
+  const jun = s.summaries.find((m) => m.month === '2026-06');
+  assert.equal(jun.spendPence, month('2026-06').spendPence + 4500, 'only the Smith payment is new spending');
+});
+
 test('34. an old and a new account are not duplicated', () => {
   const r = reconnectedRead();
   r.accounts = [...ACCOUNTS, { id: 9, name: 'Joint', type: 'current', active: 1, opening_balance: 0, owner: null }];

@@ -70,6 +70,8 @@ const T = Object.freeze({
   FEED_FRESH_DAYS: 2,              // a bank feed that refreshed in 2 days is live
   RECONNECT_AFTER_DAYS: 3,         // no refresh for 3 days with an expired token = the link needs re-approval
   REFUND_LOOKBACK_DAYS: 90,
+  TRANSFER_PAIRED_MIN: 3,          // a counterparty Tally paired as a transfer this often…
+  TRANSFER_PAIRED_SHARE: 0.6,      // …and this share of the time is a transfer counterparty
   DUPLICATE_WINDOW_DAYS: 2,
   RECUR_AMOUNT_TOLERANCE: 0.10,    // occurrences of one series within 10% of each other
   RECUR_STRONG_MIN: 3,
@@ -274,6 +276,22 @@ function normalise({ transactions = [], accounts = [] } = {}, { decisions = new 
       balanceAfterPence: r.balance_after == null ? null : Number(r.balance_after), transferPair: r.transfer_pair_id || null,
     };
   });
+  // A transfer whose other side is missing. Measured live (8 Oct 2026): Tally
+  // paired every "To/From A/C … WARD HE" move to and from Helen's account while
+  // her feed was live; once it stopped, the same moves arrived UNPAIRED and read
+  // as spending (£1,200 on 20 Jul). Evidence, not a name guess: a counterparty
+  // Tally itself paired as a transfer ≥3 times (≥60% of its rows) is a transfer
+  // counterparty, and an unpaired row to it is a transfer too — counted, and said.
+  const byKey = new Map();
+  for (const t of rows) { if (!t.merchantKey) continue; const s = byKey.get(t.merchantKey) || { paired: 0, total: 0 }; s.total++; if (t.transactionType === 'transfer') s.paired++; byKey.set(t.merchantKey, s); }
+  for (const t of rows) {
+    if (t.transactionType === 'transfer' || !t.merchantKey) continue;
+    const s = byKey.get(t.merchantKey);
+    if (s && s.paired >= T.TRANSFER_PAIRED_MIN && s.paired / s.total >= T.TRANSFER_PAIRED_SHARE) {
+      t.transactionType = 'transfer';
+      t.transferInferred = { pairedBefore: s.paired, basis: `Tally paired ${s.paired} earlier payments to the same account as transfers; this one's other side is not in Tally` };
+    }
+  }
   // refunds/reversals: a credit whose merchant matches an earlier spend on a household account
   const spends = rows.filter((t) => t.transactionType === 'spend' && COUNTS(t.status));
   for (const t of rows) {

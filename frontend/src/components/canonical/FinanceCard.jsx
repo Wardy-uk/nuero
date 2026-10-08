@@ -66,6 +66,9 @@ function Source({ data, busy, act }) {
       {h.helen && <div className="cn-muted cn-small">{h.helen.why}</div>}
       {data.source && <div className="cn-muted cn-small">Tally data {data.source.dataFrom} – {data.source.dataThrough} ({data.source.transactionsRead} transactions, read-only).{data.lastRead && data.lastRead.at ? ` Last read ${data.lastRead.at.slice(0, 16).replace('T', ' ')}.` : ''}</div>}
       {data.lastRead && data.lastRead.ok === false && <div className="cn-error">Last read failed — {data.lastRead.error}</div>}
+      {data.counts && data.counts.transfersInferred && data.counts.transfersInferred.count > 0 && (
+        <div className="cn-muted cn-small">{data.counts.transfersInferred.count} unpaired transfers ({money(data.counts.transfersInferred.outPence)} out, {money(data.counts.transfersInferred.inPence)} in) treated as transfers — {data.counts.transfersInferred.why}</div>
+      )}
       {data.reconnect && data.reconnect.anyRelinked && (
         <div className="cn-small">After reconnect: {data.reconnect.accounts.filter((a) => a.relinked).map((a) => `${a.owner === 'helen' ? 'Helen’s account' : a.name} backfilled from ${a.oldestBackfilled || '—'}${a.gapDays ? `, ${a.gapDays} days missing` : ''}${a.doubleImported ? `, ${a.doubleImported} double imports` : ''}`).join('; ')}.
           {data.reconnect.identityOk ? ' Account identity unchanged.' : ' ⚠ Account identity changed — check Tally.'}</div>
