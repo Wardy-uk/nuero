@@ -200,6 +200,24 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/canonical/companions/:id/walks/remove', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/canonical/vehicle-links', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/canonical/vehicle-links/remove', 'internal.state', { machine: 'refuse' }),
+  // Build 21AM/AN: the vehicle record, its dates, mileage, history, official
+  // readings and every finance classification or rule are Nick's statements.
+  // A machine may read them; it may not confirm a mapping, invent mileage,
+  // alter an obligation or a conflict, or trigger a Tally read.
+  R('POST', '/api/vehicle', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/:id', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/:id/mileage', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/:id/mileage/:readingId/withdraw', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/:id/events', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/:id/events/:eventId/withdraw', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/:id/obligations', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/:id/official-check', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/:id/official-by-hand', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/obligations/:obligationId', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/obligations/:obligationId/resolve', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/finance/sync', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/finance/transactions/:txnId/decide', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/finance/rules/:ruleId/retire', 'internal.state', { machine: 'refuse' }),
   // A lead-reminder cadence decides when NEURO may push to Nick about a date.
   R('POST', '/api/canonical/lead-reminders', 'internal.state', { machine: 'refuse' }),
   // Build 18Q: a birthday written into Nick's own People/Companion note.
@@ -238,6 +256,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   rooms: 'internal.state', session: 'internal.state', signals: 'internal.state', 'standup-session': 'internal.state', 'task-blocks': 'internal.state',
   'weekly-risk': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
+  vehicle: 'internal.state',
 });
 
 function _segments(p) { return String(p || '').split('?')[0].replace(/\/+$/, '').split('/').filter(Boolean); }

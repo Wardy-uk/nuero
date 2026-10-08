@@ -2814,3 +2814,145 @@ CREATE TABLE IF NOT EXISTS medical_records (
 );
 CREATE INDEX IF NOT EXISTS idx_medical_records_kind ON medical_records(kind, record_date);
 CREATE INDEX IF NOT EXISTS idx_medical_records_name ON medical_records(name_key, record_date);
+
+-- ── Build 21: vehicle intelligence + Tally finance (read-only) ────────────────
+-- services/vehicle.js is the only writer of the vehicle tables. Every fact
+-- carries its source and provenance; nothing here is inferred from a model
+-- name, a price average or a merchant alone.
+CREATE TABLE IF NOT EXISTS vehicles (
+  vehicle_id        TEXT PRIMARY KEY,           -- vehicle:<slug>
+  make              TEXT,
+  model             TEXT,
+  plate_descriptor  TEXT,                       -- e.g. "65-plate", as Nick said it
+  registration      TEXT,                       -- NULL until Nick gives it
+  variant           TEXT,                       -- engine/trim; NULL = not known
+  fuel_type         TEXT,
+  ownership_state   TEXT NOT NULL DEFAULT 'current' CHECK (ownership_state IN ('current','sold','scrapped','unknown')),
+  source            TEXT NOT NULL,
+  provenance_json   TEXT,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+-- Odometer readings. Current mileage = the latest TRUSTWORTHY reading, never
+-- the largest; an implausible one is kept and flagged, never corrected.
+CREATE TABLE IF NOT EXISTS vehicle_mileage (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  vehicle_id      TEXT NOT NULL,
+  value           REAL NOT NULL,
+  unit            TEXT NOT NULL CHECK (unit IN ('mi','km')),
+  observed_on     TEXT NOT NULL,                -- YYYY-MM-DD
+  source          TEXT NOT NULL CHECK (source IN ('manual','mot','service','tally','telemetry')),
+  provenance_json TEXT,
+  confidence      TEXT NOT NULL DEFAULT 'medium' CHECK (confidence IN ('high','medium','low')),
+  correction      INTEGER NOT NULL DEFAULT 0,   -- Nick says the odometer was corrected/replaced
+  note            TEXT,
+  recorded_at     TEXT NOT NULL,
+  withdrawn_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_vehicle_mileage_vehicle ON vehicle_mileage(vehicle_id, observed_on);
+-- History: service, repairs, tyres… Explicit only — a garage payment never
+-- creates one by itself.
+CREATE TABLE IF NOT EXISTS vehicle_events (
+  event_id        TEXT PRIMARY KEY,             -- vev:<uuid>
+  vehicle_id      TEXT NOT NULL,
+  type            TEXT NOT NULL CHECK (type IN ('scheduled_service','repair','tyres','battery','brakes','exhaust','suspension','mot_work','other')),
+  event_date      TEXT NOT NULL,
+  mileage         REAL,
+  description     TEXT NOT NULL,
+  cost_pence      INTEGER,
+  cost_ref        TEXT,                         -- tally:<id> when the cost is a Tally transaction
+  detail_json     TEXT,                         -- tyres: axle/position/brand/model as stated
+  source          TEXT NOT NULL,
+  provenance_json TEXT,
+  recorded_at     TEXT NOT NULL,
+  withdrawn_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_vehicle_events_vehicle ON vehicle_events(vehicle_id, event_date);
+-- Typed vehicle FACTS (MOT expiry, renewal dates). The action (book it, pay
+-- it) stays a task or reminder, linked here; completing the task never
+-- completes the fact.
+CREATE TABLE IF NOT EXISTS vehicle_obligations (
+  obligation_id       TEXT PRIMARY KEY,         -- vob:<uuid>
+  vehicle_id          TEXT NOT NULL,
+  type                TEXT NOT NULL CHECK (type IN ('mot','insurance','service','warranty','breakdown_cover','tax')),
+  due_date            TEXT,
+  due_mileage         REAL,
+  interval_months     INTEGER,
+  interval_miles      REAL,
+  interval_basis      TEXT,                     -- what Nick said the interval came from; NULL = no interval
+  linked_task_ref     TEXT,
+  linked_reminder_ref TEXT,
+  status              TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','complete','cancelled')),
+  completed_on        TEXT,
+  completion_evidence TEXT,
+  source              TEXT NOT NULL,
+  provenance_json     TEXT,
+  note                TEXT,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_vehicle_obligations_open ON vehicle_obligations(vehicle_id, type) WHERE status = 'open';
+-- What an official source said, when. Never copied over a NEURO value.
+CREATE TABLE IF NOT EXISTS vehicle_official_checks (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  vehicle_id       TEXT NOT NULL,
+  source           TEXT NOT NULL CHECK (source IN ('dvla-ves','dvsa-mot','gov-uk-by-hand')),
+  checked_at       TEXT NOT NULL,
+  outcome          TEXT NOT NULL CHECK (outcome IN ('ok','not-found','error','unavailable')),
+  tax_status       TEXT,
+  tax_due_date     TEXT,
+  mot_status       TEXT,
+  mot_expiry_date  TEXT,
+  reason           TEXT,
+  raw_json         TEXT,
+  entered_by       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_vehicle_official_checks ON vehicle_official_checks(vehicle_id, checked_at);
+-- Tally read model: ONLY transactions that look like motoring (or that a rule
+-- Nick confirmed matches). Household spending is never copied here. Tally is
+-- the source of truth; source_txn_id is Tally's own transactions.id.
+CREATE TABLE IF NOT EXISTS tally_vehicle_txns (
+  source_txn_id  INTEGER PRIMARY KEY,
+  txn_date       TEXT NOT NULL,
+  amount_pence   INTEGER NOT NULL,              -- Tally's sign: negative = spend
+  description    TEXT NOT NULL,
+  merchant_key   TEXT,
+  channel        TEXT,                          -- e.g. 'zilch' (pay-later) when the description says so
+  category_name  TEXT,
+  account_name   TEXT,
+  account_owner  TEXT,
+  candidate_json TEXT,                          -- why it might be motoring, proposed type, confidence
+  first_seen_at  TEXT NOT NULL,
+  last_seen_at   TEXT NOT NULL,
+  in_source      INTEGER NOT NULL DEFAULT 1     -- 0 = Tally no longer lists it
+);
+CREATE INDEX IF NOT EXISTS idx_tally_vehicle_txns_date ON tally_vehicle_txns(txn_date);
+CREATE TABLE IF NOT EXISTS vehicle_spend_decisions (
+  source_txn_id  INTEGER PRIMARY KEY,
+  decision       TEXT NOT NULL CHECK (decision IN ('vehicle','not-vehicle','unknown')),
+  spend_type     TEXT,
+  vehicle_id     TEXT,
+  basis          TEXT NOT NULL CHECK (basis IN ('confirmed-once','rule')),
+  rule_id        TEXT,
+  decided_by     TEXT NOT NULL,
+  decided_at     TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS vehicle_spend_rules (
+  rule_id        TEXT PRIMARY KEY,              -- vsr:<uuid>
+  match_kind     TEXT NOT NULL CHECK (match_kind IN ('merchant','category','merchant+category')),
+  merchant_key   TEXT,
+  category_name  TEXT,
+  spend_type     TEXT NOT NULL,
+  vehicle_id     TEXT NOT NULL,
+  scope          TEXT,
+  examples_json  TEXT,
+  confirmed_by   TEXT NOT NULL,
+  confirmed_at   TEXT NOT NULL,
+  active         INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS vehicle_monthly_summaries (
+  month        TEXT PRIMARY KEY,                -- YYYY-MM
+  vehicle_id   TEXT NOT NULL,
+  summary_json TEXT NOT NULL,
+  produced_at  TEXT NOT NULL
+);

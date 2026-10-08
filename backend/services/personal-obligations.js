@@ -34,6 +34,7 @@ const NEEDS_NOW_OVERDUE_DAYS = 14;
 const SUBJECT_PREFIXES = /^(pd:|meeting:|person:|companion:)/;
 const VEHICLE_RE = /^vehicle:[a-z0-9][a-z0-9-]{0,39}$/;
 const ENTITY_PREFIXES = /^(task:|commitment:)/;
+const VEHICLE_ENTITY_PREFIXES = /^(task:|commitment:|meeting:)/;
 
 /**
  * Why (if at all) an item is a personal obligation. PURE.
@@ -320,10 +321,28 @@ function vehicleSubject(name) {
   return s && VEHICLE_RE.test(`vehicle:${s}`) ? `vehicle:${s}` : null;
 }
 
+/**
+ * Build 21D: once a real vehicle is HELD (services/vehicle.js), a link must
+ * name it — by id ("vehicle:captur") or its model ("Captur"). "car" no longer
+ * mints a generic second vehicle beside the Captur. With none held, the
+ * Build 20 free-name behaviour stands.
+ */
+function _resolveVehicle(vehicle) {
+  let held = [];
+  try { held = require('./vehicle').listVehicles(); } catch { held = []; }
+  if (!held.length) return { subjectId: vehicleSubject(vehicle) };
+  const want = String(vehicle || '').trim().toLowerCase();
+  const hit = held.find((v) => v.vehicle_id === want || String(v.model).toLowerCase() === want || vehicleSubject(v.model) === vehicleSubject(want));
+  if (!hit) return { error: `no such vehicle — NEURO holds ${held.map((v) => `${v.make} ${v.model} (${v.vehicle_id})`).join(', ')}`, status: 404 };
+  return { subjectId: hit.vehicle_id, name: `${hit.make} ${hit.model}` };
+}
+
 function linkVehicle({ vehicle, entityId, label = null } = {}, { now = Date.now() } = {}) {
-  const subjectId = vehicleSubject(vehicle);
+  const resolved = _resolveVehicle(vehicle);
+  if (resolved.error) return { ok: false, status: resolved.status, error: resolved.error };
+  const subjectId = resolved.subjectId;
   if (!subjectId) return { ok: false, status: 400, error: 'vehicle must be a short name, e.g. "car"' };
-  if (typeof entityId !== 'string' || !ENTITY_PREFIXES.test(entityId) || entityId.length > 300) return { ok: false, status: 400, error: 'entityId must be a task (task:…) or commitment (commitment:…)' };
+  if (typeof entityId !== 'string' || !VEHICLE_ENTITY_PREFIXES.test(entityId) || entityId.length > 300) return { ok: false, status: 400, error: 'entityId must be a task (task:…), commitment (commitment:…) or calendar entry (meeting:…)' };
   const db = _db();
   const r = db.run('INSERT OR IGNORE INTO personal_links (subject_id, entity_id, relation, set_at) VALUES (?, ?, ?, ?)',
     [subjectId, entityId, 'concerns', new Date(now).toISOString()]);

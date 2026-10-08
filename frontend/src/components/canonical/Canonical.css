@@ -184,3 +184,6 @@
 .cn-class--undecided .cn-rowtitle { font-style: italic; }
 .cn-class .cn-tabs { margin-bottom: 0; }
 @media (max-width: 640px) { .cn-class-controls { flex-wrap: wrap; flex-shrink: 1; } }
+
+/* Build 21 — the vehicle card */
+.cn-subhead { margin: 10px 0 2px; font-size: 0.9em; font-weight: 600; color: var(--text-muted, #aaa); }

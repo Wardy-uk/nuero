@@ -4,6 +4,7 @@ import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS,
 import HikingLoopCard from './HikingLoopCard';
 import PersonalDatesCard from './PersonalDatesCard';
 import CompanionCareCard from './CompanionCareCard';
+import VehicleCard from './VehicleCard';
 import { FutureRadarCard, PersonalAdminCard, ReminderListsCard } from './FutureRadar';
 import HouseholdCard from '../../../../saim/shared-ui/HouseholdCard';
 import './Canonical.css';
@@ -57,6 +58,7 @@ export default function LifePanel({ onNavigate = null } = {}) {
       <FutureRadarCard />
       <Goals data={data} busy={busy} act={act} />
       <PersonalAdminCard />
+      <VehicleCard />
       <ReminderListsCard />
       <Classifications data={data} busy={busy} act={act} />
       <Companions data={data} busy={busy} act={act} />

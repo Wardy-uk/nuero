@@ -1287,6 +1287,19 @@ function start() {
     // External weather (EA rain gauge, WU) registers its own jobs, kept out of
     // registerDurableJobs() so runtime tests that register it make no network calls.
     require('./weather-jobs').register();
+    // Build 21: Tally is read over ssh — kept out of registerDurableJobs() for the same reason.
+    require('./runtime-jobs').defineJob({
+      name: 'vehicle-refresh',
+      cron: '37 6 * * *',
+      class: 'best-effort',
+      catchUp: 'latest',
+      maxLagMs: null,
+      maxAttempts: 2,
+      backoffMs: [30 * 60 * 1000],
+      timeoutMs: 5 * 60 * 1000,
+      why: 'Reads Tally (read-only) for motoring candidates, refreshes MPG readiness quietly and stores last month\'s vehicle summary once. Idempotent; a missed day heals on the next.',
+      run: async () => require('./vehicle').refresh(),
+    });
     require('./runtime-jobs').start();
   } catch (e) { console.error('[Scheduler] Durable runtime failed to start:', e.message); }
 }
