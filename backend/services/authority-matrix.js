@@ -218,6 +218,16 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/vehicle/finance/sync', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/finance/transactions/:txnId/decide', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/finance/rules/:ruleId/retire', 'internal.state', { machine: 'refuse' }),
+  // Build 23: how NEURO reads Nick's household finances is his statement.
+  // Read-only towards Tally and money; machines read and never decide.
+  R('POST', '/api/finance/sync', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/finance/transactions/:txnId/decide', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/finance/rules/:ruleId/retire', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/finance/recurring/:seriesKey/decide', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/finance/review/:itemKey/decide', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/finance/obligations', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/finance/obligations/:id', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/finance/obligations/:id/resolve', 'internal.state', { machine: 'refuse' }),
   // A lead-reminder cadence decides when NEURO may push to Nick about a date.
   R('POST', '/api/canonical/lead-reminders', 'internal.state', { machine: 'refuse' }),
   // Build 18Q: a birthday written into Nick's own People/Companion note.
@@ -256,7 +266,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   rooms: 'internal.state', session: 'internal.state', signals: 'internal.state', 'standup-session': 'internal.state', 'task-blocks': 'internal.state',
   'weekly-risk': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
-  vehicle: 'internal.state',
+  vehicle: 'internal.state', finance: 'internal.state',
 });
 
 function _segments(p) { return String(p || '').split('?')[0].replace(/\/+$/, '').split('/').filter(Boolean); }

@@ -1300,6 +1300,19 @@ function start() {
       why: 'Reads Tally (read-only) for motoring candidates, refreshes MPG readiness quietly and stores last month\'s vehicle summary once. Idempotent; a missed day heals on the next.',
       run: async () => require('./vehicle').refresh(),
     });
+    // Build 23: the household finance view, from the same read-only Tally source.
+    require('./runtime-jobs').defineJob({
+      name: 'finance-refresh',
+      cron: '41 */3 * * *',
+      class: 'best-effort',
+      catchUp: 'latest',
+      maxLagMs: null,
+      maxAttempts: 2,
+      backoffMs: [20 * 60 * 1000],
+      timeoutMs: 5 * 60 * 1000,
+      why: 'Reads Tally (read-only) and rebuilds the finance view: feed health, monthly summaries, recurring payments, review items. Every 3 hours so a bank reconnect is noticed the same morning. Idempotent; a missed run heals on the next.',
+      run: async () => require('./finance').refresh(),
+    });
     require('./runtime-jobs').start();
   } catch (e) { console.error('[Scheduler] Durable runtime failed to start:', e.message); }
 }

@@ -116,7 +116,7 @@ function _prepState(prep, away) {
  */
 function composeRadar({ today, horizonDays = 14, events = [], dates = [], obligations = [], goals = [], hikeGoal = null,
   prepBySubject = new Map(), goalsByEntity = new Map(), coverage = {}, undatedObligations = 0, workExcluded = 0,
-  care = [], careByEntity = new Map(), leadReminders = {}, vehicles = [] } = {}) {
+  care = [], careByEntity = new Map(), leadReminders = {}, vehicles = [], finances = [] } = {}) {
   const last = addDays(today, horizonDays);
   const inWindow = (d) => d && d >= today && d <= last;
   const items = [];
@@ -256,6 +256,22 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     });
   }
 
+  // ── Build 23X: finance obligations Nick recorded (finance.radar) ──
+  // Only explicit obligations — a routine Direct Debit is never a Radar item.
+  // A task linked as the obligation's action folds into it, like a vehicle date.
+  for (const f of finances) {
+    const absorbedTasks = items.filter((it) => (it.kind === 'obligation' || it.kind === 'admin') && (f.linkedTaskRefs || []).includes(it.id));
+    for (const t of absorbedTasks) items.splice(items.indexOf(t), 1);
+    items.push({
+      id: f.id, title: f.title, detail: f.detail || null, date: f.date || null, time: null, window: null,
+      domain: 'finance', domains: ['finance'], sphere: 'personal', kind: 'finance', obligationType: f.obligationType,
+      sourceRefs: [f.id], linkedEntityRefs: [], linkedTaskRefs: f.linkedTaskRefs || [], linkedGoals: [],
+      importance: null, actionState: f.actionState, confidence: f.confidence || 'high',
+      whyVisible: [...f.whyVisible, ...absorbedTasks.map((t) => `your task "${t.title}" is its action (${t.actionState === 'preparation_open' ? 'open' : t.actionState})`)],
+      when: f.date ? whenWords(today, f.date) : 'no date',
+    });
+  }
+
   // ── goal reviews ──
   for (const g of goals) {
     if (!g.reviewDate || !inWindow(g.reviewDate)) continue;
@@ -289,6 +305,7 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     goalReviews: count((i) => i.kind === 'goal-review'),
     care: count((i) => i.kind === 'care' || !!i.companion),
     vehicle: count((i) => i.kind === 'vehicle'),
+    finance: count((i) => i.kind === 'finance'),
     unknownDomain: count((i) => i.kind === 'event' && !i.domains.length),
     needsYou: count((i) => i.actionState === 'needs_you'),
     undatedObligations, workExcluded,
@@ -300,6 +317,7 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     n('plannedHikes', 'planned hike', 'planned hikes'),
     ...(summary.care ? [n('care', 'companion-care item', 'companion-care items')] : []),
     ...(summary.vehicle ? [n('vehicle', 'vehicle date', 'vehicle dates')] : []),
+    ...(summary.finance ? [n('finance', 'finance date', 'finance dates')] : []),
     n('events', 'other calendar entry', 'other calendar entries') + (summary.unknownDomain ? ` (${summary.unknownDomain} from calendars not yet classified)` : ''),
     `${summary.needsYou} thing${summary.needsYou === 1 ? '' : 's'} needing action now`,
   ];
@@ -425,12 +443,14 @@ function read({ now = Date.now(), horizonDays = 14 } = {}) {
   if (careRead.error) { gaps.push({ input: 'companion-care', why: careRead.error }); cov.reasons.push('companion care could not be read'); }
   const vehicleRead = require('./vehicle').radar({ today, last, now: nowMs });
   if (vehicleRead.error) { gaps.push({ input: 'vehicle', why: vehicleRead.error }); cov.reasons.push('vehicle dates could not be read'); }
+  const financeRead = require('./finance').radar({ today, last, now: nowMs });
+  if (financeRead.error) { gaps.push({ input: 'finance', why: financeRead.error }); cov.reasons.push('finance dates could not be read'); }
   const radar = composeRadar({
     today, horizonDays, events, dates, obligations: obl ? obl.items : [], goals, hikeGoal,
     prepBySubject: _prepBySubject(prep.bySubject, taskIndex), goalsByEntity, coverage: cov,
     undatedObligations: obl ? obl.counts.undated : 0, workExcluded: obl ? obl.counts.workExcluded : 0,
     care: careRead.items, careByEntity: cc.linkMap(), leadReminders: require('./date-nags').cadences(),
-    vehicles: vehicleRead.items,
+    vehicles: vehicleRead.items, finances: financeRead.items,
   });
   const progress = goals.map((g) => {
     const linked = (g.links || []).map((l) => taskIndex.get(l.entityId)).filter(Boolean).map((t) => ({ id: t.taskId, completedAt: t.completedAt || null }));

@@ -2957,3 +2957,67 @@ CREATE TABLE IF NOT EXISTS vehicle_monthly_summaries (
   summary_json TEXT NOT NULL,
   produced_at  TEXT NOT NULL
 );
+
+-- ── Build 23: Finance activation ──────────────────────────────────────────────
+-- Tally is the source of truth and NEURO keeps no copy of its ledger. These
+-- tables hold only Nick's own statements and what NEURO derived per month.
+CREATE TABLE IF NOT EXISTS finance_rules (
+  rule_id                 TEXT PRIMARY KEY,
+  match_kind              TEXT NOT NULL CHECK (match_kind IN ('merchant', 'merchant+category', 'tag')),
+  merchant_key            TEXT,
+  category_name           TEXT,
+  tag                     TEXT,
+  domain                  TEXT NOT NULL,
+  example_txn_id          INTEGER,
+  matched_at_confirmation INTEGER,
+  confirmed_by            TEXT NOT NULL,
+  confirmed_at            TEXT NOT NULL,
+  active                  INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS finance_txn_decisions (
+  source_txn_id  INTEGER PRIMARY KEY,                -- Tally transactions.id; nothing else about the row is copied
+  decision       TEXT NOT NULL CHECK (decision IN ('confirm', 'reject', 'unknown')),
+  domain         TEXT,
+  rule_id        TEXT,
+  decided_by     TEXT NOT NULL,
+  decided_at     TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS finance_recurring_decisions (
+  series_key  TEXT PRIMARY KEY,
+  decision    TEXT NOT NULL CHECK (decision IN ('recurring', 'not-recurring')),
+  decided_by  TEXT NOT NULL,
+  decided_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS finance_review_decisions (
+  item_key    TEXT PRIMARY KEY,
+  decision    TEXT NOT NULL CHECK (decision IN ('expected', 'not-duplicate', 'leave', 'look-into-it')),
+  decided_by  TEXT NOT NULL,
+  decided_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS finance_obligations (
+  obligation_id          TEXT PRIMARY KEY,
+  kind                   TEXT NOT NULL CHECK (kind IN ('renewal', 'bill', 'annual_fee', 'subscription_renewal', 'household_charge', 'other')),
+  title                  TEXT NOT NULL,
+  due_date               TEXT,
+  expected_amount_pence  INTEGER,
+  series_key             TEXT,
+  requires_decision      INTEGER NOT NULL DEFAULT 0,
+  scope                  TEXT NOT NULL DEFAULT 'household',
+  linked_task_ref        TEXT,
+  linked_reminder_ref    TEXT,
+  status                 TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved', 'cancelled')),
+  resolved_evidence      TEXT,
+  resolved_note          TEXT,
+  resolved_at            TEXT,
+  provenance             TEXT NOT NULL,
+  created_by             TEXT NOT NULL,
+  created_at             TEXT NOT NULL,
+  updated_at             TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS finance_monthly_summaries (
+  month         TEXT PRIMARY KEY,                    -- YYYY-MM
+  complete      INTEGER NOT NULL,
+  summary_json  TEXT NOT NULL,                       -- aggregates only; Helen's account as a total
+  computed_at   TEXT NOT NULL,
+  revisions     INTEGER NOT NULL DEFAULT 0
+);

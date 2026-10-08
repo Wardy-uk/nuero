@@ -78,7 +78,17 @@ export const interactive = {
   post_vehicle_obligations_by_obligationId_resolve: 'Saying an MOT, renewal or service is done needs Nick\'s evidence. He does it in NEURO → Life → Vehicle.',
   post_vehicle_finance_sync: 'Reading Tally is NEURO\'s own scheduled job or Nick\'s press. It runs from NEURO → Life → Vehicle.',
   post_vehicle_finance_transactions_by_txnId_decide: 'Whether a transaction is the car\'s is Nick\'s decision — an agent never classifies household spending. He decides in NEURO → Life → Vehicle.',
-  post_vehicle_finance_rules_by_ruleId_retire: 'Retiring a vehicle-spend rule is Nick\'s choice. He does it in NEURO → Life → Vehicle.',
+  // Build 23: how NEURO reads the household finances is Nick's statement. An
+  // agent reads the finance view and never classifies, confirms or resolves.
+  post_finance_sync: 'Reading Tally is NEURO\'s own scheduled job or Nick\'s press. It runs from NEURO → Life → Finance.',
+  post_finance_transactions_by_txnId_decide: 'Which domain a household transaction belongs to is Nick\'s decision — an agent never classifies household spending. He decides in NEURO → Life → Finance.',
+  post_finance_rules_by_ruleId_retire: 'Retiring a finance rule is Nick\'s choice. He does it in NEURO → Life → Finance.',
+  post_finance_recurring_by_seriesKey_decide: 'Whether a payment is recurring is Nick\'s statement. He says so in NEURO → Life → Finance.',
+  post_finance_review_by_itemKey_decide: 'Answering an unusual-spend or duplicate item is Nick\'s call. He does it in NEURO → Life → Finance.',
+  post_finance_obligations: 'A renewal, bill or annual fee is Nick\'s own record. He adds it in NEURO → Life → Finance.',
+  post_finance_obligations_by_id: 'Changing a finance date or linking its task is Nick\'s statement. He does it in NEURO → Life → Finance.',
+  post_finance_obligations_by_id_resolve: 'Saying a bill or renewal is done needs Nick\'s evidence. He does it in NEURO → Life → Finance.',
+  post_vehicle_finance_rules_by_ruleId_retire:'Retiring a vehicle-spend rule is Nick\'s choice. He does it in NEURO → Life → Vehicle.',
   post_canonical_lead_reminders:'When NEURO may remind Nick about a birthday or anniversary is his own setting. He sets it in NEURO → Life → Personal dates.',
   post_1to1_book:'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
   post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',

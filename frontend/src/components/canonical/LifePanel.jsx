@@ -5,6 +5,7 @@ import HikingLoopCard from './HikingLoopCard';
 import PersonalDatesCard from './PersonalDatesCard';
 import CompanionCareCard from './CompanionCareCard';
 import VehicleCard from './VehicleCard';
+import FinanceCard from './FinanceCard';
 import HomeCard from './HomeCard';
 import { FutureRadarCard, PersonalAdminCard, ReminderListsCard } from './FutureRadar';
 import HouseholdCard from '../../../../saim/shared-ui/HouseholdCard';
@@ -61,6 +62,7 @@ export default function LifePanel({ onNavigate = null } = {}) {
       <Goals data={data} busy={busy} act={act} />
       <PersonalAdminCard />
       <VehicleCard />
+      <FinanceCard />
       <ReminderListsCard />
       <Classifications data={data} busy={busy} act={act} />
       <Companions data={data} busy={busy} act={act} />

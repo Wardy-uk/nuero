@@ -2274,6 +2274,56 @@
     "stream": false
   },
   {
+    "id": "get_finance",
+    "method": "GET",
+    "route": "/api/finance",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 21,
+    "description": "GET /api/finance. household finance: bank-feed health, coverage, monthly summaries, recurring payments, upcoming money out, unusual items, category quality, obligations. Keywords: money, spending, bills, budget, finance, Tally.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_finance_monthly_by_month",
+    "method": "GET",
+    "route": "/api/finance/monthly/:month",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 26,
+    "description": "GET /api/finance/monthly/:month. the stored summary for one month (YYYY-MM): spending by domain, money out, income, coverage. Keywords: monthly spending, month summary.",
+    "params": [
+      "month"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_finance_reconnect",
+    "method": "GET",
+    "route": "/api/finance/reconnect",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 36,
+    "description": "GET /api/finance/reconnect. after a bank reconnect in Tally: accounts relinked, newest and oldest backfilled transactions, gap left, double imports. Keywords: TrueLayer, NatWest, reconnect.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_friction",
     "method": "GET",
     "route": "/api/friction",
@@ -4558,7 +4608,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 247,
+    "line": 248,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -7996,6 +8046,175 @@
     ],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_finance_obligations",
+    "method": "POST",
+    "route": "/api/finance/obligations",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 78,
+    "description": "POST /api/finance/obligations. Nick records a finance obligation (renewal, bill, annual fee). Body: kind, title, dueDate, expectedAmountPence, seriesKey, requiresDecision, scope, linkedTaskRef, linkedReminderRef.",
+    "params": [],
+    "query": [],
+    "body": [
+      "dueDate",
+      "expectedAmountPence",
+      "kind",
+      "linkedReminderRef",
+      "linkedTaskRef",
+      "requiresDecision",
+      "scope",
+      "seriesKey",
+      "title"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_finance_obligations_by_id",
+    "method": "POST",
+    "route": "/api/finance/obligations/:id",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 96,
+    "description": "POST /api/finance/obligations/:id. Nick changes a finance obligation or links its task/reminder. Body: title, dueDate, expectedAmountPence, requiresDecision, linkedTaskRef, linkedReminderRef, kind.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "dueDate",
+      "expectedAmountPence",
+      "kind",
+      "linkedReminderRef",
+      "linkedTaskRef",
+      "requiresDecision",
+      "title"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_finance_obligations_by_id_resolve",
+    "method": "POST",
+    "route": "/api/finance/obligations/:id/resolve",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 87,
+    "description": "POST /api/finance/obligations/:id/resolve. Nick resolves a finance obligation with evidence. Body: evidence (payment-seen|renewed|cancelled|statement), note. A ticked task is not evidence.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "evidence",
+      "note"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_finance_recurring_by_seriesKey_decide",
+    "method": "POST",
+    "route": "/api/finance/recurring/:seriesKey/decide",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 60,
+    "description": "POST /api/finance/recurring/:seriesKey/decide. Nick says a payment series is (or is not) recurring. Body: decision (recurring|not-recurring|clear).",
+    "params": [
+      "seriesKey"
+    ],
+    "query": [],
+    "body": [
+      "decision"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_finance_review_by_itemKey_decide",
+    "method": "POST",
+    "route": "/api/finance/review/:itemKey/decide",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 69,
+    "description": "POST /api/finance/review/:itemKey/decide. Nick answers an unusual-spend or possible-duplicate item. Body: decision (expected|not-duplicate|leave|look-into-it). Nothing is disputed.",
+    "params": [
+      "itemKey"
+    ],
+    "query": [],
+    "body": [
+      "decision"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_finance_rules_by_ruleId_retire",
+    "method": "POST",
+    "route": "/api/finance/rules/:ruleId/retire",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 55,
+    "description": "POST /api/finance/rules/:ruleId/retire. Nick retires a finance classification rule. Decisions it made stop applying on the next read.",
+    "params": [
+      "ruleId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_finance_sync",
+    "method": "POST",
+    "route": "/api/finance/sync",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 41,
+    "description": "POST /api/finance/sync. read Tally now (read-only) and rebuild the finance view. Normally a scheduled job.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_finance_transactions_by_txnId_decide",
+    "method": "POST",
+    "route": "/api/finance/transactions/:txnId/decide",
+    "domain": "finance",
+    "source": "routes/finance.js",
+    "line": 46,
+    "description": "POST /api/finance/transactions/:txnId/decide. Nick sets the domain of one transaction in the review list. Body: decision (confirm|reject|unknown), domain, remember ({matchKind: merchant|merchant+category}).",
+    "params": [
+      "txnId"
+    ],
+    "query": [],
+    "body": [
+      "decision",
+      "domain",
+      "remember"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },
