@@ -46,6 +46,11 @@ const CAPABILITIES = Object.freeze({
   // Build 15: the ONE self-heal operation. No route reaches it; self-heal.js
   // runs it, once per outage, only at high confidence, and verifies recovery.
   'source.retry-sync': { authority: 'A1', effect: "re-run one source's own read-only sync, once, for a self-heal", machine: 'execute', approval: 'none', registry: 'self-heal:retry-sync', ledger: true, verification: 'SourceHealth success after the attempt + the blind finding closed', idempotent: 'one attempt per outage (UNIQUE)' },
+  // 8 Oct 2026: NHS test results, diagnoses and prescriptions. Stored in NEURO
+  // only (no vault, no index); every row records who entered it; folds by key.
+  'medical.record': { authority: 'A2', effect: "Nick's medical record (test results, diagnoses, prescriptions) in NEURO's own table", machine: 'execute', approval: 'none', registry: null, ledger: false, verification: 'entered_by + previous_json on every row', idempotent: 'dedupe_key folds a resend; a changed resend is a kept revision' },
+  // Reads screenshots with a cloud vision model and PROPOSES records; writes nothing.
+  'medical.scan': { authority: 'A1', effect: 'a paid vision call that proposes medical records and stores nothing', machine: 'execute', approval: 'none', registry: null, ledger: false, verification: null, idempotent: true },
   'config.preference': { authority: 'A1', effect: 'preferences and setup state (quiet hours, weekly target, skip a setup step)', machine: 'execute', approval: 'none', registry: null, ledger: false, verification: null, idempotent: true },
 
   'vault.write': { authority: 'A2', effect: 'Vault write (append/surgical, backed up)', machine: 'execute', approval: 'none', registry: null, ledger: false, verification: 'vault-hooks re-index', idempotent: 'per route' },
@@ -203,6 +208,11 @@ const ROUTE_RULES = Object.freeze([
   R('*', '/api/capture/file', 'file.write'),
   R('*', '/api/capture/photo', 'file.write'),
   R('POST', '/api/vault/export-docx', 'file.write'),
+  // Medical records (8 Oct 2026). Proposing and adding are open to an agent
+  // (ChatGPT parses the NHS app and posts here); deleting one is Nick's.
+  R('POST', '/api/medical/scan', 'medical.scan'),
+  R('POST', '/api/medical/records', 'medical.record'),
+  R('DELETE', '/api/medical/records/:id', 'medical.record', { machine: 'refuse' }),
 ]);
 
 const DOMAIN_DEFAULTS = Object.freeze({

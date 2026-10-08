@@ -145,6 +145,7 @@ app.use('/api/environment', require('./routes/environment'));
 // The outdoor weather station (ESP32/BME280 via pi5's saim-weather-ingest) and
 // its forecast overlay — routes/weather.js.
 app.use('/api/weather', require('./routes/weather'));
+app.use('/api/medical', require('./routes/medical'));
 // Recovery, exertion and the logger's reads — the Athlytic-style half of health.
 app.use('/api/performance', require('./routes/performance'));
 app.use('/api/jira', jiraRoutes);

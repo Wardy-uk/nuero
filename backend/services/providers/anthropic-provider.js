@@ -67,8 +67,10 @@ async function chat(systemPrompt, messages, options = {}) {
  * reasoning, and the depth would be paid for on every photo without changing
  * the answer.
  */
-async function vision(systemPrompt, { imageBase64, mediaType, prompt }, options = {}) {
+async function vision(systemPrompt, { imageBase64, mediaType, images, prompt }, options = {}) {
   if (!_key()) throw new Error('Anthropic API key not configured');
+  // One image (VESTA) or several (a scrolled NHS app screen, read as one page).
+  const pictures = Array.isArray(images) && images.length ? images : [{ imageBase64, mediaType }];
 
   const response = await _getClient().messages.create({
     model: options.model || _model(),
@@ -84,7 +86,7 @@ async function vision(systemPrompt, { imageBase64, mediaType, prompt }, options 
       content: [
         // Image before text: the model is being asked about the picture, and
         // this is the documented ordering.
-        { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+        ...pictures.map(p => ({ type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.imageBase64 } })),
         { type: 'text', text: prompt },
       ],
     }],

@@ -2777,3 +2777,40 @@ CREATE TABLE IF NOT EXISTS personal_date_nag_sends (
   offset_days  INTEGER NOT NULL,
   at           TEXT NOT NULL
 );
+-- Medical records (8 Oct 2026) — test results, diagnoses and prescriptions as
+-- the NHS app shows them, from a confirmed screenshot read or a structured post
+-- (ChatGPT over MCP). services/medical-records.js is the only writer. Values are
+-- TRANSCRIBED (value_text as shown; value_num only for a plain number) and flag
+-- is what the record states, never derived. NOT in the vault, NOT embedded.
+-- dedupe_key = kind|name_key|record_date; a changed resend keeps the replaced
+-- content in previous_json.
+CREATE TABLE IF NOT EXISTS medical_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dedupe_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL CHECK (kind IN ('test_result', 'diagnosis', 'prescription')),
+  name TEXT NOT NULL,
+  name_key TEXT NOT NULL,
+  record_date TEXT,
+  date_precision TEXT,
+  value_text TEXT,
+  value_num REAL,
+  unit TEXT,
+  reference_range TEXT,
+  flag TEXT,
+  status TEXT,
+  panel TEXT,
+  code TEXT,
+  dose TEXT,
+  directions TEXT,
+  quantity TEXT,
+  notes TEXT,
+  source TEXT,
+  content_json TEXT NOT NULL,
+  previous_json TEXT,
+  entered_via TEXT NOT NULL,
+  entered_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_medical_records_kind ON medical_records(kind, record_date);
+CREATE INDEX IF NOT EXISTS idx_medical_records_name ON medical_records(name_key, record_date);

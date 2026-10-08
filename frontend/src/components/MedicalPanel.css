@@ -1,0 +1,56 @@
+/* Medical screen. A flag is shown in words, never by colour alone. */
+
+.med-panel { padding: 16px; max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; color: var(--text-primary); }
+.med-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.med-top h1 { margin: 0; font-size: 1.3rem; }
+
+.med-tabs { display: flex; flex-wrap: wrap; gap: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; }
+.med-tab { background: none; border: 0; color: var(--text-secondary); padding: 6px 12px; border-radius: 4px; cursor: pointer; font: inherit; font-size: 0.85rem; }
+.med-tab:hover { color: var(--text-primary); }
+.med-tab--on { background: var(--bg-tertiary); color: var(--text-primary); }
+
+.med-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.med-card h2 { margin: 0 0 8px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.med-hint { color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; margin: 6px 0; }
+.med-error { color: var(--danger); margin: 8px 0; }
+.med-ok { color: var(--success); margin: 8px 0; }
+.med-screen { color: var(--text-secondary); font-size: 0.85rem; margin: 6px 0; }
+
+.med-upload { display: inline-block; margin-top: 6px; padding: 8px 14px; border: 1px solid var(--accent); color: var(--accent); border-radius: var(--radius-sm); cursor: pointer; }
+.med-upload input { display: none; }
+.med-upload--busy { opacity: 0.6; cursor: progress; }
+
+.med-rows { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.med-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--bg-secondary); }
+.med-row label, .med-row-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.med-row-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; font-size: 0.78rem; color: var(--text-muted); }
+.med-kind { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.med-val { font-family: var(--font-mono); }
+.med-range { color: var(--text-secondary); font-size: 0.82rem; }
+.med-date { margin-left: auto; color: var(--text-secondary); font-size: 0.82rem; font-family: var(--font-mono); }
+
+.med-flag { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--warning); color: var(--warning); }
+.med-flag--normal { border-color: var(--border); color: var(--text-secondary); }
+.med-flag--critical { border-color: var(--danger); color: var(--danger); }
+
+.med-refused { margin: 10px 0; padding: 8px 10px; border-left: 3px solid var(--warning); background: var(--bg-secondary); font-size: 0.85rem; }
+.med-refused p { margin: 0 0 4px; }
+.med-refused ul { margin: 0; padding-left: 18px; }
+
+.med-actions { display: flex; gap: 8px; margin-top: 8px; }
+.med-actions button { padding: 7px 14px; border-radius: var(--radius-sm); border: 1px solid var(--accent); background: var(--accent); color: var(--bg-primary); cursor: pointer; font: inherit; }
+.med-actions button:disabled { opacity: 0.5; cursor: default; }
+.med-secondary, .med-actions .med-secondary { background: none; border: 1px solid var(--border); color: var(--text-secondary); padding: 5px 10px; border-radius: var(--radius-sm); cursor: pointer; font: inherit; }
+.med-delete { background: none; border: 0; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 0.78rem; text-decoration: underline; }
+.med-delete:hover { color: var(--danger); }
+.med-link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; font-weight: 600; text-decoration: underline; }
+
+.med-history { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; margin: 8px 0; }
+.med-history-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.med-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.med-table th, .med-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.med-table td:nth-child(2) { font-family: var(--font-mono); }
+
+@media (max-width: 600px) {
+  .med-date { margin-left: 0; }
+}
