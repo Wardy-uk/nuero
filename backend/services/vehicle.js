@@ -582,7 +582,9 @@ function _noteConflicts(vehicleId, { now }) {
 // ── links & suggestions ──────────────────────────────────────────────────────
 
 const LINKABLE = /^(task:|commitment:|meeting:)/;
-const SUGGEST_RE = /\b(car|captur|mot|tyres?|breakdown|road tax|car tax|car insurance|v5c|dvla|service the car)\b/i;
+// "breakdown" alone is too broad — live, it matched "send breakdown of Parsons
+// contacts" (8 Oct 2026). Only the motoring phrases count.
+const SUGGEST_RE = /\b(car|captur|mot|tyres?|breakdown (?:cover|recovery)|road tax|car tax|car insurance|v5c|dvla|service the car)\b/i;
 
 /** Explicit links held for a vehicle (personal_links relation 'concerns'). */
 function links(vehicleId) {

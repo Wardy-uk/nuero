@@ -127,9 +127,12 @@ test('2. explicit links only — a task that says "MOT" is a suggestion, not a l
   const sugg = veh.linkSuggestions([
     { id: 'task:neuro:2', description: 'Book the MOT for the car', state: 'open' },
     { id: 'task:neuro:3', description: 'Renew passport', state: 'open' },
+    // live wording, 8 Oct 2026 — a "breakdown" that is not a car
+    { id: 'task:neuro:4', description: 'Nick Ward to send breakdown of Parsons contacts: consent vs. legitimate interest', state: 'open' },
+    { id: 'task:neuro:5', description: 'Book my car in for its MOT tomorrow (8 October 2026)', state: 'open' },
     { id: 'task:neuro:1', description: 'Book MOT', state: 'open' },
   ], new Set(['task:neuro:1']));
-  assert.deepEqual(sugg.map((s) => s.id), ['task:neuro:2']);
+  assert.deepEqual(sugg.map((s) => s.id), ['task:neuro:2', 'task:neuro:5']);
   assert.match(sugg[0].why, /a mention, not a link/);
   assert.ok(!veh.links(CAPTUR).some((l) => l.entityId === 'task:neuro:2'));
   assert.ok(veh.links(CAPTUR).some((l) => l.entityId === 'task:neuro:1'));
