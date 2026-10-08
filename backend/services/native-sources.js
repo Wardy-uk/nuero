@@ -145,12 +145,13 @@ const SOURCES = Object.freeze({
   // DeviceReporter in NeuroKit), because SAiM is the app Nick opens most and a
   // report only arrives when an app is awake. Grouped with the NEURO app's: one
   // phone, two reporters — either one being heard means the sense is not blind.
-  // ⚠ OPTIONAL until the iOS build carrying it is installed; flip to expected
-  // then (one line, here), as with reminders.
+  // ⚠ EXPECTED from 8 Oct 2026, on evidence (Build 18I): SAiM build 241
+  // (77f90fc) has reported device status since 7 Oct and the source is fresh.
+  // Grouped with the NEURO app's, so one silent reporter drops a level.
   'device.saim-ios': {
     label: 'Phone self-report (SAiM app)',
     what: 'battery, motion and connectivity — Home Assistant covers some of it',
-    importance: 'medium', group: 'phone-self-report', lifecycle: 'optional', push: true,
+    importance: 'medium', group: 'phone-self-report', lifecycle: 'expected', push: true,
     expectedIntervalMs: 2 * HOUR, staleAfterMs: 12 * HOUR,
   },
   'location.neuro-ios': {

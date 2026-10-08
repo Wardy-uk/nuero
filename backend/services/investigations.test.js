@@ -251,7 +251,8 @@ test('14Y.14/15 a retired or optional source does not create an investigation, h
   const before = counts().inv;
   const now = T0 + 100 * H;
   const r = await inv.runSourceBlindInvestigations({ now, deps: { probes: probes(), sourceBlindness: stubFindings([
-    f('eventkit.unknown', 90, now), f('reminders.unknown', 90, now), f('desktop.agent', 90, now), f('device.saim-ios', 90, now),
+    // device.saim-ios left this list on 8 Oct 2026: it is EXPECTED now (Build 18I).
+    f('eventkit.unknown', 90, now), f('reminders.unknown', 90, now), f('desktop.agent', 90, now),
   ]) } });
   assert.equal(r.started, 0);
   assert.equal(counts().inv, before);
