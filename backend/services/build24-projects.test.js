@@ -82,6 +82,11 @@ write('Projects/NEURO/NEURO.md', [
   '## Next', '- [ ] Watch work: add the complication target', '- [ ] Write the Build 25 brief', '',
 ].join('\n'));
 write('Projects/NEURO/NEURO-SAIM — Build 19 Personal Operations.md', `---\ntype: project-record\nbuild: 19\ndate: ${daysAgo(3).slice(0, 10)}\nstatus: deployed (nuero a0af05c)\n---\n# NEURO-SAIM — Build 19\n`);
+// Live 8 Oct 2026: a nested spec with `type: project` was taken as NEURO's hub,
+// and a Discovery phase note mentioning the NOVA repo pulled NOVA into a likely link.
+write('Projects/NEURO/Origins/NEURO - Plaud Render Fix (Spec).md', '---\ntype: project\nstatus: todo\n---\n# Plaud render fix\n');
+write('Projects/Side Spec/Origins/Old Spec.md', '---\ntype: project\nstatus: todo\n---\n# Old spec\n');
+write('Projects/Discovery/Phase 04 - NOVA Codebase.md', '# Phase 4\n\nRepo: https://github.com/Wardy-uk/NOVA\n');
 write('Projects/Archive/Old Idea/Old Idea.md', '---\ntype: project\nstatus: active\n---\n# Old Idea\n');
 age('Projects/Hill Bagging App/Hill Bagging App.md', 16);
 age('Projects/Quiet Thing/Quiet Thing.md', 200);
@@ -152,6 +157,7 @@ test.before(async () => {
   T.nova = store.createTask({ text: 'NOVA portal queue view for the combined team', source: 'manual', domain: 'work' }).id;
   T.watch = store.createTask({ text: 'NEURO: Watch work complication target', source: 'manual', domain: 'personal' }).id;
   T.other = store.createTask({ text: 'Renew the car insurance', source: 'manual', domain: 'personal' }).id;
+  T.captur = store.createTask({ text: 'Fill in the Captur basics in NEURO: registration, current mileage, MOT, tax and insurance', source: 'build-followup', domain: 'personal' }).id;
   // The machine reporter posts the snapshot (ingest is a machine write).
   const r = await call('POST', '/api/projects/github/snapshot', snapshot(), MACHINE);
   assert.equal(r.status, 200, JSON.stringify(r.json));
@@ -376,11 +382,29 @@ test('25. linking never changes a task\'s domain — a personal-project task sta
 });
 
 test('26. a work task linked to NOVA remains work and stays out of Personal', async () => {
+  assert.ok(!proj('p:nova').tasks.open.some((t) => t.id === T.nova), 'a single word is never a name link');
+  const r = await call('POST', `/api/projects/${enc('p:nova')}/tasks`, { taskId: T.nova, state: 'linked' });
+  assert.equal(r.status, 200);
   const p = proj('p:nova');
-  assert.ok(p.tasks.open.some((t) => t.id === T.nova), 'linked by the exact name NOVA');
+  assert.ok(p.tasks.open.some((t) => t.id === T.nova && t.basis === 'you'));
   assert.equal(db.getTaskRow(T.nova).domain, 'work');
   const v = await call('GET', '/api/projects/personal');
   assert.ok(!JSON.stringify(v.json).includes('NOVA portal queue view'));
+});
+
+test('26b. live regressions: "in NEURO" is a place, a nested spec is not a hub, a mention of NOVA is not a link', async () => {
+  const neuro = proj('p:neuro');
+  assert.ok(!neuro.tasks.open.some((t) => t.id === T.captur), 'the Captur follow-up is not a NEURO-project task');
+  assert.equal(neuro.hubPath, 'Projects/NEURO/NEURO.md');
+  assert.notEqual(neuro.rawStatus, 'todo');
+  const side = proj('p:side-spec');
+  assert.equal(side.hubPath, null, 'a folder whose only type:project note is nested has no hub');
+  assert.equal(side.rawStatus, null);
+  assert.ok(!proj('p:discovery').repos.some((l) => l.repoId === R.nova.id), 'Discovery mentions the NOVA repo; that is not a link');
+  const v = await call('GET', '/api/projects/personal');
+  assert.doesNotMatch(JSON.stringify(v.json), /Wardy-uk\/NOVA/);
+  assert.equal(M.nameMatcher('NEURO'), null);
+  assert.ok(M.nameMatcher('Walking with Ember').test('Walking with Ember cookie banner'), 'positive control: a multi-word name still matches');
 });
 
 test('27. no duplicate task store — links hold ids only, the tasks table is the only task text', () => {

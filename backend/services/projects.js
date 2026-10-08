@@ -87,7 +87,9 @@ function readVault({ vaultRoot = process.env.OBSIDIAN_VAULT_PATH, now = Date.now
         texts.set(f, text);
         const ms = M.milestoneFrom(text.slice(0, 6000), { relPath: rel(f), mtime: at });
         if (ms) milestones.push(ms);
-        if (!hubFile && /^---[\s\S]*?\ntype:\s*project\s*\n/.test(text.slice(0, 600).replace(/\r/g, ''))) hubFile = f;
+        // Only a note at the folder's top level can be its hub: a nested spec that happens to say
+        // `type: project` (live: NEURO/Origins/…Plaud Render Fix (Spec).md) is not the project.
+        if (!hubFile && path.dirname(f) === dir && /^---[\s\S]*?\ntype:\s*project\s*\n/.test(text.slice(0, 600).replace(/\r/g, ''))) hubFile = f;
       }
       if (!hubFile) hubFile = files.find((f) => / - index\.md$/i.test(f) && path.dirname(f) === dir) || null;
       const hub = hubFile ? M.parseHub(texts.get(hubFile) || '', { relPath: rel(hubFile) }) : null;
@@ -345,7 +347,7 @@ function personalView(opts = {}) {
     focus: { ready: group('ready'), blocked: group('blocked'), waiting: group('waiting'), noNextAction: group('no-next-action'), parked: group('parked'), closed: group('closed') },
     needsClassifying: m.needsClassifying,
     unlinkedRepos: m.repos.filter((r) => !r.linked && !r.archived && r.sphere.sphere !== 'work').map((r) => ({ repoId: r.repoId, fullName: r.fullName, pushedAt: r.pushedAt, lastMeaningfulAt: r.lastMeaningfulAt, likely: r.links.filter((l) => l.state === 'likely') })),
-    likelyLinks: m.projects.flatMap((p) => p.repos.filter((l) => l.state === 'likely').map((l) => ({ projectId: p.projectId, project: p.name, repoId: l.repoId, fullName: l.fullName, why: l.why }))),
+    likelyLinks: m.projects.filter((p) => p.sphere.sphere !== 'work' && !p.hardWork).flatMap((p) => p.repos.filter((l) => l.state === 'likely').map((l) => ({ projectId: p.projectId, project: p.name, repoId: l.repoId, fullName: l.fullName, why: l.why }))),
     counts: m.counts,
     rule: m.rule,
   };

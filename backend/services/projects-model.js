@@ -387,9 +387,13 @@ function linkRepos({ projects = [], repos = [], checkouts = [], explicit = [] } 
   const ex = new Map(explicit.map((e) => [`${e.projectId}|${e.repoId}`, e]));
   const links = [];
   const seen = new Set();
+  const hardProjects = new Set(projects.filter(isHardWorkProject).map((p) => p.projectId));
   const add = (projectId, repo, state, basis, why, role = 'primary') => {
     const k = `${projectId}|${repo.id}`;
     if (seen.has(k)) return;
+    // The NOVA repo belongs to NOVA. Only Nick may link it anywhere else — a note that merely
+    // mentions it (live: a Discovery phase note) must not pull NOVA into another project's view.
+    if (isHardWorkRepo(repo) && !hardProjects.has(projectId) && basis !== 'you') return;
     const e = ex.get(k);
     if (e && e.state === 'rejected') { links.push({ projectId, repoId: repo.id, fullName: repo.fullName, state: 'rejected', basis: 'you', why: 'you said this repo is not part of this project', role }); seen.add(k); return; }
     seen.add(k);
@@ -533,19 +537,16 @@ function rankFocus(projects) {
 /**
  * Which project, if any, a task belongs to. Explicit link first; then the
  * task's own source path inside a project folder; then the project's exact
- * name where it is unambiguous. Short or ordinary-word names are never matched
- * by text ("TOM" is also a person; "Discovery" is a word).
+ * MULTI-WORD name where it is unambiguous. A single-word name is never matched
+ * by text: live on 8 Oct 2026 "NEURO" matched "Fill in the Captur basics in
+ * NEURO" — NEURO as the place the work is done, not the project — and made a
+ * car task NEURO's next action. "TOM" is also a person; "Discovery" is a word.
  */
-const COMMON_WORDS = new Set(['discovery', 'automations', 'automation', 'support', 'infrastructure', 'notion', 'archive', 'projects']);
 function nameMatcher(name) {
   const n = String(name || '').trim();
-  if (!n) return null;
-  const words = n.split(/\s+/);
+  if (!n || n.split(/\s+/).length < 2) return null;
   const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  if (words.length >= 2) return new RegExp(`(^|[^A-Za-z0-9])${esc}([^A-Za-z0-9]|$)`, 'i');
-  if (n.length >= 4 && n === n.toUpperCase() && /[A-Z]/.test(n)) return new RegExp(`(^|[^A-Za-z0-9])${esc}([^A-Za-z0-9]|$)`);
-  if (n.length >= 6 && !COMMON_WORDS.has(n.toLowerCase())) return new RegExp(`(^|[^A-Za-z0-9])${esc}([^A-Za-z0-9]|$)`, 'i');
-  return null;
+  return new RegExp(`(^|[^A-Za-z0-9])${esc}([^A-Za-z0-9]|$)`, 'i');
 }
 
 function linkTasks({ projects = [], tasks = [], explicit = [] } = {}) {
