@@ -2672,3 +2672,32 @@ CREATE TABLE IF NOT EXISTS native_builds (
   last_seen_at      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_native_builds_client ON native_builds(client, last_seen_at);
+
+-- ── Build 19: personal operations and the Future Radar ───────────────────
+-- 19T/19P. EXPLICIT links Nick makes between a personal subject (a personal
+-- date occurrence `pd:…`, a calendar entry `meeting:…`, a person or companion)
+-- and the task/commitment that prepares for it. Nothing writes this table
+-- except the route he calls; nothing links on wording.
+CREATE TABLE IF NOT EXISTS personal_links (
+  subject_id  TEXT NOT NULL,
+  entity_id   TEXT NOT NULL,
+  relation    TEXT NOT NULL DEFAULT 'prepares',
+  set_at      TEXT NOT NULL,
+  PRIMARY KEY (subject_id, entity_id)
+);
+
+-- 19W. What CHANGED in Nick's personal operations, for Activity. One row per
+-- transition (a list classified, a goal link added, an obligation opened or
+-- completed, a Radar item that started needing him) — never per read.
+CREATE TABLE IF NOT EXISTS personal_ops_events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind        TEXT NOT NULL,
+  subject_id  TEXT,
+  actor       TEXT NOT NULL,          -- neuro | nick
+  dedupe_key  TEXT NOT NULL UNIQUE,
+  at          TEXT NOT NULL,
+  detail_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_personal_ops_events_at ON personal_ops_events(at);
+CREATE TRIGGER IF NOT EXISTS personal_ops_events_no_update BEFORE UPDATE ON personal_ops_events
+BEGIN SELECT RAISE(ABORT, 'personal_ops_events is append-only'); END;

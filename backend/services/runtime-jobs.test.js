@@ -272,7 +272,7 @@ test('10. the three production jobs register with their audited policies', () =>
   const j = runtime._jobs;
   // Build 5A: meeting-context's job was superseded by meeting-intelligence.
   assert.deepEqual([...j.keys()].sort(), ['action-executor', 'ambient-pass', 'calendar-sync', 'capture-drain', 'commitment-risk', 'meeting-intelligence',
-    'ms-tasks-sync', 'personal-dates', 'personal-deadline', 'personal-loops', 'selftest-sync', 'source-blind-investigation', 'source-degradation-investigation', 'source-staleness', 'world-obligations-sync', 'world-people-sync']);
+    'ms-tasks-sync', 'personal-dates', 'personal-deadline', 'personal-loops', 'personal-ops', 'selftest-sync', 'source-blind-investigation', 'source-degradation-investigation', 'source-staleness', 'world-obligations-sync', 'world-people-sync']);
   // Build 15: the canary source and the hiking loop — best-effort, one attempt.
   assert.equal(j.get('selftest-sync').class, 'best-effort');
   assert.equal(j.get('personal-loops').maxAttempts, 1);

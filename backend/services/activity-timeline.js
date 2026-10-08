@@ -492,6 +492,37 @@ function fromGoalLoop(rows) {
   }).filter(Boolean);
 }
 
+/**
+ * Build 19W: personal operations — only transitions, never reads. A list or
+ * calendar classified, a goal or preparation link added/removed, a personal
+ * obligation opened or completed, a Radar item that started needing Nick.
+ */
+function fromPersonalOps(rows) {
+  const domainsLib = require('../../shared/life-domains.cjs');
+  const doms = (ds) => (ds || []).map((d) => domainsLib.domainLabel(d) || d).join(' and ');
+  return rows.map((r) => {
+    const d = _json(r.detail_json, {}) || {};
+    const base = { id: `pops:${r.id}`, occurredAt: r.at, subjectRefs: r.subject_id ? [r.subject_id] : [], actor: r.actor, metadata: { kind: r.kind } };
+    switch (r.kind) {
+      case 'list-classified':
+      case 'calendar-classified': {
+        const what = r.kind === 'list-classified' ? 'reminder list' : 'calendar';
+        const said = d.cleared ? 'cleared' : [d.domains && d.domains.length ? `as ${doms(d.domains)}` : null, d.tracked === true ? 'tracked' : d.tracked === false ? 'not tracked' : null].filter(Boolean).join(', ');
+        return entry({ ...base, category: 'configured', type: `personal.${r.kind}`, headline: `You classified the "${d.label}" ${what}`, summary: said ? `Set ${said}.` : null, status: 'set' });
+      }
+      case 'goal-link-added': return entry({ ...base, category: 'configured', type: 'goal.link', headline: `You linked ${d.label ? `"${d.label}"` : 'an item'} to "${d.goal}"`, summary: 'Context only — it does not make it more urgent.', status: 'linked' });
+      case 'goal-link-removed': return entry({ ...base, category: 'configured', type: 'goal.link', headline: `You unlinked ${d.label ? `"${d.label}"` : 'an item'} from "${d.goal}"`, status: 'unlinked' });
+      case 'prep-link-added': return entry({ ...base, category: 'configured', type: 'personal.prep-link', headline: `You marked ${d.label ? `"${d.label}"` : 'a task'} as preparation`, summary: `For ${r.subject_id}.`, status: 'linked' });
+      case 'prep-link-removed': return entry({ ...base, category: 'configured', type: 'personal.prep-link', headline: `You removed a preparation link${d.label ? ` ("${d.label}")` : ''}`, status: 'unlinked' });
+      case 'obligation-opened': return entry({ ...base, category: 'sensed', type: 'personal.obligation', headline: `Personal ${d.admin ? 'admin' : 'obligation'} appeared: "${d.title}"`, status: 'open' });
+      case 'obligation-completed': return entry({ ...base, category: 'verified', type: 'personal.obligation', headline: `Personal obligation done: "${d.title}"`, summary: 'Its source says it is complete.', status: 'done' });
+      case 'admin-resolved': return entry({ ...base, category: 'verified', type: 'personal.admin', headline: `Personal admin resolved: "${d.title}"`, summary: 'Its source says it is complete.', status: 'done' });
+      case 'radar-needs-you': return entry({ ...base, category: 'sensed', type: 'personal.radar', headline: `Coming up and needs you: ${d.title}`, summary: 'Shown on the Future Radar. It does not interrupt on its own.', status: 'needs-you' });
+      default: return null;
+    }
+  }).filter(Boolean);
+}
+
 // ── reading ─────────────────────────────────────────────────────────────────
 
 /** SQLite CURRENT_TIMESTAMP carries no zone; it is UTC. */
@@ -553,6 +584,7 @@ function collect({ fromIso, toIso }) {
     ..._safe('goal_loop_events', () => fromGoalLoop(db.all(`SELECT * FROM goal_loop_events WHERE ${between('at')}`, w)), gaps),
     ..._safe('personal_date_events', () => fromPersonalDates(db.all(`SELECT * FROM personal_date_events WHERE ${between('at')}`, w)), gaps),
     ..._safe('native_builds', () => fromNativeBuilds(db.all(`SELECT * FROM native_builds WHERE ${between('first_seen_at')}`, w)), gaps),
+    ..._safe('personal_ops_events', () => fromPersonalOps(db.all(`SELECT * FROM personal_ops_events WHERE ${between('at')}`, w)), gaps),
   ].filter((e) => e && e.occurredAt && e.occurredAt >= fromIso && e.occurredAt <= toIso);
   // Stable: newest first, then id — the same rows always come back in the same order.
   all.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : a.id.localeCompare(b.id)));
@@ -666,6 +698,6 @@ function read({ now = Date.now(), from = null, to = null, filter = 'all', limit 
 
 module.exports = {
   CATEGORIES, ACTORS, FILTERS, PENDING, AUTONOMY_SWITCHES, autonomy,
-  entry, fromNativeBuilds, fromPersonalDates, fromFindings, fromInvestigations, fromSelfHeal, fromPreparedActions, fromExternalWrites, fromRefusals, fromFlagChanges, fromEventLog, fromGoalLoop,
+  entry, fromNativeBuilds, fromPersonalDates, fromFindings, fromInvestigations, fromSelfHeal, fromPreparedActions, fromExternalWrites, fromRefusals, fromFlagChanges, fromEventLog, fromGoalLoop, fromPersonalOps,
   collect, matches, summarise, read,
 };

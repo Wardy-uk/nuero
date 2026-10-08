@@ -579,6 +579,13 @@ function ingestReminders({ reminders, lists = null, complete = false, client = n
   if (unidentified) {
     console.warn(`[Apple] ${unidentified} reminder(s) carried no id — not projected (this app build predates Build 11; rebuild it)`);
   }
+  // Build 19A: per-list COUNTS for the audit (open / completed, tracked or
+  // not). Counts only — no titles leave the push. Never fails the ingest.
+  try {
+    const audit = require('./reminder-audit');
+    audit.recordPush(who || 'unknown', audit.countByList(reminders, listObjs, (l) => sc.isTracked(l, { byKey, titleCount })),
+      { complete: complete === true && Array.isArray(lists), now });
+  } catch (e) { console.warn('[Apple] reminder list counts not recorded:', e.message); }
   return {
     ok: !pub.error,
     error: pub.error || undefined,

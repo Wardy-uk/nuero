@@ -41,6 +41,16 @@ export const interactive = {
   post_loops_personal_dates_declared: 'A birthday or anniversary written into a People or Companions note is Nick\'s own statement. He sets it in NEURO → Life.',
   post_loops_hiking_deny:'Saying a day was not a hike is Nick\'s own statement. He does it in NEURO → Life.',
   post_loops_hiking_denials_by_id_withdraw: 'Taking back a "not a hike" is Nick\'s statement. He does it in NEURO → Life.',
+  // Build 19P: goals, what a goal is about, what prepares for what, and what a
+  // calendar or list is for are Nick's own statements. An agent may read the
+  // Future Radar and obligations; it must never make these links itself.
+  post_canonical_goals: 'A goal is Nick\'s own statement. He writes it in NEURO → Life.',
+  post_canonical_goals_by_id: 'Changing a goal (including its links) is Nick\'s statement. He does it in NEURO → Life.',
+  post_canonical_goals_by_id_links: 'Linking something to a goal is Nick\'s explicit choice, never inferred. He links it in NEURO → Life → Future Radar.',
+  post_canonical_goals_by_id_links_remove: 'Unlinking from a goal is Nick\'s choice. He does it in NEURO → Life.',
+  post_canonical_prep_links: 'Marking a task as preparation for a date is Nick\'s explicit choice. He does it in NEURO → Life → Future Radar.',
+  post_canonical_prep_links_remove: 'Removing a preparation link is Nick\'s choice. He does it in NEURO → Life.',
+  post_canonical_classifications: 'What a calendar or reminder list is for is Nick\'s statement, never inferred from its name. He classifies it in NEURO → Life.',
   post_1to1_book:'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
   post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',
   post_1to1_reschedule: 'Moving a 1-2-1 emails the attendee an update as Nick. He confirms it in NEURO → Team.',

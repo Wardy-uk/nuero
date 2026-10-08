@@ -167,3 +167,11 @@
 .cn-hike-weeks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .cn-hike-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
 .cn-hike-form input { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); padding: 4px 8px; font-size: 12px; }
+
+/* Build 19 — Future Radar, personal admin, reminder lists. */
+.cn-radar-summary { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 8px; font-size: 13px; color: var(--text-secondary); }
+.cn-radar-summary ul { margin: 4px 0 0; padding-left: 18px; }
+.cn-radar .cn-rowbtn { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; text-align: left; }
+.cn-radar-when { font-size: 12px; color: var(--text-muted); min-width: 84px; }
+.cn-radar--needs_you { border-left: 3px solid var(--warning); }
+.cn-radar-goals { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }

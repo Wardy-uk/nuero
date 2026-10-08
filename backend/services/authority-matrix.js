@@ -175,6 +175,15 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/loops/hiking/entries/:id/withdraw', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/deny', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/loops/personal-dates/lead', 'internal.state', { machine: 'refuse' }),
+  // Build 19P: what a goal is about, what prepares for what, and what a list is
+  // for are Nick's statements. A machine may read them and never make them.
+  R('POST', '/api/canonical/goals', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/goals/:id', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/goals/:id/links', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/goals/:id/links/remove', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/prep-links', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/prep-links/remove', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/classifications', 'internal.state', { machine: 'refuse' }),
   // Build 18Q: a birthday written into Nick's own People/Companion note.
   R('POST', '/api/loops/personal-dates/declared', 'vault.write', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/denials/:id/withdraw', 'internal.state', { machine: 'refuse' }),

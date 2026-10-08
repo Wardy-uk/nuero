@@ -977,7 +977,8 @@ function findings({ status = 'active', limit = 100 } = {}) {
 const GOAL_STATUSES = ['active', 'paused', 'achieved', 'dropped'];
 // Build 10's word for achieved, still accepted on input.
 const GOAL_STATUS_ALIASES = { done: 'achieved' };
-const GOAL_LINK_PREFIXES = /^(task|commitment|person|companion|meeting|goal):/;
+// `pd:` (Build 19P) is one occurrence of a personal date, e.g. this year's anniversary.
+const GOAL_LINK_PREFIXES = /^(task|commitment|person|companion|meeting|goal|pd):/;
 
 function _goalLinks(goalId) {
   return _db().all('SELECT entity_id, relation, set_at FROM goal_links WHERE goal_id = ? ORDER BY entity_id', [goalId])
@@ -1084,6 +1085,41 @@ function saveGoal({ id = null, title, domains, status, note, description, import
   // Onto the spine, so the world model (and the personal evaluator) hold it.
   try { require('./personal-world').publishGoals({ now }); } catch { /* the goal is saved; the projection catches up */ }
   return { ok: true, goal: _shapeGoalRow(db.get('SELECT * FROM goals WHERE goal_id = ?', [gid])) };
+}
+
+/**
+ * Build 19P — Nick links ONE thing to a goal, or takes the link away. Explicit
+ * only: nothing calls this on wording ("this looks like hiking" links nothing).
+ * A link gives the goal's CONTEXT to the item; it never makes it more urgent.
+ */
+function addGoalLink(goalId, { entityId, relation = 'serves', label = null } = {}, { now = Date.now() } = {}) {
+  const db = _db();
+  if (typeof entityId !== 'string' || !GOAL_LINK_PREFIXES.test(entityId) || entityId.length > 300) {
+    return { ok: false, status: 400, error: 'entityId must name a world-model id (task:…, commitment:…, meeting:…, pd:…, person:…, companion:…)' };
+  }
+  const g = db.get('SELECT goal_id, title, status FROM goals WHERE goal_id = ?', [goalId]);
+  if (!g) return { ok: false, status: 404, error: 'no such goal' };
+  if (g.status !== 'active') return { ok: false, status: 409, error: `the goal is ${g.status}; links are made to an active goal` };
+  const rel = typeof relation === 'string' && /^[a-z-]{1,20}$/.test(relation) ? relation : 'serves';
+  const r = db.run('INSERT OR IGNORE INTO goal_links (goal_id, entity_id, relation, set_at) VALUES (?, ?, ?, ?)', [goalId, entityId, rel, new Date(now).toISOString()]);
+  if (r && r.changes) {
+    require('./personal-obligations').logEvent('goal-link-added', { subjectId: goalId, actor: 'nick', detail: { goal: g.title, entityId, label }, dedupeKey: `goal-link-added:${goalId}>${entityId}:${now}`, now });
+    try { require('./personal-world').publishGoals({ now }); } catch { /* the link is saved; the projection catches up */ }
+  }
+  return { ok: true, already: !(r && r.changes), goal: _shapeGoalRow(db.get('SELECT * FROM goals WHERE goal_id = ?', [goalId])) };
+}
+
+function removeGoalLink(goalId, { entityId, label = null } = {}, { now = Date.now() } = {}) {
+  const db = _db();
+  if (typeof entityId !== 'string' || !entityId) return { ok: false, status: 400, error: 'entityId is required' };
+  const g = db.get('SELECT goal_id, title FROM goals WHERE goal_id = ?', [goalId]);
+  if (!g) return { ok: false, status: 404, error: 'no such goal' };
+  const r = db.run('DELETE FROM goal_links WHERE goal_id = ? AND entity_id = ?', [goalId, entityId]);
+  if (r && r.changes) {
+    require('./personal-obligations').logEvent('goal-link-removed', { subjectId: goalId, actor: 'nick', detail: { goal: g.title, entityId, label }, dedupeKey: `goal-link-removed:${goalId}>${entityId}:${now}`, now });
+    try { require('./personal-world').publishGoals({ now }); } catch { /* removed; the projection catches up */ }
+  }
+  return { ok: true, removed: !!(r && r.changes), goal: _shapeGoalRow(db.get('SELECT * FROM goals WHERE goal_id = ?', [goalId])) };
 }
 
 /**
@@ -1199,6 +1235,7 @@ function _workMeetingMinutesToday(nowMs, people, ctx = null) {
  * decision) plus world-model situation sections. One payload, so a renderer
  * cannot show the decision from one moment and the world from another.
  */
+let _radarMemo = null;
 async function now({ now: nowMs = Date.now(), decision = null } = {}) {
   const gaps = [];
   let dec = decision;
@@ -1249,6 +1286,17 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
     const pd = require('./personal-dates').read({ now: nowMs });
     payload.personalDates = { active: pd.active.map((d) => ({ id: d.id, kind: d.kind, date: d.date, person: d.person, state: d.state, away: d.away, line: d.line, importance: d.importance })), gaps: pd.gaps };
   } catch (e) { payload.personalDates = null; gaps.push({ input: 'personal-dates', why: e.message }); }
+  // Build 19O: the next 7 days of the Future Radar as CONTEXT on Now — the
+  // summary lines and anything needing Nick. Not a ranked item, never a push.
+  try {
+    // Now is POLLED by every surface; the Radar costs ~150ms on the Pi, so it is
+    // reused for the rest of the minute. The Radar card itself is never cached.
+    const minute = Math.floor(nowMs / 60000);
+    if (!_radarMemo || _radarMemo.minute !== minute) _radarMemo = { minute, r: require('./future-radar').read({ now: nowMs, horizonDays: 7 }) };
+    const r = _radarMemo.r;
+    payload.radar = { heading: r.heading, summary: r.summary, complete: r.coverage.complete,
+      needsYou: r.items.filter((i) => i.actionState === 'needs_you').slice(0, 3).map((i) => ({ id: i.id, title: i.title, kind: i.kind, when: i.when, why: i.whyVisible })) };
+  } catch (e) { payload.radar = null; gaps.push({ input: 'radar', why: e.message }); }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
   // allowed to fail the feed: null means "render the way you did before".
@@ -1270,4 +1318,5 @@ module.exports = {
   commitmentIsNowRelevant, rankNowCommitments, crowdedOut, composeNow, noteTitle, coverageByDomain, isKnownWorkOnly,
   // readers / writers
   commitments, commitmentDetail, tasks, sources, findings, now, life, getAnnotations, setAnnotation, listGoals, saveGoal,
+  addGoalLink, removeGoalLink, GOAL_LINK_PREFIXES,
 };

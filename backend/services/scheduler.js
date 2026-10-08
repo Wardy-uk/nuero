@@ -1438,6 +1438,18 @@ function registerDurableJobs() {
   });
 
   runtime.defineJob({
+    name: 'personal-ops',
+    cron: '13,43 * * * *',
+    class: 'best-effort',
+    catchUp: 'latest',
+    maxLagMs: null,
+    maxAttempts: 1,
+    timeoutMs: 60 * 1000,
+    why: 'Build 19W: records what CHANGED in personal operations for Activity — a personal obligation opened or completed, a Future Radar item that started needing Nick. The first run is a baseline. Reads only; never creates a task, never sends.',
+    run: async () => require('./future-radar').refresh(),
+  });
+
+  runtime.defineJob({
     name: 'personal-deadline',
     cron: '*/15 * * * *',
     class: 'freshness-sensitive',

@@ -192,6 +192,12 @@ router.post('/classifications', (req, res) => {
     const { kind, sourceKey, domains: classDomains, tracked, label } = req.body;
     const out = require('../services/source-classification').classify({ kind, sourceKey, domains: classDomains, tracked, label });
     if (!out.ok) return res.status(400).json(out);
+    // Build 19W: one Activity line per classification Nick makes.
+    const c = out.classification;
+    require('../services/personal-obligations').logEvent(kind === 'reminder-list' ? 'list-classified' : 'calendar-classified', {
+      subjectId: sourceKey, actor: 'nick', dedupeKey: `classified:${sourceKey}:${Date.now()}`,
+      detail: { kind, label: (c && c.label) || label || sourceKey, domains: c ? c.domains : [], tracked: c ? c.tracked : null, cleared: !c },
+    });
     res.json(out);
   } catch (e) { fail(res, e); }
 });
@@ -222,6 +228,80 @@ router.post('/goals/:id', (req, res) => {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
     const { title, description, domains: goalDomains, note, status, importance, startDate, reviewDate, links, reviewed } = req.body;
     const out = canonical.saveGoal({ id: req.params.id, title, description, domains: goalDomains, note, status, importance, startDate, reviewDate, links, reviewed });
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/goals/:id/links — link ONE item to an active goal (explicit only; gives context, never urgency). Keywords: link task to goal, goal link. Body: entityId (task:/commitment:/meeting:/pd:/person:/companion:), relation, label.
+router.post('/goals/:id/links', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { entityId, relation, label } = req.body;
+    const out = canonical.addGoalLink(req.params.id, { entityId, relation, label });
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/goals/:id/links/remove — take one explicit link off a goal. Keywords: unlink goal. Body: entityId, label.
+router.post('/goals/:id/links/remove', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { entityId, label } = req.body;
+    const out = canonical.removeGoalLink(req.params.id, { entityId, label });
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/radar — Future Radar: what is coming up in Nick's life over 7, 14 or 30 days and whether anything needs doing first; every item says why it is there. Keywords: coming up, upcoming, future radar, next two weeks. Query: days (7|14|30).
+router.get('/radar', (req, res) => {
+  try {
+    const radar = require('../services/future-radar');
+    const h = radar.parseHorizon(req.query.days);
+    if (!h.ok) return res.status(400).json({ ok: false, error: h.error });
+    res.json(radar.read({ horizonDays: h.days }));
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/obligations — open personal obligations: tasks and commitments with an explicit non-work domain or an explicit link to a personal goal or date, with due, source, status and whether each needs Nick now. Keywords: personal tasks, life admin. Query: admin=1.
+router.get('/obligations', (req, res) => {
+  try {
+    res.json(require('../services/personal-obligations').read({ adminOnly: req.query.admin === '1' || req.query.admin === 'true' }));
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/personal-admin — personal admin (MOT, renewals, bills, forms): the obligations whose explicit domain is admin, finance or transport, and an audit of which sources hold any. Keywords: personal admin, renewals.
+router.get('/personal-admin', (req, res) => {
+  try {
+    const po = require('../services/personal-obligations');
+    res.json({ ...po.read({ adminOnly: true }), audit: po.adminAudit() });
+  } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/reminder-lists — audit of every Apple Reminders list by stable id: name, app, classification, tracked and why, open/completed counts from the last push, duplicate names, source health. Keywords: reminder lists audit.
+router.get('/reminder-lists', (req, res) => {
+  try { res.json(require('../services/reminder-audit').read()); } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/prep-links — Nick links a task or commitment as PREPARATION for a personal date (pd:…), calendar entry (meeting:…), person or companion. Explicit only. Keywords: link prep, preparation. Body: subjectId, entityId, label.
+router.post('/prep-links', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { subjectId, entityId, label } = req.body;
+    const out = require('../services/personal-obligations').linkPrep({ subjectId, entityId, label });
+    if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/prep-links/remove — take an explicit preparation link away. Keywords: unlink prep. Body: subjectId, entityId, label.
+router.post('/prep-links/remove', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { subjectId, entityId, label } = req.body;
+    const out = require('../services/personal-obligations').unlinkPrep({ subjectId, entityId, label });
     if (!out.ok) return res.status(out.status || 400).json(out);
     res.json(out);
   } catch (e) { fail(res, e); }

@@ -3,6 +3,7 @@ import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
 import PersonalDatesCard from './PersonalDatesCard';
+import { FutureRadarCard, PersonalAdminCard, ReminderListsCard } from './FutureRadar';
 import HouseholdCard from '../../../../saim/shared-ui/HouseholdCard';
 import './Canonical.css';
 
@@ -52,7 +53,10 @@ export default function LifePanel({ onNavigate = null } = {}) {
       {saveError && <div className="cn-error">Not saved — {saveError}</div>}
 
       <div className="cn-section"><HouseholdCard fetchJson={fetchHousehold} fetchPhoto={fetchHouseholdPhoto} /></div>
+      <FutureRadarCard />
       <Goals data={data} busy={busy} act={act} />
+      <PersonalAdminCard />
+      <ReminderListsCard />
       <Classifications data={data} busy={busy} act={act} />
       <Companions data={data} busy={busy} act={act} />
       <Coverage data={data} onNavigate={onNavigate} />
