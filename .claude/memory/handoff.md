@@ -1,3 +1,13 @@
+# Session Handoff — 2026-10-08 (Build 23: Finance activation)
+
+- Code complete in worktree C:\Users\NickW\Claude\nuero-b23, branch build23 (6b03262 + 7460918 + docs), on origin/main 1126625. NOT PUSHED: `git push origin build23:main` was refused by the permission classifier, so nothing is live. Nick decides.
+- When approved: push; on pi5 `git pull --ff-only` (confirm with git log -1), gate, frontend build, restart neuro-backend, rebuild the MCP gateway; `node backend/scripts/build-followups.js` then `--apply`; Life → Finance → Read Tally now. Tell nuero-1f (Plaud) and nuero-28 (medical MCP) first; nuero-28 may push before you, in which case rebase and re-run catalogue:refresh (revert the VANTAGE inventory it rewrites).
+- Validated on the real Tally read: 4 complete months (Feb–May, ~£4.3–4.6k spending), 34 strong recurring, E.ON down / Virgin up, 53% of spending has a domain, 87/122 Tally auto-rules keyed on card+date, 0 Helen merchants leaked, feed reconnect_required on all 4 accounts.
+- Follow-ups: all already real tasks (#380–#388 by Sara). Personal Admin list now on the phone (12:44), unclassified, untracked = #382.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 23 Finance Activation.md; gap analysis appended. Next domain: Personal projects.
+
+---
+
 # Session Handoff — 2026-10-08 (Build 22: Household/Home + Tally security)
 
 - Deployed nuero dfbdef2 + 0fc5244 to pi5 (gate 5753 / 5736 pass / 0 fail, frontend built, neuro-backend restarted, MCP gateway rebuilt). Built in worktree `nuero-b22`. Record: vault Projects/NEURO/NEURO-SAIM — Build 22 Household Home and Tally Security.md.
