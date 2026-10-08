@@ -32,6 +32,7 @@ const ADMIN_DOMAINS = Object.freeze(['admin', 'finance', 'travel']);
 const NEEDS_NOW_AHEAD_DAYS = 1;
 const NEEDS_NOW_OVERDUE_DAYS = 14;
 const SUBJECT_PREFIXES = /^(pd:|meeting:|person:|companion:)/;
+const VEHICLE_RE = /^vehicle:[a-z0-9][a-z0-9-]{0,39}$/;
 const ENTITY_PREFIXES = /^(task:|commitment:)/;
 
 /**
@@ -40,24 +41,41 @@ const ENTITY_PREFIXES = /^(task:|commitment:)/;
  *   goalLinks   Map entityId → [goal]   explicit links, active goals only
  *   prepLinks   Map entityId → [subjectId]
  */
-function personalEvidence(item, { goalLinks = new Map(), prepLinks = new Map() } = {}) {
+function personalEvidence(item, { goalLinks = new Map(), prepLinks = new Map(), careLinks = new Map() } = {}) {
   const doms = (item.domains && item.domains.domains) || [];
   const explicit = doms.filter((d) => d.domain !== 'work' && EXPLICIT_BASES.has(d.basis));
   const markedPersonal = !!(item.domains && item.domains.sphere === 'personal' && !doms.some((d) => d.domain === 'work' && d.basis !== 'default'));
   const goals = (goalLinks.get(item.id) || []).filter((g) => !(g.domains || []).some((d) => (d.domain || d) === 'work'));
-  const subjects = prepLinks.get(item.id) || [];
+  const linked = prepLinks.get(item.id) || [];
+  // Build 20N: a vehicle link is CONTEXT (transport), never preparation.
+  const vehicles = linked.filter((s) => s.startsWith('vehicle:'));
+  const subjects = linked.filter((s) => !s.startsWith('vehicle:'));
+  // Build 20G: Nick linked it to a companion's care.
+  const care = careLinks.get(item.id) || [];
+  const linkedDomains = [];
+  for (const c of care) if (!linkedDomains.some((d) => d.domain === 'ember')) linkedDomains.push({ domain: 'ember', label: domainsLib.domainLabel('ember'), basis: 'linked' });
+  if (vehicles.length && !explicit.some((d) => d.domain === 'travel')) linkedDomains.push({ domain: 'travel', label: domainsLib.domainLabel('travel'), basis: 'linked' });
   const why = [];
   for (const d of explicit) why.push(d.why || `${domainsLib.domainLabel(d.domain)} (${d.basis})`);
   if (markedPersonal && !explicit.length) why.push('marked personal');
   for (const g of goals) why.push(`you linked it to the goal "${g.title}"`);
   for (const s of subjects) why.push(`you linked it as preparation for ${s}`);
+  for (const c of care) why.push(`you linked it to ${c.name}'s care (${c.careKind})`);
+  for (const v of vehicles) why.push(`you linked it to the ${vehicleName(v)}`);
   return {
-    personal: explicit.length > 0 || markedPersonal || goals.length > 0 || subjects.length > 0,
-    domains: explicit.map((d) => ({ domain: d.domain, label: domainsLib.domainLabel(d.domain), basis: d.basis })),
+    personal: explicit.length > 0 || markedPersonal || goals.length > 0 || subjects.length > 0 || care.length > 0 || vehicles.length > 0,
+    domains: [...explicit.map((d) => ({ domain: d.domain, label: domainsLib.domainLabel(d.domain), basis: d.basis })), ...linkedDomains],
     goals: goals.map((g) => ({ id: g.id, title: g.title })),
     preparesFor: subjects,
+    companions: care.map((c) => ({ id: c.companionId, name: c.name, careKind: c.careKind })),
+    vehicles: vehicles.map((v) => ({ id: v, name: vehicleName(v) })),
     why,
   };
+}
+
+/** "vehicle:car" → "car". PURE. */
+function vehicleName(subjectId) {
+  return String(subjectId || '').replace(/^vehicle:/, '').replace(/-/g, ' ') || 'vehicle';
 }
 
 /** Is this obligation personal admin? PURE. */
@@ -113,6 +131,8 @@ function shapeObligation(item, ev, freshness) {
     container: item.container || null,
     linkedGoals: ev.goals,
     preparesFor: ev.preparesFor,
+    companions: ev.companions || [],
+    vehicles: ev.vehicles || [],
     status: item.state,
     actionState: st.actionState,
     needsNow: st.needsNow,
@@ -173,6 +193,8 @@ function read({ now = Date.now(), adminOnly = false } = {}) {
   try { goals = cr.listGoals({ status: 'active' }); } catch (e) { gaps.push({ input: 'goals', why: e.message }); }
   const goalLinks = goalLinkMap(goals);
   const prep = prepLinkMap();
+  let careLinks = new Map();
+  try { careLinks = require('./companion-care').linkMap(); } catch (e) { gaps.push({ input: 'companion-links', why: e.message }); }
   const health = _health();
   const items = [];
   let workExcluded = 0;
@@ -187,7 +209,7 @@ function read({ now = Date.now(), adminOnly = false } = {}) {
   try { items.push(...cr.commitments({ status: 'open', now }).items); } catch (e) { gaps.push({ input: 'commitments', why: e.message }); }
   const out = [];
   for (const it of items) {
-    const ev = personalEvidence(it, { goalLinks, prepLinks: prep.byEntity });
+    const ev = personalEvidence(it, { goalLinks, prepLinks: prep.byEntity, careLinks });
     if (!ev.personal) { if ((it.domains.domains || []).some((d) => d.domain === 'work') || it.domains.sphere === 'work') workExcluded += 1; continue; }
     const shaped = shapeObligation(it, ev, evidenceFreshness(it, { health, projection }));
     if (adminOnly && !shaped.admin) continue;
@@ -229,9 +251,12 @@ function adminAudit({ now = Date.now() } = {}) {
       calEvents += (r && r.n) || 0;
     }
   } catch { calEvents = null; }
+  let activation = null;
+  try { activation = adminActivation(require('./reminder-audit').read({ now }).lists); } catch (e) { activation = { state: 'unknown', lists: [], steps: [], why: `the list audit could not be read: ${e.message}` }; }
   return {
     ok: true,
     asOf: new Date(now).toISOString(),
+    activation,
     sources: [
       { source: 'Reminders lists classified admin / finance / transport', containers: lists.map((l) => l.label), items: obligations.items.filter((o) => o.source === 'Reminders').length },
       { source: 'NEURO tasks declared admin / finance / transport', items: obligations.items.filter((o) => o.source === 'NEURO').length },
@@ -282,10 +307,65 @@ function unlinkPrep({ subjectId, entityId, label = null } = {}, { now = Date.now
   return { ok: true, removed: !!(r && r.changes) };
 }
 
+// ── Build 20N: the vehicle a personal-admin item concerns ───────────────────
+//
+// Just enough transport context to keep "MOT" next to "the car": Nick names
+// the vehicle ("car", "van") and links a task or commitment to it. No vehicle
+// record, registration, mileage or service history is modelled. The link is
+// explicit; "MOT" in a title links nothing.
+
+/** "The Car" → "vehicle:the-car". PURE. null when it cannot be a name. */
+function vehicleSubject(name) {
+  const s = String(name || '').trim().toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  return s && VEHICLE_RE.test(`vehicle:${s}`) ? `vehicle:${s}` : null;
+}
+
+function linkVehicle({ vehicle, entityId, label = null } = {}, { now = Date.now() } = {}) {
+  const subjectId = vehicleSubject(vehicle);
+  if (!subjectId) return { ok: false, status: 400, error: 'vehicle must be a short name, e.g. "car"' };
+  if (typeof entityId !== 'string' || !ENTITY_PREFIXES.test(entityId) || entityId.length > 300) return { ok: false, status: 400, error: 'entityId must be a task (task:…) or commitment (commitment:…)' };
+  const db = _db();
+  const r = db.run('INSERT OR IGNORE INTO personal_links (subject_id, entity_id, relation, set_at) VALUES (?, ?, ?, ?)',
+    [subjectId, entityId, 'concerns', new Date(now).toISOString()]);
+  if (r && r.changes) logEvent('vehicle-link-added', { subjectId, actor: 'nick', detail: { entityId, label, vehicle: vehicleName(subjectId) }, dedupeKey: `vehicle-link-added:${subjectId}>${entityId}:${now}`, now });
+  return { ok: true, already: !(r && r.changes), link: { subjectId, entityId, relation: 'concerns' } };
+}
+
+function unlinkVehicle({ vehicle, entityId, label = null } = {}, { now = Date.now() } = {}) {
+  const subjectId = typeof vehicle === 'string' && vehicle.startsWith('vehicle:') ? vehicle : vehicleSubject(vehicle);
+  if (!subjectId || typeof entityId !== 'string') return { ok: false, status: 400, error: 'vehicle and entityId are required' };
+  const r = _db().run("DELETE FROM personal_links WHERE subject_id = ? AND entity_id = ? AND relation = 'concerns'", [subjectId, entityId]);
+  if (r && r.changes) logEvent('vehicle-link-removed', { subjectId, actor: 'nick', detail: { entityId, label, vehicle: vehicleName(subjectId) }, dedupeKey: `vehicle-link-removed:${subjectId}>${entityId}:${now}`, now });
+  return { ok: true, removed: !!(r && r.changes) };
+}
+
+/**
+ * Build 20L — is personal admin ACTIVE? PURE over the list audit and the
+ * classified admin lists. NEURO cannot create an Apple Reminders list; this
+ * says where activation has got to and the next step, and never guesses that
+ * a list is admin from its name.
+ *   lists  reminder-audit lists [{ name, sourceKey, trackingState, classification }]
+ */
+function adminActivation(lists = []) {
+  const isAdminList = (l) => (l.classification && l.classification.domains || []).some((d) => ADMIN_DOMAINS.includes(d.domain || d));
+  const adminLists = lists.filter(isAdminList);
+  const tracked = adminLists.filter((l) => l.trackingState === 'tracked');
+  const steps = [
+    'On the iPhone, open Reminders and create a list called "Personal Admin" (NEURO cannot create Apple lists).',
+    'Open NEURO or SAiM on the phone so it pushes the new list.',
+    'Here, in Reminder lists: set that list as Admin and Track it.',
+    'Add real items to it with their due dates (MOT, insurance renewal, …). NEURO reads only what is there.',
+  ];
+  if (tracked.length) return { state: 'active', lists: tracked.map((l) => l.name), steps: [], why: `reading ${tracked.map((l) => `"${l.name}"`).join(', ')}` };
+  if (adminLists.length) return { state: 'classified-not-tracked', lists: adminLists.map((l) => l.name), steps: steps.slice(2), why: `${adminLists.map((l) => `"${l.name}"`).join(', ')} is set as admin but not tracked, so NEURO does not read it` };
+  return { state: 'not-set-up', lists: [], steps, why: 'no reminder list is set as admin, finance or transport yet' };
+}
+
 module.exports = {
   EXPLICIT_BASES, ADMIN_DOMAINS, NEEDS_NOW_AHEAD_DAYS, NEEDS_NOW_OVERDUE_DAYS,
   // pure
   personalEvidence, isAdmin, obligationStatus, evidenceFreshness, shapeObligation, rankObligations, validateLink,
+  vehicleName, vehicleSubject, adminActivation,
   // store
-  prepLinkMap, goalLinkMap, read, adminAudit, logEvent, linkPrep, unlinkPrep,
+  prepLinkMap, goalLinkMap, read, adminAudit, logEvent, linkPrep, unlinkPrep, linkVehicle, unlinkVehicle,
 };

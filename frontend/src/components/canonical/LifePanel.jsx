@@ -3,6 +3,7 @@ import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
 import PersonalDatesCard from './PersonalDatesCard';
+import CompanionCareCard from './CompanionCareCard';
 import { FutureRadarCard, PersonalAdminCard, ReminderListsCard } from './FutureRadar';
 import HouseholdCard from '../../../../saim/shared-ui/HouseholdCard';
 import './Canonical.css';
@@ -159,9 +160,6 @@ function Classifications({ data, busy, act }) {
   const ignoredCal = (c) => c.kind === 'calendar' && !!c.classification && c.classification.tracked === false;
   const Row = ({ c }) => {
     const doms = (c.classification && c.classification.domains) || [];
-    const tracked = c.kind === 'reminder-list'
-      ? (c.classification && typeof c.classification.tracked === 'boolean' ? c.classification.tracked : c.defaultTracked)
-      : null;
     return (
       <li className="cn-row cn-class">
         <div className="cn-class-name">
@@ -174,12 +172,6 @@ function Classifications({ data, busy, act }) {
         <div className="cn-class-controls">
           {c.entries && c.entries.total > 0 && (
             <button type="button" className="cn-btn" onClick={() => setViewing(c)}>View</button>
-          )}
-          {c.kind === 'reminder-list' && (
-            <label className="cn-check">
-              <input type="checkbox" checked={!!tracked} disabled={busy} onChange={(e) => save(c, { tracked: e.target.checked })} />
-              tracked{c.classification && typeof c.classification.tracked === 'boolean' ? '' : ' (default)'}
-            </label>
           )}
           {c.kind === 'calendar' && c.keyedBy !== 'account' && (
             ignoredCal(c)
@@ -213,7 +205,6 @@ function Classifications({ data, busy, act }) {
   };
   const ignoredCals = calendars.filter(ignoredCal);
   const cal = { main: split(calendars.filter((c) => !ignoredCal(c))) };
-  const lst = { main: split(lists) };
   const superseded = containers.filter((c) => c.superseded).length;
 
   return (
@@ -222,8 +213,7 @@ function Classifications({ data, busy, act }) {
       <p className="cn-muted">A calendar or a reminder list says nothing about your life until you say so here — the phone is not "personal" and Outlook is not "work" by themselves. Unclassified stays unknown.</p>
       {data && !containers.length && <div className="cn-empty">No calendars or lists seen yet — they appear after the phone next pushes.</div>}
       {cal.main.length > 0 && <><div className="cn-now-k cn-class-k">Calendars</div><ul className="cn-list cn-class-list">{cal.main.map((c) => <Row key={c.sourceKey} c={c} />)}</ul></>}
-      {lst.main.length > 0 && <><div className="cn-now-k cn-class-k">Reminder lists</div><ul className="cn-list cn-class-list">{lst.main.map((c) => <Row key={c.sourceKey} c={c} />)}</ul></>}
-      {data && lists.length === 0 && <div className="cn-muted">No reminder lists seen yet. The app builds before Build 11 only send the “Reminders” list, without ids.</div>}
+      {lists.length > 0 && <p className="cn-muted cn-class-k">Reminder lists — what each is for and whether NEURO reads it — are set in “Reminder lists” above.</p>}
       {ignoredCals.length > 0 && (
         <details className="cn-details">
           <summary>{ignoredCals.length} ignored calendar{ignoredCals.length === 1 ? '' : 's'} — their events no longer reach NEURO</summary>
@@ -244,8 +234,7 @@ function Classifications({ data, busy, act }) {
 function entryLine(c) {
   const e = c.entries;
   if (c.kind === 'reminder-list') {
-    const tracked = c.classification && typeof c.classification.tracked === 'boolean' ? c.classification.tracked : c.defaultTracked;
-    if (!tracked) return 'not tracked — NEURO does not read this list';
+    if (c.tracking !== 'tracked') return c.tracking === 'ignored' ? 'ignored — NEURO does not read this list' : 'not decided — NEURO does not read this list';
   }
   if (c.kind === 'calendar' && c.classification && c.classification.tracked === false) return 'ignored';
   if (e == null) return 'entries not counted';
@@ -340,6 +329,7 @@ function Companions({ data, busy, act }) {
             {c.goals && c.goals.length > 0 && <span className="cn-muted">goals: {c.goals.map((g) => g.title).join(', ')}</span>}
             {c.upcoming && c.upcoming.length > 0 && <div className="cn-muted">Coming up (mentions {c.name}): {c.upcoming.map((e) => `${when(e.start)} ${e.title}`).join('; ')}</div>}
             {c.mentionedBy && c.mentionedBy.length > 0 && <div className="cn-muted">Mentioned by {c.mentionedBy.length} open item{c.mentionedBy.length === 1 ? '' : 's'} — a mention, not a link you made</div>}
+            <CompanionCareCard companion={c} />
           </li>
         ))}
       </ul>

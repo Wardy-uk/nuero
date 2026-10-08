@@ -1022,6 +1022,24 @@
     "stream": false
   },
   {
+    "id": "get_canonical_companions_by_id_care",
+    "method": "GET",
+    "route": "/api/canonical/companions/:id/care",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 337,
+    "description": "GET /api/canonical/companions/:id/care. a companion's care (Ember): next explicit care item, open items, recent completions, linked tasks/reminders/calendar entries, mentions (inference), walk state today and the last week. Keywords: Ember care, dog walk, vet, flea.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_canonical_domains",
     "method": "GET",
     "route": "/api/canonical/domains",
@@ -1061,7 +1079,7 @@
     "route": "/api/canonical/goals",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 206,
+    "line": 216,
     "description": "GET /api/canonical/goals. Nick's explicitly stored goals and intentions, with importance, dates and explicit links. Never inferred. Query: status=active|paused|achieved|dropped|all.",
     "params": [],
     "query": [
@@ -1148,7 +1166,7 @@
     "route": "/api/canonical/obligations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 269,
+    "line": 279,
     "description": "GET /api/canonical/obligations. open personal obligations: tasks and commitments with an explicit non-work domain or an explicit link to a personal goal or date, with due, source, status and whether each needs Nick now. Keywords: personal tasks, life admin. Query: admin=1.",
     "params": [],
     "query": [
@@ -1166,7 +1184,7 @@
     "route": "/api/canonical/personal-admin",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 276,
+    "line": 286,
     "description": "GET /api/canonical/personal-admin. personal admin (MOT, renewals, bills, forms): the obligations whose explicit domain is admin, finance or transport, and an audit of which sources hold any. Keywords: personal admin, renewals.",
     "params": [],
     "query": [],
@@ -1198,7 +1216,7 @@
     "route": "/api/canonical/radar",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 259,
+    "line": 269,
     "description": "GET /api/canonical/radar. Future Radar: what is coming up in Nick's life over 7, 14 or 30 days and whether anything needs doing first; every item says why it is there. Keywords: coming up, upcoming, future radar, next two weeks. Query: days (7|14|30).",
     "params": [],
     "query": [
@@ -1216,7 +1234,7 @@
     "route": "/api/canonical/reminder-lists",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 284,
+    "line": 294,
     "description": "GET /api/canonical/reminder-lists. audit of every Apple Reminders list by stable id: name, app, classification, tracked and why, open/completed counts from the last push, duplicate names, source health. Keywords: reminder lists audit.",
     "params": [],
     "query": [],
@@ -6464,7 +6482,7 @@
     "route": "/api/canonical/annotations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 322,
+    "line": 442,
     "description": "POST /api/canonical/annotations. Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.",
     "params": [],
     "query": [],
@@ -6472,6 +6490,44 @@
       "domains",
       "entityId",
       "importance"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_care_by_id_cancel",
+    "method": "POST",
+    "route": "/api/canonical/care/:id/cancel",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 367,
+    "description": "POST /api/canonical/care/:id/cancel. Nick cancels a companion care item (it is no longer needed). Keywords: cancel Ember care.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_care_by_id_done",
+    "method": "POST",
+    "route": "/api/canonical/care/:id/done",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 357,
+    "description": "POST /api/canonical/care/:id/done. Nick marks a companion care item done (doneOn, default today). A repeat he set moves it to its next date counted from that day; otherwise it closes. Keywords: Ember care done.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "doneOn"
     ],
     "queryOpen": false,
     "bodyOpen": true,
@@ -6546,7 +6602,7 @@
     "route": "/api/canonical/companions",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 311,
+    "line": 321,
     "description": "POST /api/canonical/companions. create a companion (pet) by writing Companions/<name>.md with type: pet. Keywords: add pet, create companion, Ember. Body: name, species, breed, household. Never overwrites an existing note.",
     "params": [],
     "query": [],
@@ -6562,12 +6618,121 @@
     "stream": false
   },
   {
+    "id": "post_canonical_companions_by_id_care",
+    "method": "POST",
+    "route": "/api/canonical/companions/:id/care",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 346,
+    "description": "POST /api/canonical/companions/:id/care. Nick adds a care item for a companion: kind (walk|vet|vaccination|flea|worm|medication|grooming|insurance|other), title, dueDate, dueTime, recurrence {every, unit day|week|month|year} only as he states it, note. Keywords: add Ember care, vet appointment.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "dueDate",
+      "dueTime",
+      "kind",
+      "note",
+      "recurrence",
+      "title"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_companions_by_id_links",
+    "method": "POST",
+    "route": "/api/canonical/companions/:id/links",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 376,
+    "description": "POST /api/canonical/companions/:id/links. Nick links an existing task, reminder, calendar entry (meeting:…), commitment or personal date (pd:…) to a companion's care. Explicit only; a title mentioning Ember is not a link. Body: entityId, careKind, label. Keywords: link to Ember.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "careKind",
+      "entityId",
+      "label"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_companions_by_id_links_remove",
+    "method": "POST",
+    "route": "/api/canonical/companions/:id/links/remove",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 387,
+    "description": "POST /api/canonical/companions/:id/links/remove. take an explicit care link off a companion. Body: entityId, label. Keywords: unlink Ember.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "entityId",
+      "label"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_companions_by_id_walks",
+    "method": "POST",
+    "route": "/api/canonical/companions/:id/walks",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 398,
+    "description": "POST /api/canonical/companions/:id/walks. Nick's own word about a day's walk for a companion: mark walked|not-applicable, day (default today; never a future day). Nick's own walking is never read as the dog's. Keywords: Ember walked, dog walk.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "day",
+      "mark"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_companions_by_id_walks_remove",
+    "method": "POST",
+    "route": "/api/canonical/companions/:id/walks/remove",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 409,
+    "description": "POST /api/canonical/companions/:id/walks/remove. take back a walk mark for a day. Body: day.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "day"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_canonical_goals",
     "method": "POST",
     "route": "/api/canonical/goals",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 215,
+    "line": 225,
     "description": "POST /api/canonical/goals. store a goal or intention Nick states (hike more, finish the degree). Body: title, description, domains, importance, startDate, reviewDate, links. Creates nothing else: no task, no nudge.",
     "params": [],
     "query": [],
@@ -6592,7 +6757,7 @@
     "route": "/api/canonical/goals/:id",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 226,
+    "line": 236,
     "description": "POST /api/canonical/goals/:id. update a stored goal: title, description, domains, importance, status (active|paused|achieved|dropped), startDate, reviewDate, links (replaces), reviewed (stamps last reviewed).",
     "params": [
       "id"
@@ -6621,7 +6786,7 @@
     "route": "/api/canonical/goals/:id/links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 237,
+    "line": 247,
     "description": "POST /api/canonical/goals/:id/links. link ONE item to an active goal (explicit only; gives context, never urgency). Keywords: link task to goal, goal link. Body: entityId (task:/commitment:/meeting:/pd:/person:/companion:), relation, label.",
     "params": [
       "id"
@@ -6643,7 +6808,7 @@
     "route": "/api/canonical/goals/:id/links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 248,
+    "line": 258,
     "description": "POST /api/canonical/goals/:id/links/remove. take one explicit link off a goal. Keywords: unlink goal. Body: entityId, label.",
     "params": [
       "id"
@@ -6727,7 +6892,7 @@
     "route": "/api/canonical/prep-links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 289,
+    "line": 299,
     "description": "POST /api/canonical/prep-links. Nick links a task or commitment as PREPARATION for a personal date (pd:…), calendar entry (meeting:…), person or companion. Explicit only. Keywords: link prep, preparation. Body: subjectId, entityId, label.",
     "params": [],
     "query": [],
@@ -6747,7 +6912,7 @@
     "route": "/api/canonical/prep-links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 300,
+    "line": 310,
     "description": "POST /api/canonical/prep-links/remove. take an explicit preparation link away. Keywords: unlink prep. Body: subjectId, entityId, label.",
     "params": [],
     "query": [],
@@ -6755,6 +6920,46 @@
       "entityId",
       "label",
       "subjectId"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_vehicle_links",
+    "method": "POST",
+    "route": "/api/canonical/vehicle-links",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 420,
+    "description": "POST /api/canonical/vehicle-links. Nick links a personal-admin task or commitment to a vehicle he names (e.g. MOT → car): transport context only. Body: vehicle, entityId, label. Keywords: car, MOT, vehicle admin.",
+    "params": [],
+    "query": [],
+    "body": [
+      "entityId",
+      "label",
+      "vehicle"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_canonical_vehicle_links_remove",
+    "method": "POST",
+    "route": "/api/canonical/vehicle-links/remove",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 431,
+    "description": "POST /api/canonical/vehicle-links/remove. take a vehicle link off a task or commitment. Body: vehicle, entityId, label.",
+    "params": [],
+    "query": [],
+    "body": [
+      "entityId",
+      "label",
+      "vehicle"
     ],
     "queryOpen": false,
     "bodyOpen": true,

@@ -22,6 +22,10 @@
  *                               planned hike — said to be the LOOP'S rule, not a
  *                               link Nick made
  *   goal reviews                a review date Nick set on a goal
+ *   companion care (Build 20)   care items Nick ADDED for Ember, by their own
+ *                               date; and anything above he LINKED to her care
+ *                               carries that link as context. Nothing is
+ *                               scheduled for her — no assumed vet/flea cycles.
  * Out: telemetry, health readings, source diagnostics, the work backlog.
  *
  * ── Ordering (19I) ──────────────────────────────────────────────────────────
@@ -111,7 +115,8 @@ function _prepState(prep, away) {
  *   undatedObligations, workExcluded  counts, reported
  */
 function composeRadar({ today, horizonDays = 14, events = [], dates = [], obligations = [], goals = [], hikeGoal = null,
-  prepBySubject = new Map(), goalsByEntity = new Map(), coverage = {}, undatedObligations = 0, workExcluded = 0 } = {}) {
+  prepBySubject = new Map(), goalsByEntity = new Map(), coverage = {}, undatedObligations = 0, workExcluded = 0,
+  care = [], careByEntity = new Map() } = {}) {
   const last = addDays(today, horizonDays);
   const inWindow = (d) => d && d >= today && d <= last;
   const items = [];
@@ -205,6 +210,29 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     });
   }
 
+  // ── Build 20J: companion care Nick added (companion-care.radarItems) ──
+  for (const c of care) {
+    if (!(inWindow(c.date) || c.actionState === 'needs_you')) continue;
+    items.push({
+      id: c.id, title: c.title, detail: c.detail || null, date: c.date, time: c.time || null, window: null,
+      domain: 'ember', domains: ['ember'], sphere: 'personal', kind: 'care', careKind: c.careKind,
+      sourceRefs: [c.id], linkedEntityRefs: c.companion ? [c.companion.id] : [], linkedTaskRefs: [], linkedGoals: [],
+      importance: null, actionState: c.actionState, confidence: 'high', companion: c.companion || null,
+      whyVisible: c.whyVisible, when: c.date ? whenWords(today, c.date) : 'no date',
+    });
+  }
+
+  // ── Build 20G: anything Nick LINKED to a companion's care says so ──
+  for (const it of items) {
+    const refs = [it.id, ...(it.kind === 'event' || it.kind === 'hike' ? it.sourceRefs.map((m) => `meeting:${m}`) : [])];
+    const links = refs.flatMap((r) => careByEntity.get(r) || []);
+    if (!links.length || it.kind === 'care') continue;
+    const l = links[0];
+    it.companion = { id: l.companionId, name: l.name, careKind: l.careKind };
+    if (!it.linkedEntityRefs.includes(l.companionId)) it.linkedEntityRefs.push(l.companionId);
+    it.whyVisible.push(`you linked it to ${l.name}'s care (${l.careKind})`);
+  }
+
   // ── goal reviews ──
   for (const g of goals) {
     if (!g.reviewDate || !inWindow(g.reviewDate)) continue;
@@ -236,6 +264,7 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     plannedHikes: count((i) => i.kind === 'hike'),
     events: count((i) => i.kind === 'event'),
     goalReviews: count((i) => i.kind === 'goal-review'),
+    care: count((i) => i.kind === 'care' || !!i.companion),
     unknownDomain: count((i) => i.kind === 'event' && !i.domains.length),
     needsYou: count((i) => i.actionState === 'needs_you'),
     undatedObligations, workExcluded,
@@ -245,6 +274,7 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     n('personalDates', 'personal date', 'personal dates'),
     n('obligations', 'open personal obligation', 'open personal obligations'),
     n('plannedHikes', 'planned hike', 'planned hikes'),
+    ...(summary.care ? [n('care', 'companion-care item', 'companion-care items')] : []),
     n('events', 'other calendar entry', 'other calendar entries') + (summary.unknownDomain ? ` (${summary.unknownDomain} from calendars not yet classified)` : ''),
     `${summary.needsYou} thing${summary.needsYou === 1 ? '' : 's'} needing action now`,
   ];
@@ -365,10 +395,14 @@ function read({ now = Date.now(), horizonDays = 14 } = {}) {
   if (!pd) cov.reasons.push('personal dates could not be read');
   for (const g of gaps) cov.reasons.push(`${g.input} could not be read`);
   const dates = pd ? [...(pd.active || []), ...(pd.later || [])] : [];
+  const cc = require('./companion-care');
+  const careRead = cc.radar({ today, last, now: nowMs });
+  if (careRead.error) { gaps.push({ input: 'companion-care', why: careRead.error }); cov.reasons.push('companion care could not be read'); }
   const radar = composeRadar({
     today, horizonDays, events, dates, obligations: obl ? obl.items : [], goals, hikeGoal,
     prepBySubject: _prepBySubject(prep.bySubject, taskIndex), goalsByEntity, coverage: cov,
     undatedObligations: obl ? obl.counts.undated : 0, workExcluded: obl ? obl.counts.workExcluded : 0,
+    care: careRead.items, careByEntity: cc.linkMap(),
   });
   const progress = goals.map((g) => {
     const linked = (g.links || []).map((l) => taskIndex.get(l.entityId)).filter(Boolean).map((t) => ({ id: t.taskId, completedAt: t.completedAt || null }));

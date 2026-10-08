@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, DOMAIN_LABELS } from './canonicalUi';
+import { useCanonical, postCanonical, DOMAIN_LABELS, DOMAIN_IDS } from './canonicalUi';
 
 /**
  * Build 19 — personal operations on the Life page.
@@ -21,7 +21,7 @@ const ACTION_WORDS = {
 };
 const KIND_WORDS = {
   birthday: 'Birthday', anniversary: 'Anniversary', 'personal-date': 'Date', event: 'Calendar', hike: 'Hike',
-  obligation: 'To do', admin: 'Admin', 'goal-review': 'Goal review',
+  obligation: 'To do', admin: 'Admin', 'goal-review': 'Goal review', care: 'Care',
 };
 
 export function FutureRadarCard() {
@@ -99,6 +99,7 @@ function RadarItem({ item, goals, tasks, busy, act }) {
         {item.actionState !== 'none' && <span className={`cn-chip ${item.actionState === 'needs_you' ? 'cn-chip--firm' : 'cn-chip--soft'}`}>{ACTION_WORDS[item.actionState]}</span>}
         {item.domains.length === 0 && item.kind === 'event' && <span className="cn-chip cn-chip--unknown">domain unknown</span>}
         {item.domains.map((d) => <span key={d} className="cn-chip">{DOMAIN_LABELS[d] || d}</span>)}
+        {item.companion && item.kind !== 'care' && <span className="cn-chip cn-chip--soft" title="You linked this to her care">↳ {item.companion.name}</span>}
         {item.linkedGoals.map((g) => <span key={g.goalId} className="cn-chip cn-chip--soft" title={g.basis === 'explicit' ? 'You linked this' : 'The hiking loop counts it (its rule)'}>↳ {g.title}</span>)}
       </button>
       {open && (
@@ -141,19 +142,50 @@ function RadarItem({ item, goals, tasks, busy, act }) {
 }
 
 export function PersonalAdminCard() {
-  const { data, error } = useCanonical('/api/canonical/personal-admin');
-  if (error) return <section className="cn-section"><h3 className="cn-h3">Personal admin</h3><div className="cn-error">Couldn’t read it — {error}</div></section>;
+  const { data, error, reload } = useCanonical('/api/canonical/personal-admin');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  const [vehicle, setVehicle] = useState({});
+  if (error && !data) return <section className="cn-section"><h3 className="cn-h3">Personal admin</h3><div className="cn-error">Couldn’t read it — {error}</div></section>;
   if (!data) return null;
+  const act = async (fn) => {
+    setBusy(true); setNote(null);
+    try { await fn(); await reload(); } catch (e) { setNote(`Not saved — ${e.message}`); }
+    setBusy(false);
+  };
+  const activation = data.audit && data.audit.activation;
   return (
     <section className="cn-section">
       <h3 className="cn-h3">Personal admin</h3>
-      {!data.items.length && <div className="cn-empty">Nothing NEURO knows about. Admin appears here only from a reminder list or task you have classified as personal admin, finance or transport — nothing is guessed from wording.</div>}
+      {note && <div className="cn-error">{note}</div>}
+      {activation && activation.state !== 'active' && (
+        <div className="cn-radar-summary">
+          <strong>Not set up yet</strong> — {activation.why}.
+          {activation.steps.length > 0 && <ol className="cn-act-lines">{activation.steps.map((s) => <li key={s}>{s}</li>)}</ol>}
+        </div>
+      )}
+      {activation && activation.state === 'active' && <p className="cn-muted">Reading {activation.lists.map((l) => `“${l}”`).join(', ')}.</p>}
+      {!data.items.length && <div className="cn-empty">Nothing NEURO knows about. Admin appears here only from a reminder list or task you have classified as personal admin, finance or transport, or linked to a vehicle — nothing is guessed from wording, and no renewal date is ever made up.</div>}
       <ul className="cn-list">
         {data.items.map((o) => (
           <li key={o.id} className="cn-row">
             <span className="cn-rowtitle">{o.what}</span>
             <span className="cn-muted">{o.due ? o.due.label : 'no date'} · {o.source}</span>
+            {(o.vehicles || []).map((v) => (
+              <span key={v.id} className="cn-chip cn-chip--soft">{v.name}
+                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} aria-label={`Unlink from ${v.name}`}
+                  onClick={() => act(() => postCanonical('/api/canonical/vehicle-links/remove', { vehicle: v.id, entityId: o.id, label: o.what }))}>×</button>
+              </span>
+            ))}
             {o.needsNow && <span className="cn-chip cn-chip--firm">Needs you — {o.needsWhy}</span>}
+            {!(o.vehicles || []).length && (
+              <span className="cn-hike-form">
+                <input className="cn-input--short" value={vehicle[o.id] || ''} placeholder="vehicle, e.g. car" maxLength={40} aria-label="Which vehicle this concerns"
+                  onChange={(e) => setVehicle({ ...vehicle, [o.id]: e.target.value })} />
+                <button type="button" className="cn-btn" disabled={busy || !(vehicle[o.id] || '').trim()}
+                  onClick={() => act(async () => { await postCanonical('/api/canonical/vehicle-links', { vehicle: vehicle[o.id], entityId: o.id, label: o.what }); setVehicle({ ...vehicle, [o.id]: '' }); })}>Link vehicle</button>
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -169,34 +201,63 @@ export function PersonalAdminCard() {
   );
 }
 
-const TRACK_WORDS = { set: 'you set it', 'default-name': 'by the built-in-name rule', 'default-not-tracked': 'not set' };
 
+/**
+ * Build 20C — one row per Apple Reminders list, keyed by its STABLE id. Two
+ * separate choices per list, both Nick's: what it is FOR (classification) and
+ * whether NEURO READS it (tracked / ignored / not decided). A list is read only
+ * once he says Track; its name never decides. Two lists that share a name get
+ * a stable "List 1 of 2" so a choice on one cannot land on the other.
+ */
 export function ReminderListsCard() {
-  const { data, error } = useCanonical('/api/canonical/reminder-lists');
-  if (error) return <section className="cn-section"><h3 className="cn-h3">Reminder lists</h3><div className="cn-error">Couldn’t read them — {error}</div></section>;
+  const { data, error, reload } = useCanonical('/api/canonical/reminder-lists');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  if (error && !data) return <section className="cn-section"><h3 className="cn-h3">Reminder lists</h3><div className="cn-error">Couldn’t read them — {error}</div></section>;
   if (!data) return null;
   const s = data.summary;
+  const save = async (l, body) => {
+    setBusy(true); setNote(null);
+    try { await postCanonical('/api/canonical/classifications', { kind: 'reminder-list', sourceKey: l.sourceKey, label: l.name, ...body }); await reload(); } catch (e) { setNote(`Not saved — ${e.message}`); }
+    setBusy(false);
+  };
   return (
     <section className="cn-section">
       <h3 className="cn-h3">Reminder lists</h3>
-      <p className="cn-muted">{s.lists} lists · {s.classified} classified · {s.tracked} read by NEURO · {s.open === null ? 'counts not measured yet' : `${s.open} open, ${s.completed30d} done in 30 days`}{s.duplicateNames.length ? ` · names used twice: ${s.duplicateNames.join(', ')}` : ''}</p>
-      <table className="cn-table">
-        <thead><tr><th>List</th><th>For</th><th>Read?</th><th>Open</th><th>Done 30d</th><th>App</th></tr></thead>
-        <tbody>
-          {data.lists.map((l) => (
-            <tr key={l.sourceKey} className={l.classification.state === 'unknown' ? 'cn-tr--unknown' : ''}>
-              <td title={`id ${l.listId}`}>{l.name}{l.duplicateName ? <span className="cn-muted"> (…{String(l.listId).slice(-4)})</span> : null}</td>
-              <td>{l.classification.state === 'unknown' ? 'unknown' : l.classification.domains.map((d) => d.label).join(', ')}</td>
-              <td title={l.trackedWhy}>{l.tracked ? 'yes' : 'no'} <span className="cn-muted">({TRACK_WORDS[l.trackedBasis] || l.trackedBasis})</span></td>
-              <td>{l.openCount === null ? '—' : l.openCount}</td>
-              <td>{l.completedCount30d === null ? '—' : l.completedCount30d}</td>
-              <td>{l.sourceApps.join(', ') || '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <p className="cn-muted">{s.lists} lists · {s.tracked} tracked · {s.ignored} ignored · {s.trackingUndecided} not decided · {s.open === null ? 'counts not measured yet' : `${s.open} open, ${s.completed30d} done in 30 days`}</p>
+      {note && <div className="cn-error">{note}</div>}
+      <ul className="cn-list cn-class-list">
+        {data.lists.map((l) => (
+          <li key={l.sourceKey} className={`cn-row cn-class${l.trackingState === 'unknown' ? ' cn-class--undecided' : ''}`}>
+            <div className="cn-class-name">
+              <span className="cn-rowtitle">{l.name}</span>
+              {l.disambiguator && <span className="cn-muted" title={`Apple list id …${String(l.listId).slice(-4)}`}> · {l.disambiguator}</span>}
+              <div className="cn-muted cn-class-note">
+                {l.openCount === null ? 'counts not measured yet' : `${l.openCount} open · ${l.completedCount30d} done in 30 days`}
+                {l.lastSeenAt ? ` · last seen ${String(l.lastSeenAt).slice(0, 10)}` : ''}
+                {l.sourceApps.length ? ` · from ${l.sourceApps.join(', ')}` : ''}
+              </div>
+              <div className="cn-muted cn-class-note">{l.trackedWhy}</div>
+            </div>
+            <div className="cn-class-controls">
+              <span className="cn-tabs" role="radiogroup" aria-label={`Does NEURO read ${l.name}${l.disambiguator ? ` (${l.disambiguator})` : ''}?`}>
+                {[['tracked', true, 'Track'], ['ignored', false, 'Ignore'], ['unknown', null, 'Undecided']].map(([state, value, word]) => (
+                  <button key={state} type="button" role="radio" aria-checked={l.trackingState === state} disabled={busy || l.keyedBy !== 'id'}
+                    className={`cn-tab${l.trackingState === state ? ' cn-tab--on' : ''}`} onClick={() => save(l, { tracked: value })}>{word}</button>
+                ))}
+              </span>
+              <select className="cn-select" value={(l.classification.domains[0] || {}).domain || ''} disabled={busy} aria-label={`What ${l.name} is for`}
+                onChange={(e) => save(l, { domains: e.target.value ? [e.target.value] : null })}>
+                <option value="">Not classified</option>
+                {DOMAIN_IDS.map((d) => <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>)}
+              </select>
+            </div>
+          </li>
+        ))}
+      </ul>
       {data.legacy.length > 0 && <div className="cn-small cn-muted">{data.legacy.length} older by-name record{data.legacy.length === 1 ? '' : 's'} from app builds before list ids — superseded, not separate lists.</div>}
-      <div className="cn-small cn-muted">{data.rule} Classify a list in “What each calendar and list is for” below.</div>
+      <div className="cn-small cn-muted">{data.rule}</div>
     </section>
   );
 }
+

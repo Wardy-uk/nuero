@@ -131,8 +131,9 @@ function calendarIsSkipped(name) {
 
 // Build 11D: the reminders list whitelist and its `domainForList` ("work if
 // named in APPLE_WORK_LISTS, otherwise personal") are gone. Which lists are
-// tracked lives in source-classification (APPLE_REMINDER_LISTS is still the
-// default); a list's DOMAIN is only what Nick classified it as.
+// tracked lives in source-classification — since Build 20A ONLY by Nick's
+// explicit decision on the list's stable id (no name rule, no
+// APPLE_REMINDER_LISTS); a list's DOMAIN is only what Nick classified it as.
 
 /**
  * Normalise one pushed calendar event. PURE.
@@ -529,9 +530,10 @@ function ingestCalendar({ from, to, events, calendars, client } = {}) {
  * unknown until he does.
  *
  * Which lists: every list the phone can see is RECORDED (so the classification
- * screen can offer it), but only TRACKED lists enter the world model — by
- * default the built-in "Reminders" list (Nick's August call: a shopping list
- * is not a task list), otherwise whatever he marks tracked.
+ * screen can offer it), but only TRACKED lists enter the world model — and
+ * since Build 20A a list is tracked only when Nick said so on its stable id.
+ * There is no default: the built-in "Reminders" list is unknown until he
+ * decides (the phone has two lists of that name).
  *
  * ⚠ A reminder with NO id (an app build older than Build 11) is counted and
  * NOT projected: without Apple's identifier there is no identity, and

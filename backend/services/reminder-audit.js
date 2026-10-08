@@ -14,10 +14,9 @@
  *   • classification is only what Nick set (source_classifications). Unset is
  *     `unknown`; "Home" does not mean home and "Reminders" does not mean
  *     personal.
- *   • TRACKED says whether its reminders enter the world model, and WHY: Nick
- *     set it, or the built-in-name default (`APPLE_REMINDER_LISTS`, "Reminders")
- *     applied. That default is a NAME rule, so it is reported as one — the
- *     audit does not let it pass for a decision.
+ *   • TRACKED says whether its reminders enter the world model: tracked,
+ *     ignored, or unknown (not decided, not read). Since Build 20A only Nick's
+ *     decision on the list id counts — the built-in-name rule is gone.
  *   • counts come from what the phone actually pushed (open / completed in the
  *     30 days the phone sends), recorded per app at ingest as COUNTS ONLY —
  *     no titles, no notes. Never pushed since this build = `null`, never 0.
@@ -59,15 +58,20 @@ function countByList(reminders, lists, isTracked) {
   return [...byKey.values()];
 }
 
-/** Why a list is (not) tracked. PURE. */
-function trackingFor(classification, label, defaultTracked) {
+/**
+ * Why a list is (not) tracked. PURE. Build 20A: only Nick's explicit decision
+ * on the list's STABLE ID counts — `tracked` (read), `ignored` (set not to be
+ * read) or `unknown` (not decided, and NOT read). There is no name rule. A
+ * by-name row from an old app build cannot be tracked at all.
+ */
+function trackingFor(classification, { keyedBy = 'id' } = {}) {
+  if (keyedBy !== 'id') return { tracked: false, state: 'needs-id', basis: 'no-id', why: 'an older app build sent this list without its id — it cannot be tracked' };
   if (classification && typeof classification.tracked === 'boolean') {
-    return { tracked: classification.tracked, basis: 'set', why: classification.tracked ? 'you set it as tracked' : 'you set it as not tracked' };
+    return classification.tracked
+      ? { tracked: true, state: 'tracked', basis: 'set', why: 'you set it as tracked' }
+      : { tracked: false, state: 'ignored', basis: 'set', why: 'you set it as ignored' };
   }
-  const d = !!defaultTracked(label);
-  return d
-    ? { tracked: true, basis: 'default-name', why: `tracked by the built-in-name default ("${label}") — a name rule, not your decision` }
-    : { tracked: false, basis: 'default-not-tracked', why: 'not tracked: you have not said, and only the built-in list is read by default' };
+  return { tracked: false, state: 'unknown', basis: 'not-set', why: 'not decided — NEURO does not read a list until you say to track it' };
 }
 
 /**
@@ -77,14 +81,22 @@ function trackingFor(classification, label, defaultTracked) {
  *   pushes          { [client]: { at, complete, lists: [{ id, title, open, completed, tracked, projectable }] } }
  *   worldCounts     Map sourceKey → { total, current } (world-model reminders per list)
  *   health          [{ sourceId, state, freshness, lastObservedAt }] for reminders.*
- *   defaultTracked  (label) → boolean
  *   domainLabel     (domain) → label
  */
-function auditLists({ containers = [], classifications = new Map(), pushes = {}, worldCounts = new Map(), health = [], defaultTracked = () => false, domainLabel = (d) => d, now = Date.now() } = {}) {
+function auditLists({ containers = [], classifications = new Map(), pushes = {}, worldCounts = new Map(), health = [], domainLabel = (d) => d, now = Date.now() } = {}) {
   const idRows = containers.filter((c) => /^reminders:id:/.test(c.sourceKey));
   const titleRows = containers.filter((c) => /^reminders:title:/.test(c.sourceKey));
   const idNames = new Map();
   for (const c of idRows) idNames.set(lc(c.label), [...(idNames.get(lc(c.label)) || []), c.containerId || c.sourceKey.replace(/^reminders:id:/, '')]);
+  // Build 20C: a STABLE ordinal per shared name — first seen first, then id —
+  // so "Reminders · List 2" names the same list on every read.
+  const ordinal = new Map();
+  for (const [, ids] of idNames) {
+    if (ids.length < 2) continue;
+    const rows = idRows.filter((c) => ids.includes(c.containerId || c.sourceKey.replace(/^reminders:id:/, '')))
+      .sort((a, b) => String(a.firstSeenAt || '9999').localeCompare(String(b.firstSeenAt || '9999')) || a.sourceKey.localeCompare(b.sourceKey));
+    rows.forEach((c, i) => ordinal.set(c.sourceKey, { index: i + 1, of: rows.length }));
+  }
 
   const pushRows = [];
   for (const [client, p] of Object.entries(pushes || {})) {
@@ -102,14 +114,16 @@ function auditLists({ containers = [], classifications = new Map(), pushes = {},
     const id = c.containerId || (/^reminders:id:/.test(c.sourceKey) ? c.sourceKey.replace(/^reminders:id:/, '') : null);
     const cls = classifications.get(c.sourceKey) || null;
     const domains = cls && Array.isArray(cls.domains) ? cls.domains : [];
-    const tracking = trackingFor(cls, c.label, defaultTracked);
+    const tracking = trackingFor(cls, { keyedBy: /^reminders:id:/.test(c.sourceKey) ? 'id' : 'title' });
     const twins = (idNames.get(lc(c.label)) || []).filter((x) => x !== id);
     const counts = countsFor(id, c.label);
-    const world = worldCounts.get(c.sourceKey) || { total: 0, current: 0 };
+    // An untracked list's reminders are not read (canonical reads hide them),
+    // so "in the world model" is 0 for it whatever the projection still holds.
+    const world = tracking.tracked ? (worldCounts.get(c.sourceKey) || { total: 0, current: 0 }) : { total: 0, current: 0 };
     const seenAgeDays = c.lastSeenAt ? Math.floor((now - Date.parse(c.lastSeenAt)) / 86400000) : null;
     const flags = [];
     if (twins.length) flags.push('duplicate-name');
-    if (tracking.basis === 'default-name') flags.push('tracked-by-name-default');
+    if (tracking.state === 'unknown') flags.push('tracking-not-decided');
     if (domains.length && !tracking.tracked) flags.push('classified-but-not-tracked');
     if (seenAgeDays !== null && seenAgeDays > STALE_SEEN_DAYS) flags.push('not-seen-recently');
     if (counts === null && !superseded) flags.push('counts-not-measured-yet');
@@ -124,8 +138,10 @@ function auditLists({ containers = [], classifications = new Map(), pushes = {},
         ? { state: 'classified', domains: domains.map((d) => ({ domain: d, label: domainLabel(d) })), setAt: cls.setAt || null, basis: 'user-set' }
         : { state: 'unknown', domains: [], setAt: null, basis: null },
       tracked: tracking.tracked,
+      trackingState: tracking.state,
       trackedBasis: tracking.basis,
       trackedWhy: tracking.why,
+      disambiguator: ordinal.has(c.sourceKey) ? `List ${ordinal.get(c.sourceKey).index} of ${ordinal.get(c.sourceKey).of}` : null,
       firstSeenAt: c.firstSeenAt || null,
       lastSeenAt: c.lastSeenAt || null,
       openCount: counts ? counts.open : null,
@@ -144,8 +160,9 @@ function auditLists({ containers = [], classifications = new Map(), pushes = {},
     lists: lists.length,
     classified: lists.filter((l) => l.classification.state === 'classified').length,
     unknown: lists.filter((l) => l.classification.state === 'unknown').length,
-    tracked: lists.filter((l) => l.tracked).length,
-    trackedByNameDefault: lists.filter((l) => l.trackedBasis === 'default-name').length,
+    tracked: lists.filter((l) => l.trackingState === 'tracked').length,
+    ignored: lists.filter((l) => l.trackingState === 'ignored').length,
+    trackingUndecided: lists.filter((l) => l.trackingState === 'unknown').length,
     duplicateNames: [...new Set(lists.filter((l) => l.duplicateName).map((l) => l.name))],
     open: lists.every((l) => l.openCount === null) ? null : lists.reduce((s, l) => s + (l.openCount || 0), 0),
     completed30d: lists.every((l) => l.completedCount30d === null) ? null : lists.reduce((s, l) => s + (l.completedCount30d || 0), 0),
@@ -196,11 +213,11 @@ function read({ now = Date.now() } = {}) {
   } catch { health = []; }
   const audit = auditLists({
     containers, classifications: sc.classificationMap('reminder-list'), pushes: pushes(), worldCounts, health,
-    defaultTracked: sc.defaultTracked, domainLabel: domainsLib.domainLabel, now,
+    domainLabel: domainsLib.domainLabel, now,
   });
   return {
     ok: true, asOf: new Date(now).toISOString(), ...audit,
-    rule: 'Lists are identified by Apple\'s list id, never by name. A list is unknown until you classify it; the name says nothing about what it is for.',
+    rule: 'Lists are identified by Apple\'s list id, never by name. What a list is FOR (classification) and whether NEURO READS it (tracking) are two separate choices, both yours; a list is not read until you say to track it.',
   };
 }
 

@@ -184,6 +184,17 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/canonical/prep-links', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/canonical/prep-links/remove', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/canonical/classifications', 'internal.state', { machine: 'refuse' }),
+  // Build 20: Ember's care, her walks and what links to them, and which
+  // vehicle an admin item concerns, are Nick's statements. Machines read only.
+  R('POST', '/api/canonical/companions/:id/care', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/care/:id/done', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/care/:id/cancel', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/companions/:id/links', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/companions/:id/links/remove', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/companions/:id/walks', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/companions/:id/walks/remove', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/vehicle-links', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/vehicle-links/remove', 'internal.state', { machine: 'refuse' }),
   // Build 18Q: a birthday written into Nick's own People/Companion note.
   R('POST', '/api/loops/personal-dates/declared', 'vault.write', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/denials/:id/withdraw', 'internal.state', { machine: 'refuse' }),

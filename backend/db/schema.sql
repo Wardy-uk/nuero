@@ -2701,3 +2701,61 @@ CREATE TABLE IF NOT EXISTS personal_ops_events (
 CREATE INDEX IF NOT EXISTS idx_personal_ops_events_at ON personal_ops_events(at);
 CREATE TRIGGER IF NOT EXISTS personal_ops_events_no_update BEFORE UPDATE ON personal_ops_events
 BEGIN SELECT RAISE(ABORT, 'personal_ops_events is append-only'); END;
+
+-- ── Build 20: Ember care + personal-operations activation ─────────────────
+-- 20F. Care items Nick EXPLICITLY creates for a companion (Ember). Nothing
+-- generates a row: no vet interval, flea cycle or worming schedule is assumed.
+-- A next date is calculated ONLY from a recurrence Nick entered, and from the
+-- day he marked the item done.
+CREATE TABLE IF NOT EXISTS companion_care_items (
+  care_id         TEXT PRIMARY KEY,           -- care:<uuid>
+  companion_id    TEXT NOT NULL,              -- companion:<slug>
+  kind            TEXT NOT NULL CHECK (kind IN ('walk','vet','vaccination','flea','worm','medication','grooming','insurance','other')),
+  title           TEXT NOT NULL,
+  due_date        TEXT,                       -- YYYY-MM-DD as Nick gave it; NULL = no date
+  due_time        TEXT,                       -- HH:MM wall clock, optional
+  recurrence_json TEXT,                       -- {"every":N,"unit":"day|week|month|year"} only as Nick entered it
+  status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done','cancelled')),
+  note            TEXT,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_companion_care_items_companion ON companion_care_items(companion_id, status);
+
+-- 20F. Every time Nick marks a care item done. Append-only: the history of
+-- care is never rewritten.
+CREATE TABLE IF NOT EXISTS companion_care_log (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  care_id       TEXT NOT NULL,
+  companion_id  TEXT NOT NULL,
+  kind          TEXT NOT NULL,
+  title         TEXT NOT NULL,
+  done_on       TEXT NOT NULL,                -- YYYY-MM-DD local
+  due_was       TEXT,
+  next_due      TEXT,                         -- only when Nick gave a recurrence
+  at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_companion_care_log_companion ON companion_care_log(companion_id, done_on);
+CREATE TRIGGER IF NOT EXISTS companion_care_log_no_update BEFORE UPDATE ON companion_care_log
+BEGIN SELECT RAISE(ABORT, 'companion_care_log is append-only'); END;
+
+-- 20G. EXPLICIT links from a task / reminder / calendar entry / commitment /
+-- personal date to a companion's care. A title that says "Ember" is a
+-- MENTION and never creates a row here.
+CREATE TABLE IF NOT EXISTS companion_links (
+  companion_id  TEXT NOT NULL,
+  entity_id     TEXT NOT NULL,                -- task:… commitment:… meeting:… pd:…
+  care_kind     TEXT NOT NULL,
+  set_at        TEXT NOT NULL,
+  PRIMARY KEY (companion_id, entity_id)
+);
+
+-- 20H. Nick's own word about a day's walk: walked, or not applicable (she was
+-- away, kennels, poorly). Never written from a sensor, a workout or a place.
+CREATE TABLE IF NOT EXISTS companion_walk_marks (
+  companion_id  TEXT NOT NULL,
+  day           TEXT NOT NULL,                -- YYYY-MM-DD local
+  mark          TEXT NOT NULL CHECK (mark IN ('walked','not-applicable')),
+  set_at        TEXT NOT NULL,
+  PRIMARY KEY (companion_id, day)
+);

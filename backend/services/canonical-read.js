@@ -835,6 +835,19 @@ function tasks({ status = 'open', system = null, domain = null, now = Date.now()
   try { companions = require('./personal-world').listCompanions(); } catch { companions = []; }
   let rows = wo.listTasks({ status: status === 'open' ? 'open' : status, limit: 2000 });
   if (system) rows = rows.filter((t) => (t.sources || []).some((s) => s.system === system && s.role === 'leading'));
+  // Build 20A: a reminder is read only while its list is TRACKED (Nick's
+  // explicit decision on the list id). One held from a list he has not
+  // tracked — or has since ignored — leaves every canonical read at once, and
+  // comes back the moment he tracks the list again. Applied at read time: no
+  // removal is published, so nothing claims the reminder was deleted.
+  let hiddenUntracked = 0;
+  rows = rows.filter((t) => {
+    const lead = (t.sources || []).find((s) => s.role === 'leading') || (t.sources || [])[0];
+    if (!lead || lead.system !== 'eventkit-reminders') return true;
+    const ok = !!(t.container && ctx.sc.isTracked({ id: t.container.id }, { byKey: ctx.list }));
+    if (!ok) hiddenUntracked += 1;
+    return ok;
+  });
   const neuroRows = _neuroTaskRows(rows.map((t) => t.taskId));
   let items = rows.map((t) => shapeWorldTask(t, {
     today, annotation: ann.get(t.taskId) || null, neuroRow: neuroRows.get(t.taskId) || null,
@@ -843,7 +856,7 @@ function tasks({ status = 'open', system = null, domain = null, now = Date.now()
   if (domain === 'unknown') items = items.filter((i) => !i.domains.domains.length);
   else if (domain) items = items.filter((i) => i.domains.domains.some((d) => d.domain === domain));
   items = items.slice(0, Math.max(1, Math.min(2000, limit)));
-  const counts = { total: items.length, bySystem: {}, domainUnknown: 0, byDomain: {} };
+  const counts = { total: items.length, bySystem: {}, domainUnknown: 0, byDomain: {}, hiddenUntrackedReminders: hiddenUntracked };
   for (const i of items) {
     counts.bySystem[i.system || 'unknown'] = (counts.bySystem[i.system || 'unknown'] || 0) + 1;
     if (!i.domains.domains.length) counts.domainUnknown += 1;
@@ -1154,7 +1167,7 @@ function coverageByDomain({ commitmentItems = [], sourceItems = [], goals = [], 
       // Superseded name-only twins and anything Nick set as not tracked are
       // not unknowns — there is nothing left for him to say about them.
       containers: containers.filter((c) => !c.superseded && !(c.classification && c.classification.tracked === false)
-        && !(c.kind === 'reminder-list' && !(c.classification && typeof c.classification.tracked === 'boolean') && c.defaultTracked === false)
+        && !(c.kind === 'reminder-list' && c.tracking !== 'tracked')
         && !(c.classification && (c.classification.domains || []).length)).length,
     },
   };

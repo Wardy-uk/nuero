@@ -136,10 +136,11 @@ test('2. an unclassified list stays UNKNOWN — the name "Home" means nothing', 
   const row = audit.read({ now: NOW }).lists.find((l) => l.listId === 'L-HOME');
   assert.equal(row.classification.state, 'unknown');
   assert.equal(row.trackedBasis, 'set');
-  // Positive control: the Shopping list, not classified and not set, is untracked by the name default.
+  // Positive control: the Shopping list, not classified and not set, is not read — undecided (Build 20A).
   const shop = audit.read({ now: NOW }).lists.find((l) => l.listId === 'L-SHOP');
   assert.equal(shop.tracked, false);
-  assert.equal(shop.trackedBasis, 'default-not-tracked');
+  assert.equal(shop.trackingState, 'unknown');
+  assert.equal(shop.trackedBasis, 'not-set');
 });
 
 test('3. an explicit classification persists across pushes, and Activity says so once', async () => {

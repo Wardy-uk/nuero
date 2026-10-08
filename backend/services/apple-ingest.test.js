@@ -223,19 +223,23 @@ test('an all-day event is free, not a wall across the day', () => {
 
 // ── Reminders ────────────────────────────────────────────────────────────────
 
-test('⚠ only TRACKED lists enter the world model, and the rest are REPORTED (Build 11D)', () => {
+// Build 20A: a list is read only when Nick tracked it, by its stable id. The
+// name "Reminders" no longer tracks anything by itself.
+const trackList = (id) => require('./source-classification').classify({ kind: 'reminder-list', sourceKey: `reminders:id:${id}`, tracked: true, label: 'Reminders' });
+
+test('⚠ only TRACKED lists enter the world model, and the rest are REPORTED (Build 11D / 20A)', () => {
   // The first run pulled in every list — a shopping list of 15 items, none of
-  // them a task. Nick's call stands: by default only the built-in "Reminders"
-  // list is tracked; a list is tracked otherwise only when he says so.
+  // them a task. A list is tracked only when Nick says so on its id.
+  trackList('L-REM');
   const res = apple.ingestReminders({
     reminders: [
-      { id: 'r-school', title: 'Call the school', list: 'Reminders' },
-      { id: 'r-pb', title: 'peanut butter', list: 'Shopping' },
-      { id: 'r-mugs', title: 'Mugs', list: 'Shopping' },
+      { id: 'r-school', title: 'Call the school', list: 'Reminders', listId: 'L-REM' },
+      { id: 'r-pb', title: 'peanut butter', list: 'Shopping', listId: 'L-SHOP' },
+      { id: 'r-mugs', title: 'Mugs', list: 'Shopping', listId: 'L-SHOP' },
       { id: 'r-orphan', title: 'orphan with no list' },
     ],
   });
-  assert.equal(res.projected, 1, 'only the built-in list is tracked by default');
+  assert.equal(res.projected, 1, 'only the list Nick tracked is read');
   // Reported, not silently dropped: "why has my reminder not appeared" has to
   // be answerable without guessing.
   assert.deepEqual(res.skippedLists, { Shopping: 2, '(no list)': 1 });
@@ -246,7 +250,7 @@ test('⚠ a reminder no longer becomes a NEURO task row (Build 11D)', () => {
   // A copy in `tasks` was a second record of something Apple owns, stamped
   // `personal` because it came from the iPhone — source is not domain.
   const before = db.get('SELECT COUNT(*) n FROM tasks').n;
-  const res = apple.ingestReminders({ reminders: [{ id: 'r-tax', title: 'Renew the car tax', dueDate: '2026-09-05', list: 'Reminders' }] });
+  const res = apple.ingestReminders({ reminders: [{ id: 'r-tax', title: 'Renew the car tax', dueDate: '2026-09-05', list: 'Reminders', listId: 'L-REM' }] });
   assert.equal(res.ok, true);
   assert.equal(res.projected, 1);
   assert.equal(db.get('SELECT COUNT(*) n FROM tasks').n, before, 'nothing is written to the tasks table');
@@ -254,7 +258,7 @@ test('⚠ a reminder no longer becomes a NEURO task row (Build 11D)', () => {
 });
 
 test('⚠ a reminder with no id is counted and NOT projected — wording is not identity', () => {
-  const res = apple.ingestReminders({ reminders: [{ title: 'Old build reminder', list: 'Reminders' }] });
+  const res = apple.ingestReminders({ reminders: [{ title: 'Old build reminder', list: 'Reminders', listId: 'L-REM' }] });
   assert.equal(res.projected, 0);
   assert.equal(res.unidentified, 1, 'an app build older than Build 11 is named, not silently dropped');
 });
@@ -301,7 +305,7 @@ test('a titleless reminder is rejected and reported', () => {
   // On a tracked list, or the default would skip them before the title check
   // and the test would pass for the wrong reason.
   const res = apple.ingestReminders({
-    reminders: [{ id: 'r-t1', notes: 'no title', list: 'Reminders' }, { id: 'r-t2', title: '   ', list: 'Reminders' }],
+    reminders: [{ id: 'r-t1', notes: 'no title', list: 'Reminders', listId: 'L-REM' }, { id: 'r-t2', title: '   ', list: 'Reminders', listId: 'L-REM' }],
   });
   assert.equal(res.projected, 0);
   assert.equal(res.rejected.length, 2);

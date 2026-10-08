@@ -123,6 +123,11 @@ function validate({ kind, sourceKey, domains, tracked }) {
   // arriving. The Outlook account cannot — it is the work diary every booking,
   // planner and prep path reads, and ignoring it would blind all of them.
   if (tracked !== undefined && tracked !== null && sourceKey === GRAPH_PRIMARY) return { ok: false, error: 'the Outlook calendar cannot be ignored' };
+  // Build 20A: a reminder list is tracked by its STABLE ID only. A by-name key
+  // cannot carry a tracking decision — two lists can share the name.
+  if (tracked !== undefined && tracked !== null && /^reminders:title:/.test(sourceKey)) {
+    return { ok: false, error: 'a reminder list is tracked by its list id — this one has only a name (an older app build)' };
+  }
   return { ok: true };
 }
 
@@ -262,20 +267,20 @@ function listContainers({ now = Date.now() } = {}) {
       out.push({ kind, sourceKey: r.source_key, label: r.label, containerId: r.container_id, provider: r.provider,
         keyedBy: /:id:/.test(r.source_key) ? 'id' : r.source_key === GRAPH_PRIMARY ? 'account' : 'title',
         ambiguous, firstSeenAt: r.first_seen_at, lastSeenAt: r.last_seen_at,
-        classification: c, defaultTracked: kind === 'reminder-list' ? defaultTracked(r.label) : null });
+        classification: c, tracking: kind === 'reminder-list' ? trackingState({ id: r.container_id || (/:id:/.test(r.source_key) ? r.source_key.replace(/^reminders:id:/, '') : null) }, { byKey: map }) : null });
     }
     // A classification for a container not seen (yet) still shows — Nick set it.
     for (const c of map.values()) {
       if (!rows.some((r) => r.source_key === c.sourceKey)) {
         out.push({ kind, sourceKey: c.sourceKey, label: c.label || c.sourceKey, containerId: null, provider: c.sourceKey === GRAPH_PRIMARY ? 'graph' : 'eventkit',
           keyedBy: /:id:/.test(c.sourceKey) ? 'id' : c.sourceKey === GRAPH_PRIMARY ? 'account' : 'title', ambiguous: false, firstSeenAt: null, lastSeenAt: null, classification: c,
-          defaultTracked: kind === 'reminder-list' ? defaultTracked(c.label) : null, notSeen: true });
+          tracking: kind === 'reminder-list' ? trackingState({ id: /:id:/.test(c.sourceKey) ? c.sourceKey.replace(/^reminders:id:/, '') : null }, { byKey: map }) : null, notSeen: true });
       }
     }
   }
   if (!out.some((o) => o.sourceKey === GRAPH_PRIMARY)) {
     out.push({ kind: 'calendar', sourceKey: GRAPH_PRIMARY, label: 'Outlook calendar (work account)', containerId: null, provider: 'graph',
-      keyedBy: 'account', ambiguous: false, firstSeenAt: null, lastSeenAt: null, classification: null, defaultTracked: null });
+      keyedBy: 'account', ambiguous: false, firstSeenAt: null, lastSeenAt: null, classification: null, tracking: null });
   }
   // A by-name container from an app build before ids is SUPERSEDED once the
   // same kind has an id-keyed container with that name: it is the same
@@ -283,6 +288,20 @@ function listContainers({ now = Date.now() } = {}) {
   // and its items take the id-keyed classification (resolveFor) (5 Oct 2026).
   const idLabels = new Set(out.filter((o) => o.keyedBy === 'id').map((o) => `${o.kind}|${lc(o.label)}`));
   for (const o of out) o.superseded = o.keyedBy === 'title' && idLabels.has(`${o.kind}|${lc(o.label)}`);
+  // Build 20C: two containers with one name get a STABLE ordinal ("List 1 of
+  // 2"), ordered by when NEURO first saw each, then by key — never by sort
+  // position on a screen, so a choice on "List 2" cannot drift onto "List 1".
+  const byName = new Map();
+  for (const o of out) {
+    if (o.keyedBy !== 'id' || o.superseded) continue;
+    const k = `${o.kind}|${lc(o.label)}`;
+    byName.set(k, [...(byName.get(k) || []), o]);
+  }
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    group.sort((a, b) => String(a.firstSeenAt || '9999').localeCompare(String(b.firstSeenAt || '9999')) || a.sourceKey.localeCompare(b.sourceKey));
+    group.forEach((o, i) => { o.twin = { index: i + 1, of: group.length, idTail: String(o.containerId || o.sourceKey).slice(-4) }; });
+  }
   // How many entries the world model holds per container (5 Oct 2026). An
   // unreadable count is `null` — "not counted" — never 0, which reads as empty.
   let counts = null;
@@ -358,19 +377,33 @@ function containerEntries(kind, sourceKey, { limit = 200, now = Date.now() } = {
 }
 
 /**
- * Whether a reminder list is part of the world model when Nick has not said.
- * Nick's call (Aug 2026): only the built-in "Reminders" list — a shopping list
- * is not a task list. `APPLE_REMINDER_LISTS` still names the defaults.
+ * Is a reminder list read into the world model? (Build 20A, 8 Oct 2026.)
+ *
+ * ONLY when Nick explicitly said "track it" on that list's STABLE ID. There is
+ * no default and no name rule any more: the built-in-name fallback ("a list
+ * called Reminders is read") is gone, because the live phone has TWO lists
+ * called "Reminders" and a name cannot say which one Nick meant. Three states:
+ *
+ *   tracked   Nick set tracked: true on `reminders:id:<id>`
+ *   ignored   Nick set tracked: false
+ *   unknown   not decided — NOT read
+ *
+ * Never inferred from the list's name, the app that sent it, a domain
+ * classification, or being Apple's default list. A list with no id (an app
+ * build before Build 11) cannot be tracked at all, and a title-keyed row's
+ * `tracked` is ignored (validate() refuses to store one).
  */
-function defaultTracked(label) {
-  const allowed = String(process.env.APPLE_REMINDER_LISTS || 'Reminders').split(',').map(lc).filter(Boolean);
-  return allowed.includes(lc(label));
+function trackingState(listItem, { byKey } = {}) {
+  const id = listItem && listItem.id ? String(listItem.id).trim() : '';
+  if (!id) return 'unknown';
+  const map = byKey || classificationMap('reminder-list');
+  const c = map.get(containerKey('reminder-list', { id }));
+  if (!c || typeof c.tracked !== 'boolean') return 'unknown';
+  return c.tracked ? 'tracked' : 'ignored';
 }
 
-function isTracked(listItem, { byKey, titleCount } = {}) {
-  const r = resolveFor('reminder-list', listItem, { byKey: byKey || classificationMap('reminder-list'), titleCount: titleCount || new Map() });
-  if (r.classification && typeof r.classification.tracked === 'boolean') return r.classification.tracked;
-  return defaultTracked(listItem && listItem.title);
+function isTracked(listItem, { byKey } = {}) {
+  return trackingState(listItem, { byKey }) === 'tracked';
 }
 
 /**
@@ -386,7 +419,7 @@ function calendarIgnored(item, { byKey, titleCount } = {}) {
 module.exports = {
   KINDS, GRAPH_PRIMARY, calendarIgnored,
   // pure
-  containerKey, titleKey, claimsFor, resolveFor, validate, defaultTracked,
+  containerKey, titleKey, claimsFor, resolveFor, validate, trackingState,
   // store
   listClassifications, classificationMap, classify, observeContainers, titleCounts, effectiveTitleCounts,
   noteDuplicateTitles, listContainers, isTracked, entryCounts, containerEntries,

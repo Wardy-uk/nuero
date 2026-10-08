@@ -192,12 +192,22 @@ router.post('/classifications', (req, res) => {
     const { kind, sourceKey, domains: classDomains, tracked, label } = req.body;
     const out = require('../services/source-classification').classify({ kind, sourceKey, domains: classDomains, tracked, label });
     if (!out.ok) return res.status(400).json(out);
-    // Build 19W: one Activity line per classification Nick makes.
+    // Build 19W: one Activity line per classification Nick makes. Build 20B:
+    // tracking and classification are separate decisions, so a list's
+    // tracking change is its own line ("tracked" / "ignored" / undecided).
     const c = out.classification;
-    require('../services/personal-obligations').logEvent(kind === 'reminder-list' ? 'list-classified' : 'calendar-classified', {
-      subjectId: sourceKey, actor: 'nick', dedupeKey: `classified:${sourceKey}:${Date.now()}`,
-      detail: { kind, label: (c && c.label) || label || sourceKey, domains: c ? c.domains : [], tracked: c ? c.tracked : null, cleared: !c },
-    });
+    const po = require('../services/personal-obligations');
+    const name = (c && c.label) || label || sourceKey;
+    const at = Date.now();
+    if (kind === 'reminder-list' && tracked !== undefined) {
+      po.logEvent('list-tracking', { subjectId: sourceKey, actor: 'nick', dedupeKey: `list-tracking:${sourceKey}:${at}`, detail: { label: name, tracked: tracked === null ? null : !!tracked } });
+    }
+    if (kind !== 'reminder-list' || classDomains !== undefined) {
+      po.logEvent(kind === 'reminder-list' ? 'list-classified' : 'calendar-classified', {
+        subjectId: sourceKey, actor: 'nick', dedupeKey: `classified:${sourceKey}:${at}`,
+        detail: { kind, label: name, domains: c ? c.domains : [], tracked: kind === 'calendar' && c ? c.tracked : null, cleared: !c },
+      });
+    }
     res.json(out);
   } catch (e) { fail(res, e); }
 });
@@ -314,6 +324,116 @@ router.post('/companions', (req, res) => {
     const { name, species, breed, household } = req.body;
     const out = require('../services/personal-world').createCompanion({ name, species, breed, household });
     if (!out.ok) return res.status(out.status || 400).json(out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// ── Build 20: Ember care, vehicle links ─────────────────────────────────────
+
+const care = () => require('../services/companion-care');
+const failWith = (res, out) => res.status(out.status || 400).json(out);
+
+// GET /api/canonical/companions/:id/care — a companion's care (Ember): next explicit care item, open items, recent completions, linked tasks/reminders/calendar entries, mentions (inference), walk state today and the last week. Keywords: Ember care, dog walk, vet, flea.
+router.get('/companions/:id/care', (req, res) => {
+  try {
+    const out = care().read(req.params.id);
+    if (!out.ok) return failWith(res, out);
+    res.json({ ...out, contract: canonical.CONTRACT });
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/companions/:id/care — Nick adds a care item for a companion: kind (walk|vet|vaccination|flea|worm|medication|grooming|insurance|other), title, dueDate, dueTime, recurrence {every, unit day|week|month|year} only as he states it, note. Keywords: add Ember care, vet appointment.
+router.post('/companions/:id/care', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { kind, title, dueDate, dueTime, recurrence, note } = req.body;
+    const out = care().createItem(req.params.id, { kind, title, dueDate, dueTime, recurrence, note });
+    if (!out.ok) return failWith(res, out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/care/:id/done — Nick marks a companion care item done (doneOn, default today). A repeat he set moves it to its next date counted from that day; otherwise it closes. Keywords: Ember care done.
+router.post('/care/:id/done', (req, res) => {
+  try {
+    const { doneOn } = req.body || {};
+    const out = care().completeItem(req.params.id, { doneOn });
+    if (!out.ok) return failWith(res, out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/care/:id/cancel — Nick cancels a companion care item (it is no longer needed). Keywords: cancel Ember care.
+router.post('/care/:id/cancel', (req, res) => {
+  try {
+    const out = care().cancelItem(req.params.id);
+    if (!out.ok) return failWith(res, out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/companions/:id/links — Nick links an existing task, reminder, calendar entry (meeting:…), commitment or personal date (pd:…) to a companion's care. Explicit only; a title mentioning Ember is not a link. Body: entityId, careKind, label. Keywords: link to Ember.
+router.post('/companions/:id/links', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { entityId, careKind, label } = req.body;
+    const out = care().link(req.params.id, { entityId, careKind, label });
+    if (!out.ok) return failWith(res, out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/companions/:id/links/remove — take an explicit care link off a companion. Body: entityId, label. Keywords: unlink Ember.
+router.post('/companions/:id/links/remove', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { entityId, label } = req.body;
+    const out = care().unlink(req.params.id, { entityId, label });
+    if (!out.ok) return failWith(res, out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/companions/:id/walks — Nick's own word about a day's walk for a companion: mark walked|not-applicable, day (default today; never a future day). Nick's own walking is never read as the dog's. Keywords: Ember walked, dog walk.
+router.post('/companions/:id/walks', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { day, mark } = req.body;
+    const out = care().markWalk(req.params.id, { day, mark });
+    if (!out.ok) return failWith(res, out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/companions/:id/walks/remove — take back a walk mark for a day. Body: day.
+router.post('/companions/:id/walks/remove', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { day } = req.body;
+    const out = care().unmarkWalk(req.params.id, { day });
+    if (!out.ok) return failWith(res, out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/vehicle-links — Nick links a personal-admin task or commitment to a vehicle he names (e.g. MOT → car): transport context only. Body: vehicle, entityId, label. Keywords: car, MOT, vehicle admin.
+router.post('/vehicle-links', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { vehicle, entityId, label } = req.body;
+    const out = require('../services/personal-obligations').linkVehicle({ vehicle, entityId, label });
+    if (!out.ok) return failWith(res, out);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/vehicle-links/remove — take a vehicle link off a task or commitment. Body: vehicle, entityId, label.
+router.post('/vehicle-links/remove', (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
+    const { vehicle, entityId, label } = req.body;
+    const out = require('../services/personal-obligations').unlinkVehicle({ vehicle, entityId, label });
+    if (!out.ok) return failWith(res, out);
     res.json(out);
   } catch (e) { fail(res, e); }
 });

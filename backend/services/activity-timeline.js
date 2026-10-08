@@ -517,6 +517,16 @@ function fromPersonalOps(rows) {
       case 'obligation-opened': return entry({ ...base, category: 'sensed', type: 'personal.obligation', headline: `Personal ${d.admin ? 'admin' : 'obligation'} appeared: "${d.title}"`, status: 'open' });
       case 'obligation-completed': return entry({ ...base, category: 'verified', type: 'personal.obligation', headline: `Personal obligation done: "${d.title}"`, summary: 'Its source says it is complete.', status: 'done' });
       case 'admin-resolved': return entry({ ...base, category: 'verified', type: 'personal.admin', headline: `Personal admin resolved: "${d.title}"`, summary: 'Its source says it is complete.', status: 'done' });
+      // Build 20U — semantic lines only: no walk, sync or Radar refresh is logged.
+      case 'list-tracking': return entry({ ...base, category: 'configured', type: 'personal.list-tracking',
+        headline: d.tracked === true ? `You set the "${d.label}" reminder list to be tracked` : d.tracked === false ? `You set the "${d.label}" reminder list as ignored` : `You cleared tracking on the "${d.label}" reminder list`,
+        summary: d.tracked === true ? 'NEURO now reads its reminders.' : 'NEURO does not read its reminders.', status: 'set' });
+      case 'care-item-created': return entry({ ...base, category: 'configured', type: 'companion.care', headline: `You added ${d.companion ? `${d.companion}'s` : 'a'} care item: "${d.title}"`, summary: d.dueDate ? `Due ${d.dueDate}.` : 'No date.', status: 'open' });
+      case 'care-item-completed': return entry({ ...base, category: 'verified', type: 'companion.care', headline: `${d.companion ? `${d.companion}: ` : ''}"${d.title}" done`, summary: d.nextDue ? `Next due ${d.nextDue} (the repeat you set).` : 'Done on ' + d.doneOn + '.', status: 'done' });
+      case 'care-link-added': return entry({ ...base, category: 'configured', type: 'companion.link', headline: `You linked ${d.label ? `"${d.label}"` : 'an item'} to ${d.companion || 'a companion'}'s care`, summary: `As ${d.careKind}.`, status: 'linked' });
+      case 'care-link-removed': return entry({ ...base, category: 'configured', type: 'companion.link', headline: `You unlinked ${d.label ? `"${d.label}"` : 'an item'} from ${d.companion || 'a companion'}'s care`, status: 'unlinked' });
+      case 'vehicle-link-added': return entry({ ...base, category: 'configured', type: 'personal.vehicle-link', headline: `You linked ${d.label ? `"${d.label}"` : 'an item'} to the ${d.vehicle}`, status: 'linked' });
+      case 'vehicle-link-removed': return entry({ ...base, category: 'configured', type: 'personal.vehicle-link', headline: `You unlinked ${d.label ? `"${d.label}"` : 'an item'} from the ${d.vehicle}`, status: 'unlinked' });
       case 'radar-needs-you': return entry({ ...base, category: 'sensed', type: 'personal.radar', headline: `Coming up and needs you: ${d.title}`, summary: 'Shown on the Future Radar. It does not interrupt on its own.', status: 'needs-you' });
       default: return null;
     }

@@ -140,6 +140,9 @@ function pushReminders(reminders, { complete = true, lists = [{ id: 'LIST-DEFAUL
   return r;
 }
 const reminderTasks = () => cr.tasks({ now: NOW, system: 'eventkit-reminders', status: 'all' }).items;
+// Build 20A: the "Reminders" list is no longer read by its name — Nick tracks
+// it by id, as he would on the Life page. These fixtures read it, so track it.
+sc.classify({ kind: 'reminder-list', sourceKey: 'reminders:id:LIST-DEFAULT', tracked: true, label: 'Reminders' });
 const eventsByTitle = async (title) => {
   await pump();
   const life = await cr.life({ now: NOW });
