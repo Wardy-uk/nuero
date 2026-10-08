@@ -1,3 +1,15 @@
+# Session Handoff — 2026-10-08 (Build 22: Household/Home + Tally security)
+
+- Deployed nuero dfbdef2 + 0fc5244 to pi5 (gate 5753 / 5736 pass / 0 fail, frontend built, neuro-backend restarted, MCP gateway rebuilt). Built in worktree `nuero-b22`. Record: vault Projects/NEURO/NEURO-SAIM — Build 22 Household Home and Tally Security.md.
+- Tally (finance 66b0622 + fcf398a, on pi-dev by copy): JWT secret now real (settings.json, generated on pi-dev, never printed); production refuses to start without one; forged/old tokens 401, new + MCP login 200. finance commits NOT pushed to GitHub — Nick's call.
+- TrueLayer: both NatWest connections dead since 27 Jun (invalid_grant). Reconnect code deployed (relink + immediate sync from newest txn). WAITING ON NICK: Settings → TrueLayer → Connect bank (his NatWest, then Helen's). Then verify relink/retire/newest dates/24 Jun–10 Jul backfill.
+- Live home: occupied, 1 household task (test reminder), 5 offline devices, 0 low batteries, no hazard sensors, Needs You empty.
+- For Nick: reclassify Bathroom + Ikea to Home (recommended, not done); Personal Admin list not on the phone yet.
+- Next domain recommended: Finance (after the reconnect).
+- Main tree still behind origin with another session's uncommitted training-sync removal — untouched.
+
+---
+
 # Session Handoff — 2026-10-08 (Build 21: vehicle intelligence + Tally finance ingestion)
 
 - Deployed nuero 9a4ae3f + 133e6be to pi5 (gate 5736/0, frontend built, neuro-backend restarted, MCP gateway rebuilt). Built in worktree `nuero-b21` (own `npm ci --ignore-scripts`). Record: vault Projects/NEURO/NEURO-SAIM — Build 21 Vehicle Intelligence and Tally Finance Ingestion.md; gap analysis appended.
