@@ -32,14 +32,28 @@ function validate(f) {
   return null;
 }
 
-/** Best existing match for a follow-up's wording (and any alternative wordings). */
-function _match(f, rows) {
+/**
+ * Best existing match for a follow-up's wording (and any alternative wordings).
+ * Exact wording first. The fuzzy scorer measures containment of the SHORTER
+ * side, so "Reconnect my NatWest accounts…" scores 1.0 inside "Ask Helen to
+ * reconnect her NatWest account…" — live 8 Oct 2026 it claimed Nick's task for
+ * Helen's. So: exact first, and a task one follow-up claimed is not offered to
+ * the next (`claimed`).
+ */
+function _match(f, rows, claimed = new Set()) {
   const dedupe = require('./task-dedupe');
+  const { dedupeKey } = require('./task-store');
+  const pool = rows.filter((r) => !claimed.has(r.id));
   const texts = [f.title, ...(f.alsoMatches || [])];
+  for (const t of texts) {
+    const k = dedupeKey(t);
+    const exact = pool.find((r) => dedupeKey(r.text) === k);
+    if (exact) return { row: exact, score: 1, exact: true };
+  }
   let best = null;
   for (const t of texts) {
-    const hit = dedupe.findEquivalent(t, rows.map((r) => r.text), { minScore: dedupe.INTERNAL_MIN_SCORE });
-    if (hit && (!best || hit.score > best.score)) best = { row: rows[hit.index], score: hit.score };
+    const hit = dedupe.findEquivalent(t, pool.map((r) => r.text), { minScore: dedupe.INTERNAL_MIN_SCORE });
+    if (hit && (!best || hit.score > best.score)) best = { row: pool[hit.index], score: hit.score };
   }
   return best;
 }
@@ -57,6 +71,17 @@ function reconcile(followups = [], { apply = false, now = Date.now() } = {}) {
   const open = all.filter((r) => OPEN.has(r.status));
   const closed = all.filter((r) => !OPEN.has(r.status));
   const out = [];
+  const claimed = new Set(Object.values(ledger).map((e) => e.taskId));
+  // Exact wording claims first, for the whole list, so a fuzzy match for one
+  // follow-up can never take the task another follow-up names exactly.
+  const exactFor = new Map();
+  const { dedupeKey } = store;
+  for (const f of followups) {
+    if (validate(f) || ledger[f.key]) continue;
+    const keys = [f.title, ...(f.alsoMatches || [])].map(dedupeKey);
+    const hit = open.find((r) => !claimed.has(r.id) && keys.includes(dedupeKey(r.text)));
+    if (hit) { exactFor.set(f.key, { row: hit, score: 1, exact: true }); claimed.add(hit.id); }
+  }
   for (const f of followups) {
     const bad = validate(f);
     if (bad) { out.push({ key: f && f.key, outcome: 'invalid', why: bad }); continue; }
@@ -65,14 +90,16 @@ function reconcile(followups = [], { apply = false, now = Date.now() } = {}) {
       out.push({ key: f.key, outcome: OPEN.has(held.status) ? 'exists' : 'resolved', taskId: held.id, status: held.status, text: held.text });
       continue;
     }
-    const o = _match(f, open);
+    const o = exactFor.get(f.key) || _match(f, open, claimed);
+    if (o && !o.exact) claimed.add(o.row.id);
     if (o) {
       if (apply) ledger[f.key] = { taskId: o.row.id, build: f.build, linkedAt: new Date(now).toISOString(), how: 'reused' };
       out.push({ key: f.key, outcome: 'reused', taskId: o.row.id, text: o.row.text, score: Math.round(o.score * 100) / 100 });
       continue;
     }
-    const c = _match(f, closed);
+    const c = _match(f, closed, claimed);
     if (c) {
+      claimed.add(c.row.id);
       if (apply) ledger[f.key] = { taskId: c.row.id, build: f.build, linkedAt: new Date(now).toISOString(), how: 'already-resolved' };
       out.push({ key: f.key, outcome: 'resolved', taskId: c.row.id, status: c.row.status, text: c.row.text });
       continue;

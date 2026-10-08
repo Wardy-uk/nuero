@@ -699,6 +699,13 @@ test('39 (live). the real Build 23 list reuses the tasks Nick already has — co
   const dry = fu.reconcile(fu.BUILD_23, { now: NOW });
   assert.deepEqual(dry.results.filter((x) => x.outcome !== 'reused').map((x) => x.key), [], 'nothing would be created');
   const byKey = Object.fromEntries(dry.results.map((x) => [x.key, x.taskId]));
+  // every follow-up claims ITS task — live, Helen's first matched Nick's (#380)
+  // because the scorer measures containment of the shorter side
+  assert.deepEqual(fu.BUILD_23.map((f) => byKey[f.key]), [ids[0], ids[1], ids[2], ids[3], ids[4], ids[5], ids[6]]);
+  // and with the order reversed, still the same pairs
+  db.setState(fu.LEDGER_KEY, '{}');
+  const rev = fu.reconcile([...fu.BUILD_23].reverse(), { now: NOW });
+  assert.deepEqual(Object.fromEntries(rev.results.map((x) => [x.key, x.taskId])), byKey);
   assert.equal(byKey['captur-basics'], ids[3]);
   assert.equal(byKey['link-mot-task-captur'], ids[4], 'the link task, not the MOT booking itself');
   assert.equal(db.listTaskRows({ status: 'all' }).length, before);
