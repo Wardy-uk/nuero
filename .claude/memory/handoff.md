@@ -1,3 +1,15 @@
+# Session Handoff — 2026-10-08 (Build 24: Personal projects)
+
+- DEPLOYED: origin/main + pi5 at ae5929b (feature 1007814; gate 5838/0; frontend built; gateway rebuilt). Built in worktree `nuero-b24` (node_modules junctioned to nuero-b23's — the main checkout's node_modules is missing `accepts`).
+- Live: `/api/projects`, `/personal`, `/repos`, Life → Personal projects. 18 vault projects, 30 repos in scope of 1,803 visible. 1 work (NOVA, rule), 1 personal (Hill Bagging, side-project tag), 16 unknown. 4 confirmed repo links, 3 likely. No blockers, no deadlines → Radar impact 0.
+- GitHub reaches NEURO only via `backend/scripts/github-snapshot.js` on this laptop (GET only, Git Credential Manager token). Scheduled task "NEURO GitHub snapshot" daily 07:40 runs a copy in `%LOCALAPPDATA%\neuro\github-snapshot\` — re-run `--register` after changing the script or projects-model.js.
+- Vault: added `Projects/NEURO/NEURO.md` (hub: parked Watch work + SAiM visual redesign, repos nuero + nuero-ios; NO status/sphere), updated `Projects/_about.md`.
+- For Nick: tasks #393 (classify projects on Life → Personal projects) and #394 (confirm likely links: onemorehill, vantage, DandD).
+- Shared tree `C:\Users\NickW\Claude\nuero` is still on stale local main with ANOTHER session's uncommitted training-sync removal — untouched.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 24 Personal Projects.md; gap analysis appended. Next domain recommended: Personal admin activation.
+
+---
+
 # Session Handoff — 2026-10-08 (Build 23: Finance activation)
 
 - DEPLOYED: origin/main + pi5 at cfde836 (gate 5782/0, gateway rebuilt). NatWest reconnect was already done (13:26) → live validation done: Nick/Joint/Bills relinked and healthy, backfill from 29 Jun, 0 double imports; Helen stale → household partial. Live fixes: relink = data older than the link (Tally deleted the dead connection), unpaired transfers to Helen kept as transfers (45 rows), live-accounts month comparison. Follow-up ledger applied (#380–#387 linked, 0 created). #380 can be ticked; #388 unblocked.
