@@ -4022,6 +4022,74 @@
     "stream": false
   },
   {
+    "id": "get_projects",
+    "method": "GET",
+    "route": "/api/projects",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 21,
+    "description": "GET /api/projects. every project NEURO knows: vault project folders and repos you made projects, each with whose it is, status, last activity, last meaningful progress, blockers, next action and linked repos/tasks. Keywords: projects, side projects, repos, GitHub, what am I working on.",
+    "params": [],
+    "query": [
+      "sphere"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_projects_by_projectId",
+    "method": "GET",
+    "route": "/api/projects/:projectId",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 69,
+    "description": "GET /api/projects/:projectId. one project in full: evidence, repo links with their basis, linked tasks, blockers, recent meaningful progress.",
+    "params": [
+      "projectId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_projects_personal",
+    "method": "GET",
+    "route": "/api/projects/personal",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 31,
+    "description": "GET /api/projects/personal. personal projects only (never NOVA or any work project), grouped by what to pick up: ready, blocked, waiting, no next action, parked. Keywords: personal projects, what to pick up next, hobby projects.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_projects_repos",
+    "method": "GET",
+    "route": "/api/projects/repos",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 36,
+    "description": "GET /api/projects/repos. the GitHub repos NEURO has metadata for, whose each is (unknown unless stated), links to projects, last activity vs last meaningful progress, and the org counts that were not ingested. Keywords: GitHub repos, repositories.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_push_apns_status",
     "method": "GET",
     "route": "/api/push/apns/status",
@@ -4608,7 +4676,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 248,
+    "line": 250,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -9944,6 +10012,245 @@
       "apply",
       "source",
       "text"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_by_projectId_blockers",
+    "method": "POST",
+    "route": "/api/projects/:projectId/blockers",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 99,
+    "description": "POST /api/projects/:projectId/blockers. record what blocks a project. Body: what, unblock (what would unblock it), owner ('nick'|'other'), taskId.",
+    "params": [
+      "projectId"
+    ],
+    "query": [],
+    "body": [
+      "owner",
+      "taskId",
+      "unblock",
+      "what"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_by_projectId_blockers_by_blockerId_resolve",
+    "method": "POST",
+    "route": "/api/projects/:projectId/blockers/:blockerId/resolve",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 104,
+    "description": "POST /api/projects/:projectId/blockers/:blockerId/resolve. the blocker is gone. Body: resolution.",
+    "params": [
+      "projectId",
+      "blockerId"
+    ],
+    "query": [],
+    "body": [
+      "resolution"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_by_projectId_classify",
+    "method": "POST",
+    "route": "/api/projects/:projectId/classify",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 74,
+    "description": "POST /api/projects/:projectId/classify. say whose a project is: personal, work, other or unknown. Body: sphere.",
+    "params": [
+      "projectId"
+    ],
+    "query": [],
+    "body": [
+      "sphere"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_by_projectId_next",
+    "method": "POST",
+    "route": "/api/projects/:projectId/next",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 94,
+    "description": "POST /api/projects/:projectId/next. pin one open linked task as the project's next action (null clears). Body: taskId.",
+    "params": [
+      "projectId"
+    ],
+    "query": [],
+    "body": [
+      "taskId"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_by_projectId_repos",
+    "method": "POST",
+    "route": "/api/projects/:projectId/repos",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 84,
+    "description": "POST /api/projects/:projectId/repos. confirm or reject a repo link (null clears). Body: repoId, state ('confirmed'|'rejected'|null), role ('primary'|'secondary').",
+    "params": [
+      "projectId"
+    ],
+    "query": [],
+    "body": [
+      "repoId",
+      "role",
+      "state"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_by_projectId_status",
+    "method": "POST",
+    "route": "/api/projects/:projectId/status",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 79,
+    "description": "POST /api/projects/:projectId/status. set a project's status (active, paused, parked, blocked, completed, abandoned, unknown; null clears) and/or importance (high, normal, low). Body: status, importance.",
+    "params": [
+      "projectId"
+    ],
+    "query": [],
+    "body": [
+      "importance",
+      "status"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_by_projectId_tasks",
+    "method": "POST",
+    "route": "/api/projects/:projectId/tasks",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 89,
+    "description": "POST /api/projects/:projectId/tasks. link or unlink an existing NEURO task to the project (null clears). The task keeps its own domain. Body: taskId, state ('linked'|'unlinked'|null).",
+    "params": [
+      "projectId"
+    ],
+    "query": [],
+    "body": [
+      "state",
+      "taskId"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_declare",
+    "method": "POST",
+    "route": "/api/projects/declare",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 54,
+    "description": "POST /api/projects/declare. make a project out of a repo that has no vault project (Nick's statement). Body: repoId, name.",
+    "params": [],
+    "query": [],
+    "body": [
+      "name",
+      "repoId"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_github_snapshot",
+    "method": "POST",
+    "route": "/api/projects/github/snapshot",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 41,
+    "description": "POST /api/projects/github/snapshot. a GitHub METADATA snapshot from the reporter that holds Nick's credential: repo identity, bounded commit subjects with file-class counts (never paths or code), merged PRs, closed issues, releases, deployments, local checkouts. Idempotent.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_owners_by_owner_classify",
+    "method": "POST",
+    "route": "/api/projects/owners/:owner/classify",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 64,
+    "description": "POST /api/projects/owners/:owner/classify. say whose everything owned by a GitHub org/account is (org repos are counted, not ingested). Body: sphere.",
+    "params": [
+      "owner"
+    ],
+    "query": [],
+    "body": [
+      "sphere"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_refresh",
+    "method": "POST",
+    "route": "/api/projects/refresh",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 49,
+    "description": "POST /api/projects/refresh. re-read the vault's Projects folder and recompute every project now. Normally a scheduled job.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_projects_repos_by_repoId_classify",
+    "method": "POST",
+    "route": "/api/projects/repos/:repoId/classify",
+    "domain": "projects",
+    "source": "routes/projects.js",
+    "line": 59,
+    "description": "POST /api/projects/repos/:repoId/classify. say whose a repo is: personal, work, other or unknown. NOVA is work by rule.",
+    "params": [
+      "repoId"
+    ],
+    "query": [],
+    "body": [
+      "sphere"
     ],
     "queryOpen": false,
     "bodyOpen": true,

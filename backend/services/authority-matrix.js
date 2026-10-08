@@ -228,6 +228,21 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/finance/obligations', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/finance/obligations/:id', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/finance/obligations/:id/resolve', 'internal.state', { machine: 'refuse' }),
+  // Build 24: whose a project or repo is, its status, its links and blockers
+  // are Nick's statements. The GitHub metadata snapshot is ingest from the
+  // reporter that holds Nick's credential; NEURO itself never writes to GitHub.
+  R('POST', '/api/projects/github/snapshot', 'ingest'),
+  R('POST', '/api/projects/refresh', 'internal.state'),
+  R('POST', '/api/projects/declare', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/projects/repos/:repoId/classify', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/projects/owners/:owner/classify', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/projects/:projectId/classify', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/projects/:projectId/status', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/projects/:projectId/repos', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/projects/:projectId/tasks', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/projects/:projectId/next', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/projects/:projectId/blockers', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/projects/:projectId/blockers/:blockerId/resolve', 'internal.state', { machine: 'refuse' }),
   // A lead-reminder cadence decides when NEURO may push to Nick about a date.
   R('POST', '/api/canonical/lead-reminders', 'internal.state', { machine: 'refuse' }),
   // Build 18Q: a birthday written into Nick's own People/Companion note.
@@ -266,7 +281,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   rooms: 'internal.state', session: 'internal.state', signals: 'internal.state', 'standup-session': 'internal.state', 'task-blocks': 'internal.state',
   'weekly-risk': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
-  vehicle: 'internal.state', finance: 'internal.state',
+  vehicle: 'internal.state', finance: 'internal.state', projects: 'internal.state',
 });
 
 function _segments(p) { return String(p || '').split('?')[0].replace(/\/+$/, '').split('/').filter(Boolean); }

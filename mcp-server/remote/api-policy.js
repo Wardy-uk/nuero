@@ -89,6 +89,20 @@ export const interactive = {
   post_finance_obligations_by_id: 'Changing a finance date or linking its task is Nick\'s statement. He does it in NEURO → Life → Finance.',
   post_finance_obligations_by_id_resolve: 'Saying a bill or renewal is done needs Nick\'s evidence. He does it in NEURO → Life → Finance.',
   post_vehicle_finance_rules_by_ruleId_retire:'Retiring a vehicle-spend rule is Nick\'s choice. He does it in NEURO → Life → Vehicle.',
+  // Build 24: whose a project is, its status, links and blockers are Nick's
+  // statements; an agent reads projects and never classifies or links them.
+  // The GitHub snapshot comes from the reporter on Nick's machine, not an agent.
+  post_projects_github_snapshot: 'GitHub metadata reaches NEURO only from the reporter that holds Nick\'s own credential (backend/scripts/github-snapshot.js). An agent never supplies repo evidence.',
+  post_projects_declare: 'Making a repo into a project is Nick\'s statement. He does it in NEURO → Life → Projects.',
+  post_projects_repos_by_repoId_classify: 'Whose a repo is (personal or work) is Nick\'s statement — never inferred from its name or owner. He says so in NEURO → Life → Projects.',
+  post_projects_owners_by_owner_classify: 'Whose a GitHub org\'s repos are is Nick\'s statement. He says so in NEURO → Life → Projects.',
+  post_projects_by_projectId_classify: 'Whose a project is (personal or work) is Nick\'s statement. He says so in NEURO → Life → Projects.',
+  post_projects_by_projectId_status: 'A project\'s status (parked, paused, completed…) is Nick\'s statement — quiet is never a status. He sets it in NEURO → Life → Projects.',
+  post_projects_by_projectId_repos: 'Which repo belongs to a project is Nick\'s confirmation. He does it in NEURO → Life → Projects.',
+  post_projects_by_projectId_tasks: 'Linking a task to a project is Nick\'s statement. He does it in NEURO → Life → Projects.',
+  post_projects_by_projectId_next: 'A project\'s next action is Nick\'s choice. He pins it in NEURO → Life → Projects.',
+  post_projects_by_projectId_blockers: 'What blocks a project is Nick\'s statement. He records it in NEURO → Life → Projects.',
+  post_projects_by_projectId_blockers_by_blockerId_resolve: 'Saying a blocker is gone is Nick\'s statement. He does it in NEURO → Life → Projects.',
   post_canonical_lead_reminders:'When NEURO may remind Nick about a birthday or anniversary is his own setting. He sets it in NEURO → Life → Personal dates.',
   post_1to1_book:'Booking a 1-2-1 emails a real invite as Nick. He confirms it in NEURO → Team.',
   post_1to1_book_all: 'Booking 1-2-1s emails real invites as Nick. He confirms them in NEURO → Team.',

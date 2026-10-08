@@ -116,7 +116,7 @@ function _prepState(prep, away) {
  */
 function composeRadar({ today, horizonDays = 14, events = [], dates = [], obligations = [], goals = [], hikeGoal = null,
   prepBySubject = new Map(), goalsByEntity = new Map(), coverage = {}, undatedObligations = 0, workExcluded = 0,
-  care = [], careByEntity = new Map(), leadReminders = {}, vehicles = [], finances = [] } = {}) {
+  care = [], careByEntity = new Map(), leadReminders = {}, vehicles = [], finances = [], projects = [] } = {}) {
   const last = addDays(today, horizonDays);
   const inWindow = (d) => d && d >= today && d <= last;
   const items = [];
@@ -272,6 +272,21 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     });
   }
 
+  // ── Build 24R: personal projects — a stated deadline, or a dated task linked
+  // explicitly. Never inactivity. A task that is already an obligation item is
+  // the same thing: it folds into the project item rather than showing twice.
+  for (const p of projects) {
+    const absorbed = items.filter((it) => (it.kind === 'obligation' || it.kind === 'admin') && (p.linkedTaskRefs || []).includes(it.id));
+    for (const t of absorbed) items.splice(items.indexOf(t), 1);
+    items.push({
+      id: p.id, title: p.title, detail: null, date: p.date, time: null, window: null,
+      domain: null, domains: [], sphere: 'personal', kind: p.kind, projectId: p.projectId,
+      sourceRefs: [p.projectId], linkedEntityRefs: [p.projectId], linkedTaskRefs: p.linkedTaskRefs || [], linkedGoals: [],
+      importance: null, actionState: p.actionState, confidence: 'high',
+      whyVisible: p.whyVisible, when: p.date ? whenWords(today, p.date) : 'no date',
+    });
+  }
+
   // ── goal reviews ──
   for (const g of goals) {
     if (!g.reviewDate || !inWindow(g.reviewDate)) continue;
@@ -306,6 +321,7 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     care: count((i) => i.kind === 'care' || !!i.companion),
     vehicle: count((i) => i.kind === 'vehicle'),
     finance: count((i) => i.kind === 'finance'),
+    projects: count((i) => i.kind === 'project' || i.kind === 'project-task'),
     unknownDomain: count((i) => i.kind === 'event' && !i.domains.length),
     needsYou: count((i) => i.actionState === 'needs_you'),
     undatedObligations, workExcluded,
@@ -318,6 +334,7 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     ...(summary.care ? [n('care', 'companion-care item', 'companion-care items')] : []),
     ...(summary.vehicle ? [n('vehicle', 'vehicle date', 'vehicle dates')] : []),
     ...(summary.finance ? [n('finance', 'finance date', 'finance dates')] : []),
+    ...(summary.projects ? [n('projects', 'personal-project date', 'personal-project dates')] : []),
     n('events', 'other calendar entry', 'other calendar entries') + (summary.unknownDomain ? ` (${summary.unknownDomain} from calendars not yet classified)` : ''),
     `${summary.needsYou} thing${summary.needsYou === 1 ? '' : 's'} needing action now`,
   ];
@@ -445,12 +462,14 @@ function read({ now = Date.now(), horizonDays = 14 } = {}) {
   if (vehicleRead.error) { gaps.push({ input: 'vehicle', why: vehicleRead.error }); cov.reasons.push('vehicle dates could not be read'); }
   const financeRead = require('./finance').radar({ today, last, now: nowMs });
   if (financeRead.error) { gaps.push({ input: 'finance', why: financeRead.error }); cov.reasons.push('finance dates could not be read'); }
+  const projectRead = require('./projects').radar({ today, last, now: nowMs });
+  if (projectRead.error) { gaps.push({ input: 'projects', why: projectRead.error }); cov.reasons.push('personal-project dates could not be read'); }
   const radar = composeRadar({
     today, horizonDays, events, dates, obligations: obl ? obl.items : [], goals, hikeGoal,
     prepBySubject: _prepBySubject(prep.bySubject, taskIndex), goalsByEntity, coverage: cov,
     undatedObligations: obl ? obl.counts.undated : 0, workExcluded: obl ? obl.counts.workExcluded : 0,
     care: careRead.items, careByEntity: cc.linkMap(), leadReminders: require('./date-nags').cadences(),
-    vehicles: vehicleRead.items, finances: financeRead.items,
+    vehicles: vehicleRead.items, finances: financeRead.items, projects: projectRead.items,
   });
   const progress = goals.map((g) => {
     const linked = (g.links || []).map((l) => taskIndex.get(l.entityId)).filter(Boolean).map((t) => ({ id: t.taskId, completedAt: t.completedAt || null }));

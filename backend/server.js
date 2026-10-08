@@ -206,6 +206,8 @@ app.use('/api/canonical', require('./routes/canonical'));
 // Build 21: the Captur — obligations, mileage, history, running costs; Tally read-only.
 app.use('/api/vehicle', require('./routes/vehicle'));
 app.use('/api/finance', require('./routes/finance'));
+// Build 24: personal projects — vault Projects/, GitHub metadata, linked tasks. Never writes to GitHub.
+app.use('/api/projects', require('./routes/projects'));
 app.use('/api/setup', require('./routes/setup'));
 // Build 5E: drafts NEURO prepared for approval. Approval is RECORDED ONLY.
 app.use('/api/prepared-actions', require('./routes/prepared-actions'));

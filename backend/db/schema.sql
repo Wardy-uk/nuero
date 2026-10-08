@@ -3021,3 +3021,90 @@ CREATE TABLE IF NOT EXISTS finance_monthly_summaries (
   computed_at   TEXT NOT NULL,
   revisions     INTEGER NOT NULL DEFAULT 0
 );
+
+-- ── Build 24: personal projects ─────────────────────────────────────────────
+-- A project is not a repo: repos, vault notes and tasks are EVIDENCE about a
+-- project. These tables hold identity, bounded GitHub metadata, Nick's explicit
+-- statements and links. There is no project-task store: tasks stay in `tasks`
+-- and are only LINKED. No source code, diff, file path or secret is stored.
+CREATE TABLE IF NOT EXISTS projects (
+  project_id    TEXT PRIMARY KEY,                    -- p:<slug of vault folder> | p:repo-<github id>
+  name          TEXT NOT NULL,
+  origin        TEXT NOT NULL CHECK (origin IN ('vault', 'declared')),
+  vault_path    TEXT,                                -- Projects/<Folder>
+  repo_origin   INTEGER,                             -- github repo id when declared from a repo
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  removed_at    TEXT,                                -- vault folder gone: kept, never deleted
+  derived_json  TEXT                                 -- last derived state, for change detection only
+);
+CREATE TABLE IF NOT EXISTS project_repos (
+  repo_id        INTEGER PRIMARY KEY,                -- GitHub's stable numeric id
+  full_name      TEXT NOT NULL,
+  owner          TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  private        INTEGER NOT NULL DEFAULT 1,
+  archived       INTEGER NOT NULL DEFAULT 0,
+  fork           INTEGER NOT NULL DEFAULT 0,
+  default_branch TEXT,
+  pushed_at      TEXT,
+  open_issues    INTEGER,
+  open_prs       INTEGER,
+  description    TEXT,
+  html_url       TEXT,
+  local_paths    TEXT,                               -- JSON: checkouts on the reporting machine whose origin is this repo
+  first_seen_at  TEXT NOT NULL,
+  last_seen_at   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_repo_evidence (
+  repo_id     INTEGER NOT NULL,
+  kind        TEXT NOT NULL CHECK (kind IN ('commit', 'pr-merged', 'issue-closed', 'release', 'deployment')),
+  ref         TEXT NOT NULL,                         -- short sha | #number | tag | deployment id
+  at          TEXT NOT NULL,
+  title       TEXT,                                  -- commit subject / PR / issue / release title, bounded
+  meaningful  INTEGER NOT NULL DEFAULT 0,
+  why         TEXT,                                  -- why it is or is not meaningful progress
+  detail_json TEXT,                                  -- file CLASS counts only, never paths
+  UNIQUE (repo_id, kind, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_project_repo_evidence_repo_at ON project_repo_evidence (repo_id, at);
+-- Nick's explicit statements: sphere / status / importance / pinned next task,
+-- about a project ('project:<id>'), a repo ('repo:<id>') or an org ('owner:<login>').
+CREATE TABLE IF NOT EXISTS project_statements (
+  subject     TEXT PRIMARY KEY,
+  sphere      TEXT CHECK (sphere IS NULL OR sphere IN ('personal', 'work', 'other', 'unknown')),
+  status      TEXT CHECK (status IS NULL OR status IN ('active', 'paused', 'parked', 'blocked', 'completed', 'abandoned', 'unknown')),
+  importance  TEXT CHECK (importance IS NULL OR importance IN ('high', 'normal', 'low')),
+  next_task_id INTEGER,
+  set_at      TEXT NOT NULL
+);
+-- Nick's explicit repo links and rejections. Derived links are computed live.
+CREATE TABLE IF NOT EXISTS project_repo_links (
+  project_id  TEXT NOT NULL,
+  repo_id     INTEGER NOT NULL,
+  state       TEXT NOT NULL CHECK (state IN ('confirmed', 'rejected')),
+  role        TEXT NOT NULL DEFAULT 'primary' CHECK (role IN ('primary', 'secondary')),
+  set_at      TEXT NOT NULL,
+  PRIMARY KEY (project_id, repo_id)
+);
+-- Explicit task links (Nick). Path- and name-based links are computed live.
+CREATE TABLE IF NOT EXISTS project_task_links (
+  project_id  TEXT NOT NULL,
+  task_id     INTEGER NOT NULL,
+  state       TEXT NOT NULL DEFAULT 'linked' CHECK (state IN ('linked', 'unlinked')),
+  set_at      TEXT NOT NULL,
+  PRIMARY KEY (project_id, task_id)
+);
+CREATE TABLE IF NOT EXISTS project_blockers (
+  blocker_id    TEXT PRIMARY KEY,
+  project_id    TEXT NOT NULL,
+  what          TEXT NOT NULL,
+  unblock       TEXT,                                -- what would unblock it
+  owner         TEXT NOT NULL DEFAULT 'nick' CHECK (owner IN ('nick', 'other')),
+  task_id       INTEGER,                             -- the task that resolves it, if one exists
+  source        TEXT NOT NULL,                       -- 'you' | a vault path
+  since         TEXT NOT NULL,
+  state         TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'resolved')),
+  resolved_at   TEXT,
+  resolution    TEXT
+);

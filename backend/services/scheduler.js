@@ -1313,6 +1313,20 @@ function start() {
       why: 'Reads Tally (read-only) and rebuilds the finance view: feed health, monthly summaries, recurring payments, review items. Every 3 hours so a bank reconnect is noticed the same morning. Idempotent; a missed run heals on the next.',
       run: async () => require('./finance').refresh(),
     });
+    // Build 24: personal projects — re-read the vault's Projects/ folder and
+    // recompute status/evidence; semantic Activity only (status changes, milestones).
+    require('./runtime-jobs').defineJob({
+      name: 'projects-refresh',
+      cron: '23 * * * *',
+      class: 'best-effort',
+      catchUp: 'latest',
+      maxLagMs: null,
+      maxAttempts: 2,
+      backoffMs: [10 * 60 * 1000],
+      timeoutMs: 2 * 60 * 1000,
+      why: 'Re-reads Projects/ in the vault and recomputes every project (status, last activity, last meaningful progress, next action). GitHub evidence arrives separately by snapshot. Idempotent; a missed hour heals on the next.',
+      run: async () => require('./projects').refresh(),
+    });
     require('./runtime-jobs').start();
   } catch (e) { console.error('[Scheduler] Durable runtime failed to start:', e.message); }
 }

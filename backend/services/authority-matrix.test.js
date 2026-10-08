@@ -60,7 +60,10 @@ test('the MCP gateway does not offer what the matrix refuses — and refuses not
   const offered = inventory.filter((o) => !m.machineDecision(o.method, o.route).allow && !interactive[o.id]).map((o) => o.id);
   assert.deepEqual(offered, [], 'routes the backend refuses must be interactive in the gateway');
   // The gateway may be STRICTER than the matrix only where the reason is written here.
-  const STRICTER = { post_actions_by_id_approve: 'local MCP approves internal suggestions (bounded); the remote gateway does not offer it' };
+  const STRICTER = {
+    post_actions_by_id_approve: 'local MCP approves internal suggestions (bounded); the remote gateway does not offer it',
+    post_projects_github_snapshot: 'Build 24: the reporter on Nick\'s machine posts GitHub metadata directly with the API token; an agent through the gateway must never supply repo evidence',
+  };
   const extra = Object.keys(interactive).filter((id) => {
     const o = inventory.find((x) => x.id === id);
     return o && m.machineDecision(o.method, o.route).allow && !STRICTER[id];

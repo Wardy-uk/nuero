@@ -113,7 +113,16 @@ function reconcile(followups = [], { apply = false, now = Date.now() } = {}) {
     ledger[f.key] = { taskId: r.id, build: f.build, linkedAt: new Date(now).toISOString(), how: r.created ? 'created' : 'folded' };
     out.push({ key: f.key, outcome: r.created ? 'created' : 'reused', taskId: r.id, text: r.task && r.task.text });
   }
-  if (apply) _setLedger(ledger);
+  if (apply) {
+    _setLedger(ledger);
+    // Build 24: a follow-up that names its project is LINKED to it — explicit,
+    // so it reads as that project's task. The task keeps its own domain.
+    for (const f of followups) {
+      const held = f.projectId && ledger[f.key];
+      if (!held) continue;
+      db.run("INSERT OR IGNORE INTO project_task_links (project_id, task_id, state, set_at) VALUES (?, ?, 'linked', ?)", [f.projectId, held.taskId, new Date(now).toISOString()]);
+    }
+  }
   return { ok: true, applied: !!apply, results: out };
 }
 
@@ -145,4 +154,16 @@ const BUILD_23 = Object.freeze([
     why: 'docs/build-18-mac-runbook.md: rebuild NEURO iOS from a clean tree, confirm /api/setup/native, read the CLMonitor assertion before re-enabling geofences.' },
 ]);
 
-module.exports = { LEDGER_KEY, BUILD_23, validate, reconcile, verify };
+/**
+ * Nick-owned follow-ups at the end of Build 24 (personal projects). Only what
+ * NEURO genuinely cannot do for him: saying whose a project is, and confirming
+ * repo links it could only call `likely`. Personal domain, never work.
+ */
+const BUILD_24 = Object.freeze([
+  { key: 'classify-projects', build: 'Build 24', title: 'Say whose each project is (personal, work or other) on NEURO Life → Personal projects',
+    why: 'NEURO only knows NOVA is work (your rule) and Hill Bagging is a side project (its tag). Every other project stays out of Personal projects until you classify it. One tap each, under "Whose are these?".' },
+  { key: 'confirm-project-repo-links', build: 'Build 24', title: 'Confirm or reject the likely repo links on NEURO Life → Personal projects',
+    why: 'A repo whose name only matches a project (One More Hill ↔ onemorehill, VANTAGE ↔ vantage, D&D ↔ DandD) is shown as likely and never drives a project\'s state until you confirm it.' },
+]);
+
+module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, validate, reconcile, verify };
