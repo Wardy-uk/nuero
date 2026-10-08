@@ -1,3 +1,21 @@
+# Session Handoff — 2026-10-08 (Build 18 follow-up: NEURO iOS launch crash)
+
+- SAiM 0.1 (241) installed and reporting: build identity, device status, 60-day calendar coverage and personal-date coverage all PROVEN live. It was built from a DIRTY Mac tree (77f90fc + uncommitted changes) — check `git status` on the Mac first.
+- NEURO iOS crashes on launch: CLMonitor.init NSAssertion from LocationTracker.startMonitor (geofencing, first real run, iOS 27.0). Fix nuero-ios a50b5fa = geofencing OFF by default (`neuro.geofence.enabled`), unbuilt. Server 16e75de (live) judges geofence only as a place capability.
+- EVENING: on the Mac — sort the dirty tree, `git pull && bash reinstall.sh neuro`, open NEURO, confirm /api/setup/native shows its commit and location/health/calendar go fresh. Then run NEURO from Xcode with the switch on to read the CLMonitor assertion text, before re-enabling geofences. Rest of runbook: docs/build-18-mac-runbook.md.
+
+---
+
+# Session Handoff — 2026-10-08 (Build 19: personal operations + Future Radar)
+
+- Deployed nuero a0af05c to pi5 (gate 5642/0, frontend built, neuro-backend restarted, MCP gateway container rebuilt). Live: /api/canonical/radar?days=7|14|30, /reminder-lists, /obligations, /personal-admin; Life page has Future Radar, Personal admin, Reminder lists cards; Now carries a 7-day `radar` block.
+- Committed via a clean worktree (HEAD + Build 19 only) because ANOTHER SESSION's training-sync removal is still uncommitted in this tree (server.js, scheduler.js comment, authority-matrix line, mcp-server/index.js, api-inventory training entries, CLAUDE.md row, staged deletions). Left untouched; they must regenerate the inventory when they commit.
+- Live facts: phone sends 2 reminders across 7 lists; 0 personal-admin data; Radar 30d = 5 hikes + anniversary 19 Oct + Julie 25 Oct, nothing needs action. Per-list reminder counts appear after the next push.
+- For Nick: both "Reminders" lists ride the built-in-name rule; Bathroom/Ikea classified but not read; Open Uni classified Home. Next domain recommended: Ember/care (not built).
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 19 Personal Operations and Future Radar.md; gap analysis appended.
+
+---
+
 # Session Handoff — 2026-10-07 (Build 18: native identity + personal-data integrity — SERVER HALF)
 
 - Mac OFFLINE all session → NOTHING native proven. Build 18 is NOT complete. Do docs/build-18-mac-runbook.md on the Mac (18A–18M), record evidence in vault Build 18 note § Mac day.
