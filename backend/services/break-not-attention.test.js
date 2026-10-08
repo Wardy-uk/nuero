@@ -56,12 +56,20 @@ test('capacity: a big task that must start now and an overload each become one c
   const tc = require('./task-capacity');
   const { collectCapacity } = require('./decision-engine');
   const real = tc.read;
+  // ⚠ CLOCK-DERIVED (8 Oct 2026): the wording reads the wall clock, so a fixed
+  // '2026-10-09' due date said "by Friday" on 5 Oct and "by tomorrow" on 8 Oct
+  // and failed every deploy. Three days ahead is always a weekday name.
+  const d = new Date(); d.setDate(d.getDate() + 3);
+  const due = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const weekday = d.toLocaleDateString('en-GB', { weekday: 'long' });
   try {
-    tc.read = () => ({ known: true, overload: { by: '2026-10-09', dueMinutes: 1800, freeMinutes: 480, shortMinutes: 1320 },
-      startBy: [{ id: 350, text: 'Build call metrics in Nova', due: '2026-10-09', minutes: 480, status: 'start-today', latestStart: { date: '2026-10-05', time: '14:00' } }] });
+    tc.read = () => ({ known: true, overload: { by: due, dueMinutes: 1800, freeMinutes: 480, shortMinutes: 1320 },
+      startBy: [{ id: 350, text: 'Build call metrics in Nova', due, minutes: 480, status: 'start-today', latestStart: { date: todayKey, time: '14:00' } }] });
     const items = collectCapacity();
     assert.equal(items.length, 2);
-    assert.match(items[0].title, /^Start "Build call metrics in Nova" by 14:00 to finish by Friday/);
+    assert.match(items[0].title, new RegExp(`^Start "Build call metrics in Nova" by 14:00 to finish by ${weekday}`));
     assert.match(items[1].reason, /30h due, 8h free in your diary — 22h short/);
     tc.read = () => ({ known: false, why: 'diary unreadable' });
     assert.deepEqual(collectCapacity(), []);
