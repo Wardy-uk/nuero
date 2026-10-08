@@ -3045,7 +3045,7 @@
     "domain": "medical",
     "source": "routes/medical.js",
     "line": 28,
-    "description": "GET /api/medical/records.",
+    "description": "GET /api/medical/records. Nick's NHS medical record: test results, diagnoses, prescriptions, newest first, with counts. Keywords: medical, NHS, GP record, blood test, diagnosis, prescription, medication. Query: kind (test_result|diagnosis|prescription), name, from, to, limit",
     "params": [],
     "query": [
       "from",
@@ -8682,7 +8682,7 @@
     "domain": "medical",
     "source": "routes/medical.js",
     "line": 58,
-    "description": "POST /api/medical/records.",
+    "description": "POST /api/medical/records. save NHS app records already parsed from screenshots. record: {kind: test_result|diagnosis|prescription, name, date YYYY-MM-DD, value, unit, referenceRange, flag (only if shown), status, panel, dose, directions, quantity, notes}. Copy values exactly. Resends fold. Keywords",
     "params": [],
     "query": [],
     "body": [
@@ -8702,7 +8702,7 @@
     "domain": "medical",
     "source": "routes/medical.js",
     "line": 75,
-    "description": "POST /api/medical/scan. read NHS app screenshots with a vision model and PROPOSE medical records (test results, diagnoses, prescriptions). Saves NOTHING and keeps no image; confirm by posting the chosen records to /api/medical/records. Up to 8 screenshots of one scrolling screen per call. Keywords: ",
+    "description": "POST /api/medical/scan. read up to 8 NHS app screenshots with a vision model and PROPOSE medical records. Saves nothing, keeps no image; save the chosen ones via POST /api/medical/records. Keywords: medical, NHS, screenshot, OCR, test results, prescription. Body: { images: [{ imageBase64, mediaType ",
     "params": [],
     "query": [],
     "body": [
