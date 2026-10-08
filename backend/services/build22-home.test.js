@@ -13,6 +13,16 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+
+// ⚠ BEFORE ANY REQUIRE: db/database.js fixes its path when first loaded, and the
+// Pi's .env points ha.js at the real house. The first cut set NEURO_DB_PATH inside
+// the route test — after other tests had loaded the DB module — so on the Pi it
+// opened the LIVE agent.db and read the real household. Scratch DB, no HA.
+const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), 'b22-home-'));
+process.env.NEURO_DB_PATH = path.join(SCRATCH, 'agent.db');
+process.env.HA_TOKEN = '';
+process.env.HA_URL = 'http://127.0.0.1:9';
+
 const home = require('./home');
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
@@ -192,8 +202,6 @@ test('activity normaliser renders household lines in words, with no raw entity i
 
 // ── the real route over HTTP, against a scratch DB and no Home Assistant ────
 test('GET /api/household/home answers home-v1 and says it cannot see, rather than "all clear"', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'b22-home-'));
-  process.env.NEURO_DB_PATH = path.join(tmp, 'agent.db');
   const db = require('../db/database');
   await db.init();
   const express = require('express');
@@ -209,6 +217,7 @@ test('GET /api/household/home answers home-v1 and says it cannot see, rather tha
     assert.equal(j.devices.known, false);
     assert.notEqual(j.safety.capability, 'none', 'an unread HA is not "no hazard sensors"');
     assert.deepEqual(j.needsYou, []);
+    assert.ok(fs.existsSync(path.join(SCRATCH, 'agent.db')), 'positive control: the scratch DB is the one in use');
   } finally { server.close(); }
 });
 
