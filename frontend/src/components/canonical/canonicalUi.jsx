@@ -126,3 +126,30 @@ export function ImportanceChip({ value, basis }) {
   );
 }
 export { DOMAIN_LABELS };
+
+/**
+ * 8 Oct 2026 — the Life page showed tasks with no way to finish them. Only a
+ * task NEURO OWNS can be ticked here (`task:neuro:<n>`); a reminder belongs to
+ * Apple and is ticked in Reminders, so it says so instead of offering a button
+ * that cannot work. Returns null for anything else.
+ */
+export function neuroTaskNumber(id) {
+  const m = /^task:neuro:(\d+)$/.exec(String(id || ''));
+  return m ? Number(m[1]) : null;
+}
+export function DoneTick({ id, source, busy, onDone }) {
+  const n = neuroTaskNumber(id);
+  if (n == null) {
+    if (/^task:eventkit-reminders:/.test(String(id || ''))) return <span className="cn-done cn-done--elsewhere" title="Apple owns this — tick it in Reminders and it closes here on the next push">○</span>;
+    return null;
+  }
+  return (
+    <button type="button" className="cn-done" disabled={busy} aria-label="Mark done" title="Mark done"
+      onClick={(e) => { e.stopPropagation(); onDone(n); }}>✓</button>
+  );
+}
+/** The explanation a card owes, kept one click away rather than on the page. */
+export function HowItWorks({ children }) {
+  if (!children) return null;
+  return <details className="cn-details cn-how"><summary>How this works</summary><div className="cn-small cn-muted">{children}</div></details>;
+}

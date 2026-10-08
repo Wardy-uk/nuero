@@ -371,11 +371,17 @@ test('18. the Radar includes explicit Ember care — and only that', async () =>
 
 test('19. an admin item needs an explicit source — wording alone is not admin', async () => {
   const act0 = po.adminActivation(audit.read({ now: NOW }).lists);
-  assert.equal(act0.state, 'not-set-up', 'a list NAMED "Personal Admin" is not admin until Nick says so');
-  assert.ok(act0.steps.length >= 3);
+  assert.ok(['not-set-up', 'list-waiting'].includes(act0.state), act0.state);
+  assert.ok(act0.steps.length >= 2);
   pushReminders([{ id: 'R-MOT', title: 'Car MOT', list: 'Personal Admin', listId: 'L-ADMIN', isCompleted: false, dueDate: plus(10) }]);
   await pump();
-  assert.equal(po.read({ now: NOW, adminOnly: true }).items.length, 0);
+  assert.equal(po.read({ now: NOW, adminOnly: true }).items.length, 0, 'a list NAMED "Personal Admin" is not admin until Nick says so');
+  // 8 Oct 2026: once it has ARRIVED, the card offers it to decide — it never
+  // says "go and create it" again, and it is offered, never read.
+  const waiting = po.adminActivation(audit.read({ now: NOW }).lists);
+  assert.equal(waiting.state, 'list-waiting');
+  assert.ok(waiting.candidates.some((c) => c.name === 'Personal Admin' && /L-ADMIN/.test(c.sourceKey)), JSON.stringify(waiting.candidates));
+  assert.ok(!waiting.steps.some((x) => /create a list/.test(x)), 'the create-it step is gone once the list exists');
   await classifyList('L-ADMIN', { domains: ['admin'] });
   assert.equal(po.adminActivation(audit.read({ now: NOW }).lists).state, 'classified-not-tracked');
   await classifyList('L-ADMIN', { tracked: true });

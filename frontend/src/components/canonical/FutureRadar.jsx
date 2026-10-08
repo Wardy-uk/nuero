@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, DOMAIN_LABELS, DOMAIN_IDS } from './canonicalUi';
+import { useCanonical, postCanonical, DOMAIN_LABELS, DOMAIN_IDS, DoneTick, HowItWorks } from './canonicalUi';
 
 /**
  * Build 19 — personal operations on the Life page.
@@ -57,14 +57,15 @@ export function FutureRadarCard() {
         <>
           <div className="cn-radar-summary">
             <strong>{data.summary.title}:</strong>
-            <ul>{data.summary.lines.map((l) => <li key={l}>{l}</li>)}</ul>
+            <span className="cn-radar-inline">{data.summary.lines.join(' · ')}</span>
             {data.coverage && !data.coverage.complete && (
-              <div className="cn-muted">Not the whole picture: {data.coverage.reasons.join('; ')}.</div>
+              <div className="cn-muted cn-small" title={data.coverage.reasons.join('; ')}>Not the whole picture — {data.coverage.reasons.length} gap{data.coverage.reasons.length === 1 ? '' : 's'} (hover for why).</div>
             )}
           </div>
           {!data.items.length && <div className="cn-empty">Nothing known coming up in the next {days} days. That is what NEURO has been told — not a promise that nothing is happening.</div>}
           <ul className="cn-list">
-            {data.items.map((i) => <RadarItem key={i.id} item={i} goals={active} tasks={openTasks} busy={busy} act={act} />)}
+            {data.items.map((i) => <RadarItem key={i.id} item={i} goals={active} tasks={openTasks} busy={busy} act={act}
+              onDone={(n) => act(async () => { await postCanonical(`/api/tasks/${n}/complete`, {}); await tasks.reload(); })} />)}
           </ul>
           {data.goals && data.goals.length > 0 && (
             <div className="cn-radar-goals">
@@ -73,14 +74,14 @@ export function FutureRadarCard() {
               ))}
             </div>
           )}
-          <div className="cn-small cn-muted">{data.rule}</div>
+          <HowItWorks>{data.rule}</HowItWorks>
         </>
       )}
     </section>
   );
 }
 
-function RadarItem({ item, goals, tasks, busy, act }) {
+function RadarItem({ item, goals, tasks, busy, act, onDone }) {
   const [open, setOpen] = useState(false);
   const [goalId, setGoalId] = useState('');
   const [prepId, setPrepId] = useState('');
@@ -92,16 +93,19 @@ function RadarItem({ item, goals, tasks, busy, act }) {
 
   return (
     <li className={`cn-row cn-radar cn-radar--${item.actionState}`}>
+      <div className="cn-radar-line">
+      <DoneTick id={item.id} busy={busy} onDone={onDone} />
       <button type="button" className="cn-rowbtn" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span className="cn-radar-when">{item.when}{item.time ? ` · ${item.time}` : ''}</span>
         <span className="cn-rowtitle">{item.title}</span>
         <span className="cn-chip cn-chip--soft">{KIND_WORDS[item.kind] || item.kind}</span>
         {item.actionState !== 'none' && <span className={`cn-chip ${item.actionState === 'needs_you' ? 'cn-chip--firm' : 'cn-chip--soft'}`}>{ACTION_WORDS[item.actionState]}</span>}
         {item.domains.length === 0 && item.kind === 'event' && <span className="cn-chip cn-chip--unknown">domain unknown</span>}
-        {item.domains.map((d) => <span key={d} className="cn-chip">{DOMAIN_LABELS[d] || d}</span>)}
+        {item.domains.filter((d) => !(d === 'admin' && item.kind === 'admin') && (DOMAIN_LABELS[d] || d) !== KIND_WORDS[item.kind]).map((d) => <span key={d} className="cn-chip">{DOMAIN_LABELS[d] || d}</span>)}
         {item.companion && item.kind !== 'care' && <span className="cn-chip cn-chip--soft" title="You linked this to her care">↳ {item.companion.name}</span>}
         {item.linkedGoals.map((g) => <span key={g.goalId} className="cn-chip cn-chip--soft" title={g.basis === 'explicit' ? 'You linked this' : 'The hiking loop counts it (its rule)'}>↳ {g.title}</span>)}
       </button>
+      </div>
       {open && (
         <div className="cn-detail">
           <div className="cn-k">Why is this here?</div>
@@ -145,7 +149,6 @@ export function PersonalAdminCard() {
   const { data, error, reload } = useCanonical('/api/canonical/personal-admin');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
-  const [vehicle, setVehicle] = useState({});
   if (error && !data) return <section className="cn-section"><h3 className="cn-h3">Personal admin</h3><div className="cn-error">Couldn’t read it — {error}</div></section>;
   if (!data) return null;
   const act = async (fn) => {
@@ -153,50 +156,68 @@ export function PersonalAdminCard() {
     try { await fn(); await reload(); } catch (e) { setNote(`Not saved — ${e.message}`); }
     setBusy(false);
   };
+  const done = (n) => act(() => postCanonical(`/api/tasks/${n}/complete`, {}));
   const activation = data.audit && data.audit.activation;
+  const candidates = (activation && activation.candidates) || [];
+  // One press answers the question the setup steps were asking: this list IS
+  // admin, and NEURO should read it. Both are Nick's — the button says so.
+  const useList = (c) => act(() => postCanonical('/api/canonical/classifications', { kind: 'reminder-list', sourceKey: c.sourceKey, label: c.name, tracked: true, ...(activation.state === 'classified-not-tracked' ? {} : { domains: ['admin'] }) }));
   return (
     <section className="cn-section">
       <h3 className="cn-h3">Personal admin</h3>
       {note && <div className="cn-error">{note}</div>}
       {activation && activation.state !== 'active' && (
-        <div className="cn-radar-summary">
-          <strong>Not set up yet</strong> — {activation.why}.
-          {activation.steps.length > 0 && <ol className="cn-act-lines">{activation.steps.map((s) => <li key={s}>{s}</li>)}</ol>}
-        </div>
+        candidates.length > 0 ? (
+          <div className="cn-callout">
+            <div>{activation.state === 'classified-not-tracked' ? 'Set as admin, but NEURO isn’t reading it yet:' : 'Arrived from the phone — is this your admin list?'}</div>
+            <div className="cn-hike-form">
+              {candidates.map((c) => (
+                <button key={c.sourceKey} type="button" className="cn-btn" disabled={busy} onClick={() => useList(c)}>
+                  Read “{c.name}”{c.disambiguator ? ` (${c.disambiguator})` : ''} as admin
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <details className="cn-details cn-callout" open>
+            <summary><strong>Not set up yet</strong> — {activation.why}</summary>
+            {activation.steps.length > 0 && <ol className="cn-act-lines">{activation.steps.map((s) => <li key={s}>{s}</li>)}</ol>}
+          </details>
+        )
       )}
-      {activation && activation.state === 'active' && <p className="cn-muted">Reading {activation.lists.map((l) => `“${l}”`).join(', ')}.</p>}
-      {!data.items.length && <div className="cn-empty">Nothing NEURO knows about. Admin appears here only from a reminder list or task you have classified as personal admin, finance or transport, or linked to a vehicle — nothing is guessed from wording, and no renewal date is ever made up.</div>}
+      {activation && activation.state === 'active' && <p className="cn-muted cn-small">Reading {activation.lists.map((l) => `“${l}”`).join(', ')}.</p>}
+      {!data.items.length && <div className="cn-empty">Nothing here yet.</div>}
       <ul className="cn-list">
         {data.items.map((o) => (
-          <li key={o.id} className="cn-row">
-            <span className="cn-rowtitle">{o.what}</span>
-            <span className="cn-muted">{o.due ? o.due.label : 'no date'} · {o.source}</span>
-            {(o.vehicles || []).map((v) => (
-              <span key={v.id} className="cn-chip cn-chip--soft">{v.name}
-                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} aria-label={`Unlink from ${v.name}`}
-                  onClick={() => act(() => postCanonical('/api/canonical/vehicle-links/remove', { vehicle: v.id, entityId: o.id, label: o.what }))}>×</button>
-              </span>
-            ))}
-            {o.needsNow && <span className="cn-chip cn-chip--firm">Needs you — {o.needsWhy}</span>}
-            {!(o.vehicles || []).length && (
-              <span className="cn-hike-form">
-                <input className="cn-input--short" value={vehicle[o.id] || ''} placeholder="vehicle, e.g. car" maxLength={40} aria-label="Which vehicle this concerns"
-                  onChange={(e) => setVehicle({ ...vehicle, [o.id]: e.target.value })} />
-                <button type="button" className="cn-btn" disabled={busy || !(vehicle[o.id] || '').trim()}
-                  onClick={() => act(async () => { await postCanonical('/api/canonical/vehicle-links', { vehicle: vehicle[o.id], entityId: o.id, label: o.what }); setVehicle({ ...vehicle, [o.id]: '' }); })}>Link vehicle</button>
-              </span>
-            )}
+          <li key={o.id} className="cn-row cn-arow" style={{ padding: '10px 12px' }}>
+            <DoneTick id={o.id} busy={busy} onDone={done} />
+            <div className="cn-arow-body">
+              <div className="cn-arow-top">
+                <span className="cn-rowtitle">{o.what}</span>
+                {o.needsNow && <span className="cn-chip cn-chip--firm">Needs you</span>}
+              </div>
+              <div className="cn-muted cn-small">
+                {o.due ? o.due.label.split(' · ')[0] : 'no date'}
+                {o.source && o.source !== 'NEURO' ? ` · ${o.source}` : ''}
+                {(o.vehicles || []).map((v) => (
+                  <span key={v.id}> · ↳ {v.name}
+                    <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} aria-label={`Unlink from ${v.name}`}
+                      onClick={() => act(() => postCanonical('/api/canonical/vehicle-links/remove', { vehicle: v.id, entityId: o.id, label: o.what }))}>×</button>
+                  </span>
+                ))}
+              </div>
+            </div>
           </li>
         ))}
       </ul>
-      <details className="cn-details">
-        <summary>Where admin could come from</summary>
+      <HowItWorks>
+        Admin appears here only from a reminder list or task you have classified as personal admin, finance or transport, or linked to a vehicle (on the Vehicle card) — nothing is guessed from wording, and no renewal date is made up. A NEURO task is ticked here; a reminder is ticked in Apple Reminders.
         <ul className="cn-act-lines">
           {data.audit.sources.map((s) => (
             <li key={s.source}>{s.source}: {s.items === null ? s.why : `${s.items ?? s.upcomingEvents ?? 0}${s.containers && s.containers.length ? ` (${s.containers.join(', ')})` : ''}`}</li>
           ))}
         </ul>
-      </details>
+      </HowItWorks>
     </section>
   );
 }

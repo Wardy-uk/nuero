@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical } from './canonicalUi';
+import { useCanonical, postCanonical, HowItWorks } from './canonicalUi';
 
 /**
  * Build 21 — the Captur under Life → Vehicle.
@@ -108,13 +108,13 @@ export function OneVehicle({ r, review, tasks, busy, act }) {
       <h4 className="cn-subhead">Running costs</h4>
       <Costs r={r} />
 
-      <h4 className="cn-subhead">Spending that might be the {v.model}</h4>
+      <h4 className="cn-subhead">Possible car spending</h4>
       <SpendReview review={review} vehicleId={v.id} busy={busy} act={act} />
 
       <h4 className="cn-subhead">Health — evidence only</h4>
       <Health h={r.health} />
 
-      <Links r={r} name={name} busy={busy} act={act} />
+      <Links r={r} name={name} tasks={tasks} busy={busy} act={act} />
     </div>
   );
 }
@@ -302,42 +302,85 @@ function Costs({ r }) {
   );
 }
 
+/**
+ * 8 Oct 2026 — 41 rows, each with its raw bank text, a reason sentence, a
+ * select and four buttons, was a wall Nick would not work through. They are
+ * really ~19 merchants, so they are GROUPED: one row per merchant, one decision
+ * for the group. "Always the car’s" is the existing merchant RULE (it applies
+ * itself to every undecided row from that exact merchant, and to future ones),
+ * so it says "always"; "The car’s" and "Not the car" decide just the rows shown. Each row is
+ * still there one click down for the odd one out.
+ */
 function SpendReview({ review, vehicleId, busy, act }) {
   const [types, setTypes] = useState({});
   if (!review) return <div className="cn-muted">Reading Tally…</div>;
   const st = review.state;
-  const decide = (t, decision, remember = null) => act(() => postCanonical(`/api/vehicle/finance/transactions/${t.sourceTransactionId}/decide`,
-    { decision, spendType: decision === 'vehicle' ? (types[t.sourceTransactionId] || (t.candidate && t.candidate.proposedType) || 'other') : null, vehicleId, remember }));
+  const post = (t, decision, spendType, remember = null) => postCanonical(`/api/vehicle/finance/transactions/${t.sourceTransactionId}/decide`,
+    { decision, spendType: decision === 'vehicle' ? spendType : null, vehicleId, remember });
+  const groups = [];
+  const byKey = new Map();
+  for (const t of review.pending) {
+    const k = t.merchantKey || `~${t.sourceTransactionId}`;
+    if (!byKey.has(k)) { const g = { key: k, merchant: t.merchantKey, rows: [] }; byKey.set(k, g); groups.push(g); }
+    byKey.get(k).rows.push(t);
+  }
+  groups.sort((a, b) => b.rows.length - a.rows.length);
+  const typeOf = (g) => types[g.key] || ((g.rows[0].candidate && g.rows[0].candidate.proposedType) || 'other');
+  const totalPence = review.pending.reduce((n, t) => n - t.amountPence, 0);
+  const intro = st ? (st.lastOk ? `Tally read ${st.lastOkAt.slice(0, 10)}: ${st.kept} of ${st.scanned} transactions might be motoring. Its data stops ${st.dataThrough}.` : `Tally could not be read — ${st.error}`) : 'Tally has not been read yet.';
   return (
     <>
-      <div className="cn-small cn-muted">
-        {st ? (st.lastOk ? `Tally read ${st.lastOkAt.slice(0, 10)}: ${st.kept} of ${st.scanned} transactions might be motoring. Its data stops ${st.dataThrough}.` : `Tally could not be read — ${st.error}`) : 'Tally has not been read yet.'}
-        {' '}{review.explicitVehicleCategory.why}. Nothing counts as the car’s until you say so.
-      </div>
       {!review.pending.length && <div className="cn-muted">Nothing waiting.</div>}
-      <ul className="cn-list">
-        {review.pending.slice(0, 15).map((t) => (
-          <li key={t.sourceTransactionId} className="cn-row">
-            <span className="cn-rowtitle">{t.date} {money(-t.amountPence)}</span>
-            <span className="cn-muted">{t.description} · {t.category || 'uncategorised'} · {t.payer || '—'}</span>
-            {t.candidate && <span className="cn-muted" title={t.candidate.reasons.join('; ')}>{t.candidate.confidence}: {t.candidate.reasons[0]}{t.candidate.note ? ` — ${t.candidate.note}` : ''}</span>}
-            <select value={types[t.sourceTransactionId] || (t.candidate && t.candidate.proposedType) || 'other'} onChange={(e) => setTypes({ ...types, [t.sourceTransactionId]: e.target.value })} aria-label="Type" disabled={busy}>
-              {SPEND_TYPES.map(([k, w]) => <option key={k} value={k}>{w}</option>)}
-            </select>
-            <button type="button" className="cn-btn" disabled={busy} onClick={() => decide(t, 'vehicle')}>The car’s</button>
-            {t.merchantKey && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} title={`Every transaction from exactly "${t.merchantKey}"`} onClick={() => decide(t, 'vehicle', { matchKind: 'merchant' })}>…and always {t.merchantKey}</button>}
-            <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => decide(t, 'not-vehicle')}>Not the car</button>
-            <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => decide(t, 'unknown')}>Leave it</button>
-          </li>
-        ))}
-      </ul>
-      {review.pending.length > 15 && <div className="cn-small cn-muted">{review.pending.length - 15} more waiting.</div>}
+      {review.pending.length > 0 && (
+        <details className="cn-details">
+          <summary>{review.pending.length} payment{review.pending.length === 1 ? '' : 's'} ({money(totalPence)}) from {groups.length} place{groups.length === 1 ? '' : 's'} to sort</summary>
+          <ul className="cn-list">
+            {groups.map((g) => {
+              const sum = g.rows.reduce((n, t) => n - t.amountPence, 0);
+              const first = g.rows[0];
+              return (
+                <li key={g.key} className="cn-row cn-spend-group" style={{ padding: '8px 12px' }}>
+                  <div className="cn-spend-head">
+                    <span className="cn-rowtitle" title={first.candidate ? first.candidate.reasons.join('; ') : first.description}>{g.merchant || first.description}</span>
+                    <span className="cn-muted cn-small">{g.rows.length > 1 ? `${g.rows.length} × ` : `${first.date} · `}</span>
+                    <span className="cn-spend-amt">{money(sum)}</span>
+                    <select value={typeOf(g)} onChange={(e) => setTypes({ ...types, [g.key]: e.target.value })} aria-label="Type" disabled={busy}>
+                      {SPEND_TYPES.map(([k, w]) => <option key={k} value={k}>{w}</option>)}
+                    </select>
+                    <button type="button" className="cn-btn" disabled={busy} title={g.rows.length > 1 ? `These ${g.rows.length} payments` : 'This payment'}
+                      onClick={() => act(async () => { for (const t of g.rows) await post(t, 'vehicle', typeOf(g)); })}>The car’s</button>
+                    {g.merchant && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} title={`Every payment to exactly "${g.merchant}", now and in future`}
+                      onClick={() => act(() => post(first, 'vehicle', typeOf(g), { matchKind: 'merchant' }))}>Always</button>}
+                    <button type="button" className="cn-btn cn-btn--tiny" disabled={busy}
+                      onClick={() => act(async () => { for (const t of g.rows) await post(t, 'not-vehicle'); })}>Not the car</button>
+                  </div>
+                  {g.rows.length > 1 && (
+                    <details className="cn-details"><summary>Each one</summary>
+                      <ul className="cn-spend-rows">
+                        {g.rows.map((t) => (
+                          <li key={t.sourceTransactionId}>
+                            <span>{t.date}</span><span className="cn-spend-amt">{money(-t.amountPence)}</span>
+                            <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => post(t, 'vehicle', typeOf(g)))}>The car’s</button>
+                            <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => post(t, 'not-vehicle'))}>Not the car</button>
+                            <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => post(t, 'unknown'))}>Leave it</button>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
       {review.rules.length > 0 && (
         <details className="cn-details"><summary>Rules you confirmed ({review.rules.length})</summary>
           <ul className="cn-act-lines">{review.rules.map((x) => <li key={x.rule_id}>{x.match_kind}: {x.merchant_key || ''}{x.category_name ? ` [${x.category_name}]` : ''} → {x.spend_type} · {x.confirmed_at.slice(0, 10)}{x.active ? '' : ' (retired)'}
             {x.active ? <> {' '}<button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(`/api/vehicle/finance/rules/${encodeURIComponent(x.rule_id)}/retire`, {}))}>Retire</button></> : null}</li>)}</ul>
         </details>
       )}
+      <HowItWorks>{intro} {review.explicitVehicleCategory.why}. Nothing counts as the car’s until you say so. Pay-later instalments are never counted — only the purchase.</HowItWorks>
     </>
   );
 }
@@ -353,20 +396,25 @@ function Health({ h }) {
   );
 }
 
-function Links({ r, name, busy, act }) {
+function Links({ r, name, tasks = [], busy, act }) {
   const [linkTo, setLinkTo] = useState('');
+  const linked = new Set(r.links.map((l) => l.entityId));
+  const suggested = new Set(r.linkSuggestions.map((x) => x.id));
+  const others = tasks.filter((t) => !linked.has(t.id) && !suggested.has(t.id));
+  const describe = (id) => (r.linkSuggestions.find((x) => x.id === id) || tasks.find((t) => t.id === id) || {}).description;
   return (
     <>
       <h4 className="cn-subhead">Linked to the {r.vehicle.model}</h4>
       {!r.links.length && <div className="cn-muted">Nothing linked. A task counts as the car’s only when you link it.</div>}
-      <ul className="cn-act-lines">{r.links.map((l) => <li key={l.entityId}>{l.entityId} <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical('/api/canonical/vehicle-links/remove', { vehicle: r.vehicle.id, entityId: l.entityId }))}>Unlink</button></li>)}</ul>
-      {r.linkSuggestions.length > 0 && (
+      <ul className="cn-act-lines">{r.links.map((l) => <li key={l.entityId}>{l.label || describe(l.entityId) || l.entityId} <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical('/api/canonical/vehicle-links/remove', { vehicle: r.vehicle.id, entityId: l.entityId }))}>Unlink</button></li>)}</ul>
+      {(r.linkSuggestions.length > 0 || others.length > 0) && (
         <div className="cn-hike-form">
           <select value={linkTo} onChange={(e) => setLinkTo(e.target.value)} aria-label={`Link to the ${name}`} disabled={busy}>
-            <option value="">{r.linkSuggestions.length} open task{r.linkSuggestions.length === 1 ? '' : 's'} mention the car — link one…</option>
-            {r.linkSuggestions.map((s) => <option key={s.id} value={s.id}>{s.description}</option>)}
+            <option value="">{r.linkSuggestions.length ? `${r.linkSuggestions.length} open task${r.linkSuggestions.length === 1 ? '' : 's'} mention the car — link one…` : 'Link a task to the car…'}</option>
+            {r.linkSuggestions.length > 0 && <optgroup label="Mention the car">{r.linkSuggestions.map((s) => <option key={s.id} value={s.id}>{s.description}</option>)}</optgroup>}
+            {others.length > 0 && <optgroup label="Other open tasks">{others.map((t) => <option key={t.id} value={t.id}>{t.description}</option>)}</optgroup>}
           </select>
-          <button type="button" className="cn-btn" disabled={busy || !linkTo} onClick={() => act(async () => { await postCanonical('/api/canonical/vehicle-links', { vehicle: r.vehicle.id, entityId: linkTo, label: (r.linkSuggestions.find((s) => s.id === linkTo) || {}).description }); setLinkTo(''); })}>Link</button>
+          <button type="button" className="cn-btn" disabled={busy || !linkTo} onClick={() => act(async () => { await postCanonical('/api/canonical/vehicle-links', { vehicle: r.vehicle.id, entityId: linkTo, label: describe(linkTo) }); setLinkTo(''); })}>Link</button>
         </div>
       )}
     </>

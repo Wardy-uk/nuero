@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical } from './canonicalUi';
+import { useCanonical, postCanonical, HowItWorks } from './canonicalUi';
 
 /**
  * Personal dates with lead time (Build 17L–Q), on Life.
@@ -81,7 +81,7 @@ export default function PersonalDatesCard() {
       </div>
       {msg && <div className="cn-muted">{msg}</div>}
       <LeadReminders />
-      <div className="cn-muted">{data.rule} A date you remove is gone — NEURO never restores it.</div>
+      <HowItWorks>{data.rule} A date you remove is gone — NEURO never restores it.</HowItWorks>
     </div>
   );
 }
@@ -118,7 +118,7 @@ function LeadReminders() {
         );
       })}
       {note && <div className="cn-error">{note}</div>}
-      <div className="cn-muted">First step: on the Radar only. Middle: a stronger prompt. Last: Needs You and one notification — skipped if the prep you linked is done.</div>
+      <HowItWorks>First step: on the Radar only. Middle: a stronger prompt. Last: Needs You and one notification — skipped if the prep you linked is done.</HowItWorks>
     </>
   );
 }

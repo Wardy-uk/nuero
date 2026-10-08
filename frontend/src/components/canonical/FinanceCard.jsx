@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical } from './canonicalUi';
+import { useCanonical, postCanonical, HowItWorks } from './canonicalUi';
 
 /**
  * Build 23 — Life → Finance. Not a bank statement and not a budget: what is
@@ -50,7 +50,7 @@ export function FinanceView({ data, busy, act, note = null }) {
       <Recurring series={data.series || []} priceChanges={data.priceChanges || []} busy={busy} act={act} />
       <Review review={data.review} busy={busy} act={act} />
       <Quality quality={data.quality} review={data.review} domains={data.domains || []} rules={data.rules || []} busy={busy} act={act} />
-      <div className="cn-muted cn-small">{data.rule}</div>
+      <HowItWorks>{data.rule}</HowItWorks>
     </section>
   );
 }
@@ -60,12 +60,17 @@ function Source({ data, busy, act }) {
   return (
     <div className="cn-row" style={{ padding: '10px 12px' }}>
       <div className="cn-rowtitle">Bank feeds: {HEALTH_WORDS[h.household] || h.household} — {h.label}</div>
+      {/* 8 Oct 2026 — only an account that needs something stays on the page; the rest is one click down. */}
       <ul className="cn-list cn-small">
-        {(h.accounts || []).map((a) => <li key={a.accountRef}>{a.owner === 'helen' ? 'Helen’s account' : a.name}: {HEALTH_WORDS[a.state]} — {a.why}</li>)}
+        {(h.accounts || []).filter((a) => a.state !== 'healthy').map((a) => <li key={a.accountRef}>{a.owner === 'helen' ? 'Helen’s account' : a.name}: {HEALTH_WORDS[a.state]} — {a.why}</li>)}
+      </ul>
+      {data.lastRead && data.lastRead.ok === false && <div className="cn-error">Last read failed — {data.lastRead.error}</div>}
+      <details className="cn-details"><summary>Details</summary>
+      <ul className="cn-list cn-small">
+        {(h.accounts || []).filter((a) => a.state === 'healthy').map((a) => <li key={a.accountRef}>{a.owner === 'helen' ? 'Helen’s account' : a.name}: {HEALTH_WORDS[a.state]} — {a.why}</li>)}
       </ul>
       {h.helen && <div className="cn-muted cn-small">{h.helen.why}</div>}
       {data.source && <div className="cn-muted cn-small">Tally data {data.source.dataFrom} – {data.source.dataThrough} ({data.source.transactionsRead} transactions, read-only).{data.lastRead && data.lastRead.at ? ` Last read ${data.lastRead.at.slice(0, 16).replace('T', ' ')}.` : ''}</div>}
-      {data.lastRead && data.lastRead.ok === false && <div className="cn-error">Last read failed — {data.lastRead.error}</div>}
       {data.counts && data.counts.transfersInferred && data.counts.transfersInferred.count > 0 && (
         <div className="cn-muted cn-small">{data.counts.transfersInferred.count} unpaired transfers ({money(data.counts.transfersInferred.outPence)} out, {money(data.counts.transfersInferred.inPence)} in) treated as transfers — {data.counts.transfersInferred.why}</div>
       )}
@@ -73,6 +78,7 @@ function Source({ data, busy, act }) {
         <div className="cn-small">After reconnect: {data.reconnect.accounts.filter((a) => a.relinked).map((a) => `${a.owner === 'helen' ? 'Helen’s account' : a.name} backfilled from ${a.oldestBackfilled || '—'}${a.gapDays ? `, ${a.gapDays} days missing` : ''}${a.doubleImported ? `, ${a.doubleImported} double imports` : ''}`).join('; ')}.
           {data.reconnect.identityOk ? ' Account identity unchanged.' : ' ⚠ Account identity changed — check Tally.'}</div>
       )}
+      </details>
       <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical('/api/finance/sync', {}))}>Read Tally now</button>
     </div>
   );
@@ -84,12 +90,12 @@ function Month({ s, title }) {
     <div className="cn-row" style={{ padding: '10px 12px' }}>
       <div className="cn-rowtitle">{title}: spending {money(s.spendPence)} · money out {money(s.moneyOutPence)} · income {money(s.incomePence)}{s.net && s.net.meaningful ? ` · net ${s.net.pence < 0 ? '−' : ''}${money(s.net.pence)}` : ''}</div>
       <div className="cn-chips">{doms.map(([d, p]) => <span key={d} className={`cn-chip${d === 'unknown' ? ' cn-chip--unknown' : ''}`}>{d.replace(/_/g, ' ')} {money(p)}</span>)}</div>
-      <div className="cn-muted cn-small">
+      <details className="cn-details"><summary>Breakdown</summary><div className="cn-muted cn-small">
         Nick’s account {money(s.owners.nickPence)} · Joint & Bills {money(s.owners.sharedPence)} · Helen’s own account {money(s.owners.helenOwnAccountPence)} (total only).
         {' '}Recurring {money(s.recurringPence)}. Biggest: {(s.biggestMerchants || []).map((m) => `${m.merchantKey} ${money(m.pence)}`).join(', ') || '—'}.
         {s.financingPence ? ` Loan & finance repayments ${money(s.financingPence)}.` : ''}{s.cardRepaymentsPence ? ` Card repayments ${money(s.cardRepaymentsPence)} — ${s.cardSpendNote}` : ''}
         {s.unresolvedDuplicates && s.unresolvedDuplicates.count ? ` ${s.unresolvedDuplicates.count} possible pending copies (${money(s.unresolvedDuplicates.pence)}) ${s.unresolvedDuplicates.note}.` : ''}
-      </div>
+      </div></details>
     </div>
   );
 }

@@ -263,7 +263,7 @@ function adminAudit({ now = Date.now() } = {}) {
       { source: 'NEURO tasks declared admin / finance / transport', items: obligations.items.filter((o) => o.source === 'NEURO').length },
       { source: 'Calendars classified admin / finance / transport', containers: cals.map((c) => c.label), upcomingEvents: calEvents },
       { source: 'Vault notes', items: null, why: 'not modelled — notes are never read as obligations' },
-      { source: 'Bills, subscriptions, vehicle records', items: null, why: 'not modelled — no provider is connected, by design' },
+      { source: 'Bills and the car', items: null, why: 'shown on the Finance and Vehicle cards — a bill or a car date becomes admin only when you make it a task or link one' },
     ],
     obligations: obligations.counts,
     dated: obligations.items.filter((o) => o.due).length,
@@ -376,8 +376,18 @@ function adminActivation(lists = []) {
     'Add real items to it with their due dates (MOT, insurance renewal, …). NEURO reads only what is there.',
   ];
   if (tracked.length) return { state: 'active', lists: tracked.map((l) => l.name), steps: [], why: `reading ${tracked.map((l) => `"${l.name}"`).join(', ')}` };
-  if (adminLists.length) return { state: 'classified-not-tracked', lists: adminLists.map((l) => l.name), steps: steps.slice(2), why: `${adminLists.map((l) => `"${l.name}"`).join(', ')} is set as admin but not tracked, so NEURO does not read it` };
-  return { state: 'not-set-up', lists: [], steps, why: 'no reminder list is set as admin, finance or transport yet' };
+  if (adminLists.length) return { state: 'classified-not-tracked', lists: adminLists.map((l) => l.name), candidates: adminLists.map((l) => ({ name: l.name, sourceKey: l.sourceKey, disambiguator: l.disambiguator || null })), steps: steps.slice(2), why: `${adminLists.map((l) => `"${l.name}"`).join(', ')} is set as admin but not tracked, so NEURO does not read it` };
+  // 8 Oct 2026 — the list had ARRIVED from the phone and the card still told
+  // Nick to go and create it. A list nobody has decided about yet (not
+  // classified, not tracked, not ignored) is offered as a CANDIDATE: every one
+  // of them, by id, never picked by its name — Nick presses which is admin.
+  const undecided = lists.filter((l) => l.keyedBy === 'id' && l.trackingState === 'unknown'
+    && !((l.classification && l.classification.domains) || []).length);
+  if (undecided.length) {
+    return { state: 'list-waiting', lists: [], candidates: undecided.map((l) => ({ name: l.name, sourceKey: l.sourceKey, disambiguator: l.disambiguator || null })),
+      steps: steps.slice(2), why: `${undecided.map((l) => `"${l.name}"`).join(', ')} ${undecided.length === 1 ? 'has' : 'have'} arrived from the phone but nobody has said what ${undecided.length === 1 ? 'it is' : 'they are'} for` };
+  }
+  return { state: 'not-set-up', lists: [], candidates: [], steps, why: 'no reminder list is set as admin, finance or transport yet' };
 }
 
 module.exports = {

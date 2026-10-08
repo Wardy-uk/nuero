@@ -187,3 +187,23 @@
 
 /* Build 21 — the vehicle card */
 .cn-subhead { margin: 10px 0 2px; font-size: 0.9em; font-weight: 600; color: var(--text-muted, #aaa); }
+
+/* 8 Oct 2026 — Life page tidy: a tick on tasks NEURO owns, one-line rows, grouped spending. */
+.cn-done { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--border); background: none; color: transparent; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; }
+.cn-done:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.cn-done--elsewhere { display: inline-flex; align-items: center; justify-content: center; border-style: dashed; color: var(--text-muted); cursor: help; }
+.cn-arow { display: flex; gap: 10px; align-items: flex-start; }
+.cn-arow-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cn-arow-top { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cn-radar-line { display: flex; align-items: center; gap: 8px; padding-left: 12px; }
+.cn-radar-line .cn-rowbtn { padding-left: 0; }
+.cn-radar-inline { margin-left: 4px; }
+.cn-callout { background: var(--bg-card); border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.cn-spend-group { display: flex; flex-direction: column; gap: 4px; }
+.cn-spend-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cn-spend-head .cn-rowtitle { flex: 1 1 200px; }
+.cn-spend-amt { font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.cn-spend-rows { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.cn-spend-rows li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--text-secondary); }
+.cn-how summary { font-size: 11px; }
+.cn-radar-line .cn-rowbtn { flex: 1 1 auto; min-width: 0; }
