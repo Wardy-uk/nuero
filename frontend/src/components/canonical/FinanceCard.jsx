@@ -43,6 +43,7 @@ export function FinanceView({ data, busy, act, note = null }) {
         <div className="cn-muted cn-small">{current.month} is partial ({current.coverageReasons[0]}) — not compared with complete months.</div>
       )}
       {data.monthOnMonth && <div className="cn-muted">{data.monthOnMonth.line || `Month on month: ${data.monthOnMonth.state} — ${data.monthOnMonth.why}`}</div>}
+      <LiveComparison c={data.comparison} householdLatest={latest} />
       <Trend summaries={data.summaries || []} rolling={data.rolling} />
       <Upcoming upcoming={data.upcoming} obligations={data.obligations || []} />
       <Obligations obligations={data.obligations || []} series={data.series || []} busy={busy} act={act} personalAdmin={data.personalAdmin} />
@@ -86,6 +87,22 @@ function Month({ s, title }) {
         {s.financingPence ? ` Loan & finance repayments ${money(s.financingPence)}.` : ''}{s.cardRepaymentsPence ? ` Card repayments ${money(s.cardRepaymentsPence)} — ${s.cardSpendNote}` : ''}
         {s.unresolvedDuplicates && s.unresolvedDuplicates.count ? ` ${s.unresolvedDuplicates.count} possible pending copies (${money(s.unresolvedDuplicates.pence)}) ${s.unresolvedDuplicates.note}.` : ''}
       </div>
+    </div>
+  );
+}
+
+/** While one account is not refreshing, the months the LIVE accounts cover, labelled as such. */
+function LiveComparison({ c, householdLatest }) {
+  if (!c || c.basis !== 'live-accounts') return null;
+  const done = (c.summaries || []).filter((s) => s.complete);
+  const last = done[done.length - 1];
+  if (!last || (householdLatest && last.month <= householdLatest.month)) return <div className="cn-muted cn-small">{c.note}</div>;
+  const doms = Object.entries(last.byDomain || {}).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  return (
+    <div className="cn-row" style={{ padding: '10px 12px' }}>
+      <div className="cn-rowtitle">{last.month}, live accounts only: spending {money(last.spendPence)} · money out {money(last.moneyOutPence)} · income {money(last.incomePence)}</div>
+      <div className="cn-chips">{doms.map(([d, p]) => <span key={d} className={`cn-chip${d === 'unknown' ? ' cn-chip--unknown' : ''}`}>{d.replace(/_/g, ' ')} {money(p)}</span>)}</div>
+      <div className="cn-muted cn-small">{c.note}{c.monthOnMonth ? ` ${c.monthOnMonth.line || `Month on month: ${c.monthOnMonth.state} — ${c.monthOnMonth.why}`}.` : ''}</div>
     </div>
   );
 }

@@ -154,9 +154,33 @@ function compose(read, { now, rules: rs = [], decisions = new Map(), recurringDe
   const unusual = M.unusualSpend(rows, { series, obligations: obs, reviewDecisions, dataFrom });
   const duplicates = M.duplicateCharges(rows, { series, reviewDecisions });
   const quality = M.categoryQuality(rows, { tallyRules: read.tallyRules || [], visible: VISIBLE });
-  const months = [...new Set(rows.map((t) => t.date.slice(0, 7)))].sort();
+  // Every month in the covered window — a covered month with no transactions
+  // is a fact (nothing moved), not a missing row.
+  const months = [];
+  if (dataFrom && dataThrough) {
+    let m = dataFrom.slice(0, 7);
+    while (m <= dataThrough.slice(0, 7)) { months.push(m); const x = new Date(`${m}-01T00:00:00Z`); x.setUTCMonth(x.getUTCMonth() + 1); m = x.toISOString().slice(0, 7); }
+  }
   const summaries = months.map((m) => M.monthlySummary(m, rows, { coverage, series, unusual, duplicates, visible: VISIBLE }));
   const health = M.feedHealth({ accounts: read.accounts, tlAccounts: read.tlAccounts, connections: read.connections, coverage, now });
+  // While some accounts refresh and others do not (Helen's, until she
+  // reconnects), the HOUSEHOLD months stay partial — never relabelled. Beside
+  // them, a comparison over the live accounts only, saying which are excluded.
+  let comparison = { basis: 'household', excluded: [], summaries: null, monthOnMonth: null };
+  const live = health.accounts.filter((a) => a.state === 'healthy').map((a) => Number(a.accountRef.split(':')[1]));
+  const stale = health.accounts.filter((a) => a.state !== 'healthy');
+  if (live.length && stale.length) {
+    const rowsLive = rows.filter((t) => live.includes(t.accountId));
+    const covLive = coverage.filter((c) => live.includes(c.accountId));
+    const liveSummaries = months.map((m) => M.monthlySummary(m, rowsLive, { coverage: covLive, series, unusual, duplicates, visible: VISIBLE }));
+    const excluded = stale.map((a) => (a.owner === 'helen' ? 'Helen\'s own account' : a.name));
+    const lastData = stale.map((a) => a.newestTransaction).filter(Boolean).sort().slice(-1)[0] || null;
+    comparison = {
+      basis: 'live-accounts', excluded, note: `Excluding ${excluded.join(', ')}, which ${excluded.length === 1 ? 'is' : 'are'} not refreshing${lastData ? ` (data ends ${lastData})` : ''}. Household totals stay partial.`,
+      summaries: liveSummaries.map((s) => ({ month: s.month, complete: s.complete, coverageReasons: s.coverageReasons, spendPence: s.spendPence, moneyOutPence: s.moneyOutPence, incomePence: s.incomePence, byDomain: s.byDomain, recurringPence: s.recurringPence, biggestMerchants: s.biggestMerchants, cardRepaymentsPence: s.cardRepaymentsPence, financingPence: s.financingPence })),
+      monthOnMonth: M.monthOnMonth(liveSummaries),
+    };
+  }
   const bal = M.balances(read, coverage, { today });
   const staleFeed = health.household !== 'healthy';
   const upcoming = M.upcomingMoneyOut({ series, obligations: obs, today, staleFeed });
@@ -195,7 +219,7 @@ function compose(read, { now, rules: rs = [], decisions = new Map(), recurringDe
       cardRepayments: rows.filter((t) => t.transactionType === 'card_repayment').length,
       refunds: rows.filter((t) => t.transactionType === 'refund' || t.transactionType === 'reversal').length,
     },
-    summaries, monthOnMonth: M.monthOnMonth(summaries), rolling: M.rollingWindow(coverage, { today }),
+    summaries, monthOnMonth: M.monthOnMonth(summaries), rolling: M.rollingWindow(coverage, { today }), comparison,
     quality, series: shownSeries,
     recurringCounts: series.reduce((o, s) => { o[s.state] = (o[s.state] || 0) + 1; return o; }, {}),
     priceChanges: series.filter((s) => M.OPERATIONAL(s) && s.priceChange && VISIBLE(s)).map((s) => ({ seriesKey: s.seriesKey, label: s.label, account: s.accountName, ...s.priceChange })),

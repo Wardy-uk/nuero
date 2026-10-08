@@ -552,6 +552,36 @@ test('33/35. a reconnect keeps account identity and the backfill is measured', (
   assert.equal(s.reconnect.accounts.find((a) => a.owner === 'helen').relinked, false);
 });
 
+test('33 (live shape). Tally DELETED the dead connection: one new link per account still reads as a relink', () => {
+  // As found on 8 Oct 2026: connection 1 and its truelayer_accounts rows gone,
+  // connection 3 created 13:26 feeding Joint, Bills and Nick; Helen's dead link remains.
+  const r = reconnectedRead();
+  r.connections = r.connections.filter((c) => c.id !== 1);
+  r.tlAccounts = r.tlAccounts.filter((t) => t.connection_id !== 1);
+  const s = fin.compose(r, { now: NOW, knownAccounts: ACCOUNTS.map((a) => ({ id: a.id, name: a.name })) });
+  const joint = s.reconnect.accounts.find((a) => a.name === 'Joint');
+  assert.equal(joint.relinked, true);
+  assert.equal(joint.newestBeforeReconnect, '2026-06-22');
+  assert.equal(joint.backfilledRows, 3);
+  assert.equal(s.reconnect.accounts.find((a) => a.owner === 'helen').relinked, false, 'a link older than its data is the original, not a relink');
+  assert.equal(s.health.household, 'partial');
+  assert.equal(s.reconnect.identityOk, true);
+});
+
+test('37b. while Helen is stale the household months stay partial; a separate comparison covers the live accounts and names what it excludes', () => {
+  const s = fin.compose(reconnectedRead(), { now: NOW });
+  assert.equal(s.summaries.find((m) => m.month === '2026-07').complete, false, 'household July is partial');
+  assert.ok(s.summaries.find((m) => m.month === '2026-07').coverageReasons.some((x) => /Helen data runs only to/.test(x)));
+  assert.equal(s.comparison.basis, 'live-accounts');
+  assert.deepEqual(s.comparison.excluded, ["Helen's own account"]);
+  assert.match(s.comparison.note, /^Excluding Helen's own account, which is not refreshing \(data ends 2026-06-17\)\. Household totals stay partial\.$/);
+  assert.equal(s.comparison.summaries.find((m) => m.month === '2026-07').complete, true);
+  assert.ok(s.comparison.summaries.every((m) => Object.values(m.byDomain).reduce((a, b) => a + b, 0) === m.spendPence));
+  // all live: no separate comparison
+  assert.equal(fin.compose(reconnectedRead({ helenToo: true }), { now: NOW }).comparison.basis, 'household');
+  assert.doesNotMatch(JSON.stringify(s.comparison), /MATTHEW WARD|JUNIPER/);
+});
+
 test('34. an old and a new account are not duplicated', () => {
   const r = reconnectedRead();
   r.accounts = [...ACCOUNTS, { id: 9, name: 'Joint', type: 'current', active: 1, opening_balance: 0, owner: null }];

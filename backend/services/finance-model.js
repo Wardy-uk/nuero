@@ -786,9 +786,14 @@ function reconnectReport({ accounts = [], tlAccounts = [], connections = [], tra
   const per = accounts.filter((a) => a.active !== 0).map((a) => {
     const links = tlAccounts.filter((t) => t.linked_account_id === a.id).sort((x, y) => String(x.created_at).localeCompare(String(y.created_at)));
     const newest = links[links.length - 1] || null;
-    const relinked = links.length > 1 && !!newest && links[0].connection_id !== newest.connection_id;
-    const relinkAt = relinked ? newest.created_at : null;
     const mine = transactions.filter((t) => t.account_id === a.id);
+    // A link is a RE-link when the account already held transactions before the
+    // link existed. Measured on the real reconnect (8 Oct 2026): Tally DELETED the
+    // dead connection's rows, leaving one new link per account — so "two links"
+    // is not the evidence; "data older than the link" is.
+    const firstCreated = mine.map((t) => String(t.created_at || '')).filter(Boolean).sort()[0] || null;
+    const relinked = !!newest && !!firstCreated && String(newest.created_at) > firstCreated;
+    const relinkAt = relinked ? newest.created_at : null;
     const before = relinkAt ? mine.filter((t) => String(t.created_at) < String(relinkAt)) : mine;
     const after = relinkAt ? mine.filter((t) => String(t.created_at) >= String(relinkAt)) : [];
     const newestBefore = before.map((t) => t.date).sort().slice(-1)[0] || null;
