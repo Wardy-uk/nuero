@@ -24,7 +24,7 @@ function _enteredBy(req, client) {
   return label ? `${who} (${label})` : who;
 }
 
-// GET /api/medical/records — Nick's medical record from the NHS app: test results (blood tests, values, units, reference ranges, flags as the record states them), diagnoses (conditions / problems) and prescriptions (medicines, dose, directions). Newest first; also returns counts per kind. Keywords: medical, NHS, NHS app, health record, GP record, test results, blood test, diagnosis, condition, prescription, medication, medicine. Query: kind (test_result|diagnosis|prescription), name, from, to, limit
+// GET /api/medical/records — Nick's NHS medical record: test results, diagnoses, prescriptions, newest first, with counts. Keywords: medical, NHS, GP record, blood test, diagnosis, prescription, medication. Query: kind (test_result|diagnosis|prescription), name, from, to, limit
 router.get('/records', (req, res) => {
   try {
     const kind = req.query.kind ? String(req.query.kind) : null;
@@ -54,7 +54,7 @@ router.get('/tests/:name', (req, res) => {
   }
 });
 
-// POST /api/medical/records — SAVE medical records Nick (or ChatGPT on his instruction) has already parsed from NHS app screenshots. Each record: { kind: test_result|diagnosis|prescription, name, date (YYYY-MM-DD; diagnosis may be YYYY or YYYY-MM), value, unit, referenceRange, flag (high|low|abnormal|normal|critical, ONLY if the screen says so), status, panel, code, dose, directions, quantity, notes }. Copy values exactly as shown (keep "<0.5" as text). Idempotent: an identical record folds; a changed one is kept as a revision. Each record gets an outcome (created|unchanged|revised|refused + why). Keywords: medical, NHS, NHS app, upload, ingest, save test results, blood test, diagnosis, prescription, medication. Body: { records: [record], client }
+// POST /api/medical/records — save NHS app records already parsed from screenshots. record: {kind: test_result|diagnosis|prescription, name, date YYYY-MM-DD, value, unit, referenceRange, flag (only if shown), status, panel, dose, directions, quantity, notes}. Copy values exactly. Resends fold. Keywords: medical, NHS, upload, blood test, diagnosis, prescription. Body: { records: [record], client }
 router.post('/records', (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
@@ -71,7 +71,7 @@ router.post('/records', (req, res) => {
   }
 });
 
-// POST /api/medical/scan — read NHS app screenshots with a vision model and PROPOSE medical records (test results, diagnoses, prescriptions). Saves NOTHING and keeps no image; confirm by posting the chosen records to /api/medical/records. Up to 8 screenshots of one scrolling screen per call. Keywords: medical, NHS app, screenshot, read, parse, OCR, test results, prescription. Body: { images: [{ imageBase64, mediaType }] }
+// POST /api/medical/scan — read up to 8 NHS app screenshots with a vision model and PROPOSE medical records. Saves nothing, keeps no image; save the chosen ones via POST /api/medical/records. Keywords: medical, NHS, screenshot, OCR, test results, prescription. Body: { images: [{ imageBase64, mediaType }] }
 router.post('/scan', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
