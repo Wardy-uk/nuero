@@ -11,6 +11,89 @@ const healthSamples = require('../services/health-samples');
 // Past a week the daily rollup is the honest source and this read is both
 // slower and a different statistic. Refused, never clamped.
 const MAX_SAMPLE_HOURS = 24 * 7;
+const RING_DIAGNOSTIC_STATE_KEY = 'jc_ring_diagnostic';
+const MAX_RING_DIAGNOSTIC_PACKETS = 500;
+const MAX_RING_DIAGNOSTIC_CHARACTERISTICS = 100;
+
+function shortText(value, limit) {
+  return typeof value === 'string' && value.length <= limit ? value : null;
+}
+
+/**
+ * Preserve a deliberately requested raw Bluetooth capture while the direct
+ * JC Ring protocol is being identified. This is NOT health ingest: no bytes
+ * are interpreted as a measurement here, and no background upload calls it.
+ */
+function ringDiagnostic(body, client) {
+  if (!body || typeof body !== 'object') return { ok: false, error: 'JSON body required' };
+  if (!Array.isArray(body.packets) || !Array.isArray(body.characteristics)) {
+    return { ok: false, error: 'packets and characteristics arrays are required' };
+  }
+  if (body.packets.length > MAX_RING_DIAGNOSTIC_PACKETS ||
+      body.characteristics.length > MAX_RING_DIAGNOSTIC_CHARACTERISTICS) {
+    return { ok: false, error: 'diagnostic capture exceeds its safe size limit' };
+  }
+
+  const packets = [];
+  for (const p of body.packets) {
+    const service = shortText(p?.service, 80);
+    const characteristic = shortText(p?.characteristic, 80);
+    const hex = shortText(p?.hex, 768);
+    const kind = shortText(p?.kind, 32);
+    const receivedAt = shortText(p?.receivedAt, 64);
+    if (!service || !characteristic || !hex || !kind || !receivedAt) {
+      return { ok: false, error: 'a packet has an invalid field' };
+    }
+    packets.push({ service, characteristic, hex, kind, receivedAt });
+  }
+
+  const characteristics = [];
+  for (const c of body.characteristics) {
+    const service = shortText(c?.service, 80);
+    const uuid = shortText(c?.uuid, 80);
+    if (!service || !uuid || !Array.isArray(c.properties) || c.properties.length > 12 ||
+        !c.properties.every(p => typeof p === 'string' && p.length <= 40)) {
+      return { ok: false, error: 'a Bluetooth characteristic has an invalid field' };
+    }
+    characteristics.push({ service, uuid, properties: c.properties });
+  }
+
+  const capture = {
+    receivedAt: new Date().toISOString(),
+    client: shortText(client, 80) || 'unknown',
+    pairedName: shortText(body.pairedName, 120),
+    capturedAt: shortText(body.capturedAt, 64),
+    characteristics,
+    packets,
+  };
+  db.setState(RING_DIAGNOSTIC_STATE_KEY, JSON.stringify(capture));
+  return { ok: true, packetsStored: packets.length, characteristicsStored: characteristics.length, receivedAt: capture.receivedAt };
+}
+
+// POST /api/health/ring-diagnostic — an explicit, one-off protocol capture.
+// This is deliberately separate from health ingest: raw BLE bytes are not a
+// measurement until their meaning has been verified against the physical ring.
+router.post('/ring-diagnostic', (req, res) => {
+  try {
+    const result = ringDiagnostic(req.body, req.headers['x-neuro-client']);
+    return res.status(result.ok ? 200 : 400).json(result);
+  } catch {
+    // Do not log the capture: packet bytes can contain sensitive readings.
+    return res.status(500).json({ ok: false, error: 'could not store ring diagnostic' });
+  }
+});
+
+// GET /api/health/ring-diagnostic — the decoder's authenticated inspection
+// point. The normal /api PIN middleware protects this route in server.js.
+router.get('/ring-diagnostic', (req, res) => {
+  try {
+    const raw = db.getState(RING_DIAGNOSTIC_STATE_KEY);
+    if (!raw) return res.json({ available: false });
+    return res.json({ available: true, capture: JSON.parse(raw) });
+  } catch {
+    return res.status(500).json({ error: 'could not read ring diagnostic' });
+  }
+});
 
 // What the legacy flat-key ingest can store, and under which canonical metric
 // name. This route predates the FreeReps app and survives as the iOS Shortcut
