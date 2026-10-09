@@ -229,3 +229,28 @@
 .cn-fold-body { padding: 6px 0 4px 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .cn-glance { display: flex; flex-wrap: wrap; gap: 6px; }
 .cn-comp-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+
+/* Build 24 — Personal projects: one compact card per project, an aligned classify table. */
+.cn-proj { padding: 10px 12px; margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.cn-proj-head { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+.cn-proj-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.cn-proj-alt { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+.cn-proj-chips { display: flex; gap: 6px; flex-shrink: 0; }
+.cn-proj-desc { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cn-proj-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--text-secondary); }
+.cn-proj-facts b { font-weight: 500; color: var(--text-muted); margin-right: 4px; }
+.cn-proj-next { font-size: 13px; color: var(--text-primary); }
+.cn-proj .cn-fold { margin-top: 2px; padding-bottom: 0; }
+.cn-chip--ready { border-color: var(--success); color: var(--success); }
+.cn-chip--blocked { border-color: var(--danger); color: var(--danger); }
+.cn-chip--parked { border-style: dashed; color: var(--text-muted); }
+.cn-classify { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; }
+.cn-classify-name { font-size: 13px; color: var(--text-primary); }
+.cn-classify-hint { display: block; font-size: 11px; color: var(--text-muted); }
+.cn-seg { display: inline-flex; }
+.cn-seg .cn-btn { border-radius: 0; margin-left: -1px; padding: 3px 9px; font-size: 11px; }
+.cn-seg .cn-btn:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); margin-left: 0; }
+.cn-seg .cn-btn:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.cn-proj .cn-fold { border-top-color: transparent; padding: 0; }
+.cn-proj .cn-fold > summary { font-size: 12px; }
+.cn-proj .cn-fold-title { min-width: 0; font-weight: 500; color: var(--text-secondary); }

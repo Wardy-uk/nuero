@@ -598,7 +598,8 @@ test('the card renders the personal view for real, with no NOVA', async () => {
   const html = renderToString(React.createElement(m.exports.ProjectsView, { data: pj.personalView({ now: NOW }), busy: false, act: async () => {} })).replace(/<!-- -->/g, '');
   assert.match(html, /Personal projects/);
   assert.match(html, /Hill Bagging App/);
-  assert.match(html, /Last real progress/);
+  assert.match(html, /Real progress|No real progress NEURO can see/);
+  assert.match(html, /cn-seg/, 'classify buttons are one segmented control per row');
   assert.match(html, /Whose are these\?/);
   assert.doesNotMatch(html, /cn-rowtitle">NOVA|Wardy-uk\/NOVA|NOVA portal queue/);
   assert.match(html, /NOVA is work by rule/, 'positive control: the word appears only in the rule text');

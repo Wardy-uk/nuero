@@ -58,26 +58,48 @@ export function ProjectsView({ data, busy, act, note = null }) {
   );
 }
 
+/** "26 Sep" — a date is enough for when a project last moved; "today" when it is. */
+function day(isoStr) {
+  if (!isoStr) return null;
+  const d = new Date(isoStr);
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.toDateString() === new Date().toDateString()) return 'today';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const FOCUS_CHIP = { ready: 'cn-chip--ready', blocked: 'cn-chip--blocked', parked: 'cn-chip--parked', closed: 'cn-chip--parked' };
+
 function Project({ p, busy, act }) {
   const base = `/api/projects/${enc(p.projectId)}`;
   const [blocker, setBlocker] = useState('');
+  const progress = p.lastProgress;
+  const touched = p.lastActivity && (!progress || p.lastActivity.at !== progress.at) ? p.lastActivity : null;
+  const statusWord = p.status.status === 'unknown' ? (p.rawStatus ? `“${p.rawStatus}”` : 'no status') : STATUS_WORDS[p.status.status];
+  const confirmed = p.repos.filter((r) => r.state === 'confirmed').length;
   return (
-    <div className="cn-row cn-project">
-      <div className="cn-rowtitle">{p.name}{p.displayTitle && p.displayTitle !== p.name ? ` — ${p.displayTitle}` : ''}</div>
-      <div className="cn-small"><strong>{FOCUS_WORDS[p.focus.focus]}</strong> · {STATUS_WORDS[p.status.status]}{p.rawStatus && p.status.status === 'unknown' ? ` (note says "${p.rawStatus}")` : ''}</div>
-      {p.description && <div className="cn-small cn-muted">{p.description}</div>}
-      <div className="cn-act-lines cn-small">
-        <div>Last real progress: {p.lastProgress ? `${when(p.lastProgress.at)} — ${p.lastProgress.what}` : 'none NEURO can see'}</div>
-        <div className="cn-muted">Last activity: {p.lastActivity ? `${when(p.lastActivity.at)} — ${p.lastActivity.what}` : 'none seen'}</div>
-        <div>Next: {p.nextAction ? `${p.nextAction.text}${p.nextAction.due ? ` (due ${p.nextAction.due})` : ''}` : (p.focus.focus === 'parked' ? 'nothing — it is parked' : 'nothing stated')}</div>
-        {p.blockers.map((b) => (
-          <div key={b.id} className="cn-error">Blocked: {b.what}{b.unblock ? ` — unblocks when ${b.unblock}` : ''}
-            {b.source === 'you' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`${base}/blockers/${enc(b.id)}/resolve`, {})}>Unblocked</button>}
-          </div>
-        ))}
-        {p.parkedComponents.length > 0 && <div className="cn-muted">Parked parts: {p.parkedComponents.join(', ')}</div>}
+    <div className="cn-row cn-proj">
+      <div className="cn-proj-head">
+        <span className="cn-proj-name">{p.name}{p.displayTitle && !p.displayTitle.toLowerCase().startsWith(p.name.toLowerCase()) && <span className="cn-proj-alt">{p.displayTitle}</span>}</span>
+        <span className="cn-proj-chips">
+          <span className={`cn-chip ${FOCUS_CHIP[p.focus.focus] || ''}`}>{FOCUS_WORDS[p.focus.focus]}</span>
+          <span className="cn-chip cn-chip--soft" title={p.status.why}>{statusWord}</span>
+        </span>
       </div>
-      <Fold title="Details" meta={`${p.repos.filter((r) => r.state === 'confirmed').length} repo · ${p.tasks.open.length} open task`}>
+      {p.description && <div className="cn-proj-desc" title={p.description}>{p.description}</div>}
+      {p.nextAction && <div className="cn-proj-next">Next: {p.nextAction.text}{p.nextAction.due ? <span className="cn-muted"> · due {p.nextAction.due}</span> : null}</div>}
+      {p.blockers.map((b) => (
+        <div key={b.id} className="cn-error">Blocked: {b.what}{b.unblock ? ` — unblocks when ${b.unblock}` : ''}{' '}
+          {b.source === 'you' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`${base}/blockers/${enc(b.id)}/resolve`, {})}>Unblocked</button>}
+        </div>
+      ))}
+      <div className="cn-proj-facts">
+        {progress
+          ? <span title={progress.why || ''}><b>Real progress</b>{day(progress.at)} — {progress.what}</span>
+          : <span className="cn-muted">No real progress NEURO can see</span>}
+        {touched && <span><b>Touched</b>{day(touched.at)}</span>}
+        {p.parkedComponents.length > 0 && <span><b>Parked</b>{p.parkedComponents.join(', ')}</span>}
+      </div>
+      <Fold title="Details" meta={`${plural(confirmed, 'repo')} · ${plural(p.tasks.open.length, 'open task')}`}>
         <div className="cn-small cn-muted">Why shown: {p.whyShown.join('; ')}</div>
         {p.repos.length > 0 && (
           <ul className="cn-list cn-small">
@@ -126,14 +148,19 @@ function NeedsClassifying({ items, busy, act }) {
   return (
     <Fold title="Whose are these?" meta={`${items.length} not yet classified`}>
       <div className="cn-small cn-muted">NEURO does not decide whether a project is personal or work. Until you say, it stays out of this list.</div>
-      <ul className="cn-list cn-small">
+      <div className="cn-classify">
         {items.map((it) => (
-          <li key={it.projectId}>{it.name}{it.suggestion ? <span className="cn-muted"> — maybe {it.suggestion.sphere} ({it.suggestion.why})</span> : null}
-            {(it.conflicts || []).length > 0 && <span className="cn-error"> — the evidence disagrees</span>}{' '}
-            {['personal', 'work', 'other'].map((s) => <button key={s} type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/projects/${enc(it.projectId)}/classify`, { sphere: s })}>{s[0].toUpperCase() + s.slice(1)}</button>)}
-          </li>
+          <React.Fragment key={it.projectId}>
+            <span className="cn-classify-name">{it.name}
+              {it.suggestion && <span className="cn-classify-hint">maybe {it.suggestion.sphere} — {it.suggestion.why}</span>}
+              {(it.conflicts || []).length > 0 && <span className="cn-classify-hint cn-error">the evidence disagrees</span>}
+            </span>
+            <span className="cn-seg">
+              {['personal', 'work', 'other'].map((s) => <button key={s} type="button" className="cn-btn" disabled={busy} onClick={() => act(`/api/projects/${enc(it.projectId)}/classify`, { sphere: s })}>{s[0].toUpperCase() + s.slice(1)}</button>)}
+            </span>
+          </React.Fragment>
         ))}
-      </ul>
+      </div>
     </Fold>
   );
 }
