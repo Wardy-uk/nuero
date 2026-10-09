@@ -146,3 +146,13 @@ test('the card renders every state in words, and a down source is not an empty h
   }));
   assert.ok(!away.includes('Lizzy') && !away.includes('visiting'), 'visitors who are out are hidden');
 });
+
+test('Matt is on the card, untracked and out — and a tracked Matt beats the typed one', () => {
+  const m = hh.compose({ nick: 'home', householdMembers: MEMBERS }, []);
+  const matt = m.find((x) => x.id === 'matt');
+  assert.deepEqual(matt, { id: 'matt', name: 'Matt', role: 'visitor', state: 'away', detail: null, tracked: false });
+  const tracked = hh.compose({ nick: 'home', householdMembers: [{ name: 'Matt Ward', role: 'visitor', state: 'home' }] }, []);
+  const matts = tracked.filter((x) => /^matt/.test(x.id));
+  assert.equal(matts.length, 1, 'one Matt only');
+  assert.equal(matts[0].state, 'home', 'the measured state wins');
+});

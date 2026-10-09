@@ -25,6 +25,15 @@ const fs = require('fs');
 const path = require('path');
 
 const PHOTO_EXT = ['jpg', 'jpeg', 'png', 'webp'];
+
+// People Nick wants on the card whom NOTHING tracks yet (9 Oct 2026). Matt is
+// in the Life360 circle but deliberately outside HA's household sensor, so the
+// house can never say he is in. Nick's call: show him, as out. ⚠ The moment HA
+// reports a member with the same first name, the tracked entry wins and this
+// one is dropped — a typed "out" must never overrule a measured "home".
+const UNTRACKED_MEMBERS = [
+  { id: 'matt', name: 'Matt', role: 'visitor', state: 'away' },
+];
 const ROLE_ORDER = { self: 0, resident: 1, visitor: 2, companion: 3 };
 
 function photoDir() {
@@ -59,6 +68,11 @@ function compose(presence, companions = []) {
     if (!m || !m.name) continue;
     members.push({ id: slug(m.name), name: m.name, role: m.role, state: m.state, detail: null });
   }
+  const firstNames = new Set(members.map((m) => String(m.name).trim().split(/\s+/)[0].toLowerCase()));
+  for (const u of UNTRACKED_MEMBERS) {
+    if (firstNames.has(u.name.toLowerCase())) continue;
+    members.push({ ...u, detail: null, tracked: false });
+  }
   for (const c of companions) {
     if (!c || !c.name) continue;
     members.push({ id: slug(c.name), name: c.name, role: 'companion', state: 'untracked', detail: c.species || null });
@@ -90,4 +104,4 @@ function read({ now = Date.now() } = {}) {
   };
 }
 
-module.exports = { compose, read, photoFile, photoDir, slug };
+module.exports = { UNTRACKED_MEMBERS, compose, read, photoFile, photoDir, slug };
