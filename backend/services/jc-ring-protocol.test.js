@@ -33,3 +33,14 @@ test('ignores zero padding in a fixed-width heart-rate record', () => {
     { timestamp: '2026-10-09 17:16:33', bpm: 93, sequence: 0, sampleIndex: 0 },
   ]);
 });
+
+test('labels BP fields in an HRV record as a vendor estimate', () => {
+  const decoded = protocol.inspect([{
+    kind: 'notification',
+    hex: '56 00 00 26 10 09 17 14 30 31 00 5C 39 70 3E',
+  }]);
+  assert.deepEqual(decoded.vendorBloodPressureEstimates, [{
+    timestamp: '2026-10-09 17:14:30', systolic: 112, diastolic: 62,
+    heartRate: 92, source: 'J2301 HRV vendor estimate',
+  }]);
+});

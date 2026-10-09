@@ -33,6 +33,7 @@ function inspect(packets) {
   const headers = {};
   const embeddedTimes = [];
   const heartRateSamples = [];
+  const vendorBloodPressureEstimates = [];
   let notifications = 0;
 
   for (const packet of Array.isArray(packets) ? packets : []) {
@@ -66,6 +67,22 @@ function inspect(packets) {
         });
       }
     }
+
+    // J2301 HRV history: 56, sequence, 00, timestamp, HRV, vascular-age,
+    // HR, stress, vendor-high-BP, vendor-low-BP. This is explicitly kept as
+    // a vendor estimate; it is not a cuff-equivalent blood-pressure reading.
+    for (let i = 0; i + 14 < bytes.length; i++) {
+      const timestamp = bytes[i] === 0x56 && bytes[i + 2] === 0
+        ? ringTimestamp(bytes, i + 3) : null;
+      if (!timestamp || bytes[i + 13] === 0 || bytes[i + 14] === 0 || vendorBloodPressureEstimates.length >= 100) continue;
+      vendorBloodPressureEstimates.push({
+        timestamp,
+        systolic: bytes[i + 13],
+        diastolic: bytes[i + 14],
+        heartRate: bytes[i + 11],
+        source: 'J2301 HRV vendor estimate',
+      });
+    }
   }
 
   return {
@@ -74,7 +91,8 @@ function inspect(packets) {
     headers,
     embeddedTimes,
     heartRateSamples,
-    caution: 'Only 0x54 J2301 automatic heart-rate history is decoded. These are consumer-wearable readings, not clinical measurements. All other frames remain raw protocol observations.',
+    vendorBloodPressureEstimates,
+    caution: '0x54 heart-rate history and 0x56 vendor BP estimates are decoded. Consumer wearable readings are not clinical measurements; BP estimates need comparison against a validated cuff or HiLo before they are used for a trend.',
   };
 }
 
