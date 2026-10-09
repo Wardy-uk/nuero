@@ -672,9 +672,11 @@ test('33. no send path exists outside the governed executor', () => {
     assert.doesNotMatch(src, /require\(['"][./]*(services\/)?(webpush|email-sender|teams|microsoft|action-mail)['"]\)/, f);
     assert.doesNotMatch(src, /sendToAll|sendMail\(|sendDm\(|graphWrite|executeAction|queueAction/, f);
   }
-  // The only caller of the executor's execute() outside it is the approve route and the reconciler.
+  // The only callers of the executor's execute() outside it are the approve
+  // route and (9 Oct 2026) the 1-2-1 Book/Move buttons, whose press IS the
+  // approval — and which can only approve their own origin (build11 test).
   const callers = files.filter((f) => f !== 'services/action-executor.js' && /executor\(\)\.execute\(|action-executor'\)\.execute\(/.test(fs.readFileSync(path.join(root, f), 'utf8')));
-  assert.deepEqual(callers, ['routes/prepared-actions.js']);
+  assert.deepEqual(callers.sort(), ['routes/prepared-actions.js', 'services/one-to-one-booking.js']);
 });
 
 test('34. the event log carries ids and mechanisms — never a body, subject, address or code', () => {
