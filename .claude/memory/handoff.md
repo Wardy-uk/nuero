@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-09 (Build 30: Leisure & media)
+
+- DEPLOYED: NEURO 7dc78c5 → c219122 → 4176aa6 (+ handoff commit) on origin/main + pi5 (gate 6030/0, 17 skipped; frontend built; neuro-backend restarted; gateway rebuilt for /api/leisure). Worktree nuero-b26, branch build30 (rebased once over the ring commits b63745a/e83bf54).
+- New: services/leisure-model.js (pure), services/leisure.js (leisure-v1), routes/leisure.js, Life → Leisure (LeisureCard), tables leisure_items + leisure_observations (per-day artist/album aggregates, ≤90 days, no track titles), chat tool get_leisure, Now `leisure` block + context line for a booking, Radar dated items (fold into calendar), Activity leisure-* lines, refresh in personal-ops. Writes machine-refused.
+- Rules: passive listening caps at `interest` (strong needs Nick); HA players are household; completion needs evidence; quiet ≠ abandoned; no catalogue → deterministic suggestions are continuations only; no push.
+- LIVE: phone Music seeing (shuffle — 10 artists/11 albums in an hour, all "one play is not interest"); 5 HA players power-only (no title); no podcast/game/Apple Music source; cinema 21 Nov in Coming up; Continue/Hobbies empty; 0 Needs You.
+- Ledger: #407 (add what you're into in Life → Leisure). Record: vault Projects/NEURO/NEURO-SAIM — Build 30 Leisure and Media Intelligence.md; gap analysis appended. Next domain: Personal relationships / people context.
+- Deploy lesson: Pi prints TAP (`# fail 0`) — gate on both formats; the first script skipped the restart (done by hand).
+
+---
+
 # Session Handoff — 2026-10-09 (Build 29: Outdoor Life)
 
 - DEPLOYED: NEURO f1e899a → 32cef20 → 4509e05 (+ docs commit) on origin/main + pi5 (gate 5997/0, 17 skipped; frontend built; neuro-backend restarted; gateway rebuilt for /api/outdoor). Built in worktree nuero-b26, branch build29 (rebased once over another session's d41f971).
