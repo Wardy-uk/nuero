@@ -99,3 +99,29 @@ test('an oversized or malformed protocol probe is refused', async () => {
   const result = await (await fetch(`${base}/api/health/ring-diagnostic`)).json();
   assert.equal(result.capture.probes.length, 2, 'the useful capture remains intact');
 });
+
+test('an explicit backfill converts the saved capture into separate JC Ring readings', async () => {
+  const receipt = await post({
+    ...capture,
+    packets: [{
+      ...capture.packets[0],
+      hex: '56 00 00 26 10 09 17 14 30 31 00 5C 39 70 3E',
+    }],
+  });
+  assert.equal(receipt.status, 200);
+
+  const backfill = await fetch(`${base}/api/health/ring-readings/backfill`, { method: 'POST' });
+  assert.equal(backfill.status, 200);
+  assert.deepEqual(await backfill.json(), {
+    ok: true,
+    packetsRead: 1,
+    readingsStored: 3,
+    receivedAt: (await (await fetch(`${base}/api/health/ring-diagnostic`)).json()).capture.receivedAt,
+  });
+
+  const readings = await (await fetch(`${base}/api/health/ring-readings`)).json();
+  assert.equal(readings.available, true);
+  assert.equal(readings.latest.hrv.value, 49);
+  assert.equal(readings.latest.vendor_bp_systolic_estimate.value, 112);
+  assert.equal(readings.latest.vendor_bp_diastolic_estimate.value, 62);
+});

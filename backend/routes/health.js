@@ -172,6 +172,26 @@ router.get('/ring-readings', (req, res) => {
   }
 });
 
+// POST /api/health/ring-readings/backfill — explicitly decode the last raw
+// capture after a server upgrade. This is intentionally a write route rather
+// than a side effect of reading /ring-readings: a diagnostic capture remains
+// the user's private data until this deliberate conversion is requested.
+router.post('/ring-readings/backfill', (req, res) => {
+  try {
+    const raw = db.getState(RING_DIAGNOSTIC_STATE_KEY);
+    if (!raw) return res.status(404).json({ ok: false, error: 'no JC Ring diagnostic capture is available' });
+    const capture = JSON.parse(raw);
+    if (!Array.isArray(capture.packets) || !shortText(capture.receivedAt, 64)) {
+      return res.status(400).json({ ok: false, error: 'saved JC Ring diagnostic capture is invalid' });
+    }
+    const persisted = persistJCRingReadings(capture.packets, capture.receivedAt);
+    return res.json({ ok: true, packetsRead: capture.packets.length, readingsStored: persisted.stored,
+      receivedAt: capture.receivedAt });
+  } catch {
+    return res.status(500).json({ ok: false, error: 'could not backfill JC Ring samples' });
+  }
+});
+
 // A transparent source-to-source view. This deliberately shows timestamps
 // beside values: a difference is useful only when the readings are close
 // enough in time to compare, and the ring clock remains device-local.
