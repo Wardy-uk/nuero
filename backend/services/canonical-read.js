@@ -1328,6 +1328,10 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
       upcoming: h.upcoming.slice(0, 3).map((u) => ({ id: u.id, title: u.title, when: u.when })),
       lowBatteries: h.devices.known ? h.devices.lowBatteries : null,
       safety: h.safety.capability, needsYou: h.needsYou, summary: h.summary,
+      // Build 28AF: home earns a place on Now only through an exception or
+      // something needing Nick — never "occupied, 20 °C" every day.
+      exceptions: (h.exceptions || []).slice(0, 3).map((e) => ({ id: e.key, category: e.category, what: e.what, where: e.where, actionState: e.actionState })),
+      relevant: h.needsYou.length > 0 || (h.exceptions || []).length > 0,
     };
   } catch (e) { payload.home = null; gaps.push({ input: 'home', why: e.message }); }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and

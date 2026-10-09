@@ -522,6 +522,8 @@ function fromPersonalOps(rows) {
       case 'home-battery-low': return entry({ ...base, category: 'sensed', type: 'home.device', headline: `A household device needs a battery: ${d.device}`, summary: "From Home Assistant's own battery watchdog (under 20%).", status: 'needs-action' });
       case 'home-hazard': return entry({ ...base, category: 'sensed', type: 'home.hazard', headline: `Household hazard sensor reporting: ${d.sensor}`, status: 'alert' });
       case 'home-hazard-cleared': return entry({ ...base, category: 'verified', type: 'home.hazard', headline: `Household hazard sensor clear again: ${d.sensor}`, status: 'clear' });
+      case 'home-exception-opened': return entry({ ...base, category: 'sensed', type: `home.${d.category || 'exception'}`, headline: `${d.what || 'Something unusual at home'}`, summary: (d.evidence && d.evidence[0]) || null, status: d.category === 'source' ? 'failing' : 'open' });
+      case 'home-exception-resolved': return entry({ ...base, category: 'verified', type: `home.${d.category || 'exception'}`, headline: `Resolved at home: ${d.what || 'an exception'}`, summary: 'The condition is no longer present.', status: 'recovered' });
       case 'home-hazard-blind': return entry({ ...base, category: 'sensed', type: 'home.hazard', headline: `NEURO cannot reach a hazard sensor: ${d.sensor}`, status: 'failing' });
       case 'admin-resolved': return entry({ ...base, category: 'verified', type: 'personal.admin', headline: `Personal admin resolved: "${d.title}"`, summary: 'Its source says it is complete.', status: 'done' });
       // Build 25W — Nick's word on an admin item, and the admin source itself.

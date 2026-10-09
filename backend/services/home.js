@@ -175,24 +175,50 @@ function needsYouFrom({ obligations = [], safety } = {}) {
   return out;
 }
 
+/**
+ * PURE. Build 28: the intelligence model's exceptions that may appear under
+ * Needs You. Hazards are already there from safetyFrom (one alarm, not two), so
+ * only the categories safetyFrom cannot see join: a door open with nobody home
+ * and the heating hub offline. Same rule set, no new notification policy.
+ */
+function intelNeedsYou(intel) {
+  if (!intel || !Array.isArray(intel.needsYou)) return [];
+  return intel.needsYou.filter((e) => e.category !== 'hazard')
+    .map((e) => ({ kind: e.category, id: e.key, title: e.what, why: e.whyItMatters }));
+}
+
 /** PURE. The whole read model. */
-function compose({ household = null, states = null, obligations = [], radarItems = [], remindersHealth = [], gaps = [], now = Date.now() } = {}) {
+function compose({ household = null, states = null, obligations = [], radarItems = [], remindersHealth = [], gaps = [], intel = null, now = Date.now() } = {}) {
   const occupancy = occupancyFrom(household);
   const devices = devicesFrom(states);
   const safety = safetyFrom(states);
   const obl = homeObligations(obligations);
   const upcoming = upcomingFrom(radarItems);
-  const needsYou = needsYouFrom({ obligations: obl, safety });
+  const needsYou = [...needsYouFrom({ obligations: obl, safety }), ...intelNeedsYou(intel)];
   const sources = sourcesFrom({ household, devices, safety, remindersHealth });
   const summary = [
     occupancy.state === 'occupied' ? `Home is occupied — ${occupancy.why}.` : occupancy.state === 'empty' ? 'Home is empty.' : `Can't tell if anyone is home (${occupancy.why}).`,
     obl.length ? `${obl.length} household ${obl.length === 1 ? 'thing' : 'things'} to do.` : null,
     upcoming.length ? `${upcoming.length} household ${upcoming.length === 1 ? 'item' : 'items'} in the next ${UPCOMING_DAYS} days.` : null,
     devices.known && devices.lowBatteries.length ? `${devices.lowBatteries.length} ${devices.lowBatteries.length === 1 ? 'device needs' : 'devices need'} a battery.` : null,
+    intel && intel.known && intel.heating ? intel.heating.summary : null,
+    intel && intel.exceptions && intel.exceptions.length ? `${intel.exceptions.length} thing${intel.exceptions.length === 1 ? '' : 's'} unusual at home.` : null,
   ].filter(Boolean);
+  // Build 28: the household sections from the intelligence model. Additive —
+  // every Build 22 field above is unchanged.
+  const occIntel = intel ? {
+    residentsHome: occupancy.state === 'occupied' ? occupancy.who.filter((n) => ((household && household.members) || []).some((m) => m.name === n && (m.role === 'self' || m.role === 'resident'))) : [],
+    visitorsHome: ((household && household.members) || []).filter((m) => m.role === 'visitor' && m.state === 'home').map((m) => m.name),
+  } : {};
   return {
     ok: true, contract: CONTRACT, asOf: new Date(now).toISOString(),
-    occupancy, obligations: obl, upcoming, devices, safety, needsYou, sources, summary, gaps,
+    occupancy: { ...occupancy, ...occIntel }, obligations: obl, upcoming, devices, safety, needsYou, sources, summary, gaps,
+    ...(intel ? {
+      intelligence: intel.contract, known: intel.known, rooms: intel.rooms, climate: intel.climate, heating: intel.heating, air: intel.air,
+      openings: intel.openings, deviceHealth: intel.devices, batteries: intel.batteries, appliances: intel.appliances, hazards: intel.hazards,
+      network: intel.network, weather: intel.weather, energy: intel.energy, exceptions: intel.exceptions, resolved: intel.resolved,
+      sourceHealth: intel.sourceHealth, audit: intel.audit,
+    } : {}),
     rule: 'Composed from what NEURO already holds. Occupied only when someone is positively home, empty only when everyone who lives here is positively away. Household tasks are reminders/tasks you classified as Home. Device health is Home Assistant\'s own watchdog, claiming no duration. Nothing here is a reason to notify you about someone arriving or leaving.',
   };
 }
@@ -218,10 +244,21 @@ async function read({ now = Date.now(), live = false, states } = {}) {
   let st = states;
   if (st === undefined) {
     const ha = require('./ha');
-    if (live) { try { st = await ha.getStates(); } catch (e) { st = null; gaps.push({ input: 'home-assistant', why: e.message }); } }
+    // Build 28: a FRESH read — getStates() answers a dead HA from its cache, which
+    // would hide an outage behind minutes-old states.
+    if (live) { try { st = await ha.fetchStates(); } catch (e) { st = null; gaps.push({ input: 'home-assistant', why: e.message }); } }
     else st = ha.cachedStates();
   }
-  return compose({ ..._readLocal(now, gaps), household, states: st, gaps, now });
+  const intel = _intel(st, household, now, gaps, !live && !st ? 'not-read' : undefined);
+  return compose({ ..._readLocal(now, gaps), household, states: st, gaps, intel, now });
+}
+
+/** Build 28: the intelligence model over the same states. Never fails the Home read. */
+function _intel(states, household, now, gaps, haStatus) {
+  try {
+    const hi = require('./home-intelligence');
+    return hi.readWith({ states, occupancy: occupancyFrom(household), watchdog: devicesFrom(states), haStatus, now });
+  } catch (e) { gaps.push({ input: 'home-intelligence', why: e.message }); return null; }
 }
 
 /** The synchronous half, shared by read() and readCached(). */
@@ -242,7 +279,8 @@ function readCached({ now = Date.now(), radarItems = null } = {}) {
   try { obligations = require('./personal-obligations').read({ now }).items || []; } catch (e) { gaps.push({ input: 'obligations', why: e.message }); }
   let states = null;
   try { states = require('./ha').cachedStates(); } catch { states = null; }
-  return compose({ household, states, obligations, radarItems: radarItems || [], remindersHealth: _remindersHealth(), gaps, now });
+  const intel = _intel(states, household, now, gaps, states ? undefined : 'not-read');
+  return compose({ household, states, obligations, radarItems: radarItems || [], remindersHealth: _remindersHealth(), gaps, intel, now });
 }
 
 // ── Activity (22J) ───────────────────────────────────────────────────────────
@@ -290,6 +328,20 @@ async function refresh({ now = Date.now() } = {}) {
   const KEY = 'home_ops_state';
   let held = null;
   try { held = JSON.parse(db.getState(KEY) || 'null'); } catch { held = null; }
+  // Build 28: the intelligence pass first — it is the only writer of its inputs
+  // (registry + 8 days of hourly climate statistics) and of the open exceptions.
+  // Only heating / network / hazard / source exceptions reach Activity (28AH).
+  let intel = null;
+  try {
+    let household = null;
+    try { household = require('./household').read(); } catch { household = null; }
+    intel = await require('./home-intelligence').refresh({ now, occupancy: occupancyFrom(household) });
+  } catch (e) { intel = { ok: false, error: e.message, activity: [] }; }
+  let intelLogged = 0;
+  for (const a of (intel && intel.activity) || []) {
+    if (intel.baseline) break; // first pass is a baseline, like the rest of this job
+    intelLogged += po.logEvent(a.kind, { subjectId: `home:${a.e.key}`, detail: { category: a.e.category, what: a.e.what, where: a.e.where, evidence: (a.e.evidence || []).slice(0, 2) }, dedupeKey: `${a.kind}:${a.e.key}:${now}`, now }) ? 1 : 0;
+  }
   const model = await read({ now, live: true });
   const next = snapshotOf(model);
   let logged = 0;
@@ -298,7 +350,8 @@ async function refresh({ now = Date.now() } = {}) {
     logged += po.logEvent(c.kind, { subjectId: `home:${subject}`, detail: c.detail, dedupeKey: `${c.kind}:${subject}:${now}`, now }) ? 1 : 0;
   }
   db.setState(KEY, JSON.stringify(next));
-  return { ok: true, baseline: !held, logged, occupancy: model.occupancy.state };
+  return { ok: true, baseline: !held, logged: logged + intelLogged, occupancy: model.occupancy.state,
+    intel: intel && intel.ok ? { exceptions: (intel.model.exceptions || []).length, gaps: intel.gaps } : intel };
 }
 
 module.exports = {

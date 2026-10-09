@@ -57,7 +57,16 @@ function asReadings(hours) {
 // ── Home Assistant ───────────────────────────────────────────────────────────
 
 /** Long-term hourly statistics over HA's websocket (Node 22 has WebSocket). */
-function fetchStatistics({ url, token, entity = ENTITY, since = SINCE, timeoutMs = 30000 }) {
+async function fetchStatistics({ url, token, entity = ENTITY, since = SINCE, timeoutMs = 30000 }) {
+  const all = await fetchStatisticsMany({ url, token, entities: [entity], since, timeoutMs });
+  return all[entity] || [];
+}
+
+/**
+ * Build 28: the same call for several statistic ids at once → { id: rows }.
+ * An id HA keeps no statistics for is simply absent from the answer.
+ */
+function fetchStatisticsMany({ url, token, entities, since = SINCE, timeoutMs = 30000 }) {
   return new Promise((resolve, reject) => {
     if (typeof WebSocket === 'undefined') return reject(new Error('this Node has no WebSocket'));
     const ws = new WebSocket(`${url.replace(/^http/, 'ws').replace(/\/$/, '')}/api/websocket`);
@@ -71,10 +80,10 @@ function fetchStatistics({ url, token, entity = ENTITY, since = SINCE, timeoutMs
       else if (d.type === 'auth_invalid') done(reject, new Error('HA rejected the token'));
       else if (d.type === 'auth_ok') {
         ws.send(JSON.stringify({ id: 1, type: 'recorder/statistics_during_period', start_time: since,
-          statistic_ids: [entity], period: 'hour', types: ['mean', 'min', 'max'] }));
+          statistic_ids: entities, period: 'hour', types: ['mean', 'min', 'max'] }));
       } else if (d.id === 1) {
         if (!d.success) return done(reject, new Error((d.error && d.error.message) || 'statistics refused'));
-        done(resolve, (d.result || {})[entity] || []);
+        done(resolve, d.result || {});
       }
     };
   });
@@ -128,4 +137,4 @@ function coverage() {
   };
 }
 
-module.exports = { ENTITY, LABEL, shapeStats, asReadings, fetchStatistics, sync, hoursSince, coverage };
+module.exports = { ENTITY, LABEL, shapeStats, asReadings, fetchStatistics, fetchStatisticsMany, sync, hoursSince, coverage };

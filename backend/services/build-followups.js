@@ -207,4 +207,14 @@ const BUILD_27 = Object.freeze([
     why: 'The booking task is linked to the Captur but not to its MOT date, so Personal Admin shows both. One press ("Make it the MOT\'s action") folds them into one item; ticking the booking never closes the MOT itself.' },
 ]);
 
-module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, BUILD_27, validate, reconcile, verify };
+// Build 28 (9 Oct 2026): home intelligence. The audit found four sockets offline
+// since 15–27 Sep — a decision only Nick can make (reconnect or remove). Nothing
+// else is a task: no hazard sensor is a capability gap he has not decided to fill,
+// and a quiet house is not work.
+const BUILD_28 = Object.freeze([
+  { key: 'ha-long-offline-sockets', build: 'Build 28', lifeDomains: ['home'],
+    title: 'Reconnect or remove the four Home Assistant sockets offline since September (extension lead, Office plug, Work, bedroom tv)',
+    why: 'Every entity of each has been unavailable for 12–24 days. NEURO lists them under Life → Home as "offline for over a week" rather than as faults; HA\'s own watchdog still counts them every morning. If they are retired, removing them from Home Assistant makes "offline" mean something again.' },
+]);
+
+module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, BUILD_27, BUILD_28, validate, reconcile, verify };
