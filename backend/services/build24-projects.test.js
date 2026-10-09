@@ -216,9 +216,21 @@ test('5. explicit personal classification wins', async () => {
   assert.equal(proj('p:outdoor-weather').sphere.sphere, 'unknown', 'precondition: nothing stated');
   const r = await call('POST', `/api/projects/${enc('p:outdoor-weather')}/classify`, { sphere: 'personal' });
   assert.equal(r.status, 200);
-  assert.equal(proj('p:outdoor-weather').sphere.basis, 'you');
+  assert.equal(proj('p:outdoor-weather').sphere.basis, 'vault', 'written into the hub note — the vault is the source of truth');
+  assert.match(fs.readFileSync(path.join(VAULT, 'Projects/Outdoor Weather/Outdoor Weather.md'), 'utf8'), /^sphere: "personal"$/m);
+  assert.equal(db.get("SELECT sphere FROM project_statements WHERE subject = 'project:p:outdoor-weather'").sphere, null, 'NEURO keeps no copy');
   const v = await call('GET', '/api/projects/personal');
   assert.ok(v.json.projects.some((p) => p.projectId === 'p:outdoor-weather'));
+});
+
+test('5b. a project with no hub note keeps the statement in NEURO (nowhere else to write it)', async () => {
+  assert.equal(proj('p:side-spec').hubPath, null, 'precondition: no hub');
+  const r = await call('POST', `/api/projects/${enc('p:side-spec')}/status`, { status: 'parked' });
+  assert.equal(r.status, 200);
+  const p = proj('p:side-spec');
+  assert.equal(p.status.status, 'parked');
+  assert.equal(p.status.basis, 'you');
+  await call('POST', `/api/projects/${enc('p:side-spec')}/status`, { status: null });
 });
 
 test('6. explicit work classification wins over a side-project tag', async () => {
@@ -295,12 +307,16 @@ test('14. explicit parked is respected — no next action is offered', () => {
   assert.equal(p.focus.focus, 'parked');
 });
 
-test('15. explicit paused (Nick) is respected', async () => {
-  await call('POST', `/api/projects/${enc('p:outdoor-weather')}/status`, { status: 'paused' });
-  assert.equal(proj('p:outdoor-weather').status.status, 'paused');
-  assert.equal(proj('p:outdoor-weather').status.basis, 'you');
-  await call('POST', `/api/projects/${enc('p:outdoor-weather')}/status`, { status: null });
-  assert.equal(proj('p:outdoor-weather').status.status, 'active', 'cleared → the vault status again');
+test('15. Park / Resume write the hub note, and are respected', async () => {
+  const hub = path.join(VAULT, 'Projects/Outdoor Weather/Outdoor Weather.md');
+  await call('POST', `/api/projects/${enc('p:outdoor-weather')}/status`, { status: 'parked' });
+  assert.equal(proj('p:outdoor-weather').status.status, 'parked');
+  assert.equal(proj('p:outdoor-weather').focus.focus, 'parked');
+  assert.match(fs.readFileSync(hub, 'utf8'), /^status: "parked"$/m);
+  assert.match(fs.readFileSync(hub, 'utf8'), /^tags: \[saim, esp32\]$/m, 'nothing else in the frontmatter moved');
+  await call('POST', `/api/projects/${enc('p:outdoor-weather')}/status`, { status: 'active' });
+  assert.equal(proj('p:outdoor-weather').status.status, 'active');
+  assert.match(fs.readFileSync(hub, 'utf8'), /^status: "active"$/m);
 });
 
 test('16/17. an explicit blocker yields blocked; resolving it clears blocked', async () => {

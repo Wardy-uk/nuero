@@ -36,7 +36,8 @@ export function ProjectsView({ data, busy, act, note = null }) {
   const ghLine = gh.state === 'never' ? 'GitHub: no snapshot yet — repo activity is unknown, not absent.'
     : `GitHub: ${gh.inScope} repo${gh.inScope === 1 ? '' : 's'} read ${gh.fetchedAt ? when(gh.fetchedAt) : ''}${gh.state === 'stale' ? ` — stale (${Math.round(gh.ageHours)}h old)` : ''}.`;
   const ready = projects.filter((p) => p.focus.focus === 'ready');
-  const rest = projects.filter((p) => p.focus.focus !== 'ready' && p.focus.focus !== 'closed');
+  const rest = projects.filter((p) => !['ready', 'closed', 'parked'].includes(p.focus.focus));
+  const parked = projects.filter((p) => p.focus.focus === 'parked');
   const closed = projects.filter((p) => p.focus.focus === 'closed');
   return (
     <section className="cn-section cn-projects">
@@ -46,6 +47,18 @@ export function ProjectsView({ data, busy, act, note = null }) {
       {!projects.length && <div className="cn-muted">No project is classified as personal yet. Say whose each project is below — NEURO never decides that for you.</div>}
       {ready.length > 0 && <div className="cn-small cn-muted">Ready to pick up: {ready.map((p) => p.name).join(', ')}</div>}
       {[...ready, ...rest].map((p) => <Project key={p.projectId} p={p} busy={busy} act={act} />)}
+      {parked.length > 0 && (
+        <Fold title="Parked" meta={`${parked.length} not currently active`}>
+          <div className="cn-classify">
+            {parked.map((p) => (
+              <React.Fragment key={p.projectId}>
+                <span className="cn-classify-name">{p.name}<span className="cn-classify-hint">{STATUS_WORDS[p.status.status]}{p.lastProgress ? ` · last real progress ${day(p.lastProgress.at)}` : ''}</span></span>
+                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/projects/${enc(p.projectId)}/status`, { status: 'active' })}>Resume</button>
+              </React.Fragment>
+            ))}
+          </div>
+        </Fold>
+      )}
       {closed.length > 0 && (
         <Fold title="Closed" meta={`${closed.length}`}>
           <ul className="cn-list cn-small">{closed.map((p) => <li key={p.projectId}>{p.name} — {STATUS_WORDS[p.status.status]}</li>)}</ul>
@@ -83,6 +96,7 @@ function Project({ p, busy, act }) {
         <span className="cn-proj-chips">
           <span className={`cn-chip ${FOCUS_CHIP[p.focus.focus] || ''}`}>{FOCUS_WORDS[p.focus.focus]}</span>
           <span className="cn-chip cn-chip--soft" title={p.status.why}>{statusWord}</span>
+          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} title="Not currently active — moves it to Parked (written to the project's note)" onClick={() => act(`${base}/status`, { status: 'parked' })}>Park</button>
         </span>
       </div>
       {p.description && <div className="cn-proj-desc" title={p.description}>{p.description}</div>}

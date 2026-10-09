@@ -218,3 +218,10 @@
 @media (max-width: 720px) {
   .wx-outlook--grid { grid-template-columns: 1fr; grid-template-areas: "sensor" "tiles" "forecast" "together"; }
 }
+
+/* One forecast story, numbers per horizon (9 Oct 2026). */
+.wx-hgrid { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
+.wx-hgrid th, .wx-hgrid td { padding: 6px 8px; border-top: 1px solid var(--border); text-align: right; }
+.wx-hgrid thead th { border-top: none; color: var(--text-muted); font-weight: 500; font-size: 0.78rem; }
+.wx-hgrid tbody th { text-align: left; color: var(--text-muted); font-weight: 500; }
+.wx-hgrid td { font-family: var(--font-mono); color: var(--text-secondary); }

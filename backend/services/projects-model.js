@@ -134,7 +134,8 @@ function parseHub(text, { relPath = null } = {}) {
     const w = SPHERE_WORDS[String(fm[k] || '').toLowerCase().trim()];
     if (w) sphereEvidence.push({ sphere: w, basis: 'vault', why: `${relPath || 'the hub note'} says ${k}: ${fm[k]}` });
   }
-  for (const t of tags) {
+  // An explicit sphere:/domain: key is the statement; tags are only read when there is none.
+  for (const t of (sphereEvidence.length ? [] : tags)) {
     if (PERSONAL_TAGS.has(t)) sphereEvidence.push({ sphere: 'personal', basis: 'vault', why: `${relPath || 'the hub note'} is tagged ${t}` });
     if (WORK_TAGS.has(t)) sphereEvidence.push({ sphere: 'work', basis: 'vault', why: `${relPath || 'the hub note'} is tagged ${t}` });
   }

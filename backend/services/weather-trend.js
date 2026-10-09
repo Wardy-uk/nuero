@@ -271,6 +271,10 @@ function summarise({ obs = [], forecast = [], nowMs, providerLabel = 'the foreca
   // ── What the forecast says ───────────────────────────────────────────────
   const horizons = [[6, f6], [12, f12], [24, f24]].map(([hours, f]) => ({
     hours, rain: f ? f.rain : 'unknown', words: rainWords(f), temperature: tempRange(f),
+    // Raw facts beside the words, so a renderer can tell "the same rain, seen over a longer
+    // window" from a different forecast without parsing a sentence (9 Oct 2026).
+    firstWetAt: f && f.firstWetAt ? f.firstWetAt : null, maxProb: f && isNum(f.maxProb) ? Math.round(f.maxProb) : null,
+    totalMm: f && isNum(f.totalMm) ? Math.round(f.totalMm * 10) / 10 : null,
   }));
   const forecastPart = { available: !!f24, provider: providerLabel, issuedAt, horizons };
 

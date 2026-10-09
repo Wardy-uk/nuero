@@ -301,11 +301,42 @@ function SensorCard({ sensor }) {
   );
 }
 
+/**
+ * True when every horizon describes the SAME weather (same verdict, same start),
+ * so the card says it once and shows the per-horizon numbers as a table rather
+ * than three near-identical sentences (Nick, 9 Oct 2026). Older payloads without
+ * the raw fields never group.
+ */
+export function sameStory(hs) {
+  if (!Array.isArray(hs) || hs.length < 2) return false;
+  if (!hs.every((h) => 'firstWetAt' in h)) return false;
+  return hs.every((h) => h.rain !== 'unknown' && h.rain === hs[0].rain && (h.firstWetAt || null) === (hs[0].firstWetAt || null));
+}
+
 function ForecastCard({ forecast, nowMs }) {
+  const hs = forecast.horizons || [];
+  const grouped = forecast.available && sameStory(hs);
+  const longest = hs[hs.length - 1] || {};
+  const headline = grouped ? String(longest.words || '').replace(/\s*\([^)]*\)\s*$/, '') : '';
   return (
     <section className="wx-card wx-card--forecast" aria-label="What the forecast says">
       <h2><span className="wx-key wx-key--forecast" />What the forecast says</h2>
-      {!forecast.available ? <p className="wx-verdict">No forecast available.</p> : (
+      {!forecast.available ? <p className="wx-verdict">No forecast available.</p> : grouped ? (
+        <>
+          <p className={`wx-verdict wx-rain--${longest.rain}`}>{headline.charAt(0).toUpperCase() + headline.slice(1)}{longest.rain === 'dry' ? ` for the next ${longest.hours} h` : ''}.</p>
+          <table className="wx-hgrid">
+            <thead><tr><th />{hs.map((h) => <th key={h.hours}>{HORIZON_LABEL[h.hours] || `Next ${h.hours} h`}</th>)}</tr></thead>
+            <tbody>
+              {longest.rain !== 'dry' && <tr><th>Chance</th>{hs.map((h) => <td key={h.hours}>{h.maxProb != null ? `${h.maxProb}%` : '—'}</td>)}</tr>}
+              {longest.rain !== 'dry' && <tr><th>Rain</th>{hs.map((h) => <td key={h.hours}>{h.totalMm != null ? `${h.totalMm} mm` : '—'}</td>)}</tr>}
+              <tr><th>Temp</th>{hs.map((h) => <td key={h.hours}>{h.temperature || '—'}</td>)}</tr>
+            </tbody>
+          </table>
+          <p className="wx-scope">
+            {forecast.provider}{Number.isFinite(forecast.issuedAt) ? `, fetched ${ageWords(nowMs - forecast.issuedAt)}` : ''}.
+          </p>
+        </>
+      ) : (
         <>
           <ul className="wx-horizons">
             {forecast.horizons.map((h) => (

@@ -301,7 +301,7 @@ function collectMeetings(ctx) {
       source: 'calendar',
       actionHint: imminent ? 'Join / prep now' : (withOthers ? 'Coming up' : (minutesAway <= 10 ? 'Starts soon' : 'Coming up')),
       meta: {
-        start: event.start_time, end: event.end_time, location: event.location, minutesAway,
+        start: event.start_time, end: event.end_time, location: event.location, minutesAway, withOthers,
         blockTaskIds: openBlockTaskIds(event.event_id),
       },
       _unsuppressable: imminent, // imminent meetings cannot be suppressed

@@ -109,6 +109,25 @@ test('⚠ the outlook is SPLIT: a sensor card and a forecast card, then "togethe
   assert.match(html, /Next 24 h/);
 });
 
+// Nick, 9 Oct 2026: three rows saying "rain likely from about 10:00 (69% chance…)" is one forecast said three times.
+test('when every horizon tells the same story it is said once, with the numbers in a table', async () => {
+  const m = await load();
+  const hz = (hours, mm, temp) => ({ hours, rain: 'likely', words: `rain likely from about 10:00 (69% chance, ${mm} mm)`, temperature: temp, firstWetAt: 1760000000000, maxProb: 69, totalMm: mm });
+  const p = payload();
+  p.summary.forecast = { ...p.summary.forecast, available: true, horizons: [hz(6, 0.5, '15–17°C'), hz(12, 0.6, '11–17°C'), hz(24, 0.6, '9–17°C')] };
+  const html = render(m, { data: p }).replace(/<!-- -->/g, '');
+  assert.equal((html.match(/rain likely from about 10:00/gi) || []).length, 1, 'said once');
+  assert.match(html, /Rain likely from about 10:00\./);
+  assert.match(html, /wx-hgrid/);
+  assert.match(html, /0\.5 mm.*0\.6 mm.*0\.6 mm/s);
+  assert.match(html, /15–17°C.*11–17°C.*9–17°C/s);
+  // Different stories keep their own rows.
+  p.summary.forecast.horizons[0] = { ...hz(6, 0, '15–17°C'), rain: 'dry', words: 'dry', firstWetAt: null };
+  const html2 = render(m, { data: p });
+  assert.doesNotMatch(html2, /wx-hgrid/);
+  assert.equal(m.sameStory([{ hours: 6, rain: 'dry', words: 'dry' }, { hours: 12, rain: 'dry', words: 'dry' }]), false, 'an older payload without raw fields never groups');
+});
+
 test('a backend older than the split still shows its paragraph rather than nothing', async () => {
   const html = render(await load(), { data: payload({ summary: { paragraph: 'Old-style outlook text.', confidence: 'low' } }) });
   assert.match(html, /Old-style outlook text\./);

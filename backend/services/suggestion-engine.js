@@ -147,6 +147,7 @@ const SUGGESTION_RULES = [
       reason: 'Do your standup — 2 minutes',
       payload: {
         navigate: 'standup',
+        ritual: 'standup',
       },
     }),
   },
@@ -159,12 +160,14 @@ const SUGGESTION_RULES = [
       reason: 'Wrap up — do your EOD',
       payload: {
         navigate: 'standup',
+        ritual: 'eod',
       },
     }),
   },
   {
-    // Meeting imminent → open meeting prep
-    match: (item) => item.type === 'meeting' && item.meta?.minutesAway != null && item.meta.minutesAway <= 15,
+    // Meeting imminent → open meeting prep. Only a meeting with OTHER people in it:
+    // a solo block (live: "Task block: NT-24162 …", NEURO's own) has nobody to prep for.
+    match: (item) => item.type === 'meeting' && item.meta?.withOthers === true && item.meta?.minutesAway != null && item.meta.minutesAway <= 15,
     generate: (item) => ({
       type: 'open_meeting_prep',
       confidence: 0.8,
@@ -384,6 +387,32 @@ function parseSqlTimestamp(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/**
+ * A meeting's `start` as Graph gave it: Europe/London WALL-CLOCK time with no
+ * zone ("2026-10-09T09:00:00.0000000"), because calendar reads ask for that
+ * zone. parseSqlTimestamp would stamp it as UTC, so in BST a 09:00 prep card
+ * stayed "not started" until 10:00 (live, 9 Oct 2026). A string that carries
+ * its own zone is read as-is. PURE apart from Intl.
+ */
+function parseWallClock(value, tz = process.env.NEURO_TIMEZONE || 'Europe/London') {
+  const s = String(value || '').trim();
+  // Only Graph's "T" form with no zone is wall-clock. SQLite's "YYYY-MM-DD HH:MM:SS" is UTC and stays so.
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
+  if (!m) return parseSqlTimestamp(s);
+  const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    .formatToParts(new Date(guess)).map((p) => [p.type, p.value]));
+  const rendered = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  return new Date(guess - (rendered - guess));
+}
+
+/** Which ritual an open_standup shortcut is for. Older rows carry no `ritual`; their reason says. */
+function ritualOf(action) {
+  const r = action.payload && action.payload.ritual;
+  if (r === 'standup' || r === 'eod') return r;
+  return /\bEOD\b|wrap up/i.test(String(action.reason || '')) ? 'eod' : 'standup';
+}
+
 /** Local calendar day — never toISOString(); the Pi may run in UTC. */
 function localDay(d) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -396,12 +425,19 @@ function localDay(d) {
  * Pure: takes the action and "now", touches no DB and no clock, so the rule can
  * be pinned without a database or a particular time of day.
  */
-function navigationExpiry(action, now = new Date()) {
+function navigationExpiry(action, now = new Date(), { rituals = null } = {}) {
   if (!action) return null;
   if (actionPresenter.describe(action).kind !== actionPresenter.NAVIGATE) return null;
 
-  const start = parseSqlTimestamp(action.payload?.start) || null;
+  const start = parseWallClock(action.payload?.start) || null;
   if (start && start <= now) return 'the meeting it was prepping for has already started';
+
+  // "Do your standup" after the standup is done is a shortcut to nothing (9 Oct 2026).
+  // `rituals` comes from today's daily note; unknown (null) retires nothing.
+  if (action.type === 'open_standup' && rituals) {
+    const which = ritualOf(action);
+    if (rituals[which] === true) return which === 'eod' ? 'the EOD is already done today' : 'the standup is already done today';
+  }
 
   const created = parseSqlTimestamp(action.created_at);
   if (created && localDay(created) !== localDay(now)) return 'a shortcut to "now", raised on an earlier day';
@@ -424,7 +460,7 @@ function expiryMomentFor(action, now = new Date()) {
   if (!action) return null;
   if (actionPresenter.describe(action).kind !== actionPresenter.NAVIGATE) return null;
 
-  const start = parseSqlTimestamp(action.payload?.start) || null;
+  const start = parseWallClock(action.payload?.start) || null;
 
   // End of the LOCAL day it was raised — "a shortcut to now, raised on an
   // earlier day" is what the sweep retires, so midnight is the deadline.
@@ -444,11 +480,19 @@ function expiryMomentFor(action, now = new Date()) {
  * the rejection history is a record of what he turned down. Follows the
  * `superseded` status action-candidates already uses for the same reason.
  */
-function expireStaleNavigation(now = new Date()) {
+function _ritualsToday() {
+  try {
+    const note = require('./obsidian').readTodayDailyNote() || '';
+    const sa = require('./standup-accountability');
+    return { standup: !!sa.standupDoneIn(note), eod: !!sa.parseDailyNote(note).eodDone };
+  } catch { return null; }
+}
+
+function expireStaleNavigation(now = new Date(), { rituals = _ritualsToday() } = {}) {
   const expired = [];
   try {
     for (const action of db.getPendingSaimActions(NAV_READ_ALL)) {
-      const reason = navigationExpiry(action, now);
+      const reason = navigationExpiry(action, now, { rituals });
       if (!reason) continue;
       db.updateSaimActionStatus(action.id, 'expired');
       expired.push({ id: action.id, type: action.type, reason });
@@ -848,6 +892,8 @@ module.exports = {
   logActionExecution,
   queueAction,
   navigationExpiry,
+  parseWallClock,
+  SUGGESTION_RULES,
   expiryMomentFor,
   expireStaleNavigation,
   // Pure, so the "offered once" rule pins without a database.

@@ -39,6 +39,36 @@ test('a prep card for a meeting still to come stands', () => {
   assert.equal(navigationExpiry(action({ payload: { start: '2026-08-17 12:10:00' } }), NOW), null);
 });
 
+// Live 9 Oct 2026: Graph's start "2026-10-09T09:00:00.0000000" is LONDON wall-clock
+// (BST, = 08:00Z). Read as UTC it stayed "not started" until 10:00 local.
+test('a Graph wall-clock start is London time, not UTC', () => {
+  const { parseWallClock } = require('./suggestion-engine');
+  assert.equal(parseWallClock('2026-10-09T09:00:00.0000000').toISOString(), '2026-10-09T08:00:00.000Z', 'BST');
+  assert.equal(parseWallClock('2026-12-09T09:00:00').toISOString(), '2026-12-09T09:00:00.000Z', 'GMT');
+  assert.equal(parseWallClock('2026-10-09T09:00:00Z').toISOString(), '2026-10-09T09:00:00.000Z', 'an explicit zone is kept');
+  const at0915bst = new Date('2026-10-09T08:15:00Z');
+  const live = action({ payload: { navigate: 'meeting-prep', start: '2026-10-09T09:00:00.0000000' }, created_at: '2026-10-09 07:50:00' });
+  assert.match(navigationExpiry(live, at0915bst), /already started/);
+});
+
+test('"do your standup" is spent once the standup is done; the EOD one once the EOD is', () => {
+  const s = action({ type: 'open_standup', payload: { navigate: 'standup', ritual: 'standup' } });
+  const e = action({ type: 'open_standup', payload: { navigate: 'standup' }, reason: 'Wrap up — do your EOD' });
+  assert.equal(navigationExpiry(s, NOW, { rituals: { standup: false, eod: false } }), null);
+  assert.match(navigationExpiry(s, NOW, { rituals: { standup: true, eod: false } }), /standup is already done/);
+  assert.equal(navigationExpiry(e, NOW, { rituals: { standup: true, eod: false } }), null, 'an older row with no ritual reads its reason');
+  assert.match(navigationExpiry(e, NOW, { rituals: { standup: true, eod: true } }), /EOD is already done/);
+  assert.equal(navigationExpiry(s, NOW, { rituals: null }), null, 'unknown retires nothing');
+});
+
+test('no prep card for a solo block — only a meeting with other people in it', () => {
+  const rules = require('./suggestion-engine').SUGGESTION_RULES;
+  assert.ok(Array.isArray(rules) && rules.length, 'positive control: the rule table is readable');
+  const prep = rules.find((r) => r.match({ type: 'meeting', meta: { minutesAway: 10, withOthers: true } }));
+  assert.ok(prep, 'positive control: a real meeting gets prep');
+  assert.ok(!rules.some((r) => r.match({ type: 'meeting', title: 'Task block: NT-24162', meta: { minutesAway: 10, withOthers: false } })));
+});
+
 test('a shortcut raised on an earlier day is spent even with no moment in its payload', () => {
   const reason = navigationExpiry(
     action({ type: 'open_standup', payload: { navigate: 'standup' }, created_at: '2026-08-16 09:00:00' }),

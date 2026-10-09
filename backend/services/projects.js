@@ -413,12 +413,32 @@ function _setStatement(subject, fields, now) {
     [subject, next.sphere, next.status, next.importance, next.next_task_id, _iso(now)]);
 }
 
+/**
+ * 9 Oct 2026 — the vault is the source of truth for projects (Nick). A statement
+ * about a project that HAS a hub note is written into the hub's frontmatter
+ * (`status:` / `sphere:`), surgically, through the one frontmatter writer; NEURO
+ * keeps no copy. Only a project with no hub (a repo Nick declared, a folder with
+ * no hub note) falls back to project_statements. Returns true when written.
+ */
+function _writeHub(p, key, value, { vaultRoot = process.env.OBSIDIAN_VAULT_PATH } = {}) {
+  if (!p || !p.hubPath || !vaultRoot) return false;
+  const file = path.join(vaultRoot, ...p.hubPath.split('/'));
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return false; }
+  const fe = require('./frontmatter-edit');
+  const next = value == null ? fe.removeFrontmatterKey(text, key) : fe.upsertFrontmatterValue(text, key, value);
+  if (next !== text) fs.writeFileSync(file, next);
+  _vaultCache = null;
+  return true;
+}
+
 function classifyProject(projectId, { sphere } = {}, { now = Date.now() } = {}) {
   if (!M.SPHERES.includes(sphere)) return { ok: false, status: 400, error: `sphere must be one of ${M.SPHERES.join(', ')}` };
   const p = _project(projectId);
   if (!p) return { ok: false, status: 404, error: 'no such project' };
   if (p.hardWork && sphere !== 'work') return { ok: false, status: 409, error: 'NOVA is work by rule and cannot be reclassified here' };
-  _setStatement(`project:${projectId}`, { sphere: sphere === 'unknown' ? null : sphere }, now);
+  if (_writeHub(p, 'sphere', sphere === 'unknown' ? null : sphere)) _setStatement(`project:${projectId}`, { sphere: null }, now);
+  else _setStatement(`project:${projectId}`, { sphere: sphere === 'unknown' ? null : sphere }, now);
   _log('project-classified', { name: p.name, sphere }, { subjectId: projectId, actor: 'nick', now, dedupeKey: `project-classified:${projectId}:${now}` });
   return { ok: true, project: _project(projectId) };
 }
@@ -430,7 +450,11 @@ function setProjectStatus(projectId, { status, importance } = {}, { now = Date.n
   const p = _project(projectId);
   if (!p) return { ok: false, status: 404, error: 'no such project' };
   const f = {};
-  if (status !== undefined) f.status = status === 'unknown' ? null : status;
+  if (status !== undefined) {
+    // Into the hub note when there is one; NEURO's own record only when there is not.
+    if (_writeHub(p, 'status', status === 'unknown' ? null : status)) f.status = null;
+    else f.status = status === 'unknown' ? null : status;
+  }
   if (importance !== undefined) f.importance = importance;
   _setStatement(`project:${projectId}`, f, now);
   if (status !== undefined) _log('project-status-set', { name: p.name, status: status || 'cleared', was: p.status.status }, { subjectId: projectId, actor: 'nick', now, dedupeKey: `project-status-set:${projectId}:${now}` });
