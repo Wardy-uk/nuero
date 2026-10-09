@@ -7,6 +7,7 @@ const stressScore = require('../services/stress-score');
 const appleHealth = require('../services/apple-health');
 const healthDaily = require('../services/health-daily');
 const healthSamples = require('../services/health-samples');
+const jcRingProtocol = require('../services/jc-ring-protocol');
 
 // Past a week the daily rollup is the honest source and this read is both
 // slower and a different statistic. Refused, never clamped.
@@ -114,6 +115,21 @@ router.get('/ring-diagnostic', (req, res) => {
     return res.json({ available: true, capture: JSON.parse(raw) });
   } catch {
     return res.status(500).json({ error: 'could not read ring diagnostic' });
+  }
+});
+
+// GET /api/health/ring-diagnostic/decoded — structural inspection of the raw
+// trace. This deliberately returns raw labels such as `streamSamples`, not a
+// made-up health metric, until a command/response experiment verifies meaning.
+router.get('/ring-diagnostic/decoded', (req, res) => {
+  try {
+    const raw = db.getState(RING_DIAGNOSTIC_STATE_KEY);
+    if (!raw) return res.json({ available: false });
+    const capture = JSON.parse(raw);
+    return res.json({ available: true, receivedAt: capture.receivedAt,
+      decoded: jcRingProtocol.inspect(capture.packets) });
+  } catch {
+    return res.status(500).json({ error: 'could not decode ring diagnostic' });
   }
 });
 

@@ -72,6 +72,11 @@ test('manual diagnostic capture is stored and can be retrieved for decoding', as
   assert.deepEqual(result.capture.packets, capture.packets);
   assert.deepEqual(result.capture.characteristics, capture.characteristics);
   assert.deepEqual(result.capture.probes, capture.probes);
+
+  const decoded = await (await fetch(`${base}/api/health/ring-diagnostic/decoded`)).json();
+  assert.equal(decoded.available, true);
+  assert.equal(decoded.decoded.notifications, 1);
+  assert.equal(decoded.decoded.headers.AA, 1);
 });
 
 test('invalid data is refused and cannot overwrite the last usable capture', async () => {
