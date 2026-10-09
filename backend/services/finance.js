@@ -141,6 +141,7 @@ function obligationState(o, { today, task = null, evidence = null, feedStale = f
 // ── the operational view (PURE over the contract + NEURO's own facts) ───────────
 
 const MATERIAL = /^materially_/;
+const MAJOR_ANNUAL_PENCE = 5000; // a price change is "major" on the operational view at £50 a year or more
 
 /**
  * What matters to Nick operationally, from Tally's facts. Selection and wording
@@ -160,9 +161,11 @@ function operational(contract, { today, obligations: obs = [], vehicles = [] } =
     untilNextIncome: c.cashflow.toNextIncome ? { through: c.cashflow.toNextIncome.through, projectedPence: c.cashflow.toNextIncome.projectedPence, lowestPoint: c.cashflow.toNextIncome.lowestPoint } : null,
     excludedUnknowns: c.cashflow.excludedUnknowns,
   };
+  // "Major" is a SELECTION over Tally's own figures: a material spending or income trend, and a confirmed
+  // price change whose annual effect (Tally's number) is at least £50. The rest stays in Tally → Outlook.
   const changes = [
-    ...c.trends.items.filter((t) => MATERIAL.test(t.state) && ['spending', 'money out', 'income'].includes(t.measure)).map((t) => ({ kind: 'trend', state: t.state, line: t.line, timing: t.timing ? t.timing.note : null })),
-    ...c.priceChanges.items.filter((p) => p.confirmed && p.annualEffectPence != null).map((p) => ({ kind: 'price-change', line: `${p.label}: ${p.line}`, since: p.firstObserved })),
+    ...c.trends.items.filter((t) => MATERIAL.test(t.state) && ['spending', 'income'].includes(t.measure)).map((t) => ({ kind: 'trend', state: t.state, line: t.line, timing: t.timing ? t.timing.note : null })),
+    ...c.priceChanges.items.filter((p) => p.confirmed && p.annualEffectPence != null && Math.abs(p.annualEffectPence) >= MAJOR_ANNUAL_PENCE).map((p) => ({ kind: 'price-change', line: `${p.label}: ${p.line}`, since: p.firstObserved })),
   ];
   // Upcoming: what Tally knows that is explicit and dated (planned payments, annual payments) — never every
   // direct debit — beside the obligations Nick recorded in NEURO.

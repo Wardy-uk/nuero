@@ -434,3 +434,11 @@ test('render: the Finance card is operational, explains itself, and shows no ana
   assert.doesNotMatch(html, /fraud|suspicious|afford/i);
   current = contract(); await fin.refresh({ now: NOW });
 });
+
+test('major changes are a selection over Tally\'s figures: material trends, price changes worth £50 a year or more', () => {
+  const pc = (label, annual) => ({ seriesKey: `rs_${label}`, label, cadence: 'monthly', category: null, fromPence: 100, toPence: 200, changePence: 100, changePct: 10, annualEffectPence: annual, firstObserved: TODAY, seenTimes: 3, confirmed: true, line: 'x' });
+  const c = contract({ priceChanges: [pc('BIG', 33372), pc('SMALL', 1200)], trends: [
+    { measure: 'spending', state: 'materially_up', line: 'spending up', timing: null }, { measure: 'money out', state: 'materially_up', line: 'money out up', timing: null }, { measure: 'income', state: 'broadly_stable', line: 'income stable', timing: null }] });
+  const op = fin.operational(c, { today: TODAY, obligations: [], vehicles: [] });
+  assert.deepEqual(op.changes.map((x) => x.line), ['spending up', 'BIG: x']);
+});
