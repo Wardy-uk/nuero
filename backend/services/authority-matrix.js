@@ -271,7 +271,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   tasks: 'task.status', todos: 'task.status', 'task-dedupe': 'task.status', 'do-next': 'task.status', c: 'task.status', v: 'task.status', 'waiting-on': 'task.status',
   // sensors and devices
   location: 'ingest', health: 'ingest', device: 'ingest', apple: 'ingest', environment: 'ingest', weather: 'ingest', desktop: 'ingest', router: 'ingest', 'nova-signals': 'ingest',
-  v1: 'ingest', mobile: 'ingest', performance: 'ingest', rescuetime: 'ingest', training: 'ingest', jira: 'ingest',
+  v1: 'ingest', mobile: 'ingest', performance: 'ingest', rescuetime: 'ingest', jira: 'ingest',
   // notifications to Nick
   nudges: 'push.self', briefing: 'push.self', push: 'push.self',
   // preferences

@@ -1104,12 +1104,6 @@ server.tool('manage_kb_article',
     return { content: [{ type: 'text', text: `**${data.status}** — ${data.path}\n${(data.changes || []).join('\n')}` }] };
   });
 
-// Training matrix sync is owned by the n8n "Training Matrix Sync" workflow
-// which fetches NOVA /api/public/training-export and POSTs to NEURO
-// /api/training/apply-matrix on a schedule. No MCP tool exposes this — there
-// is no useful manual-trigger story from a chat client since the caller would
-// still need NOVA data to pass through.
-
 // ═══════════════════════════════════════════════════════
 // Tools: Health
 // ═══════════════════════════════════════════════════════

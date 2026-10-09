@@ -197,7 +197,6 @@ npm run dev:frontend     # vite
 | PIP deliverables | WeeklyRiskPanel `DeliverableTracker` | pip-deliverables (pure), `GET /api/weekly-risk/deliverables` |
 | Actions | ActionsPanel | routes/actions, action-presenter, suggestion-engine.executeAction |
 | QA | QATab | qa routes |
-| Training | — | training-sync |
 | Strava | StravaPanel | strava service (OAuth) |
 | Location | — | location service, OwnTracks integration |
 | Nudges | NudgeBanner | nudge routes, scheduler |

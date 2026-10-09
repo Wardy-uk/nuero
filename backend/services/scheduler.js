@@ -386,10 +386,6 @@ function start() {
     }
   });
 
-  // Training matrix sync is owned by n8n ("Training Matrix Sync" workflow) —
-  // it fetches NOVA /api/public/training-export and POSTs to NEURO
-  // /api/training/apply-matrix. No NEURO-side cron needed.
-
   // Monday 6:05am — refresh the gov.uk bank-holiday list (#25). Deliberately NOT
   // in state-of-play's TRACKED_JOBS: the feed is a static publication covering
   // years ahead and the service carries a compiled-in floor, so a missed week is

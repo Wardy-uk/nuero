@@ -59,10 +59,6 @@ test('every smoke script refuses to run without an explicit vault path', () => {
       `sanity: ${f} does not mention OBSIDIAN_VAULT_PATH at all`
     );
 
-    // smoke-apply-matrix builds its own mkdtemp vault and never reads the env
-    // var as an input, so it has nothing to refuse.
-    if (f === 'smoke-apply-matrix.js') continue;
-
     assert.match(
       src, /Refusing to run/,
       `${f} must refuse to run when OBSIDIAN_VAULT_PATH is unset`
