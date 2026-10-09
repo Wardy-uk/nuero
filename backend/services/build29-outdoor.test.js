@@ -543,6 +543,22 @@ test('a daily forecast older than 12 hours is not trusted', () => {
   forecast([RAINY_SAT]);
 });
 
+test('Now\'s outdoor block reaches the presentation every surface renders — context when relevant, nothing when quiet, promoted when severe', () => {
+  const pi = require('./presentation-intent');
+  const base = { contract: 'canonical-v1', situation: { calm: true, sections: {} } };
+  const calm = outdoor.nowBlock({ now: MONDAY });
+  const quietCtx = pi.composePresentation({ ...base, outdoor: { ...calm, relevant: false, items: [] } }, { now: MONDAY });
+  assert.ok(!(quietCtx.context || []).some((c) => c.kind === 'outdoor'), 'quiet Outdoor adds nothing');
+  const live = outdoor.nowBlock({ now: NOW });
+  assert.equal(live.relevant, true);
+  const pres = pi.composePresentation({ ...base, outdoor: live }, { now: NOW });
+  const c = (pres.context || []).find((x) => x.kind === 'outdoor');
+  assert.ok(c, 'a hike tomorrow is a context line');
+  assert.equal(c.label, 'Hike tomorrow');
+  const severe = pi.composePresentation({ ...base, outdoor: { ...live, needsYou: [{ kind: 'severe-weather', line: 'Severe weather is forecast for tomorrow\'s planned hike — keep it, move it or drop it?' }] } }, { now: NOW });
+  assert.ok((severe.observations || []).some((o) => o.kind === 'outdoor' && o.promoted));
+});
+
 // ── the card, rendered for real, from the REAL read ────────────────────────
 
 test('Life → Outdoor renders the live shape: goal state, the refused Saturday with its steps, route plans, sources — no map, no score', async () => {

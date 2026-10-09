@@ -419,6 +419,18 @@ function composePresentation(p, { now = Date.now() } = {}) {
         title: w.rain.starts ? `Rain from ${w.rain.starts}` : 'Rain soon', summary: null });
     }
   }
+  // Build 29Y: Outdoor only when its own rule says relevant (a hike today or
+  // tomorrow, a 24h question, a goal genuinely at risk, a failing source).
+  // Context, never ranked; a severe-weather decision is promoted like rain.
+  const od = p.outdoor;
+  if (od && od.relevant && Array.isArray(od.items) && od.items.length) {
+    const first = od.items[0];
+    const isPlan = first.kind === 'plan' && od.nextPlan && od.nextPlan.day === first.day;
+    const item = { id: 'outdoor', kind: 'outdoor', priority: 'P3', label: isPlan ? `${od.nextPlan.label} ${od.nextPlan.when}` : first.line,
+      detail: isPlan && first.weather ? first.weather.line : null };
+    if ((od.needsYou || []).length) observations.push({ ...item, priority: 'P2', promoted: true, title: od.needsYou[0].line, summary: item.detail });
+    else context.push(item);
+  }
   const ln = p.lastNight;
   if (ln && ln.known !== false && Number.isFinite(ln.asleepHours)) {
     const item = { id: 'sleep', kind: 'sleep', priority: 'P3', label: `Slept ${hoursPhrase(ln.asleepHours)}`, detail: ln.usualLine || null };
