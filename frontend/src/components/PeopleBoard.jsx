@@ -376,19 +376,19 @@ function BookAllDialog({ names, onClose, onBooked }) {
 
         {result ? (
           <div className="book-dialog-body">
-            <div className={result.prepared ? 'book-ok' : 'book-error'}>
-              {result.prepared || 0} invite{result.prepared === 1 ? '' : 's'} prepared — not sent
-              {result.failed ? ` · ${result.failed} not prepared` : ''}
+            <div className={result.invited ? 'book-ok' : 'book-error'}>
+              {result.invited || 0} of {result.prepared || 0} invite{result.prepared === 1 ? '' : 's'} sent
+              {result.failed ? ` · ${result.failed} not booked` : ''}
             </div>
-            {/* Build 11K: an invite is a governed calendar action. Nothing is in
-                anyone's diary until Nick approves it in Actions. */}
-            {result.prepared > 0 && <div className="book-note">Approve them in Actions with your approval code; NEURO then sends each invite and reads it back.</div>}
+            {/* 9 Oct 2026: pressing Book is the approval. Said from what the
+                governed send actually reported, never assumed. */}
+            {result.notice && <div className="book-note">{result.notice}</div>}
             <ul className="book-results">
               {(result.results || []).map((r, i) => (
                 <li key={i} className={r.ok ? 'ok' : 'bad'}>
                   <span className="book-results-name">{r.person}</span>
                   {r.ok
-                    ? <span>{formatDate(r.start?.split('T')[0])} {r.start ? hhmm(r.start) : ''} — prepared, awaiting approval</span>
+                    ? <span>{formatDate(r.start?.split('T')[0])} {r.start ? hhmm(r.start) : ''} — {r.invited ? 'sent' : (r.notice || 'not sent — see Actions')}</span>
                     : <span>{r.error}</span>}
                 </li>
               ))}
@@ -530,10 +530,10 @@ function BookDialog({ name, onClose, onBooked }) {
 
         {booked ? (
           <div className="book-dialog-body">
-            <div className="book-ok">
-              Invite prepared for {formatDate(slot?.date)} at {bookedTime} — not sent.
+            <div className={booked.invited ? 'book-ok' : 'book-error'}>
+              {booked.invited ? 'Invite sent' : 'Invite NOT sent'} for {formatDate(slot?.date)} at {bookedTime}.
             </div>
-            <div className="book-note">{booked.notice || 'Approve it in Actions with your approval code; NEURO then sends the invite and reads it back.'}</div>
+            {booked.notice && <div className="book-note">{booked.notice}</div>}
             <div className="book-actions">
               <button className="btn btn-primary" onClick={onClose}>Done</button>
             </div>
@@ -653,10 +653,10 @@ function RescheduleDialog({ name, onClose, onMoved }) {
 
         {moved ? (
           <div className="book-dialog-body">
-            <div className="book-ok">
-              Move to {formatDate(slot?.date)} at {slot?.time} prepared — not sent. {first} is told only once you approve it.
+            <div className={moved.moved ? 'book-ok' : 'book-error'}>
+              {moved.moved ? `Moved to ${formatDate(slot?.date)} at ${slot?.time} — ${first} has been told.` : `Not moved to ${formatDate(slot?.date)} at ${slot?.time}.`}
             </div>
-            <div className="book-note">{moved.notice || 'Approve it in Actions with your approval code.'}</div>
+            {moved.notice && <div className="book-note">{moved.notice}</div>}
             {moved.moveCount >= 3 && (
               <div className="book-warning">
                 That's {moved.moveCount} moves for this 1-2-1.

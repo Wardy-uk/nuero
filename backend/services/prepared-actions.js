@@ -371,8 +371,13 @@ const switchOn = (type) => require('./feature-flags').isEnabled(registry.switchF
  * Approval of a non-executable type is recorded and runs nothing; the response
  * says which. Executing is the executor's job, triggered by the route.
  */
+// Origins whose own button press is the approval (Nick, 9 Oct 2026): he has
+// read the proposal and pressed Book / Move, so a second card and a code is the
+// same decision twice. Everything else — anything NEURO drafted — still waits.
+const BUTTON_APPROVED_ORIGINS = Object.freeze(['1to1-book', '1to1-move']);
+
 function approve(actionId, {
-  payloadHash = null, challengeId = null, approvalCode = null, deviceToken = null, approver = null, note: why = null,
+  payloadHash = null, challengeId = null, approvalCode = null, deviceToken = null, buttonPress = null, approver = null, note: why = null,
   now = Date.now(), sending = sendingEnabled,
 } = {}) {
   const nowMs = msOf(now);
@@ -419,7 +424,14 @@ function approve(actionId, {
   // PIN / API token never can.
   const proofs = require('./approval-proof');
   let proof;
-  if (deviceToken && !approvalCode) {
+  if (buttonPress) {
+    // The press IS the approval — only for the origins listed, only for the
+    // action that press prepared, never for anything NEURO drafted itself.
+    if (!BUTTON_APPROVED_ORIGINS.includes(buttonPress) || cur.origin !== buttonPress) {
+      return { ok: false, code: 403, error: `a ${buttonPress} press cannot approve this action — it needs approving in Actions` };
+    }
+    proof = proofs.consumeButtonPress({ button: buttonPress, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
+  } else if (deviceToken && !approvalCode) {
     proof = proofs.consumeDevice({ deviceToken, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
   } else {
     // Burns the challenge whatever the outcome.
@@ -1234,7 +1246,7 @@ module.exports = {
   shouldPrepare, draftFor, actionPhrase,
   prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,
   prepareReply, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, agendaAsked,
-  prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel,
+  prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel, BUTTON_APPROVED_ORIGINS,
   approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,
   get, forFinding, forCommitment, list, listLive, needsYou, countsByStatus,

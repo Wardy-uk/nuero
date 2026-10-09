@@ -635,6 +635,31 @@ test('36. create_meeting in chat PREPARES and says nobody was invited', async ()
   assert.equal(bad.ok, false);
 });
 
+test('9 Oct 2026: pressing Book / Move IS the approval — no card, no code — and only for that press', async () => {
+  // Book's own action: approved by the press, executed, read back.
+  const a = prepInvite();
+  const r = pa.approve(a.actionId, { approver: 'nick (pressed the button)', payloadHash: a.payloadHash, buttonPress: '1to1-book', now: NOW + MIN, sending: () => true });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.action.approval.mechanism, 'button-press');
+  const x = await ex.execute(a.actionId, { now: NOW + 2 * MIN, deps: calDeps() });
+  assert.equal(x.status, 'verified', JSON.stringify(x));
+  // The press cannot approve an action some OTHER origin prepared (a chat or
+  // composer invite still waits in Actions) …
+  const other = prepInvite({ origin: 'event-composer' });
+  const refused = pa.approve(other.actionId, { approver: 'nick', payloadHash: other.payloadHash, buttonPress: '1to1-book', now: NOW + MIN, sending: () => true });
+  assert.equal(refused.ok, false);
+  assert.equal(pa.get(other.actionId).status, 'prepared');
+  // … nor claim an origin that is not on the list.
+  const third = prepInvite({ origin: 'chat' });
+  assert.equal(pa.approve(third.actionId, { approver: 'nick', payloadHash: third.payloadHash, buttonPress: 'chat', now: NOW + MIN, sending: () => true }).ok, false);
+  // The switch still holds: off means not approved, not silently held.
+  const held = prepInvite();
+  const off = pa.approve(held.actionId, { approver: 'nick', payloadHash: held.payloadHash, buttonPress: '1to1-book', now: NOW + MIN, sending: () => false });
+  assert.equal(off.ok, false);
+  assert.match(off.error, /switched off/);
+  assert.deepEqual([...pa.BUTTON_APPROVED_ORIGINS].sort(), ['1to1-book', '1to1-move']);
+});
+
 test('no calendar write to other people exists outside the governed executor', () => {
   const root = path.join(__dirname, '..');
   const files = [...fs.readdirSync(path.join(root, 'services')).map((f) => `services/${f}`), ...fs.readdirSync(path.join(root, 'routes')).map((f) => `routes/${f}`)]

@@ -405,10 +405,41 @@ async function findClash(start, end) {
 }
 
 /**
+ * The press IS the approval (Nick, 9 Oct 2026: "booking 1-2-1s should NOT need
+ * approval ... and certainly not a code"). The invite still goes through the
+ * governed path — ledger, single attempt, read-back — it just does not stop in
+ * Actions to be approved a second time. If it cannot be approved here (the
+ * "Send approved calendar changes" switch is off), it is left prepared and the
+ * reason is SAID, never reported as sent.
+ */
+async function _sendPrepared(actionId, origin) {
+  const pa = require('./prepared-actions');
+  const cur = pa.get(actionId);
+  if (!cur) return { sent: false, status: null, notice: 'Prepared, but it could not be read back — check Actions.' };
+  if (cur.status === 'prepared') {
+    const a = pa.approve(actionId, {
+      payloadHash: cur.payloadHash, buttonPress: origin, approver: 'nick (pressed the button, signed in to NEURO)',
+    });
+    if (!a.ok) return { sent: false, status: 'prepared', notice: `Not sent: ${a.error} It is waiting in Actions.` };
+  }
+  try { await require('./action-executor').execute(actionId); }
+  catch (e) { console.warn(`[1-2-1] executor after ${origin}:`, e.message); }
+  const after = pa.get(actionId) || {};
+  const sent = ['executed', 'verified'].includes(after.status);
+  return {
+    sent,
+    status: after.status || null,
+    notice: sent ? 'Sent — the calendar was read back to confirm it.'
+      : after.status === 'execution_uncertain' ? 'Sent, but NEURO could not confirm it yet — it will check the calendar and say so in Actions.'
+      : `Not sent (${after.status || 'unknown'}) — see Actions for why.`,
+  };
+}
+
+/**
  * PREPARE the invite (Build 11K). Only ever called after Nick has seen the
  * proposal — and it still invites nobody: Graph emails a real invite to a
  * real direct report, so the booking is a governed `create_calendar_event`
- * that Nick approves with his approval code in Actions. The stamps that used
+ * that the Book press itself approves (9 Oct 2026 — no second card, no code). The stamps that used
  * to follow the create (1-2-1-booked, NOVA's session) now run when the invite
  * has actually been made — afterGovernedCalendar() — never on a request.
  *
@@ -436,16 +467,17 @@ async function book({ person, start, end, email, subject, durationMinutes, skipC
     context: { person, durationMinutes: durationMinutes || DEFAULT_DURATION_MIN },
   });
   if (!r.ok) return { ok: false, error: r.error };
+  const sent = await _sendPrepared(r.action.actionId, '1to1-book');
   return {
     ok: true,
     prepared: true,
     already: !!r.already,
     person,
     actionId: r.action.actionId,
-    status: r.action.status,
-    invited: false,
+    status: sent.status,
+    invited: sent.sent,
     durationMinutes: durationMinutes || DEFAULT_DURATION_MIN,
-    notice: 'Prepared, not sent: approve the invite in Actions (with your approval code) and NEURO sends it, then reads it back.',
+    notice: sent.notice,
   };
 }
 
@@ -686,19 +718,21 @@ async function reschedule({ person, eventId, start, end, reason = null, skipClas
     start, end, origin: '1to1-move', context: { person, reason },
   });
   if (!r.ok) return { ok: false, error: r.error };
+  const sent = await _sendPrepared(r.action.actionId, '1to1-move');
   return {
     ok: true,
     prepared: true,
     already: !!r.already,
     person,
     actionId: r.action.actionId,
-    status: r.action.status,
+    status: sent.status,
+    moved: sent.sent,
     movedFrom: found.event.start,
     // Unchanged: the count says how often it has ACTUALLY moved. This one is
     // only prepared, so it is not counted until it happens.
     moveCount: priorMoves.length,
     previousMoves: priorMoves.slice(0, 5),
-    notice: 'Prepared, not sent: approve the move in Actions (with your approval code) and NEURO moves it — your colleague is told — then reads it back.',
+    notice: sent.notice,
   };
 }
 
@@ -784,18 +818,21 @@ async function bookAll(items = []) {
     if (outcome.ok && events) reserve(events, person, { date: start.split('T')[0], start, end });
   }
 
-  // Build 11K: nothing here is booked or invited — each success is a PREPARED
-  // invite awaiting Nick's approval. Said in the counts, so no screen can read
-  // "booked" off a request that has not happened.
+  // Since 9 Oct 2026 the press approves, so each success is SENT unless the
+  // calendar switch is off or the send failed — counted from what the governed
+  // path actually reports, never assumed.
   const prepared = results.filter(r => r.ok);
+  const invited = prepared.filter(r => r.invited).length;
   return {
     ok: prepared.length > 0,
     prepared: prepared.length,
-    booked: 0,
+    booked: invited,
     failed: results.length - prepared.length,
-    invited: 0,
+    invited,
     results,
-    notice: prepared.length ? `${prepared.length} invite${prepared.length === 1 ? '' : 's'} prepared — approve them in Actions with your approval code. Nobody has been invited yet.` : null,
+    notice: !prepared.length ? null
+      : invited === prepared.length ? `${invited} invite${invited === 1 ? '' : 's'} sent and read back from the calendar.`
+      : `${invited} of ${prepared.length} sent — the rest are waiting in Actions (each row says why).`,
   };
 }
 

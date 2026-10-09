@@ -341,13 +341,40 @@ function revokeDevice(id) {
   return { ok: true, revoked: id };
 }
 
+// ── the button IS the approval (9 Oct 2026) ─────────────────────────────────
+//
+// Nick: "booking 1-2-1s should NOT need approval" — and "certainly not a code,
+// that is ultimate friction". Pressing Book (or Move) on a proposal he has just
+// read IS the decision; a second card and a code on top of it is the same
+// decision asked twice. So for the few button origins prepared-actions allows,
+// the press is recorded as the proof: an ACCEPTED challenge row for this exact
+// action, version and payload, issued_to `button:<origin>`, mechanism
+// 'button-press'. The DB trigger still holds — the row is real — and the
+// provenance says plainly that no code was asked for.
+//
+// ⚠ The honest cost: a PIN holder that does not declare itself a machine could
+// press it too. The routes refuse the API token and the authority matrix
+// refuses declared machine clients, which is the same bar every other
+// PIN-only button in NEURO has.
+const BUTTON_MECHANISM = 'button-press';
+function consumeButtonPress({ button, actionId, version, payloadHash, now = Date.now() }) {
+  _ensureTable();
+  if (!button || typeof button !== 'string') return { ok: false, code: 400, error: 'which button?' };
+  const nowMs = msOf(now);
+  const challengeId = `ch_${crypto.randomBytes(16).toString('hex')}`;
+  db.run(`INSERT INTO approval_challenges (challenge_id, action_id, version, payload_hash, issued_at, expires_at, issued_to, used_at, used_outcome)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accepted')`,
+  [challengeId, actionId, Number(version) || 1, payloadHash, iso(nowMs), iso(nowMs), `button:${button}`, iso(nowMs)]);
+  return { ok: true, proof: { mechanism: BUTTON_MECHANISM, challengeId, actionId, version: Number(version) || 1, payloadHash, at: iso(nowMs) } };
+}
+
 function challenge(challengeId) {
   _ensureTable();
   return db.get('SELECT * FROM approval_challenges WHERE challenge_id = ?', [challengeId]) || null;
 }
 
 module.exports = {
-  MECHANISM, DEVICE_MECHANISM, CHALLENGE_TTL_MS, MAX_FAILURES, LOCKOUT_MS, MIN_CODE_LENGTH,
+  MECHANISM, DEVICE_MECHANISM, BUTTON_MECHANISM, consumeButtonPress, CHALLENGE_TTL_MS, MAX_FAILURES, LOCKOUT_MS, MIN_CODE_LENGTH,
   codeStatus, setCode, issue, consume, lockStatus, challenge, _ensureTable,
   trustDevice, deviceStatus, consumeDevice, listDevices, revokeDevice, setCodeFromScreen,
 };
