@@ -66,3 +66,11 @@ test('decodes a plausible one-off 0x28 HRV result but not its acknowledgement', 
     source: 'J2301 one-off HRV vendor estimate',
   }]);
 });
+
+test('does not mistake 0x28 bytes inside a history payload for a one-off result', () => {
+  const decoded = protocol.inspect([{
+    kind: 'notification', receivedAt: '2026-10-09T20:17:00Z',
+    hex: '56 00 00 26 10 09 17 14 30 31 00 5C 28 01 5C 62 1F 2A 76 4B',
+  }]);
+  assert.deepEqual(decoded.oneOffHRVMeasurements, []);
+});
