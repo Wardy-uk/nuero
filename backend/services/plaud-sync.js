@@ -426,10 +426,11 @@ const FAILED_RETRY_MAX_AGE_DAYS = Number(process.env.PLAUD_FAILED_RETRY_DAYS || 
 /*
  * ⚠ AND IT MUST REACH BACK TO RECORDINGS PLAUD HAS NOT FINISHED PROCESSING.
  *
- * A "not ready" recording was skipped without a trace, so it widened nothing. Two 1-2-1s
- * recorded on 24 Sep 2026 sat unprocessed in PLAUD until 9 Oct — 15 days, one past the
- * lookback — and were never listed again. `pendingRecordings` holds each one's own
- * `startAt`, which is exact, so the reach is that date (less a day of margin).
+ * A "not ready" recording was skipped without a trace, so it widened nothing — a recording
+ * PLAUD takes longer than the lookback to process would age out. `pendingRecordings` holds
+ * each one's own `startAt`, which is exact, so the reach is that date (less a day of
+ * margin). (The 24 Sep 2026 1-2-1s that prompted this were actually lost to the page
+ * limit — see listRecordings — but this gap was real too.)
  */
 function incrementalDateFrom(lastSuccessfulSyncAt, incremental, lookbackDays = DEFAULT_SYNC_LOOKBACK_DAYS, failedRecordings = null, pendingRecordings = null) {
   if (!incremental || !lastSuccessfulSyncAt) return undefined;
@@ -464,18 +465,22 @@ function incrementalDateFrom(lastSuccessfulSyncAt, incremental, lookbackDays = D
   return from.toISOString().slice(0, 10);
 }
 
+/**
+ * ⚠ `date_from` DOES NOT LIFT THE PAGE LIMIT. Measured 2026-10-09: `list_files` with
+ * `date_from: 2026-08-11` returned the 20 NEWEST recordings (30 Sep–9 Oct) of 119. The
+ * incremental sync made that one call and never asked for page 2, so it only ever saw
+ * about ten days — whatever the window said. Recordings PLAUD finished late, and every
+ * failure owed a retry, fell off the end. Always page, with or without a date.
+ */
 async function listRecordings(client, dateFrom) {
-  if (dateFrom) {
-    const payload = await callTool(client, 'list_files', { date_from: dateFrom });
-    return extractRecordingList(payload);
-  }
-
   const all = [];
   let page = 1;
   const pageSize = 100;
 
   while (true) {
-    const payload = await callTool(client, 'list_files', { page, page_size: pageSize });
+    const args = { page, page_size: pageSize };
+    if (dateFrom) args.date_from = dateFrom;
+    const payload = await callTool(client, 'list_files', args);
     const batch = extractRecordingList(payload);
     all.push(...batch);
     if (batch.length < pageSize) break;
@@ -2023,6 +2028,7 @@ module.exports = {
     parseLeadingJson,
     assertUsableDetails,
     incrementalDateFrom,
+    listRecordings,
     buildNoteBaseName,
     isRetryableError,
   },

@@ -301,6 +301,25 @@ test('a full (non-incremental) sync is still unbounded', () => {
   assert.equal(incrementalDateFrom(AT, false, 14, { a: { failedAt: '2026-08-12T00:00:00Z' } }), undefined);
 });
 
+// ── An incremental listing pages, like a full one ──
+//
+// PLAUD caps `list_files` at 20 even with `date_from`; one call saw ~10 days of 119 recordings.
+
+test('a dated listing asks for every page, carrying date_from on each', async () => {
+  const { listRecordings } = require('./plaud-sync')._internal;
+  const calls = [];
+  const client = {
+    callTool: async ({ arguments: args }) => {
+      calls.push(args);
+      const n = args.page === 1 ? 100 : 19;
+      return { content: [], structuredContent: { data: Array.from({ length: n }, (_, i) => ({ id: `${args.page}-${i}` })) } };
+    },
+  };
+  const out = await listRecordings(client, '2026-08-11');
+  assert.equal(out.length, 119);
+  assert.deepEqual(calls.map(c => [c.page, c.date_from]), [[1, '2026-08-11'], [2, '2026-08-11']]);
+});
+
 // ── A recording PLAUD has not finished processing keeps the window open ──
 //
 // Two 1-2-1s recorded 24 Sep 2026 were processed by PLAUD on 9 Oct. "Not ready" left no
