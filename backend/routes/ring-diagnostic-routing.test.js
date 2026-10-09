@@ -26,6 +26,12 @@ const capture = {
     receivedAt: '2026-10-09T11:00:00Z', service: '56FF', characteristic: '56FF01',
     hex: 'AA 01 02', kind: 'notification',
   }],
+  probes: [{
+    occurredAt: '2026-10-09T11:01:00Z', kind: 'read-request', label: 'Manual read',
+    service: '56FF', characteristic: '56FF01',
+  }, {
+    occurredAt: '2026-10-09T11:02:00Z', kind: 'observation', label: 'movement started',
+  }],
 };
 
 test.before(async () => {
@@ -55,6 +61,7 @@ test('manual diagnostic capture is stored and can be retrieved for decoding', as
   assert.equal(receiptBody.ok, true);
   assert.equal(receiptBody.packetsStored, 1);
   assert.equal(receiptBody.characteristicsStored, 1);
+  assert.equal(receiptBody.probesStored, 2);
   assert.ok(Date.parse(receiptBody.receivedAt));
 
   const read = await fetch(`${base}/api/health/ring-diagnostic`);
@@ -64,6 +71,7 @@ test('manual diagnostic capture is stored and can be retrieved for decoding', as
   assert.equal(result.capture.client, 'Neuro iOS');
   assert.deepEqual(result.capture.packets, capture.packets);
   assert.deepEqual(result.capture.characteristics, capture.characteristics);
+  assert.deepEqual(result.capture.probes, capture.probes);
 });
 
 test('invalid data is refused and cannot overwrite the last usable capture', async () => {
@@ -73,4 +81,16 @@ test('invalid data is refused and cannot overwrite the last usable capture', asy
 
   const result = await (await fetch(`${base}/api/health/ring-diagnostic`)).json();
   assert.equal(result.capture.packets[0].hex, 'AA 01 02');
+});
+
+test('an oversized or malformed protocol probe is refused', async () => {
+  const refused = await post({
+    ...capture,
+    probes: [{ ...capture.probes[0], label: 'x'.repeat(161) }],
+  });
+  assert.equal(refused.status, 400);
+  assert.equal((await refused.json()).ok, false);
+
+  const result = await (await fetch(`${base}/api/health/ring-diagnostic`)).json();
+  assert.equal(result.capture.probes.length, 2, 'the useful capture remains intact');
 });

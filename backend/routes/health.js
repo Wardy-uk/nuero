@@ -14,6 +14,7 @@ const MAX_SAMPLE_HOURS = 24 * 7;
 const RING_DIAGNOSTIC_STATE_KEY = 'jc_ring_diagnostic';
 const MAX_RING_DIAGNOSTIC_PACKETS = 500;
 const MAX_RING_DIAGNOSTIC_CHARACTERISTICS = 100;
+const MAX_RING_DIAGNOSTIC_PROBES = 300;
 
 function shortText(value, limit) {
   return typeof value === 'string' && value.length <= limit ? value : null;
@@ -26,11 +27,13 @@ function shortText(value, limit) {
  */
 function ringDiagnostic(body, client) {
   if (!body || typeof body !== 'object') return { ok: false, error: 'JSON body required' };
-  if (!Array.isArray(body.packets) || !Array.isArray(body.characteristics)) {
+  if (!Array.isArray(body.packets) || !Array.isArray(body.characteristics) ||
+      (body.probes !== undefined && !Array.isArray(body.probes))) {
     return { ok: false, error: 'packets and characteristics arrays are required' };
   }
   if (body.packets.length > MAX_RING_DIAGNOSTIC_PACKETS ||
-      body.characteristics.length > MAX_RING_DIAGNOSTIC_CHARACTERISTICS) {
+      body.characteristics.length > MAX_RING_DIAGNOSTIC_CHARACTERISTICS ||
+      (body.probes?.length || 0) > MAX_RING_DIAGNOSTIC_PROBES) {
     return { ok: false, error: 'diagnostic capture exceeds its safe size limit' };
   }
 
@@ -58,6 +61,23 @@ function ringDiagnostic(body, client) {
     characteristics.push({ service, uuid, properties: c.properties });
   }
 
+  const probes = [];
+  for (const p of body.probes || []) {
+    const occurredAt = shortText(p?.occurredAt, 64);
+    const kind = shortText(p?.kind, 32);
+    const label = shortText(p?.label, 160);
+    const service = p?.service === undefined ? undefined : shortText(p.service, 80);
+    const characteristic = p?.characteristic === undefined ? undefined : shortText(p.characteristic, 80);
+    const hex = p?.hex === undefined ? undefined : shortText(p.hex, 768);
+    if (!occurredAt || !kind || !label ||
+        (p?.service !== undefined && !service) ||
+        (p?.characteristic !== undefined && !characteristic) ||
+        (p?.hex !== undefined && !hex)) {
+      return { ok: false, error: 'a protocol probe has an invalid field' };
+    }
+    probes.push({ occurredAt, kind, label, service, characteristic, hex });
+  }
+
   const capture = {
     receivedAt: new Date().toISOString(),
     client: shortText(client, 80) || 'unknown',
@@ -65,9 +85,11 @@ function ringDiagnostic(body, client) {
     capturedAt: shortText(body.capturedAt, 64),
     characteristics,
     packets,
+    probes,
   };
   db.setState(RING_DIAGNOSTIC_STATE_KEY, JSON.stringify(capture));
-  return { ok: true, packetsStored: packets.length, characteristicsStored: characteristics.length, receivedAt: capture.receivedAt };
+  return { ok: true, packetsStored: packets.length, characteristicsStored: characteristics.length,
+    probesStored: probes.length, receivedAt: capture.receivedAt };
 }
 
 // POST /api/health/ring-diagnostic — an explicit, one-off protocol capture.
