@@ -55,6 +55,9 @@ function inspect(packets) {
         ? ringTimestamp(bytes, i + 3) : null;
       if (!timestamp) continue;
       for (let offset = 0; offset < 15 && heartRateSamples.length < 500; offset++) {
+        // Fixed-width records are zero-padded when there is only one result;
+        // zero is not a usable BPM value.
+        if (bytes[i + 9 + offset] === 0) continue;
         heartRateSamples.push({
           timestamp,
           bpm: bytes[i + 9 + offset],
