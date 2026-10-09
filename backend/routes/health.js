@@ -204,17 +204,22 @@ router.get('/ring-comparison', (req, res) => {
       blood_oxygen_saturation: db.getLatestHealthSample('blood_oxygen_saturation') || null,
       bloodPressure: healthSamples.latestBloodPressure(),
     };
-    const compare = (ringMetric, appleMetric) => {
+    const compare = (ringMetric, appleMetric, normaliseReference = value => value) => {
       const a = ring[ringMetric];
       const b = apple[appleMetric];
-      return { ring: a, reference: b,
-        difference: a && b && Number.isFinite(a.value) && Number.isFinite(b.value)
-          ? a.value - b.value : null };
+      const reference = b && Number.isFinite(b.value)
+        ? { ...b, value: normaliseReference(b.value) }
+        : b;
+      return { ring: a, reference,
+        difference: a && reference && Number.isFinite(a.value) && Number.isFinite(reference.value)
+          ? a.value - reference.value : null };
     };
     return res.json({
       heartRate: compare('heart_rate', 'heart_rate'),
       hrv: compare('hrv', 'hrv'),
-      oxygen: compare('blood_oxygen_saturation', 'blood_oxygen_saturation'),
+      // HealthKit stores saturation as 0–1; the J2301 ring stores whole
+      // percentage points. Put both on the visible percentage scale first.
+      oxygen: compare('blood_oxygen_saturation', 'blood_oxygen_saturation', value => value <= 1 ? value * 100 : value),
       bloodPressure: {
         ringEstimate: {
           systolic: ring.vendor_bp_systolic_estimate,
