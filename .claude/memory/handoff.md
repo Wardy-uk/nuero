@@ -50,6 +50,12 @@
 - Waiting on Nick's data: Personal Admin list + MOT/insurance dates, Ember care items, anniversary prep task. Next domain recommended: transport/vehicle.
 - ⚠ The MAIN working tree (C:/Users/NickW/Claude/nuero) is behind origin and holds another session's uncommitted training-sync removal, which overlaps scheduler.js, authority-matrix.js, api-inventory.json and CLAUDE.md that Build 20 changed: stash, pull --ff-only, pop, then regenerate the inventory. Build 20 was built in worktree C:/Users/NickW/Claude/nuero-b20 (branch build20) — remove it once main is synced.
 - nuero-63 (medical records session) was told to rebase onto 4222399 and regenerate the inventory.
+# Session Handoff — 2026-10-08 (medical records from the NHS app)
+
+- Live on pi5 at 79db704: LIFE → Medical page, /api/medical/{records,records/:id,tests/:name,scan}, table medical_records. Gateway offers get_medical_records, get_medical_tests_by_name, post_medical_records (ChatGPT path), post_medical_scan; delete is Nick-only (403 for machines, interactive in gateway).
+- NOT proven: a real vision read of an NHS screenshot (no model call made in tests), and a real ChatGPT post. First real use should be checked against the screenshot.
+- Medical record is empty (0 rows). Records are not in the vault/embeddings/Notion; chat cannot read them (no chat tool) — a possible follow-up.
+- Shared tree still holds another session's uncommitted training-sync removal (server.js, scheduler.js, authority-matrix.js, mcp-server/index.js, api-inventory.json, CLAUDE.md row, staged deletions). Untouched; they must rebase onto main (79db704) and re-run catalogue:refresh.
 
 ---
 
