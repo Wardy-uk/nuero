@@ -42,6 +42,7 @@ const MAX_LEAD_DAYS = 120;
 const FRESH_HOURS = 48;
 
 const FINANCE_KIND = { renewal: 'renewal', subscription_renewal: 'subscription', annual_fee: 'finance', bill: 'finance', household_charge: 'household', other: 'finance' };
+const BASIS_WORDS = { declared: 'you set it on this item', classified: 'you classified the list it is on', intrinsic: 'what its source is', set: 'set on the task' };
 const VEHICLE_TYPE_WORD = { mot: 'MOT', insurance: 'insurance', service: 'service', warranty: 'warranty', breakdown_cover: 'breakdown cover', tax: 'tax' };
 
 // ── pure ────────────────────────────────────────────────────────────────────
@@ -150,7 +151,12 @@ function fromObligation(o, { projectsByTask = new Map() } = {}) {
     canTick: /^task:neuro:\d+$/.test(o.id),
     realisedBy: o.realisedBy || null,
     evidence: [{ source: o.evidence && o.evidence.source, freshness: o.evidence && o.evidence.freshness }],
-    whyVisible: [...(o.whyPersonal || [])],
+    // Say WHAT was set, not just that something was: "Transport — you set it on
+    // this item". The generic annotation reason ("you set this") is replaced.
+    whyVisible: [
+      ...(o.domains || []).filter((d) => d.basis !== 'linked').map((d) => `${d.label || d.domain} — ${BASIS_WORDS[d.basis] || d.basis}${o.container && d.basis === 'classified' ? ` (the “${o.container.name}” list)` : ''}`),
+      ...(o.whyPersonal || []).filter((w) => !/^you set this$/i.test(w) && !(o.domains || []).some((d) => w.startsWith(d.label || '\u0000'))),
+    ],
     confidence: o.actionState === 'unknown' ? 'low' : 'high',
   };
 }

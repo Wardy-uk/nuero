@@ -92,7 +92,8 @@ test('2. an explicitly personal-admin task appears', () => {
   const v = compose([PA.fromObligation(obligation())]);
   assert.equal(v.items.length, 1);
   assert.equal(only(v).title, 'Renew the passport');
-  assert.ok(only(v).whyVisible.some((w) => /declared/.test(w)));
+  assert.ok(only(v).whyVisible.some((w) => /^Personal admin — you set it on this item$/.test(w)), JSON.stringify(only(v).whyVisible));
+  assert.ok(!only(v).whyVisible.some((w) => /^you set this$/i.test(w)), 'the vague reason is replaced');
 });
 
 test('3. a reminder from a list classified admin is admin; one from a family list is not', () => {
