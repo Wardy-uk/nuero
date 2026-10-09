@@ -1,3 +1,16 @@
+# Session Handoff — 2026-10-09 (Build 27: Transport intelligence; vehicle finance moved into Tally)
+
+- BOUNDARY CLOSED: NEURO's tally-vehicle.js (ssh+sqlite3), its 3 tables + vehicle_monthly_summaries and all vehicle money maths are deleted; /api/vehicle/finance/* answer 410. Tally owns car spend (src/server/intelligence/vehicle.ts, Outlook → Motoring, vehicleFinance in finance-intelligence-v1).
+- DEPLOYED: Tally 7465b32 (pi-dev by copy, backup ~/tally-predeploy-20261009-1252; Netlify; pushed to GitHub). NEURO 644f393 → fb70ad7 → 90f1bbf on origin/main + pi5 (gate 5859/0; frontend built; backend restarted; gateway rebuilt). Built in worktree nuero-b26 (branch build27, own npm ci, no junctions).
+- MIGRATION: Nick's 67 decisions + 9 rules imported into Tally (8 rules, 17 explicit, 50 re-derived). Export kept at pi5 /mnt/data/backups/build27/. Month compare: 6 equal, 4 differ — all Tally being more correct (pending TESCO PFS double-count, 3 car-park rows NEURO missed).
+- LIVE: Captur LD65BHP TDi; MOT 5 Nov (upcoming); tax/insurance/mileage/VIN unknown. Tally: Sep £101.48, Jul–Sep £418.87; 12m + trend unavailable (only 3 consecutive complete months). Cost/mile refused (no odometer). Health incomplete_data. Needs You empty. Radar: MOT only.
+- Ledger: #383 reused (mileage, tax, insurance); #398 created (make the MOT booking #374 the MOT's action).
+- New: services/transport.js + GET /api/transport, Life → Transport (TransportCard), fuel fills (POST /api/vehicle/:id/fuel), vehicles.vin/first_registered/ownership_start.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 27 Transport Intelligence.md; gap analysis appended. Next domain: deeper Home.
+- Known: mcp-server's VANTAGE inventory test fails (stale VANTAGE inventory, pre-existing, untouched).
+
+---
+
 # Session Handoff — 2026-10-09 (Build 26: Tally finance intelligence + NEURO operational finance)
 
 - BOUNDARY: Tally calculates all finance (`C:\Users\NickW\Claude\Tally`, `src/server/intelligence/`); NEURO reads `finance-intelligence-v1` (GET /api/intelligence/contract via tally-api) and calculates nothing. finance-model.js deleted; NEURO's recurring/unusual/category/rule routes answer 410.
