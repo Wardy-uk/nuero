@@ -172,6 +172,52 @@ router.get('/ring-readings', (req, res) => {
   }
 });
 
+// A transparent source-to-source view. This deliberately shows timestamps
+// beside values: a difference is useful only when the readings are close
+// enough in time to compare, and the ring clock remains device-local.
+router.get('/ring-comparison', (req, res) => {
+  try {
+    const ring = Object.fromEntries(JC_RING_METRICS.map(metric => [metric, db.getLatestJCRingSample(metric) || null]));
+    const apple = {
+      heart_rate: db.getLatestHealthSample('heartRate') || null,
+      hrv: db.getLatestHealthSample('hrv') || null,
+      blood_oxygen_saturation: db.getLatestHealthSample('blood_oxygen_saturation') || null,
+      bloodPressure: healthSamples.latestBloodPressure(),
+    };
+    const compare = (ringMetric, appleMetric) => {
+      const a = ring[ringMetric];
+      const b = apple[appleMetric];
+      return { ring: a, reference: b,
+        difference: a && b && Number.isFinite(a.value) && Number.isFinite(b.value)
+          ? a.value - b.value : null };
+    };
+    return res.json({
+      heartRate: compare('heart_rate', 'heart_rate'),
+      hrv: compare('hrv', 'hrv'),
+      oxygen: compare('blood_oxygen_saturation', 'blood_oxygen_saturation'),
+      bloodPressure: {
+        ringEstimate: {
+          systolic: ring.vendor_bp_systolic_estimate,
+          diastolic: ring.vendor_bp_diastolic_estimate,
+        },
+        HiLo: apple.bloodPressure,
+        difference: ring.vendor_bp_systolic_estimate && ring.vendor_bp_diastolic_estimate && apple.bloodPressure?.known
+          ? {
+              systolic: ring.vendor_bp_systolic_estimate.value - apple.bloodPressure.systolic,
+              diastolic: ring.vendor_bp_diastolic_estimate.value - apple.bloodPressure.diastolic,
+            } : null,
+      },
+      caveats: [
+        'JC Ring timestamps are the ring local clock; Apple Health/HiLo timestamps are UTC.',
+        'Ring BP is a vendor estimate, never a measured HiLo or cuff value.',
+        'A difference is not a calibration point unless the readings were taken close together in comparable conditions.',
+      ],
+    });
+  } catch {
+    return res.status(500).json({ error: 'could not compare JC Ring readings' });
+  }
+});
+
 // What the legacy flat-key ingest can store, and under which canonical metric
 // name. This route predates the FreeReps app and survives as the iOS Shortcut
 // fallback; the app itself posts to /api/v1/ingest/ (routes/apple-health.js).
