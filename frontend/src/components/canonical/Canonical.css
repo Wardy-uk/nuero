@@ -265,3 +265,6 @@
 .cn-txn-act { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
 .cn-txn-act .cn-select { width: 150px; }
 @media (max-width: 640px) { .cn-txns { grid-template-columns: 1fr; } .cn-txn-act { justify-content: flex-start; border-top: none !important; padding-top: 0 !important; } }
+
+/* Build 25 — Personal admin sections */
+.cn-h4 { font-size: 12px; font-weight: 600; margin: 12px 0 4px; color: var(--text-secondary); }

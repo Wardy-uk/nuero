@@ -818,6 +818,8 @@ function shapeWorldTask(t, { today, annotation = null, neuroRow = null, list = n
     provenance: { kind: t.provenance ? t.provenance.kind : null, origin: t.origin ? t.origin.kind : null,
       evidenceCount: t.provenance && Array.isArray(t.provenance.evidence) ? t.provenance.evidence.length : 0 },
     observedAt: t.observedAt || null,
+    // Build 25: when its authoritative source said it was completed (null while open).
+    completedAt: t.completedAt || null,
   };
 }
 

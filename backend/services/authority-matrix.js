@@ -201,6 +201,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/canonical/companions/:id/walks/remove', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/canonical/vehicle-links', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/canonical/vehicle-links/remove', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/canonical/personal-admin/annotations', 'internal.state', { machine: 'refuse' }),
   // Build 21AM/AN: the vehicle record, its dates, mileage, history, official
   // readings and every finance classification or rule are Nick's statements.
   // A machine may read them; it may not confirm a mapping, invent mileage,

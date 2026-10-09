@@ -141,6 +141,9 @@ function shapeObligation(item, ev, freshness) {
     importance: item.importanceBasis === 'declared' ? item.importance : null,
     evidence: freshness,
     whyPersonal: ev.why,
+    // Build 25T: a commitment realised by a task names it, so the two collapse
+    // on the explicit link and never on similar wording.
+    realisedBy: item.kind === 'commitment' ? item.taskId || null : null,
   };
 }
 

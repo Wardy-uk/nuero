@@ -1490,7 +1490,10 @@ function registerDurableJobs() {
       // battery newly low, a hazard sensor reporting. First run is a baseline.
       let home = null;
       try { home = await require('./home').refresh(); } catch (e) { home = { ok: false, error: e.message }; }
-      return { ...radar, nags, home };
+      // Build 25W: the admin source becoming active, stale or recovered — one line each.
+      let admin = null;
+      try { admin = require('./personal-admin').refresh(); } catch (e) { admin = { ok: false, error: e.message }; }
+      return { ...radar, nags, home, admin };
     },
   });
 

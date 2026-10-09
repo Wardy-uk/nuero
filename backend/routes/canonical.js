@@ -286,7 +286,16 @@ router.get('/obligations', (req, res) => {
 router.get('/personal-admin', (req, res) => {
   try {
     const po = require('../services/personal-obligations');
-    res.json({ ...po.read({ adminOnly: true }), audit: po.adminAudit() });
+    res.json({ ...po.read({ adminOnly: true }), audit: po.adminAudit(), view: require('../services/personal-admin').read() });
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/personal-admin/annotations — Nick marks a personal-admin item waiting, blocked (with a reason) or routine, corrects its kind, or sets a lead time. Body: entityId, kind, state, note, leadDays. Keywords: admin waiting, blocked, lead time.
+router.post('/personal-admin/annotations', (req, res) => {
+  try {
+    const { entityId, kind, state, note, leadDays } = req.body || {};
+    const r = require('../services/personal-admin').annotate(entityId, { kind, state, note, leadDays });
+    res.status(r.ok ? 200 : r.status || 400).json(r);
   } catch (e) { fail(res, e); }
 });
 

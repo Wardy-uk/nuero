@@ -110,6 +110,12 @@ function reconcile(followups = [], { apply = false, now = Date.now() } = {}) {
       notes: [f.why || null, `From ${f.build} (follow-up: ${f.key}).`].filter(Boolean).join('\n\n'),
       originDetail: { build: f.build, followup: f.key }, skipExport: false,
     });
+    // Build 25V: a follow-up that is personal ADMIN says so, so it lands in
+    // Personal admin rather than as a bare "personal" task. Only on a task this
+    // call created — an existing task's domain is never overwritten.
+    if (r.created && Array.isArray(f.lifeDomains) && f.lifeDomains.length) {
+      try { require('./canonical-read').setAnnotation(`task:neuro:${r.id}`, { domains: f.lifeDomains }, { now }); } catch (e) { console.warn('[BuildFollowups] domain not set:', e.message); }
+    }
     ledger[f.key] = { taskId: r.id, build: f.build, linkedAt: new Date(now).toISOString(), how: r.created ? 'created' : 'folded' };
     out.push({ key: f.key, outcome: r.created ? 'created' : 'reused', taskId: r.id, text: r.task && r.task.text });
   }
@@ -166,4 +172,17 @@ const BUILD_24 = Object.freeze([
     why: 'A repo whose name only matches a project (One More Hill ↔ onemorehill, VANTAGE ↔ vantage, D&D ↔ DandD) is shown as likely and never drives a project\'s state until you confirm it.' },
 ]);
 
-module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, validate, reconcile, verify };
+/**
+ * Build 25 (personal admin). The Personal Admin Reminders list has been
+ * tracked since 8 Oct 2026 and holds nothing, so NEURO has no admin of
+ * Nick's own to show — only build follow-ups. Filling it is his; NEURO never
+ * invents a renewal. The Captur dates and the MOT task link are Build 23's
+ * (#383, #384) and are reused, not repeated.
+ */
+const BUILD_25 = Object.freeze([
+  { key: 'fill-personal-admin-list', build: 'Build 25', lifeDomains: ['admin'],
+    title: 'Put your real personal admin into the Personal Admin Reminders list, with due dates',
+    why: 'Renewals, bookings, forms, appointments — one reminder each, with its date. NEURO reads that list (tracked since 8 Oct 2026) and shows it on Life → Personal admin; it is empty today, so there is nothing of yours to show. Car dates go on the Vehicle card instead (#383).' },
+]);
+
+module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, validate, reconcile, verify };

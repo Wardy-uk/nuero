@@ -524,6 +524,13 @@ function fromPersonalOps(rows) {
       case 'home-hazard-cleared': return entry({ ...base, category: 'verified', type: 'home.hazard', headline: `Household hazard sensor clear again: ${d.sensor}`, status: 'clear' });
       case 'home-hazard-blind': return entry({ ...base, category: 'sensed', type: 'home.hazard', headline: `NEURO cannot reach a hazard sensor: ${d.sensor}`, status: 'failing' });
       case 'admin-resolved': return entry({ ...base, category: 'verified', type: 'personal.admin', headline: `Personal admin resolved: "${d.title}"`, summary: 'Its source says it is complete.', status: 'done' });
+      // Build 25W — Nick's word on an admin item, and the admin source itself.
+      case 'admin-annotated': return entry({ ...base, category: 'configured', type: 'personal.admin',
+        headline: d.state === 'waiting' ? `You marked "${d.title}" as waiting` : d.state === 'blocked' ? `You marked "${d.title}" as blocked` : d.state === 'routine' ? `You marked "${d.title}" as routine` : `You updated "${d.title}" in Personal admin`,
+        summary: [d.kind ? `Kind: ${d.kind}.` : null, d.leadDays ? `Lead time: ${d.leadDays} days.` : null].filter(Boolean).join(' ') || null, status: d.state || 'set' });
+      case 'admin-source-active': return entry({ ...base, category: 'sensed', type: 'personal.admin-source', headline: 'Personal Admin reminders started arriving', summary: `${d.items} open item${d.items === 1 ? '' : 's'} from the list.`, status: 'connected' });
+      case 'admin-source-stale': return entry({ ...base, category: 'sensed', type: 'personal.admin-source', headline: 'Personal Admin reminders stopped arriving', summary: d.why || 'Admin is shown from what NEURO last saw.', status: 'stale' });
+      case 'admin-source-recovered': return entry({ ...base, category: 'verified', type: 'personal.admin-source', headline: 'Personal Admin reminders arriving again', status: 'recovered' });
       // Build 20U — semantic lines only: no walk, sync or Radar refresh is logged.
       case 'list-tracking': return entry({ ...base, category: 'configured', type: 'personal.list-tracking',
         headline: d.tracked === true ? `You set the "${d.label}" reminder list to be tracked` : d.tracked === false ? `You set the "${d.label}" reminder list as ignored` : `You cleared tracking on the "${d.label}" reminder list`,

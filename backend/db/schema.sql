@@ -3108,3 +3108,18 @@ CREATE TABLE IF NOT EXISTS project_blockers (
   resolved_at   TEXT,
   resolution    TEXT
 );
+
+-- ── Build 25: Personal Admin ────────────────────────────────────────────────
+-- Nick's own word about a personal-admin item that ALREADY EXISTS somewhere
+-- else (a task, a reminder, a vehicle or finance record). No title, no date,
+-- no task: waiting / blocked (a block needs a reason) / routine, a kind
+-- correction, and an explicit lead time. Nothing writes a row except him.
+CREATE TABLE IF NOT EXISTS personal_admin_annotations (
+  entity_id  TEXT PRIMARY KEY,
+  kind       TEXT,
+  state      TEXT CHECK (state IS NULL OR state IN ('waiting', 'blocked', 'routine')),
+  note       TEXT,
+  lead_days  INTEGER CHECK (lead_days IS NULL OR (lead_days >= 1 AND lead_days <= 120)),
+  set_at     TEXT NOT NULL,
+  CHECK (state IS NOT 'blocked' OR (note IS NOT NULL AND length(note) > 0))
+);
