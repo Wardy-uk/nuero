@@ -21,7 +21,7 @@ const BUCKETS = [['fuelSpendPence', 'Fuel'], ['insuranceSpendPence', 'Insurance'
 const STATE_WORDS = { overdue: 'Overdue', needs_you: 'Needs you', preparation_open: 'In hand', upcoming: 'Upcoming', later: 'Later', unknown: 'No date', complete: 'Done' };
 const CONF_WORDS = { verified: 'verified', stated: 'your record', conflict: 'differs from official', unknown: 'unknown' };
 const HEALTH_WORDS = { current: 'Current', attention_needed: 'Needs attention', incomplete_data: 'Incomplete', unknown: 'Unknown' };
-const DRIVE_WORDS = { driving: 'Driving now', parked: 'Not driving', unknown: 'Unknown' };
+const DRIVE_WORDS = { driving: 'Driving now', recently_drove: 'Was in the car recently', parked: 'Not driving', unknown: 'Driving: unknown' };
 // Tally's pence, displayed — formatting only, never arithmetic.
 const money = (p) => (p == null ? '—' : `£${(p / 100).toFixed(2)}`);
 const label = (pairs, k) => (pairs.find(([v]) => v === k) || [k, k])[1];

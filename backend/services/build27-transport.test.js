@@ -172,6 +172,9 @@ test('11. explicit links only — a task that says MOT is a suggestion; a linked
   assert.deepEqual(sugg.map((s) => s.id), ['task:neuro:2']);
   assert.match(sugg[0].why, /a mention, not a link/);
   T.mot = `task:neuro:${store.createTask({ text: 'Book my car in for its MOT tomorrow. Must do tomorrow.', source: 'mcp', domain: 'work' }).id}`; // the live #374 shape
+  // the live #383 shape: names MOT, tax AND insurance — data entry, not the booking
+  T.basics = `task:neuro:${store.createTask({ text: 'Fill in the Captur basics in NEURO: registration, current mileage, MOT, tax and insurance', source: 'mcp', domain: 'work' }).id}`;
+  assert.equal(po.linkVehicle({ vehicle: 'Captur', entityId: T.basics }).ok, true);
   require('./obligation-sources').publishNeuroTasks({ now: NOW });
   await require('./event-bus').pumpConsumer(require('./world-model').CONSUMER, { now: NOW });
   assert.equal(po.linkVehicle({ vehicle: 'Captur', entityId: T.mot, label: 'Book my car in for its MOT' }).ok, true);
@@ -212,6 +215,7 @@ test('13–17. MOT, tax, insurance and service are separate typed facts; a booki
   const offer = veh.read(CAPTUR).actionSuggestions.find((s) => s.taskId === T.mot);
   assert.ok(offer && offer.obligationId === mot.id, 'offered');
   assert.match(offer.why, /a suggestion, not a link/);
+  assert.ok(!veh.read(CAPTUR).actionSuggestions.some((s) => s.taskId === T.basics), 'a task naming MOT, tax and insurance is not offered as any one of them (live #383)');
   assert.equal(veh.read(CAPTUR).obligations.find((o) => o.type === 'mot').linkedTaskRef, null, 'and not linked for you');
 });
 
@@ -382,13 +386,20 @@ test('37. reading the driving state writes nothing — no trip, fix or route is 
   assert.equal(rowCounts(), before);
 });
 
-test('38. CarPlay or vehicle motion → driving; still → not driving; unread → unknown; "recently drove" is never claimed', () => {
-  assert.equal(transport.drivingState({ activity: 'Automotive', audioOutput: 'CarPlay' }).confidence, 'sure');
-  assert.equal(transport.drivingState({ activity: 'Still', audioOutput: 'CarPlay' }).state, 'driving');
-  assert.equal(transport.drivingState({ activity: 'Still' }).state, 'parked');
-  assert.equal(transport.drivingState(null).state, 'unknown');
-  assert.equal(transport.drivingState({}).state, 'unknown');
-  for (const p of [{ activity: 'Automotive' }, { activity: 'Walking' }, null]) assert.notEqual(transport.drivingState(p).state, 'recently_drove');
+test('38. CarPlay or vehicle motion → driving only while the reading is fresh; "recently" is the phone\'s own last word', () => {
+  const at = (min) => new Date(NOW - min * 60000).toISOString();
+  assert.equal(transport.drivingState({ activity: 'Automotive', audioOutput: 'CarPlay', activityUpdatedAt: at(2) }, NOW).confidence, 'sure');
+  assert.equal(transport.drivingState({ activity: 'Still', audioOutput: 'CarPlay', lastReportAt: at(1) }, NOW).state, 'driving');
+  // the live shape, 9 Oct 2026: Automotive at 12:41, last report 12:47, Bluetooth not CarPlay, read at 13:05
+  const live = transport.drivingState({ activity: 'Automotive', audioOutput: 'Bluetooth A2DP', activityUpdatedAt: at(24), lastReportAt: at(18) }, NOW);
+  assert.equal(live.state, 'recently_drove');
+  assert.match(live.why, /18 min ago\); it has not reported since/);
+  assert.equal(transport.drivingState({ activity: 'Automotive', activityUpdatedAt: at(300) }, NOW).state, 'unknown', 'a five-hour-old reading says nothing about now');
+  assert.equal(transport.drivingState({ activity: 'Still', lastReportAt: at(5) }, NOW).state, 'parked');
+  assert.equal(transport.drivingState({ activity: 'Walking', lastReportAt: at(400) }, NOW).state, 'unknown');
+  assert.equal(transport.drivingState(null, NOW).state, 'unknown');
+  assert.equal(transport.drivingState({}, NOW).state, 'unknown');
+  for (const p of [{ activity: 'Walking', lastReportAt: at(5) }, null, {}]) assert.notEqual(transport.drivingState(p, NOW).state, 'recently_drove', 'only a vehicle reading can say "recently"');
   assert.match(transport.drivingState(null).note, /keeps no record of drives/);
 });
 
@@ -552,7 +563,7 @@ test('render: the Transport card shows Tally\'s figures unchanged, the reason fo
   // eslint-disable-next-line no-new-func
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(m, m.exports, require);
   assert.equal(typeof m.exports.TransportView, 'function', 'positive control: the view is exported');
-  const data = await transport.read({ now: NOW, phone: { activity: 'Automotive', audioOutput: 'CarPlay' } });
+  const data = await transport.read({ now: NOW, phone: { activity: 'Automotive', audioOutput: 'CarPlay', lastReportAt: new Date(NOW - 60000).toISOString() } });
   const html = renderToString(React.createElement(m.exports.TransportView, { data })).split('<!-- -->').join('');
   assert.match(html, /Renault Captur/);
   assert.match(html, /LD65BHP/);

@@ -40,6 +40,11 @@ const REPAIR_KINDS = Object.freeze(['repair', 'breakdown', 'battery', 'brakes', 
 // 'movement' — distance travelled is not what the odometer says (27I).
 const MILEAGE_SOURCES = Object.freeze(['manual', 'mot', 'service', 'telemetry']);
 const OFFICIAL_SOURCES = Object.freeze(['dvla-ves', 'dvsa-mot', 'gov-uk-by-hand']);
+// Words that name each obligation type in a task — used only to OFFER a link.
+const TYPE_WORDS = Object.freeze({
+  mot: /\bMOT\b/i, tax: /\b(road|car|vehicle) tax\b|\btax\b/i, insurance: /\binsurance\b/i,
+  service: /\bservic(e|ed|ing)\b/i, warranty: /\bwarranty\b/i, breakdown_cover: /\bbreakdown (cover|recovery)\b/i,
+});
 const KM_PER_MILE = 1.609344;
 const LITRES_PER_UK_GALLON = 4.54609;
 
@@ -766,13 +771,17 @@ function read(vehicleId, { now = Date.now(), snapshot = undefined } = {}) {
   const linked = links(vehicleId);
   const linkedIds = new Set(linked.map((l) => l.entityId));
   for (const ob of obligations) for (const r of [ob.linkedTaskRef, ob.linkedReminderRef]) if (r) linkedIds.add(r);
-  // A task Nick linked to the car whose words name an open obligation's type is
-  // OFFERED as that obligation's action — never linked for him (27E).
+  // A task Nick linked to the car whose words name EXACTLY ONE obligation type,
+  // and that type is open with no action yet, is OFFERED as its action — never
+  // linked for him (27E). A task naming several (live #383: "registration,
+  // current mileage, MOT, tax and insurance") is data entry, not the booking.
   const actionSuggestions = [];
   for (const l of linked) {
     const t = taskIndex.get(l.entityId);
     if (!t || !(t.state === 'open' || t.state === 'in-progress')) continue;
-    const ob = obligations.find((o) => o.recordStatus === 'open' && !o.linkedTaskRef && new RegExp(`\\b${o.type === 'mot' ? 'MOT' : o.label}\\b`, 'i').test(t.description || ''));
+    const named = OBLIGATION_TYPES.filter((ty) => TYPE_WORDS[ty].test(t.description || ''));
+    if (named.length !== 1) continue;
+    const ob = obligations.find((o) => o.recordStatus === 'open' && !o.linkedTaskRef && o.type === named[0]);
     if (ob) actionSuggestions.push({ obligationId: ob.id, label: ob.label, taskId: t.id, description: t.description, why: `you linked it to the ${v.model} and it names the ${ob.label} — a suggestion, not a link` });
   }
   return {

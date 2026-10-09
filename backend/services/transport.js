@@ -19,23 +19,42 @@
 
 const veh = () => require('./vehicle');
 
+// How old the phone's last reading may be. iOS reports motion on CHANGE, so an
+// "Automotive" reading can be the last thing it said before the car stopped.
+const DRIVING_FRESH_MIN = 15;    // a vehicle reading this fresh = driving now
+const RECENT_MAX_MIN = 120;      // older than fresh, up to 2h = "recently drove" (the phone's own last word)
+const PARKED_FRESH_MIN = 120;    // a non-vehicle reading older than this says nothing about now
+
 /**
- * Driving state from the phone, now. PURE.
- *   phone { activity, audioOutput } from ha.getPhoneStatus() — or null.
+ * Driving state from the phone. PURE.
+ *   phone { activity, audioOutput, activityUpdatedAt, lastReportAt } from
+ *   ha.getPhoneStatus() — or null. "Recently drove" is ONLY the phone's own last
+ *   reading and its time; NEURO keeps no history to say it from otherwise.
  */
-function drivingState(phone) {
-  const never = 'NEURO keeps no record of drives, routes or where the car is, so it never says you drove recently';
-  if (!phone) return { state: 'unknown', confidence: 'unknown', why: 'the phone\'s status could not be read', evidence: [], note: never };
+function drivingState(phone, now = Date.now()) {
+  const note = 'NEURO keeps no record of drives, routes or where the car is; "recently" is only ever the phone\'s own last reading and its time';
+  if (!phone) return { state: 'unknown', confidence: 'unknown', why: 'the phone\'s status could not be read', evidence: [], note, readingAt: null };
   const activity = String(phone.activity || '').toLowerCase();
   const audio = String(phone.audioOutput || '').toLowerCase();
+  const times = [phone.activityUpdatedAt, phone.lastReportAt].map((t) => Date.parse(t || '')).filter(Number.isFinite);
+  const at = times.length ? Math.max(...times) : null;
+  const ageMin = at == null ? null : Math.max(0, Math.round((now - at) / 60000));
+  const hhmm = at == null ? null : new Intl.DateTimeFormat('en-GB', { timeZone: process.env.NEURO_TIMEZONE || 'Europe/London', hour: '2-digit', minute: '2-digit' }).format(new Date(at));
+  const readingAt = at == null ? null : new Date(at).toISOString();
   const evidence = [];
   if (activity === 'automotive') evidence.push('the phone says it is in a vehicle');
   if (audio.includes('carplay')) evidence.push('the phone is on CarPlay');
-  if (evidence.length) return { state: 'driving', confidence: evidence.length === 2 ? 'sure' : 'likely', why: evidence.join(' and '), evidence, note: never };
-  if (activity && activity !== 'unknown' && activity !== 'unavailable') {
-    return { state: 'parked', confidence: 'likely', why: `the phone reports "${phone.activity}" and no CarPlay — not in a vehicle now`, evidence: [`motion: ${phone.activity}`], note: never };
+  if (evidence.length) {
+    const why = `${evidence.join(' and ')}${hhmm ? ` (last reading ${hhmm}, ${ageMin} min ago)` : ' (the reading\'s time is not known)'}`;
+    if (ageMin == null || ageMin <= DRIVING_FRESH_MIN) return { state: 'driving', confidence: evidence.length === 2 ? 'sure' : 'likely', why, evidence, note, readingAt };
+    if (ageMin <= RECENT_MAX_MIN) return { state: 'recently_drove', confidence: 'likely', why: `${why}; it has not reported since, so it may have stopped`, evidence, note, readingAt };
+    return { state: 'unknown', confidence: 'unknown', why: `the phone's last vehicle reading is ${ageMin} min old — too old to say anything about now`, evidence: [], note, readingAt };
   }
-  return { state: 'unknown', confidence: 'unknown', why: 'the phone reports no motion classification', evidence: [], note: never };
+  if (activity && activity !== 'unknown' && activity !== 'unavailable') {
+    if (ageMin != null && ageMin > PARKED_FRESH_MIN) return { state: 'unknown', confidence: 'unknown', why: `the phone's last motion reading is ${ageMin} min old`, evidence: [], note, readingAt };
+    return { state: 'parked', confidence: 'likely', why: `the phone reports "${phone.activity}" and no CarPlay — not in a vehicle now`, evidence: [`motion: ${phone.activity}`], note, readingAt };
+  }
+  return { state: 'unknown', confidence: 'unknown', why: 'the phone reports no motion classification', evidence: [], note, readingAt };
 }
 
 const ageDays = (iso, now) => (iso ? Math.max(0, Math.floor((now - Date.parse(iso.length === 10 ? `${iso}T12:00:00Z` : iso)) / 86400000)) : null);
@@ -84,7 +103,7 @@ async function read({ now = Date.now(), phone = undefined } = {}) {
   if (phone === undefined) {
     try { p = await require('./ha').getPhoneStatus(); phoneRead = !!p; } catch { p = null; phoneRead = false; }
   }
-  const driving = drivingState(p);
+  const driving = drivingState(p, now);
   const vehicles = veh().listVehicles().filter((x) => x.ownership_state === 'current').map((x) => veh().read(x.vehicle_id, { now })).filter(Boolean);
   return {
     ok: true,
