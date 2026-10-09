@@ -154,3 +154,19 @@ test('the REAL ha.fetchStates is wired (every other test injects a fake — that
     assert.equal(asked.auth, 'Bearer test-token');
   } finally { global.fetch = realFetch; }
 });
+
+test('9 Oct 2026: the roster going A→B→A under one last_changed is three events, not one', async () => {
+  const changed = T0 - 86400e3 * 3; // the sensor has stayed `on` for days
+  const roster = (isaac) => [{ name: 'Helen', role: 'resident', state: 'home' }, { name: 'Isaac', role: 'resident', state: isaac }];
+  const at = (isaac) => states({ othersChanged: changed }).map((s) => s.entity_id === 'binary_sensor.household_others_home'
+    ? { ...s, attributes: { ...s.attributes, members: roster(isaac) } } : s);
+  const isaac = (now) => hp.read({ now }).householdMembers.find((m) => m.name === 'Isaac').state;
+
+  await hp.poll({ now: T0 + 1000e3, deps: deps(at('away')) }); await pump();
+  assert.equal(isaac(T0 + 1000e3), 'away');
+  await hp.poll({ now: T0 + 1200e3, deps: deps(at('home')) }); await pump();
+  assert.equal(isaac(T0 + 1200e3), 'home');
+  const r = await hp.poll({ now: T0 + 1400e3, deps: deps(at('away')) }); await pump();
+  assert.ok(r.published >= 1, 'the return to "away" must publish, not fold into the first "away"');
+  assert.equal(isaac(T0 + 1400e3), 'away', 'the card must not be left saying he is home');
+});

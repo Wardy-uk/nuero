@@ -1203,6 +1203,34 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     didRecently = { known: false };
   }
 
+  // ⚠ Computed BEFORE meeting-with, which reads it: declared below that block
+  // it was a temporal dead zone, and every pre-meeting poll lost meeting-with
+  // to "Cannot access transition before initialization" (9 Oct 2026).
+  //
+  // The seam of the day, if this is one. PURE, composed server-side like `say`
+  // and `speech`, so the phone, the kiosk and the widget cannot phrase the same
+  // transition three ways — and so the decision about whether NOW is a moment to
+  // prompt is made once, by the brain.
+  //
+  // ⚠ It PROPOSES and never acts: no timer starts, no calendar is written, no
+  // task is completed. And an unreadable diary yields no transition at all
+  // rather than falling through to "nothing coming up".
+  let transition = null;
+  try {
+    let recovery = null;
+    try { recovery = require('./focus-session').recovery(); } catch { recovery = null; }
+    transition = require('./transitions').nextTransition({
+      calendar: inputs.calendar,
+      recovery,
+      now,
+    });
+  } catch (e) {
+    // A transition is a nicety on top of the feed. It must never be the reason
+    // the feed fails.
+    console.warn('[Attention] transition failed:', e.message);
+    transition = null;
+  }
+
   // Who the meeting about to start is with, and what they are owed.
   //
   // WARNING  COMPUTED ONLY IN THE PREP WINDOW. `/api/attention` is polled by
@@ -1410,29 +1438,6 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     readiness = { known: false, why: e.message, notable: false };
   }
 
-  // The seam of the day, if this is one. PURE, composed server-side like `say`
-  // and `speech`, so the phone, the kiosk and the widget cannot phrase the same
-  // transition three ways — and so the decision about whether NOW is a moment to
-  // prompt is made once, by the brain.
-  //
-  // ⚠ It PROPOSES and never acts: no timer starts, no calendar is written, no
-  // task is completed. And an unreadable diary yields no transition at all
-  // rather than falling through to "nothing coming up".
-  let transition = null;
-  try {
-    let recovery = null;
-    try { recovery = require('./focus-session').recovery(); } catch { recovery = null; }
-    transition = require('./transitions').nextTransition({
-      calendar: inputs.calendar,
-      recovery,
-      now,
-    });
-  } catch (e) {
-    // A transition is a nicety on top of the feed. It must never be the reason
-    // the feed fails.
-    console.warn('[Attention] transition failed:', e.message);
-    transition = null;
-  }
 
   // ⚠ Composed LAST, from the payload this function has just assembled, and
   // deliberately never allowed to fail the feed. SAiM showing the wrong

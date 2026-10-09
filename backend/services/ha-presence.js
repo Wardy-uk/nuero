@@ -95,10 +95,21 @@ function shape(entityId, st) {
   return { entityId, subjectKind: 'person', stateClass, who: [], unreadable: [], unreadableVisitors: [], members: [], observedAt, why: null };
 }
 
-function idempotencyKey(o) {
+/** What the observation SAYS, independent of when it was read. */
+function fingerprint(o) {
   const members = (o.members || []).map((m) => `${m.name}:${m.role}:${m.state}`).join('|');
   const who = crypto.createHash('sha1').update(o.who.join('|') + '#' + o.unreadable.join('|') + '#' + (o.unreadableVisitors || []).join('|') + '#' + members).digest('hex').slice(0, 10);
-  return `ha-presence:${o.entityId}:${o.observedAt || 'never'}:${o.stateClass}:${who}`;
+  return `${o.observedAt || 'never'}:${o.stateClass}:${who}`;
+}
+
+// ⚠ A STATE key is wrong here (9 Oct 2026). The household sensor stays `on`
+// while anyone else is in, so its last_changed does not move when the ROSTER
+// does — Isaac left, came back, left again, and "Isaac away" reproduced the key
+// of the first "Isaac away" two days earlier, folded into it, and the card said
+// he was home for 43 hours. Keyed on the event that set the held state
+// (change-key, Build 5B), every genuine transition is its own event.
+function idempotencyKey(o, held = null) {
+  return require('./change-key').observationKey('ha-presence', o.entityId, held, fingerprint(o));
 }
 
 /**
@@ -132,13 +143,18 @@ async function poll({ now = Date.now(), deps = {} } = {}) {
     const o = shape(id, byId.get(id));
     entities.push({ entityId: id, stateClass: o.stateClass });
     try {
+      const ck = require('./change-key');
+      const fp = fingerprint(o);
+      const held = ck.latest('presence', id, [EVENT_TYPE]);
+      // An unchanged house is not news: nothing is published, not even a fold.
+      if (ck.isUnchanged(held, fp)) { folded += 1; continue; }
       const r = bus.publishEvent({
         type: EVENT_TYPE,
         occurredAt: o.observedAt || receivedAt,
         source: { system: 'homeassistant', recordId: id },
         subject: { entityType: 'presence', entityId: id },
-        idempotencyKey: idempotencyKey(o),
-        payload: { entityId: id, subjectKind: o.subjectKind, state: o.stateClass, who: o.who, unreadable: o.unreadable,
+        idempotencyKey: idempotencyKey(o, held),
+        payload: { fingerprint: fp, entityId: id, subjectKind: o.subjectKind, state: o.stateClass, who: o.who, unreadable: o.unreadable,
           unreadableVisitors: o.unreadableVisitors || [], members: o.members || [], observedAt: o.observedAt, why: o.why },
         provenance: { kind: 'observation', confidence: o.stateClass === 'unavailable' ? 0 : 0.8 },
       });
@@ -215,4 +231,4 @@ function read({ now = Date.now() } = {}) {
   };
 }
 
-module.exports = { SOURCE_ID, EVENT_TYPE, EXPECTED_INTERVAL_MS, STALE_AFTER_MS, configuredEntities, shape, idempotencyKey, poll, applyPresence, reset, read };
+module.exports = { SOURCE_ID, EVENT_TYPE, EXPECTED_INTERVAL_MS, STALE_AFTER_MS, configuredEntities, shape, fingerprint, idempotencyKey, poll, applyPresence, reset, read };

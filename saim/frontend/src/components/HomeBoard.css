@@ -106,3 +106,19 @@
   cursor: pointer;
   touch-action: manipulation;
 }
+
+/* Short landscape screens (9 Oct 2026). The bedroom P30 is ~780x360 CSS px,
+   and station + forecast + today + the faces overran it: the side column is
+   centred in a fixed full-screen grid, so the Who's-in faces fell off the
+   bottom edge. Tighten spacing and drop the per-face state word — the ring
+   (solid / dashed / greyed) already says home / can't tell / out. */
+@media (max-height: 520px) and (min-aspect-ratio: 1/1) {
+  .homeboard { padding: 2.5vh 5vw; gap: 3vw; }
+  .homeboard__side { gap: 0.7rem; max-height: 100%; }
+  .homeboard__h { margin-bottom: 0.2rem; }
+  .homeboard__line { line-height: 1.35; }
+  .homeboard .hh-card { padding: 6px 10px; }
+  .homeboard .hh-card__head { margin-bottom: 4px; }
+  .homeboard .hh-member__name { margin-top: 3px; font-size: 0.8rem; }
+  .homeboard .hh-member__state { display: none; }
+}
