@@ -68,6 +68,7 @@ type: profile
 
 ## What I care about
 
+- Wife is Helen; she looks after the 60-litre aquarium. <!--p:interview 2026-08-31-->
 - Marillion's Misplaced Childhood is a long-running deep obsession. <!--p:seed 2026-08-31-->
 - Enjoys interrogating the boundary between fiction and reality while reading. <!--p:seed 2026-08-31-->
 
@@ -459,6 +460,7 @@ test('profile interests are the profile\'s own lines, verbatim — never turned 
   assert.ok(texts.includes("Marillion's Misplaced Childhood is a long-running deep obsession."));
   assert.ok(texts.some((t) => /D&D/.test(t)) && texts.some((t) => /retro technology/.test(t)));
   assert.ok(!texts.some((t) => /NOVA|brand-loyal|hillwalking/.test(t)), `no work builds, no shopping, no hiking (Outdoor owns it): ${texts}`);
+  assert.ok(!texts.some((t) => /Wife is Helen/.test(t)), 'live false positive: a People fact that mentions the aquarium is not an interest');
   assert.equal(r.hobbies.length, 0, 'a profile line is not a tracked hobby');
 });
 

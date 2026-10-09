@@ -82,6 +82,9 @@ const EVENT_WORDS = [
 // Lines from About Nick.md shown VERBATIM as stated interests. Selecting which
 // lines to show is all this does — it never turns a line into a preference.
 const PROFILE_SECTIONS = ['outside work', 'what i care about', 'preferences'];
+// A line about a person is a People fact even when it mentions a hobby — live,
+// "Wife is Helen; she looks after the 60-litre aquarium" matched on aquarium.
+const PROFILE_PEOPLE = /\b(wife|husband|partner|daughter|son|children|married|mum|dad)\b/i;
 const PROFILE_WORDS = /\b(d&d|dnd|music|musical|album|albums|song|songs|band|marillion|film|films|movie|movies|tv|series|reading|read|book|books|novel|game|games|gaming|aquarium|aquariums|retro|maker|raspberry|cosplay|podcast|podcasts|audiobook|concert|gig)\b/i;
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9&]+/g, ' ').trim();
@@ -430,7 +433,7 @@ function profileInterests(profile) {
   for (const [section, facts] of Object.entries(profile.facts)) {
     if (!PROFILE_SECTIONS.includes(section)) continue;
     for (const f of facts || []) {
-      if (!PROFILE_WORDS.test(f.text) || seen.has(f.text)) continue;
+      if (!PROFILE_WORDS.test(f.text) || PROFILE_PEOPLE.test(f.text) || seen.has(f.text)) continue;
       seen.add(f.text);
       out.push({ text: f.text, section, source: f.source, at: f.at || null });
     }

@@ -311,7 +311,7 @@ function read({ now = Date.now(), asked = false, haStates } = {}) {
   const sugg = M.suggestions({ items: nonHobby, today, asked });
 
   const comingUp = [
-    ...cal.events.map((e) => ({ ref: e.meetingId, title: e.title, date: e.day, time: e.time, kind: e.leisure, source: 'calendar', why: `the "${e.calendarName}" entry's title says ${e.leisure}` })),
+    ...cal.events.map((e) => ({ ref: e.meetingId, title: e.title, date: e.day, time: e.time, kind: e.leisure, source: 'calendar', why: `in your "${e.calendarName || 'phone'}" calendar; its title says ${e.leisure}` })),
     ...items.filter((i) => i.ownership === 'nick' && i.eventDate && i.eventDate >= today && !['completed', 'abandoned'].includes(i.state))
       .map((i) => ({ ref: i.itemId, title: i.title, date: i.eventDate, time: null, kind: i.eventKind, source: 'you', why: i.eventKind === 'release' ? 'you are tracking its release' : i.eventKind === 'session' ? 'you scheduled a session' : 'you added this booking' })),
   ].sort((a, b) => `${a.date}${a.time || ''}`.localeCompare(`${b.date}${b.time || ''}`)).slice(0, 8);
