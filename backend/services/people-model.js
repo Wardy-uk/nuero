@@ -233,8 +233,11 @@ function likelyDuplicates(people, { conflicts = [], decided = new Set() } = {}) 
  */
 function classificationQueue(cards, { limit = 5 } = {}) {
   const pending = cards.filter((c) => c.relationship && c.relationship.basis === 'none');
+  // Personal signals only. Open commitments are NOT a signal: measured live
+  // (9 Oct), they are waiting-on items from work meetings, and ranking by them
+  // put work contacts at the top of "who is this?" — volume as importance.
   const rank = (c) => (c.household && c.household.value === true ? 0 : 3)
-    - (c.dates && c.dates.length ? 1 : 0) - (c.commitments && c.commitments.open ? 1 : 0)
+    - (c.dates && c.dates.length ? 1 : 0) - (c.youWrote && c.youWrote.length ? 1 : 0)
     + (c.sphere && c.sphere.value === 'work' ? 2 : 0);
   const ordered = [...pending].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   return { total: pending.length, next: ordered.slice(0, limit) };
@@ -246,12 +249,23 @@ function classificationQueue(cards, { limit = 5 } = {}) {
  * is one click. NEVER applied: "Wife is Helen" in prose is evidence for Nick
  * to confirm, not a field NEURO parses into a relationship. PURE.
  */
+const EXCERPT = 140;
 function profileMentions(names, lines, { limit = 3 } = {}) {
   const want = [...new Set((names || []).filter((n) => typeof n === 'string' && n.trim().length >= 2))];
   if (!want.length) return [];
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`(^|[^\\p{L}])(${want.map(esc).join('|')})(?=$|[^\\p{L}])`, 'iu');
-  return (lines || []).filter((l) => re.test(String(l))).slice(0, limit);
+  // A bounded excerpt around the name, never a whole paragraph: a profile line
+  // can carry dates of birth and health details the card has no need to repeat.
+  const excerpt = (l) => {
+    const s = String(l);
+    if (s.length <= EXCERPT) return s;
+    const m = re.exec(s); const at = m ? m.index + m[1].length : 0;
+    const start = Math.max(0, Math.min(at - 40, s.length - EXCERPT));
+    return `${start > 0 ? '…' : ''}${s.slice(start, start + EXCERPT).trim()}…`;
+  };
+  // Shortest first: a line ABOUT the person beats a long one that merely names them.
+  return (lines || []).filter((l) => re.test(String(l))).sort((a, b) => String(a).length - String(b).length).slice(0, limit).map(excerpt);
 }
 
 const TEXT_MAX = 60;

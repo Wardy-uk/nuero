@@ -522,6 +522,17 @@ test('alias editor is line-based: a block list keeps every other alias; inline l
   assert.match(people.addAlias('---\ntype: person\n---\nx', 'Z'), /type: person\naliases:\n  - "Z"\n---/);
 });
 
+test('"You wrote" is a bounded excerpt, shortest line first; the queue ranks personal signals, never commitment volume', () => {
+  // Live 9 Oct: Isaac's profile line carries three dates of birth and a health detail.
+  const long = 'Three children: Lizzie (DOB 21.09.00, lives in Bolton with partner Daniel), Matt (DOB 11.02.03, lives alone in Loughborough, dating Iris), Isaac (DOB 18.07.05, prefers to be known as Isaac, lives at home, recently left university without finishing final year)';
+  const got = pm.profileMentions(['Isaac'], [long, 'Isaac is learning to drive.']);
+  assert.equal(got[0], 'Isaac is learning to drive.', 'the line about him first');
+  assert.ok(got[1].length <= 142 && got[1].includes('Isaac') && got[1].startsWith('…'));
+  const c = (name, extra) => ({ name, relationship: { basis: 'none' }, sphere: { value: 'unknown' }, household: { value: null }, dates: [], commitments: { open: 0 }, youWrote: [], ...extra });
+  const q = pm.classificationQueue([c('Aaron Work', { commitments: { open: 30 }, sphere: { value: 'work' } }), c('Zed Unknown', { commitments: { open: 19 } }), c('Mum', { youWrote: ['Mum lives in Derby'] })]);
+  assert.deepEqual(q.next.map((x) => x.name), ['Mum', 'Zed Unknown', 'Aaron Work'], 'thirty open commitments buy no place in the queue');
+});
+
 test('vocabulary: bounded, legacy words map, junk is refused', () => {
   assert.equal(pm.RELATIONSHIP_TYPES.length, 15);
   assert.deepEqual(pm.normaliseRelationship('wife'), { type: 'spouse_partner', detail: null });
