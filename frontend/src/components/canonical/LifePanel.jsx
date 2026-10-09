@@ -3,6 +3,7 @@ import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when, Fold } from './canonicalUi';
 import OutdoorCard from './OutdoorCard';
 import LeisureCard from './LeisureCard';
+import PeopleCard from './PeopleCard';
 import PersonalDatesCard from './PersonalDatesCard';
 import CompanionCareCard from './CompanionCareCard';
 import TransportCard from './TransportCard';
@@ -60,6 +61,8 @@ export default function LifePanel({ onNavigate = null } = {}) {
 
       <div className="cn-section"><HouseholdCard fetchJson={fetchHousehold} fetchPhoto={fetchHouseholdPhoto} /></div>
       <HomeCard />
+      {/* Build 31: who people are to Nick — only as he has said. */}
+      <PeopleCard />
       <FutureRadarCard />
       <Goals data={data} busy={busy} act={act} />
       {/* Build 29: Outdoor carries the Hike weekly loop (its confirm / not-a-hike controls). */}

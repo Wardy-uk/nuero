@@ -239,4 +239,14 @@ const BUILD_30 = Object.freeze([
     why: 'NEURO can only see what the iPhone Music app plays. Your profile mentions D&D, the aquariums, retro tech, maker builds and Marillion, but NEURO will not turn a profile line into a tracked hobby for you. Nothing here becomes a reminder.' },
 ]);
 
-module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, BUILD_27, BUILD_28, BUILD_29, BUILD_30, validate, reconcile, verify };
+// Build 31: NEURO only knows who someone is to Nick if he says so. Every one of
+// the 43 People notes is a work contact; Helen and Isaac (residents in Home
+// Assistant's roster) have no People note at all. One task for the whole
+// classification — never one per person, and nothing about keeping in touch.
+const BUILD_31 = Object.freeze([
+  { key: 'classify-people', build: 'Build 31', lifeDomains: ['family'],
+    title: 'Tell NEURO who the important people in your life are, in Life → People ("Who is this?" — start with Helen and Isaac)',
+    why: 'No People note states a relationship yet. NEURO will not work it out from who is at home, the "Wedding anniversary" in the diary, or how often anyone emails — so until you say, family, friends and colleagues all read as "not said". A few at a time is fine.' },
+]);
+
+module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, BUILD_27, BUILD_28, BUILD_29, BUILD_30, BUILD_31, validate, reconcile, verify };

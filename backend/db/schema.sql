@@ -3181,3 +3181,23 @@ CREATE TABLE IF NOT EXISTS leisure_observations (
   last_seen     TEXT NOT NULL,
   progress_json TEXT
 );
+
+-- ── Build 31: personal relationships & people context ─────────────────────
+-- Nick's decisions about IDENTITY that have nowhere to live in a People note:
+--   keep-separate    two notes a duplicate check flagged are two people
+--                    (subject = "<personIdA>|<personIdB>", sorted)
+--   not-this-person  a name from another source (the HA household roster, a
+--                    calendar birthday) is NOT this person (subject = e.g.
+--                    "household:helen"); the strong-identity match is refused
+-- Relationship, sphere, household and merges are written into the People
+-- notes themselves. Every decision and correction is ALSO an append-only row
+-- in personal_ops_events (person-*), which is the audit trail. A revoked
+-- decision keeps its row with revoked_at set.
+CREATE TABLE IF NOT EXISTS person_decisions (
+  kind        TEXT NOT NULL CHECK (kind IN ('keep-separate', 'not-this-person')),
+  subject     TEXT NOT NULL,
+  person_id   TEXT NOT NULL,
+  decided_at  TEXT NOT NULL,
+  revoked_at  TEXT,
+  PRIMARY KEY (kind, subject, person_id)
+);

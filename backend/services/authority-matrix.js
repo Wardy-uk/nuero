@@ -270,6 +270,13 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/leisure/items', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/leisure/items/:itemId', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/leisure/correct', 'internal.state', { machine: 'refuse' }),
+  // Build 31: who someone is to Nick — relationship, sphere, household, a
+  // merge, "not this person", a new People note — is his word, written into
+  // his People notes. Machines read People; they never write it.
+  R('POST', '/api/people', 'vault.write', { machine: 'refuse' }),
+  R('POST', '/api/people/duplicates/decide', 'vault.write', { machine: 'refuse' }),
+  R('POST', '/api/people/links/reject', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/people/:personId/classify', 'vault.write', { machine: 'refuse' }),
   R('*', '/api/capture/file', 'file.write'),
   R('*', '/api/capture/photo', 'file.write'),
   R('POST', '/api/vault/export-docx', 'file.write'),
@@ -304,7 +311,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   'weekly-risk': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
   vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
-  outdoor: 'internal.state', leisure: 'internal.state',
+  outdoor: 'internal.state', leisure: 'internal.state', people: 'vault.write',
 });
 
 function _segments(p) { return String(p || '').split('?')[0].replace(/\/+$/, '').split('/').filter(Boolean); }

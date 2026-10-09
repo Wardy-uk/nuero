@@ -210,6 +210,8 @@ app.use('/api/transport', require('./routes/transport'));
 app.use('/api/outdoor', require('./routes/outdoor'));
 // Build 30: Life → Leisure. Explicit items + bounded listening aggregates.
 app.use('/api/leisure', require('./routes/leisure'));
+// Build 31: Life → People. Relationships only as Nick states them; writes go into People notes.
+app.use('/api/people', require('./routes/people'));
 app.use('/api/finance', require('./routes/finance'));
 // Build 24: personal projects — vault Projects/, GitHub metadata, linked tasks. Never writes to GitHub.
 app.use('/api/projects', require('./routes/projects'));

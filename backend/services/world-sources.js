@@ -213,19 +213,33 @@ function personPayload(name, notePath, fm) {
   // Build 11E: a relationship to Nick, ONLY as the note states it — never
   // inferred from how often they email or meet. Added only when stated, so the
   // fingerprint of every note that says nothing is unchanged.
-  const rel = relationshipOf(fm.relationship || fm.relation);
-  if (rel) body.relationship = rel;
+  // Build 31: the vocabulary is people-model's (15 types + the legacy words).
+  const rel = pm().normaliseRelationship(fm.relationship || fm.relation);
+  if (rel) body.relationship = rel.type;
+  const detail = typeof fm['relationship-detail'] === 'string' && fm['relationship-detail'].trim()
+    ? fm['relationship-detail'].trim().slice(0, 60) : (rel && rel.detail) || null;
+  if (rel && detail) body.relationshipDetail = detail;
   const hh = String(fm.household || '').toLowerCase();
   if (hh === 'true' || hh === 'false') body.household = hh === 'true';
+  // Build 31: only when stated, so every note that says nothing keeps its fingerprint.
+  const sphere = pm().normaliseSphere(fm.sphere);
+  if (sphere) body.sphere = sphere;
+  const imp = require('../../shared/life-domains.cjs').normaliseImportance(fm.importance);
+  if (imp) body.importance = imp;
+  const likes = (Array.isArray(fm.likes) ? fm.likes : []).map((s) => String(s).trim()).filter(Boolean).slice(0, 12);
+  if (likes.length) body.likes = likes;
+  if (typeof fm['merged-into'] === 'string' && fm['merged-into'].trim()) body.mergedInto = linkText(fm['merged-into']);
   return { ...body, fingerprint: wm.fingerprintOf(body) };
 }
 
-// The relationship words a People note may use. Anything else is not a
-// relationship NEURO knows how to read and is ignored, never guessed at.
+function pm() { return require('./people-model'); }
+
+// The relationship words a People note may use (Build 11E's, kept for callers).
+// The full vocabulary — and the mapping of these words onto it — is people-model's.
 const RELATIONSHIPS = Object.freeze(['spouse', 'partner', 'family', 'child', 'parent', 'sibling', 'friend', 'household', 'colleague']);
 function relationshipOf(v) {
-  const s = String(Array.isArray(v) ? v[0] || '' : v || '').trim().toLowerCase();
-  return RELATIONSHIPS.includes(s) ? s : null;
+  const r = pm().normaliseRelationship(v);
+  return r ? r.type : null;
 }
 
 /**

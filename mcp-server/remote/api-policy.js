@@ -56,6 +56,11 @@ export const interactive = {
   post_leisure_items: 'What Nick is watching, reading, playing or into is his own statement. He adds it in NEURO → Life → Leisure.',
   post_leisure_items_by_itemId: 'Editing a leisure item is Nick\'s statement. He does it in NEURO → Life → Leisure.',
   post_leisure_correct: 'Liked, disliked, finished, dropped, not mine — every leisure correction is Nick\'s own word. He makes it in NEURO → Life → Leisure.',
+  // Build 31: who someone is to Nick is his statement, never an agent's guess.
+  post_people: 'Creating a People note is Nick\'s statement about who exists in his life. He does it in NEURO → Life → People.',
+  post_people_duplicates_decide: 'Whether two records are one person is Nick\'s call. He merges or keeps them separate in NEURO → Life → People.',
+  post_people_links_reject: '"Not this person" is Nick\'s correction. He makes it in NEURO → Life → People.',
+  post_people_by_personId_classify: 'A relationship, sphere or household membership is Nick\'s own word — never inferred, never set by an agent. He sets it in NEURO → Life → People.',
   // Build 19P: goals, what a goal is about, what prepares for what, and what a
   // calendar or list is for are Nick's own statements. An agent may read the
   // Future Radar and obligations; it must never make these links itself.

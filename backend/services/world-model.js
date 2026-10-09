@@ -144,6 +144,11 @@ function _applyPerson(ev) {
   // Build 11E: stated relationship to Nick (NULL = the note does not say).
   db.run('UPDATE wm_people SET relationship = ?, household = ? WHERE person_id = ?',
     [p.relationship || null, typeof p.household === 'boolean' ? (p.household ? 1 : 0) : null, id]);
+  // Build 31: further declared fields — each NULL when the note does not say.
+  db.run(`UPDATE wm_people SET relationship_detail = ?, sphere = ?, importance = ?, likes_json = ?, merged_into = ?
+          WHERE person_id = ?`,
+  [p.relationshipDetail || null, p.sphere || null, p.importance || null,
+    Array.isArray(p.likes) && p.likes.length ? JSON.stringify(p.likes) : null, p.mergedInto || null, id]);
 
   const wanted = new Set((Array.isArray(p.emails) ? p.emails : []).map(lower).filter((e) => e.includes('@')));
   // Addresses this person held (or contested) that the note no longer lists.
@@ -350,6 +355,8 @@ function _person(id) {
     personId: r.person_id, displayName: r.display_name, notePath: r.note_path, role: r.role, team: r.team,
     directReport: r.direct_report === null ? null : r.direct_report === 1, manager: r.manager, status: r.status,
     relationship: r.relationship || null, household: r.household === null || r.household === undefined ? null : r.household === 1,
+    relationshipDetail: r.relationship_detail || null, sphere: r.sphere || null, importance: r.importance || null,
+    likes: r.likes_json ? JSON.parse(r.likes_json) : [], mergedInto: r.merged_into || null,
     aliases: JSON.parse(r.aliases_json), emails: db.all(`SELECT value FROM wm_person_identities WHERE person_id = ?`, [id]).map((x) => x.value),
     provenance: { kind: r.provenance_kind, confidence: r.confidence, evidence: JSON.parse(r.evidence_json), notePath: r.note_path },
     firstObservedAt: r.first_observed_at, lastObservedAt: r.last_observed_at,

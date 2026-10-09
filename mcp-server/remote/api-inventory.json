@@ -3702,6 +3702,40 @@
     "stream": false
   },
   {
+    "id": "get_people",
+    "method": "GET",
+    "route": "/api/people",
+    "domain": "people",
+    "source": "routes/people.js",
+    "line": 19,
+    "description": "GET /api/people. Life → People: household, family, friends, work, other, unknown relationship; dates, commitments, sources.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_people_by_personId",
+    "method": "GET",
+    "route": "/api/people/:personId",
+    "domain": "people",
+    "source": "routes/people.js",
+    "line": 42,
+    "description": "GET /api/people/:personId. one person: relationship, sphere, household, dates, commitments, why NEURO knows it, correction history.",
+    "params": [
+      "personId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_people_gap",
     "method": "GET",
     "route": "/api/people-gap",
@@ -4762,7 +4796,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 255,
+    "line": 257,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -9836,6 +9870,74 @@
     "stream": false
   },
   {
+    "id": "post_people",
+    "method": "POST",
+    "route": "/api/people",
+    "domain": "people",
+    "source": "routes/people.js",
+    "line": 24,
+    "description": "POST /api/people. Nick creates a People note (name; optional rosterName, relationshipType, sphere, household).",
+    "params": [],
+    "query": [],
+    "body": [
+      "household",
+      "name",
+      "relationshipDetail",
+      "relationshipType",
+      "rosterName",
+      "sphere"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_people_by_personId_classify",
+    "method": "POST",
+    "route": "/api/people/:personId/classify",
+    "domain": "people",
+    "source": "routes/people.js",
+    "line": 47,
+    "description": "POST /api/people/:personId/classify. set a person's relationship, detail, sphere, household or importance (null clears).",
+    "params": [
+      "personId"
+    ],
+    "query": [],
+    "body": [
+      "household",
+      "importance",
+      "relationshipDetail",
+      "relationshipType",
+      "sphere"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_people_duplicates_decide",
+    "method": "POST",
+    "route": "/api/people/duplicates/decide",
+    "domain": "people",
+    "source": "routes/people.js",
+    "line": 30,
+    "description": "POST /api/people/duplicates/decide. merge, keep separate or unmerge two people records. Body: a, b, decision, keep.",
+    "params": [],
+    "query": [],
+    "body": [
+      "a",
+      "b",
+      "decision",
+      "keep"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_people_gap_alias",
     "method": "POST",
     "route": "/api/people-gap/alias",
@@ -9926,6 +10028,26 @@
     "query": [],
     "body": [
       "name"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_people_links_reject",
+    "method": "POST",
+    "route": "/api/people/links/reject",
+    "domain": "people",
+    "source": "routes/people.js",
+    "line": 36,
+    "description": "POST /api/people/links/reject. \"not this person\": refuse a name match (household roster, birthday). Body: subject, personId, restore.",
+    "params": [],
+    "query": [],
+    "body": [
+      "personId",
+      "restore",
+      "subject"
     ],
     "queryOpen": false,
     "bodyOpen": true,

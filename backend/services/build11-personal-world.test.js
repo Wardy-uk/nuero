@@ -301,7 +301,8 @@ test('10/11. a STATED family relationship is preserved and is evidence; frequent
   require('./world-sources').publishPeople({ now: NOW });
   await pump();
   const helen = wm.getPerson('person:helen-ward');
-  assert.equal(helen.relationship, 'spouse');
+  // Build 31: the stated word maps onto the bounded vocabulary (spouse → spouse_partner).
+  assert.equal(helen.relationship, 'spouse_partner');
   assert.equal(helen.household, true);
   const sam = wm.getPerson('person:sam-often');
   assert.equal(sam.relationship, null, 'nothing stated, nothing inferred');

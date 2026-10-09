@@ -631,6 +631,22 @@ function fromPersonalOps(rows) {
         const scope = (d.action === 'disliked' || d.action === 'not-for-me') && d.kind === 'artist' ? 'This artist only — not the genre.' : null;
         return entry({ ...base, category: 'configured', type: 'leisure.correction', headline: lines[0], summary: scope, status: lines[1] });
       }
+      // Build 31AA — people: Nick's corrections only. Never a presence change,
+      // a visit, an email or a meeting.
+      case 'person-classified': return entry({ ...base, category: 'configured', type: 'people.relationship',
+        headline: d.field === 'importance' ? `You set how much ${d.name} matters to you` : d.to === null ? `You cleared ${d.name}'s ${d.field === 'relationship-detail' ? 'relationship detail' : 'relationship'}` : `You classified ${d.name}: ${String(d.to).replace(/_/g, ' ')}`,
+        summary: d.from ? `Was: ${String(d.from).replace(/_/g, ' ')}.` : 'Written into their People note.', status: 'set' });
+      case 'person-sphere-set': return entry({ ...base, category: 'configured', type: 'people.sphere',
+        headline: d.to === null ? `You cleared whether ${d.name} is work or personal` : `You marked ${d.name} as ${d.to === 'both' ? 'work and personal' : d.to}`, summary: d.from ? `Was: ${d.from}.` : null, status: 'set' });
+      case 'person-household-set': return entry({ ...base, category: 'configured', type: 'people.household',
+        headline: d.to === true ? `You said ${d.name} lives with you` : d.to === false ? `You said ${d.name} does not live with you` : `You cleared ${d.name}'s household status`, status: 'set' });
+      case 'person-created': return entry({ ...base, category: 'configured', type: 'people.person', headline: `You added a People note for ${d.name}`,
+        summary: d.rosterName && d.rosterName !== d.name ? `"${d.rosterName}" kept as an alias, so Home Assistant's name matches.` : null, status: 'set' });
+      case 'person-merged': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You merged ${d.merged} into ${d.kept}`, summary: 'No note was deleted; the merged one is marked merged-into.', status: 'linked' });
+      case 'person-unmerged': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You separated ${d.restored} from ${d.kept} again`, status: 'unlinked' });
+      case 'person-kept-separate': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You said ${d.a} and ${d.b} are different people`, status: 'set' });
+      case 'person-link-rejected': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You said ${String(d.subject).startsWith('household:') ? 'the household roster name' : 'a date'} is not ${d.name}`, status: 'unlinked' });
+      case 'person-link-restored': return entry({ ...base, category: 'configured', type: 'people.identity', headline: `You undid "not ${d.name}"`, status: 'linked' });
       case 'leisure-source-changed': return entry({ ...base, category: 'sensed', type: 'leisure.source', headline: `${d.label}: ${String(d.from).replace(/-/g, ' ')} → ${String(d.to).replace(/-/g, ' ')}`, status: 'changed' });
       case 'radar-needs-you': return entry({ ...base, category: 'sensed', type: 'personal.radar', headline: `Coming up and needs you: ${d.title}`, summary: 'Shown on the Future Radar. It does not interrupt on its own.', status: 'needs-you' });
       default: return null;

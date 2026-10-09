@@ -102,13 +102,17 @@ function personWorkEvidence(person) {
 // the family domain on basis `classified` — Nick said who this person is to
 // him. Nothing is inferred from how often they talk, and `friend` names no
 // domain (a friend is not a part of life on their own).
-const FAMILY_RELATIONSHIPS = new Set(['spouse', 'partner', 'family', 'child', 'parent', 'sibling', 'household']);
+// Build 31: the vocabulary is people-model's bounded one. The legacy word
+// `family` is read as type `other` + detail `family` and still counts as family.
 function personRelationshipEvidence(person) {
   if (!person || !person.relationship) return null;
-  if (FAMILY_RELATIONSHIPS.has(person.relationship)) {
-    return { domain: 'family', basis: 'classified', why: `${person.displayName}'s People note says ${person.relationship}` };
+  const pm = require('./people-model');
+  const said = person.relationshipDetail ? `${person.relationship} (${person.relationshipDetail})` : person.relationship;
+  if (pm.FAMILY_TYPES.includes(person.relationship) || person.relationship === 'household_member'
+    || (person.relationship === 'other' && person.relationshipDetail === 'family')) {
+    return { domain: 'family', basis: 'classified', why: `${person.displayName}'s People note says ${said}` };
   }
-  if (person.relationship === 'colleague') return { domain: 'work', basis: 'inference', why: `${person.displayName}'s People note says colleague` };
+  if (pm.WORK_TYPES.includes(person.relationship)) return { domain: 'work', basis: 'inference', why: `${person.displayName}'s People note says ${said}` };
   return null;
 }
 
