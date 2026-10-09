@@ -43,4 +43,14 @@ test('labels BP fields in an HRV record as a vendor estimate', () => {
     timestamp: '2026-10-09 17:14:30', systolic: 112, diastolic: 62,
     heartRate: 92, source: 'J2301 HRV vendor estimate',
   }]);
+  assert.deepEqual(decoded.hrvSamples, [{ timestamp: '2026-10-09 17:14:30', value: 49 }]);
+});
+
+test('decodes the confirmed oxygen and skin-temperature history layouts', () => {
+  const decoded = protocol.inspect([{
+    kind: 'notification',
+    hex: '66 00 00 26 10 09 17 15 20 60 62 00 00 26 10 09 16 59 59 5A 01',
+  }]);
+  assert.deepEqual(decoded.oxygenSamples, [{ timestamp: '2026-10-09 17:15:20', saturation: 96 }]);
+  assert.deepEqual(decoded.temperatureSamples, [{ timestamp: '2026-10-09 16:59:59', celsius: 34.6 }]);
 });

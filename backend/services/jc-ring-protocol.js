@@ -33,6 +33,9 @@ function inspect(packets) {
   const headers = {};
   const embeddedTimes = [];
   const heartRateSamples = [];
+  const hrvSamples = [];
+  const oxygenSamples = [];
+  const temperatureSamples = [];
   const vendorBloodPressureEstimates = [];
   let notifications = 0;
 
@@ -74,7 +77,11 @@ function inspect(packets) {
     for (let i = 0; i + 14 < bytes.length; i++) {
       const timestamp = bytes[i] === 0x56 && bytes[i + 2] === 0
         ? ringTimestamp(bytes, i + 3) : null;
-      if (!timestamp || bytes[i + 13] === 0 || bytes[i + 14] === 0 || vendorBloodPressureEstimates.length >= 100) continue;
+      if (!timestamp) continue;
+      if (bytes[i + 9] > 0 && hrvSamples.length < 100) {
+        hrvSamples.push({ timestamp, value: bytes[i + 9] });
+      }
+      if (bytes[i + 13] === 0 || bytes[i + 14] === 0 || vendorBloodPressureEstimates.length >= 100) continue;
       vendorBloodPressureEstimates.push({
         timestamp,
         systolic: bytes[i + 13],
@@ -82,6 +89,28 @@ function inspect(packets) {
         heartRate: bytes[i + 11],
         source: 'J2301 HRV vendor estimate',
       });
+    }
+
+    // Automatic SpO2 history: 66, sequence, 00, timestamp, saturation.
+    for (let i = 0; i + 9 < bytes.length; i++) {
+      const timestamp = bytes[i] === 0x66 && bytes[i + 2] === 0
+        ? ringTimestamp(bytes, i + 3) : null;
+      const saturation = bytes[i + 9];
+      if (timestamp && saturation > 0 && saturation <= 100 && oxygenSamples.length < 100) {
+        oxygenSamples.push({ timestamp, saturation });
+      }
+    }
+
+    // Automatic temperature history: 62, sequence, 00, timestamp, little-
+    // endian deci-degrees Celsius. It is a skin-facing ring value, not core
+    // body temperature.
+    for (let i = 0; i + 10 < bytes.length; i++) {
+      const timestamp = bytes[i] === 0x62 && bytes[i + 2] === 0
+        ? ringTimestamp(bytes, i + 3) : null;
+      const tenthsC = bytes[i + 9] | (bytes[i + 10] << 8);
+      if (timestamp && tenthsC >= 100 && tenthsC <= 500 && temperatureSamples.length < 100) {
+        temperatureSamples.push({ timestamp, celsius: tenthsC / 10 });
+      }
     }
   }
 
@@ -91,6 +120,9 @@ function inspect(packets) {
     headers,
     embeddedTimes,
     heartRateSamples,
+    hrvSamples,
+    oxygenSamples,
+    temperatureSamples,
     vendorBloodPressureEstimates,
     caution: '0x54 heart-rate history and 0x56 vendor BP estimates are decoded. Consumer wearable readings are not clinical measurements; BP estimates need comparison against a validated cuff or HiLo before they are used for a trend.',
   };

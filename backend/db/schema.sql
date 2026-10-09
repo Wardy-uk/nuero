@@ -934,6 +934,22 @@ CREATE TABLE IF NOT EXISTS health_samples (
 
 CREATE INDEX IF NOT EXISTS idx_health_samples_metric_time ON health_samples(metric, recorded_at DESC);
 
+-- Direct J2301 ring readings remain separate from Apple Health. In particular,
+-- its vendor blood-pressure figures are estimates, never cuff measurements.
+-- `recorded_at_local` is the ring's own displayed clock; retaining it avoids
+-- silently applying the server's timezone to an unverified device clock.
+CREATE TABLE IF NOT EXISTS jc_ring_samples (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  metric TEXT NOT NULL,
+  value REAL NOT NULL,
+  recorded_at_local TEXT NOT NULL,
+  sample_index INTEGER NOT NULL DEFAULT 0,
+  received_at DATETIME NOT NULL,
+  UNIQUE(metric, recorded_at_local, sample_index)
+);
+CREATE INDEX IF NOT EXISTS idx_jc_ring_samples_metric_time
+  ON jc_ring_samples(metric, recorded_at_local DESC);
+
 -- One row per day, derived from health_samples.
 --
 -- health_samples holds ~1.1M rows across 66 metrics and two years, which is the

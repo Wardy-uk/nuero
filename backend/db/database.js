@@ -1657,6 +1657,28 @@ function getLatestHealthSample(metric) {
   );
 }
 
+// Direct JC Ring measurements are intentionally NOT health_samples: their
+// timestamps are the ring's local clock and its BP values are vendor estimates.
+// This key makes repeated history pulls idempotent without blending sources.
+function insertJCRingSample(metric, value, recordedAtLocal, sampleIndex, receivedAt) {
+  const r = run(
+    `INSERT OR IGNORE INTO jc_ring_samples
+      (metric, value, recorded_at_local, sample_index, received_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [metric, value, recordedAtLocal, sampleIndex || 0, receivedAt]
+  );
+  return r.changes > 0;
+}
+
+function getLatestJCRingSample(metric) {
+  return get(
+    `SELECT metric, value, recorded_at_local, sample_index, received_at
+       FROM jc_ring_samples WHERE metric = ?
+       ORDER BY recorded_at_local DESC, sample_index DESC LIMIT 1`,
+    [metric]
+  );
+}
+
 // What is actually in the health series, per metric. Powers the MCP tool and
 // the ingest status view. Reports first/last seen as well as counts, because
 // "we have 4,000 rows" and "nothing has arrived since Tuesday" look identical
@@ -2930,6 +2952,8 @@ module.exports = {
   getHealthSamples,
   getSleepSamples,
   getLatestHealthSample,
+  insertJCRingSample,
+  getLatestJCRingSample,
   // Location visits
   saveLocationVisit,
   insertHostMetrics,

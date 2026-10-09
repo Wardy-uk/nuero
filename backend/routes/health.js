@@ -16,9 +16,35 @@ const RING_DIAGNOSTIC_STATE_KEY = 'jc_ring_diagnostic';
 const MAX_RING_DIAGNOSTIC_PACKETS = 500;
 const MAX_RING_DIAGNOSTIC_CHARACTERISTICS = 100;
 const MAX_RING_DIAGNOSTIC_PROBES = 300;
+const JC_RING_METRICS = [
+  'heart_rate', 'hrv', 'blood_oxygen_saturation', 'skin_temperature_celsius',
+  'vendor_bp_systolic_estimate', 'vendor_bp_diastolic_estimate',
+];
 
 function shortText(value, limit) {
   return typeof value === 'string' && value.length <= limit ? value : null;
+}
+
+// The raw capture remains available for protocol work, but confirmed readings
+// are also made durable here. They use their own table so nothing from a
+// consumer ring is blended into Apple Health or a HiLo measurement.
+function persistJCRingReadings(packets, receivedAt) {
+  const decoded = jcRingProtocol.inspect(packets);
+  let stored = 0;
+  const put = (metric, value, at, sampleIndex = 0) => {
+    if (Number.isFinite(value) && db.insertJCRingSample(metric, value, at, sampleIndex, receivedAt)) stored++;
+  };
+  for (const sample of decoded.heartRateSamples) {
+    put('heart_rate', sample.bpm, sample.timestamp, sample.sampleIndex);
+  }
+  for (const sample of decoded.hrvSamples) put('hrv', sample.value, sample.timestamp);
+  for (const sample of decoded.oxygenSamples) put('blood_oxygen_saturation', sample.saturation, sample.timestamp);
+  for (const sample of decoded.temperatureSamples) put('skin_temperature_celsius', sample.celsius, sample.timestamp);
+  for (const sample of decoded.vendorBloodPressureEstimates) {
+    put('vendor_bp_systolic_estimate', sample.systolic, sample.timestamp);
+    put('vendor_bp_diastolic_estimate', sample.diastolic, sample.timestamp);
+  }
+  return { decoded, stored };
 }
 
 /**
@@ -89,8 +115,9 @@ function ringDiagnostic(body, client) {
     probes,
   };
   db.setState(RING_DIAGNOSTIC_STATE_KEY, JSON.stringify(capture));
+  const persisted = persistJCRingReadings(packets, capture.receivedAt);
   return { ok: true, packetsStored: packets.length, characteristicsStored: characteristics.length,
-    probesStored: probes.length, receivedAt: capture.receivedAt };
+    probesStored: probes.length, readingsStored: persisted.stored, receivedAt: capture.receivedAt };
 }
 
 // POST /api/health/ring-diagnostic — an explicit, one-off protocol capture.
@@ -130,6 +157,18 @@ router.get('/ring-diagnostic/decoded', (req, res) => {
       decoded: jcRingProtocol.inspect(capture.packets) });
   } catch {
     return res.status(500).json({ error: 'could not decode ring diagnostic' });
+  }
+});
+
+// Latest values from the direct ring, deliberately source-labelled. The
+// vendor BP fields are estimates and never presented as measured pressure.
+router.get('/ring-readings', (req, res) => {
+  try {
+    const latest = Object.fromEntries(JC_RING_METRICS.map(metric => [metric, db.getLatestJCRingSample(metric) || null]));
+    return res.json({ available: Object.values(latest).some(Boolean), latest,
+      caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring timestamps are device-local.' });
+  } catch {
+    return res.status(500).json({ error: 'could not read JC Ring samples' });
   }
 });
 
