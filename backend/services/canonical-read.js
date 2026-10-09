@@ -1253,6 +1253,7 @@ function _workMeetingMinutesToday(nowMs, people, ctx = null) {
 let _radarMemo = null;
 let _homeMemo = null;
 let _outdoorMemo = null;
+let _leisureMemo = null;
 async function now({ now: nowMs = Date.now(), decision = null } = {}) {
   const gaps = [];
   let dec = decision;
@@ -1344,6 +1345,13 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
     if (!_outdoorMemo || _outdoorMemo.minute !== minute) _outdoorMemo = { minute, o: require('./outdoor').nowBlock({ now: nowMs }) };
     payload.outdoor = _outdoorMemo.o;
   } catch (e) { payload.outdoor = null; gaps.push({ input: 'outdoor', why: e.message }); }
+  // Build 30Y: Leisure on Now only for what is playing now (phone Music, fresh)
+  // or a leisure booking today/tomorrow. Never a backlog. No write, memoised.
+  try {
+    const minute = Math.floor(nowMs / 60000);
+    if (!_leisureMemo || _leisureMemo.minute !== minute) _leisureMemo = { minute, l: require('./leisure').nowBlock({ now: nowMs }) };
+    payload.leisure = _leisureMemo.l;
+  } catch (e) { payload.leisure = null; gaps.push({ input: 'leisure', why: e.message }); }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
   // allowed to fail the feed: null means "render the way you did before".

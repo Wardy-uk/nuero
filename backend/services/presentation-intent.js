@@ -431,6 +431,12 @@ function composePresentation(p, { now = Date.now() } = {}) {
     if ((od.needsYou || []).length) observations.push({ ...item, priority: 'P2', promoted: true, title: od.needsYou[0].line, summary: item.detail });
     else context.push(item);
   }
+  // Build 30Y: a leisure booking today or tomorrow is context — never ranked,
+  // never promoted. What is playing is already the "Playing …" line above.
+  const ls = p.leisure && Array.isArray(p.leisure.soon) ? p.leisure.soon[0] : null;
+  if (ls && ls.title) {
+    context.push({ id: 'leisure', kind: 'leisure', priority: 'P3', label: `${ls.title} ${ls.when}${ls.time ? ` at ${ls.time}` : ''}`, basis: ls.basis || null });
+  }
   const ln = p.lastNight;
   if (ln && ln.known !== false && Number.isFinite(ln.asleepHours)) {
     const item = { id: 'sleep', kind: 'sleep', priority: 'P3', label: `Slept ${hoursPhrase(ln.asleepHours)}`, detail: ln.usualLine || null };

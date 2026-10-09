@@ -265,6 +265,11 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/outdoor/activities/:activityId/route/remove', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/activities/:activityId/companion', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/activities/:activityId/companion/remove', 'internal.state', { machine: 'refuse' }),
+  // Build 30: what Nick is into, liked, finished or dropped is his own word.
+  // Machines read Leisure; they never write it.
+  R('POST', '/api/leisure/items', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/leisure/items/:itemId', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/leisure/correct', 'internal.state', { machine: 'refuse' }),
   R('*', '/api/capture/file', 'file.write'),
   R('*', '/api/capture/photo', 'file.write'),
   R('POST', '/api/vault/export-docx', 'file.write'),
@@ -299,7 +304,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   'weekly-risk': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
   vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
-  outdoor: 'internal.state',
+  outdoor: 'internal.state', leisure: 'internal.state',
 });
 
 function _segments(p) { return String(p || '').split('?')[0].replace(/\/+$/, '').split('/').filter(Boolean); }

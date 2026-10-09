@@ -154,6 +154,18 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_leisure',
+    tier: 'read',
+    description:
+      'Read what Nick is into outside work: what is playing now, what he is partway through, '
+      + 'what he recently finished or liked, his hobbies, artists he has been listening to (with '
+      + 'how strong that evidence is), his explicit dislikes, and interests stated in his profile. '
+      + 'Use it when he asks what to watch, read, listen to or do, or what he has been into. '
+      + 'It only READS. Explain any suggestion from this evidence; never suggest anything by a '
+      + 'creator he disliked.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
     name: 'get_home_state',
     tier: 'read',
     description:
@@ -495,6 +507,17 @@ const HANDLERS = {
    * WARNING  AN UNREADABLE HOUSE IS SAID, never returned as an empty one - the
    *   model must be able to tell "I could not look" from "everything is off".
    */
+  /**
+   * Build 30: Leisure, for a question Nick asked. NEURO has no media
+   * catalogue, so suggestions beyond what he already holds come from the model
+   * — grounded on this evidence, with his dislikes travelling beside it.
+   */
+  async get_leisure() {
+    try { return { ok: true, ...require('./leisure').chatView() }; } catch (e) {
+      return { ok: false, error: `I could not read Leisure: ${e.message}. Say that, rather than that he has no interests.` };
+    }
+  },
+
   async get_home_state({ room = null } = {}) {
     const house = await require('./ha-rooms').readHouse();
     const state = require('./home-state').describeHouse(house);

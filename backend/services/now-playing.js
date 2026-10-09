@@ -38,6 +38,9 @@ function record(body = {}, { now = Date.now() } = {}) {
   try { held = JSON.parse(db.getState(KEY) || 'null'); } catch { held = null; }
   if (held && Date.parse(held.at) > at) return { ok: true, stored: false, reason: 'an equal or newer report is already held' };
   db.setState(KEY, JSON.stringify(item));
+  // Build 30: a PLAYING report adds its day to the artist/album aggregates.
+  // Never allowed to fail the report; the track title is not kept there.
+  try { require('./leisure').observeNowPlaying(item, { now }); } catch (e) { console.warn('[Leisure] now-playing not folded:', e.message); }
   return { ok: true, stored: true, item };
 }
 

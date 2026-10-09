@@ -1497,7 +1497,11 @@ function registerDurableJobs() {
       // Build 29: Outdoor's one network call — HA's daily forecast, cached so reads write nothing.
       let outdoor = null;
       try { outdoor = await require('./outdoor').refresh(); } catch (e) { outdoor = { ok: false, error: e.message }; }
-      return { ...radar, nags, home, admin, outdoor };
+      // Build 30: Leisure — a media player that states episode identity (none
+      // does today), aggregate pruning, and source changes; Activity on change only.
+      let leisure = null;
+      try { leisure = await require('./leisure').refresh(); } catch (e) { leisure = { ok: false, error: e.message }; }
+      return { ...radar, nags, home, admin, outdoor, leisure };
     },
   });
 

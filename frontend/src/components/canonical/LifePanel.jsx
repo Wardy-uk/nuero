@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when, Fold } from './canonicalUi';
 import OutdoorCard from './OutdoorCard';
+import LeisureCard from './LeisureCard';
 import PersonalDatesCard from './PersonalDatesCard';
 import CompanionCareCard from './CompanionCareCard';
 import TransportCard from './TransportCard';
@@ -63,6 +64,8 @@ export default function LifePanel({ onNavigate = null } = {}) {
       <Goals data={data} busy={busy} act={act} />
       {/* Build 29: Outdoor carries the Hike weekly loop (its confirm / not-a-hike controls). */}
       <OutdoorCard />
+      {/* Build 30: Leisure — what Nick is into; no feed, no history wall. */}
+      <LeisureCard />
       <PersonalAdminCard />
       <TransportCard />
       <FinanceCard />

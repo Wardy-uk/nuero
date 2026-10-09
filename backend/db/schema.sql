@@ -3133,3 +3133,51 @@ CREATE TABLE IF NOT EXISTS outdoor_activity_links (
   set_at      TEXT NOT NULL,
   PRIMARY KEY (activity_id, relation, target_id)
 );
+
+-- ── Build 30: Leisure & media ─────────────────────────────────────────────
+-- What Nick ADDED or CORRECTED. Never written from passive playback: a
+-- listening aggregate becomes an item only when he says something about it
+-- (source_ref binds the two). `current` is not a state here — it is a
+-- right-now fact read from a fresh source. Every change is ALSO written to
+-- personal_ops_events (append-only), which is the audit trail.
+CREATE TABLE IF NOT EXISTS leisure_items (
+  item_id         TEXT PRIMARY KEY,
+  kind            TEXT NOT NULL CHECK (kind IN ('tv_series','film','music_track','album','artist','playlist','podcast','audiobook','game','book','hobby','other')),
+  title           TEXT NOT NULL,
+  creator         TEXT,
+  state           TEXT NOT NULL CHECK (state IN ('active','paused','completed','abandoned','saved','unknown')),
+  progress_json   TEXT,
+  preference      TEXT CHECK (preference IN ('loved','liked','neutral','disliked','not-for-me')),
+  want_more       INTEGER NOT NULL DEFAULT 0,
+  ownership       TEXT NOT NULL DEFAULT 'nick' CHECK (ownership IN ('nick','household','not-mine')),
+  not_basis       INTEGER NOT NULL DEFAULT 0,
+  snoozed_until   TEXT,
+  event_date      TEXT,
+  event_kind      TEXT CHECK (event_kind IN ('booked','release','session')),
+  project_id      TEXT,
+  source_ref      TEXT UNIQUE,
+  notes           TEXT,
+  completed_at    TEXT,
+  last_touched_at TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_leisure_items_event ON leisure_items(event_date);
+
+-- Bounded AGGREGATES, never a play log: one row per artist / album (phone
+-- Music app) or per series (a media player that states episode identity),
+-- holding only the DISTINCT LOCAL DAYS it was heard (<= 90) and, for a series,
+-- the furthest episode a reliable source reported finished. No track titles,
+-- no timestamps beyond the day, no room.
+CREATE TABLE IF NOT EXISTS leisure_observations (
+  obs_key       TEXT PRIMARY KEY,
+  source        TEXT NOT NULL,
+  kind          TEXT NOT NULL CHECK (kind IN ('artist','album','tv_series')),
+  title         TEXT NOT NULL,
+  creator       TEXT,
+  ownership     TEXT NOT NULL CHECK (ownership IN ('nick-device','household')),
+  days_json     TEXT NOT NULL,
+  first_seen    TEXT NOT NULL,
+  last_seen     TEXT NOT NULL,
+  progress_json TEXT
+);

@@ -117,7 +117,7 @@ function _prepState(prep, away) {
 function composeRadar({ today, horizonDays = 14, events = [], dates = [], obligations = [], goals = [], hikeGoal = null,
   prepBySubject = new Map(), goalsByEntity = new Map(), coverage = {}, undatedObligations = 0, workExcluded = 0,
   care = [], careByEntity = new Map(), leadReminders = {}, vehicles = [], finances = [], projects = [],
-  outdoorPlans = [], outdoorWeather = new Map() } = {}) {
+  outdoorPlans = [], outdoorWeather = new Map(), leisure = [] } = {}) {
   const last = addDays(today, horizonDays);
   const inWindow = (d) => d && d >= today && d <= last;
   const items = [];
@@ -225,6 +225,26 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     };
     if (p.kind === 'hike') folded.set(`hike|${p.day}`, item);
     items.push(item);
+  }
+  // ── Build 30Z: leisure Nick dated in Life → Leisure — a booking, a tracked
+  // release, a hobby session. A booking that the calendar already holds on
+  // that day (its title contains the item's) FOLDS into that entry. Never a
+  // recommendation; never needs_you — a ticket deadline is a task.
+  for (const l of leisure) {
+    if (!inWindow(l.date)) continue;
+    const lt = normTitle(l.title);
+    const host = lt.length >= 4 ? items.find((it) => it.kind === 'event' && it.date === l.date && normTitle(it.title).includes(lt)) : null;
+    if (host) {
+      host.sourceRefs.push(l.itemId); host.whyVisible.push(l.whyVisible[0]);
+      if (!host.domain) { host.domain = 'leisure'; host.domains = ['leisure']; host.sphere = 'personal'; }
+      continue;
+    }
+    items.push({
+      id: l.id, title: l.title, date: l.date, time: null, window: null, domain: 'leisure', domains: ['leisure'], sphere: 'personal',
+      kind: 'leisure', leisureKind: l.eventKind, sourceRefs: [l.itemId], linkedEntityRefs: [], linkedTaskRefs: [], linkedGoals: [],
+      importance: null, actionState: l.eventKind === 'release' ? 'none' : 'planned', confidence: 'high', whyVisible: l.whyVisible,
+      when: whenWords(today, l.date),
+    });
   }
   // Weather is CONTEXT on a planned outing; only a SEVERE forecast within two
   // days asks Nick for a decision (keep it, move it, drop it). Never a push.
@@ -501,13 +521,15 @@ function read({ now = Date.now(), horizonDays = 14 } = {}) {
   if (projectRead.error) { gaps.push({ input: 'projects', why: projectRead.error }); cov.reasons.push('personal-project dates could not be read'); }
   const outdoorRead = require('./outdoor').radar({ today, last });
   if (outdoorRead.error) { gaps.push({ input: 'outdoor', why: outdoorRead.error }); cov.reasons.push('route plans could not be read'); }
+  const leisureRead = require('./leisure').radar({ today, last });
+  if (leisureRead.error) { gaps.push({ input: 'leisure', why: leisureRead.error }); cov.reasons.push('leisure bookings could not be read'); }
   const outdoorWeather = new Map();
   for (let i = 0; i <= 2; i += 1) {
     const d = addDays(today, i);
     try { outdoorWeather.set(d, require('./outdoor').weatherNear(d, nowMs)); } catch { /* no weather: context only */ }
   }
   const radar = composeRadar({
-    today, horizonDays, outdoorPlans: outdoorRead.items, outdoorWeather, events, dates, obligations: obl ? obl.items : [], goals, hikeGoal,
+    today, horizonDays, outdoorPlans: outdoorRead.items, outdoorWeather, leisure: leisureRead.items, events, dates, obligations: obl ? obl.items : [], goals, hikeGoal,
     prepBySubject: _prepBySubject(prep.bySubject, taskIndex), goalsByEntity, coverage: cov,
     undatedObligations: obl ? obl.counts.undated : 0, workExcluded: obl ? obl.counts.workExcluded : 0,
     care: careRead.items, careByEntity: cc.linkMap(), leadReminders: require('./date-nags').cadences(),
@@ -568,4 +590,7 @@ module.exports = {
   parseHorizon, whenWords, composeRadar, goalProgress, normTitle,
   // readers
   read, refresh,
+  // Build 30: Leisure reads the same calendar entries the Radar does (work and
+  // untracked calendars already excluded) rather than a second selection.
+  calendarEvents: _events,
 };

@@ -229,4 +229,14 @@ const BUILD_29 = Object.freeze([
     why: 'Today a Hiking workout with its GPS route counts whatever its length. Five "Hiking" workouts between 25 Feb and 2 Mar lasted 13–25 minutes and about 1 km each — they would have counted. Your call; NEURO has not changed the rule.' },
 ]);
 
-module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, BUILD_27, BUILD_28, BUILD_29, validate, reconcile, verify };
+// Build 30: Leisure is only as good as what Nick tells it. NEURO reads one
+// passive source (the phone's Music app); everything else — what he is
+// watching, reading, playing, his hobbies — is his to add. One task, not one
+// per show: "watch X" is never a task.
+const BUILD_30 = Object.freeze([
+  { key: 'seed-leisure', build: 'Build 30', lifeDomains: ['leisure'],
+    title: 'Add what you are into right now in Life → Leisure (current series/book/game, and hobbies like D&D or the aquariums)',
+    why: 'NEURO can only see what the iPhone Music app plays. Your profile mentions D&D, the aquariums, retro tech, maker builds and Marillion, but NEURO will not turn a profile line into a tracked hobby for you. Nothing here becomes a reminder.' },
+]);
+
+module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, BUILD_27, BUILD_28, BUILD_29, BUILD_30, validate, reconcile, verify };

@@ -610,6 +610,28 @@ function fromPersonalOps(rows) {
       case 'lead-reminders-set': return entry({ ...base, category: 'configured', type: 'personal.lead-reminders',
         headline: d.offsets ? `You set ${d.kind} lead reminders: ${d.offsets.join(', ')} days before` : `You cleared ${d.kind} lead reminders`,
         summary: d.offsets ? 'First step shows on the Radar, the last is the only push — skipped when the prep is done.' : null, status: 'set' });
+      // Build 30AB — leisure: what Nick added, finished, dropped, liked or
+      // reclassified, and source changes. Never a track, an episode tick, a
+      // pause or a play. (A next-episode tick is audited, not Activity.)
+      case 'leisure-item-added': return entry({ ...base, category: 'configured', type: 'leisure.item', headline: `You added ${d.kind === 'hobby' ? 'a hobby' : 'to Leisure'}: "${d.title}"`, summary: d.eventDate ? `Dated ${d.eventDate}.` : null, status: 'set' });
+      case 'leisure-item-updated': return entry({ ...base, category: 'configured', type: 'leisure.item', headline: `You changed "${d.title}" in Leisure`, summary: d.fields && d.fields.length ? `Changed: ${d.fields.join(', ')}.` : null, status: 'set' });
+      case 'leisure-correction': {
+        const t = `"${d.title}"`;
+        const lines = {
+          completed: [`You finished ${t}`, 'finished'], dropped: [`You dropped ${t}`, 'dropped'], resume: [`You picked ${t} back up`, 'set'],
+          paused: [`You paused ${t}`, 'set'], save: [`You saved ${t} for later`, 'set'],
+          liked: [`You marked ${t} as liked`, 'set'], loved: [`You marked ${t} as loved`, 'set'], 'want-more': [`You asked for more like ${t}`, 'set'],
+          disliked: [`You marked ${t} as disliked`, 'set'], 'not-for-me': [`You said ${t} is not for you`, 'set'],
+          neutral: [`You marked ${t} as neutral`, 'set'], 'clear-preference': [`You cleared your preference on ${t}`, 'set'],
+          'not-mine': [`You said ${t} was not yours`, 'set'], 'household-only': [`You said ${t} was household listening`, 'set'], 'this-was-me': [`You said ${t} was yours`, 'set'],
+          'remove-basis': [`${t} is no longer used for suggestions`, 'set'], 'restore-basis': [`${t} is used for suggestions again`, 'set'],
+          'not-right-now': [`You put ${t} aside for now`, 'set'],
+        }[d.action];
+        if (!lines) return null;
+        const scope = (d.action === 'disliked' || d.action === 'not-for-me') && d.kind === 'artist' ? 'This artist only — not the genre.' : null;
+        return entry({ ...base, category: 'configured', type: 'leisure.correction', headline: lines[0], summary: scope, status: lines[1] });
+      }
+      case 'leisure-source-changed': return entry({ ...base, category: 'sensed', type: 'leisure.source', headline: `${d.label}: ${String(d.from).replace(/-/g, ' ')} → ${String(d.to).replace(/-/g, ' ')}`, status: 'changed' });
       case 'radar-needs-you': return entry({ ...base, category: 'sensed', type: 'personal.radar', headline: `Coming up and needs you: ${d.title}`, summary: 'Shown on the Future Radar. It does not interrupt on its own.', status: 'needs-you' });
       default: return null;
     }

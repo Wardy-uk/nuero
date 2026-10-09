@@ -52,6 +52,10 @@ export const interactive = {
   post_outdoor_activities_by_activityId_route_remove: 'Unlinking a route is Nick\'s choice. He does it in NEURO → Life → Outdoor.',
   post_outdoor_activities_by_activityId_companion: 'Whether Ember came along is Nick\'s statement, never inferred. He marks it in NEURO → Life → Outdoor.',
   post_outdoor_activities_by_activityId_companion_remove: 'Removing Ember from an activity is Nick\'s statement. He does it in NEURO → Life → Outdoor.',
+  // Build 30: leisure items and corrections (liked, finished, not mine) are Nick's own.
+  post_leisure_items: 'What Nick is watching, reading, playing or into is his own statement. He adds it in NEURO → Life → Leisure.',
+  post_leisure_items_by_itemId: 'Editing a leisure item is Nick\'s statement. He does it in NEURO → Life → Leisure.',
+  post_leisure_correct: 'Liked, disliked, finished, dropped, not mine — every leisure correction is Nick\'s own word. He makes it in NEURO → Life → Leisure.',
   // Build 19P: goals, what a goal is about, what prepares for what, and what a
   // calendar or list is for are Nick's own statements. An agent may read the
   // Future Radar and obligations; it must never make these links itself.

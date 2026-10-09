@@ -2904,6 +2904,42 @@
     "stream": false
   },
   {
+    "id": "get_leisure",
+    "method": "GET",
+    "route": "/api/leisure",
+    "domain": "leisure",
+    "source": "routes/leisure.js",
+    "line": 15,
+    "description": "GET /api/leisure. Leisure: now playing, coming up, continue, recently enjoyed, hobbies, listening interest, likes/dislikes, sources.",
+    "params": [],
+    "query": [
+      "ask"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_leisure_items_by_ref",
+    "method": "GET",
+    "route": "/api/leisure/items/:ref",
+    "domain": "leisure",
+    "source": "routes/leisure.js",
+    "line": 23,
+    "description": "GET /api/leisure/items/:ref. one leisure item or listening record, and why NEURO holds its state.",
+    "params": [
+      "ref"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_location_dwell_check",
     "method": "GET",
     "route": "/api/location/dwell-check",
@@ -4710,7 +4746,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 253,
+    "line": 255,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -8901,6 +8937,81 @@
     "query": [],
     "body": [
       "path"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_leisure_correct",
+    "method": "POST",
+    "route": "/api/leisure/correct",
+    "domain": "leisure",
+    "source": "routes/leisure.js",
+    "line": 40,
+    "description": "POST /api/leisure/correct. Nick's correction on an item or listening record: liked, disliked, completed, dropped, not mine, this was me.",
+    "params": [],
+    "query": [],
+    "body": [
+      "action",
+      "ref"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_leisure_items",
+    "method": "POST",
+    "route": "/api/leisure/items",
+    "domain": "leisure",
+    "source": "routes/leisure.js",
+    "line": 28,
+    "description": "POST /api/leisure/items. Nick adds a series, film, album, book, game, podcast, hobby or booking.",
+    "params": [],
+    "query": [],
+    "body": [
+      "creator",
+      "eventDate",
+      "eventKind",
+      "kind",
+      "notes",
+      "preference",
+      "progress",
+      "projectId",
+      "state",
+      "title"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_leisure_items_by_itemId",
+    "method": "POST",
+    "route": "/api/leisure/items/:itemId",
+    "domain": "leisure",
+    "source": "routes/leisure.js",
+    "line": 34,
+    "description": "POST /api/leisure/items/:itemId. Nick edits a leisure item (title, creator, state, progress, date, project, notes).",
+    "params": [
+      "itemId"
+    ],
+    "query": [],
+    "body": [
+      "creator",
+      "eventDate",
+      "eventKind",
+      "kind",
+      "notes",
+      "preference",
+      "progress",
+      "projectId",
+      "state",
+      "title"
     ],
     "queryOpen": false,
     "bodyOpen": true,
