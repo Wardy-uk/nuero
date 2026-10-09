@@ -308,7 +308,14 @@ function taskCounts(week = weekCommencing()) {
 
   // SQL rather than a JS filter over listTaskRows: these are counts over the
   // whole table and the report runs at 07:30 on a Pi.
-  const OPEN = "status IN ('open','in-progress')";
+  //
+  // ⚠ WORK ONLY, AND SILENTLY SO (Nick, 9 Oct 2026: "the two domains must never
+  // cross"). This is a management report; a personal task has no place in any
+  // figure on it, and the report does not mention, count or allude to what it
+  // left out. NULL is work because that is task-domain's documented default.
+  // Every query below — including the whole-list totals — carries this clause.
+  const WORK = "(domain IS NULL OR domain = 'work')";
+  const OPEN = `${WORK} AND status IN ('open','in-progress')`;
   // ⚠ `origin IS NULL` is the unclassified bucket and must be written out
   // explicitly at every call site. `origin != 'commitment'` would be true of
   // NULL in most databases and false of it in SQLite's three-valued logic — the
@@ -324,7 +331,7 @@ function taskCounts(week = weekCommencing()) {
     // chased. Reported so "3 overdue" is not read as "everything else is on time".
     const undated = one(`SELECT COUNT(*) c FROM tasks WHERE ${OPEN} AND ${originSql} AND due_date IS NULL`);
     const closed = one(
-      `SELECT COUNT(*) c FROM tasks WHERE status = 'done' AND ${originSql} AND completed_at IS NOT NULL AND DATE(completed_at) BETWEEN ? AND ?`,
+      `SELECT COUNT(*) c FROM tasks WHERE ${WORK} AND status = 'done' AND ${originSql} AND completed_at IS NOT NULL AND DATE(completed_at) BETWEEN ? AND ?`,
       [lastWeekStart, lastWeekEnd],
     );
     return { open, overdue, undated, closedLastWeek: closed, available: open !== null };
@@ -341,11 +348,11 @@ function taskCounts(week = weekCommencing()) {
   );
   const undated = one(`SELECT COUNT(*) c FROM tasks WHERE ${OPEN} AND due_date IS NULL`);
   const closed = one(
-    "SELECT COUNT(*) c FROM tasks WHERE status = 'done' AND completed_at IS NOT NULL AND DATE(completed_at) BETWEEN ? AND ?",
+    `SELECT COUNT(*) c FROM tasks WHERE ${WORK} AND status = 'done' AND completed_at IS NOT NULL AND DATE(completed_at) BETWEEN ? AND ?`,
     [lastWeekStart, lastWeekEnd],
   );
   const dropped = one(
-    "SELECT COUNT(*) c FROM tasks WHERE status = 'dropped' AND completed_at IS NOT NULL AND DATE(completed_at) BETWEEN ? AND ?",
+    `SELECT COUNT(*) c FROM tasks WHERE ${WORK} AND status = 'dropped' AND completed_at IS NOT NULL AND DATE(completed_at) BETWEEN ? AND ?`,
     [lastWeekStart, lastWeekEnd],
   );
   // How much of the split is still NEURO's guess rather than Nick's call. A
@@ -450,7 +457,7 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     ];
 
   // Nick's own task position. Competency 4 is about overdue management actions,
-  // but the 12 Aug review also put a number on the personal backlog — 400+ items
+  // but the 12 Aug review also put a number on his own work backlog — 400+ items
   // since 1 June — so "open / overdue / closed last week" is the movement that
   // conversation actually asked for. Read straight from the task store, which
   // is the source of truth for tasks.
@@ -2381,6 +2388,7 @@ module.exports = {
   markSent, recordExternalSend, sentRecord, sentSummary, isLocked, reopen,
   getManual, setManual, manualBlockers, emptyManual, carryForward,
   weekCommencing, previousWeek, buildTrend, consecutiveBelowTarget, ragBucket,
+  taskCounts,
   QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder, byTrendOrder,
   csatSummaryRows,
   weekSpan, periodInWeek, shortUk, targetOf, ragCell, AMBER_BAND,
