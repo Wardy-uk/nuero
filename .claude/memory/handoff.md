@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-09 (Build 26: Tally finance intelligence + NEURO operational finance)
+
+- BOUNDARY: Tally calculates all finance (`C:\Users\NickW\Claude\Tally`, `src/server/intelligence/`); NEURO reads `finance-intelligence-v1` (GET /api/intelligence/contract via tally-api) and calculates nothing. finance-model.js deleted; NEURO's recurring/unusual/category/rule routes answer 410.
+- DEPLOYED: Tally 449fe85 to pi-dev by copy (backup ~/tally-predeploy-20261009-1142) + Netlify (Outlook page). Tally local main fast-forwarded, NOT pushed to GitHub. NEURO 91de6ce + c8644fe on origin/main and pi5 (gate 5859/0), gateway rebuilt. Built in worktree nuero-b26 (own npm ci, no junctions).
+- Live: feeds all healthy (Helen reconnected 8 Oct); household usable £81.82; 30-day forecast partial (variable salary/DWP); pressure comfortable; 35 established recurring; E.ON +£333.72/yr, Virgin +£109.20/yr; 3 unusual; category trends blocked (Aug 34% categorised); 0 synthesis, 0 finance Radar items today.
+- Ledger: #396 (categorise Jul–Aug in Tally), #397 (record annual bills as Tally planned payments).
+- Gap: Build 21 vehicle spend (tally-vehicle.js) still reads Tally over ssh and calculates in NEURO → Build 27 = deeper Transport; first job, move it into Tally.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 26 Tally Finance Intelligence and NEURO Operational Finance.md; gap analysis appended.
+
+---
+
 # Session Handoff — 2026-10-09 (Build 25: Personal Admin activation)
 
 - DEPLOYED: origin/main + pi5 at 0df2c92 (gate 5886/0; frontend built; neuro-backend restarted; gateway rebuilt via docker compose up -d --build gateway in mcp-server/). Built in worktree nuero-b25 (node_modules, backend/node_modules, mcp-server/node_modules JUNCTIONED to nuero-b24) — do NOT git worktree remove it (it follows junctions).
