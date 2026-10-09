@@ -108,16 +108,16 @@ test('12. HA unreachable is a FAILED run, and presence reads UNKNOWN — never a
   assert.match(p.subjects[0].why, /not "away"/);
 
   // 28. recovery: the next good poll is a success transition and answers again.
-  await hp.poll({ now: T0 + 1000e3, deps: deps(states({ nick: 'home', nickChanged: T0 + 990e3 })) });
+  await hp.poll({ now: T0 + 87000e3, deps: deps(states({ nick: 'home', nickChanged: T0 + 990e3 })) });
   await pump();
   assert.equal(require('./source-health').getSource(hp.SOURCE_ID).state, 'healthy');
-  assert.equal(hp.read({ now: T0 + 1000e3 }).nick, 'home');
+  assert.equal(hp.read({ now: T0 + 87000e3 }).nick, 'home');
 });
 
 test('12. an entity HA cannot read is "unavailable", which reads as unknown', async () => {
-  await hp.poll({ now: T0 + 1200e3, deps: deps(states({ others: 'unavailable', othersChanged: T0 + 1100e3 })) });
+  await hp.poll({ now: T0 + 87200e3, deps: deps(states({ others: 'unavailable', othersChanged: T0 + 1100e3 })) });
   await pump();
-  const p = hp.read({ now: T0 + 1200e3 });
+  const p = hp.read({ now: T0 + 87200e3 });
   assert.equal(p.householdOthers, 'unknown');
   assert.equal(p.nick, 'home', 'positive control: the readable entity still answers');
 });
@@ -156,17 +156,17 @@ test('the REAL ha.fetchStates is wired (every other test injects a fake — that
 });
 
 test('9 Oct 2026: the roster going A→B→A under one last_changed is three events, not one', async () => {
-  const changed = T0 - 86400e3 * 3; // the sensor has stayed `on` for days
+  const changed = T0 + 86400e3; // after every earlier fixture, so the older-never-overwrites guard does not apply
   const roster = (isaac) => [{ name: 'Helen', role: 'resident', state: 'home' }, { name: 'Isaac', role: 'resident', state: isaac }];
   const at = (isaac) => states({ othersChanged: changed }).map((s) => s.entity_id === 'binary_sensor.household_others_home'
     ? { ...s, attributes: { ...s.attributes, members: roster(isaac) } } : s);
   const isaac = (now) => hp.read({ now }).householdMembers.find((m) => m.name === 'Isaac').state;
 
-  await hp.poll({ now: T0 + 1000e3, deps: deps(at('away')) }); await pump();
-  assert.equal(isaac(T0 + 1000e3), 'away');
-  await hp.poll({ now: T0 + 1200e3, deps: deps(at('home')) }); await pump();
-  assert.equal(isaac(T0 + 1200e3), 'home');
-  const r = await hp.poll({ now: T0 + 1400e3, deps: deps(at('away')) }); await pump();
+  await hp.poll({ now: T0 + 87000e3, deps: deps(at('away')) }); await pump();
+  assert.equal(isaac(T0 + 87000e3), 'away');
+  await hp.poll({ now: T0 + 87200e3, deps: deps(at('home')) }); await pump();
+  assert.equal(isaac(T0 + 87200e3), 'home');
+  const r = await hp.poll({ now: T0 + 87400e3, deps: deps(at('away')) }); await pump();
   assert.ok(r.published >= 1, 'the return to "away" must publish, not fold into the first "away"');
-  assert.equal(isaac(T0 + 1400e3), 'away', 'the card must not be left saying he is home');
+  assert.equal(isaac(T0 + 87400e3), 'away', 'the card must not be left saying he is home');
 });
