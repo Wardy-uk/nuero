@@ -196,4 +196,15 @@ const BUILD_26 = Object.freeze([
     why: 'Tally\'s forward view only knows a payment once it has seen it three times, so an annual bill (car insurance, TV licence, breakdown cover) is invisible to it until it lands. A planned payment puts it in the 7/14/30-day view and stops it being called unusual when it arrives.' },
 ]);
 
-module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, validate, reconcile, verify };
+// Build 27: the Captur's remaining facts. The first REUSES #383 (same words);
+// registration and the MOT date are already in, mileage, tax and insurance are not.
+const BUILD_27 = Object.freeze([
+  { key: 'captur-basics', build: 'Build 27', lifeDomains: ['travel', 'admin'],
+    title: 'Fill in the Captur basics in NEURO: registration, current mileage, MOT, tax and insurance',
+    why: 'Registration and the MOT date are recorded. Without the current mileage nothing per mile can be worked out; without the tax and insurance dates the car\'s health reads "incomplete", and neither can reach the Radar before it is due.' },
+  { key: 'mot-booking-as-action', build: 'Build 27', lifeDomains: ['travel', 'admin'],
+    title: 'Make "Book my car in for its MOT" the Captur MOT\'s action in Life → Transport → Dates (or tick it if the MOT is booked)',
+    why: 'The booking task is linked to the Captur but not to its MOT date, so Personal Admin shows both. One press ("Make it the MOT\'s action") folds them into one item; ticking the booking never closes the MOT itself.' },
+]);
+
+module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, BUILD_27, validate, reconcile, verify };
