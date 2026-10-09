@@ -265,7 +265,7 @@ function profileMentions(names, lines, { limit = 3 } = {}) {
     return `${start > 0 ? '…' : ''}${s.slice(start, start + EXCERPT).trim()}…`;
   };
   // Shortest first: a line ABOUT the person beats a long one that merely names them.
-  return (lines || []).filter((l) => re.test(String(l))).sort((a, b) => String(a).length - String(b).length).slice(0, limit).map(excerpt);
+  return [...new Set((lines || []).map(String))].filter((l) => re.test(l)).sort((a, b) => String(a).length - String(b).length).slice(0, limit).map(excerpt);
 }
 
 const TEXT_MAX = 60;

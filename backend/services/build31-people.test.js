@@ -528,6 +528,8 @@ test('"You wrote" is a bounded excerpt, shortest line first; the queue ranks per
   const got = pm.profileMentions(['Isaac'], [long, 'Isaac is learning to drive.']);
   assert.equal(got[0], 'Isaac is learning to drive.', 'the line about him first');
   assert.ok(got[1].length <= 142 && got[1].includes('Isaac') && got[1].startsWith('…'));
+  // Live: the profile states "Wife is Helen…" in two sections; it is shown once.
+  assert.deepEqual(pm.profileMentions(['Helen'], ['Wife is Helen.', 'Wife is Helen.']), ['Wife is Helen.']);
   const c = (name, extra) => ({ name, relationship: { basis: 'none' }, sphere: { value: 'unknown' }, household: { value: null }, dates: [], commitments: { open: 0 }, youWrote: [], ...extra });
   const q = pm.classificationQueue([c('Aaron Work', { commitments: { open: 30 }, sphere: { value: 'work' } }), c('Zed Unknown', { commitments: { open: 19 } }), c('Mum', { youWrote: ['Mum lives in Derby'] })]);
   assert.deepEqual(q.next.map((x) => x.name), ['Mum', 'Zed Unknown', 'Aaron Work'], 'thirty open commitments buy no place in the queue');

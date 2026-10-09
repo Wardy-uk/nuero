@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-09 (Build 31: Personal relationships & people context)
+
+- DEPLOYED: NEURO 0fe184a → 88bcf26 (+ docs/dedupe commit) on origin/main + pi5 (gate 6065/0, 17 skipped; frontend built; neuro-backend restarted; gateway rebuilt for /api/people). Worktree nuero-b26, branch build31 (rebased once over the ring inventory 5bb6d6c).
+- New: services/people-model.js (pure), services/people.js (people-v1), routes/people.js, Life → People (PeopleCard / PeopleView), migrate-build31 (wm_people relationship_detail/sphere/importance/likes_json/merged_into), table person_decisions, Activity person-* lines, ledger BUILD_31. Writes machine-refused + gateway interactive.
+- Rules: relationship only from a `relationship:` line or a stating field (direct-report: true, Nick's own manager:); corrections are written INTO the People note and audited in personal_ops_events; household = declared or HA resident role via strong identity (exact name/alias, never a first name); no auto-merge; birthdays are facts; no Now/Radar/Needs You producer; reading writes nothing; profile prose shown as "You wrote", never applied.
+- LIVE: 43 notes, all work; 0 declared; 14 from fields; 28 unknown; Helen + Isaac are HA residents with NO People note (offered "Create People note"); 3 dates unlinked; 0 duplicates. Live fixes: queue no longer ranks by commitment volume; profile lines bounded + de-duplicated.
+- Ledger: #408 (classify people, start with Helen and Isaac). 7 activation tasks open across builds.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 31 Personal Relationships and People Context.md; gap analysis appended. Next domain: cross-domain consolidation of the Life model.
+
+---
+
 # Session Handoff — 2026-10-09 (Build 30: Leisure & media)
 
 - DEPLOYED: NEURO 7dc78c5 → c219122 → 4176aa6 (+ handoff commit) on origin/main + pi5 (gate 6030/0, 17 skipped; frontend built; neuro-backend restarted; gateway rebuilt for /api/leisure). Worktree nuero-b26, branch build30 (rebased once over the ring commits b63745a/e83bf54).
