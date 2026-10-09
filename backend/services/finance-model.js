@@ -46,6 +46,12 @@ const CATEGORY_DOMAIN = Object.freeze({
   'salary': ['income', 'direct'], 'other income': ['income', 'direct'],
 });
 const UNUSABLE_CATEGORIES = new Set(['uncategorised', 'cash']);
+// The reverse direction, for SUGGESTING a Tally category from a description hint.
+// Tally has no Insurance category: insurers file under Bills & Utilities there.
+const DOMAIN_TALLY_CATEGORY = Object.freeze({
+  groceries: 'Groceries', eating_out: 'Eating Out', transport: 'Transport', utilities: 'Bills & Utilities', insurance: 'Bills & Utilities',
+  subscriptions: 'Subscriptions', health: 'Health', housing: 'Rent / Mortgage', leisure: 'Entertainment', debt_fees: 'Fees & Charges',
+});
 
 // Word-bounded description hints → a SUGGESTED domain. Only what the audit saw.
 const HINTS = Object.freeze([
@@ -837,7 +843,7 @@ function reconnectReport({ accounts = [], tlAccounts = [], connections = [], tra
 }
 
 module.exports = {
-  DOMAINS, DOMAIN_LABEL, CATEGORY_DOMAIN, T, COUNTS, OPERATIONAL,
+  DOMAINS, DOMAIN_LABEL, CATEGORY_DOMAIN, DOMAIN_TALLY_CATEGORY, T, COUNTS, OPERATIONAL,
   merchantKey, purchaseToken, recurKey, hintFor, ownerOf, transactionType, looksPending, reconcilePending, ruleMatches, resolveDomain,
   normalise, spendEffect, moneyOutEffect, accountCoverage, monthCoverage, detectRecurring, unusualSpend, duplicateCharges,
   categoryQuality, monthlySummary, monthOnMonth, rollingWindow, balances, forwardCashflow, pressure, upcomingMoneyOut,

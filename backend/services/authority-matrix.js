@@ -63,6 +63,7 @@ const CAPABILITIES = Object.freeze({
   'plaud.pull': { authority: 'A2', effect: 'pull recordings from PLAUD into the vault', machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'sync ledger', idempotent: 'canonical plaud_id' },
   'push.synthetic-p0': { authority: 'A2', effect: 'a synthetic P0 interrupt on the phone', machine: 'refuse', approval: 'click', registry: null, ledger: true, verification: 'attention_notifications', idempotent: true },
   'homeassistant.room': { authority: 'A2', effect: 'lights / radiator in the house, from an accepted room offer', machine: 'refuse', approval: 'click', registry: 'external-writes:homeassistant.room', ledger: false, verification: 'next house read', idempotent: true },
+  'tally.categorise': { authority: 'A2', effect: "a transaction's category in Tally (and Tally's merchant rule on 'Always')", machine: 'refuse', approval: 'click', registry: 'external-writes:tally.transaction.categorise', ledger: true, verification: 'Tally read-back', idempotent: true },
 
   'microsoft.task.complete': {
     authority: 'A3', effect: 'Planner percentComplete 100 (team-visible) / To Do completed', machine: 'execute-bounded', approval: 'none',
@@ -221,7 +222,7 @@ const ROUTE_RULES = Object.freeze([
   // Build 23: how NEURO reads Nick's household finances is his statement.
   // Read-only towards Tally and money; machines read and never decide.
   R('POST', '/api/finance/sync', 'internal.state', { machine: 'refuse' }),
-  R('POST', '/api/finance/transactions/:txnId/decide', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/finance/transactions/:txnId/decide', 'tally.categorise'),
   R('POST', '/api/finance/rules/:ruleId/retire', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/finance/recurring/:seriesKey/decide', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/finance/review/:itemKey/decide', 'internal.state', { machine: 'refuse' }),

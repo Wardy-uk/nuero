@@ -28,6 +28,10 @@ process.env.NEURO_API_TOKEN = 'machine-token-23';
 process.env.OBSIDIAN_VAULT_PATH = path.join(tmp, 'vault');
 // Never the real Tally: an unroutable target, and every read goes through the fixture reader.
 process.env.TALLY_SSH_TARGET = 'nobody@neuro-test.invalid';
+// Tally's HTTP API is likewise never real: an unroutable URL, and tally-api.useFetch(fakeTally) below.
+process.env.TALLY_API_URL = 'http://tally.neuro-test.invalid';
+process.env.TALLY_API_USERNAME = 'tally-api';
+process.env.TALLY_API_PASSWORD = 'test-only';
 fs.mkdirSync(path.join(tmp, 'vault'), { recursive: true });
 
 function stub(rel, exportsObj) {
@@ -135,8 +139,41 @@ const DEAD_TL = [
 function staleRead() {
   return { transactions: baseTransactions(), accounts: ACCOUNTS, connections: DEAD_CONNECTIONS, tlAccounts: DEAD_TL,
     tallyRecurring: [{ merchant: 'MORTGAGE VIA MOBILE', typical_amount: -52500, cadence: 'monthly', last_seen: '2026-05-29', next_expected: '2026-06-28', active: 1, ignored: 1 }],
-    tallyRules: [{ match_value: '1717 09APR26' }, { match_value: '9913 31MAR26' }, { match_value: 'WORKERS OF' }] };
+    tallyRules: [{ match_value: '1717 09APR26' }, { match_value: '9913 31MAR26' }, { match_value: 'WORKERS OF' }],
+    categories: TALLY_CATEGORIES };
 }
+// Tally's real category list (pi-dev, 9 Oct 2026). There is no Insurance category.
+const TALLY_CATEGORIES = [[8, 'Bills & Utilities'], [16, 'Cash'], [5, 'Eating Out'], [10, 'Entertainment'], [17, 'Fees & Charges'], [7, 'Fuel'], [18, 'Gifts'],
+  [4, 'Groceries'], [13, 'Health'], [14, 'Holidays'], [20, 'Kids'], [9, 'Rent / Mortgage'], [15, 'Savings'], [12, 'Shopping'], [11, 'Subscriptions'],
+  [6, 'Transport'], [19, 'Uncategorised']].map(([id, name]) => ({ id, name, kind: 'expense' }))
+  .concat([{ id: 2, name: 'Other Income', kind: 'income' }, { id: 1, name: 'Salary', kind: 'income' }, { id: 3, name: 'Transfer', kind: 'transfer' }]);
+
+/**
+ * A fake Tally HTTP API at the fetch layer, so the real tally-api client runs.
+ * Mirrors Tally's PATCH /api/transactions/:id: the category is set first; a rule
+ * only with createRule; `needsConfirmation` (from `tallyAsk`) stops the rule, not
+ * the category. `tallyDown` throws like a network failure; `tallyLies` answers
+ * with a different category than asked.
+ */
+const tallyCalls = [];
+let tallyAsk = null; let tallyDown = false; let tallyLies = false;
+async function fakeTally(url, init = {}) {
+  const u = new URL(url);
+  const body = init.body ? JSON.parse(init.body) : null;
+  tallyCalls.push({ method: init.method || 'GET', path: u.pathname, body, auth: (init.headers || {}).Authorization || null });
+  const reply = (status, json) => ({ ok: status < 400, status, json: async () => json });
+  if (tallyDown) throw new Error('fetch failed (ECONNREFUSED)');
+  if (u.pathname === '/api/auth/login') return reply(200, { ok: true, data: { token: 'fake-jwt', user: { id: 3 } } });
+  const m = u.pathname.match(/^\/api\/transactions\/(\d+)$/);
+  if (m && init.method === 'PATCH') {
+    const ask = body.createRule && !body.confirmRule ? tallyAsk : null;
+    const made = body.createRule && !ask;
+    return reply(200, { ok: true, data: { id: Number(m[1]), category_id: tallyLies ? 19 : body.categoryId, ruleCreated: made, ruleUpdated: false,
+      appliedToSimilar: made ? 2 : 0, merchantKey: 'WM MORRISONS', needsConfirmation: ask, ruleSkipped: null } });
+  }
+  return reply(404, { ok: false, error: 'Not found' });
+}
+require('./tally-api').useFetch(fakeTally);
 /** Nick reconnects: a new connection feeds Nick, Joint and Bills; Helen's stays dead. */
 function reconnectedRead({ helenToo = false } = {}) {
   const r = staleRead();
@@ -157,7 +194,7 @@ function reconnectedRead({ helenToo = false } = {}) {
   return r;
 }
 const SCHEMA_ROWS = Object.entries(fin.EXPECTED).flatMap(([t, cols]) => [...cols, 'extra_col'].map((name) => ({ t, name })));
-const ORDER = ['schema', 'transactions', 'accounts', 'connections', 'tlAccounts', 'tallyRecurring', 'tallyRules'];
+const ORDER = ['schema', 'transactions', 'accounts', 'connections', 'tlAccounts', 'tallyRecurring', 'tallyRules', 'categories'];
 function fakeExec(read, schema = SCHEMA_ROWS) {
   const calls = [];
   const fn = (cmd, args, opts, cb) => {
@@ -302,11 +339,41 @@ test('8. a Tally category is evidence, not the truth', async () => {
   assert.equal(nfu.domainBasis, 'tally-category');
   assert.ok(nfu.conflict && /an insurer/.test(nfu.conflict.why));
   const id = nfu.sourceTransactionId;
-  const r = await call('POST', `/api/finance/transactions/${id}/decide`, { decision: 'confirm', domain: 'insurance' });
+  // 9 Oct 2026: Tally is the one store. The suggestion speaks Tally (insurer → Bills & Utilities, there is no Insurance category).
+  const offered = fin.read({ now: NOW }).review.classification.find((t) => t.sourceTransactionId === id);
+  assert.equal(offered.suggestedCategoryId, 8);
+  tallyCalls.length = 0;
+  const r = await call('POST', `/api/finance/transactions/${id}/decide`, { decision: 'confirm', categoryId: 8 });
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  const after = M.normalise(staleRead(), { decisions: new Map([[id, { decision: 'confirm', domain: 'insurance' }]]) }).find((t) => t.sourceTransactionId === id);
-  assert.equal(after.domain, 'insurance');
-  assert.equal(month('2026-06').byDomain.insurance, 10884);
+  assert.equal(r.json.category, 'Bills & Utilities');
+  const patch = tallyCalls.find((c) => c.method === 'PATCH');
+  assert.deepEqual(patch && { path: patch.path, body: patch.body }, { path: `/api/transactions/${id}`, body: { categoryId: 8, createRule: false, applyToSimilar: false } }, 'written into Tally, this one only');
+  assert.equal(patch.auth, 'Bearer fake-jwt');
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM finance_txn_decisions WHERE source_txn_id = ?', [id]).n, 0, 'NEURO keeps no copy of the category');
+  const led = require('./external-writes').recent({ writer: 'tally.transaction.categorise' })[0];
+  assert.equal(led.status, 'confirmed');
+  assert.match(led.readback, /Bills & Utilities/);
+  // A category not in Tally, or an income/transfer one, is refused before Tally is called.
+  tallyCalls.length = 0;
+  assert.equal((await call('POST', `/api/finance/transactions/${id}/decide`, { decision: 'confirm', categoryId: 999 })).status, 400);
+  assert.equal((await call('POST', `/api/finance/transactions/${id}/decide`, { decision: 'confirm', categoryId: 1 })).status, 400, 'Salary is income');
+  assert.equal(tallyCalls.length, 0);
+});
+
+test('8b. Tally down or a wrong readback: nothing is claimed and NEURO stores nothing', async () => {
+  const t = snap().review.classification.find((x) => x.merchantKey !== 'NFU MUTUAL INS-BC');
+  tallyDown = true;
+  const r = await call('POST', `/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'confirm', categoryId: 4 });
+  tallyDown = false;
+  assert.equal(r.status, 502);
+  assert.match(r.json.error, /Tally did not take it/);
+  assert.equal(require('./external-writes').recent({ writer: 'tally.transaction.categorise' })[0].status, 'uncertain', 'a network failure might have landed');
+  tallyLies = true;
+  const w = await call('POST', `/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'confirm', categoryId: 5 });
+  tallyLies = false;
+  assert.equal(w.status, 502);
+  assert.match(w.json.error, /did not read back/);
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM finance_txn_decisions WHERE source_txn_id = ?', [t.sourceTransactionId]).n, 0);
 });
 
 test('9. an ambiguous merchant stays unresolved — no majority vote', () => {
@@ -318,21 +385,38 @@ test('9. an ambiguous merchant stays unresolved — no majority vote', () => {
   assert.ok(q.totals.tallyRulesKeyedOnDates === 2);
 });
 
-test('10. a confirmed merchant rule is reusable', async () => {
+test('10. "Always" is Tally\'s own merchant rule — NEURO holds no rule of its own', async () => {
   const unknownOne = snap().review.classification.find((t) => t.merchantKey === 'WM MORRISONS STOREDERBY' && t.domain === 'unknown');
-  const r = await call('POST', `/api/finance/transactions/${unknownOne.sourceTransactionId}/decide`, { decision: 'confirm', domain: 'groceries', remember: { matchKind: 'merchant' } });
+  tallyCalls.length = 0;
+  const r = await call('POST', `/api/finance/transactions/${unknownOne.sourceTransactionId}/decide`, { decision: 'confirm', categoryId: 4, remember: true });
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  assert.equal(r.json.rule.match_kind, 'merchant');
-  const rows = M.normalise(staleRead(), { rules: fin.rules() }).filter((t) => t.merchantKey === 'WM MORRISONS STOREDERBY');
-  const other = rows.find((t) => t.sourceTransactionId !== unknownOne.sourceTransactionId && t.category == null);
-  assert.equal(other.domain, 'groceries');
-  assert.equal(other.domainBasis, 'rule');
+  assert.equal(r.json.ruleCreated, true);
+  assert.equal(r.json.appliedToSimilar, 2);
+  assert.deepEqual(tallyCalls.find((c) => c.method === 'PATCH').body, { categoryId: 4, createRule: true, applyToSimilar: true });
+  assert.equal(fin.rules({ activeOnly: false }).length, 0, 'no NEURO-side rule');
+});
+
+test('10b. when Tally asks before making a rule, the question comes back and confirming sends it', async () => {
+  const t = snap().review.classification.find((x) => x.merchantKey === 'WM MORRISONS STOREDERBY' && x.domain === 'unknown');
+  tallyAsk = { reason: 'conflicting_history', message: 'You\'ve previously put 1 "WM MORRISONS" transaction in a different category. Make this the rule?' };
+  const r = await call('POST', `/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'confirm', categoryId: 7, remember: true });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.ruleCreated, false);
+  assert.equal(r.json.needsConfirmation.reason, 'conflicting_history');
+  tallyCalls.length = 0;
+  const c = await call('POST', `/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'confirm', categoryId: 7, remember: true, confirmRule: true });
+  tallyAsk = null;
+  assert.equal(c.status, 200, JSON.stringify(c.json));
+  assert.equal(c.json.ruleCreated, true);
+  assert.equal(tallyCalls.find((x) => x.method === 'PATCH').body.confirmRule, true);
 });
 
 test('11. a machine cannot create a rule or decide anything; broad text rules do not exist', async () => {
   const t = snap().review.classification[0];
-  const m = await call('POST', `/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'confirm', domain: 'groceries', remember: { matchKind: 'merchant' } }, MACHINE);
+  tallyCalls.length = 0;
+  const m = await call('POST', `/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'confirm', categoryId: 4, remember: true }, MACHINE);
   assert.equal(m.status, 403);
+  assert.equal(tallyCalls.length, 0, 'a machine never reaches Tally');
   for (const p of ['/api/finance/sync', '/api/finance/obligations', '/api/finance/rules/x/retire', '/api/finance/recurring/x/decide', '/api/finance/review/x/decide']) {
     assert.equal((await call('POST', p, { decision: 'recurring', kind: 'bill', title: 'x' }, MACHINE)).status, 403, p);
   }

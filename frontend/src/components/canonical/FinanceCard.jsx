@@ -49,7 +49,7 @@ export function FinanceView({ data, busy, act, note = null }) {
       <Obligations obligations={data.obligations || []} series={data.series || []} busy={busy} act={act} personalAdmin={data.personalAdmin} />
       <Recurring series={data.series || []} priceChanges={data.priceChanges || []} busy={busy} act={act} />
       <Review review={data.review} busy={busy} act={act} />
-      <Quality quality={data.quality} review={data.review} domains={data.domains || []} rules={data.rules || []} busy={busy} act={act} />
+      <Quality quality={data.quality} review={data.review} categories={data.tallyCategories || []} writes={data.tallyWrites !== false} rules={data.rules || []} busy={busy} act={act} />
       <HowItWorks>{data.rule}</HowItWorks>
     </section>
   );
@@ -241,12 +241,25 @@ function Review({ review, busy, act }) {
   );
 }
 
-function Quality({ quality, review, domains, rules, busy, act }) {
+/**
+ * 9 Oct 2026 — Tally is the one store. The picker lists TALLY'S categories and a
+ * choice is written into Tally ("Always" = Tally's merchant rule). When Tally asks
+ * before making a rule (an ambiguous merchant, or past choices that disagree),
+ * its question is shown here with one button to make the rule anyway.
+ */
+function Quality({ quality, review, categories, writes, rules, busy, act }) {
   const [choice, setChoice] = useState({});
+  const [ask, setAsk] = useState({});
+  const [done, setDone] = useState(null);
   if (!quality) return null;
   const pick = (t, v) => setChoice({ ...choice, [t.sourceTransactionId]: v });
-  const decide = (t, remember) => act(() => postCanonical(`/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'confirm', domain: choice[t.sourceTransactionId] || (t.hint && t.hint.domain), remember: remember ? { matchKind: 'merchant' } : null }));
-  const spending = domains.filter((d) => !['income', 'transfers', 'unknown'].includes(d.id));
+  const chosenFor = (t) => Number(choice[t.sourceTransactionId] || t.suggestedCategoryId || 0) || null;
+  const decide = (t, remember, confirmRule = false) => act(async () => {
+    const r = await postCanonical(`/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'confirm', categoryId: chosenFor(t), remember, confirmRule });
+    setAsk({ ...ask, [t.sourceTransactionId]: r.needsConfirmation ? r.needsConfirmation.message : null });
+    setDone(`${t.merchantKey} → ${r.category} in Tally${r.appliedToSimilar ? `, and ${r.appliedToSimilar} more from that merchant` : ''}${r.ruleCreated || r.ruleUpdated ? ' (Tally rule saved)' : ''}.`);
+  });
+  const spending = categories.filter((c) => c.kind === 'expense');
   return (
     <details className="cn-details">
       <summary>Category quality — {quality.score.classifiedPct}% of spending has a domain · {(review.classification || []).length} to review · {rules.filter((r) => r.active).length} rules</summary>
@@ -256,23 +269,30 @@ function Quality({ quality, review, domains, rules, busy, act }) {
           <ul className="cn-list cn-small">{quality.opportunities.slice(0, 4).map((o, i) => <li key={i}>{o.line}</li>)}</ul>
         </div>
       )}
+      <div className="cn-small cn-muted">Choices are saved in Tally — change them there or here, it is the same record.{!writes && ' Tally writes are not configured on this NEURO, so the buttons are off.'}</div>
+      {done && <div className="cn-small">{done}</div>}
       <div className="cn-txns">
         {(review.classification || []).slice(0, 15).map((t) => {
-          const chosen = choice[t.sourceTransactionId] || (t.hint && t.hint.domain) || '';
+          const chosen = chosenFor(t) || '';
           const why = t.conflict ? t.conflict.why : t.category ? `Tally: ${t.category}` : 'no category';
           return (
             <React.Fragment key={t.sourceTransactionId}>
               <div className="cn-txn-main">
                 <div className="cn-txn-head"><span className="cn-txn-merchant">{t.merchantKey}</span><span className="cn-txn-amt">{money(t.amountPence)}</span></div>
                 <div className="cn-txn-why">{t.date} · {why}{t.hint ? ` · looks like ${t.hint.domain.replace(/_/g, ' ')}` : ''}</div>
+                {ask[t.sourceTransactionId] && (
+                  <div className="cn-txn-why">Tally asks: {ask[t.sourceTransactionId]}{' '}
+                    <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => decide(t, true, true)}>Make the rule</button>
+                  </div>
+                )}
               </div>
               <div className="cn-txn-act">
-                <select className="cn-select" value={chosen} onChange={(e) => pick(t, e.target.value)} aria-label="Domain">
-                  <option value="">choose…</option>{spending.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                <select className="cn-select" value={chosen} onChange={(e) => pick(t, e.target.value)} aria-label="Tally category">
+                  <option value="">choose…</option>{spending.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <span className="cn-seg">
-                  <button type="button" className="cn-btn" disabled={busy || !chosen} onClick={() => decide(t, false)} title="Just this transaction">This one</button>
-                  <button type="button" className="cn-btn" disabled={busy || !chosen} onClick={() => decide(t, true)} title={`Always file ${t.merchantKey} this way`}>Always</button>
+                  <button type="button" className="cn-btn" disabled={busy || !chosen || !writes} onClick={() => decide(t, false)} title="Just this transaction, in Tally">This one</button>
+                  <button type="button" className="cn-btn" disabled={busy || !chosen || !writes} onClick={() => decide(t, true)} title={`Always file ${t.merchantKey} this way — saved as Tally's own rule`}>Always</button>
                   <button type="button" className="cn-btn" disabled={busy} onClick={() => act(() => postCanonical(`/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'unknown' }))} title="Leave it unclassified">Leave</button>
                 </span>
               </div>

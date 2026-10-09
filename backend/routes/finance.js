@@ -42,12 +42,12 @@ router.post('/sync', async (req, res) => {
   try { send(res, await fin().refresh()); } catch (e) { fail(res, e); }
 });
 
-// POST /api/finance/transactions/:txnId/decide — Nick sets the domain of one transaction in the review list. Body: decision (confirm|reject|unknown), domain, remember ({matchKind: merchant|merchant+category}).
+// POST /api/finance/transactions/:txnId/decide — Nick categorises one transaction from the review list. The category is written INTO Tally through Tally's API (Tally is the one store); remember=true makes it Tally's merchant rule. Body: decision (confirm|unknown), categoryId (a Tally category id), remember (boolean), confirmRule (boolean, when Tally asked to confirm a rule).
 router.post('/transactions/:txnId/decide', async (req, res) => {
   try {
     if (!hasBody(req)) return res.status(400).json({ ok: false, error: 'a JSON body is required' });
-    const { decision, domain, remember } = req.body;
-    send(res, await fin().decide(req.params.txnId, { decision, domain, remember }));
+    const { decision, categoryId, remember, confirmRule } = req.body;
+    send(res, await fin().decide(req.params.txnId, { decision, categoryId, remember: !!remember, confirmRule: !!confirmRule }));
   } catch (e) { fail(res, e); }
 });
 

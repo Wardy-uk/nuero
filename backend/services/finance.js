@@ -48,6 +48,8 @@ const QUERIES = Object.freeze({
   tlAccounts: 'SELECT id, connection_id, account_type, currency, linked_account_id, last_sync_at, created_at FROM truelayer_accounts ORDER BY id',
   tallyRecurring: 'SELECT merchant, typical_amount, cadence, last_seen, next_expected, active, ignored FROM recurring_charges',
   tallyRules: 'SELECT match_value FROM rules',
+  // 9 Oct 2026: the review picker offers Tally's OWN categories, so a choice is written back as Tally understands it.
+  categories: 'SELECT id, name, kind FROM categories ORDER BY kind, name',
 });
 const EXPECTED = Object.freeze({
   transactions: ['id', 'account_id', 'date', 'amount', 'description', 'category_id', 'is_transfer', 'transfer_pair_id', 'balance_after', 'created_at'],
@@ -88,7 +90,7 @@ function checkSchema(rows) {
 }
 
 async function readTally(deps = {}) {
-  const order = ['schema', 'transactions', 'accounts', 'connections', 'tlAccounts', 'tallyRecurring', 'tallyRules'];
+  const order = ['schema', 'transactions', 'accounts', 'connections', 'tlAccounts', 'tallyRecurring', 'tallyRules', 'categories'];
   const text = await _ssh(_remote(order), deps);
   const parts = text.split(SPLIT).map((p) => p.trim());
   const out = {};
@@ -285,6 +287,15 @@ function read({ now = Date.now(), taskIndex = null } = {}) {
     return { ...o, state: st.state, stateWhy: st.why, payment: st.payment || null, task: task ? { id: task.id, title: task.description || task.title, status: task.state || task.status } : null };
   });
   const { _series, ...pub } = snap || {};
+  // A description hint names a NEURO domain; the picker speaks Tally, so the hint
+  // is offered as the Tally category that domain maps to (null when none does).
+  const cats = (snap && snap.tallyCategories) || [];
+  if (snap && snap.review && Array.isArray(snap.review.classification)) {
+    const byName = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
+    pub.review = { ...snap.review, classification: snap.review.classification.map((t) => ({
+      ...t, suggestedCategoryId: t.hint ? byName.get(String(M.DOMAIN_TALLY_CATEGORY[t.hint.domain] || '').toLowerCase()) || null : null,
+    })) };
+  }
   return {
     ok: true, contract: 'finance-v1',
     source: snap ? pub.source : null, lastRead: { at: state.lastOkAt || null, attemptAt: state.lastAttemptAt || null, ok: state.lastOk ?? null, error: state.error || null },
@@ -292,7 +303,9 @@ function read({ now = Date.now(), taskIndex = null } = {}) {
     obligations: obs, personalAdmin: _activation(),
     rules: rules({ activeOnly: false }).map((r) => ({ ruleId: r.rule_id, matchKind: r.match_kind, merchantKey: r.merchant_key, categoryName: r.category_name, tag: r.tag, domain: r.domain, active: !!r.active, confirmedAt: r.confirmed_at, matchedAtConfirmation: r.matched_at_confirmation })),
     domains: M.DOMAINS.map((d) => ({ id: d, label: M.DOMAIN_LABEL[d] })),
-    rule: 'Read-only. Tally is the source of truth; NEURO never moves money, pays, cancels or edits a transaction. Helen\'s own account appears only as totals.',
+    tallyCategories: cats,
+    tallyWrites: require('./tally-api').configured(),
+    rule: 'Tally is the one place financial data lives. NEURO reads it, and a category you choose here is written into Tally through Tally\'s own API ("Always" becomes Tally\'s merchant rule) — NEURO keeps no copy. NEURO never moves money, pays, cancels, or edits an amount or date. Helen\'s own account appears only as totals.',
   };
 }
 
@@ -322,6 +335,7 @@ async function refresh({ now = Date.now(), reader = null, deps = {} } = {}) {
   const prevSnap = _json(SNAPSHOT_KEY);
   const snap = compose(tally, { now, rules: rules(), decisions: _decisions(), recurringDecisions: _recurringDecisions(), reviewDecisions: _reviewDecisions(),
     obligations: obligations(), knownAccounts: (prevSnap && prevSnap.knownAccounts) || [] });
+  snap.tallyCategories = (tally.categories || []).map((c) => ({ id: Number(c.id), name: String(c.name), kind: String(c.kind || 'expense') }));
   _setJson(SNAPSHOT_KEY, snap);
   _storeSummaries(snap, { now });
   const logged = prevState.baselined ? _logChanges(prevSnap, snap, { now }) : 0;
@@ -389,25 +403,65 @@ function _snapshotRow(txnId) {
  * turns it into an exact merchant (or merchant+category) rule. Helen's
  * transactions are never in the queue, so they cannot be decided here.
  */
-async function decide(txnId, { decision, domain = null, remember = null } = {}, { now = Date.now(), actor = 'nick', reader = null } = {}) {
+/**
+ * Nick answers a transaction in the review list.
+ *
+ * 9 Oct 2026 — Tally is the ONE place a category lives. A category choice is
+ * written INTO Tally through its own API (tally-api.js), ledgered as the
+ * external writer `tally.transaction.categorise` and read back; NEURO keeps no
+ * copy. "Always" is Tally's own merchant rule (Tally decides the merchant
+ * identity and may ask for confirmation first). Changes made in Tally reach
+ * NEURO on the next read, so the two can never disagree.
+ *
+ * `unknown` ("leave it") is the one NEURO-only answer: it is not financial data,
+ * only "stop asking me about this one", so it stays in finance_txn_decisions.
+ */
+async function decide(txnId, { decision, categoryId = null, remember = false, confirmRule = false } = {}, { now = Date.now(), actor = 'nick', reader = null } = {}) {
   const id = Number(txnId);
   const row = _snapshotRow(id);
   if (!row) return { ok: false, status: 404, error: 'That transaction is not in NEURO\'s review list' };
-  if (!['confirm', 'reject', 'unknown'].includes(decision)) return { ok: false, status: 400, error: 'decision must be confirm, reject or unknown' };
-  if (decision === 'confirm' && !M.DOMAINS.includes(domain)) return { ok: false, status: 400, error: `domain must be one of ${M.DOMAINS.join(', ')}` };
-  if (decision === 'confirm' && ['income', 'transfers'].includes(domain)) return { ok: false, status: 400, error: 'income and transfers are decided by the transaction itself, not by a domain choice' };
-  let rule = null;
-  if (remember) {
-    if (decision !== 'confirm') return { ok: false, status: 400, error: 'only a confirmed domain can be remembered as a rule' };
-    const r = createRule({ matchKind: remember.matchKind, merchantKey: row.merchantKey, categoryName: remember.matchKind === 'merchant+category' ? row.category : null, domain, exampleTxnId: id }, { now, actor });
-    if (!r.ok) return r;
-    rule = r.rule;
+  if (!['confirm', 'unknown'].includes(decision)) return { ok: false, status: 400, error: 'decision must be confirm (with a Tally categoryId) or unknown' };
+  if (decision === 'unknown') {
+    _db().run(`INSERT INTO finance_txn_decisions (source_txn_id, decision, domain, rule_id, decided_by, decided_at) VALUES (?, 'unknown', NULL, NULL, ?, ?)
+               ON CONFLICT(source_txn_id) DO UPDATE SET decision = 'unknown', domain = NULL, rule_id = NULL, decided_by = excluded.decided_by, decided_at = excluded.decided_at`, [id, actor, _iso(now)]);
+    const r = await refresh({ now, reader });
+    return { ok: true, decision, refreshed: r.ok };
   }
-  _db().run(`INSERT INTO finance_txn_decisions (source_txn_id, decision, domain, rule_id, decided_by, decided_at) VALUES (?, ?, ?, ?, ?, ?)
-             ON CONFLICT(source_txn_id) DO UPDATE SET decision = excluded.decision, domain = excluded.domain, rule_id = excluded.rule_id, decided_by = excluded.decided_by, decided_at = excluded.decided_at`,
-  [id, decision, decision === 'confirm' ? domain : null, rule ? rule.rule_id : null, actor, _iso(now)]);
+  const snap = _json(SNAPSHOT_KEY);
+  const cat = ((snap && snap.tallyCategories) || []).find((c) => c.id === Number(categoryId));
+  if (!cat) return { ok: false, status: 400, error: 'categoryId must be one of Tally\'s categories' };
+  if (cat.kind !== 'expense') return { ok: false, status: 400, error: 'income and transfers are decided by the transaction itself, not chosen here' };
+  const tally = require('./tally-api');
+  const xw = require('./external-writes');
+  const key = `tally:txn:${id}:cat:${cat.id}:${remember ? 'rule' : 'one'}${confirmRule ? ':confirmed' : ''}`;
+  const claim = xw.begin({ writer: 'tally.transaction.categorise', key, target: `tally:transaction:${id}`, request: { categoryId: cat.id, category: cat.name, remember: !!remember, confirmRule: !!confirmRule }, initiatedBy: actor, now });
+  if (!claim.ok) {
+    if (claim.duplicate) { const r = await refresh({ now, reader }); return { ok: true, already: true, category: cat.name, refreshed: r.ok }; }
+    return { ok: false, status: 409, error: claim.why };
+  }
+  let out;
+  try {
+    out = await tally.categoriseTransaction(id, { categoryId: cat.id, remember, confirmRule });
+  } catch (e) {
+    xw.settle(claim.entry.id, { status: xw.classifyError(e), result: { error: e.message }, now });
+    return { ok: false, status: 502, error: `Tally did not take it — ${e.message}` };
+  }
+  const applied = out && Number(out.category_id) === cat.id;
+  xw.settle(claim.entry.id, {
+    status: applied ? 'confirmed' : 'uncertain',
+    result: { ruleCreated: !!out.ruleCreated, ruleUpdated: !!out.ruleUpdated, appliedToSimilar: out.appliedToSimilar || 0, needsConfirmation: out.needsConfirmation ? out.needsConfirmation.reason : null },
+    readback: applied ? `Tally transaction ${id} is now "${cat.name}"` : `Tally answered but transaction ${id} reads category ${out && out.category_id}`, now,
+  });
+  if (!applied) return { ok: false, status: 502, error: 'Tally answered, but the transaction did not read back with that category' };
+  if (remember && (out.ruleCreated || out.ruleUpdated)) _log('finance-rule-confirmed', { matchKind: 'merchant', merchantKey: out.merchantKey, domain: cat.name, matched: out.appliedToSimilar || 0, inTally: true }, { subjectId: `tally-rule:${out.merchantKey}`, actor, now, dedupeKey: `finance-rule-confirmed:tally:${out.merchantKey}:${cat.id}` });
+  // Any older NEURO "leave it" on this transaction is moot now Tally holds the answer.
+  _db().run('DELETE FROM finance_txn_decisions WHERE source_txn_id = ?', [id]);
   const r = await refresh({ now, reader });
-  return { ok: true, decision, domain, rule, refreshed: r.ok };
+  return {
+    ok: true, decision, category: cat.name, ruleCreated: !!out.ruleCreated, ruleUpdated: !!out.ruleUpdated,
+    appliedToSimilar: out.appliedToSimilar || 0, ruleSkipped: out.ruleSkipped || null,
+    needsConfirmation: out.needsConfirmation || null, refreshed: r.ok,
+  };
 }
 
 function validateRule({ matchKind, merchantKey, categoryName, tag, domain } = {}) {

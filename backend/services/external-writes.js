@@ -85,6 +85,14 @@ const WRITERS = Object.freeze({
     target: 'Weather Underground (our own station ICOALV59)', authority: 'A2', initiation: 'timer', ledger: false,
     effect: "upload the home station's newest reading", why: 'our own public weather station; WU folds a repeat dateutc; off unless WU_PUBLISH_ENABLED.', readback: 'external_weather_sync wu-upload row',
   },
+  'tally.transaction.categorise': {
+    target: 'Tally (pi-dev)', authority: 'A2', initiation: 'human-only', ledger: true,
+    // Setting the same category again is harmless, so an unknown outcome may be re-attempted by Nick.
+    idempotentTarget: true,
+    effect: "one transaction's category; with 'Always', Tally's own merchant rule, applied to that merchant's uncategorised transactions",
+    why: "Nick's own finance app and Tally is the one store (9 Oct 2026); his click is the approval; every change is re-categorisable in Tally.",
+    readback: 'Tally answers the updated transaction; its category_id must equal the one chosen',
+  },
   'email.self': {
     target: 'Nick\'s own mailbox', authority: 'A2', initiation: 'timer', ledger: false,
     effect: 'briefing / [TEST] copy to Nick only (refuses any other recipient)', why: 'nobody else is told.', readback: 'none',

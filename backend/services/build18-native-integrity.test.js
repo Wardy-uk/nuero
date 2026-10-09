@@ -161,10 +161,13 @@ test('19–21. coverage counts per calendar, including recurring occurrences and
 });
 
 test('19b. a real push records coverage per app; the audit lists every calendar with its classification and keep-state', () => {
+  // Clock-derived: a fixed 2026-12-06 window end fell below 59 days ahead on 9 Oct 2026 and broke every deploy.
+  // Anchored to the REAL clock, not the pinned NOW: ingest measures "days ahead" from Date.now().
+  const at = (days, hh = '09:00') => `${new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)}T${hh}:00Z`;
   const r = apple.ingestCalendar({
-    from: '2026-10-06T09:00:00Z', to: '2026-12-06T09:00:00Z', client: 'saim',
+    from: at(-3), to: at(61), client: 'saim',
     calendars: [{ id: 'c-home', title: 'Home', type: 'caldav' }, { id: 'c-hol', title: 'UK Holidays', type: 'subscription' }],
-    events: [{ id: 'e1', title: 'Dentist', start: '2026-10-10T09:00:00Z', end: '2026-10-10T10:00:00Z', isAllDay: false, calendar: 'Home', calendarId: 'c-home', recurring: false }],
+    events: [{ id: 'e1', title: 'Dentist', start: at(1), end: at(1, '10:00'), isAllDay: false, calendar: 'Home', calendarId: 'c-home', recurring: false }],
   });
   assert.equal(r.ok, true, JSON.stringify(r));
   const audit = apple.calendarCoverage({ now: NOW });

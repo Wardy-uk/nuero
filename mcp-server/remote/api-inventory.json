@@ -8271,14 +8271,15 @@
     "domain": "finance",
     "source": "routes/finance.js",
     "line": 46,
-    "description": "POST /api/finance/transactions/:txnId/decide. Nick sets the domain of one transaction in the review list. Body: decision (confirm|reject|unknown), domain, remember ({matchKind: merchant|merchant+category}).",
+    "description": "POST /api/finance/transactions/:txnId/decide. Nick categorises one transaction from the review list. The category is written INTO Tally through Tally's API (Tally is the one store); remember=true makes it Tally's merchant rule. Body: decision (confirm|unknown), categoryId (a Tally category id), reme",
     "params": [
       "txnId"
     ],
     "query": [],
     "body": [
+      "categoryId",
+      "confirmRule",
       "decision",
-      "domain",
       "remember"
     ],
     "queryOpen": false,
