@@ -14,6 +14,13 @@ const db = require('../db/database');
 const emailTriage = require('./email-triage');
 const nudges = require('./nudges');
 
+// runTriage's passengers (email-actions, sent-commitments) ask ai-routing for an
+// `email_summary`. A scratch DB has no cloud key, so routing falls to Ollama —
+// absent on Windows (fails instantly) but REAL on the Pi, where one call held
+// the deploy gate for 16 minutes (9 Oct 2026). No test here may reach a model:
+// a test that wants one replaces runTask itself and restores this.
+require('./ai-routing').runTask = async (taskType) => { throw new Error(`a model was reached from email-triage tests (${taskType})`); };
+
 test.before(async () => { await db.init(); });
 
 function email(over = {}) {
