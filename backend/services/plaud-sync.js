@@ -423,7 +423,15 @@ const FAILED_RETRY_MAX_AGE_DAYS = Number(process.env.PLAUD_FAILED_RETRY_DAYS || 
  * Two July recordings failed on 12 Aug with "Request timed out" and were simply gone. So
  * the window now stretches back to the oldest outstanding failure.
  */
-function incrementalDateFrom(lastSuccessfulSyncAt, incremental, lookbackDays = DEFAULT_SYNC_LOOKBACK_DAYS, failedRecordings = null) {
+/*
+ * ⚠ AND IT MUST REACH BACK TO RECORDINGS PLAUD HAS NOT FINISHED PROCESSING.
+ *
+ * A "not ready" recording was skipped without a trace, so it widened nothing. Two 1-2-1s
+ * recorded on 24 Sep 2026 sat unprocessed in PLAUD until 9 Oct — 15 days, one past the
+ * lookback — and were never listed again. `pendingRecordings` holds each one's own
+ * `startAt`, which is exact, so the reach is that date (less a day of margin).
+ */
+function incrementalDateFrom(lastSuccessfulSyncAt, incremental, lookbackDays = DEFAULT_SYNC_LOOKBACK_DAYS, failedRecordings = null, pendingRecordings = null) {
   if (!incremental || !lastSuccessfulSyncAt) return undefined;
 
   const last = new Date(lastSuccessfulSyncAt);
@@ -442,6 +450,14 @@ function incrementalDateFrom(lastSuccessfulSyncAt, incremental, lookbackDays = D
     if (failedAt.getTime() < cutoff) continue;
     // A day of margin: the recording is older than the moment its retry failed.
     const reach = new Date(failedAt.getTime() - 86400000);
+    if (reach < from) from = reach;
+  }
+
+  for (const entry of Object.values(pendingRecordings || {})) {
+    const startAt = new Date(entry && entry.startAt);
+    if (Number.isNaN(startAt.getTime())) continue;
+    if (startAt.getTime() < cutoff) continue;
+    const reach = new Date(startAt.getTime() - 86400000);
     if (reach < from) from = reach;
   }
 
@@ -994,7 +1010,8 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
     try {
       // The failure ledger widens the window — see incrementalDateFrom.
       const dateFrom = incrementalDateFrom(
-        syncState.lastSuccessfulSyncAt, incremental, DEFAULT_SYNC_LOOKBACK_DAYS, syncState.failedRecordings
+        syncState.lastSuccessfulSyncAt, incremental, DEFAULT_SYNC_LOOKBACK_DAYS, syncState.failedRecordings,
+        syncState.pendingRecordings
       );
       const outstandingFailures = Object.keys(syncState.failedRecordings || {}).length;
       if (outstandingFailures) {
@@ -1044,6 +1061,14 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
           // next sync cycle re-pulls it once PLAUD has finished — no orphan stub is created.
           if (!summaryBody.trim() && !transcriptBody.trim()) {
             skipped += 1;
+            // Remembered so the window keeps reaching it — see incrementalDateFrom.
+            if (!syncState.pendingRecordings) syncState.pendingRecordings = {};
+            syncState.pendingRecordings[key] = {
+              startAt: details.start_at || recording.start_at || null,
+              firstSeenAt: (syncState.pendingRecordings[key] || {}).firstSeenAt || new Date().toISOString(),
+              title: recording.name || recording.id
+            };
+            writeSyncState(syncState);
             console.log(`[PlaudSync] ${recording.id} not ready (no transcript/summary yet) — retry next cycle`);
             continue;
           }
@@ -1147,6 +1172,7 @@ async function syncPlaudRecordings({ incremental = true } = {}) {
             transcripts: [transcriptRelativePath]
           };
           delete syncState.failedRecordings[key];
+          if (syncState.pendingRecordings) delete syncState.pendingRecordings[key];
           writeSyncState(syncState);
 
           if (DEFAULT_BETWEEN_RECORDINGS_MS > 0) {

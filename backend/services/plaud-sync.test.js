@@ -300,3 +300,23 @@ test('a corrupt failedAt is ignored rather than throwing', () => {
 test('a full (non-incremental) sync is still unbounded', () => {
   assert.equal(incrementalDateFrom(AT, false, 14, { a: { failedAt: '2026-08-12T00:00:00Z' } }), undefined);
 });
+
+// ── A recording PLAUD has not finished processing keeps the window open ──
+//
+// Two 1-2-1s recorded 24 Sep 2026 were processed by PLAUD on 9 Oct. "Not ready" left no
+// trace, so by then the 14-day window started 25 Sep and they were never listed again.
+
+test('a pending recording widens the window back to its own date', () => {
+  const pending = { abc: { startAt: '2026-08-10T12:31:33', firstSeenAt: '2026-08-10T13:00:00Z' } };
+  assert.equal(incrementalDateFrom(AT, true, 14, {}, pending), '2026-08-09');
+});
+
+test('a pending recording inside the lookback does not narrow it', () => {
+  const pending = { abc: { startAt: '2026-08-30T09:00:00' } };
+  assert.equal(incrementalDateFrom(AT, true, 14, {}, pending), '2026-08-18');
+});
+
+test('an ancient or corrupt pending entry is ignored', () => {
+  const pending = { a: { startAt: '2025-01-01T00:00:00Z' }, b: { startAt: 'nope' }, c: {}, d: null };
+  assert.equal(incrementalDateFrom(AT, true, 14, {}, pending), '2026-08-18');
+});
