@@ -1673,12 +1673,20 @@ test('scheduleMoving never moves a TICKED task, and says which', async () => {
   assert.equal(db.listTaskBlockRows({ taskId: old.taskId, openOnly: true }).length, 1);
 });
 
+// A weekday comfortably in the future, from the clock — never a literal (a fixed
+// 2026-10-08 failed every deploy from the 9th: the slot had passed).
+function futureWeekday(daysAhead = 14) {
+  const d = new Date(); d.setDate(d.getDate() + daysAhead);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 test('scheduleMoving asked again for the slot it already filled folds, rather than clashing with itself', async () => {
   const { id } = taskStore.createTask({ text: 'Retry-safe standup booking', source: 'manual', skipExport: true });
-  const first = await withGraph(() => taskBlocks.scheduleMoving([id], { date: '2026-10-08', startTime: '14:30', minutes: 60 }));
+  const first = await withGraph(() => taskBlocks.scheduleMoving([id], { date: futureWeekday(), startTime: '14:30', minutes: 60 }));
   assert.equal(first.ok, true, first.error);
 
-  const again = await withGraph(() => taskBlocks.scheduleMoving([id], { date: '2026-10-08', startTime: '14:30', minutes: 60 }));
+  const again = await withGraph(() => taskBlocks.scheduleMoving([id], { date: futureWeekday(), startTime: '14:30', minutes: 60 }));
   assert.equal(again.ok, true, again.error);
   assert.equal(again.already, true);
   assert.equal(again.blockId, first.blockId);
@@ -1687,7 +1695,7 @@ test('scheduleMoving asked again for the slot it already filled folds, rather th
 
 test('scheduleMoving with Outlook refusing still leaves ONE hold, not two', async () => {
   const old = blockedTasks(['Graph is down today'], { dateKey: '2026-10-09', startTime: '09:00' });
-  const res = await withoutGraph(() => taskBlocks.scheduleMoving([old.taskId], { date: '2026-10-10', startTime: '14:30', minutes: 60 }));
+  const res = await withoutGraph(() => taskBlocks.scheduleMoving([old.taskId], { date: futureWeekday(15), startTime: '14:30', minutes: 60 }));
 
   assert.equal(res.ok, false, 'an Outlook refusal is still reported as one');
   assert.ok(res.blockId);
