@@ -54,3 +54,15 @@ test('decodes the confirmed oxygen and skin-temperature history layouts', () => 
   assert.deepEqual(decoded.oxygenSamples, [{ timestamp: '2026-10-09 17:15:20', saturation: 96 }]);
   assert.deepEqual(decoded.temperatureSamples, [{ timestamp: '2026-10-09 16:59:59', celsius: 34.6 }]);
 });
+
+test('decodes a plausible one-off 0x28 HRV result but not its acknowledgement', () => {
+  const decoded = protocol.inspect([
+    { kind: 'notification', receivedAt: '2026-10-09T20:15:00Z', hex: '28 01 01 00 3C 00 00 00' },
+    { kind: 'notification', receivedAt: '2026-10-09T20:16:00Z', hex: '28 01 5C 62 1F 2A 76 4B 00 00 00 00 00 00 00 00' },
+  ]);
+  assert.deepEqual(decoded.oneOffHRVMeasurements, [{
+    receivedAt: '2026-10-09T20:16:00Z', heartRate: 92, oxygen: 98, hrv: 31,
+    stress: 42, systolic: 118, diastolic: 75,
+    source: 'J2301 one-off HRV vendor estimate',
+  }]);
+});

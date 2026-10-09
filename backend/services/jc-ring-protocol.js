@@ -37,6 +37,7 @@ function inspect(packets) {
   const oxygenSamples = [];
   const temperatureSamples = [];
   const vendorBloodPressureEstimates = [];
+  const oneOffHRVMeasurements = [];
   let notifications = 0;
 
   for (const packet of Array.isArray(packets) ? packets : []) {
@@ -112,6 +113,33 @@ function inspect(packets) {
         temperatureSamples.push({ timestamp, celsius: tenthsC / 10 });
       }
     }
+
+    // A one-off 0x28 measurement result has no device timestamp. The J2301
+    // SDK labels subtype 1 as HRV and exposes HR, SpO2, HRV, stress and the
+    // vendor's PPG BP fields at offsets 2–7. Keep the phone receipt time
+    // separate from the ring-local timestamps used by stored history.
+    for (let i = 0; i + 7 < bytes.length; i++) {
+      if (bytes[i] !== 0x28 || bytes[i + 1] !== 0x01) continue;
+      const heartRate = bytes[i + 2];
+      const oxygen = bytes[i + 3];
+      const hrv = bytes[i + 4];
+      const stress = bytes[i + 5];
+      const systolic = bytes[i + 6];
+      const diastolic = bytes[i + 7];
+      // Do not turn an acknowledgement or zero-padded frame into a reading.
+      if (heartRate < 25 || heartRate > 240 || hrv === 0 ||
+          systolic < 60 || systolic > 240 || diastolic < 30 || diastolic > 160) continue;
+      oneOffHRVMeasurements.push({
+        receivedAt: packet.receivedAt,
+        heartRate,
+        oxygen: oxygen > 0 && oxygen <= 100 ? oxygen : null,
+        hrv,
+        stress,
+        systolic,
+        diastolic,
+        source: 'J2301 one-off HRV vendor estimate',
+      });
+    }
   }
 
   return {
@@ -124,6 +152,7 @@ function inspect(packets) {
     oxygenSamples,
     temperatureSamples,
     vendorBloodPressureEstimates,
+    oneOffHRVMeasurements,
     caution: '0x54 heart-rate history and 0x56 vendor BP estimates are decoded. Consumer wearable readings are not clinical measurements; BP estimates need comparison against a validated cuff or HiLo before they are used for a trend.',
   };
 }
