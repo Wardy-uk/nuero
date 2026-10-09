@@ -2860,9 +2860,9 @@ CREATE TABLE IF NOT EXISTS vehicle_events (
   event_date      TEXT NOT NULL,
   mileage         REAL,
   description     TEXT NOT NULL,
-  cost_pence      INTEGER,
+  cost_pence      INTEGER,                      -- UNUSED since Build 27: an amount is Tally's, never held here
   cost_ref        TEXT,                         -- tally:<id> when the cost is a Tally transaction
-  detail_json     TEXT,                         -- tyres: axle/position/brand/model as stated
+  detail_json     TEXT,                         -- tyres: action/axle/position/brand/model; outcome (resolved|unresolved|monitoring)
   source          TEXT NOT NULL,
   provenance_json TEXT,
   recorded_at     TEXT NOT NULL,
@@ -2909,54 +2909,25 @@ CREATE TABLE IF NOT EXISTS vehicle_official_checks (
   entered_by       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_vehicle_official_checks ON vehicle_official_checks(vehicle_id, checked_at);
--- Tally read model: ONLY transactions that look like motoring (or that a rule
--- Nick confirmed matches). Household spending is never copied here. Tally is
--- the source of truth; source_txn_id is Tally's own transactions.id.
-CREATE TABLE IF NOT EXISTS tally_vehicle_txns (
-  source_txn_id  INTEGER PRIMARY KEY,
-  txn_date       TEXT NOT NULL,
-  amount_pence   INTEGER NOT NULL,              -- Tally's sign: negative = spend
-  description    TEXT NOT NULL,
-  merchant_key   TEXT,
-  channel        TEXT,                          -- e.g. 'zilch' (pay-later) when the description says so
-  category_name  TEXT,
-  account_name   TEXT,
-  account_owner  TEXT,
-  candidate_json TEXT,                          -- why it might be motoring, proposed type, confidence
-  first_seen_at  TEXT NOT NULL,
-  last_seen_at   TEXT NOT NULL,
-  in_source      INTEGER NOT NULL DEFAULT 1     -- 0 = Tally no longer lists it
-);
-CREATE INDEX IF NOT EXISTS idx_tally_vehicle_txns_date ON tally_vehicle_txns(txn_date);
-CREATE TABLE IF NOT EXISTS vehicle_spend_decisions (
-  source_txn_id  INTEGER PRIMARY KEY,
-  decision       TEXT NOT NULL CHECK (decision IN ('vehicle','not-vehicle','unknown')),
-  spend_type     TEXT,
-  vehicle_id     TEXT,
-  basis          TEXT NOT NULL CHECK (basis IN ('confirmed-once','rule')),
-  rule_id        TEXT,
-  decided_by     TEXT NOT NULL,
-  decided_at     TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS vehicle_spend_rules (
-  rule_id        TEXT PRIMARY KEY,              -- vsr:<uuid>
-  match_kind     TEXT NOT NULL CHECK (match_kind IN ('merchant','category','merchant+category')),
-  merchant_key   TEXT,
-  category_name  TEXT,
-  spend_type     TEXT NOT NULL,
+-- Build 27: a fuel fill Nick records — litres and (ideally) the odometer, for
+-- MPG. Never an amount: what a fill cost is Tally's (finance-intelligence-v1).
+CREATE TABLE IF NOT EXISTS vehicle_fuel_fills (
+  fill_id        TEXT PRIMARY KEY,              -- vfill:<uuid>
   vehicle_id     TEXT NOT NULL,
-  scope          TEXT,
-  examples_json  TEXT,
-  confirmed_by   TEXT NOT NULL,
-  confirmed_at   TEXT NOT NULL,
-  active         INTEGER NOT NULL DEFAULT 1
+  filled_on      TEXT NOT NULL,                 -- YYYY-MM-DD
+  litres         REAL NOT NULL CHECK (litres > 0),
+  odometer       REAL,                          -- NULL = not read at the pump
+  odometer_unit  TEXT NOT NULL DEFAULT 'mi' CHECK (odometer_unit IN ('mi','km')),
+  full_tank      INTEGER NOT NULL DEFAULT 0,    -- 1 = filled to the brim (full-to-full MPG)
+  note           TEXT,
+  provenance_json TEXT,
+  recorded_at    TEXT NOT NULL,
+  withdrawn_at   TEXT
 );
-CREATE TABLE IF NOT EXISTS vehicle_monthly_summaries (
-  month        TEXT PRIMARY KEY,                -- YYYY-MM
-  vehicle_id   TEXT NOT NULL,
-  summary_json TEXT NOT NULL,
-  produced_at  TEXT NOT NULL
-);
+CREATE INDEX IF NOT EXISTS idx_vehicle_fuel_fills ON vehicle_fuel_fills(vehicle_id, filled_on);
+-- (Build 21's tally_vehicle_txns, vehicle_spend_decisions, vehicle_spend_rules
+-- and vehicle_monthly_summaries were dropped in Build 27: which transactions are
+-- the car's, and every figure about them, live in Tally now.)
 
 -- ── Build 23: Finance activation ──────────────────────────────────────────────
 -- Tally is the source of truth and NEURO keeps no copy of its ledger. These

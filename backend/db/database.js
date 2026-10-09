@@ -529,6 +529,26 @@ async function init() {
     console.error('[DB] Build 3B migration check failed:', e.message);
   }
 
+  // Migration: Build 27 — vehicle identity fields Nick may know, and the end of
+  // NEURO's copy of vehicle finance. Which transactions are the car's, and every
+  // figure about them, moved to Tally (exported first to
+  // /mnt/data/backups/build27/ and imported by Tally's import-vehicle-decisions).
+  try {
+    const have = db.prepare('PRAGMA table_info(vehicles)').all().map(r => r.name);
+    if (have.length) {
+      for (const [name, type] of [['vin', 'TEXT'], ['first_registered', 'TEXT'], ['ownership_start', 'TEXT']]) {
+        if (!have.includes(name)) { db.exec(`ALTER TABLE vehicles ADD COLUMN ${name} ${type}`); console.log(`[DB] vehicles.${name} added`); }
+      }
+    }
+    for (const t of ['tally_vehicle_txns', 'vehicle_spend_decisions', 'vehicle_spend_rules', 'vehicle_monthly_summaries']) {
+      const n = db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = ?").get(t).n;
+      if (n) { db.exec(`DROP TABLE ${t}`); console.log(`[DB] Build 27: dropped ${t} (vehicle finance lives in Tally)`); }
+    }
+    db.exec("DELETE FROM agent_state WHERE key = 'tally_vehicle_sync'");
+  } catch (e) {
+    console.error('[DB] Build 27 migration failed:', e.message);
+  }
+
   // Migration: Build 6 — prepared_actions becomes approval-gated EXECUTABLE for
   // one registered type. Rebuilds an old-shape table (copying every row) and
   // replaces the Build 5 "never executed" triggers with the Build 6 ones. See

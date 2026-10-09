@@ -1283,7 +1283,8 @@ function start() {
     // External weather (EA rain gauge, WU) registers its own jobs, kept out of
     // registerDurableJobs() so runtime tests that register it make no network calls.
     require('./weather-jobs').register();
-    // Build 21: Tally is read over ssh — kept out of registerDurableJobs() for the same reason.
+    // Build 21/27: the vehicle's daily pass. Since Build 27 it reads nothing outside NEURO (Tally's
+    // figures arrive through finance-refresh); kept here, beside finance-refresh, where it always ran.
     require('./runtime-jobs').defineJob({
       name: 'vehicle-refresh',
       cron: '37 6 * * *',
@@ -1293,7 +1294,7 @@ function start() {
       maxAttempts: 2,
       backoffMs: [30 * 60 * 1000],
       timeoutMs: 5 * 60 * 1000,
-      why: 'Reads Tally (read-only) for motoring candidates, refreshes MPG readiness quietly and stores last month\'s vehicle summary once. Idempotent; a missed day heals on the next.',
+      why: 'Notes, once per change, when Tally\'s vehicle finance becomes readable or stops being, and when what is missing about the car changes. Reads nothing outside NEURO. Idempotent.',
       run: async () => require('./vehicle').refresh(),
     });
     // Build 26: the household finance view, read from Tally's finance-intelligence-v1 contract.

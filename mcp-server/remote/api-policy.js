@@ -77,8 +77,11 @@ export const interactive = {
   post_vehicle_by_id_official_by_hand: 'What gov.uk showed is Nick\'s reading. He records it in NEURO → Life → Vehicle.',
   post_vehicle_obligations_by_obligationId: 'Changing a vehicle date is Nick\'s statement. He does it in NEURO → Life → Vehicle.',
   post_vehicle_obligations_by_obligationId_resolve: 'Saying an MOT, renewal or service is done needs Nick\'s evidence. He does it in NEURO → Life → Vehicle.',
-  post_vehicle_finance_sync: 'Reading Tally is NEURO\'s own scheduled job or Nick\'s press. It runs from NEURO → Life → Vehicle.',
-  post_vehicle_finance_transactions_by_txnId_decide: 'Whether a transaction is the car\'s is Nick\'s decision — an agent never classifies household spending. He decides in NEURO → Life → Vehicle.',
+  post_vehicle_finance_sync: 'Retired in Build 27 — NEURO no longer reads Tally\'s database. Vehicle spend is Tally\'s (Outlook → Motoring).',
+  post_vehicle_finance_transactions_by_txnId_decide: 'Retired in Build 27 — whether a transaction is the car\'s is Nick\'s decision, made in Tally → Outlook → Motoring.',
+  // Build 27: a fuel fill (litres, odometer) is Nick's own record.
+  post_vehicle_by_id_fuel: 'A fuel fill is Nick\'s own record — NEURO never invents litres or mileage. He records it in NEURO → Life → Transport.',
+  post_vehicle_by_id_fuel_by_fillId_withdraw: 'Taking back a fuel fill is Nick\'s choice. He does it in NEURO → Life → Transport.',
   // Build 23: how NEURO reads the household finances is Nick's statement. An
   // agent reads the finance view and never classifies, confirms or resolves.
   post_finance_sync: 'Reading Tally is NEURO\'s own scheduled job or Nick\'s press. It runs from NEURO → Life → Finance.',

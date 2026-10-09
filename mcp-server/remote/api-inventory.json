@@ -4676,7 +4676,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 249,
+    "line": 251,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -5048,6 +5048,22 @@
     "source": "routes/todos.js",
     "line": 474,
     "description": "GET /api/todos/ms-queue.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_transport",
+    "method": "GET",
+    "route": "/api/transport",
+    "domain": "transport",
+    "source": "routes/transport.js",
+    "line": 14,
+    "description": "GET /api/transport. the transport view: vehicle, MOT/tax/insurance/service, odometer, maintenance, tyres, fuel/MPG, Tally vehicle cost, cost per mile, driving state, source health. Keywords: car, Captur, transport, MOT, vehicle cost.",
     "params": [],
     "query": [],
     "body": [],
@@ -5458,7 +5474,7 @@
     "route": "/api/vehicle",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 23,
+    "line": 25,
     "description": "GET /api/vehicle. every vehicle NEURO holds with obligations, mileage, history, running costs and gaps. Keywords: car, Captur, MOT, vehicle.",
     "params": [],
     "query": [],
@@ -5474,26 +5490,8 @@
     "route": "/api/vehicle/:id",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 94,
+    "line": 77,
     "description": "GET /api/vehicle/:id. one vehicle: obligations, mileage, history, official checks, running costs, health evidence.",
-    "params": [
-      "id"
-    ],
-    "query": [],
-    "body": [],
-    "queryOpen": false,
-    "bodyOpen": false,
-    "multipart": false,
-    "stream": false
-  },
-  {
-    "id": "get_vehicle_by_id_summaries",
-    "method": "GET",
-    "route": "/api/vehicle/:id/summaries",
-    "domain": "vehicle",
-    "source": "routes/vehicle.js",
-    "line": 102,
-    "description": "GET /api/vehicle/:id/summaries. the stored monthly vehicle summaries, newest first.",
     "params": [
       "id"
     ],
@@ -5510,8 +5508,8 @@
     "route": "/api/vehicle/finance/review",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 40,
-    "description": "GET /api/vehicle/finance/review. Tally transactions that might be motoring, awaiting Nick, plus decided ones and rules. Read-only from Tally. Keywords: fuel spend, vehicle spend.",
+    "line": 42,
+    "description": "GET /api/vehicle/finance/review. retired in Build 27: which transactions are the car's is decided in Tally.",
     "params": [],
     "query": [],
     "body": [],
@@ -5527,15 +5525,11 @@
     "domain": "vehicle",
     "source": "routes/vehicle.js",
     "line": 45,
-    "description": "GET /api/vehicle/finance/rules/preview. what a vehicle-spend rule would match before Nick confirms it. Query: matchKind, merchantKey, categoryName.",
+    "description": "GET /api/vehicle/finance/rules/preview. retired in Build 27: vehicle-spend rules live in Tally.",
     "params": [],
-    "query": [
-      "categoryName",
-      "matchKind",
-      "merchantKey"
-    ],
+    "query": [],
     "body": [],
-    "queryOpen": true,
+    "queryOpen": false,
     "bodyOpen": false,
     "multipart": false,
     "stream": false
@@ -12005,7 +11999,7 @@
     "route": "/api/vehicle",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 31,
+    "line": 33,
     "description": "POST /api/vehicle. Nick creates a vehicle he owns. Body: make, model, plateDescriptor, registration, variant, fuelType, provenanceNote. Refuses a generic \"car\" and a duplicate make+model.",
     "params": [],
     "query": [],
@@ -12029,18 +12023,21 @@
     "route": "/api/vehicle/:id",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 107,
-    "description": "POST /api/vehicle/:id. Nick fills in what he knows about a vehicle. Body: plateDescriptor, registration, variant, fuelType, ownershipState.",
+    "line": 85,
+    "description": "POST /api/vehicle/:id. Nick fills in what he knows about a vehicle. Body: plateDescriptor, registration, variant, fuelType, ownershipState, vin, firstRegistered, ownershipStart.",
     "params": [
       "id"
     ],
     "query": [],
     "body": [
+      "firstRegistered",
       "fuelType",
+      "ownershipStart",
       "ownershipState",
       "plateDescriptor",
       "registration",
-      "variant"
+      "variant",
+      "vin"
     ],
     "queryOpen": false,
     "bodyOpen": true,
@@ -12053,13 +12050,14 @@
     "route": "/api/vehicle/:id/events",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 132,
-    "description": "POST /api/vehicle/:id/events. Nick records a service, repair, tyres or other maintenance. Body: type, date, mileage, description, costPence, costRef (tally:<id>), axle, position, brand, model.",
+    "line": 110,
+    "description": "POST /api/vehicle/:id/events. Nick records a service, repair, tyre or other maintenance event. Body: type, date, mileage, description, costRef (tally:<id>; amounts live in Tally), action, axle, position, brand, model, count, outcome.",
     "params": [
       "id"
     ],
     "query": [],
     "body": [
+      "action",
       "axle",
       "brand",
       "costPence",
@@ -12069,6 +12067,7 @@
       "description",
       "mileage",
       "model",
+      "outcome",
       "position",
       "type"
     ],
@@ -12083,11 +12082,57 @@
     "route": "/api/vehicle/:id/events/:eventId/withdraw",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 141,
+    "line": 119,
     "description": "POST /api/vehicle/:id/events/:eventId/withdraw. take back a history entry recorded in error.",
     "params": [
       "id",
       "eventId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_vehicle_by_id_fuel",
+    "method": "POST",
+    "route": "/api/vehicle/:id/fuel",
+    "domain": "vehicle",
+    "source": "routes/vehicle.js",
+    "line": 124,
+    "description": "POST /api/vehicle/:id/fuel. Nick records a fuel fill for MPG. Body: filledOn, litres, odometer, odometerUnit (mi|km), fullTank, note. Never an amount — that is Tally's.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "amountPence",
+      "costPence",
+      "filledOn",
+      "fullTank",
+      "litres",
+      "note",
+      "odometer",
+      "odometerUnit"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_vehicle_by_id_fuel_by_fillId_withdraw",
+    "method": "POST",
+    "route": "/api/vehicle/:id/fuel/:fillId/withdraw",
+    "domain": "vehicle",
+    "source": "routes/vehicle.js",
+    "line": 133,
+    "description": "POST /api/vehicle/:id/fuel/:fillId/withdraw. take back a fuel fill recorded in error.",
+    "params": [
+      "id",
+      "fillId"
     ],
     "query": [],
     "body": [],
@@ -12102,7 +12147,7 @@
     "route": "/api/vehicle/:id/mileage",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 118,
+    "line": 96,
     "description": "POST /api/vehicle/:id/mileage. Nick records an odometer reading. Body: value, unit (mi|km), observedOn, source, confidence, correction, note. Implausible readings are kept and flagged.",
     "params": [
       "id"
@@ -12129,7 +12174,7 @@
     "route": "/api/vehicle/:id/mileage/:readingId/withdraw",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 127,
+    "line": 105,
     "description": "POST /api/vehicle/:id/mileage/:readingId/withdraw. take back an odometer reading entered in error.",
     "params": [
       "id",
@@ -12148,7 +12193,7 @@
     "route": "/api/vehicle/:id/obligations",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 146,
+    "line": 138,
     "description": "POST /api/vehicle/:id/obligations. Nick records an MOT, insurance, service, warranty, breakdown cover or tax date. Body: type, dueDate, dueMileage, intervalMonths, intervalMiles, intervalBasis, linkedTaskRef, linkedReminderRef, note.",
     "params": [
       "id"
@@ -12177,7 +12222,7 @@
     "route": "/api/vehicle/:id/official-by-hand",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 160,
+    "line": 152,
     "description": "POST /api/vehicle/:id/official-by-hand. Nick records what gov.uk showed (Check MOT history / Check if a vehicle is taxed). Body: motStatus, motExpiryDate, taxStatus, taxDueDate.",
     "params": [
       "id"
@@ -12200,7 +12245,7 @@
     "route": "/api/vehicle/:id/official-check",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 155,
+    "line": 147,
     "description": "POST /api/vehicle/:id/official-check. ask DVLA (Vehicle Enquiry Service) for MOT and tax status. Needs DVLA_VES_API_KEY and the registration; records 'unavailable' otherwise.",
     "params": [
       "id"
@@ -12218,8 +12263,8 @@
     "route": "/api/vehicle/finance/rules/:ruleId/retire",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 69,
-    "description": "POST /api/vehicle/finance/rules/:ruleId/retire. stop a confirmed vehicle-spend rule matching new transactions. Decisions it made stay.",
+    "line": 54,
+    "description": "POST /api/vehicle/finance/rules/:ruleId/retire. retired in Build 27: rules live in Tally.",
     "params": [
       "ruleId"
     ],
@@ -12236,8 +12281,8 @@
     "route": "/api/vehicle/finance/sync",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 55,
-    "description": "POST /api/vehicle/finance/sync. read Tally now (read-only over ssh) and refresh the vehicle-spend candidates. Never writes to Tally.",
+    "line": 48,
+    "description": "POST /api/vehicle/finance/sync. retired in Build 27: NEURO no longer reads Tally's database.",
     "params": [],
     "query": [],
     "body": [],
@@ -12252,20 +12297,15 @@
     "route": "/api/vehicle/finance/transactions/:txnId/decide",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 60,
-    "description": "POST /api/vehicle/finance/transactions/:txnId/decide. Nick classifies one Tally transaction. Body: decision (vehicle|not-vehicle|unknown), spendType, vehicleId, remember {matchKind, scope}.",
+    "line": 51,
+    "description": "POST /api/vehicle/finance/transactions/:txnId/decide. retired in Build 27: decided in Tally.",
     "params": [
       "txnId"
     ],
     "query": [],
-    "body": [
-      "decision",
-      "remember",
-      "spendType",
-      "vehicleId"
-    ],
+    "body": [],
     "queryOpen": false,
-    "bodyOpen": true,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },
@@ -12275,7 +12315,7 @@
     "route": "/api/vehicle/obligations/:obligationId",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 74,
+    "line": 57,
     "description": "POST /api/vehicle/obligations/:obligationId. edit an open vehicle obligation's due date, due mileage or linked task/reminder. Body: dueDate, dueMileage, linkedTaskRef, linkedReminderRef.",
     "params": [
       "obligationId"
@@ -12298,7 +12338,7 @@
     "route": "/api/vehicle/obligations/:obligationId/resolve",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 85,
+    "line": 68,
     "description": "POST /api/vehicle/obligations/:obligationId/resolve. Nick says an MOT/insurance/service/tax is actually done (evidence required — a ticked task is not evidence). Body: outcome, evidence, completedOn, nextDueDate, nextDueMileage.",
     "params": [
       "obligationId"

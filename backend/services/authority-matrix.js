@@ -212,6 +212,9 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/vehicle/:id/mileage/:readingId/withdraw', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/:id/events', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/:id/events/:eventId/withdraw', 'internal.state', { machine: 'refuse' }),
+  // Build 27: fuel fills (litres and the odometer — never an amount) are Nick's record.
+  R('POST', '/api/vehicle/:id/fuel', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/:id/fuel/:fillId/withdraw', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/:id/obligations', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/:id/official-check', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/:id/official-by-hand', 'internal.state', { machine: 'refuse' }),
@@ -283,7 +286,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   rooms: 'internal.state', session: 'internal.state', signals: 'internal.state', 'standup-session': 'internal.state', 'task-blocks': 'internal.state',
   'weekly-risk': 'internal.state', wins: 'internal.state', '1to1': 'internal.state', calendar: 'internal.state', microsoft: 'internal.state',
   'notion-sync': 'internal.state', 'prepared-actions': 'internal.state', escalation: 'internal.state',
-  vehicle: 'internal.state', finance: 'internal.state', projects: 'internal.state',
+  vehicle: 'internal.state', transport: 'internal.state', finance: 'internal.state', projects: 'internal.state',
 });
 
 function _segments(p) { return String(p || '').split('?')[0].replace(/\/+$/, '').split('/').filter(Boolean); }

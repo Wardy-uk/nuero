@@ -272,7 +272,8 @@ test('41. NEURO depends on the contract, not on Tally\'s database', async () => 
   // Code only: the header comment SAYS ssh is gone, and a comment is not a dependency.
   const src = fs.readFileSync(path.join(__dirname, 'finance.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.doesNotMatch(src, /sqlite3|execFile|\bssh\b|truelayer_|FROM transactions|pragma_table_info/i);
-  assert.match(fs.readFileSync(path.join(__dirname, 'tally-vehicle.js'), 'utf8'), /sqlite3/, 'positive control: the scan finds a direct Tally read where one exists');
+  // positive control (Build 27 deleted tally-vehicle.js, the last real one): the scan finds the shape a direct Tally read takes
+  assert.match("execFile('ssh', [target, 'sqlite3 -readonly -json tally.db'])", /sqlite3|execFile|\bssh\b|truelayer_|FROM transactions|pragma_table_info/i);
   assert.match(src, /'\/intelligence\/contract'/);
   // the real production path: tally-api logs in and GETs the contract (fake only at the fetch layer)
   tallyPayload = contract();

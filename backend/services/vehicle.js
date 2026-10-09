@@ -1,31 +1,44 @@
 'use strict';
 
 /**
- * Build 21 — the Captur as a first-class Vehicle, and what NEURO can honestly
- * say about it.
+ * Build 21 → Build 27 — the Captur as a first-class Vehicle, and what NEURO can
+ * honestly say about it.
  *
  *   entity       one row per real vehicle; unknown fields stay NULL
  *   mileage      odometer readings with provenance; current = latest
  *                TRUSTWORTHY reading (never the largest); implausible ones
- *                are kept and flagged for review, never corrected
- *   history      service / repairs / tyres … explicit only
+ *                are kept and flagged for review, never corrected. Never from
+ *                GPS, routes or movement.
+ *   history      service / repairs / tyres … explicit only; a cost is a
+ *                reference to Tally (tally:<id>), never an amount held here
  *   obligations  typed FACTS (MOT expiry, renewals). The action stays a task
  *                or reminder, linked; completing it never completes the fact
  *   official     what DVLA/DVSA (or gov.uk read by Nick) said, kept beside
  *                NEURO's value — a disagreement is shown, never overwritten
- *   metrics      fuel and ownership cost per mile, MPG — computed only from
- *                period-aligned, trustworthy inputs; otherwise a stated gap
+ *   fuel         fills Nick records (litres, odometer, brim-full) → MPG only
+ *                from that evidence; no litre price, no spec-sheet figure
  *
- * No manufacturer interval, tyre life, litre price or depreciation is assumed
- * anywhere. Machines may read; every write is Nick's (authority matrix).
+ * ⚠ BUILD 27 BOUNDARY: every financial number about the car is Tally's. NEURO
+ * reads `vehicleFinance` from finance-intelligence-v1 (finance.js's stored
+ * snapshot) and shows it unchanged. The ONE calculation here that touches money
+ * is cost per mile, a composition: Tally's total for a window of complete months
+ * divided by the miles NEURO's odometer readings measure over the same window —
+ * refused when the readings do not reach its edges. No manufacturer interval,
+ * tyre life, litre price or depreciation is assumed anywhere. Machines may read;
+ * every write is Nick's (authority matrix).
  */
 
 const crypto = require('crypto');
 
 const OBLIGATION_TYPES = Object.freeze(['mot', 'insurance', 'service', 'warranty', 'breakdown_cover', 'tax']);
 const OBLIGATION_LABELS = Object.freeze({ mot: 'MOT', insurance: 'Insurance', service: 'Service', warranty: 'Warranty', breakdown_cover: 'Breakdown cover', tax: 'Vehicle tax' });
-const EVENT_TYPES = Object.freeze(['scheduled_service', 'repair', 'tyres', 'battery', 'brakes', 'exhaust', 'suspension', 'mot_work', 'other']);
-const MILEAGE_SOURCES = Object.freeze(['manual', 'mot', 'service', 'tally', 'telemetry']);
+const EVENT_TYPES = Object.freeze(['scheduled_service', 'repair', 'breakdown', 'battery', 'brakes', 'tyres', 'exhaust', 'fluids', 'suspension', 'inspection', 'mot_work', 'other']);
+const TYRE_ACTIONS = Object.freeze(['fitted', 'replaced', 'repaired', 'puncture', 'inspection']);
+const OUTCOMES = Object.freeze(['resolved', 'unresolved', 'monitoring']);
+const REPAIR_KINDS = Object.freeze(['repair', 'breakdown', 'battery', 'brakes', 'exhaust', 'suspension']);
+// Where an odometer reading may come from. NOT 'gps', 'route', 'location' or
+// 'movement' — distance travelled is not what the odometer says (27I).
+const MILEAGE_SOURCES = Object.freeze(['manual', 'mot', 'service', 'telemetry']);
 const OFFICIAL_SOURCES = Object.freeze(['dvla-ves', 'dvsa-mot', 'gov-uk-by-hand']);
 const KM_PER_MILE = 1.609344;
 const LITRES_PER_UK_GALLON = 4.54609;
@@ -37,8 +50,8 @@ const NEEDS_YOU_DAYS = 1;          // the existing personal-obligation rule (≤
 const PREP_NEEDS_YOU_DAYS = 2;     // the existing Radar prep rule (open prep ≤2 days out)
 const MAX_MILES_PER_DAY = 1500;    // above this between two readings is not driving — needs review
 const BOUNDARY_TOLERANCE_DAYS = 14; // a reading within 14 days of a period edge can stand for it
-const PRESSURE_CHANGE = 0.2;       // ±20% …
-const PRESSURE_MIN_PENCE = 10000;  // … and at least £100 between halves, to call cost "rising"/"falling"
+const ALIGNED_DAYS = 3;            // …and within 3 days the window counts as aligned, not approximate
+const MPG_ROLLING_DAYS = 90;       // the rolling MPG window
 
 // ── dates (pure) ─────────────────────────────────────────────────────────────
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -199,109 +212,170 @@ function obligationConfidence(ob, check) {
   return 'stated';
 }
 
-// ── money & distance (pure) ──────────────────────────────────────────────────
+// ── money: Tally's, never NEURO's (pure) ─────────────────────────────────────
 
 /**
- * Finance coverage of a period: does Tally's data reach across it? PURE.
- *   dataFrom/dataThrough — the first and last transaction dates Tally holds.
+ * This vehicle's finance exactly as Tally's `vehicleFinance` section says. PURE
+ * over finance.js's stored snapshot ({ fetchedAt, contract }). No figure is
+ * made here; a missing section or vehicle says why.
  */
-function financeCoverage(period, { dataFrom = null, dataThrough = null } = {}) {
-  if (!dataFrom || !dataThrough) return { complete: false, why: 'Tally has not been read' };
-  if (period.from < dataFrom) return { complete: false, why: `Tally's data starts ${dataFrom}` };
-  if (period.to > dataThrough) return { complete: false, why: `Tally's data stops ${dataThrough} (its bank sync has not delivered since)` };
-  return { complete: true, why: null };
+function tallyVehicleFinance(snapshot, vehicleId) {
+  const base = { source: 'Tally', reviewIn: 'Tally → Outlook → Motoring', fetchedAt: (snapshot && snapshot.fetchedAt) || null };
+  if (!snapshot || !snapshot.contract) return { ...base, available: false, state: 'unread', why: 'Tally has not been read yet' };
+  const vf = snapshot.contract.vehicleFinance;
+  if (!vf || !Array.isArray(vf.vehicles)) return { ...base, available: false, state: 'not-offered', why: "Tally's finance contract has no vehicleFinance section — Tally needs Build 27" };
+  const mine = vf.vehicles.find((v) => v.vehicleRef === vehicleId) || null;
+  const unassigned = vf.vehicles.find((v) => v.vehicleRef == null) || null;
+  const out = {
+    ...base, reviewIn: vf.reviewIn || base.reviewIn, freshness: vf.meta.freshness, review: vf.review, rules: vf.rules,
+    unassigned: unassigned ? { transactions: unassigned.classified.transactions, why: 'classified as motoring in Tally without saying which vehicle' } : null,
+  };
+  if (!mine) return { ...out, available: false, state: 'nothing-classified', confidence: vf.meta.confidence, explanation: vf.meta.explanation, why: `nothing in Tally is classified as this vehicle's yet${vf.review && vf.review.pending ? ` — ${vf.review.pending} transaction(s) wait for review in Tally` : ''}` };
+  return {
+    ...out, available: true, state: 'read', confidence: mine.confidence, explanation: [...vf.meta.explanation, ...mine.explanation], why: null,
+    classified: mine.classified, currentMonth: mine.currentMonth, latestCompleteMonth: mine.latestCompleteMonth, months: mine.months,
+    last3CompleteMonths: mine.last3CompleteMonths, last6CompleteMonths: mine.last6CompleteMonths, rolling12m: mine.rolling12m, trend: mine.trend,
+  };
 }
 
-/** Totals by spend type within a period. PURE. Pence, positive = spent. */
-function spendByType(spend = [], { from, to } = {}) {
-  const by = {};
-  for (const s of spend) {
-    if (s.date < from || s.date > to) continue;
-    const t = s.classification.spendType;
-    by[t] = (by[t] || 0) + -s.amountPence;
+/**
+ * Cost per mile (27P) — the one composition. PURE. Numerator: Tally's total
+ * for a window of complete months, passed through unchanged. Denominator: miles
+ * measured by accepted odometer readings at that window's edges. The longest
+ * Tally window with a measured distance wins; readings more than
+ * BOUNDARY_TOLERANCE_DAYS from an edge cannot measure it (refused), more than
+ * ALIGNED_DAYS marks it approximate.
+ */
+function costPerMile(fin, judged) {
+  if (!fin || !fin.available) return { value: null, state: 'unavailable', why: fin ? fin.why : 'no finance read' };
+  const windows = [fin.rolling12m, fin.last6CompleteMonths, fin.last3CompleteMonths].filter((w) => w && w.available);
+  if (!windows.length) return { value: null, state: 'insufficient_data', why: `Tally has no complete window of months yet — ${(fin.last3CompleteMonths && fin.last3CompleteMonths.why) || 'no complete month'}` };
+  for (const w of windows) {
+    const m = milesBetween(judged, w.from, w.to);
+    if (m.miles == null || m.miles <= 0) continue;
+    const off = Math.max(Math.abs(daysBetween(w.from, m.from)), Math.abs(daysBetween(w.to, m.to)));
+    const aligned = off <= ALIGNED_DAYS;
+    return {
+      value: Math.round((w.totalVehicleSpendPence / m.miles) * 10) / 10,
+      fuelValue: Math.round((w.fuelSpendPence / m.miles) * 10) / 10,
+      unit: 'pence per mile', state: aligned ? 'aligned' : 'partial',
+      numerator: { totalPence: w.totalVehicleSpendPence, fuelPence: w.fuelSpendPence, from: w.from, to: w.to, months: w.months, source: 'Tally' },
+      denominator: { miles: m.miles, from: m.from, to: m.to, source: 'your odometer readings' },
+      why: aligned ? null : `odometer readings sit up to ${off} days from Tally's window (${w.from} – ${w.to}) — approximate`,
+    };
   }
-  return by;
+  return { value: null, state: 'insufficient_data', why: `no two odometer readings within ${BOUNDARY_TOLERANCE_DAYS} days of the edges of a complete Tally window (${windows.map((w) => `${w.from} – ${w.to}`).join(', ')})` };
 }
 
-/** Costs recorded on history events that are NOT already a Tally transaction. PURE. */
-function eventCosts(events = [], { from, to } = {}) {
-  const map = { scheduled_service: 'service', repair: 'repair', tyres: 'tyres', battery: 'repair', brakes: 'repair', exhaust: 'repair', suspension: 'repair', mot_work: 'mot', other: 'other' };
-  const by = {};
+/**
+ * MPG from recorded fills (27N/O). PURE. MEASURED only between two brim-full
+ * fills with the odometer read at both (every fill between needs its litres);
+ * ESTIMATED between consecutive fills with odometers when no brim-full pair
+ * exists (it assumes the tank was filled to the same level); otherwise
+ * insufficient_data with the reason. No litres → no MPG, ever.
+ *   fills [{ id, filledOn, litres, odometer, odometerUnit, fullTank }]
+ */
+function mpgFromFills(fills = [], { today } = {}) {
+  const live = fills.filter((f) => Number(f.litres) > 0).sort((a, b) => a.filledOn.localeCompare(b.filledOn) || (a.odometer || 0) - (b.odometer || 0));
+  const none = (why) => ({ state: 'insufficient_data', why, latest: null, rolling: null, segments: 0 });
+  if (!fills.length) return none('no fuel fill is recorded — MPG needs litres and the odometer at the pump');
+  if (!live.length) return none('no fill has litres recorded');
+  const miles = (f) => (f.odometer == null ? null : toMiles(Number(f.odometer), f.odometerUnit));
+  const segs = [];
+  let lastFull = null;
+  for (let i = 0; i < live.length; i++) {
+    const f = live[i];
+    if (f.fullTank && miles(f) != null) {
+      if (lastFull) {
+        const between = live.slice(lastFull.i + 1, i + 1);
+        const d = miles(f) - miles(lastFull.f);
+        if (d > 0) segs.push({ from: lastFull.f.filledOn, to: f.filledOn, miles: d, litres: between.reduce((a, x) => a + Number(x.litres), 0), quality: 'measured' });
+      }
+      lastFull = { f, i };
+    }
+  }
+  if (!segs.length) {
+    const odo = live.filter((f) => miles(f) != null);
+    for (let i = 1; i < odo.length; i++) {
+      const d = miles(odo[i]) - miles(odo[i - 1]);
+      if (d > 0) segs.push({ from: odo[i - 1].filledOn, to: odo[i].filledOn, miles: d, litres: Number(odo[i].litres), quality: 'estimated' });
+    }
+  }
+  if (!segs.length) return none('needs two fills with the odometer read at each (brim-full at both for a measured figure)');
+  const mpgOf = (m, l) => Math.round((m / (l / LITRES_PER_UK_GALLON)) * 10) / 10;
+  const last = segs[segs.length - 1];
+  const since = today ? addDays(today, -MPG_ROLLING_DAYS) : null;
+  const recent = since ? segs.filter((x) => x.to >= since) : segs;
+  const rm = recent.reduce((a, x) => a + x.miles, 0);
+  const rl = recent.reduce((a, x) => a + x.litres, 0);
+  return {
+    state: last.quality, why: last.quality === 'estimated' ? 'no two brim-full fills with odometer readings — estimated from consecutive fills, assuming the tank was filled to the same level' : null,
+    latest: { mpg: mpgOf(last.miles, last.litres), from: last.from, to: last.to, miles: Math.round(last.miles), litres: Math.round(last.litres * 100) / 100, quality: last.quality },
+    rolling: recent.length ? { mpg: mpgOf(rm, rl), days: MPG_ROLLING_DAYS, segments: recent.length, quality: recent.every((x) => x.quality === 'measured') ? 'measured' : 'estimated' } : null,
+    segments: segs.length,
+  };
+}
+
+/**
+ * Evidence-only health (27U). PURE. attention_needed only for a real fault:
+ * an overdue MOT, expired tax or insurance, an overdue EXPLICIT service, or a
+ * repair recorded as unresolved. incomplete_data when the core dates are not
+ * recorded. Age, mileage and cost never make a car unhealthy.
+ */
+function health({ obligations = [], events = [], today }) {
+  const open = obligations.filter((o) => o.recordStatus === 'open');
+  const attention = [];
+  for (const o of open) {
+    if (o.status !== 'overdue') continue;
+    const word = o.type === 'insurance' || o.type === 'tax' || o.type === 'breakdown_cover' || o.type === 'warranty' ? 'expired' : 'overdue';
+    attention.push({ kind: `${o.type}-${word}`, line: `${o.label} ${word} — ${o.statusWhy}`, ref: o.id });
+  }
   for (const e of events) {
-    if (e.withdrawn_at || e.cost_pence == null || e.cost_ref || e.event_date < from || e.event_date > to) continue;
-    const t = map[e.type] || 'other';
-    by[t] = (by[t] || 0) + Number(e.cost_pence);
+    const d = e.detail_json ? JSON.parse(e.detail_json) : {};
+    if (REPAIR_KINDS.includes(e.type) && d.outcome === 'unresolved') attention.push({ kind: 'repair-unresolved', line: `Unresolved: ${e.description} (${e.event_date})`, ref: e.event_id });
   }
-  return by;
+  const missing = ['mot', 'tax', 'insurance'].filter((t) => !open.some((o) => o.type === t && (o.dueDate || o.dueMileage != null)));
+  const state = attention.length ? 'attention_needed' : missing.length ? 'incomplete_data' : 'current';
+  return {
+    state, attention,
+    missing: missing.map((t) => `no ${OBLIGATION_LABELS[t]} date recorded`),
+    why: attention.length ? attention.map((a) => a.line) : missing.length ? [`Cannot say the car is current: ${missing.map((t) => OBLIGATION_LABELS[t]).join(', ')} not recorded.`] : ['MOT, tax and insurance are recorded and in date; nothing recorded is unresolved.'],
+    rule: 'Only an overdue MOT, expired tax or insurance, an overdue service you recorded, or a repair you marked unresolved needs attention. Age, mileage and cost never do.',
+  };
 }
 
-function _sum(obj, keys) { return keys.reduce((a, k) => a + (obj[k] || 0), 0); }
-
-/**
- * Fuel cost per mile for a period. PURE. Needs period-aligned fuel spend with
- * complete finance coverage AND a measured distance. Otherwise null + why.
- */
-function fuelCostPerMile({ period, spend, judged, coverage }) {
-  const miles = milesBetween(judged, period.from, period.to);
-  const fuel = spendByType(spend, period).fuel || 0;
-  const out = { period, numeratorPence: fuel, denominatorMiles: miles.miles, coverage: coverage.complete ? 'complete' : 'partial' };
-  if (!coverage.complete) return { ...out, value: null, confidence: 'none', why: coverage.why };
-  if (miles.miles == null || miles.miles <= 0) return { ...out, value: null, confidence: 'none', why: miles.why || 'no distance measured' };
-  return { ...out, value: Math.round((fuel / miles.miles) * 10) / 10, unit: 'pence per mile', confidence: 'medium', why: null };
-}
-
-/**
- * Rolling 12-month ownership cost (21AA). PURE. Category totals are always
- * shown; per-mile only with complete coverage and a measured distance.
- */
-function ownershipCost({ today, spend, events, judged, coverage }) {
-  const OWN = require('./tally-vehicle').OWNERSHIP_TYPES;
-  const period = { from: addMonths(today, -12), to: today };
-  const fromTally = spendByType(spend, period);
-  const fromEvents = eventCosts(events, period);
-  const byType = {};
-  for (const k of new Set([...Object.keys(fromTally), ...Object.keys(fromEvents)])) byType[k] = (fromTally[k] || 0) + (fromEvents[k] || 0);
-  const totalPence = _sum(byType, OWN);
-  const excluded = Object.fromEntries(Object.entries(byType).filter(([k]) => !OWN.includes(k)));
-  const miles = milesBetween(judged, period.from, period.to);
-  const base = { period, byType, totalPence, excluded, excludedNote: 'parking is shown but not counted; loan or finance payments are never counted', coverage: coverage.complete ? 'complete' : 'partial', coverageWhy: coverage.why };
-  if (!coverage.complete) return { ...base, perMile: null, why: `a 12-month figure needs 12 months of finance data — ${coverage.why}` };
-  if (miles.miles == null || miles.miles <= 0) return { ...base, perMile: null, why: miles.why };
-  return { ...base, perMile: Math.round((totalPence / miles.miles) * 10) / 10, miles: miles.miles, why: null };
+/** A UK plate age identifier → the registration window it implies. PURE. "65-plate" → Sep 2015 – Feb 2016. */
+function plateWindow(descriptor) {
+  const m = String(descriptor || '').match(/\b(\d{2})\s*-?\s*plate\b/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (n >= 2 && n <= 49) return { from: `20${String(n).padStart(2, '0')}-03`, to: `20${String(n).padStart(2, '0')}-08`, basis: `a ${m[1]} plate` };
+  if (n >= 51 && n <= 99) { const y = 2000 + n - 50; return { from: `${y}-09`, to: `${y + 1}-02`, basis: `a ${m[1]} plate` }; }
+  return null;
 }
 
 /**
- * MPG (21X). PURE. Needs fuel QUANTITY over a period AND the distance over the
- * same period. Fuel cost alone never yields MPG; no litre price is assumed.
- *   fills [{ date, litres }]
+ * Replacement evidence (27V). PURE. Lists what is KNOWN — age, mileage, repair
+ * history, running-cost trend (Tally's word), finance repayments (Tally's) —
+ * and never recommends. state: evidence_available | insufficient_data.
  */
-function mpg({ period, fills = [], judged }) {
-  const inP = fills.filter((f) => f.date >= period.from && f.date <= period.to && Number(f.litres) > 0);
-  if (!inP.length) return { value: null, why: 'Not enough data to calculate MPG — no fuel quantity (litres) is recorded anywhere; Tally stores cost only' };
-  const miles = milesBetween(judged, period.from, period.to);
-  if (miles.miles == null || miles.miles <= 0) return { value: null, why: `Not enough data to calculate MPG — ${miles.why}` };
-  const litres = inP.reduce((a, f) => a + Number(f.litres), 0);
-  return { value: Math.round((miles.miles / (litres / LITRES_PER_UK_GALLON)) * 10) / 10, miles: miles.miles, litres, why: null };
-}
-
-/**
- * Cost pressure (21AF). PURE. Compares the last six months with the six
- * before, ONLY when finance covers both halves. stable / rising / falling,
- * else 'insufficient data'. Never a recommendation.
- */
-function costPressure({ today, spend, events, financeRange }) {
-  const OWN = require('./tally-vehicle').OWNERSHIP_TYPES;
-  const recent = { from: addMonths(today, -6), to: today };
-  const prior = { from: addMonths(today, -12), to: addDays(addMonths(today, -6), -1) };
-  const cov = [financeCoverage(recent, financeRange), financeCoverage(prior, financeRange)];
-  if (!cov.every((c) => c.complete)) return { state: 'insufficient data', why: cov.find((c) => !c.complete).why, rule: `±${PRESSURE_CHANGE * 100}% and at least £${PRESSURE_MIN_PENCE / 100} between the last six months and the six before, with finance data covering both` };
-  const total = (p) => _sum(spendByType(spend, p), OWN) + _sum(eventCosts(events, p), OWN);
-  const a = total(prior);
-  const b = total(recent);
-  const diff = b - a;
-  let state = 'stable';
-  if (Math.abs(diff) >= PRESSURE_MIN_PENCE && a > 0 && Math.abs(diff) / a >= PRESSURE_CHANGE) state = diff > 0 ? 'rising' : 'falling';
-  return { state, priorPence: a, recentPence: b, why: null, rule: `±${PRESSURE_CHANGE * 100}% and at least £${PRESSURE_MIN_PENCE / 100}` };
+function replacementEvidence({ vehicle, current, events = [], fin, today }) {
+  const yearAgo = addMonths(today, -12);
+  const plate = vehicle.first_registered ? { from: vehicle.first_registered.slice(0, 7), to: vehicle.first_registered.slice(0, 7), basis: 'first registration you recorded' } : plateWindow(vehicle.plate_descriptor);
+  const repairs12 = events.filter((e) => REPAIR_KINDS.includes(e.type) && e.event_date >= yearAgo);
+  const unresolved = events.filter((e) => REPAIR_KINDS.includes(e.type) && (e.detail_json ? JSON.parse(e.detail_json).outcome === 'unresolved' : false));
+  const maint24 = events.filter((e) => ['scheduled_service', 'tyres', 'mot_work', 'fluids', 'inspection'].includes(e.type) && e.event_date >= addMonths(today, -24));
+  const lc = fin && fin.available ? fin.latestCompleteMonth : null;
+  const items = [
+    { key: 'age', known: !!plate, value: plate ? `registered ${plate.from === plate.to ? plate.from : `${plate.from} – ${plate.to}`} (${plate.basis})` : null, why: plate ? null : 'no plate or first registration recorded' },
+    { key: 'mileage', known: !!current, value: current ? `${current.miles.toLocaleString('en-GB')} mi on ${current.observedOn}` : null, why: current ? null : 'no odometer reading recorded' },
+    { key: 'repairs', known: events.length > 0, value: events.length ? `${repairs12.length} repair${repairs12.length === 1 ? '' : 's'} in 12 months${unresolved.length ? `, ${unresolved.length} unresolved` : ''}` : null, why: events.length ? null : 'no service or repair history recorded' },
+    { key: 'maintenance', known: events.length > 0, value: events.length ? `${maint24.length} maintenance entr${maint24.length === 1 ? 'y' : 'ies'} in 24 months` : null, why: events.length ? null : 'no history recorded' },
+    { key: 'runningCostTrend', known: !!(fin && fin.available && fin.trend && fin.trend.state !== 'insufficient_data'), value: fin && fin.available && fin.trend && fin.trend.state !== 'insufficient_data' ? `Tally: ${String(fin.trend.state).replace(/_/g, ' ')}` : null, why: fin && fin.available ? (fin.trend && fin.trend.why) || null : (fin ? fin.why : 'no finance read') },
+    { key: 'finance', known: !!(lc && lc.financeRepaymentsPence > 0), value: lc && lc.financeRepaymentsPence > 0 ? 'finance repayments classified as the car\'s in Tally' : null, why: 'unknown — no finance repayment is classified as the car\'s in Tally (that is not the same as having none)' },
+  ];
+  const known = items.filter((i) => i.known).length;
+  return { state: known >= 3 ? 'evidence_available' : 'insufficient_data', items, known, stance: 'Evidence only. NEURO makes no keep, sell, replace or buy recommendation unless you ask for one.' };
 }
 
 // ── store ────────────────────────────────────────────────────────────────────
@@ -349,7 +423,8 @@ function createVehicle(body = {}, { now = Date.now(), actor = 'nick' } = {}) {
 function updateVehicle(id, body = {}, { now = Date.now(), actor = 'nick' } = {}) {
   const v = getVehicle(id);
   if (!v) return { ok: false, status: 404, error: 'no such vehicle' };
-  const allowed = { plateDescriptor: 'plate_descriptor', registration: 'registration', variant: 'variant', fuelType: 'fuel_type', ownershipState: 'ownership_state' };
+  const allowed = { plateDescriptor: 'plate_descriptor', registration: 'registration', variant: 'variant', fuelType: 'fuel_type', ownershipState: 'ownership_state',
+    vin: 'vin', firstRegistered: 'first_registered', ownershipStart: 'ownership_start' };
   const sets = [];
   const vals = [];
   const changed = [];
@@ -358,6 +433,8 @@ function updateVehicle(id, body = {}, { now = Date.now(), actor = 'nick' } = {})
     let val = body[k] === null ? null : _txt(body[k], 80);
     if (k === 'registration' && val) val = val.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (k === 'ownershipState' && !['current', 'sold', 'scrapped', 'unknown'].includes(val)) return { ok: false, status: 400, error: 'ownershipState must be current, sold, scrapped or unknown' };
+    if (k === 'vin' && val) { val = val.toUpperCase().replace(/\s+/g, ''); if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(val)) return { ok: false, status: 400, error: 'a VIN is 17 letters and digits (no I, O or Q)' }; }
+    if ((k === 'firstRegistered' || k === 'ownershipStart') && val && !(/^\d{4}-\d{2}$/.test(val) || _validDay(val))) return { ok: false, status: 400, error: `${k} must be YYYY-MM or YYYY-MM-DD` };
     sets.push(`${col} = ?`); vals.push(val); changed.push(k);
   }
   if (!sets.length) return { ok: false, status: 400, error: 'nothing to change' };
@@ -382,6 +459,7 @@ function addMileage(vehicleId, body = {}, { now = Date.now(), actor = 'nick' } =
   if (!_validDay(body.observedOn)) return { ok: false, status: 400, error: 'observedOn must be YYYY-MM-DD' };
   if (body.observedOn > localDay(now)) return { ok: false, status: 400, error: 'a reading cannot be in the future' };
   const source = body.source || 'manual';
+  if (/^(gps|route|routes|location|movement|trip|carplay)$/i.test(String(source))) return { ok: false, status: 400, error: 'distance travelled is not an odometer reading — record what the dashboard or a document says' };
   if (!MILEAGE_SOURCES.includes(source)) return { ok: false, status: 400, error: `source must be one of ${MILEAGE_SOURCES.join(', ')}` };
   const confidence = ['high', 'medium', 'low'].includes(body.confidence) ? body.confidence : source === 'mot' ? 'high' : 'medium';
   const iso = new Date(now).toISOString();
@@ -401,35 +479,71 @@ function withdrawMileage(vehicleId, readingId, { now = Date.now() } = {}) {
 
 function _events(vehicleId) { return _db().all('SELECT * FROM vehicle_events WHERE vehicle_id = ? AND withdrawn_at IS NULL ORDER BY event_date DESC, recorded_at DESC', [vehicleId]); }
 
-/** Nick records a service, repair, tyre fit… Never created from a payment. */
+/**
+ * Nick records a service, repair, tyre fit… Never created from a payment, and
+ * never holds an amount: what it cost is Tally's, linked by `costRef`
+ * (tally:<transaction id>) when Nick knows it.
+ */
 function addEvent(vehicleId, body = {}, { now = Date.now(), actor = 'nick' } = {}) {
   if (!getVehicle(vehicleId)) return { ok: false, status: 404, error: 'no such vehicle' };
   if (!EVENT_TYPES.includes(body.type)) return { ok: false, status: 400, error: `type must be one of ${EVENT_TYPES.join(', ')}` };
   if (!_validDay(body.date)) return { ok: false, status: 400, error: 'date must be YYYY-MM-DD' };
+  if (body.date > localDay(now)) return { ok: false, status: 400, error: 'history is what happened — a date in the future is an obligation' };
   const description = _txt(body.description, 400);
   if (!description) return { ok: false, status: 400, error: 'a description is required' };
   const mileage = body.mileage == null || body.mileage === '' ? null : Number(body.mileage);
   if (mileage !== null && !(Number.isFinite(mileage) && mileage >= 0)) return { ok: false, status: 400, error: 'mileage must be a number' };
-  let costPence = body.costPence == null || body.costPence === '' ? null : Math.round(Number(body.costPence));
-  if (costPence !== null && !Number.isFinite(costPence)) return { ok: false, status: 400, error: 'costPence must be a number' };
-  let costRef = null;
-  if (body.costRef != null) {
-    if (!/^tally:\d+$/.test(String(body.costRef))) return { ok: false, status: 400, error: 'costRef must be tally:<id>' };
-    const t = _db().get('SELECT * FROM tally_vehicle_txns WHERE source_txn_id = ?', [Number(String(body.costRef).slice(6))]);
-    if (!t) return { ok: false, status: 404, error: 'NEURO holds no such Tally transaction' };
-    costRef = body.costRef;
-    if (costPence === null) costPence = -t.amount_pence;
-  }
+  if (body.costPence != null && body.costPence !== '') return { ok: false, status: 400, error: 'what it cost is recorded in Tally — link the transaction instead (costRef tally:<id>)' };
+  const costRef = body.costRef == null || body.costRef === '' ? null : String(body.costRef);
+  if (costRef !== null && !/^tally:\d+$/.test(costRef)) return { ok: false, status: 400, error: 'costRef must be tally:<transaction id>' };
   const detail = {};
-  if (body.type === 'tyres') for (const k of ['axle', 'position', 'brand', 'model', 'count']) if (body[k] != null && body[k] !== '') detail[k] = _txt(String(body[k]), 60);
+  if (body.type === 'tyres') {
+    if (body.action != null && body.action !== '' && !TYRE_ACTIONS.includes(body.action)) return { ok: false, status: 400, error: `a tyre action is one of ${TYRE_ACTIONS.join(', ')}` };
+    for (const k of ['action', 'axle', 'position', 'brand', 'model', 'count']) if (body[k] != null && body[k] !== '') detail[k] = _txt(String(body[k]), 60);
+  }
+  if (body.outcome != null && body.outcome !== '') {
+    if (!OUTCOMES.includes(body.outcome)) return { ok: false, status: 400, error: `outcome must be one of ${OUTCOMES.join(', ')}` };
+    detail.outcome = body.outcome;
+  }
   const id = `vev:${crypto.randomUUID()}`;
   const iso = new Date(now).toISOString();
-  _db().run(`INSERT INTO vehicle_events (event_id, vehicle_id, type, event_date, mileage, description, cost_pence, cost_ref, detail_json, source, provenance_json, recorded_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  [id, vehicleId, body.type, body.date, mileage, description, costPence, costRef, Object.keys(detail).length ? JSON.stringify(detail) : null, costRef ? 'tally-linked' : 'manual',
-    JSON.stringify({ enteredBy: actor, enteredAt: iso, costFrom: costRef ? 'the Tally transaction' : costPence !== null ? 'as you entered it' : null }), iso]);
-  _log('maintenance-recorded', { type: body.type, date: body.date, description }, { subjectId: vehicleId, actor, now });
+  _db().run(`INSERT INTO vehicle_events (event_id, vehicle_id, type, event_date, mileage, description, cost_ref, detail_json, source, provenance_json, recorded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  [id, vehicleId, body.type, body.date, mileage, description, costRef, Object.keys(detail).length ? JSON.stringify(detail) : null, 'manual',
+    JSON.stringify({ enteredBy: actor, enteredAt: iso, costFrom: costRef ? 'linked Tally transaction (the amount stays in Tally)' : null }), iso]);
+  const kind = body.type === 'tyres' ? 'tyre-recorded' : REPAIR_KINDS.includes(body.type) ? 'repair-recorded' : 'maintenance-recorded';
+  _log(kind, { type: body.type, date: body.date, description, action: detail.action || null, outcome: detail.outcome || null }, { subjectId: vehicleId, actor, now });
   return { ok: true, event: _db().get('SELECT * FROM vehicle_events WHERE event_id = ?', [id]) };
+}
+
+// ── fuel fills (litres and the odometer; never the amount) ────────────────────
+
+function _fills(vehicleId) {
+  return _db().all('SELECT * FROM vehicle_fuel_fills WHERE vehicle_id = ? AND withdrawn_at IS NULL ORDER BY filled_on, recorded_at', [vehicleId])
+    .map((f) => ({ id: f.fill_id, filledOn: f.filled_on, litres: f.litres, odometer: f.odometer, odometerUnit: f.odometer_unit, fullTank: !!f.full_tank, note: f.note }));
+}
+
+function addFuelFill(vehicleId, body = {}, { now = Date.now(), actor = 'nick' } = {}) {
+  if (!getVehicle(vehicleId)) return { ok: false, status: 404, error: 'no such vehicle' };
+  if (!_validDay(body.filledOn)) return { ok: false, status: 400, error: 'filledOn must be YYYY-MM-DD' };
+  if (body.filledOn > localDay(now)) return { ok: false, status: 400, error: 'a fill cannot be in the future' };
+  const litres = Number(body.litres);
+  if (!(Number.isFinite(litres) && litres > 0 && litres <= 200)) return { ok: false, status: 400, error: 'litres must be the litres on the pump receipt (0–200)' };
+  if (body.amountPence != null || body.costPence != null) return { ok: false, status: 400, error: 'what a fill cost is Tally\'s — record the litres here' };
+  const odometer = body.odometer == null || body.odometer === '' ? null : Number(body.odometer);
+  if (odometer !== null && !(Number.isFinite(odometer) && odometer >= 0 && odometer <= 2000000)) return { ok: false, status: 400, error: 'odometer must be the reading at the pump' };
+  const unit = body.odometerUnit === 'km' ? 'km' : 'mi';
+  const id = `vfill:${crypto.randomUUID()}`;
+  const iso = new Date(now).toISOString();
+  _db().run(`INSERT INTO vehicle_fuel_fills (fill_id, vehicle_id, filled_on, litres, odometer, odometer_unit, full_tank, note, provenance_json, recorded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  [id, vehicleId, body.filledOn, litres, odometer, unit, body.fullTank ? 1 : 0, _txt(body.note, 200), JSON.stringify({ enteredBy: actor, enteredAt: iso }), iso]);
+  return { ok: true, fill: _fills(vehicleId).find((f) => f.id === id), mpg: mpgFromFills(_fills(vehicleId), { today: localDay(now) }) };
+}
+
+function withdrawFuelFill(vehicleId, fillId, { now = Date.now() } = {}) {
+  const r = _db().run('UPDATE vehicle_fuel_fills SET withdrawn_at = ? WHERE vehicle_id = ? AND fill_id = ? AND withdrawn_at IS NULL', [new Date(now).toISOString(), vehicleId, fillId]);
+  return r && r.changes ? { ok: true } : { ok: false, status: 404, error: 'no such fill' };
 }
 
 function withdrawEvent(vehicleId, eventId, { now = Date.now() } = {}) {
@@ -574,6 +688,7 @@ function _latestCheck(vehicleId) {
 function _noteConflicts(vehicleId, { now }) {
   const check = _latestCheck(vehicleId);
   for (const ob of _db().all("SELECT * FROM vehicle_obligations WHERE vehicle_id = ? AND status = 'open'", [vehicleId])) {
+    if (obligationConfidence(ob, check) === 'verified') _log('vehicle-obligation-verified', { type: ob.type, label: OBLIGATION_LABELS[ob.type], value: ob.due_date, source: check.source }, { subjectId: vehicleId, actor: 'neuro', now, dedupeKey: `vehicle-verified:${ob.obligation_id}:${ob.due_date}:${check.source}` });
     const c = officialConflict(ob, check);
     if (c) _log('official-conflict-found', { type: ob.type, field: c.field, neuro: c.neuro.value, official: c.official.value, source: c.official.source }, { subjectId: vehicleId, actor: 'neuro', now, dedupeKey: `official-conflict:${ob.obligation_id}:${c.official.value}` });
   }
@@ -609,15 +724,12 @@ function _taskIndex() {
   } catch { return new Map(); }
 }
 
-function _financeRange() {
-  const st = (() => { try { return JSON.parse(_db().getState('tally_vehicle_sync') || 'null'); } catch { return null; } })();
-  // Tally's first and last transaction dates, recorded by the sync over ALL
-  // rows (the held rows are only candidates, so their range would be wrong).
-  return { dataFrom: (st && st.dataFrom) || null, dataThrough: (st && st.dataThrough) || null, state: st };
+function _financeSnapshot() {
+  try { return JSON.parse(_db().getState(require('./finance').SNAPSHOT_KEY) || 'null'); } catch { return null; }
 }
 
-/** Everything about one vehicle, as surfaces see it. */
-function read(vehicleId, { now = Date.now() } = {}) {
+/** Everything about one vehicle, as surfaces see it. Finance is Tally's, unchanged. */
+function read(vehicleId, { now = Date.now(), snapshot = undefined } = {}) {
   const v = getVehicle(vehicleId);
   if (!v) return null;
   const today = localDay(now);
@@ -649,42 +761,48 @@ function read(vehicleId, { now = Date.now() } = {}) {
       confidence: obligationConfidence(ob, check), conflict, lastCheckedAt: check ? check.checked_at : null, note: ob.note,
     };
   });
-  const tv = require('./tally-vehicle');
-  const spend = tv.vehicleSpend({ vehicleId });
-  const range = _financeRange();
-  const month = today.slice(0, 7);
-  const monthPeriod = { from: `${month}-01`, to: today };
-  const own = ownershipCost({ today, spend, events, judged, coverage: financeCoverage({ from: addMonths(today, -12), to: today }, range) });
+  const fin = tallyVehicleFinance(snapshot === undefined ? _financeSnapshot() : snapshot, vehicleId);
+  const fills = _fills(vehicleId);
   const linked = links(vehicleId);
   const linkedIds = new Set(linked.map((l) => l.entityId));
   for (const ob of obligations) for (const r of [ob.linkedTaskRef, ob.linkedReminderRef]) if (r) linkedIds.add(r);
+  // A task Nick linked to the car whose words name an open obligation's type is
+  // OFFERED as that obligation's action — never linked for him (27E).
+  const actionSuggestions = [];
+  for (const l of linked) {
+    const t = taskIndex.get(l.entityId);
+    if (!t || !(t.state === 'open' || t.state === 'in-progress')) continue;
+    const ob = obligations.find((o) => o.recordStatus === 'open' && !o.linkedTaskRef && new RegExp(`\\b${o.type === 'mot' ? 'MOT' : o.label}\\b`, 'i').test(t.description || ''));
+    if (ob) actionSuggestions.push({ obligationId: ob.id, label: ob.label, taskId: t.id, description: t.description, why: `you linked it to the ${v.model} and it names the ${ob.label} — a suggestion, not a link` });
+  }
   return {
     vehicle: {
       id: v.vehicle_id, type: 'vehicle', make: v.make, model: v.model, plateDescriptor: v.plate_descriptor, registration: v.registration,
       variant: v.variant, fuelType: v.fuel_type, ownershipState: v.ownership_state, source: v.source,
+      vin: v.vin || null, firstRegistered: v.first_registered || null, ownershipStart: v.ownership_start || null,
+      registeredWindow: v.first_registered ? null : plateWindow(v.plate_descriptor),
       provenance: v.provenance_json ? JSON.parse(v.provenance_json) : null, createdAt: v.created_at, updatedAt: v.updated_at,
       currentMileage: current ? current.miles : null, mileageObservedAt: current ? current.observedOn : null,
-      // VIN and purchase date are not modelled at all — always unknown.
       unknown: [
-        ...(!v.registration ? ['registration'] : []), ...(!v.variant ? ['engine/trim'] : []), ...(!v.plate_descriptor ? ['plate'] : []),
-        ...(!v.fuel_type ? ['fuel type'] : []), 'VIN', 'purchase date', ...(!current ? ['mileage'] : []),
+        ...(!v.registration ? ['registration'] : []), ...(!v.variant ? ['engine/trim'] : []), ...(!v.plate_descriptor && !v.first_registered ? ['first registration'] : []),
+        ...(!v.fuel_type ? ['fuel type'] : []), ...(!v.vin ? ['VIN'] : []), ...(!v.ownership_start ? ['ownership start'] : []), ...(!current ? ['mileage'] : []),
       ],
     },
     mileage: { current, readings: judged.slice().reverse(), needsReview: judged.filter((r) => r.state === 'needs-review').length },
     obligations,
-    history: events.map((e) => ({ id: e.event_id, type: e.type, date: e.event_date, mileage: e.mileage, description: e.description, costPence: e.cost_pence, costRef: e.cost_ref,
+    nextObligation: obligations.filter((o) => o.recordStatus === 'open' && o.dueDate).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] || null,
+    history: events.map((e) => ({ id: e.event_id, type: e.type, date: e.event_date, mileage: e.mileage, description: e.description, costRef: e.cost_ref,
       detail: e.detail_json ? JSON.parse(e.detail_json) : null, source: e.source, provenance: e.provenance_json ? JSON.parse(e.provenance_json) : null })),
+    tyres: events.filter((e) => e.type === 'tyres').map((e) => ({ id: e.event_id, date: e.event_date, mileage: e.mileage, description: e.description, ...(e.detail_json ? JSON.parse(e.detail_json) : {}) })),
     official: { latest: check, recent: lastChecks, sources: officialSources(v) },
     links: linked,
     linkSuggestions: linkSuggestions([...taskIndex.values()], linkedIds),
-    finance: {
-      source: 'Tally (read-only)', range: { from: range.dataFrom, through: range.dataThrough }, sync: range.state,
-      month: { period: monthPeriod, byType: spendByType(spend, monthPeriod), coverage: financeCoverage(monthPeriod, range) },
-      ownership12m: own,
-      fuelCostPerMile: fuelCostPerMile({ period: { from: addMonths(today, -3), to: today }, spend, judged, coverage: financeCoverage({ from: addMonths(today, -3), to: today }, range) }),
-      mpg: mpg({ period: { from: addMonths(today, -3), to: today }, fills: [], judged }),
-    },
-    health: health({ today, spend, events, judged, obligations, range }),
+    actionSuggestions,
+    finance: fin,
+    costPerMile: costPerMile(fin, judged),
+    fuel: { fills: fills.slice().reverse().slice(0, 12), count: fills.length, mpg: mpgFromFills(fills, { today }) },
+    health: health({ obligations, events, today }),
+    replacement: replacementEvidence({ vehicle: v, current, events, fin, today }),
     today,
   };
 }
@@ -699,60 +817,6 @@ function officialSources(v) {
       why: 'needs DVSA registration (client id/secret via Microsoft Entra + API key) and the registration; not built until access exists' },
     { source: 'gov-uk-by-hand', name: 'gov.uk read by you', gives: 'whatever you record from "Check MOT history" / "Check if a vehicle is taxed"', available: true, why: null },
   ];
-}
-
-/** The evidence-only health view (21AE). PURE apart from what it is handed. */
-function health({ today, spend, events, judged, obligations, range }) {
-  const yearAgo = addMonths(today, -12);
-  const repairs = events.filter((e) => ['repair', 'brakes', 'exhaust', 'suspension', 'battery'].includes(e.type) && e.event_date >= yearAgo);
-  const maint = events.filter((e) => ['scheduled_service', 'tyres', 'mot_work'].includes(e.type) && e.event_date >= yearAgo);
-  const repairSpend = spend.filter((s) => s.classification.spendType === 'repair' && s.date >= yearAgo);
-  const accepted = judged.filter((r) => r.state === 'accepted');
-  const gaps = [];
-  if (!accepted.length) gaps.push('no odometer reading — nothing per mile can be calculated');
-  else if (accepted.length < 2) gaps.push('one odometer reading — distance needs two');
-  if (!range.dataThrough) gaps.push('Tally has not been read');
-  else if (daysBetween(range.dataThrough, today) > 14) gaps.push(`Tally's finance data stops ${range.dataThrough} — its bank sync has not delivered since`);
-  if (!spend.length) gaps.push('no transaction is confirmed as Captur spend yet');
-  if (!events.length) gaps.push('no service, repair or tyre history recorded');
-  if (!obligations.some((o) => o.recordStatus === 'open')) gaps.push('no MOT, tax, insurance or service date recorded');
-  gaps.push('no fuel quantity anywhere — MPG cannot be calculated');
-  return {
-    rollingCost: ownershipCost({ today, spend, events, judged, coverage: financeCoverage({ from: yearAgo, to: today }, range) }),
-    repairs12m: { count: repairs.length + repairSpend.length, events: repairs.length, transactions: repairSpend.length },
-    maintenance12m: { count: maint.length },
-    costPressure: costPressure({ today, spend, events, financeRange: range }),
-    upcomingMajor: obligations.filter((o) => o.recordStatus === 'open' && ['needs_you', 'overdue', 'upcoming', 'preparation_open'].includes(o.status)).map((o) => ({ label: o.label, status: o.status, why: o.statusWhy })),
-    mileageTrend: accepted.map((r) => ({ date: r.observedOn, miles: r.miles })),
-    gaps,
-    stance: 'Evidence only. NEURO does not recommend replacing, selling or buying a vehicle.',
-  };
-}
-
-/** One deterministic monthly summary (21AC). PURE over `read()`'s output. */
-function monthlySummary(r, month) {
-  const from = `${month}-01`;
-  const to = addDays(addMonths(from, 1), -1);
-  const tv = require('./tally-vehicle');
-  const spend = tv.vehicleSpend({ vehicleId: r.vehicle.id });
-  const by = spendByType(spend, { from, to });
-  const evCost = eventCosts(r.history.map((h) => ({ event_date: h.date, cost_pence: h.costPence, cost_ref: h.costRef, type: h.type })), { from, to });
-  const readings = (r.mileage.readings || []).filter((x) => x.state === 'accepted').slice().reverse();
-  const added = milesBetween(readings, from, to);
-  const cov = financeCoverage({ from, to }, { dataFrom: r.finance.range.from, dataThrough: r.finance.range.through });
-  return {
-    month, vehicleId: r.vehicle.id,
-    latestMileage: r.mileage.current ? { miles: r.mileage.current.miles, observedOn: r.mileage.current.observedOn } : null,
-    milesThisMonth: added.miles, milesWhy: added.why,
-    fuelPence: by.fuel || 0,
-    otherVehiclePence: Object.entries(by).filter(([k]) => k !== 'fuel').reduce((a, [, v]) => a + v, 0) + Object.values(evCost).reduce((a, v) => a + v, 0),
-    fuelCostPerMile: added.miles && cov.complete ? Math.round(((by.fuel || 0) / added.miles) * 10) / 10 : null,
-    ownershipCostPerMile12m: r.finance.ownership12m.perMile,
-    maintenance: r.history.filter((h) => h.date >= from && h.date <= to).map((h) => ({ type: h.type, date: h.date, description: h.description })),
-    upcoming: r.obligations.filter((o) => o.recordStatus === 'open' && o.status !== 'later').map((o) => ({ label: o.label, status: o.status, dueDate: o.dueDate, dueMileage: o.dueMileage })),
-    financeCoverage: cov.complete ? 'complete' : `partial — ${cov.why}`,
-    gaps: r.health.gaps,
-  };
 }
 
 /** Radar items for vehicle obligations (21AH). PURE over `read()`. */
@@ -787,56 +851,52 @@ function radar({ today, last, now = Date.now() } = {}) {
 }
 
 /**
- * The durable job body: read Tally, then — Mondays — refresh MPG readiness
- * and — on the 1st (or the first run of a month) — store last month's summary.
- * Activity only on meaningful change.
+ * The durable job body (06:37). Reads nothing outside NEURO: Tally's figures
+ * arrive through finance.js's own refresh. Records — once per change, never
+ * per pass — when Tally's vehicle finance becomes readable or stops being, and
+ * when what is missing about the car changes.
  */
-async function refresh({ now = Date.now(), reader = null } = {}) {
-  const tv = require('./tally-vehicle');
-  const sync = await tv.sync({ now, reader });
-  const out = { sync };
-  const today = localDay(now);
-  const prevMonth = addMonths(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
+async function refresh({ now = Date.now() } = {}) {
+  const out = { vehicles: 0 };
+  const snap = _financeSnapshot();
   for (const v of listVehicles().filter((x) => x.ownership_state === 'current')) {
-    const r = read(v.vehicle_id, { now });
-    // weekly MPG readiness — recorded quietly; never an Activity line or a push
-    const mpgState = { at: new Date(now).toISOString(), value: r.finance.mpg.value, why: r.finance.mpg.why };
-    _db().setState(`vehicle_mpg:${v.vehicle_id}`, JSON.stringify(mpgState));
-    if (!_db().get('SELECT 1 FROM vehicle_monthly_summaries WHERE month = ? AND vehicle_id = ?', [prevMonth, v.vehicle_id]) && v.created_at.slice(0, 7) <= prevMonth) {
-      const s = monthlySummary(r, prevMonth);
-      _db().run('INSERT OR IGNORE INTO vehicle_monthly_summaries (month, vehicle_id, summary_json, produced_at) VALUES (?, ?, ?, ?)', [prevMonth, v.vehicle_id, JSON.stringify(s), new Date(now).toISOString()]);
-      _log('vehicle-summary-produced', { month: prevMonth, vehicle: `${v.make} ${v.model}`, gaps: s.gaps.length }, { subjectId: v.vehicle_id, actor: 'neuro', now, dedupeKey: `vehicle-summary:${v.vehicle_id}:${prevMonth}` });
-      out.summary = prevMonth;
+    out.vehicles++;
+    const r = read(v.vehicle_id, { now, snapshot: snap });
+    const name = `${v.make} ${v.model}`;
+    const finKey = `vehicle_finance_state:${v.vehicle_id}`;
+    const was = _db().getState(finKey);
+    const is = r.finance.state;
+    if (was !== is) {
+      _db().setState(finKey, is);
+      if (was !== null && was !== undefined) {
+        if (is === 'read') _log('vehicle-finance-source-recovered', { vehicle: name, was }, { subjectId: v.vehicle_id, actor: 'neuro', now, dedupeKey: `vehicle-finance:${v.vehicle_id}:read:${now}` });
+        else if (was === 'read') _log('vehicle-finance-source-lost', { vehicle: name, why: r.finance.why }, { subjectId: v.vehicle_id, actor: 'neuro', now, dedupeKey: `vehicle-finance:${v.vehicle_id}:${is}:${now}` });
+      }
     }
-    // a material change in what is missing — one line, not one per pass
-    const sig = r.health.gaps.map((g) => g.replace(/\d{4}-\d{2}-\d{2}/g, 'DATE')).join('|');
+    const gaps = [...r.health.missing, ...(r.mileage.current ? [] : ['no odometer reading'])];
+    const sig = gaps.join('|');
     const key = `vehicle_gaps:${v.vehicle_id}`;
     const prev = _db().getState(key);
     if (prev !== sig) {
       _db().setState(key, sig);
-      if (prev !== null && prev !== undefined) _log('vehicle-gaps-changed', { vehicle: `${v.make} ${v.model}`, gaps: r.health.gaps }, { subjectId: v.vehicle_id, actor: 'neuro', now, dedupeKey: `vehicle-gaps:${v.vehicle_id}:${sig}` });
+      if (prev !== null && prev !== undefined) _log('vehicle-gaps-changed', { vehicle: name, gaps }, { subjectId: v.vehicle_id, actor: 'neuro', now, dedupeKey: `vehicle-gaps:${v.vehicle_id}:${sig}` });
     }
   }
-  if (sync && sync.ok === false) throw new Error(sync.error);
   return out;
 }
 
-function summaries(vehicleId) {
-  return _db().all('SELECT * FROM vehicle_monthly_summaries WHERE vehicle_id = ? ORDER BY month DESC LIMIT 12', [vehicleId]).map((r) => ({ month: r.month, producedAt: r.produced_at, summary: JSON.parse(r.summary_json) }));
-}
-
-const TABLES = ['vehicles', 'vehicle_mileage', 'vehicle_events', 'vehicle_obligations', 'vehicle_official_checks', 'vehicle_monthly_summaries'];
+const TABLES = ['vehicles', 'vehicle_mileage', 'vehicle_events', 'vehicle_obligations', 'vehicle_official_checks', 'vehicle_fuel_fills'];
 
 module.exports = {
-  OBLIGATION_TYPES, OBLIGATION_LABELS, EVENT_TYPES, MILEAGE_SOURCES, OFFICIAL_SOURCES, TABLES,
-  UPCOMING_DAYS, UPCOMING_MILES, MAX_MILES_PER_DAY,
+  OBLIGATION_TYPES, OBLIGATION_LABELS, EVENT_TYPES, TYRE_ACTIONS, OUTCOMES, MILEAGE_SOURCES, OFFICIAL_SOURCES, TABLES,
+  UPCOMING_DAYS, UPCOMING_MILES, MAX_MILES_PER_DAY, BOUNDARY_TOLERANCE_DAYS, ALIGNED_DAYS,
   // pure
   judgeMileage, currentMileage, milesBetween, effectiveDue, obligationState, officialConflict, obligationConfidence,
-  financeCoverage, spendByType, eventCosts, fuelCostPerMile, ownershipCost, mpg, costPressure, linkSuggestions,
-  monthlySummary, radarItems, officialSources, slugFor, localDay, addMonths,
+  tallyVehicleFinance, costPerMile, mpgFromFills, health, replacementEvidence, plateWindow, linkSuggestions,
+  radarItems, officialSources, slugFor, localDay, addMonths,
   // official
   dvlaCheck, runOfficialCheck, recordOfficialByHand,
   // store
   listVehicles, getVehicle, createVehicle, updateVehicle, addMileage, withdrawMileage, addEvent, withdrawEvent,
-  addObligation, updateObligation, resolveObligation, links, read, radar, refresh, summaries,
+  addFuelFill, withdrawFuelFill, addObligation, updateObligation, resolveObligation, links, read, radar, refresh,
 };

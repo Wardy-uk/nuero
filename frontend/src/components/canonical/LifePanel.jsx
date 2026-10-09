@@ -4,7 +4,7 @@ import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS,
 import HikingLoopCard from './HikingLoopCard';
 import PersonalDatesCard from './PersonalDatesCard';
 import CompanionCareCard from './CompanionCareCard';
-import VehicleCard from './VehicleCard';
+import TransportCard from './TransportCard';
 import FinanceCard from './FinanceCard';
 import ProjectsCard from './ProjectsCard';
 import HomeCard from './HomeCard';
@@ -62,7 +62,7 @@ export default function LifePanel({ onNavigate = null } = {}) {
       <FutureRadarCard />
       <Goals data={data} busy={busy} act={act} />
       <PersonalAdminCard />
-      <VehicleCard />
+      <TransportCard />
       <FinanceCard />
       <ProjectsCard />
       <ReminderListsCard />

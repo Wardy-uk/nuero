@@ -202,8 +202,10 @@ app.use('/api/events', require('./routes/events'));
 app.use('/api/loops', require('./routes/loops'));
 // Build 10A: the canonical UI read contract — what NEURO believes, for every surface.
 app.use('/api/canonical', require('./routes/canonical'));
-// Build 21: the Captur — obligations, mileage, history, running costs; Tally read-only.
+// Build 21/27: the Captur — obligations, mileage, history, fuel fills. Its costs are Tally's.
 app.use('/api/vehicle', require('./routes/vehicle'));
+// Build 27: Life → Transport, read-only.
+app.use('/api/transport', require('./routes/transport'));
 app.use('/api/finance', require('./routes/finance'));
 // Build 24: personal projects — vault Projects/, GitHub metadata, linked tasks. Never writes to GitHub.
 app.use('/api/projects', require('./routes/projects'));
