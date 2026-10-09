@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-09 (Build 28: Home intelligence)
+
+- DEPLOYED: NEURO 292d372 (+ docs commit) on origin/main + pi5 (gate 5945/0, 17 skipped; frontend built; neuro-backend restarted). No route/inventory change → gateway not rebuilt. Built in worktree nuero-b26, branch build28 (the main checkout's node_modules is still broken — use b26).
+- New: services/home-intelligence.js (home-intel-v1), folded additively into /api/household/home; Life → Home rebuilt (exceptions, rooms on folds, devices problems-only, hazard capability, network, source health); Now `home.exceptions` + `home.relevant`; Activity kinds home-exception-opened/resolved (heating/network/source only); bedroom-climate.fetchStatisticsMany.
+- Stores: agent_state `home_intel_inputs` (household registry, 8d hourly temp/RH means, boiler on/off) + `home_intel_state` (open + 24h-resolved exceptions). Written only by home.refresh (personal-ops, :13/:43).
+- LIVE: 252 entities, 11 rooms, occupied (Nick/Helen/Isaac), heating idle (Office calling), 0 exceptions, 0 Needs You, Now relevant:false, 0 home Radar items. No hazard/door/window/energy sensors (said, never "safe"). 4 sockets long-offline since 15–27 Sep → ledger #404 (Home domain; appears on Life once world-obligations-sync projects it).
+- Replay of the rules over 2–9 Oct: 3 short context episodes (Kitchen below setpoint 4 Oct; Kitchen warm+dry 8 Oct afternoon — likely cooking). Watch whether the kitchen one recurs before tuning.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 28 Home Intelligence.md; gap analysis appended. Next domain: Leisure.
+
+---
+
 # Session Handoff — 2026-10-09 (Build 27: Transport intelligence; vehicle finance moved into Tally)
 
 - BOUNDARY CLOSED: NEURO's tally-vehicle.js (ssh+sqlite3), its 3 tables + vehicle_monthly_summaries and all vehicle money maths are deleted; /api/vehicle/finance/* answer 410. Tally owns car spend (src/server/intelligence/vehicle.ts, Outlook → Motoring, vehicleFinance in finance-intelligence-v1).
