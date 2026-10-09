@@ -1,3 +1,13 @@
+# Session Handoff — 2026-10-09 (Build 25: Personal Admin activation)
+
+- DEPLOYED: origin/main + pi5 at 0df2c92 (gate 5886/0; frontend built; neuro-backend restarted; gateway rebuilt via docker compose up -d --build gateway in mcp-server/). Built in worktree nuero-b25 (node_modules, backend/node_modules, mcp-server/node_modules JUNCTIONED to nuero-b24) — do NOT git worktree remove it (it follows junctions).
+- Live: Personal Admin list tracked + fresh + EMPTY. View = 2 needs-you (#383, #384), 1 open (#385), 2 recently done (#380, #382); 375 work/unclassified excluded incl. #374 (car MOT booking, work by default) until linked to the Captur. Feeds all healthy. 0 vehicle/finance/care admin records.
+- Ledger: BUILD_25 created #395 (fill the Personal Admin list; personal + admin domain). #393/#394 still open but done in fact (25 project statements, 3 links confirmed) — Nick to tick.
+- New: services/personal-admin.js, personal_admin_annotations table, POST /api/canonical/personal-admin/annotations (machine-refused, gateway interactive), view on GET /api/canonical/personal-admin, Life card rebuilt.
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 25 Personal Admin Activation.md; gap analysis appended. Next domain: deeper Finance.
+
+---
+
 # Session Handoff — 2026-10-08 (Build 24: Personal projects)
 
 - DEPLOYED: origin/main + pi5 at ae5929b (feature 1007814; gate 5838/0; frontend built; gateway rebuilt). Built in worktree `nuero-b24` (node_modules junctioned to nuero-b23's — the main checkout's node_modules is missing `accepts`).
