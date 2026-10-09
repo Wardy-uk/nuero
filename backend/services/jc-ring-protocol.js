@@ -1,9 +1,8 @@
 'use strict';
 
-// Conservative inspection of the JCRing 2301B's raw FFF7 stream. It names
-// wire structure, not physiology: a byte that happens to be in a plausible
-// heart-rate range is NOT a heart-rate measurement until we correlate it with
-// a known measurement flow.
+// Decoder for the verified J2301B FFF7 history stream. We only label the 0x54
+// record after matching its format to the J2301 companion SDK and Nick's exact
+// ring layout. Other bytes still remain raw observations.
 
 function hexBytes(hex) {
   if (typeof hex !== 'string') return [];
@@ -33,7 +32,7 @@ function timestamps(bytes) {
 function inspect(packets) {
   const headers = {};
   const embeddedTimes = [];
-  const streamSamples = [];
+  const heartRateSamples = [];
   let notifications = 0;
 
   for (const packet of Array.isArray(packets) ? packets : []) {
@@ -47,12 +46,21 @@ function inspect(packets) {
       if (embeddedTimes.length < 200) embeddedTimes.push({ ...time, receivedAt: packet.receivedAt, header });
     }
 
-    // `54 seq 00 YY MM DD HH mm ss value …` repeats in the evidence stream.
-    // Retain the byte as a raw sample; do not call it a metric.
-    for (let i = 0; i + 9 < bytes.length; i++) {
-      if (bytes[i] !== 0x54 || bytes[i + 2] !== 0 || !ringTimestamp(bytes, i + 3)) continue;
-      if (streamSamples.length < 200) {
-        streamSamples.push({ timestamp: ringTimestamp(bytes, i + 3), rawValue: bytes[i + 9], sequence: bytes[i + 1] });
+    // J2301 automatic HR history: 54, sequence, 00, timestamp, then fifteen
+    // one-byte BPM values. The within-record cadence is not proven by the
+    // wire format, so all samples retain the record timestamp. Records can be
+    // coalesced in one CoreBluetooth notification, hence the byte-by-byte scan.
+    for (let i = 0; i + 23 < bytes.length; i++) {
+      const timestamp = bytes[i] === 0x54 && bytes[i + 2] === 0
+        ? ringTimestamp(bytes, i + 3) : null;
+      if (!timestamp) continue;
+      for (let offset = 0; offset < 15 && heartRateSamples.length < 500; offset++) {
+        heartRateSamples.push({
+          timestamp,
+          bpm: bytes[i + 9 + offset],
+          sequence: bytes[i + 1],
+          sampleIndex: offset,
+        });
       }
     }
   }
@@ -62,8 +70,8 @@ function inspect(packets) {
     notifications,
     headers,
     embeddedTimes,
-    streamSamples,
-    caution: 'Raw protocol observations only. No byte is labelled as a health metric without a verified command/response correlation.',
+    heartRateSamples,
+    caution: 'Only 0x54 J2301 automatic heart-rate history is decoded. These are consumer-wearable readings, not clinical measurements. All other frames remain raw protocol observations.',
   };
 }
 

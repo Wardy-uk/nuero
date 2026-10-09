@@ -118,9 +118,9 @@ router.get('/ring-diagnostic', (req, res) => {
   }
 });
 
-// GET /api/health/ring-diagnostic/decoded — structural inspection of the raw
-// trace. This deliberately returns raw labels such as `streamSamples`, not a
-// made-up health metric, until a command/response experiment verifies meaning.
+// GET /api/health/ring-diagnostic/decoded — J2301 structural inspection. The
+// verified 0x54 automatic heart-rate records are decoded; all other frames
+// remain raw rather than being turned into speculative health metrics.
 router.get('/ring-diagnostic/decoded', (req, res) => {
   try {
     const raw = db.getState(RING_DIAGNOSTIC_STATE_KEY);
