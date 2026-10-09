@@ -1,3 +1,14 @@
+# Session Handoff — 2026-10-09 (Build 29: Outdoor Life)
+
+- DEPLOYED: NEURO f1e899a → 32cef20 → 4509e05 (+ docs commit) on origin/main + pi5 (gate 5997/0, 17 skipped; frontend built; neuro-backend restarted; gateway rebuilt for /api/outdoor). Built in worktree nuero-b26, branch build29 (rebased once over another session's d41f971).
+- New: services/outdoor-model.js (pure), services/outdoor.js (outdoor-v1), routes/outdoor.js, Life → Outdoor (OutdoorCard holds HikingLoopCard), tables outdoor_routes + outdoor_activity_links, Now `outdoor` block + one presentation context line, Radar route plans + severe-weather needs_you, Activity outdoor-* lines. Writes machine-refused.
+- Hike verdict untouched (Build 17 strict). Only loop change: dated hike route plans count as plans.
+- LIVE: goal planned (Sat 10 Oct); 0 confirmed hikes in 26 weeks; refused 6/13/19/26 Sep + 3 Oct (not_hike) and 5 recording gaps; GPS-track channel UNPROVEN (build 243 declares it, 0 routes ever). Daylight 64 min / 5 of 5 days. Now relevant (hike tomorrow); no Needs You.
+- Ledger: #405 (record next hike as a Watch workout → proves routes), #406 (Hiking workout minimum length — Nick's call).
+- Record: vault Projects/NEURO/NEURO-SAIM — Build 29 Outdoor Life Intelligence.md; gap analysis appended. Next domain: Leisure / media.
+
+---
+
 # Session Handoff — 2026-10-09 (Build 28: Home intelligence)
 
 - DEPLOYED: NEURO 292d372 (+ docs commit) on origin/main + pi5 (gate 5945/0, 17 skipped; frontend built; neuro-backend restarted). No route/inventory change → gateway not rebuilt. Built in worktree nuero-b26, branch build28 (the main checkout's node_modules is still broken — use b26).
