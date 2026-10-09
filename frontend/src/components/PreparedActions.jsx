@@ -84,9 +84,10 @@ const TYPE_WORDS = {
 };
 
 const CALENDAR_TYPES = new Set(['create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event']);
-// 9 Oct 2026: calendar changes Nick started himself send on one click (a
-// one-use intent grant, no code). Must match services/intent-grants.js.
-const DIRECT_ORIGINS = new Set(['1to1-book', '1to1-move', 'event-composer']);
+// 9 Oct 2026: anything Nick started himself (or NEURO proposed on the screen
+// he was using) sends on his click — a one-use intent grant, no code. Must
+// match services/intent-grants.js HUMAN_ORIGINS (pinned by a test).
+const DIRECT_ORIGINS = new Set(['1to1-book', '1to1-move', '1to1-cancel', 'event-composer', 'composer', 'chase-button', 'weekly-risk', 'chat-attended']);
 const INITIATOR_WORDS = {
   human_direct: 'you',
   human_assisted: 'you, from something NEURO drafted',
@@ -97,8 +98,9 @@ const INITIATOR_WORDS = {
 const PROOF_WORDS = {
   intent_grant: 'your click (one-use)',
   approval_code: 'your approval code',
-  trusted_device: 'a trusted browser',
 };
+// Approvals given before 9 Oct 2026 by a trusted browser: shown, never produced.
+const LEGACY_PROOF = { 'trusted-device': 'Legacy trusted-device confirmation' };
 // Wall-clock "YYYY-MM-DDTHH:MM" sliced, never parsed into a Date (the BST bug).
 const when = (s) => (s ? `${String(s).slice(0, 10)} ${String(s).slice(11, 16)}` : '—');
 
@@ -115,9 +117,10 @@ const LEGACY_WORDS = {
 /** Why approval is not possible right now, or null. Shared with the Inbox and Weekly Risk screens. */
 export function gateFor(data, a) {
   if (!data) return 'Checking whether approval is possible…';
-  // Nick-started calendar changes need no code — only the calendar switch.
-  if (DIRECT_ORIGINS.has(a.origin) && CALENDAR_TYPES.has(a.actionType)) {
-    return data.sending?.calendar ? null : 'Calendar changes are switched off (Settings → Switches → "Send approved calendar changes"). Turn it on to send this.';
+  // What Nick started needs no code — only the switch for its kind.
+  if (DIRECT_ORIGINS.has(a.origin) && a.executes) {
+    if (CALENDAR_TYPES.has(a.actionType)) return data.sending?.calendar ? null : 'Calendar changes are switched off (Settings → Switches → "Send approved calendar changes"). Turn it on to send this.';
+    return data.sending?.enabled ? null : 'Sending is switched off (Settings → Switches → "Send approved emails"). Turn it on to send this.';
   }
   if (data.approvalLock?.locked) return `Approval is locked after too many wrong codes, until ${String(data.approvalLock.lockedUntil).slice(11, 16)} UTC.`;
   if (!data.approvalCode?.set) return 'No approval code is set yet, so nothing can be approved. Set one in Settings → Approval code.';
@@ -140,55 +143,9 @@ async function postVerb(a, verb, body) {
  * Weekly Risk panel — so none can drift into a second way to send.
  */
 export async function approveWithCode(a, code) {
-  // No code typed: this browser's trust is the proof (only reachable from a
-  // press on a trusted browser — the card enables the button only then).
-  if (!code && getDeviceToken()) return approveWithDevice(a);
   const ch = await postVerb(a, 'approval-challenge', {});
   if (!ch.ok) return ch;
   return postVerb(a, 'approve', { payloadHash: a.payloadHash, challengeId: ch.challengeId, approvalCode: code });
-}
-
-// -- Trusted device (5 Oct 2026) --------------------------------------------
-// The approval code typed ONCE trusts this browser; it then keeps a token and a
-// reply Nick typed himself sends in one click. The server only issues the token
-// for the code, and only lets it approve composer replies (his own words).
-const DEVICE_KEY = 'neuro_send_device';
-export function getDeviceToken() { try { return localStorage.getItem(DEVICE_KEY) || null; } catch { return null; } }
-function setDeviceToken(t) { try { if (t) localStorage.setItem(DEVICE_KEY, t); else localStorage.removeItem(DEVICE_KEY); } catch { /* private window: not remembered */ } }
-
-/** Is this browser still trusted? Clears a revoked token. */
-export async function checkTrustedDevice() {
-  const token = getDeviceToken();
-  if (!token) return false;
-  try {
-    const d = await fetch(apiUrl('/api/prepared-actions/devices'), { headers: { 'X-NEURO-SEND-DEVICE': token } }).then((r) => r.json());
-    const ok = !!(d && d.ok && d.thisDevice && d.thisDevice.trusted);
-    if (d && d.ok && !ok) setDeviceToken(null);
-    return ok;
-  } catch { return false; }
-}
-
-/** Type the code once; this browser is remembered until revoked. */
-export async function trustThisDevice(code) {
-  const label = `${navigator.platform || 'browser'} (trusted ${new Date().toLocaleDateString('en-GB')})`;
-  const d = await fetch(apiUrl('/api/prepared-actions/trust-device'), {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approvalCode: code, label }),
-  }).then((r) => r.json());
-  if (d && d.ok && d.token) setDeviceToken(d.token);
-  return d;
-}
-
-/** Approve a reply Nick wrote, with this browser's trust instead of the code. */
-export async function approveWithDevice(a) {
-  const token = getDeviceToken();
-  if (!token) return { ok: false, error: 'this browser is not trusted to send yet' };
-  const res = await fetch(apiUrl(`/api/prepared-actions/${a.actionId}/approve`), {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NEURO-SEND-DEVICE': token },
-    body: JSON.stringify({ payloadHash: a.payloadHash }),
-  });
-  const d = await res.json();
-  if (res.status === 403 && /not trusted|revoked/.test(String(d.error || ''))) setDeviceToken(null);
-  return d;
 }
 
 /** The approval gate state (code set, sending switch, lock) from the queue route. */
@@ -207,10 +164,6 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [code, setCode] = useState('');
-  // A browser trusted with the code once approves on the press alone
-  // (5 Oct 2026). Checked with the server, so a revoked browser asks again.
-  const [trusted, setTrusted] = useState(false);
-  useEffect(() => { let live = true; checkTrustedDevice().then((t) => { if (live) setTrusted(t); }); return () => { live = false; }; }, []);
   const [subject, setSubject] = useState(action.draft?.subject || '');
   const [body, setBody] = useState(action.draft?.body || '');
   const to = action.draft?.to?.[0] || {};
@@ -227,7 +180,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
   const editable = type !== 'send_weekly_risk_report' && !calendar;
   const d = action.draft || {};
   const canEditFailed = editable && action.status === 'failed' && action.retrySafe === true;
-  const direct = !!onSendDirect && calendar && DIRECT_ORIGINS.has(action.origin);
+  const direct = !!onSendDirect && sends && DIRECT_ORIGINS.has(action.origin);
   const who = toAll.length + ccAll.length > 1 ? `${toAll.length + ccAll.length} people` : (to.email || 'them');
 
   const confirm = async () => {
@@ -258,6 +211,9 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
           Started by {INITIATOR_WORDS[action.approval.initiatedBy] || action.approval.initiatedBy}
           {' · '}confirmed by {PROOF_WORDS[action.approval.authorityProof] || action.approval.authorityProof || 'unknown'}
         </div>
+      )}
+      {!action.approval?.initiatedBy && LEGACY_PROOF[action.approval?.mechanism] && (
+        <div className="pa-note pa-provenance">{LEGACY_PROOF[action.approval.mechanism]}</div>
       )}
 
       <div className="ap-reason">{action.reason}</div>
@@ -320,9 +276,6 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
                 ? <>This sends <strong>exactly the {type === 'send_weekly_risk_report' ? 'report' : 'email'} above</strong> to <span className="mono">{who}</span>, as you, then checks Sent Items. It is never sent twice.</>
                 : 'This records your approval. Nothing will be sent.'}
           </p>
-          {trusted ? (
-            <p className="pa-note">This browser is trusted, so pressing the button is the approval.</p>
-          ) : (
           <label className="pa-code">
             Approval code
             <input
@@ -336,9 +289,8 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
               onKeyDown={(e) => { if (e.key === 'Enter' && code) confirm(); }}
             />
           </label>
-          )}
           <div className="ap-actions">
-            <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy || (!code && !trusted)} onClick={confirm}>
+            <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy || !code} onClick={confirm}>
               {busy ? 'Working…' : sends ? 'Approve & send' : 'Approve'}
             </button>
             <button className="ap-btn ap-btn-ghost" disabled={busy} onClick={() => { setConfirming(false); setCode(''); }}>Cancel</button>
@@ -479,7 +431,7 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
       {blurb && (
         <p className="ap-group-blurb">
           Every email NEURO can send as you: chases, replies you wrote in the Inbox, agenda requests and the weekly risk report.
-          One is sent only when you approve its exact words and recipients with your approval code, then confirmed in Sent Items.
+          What NEURO drafted is sent only when you approve its exact words and recipients with your approval code; what you started yourself sends on your click. Either way it is confirmed in Sent Items.
           Sending never marks anything done.
         </p>
       )}

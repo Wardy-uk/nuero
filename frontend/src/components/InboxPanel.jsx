@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
-import { PreparedCard, approveWithCode, fetchApprovalState, gateFor, checkTrustedDevice, trustThisDevice, approveWithDevice } from './PreparedActions';
+import { executeDirect, directOutcome } from '../directAction';
 import './InboxPanel.css';
 
 function timeAgo(timestamp) {
@@ -154,50 +154,35 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
       .finally(() => setDrafting(false));
   };
 
-  // ⚠ Build 8: this PREPARES the reply — nothing is sent by pressing it. The
-  // exact words and recipients become a governed action shown below; it is sent
-  // only when Nick approves it with his approval code (the same card, helper and
-  // route as Actions → Drafted by NEURO), then checked in Sent Items.
+  // 9 Oct 2026: Send is the decision. The reply is PREPARED as a governed
+  // action (exact words, recipients, thread) and the same click confirms THAT
+  // action with a one-use intent grant — sent at once, then checked in Sent
+  // Items. No code, no trusted browser, no Actions card. A grant that expired
+  // or no longer matches leaves the prepared reply here with "Confirm again".
   const [prepared, setPrepared] = useState(null);
-  const [approval, setApproval] = useState(null);
   const [acting, setActing] = useState(false);
-  // One-click Send: a browser trusted once with the approval code sends a reply
-  // Nick typed without asking again (see PreparedActions' trusted device).
-  const [trusted, setTrusted] = useState(false);
-  const [trustCode, setTrustCode] = useState('');
-  useEffect(() => { if (mode === 'reply') checkTrustedDevice().then(setTrusted); }, [mode]);
+  const [outcome, setOutcome] = useState(null);
 
-  const sendWithDevice = async (action) => {
-    setActing(true);
-    try {
-      const d = await approveWithDevice(action);
-      if (d.ok && ['executed', 'verified'].includes(d.status)) { onReplied(email.id); return true; }
-      if (d.ok) { setError(d.detail || d.notice || `Sent for checking: status ${d.status}`); refreshPrepared(action.actionId); return true; }
-      setError(d.error || 'Not sent');
-      checkTrustedDevice().then(setTrusted);
-      return false;
-    } catch (e) { setError(e.message); return false; } finally { setActing(false); }
-  };
+  const refreshPrepared = (id) => fetch(apiUrl(`/api/prepared-actions/${id}`)).then(r => r.json()).then(d => d.ok && setPrepared(d.action)).catch(() => {});
 
-  const trustAndSend = async () => {
-    const code = trustCode;
-    setTrustCode('');
+  const sendPrepared = async (action) => {
     setActing(true);
     setError('');
-    let ok = false;
     try {
-      const d = await trustThisDevice(code);
-      if (!d.ok) { setError(d.error || 'Not trusted'); return; }
-      setTrusted(true);
-      ok = true;
-    } finally { setActing(false); }
-    if (ok && prepared) await sendWithDevice(prepared);
+      const x = await executeDirect(action);
+      const o = directOutcome(x);
+      if (x.ok && ['executed', 'verified'].includes(x.status)) { onReplied(email.id); return true; }
+      setOutcome(o);
+      refreshPrepared(action.actionId);
+      return false;
+    } catch (e) { setError(e.message); return false; } finally { setActing(false); }
   };
 
   const sendReply = () => {
     if (!replyText.trim()) return;
     setSending(true);
     setError('');
+    setOutcome(null);
     fetch(apiUrl(`${base}/reply`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -205,31 +190,12 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
     })
       .then(r => r.json())
       .then(d => {
-        if (d.ok && d.action) {
-          setPrepared(d.action);
-          fetchApprovalState().then((st) => {
-            setApproval(st);
-            // Trusted and nothing in the way: this press IS the send.
-            if (trusted && !gateFor(st, d.action)) sendWithDevice(d.action);
-          }).catch(() => setApproval(null));
-        } else setError(d.error || 'Could not prepare the reply — nothing was sent');
+        if (d.ok && d.action) { setPrepared(d.action); return sendPrepared(d.action); }
+        setError(d.error || 'Could not prepare the reply — nothing was sent');
+        return null;
       })
       .catch(() => setError('Could not prepare the reply — nothing was sent'))
       .finally(() => setSending(false));
-  };
-
-  const refreshPrepared = (id) => fetch(apiUrl(`/api/prepared-actions/${id}`)).then(r => r.json()).then(d => d.ok && setPrepared(d.action)).catch(() => {});
-
-  const approvePrepared = async (code) => {
-    setActing(true);
-    setError('');
-    try {
-      const d = await approveWithCode(prepared, code);
-      if (!d.ok) { setError(d.error || 'Not approved — nothing was sent'); return false; }
-      if (['executed', 'verified'].includes(d.status)) onReplied(email.id);
-      else { setError(d.detail || d.notice || `Approved — status: ${d.status}`); refreshPrepared(prepared.actionId); }
-      return true;
-    } catch (e) { setError(e.message); return false; } finally { setActing(false); }
   };
 
   const verbPrepared = async (verb, body) => {
@@ -390,50 +356,34 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
             onChange={e => setReplyText(e.target.value)}
             placeholder="Write your reply..."
             rows={8}
+            // Locked once prepared: the grant binds THESE words. Discard to edit.
+            disabled={!!prepared && prepared.status === 'prepared'}
           />
           {!prepared && (
             <div className="inbox-item-actions">
               <button
                 className="inbox-action-btn inbox-action-done"
                 onClick={sendReply}
-                disabled={sending || drafting || !replyText.trim() || to.length === 0}
-                title={trusted ? 'Sends this reply now: this browser is trusted to send replies you write' : 'Prepares the exact reply for you to approve with your approval code; nothing is sent yet'}
+                disabled={sending || acting || drafting || !replyText.trim() || to.length === 0}
+                title="Sends exactly this reply now, as you, then checks it in Sent Items"
               >
-                {sending || acting ? (trusted ? 'Sending...' : 'Preparing...') : trusted ? `Send to ${to.length + cc.length}` : `Prepare reply to ${to.length + cc.length || 'nobody'}…`}
+                {sending || acting ? 'Sending...' : `Send to ${to.length + cc.length || 'nobody'}`}
               </button>
               <button className="inbox-action-btn inbox-action-ignore" onClick={() => setMode(null)} disabled={sending}>
                 Cancel
               </button>
             </div>
           )}
-          {prepared && (
-            <PreparedCard
-              action={prepared}
-              busy={acting}
-              gate={gateFor(approval, prepared)}
-              onApprove={approvePrepared}
-              onReject={() => verbPrepared('reject', {})}
-              onEdit={(fields) => verbPrepared('edit', { payloadHash: prepared.payloadHash, ...fields })}
-            />
-          )}
-          {prepared && prepared.status === 'prepared' && !gateFor(approval, prepared) && (
-            trusted ? (
-              <div className="inbox-item-actions">
-                <button className="inbox-action-btn inbox-action-done" disabled={acting} onClick={() => sendWithDevice(prepared)}>
-                  {acting ? 'Sending...' : 'Send now'}
-                </button>
-              </div>
-            ) : (
-              <div className="inbox-trust">
-                <span className="inbox-reply-hint">Send now, and stop asking for the code on this browser:</span>
-                <input type="password" className="inbox-trust-code" value={trustCode} autoComplete="off"
-                  onChange={(e) => setTrustCode(e.target.value)} placeholder="Approval code (once)"
-                  onKeyDown={(e) => { if (e.key === 'Enter' && trustCode) trustAndSend(); }} />
-                <button className="inbox-action-btn inbox-action-done" disabled={acting || !trustCode} onClick={trustAndSend}>
-                  {acting ? 'Sending...' : 'Remember this browser & send'}
-                </button>
-              </div>
-            )
+          {prepared && outcome && <div className={`inbox-reply-hint inbox-outcome-${outcome.tone}`}>{outcome.text}</div>}
+          {prepared && prepared.status === 'prepared' && (
+            <div className="inbox-item-actions">
+              <button className="inbox-action-btn inbox-action-done" disabled={acting} onClick={() => sendPrepared(prepared)}>
+                {acting ? 'Sending...' : 'Confirm again & send'}
+              </button>
+              <button className="inbox-action-btn inbox-action-ignore" disabled={acting} onClick={() => verbPrepared('reject', {})}>
+                Discard
+              </button>
+            </div>
           )}
         </div>
       )}

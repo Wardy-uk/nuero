@@ -52,11 +52,12 @@ const calApi = {
   readEvent: async (id) => (CAL.events.has(id) ? { ok: true, exists: true, event: CAL.events.get(id) } : { ok: true, exists: false, event: null }),
   eventsAt: async (start) => ({ ok: true, events: [...CAL.events.values()].filter((e) => e.start === minute(start)) }),
   moveEvent: async () => ({ outcome: 'rejected', status: 404 }),
-  cancelEvent: async () => ({ outcome: 'rejected', status: 404 }),
+  cancelEvent: async (id) => { const e = CAL.events.get(id); if (e) e.isCancelled = true; return { outcome: e ? 'accepted' : 'rejected', status: e ? 202 : 404 }; },
 };
 stub('./action-calendar', calApi);
 stub('./calendar-read', { readEvent: calApi.readEvent, eventsAt: calApi.eventsAt, findByMarker: calApi.findByMarker, normaliseEvent: (e) => e, TIMEZONE: 'Europe/London', MARKER_PROP: 'x' });
 stub('./microsoft', { fetchCalendarEvents: async () => [], getSignedInAddress: async () => 'nickw@nurtur.tech' });
+stub('./contact-directory', { resolveNames: async (names) => names.map((n) => ({ query: n, status: 'resolved', name: 'Hope Goodall', email: 'hope.goodall@nurtur.tech' })) });
 
 const db = require('../db/database');
 const pa = require('./prepared-actions');
@@ -288,4 +289,72 @@ test('grant origins agree between server and UI', () => {
   assert.ok(m, 'positive control: the UI list exists');
   const uiList = m[1].split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean).sort();
   assert.deepEqual(uiList, Object.keys(grants.HUMAN_ORIGINS).sort());
+});
+
+// ═══ 9 Oct 2026 (second pass): cancel, chat, and the retired trusted device ═══
+
+test('7b. a 1-2-1 cancellation runs the same direct grant path, and machines cannot cancel', async () => {
+  // A real event first, made through the direct Book path.
+  const b = (await bookViaRoute()).body.action;
+  const g0 = await mintFor(b);
+  assert.equal((await execWith(b, g0.body.grantId)).body.status, 'verified');
+  const ev = [...CAL.events.values()].pop();
+  const event = { id: ev.id, subject: ev.subject, start: ev.start, end: ev.end, isOrganizer: true,
+    attendees: [{ email: 'hope.goodall@nurtur.tech', name: 'Hope Goodall' }] };
+  const p = pa.prepareCalendarCancel({ event, comment: 'Sorry — clash', origin: '1to1-cancel', context: { person: 'Hope Goodall' } });
+  assert.equal(p.ok, true, p.error);
+  const g = await mintFor(p.action);
+  assert.equal(g.status, 200, JSON.stringify(g.body));
+  const x = await execWith(p.action, g.body.grantId);
+  assert.equal(x.status, 200, JSON.stringify(x.body));
+  assert.ok(['verified', 'executed'].includes(x.body.status), x.body.status);
+  assert.equal(CAL.events.get(ev.id).isCancelled, true);
+  const r = row(p.action.actionId);
+  assert.equal(r.initiated_by, 'human_direct');
+  assert.equal(r.authority_proof, 'intent_grant');
+  const viaToken = await call('POST', '/1to1/cancel', { person: 'Hope Goodall', eventId: ev.id }, { 'x-neuro-api-token': 'tok-5678' });
+  assert.equal(viaToken.status, 403);
+});
+
+test('6b. a meeting proposed in the ATTENDED chat window executes only after Nick presses Book; elsewhere it needs the code', async () => {
+  const chatTools = require('./chat-tools');
+  const ctx = { attended: true, prepared: [] };
+  const before = CAL.calls.create;
+  const r = await chatTools.execute('create_meeting', { title: 'Chat-booked sync', start: '2026-12-10 11:00', minutes: 30, attendees: ['Hope'] }, ctx);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal('action' in r, false, 'the model is not handed the action object');
+  assert.equal(ctx.prepared.length, 1);
+  const a = ctx.prepared[0];
+  assert.equal(a.origin, 'chat-attended');
+  assert.equal(CAL.calls.create, before, 'nothing happened until the press');
+  const g = await mintFor(a);
+  assert.equal(g.status, 200, JSON.stringify(g.body));
+  assert.equal((await execWith(a, g.body.grantId)).body.status, 'verified');
+  assert.equal(row(a.actionId).initiated_by, 'human_assisted');
+  // Not attended (voice, MCP, a background run): NEURO's own — code path only.
+  const bg = { attended: false, prepared: [] };
+  await chatTools.execute('create_meeting', { title: 'Background sync', start: '2026-12-11 11:00', minutes: 30, attendees: ['Hope'] }, bg);
+  const auto = db.get(`SELECT * FROM prepared_actions WHERE reason LIKE '%Background sync%' OR draft_json LIKE '%Background sync%' ORDER BY created_at DESC LIMIT 1`);
+  assert.equal(auto.origin, 'chat');
+  assert.equal(bg.prepared.length, 1);
+  assert.equal((await mintFor(bg.prepared[0])).status, 403, 'a grant cannot confirm an unattended proposal');
+  // The ROUTE decides attended, from the caller — never the body or the model.
+  const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'chat.js'), 'utf8');
+  assert.match(route, /streamChat\(convId, message, res, location \|\| null, \{ attended: !req\.apiClient \}\)/);
+  assert.doesNotMatch(route, /syncChat\([^)]*attended/, 'the sync path (voice, machines) is never attended');
+});
+
+test('11b. no surface still approves with a trusted browser', () => {
+  const ui = path.join(__dirname, '..', '..', 'frontend', 'src', 'components');
+  for (const f of fs.readdirSync(ui).filter((x) => x.endsWith('.jsx'))) {
+    const src = fs.readFileSync(path.join(ui, f), 'utf8');
+    assert.doesNotMatch(src, /approveWithDevice|trustThisDevice|checkTrustedDevice|X-NEURO-SEND-DEVICE/, `${f} still uses the retired trusted-device approval`);
+  }
+  const inbox = fs.readFileSync(path.join(ui, 'InboxPanel.jsx'), 'utf8');
+  assert.match(inbox, /executeDirect\(/, 'the Inbox composer sends on a grant');
+  const chat = fs.readFileSync(path.join(ui, 'ChatPanel.jsx'), 'utf8');
+  assert.match(chat, /executeDirect\(/, 'chat proposals send on a grant');
+  const board = fs.readFileSync(path.join(ui, 'PeopleBoard.jsx'), 'utf8');
+  assert.match(board, /\/api\/1to1\/cancel/, 'a Cancel 1-2-1 control exists');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'routes', 'prepared-actions.js'), 'utf8'), /trust-device', \(req, res\) => res\.status\(410\)/);
 });

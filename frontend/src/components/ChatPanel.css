@@ -459,3 +459,14 @@
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
+
+/* 9 Oct 2026: an exact action SAiM prepared, sent on Nick's click. */
+.chat-proposal { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border, #333); border-radius: 6px; background: var(--surface-2, rgba(255,255,255,0.03)); }
+.chat-proposal-head { font-weight: 600; margin-bottom: 4px; }
+.chat-proposal-line { font-size: 0.9em; opacity: 0.85; }
+.chat-proposal-body { white-space: pre-wrap; font-family: inherit; font-size: 0.9em; margin: 6px 0; max-height: 220px; overflow: auto; }
+.chat-proposal-btn { margin-top: 6px; }
+.chat-proposal-outcome { margin-top: 6px; font-size: 0.9em; }
+.chat-proposal-ok { color: var(--success, #4caf50); }
+.chat-proposal-warn { color: var(--warning, #e0a030); }
+.chat-proposal-bad { color: var(--danger, #e05050); }

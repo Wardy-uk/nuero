@@ -91,7 +91,7 @@ function WaitingRow({ item, onAct, busy }) {
       ) : (
         <div className="wo-row-actions">
           {/* Drafts a governed chase. It does not send — approve it below or in Actions. */}
-          <button className="wo-btn" disabled={busy} onClick={() => onAct('chase')} title="Draft a chase for your approval — nothing sends yet">
+          <button className="wo-btn" disabled={busy} onClick={() => onAct('chase')} title="Draft the chase — you read it, then press Send">
             Chase
           </button>
           <button className="wo-btn wo-btn-ok" disabled={busy} onClick={() => onAct('done')} title="They delivered">
@@ -176,7 +176,7 @@ export default function WaitingOn({ person = null, embedded = false }) {
       if (action === 'chase') {
         // Says drafted, not sent. Nothing leaves without approval. `already`
         // means a chase for this is under way — the same one is shown.
-        setFlash({ key: item.key, text: data.already ? `Already drafted — ${data.notice || 'see it below'}` : 'Drafted — read it below (or in Actions), then approve. Nothing has been sent.' });
+        setFlash({ key: item.key, text: data.already ? `Already drafted — ${data.notice || 'see it below'}` : 'Drafted — read it below, then press Send. Nothing has been sent yet.' });
         setQueueKey(k => k + 1);
         load();
       } else {

@@ -140,6 +140,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/1to1/book', 'calendar.attendee.create', { machine: 'refuse' }),
   R('POST', '/api/1to1/book-all', 'calendar.attendee.create', { machine: 'refuse' }),
   R('POST', '/api/1to1/reschedule', 'calendar.attendee.reschedule', { machine: 'refuse' }),
+  R('POST', '/api/1to1/cancel', 'calendar.attendee.cancel', { machine: 'refuse' }),
   R('POST', '/api/c/login', 'config.security'),
   R('POST', '/api/v/login', 'config.security'),
   R('POST', '/api/task-blocks', 'calendar.solo'),

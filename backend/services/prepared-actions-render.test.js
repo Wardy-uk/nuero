@@ -94,23 +94,18 @@ test('the page approves with a fresh challenge, the DISPLAYED payload hash and t
   assert.match(src, /postVerb\(a, 'approval-challenge', \{\}\)/);
   assert.match(src, /postVerb\(a, 'approve', \{ payloadHash: a\.payloadHash, challengeId: ch\.challengeId, approvalCode: code \}\)/);
   assert.match(src, /\/api\/prepared-actions\?limit=50/);
-  for (const other of ['InboxPanel.jsx', 'WeeklyRiskPanel.jsx']) {
-    const s = fs.readFileSync(path.resolve(FILE, '..', other), 'utf8');
-    assert.match(s, /approveWithCode\(/, `${other} approves through the shared helper`);
-    assert.doesNotMatch(s, /\/api\/actions\/\$\{[^}]+\}\/approve/, `${other} has no old-queue approve door`);
-  }
-  // The CODE is never stored. Since 5 Oct 2026 (fed2834, trusted browsers) the
-  // page keeps ONE thing in localStorage: the server-issued, revocable device
-  // TOKEN under DEVICE_KEY. So every storage call must name that key, the
-  // only value ever written is the token the server returned, and nothing
-  // else (session storage, IndexedDB) is touched.
-  assert.doesNotMatch(src, /sessionStorage|indexedDB/);
-  const storageCalls = src.match(/localStorage\.\w+\([^)]*\)/g) || [];
-  assert.ok(storageCalls.length >= 2, 'positive control: the trusted-device token is stored');
-  for (const call of storageCalls) assert.match(call, /^localStorage\.\w+\(DEVICE_KEY/, `storage touches only the device token: ${call}`);
-  assert.match(src, /localStorage\.setItem\(DEVICE_KEY, t\)/);
-  assert.match(src, /if \(d && d\.ok && d\.token\) setDeviceToken\(d\.token\)/, 'only the token the server issued is saved');
-  assert.doesNotMatch(src, /setDeviceToken\(\s*code\s*\)|setItem\([^)]*code/i, 'the approval code itself is never written');
+  // The Weekly Risk panel still approves NEURO-side through the shared code
+  // helper; the Inbox composer no longer approves at all — since 9 Oct 2026 its
+  // Send is a one-use intent grant (directAction.js). Neither has an old door.
+  const weekly = fs.readFileSync(path.resolve(FILE, '..', 'WeeklyRiskPanel.jsx'), 'utf8');
+  assert.match(weekly, /approveWithCode\(/, 'WeeklyRiskPanel approves through the shared helper');
+  const inbox = fs.readFileSync(path.resolve(FILE, '..', 'InboxPanel.jsx'), 'utf8');
+  assert.match(inbox, /executeDirect\(/, 'InboxPanel sends with a one-use intent grant');
+  for (const s2 of [weekly, inbox]) assert.doesNotMatch(s2, /\/api\/actions\/\$\{[^}]+\}\/approve/, 'no old-queue approve door');
+  // The CODE is never stored, and since 9 Oct 2026 nothing is: the trusted-
+  // device token is retired, so this page writes NO browser storage at all.
+  assert.doesNotMatch(src, /sessionStorage|indexedDB|localStorage/);
+  assert.doesNotMatch(src, /DEVICE_KEY|X-NEURO-SEND-DEVICE|trust-device/, 'no trusted-device approval remains');
   const panel = fs.readFileSync(path.resolve(FILE, '..', 'ActionsPanel.jsx'), 'utf8');
   // Mounted, with whatever props (f94d946 added a `key` so it reloads after an approve).
   assert.match(panel, /<PreparedActions(\s[^>]*)?\/>/);

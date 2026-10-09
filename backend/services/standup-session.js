@@ -1026,7 +1026,7 @@ async function _executeTool(session, name, input = {}) {
 
     case 'create_meeting':
       // Governed (Build 11): prepares an invite for approval, sends nothing.
-      return chatTools.prepareMeeting(input, session.kind === KIND_EOD ? 'eod' : 'standup');
+      return chatTools.prepareMeeting(input, session.kind === KIND_EOD ? 'eod' : 'standup').then((r) => { if (r) delete r.action; return r; });
 
     default:
       return { ok: false, error: `Unknown tool: ${name}` };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import { PreparedCard, approveWithCode, fetchApprovalState, gateFor } from './PreparedActions';
+import { executeDirect, directOutcome } from '../directAction';
 import './WeeklyRiskPanel.css';
 
 /**
@@ -395,6 +396,28 @@ export default function WeeklyRiskPanel({ onNavigate }) {
     }
   }
 
+  /**
+   * 9 Oct 2026: Nick pressed Send on the exact frozen report he is reading —
+   * that press is the decision. A one-use intent grant bound to this report
+   * version and recipient, sent now, checked in Sent Items. No code.
+   */
+  async function sendDirect() {
+    if (!governed) return;
+    setBusy('approve');
+    try {
+      const x = await executeDirect(governed);
+      const o = directOutcome(x);
+      const sent = x.ok && ['executed', 'verified'].includes(x.status);
+      if (sent) { confirmOn('approve', 'Sent to Chris'); setShowApproval(false); }
+      setNotice({ tone: o.tone === 'ok' ? 'ok' : 'bad', text: o.text });
+    } catch (e) {
+      setNotice({ tone: 'bad', text: e.message });
+    } finally {
+      setBusy(null);
+      await load();
+    }
+  }
+
   async function rejectSend() {
     if (!governed) return;
     const out = await post(`/api/prepared-actions/${governed.actionId}/reject`, {}, 'reject');
@@ -707,6 +730,7 @@ export default function WeeklyRiskPanel({ onNavigate }) {
             busy={busy === 'approve' || busy === 'reject'}
             gate={gateFor(approvalState, governed)}
             onApprove={approveSend}
+            onSendDirect={sendDirect}
             onReject={rejectSend}
             onEdit={async () => false}
           />

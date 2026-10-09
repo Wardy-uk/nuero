@@ -94,19 +94,11 @@ router.post('/approval-code', (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// POST /api/prepared-actions/trust-device — trust this browser to send replies Nick wrote, in exchange for the approval code (typed once). Returns a token the browser keeps. Refuses machine clients. Body: { approvalCode, label }
-router.post('/trust-device', (req, res) => {
-  if (req.apiClient) return res.status(403).json({ ok: false, error: HUMAN_ONLY });
-  try {
-    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
-    const { approvalCode, label } = req.body;
-    const r = proofs().trustDevice({ approvalCode: typeof approvalCode === 'string' ? approvalCode : null, label: typeof label === 'string' ? label : null });
-    if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });
-    res.json(r);
-  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
-});
+// POST /api/prepared-actions/trust-device — RETIRED 9 Oct 2026 (410). A trusted browser is no longer an approval proof: what Nick starts sends on his click (a one-use intent grant), what NEURO drafts needs the approval code.
+router.post('/trust-device', (req, res) => res.status(410).json({ ok: false, retired: true,
+  error: 'Retired: browsers are no longer trusted to send. What you start sends on your click; what NEURO drafted needs your approval code.' }));
 
-// GET /api/prepared-actions/devices — the browsers trusted to send replies Nick wrote, with when each was trusted and last used; plus whether THIS browser's token (X-NEURO-SEND-DEVICE) is still trusted.
+// GET /api/prepared-actions/devices — LEGACY: browsers that were trusted before 9 Oct 2026, kept readable for audit. None of them can approve anything any more.
 router.get('/devices', (req, res) => {
   try {
     const token = req.get('X-NEURO-SEND-DEVICE');
@@ -158,15 +150,13 @@ router.post('/:id/approve', async (req, res) => {
   if (req.apiClient) return res.status(403).json({ ok: false, error: HUMAN_ONLY, executed: false });
   try {
     const { payloadHash, challengeId, approvalCode, note } = req.body;
-    // A trusted-device token rides in a header, never the body, so it is not
-    // part of any published tool schema.
-    const deviceToken = typeof req.get('X-NEURO-SEND-DEVICE') === 'string' ? req.get('X-NEURO-SEND-DEVICE') : null;
+    // 9 Oct 2026: the X-NEURO-SEND-DEVICE header is ignored — a trusted browser
+    // is no longer a proof. The code, or a grant via /execute-direct.
     const r = pa().approve(req.params.id, {
       payloadHash: typeof payloadHash === 'string' ? payloadHash : null,
       challengeId: typeof challengeId === 'string' ? challengeId : null,
       approvalCode: typeof approvalCode === 'string' ? approvalCode : null,
-      deviceToken: approvalCode ? null : deviceToken,
-      approver: approvalCode || !deviceToken ? 'nick (approval code, signed in to NEURO)' : 'nick (trusted device, signed in to NEURO)',
+      approver: 'nick (approval code, signed in to NEURO)',
       note: typeof note === 'string' ? note.slice(0, 500) : null,
     });
     if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error, executed: false });

@@ -984,58 +984,42 @@ test('42. chase_commitment is unchanged: its payload hash carries no Build 8 bin
   assert.doesNotMatch(mr, /method:\s*'(POST|PATCH|DELETE|PUT)'|sendDraft|sendMail|createDraft/);
 });
 
-// ── Trusted device (5 Oct 2026) ──────────────────────────────────────────────
-// The code typed ONCE trusts a browser; it then approves replies Nick WROTE
-// (origin composer) without the code. Never a NEURO draft; never without the code.
+// ── Trusted device — RETIRED (9 Oct 2026) ────────────────────────────────────
+// For five days a browser trusted once with the code could approve on a click.
+// It is no longer an approval proof: what Nick starts sends on a one-use intent
+// grant (intent-grants.test.js), what NEURO drafts needs the code.
 
-test('T1. a device is trusted only for the code, and the token approves a reply Nick wrote', async () => {
-  assert.equal(proofs.trustDevice({ approvalCode: 'wrong code!!' }).ok, false);
-  const t = proofs.trustDevice({ approvalCode: CODE, label: 'laptop' });
-  assert.equal(t.ok, true);
-  assert.match(t.token, /^sd_[0-9a-f]{16}\.[0-9a-f]{64}$/);
+test('T1. a device token no longer approves anything, and none can be minted', async () => {
+  assert.equal(typeof proofs.trustDevice, 'undefined', 'the token mint is gone');
+  assert.equal(typeof proofs.consumeDevice, 'undefined', 'the device proof is gone');
   const { action } = await prepReply();
-  const r = pa.approve(action.actionId, { approver: 'nick', payloadHash: action.payloadHash, deviceToken: t.token, now: NOW + MIN, sending: () => true });
-  assert.equal(r.ok, true, r.error);
-  const row = db.get('SELECT approval_mechanism, approval_challenge_id FROM prepared_actions WHERE action_id = ?', [action.actionId]);
-  assert.equal(row.approval_mechanism, 'trusted-device');
-  const ch = db.get('SELECT issued_to, used_outcome FROM approval_challenges WHERE challenge_id = ?', [row.approval_challenge_id]);
-  assert.equal(ch.used_outcome, 'accepted');
-  assert.equal(ch.issued_to, `device:${t.deviceId}`);
-  assert.equal(proofs.listDevices().find((d) => d.id === t.deviceId).lastUsedAt !== null, true);
+  const r = pa.approve(action.actionId, { approver: 'nick', payloadHash: action.payloadHash, deviceToken: `sd_${'a'.repeat(16)}.${'0'.repeat(64)}`, now: NOW + MIN, sending: () => true });
+  assert.equal(r.ok, false, 'a device token is not a proof');
+  assert.equal(db.get('SELECT status FROM prepared_actions WHERE action_id = ?', [action.actionId]).status, 'prepared');
+});
+
+test('T2. the database refuses any NEW trusted-device approval, in either column', async () => {
+  const { action } = await prepReply();
+  assert.throws(() => db.run(`UPDATE prepared_actions SET approval_mechanism = 'trusted-device' WHERE action_id = ?`, [action.actionId]), /retired/);
+  assert.throws(() => db.run(`UPDATE prepared_actions SET authority_proof = 'trusted_device' WHERE action_id = ?`, [action.actionId]), /retired/);
+});
+
+test('T3. changing the approval code still clears the legacy device list', () => {
+  db.setState('approval_trusted_devices', JSON.stringify({ abcdef0123456789: { id: 'abcdef0123456789', hash: 'x', label: 'old', createdAt: '2026-10-05' } }));
+  assert.equal(proofs.listDevices().length, 1, 'positive control: a legacy device is listed');
   assert.equal('hash' in proofs.listDevices()[0], false, 'the stored hash never leaves the service');
-});
-
-test('T2. a trusted device approves a NEURO draft too (5 Oct 2026), but never with a forged or revoked token', async () => {
-  const t = proofs.trustDevice({ approvalCode: CODE });
-  const { action: agenda } = prepAgenda();
-  const a = pa.approve(agenda.actionId, { approver: 'nick', payloadHash: agenda.payloadHash, deviceToken: t.token, now: NOW + MIN, sending: () => true });
-  assert.equal(a.ok, true, a.error);
-  const { action } = await prepReply();
-  const forged = `sd_${t.deviceId}.${'0'.repeat(64)}`;
-  assert.equal(pa.approve(action.actionId, { approver: 'nick', payloadHash: action.payloadHash, deviceToken: forged, now: NOW + MIN, sending: () => true }).ok, false);
-  assert.equal(proofs.revokeDevice(t.deviceId).ok, true);
-  assert.equal(pa.approve(action.actionId, { approver: 'nick', payloadHash: action.payloadHash, deviceToken: t.token, now: NOW + MIN, sending: () => true }).ok, false);
-});
-
-test('T3. changing the approval code revokes every trusted device', () => {
-  const t = proofs.trustDevice({ approvalCode: CODE });
-  assert.equal(proofs.deviceStatus(t.token).trusted, true);
   assert.equal(proofs.setCode(CODE, { currentCode: CODE }).ok, true);
-  assert.equal(proofs.deviceStatus(t.token).trusted, false);
   assert.deepEqual(proofs.listDevices(), []);
 });
 
-test('T4. from the screen: changing the code needs the current one, a wrong one counts towards lockout, and it untrusts browsers', () => {
+test('T4. from the screen: changing the code needs the current one, and a wrong one counts towards lockout', () => {
   db.setState('approval_code_failures', '');
-  const t = proofs.trustDevice({ approvalCode: CODE });
   assert.equal(proofs.setCodeFromScreen({ newCode: 'a brand new code' }).ok, false, 'no current code: refused');
   const wrong = proofs.setCodeFromScreen({ newCode: 'a brand new code', currentCode: 'not it at all' });
   assert.equal(wrong.ok, false);
   assert.equal(JSON.parse(db.getState('approval_code_failures')).count, 1, 'a wrong current code counts towards the lockout');
-  assert.equal(proofs.deviceStatus(t.token).trusted, true, 'a refused change revokes nothing');
   const ok = proofs.setCodeFromScreen({ newCode: CODE, currentCode: CODE });
   assert.equal(ok.ok, true, ok.error);
-  assert.equal(proofs.deviceStatus(t.token).trusted, false);
   assert.equal(JSON.parse(db.getState('approval_code').replace(/^$/, '{}')).setBy, 'neuro-settings');
 });
 
@@ -1047,4 +1031,99 @@ test('T5. from the screen: the FIRST code needs no proof', () => {
     assert.equal(proofs.setCodeFromScreen({ newCode: 'first code here' }).ok, true);
     assert.equal(proofs.codeStatus().set, true);
   } finally { db.setState('approval_code', saved); }
+});
+
+// ═══ One-use intent grants for email (9 Oct 2026) ═══════════════════════════
+// What Nick writes (the Inbox composer) or presses Send on (the weekly report he
+// queued) goes on his click; what NEURO drafted keeps the approval code.
+
+const grants = require('./intent-grants');
+function grantFor(a, { now = NOW + MIN } = {}) {
+  const g = grants.mint({ actionId: a.actionId, version: a.version, payloadHash: a.payloadHash, surface: 'neuro-web', sessionId: 'sess0123456789', caller: {}, now });
+  assert.equal(g.ok, true, g.error);
+  return g;
+}
+const viaGrant = (a, grantId, at = NOW + MIN) => pa.approve(a.actionId, { approver: 'nick', payloadHash: a.payloadHash, intentGrantId: grantId, now: at, sending: () => true });
+
+test('G1. a reply Nick wrote sends on a one-use grant — no code — and keeps the thread, Sent Items and ledger checks', async () => {
+  freshMailbox();
+  const { action } = await prepReply();
+  const r = viaGrant(action, grantFor(action).grantId);
+  assert.equal(r.ok, true, r.error);
+  const x = await run(action);
+  assert.equal(x.status, 'verified', JSON.stringify(x));
+  assert.equal(MB.calls.reply, 1, 'a Graph reply in the thread');
+  assert.equal(ex.attemptsFor(action.actionId).length, 1);
+  const row = db.get('SELECT initiated_by, authority_proof, intent_grant_id, approval_mechanism FROM prepared_actions WHERE action_id = ?', [action.actionId]);
+  assert.equal(row.initiated_by, 'human_direct');
+  assert.equal(row.authority_proof, 'intent_grant');
+  assert.ok(row.intent_grant_id);
+  assert.equal(row.approval_mechanism, 'intent-grant');
+});
+
+test('G2. a reply NEURO drafted (draft_reply) cannot take a grant — it needs the approval code', async () => {
+  freshMailbox();
+  const r = await pa.prepareReply({ emailId: message(), body: 'Model-drafted words', origin: 'draft_reply', now: NOW });
+  assert.equal(r.ok, true, r.error);
+  const g = grants.mint({ actionId: r.action.actionId, version: r.action.version, payloadHash: r.action.payloadHash, surface: 'neuro-web', sessionId: 'sess0123456789', caller: {} });
+  assert.equal(g.ok, false);
+  assert.equal(g.reason, 'origin');
+  const ok = approve(r.action);
+  assert.equal(ok.ok, true, ok.error);
+  assert.equal(db.get('SELECT initiated_by, authority_proof FROM prepared_actions WHERE action_id = ?', [r.action.actionId]).authority_proof, 'approval_code');
+});
+
+test('G3. the weekly report sends on a grant bound to its frozen version; a re-prepared version voids the old grant', async () => {
+  freshMailbox();
+  const { week, action } = prepReport({ tag: 'g-v1' });
+  assert.equal(action.origin, 'weekly-risk');
+  const stale = grantFor(action);
+  const v2 = pa.prepareWeeklyReport({ week, recipient: CHRIS, subject: `Weekly Risk & Anomaly Summary — w/c ${week}`, markdown: md('g-v2'), html: html('g-v2'), now: NOW });
+  assert.equal(v2.ok, true, v2.error);
+  assert.equal(viaGrant(action, stale.grantId).ok, false, 'the superseded version cannot be sent');
+  const r = viaGrant(v2.action, grantFor(v2.action).grantId);
+  assert.equal(r.ok, true, r.error);
+  assert.equal((await run(v2.action)).status, 'verified');
+  assert.equal(db.get('SELECT initiated_by FROM prepared_actions WHERE action_id = ?', [v2.action.actionId]).initiated_by, 'human_assisted');
+});
+
+test('G4. reused, expired and mismatched grants fail safely; a double click sends once', async () => {
+  freshMailbox();
+  const { action } = await prepReply();
+  const g = grantFor(action);
+  assert.equal(viaGrant(action, g.grantId).ok, true);
+  const again = viaGrant(action, g.grantId);
+  assert.equal(again.ok, false, 'a second press with the same grant is refused');
+  await run(action);
+  await run(action);
+  assert.equal(MB.calls.reply, 1, 'sent once');
+  const { action: b } = await prepReply();
+  const old = grantFor(b, { now: NOW - 5 * MIN });
+  const ex1 = viaGrant(b, old.grantId);
+  assert.equal(ex1.ok, false);
+  assert.equal(ex1.needsConfirm, true);
+  const { action: c } = await prepReply();
+  const wrong = viaGrant(c, grantFor(b).grantId);
+  assert.equal(wrong.ok, false);
+  assert.equal(wrong.needsConfirm, true);
+});
+
+test('G5. an uncertain send on a grant is verified, never resent', async () => {
+  freshMailbox({ send: 'timeout-before-receipt' });
+  const { action } = await prepReply();
+  assert.equal(viaGrant(action, grantFor(action).grantId).ok, true);
+  assert.equal((await run(action)).status, 'execution_uncertain');
+  const sends = MB.calls.send;
+  await run(action);
+  assert.equal(MB.calls.send, sends, 'no second send after an uncertain outcome');
+});
+
+test('G6. machine callers can never mint a grant', async () => {
+  freshMailbox();
+  const { action } = await prepReply();
+  for (const machine of ['n8n', 'mcp-local', 'scheduler']) {
+    const g = grants.mint({ actionId: action.actionId, version: action.version, payloadHash: action.payloadHash, surface: 'neuro-web', sessionId: 'sess0123456789', caller: { machine } });
+    assert.equal(g.ok, false, machine);
+  }
+  assert.deepEqual(grants.PROOFS, ['intent_grant', 'approval_code', 'none']);
 });

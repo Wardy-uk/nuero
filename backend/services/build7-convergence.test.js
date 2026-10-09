@@ -699,3 +699,33 @@ test('36/37/38. evaluators stay shadow; meeting-prep parity and the executor/rec
   assert.match(fs.readFileSync(path.join(__dirname, 'meeting-prep.js'), 'utf8'), /meeting_prep_comparisons/);
   assert.deepEqual(registry.executableTypes(), ['chase_commitment', 'reply_email', 'chase_agenda', 'send_weekly_risk_report', 'create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event'], 'Build 8: the four outbound email types; Build 11K: the three calendar changes');
 });
+
+// ═══ 9 Oct 2026: the Chase button's draft sends on Nick's click ═════════════
+
+test('G7. a Chase-button draft sends on a one-use grant (human_assisted); a risk-prepared chase still needs the code', async () => {
+  const grants = require('./intent-grants');
+  const mint = (x) => grants.mint({ actionId: x.actionId, version: x.version, payloadHash: x.payloadHash, surface: 'neuro-web', sessionId: 'sess0123456789', caller: {} });
+  const fx = owed({ text: 'Send the grant-flow figures' });
+  const a = pa.prepareFromWaitingOn(fx.key, { deps: BUTTON }).action;
+  assert.equal(a.origin, 'chase-button');
+  const g = mint(a);
+  assert.equal(g.ok, true, g.error);
+  const r = pa.approve(a.actionId, { approver: 'nick', payloadHash: a.payloadHash, intentGrantId: g.grantId, sending: () => true });
+  assert.equal(r.ok, true, r.error);
+  const x = await ex.execute(a.actionId, { deps: world(fx, fakeMail()).deps });
+  assert.equal(x.status, 'verified', x.detail);
+  const row = db.get('SELECT initiated_by, authority_proof FROM prepared_actions WHERE action_id = ?', [a.actionId]);
+  assert.equal(row.initiated_by, 'human_assisted');
+  assert.equal(row.authority_proof, 'intent_grant');
+  // NEURO's own chase (origin risk) cannot take a grant.
+  const fx2 = owed({ text: 'Risk-path grant check' });
+  const finding = { findingId: `risk:${fx2.commitmentId}`, status: 'active', level: 'high', confidence: 0.9, commitmentId: fx2.commitmentId, episode: 1, why: 'due', summary: 's', triggers: [] };
+  db.run(`INSERT INTO commitment_risk_findings (finding_id, commitment_id, episode, status, level, triggers_json, summary, why, evidence_json, unavailable_json, checked_json, confidence, novelty, first_created_at, updated_at)
+          VALUES (?, ?, 1, 'active', 'high', '[]', 's', 'w', '{}', '[]', '{}', 0.9, 'new', ?, ?)`, [finding.findingId, fx2.commitmentId, iso(T0), iso(T0)]);
+  pa.prepareFromRisk({ deps: { findings: () => [finding], progress: () => ({ state: 'no_evidence', reasons: [], coverage: { sentMail: 'ok' } }), snoozedUntil: () => null, deferred: () => false } });
+  const risk = pa.forCommitment(fx2.commitmentId)[0];
+  assert.equal(risk.origin, 'risk', 'positive control: a risk-prepared chase exists');
+  const rg = mint(risk);
+  assert.equal(rg.ok, false);
+  assert.equal(rg.reason, 'origin');
+});

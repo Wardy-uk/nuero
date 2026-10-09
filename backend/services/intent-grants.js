@@ -47,25 +47,40 @@ const SURFACES = Object.freeze(['neuro-web', 'neuro-ios', 'saim-kiosk']);
 const MECHANISM = 'intent-grant';
 const USER = 'nick';
 
-// Origins whose final click IS the decision. Every other origin keeps the
-// approval-code path. Email (the Inbox composer) is the next to move here.
+// Origins whose final click IS the decision, and who that makes the initiator.
+//   human_direct    Nick wrote / picked it himself (Book, Move, Cancel, Create,
+//                   the Inbox composer).
+//   human_assisted  NEURO drafted the exact words on the screen Nick was using,
+//                   and he pressed the final button (the Chase draft, the
+//                   weekly report he queued, a meeting or reply proposed in his
+//                   live chat session).
+// Every other origin — risk, meeting-triage, draft_reply, chat outside an
+// attended session, standup — keeps the approval-code path.
 const HUMAN_ORIGINS = Object.freeze({
   '1to1-book': 'human_direct',
   '1to1-move': 'human_direct',
+  '1to1-cancel': 'human_direct',
   'event-composer': 'human_direct',
+  composer: 'human_direct',
+  'chase-button': 'human_assisted',
+  'weekly-risk': 'human_assisted',
+  'chat-attended': 'human_assisted',
 });
 
 // What started an action, from its origin alone. Never from a request body.
 const ORIGIN_INITIATOR = Object.freeze({
   ...HUMAN_ORIGINS,
-  composer: 'human_direct',
-  'chase-button': 'human_assisted',
-  'weekly-risk': 'human_assisted',
   risk: 'neuro_autonomous',
   'meeting-triage': 'neuro_autonomous',
   draft_reply: 'neuro_autonomous',
   chat: 'neuro_autonomous',
+  standup: 'neuro_autonomous',
+  eod: 'neuro_autonomous',
 });
+
+// The only proofs that may authorise an action from now on. `trusted_device`
+// was retired on 9 Oct 2026 and survives only on historical rows.
+const PROOFS = Object.freeze(['intent_grant', 'approval_code', 'none']);
 
 const msOf = (v) => (v instanceof Date ? v.getTime() : typeof v === 'number' ? v : Date.now());
 const iso = (ms) => new Date(ms).toISOString();
@@ -99,7 +114,8 @@ function mint({ actionId, version, payloadHash, surface, sessionId, caller = {},
   const a = pa.get(actionId);
   if (!a) return refuse(404, 'no such prepared action', 'missing');
   if (!HUMAN_ORIGINS[a.origin]) return refuse(403, 'NEURO drafted this — it needs approving in Actions.', 'origin');
-  if (!require('./action-registry').isCalendarType(a.actionType)) return refuse(403, 'this kind of action cannot be confirmed directly yet', 'type');
+  const policy = require('./action-registry').policyFor(a.actionType);
+  if (!policy || !policy.executable) return refuse(403, 'this kind of action does not execute, so there is nothing to confirm', 'type');
   if (a.status !== 'prepared') return refuse(409, `it is already ${a.status}`, 'status');
   if (Number(version) !== Number(a.version || 1) || payloadHash !== a.payloadHash) {
     return refuse(409, 'This action needs confirming again — it changed since it was shown.', 'changed');
@@ -139,4 +155,4 @@ function consume({ grantId, actionId, version, payloadHash, now = Date.now() } =
 function get(grantId) { return db.get('SELECT * FROM human_action_intents WHERE id = ?', [grantId]) || null; }
 function forAction(actionId) { return db.all('SELECT * FROM human_action_intents WHERE action_id = ? ORDER BY created_at', [actionId]); }
 
-module.exports = { TTL_MS, SURFACES, MECHANISM, HUMAN_ORIGINS, initiatedByFor, callerOf, mint, consume, get, forAction };
+module.exports = { TTL_MS, SURFACES, MECHANISM, HUMAN_ORIGINS, PROOFS, initiatedByFor, callerOf, mint, consume, get, forAction };

@@ -802,7 +802,7 @@ async function _buildChatPrompt(userMessage, mode, withTools = false) {
  * Run the tool-enabled turn. Returns null if tools aren't available or the loop
  * produced nothing, so callers can fall through to the normal path.
  */
-async function _runWithTools(systemPrompt, messages, mode) {
+async function _runWithTools(systemPrompt, messages, mode, ctx = {}) {
   const chatTools = require('./chat-tools');
   const picked = require('./ai-routing').getToolProvider('chat_sync');
   if (!picked) return null;
@@ -813,7 +813,7 @@ async function _runWithTools(systemPrompt, messages, mode) {
     systemPrompt,
     messages,
     chatTools.toolDefinitions(),
-    (name, input) => chatTools.execute(name, input),
+    (name, input) => chatTools.execute(name, input, ctx),
     { maxTokens: policy.maxTokens, maxRounds: 5 }
   );
 
@@ -851,7 +851,7 @@ async function _runWithTools(systemPrompt, messages, mode) {
  * Streaming chat — API-primary, Ollama fallback.
  * Uses SSE for OpenAI (works through most proxies), sync fallback for Ollama.
  */
-async function streamChat(conversationId, userMessage, res, location = null) {
+async function streamChat(conversationId, userMessage, res, location = null, { attended = false } = {}) {
   db.saveMessage(conversationId, 'user', userMessage);
   try { require('./activity').trackChatMessage(userMessage); } catch {}
 
@@ -903,12 +903,19 @@ async function streamChat(conversationId, userMessage, res, location = null) {
   // which for a two-sentence SAiM answer is barely different from streaming it.
   if (useTools) {
     try {
-      const toolResult = await _runWithTools(systemPrompt, messages, chatMode);
+      // `attended` comes from the ROUTE (Nick's live chat window, not a
+      // machine) — never from the model. Prepared actions collected here are
+      // shown under the reply with a one-click button (9 Oct 2026).
+      const ctx = { attended: !!attended, prepared: [] };
+      const toolResult = await _runWithTools(systemPrompt, messages, chatMode, ctx);
       if (toolResult) {
         for (const call of toolResult.toolCalls || []) {
           if (!res.writableEnded) {
             res.write(`data: ${JSON.stringify({ type: 'tool', name: call.name })}\n\n`);
           }
+        }
+        if (ctx.prepared.length && !res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ type: 'prepared', actions: ctx.prepared })}\n\n`);
         }
         if (!res.writableEnded) {
           res.write(`data: ${JSON.stringify({ type: 'text', content: toolResult.text })}\n\n`);

@@ -245,22 +245,16 @@ function setCodeFromScreen({ newCode, currentCode = null, now = Date.now() } = {
   return { ok: true, setAt: r.setAt, replaced: r.replaced };
 }
 
-// ── trusted devices (5 Oct 2026) ────────────────────────────────────────────
+// ── trusted devices — LEGACY (5 → 9 Oct 2026) ───────────────────────────────
 //
-// Nick: "need a frictionless way for me to just send stuff" and "I don't want
-// to have to keep unlocking it". So the approval code can be typed ONCE on a
-// device to trust it; that browser keeps a token and Send is then one click.
-//
-// ⚠ Still human proof, not a PIN shortcut: a token is only ever issued in
-// exchange for the code (same lockout), only its sha256 is stored, and the PIN
-// and API token can never produce one — so the MCP server and AI sessions,
-// which hold only those, still cannot send. What it does NOT stop is something
-// that can read that browser's storage on that machine; the list of trusted
-// devices (with last use) and one-click Revoke are the answer to that, and
-// changing the approval code on the Pi revokes every device.
-//
-// ⚠ It approves only what prepared-actions lets it — replies Nick typed
-// himself (origin 'composer'). A draft NEURO wrote still needs the code.
+// For five days a browser trusted once with the code could approve on a click.
+// RETIRED on 9 Oct 2026: a trusted browser is no longer an approval proof.
+// What Nick starts sends on a one-use intent grant (intent-grants.js); what
+// NEURO drafts needs the code. No token can be minted (the route answers 410)
+// and approve() no longer reads one. The stored list stays readable for audit,
+// and rows approved that way keep `approval_mechanism = 'trusted-device'`,
+// shown as "Legacy trusted-device confirmation". DEVICE_MECHANISM is exported
+// only so readers can recognise those rows.
 const DEVICES_KEY = 'approval_trusted_devices';
 const DEVICE_MECHANISM = 'trusted-device';
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -270,28 +264,6 @@ function _devices() {
   return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
 }
 function _saveDevices(d) { db.setState(DEVICES_KEY, JSON.stringify(d)); }
-
-/** Exchange the approval code for a device token. The token is returned ONCE. */
-function trustDevice({ approvalCode, label = null, now = Date.now() } = {}) {
-  const nowMs = msOf(now);
-  const stored = _stored();
-  if (!stored) return { ok: false, code: 409, error: 'No approval code is set yet. Set one in Settings → Approval code.' };
-  const lock = lockStatus({ now: nowMs });
-  if (lock.locked) return { ok: false, code: 429, error: `Too many wrong codes — locked until ${lock.lockedUntil.slice(11, 16)} UTC` };
-  if (typeof approvalCode !== 'string' || !approvalCode.length) return { ok: false, code: 403, error: 'enter your approval code' };
-  if (!_matches(approvalCode, stored)) {
-    const f = _recordFailure(nowMs);
-    console.warn(`[ApprovalProof] wrong approval code trusting a device (${f.count} in this window)`);
-    return { ok: false, code: 403, error: f.lockedUntil ? 'Wrong approval code. Too many attempts — locked for 15 minutes.' : 'Wrong approval code.' };
-  }
-  db.setState(FAIL_KEY, '');
-  const id = crypto.randomBytes(8).toString('hex');
-  const secret = crypto.randomBytes(32).toString('hex');
-  const devices = _devices();
-  devices[id] = { id, hash: sha(secret), label: String(label || 'this browser').slice(0, 80), createdAt: iso(nowMs), lastUsedAt: null };
-  _saveDevices(devices);
-  return { ok: true, deviceId: id, token: `sd_${id}.${secret}`, label: devices[id].label };
-}
 
 function _deviceFor(token) {
   const m = /^sd_([0-9a-f]{16})\.([0-9a-f]{64})$/.exec(String(token || ''));
@@ -307,25 +279,6 @@ function _deviceFor(token) {
 function deviceStatus(token) {
   const d = _deviceFor(token);
   return d ? { trusted: true, deviceId: d.id, label: d.label } : { trusted: false };
-}
-
-/**
- * Spend a trusted device for one approval. Records an ACCEPTED challenge row
- * for this exact action, version and payload — so the database trigger that
- * refuses an approval without one still holds, and the row says which device.
- */
-function consumeDevice({ deviceToken, actionId, version, payloadHash, now = Date.now() }) {
-  _ensureTable();
-  const nowMs = msOf(now);
-  const d = _deviceFor(deviceToken);
-  if (!d) return { ok: false, code: 403, error: 'this device is not trusted to send (or was revoked) — enter your approval code' };
-  const challengeId = `ch_${crypto.randomBytes(16).toString('hex')}`;
-  db.run(`INSERT INTO approval_challenges (challenge_id, action_id, version, payload_hash, issued_at, expires_at, issued_to, used_at, used_outcome)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accepted')`,
-  [challengeId, actionId, Number(version) || 1, payloadHash, iso(nowMs), iso(nowMs), `device:${d.id}`, iso(nowMs)]);
-  const devices = _devices();
-  if (devices[d.id]) { devices[d.id].lastUsedAt = iso(nowMs); _saveDevices(devices); }
-  return { ok: true, proof: { mechanism: DEVICE_MECHANISM, challengeId, actionId, version: Number(version) || 1, payloadHash, at: iso(nowMs), deviceId: d.id } };
 }
 
 function listDevices() {
@@ -369,5 +322,5 @@ function challenge(challengeId) {
 module.exports = {
   MECHANISM, DEVICE_MECHANISM, INTENT_MECHANISM, recordIntentProof, CHALLENGE_TTL_MS, MAX_FAILURES, LOCKOUT_MS, MIN_CODE_LENGTH,
   codeStatus, setCode, issue, consume, lockStatus, challenge, _ensureTable,
-  trustDevice, deviceStatus, consumeDevice, listDevices, revokeDevice, setCodeFromScreen,
+  deviceStatus, listDevices, revokeDevice, setCodeFromScreen,
 };

@@ -54,6 +54,15 @@ function migrate(db, { log = console.log } = {}) {
     BEGIN SELECT RAISE(ABORT, 'a spent intent grant cannot be revived or rewritten'); END`);
   db.exec(`CREATE TRIGGER IF NOT EXISTS human_action_intents_no_delete BEFORE DELETE ON human_action_intents
     BEGIN SELECT RAISE(ABORT, 'intent grants are kept for audit'); END`);
+  // The trusted-device proof was retired the same day: historical rows keep it,
+  // and nothing new may be recorded with it — in either column.
+  db.exec(`CREATE TRIGGER IF NOT EXISTS prepared_actions_no_new_trusted_device BEFORE UPDATE ON prepared_actions
+    WHEN (NEW.authority_proof = 'trusted_device' AND OLD.authority_proof IS NOT 'trusted_device')
+      OR (NEW.approval_mechanism = 'trusted-device' AND OLD.approval_mechanism IS NOT 'trusted-device')
+    BEGIN SELECT RAISE(ABORT, 'trusted_device is retired as an approval proof'); END`);
+  db.exec(`CREATE TRIGGER IF NOT EXISTS prepared_actions_no_new_trusted_device_ins BEFORE INSERT ON prepared_actions
+    WHEN NEW.authority_proof = 'trusted_device' OR NEW.approval_mechanism = 'trusted-device'
+    BEGIN SELECT RAISE(ABORT, 'trusted_device is retired as an approval proof'); END`);
   db.exec(`CREATE TRIGGER IF NOT EXISTS prepared_actions_intent_provenance_immutable BEFORE UPDATE ON prepared_actions
     WHEN OLD.approved_payload_hash IS NOT NULL AND (NEW.initiated_by IS NOT OLD.initiated_by
       OR NEW.authority_proof IS NOT OLD.authority_proof OR NEW.intent_grant_id IS NOT OLD.intent_grant_id)

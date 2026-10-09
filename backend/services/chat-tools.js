@@ -228,7 +228,7 @@ const TOOLS = [
   {
     name: 'create_meeting',
     tier: 'queued',
-    description: 'PREPARE a meeting invitation for Nick to approve. This does NOT invite anyone: it prepares the exact invite (title, time, attendees) in Actions, where Nick approves it with his approval code; only then is it sent and read back. Attendees must resolve to one exact address each — an ambiguous or unknown name is refused, never guessed.',
+    description: 'PREPARE a meeting invitation. This does NOT invite anyone: it prepares the exact invite (title, time, attendees) and shows it to Nick with a Book button; it is sent only when he presses it, then read back. Attendees must resolve to one exact address each — an ambiguous or unknown name is refused, never guessed.',
     input_schema: {
       type: 'object',
       properties: {
@@ -272,11 +272,14 @@ function toolDefinitions() {
  * Run one tool call. Never throws — a failed tool returns an error string for the
  * model to read and recover from, which is far more useful than killing the turn.
  */
-async function execute(name, input = {}) {
+async function execute(name, input = {}, ctx = {}) {
   try {
     const handler = HANDLERS[name];
     if (!handler) return { ok: false, error: `Unknown tool: ${name}` };
-    const result = await handler(input || {});
+    // `ctx` comes from the chat ROUTE, never the model: `attended` is true only
+    // for Nick's live chat window (PIN, not a machine), and `prepared` collects
+    // actions to show him with a one-click button under the reply.
+    const result = await handler(input || {}, ctx || {});
     console.log(`[ChatTools] ${name} → ${result.ok === false ? `error: ${result.error}` : 'ok'}`);
     return result;
   } catch (e) {
@@ -676,8 +679,20 @@ const HANDLERS = {
     };
   },
 
-  draft_email_reply({ email_id, body }) {
+  async draft_email_reply({ email_id, body }, ctx = {}) {
     if (!email_id) return { ok: false, error: 'email_id is required — call get_urgent_emails first' };
+    // 9 Oct 2026: in Nick's live chat window, a reply with its words is
+    // PREPARED as the exact governed reply and shown under your message with a
+    // Send button; his press sends it (human_assisted, one-use intent grant).
+    if (ctx.attended && body && String(body).trim()) {
+      const r = await require('./prepared-actions').prepareReply({ emailId: email_id, body: String(body), origin: 'chat-attended' });
+      if (!r.ok) return { ok: false, sent: false, error: r.error };
+      if (Array.isArray(ctx.prepared)) ctx.prepared.push(r.action);
+      return {
+        ok: true, prepared: true, sent: false, action_id: r.action.actionId,
+        note: 'PREPARED, NOT SENT. The exact reply is shown to Nick under your message with a Send button; it is sent only when he presses it. Do not say it has been sent.',
+      };
+    }
     const id = require('./suggestion-engine').queueAction(
       'draft_reply',
       { emailId: email_id, body: body || null },
@@ -736,8 +751,14 @@ const HANDLERS = {
 
   // Build 11K: prepares a governed invite. Refuses — in words, preparing
   // nothing — if any attendee does not resolve to exactly one address.
-  async create_meeting(input) {
-    return prepareMeeting(input, 'chat');
+  async create_meeting(input, ctx = {}) {
+    // In Nick's live chat window the invite is shown under the reply with a
+    // Book button (human_assisted). Anywhere else it waits in Actions (code).
+    const r = await prepareMeeting(input, ctx.attended ? 'chat-attended' : 'chat');
+    if (r.ok && r.action && Array.isArray(ctx.prepared)) ctx.prepared.push(r.action);
+    if (r.ok && ctx.attended) r.note = 'PREPARED, NOT SENT. Nobody has been invited. The exact invite is shown to Nick under your message with a Book button; it is sent only when he presses it, then read back from the calendar. Do not tell him it is booked.';
+    delete r.action;
+    return r;
   },
 };
 
@@ -767,7 +788,7 @@ async function prepareMeeting({ title, start, minutes, attendees, online } = {},
     });
     if (!r.ok) return { ok: false, prepared: false, invited: false, error: r.error };
     return {
-      ok: true, prepared: true, invited: false, action_id: r.action.actionId, already: !!r.already,
+      ok: true, prepared: true, invited: false, action_id: r.action.actionId, already: !!r.already, action: r.action,
       note: 'PREPARED, NOT SENT. Nobody has been invited. Nick must approve it in Actions (with his approval code); only then does NEURO send the invite and read it back from the calendar. Do not tell him it is booked.',
     };
 }

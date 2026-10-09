@@ -371,6 +371,20 @@ router.post('/reschedule', async (req, res) => {
   }
 });
 
+// POST /api/1to1/cancel — cancel a 1-2-1 that is in the diary (cancel one-to-one, call off a 1:1). PREPARES a governed cancel_calendar_event bound to the real event; the screen that pressed Cancel then confirms that exact action with a one-use intent grant, Graph tells the attendee, and it is read back. Refuses machine clients. Body: { person, eventId, reason? }
+router.post('/cancel', async (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, sent: false, error: "Cancelling a 1-2-1 tells a real person — it needs Nick, in NEURO. A machine client cannot do it." });
+  try {
+    const { person, eventId, reason } = req.body || {};
+    if (!person || !eventId) return res.status(400).json({ ok: false, error: 'person and eventId are required' });
+    const result = await booking.cancelOneToOne({ person, eventId, reason });
+    res.status(result.ok ? 200 : 409).json(result);
+  } catch (e) {
+    console.error('[1to1/cancel]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // How often this person's 1-2-1 has been moved. Read-only; feeds the Team card.
 router.get('/moves/:person', (req, res) => {
   try {

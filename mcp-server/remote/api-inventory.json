@@ -482,7 +482,7 @@
     "route": "/api/1to1/moves/:person",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 375,
+    "line": 389,
     "description": "GET /api/1to1/moves/:person.",
     "params": [
       "person"
@@ -1418,7 +1418,7 @@
     "route": "/api/chat/conversations",
     "domain": "chat",
     "source": "routes/chat.js",
-    "line": 33,
+    "line": 36,
     "description": "GET /api/chat/conversations. list recent conversations",
     "params": [],
     "query": [],
@@ -1434,7 +1434,7 @@
     "route": "/api/chat/decisions",
     "domain": "chat",
     "source": "routes/chat.js",
-    "line": 46,
+    "line": 49,
     "description": "GET /api/chat/decisions. recent logged decisions",
     "params": [],
     "query": [],
@@ -1450,7 +1450,7 @@
     "route": "/api/chat/history/:conversationId",
     "domain": "chat",
     "source": "routes/chat.js",
-    "line": 39,
+    "line": 42,
     "description": "GET /api/chat/history/:conversationId.",
     "params": [
       "conversationId"
@@ -3929,7 +3929,7 @@
     "route": "/api/prepared-actions/:id",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 127,
+    "line": 119,
     "description": "GET /api/prepared-actions/:id.",
     "params": [
       "id"
@@ -3947,8 +3947,8 @@
     "route": "/api/prepared-actions/devices",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 110,
-    "description": "GET /api/prepared-actions/devices. the browsers trusted to send replies Nick wrote, with when each was trusted and last used; plus whether THIS browser's token (X-NEURO-SEND-DEVICE) is still trusted.",
+    "line": 102,
+    "description": "GET /api/prepared-actions/devices. LEGACY: browsers that were trusted before 9 Oct 2026, kept readable for audit. None of them can approve anything any more.",
     "params": [],
     "query": [],
     "body": [],
@@ -6082,12 +6082,32 @@
     "stream": false
   },
   {
+    "id": "post_1to1_cancel",
+    "method": "POST",
+    "route": "/api/1to1/cancel",
+    "domain": "1to1",
+    "source": "routes/one-to-one.js",
+    "line": 375,
+    "description": "POST /api/1to1/cancel. cancel a 1-2-1 that is in the diary (cancel one-to-one, call off a 1:1). PREPARES a governed cancel_calendar_event bound to the real event; the screen that pressed Cancel then confirms that exact action with a one-use intent grant, Graph tells the attendee, and it is read back",
+    "params": [],
+    "query": [],
+    "body": [
+      "eventId",
+      "person",
+      "reason"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_1to1_notes",
     "method": "POST",
     "route": "/api/1to1/notes",
     "domain": "1to1",
     "source": "routes/one-to-one.js",
-    "line": 384,
+    "line": 398,
     "description": "POST /api/1to1/notes.",
     "params": [],
     "query": [],
@@ -7588,7 +7608,7 @@
     "route": "/api/chat/sync",
     "domain": "chat",
     "source": "routes/chat.js",
-    "line": 15,
+    "line": 18,
     "description": "POST /api/chat/sync. non-streaming chat (works through reverse proxies)",
     "params": [],
     "query": [],
@@ -9841,7 +9861,7 @@
     "route": "/api/prepared-actions/:id/approval-challenge",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 138,
+    "line": 130,
     "description": "POST /api/prepared-actions/:id/approval-challenge. step 1 of Nick approving a drafted action in NEURO: a single-use, five-minute challenge bound to this action's exact version and payload hash. Useless without Nick's approval code. Refuses machine clients, and refuses an executable type while sendin",
     "params": [
       "id"
@@ -9859,7 +9879,7 @@
     "route": "/api/prepared-actions/:id/approve",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 157,
+    "line": 149,
     "description": "POST /api/prepared-actions/:id/approve. step 2: Nick approves the EXACT draft he was shown, with the challenge from step 1 and his approval code. For chase_commitment this SENDS the email as Nick and then verifies it in Sent Items; other types record the approval only. Refuses machine clients; a PIN",
     "params": [
       "id"
@@ -9882,7 +9902,7 @@
     "route": "/api/prepared-actions/:id/edit",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 250,
+    "line": 240,
     "description": "POST /api/prepared-actions/:id/edit. Nick edits a prepared draft's subject or body (edit draft, change wording, resend after a proven failure). Creates a NEW version that needs its own approval; the old one is superseded and never changed. The recipient cannot be edited. Refuses machine clients. Bod",
     "params": [
       "id"
@@ -9904,7 +9924,7 @@
     "route": "/api/prepared-actions/:id/execute-direct",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 209,
+    "line": 199,
     "description": "POST /api/prepared-actions/:id/execute-direct. Nick-direct confirm, step 2: spend the intent grant and make the change at once (no Actions card, no approval code), then verify it by read-back like any governed action. A spent, expired or mismatched grant is refused with needsConfirm. Refuses machine",
     "params": [
       "id"
@@ -9925,7 +9945,7 @@
     "route": "/api/prepared-actions/:id/intent-grant",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 195,
+    "line": 185,
     "description": "POST /api/prepared-actions/:id/intent-grant. Nick-direct confirm, step 1: a one-use, 60-second intent grant for the exact action (id, version, payload hash) a NEURO screen is showing, minted when Nick presses the final button (Book, Move, Create). Only for actions a human button prepared; refuses ma",
     "params": [
       "id"
@@ -9948,7 +9968,7 @@
     "route": "/api/prepared-actions/:id/reject",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 237,
+    "line": 227,
     "description": "POST /api/prepared-actions/:id/reject. Nick rejects a prepared action (reject draft); kept for audit with who rejected it, and NEURO will not prepare another for the same risk episode. Refuses machine clients. Body: { note? }",
     "params": [
       "id"
@@ -9968,7 +9988,7 @@
     "route": "/api/prepared-actions/devices/:deviceId/revoke",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 118,
+    "line": 110,
     "description": "POST /api/prepared-actions/devices/:deviceId/revoke. stop a trusted browser sending. Keywords: revoke device, untrust browser.",
     "params": [
       "deviceId"
@@ -9987,15 +10007,12 @@
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
     "line": 98,
-    "description": "POST /api/prepared-actions/trust-device. trust this browser to send replies Nick wrote, in exchange for the approval code (typed once). Returns a token the browser keeps. Refuses machine clients. Body: { approvalCode, label }",
+    "description": "POST /api/prepared-actions/trust-device. RETIRED 9 Oct 2026 (410). A trusted browser is no longer an approval proof: what Nick starts sends on his click (a one-use intent grant), what NEURO drafts needs the approval code.",
     "params": [],
     "query": [],
-    "body": [
-      "approvalCode",
-      "label"
-    ],
+    "body": [],
     "queryOpen": false,
-    "bodyOpen": true,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },

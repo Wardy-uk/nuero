@@ -464,7 +464,13 @@ async function book({ person, start, end, email, subject, durationMinutes, skipC
 function afterGovernedCalendar(a) {
   const t = (a && a.target) || {};
   const person = t.person;
-  if (!person || !(a.origin === '1to1-book' || a.origin === '1to1-move')) return;
+  if (!person || !['1to1-book', '1to1-move', '1to1-cancel'].includes(a.origin)) return;
+  if (a.origin === '1to1-cancel') {
+    // It is no longer in the diary, so it is no longer booked. Nothing else.
+    try { require('./obsidian').updatePersonNote(person, { booked121: '' }); }
+    catch (e) { console.warn('[1-2-1] Could not clear 1-2-1-booked:', e.message); }
+    return;
+  }
   const start = (a.draft && a.draft.start) || '';
   try { require('./obsidian').updatePersonNote(person, { booked121: start.slice(0, 10) }); }
   catch (e) { console.warn('[1-2-1] Could not stamp 1-2-1-booked:', e.message); }
@@ -710,6 +716,35 @@ async function reschedule({ person, eventId, start, end, reason = null, skipClas
   };
 }
 
+/**
+ * Cancel the 1-2-1 that EXISTS in the diary (9 Oct 2026). Same shape as
+ * reschedule: find the real event, prepare a governed cancel_calendar_event
+ * bound to it (Graph tells the attendee), and hand back the exact action for
+ * the screen that pressed Cancel to confirm with a one-use intent grant.
+ *
+ * `1-2-1-booked` is cleared only once the cancellation has actually happened
+ * (afterGovernedCalendar), never on the request. `last-1-2-1` never moves.
+ */
+async function cancelOneToOne({ person, eventId, reason = null }) {
+  if (!person || !eventId) return { ok: false, error: 'person and eventId are required' };
+  if (!isRealEventId(eventId)) return { ok: false, error: 'That event id cannot address a real calendar event' };
+  const found = await findOneToOne(person);
+  if (!found.ok || found.event.id !== eventId) {
+    return { ok: false, error: found.ok ? 'That 1-2-1 is not the one found in the calendar now — reload and try again' : found.error };
+  }
+  const why = reason && String(reason).trim() ? String(reason).trim().slice(0, 500) : null;
+  const r = require('./prepared-actions').prepareCalendarCancel({
+    event: { ...found.event, isOrganizer: found.event.isOrganizer },
+    comment: why || '', origin: '1to1-cancel', context: { person, reason: why },
+  });
+  if (!r.ok) return { ok: false, error: r.error };
+  return {
+    ok: true, prepared: true, already: !!r.already, person,
+    actionId: r.action.actionId, status: r.action.status, action: _actionRef(r.action),
+    cancelled: false, start: found.event.start,
+  };
+}
+
 /** findClash, but blind to one event — used when that event is the one moving. */
 async function findClashExcluding(start, end, exceptId) {
   const day = start.split('T')[0];
@@ -814,6 +849,7 @@ module.exports = {
   findOneToOne,
   proposeReschedule,
   reschedule,
+  cancelOneToOne,
   movesFor,
   afterGovernedCalendar,
   // exported for tests

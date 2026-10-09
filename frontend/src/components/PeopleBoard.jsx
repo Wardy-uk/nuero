@@ -745,6 +745,99 @@ function RescheduleDialog({ name, onClose, onMoved }) {
   );
 }
 
+/**
+ * Cancel the 1-2-1 that is in the diary (9 Oct 2026). Finds the real meeting,
+ * shows it, and on ONE press prepares the governed cancellation and confirms
+ * that exact action with a one-use intent grant — Microsoft tells the
+ * attendee, NEURO reads it back. No Actions card, no code.
+ */
+function CancelOneToOneDialog({ name, onClose, onCancelled }) {
+  const [found, setFound] = useState(null);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const [working, setWorking] = useState(false);
+  const [done, setDone] = useState(null);
+  const first = name.split(' ')[0];
+
+  useEffect(() => {
+    fetch(apiUrl(`/api/1to1/find/${encodeURIComponent(name)}`))
+      .then(r => r.json())
+      .then(d => { if (d.ok && d.event) setFound(d.event); else setError(d.error || `No upcoming 1-2-1 with ${first} found in your calendar`); })
+      .catch(e => setError(e.message));
+  }, [name]);
+
+  const confirm = async () => {
+    setWorking(true);
+    setError('');
+    try {
+      const res = await fetch(apiUrl('/api/1to1/cancel'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person: name, eventId: found.id, reason: reason.trim() || undefined }),
+      });
+      const d = await res.json();
+      if (!d.ok) { setError(d.error || 'Could not cancel'); setWorking(false); return; }
+      const x = await executeDirect(d.action);
+      if (x.needsConfirm) setError('This action needs confirming again.');
+      else { setDone({ direct: x, outcome: directOutcome(x) }); onCancelled?.(); }
+    } catch (e) { setError(e.message); }
+    setWorking(false);
+  };
+
+  const at = found ? `${formatDate(String(found.start).slice(0, 10))} at ${String(found.start).slice(11, 16)}` : '';
+
+  return (
+    <div className="note-editor-overlay" onClick={onClose}>
+      <div className="book-dialog" onClick={e => e.stopPropagation()}>
+        <div className="note-editor-header">
+          <span className="note-editor-title">Cancel 1-2-1 — {name}</span>
+          <button className="note-editor-close" onClick={onClose}>x</button>
+        </div>
+        {done ? (
+          <div className="book-dialog-body">
+            <div className={done.direct?.executed ? 'book-ok' : 'book-error'}>
+              {done.direct?.executed ? `Cancelled ${at} — ${first} has been told.` : `Not cancelled (${at}).`}
+            </div>
+            <div className="book-note">{done.outcome?.text}</div>
+            <div className="book-actions"><button className="btn btn-primary" onClick={onClose}>Done</button></div>
+          </div>
+        ) : !found && !error ? (
+          <div className="note-editor-loading">Finding the 1-2-1...</div>
+        ) : !found ? (
+          <div className="book-dialog-body">
+            <div className="book-error">{error}</div>
+            <div className="book-actions"><button className="btn" onClick={onClose}>Close</button></div>
+          </div>
+        ) : (
+          <div className="book-dialog-body">
+            <dl className="book-meta">
+              <dt>Meeting</dt><dd>{found.subject}</dd>
+              <dt>When</dt><dd>{at}</dd>
+            </dl>
+            <input
+              className="book-reason"
+              type="text"
+              placeholder={`Note to ${first} (optional — sent with the cancellation)`}
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+            />
+            <p className="book-caveat">
+              This cancels the meeting for everyone: Microsoft tells {first}. It does not mark a 1-2-1 as held.
+            </p>
+            {error && <div className="book-error">{error}</div>}
+            <div className="book-actions">
+              <button className="btn" onClick={onClose} disabled={working}>Keep it</button>
+              <button className="btn btn-primary" onClick={confirm} disabled={working}>
+                {working ? 'Cancelling...' : error === 'This action needs confirming again.' ? 'Confirm again & cancel' : `Cancel 1-2-1 & tell ${first}`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NoteEditor({ name, onClose, onSaved }) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -950,6 +1043,7 @@ export default function PeopleBoard() {
   const [editingNote, setEditingNote] = useState(null); // person name whose raw note is being edited
   const [bookingFor, setBookingFor] = useState(null); // person name being booked
   const [movingFor, setMovingFor] = useState(null);   // person whose 1-2-1 is being moved
+  const [cancellingFor, setCancellingFor] = useState(null); // person whose 1-2-1 is being cancelled
   const [bookingAll, setBookingAll] = useState(null); // names being batch-booked
   const [oneToOnes, setOneToOnes] = useState(null); // { [name]: [{date,title,highlights}] }
   const [autoExpanded, setAutoExpanded] = useState(() => sessionStorage.getItem('people-auto-expanded') === 'true');
@@ -1091,6 +1185,19 @@ export default function PeopleBoard() {
             fetch(apiUrl(`/api/obsidian/people/${encodeURIComponent(bookingFor)}`))
               .then(r => r.json())
               .then(data => setPeopleData(prev => ({ ...prev, [bookingFor]: data })))
+              .catch(() => {});
+          }}
+        />
+      )}
+
+      {cancellingFor && (
+        <CancelOneToOneDialog
+          name={cancellingFor}
+          onClose={() => setCancellingFor(null)}
+          onCancelled={() => {
+            fetch(apiUrl(`/api/obsidian/people/${encodeURIComponent(cancellingFor)}`))
+              .then(r => r.json())
+              .then(data => setPeopleData(prev => ({ ...prev, [cancellingFor]: data })))
               .catch(() => {});
           }}
         />
@@ -1251,6 +1358,13 @@ export default function PeopleBoard() {
                       title="Move the existing 1-2-1 — updates the meeting, never cancels it"
                     >
                       Move
+                    </button>
+                    <button
+                      className="person-move-btn"
+                      onClick={() => setCancellingFor(person.name)}
+                      title="Cancel the existing 1-2-1 — Microsoft tells them"
+                    >
+                      Cancel 1-2-1
                     </button>
                   </div>
                   {editingPerson === person.name && (

@@ -7,7 +7,6 @@ import './AdminPanel.css';
 // configuration, and configuration lives here.
 import NotionSyncPanel from './NotionSyncPanel';
 import VestaAccounts from './VestaAccounts';
-import { trustThisDevice } from './PreparedActions';
 
 
 /**
@@ -310,8 +309,7 @@ function ApprovalCode() {
       const d = await r.json();
       if (!d.ok) setMsg({ bad: true, text: d.error || 'Not changed.' });
       else {
-        try { localStorage.removeItem('neuro_send_device'); } catch { /* ignore */ }
-        setMsg({ bad: false, text: d.replaced ? 'Approval code changed. Every trusted browser has been untrusted.' : 'Approval code set.' });
+        setMsg({ bad: false, text: d.replaced ? 'Approval code changed.' : 'Approval code set.' });
       }
       await load();
     } catch (err) { setMsg({ bad: true, text: err.message }); } finally { setBusy(false); }
@@ -325,7 +323,7 @@ function ApprovalCode() {
       <div className="admin-ms-section">
         <p className="admin-hint">
           {isSet
-            ? `Set ${String(status.setAt || '').slice(0, 16).replace('T', ' ')}. This is what proves it is you approving an email NEURO sends as you. Changing it needs the current code and untrusts every browser.`
+            ? `Set ${String(status.setAt || '').slice(0, 16).replace('T', ' ')}. You need it only to approve something NEURO drafted itself. What you send or book yourself goes on your click. Changing it needs the current code.`
             : 'Not set yet, so nothing can be sent. Choose a code only you know — NEURO stores only a hash of it.'}
         </p>
         <form onSubmit={save} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -338,88 +336,6 @@ function ApprovalCode() {
         </form>
         {msg && <p className="admin-hint" style={{ color: msg.bad ? 'var(--danger)' : 'var(--success, var(--accent))' }}>{msg.text}</p>}
         {isSet && <p className="admin-hint">Forgotten it? Reset it on the Pi: <code>cd ~/nuero/backend &amp;&amp; node scripts/set-approval-code.js</code></p>}
-      </div>
-    </CollapsibleSection>
-  );
-}
-
-/**
- * Browsers trusted to send replies Nick writes (5 Oct 2026). Typing the
- * approval code once in the Inbox trusts a browser; this is where he sees each
- * one and revokes it. Changing the code on the Pi revokes them all.
- */
-function TrustedDevices() {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(null);
-  const token = (() => { try { return localStorage.getItem('neuro_send_device'); } catch { return null; } })();
-
-  const load = useCallback(async () => {
-    try {
-      const r = await fetch(apiUrl('/api/prepared-actions/devices'), { headers: token ? { 'X-NEURO-SEND-DEVICE': token } : {} });
-      const d = await r.json();
-      if (d.ok) setData(d); else setError(d.error || 'could not read');
-    } catch (e) { setError(e.message); }
-  }, [token]);
-  useEffect(() => { load(); }, [load]);
-
-  const revoke = async (id) => {
-    if (!window.confirm('Stop this browser sending replies? It will need the approval code again.')) return;
-    setBusy(id); setError(null);
-    try {
-      const r = await fetch(apiUrl(`/api/prepared-actions/devices/${encodeURIComponent(id)}/revoke`), { method: 'POST' });
-      const d = await r.json();
-      if (!d.ok) setError(d.error);
-      if (data && data.thisDevice && data.thisDevice.deviceId === id) { try { localStorage.removeItem('neuro_send_device'); } catch { /* ignore */ } }
-      await load();
-    } catch (e) { setError(e.message); } finally { setBusy(null); }
-  };
-
-  const [code, setCode] = useState('');
-  const trustHere = async (e) => {
-    e.preventDefault();
-    const typed = code;
-    setCode('');
-    setBusy('trust'); setError(null);
-    try {
-      const d = await trustThisDevice(typed);
-      if (!d.ok) setError(d.error || 'Not trusted');
-      await load();
-    } catch (err) { setError(err.message); } finally { setBusy(null); }
-  };
-
-  const when = (s) => (s ? String(s).slice(0, 16).replace('T', ' ') : 'never');
-  const here = !!(data && data.thisDevice && data.thisDevice.trusted);
-  return (
-    <CollapsibleSection title="Browsers trusted to send">
-      <div className="admin-ms-section">
-        {data && (here
-          ? <p className="admin-hint">This browser is trusted: replies you write in the Inbox send in one click.</p>
-          : (
-            <form onSubmit={trustHere} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-              <span className="admin-hint" style={{ margin: 0 }}>This browser is not trusted.</span>
-              <input type="password" autoComplete="off" className="admin-input" placeholder="Approval code" value={code} onChange={(e) => setCode(e.target.value)} />
-              <button type="submit" className="btn btn-sm" disabled={busy === 'trust' || !code}>{busy === 'trust' ? 'Trusting…' : 'Trust this browser'}</button>
-            </form>
-          ))}
-        <p className="admin-hint">
-          A browser trusted here approves with one press — your Inbox replies and anything NEURO drafted (the weekly report, chases) — once you have
-          read it on the card. It was trusted by typing your approval code once. Changing the code revokes every browser.
-        </p>
-        {error && <p className="admin-hint" style={{ color: 'var(--danger)' }}>Couldn’t read or change this — {error}</p>}
-        {data && !data.devices.length && <p className="admin-hint">No browser is trusted yet.</p>}
-        {data && data.devices.map((d) => (
-          <div key={d.id} className="admin-flag">
-            <div className="admin-toggle" style={{ justifyContent: 'space-between' }}>
-              <span>
-                {d.label}
-                {data.thisDevice && data.thisDevice.deviceId === d.id && <span className="admin-flag-impact">this browser</span>}
-              </span>
-              <button className="btn btn-sm" disabled={busy === d.id} onClick={() => revoke(d.id)}>Revoke</button>
-            </div>
-            <p className="admin-hint">Trusted {when(d.createdAt)} · last sent {when(d.lastUsedAt)}</p>
-          </div>
-        ))}
       </div>
     </CollapsibleSection>
   );
@@ -1254,7 +1170,6 @@ export default function AdminPanel({ pushState = {} }) {
       <FeatureSwitches />
 
       <ApprovalCode />
-      <TrustedDevices />
 
       <div className="admin-section">
         <div className="admin-section-title">Push Notifications</div>

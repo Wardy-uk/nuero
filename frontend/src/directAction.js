@@ -58,11 +58,12 @@ export async function executeDirect(action) {
 
 /** One honest line for what happened — from the status the server reported. */
 export function directOutcome(r) {
-  if (!r) return { tone: 'bad', text: 'Not sent.' };
+  if (!r) return { tone: 'bad', text: 'Could not complete.' };
   if (r.needsConfirm) return { tone: 'warn', text: 'This action needs confirming again.' };
-  if (!r.ok) return { tone: 'bad', text: `Not sent — ${r.error || 'unknown error'}` };
-  if (r.status === 'verified') return { tone: 'ok', text: 'Done — read back from your calendar.' };
-  if (r.status === 'executed') return { tone: 'ok', text: 'Done — confirming it in your calendar now.' };
-  if (r.status === 'execution_uncertain') return { tone: 'warn', text: 'Sent, but NEURO could not confirm it yet. It will check — it will not resend.' };
-  return { tone: 'bad', text: `Not sent (${r.status || 'unknown'}). ${r.detail || ''}`.trim() };
+  if (!r.ok) return { tone: 'bad', text: `Could not complete — ${r.error || 'unknown error'}` };
+  const where = /calendar/.test(String(r.action?.actionType || '')) ? 'your calendar' : 'Sent Items';
+  if (r.status === 'verified') return { tone: 'ok', text: `Confirmed — checked in ${where}.` };
+  if (r.status === 'executed') return { tone: 'ok', text: `Done — confirming it in ${where} now.` };
+  if (r.status === 'execution_uncertain') return { tone: 'warn', text: 'Outcome uncertain — not resent. NEURO will check and say what happened.' };
+  return { tone: 'bad', text: `Could not complete (${r.status || 'unknown'}). ${r.detail || ''}`.trim() };
 }

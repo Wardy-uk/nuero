@@ -373,7 +373,7 @@ const switchOn = (type) => require('./feature-flags').isEnabled(registry.switchF
  * says which. Executing is the executor's job, triggered by the route.
  */
 function approve(actionId, {
-  payloadHash = null, challengeId = null, approvalCode = null, deviceToken = null, intentGrantId = null, approver = null, note: why = null,
+  payloadHash = null, challengeId = null, approvalCode = null, intentGrantId = null, approver = null, note: why = null,
   now = Date.now(), sending = sendingEnabled,
 } = {}) {
   const nowMs = msOf(now);
@@ -416,11 +416,10 @@ function approve(actionId, {
     const label = registry.SWITCH_LABELS[registry.switchFor(cur.action_type)];
     return { ok: false, code: 409, error: `"${label}" is switched off (Settings → Switches), so approving would change nothing. Turn it on first, then approve.` };
   }
-  // The proof. A trusted device (a browser Nick trusted by typing the code
-  // once) may approve ANY action it is showing him — Nick, 5 Oct 2026: the
-  // approval card shows the exact frozen words, so reading them there is the
-  // review. Still human proof: only the code can mint a device token, and the
-  // PIN / API token never can.
+  // The proof: exactly one of two (9 Oct 2026). A one-use intent grant, for an
+  // action Nick started or was proposed on his screen (intent-grants.js); or
+  // the approval code, for what NEURO or a machine started. The trusted-device
+  // proof (5 Oct) is retired — historical rows keep it, nothing new can.
   const proofs = require('./approval-proof');
   const grants = require('./intent-grants');
   let proof = null;
@@ -430,9 +429,8 @@ function approve(actionId, {
     // as proof INSIDE the approval transaction below — a refused grant stays
     // spent, and nothing half-lands.
     if (!grants.HUMAN_ORIGINS[cur.origin]) return { ok: false, code: 403, error: 'NEURO drafted this — it needs approving in Actions.' };
-  } else if (deviceToken && !approvalCode) {
-    proof = proofs.consumeDevice({ deviceToken, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
   } else {
+    // 9 Oct 2026: a trusted browser is no longer a proof — the code or a grant.
     // Burns the challenge whatever the outcome.
     proof = proofs.consume({
       challengeId, approvalCode, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs,
@@ -460,7 +458,7 @@ function approve(actionId, {
         // Provenance: derived from the origin and the proof spent — never from
         // anything a client said about itself.
         initiated_by: grants.initiatedByFor(cur.origin),
-        authority_proof: viaGrant ? 'intent_grant' : (p.proof.mechanism === proofs.DEVICE_MECHANISM ? 'trusted_device' : 'approval_code'),
+        authority_proof: viaGrant ? 'intent_grant' : 'approval_code',
         intent_grant_id: viaGrant ? intentGrantId : null,
       },
       eventExtra: { mechanism: p.proof.mechanism, challengeRef: p.proof.challengeId.slice(0, 11) },

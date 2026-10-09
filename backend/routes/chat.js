@@ -8,7 +8,10 @@ router.post('/', (req, res) => {
   const { message, conversationId, location } = req.body;
   if (!message) return res.status(400).json({ error: 'message is required' });
   const convId = conversationId || `conv_${Date.now()}`;
-  claude.streamChat(convId, message, res, location || null);
+  // Attended = Nick's own chat window: a PIN caller that is not a machine
+  // (the authority guard sets req.apiClient for the API token AND any declared
+  // X-Neuro-Machine-Client). Only then may chat show one-click actions.
+  claude.streamChat(convId, message, res, location || null, { attended: !req.apiClient });
 });
 
 // POST /api/chat/sync — non-streaming chat (works through reverse proxies)
