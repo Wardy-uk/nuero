@@ -44,15 +44,6 @@ function persistJCRingReadings(packets, receivedAt) {
     put('vendor_bp_systolic_estimate', sample.systolic, sample.timestamp);
     put('vendor_bp_diastolic_estimate', sample.diastolic, sample.timestamp);
   }
-  // One-off 0x28 results are real-time frames and have no ring timestamp, so
-  // retain the phone receipt time rather than inventing a device-local one.
-  for (const sample of decoded.oneOffHRVMeasurements) {
-    const at = typeof sample.receivedAt === 'string' ? sample.receivedAt : receivedAt;
-    put('hrv', sample.hrv, at);
-    if (sample.oxygen !== null) put('blood_oxygen_saturation', sample.oxygen, at);
-    put('vendor_bp_systolic_estimate', sample.systolic, at);
-    put('vendor_bp_diastolic_estimate', sample.diastolic, at);
-  }
   return { decoded, stored };
 }
 
