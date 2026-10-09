@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
+import { executeDirect, directOutcome } from '../directAction';
 import './ActionsPanel.css'; // .ap-btn lives there; without it this card is unstyled anywhere but Actions
 import './PreparedActions.css';
 
@@ -83,6 +84,21 @@ const TYPE_WORDS = {
 };
 
 const CALENDAR_TYPES = new Set(['create_calendar_event', 'reschedule_calendar_event', 'cancel_calendar_event']);
+// 9 Oct 2026: calendar changes Nick started himself send on one click (a
+// one-use intent grant, no code). Must match services/intent-grants.js.
+const DIRECT_ORIGINS = new Set(['1to1-book', '1to1-move', 'event-composer']);
+const INITIATOR_WORDS = {
+  human_direct: 'you',
+  human_assisted: 'you, from something NEURO drafted',
+  neuro_autonomous: 'NEURO',
+  scheduler: 'a scheduled job',
+  'machine:client': 'a machine client',
+};
+const PROOF_WORDS = {
+  intent_grant: 'your click (one-use)',
+  approval_code: 'your approval code',
+  trusted_device: 'a trusted browser',
+};
 // Wall-clock "YYYY-MM-DDTHH:MM" sliced, never parsed into a Date (the BST bug).
 const when = (s) => (s ? `${String(s).slice(0, 10)} ${String(s).slice(11, 16)}` : '—');
 
@@ -99,6 +115,10 @@ const LEGACY_WORDS = {
 /** Why approval is not possible right now, or null. Shared with the Inbox and Weekly Risk screens. */
 export function gateFor(data, a) {
   if (!data) return 'Checking whether approval is possible…';
+  // Nick-started calendar changes need no code — only the calendar switch.
+  if (DIRECT_ORIGINS.has(a.origin) && CALENDAR_TYPES.has(a.actionType)) {
+    return data.sending?.calendar ? null : 'Calendar changes are switched off (Settings → Switches → "Send approved calendar changes"). Turn it on to send this.';
+  }
   if (data.approvalLock?.locked) return `Approval is locked after too many wrong codes, until ${String(data.approvalLock.lockedUntil).slice(11, 16)} UTC.`;
   if (!data.approvalCode?.set) return 'No approval code is set yet, so nothing can be approved. Set one in Settings → Approval code.';
   if (a.executes && CALENDAR_TYPES.has(a.actionType) && !data.sending?.calendar) return 'Calendar changes are switched off (Settings → Switches → "Send approved calendar changes"). You can read or reject this; approving is off until that switch is on.';
@@ -183,7 +203,7 @@ export async function fetchApprovalState() {
  * possible right now (sending off, no approval code, locked); the card says it
  * instead of offering a button that would be refused.
  */
-export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate = null }) {
+export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSendDirect = null, gate = null }) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [code, setCode] = useState('');
@@ -207,6 +227,7 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
   const editable = type !== 'send_weekly_risk_report' && !calendar;
   const d = action.draft || {};
   const canEditFailed = editable && action.status === 'failed' && action.retrySafe === true;
+  const direct = !!onSendDirect && calendar && DIRECT_ORIGINS.has(action.origin);
   const who = toAll.length + ccAll.length > 1 ? `${toAll.length + ccAll.length} people` : (to.email || 'them');
 
   const confirm = async () => {
@@ -231,6 +252,13 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
         {action.outcomeDetail && action.status !== 'prepared' && <> — {action.outcomeDetail}</>}
         {action.status === 'approved' && action.lastBlock && <> — waiting: {action.lastBlock}</>}
       </div>
+      {action.approval?.initiatedBy && (
+        // Provenance, as the server recorded it — never re-derived here.
+        <div className="pa-note pa-provenance">
+          Started by {INITIATOR_WORDS[action.approval.initiatedBy] || action.approval.initiatedBy}
+          {' · '}confirmed by {PROOF_WORDS[action.approval.authorityProof] || action.approval.authorityProof || 'unknown'}
+        </div>
+      )}
 
       <div className="ap-reason">{action.reason}</div>
 
@@ -327,7 +355,12 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, gate =
             </>
           ) : (
             <>
-              {open && (
+              {open && direct && (
+                // 9 Oct 2026: Nick started this himself (Book / Move / the
+                // composer), so the press is the decision — one-use grant, no code.
+                <button className="ap-btn ap-btn-send" disabled={busy || !!gate} onClick={onSendDirect}>Send</button>
+              )}
+              {open && !direct && (
                 <button className={`ap-btn ${sends ? 'ap-btn-send' : 'ap-btn-ok'}`} disabled={busy || !!gate} onClick={() => setConfirming(true)}>
                   {sends ? 'Approve & send…' : 'Approve (records only)…'}
                 </button>
@@ -398,6 +431,20 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
     }
   };
 
+  // 9 Oct 2026: one click on something Nick started — grant, then send.
+  const sendDirect = async (a) => {
+    setBusyId(a.actionId);
+    try {
+      const o = directOutcome(await executeDirect(a));
+      say(o.tone === 'ok', o.text);
+    } catch (e) {
+      say(false, e.message);
+    } finally {
+      setBusyId(null);
+      load();
+    }
+  };
+
   // Approval: a fresh challenge for exactly what is on screen, then the code.
   const approve = async (a, code) => {
     setBusyId(a.actionId);
@@ -450,6 +497,7 @@ export default function PreparedActions({ filter = null, title = 'Drafted by NEU
                 busy={busyId === a.actionId}
                 gate={gateFor(data, a)}
                 onApprove={(code) => approve(a, code)}
+                onSendDirect={() => sendDirect(a)}
                 onReject={() => act(a, 'reject', {})}
                 onEdit={(fields) => act(a, 'edit', { payloadHash: a.payloadHash, ...fields })}
               />

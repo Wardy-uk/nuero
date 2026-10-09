@@ -935,7 +935,7 @@
     "route": "/api/calendar/agenda-check",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 129,
+    "line": 132,
     "description": "GET /api/calendar/agenda-check. what would be chased, and why each one was",
     "params": [],
     "query": [
@@ -6691,7 +6691,7 @@
     "route": "/api/calendar/agenda-check",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 140,
+    "line": 143,
     "description": "POST /api/calendar/agenda-check. queue chasers for approval. Queues only:",
     "params": [],
     "query": [],
@@ -6735,7 +6735,7 @@
     "route": "/api/calendar/events/:id/respond",
     "domain": "calendar",
     "source": "routes/calendar.js",
-    "line": 157,
+    "line": 160,
     "description": "POST /api/calendar/events/:id/respond. RETIRED in Build 8 (answers 410 Gone, meeting response, decline, accept). Respond to meeting invites in Outlook.",
     "params": [
       "id"
@@ -9882,7 +9882,7 @@
     "route": "/api/prepared-actions/:id/edit",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 208,
+    "line": 250,
     "description": "POST /api/prepared-actions/:id/edit. Nick edits a prepared draft's subject or body (edit draft, change wording, resend after a proven failure). Creates a NEW version that needs its own approval; the old one is superseded and never changed. The recipient cannot be edited. Refuses machine clients. Bod",
     "params": [
       "id"
@@ -9899,12 +9899,56 @@
     "stream": false
   },
   {
+    "id": "post_prepared_actions_by_id_execute_direct",
+    "method": "POST",
+    "route": "/api/prepared-actions/:id/execute-direct",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 209,
+    "description": "POST /api/prepared-actions/:id/execute-direct. Nick-direct confirm, step 2: spend the intent grant and make the change at once (no Actions card, no approval code), then verify it by read-back like any governed action. A spent, expired or mismatched grant is refused with needsConfirm. Refuses machine",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "grantId",
+      "payloadHash"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_prepared_actions_by_id_intent_grant",
+    "method": "POST",
+    "route": "/api/prepared-actions/:id/intent-grant",
+    "domain": "prepared-actions",
+    "source": "routes/prepared-actions.js",
+    "line": 195,
+    "description": "POST /api/prepared-actions/:id/intent-grant. Nick-direct confirm, step 1: a one-use, 60-second intent grant for the exact action (id, version, payload hash) a NEURO screen is showing, minted when Nick presses the final button (Book, Move, Create). Only for actions a human button prepared; refuses ma",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "payloadHash",
+      "sessionId",
+      "surface",
+      "version"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_prepared_actions_by_id_reject",
     "method": "POST",
     "route": "/api/prepared-actions/:id/reject",
     "domain": "prepared-actions",
     "source": "routes/prepared-actions.js",
-    "line": 195,
+    "line": 237,
     "description": "POST /api/prepared-actions/:id/reject. Nick rejects a prepared action (reject draft); kept for audit with who rejected it, and NEURO will not prepare another for the same risk episode. Refuses machine clients. Body: { note? }",
     "params": [
       "id"

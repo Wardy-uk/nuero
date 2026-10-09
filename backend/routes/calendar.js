@@ -95,9 +95,12 @@ router.post('/events', async (req, res) => {
         location, isOnline, body, origin: req.apiClient ? 'machine-client' : 'event-composer',
       });
       if (!prepared.ok) return res.status(prepared.code || 400).json({ ok: false, sent: false, error: prepared.error });
+      // 9 Oct 2026: the composer that pressed Create confirms THIS exact action
+      // with a one-use intent grant and it is sent at once (intent-grants.js).
+      const a = prepared.action;
       return res.json({
-        ok: true, prepared: true, sent: false, already: !!prepared.already, actionId: prepared.action.actionId,
-        notice: 'Prepared, not sent: approve it in Actions with your approval code and NEURO sends the invite, then reads it back.',
+        ok: true, prepared: true, sent: false, already: !!prepared.already, actionId: a.actionId,
+        action: { actionId: a.actionId, version: a.version || 1, payloadHash: a.payloadHash, status: a.status, origin: a.origin },
       });
     }
 

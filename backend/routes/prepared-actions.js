@@ -191,7 +191,49 @@ router.post('/:id/approve', async (req, res) => {
   }
 });
 
-// POST /api/prepared-actions/:id/reject — Nick rejects a prepared action (reject draft); kept for audit with who rejected it, and NEURO will not prepare another for the same risk episode. Refuses machine clients. Body: { note? }
+// POST /api/prepared-actions/:id/intent-grant — Nick-direct confirm, step 1: a one-use, 60-second intent grant for the exact action (id, version, payload hash) a NEURO screen is showing, minted when Nick presses the final button (Book, Move, Create). Only for actions a human button prepared; refuses machine clients (API token, MCP, X-Neuro-Machine-Client). Body: { version, payloadHash, surface, sessionId }
+router.post('/:id/intent-grant', (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: HUMAN_ONLY });
+  try {
+    const grants = require('../services/intent-grants');
+    const { version, payloadHash, surface, sessionId } = req.body || {};
+    const r = grants.mint({ actionId: req.params.id, version, payloadHash, surface, sessionId, caller: grants.callerOf(req) });
+    if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error, reason: r.reason, needsConfirm: r.reason === 'changed' });
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/prepared-actions/:id/execute-direct — Nick-direct confirm, step 2: spend the intent grant and make the change at once (no Actions card, no approval code), then verify it by read-back like any governed action. A spent, expired or mismatched grant is refused with needsConfirm. Refuses machine clients. Body: { grantId, payloadHash }
+router.post('/:id/execute-direct', async (req, res) => {
+  if (req.apiClient) return res.status(403).json({ ok: false, error: HUMAN_ONLY, executed: false });
+  try {
+    const { grantId, payloadHash } = req.body || {};
+    const r = pa().approve(req.params.id, {
+      payloadHash: typeof payloadHash === 'string' ? payloadHash : null,
+      intentGrantId: typeof grantId === 'string' ? grantId : null,
+      approver: 'nick (pressed it, signed in to NEURO)',
+    });
+    if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error, needsConfirm: !!r.needsConfirm, executed: false });
+    // Same single-claim execution as an Actions approval: a double click or the
+    // reconciler reaching it first all end at one attempt.
+    const x = await executor().execute(req.params.id);
+    const action = pa().get(req.params.id);
+    res.json({
+      ok: true,
+      already: !!r.already,
+      executed: ['executed', 'verified', 'execution_uncertain'].includes(action.status),
+      status: action.status,
+      detail: x.detail || null,
+      action,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, executed: false });
+  }
+});
+
+// POST /api/prepared-actions/:id/reject —Nick rejects a prepared action (reject draft); kept for audit with who rejected it, and NEURO will not prepare another for the same risk episode. Refuses machine clients. Body: { note? }
 router.post('/:id/reject', (req, res) => {
   if (req.apiClient) return res.status(403).json({ ok: false, error: HUMAN_ONLY });
   try {

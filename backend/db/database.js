@@ -572,6 +572,9 @@ async function init() {
   // governed calendar actions. Not swallowed: its indexes are the database
   // half of "one live invite per meeting".
   require('./migrate-build11').migrate(db);
+  // Human-originated action provenance (9 Oct 2026) — one-use intent grants and
+  // who-started-it columns. Not swallowed: its triggers make a grant single-use.
+  require('./migrate-intent-grants').migrate(db);
 
   // health_daily: blood pressure and heart rate.
   //

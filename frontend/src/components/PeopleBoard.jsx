@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
+import { executeDirect, directOutcome } from '../directAction';
 import PersonDetail from './PersonDetail';
 import WaitingOn from './WaitingOn';
 import SuggestedPeople from './SuggestedPeople';
@@ -356,7 +357,16 @@ function BookAllDialog({ names, onClose, onBooked }) {
         }),
       });
       const d = await res.json();
-      setResult(d);
+      // 9 Oct 2026: pressing Book is the decision. Each prepared invite is
+      // confirmed with its own one-use grant and sent now, one at a time, so a
+      // failure on one never takes the rest with it and nothing is retried.
+      const results = [];
+      for (const r of d.results || []) {
+        if (!r.ok || !r.action) { results.push(r); continue; }
+        const x = await executeDirect(r.action);
+        results.push({ ...r, direct: x, outcome: directOutcome(x) });
+      }
+      setResult({ ...d, results, sent: results.filter(r => r.direct?.executed).length });
       onBooked?.();
     } catch (e) { setError(e.message); }
     setBooking(false);
@@ -376,19 +386,16 @@ function BookAllDialog({ names, onClose, onBooked }) {
 
         {result ? (
           <div className="book-dialog-body">
-            <div className={result.invited ? 'book-ok' : 'book-error'}>
-              {result.invited || 0} of {result.prepared || 0} invite{result.prepared === 1 ? '' : 's'} sent
-              {result.failed ? ` · ${result.failed} not booked` : ''}
+            <div className={result.sent ? 'book-ok' : 'book-error'}>
+              {result.sent || 0} of {(result.results || []).length} invite{(result.results || []).length === 1 ? '' : 's'} sent
             </div>
-            {/* 9 Oct 2026: pressing Book is the approval. Said from what the
-                governed send actually reported, never assumed. */}
-            {result.notice && <div className="book-note">{result.notice}</div>}
+            {/* Each line says what the governed send actually reported for it. */}
             <ul className="book-results">
               {(result.results || []).map((r, i) => (
-                <li key={i} className={r.ok ? 'ok' : 'bad'}>
+                <li key={i} className={r.direct?.executed ? 'ok' : 'bad'}>
                   <span className="book-results-name">{r.person}</span>
                   {r.ok
-                    ? <span>{formatDate(r.start?.split('T')[0])} {r.start ? hhmm(r.start) : ''} — {r.invited ? 'sent' : (r.notice || 'not sent — see Actions')}</span>
+                    ? <span>{formatDate(r.start?.split('T')[0])} {r.start ? hhmm(r.start) : ''} — {r.outcome?.text || 'not sent'}</span>
                     : <span>{r.error}</span>}
                 </li>
               ))}
@@ -510,14 +517,16 @@ function BookDialog({ name, onClose, onBooked }) {
         }),
       });
       const d = await res.json();
-      if (d.ok) { setBooked(d); onBooked?.(); }
-      else setError(d.error || 'Booking failed');
+      if (!d.ok) { setError(d.error || 'Booking failed'); setBooking(false); return; }
+      // 9 Oct 2026: this click is the decision — confirm the exact prepared
+      // invite with a one-use grant and send it now. No Actions card, no code.
+      const x = await executeDirect(d.action);
+      if (x.needsConfirm) setError('This action needs confirming again.');
+      else { setBooked({ ...d, direct: x, outcome: directOutcome(x) }); onBooked?.(); }
     } catch (e) { setError(e.message); }
     setBooking(false);
   };
 
-  // Build 11K: the response is a PREPARED invite, not a booking — the slot
-  // shown is the one Nick chose, and the words say nothing has been sent.
   const bookedTime = slot?.time || '';
 
   return (
@@ -530,10 +539,10 @@ function BookDialog({ name, onClose, onBooked }) {
 
         {booked ? (
           <div className="book-dialog-body">
-            <div className={booked.invited ? 'book-ok' : 'book-error'}>
-              {booked.invited ? 'Invite sent' : 'Invite NOT sent'} for {formatDate(slot?.date)} at {bookedTime}.
+            <div className={booked.direct?.executed ? 'book-ok' : 'book-error'}>
+              {booked.direct?.executed ? 'Invite sent' : 'Invite NOT sent'} for {formatDate(slot?.date)} at {bookedTime}.
             </div>
-            {booked.notice && <div className="book-note">{booked.notice}</div>}
+            <div className="book-note">{booked.outcome?.text}</div>
             <div className="book-actions">
               <button className="btn btn-primary" onClick={onClose}>Done</button>
             </div>
@@ -577,7 +586,7 @@ function BookDialog({ name, onClose, onBooked }) {
             <div className="book-actions">
               <button className="btn" onClick={onClose} disabled={booking}>Cancel</button>
               <button className="btn btn-primary" onClick={confirm} disabled={booking}>
-                {booking ? 'Booking...' : 'Confirm & send invite'}
+                {booking ? 'Booking...' : error === 'This action needs confirming again.' ? 'Confirm again & send' : 'Book & send invite'}
               </button>
             </div>
           </div>
@@ -635,8 +644,11 @@ function RescheduleDialog({ name, onClose, onMoved }) {
         }),
       });
       const d = await res.json();
-      if (d.ok) { setMoved(d); onMoved?.(); }
-      else setError(d.error || 'Move failed');
+      if (!d.ok) { setError(d.error || 'Move failed'); setMoving(false); return; }
+      // 9 Oct 2026: this click is the decision — confirm and move it now.
+      const x = await executeDirect(d.action);
+      if (x.needsConfirm) setError('This action needs confirming again.');
+      else { setMoved({ ...d, direct: x, outcome: directOutcome(x) }); onMoved?.(); }
     } catch (e) { setError(e.message); }
     setMoving(false);
   };
@@ -653,10 +665,10 @@ function RescheduleDialog({ name, onClose, onMoved }) {
 
         {moved ? (
           <div className="book-dialog-body">
-            <div className={moved.moved ? 'book-ok' : 'book-error'}>
-              {moved.moved ? `Moved to ${formatDate(slot?.date)} at ${slot?.time} — ${first} has been told.` : `Not moved to ${formatDate(slot?.date)} at ${slot?.time}.`}
+            <div className={moved.direct?.executed ? 'book-ok' : 'book-error'}>
+              {moved.direct?.executed ? `Moved to ${formatDate(slot?.date)} at ${slot?.time} — ${first} has been told.` : `Not moved to ${formatDate(slot?.date)} at ${slot?.time}.`}
             </div>
-            {moved.notice && <div className="book-note">{moved.notice}</div>}
+            <div className="book-note">{moved.outcome?.text}</div>
             {moved.moveCount >= 3 && (
               <div className="book-warning">
                 That's {moved.moveCount} moves for this 1-2-1.

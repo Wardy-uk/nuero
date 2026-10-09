@@ -16,7 +16,11 @@ export const interactive = {
   // make it either. Preparing a chase (post_waiting_on_by_key_chase) stays
   // available: it drafts and sends nothing.
   post_prepared_actions_by_id_approval_challenge: 'Approval challenges are for Nick approving in NEURO → Actions with his approval code. An agent cannot approve.',
-  post_prepared_actions_by_id_reject: 'Rejecting a drafted action is recorded as Nick\'s decision. He rejects it in NEURO → Actions.',
+  // 9 Oct 2026: Nick-direct confirm. A grant is minted when Nick presses the
+  // final button in NEURO; an agent must never mint or spend one.
+  post_prepared_actions_by_id_intent_grant: 'Confirming an action directly is Nick pressing the button in NEURO. An agent cannot do it on his behalf.',
+  post_prepared_actions_by_id_execute_direct: 'Making a change Nick confirmed is done from the NEURO screen he pressed it on. An agent cannot do it.',
+  post_prepared_actions_by_id_reject:'Rejecting a drafted action is recorded as Nick\'s decision. He rejects it in NEURO → Actions.',
   // The legacy approval queue. Since Build 8 it sends nothing outbound (those
   // types answer 410), but approving still runs internal executors and is
   // Nick's decision; the gateway does not offer it.

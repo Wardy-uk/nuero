@@ -211,6 +211,7 @@ function shape(r) {
       by: r.approved_by, at: r.approved_at, payloadHash: r.approved_payload_hash,
       evidenceHash: r.approved_evidence_hash || null, expiresAt: r.approval_expires_at,
       mechanism: r.approval_mechanism || null, challengeId: r.approval_challenge_id || null,
+      initiatedBy: r.initiated_by || null, authorityProof: r.authority_proof || null, intentGrantId: r.intent_grant_id || null,
     } : null,
     executedAt: r.executed_at || null, verifiedAt: r.verified_at || null,
     outcomeDetail: r.outcome_detail || null, retrySafe: r.retry_safe === null || r.retry_safe === undefined ? null : r.retry_safe === 1,
@@ -371,13 +372,8 @@ const switchOn = (type) => require('./feature-flags').isEnabled(registry.switchF
  * Approval of a non-executable type is recorded and runs nothing; the response
  * says which. Executing is the executor's job, triggered by the route.
  */
-// Origins whose own button press is the approval (Nick, 9 Oct 2026): he has
-// read the proposal and pressed Book / Move, so a second card and a code is the
-// same decision twice. Everything else — anything NEURO drafted — still waits.
-const BUTTON_APPROVED_ORIGINS = Object.freeze(['1to1-book', '1to1-move']);
-
 function approve(actionId, {
-  payloadHash = null, challengeId = null, approvalCode = null, deviceToken = null, buttonPress = null, approver = null, note: why = null,
+  payloadHash = null, challengeId = null, approvalCode = null, deviceToken = null, intentGrantId = null, approver = null, note: why = null,
   now = Date.now(), sending = sendingEnabled,
 } = {}) {
   const nowMs = msOf(now);
@@ -386,6 +382,9 @@ function approve(actionId, {
   const policy = registry.policyFor(cur.action_type);
   if (!policy) return { ok: false, code: 409, error: `${cur.action_type} is not a registered action type — it cannot be approved` };
   if (cur.status === 'approved' || (cur.approved_payload_hash && cur.status !== 'prepared')) {
+    // A grant authorises ONE execution: a second press — a double click, a
+    // refresh, a replayed request — is refused, never answered "already ok".
+    if (intentGrantId) return { ok: false, code: 409, error: `That confirmation has already been used — it is ${cur.status}.`, already: true };
     if (cur.approved_payload_hash && payloadHash === cur.approved_payload_hash) return { ok: true, already: true, action: shape(cur), executable: policy.executable };
     return { ok: false, code: 409, error: `it is already ${cur.status}` };
   }
@@ -423,14 +422,14 @@ function approve(actionId, {
   // review. Still human proof: only the code can mint a device token, and the
   // PIN / API token never can.
   const proofs = require('./approval-proof');
-  let proof;
-  if (buttonPress) {
-    // The press IS the approval — only for the origins listed, only for the
-    // action that press prepared, never for anything NEURO drafted itself.
-    if (!BUTTON_APPROVED_ORIGINS.includes(buttonPress) || cur.origin !== buttonPress) {
-      return { ok: false, code: 403, error: `a ${buttonPress} press cannot approve this action — it needs approving in Actions` };
-    }
-    proof = proofs.consumeButtonPress({ button: buttonPress, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
+  const grants = require('./intent-grants');
+  let proof = null;
+  if (intentGrantId) {
+    // 9 Oct 2026: Nick pressed the final button on an action HE started
+    // (services/intent-grants.js). The grant is burned, checked and recorded
+    // as proof INSIDE the approval transaction below — a refused grant stays
+    // spent, and nothing half-lands.
+    if (!grants.HUMAN_ORIGINS[cur.origin]) return { ok: false, code: 403, error: 'NEURO drafted this — it needs approving in Actions.' };
   } else if (deviceToken && !approvalCode) {
     proof = proofs.consumeDevice({ deviceToken, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
   } else {
@@ -439,20 +438,36 @@ function approve(actionId, {
       challengeId, approvalCode, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs,
     });
   }
-  if (!proof.ok) return { ok: false, code: proof.code || 403, error: proof.error };
-  const r = transition(actionId, 'approved', {
-    note: why, now: nowMs, allowedFrom: ['prepared'],
-    set: {
-      approved_by: approver,
-      approved_at: new Date(nowMs).toISOString(),
-      approved_payload_hash: cur.payload_hash,
-      approved_evidence_hash: cur.evidence_hash || null,
-      approval_expires_at: new Date(nowMs + (policy.approvalTtlHours || 24) * 3600000).toISOString(),
-      approval_mechanism: proof.proof.mechanism,
-      approval_challenge_id: proof.proof.challengeId,
-    },
-    eventExtra: { mechanism: proof.proof.mechanism, challengeRef: proof.proof.challengeId.slice(0, 11) },
-  });
+  const decide = () => {
+    let p = proof;
+    if (intentGrantId) {
+      const g = grants.consume({ grantId: intentGrantId, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
+      if (!g.ok) return { ok: false, code: g.code, error: g.error, needsConfirm: true, reason: g.reason };
+      p = proofs.recordIntentProof({ grantId: intentGrantId, actionId, version: cur.version || 1, payloadHash: cur.payload_hash, now: nowMs });
+    }
+    if (!p.ok) return { ok: false, code: p.code || 403, error: p.error };
+    const viaGrant = p.proof.mechanism === proofs.INTENT_MECHANISM;
+    return transition(actionId, 'approved', {
+      note: why, now: nowMs, allowedFrom: ['prepared'],
+      set: {
+        approved_by: approver,
+        approved_at: new Date(nowMs).toISOString(),
+        approved_payload_hash: cur.payload_hash,
+        approved_evidence_hash: cur.evidence_hash || null,
+        approval_expires_at: new Date(nowMs + (policy.approvalTtlHours || 24) * 3600000).toISOString(),
+        approval_mechanism: p.proof.mechanism,
+        approval_challenge_id: p.proof.challengeId,
+        // Provenance: derived from the origin and the proof spent — never from
+        // anything a client said about itself.
+        initiated_by: grants.initiatedByFor(cur.origin),
+        authority_proof: viaGrant ? 'intent_grant' : (p.proof.mechanism === proofs.DEVICE_MECHANISM ? 'trusted_device' : 'approval_code'),
+        intent_grant_id: viaGrant ? intentGrantId : null,
+      },
+      eventExtra: { mechanism: p.proof.mechanism, challengeRef: p.proof.challengeId.slice(0, 11) },
+    });
+  };
+  const r = db.batchSaves(decide);
+  if (!r.ok) return r;
   return {
     ...r,
     executable: policy.executable,
@@ -1246,7 +1261,7 @@ module.exports = {
   shouldPrepare, draftFor, actionPhrase,
   prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,
   prepareReply, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, agendaAsked,
-  prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel, BUTTON_APPROVED_ORIGINS,
+  prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel,
   approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,
   get, forFinding, forCommitment, list, listLive, needsYou, countsByStatus,

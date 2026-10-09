@@ -113,6 +113,9 @@ const ROUTE_RULES = Object.freeze([
 
   // Approval is Nick's.
   R('POST', '/api/prepared-actions/:id/approve', 'approval.decide'),
+  // 9 Oct 2026: Nick-direct confirm (intent grant). Human-only, like approve.
+  R('POST', '/api/prepared-actions/:id/intent-grant', 'approval.decide'),
+  R('POST', '/api/prepared-actions/:id/execute-direct', 'approval.decide'),
   R('POST', '/api/prepared-actions/:id/reject', 'approval.decide'),
   R('POST', '/api/prepared-actions/:id/edit', 'approval.decide'),
   R('POST', '/api/prepared-actions/:id/approval-challenge', 'approval.decide'),

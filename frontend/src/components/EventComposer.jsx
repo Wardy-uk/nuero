@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { apiUrl } from '../api';
+import { executeDirect, directOutcome } from '../directAction';
 import './EventComposer.css';
 
 // Local wall-clock, not toISOString() — that shifts the date across midnight
@@ -130,10 +131,18 @@ export default function EventComposer({ defaultDate, onCreated, onClose }) {
       }),
     })
       .then(r => r.json())
-      .then(d => {
+      .then(async d => {
         if (!d.ok) throw new Error(d.error || 'Create failed');
-        // Build 11K: with attendees the answer is a PREPARED invite, not an event.
-        if (d.prepared) { setCreated({ subject, prepared: true, notice: d.notice }); return; }
+        // With attendees the answer is a PREPARED invite. 9 Oct 2026: this
+        // click is the decision, so it is confirmed with a one-use grant and
+        // sent now — no Actions card, no approval code.
+        if (d.prepared) {
+          const x = await executeDirect(d.action);
+          if (x.needsConfirm) throw new Error('This action needs confirming again.');
+          setCreated({ subject, prepared: true, direct: x, outcome: directOutcome(x) });
+          if (x.executed) onCreated?.(null);
+          return;
+        }
         setCreated(d.event);
         onCreated?.(d.event);
       })
@@ -147,7 +156,7 @@ export default function EventComposer({ defaultDate, onCreated, onClose }) {
         <div className="composer-done">
           <div className="composer-done-title">
             {created.prepared
-              ? <>Prepared, not sent — {created.subject} · {attendees.length} attendee{attendees.length === 1 ? '' : 's'} will be invited only when you approve it in Actions</>
+              ? <>{created.direct?.executed ? 'Sent' : 'NOT sent'} — {created.subject} · {attendees.length} attendee{attendees.length === 1 ? '' : 's'}. {created.outcome?.text}</>
               : <>Created — {created.subject}</>}
           </div>
           <div className="composer-actions">
