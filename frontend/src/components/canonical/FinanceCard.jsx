@@ -251,19 +251,35 @@ function Quality({ quality, review, domains, rules, busy, act }) {
     <details className="cn-details">
       <summary>Category quality — {quality.score.classifiedPct}% of spending has a domain · {(review.classification || []).length} to review · {rules.filter((r) => r.active).length} rules</summary>
       <ul className="cn-list cn-small">{quality.readout.map((l, i) => <li key={i}>{l}</li>)}</ul>
-      {quality.opportunities.length > 0 && <div className="cn-small">Quickest wins: {quality.opportunities.slice(0, 4).map((o) => o.line).join(' · ')}</div>}
-      <ul className="cn-list cn-small">
-        {(review.classification || []).slice(0, 15).map((t) => (
-          <li key={t.sourceTransactionId}>{t.date} {t.merchantKey} {money(t.amountPence)} — {t.conflict ? t.conflict.why : t.category ? `Tally: ${t.category}` : 'no category'}{t.hint ? `; looks like ${t.hint.domain.replace(/_/g, ' ')}` : ''}
-            <select value={choice[t.sourceTransactionId] || (t.hint && t.hint.domain) || ''} onChange={(e) => pick(t, e.target.value)} aria-label="Domain">
-              <option value="">choose…</option>{spending.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
-            </select>
-            <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !(choice[t.sourceTransactionId] || t.hint)} onClick={() => decide(t, false)}>This one</button>
-            <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !(choice[t.sourceTransactionId] || t.hint)} onClick={() => decide(t, true)}>Always {t.merchantKey}</button>
-            <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(`/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'unknown' }))}>Leave it</button>
-          </li>
-        ))}
-      </ul>
+      {quality.opportunities.length > 0 && (
+        <div className="cn-small"><div className="cn-muted">Quickest wins</div>
+          <ul className="cn-list cn-small">{quality.opportunities.slice(0, 4).map((o, i) => <li key={i}>{o.line}</li>)}</ul>
+        </div>
+      )}
+      <div className="cn-txns">
+        {(review.classification || []).slice(0, 15).map((t) => {
+          const chosen = choice[t.sourceTransactionId] || (t.hint && t.hint.domain) || '';
+          const why = t.conflict ? t.conflict.why : t.category ? `Tally: ${t.category}` : 'no category';
+          return (
+            <React.Fragment key={t.sourceTransactionId}>
+              <div className="cn-txn-main">
+                <div className="cn-txn-head"><span className="cn-txn-merchant">{t.merchantKey}</span><span className="cn-txn-amt">{money(t.amountPence)}</span></div>
+                <div className="cn-txn-why">{t.date} · {why}{t.hint ? ` · looks like ${t.hint.domain.replace(/_/g, ' ')}` : ''}</div>
+              </div>
+              <div className="cn-txn-act">
+                <select className="cn-select" value={chosen} onChange={(e) => pick(t, e.target.value)} aria-label="Domain">
+                  <option value="">choose…</option>{spending.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                </select>
+                <span className="cn-seg">
+                  <button type="button" className="cn-btn" disabled={busy || !chosen} onClick={() => decide(t, false)} title="Just this transaction">This one</button>
+                  <button type="button" className="cn-btn" disabled={busy || !chosen} onClick={() => decide(t, true)} title={`Always file ${t.merchantKey} this way`}>Always</button>
+                  <button type="button" className="cn-btn" disabled={busy} onClick={() => act(() => postCanonical(`/api/finance/transactions/${t.sourceTransactionId}/decide`, { decision: 'unknown' }))} title="Leave it unclassified">Leave</button>
+                </span>
+              </div>
+            </React.Fragment>
+          );
+        })}
+      </div>
     </details>
   );
 }
