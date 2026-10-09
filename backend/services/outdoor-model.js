@@ -204,10 +204,13 @@ function suitability({ hourly = [], daily = null } = {}) {
     if (lo === null && Number.isFinite(daily.tempLowC)) lo = daily.tempLowC;
   }
   if (rainMm !== null) {
-    const level = rainMm >= 25 ? 'severe' : rainMm >= 8 || (maxProb !== null && maxProb >= 80 && rainMm >= 3) ? 'poor' : rainMm >= 1 ? 'mixed' : 'favourable';
+    // A likely shower is "mixed" even when the amount is small: live 10 Oct 2026
+    // read 0.8 mm with a 72% wettest hour, and "favourable" was the wrong word.
+    const level = rainMm >= 25 ? 'severe' : rainMm >= 8 || (maxProb !== null && maxProb >= 80 && rainMm >= 3) ? 'poor'
+      : rainMm >= 1 || (maxProb !== null && maxProb >= 60) ? 'mixed' : 'favourable';
     add('rain', `${rainMm} mm expected in the day${maxProb !== null ? `, wettest hour ${Math.round(maxProb)}% chance` : ''}`, level);
   } else if (maxProb !== null) {
-    add('rain', `wettest hour ${Math.round(maxProb)}% chance`, maxProb >= 50 ? 'mixed' : 'favourable');
+    add('rain', `wettest hour ${Math.round(maxProb)}% chance`, maxProb >= 60 ? 'mixed' : 'favourable');
   }
   if (daily && Number.isFinite(daily.windKmh)) {
     const w = daily.windKmh;

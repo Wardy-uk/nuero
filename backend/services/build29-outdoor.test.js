@@ -360,6 +360,13 @@ test('34. suitability explains its inputs, says what it does not know, and sever
   assert.equal(model.suitability({}).state, 'unknown');
 });
 
+test('34b. the live 10 Oct forecast (0.8 mm, wettest hour 72%) is mixed, not favourable', () => {
+  const hourly = [{ precipMm: 0.1, precipProb: 40, tempC: 9 }, { precipMm: 0.5, precipProb: 72, tempC: 12 }, { precipMm: 0.2, precipProb: 55, tempC: 11 }];
+  const s = model.suitability({ hourly });
+  assert.equal(s.state, 'mixed');
+  assert.equal(model.suitability({ hourly: [{ precipMm: 0, precipProb: 20, tempC: 14 }] }).state, 'favourable', 'positive control');
+});
+
 // ── NOW / RADAR (35–39) ────────────────────────────────────────────────────
 
 const HIKE_EVENT = { meetingId: 'm1', title: 'hiking', day: '2026-10-10', allDay: true, calendarName: 'Home', domains: { domains: [] } };
