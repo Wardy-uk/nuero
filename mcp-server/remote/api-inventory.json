@@ -2279,8 +2279,8 @@
     "route": "/api/finance",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 21,
-    "description": "GET /api/finance. household finance: bank-feed health, coverage, monthly summaries, recurring payments, upcoming money out, unusual items, category quality, obligations. Keywords: money, spending, bills, budget, finance, Tally.",
+    "line": 22,
+    "description": "GET /api/finance. household finance from Tally: source health, position, forecast, pressure, major changes, upcoming money, what needs action, cross-domain links, obligations. Keywords: money, spending, bills, cashflow, finance, Tally.",
     "params": [],
     "query": [],
     "body": [],
@@ -2295,8 +2295,8 @@
     "route": "/api/finance/monthly/:month",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 26,
-    "description": "GET /api/finance/monthly/:month. the stored summary for one month (YYYY-MM): spending by domain, money out, income, coverage. Keywords: monthly spending, month summary.",
+    "line": 27,
+    "description": "GET /api/finance/monthly/:month. Tally's summary for one month (YYYY-MM): spending, money in and out, categories, coverage. Keywords: monthly spending.",
     "params": [
       "month"
     ],
@@ -2313,8 +2313,8 @@
     "route": "/api/finance/reconnect",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 36,
-    "description": "GET /api/finance/reconnect. after a bank reconnect in Tally: accounts relinked, newest and oldest backfilled transactions, gap left, double imports. Keywords: TrueLayer, NatWest, reconnect.",
+    "line": 37,
+    "description": "GET /api/finance/reconnect. bank feed health per account, as Tally reports it. Keywords: TrueLayer, NatWest, reconnect.",
     "params": [],
     "query": [],
     "body": [],
@@ -8145,7 +8145,7 @@
     "route": "/api/finance/obligations",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 78,
+    "line": 59,
     "description": "POST /api/finance/obligations. Nick records a finance obligation (renewal, bill, annual fee). Body: kind, title, dueDate, expectedAmountPence, seriesKey, requiresDecision, scope, linkedTaskRef, linkedReminderRef.",
     "params": [],
     "query": [],
@@ -8171,7 +8171,7 @@
     "route": "/api/finance/obligations/:id",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 96,
+    "line": 77,
     "description": "POST /api/finance/obligations/:id. Nick changes a finance obligation or links its task/reminder. Body: title, dueDate, expectedAmountPence, requiresDecision, linkedTaskRef, linkedReminderRef, kind.",
     "params": [
       "id"
@@ -8197,7 +8197,7 @@
     "route": "/api/finance/obligations/:id/resolve",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 87,
+    "line": 68,
     "description": "POST /api/finance/obligations/:id/resolve. Nick resolves a finance obligation with evidence. Body: evidence (payment-seen|renewed|cancelled|statement), note. A ticked task is not evidence.",
     "params": [
       "id"
@@ -8218,17 +8218,15 @@
     "route": "/api/finance/recurring/:seriesKey/decide",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 60,
-    "description": "POST /api/finance/recurring/:seriesKey/decide. Nick says a payment series is (or is not) recurring. Body: decision (recurring|not-recurring|clear).",
+    "line": 53,
+    "description": "POST /api/finance/recurring/:seriesKey/decide. retired in Build 26: recurrence is decided in Tally.",
     "params": [
       "seriesKey"
     ],
     "query": [],
-    "body": [
-      "decision"
-    ],
+    "body": [],
     "queryOpen": false,
-    "bodyOpen": true,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },
@@ -8238,17 +8236,15 @@
     "route": "/api/finance/review/:itemKey/decide",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 69,
-    "description": "POST /api/finance/review/:itemKey/decide. Nick answers an unusual-spend or possible-duplicate item. Body: decision (expected|not-duplicate|leave|look-into-it). Nothing is disputed.",
+    "line": 56,
+    "description": "POST /api/finance/review/:itemKey/decide. retired in Build 26: unusual items are answered in Tally.",
     "params": [
       "itemKey"
     ],
     "query": [],
-    "body": [
-      "decision"
-    ],
+    "body": [],
     "queryOpen": false,
-    "bodyOpen": true,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },
@@ -8258,8 +8254,8 @@
     "route": "/api/finance/rules/:ruleId/retire",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 55,
-    "description": "POST /api/finance/rules/:ruleId/retire. Nick retires a finance classification rule. Decisions it made stop applying on the next read.",
+    "line": 50,
+    "description": "POST /api/finance/rules/:ruleId/retire. retired in Build 26: rules live in Tally.",
     "params": [
       "ruleId"
     ],
@@ -8276,8 +8272,8 @@
     "route": "/api/finance/sync",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 41,
-    "description": "POST /api/finance/sync. read Tally now (read-only) and rebuild the finance view. Normally a scheduled job.",
+    "line": 42,
+    "description": "POST /api/finance/sync. read Tally's finance contract now. Normally a scheduled job.",
     "params": [],
     "query": [],
     "body": [],
@@ -8292,20 +8288,15 @@
     "route": "/api/finance/transactions/:txnId/decide",
     "domain": "finance",
     "source": "routes/finance.js",
-    "line": 46,
-    "description": "POST /api/finance/transactions/:txnId/decide. Nick categorises one transaction from the review list. The category is written INTO Tally through Tally's API (Tally is the one store); remember=true makes it Tally's merchant rule. Body: decision (confirm|unknown), categoryId (a Tally category id), reme",
+    "line": 47,
+    "description": "POST /api/finance/transactions/:txnId/decide. retired in Build 26: categories are set in Tally.",
     "params": [
       "txnId"
     ],
     "query": [],
-    "body": [
-      "categoryId",
-      "confirmRule",
-      "decision",
-      "remember"
-    ],
+    "body": [],
     "queryOpen": false,
-    "bodyOpen": true,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },

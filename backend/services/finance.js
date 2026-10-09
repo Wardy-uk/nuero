@@ -1,108 +1,69 @@
 'use strict';
 
 /**
- * Build 23 — Finance activation. Tally is the source of truth; NEURO is the
- * operational layer over it.
+ * Build 26 — NEURO's finance domain: a CONSUMER of Tally's finance intelligence.
  *
- * What this module is, and is not:
- *   • It READS Tally (sqlite3 -readonly over ssh, fixed SQL, named columns —
- *     never a token, account number or sort code) and keeps NO copy of the
- *     ledger. Each refresh normalises the read in memory (finance-model.js) and
- *     stores only what NEURO derives: monthly summaries, recurring series,
- *     exception items from household accounts, feed health. Helen's own
- *     account reaches the store only as totals.
- *   • The only finance rows NEURO writes are Nick's own statements: a domain
- *     decision on one transaction, a reusable rule, "this is / is not
- *     recurring", a review answer, a finance obligation and its links.
- *   • No money moves, nothing is paid, cancelled or edited in Tally, nothing is
- *     pushed. A source scan pins that this file imports no sender.
+ * The boundary (Nick, 9 Oct 2026): Tally understands the money; NEURO
+ * understands why the money matters.
+ *   • Tally owns every finance calculation — balances, cashflow, recurrence,
+ *     monthly and category totals and trends, price changes, unusual spend,
+ *     pressure, source health. NEURO reads them as ONE versioned contract,
+ *     `finance-intelligence-v1` (GET /api/intelligence/contract, through
+ *     tally-api.js's login), and never recomputes a figure. If a result can be
+ *     calculated from financial data alone, it belongs in Tally.
+ *   • NEURO adds what needs the wider world: cross-domain synthesis
+ *     (finance-synthesis.js), the Future Radar, Needs You through the existing
+ *     rules, and Nick's own operational finance obligations (a renewal that needs
+ *     a decision, linked to a task) — the one finance store NEURO keeps.
+ *   • NEURO does not depend on Tally's tables: no ssh, no SQL, no schema check.
+ *     A contract that is not v1, or is missing a section, is REFUSED and the last
+ *     good snapshot stays, its age shown.
+ *   • Nothing here moves, pays, cancels or categorises anything, and nothing
+ *     pushes. Finance decisions (recurring, unusual, planned payments,
+ *     categories) are made in Tally by a person.
+ *
+ * Replaced Build 23's in-NEURO engine (finance-model.js, deleted): it had been
+ * a second finance engine reading Tally's database over ssh.
  */
 
 const crypto = require('crypto');
-const M = require('./finance-model');
+const { synthesise } = require('./finance-synthesis');
 
-const SNAPSHOT_KEY = 'finance_snapshot';
-const STATE_KEY = 'finance_state';
+const CONTRACT = 'finance-intelligence-v1';
+const SNAPSHOT_KEY = 'finance_intelligence';
+const STATE_KEY = 'finance_intel_state';
+const LEGACY_KEYS = ['finance_snapshot', 'finance_state'];
+const SECTIONS = Object.freeze(['sourceHealth', 'coverage', 'balances', 'cashflow', 'monthly', 'trends', 'categories', 'recurring', 'priceChanges', 'unusual', 'pressure', 'upcoming']);
 const OBLIGATION_KINDS = Object.freeze(['renewal', 'bill', 'annual_fee', 'subscription_renewal', 'household_charge', 'other']);
-const RULE_KINDS = Object.freeze(['merchant', 'merchant+category', 'tag']);
 const RESOLVE_EVIDENCE = Object.freeze(['payment-seen', 'renewed', 'cancelled', 'statement']);
 const TASK_REF = /^task:[^\s]{3,300}$/;
+const TALLY_URL = () => String(process.env.TALLY_PUBLIC_URL || 'https://tally.nickward.co.uk').replace(/\/+$/, '');
 
-// ── the Tally reader (read-only, fixed SQL, named columns) ───────────────────
+// Dates and display only — never arithmetic over money.
+const dayMs = (d) => Date.parse(`${d}T00:00:00Z`);
+const daysBetween = (a, b) => Math.round((dayMs(b) - dayMs(a)) / 86400000);
+const addDays = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+const pounds = (p) => `£${(Math.abs(p) / 100).toFixed(2)}`;
 
-function config() {
-  return {
-    enabled: String(process.env.TALLY_READ || 'on').toLowerCase() !== 'off',
-    sshTarget: process.env.TALLY_SSH_TARGET || 'nickw@100.69.158.50',
-    dbPath: process.env.TALLY_DB_PATH || '/home/nickw/tally/tally.db',
-  };
-}
+// ── the contract ─────────────────────────────────────────────────────────────
 
-// Every column is named. truelayer_connections holds bank tokens and
-// truelayer_accounts holds account numbers: neither is ever selected.
-const QUERIES = Object.freeze({
-  schema: "SELECT 'transactions' AS t, name FROM pragma_table_info('transactions') UNION ALL SELECT 'accounts', name FROM pragma_table_info('accounts') UNION ALL SELECT 'truelayer_accounts', name FROM pragma_table_info('truelayer_accounts') UNION ALL SELECT 'truelayer_connections', name FROM pragma_table_info('truelayer_connections') UNION ALL SELECT 'recurring_charges', name FROM pragma_table_info('recurring_charges')",
-  transactions: 'SELECT t.id AS id, t.account_id AS account_id, t.date AS date, t.amount AS amount, t.description AS description, t.is_transfer AS is_transfer, t.transfer_pair_id AS transfer_pair_id, t.balance_after AS balance_after, t.created_at AS created_at, c.name AS category_name, c.kind AS category_kind FROM transactions t LEFT JOIN categories c ON c.id = t.category_id ORDER BY t.id',
-  accounts: 'SELECT a.id AS id, a.name AS name, a.type AS type, a.active AS active, a.opening_balance AS opening_balance, u.display_name AS owner FROM accounts a LEFT JOIN users u ON u.id = a.owner_user_id ORDER BY a.id',
-  connections: 'SELECT id, provider_name, expires_at, last_sync_at, active, created_at FROM truelayer_connections ORDER BY id',
-  tlAccounts: 'SELECT id, connection_id, account_type, currency, linked_account_id, last_sync_at, created_at FROM truelayer_accounts ORDER BY id',
-  tallyRecurring: 'SELECT merchant, typical_amount, cadence, last_seen, next_expected, active, ignored FROM recurring_charges',
-  tallyRules: 'SELECT match_value FROM rules',
-  // 9 Oct 2026: the review picker offers Tally's OWN categories, so a choice is written back as Tally understands it.
-  categories: 'SELECT id, name, kind FROM categories ORDER BY kind, name',
-});
-const EXPECTED = Object.freeze({
-  transactions: ['id', 'account_id', 'date', 'amount', 'description', 'category_id', 'is_transfer', 'transfer_pair_id', 'balance_after', 'created_at'],
-  accounts: ['id', 'name', 'type', 'owner_user_id', 'opening_balance', 'active'],
-  truelayer_accounts: ['id', 'connection_id', 'linked_account_id', 'last_sync_at', 'created_at'],
-  truelayer_connections: ['id', 'provider_name', 'expires_at', 'last_sync_at', 'active', 'created_at'],
-  recurring_charges: ['merchant', 'typical_amount', 'cadence', 'last_seen', 'next_expected', 'active', 'ignored'],
-});
-const SPLIT = '@@NEURO_FINANCE_SPLIT@@';
-
-function _remote(order) {
-  const c = config();
-  // The SQL are module constants; nothing from a request reaches this string.
-  return order.map((k) => `sqlite3 -readonly -json ${JSON.stringify(c.dbPath)} ${JSON.stringify(QUERIES[k])}; echo; echo ${SPLIT}`).join('; ');
-}
-
-function _ssh(remote, { execFile = require('child_process').execFile } = {}) {
-  const c = config();
-  return new Promise((resolve, reject) => {
-    execFile('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', c.sshTarget, remote], { timeout: 90000, maxBuffer: 64 * 1024 * 1024 }, (err, stdout) => {
-      if (err) return reject(new Error(`Tally could not be read: ${String(err.message).split('\n')[0]}`));
-      resolve(String(stdout || ''));
-    });
-  });
-}
-
-/** Check Tally's schema first; a changed table is REFUSED, never half-read. */
-function checkSchema(rows) {
-  const have = {};
-  for (const r of rows) (have[r.t] = have[r.t] || new Set()).add(r.name);
+/** What is wrong with a payload, as NEURO depends on it. Empty = usable. PURE. */
+function checkContract(c) {
+  if (!c || typeof c !== 'object') return ['not an object'];
   const problems = [];
-  for (const [table, cols] of Object.entries(EXPECTED)) {
-    if (!have[table]) { problems.push(`${table} is missing`); continue; }
-    const miss = cols.filter((c) => !have[table].has(c));
-    if (miss.length) problems.push(`${table} lost ${miss.join(', ')}`);
+  if (c.contract !== CONTRACT) problems.push(`contract is "${c.contract}", NEURO reads ${CONTRACT}`);
+  for (const s of SECTIONS) {
+    if (!c[s] || typeof c[s] !== 'object') { problems.push(`section ${s} is missing`); continue; }
+    const m = c[s].meta;
+    if (!m || !('freshness' in m) || !('confidence' in m) || !Array.isArray(m.explanation)) problems.push(`section ${s} has no meta (freshness, confidence, explanation)`);
   }
   return problems;
 }
 
-async function readTally(deps = {}) {
-  const order = ['schema', 'transactions', 'accounts', 'connections', 'tlAccounts', 'tallyRecurring', 'tallyRules', 'categories'];
-  const text = await _ssh(_remote(order), deps);
-  const parts = text.split(SPLIT).map((p) => p.trim());
-  const out = {};
-  order.forEach((k, i) => {
-    const p = parts[i] || '';
-    try { out[k] = p ? JSON.parse(p) : []; } catch { throw new Error(`Tally answered something that is not JSON (${k})`); }
-  });
-  const problems = checkSchema(out.schema);
-  if (problems.length) throw new Error(`Tally's schema changed (${problems.join('; ')}) — not read`);
-  delete out.schema;
-  return out;
-}
+// Tests inject a reader (a function returning the contract); production asks Tally.
+let _defaultReader = null;
+function useReader(fn) { _defaultReader = typeof fn === 'function' ? fn : null; }
+async function fetchContract() { return require('./tally-api').call('GET', '/intelligence/contract'); }
 
 // ── store helpers ────────────────────────────────────────────────────────────
 
@@ -114,11 +75,6 @@ function _log(kind, detail, { subjectId = 'finance', actor = 'neuro', now = Date
 }
 function localDay(ms = Date.now()) { return require('./world-model').localMinute(ms).slice(0, 10); }
 const _iso = (now) => new Date(now).toISOString();
-
-function rules({ activeOnly = true } = {}) { return _db().all(`SELECT * FROM finance_rules ${activeOnly ? 'WHERE active = 1' : ''} ORDER BY confirmed_at`); }
-function _decisions() { return new Map(_db().all('SELECT * FROM finance_txn_decisions').map((d) => [d.source_txn_id, d])); }
-function _recurringDecisions() { return new Map(_db().all('SELECT * FROM finance_recurring_decisions').map((d) => [d.series_key, d])); }
-function _reviewDecisions() { return new Map(_db().all('SELECT * FROM finance_review_decisions').map((d) => [d.item_key, d])); }
 
 function _shapeObligation(o) {
   return {
@@ -132,105 +88,28 @@ function obligations({ status = null } = {}) {
   return _db().all(`SELECT * FROM finance_obligations ${status ? 'WHERE status = ?' : ''} ORDER BY COALESCE(due_date, '9999') , created_at`, status ? [status] : []).map(_shapeObligation);
 }
 
-// ── compose (pure over a Tally read + Nick's decisions) ──────────────────────
-
-/** Strip a normalised row to what a household-visible surface may show. */
-function _item(t) {
-  return { ref: t.provenance, sourceTransactionId: t.sourceTransactionId, date: t.date, amountPence: t.amountPence, merchantKey: t.merchantKey,
-    category: t.category, account: t.accountName, accountRef: t.accountRef, owner: t.owner, domain: t.domain, domainBasis: t.domainBasis, status: t.status, transactionType: t.transactionType };
-}
-const VISIBLE = (t) => t.owner !== 'helen';
-
 /**
- * Everything NEURO derives from one Tally read. PURE (given today/now).
- * Item-level lists contain household-visible rows only; Helen's account is
- * counted and totalled, never listed.
+ * Payment evidence for an obligation linked to one of Tally's recurring series:
+ * Tally says the series was last paid on or after (due − 7 days). A date
+ * comparison over Tally's own fact — NEURO matches no transactions.
  */
-function compose(read, { now, rules: rs = [], decisions = new Map(), recurringDecisions = new Map(), reviewDecisions = new Map(), obligations: obs = [], knownAccounts = [] } = {}) {
-  const today = new Date(now).toISOString().slice(0, 10);
-  const rows = M.normalise(read, { decisions, rules: rs });
-  const coverage = M.accountCoverage({ rows, accounts: read.accounts, tlAccounts: read.tlAccounts });
-  const dataFrom = coverage.map((c) => c.from).filter(Boolean).sort()[0] || null;
-  const dataThrough = coverage.map((c) => c.through).filter(Boolean).sort().slice(-1)[0] || null;
-  const series = M.detectRecurring(rows, { coverage, decisions: recurringDecisions, tallyRecurring: read.tallyRecurring || [], today });
-  const unusual = M.unusualSpend(rows, { series, obligations: obs, reviewDecisions, dataFrom });
-  const duplicates = M.duplicateCharges(rows, { series, reviewDecisions });
-  const quality = M.categoryQuality(rows, { tallyRules: read.tallyRules || [], visible: VISIBLE });
-  // Every month in the covered window — a covered month with no transactions
-  // is a fact (nothing moved), not a missing row.
-  const months = [];
-  if (dataFrom && dataThrough) {
-    let m = dataFrom.slice(0, 7);
-    while (m <= dataThrough.slice(0, 7)) { months.push(m); const x = new Date(`${m}-01T00:00:00Z`); x.setUTCMonth(x.getUTCMonth() + 1); m = x.toISOString().slice(0, 7); }
-  }
-  const summaries = months.map((m) => M.monthlySummary(m, rows, { coverage, series, unusual, duplicates, visible: VISIBLE }));
-  const health = M.feedHealth({ accounts: read.accounts, tlAccounts: read.tlAccounts, connections: read.connections, coverage, now });
-  // While some accounts refresh and others do not (Helen's, until she
-  // reconnects), the HOUSEHOLD months stay partial — never relabelled. Beside
-  // them, a comparison over the live accounts only, saying which are excluded.
-  let comparison = { basis: 'household', excluded: [], summaries: null, monthOnMonth: null };
-  const live = health.accounts.filter((a) => a.state === 'healthy').map((a) => Number(a.accountRef.split(':')[1]));
-  const stale = health.accounts.filter((a) => a.state !== 'healthy');
-  if (live.length && stale.length) {
-    const rowsLive = rows.filter((t) => live.includes(t.accountId));
-    const covLive = coverage.filter((c) => live.includes(c.accountId));
-    const liveSummaries = months.map((m) => M.monthlySummary(m, rowsLive, { coverage: covLive, series, unusual, duplicates, visible: VISIBLE }));
-    const excluded = stale.map((a) => (a.owner === 'helen' ? 'Helen\'s own account' : a.name));
-    const lastData = stale.map((a) => a.newestTransaction).filter(Boolean).sort().slice(-1)[0] || null;
-    comparison = {
-      basis: 'live-accounts', excluded, note: `Excluding ${excluded.join(', ')}, which ${excluded.length === 1 ? 'is' : 'are'} not refreshing${lastData ? ` (data ends ${lastData})` : ''}. Household totals stay partial.`,
-      summaries: liveSummaries.map((s) => ({ month: s.month, complete: s.complete, coverageReasons: s.coverageReasons, spendPence: s.spendPence, moneyOutPence: s.moneyOutPence, incomePence: s.incomePence, byDomain: s.byDomain, recurringPence: s.recurringPence, biggestMerchants: s.biggestMerchants, cardRepaymentsPence: s.cardRepaymentsPence, financingPence: s.financingPence })),
-      monthOnMonth: M.monthOnMonth(liveSummaries),
-    };
-  }
-  const bal = M.balances(read, coverage, { today });
-  const staleFeed = health.household !== 'healthy';
-  const upcoming = M.upcomingMoneyOut({ series, obligations: obs, today, staleFeed });
-  const cashflow = M.forwardCashflow({ balances: bal, series, upcoming });
-  const reconnect = M.reconnectReport({ accounts: read.accounts, tlAccounts: read.tlAccounts, connections: read.connections, transactions: read.transactions, knownAccounts, rows });
-  // payment evidence for open obligations linked to a series: a payment on or after (due − 7 days)
-  const evidence = {};
-  for (const o of obs.filter((x) => x.seriesKey)) {
-    const s = series.find((x) => x.seriesKey === o.seriesKey);
-    if (!s || !o.dueDate) continue;
-    const hit = rows.find((t) => s.txnIds.includes(t.sourceTransactionId) && t.date >= M.addDays(o.dueDate, -7) && M.COUNTS(t.status));
-    if (hit) evidence[o.id] = { ref: hit.provenance, date: hit.date, amountPence: -hit.amountPence };
-  }
-  const hiddenHelen = (list, f) => list.filter((x) => !f(x)).length;
-  const review = {
-    classification: rows.filter((t) => VISIBLE(t) && M.COUNTS(t.status) && (t.transactionType === 'spend' || t.transactionType === 'fee')
-      && (t.domain === 'unknown' && !decisions.has(t.sourceTransactionId) || t.conflict))
-      .sort((a, b) => b.date.localeCompare(a.date) || b.sourceTransactionId - a.sourceTransactionId).slice(0, 40)
-      .map((t) => ({ ..._item(t), hint: t.hint, conflict: t.conflict })),
-    unusual: unusual.filter((u) => VISIBLE(u.txn)).map((u) => ({ itemKey: u.itemKey, kind: u.kind, line: u.line, explainedBy: u.explainedBy, decision: u.decision, txn: _item(u.txn) })),
-    duplicates: duplicates.filter((d) => d.txns.every(VISIBLE)).map((d) => ({ itemKey: d.itemKey, kind: d.kind, line: d.line, decision: d.decision, txns: d.txns.map(_item) })),
-    hidden: { helenUnusual: hiddenHelen(unusual, (u) => VISIBLE(u.txn)), helenDuplicates: hiddenHelen(duplicates, (d) => d.txns.every(VISIBLE)) },
-  };
-  const shownSeries = series.filter((s) => s.state !== 'unknown').map((s) => (VISIBLE(s) ? s : {
-    seriesKey: s.seriesKey, accountRef: s.accountRef, accountName: s.accountName, owner: 'helen', label: 'A payment from Helen\'s own account',
-    direction: s.direction, cadence: s.cadence, state: s.state, typicalPence: s.typicalPence, nextExpected: s.nextExpected, active: s.active, shownAsTotalOnly: true,
-  })).map((s) => { const { txnIds, amountsPence, ...rest } = s; return { ...rest, txnCount: (txnIds || []).length || undefined }; });
-  return {
-    asOf: _iso(now), today,
-    source: { system: 'tally', mode: 'read-only', transactionsRead: read.transactions.length, accounts: coverage, dataFrom, dataThrough },
-    health, reconnect, balances: bal,
-    counts: {
-      statuses: rows.reduce((o, t) => { o[t.status] = (o[t.status] || 0) + 1; return o; }, {}),
-      types: rows.reduce((o, t) => { o[t.transactionType] = (o[t.transactionType] || 0) + 1; return o; }, {}),
-      transfersExcluded: rows.filter((t) => t.transactionType === 'transfer').length,
-      transfersInferred: (() => { const inf = rows.filter((t) => t.transferInferred && M.COUNTS(t.status)); return { count: inf.length, outPence: inf.filter((t) => t.amountPence < 0).reduce((a, t) => a - t.amountPence, 0), inPence: inf.filter((t) => t.amountPence > 0).reduce((a, t) => a + t.amountPence, 0),
-        why: inf.length ? 'Transfers to or from an account Tally used to pair them with (whose feed is not refreshing) — excluded from spending and income.' : null }; })(),
-      cardRepayments: rows.filter((t) => t.transactionType === 'card_repayment').length,
-      refunds: rows.filter((t) => t.transactionType === 'refund' || t.transactionType === 'reversal').length,
-    },
-    summaries, monthOnMonth: M.monthOnMonth(summaries), rolling: M.rollingWindow(coverage, { today }), comparison,
-    quality, series: shownSeries,
-    recurringCounts: series.reduce((o, s) => { o[s.state] = (o[s.state] || 0) + 1; return o; }, {}),
-    priceChanges: series.filter((s) => M.OPERATIONAL(s) && s.priceChange && VISIBLE(s)).map((s) => ({ seriesKey: s.seriesKey, label: s.label, account: s.accountName, ...s.priceChange })),
-    upcoming, cashflow, pressure: M.pressure(cashflow), review, evidence,
-    knownAccounts: read.accounts.map((a) => ({ id: a.id, name: a.name })),
-    _series: series.map((s) => ({ seriesKey: s.seriesKey, state: s.state, label: VISIBLE(s) ? s.label : null, owner: s.owner, priceChange: s.priceChange ? { fromPence: s.priceChange.fromPence, toPence: s.priceChange.toPence } : null })),
-  };
+function evidenceFor(o, contract) {
+  if (!o.seriesKey || !o.dueDate || !contract) return null;
+  const s = ((contract.recurring && contract.recurring.established) || []).find((x) => x.key === o.seriesKey);
+  if (!s || !s.lastSeen || s.lastSeen < addDays(o.dueDate, -7)) return null;
+  return { ref: `tally-series:${s.key}`, date: s.lastSeen, amountPence: s.typicalPence, basis: 'Tally: the linked recurring payment was last seen on this date' };
+}
+
+/** Tally's owner vocabulary → the one personal-admin and the Radar read. */
+const OWNER = { primary: 'nick', shared: 'shared', private: 'private' };
+
+/** Feed health in the shape NEURO's other surfaces read (personal-admin). Tally's words, verbatim. */
+function healthFrom(contract) {
+  if (!contract) return { household: 'unknown', label: 'Finance has not been read from Tally yet', accounts: [] };
+  const f = contract.sourceHealth.bankFeed;
+  const label = { healthy: 'Bank feeds live', partial: 'Some bank feeds are live', stale: 'Bank feeds are stale', reconnect_required: 'Bank feeds need reconnecting', unknown: 'Bank feed state unknown' }[f.household] || f.household;
+  return { household: f.household, label, rule: contract.sourceHealth.meta.explanation[0],
+    accounts: f.accounts.map((a) => ({ accountRef: `tally-account:${a.accountId}`, name: a.name, owner: OWNER[a.owner] || a.owner, state: a.state, why: a.why, lastRefreshAt: a.lastRefreshAt })) };
 }
 
 // ── obligation state (read time) ─────────────────────────────────────────────
@@ -240,16 +119,16 @@ const PREP_NEEDS_YOU_DAYS = 2;     // the existing Radar prep rule
 
 /**
  * later | upcoming | preparation_open | needs_you | overdue | complete | unknown.
- * A ticked task is the ACTION, not the payment: without transaction evidence
- * the obligation says "action done — payment not seen in Tally".
+ * A ticked task is the ACTION, not the payment: without Tally's evidence the
+ * obligation says "action done — payment not seen in Tally".
  */
 function obligationState(o, { today, task = null, evidence = null, feedStale = false } = {}) {
   if (o.status !== 'open') return { state: 'complete', why: o.status === 'cancelled' ? 'cancelled' : `resolved (${o.resolvedEvidence})` };
   if (!o.dueDate) return { state: 'unknown', why: 'no date recorded' };
-  const days = M.daysBetween(today, o.dueDate);
+  const days = daysBetween(today, o.dueDate);
   const taskOpen = task && !['done', 'complete', 'completed', 'dropped'].includes(String(task.status || task.state || '').toLowerCase());
   const taskDone = task && !taskOpen;
-  const payment = evidence ? `payment seen in Tally on ${evidence.date} (${M.pounds(evidence.amountPence)})` : taskDone
+  const payment = evidence ? `payment seen in Tally on ${evidence.date} (${pounds(evidence.amountPence)})` : taskDone
     ? `your task is done — that is the action; the payment itself has not been seen in Tally${feedStale ? ' (the bank feed is stale)' : ''}` : null;
   if (days < 0) return { state: evidence ? 'upcoming' : 'overdue', why: evidence ? payment : `was due ${o.dueDate}`, payment };
   if (days <= NEEDS_YOU_DAYS) return { state: 'needs_you', why: days === 0 ? 'due today' : 'due tomorrow', payment };
@@ -259,11 +138,61 @@ function obligationState(o, { today, task = null, evidence = null, feedStale = f
   return { state: 'later', why: `due ${o.dueDate}`, payment };
 }
 
+// ── the operational view (PURE over the contract + NEURO's own facts) ───────────
+
+const MATERIAL = /^materially_/;
+
+/**
+ * What matters to Nick operationally, from Tally's facts. Selection and wording
+ * only — every number shown is Tally's. `needsAction` is what asks something of
+ * Nick through EXISTING rules (an obligation's own state, a bank feed that needs
+ * re-approving); a trend, an anomaly or a price change on its own never does.
+ */
+function operational(contract, { today, obligations: obs = [], vehicles = [] } = {}) {
+  if (!contract) return null;
+  const c = contract;
+  const d30 = (c.cashflow.horizons || []).find((h) => h.days === 30) || null;
+  const position = { usablePence: c.balances.household.usableLiquidPence, coverage: c.balances.household.coverage, statement: c.balances.household.statement };
+  const forecast = {
+    confidence: c.cashflow.confidence, why: c.cashflow.confidenceWhy,
+    d30: d30 ? { through: d30.through, projectedPence: d30.projectedPence, projectedRange: d30.projectedRange, lowestPoint: d30.lowestPoint, dayToDayNotProjectedPence: d30.dayToDayNotProjectedPence } : null,
+    nextIncome: c.cashflow.nextIncome,
+    untilNextIncome: c.cashflow.toNextIncome ? { through: c.cashflow.toNextIncome.through, projectedPence: c.cashflow.toNextIncome.projectedPence, lowestPoint: c.cashflow.toNextIncome.lowestPoint } : null,
+    excludedUnknowns: c.cashflow.excludedUnknowns,
+  };
+  const changes = [
+    ...c.trends.items.filter((t) => MATERIAL.test(t.state) && ['spending', 'money out', 'income'].includes(t.measure)).map((t) => ({ kind: 'trend', state: t.state, line: t.line, timing: t.timing ? t.timing.note : null })),
+    ...c.priceChanges.items.filter((p) => p.confirmed && p.annualEffectPence != null).map((p) => ({ kind: 'price-change', line: `${p.label}: ${p.line}`, since: p.firstObserved })),
+  ];
+  // Upcoming: what Tally knows that is explicit and dated (planned payments, annual payments) — never every
+  // direct debit — beside the obligations Nick recorded in NEURO.
+  const upcoming = [
+    ...c.upcoming.items.filter((i) => i.kind === 'planned' || i.kind === 'annual').map((i) => ({ source: 'tally', kind: i.kind, date: i.date, label: i.label, direction: i.direction, pence: i.pence })),
+    ...obs.filter((o) => o.status === 'open').map((o) => ({ source: 'neuro', kind: 'obligation', id: o.id, date: o.dueDate, label: o.title, pence: o.expectedAmountPence, state: o.state, stateWhy: o.stateWhy })),
+  ].sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
+  const needsAction = [];
+  for (const o of obs.filter((x) => x.status === 'open' && ['needs_you', 'overdue'].includes(x.state))) needsAction.push({ kind: 'obligation', id: o.id, line: `${o.title} — ${o.stateWhy}` });
+  for (const a of c.sourceHealth.bankFeed.accounts.filter((x) => x.state === 'reconnect_required')) {
+    needsAction.push({ kind: 'feed', ref: `tally-account:${a.accountId}`, line: a.owner === 'private' ? `${a.name}'s bank feed needs re-approving at the bank — theirs to do; your part is asking` : `Reconnect the ${a.name} bank feed in Tally — ${a.why}` });
+  }
+  const toLook = { unusual: c.unusual.items.length, priceChanges: c.priceChanges.items.length, where: `${TALLY_URL()} → Outlook` };
+  return {
+    contract: c.contract, generatedAt: c.generatedAt, position, forecast, pressure: { state: c.pressure.state, why: c.pressure.why },
+    changes, upcoming, needsAction, toLook, synthesis: synthesise(c, { today, vehicles }),
+    categories: { available: c.categories.available, why: c.categories.why, period: c.categories.meta.period },
+  };
+}
+
+function _vehicles() {
+  try {
+    const v = require('./vehicle');
+    return v.listVehicles().map((row) => { const r = v.read(row.vehicle_id); return r ? { id: row.vehicle_id, name: `${r.vehicle.make} ${r.vehicle.model}`.trim(), obligations: r.obligations } : null; }).filter(Boolean);
+  } catch { return []; }
+}
+
 function _taskIndex() {
   try { return new Map((require('./canonical-read').tasks({ status: 'all', limit: 2000 }).items || []).map((t) => [t.id, t])); } catch { return new Map(); }
 }
-
-// ── read ─────────────────────────────────────────────────────────────────────
 
 function _activation() {
   let lists = [];
@@ -275,256 +204,108 @@ function _activation() {
     note: named.length ? null : 'There is no "Personal Admin" list on the phone yet. NEURO cannot create Apple lists and has not made a substitute.' };
 }
 
-/** What the Finance view shows. Never reads Tally — it reads the last snapshot. */
-function read({ now = Date.now(), taskIndex = null } = {}) {
+/** What the Finance view shows. Never reads Tally — it reads the last contract snapshot. */
+function read({ now = Date.now(), taskIndex = null, vehicles = null } = {}) {
   const snap = _json(SNAPSHOT_KEY);
   const state = _json(STATE_KEY) || {};
   const today = localDay(now);
+  const contract = snap ? snap.contract : null;
   const tasks = taskIndex || _taskIndex();
+  const health = healthFrom(contract);
   const obs = obligations().map((o) => {
     const task = o.linkedTaskRef ? tasks.get(o.linkedTaskRef) || null : (o.linkedReminderRef ? tasks.get(o.linkedReminderRef) || null : null);
-    const st = obligationState(o, { today, task, evidence: snap && snap.evidence ? snap.evidence[o.id] || null : null, feedStale: !snap || snap.health.household !== 'healthy' });
+    const st = obligationState(o, { today, task, evidence: evidenceFor(o, contract), feedStale: health.household !== 'healthy' });
     return { ...o, state: st.state, stateWhy: st.why, payment: st.payment || null, task: task ? { id: task.id, title: task.description || task.title, status: task.state || task.status } : null };
   });
-  const { _series, ...pub } = snap || {};
-  // A description hint names a NEURO domain; the picker speaks Tally, so the hint
-  // is offered as the Tally category that domain maps to (null when none does).
-  const cats = (snap && snap.tallyCategories) || [];
-  if (snap && snap.review && Array.isArray(snap.review.classification)) {
-    const byName = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
-    pub.review = { ...snap.review, classification: snap.review.classification.map((t) => ({
-      ...t, suggestedCategoryId: t.hint ? byName.get(String(M.DOMAIN_TALLY_CATEGORY[t.hint.domain] || '').toLowerCase()) || null : null,
-    })) };
-  }
+  const ageMinutes = snap ? Math.round((now - Date.parse(snap.fetchedAt)) / 60000) : null;
   return {
-    ok: true, contract: 'finance-v1',
-    source: snap ? pub.source : null, lastRead: { at: state.lastOkAt || null, attemptAt: state.lastAttemptAt || null, ok: state.lastOk ?? null, error: state.error || null },
-    ...(snap ? pub : { health: { household: 'unknown', label: 'Finance has not been read yet', accounts: [] } }),
+    ok: true, contract: 'finance-operational-v1',
+    source: { system: 'tally', reads: CONTRACT, generatedAt: contract ? contract.generatedAt : null, fetchedAt: snap ? snap.fetchedAt : null, ageMinutes, tallyUrl: TALLY_URL() },
+    lastRead: { at: state.lastOkAt || null, attemptAt: state.lastAttemptAt || null, ok: state.lastOk ?? null, error: state.error || null },
+    health, sourceHealth: contract ? contract.sourceHealth : null,
+    operational: operational(contract, { today, obligations: obs, vehicles: vehicles || _vehicles() }),
     obligations: obs, personalAdmin: _activation(),
-    rules: rules({ activeOnly: false }).map((r) => ({ ruleId: r.rule_id, matchKind: r.match_kind, merchantKey: r.merchant_key, categoryName: r.category_name, tag: r.tag, domain: r.domain, active: !!r.active, confirmedAt: r.confirmed_at, matchedAtConfirmation: r.matched_at_confirmation })),
-    domains: M.DOMAINS.map((d) => ({ id: d, label: M.DOMAIN_LABEL[d] })),
-    tallyCategories: cats,
-    tallyWrites: require('./tally-api').configured(),
-    rule: 'Tally is the one place financial data lives. NEURO reads it, and a category you choose here is written into Tally through Tally\'s own API ("Always" becomes Tally\'s merchant rule) — NEURO keeps no copy. NEURO never moves money, pays, cancels, or edits an amount or date. Helen\'s own account appears only as totals.',
+    // Outgoing recurring payments an obligation may be linked to (Tally's list, household-visible only).
+    linkable: contract ? contract.recurring.established.filter((s) => s.direction === 'out').map((s) => ({ key: s.key, label: s.label, typicalPence: s.typicalPence })) : [],
+    rule: 'Tally understands the money; NEURO understands why it matters. Every finance figure here is Tally\'s, read from its finance-intelligence-v1 contract — NEURO calculates none of them. Finance decisions (recurring, unusual, planned payments, categories) are made in Tally. NEURO never moves money, pays, cancels or categorises.',
   };
 }
 
 // ── refresh (the durable job body) ───────────────────────────────────────────
 
 /**
- * Read Tally, compose, store the snapshot, record what CHANGED in Activity.
- * The first run is a baseline: it records one "finance activated" line and
- * nothing per series, so turning this on cannot flood Activity.
+ * Read Tally's contract, keep it, record what CHANGED in Activity. A refused or
+ * failed read keeps the last good snapshot (its age is shown) and stores
+ * nothing new. The first good read is a baseline: one line, nothing per item.
  */
-// A default reader for tests only: every refresh a decision triggers then reads
-// the fixture, never the real Tally over ssh.
-let _defaultReader = null;
-function useReader(fn) { _defaultReader = typeof fn === "function" ? fn : null; }
-
-async function refresh({ now = Date.now(), reader = null, deps = {} } = {}) {
+async function refresh({ now = Date.now(), reader = null } = {}) {
   reader = reader || _defaultReader;
-  const c = config();
   const iso = _iso(now);
   const prevState = _json(STATE_KEY) || {};
-  if (!c.enabled && !reader) return { ok: true, skipped: true, reason: 'TALLY_READ=off' };
-  let tally;
-  try { tally = await (reader ? reader() : readTally(deps)); } catch (e) {
+  if (String(process.env.TALLY_READ || 'on').toLowerCase() === 'off' && !reader) return { ok: true, skipped: true, reason: 'TALLY_READ=off' };
+  let contract;
+  try { contract = await (reader ? reader() : fetchContract()); } catch (e) {
     _setJson(STATE_KEY, { ...prevState, lastAttemptAt: iso, lastOk: false, error: e.message });
     return { ok: false, error: e.message };
   }
-  const prevSnap = _json(SNAPSHOT_KEY);
-  const snap = compose(tally, { now, rules: rules(), decisions: _decisions(), recurringDecisions: _recurringDecisions(), reviewDecisions: _reviewDecisions(),
-    obligations: obligations(), knownAccounts: (prevSnap && prevSnap.knownAccounts) || [] });
-  snap.tallyCategories = (tally.categories || []).map((c) => ({ id: Number(c.id), name: String(c.name), kind: String(c.kind || 'expense') }));
-  _setJson(SNAPSHOT_KEY, snap);
-  _storeSummaries(snap, { now });
-  const logged = prevState.baselined ? _logChanges(prevSnap, snap, { now }) : 0;
-  if (!prevState.baselined) _log('finance-activated', { transactions: snap.source.transactionsRead, dataFrom: snap.source.dataFrom, dataThrough: snap.source.dataThrough, feed: snap.health.household }, { now, dedupeKey: 'finance-activated' });
-  _setJson(STATE_KEY, { lastAttemptAt: iso, lastOkAt: iso, lastOk: true, error: null, baselined: true, firstAt: prevState.firstAt || iso });
-  return { ok: true, transactions: snap.source.transactionsRead, feed: snap.health.household, logged };
-}
-
-/** One row per month. A month becomes "produced" once, the first time it is complete. */
-function _storeSummaries(snap, { now }) {
-  const db = _db();
-  for (const s of snap.summaries) {
-    const held = db.get('SELECT * FROM finance_monthly_summaries WHERE month = ?', [s.month]);
-    const json = JSON.stringify(s);
-    if (!held) {
-      db.run('INSERT INTO finance_monthly_summaries (month, complete, summary_json, computed_at, revisions) VALUES (?, ?, ?, ?, 0)', [s.month, s.complete ? 1 : 0, json, _iso(now)]);
-      if (s.complete) _log('finance-summary-produced', { month: s.month, spendPence: s.spendPence }, { subjectId: `finance-month:${s.month}`, now, dedupeKey: `finance-summary-produced:${s.month}` });
-    } else if (held.summary_json !== json) {
-      db.run('UPDATE finance_monthly_summaries SET complete = ?, summary_json = ?, computed_at = ?, revisions = revisions + 1 WHERE month = ?', [s.complete ? 1 : 0, json, _iso(now), s.month]);
-      if (s.complete && !held.complete) _log('finance-summary-produced', { month: s.month, spendPence: s.spendPence }, { subjectId: `finance-month:${s.month}`, now, dedupeKey: `finance-summary-produced:${s.month}` });
-    }
+  const problems = checkContract(contract);
+  if (problems.length) {
+    const error = `Tally's finance contract was refused: ${problems.join('; ')}`;
+    _setJson(STATE_KEY, { ...prevState, lastAttemptAt: iso, lastOk: false, error });
+    return { ok: false, error };
   }
+  const prev = _json(SNAPSHOT_KEY);
+  _setJson(SNAPSHOT_KEY, { fetchedAt: iso, contract });
+  // Build 23 kept NEURO-calculated summaries; under the Build 26 boundary they are a second ledger. Gone.
+  if (!prevState.legacyCleared) {
+    for (const k of LEGACY_KEYS) _db().setState(k, 'null');
+    try { _db().run('DELETE FROM finance_monthly_summaries'); } catch { /* table absent */ }
+  }
+  const logged = prevState.baselined && prev ? _logChanges(prev.contract, contract, { now }) : 0;
+  if (!prevState.baselined) _log('finance-intelligence-connected', { contract: CONTRACT, feed: contract.sourceHealth.bankFeed.household, forecast: contract.cashflow.confidence }, { now, dedupeKey: 'finance-intelligence-connected' });
+  _setJson(STATE_KEY, { lastAttemptAt: iso, lastOkAt: iso, lastOk: true, error: null, baselined: true, legacyCleared: true, firstAt: prevState.firstAt || iso });
+  return { ok: true, contract: CONTRACT, feed: contract.sourceHealth.bankFeed.household, forecast: contract.cashflow.confidence, logged };
 }
 
-/** Activity on CHANGE only: feed stale/recovered, relink, new series, new unusual items, price changes. */
+const CAT_RANK = { unknown: 0, poor: 1, partial: 2, good: 3 };
+
+/** Activity on CHANGE only — never per transaction, per refresh or per render. Compares Tally's states. */
 function _logChanges(prev, next, { now }) {
   let n = 0;
   const L = (kind, detail, opt) => { if (_log(kind, detail, { now, ...opt })) n++; };
-  const prevAcc = new Map(((prev && prev.health && prev.health.accounts) || []).map((a) => [a.accountRef, a.state]));
-  for (const a of next.health.accounts) {
-    const was = prevAcc.get(a.accountRef);
-    if (was && was !== a.state) {
-      if (a.state === 'healthy') L('finance-source-recovered', { account: a.owner === 'helen' ? 'Helen\'s account' : a.name, was }, { subjectId: a.accountRef, dedupeKey: `finance-source-recovered:${a.accountRef}:${now}` });
-      else if (was === 'healthy') L('finance-source-stale', { account: a.owner === 'helen' ? 'Helen\'s account' : a.name, state: a.state, why: a.why }, { subjectId: a.accountRef, dedupeKey: `finance-source-stale:${a.accountRef}:${now}` });
-    }
+  const acct = (a) => (a.owner === 'private' ? `${a.name}'s account` : a.name);
+  const was = new Map(((prev && prev.sourceHealth && prev.sourceHealth.bankFeed.accounts) || []).map((a) => [a.accountId, a.state]));
+  for (const a of next.sourceHealth.bankFeed.accounts) {
+    const w = was.get(a.accountId);
+    if (!w || w === a.state) continue;
+    if (a.state === 'healthy') L('finance-source-recovered', { account: acct(a), was: w }, { subjectId: `tally-account:${a.accountId}`, dedupeKey: `finance-source-recovered:${a.accountId}:${now}` });
+    else if (w === 'healthy') L('finance-source-stale', { account: acct(a), state: a.state, why: a.why }, { subjectId: `tally-account:${a.accountId}`, dedupeKey: `finance-source-stale:${a.accountId}:${now}` });
   }
-  const wasRelinked = new Set(((prev && prev.reconnect && prev.reconnect.accounts) || []).filter((a) => a.relinked).map((a) => a.accountRef));
-  for (const a of next.reconnect.accounts.filter((x) => x.relinked && !wasRelinked.has(x.accountRef))) {
-    L('finance-account-relinked', { account: a.owner === 'helen' ? 'Helen\'s account' : a.name, oldestBackfilled: a.oldestBackfilled, gapDays: a.gapDays, backfilledRows: a.backfilledRows }, { subjectId: a.accountRef, dedupeKey: `finance-account-relinked:${a.accountRef}:${a.relinkedAt}` });
+  const pc = prev && prev.cashflow ? prev.cashflow.confidence : 'unavailable';
+  const nc = next.cashflow.confidence;
+  if (pc === 'unavailable' && nc !== 'unavailable') L('finance-forecast-available', { confidence: nc }, { dedupeKey: `finance-forecast-available:${now}` });
+  if (pc !== 'unavailable' && nc === 'unavailable') L('finance-forecast-unavailable', { why: next.cashflow.confidenceWhy[0] || null }, { dedupeKey: `finance-forecast-unavailable:${now}` });
+  const held = new Set(((prev && prev.recurring && prev.recurring.established) || []).map((s) => s.key));
+  for (const s of next.recurring.established.filter((x) => !held.has(x.key))) {
+    L('finance-recurring-recognised', { label: s.label, state: s.state, byYou: s.state === 'explicit_recurring' }, { subjectId: s.key, dedupeKey: `finance-recurring-recognised:${s.key}` });
   }
-  const prevSeries = new Map(((prev && prev._series) || []).map((s) => [s.seriesKey, s]));
-  for (const s of next._series.filter(M.OPERATIONAL)) {
-    const p = prevSeries.get(s.seriesKey);
-    if (!p || !M.OPERATIONAL(p)) L('finance-recurring-recognised', { label: s.label || 'a payment from Helen\'s own account', state: s.state }, { subjectId: s.seriesKey, dedupeKey: `finance-recurring-recognised:${s.seriesKey}` });
-    if (s.priceChange && s.label && !(p && p.priceChange && p.priceChange.toPence === s.priceChange.toPence)) L('finance-price-changed', { label: s.label, ...s.priceChange }, { subjectId: s.seriesKey, dedupeKey: `finance-price-changed:${s.seriesKey}:${s.priceChange.toPence}` });
+  const pcs = new Set(((prev && prev.priceChanges && prev.priceChanges.items) || []).map((p) => `${p.seriesKey}:${p.toPence}`));
+  for (const p of next.priceChanges.items.filter((x) => !pcs.has(`${x.seriesKey}:${x.toPence}`))) {
+    L('finance-price-changed', { label: p.label, fromPence: p.fromPence, toPence: p.toPence, annualEffectPence: p.annualEffectPence }, { subjectId: p.seriesKey, dedupeKey: `finance-price-changed:${p.seriesKey}:${p.toPence}` });
   }
-  const prevUnusual = new Set(((prev && prev.review && prev.review.unusual) || []).map((u) => u.itemKey));
-  for (const u of next.review.unusual.filter((x) => !x.explainedBy && !prevUnusual.has(x.itemKey))) {
-    L('finance-unusual-found', { line: u.line }, { subjectId: u.itemKey, dedupeKey: `finance-unusual-found:${u.itemKey}` });
-  }
+  const pq = prev && prev.sourceHealth ? prev.sourceHealth.categories.state : 'unknown';
+  const nq = next.sourceHealth.categories.state;
+  if (pq !== 'unknown' && (CAT_RANK[nq] || 0) > (CAT_RANK[pq] || 0)) L('finance-category-quality-improved', { from: pq, to: nq, why: next.sourceHealth.categories.why }, { dedupeKey: `finance-category-quality:${nq}:${now}` });
+  const pu = new Set(((prev && prev.unusual && prev.unusual.items) || []).map((u) => u.key));
+  for (const u of next.unusual.items.filter((x) => !pu.has(x.key))) L('finance-unusual-found', { line: u.line }, { subjectId: u.key, dedupeKey: `finance-unusual-found:${u.key}` });
   return n;
 }
 
-// ── Nick's statements (every route below is machine-refused) ─────────────────
+// ── statements that moved to Tally (Build 26) ────────────────────────────────
 
-function _snapshotRow(txnId) {
-  const snap = _json(SNAPSHOT_KEY);
-  if (!snap) return null;
-  const all = [...snap.review.classification, ...snap.review.unusual.map((u) => u.txn), ...snap.review.duplicates.flatMap((d) => d.txns)];
-  return all.find((t) => t.sourceTransactionId === Number(txnId)) || null;
-}
-
-/**
- * Nick decides a domain for ONE transaction in the review queue. `remember`
- * turns it into an exact merchant (or merchant+category) rule. Helen's
- * transactions are never in the queue, so they cannot be decided here.
- */
-/**
- * Nick answers a transaction in the review list.
- *
- * 9 Oct 2026 — Tally is the ONE place a category lives. A category choice is
- * written INTO Tally through its own API (tally-api.js), ledgered as the
- * external writer `tally.transaction.categorise` and read back; NEURO keeps no
- * copy. "Always" is Tally's own merchant rule (Tally decides the merchant
- * identity and may ask for confirmation first). Changes made in Tally reach
- * NEURO on the next read, so the two can never disagree.
- *
- * `unknown` ("leave it") is the one NEURO-only answer: it is not financial data,
- * only "stop asking me about this one", so it stays in finance_txn_decisions.
- */
-async function decide(txnId, { decision, categoryId = null, remember = false, confirmRule = false } = {}, { now = Date.now(), actor = 'nick', reader = null } = {}) {
-  const id = Number(txnId);
-  const row = _snapshotRow(id);
-  if (!row) return { ok: false, status: 404, error: 'That transaction is not in NEURO\'s review list' };
-  if (!['confirm', 'unknown'].includes(decision)) return { ok: false, status: 400, error: 'decision must be confirm (with a Tally categoryId) or unknown' };
-  if (decision === 'unknown') {
-    _db().run(`INSERT INTO finance_txn_decisions (source_txn_id, decision, domain, rule_id, decided_by, decided_at) VALUES (?, 'unknown', NULL, NULL, ?, ?)
-               ON CONFLICT(source_txn_id) DO UPDATE SET decision = 'unknown', domain = NULL, rule_id = NULL, decided_by = excluded.decided_by, decided_at = excluded.decided_at`, [id, actor, _iso(now)]);
-    const r = await refresh({ now, reader });
-    return { ok: true, decision, refreshed: r.ok };
-  }
-  const snap = _json(SNAPSHOT_KEY);
-  const cat = ((snap && snap.tallyCategories) || []).find((c) => c.id === Number(categoryId));
-  if (!cat) return { ok: false, status: 400, error: 'categoryId must be one of Tally\'s categories' };
-  if (cat.kind !== 'expense') return { ok: false, status: 400, error: 'income and transfers are decided by the transaction itself, not chosen here' };
-  const tally = require('./tally-api');
-  const xw = require('./external-writes');
-  const key = `tally:txn:${id}:cat:${cat.id}:${remember ? 'rule' : 'one'}${confirmRule ? ':confirmed' : ''}`;
-  const claim = xw.begin({ writer: 'tally.transaction.categorise', key, target: `tally:transaction:${id}`, request: { categoryId: cat.id, category: cat.name, remember: !!remember, confirmRule: !!confirmRule }, initiatedBy: actor, now });
-  if (!claim.ok) {
-    if (claim.duplicate) { const r = await refresh({ now, reader }); return { ok: true, already: true, category: cat.name, refreshed: r.ok }; }
-    return { ok: false, status: 409, error: claim.why };
-  }
-  let out;
-  try {
-    out = await tally.categoriseTransaction(id, { categoryId: cat.id, remember, confirmRule });
-  } catch (e) {
-    xw.settle(claim.entry.id, { status: xw.classifyError(e), result: { error: e.message }, now });
-    return { ok: false, status: 502, error: `Tally did not take it — ${e.message}` };
-  }
-  const applied = out && Number(out.category_id) === cat.id;
-  xw.settle(claim.entry.id, {
-    status: applied ? 'confirmed' : 'uncertain',
-    result: { ruleCreated: !!out.ruleCreated, ruleUpdated: !!out.ruleUpdated, appliedToSimilar: out.appliedToSimilar || 0, needsConfirmation: out.needsConfirmation ? out.needsConfirmation.reason : null },
-    readback: applied ? `Tally transaction ${id} is now "${cat.name}"` : `Tally answered but transaction ${id} reads category ${out && out.category_id}`, now,
-  });
-  if (!applied) return { ok: false, status: 502, error: 'Tally answered, but the transaction did not read back with that category' };
-  if (remember && (out.ruleCreated || out.ruleUpdated)) _log('finance-rule-confirmed', { matchKind: 'merchant', merchantKey: out.merchantKey, domain: cat.name, matched: out.appliedToSimilar || 0, inTally: true }, { subjectId: `tally-rule:${out.merchantKey}`, actor, now, dedupeKey: `finance-rule-confirmed:tally:${out.merchantKey}:${cat.id}` });
-  // Any older NEURO "leave it" on this transaction is moot now Tally holds the answer.
-  _db().run('DELETE FROM finance_txn_decisions WHERE source_txn_id = ?', [id]);
-  const r = await refresh({ now, reader });
-  return {
-    ok: true, decision, category: cat.name, ruleCreated: !!out.ruleCreated, ruleUpdated: !!out.ruleUpdated,
-    appliedToSimilar: out.appliedToSimilar || 0, ruleSkipped: out.ruleSkipped || null,
-    needsConfirmation: out.needsConfirmation || null, refreshed: r.ok,
-  };
-}
-
-function validateRule({ matchKind, merchantKey, categoryName, tag, domain } = {}) {
-  if (!RULE_KINDS.includes(matchKind)) return `matchKind must be one of ${RULE_KINDS.join(', ')}`;
-  if (!M.DOMAINS.includes(domain) || ['income', 'transfers', 'unknown'].includes(domain)) return 'domain must be a spending domain';
-  if (matchKind === 'tag') return tag ? null : 'a tag rule needs the Tally tag (Tally has no tags today)';
-  if (!(typeof merchantKey === 'string' && merchantKey.trim().length >= 2)) return 'a merchant rule needs the exact merchant';
-  if (matchKind === 'merchant+category' && !(typeof categoryName === 'string' && categoryName.trim())) return 'a merchant+category rule needs the Tally category';
-  return null;
-}
-
-/** An exact rule Nick confirmed. Broad text rules do not exist. */
-function createRule({ matchKind, merchantKey = null, categoryName = null, tag = null, domain, exampleTxnId = null } = {}, { now = Date.now(), actor = 'nick' } = {}) {
-  const bad = validateRule({ matchKind, merchantKey, categoryName, tag, domain });
-  if (bad) return { ok: false, status: 400, error: bad };
-  const db = _db();
-  const existing = db.all('SELECT * FROM finance_rules WHERE active = 1').find((r) => r.match_kind === matchKind && (r.merchant_key || null) === (merchantKey || null)
-    && String(r.category_name || '').toLowerCase() === String(categoryName || '').toLowerCase() && (r.tag || null) === (tag || null));
-  if (existing) return { ok: true, already: true, rule: existing };
-  const snap = _json(SNAPSHOT_KEY);
-  const matched = snap ? snap.review.classification.filter((t) => M.ruleMatches({ active: 1, match_kind: matchKind, merchant_key: merchantKey, category_name: categoryName, tag }, { ...t, tags: [] })).length : null;
-  const rule = { rule_id: `fr_${crypto.randomUUID()}`, match_kind: matchKind, merchant_key: merchantKey, category_name: categoryName, tag, domain,
-    example_txn_id: exampleTxnId, matched_at_confirmation: matched, confirmed_by: actor, confirmed_at: _iso(now), active: 1 };
-  db.run(`INSERT INTO finance_rules (rule_id, match_kind, merchant_key, category_name, tag, domain, example_txn_id, matched_at_confirmation, confirmed_by, confirmed_at, active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-  [rule.rule_id, matchKind, merchantKey, categoryName, tag, domain, exampleTxnId, matched, actor, rule.confirmed_at]);
-  _log('finance-rule-confirmed', { matchKind, merchantKey, categoryName, domain, matched }, { subjectId: rule.rule_id, actor, now, dedupeKey: `finance-rule-confirmed:${rule.rule_id}` });
-  return { ok: true, rule };
-}
-
-async function retireRule(ruleId, { now = Date.now(), reader = null } = {}) {
-  const r = _db().run('UPDATE finance_rules SET active = 0 WHERE rule_id = ? AND active = 1', [ruleId]);
-  if (!(r && r.changes)) return { ok: false, status: 404, error: 'no such active rule' };
-  await refresh({ now, reader });
-  return { ok: true };
-}
-
-/** "This is recurring" / "this is not recurring" — Nick's own statement about a series. */
-async function decideRecurring(seriesKey, { decision } = {}, { now = Date.now(), actor = 'nick', reader = null } = {}) {
-  if (!['recurring', 'not-recurring', 'clear'].includes(decision)) return { ok: false, status: 400, error: 'decision must be recurring, not-recurring or clear' };
-  const snap = _json(SNAPSHOT_KEY);
-  const s = snap && (snap._series || []).find((x) => x.seriesKey === seriesKey);
-  if (!s) return { ok: false, status: 404, error: 'NEURO holds no such recurring series' };
-  if (s.owner === 'helen') return { ok: false, status: 404, error: 'Helen\'s own payments are not decided here' };
-  if (decision === 'clear') _db().run('DELETE FROM finance_recurring_decisions WHERE series_key = ?', [seriesKey]);
-  else _db().run(`INSERT INTO finance_recurring_decisions (series_key, decision, decided_by, decided_at) VALUES (?, ?, ?, ?)
-                  ON CONFLICT(series_key) DO UPDATE SET decision = excluded.decision, decided_by = excluded.decided_by, decided_at = excluded.decided_at`, [seriesKey, decision, actor, _iso(now)]);
-  if (decision === 'recurring') _log('finance-recurring-recognised', { label: s.label, state: 'explicit_recurring', byYou: true }, { subjectId: seriesKey, actor, now, dedupeKey: `finance-recurring-confirmed:${seriesKey}:${now}` });
-  await refresh({ now, reader });
-  return { ok: true, decision };
-}
-
-/** Answer an unusual-spend or duplicate candidate. Nothing is disputed or acted on. */
-async function decideReview(itemKey, { decision } = {}, { now = Date.now(), actor = 'nick', reader = null } = {}) {
-  if (!['expected', 'not-duplicate', 'leave', 'look-into-it'].includes(decision)) return { ok: false, status: 400, error: 'decision must be expected, not-duplicate, leave or look-into-it' };
-  const snap = _json(SNAPSHOT_KEY);
-  const item = snap && [...snap.review.unusual, ...snap.review.duplicates].find((x) => x.itemKey === itemKey);
-  if (!item) return { ok: false, status: 404, error: 'NEURO holds no such review item' };
-  _db().run(`INSERT INTO finance_review_decisions (item_key, decision, decided_by, decided_at) VALUES (?, ?, ?, ?)
-             ON CONFLICT(item_key) DO UPDATE SET decision = excluded.decision, decided_by = excluded.decided_by, decided_at = excluded.decided_at`, [itemKey, decision, actor, _iso(now)]);
-  if (decision !== 'leave') _log('finance-unusual-resolved', { line: item.line, decision }, { subjectId: itemKey, actor, now, dedupeKey: `finance-unusual-resolved:${itemKey}:${decision}` });
-  await refresh({ now, reader });
-  return { ok: true, decision };
+/** Recurring, unusual and category decisions are Tally's now — made there, by a person. */
+function movedToTally(what) {
+  return { ok: false, status: 410, error: `${what} is decided in Tally now (${TALLY_URL()} → Outlook). NEURO reads the result; it no longer holds finance decisions.`, movedTo: TALLY_URL() };
 }
 
 // ── finance obligations (typed facts; the action stays a task) ───────────────
@@ -544,9 +325,9 @@ function addObligation(body = {}, { now = Date.now(), actor = 'nick' } = {}) {
   if (bad) return { ok: false, status: 400, error: bad };
   if (body.seriesKey) {
     const snap = _json(SNAPSHOT_KEY);
-    const s = snap && (snap._series || []).find((x) => x.seriesKey === body.seriesKey);
-    if (!s) return { ok: false, status: 404, error: 'no such recurring series' };
-    if (s.owner === 'helen') return { ok: false, status: 404, error: 'Helen\'s own payments are not linked here' };
+    // The contract lists only household-visible series: another person's own payments are never linkable.
+    const s = snap && snap.contract && snap.contract.recurring.established.find((x) => x.key === body.seriesKey);
+    if (!s) return { ok: false, status: 404, error: 'no such recurring payment in Tally' };
   }
   const id = `fo_${crypto.randomUUID()}`;
   const iso = _iso(now);
@@ -577,8 +358,8 @@ function updateObligation(id, body = {}, { now = Date.now(), actor = 'nick' } = 
 }
 
 /**
- * Resolving needs EVIDENCE. "payment-seen" needs a matching payment in the
- * last Tally read; ticking a task is never evidence that money moved.
+ * Resolving needs EVIDENCE. "payment-seen" needs Tally to have seen the linked
+ * recurring payment; ticking a task is never evidence that money moved.
  */
 function resolveObligation(id, { evidence, note = null } = {}, { now = Date.now(), actor = 'nick' } = {}) {
   const db = _db();
@@ -589,7 +370,7 @@ function resolveObligation(id, { evidence, note = null } = {}, { now = Date.now(
   let detail = note;
   if (evidence === 'payment-seen') {
     const snap = _json(SNAPSHOT_KEY);
-    const ev = snap && snap.evidence ? snap.evidence[id] : null;
+    const ev = evidenceFor(_shapeObligation(held), snap && snap.contract);
     if (!ev) return { ok: false, status: 409, error: 'No matching payment has been seen in Tally yet. Link a recurring payment, or resolve with renewed, cancelled or statement.' };
     detail = `payment ${ev.ref} on ${ev.date}`;
   } else if (!(typeof note === 'string' && note.trim().length >= 3)) return { ok: false, status: 400, error: 'say what the evidence is (a note of at least 3 characters)' };
@@ -599,12 +380,21 @@ function resolveObligation(id, { evidence, note = null } = {}, { now = Date.now(
   return { ok: true };
 }
 
-// ── Future Radar (explicit obligations only — routine payments never) ────────
+// ── Future Radar (explicit, dated, operationally meaningful — never routine) ──
 
-function radar({ today, last, now = Date.now(), taskIndex = null } = {}) {
+/**
+ * Finance on the Radar:
+ *   • obligations Nick recorded (their own action state),
+ *   • Tally's PLANNED payments and established ANNUAL payments inside the window
+ *     (context: a dated, explicit fact Tally holds),
+ *   • a cross-domain pinch: Tally reads the month as tight AND a real non-finance
+ *     obligation falls in it (context beside that obligation).
+ * Never: a direct debit, a monthly trend, "spending is up", an anomaly.
+ */
+function radar({ today, last, now = Date.now(), taskIndex = null, vehicles = null } = {}) {
   const items = [];
   try {
-    const r = read({ now, taskIndex });
+    const r = read({ now, taskIndex, vehicles });
     const map = { overdue: 'needs_you', needs_you: 'needs_you', preparation_open: 'preparation_open', upcoming: 'none', later: 'none', unknown: 'unknown' };
     for (const o of r.obligations) {
       if (o.status !== 'open') continue;
@@ -612,28 +402,44 @@ function radar({ today, last, now = Date.now(), taskIndex = null } = {}) {
       const inWindow = o.dueDate && o.dueDate >= today && o.dueDate <= last;
       if (!inWindow && actionState !== 'needs_you') continue;
       items.push({
-        id: o.id, title: o.title, detail: o.expectedAmountPence ? `expected ${M.pounds(o.expectedAmountPence)}` : null, date: o.dueDate,
+        id: o.id, title: o.title, detail: o.expectedAmountPence ? `expected ${pounds(o.expectedAmountPence)}` : null, date: o.dueDate,
         kind: 'finance', obligationType: o.kind, actionState, needsWhy: o.stateWhy,
         linkedTaskRefs: [o.linkedTaskRef, o.linkedReminderRef].filter(Boolean),
         whyVisible: [`a ${o.kind.replace(/_/g, ' ')} you recorded`, o.stateWhy, o.payment].filter(Boolean),
         confidence: 'high',
       });
     }
+    const op = r.operational;
+    if (op) {
+      for (const u of op.upcoming.filter((x) => x.source === 'tally' && x.date && x.date >= today && x.date <= last)) {
+        items.push({
+          id: `tally-${u.kind}:${u.date}:${u.label}`, title: u.label, detail: `${u.direction === 'in' ? 'in' : 'out'} ${pounds(u.pence)} (Tally)`, date: u.date,
+          kind: 'finance', obligationType: u.kind === 'annual' ? 'annual_payment' : 'planned_payment', actionState: 'none', needsWhy: null, linkedTaskRefs: [],
+          whyVisible: [u.kind === 'annual' ? 'an established annual payment in Tally' : 'a planned payment recorded in Tally'], confidence: 'high',
+        });
+      }
+      for (const s of op.synthesis.filter((x) => x.kind === 'pinch-overlaps' && x.date && x.date >= today && x.date <= last)) {
+        items.push({
+          id: s.id, title: 'A tighter month around a car date', detail: s.line, date: s.date, kind: 'finance', obligationType: 'cross_domain',
+          actionState: 'none', needsWhy: null, linkedTaskRefs: [], whyVisible: s.facts.map((f) => `${f.system === 'tally' ? 'Tally' : 'NEURO'}: ${f.statement}`), confidence: 'medium',
+        });
+      }
+    }
   } catch (e) { return { items, error: e.message }; }
   return { items };
 }
 
-/** One month's stored summary. */
+/** One month's summary — Tally's, from the contract. */
 function monthly(month) {
-  const row = _db().get('SELECT * FROM finance_monthly_summaries WHERE month = ?', [month]);
-  return row ? { ...JSON.parse(row.summary_json), computedAt: row.computed_at, revisions: row.revisions } : null;
+  const snap = _json(SNAPSHOT_KEY);
+  const m = snap && snap.contract ? snap.contract.monthly.months.find((x) => x.month === month) : null;
+  return m ? { ...m, source: 'tally', generatedAt: snap.contract.generatedAt } : null;
 }
 
-const TABLES = ['finance_rules', 'finance_txn_decisions', 'finance_recurring_decisions', 'finance_review_decisions', 'finance_obligations', 'finance_monthly_summaries'];
+const TABLES = ['finance_obligations'];
 
 module.exports = {
-  QUERIES, EXPECTED, OBLIGATION_KINDS, RULE_KINDS, RESOLVE_EVIDENCE, TABLES, SNAPSHOT_KEY,
-  config, useReader, checkSchema, readTally, _ssh, compose, obligationState, validateRule,
-  read, refresh, decide, createRule, retireRule, rules, decideRecurring, decideReview,
-  addObligation, updateObligation, resolveObligation, obligations, radar, monthly,
+  CONTRACT, SECTIONS, SNAPSHOT_KEY, OBLIGATION_KINDS, RESOLVE_EVIDENCE, TABLES,
+  checkContract, useReader, fetchContract, healthFrom, evidenceFor, operational, obligationState,
+  read, refresh, movedToTally, addObligation, updateObligation, resolveObligation, obligations, radar, monthly,
 };

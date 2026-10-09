@@ -258,7 +258,8 @@ function fromCare(i, { today }) {
 /** A bank feed that needs reconnecting (finance health) → candidate, or null. PURE. */
 function fromFeed(a) {
   if (!a || a.state !== 'reconnect_required') return null;
-  const helen = a.owner === 'helen';
+  // Tally (Build 26) calls another person's own account `private`; Build 23 called it `helen`.
+  const helen = a.owner === 'helen' || a.owner === 'private';
   return {
     id: `finance-feed:${a.accountRef}`, title: `Reconnect the ${a.name} bank feed in Tally`, sourceKind: 'feed-health', source: 'Bank feed health',
     sourceRef: 'Finance · Tally feed health', domains: [{ domain: 'finance' }], entityLinks: [],

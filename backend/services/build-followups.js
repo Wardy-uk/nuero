@@ -185,4 +185,15 @@ const BUILD_25 = Object.freeze([
     why: 'Renewals, bookings, forms, appointments — one reminder each, with its date. NEURO reads that list (tracked since 8 Oct 2026) and shows it on Life → Personal admin; it is empty today, so there is nothing of yours to show. Car dates go on the Vehicle card instead (#383).' },
 ]);
 
-module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, validate, reconcile, verify };
+// Build 26 (9 Oct 2026) — Tally finance intelligence. Only what Tally cannot know or do without Nick;
+// a passive observation (spending up, a price change, an unusual payment) is never a task.
+const BUILD_26 = Object.freeze([
+  { key: 'categorise-summer-spending', build: 'Build 26', lifeDomains: ['finance'],
+    title: 'Categorise the uncategorised July–August spending in Tally (Outlook → Category trends needs 70%)',
+    why: 'Tally compares categories only when at least 70% of a month\'s spending carries one. September is 88%, but July (29%) and August (34%) are mostly uncategorised, so Tally cannot say which kinds of spending changed. Categorising in Tally — "Always" makes a merchant rule — fixes it for good.' },
+  { key: 'record-annual-bills-tally', build: 'Build 26', lifeDomains: ['finance'],
+    title: 'Record the household\'s known annual bills and renewals as planned payments in Tally → Outlook',
+    why: 'Tally\'s forward view only knows a payment once it has seen it three times, so an annual bill (car insurance, TV licence, breakdown cover) is invisible to it until it lands. A planned payment puts it in the 7/14/30-day view and stops it being called unusual when it arrives.' },
+]);
+
+module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, validate, reconcile, verify };

@@ -584,6 +584,11 @@ function fromPersonalOps(rows) {
       case 'project-blocker-opened': return entry({ ...base, category: 'configured', type: 'project.blocker', headline: `${d.name} is blocked: ${d.what}`, summary: d.owner === 'other' ? 'Waiting on someone else.' : 'Needs you to unblock it.', status: 'blocked' });
       case 'project-blocker-resolved': return entry({ ...base, category: 'verified', type: 'project.blocker', headline: `${d.name} unblocked: ${d.what}`, status: 'resolved' });
       case 'finance-summary-produced': return entry({ ...base, category: 'sensed', type: 'finance.summary', headline: `Monthly finance summary for ${d.month}`, summary: null, status: 'produced' });
+      // Build 26 — finance read from Tally's finance-intelligence-v1 contract; semantic changes only.
+      case 'finance-intelligence-connected': return entry({ ...base, category: 'configured', type: 'finance.source', headline: 'Finance now read from Tally\'s finance intelligence', summary: `Bank feeds: ${String(d.feed || 'unknown').replace(/_/g, ' ')}. Forecast: ${d.forecast || 'unknown'}. Every figure is Tally's.`, status: 'connected' });
+      case 'finance-forecast-available': return entry({ ...base, category: 'sensed', type: 'finance.forecast', headline: 'A forward view of the money became available', summary: d.confidence ? `Tally's confidence: ${d.confidence}.` : null, status: 'available' });
+      case 'finance-forecast-unavailable': return entry({ ...base, category: 'sensed', type: 'finance.forecast', headline: 'The forward view of the money is no longer available', summary: d.why || null, status: 'unavailable' });
+      case 'finance-category-quality-improved': return entry({ ...base, category: 'sensed', type: 'finance.quality', headline: `Category coverage improved in Tally (${d.from} → ${d.to})`, summary: d.why || null, status: 'improved' });
       case 'vehicle-gaps-changed': return entry({ ...base, category: 'sensed', type: 'vehicle.gaps', headline: `What NEURO cannot yet say about the ${d.vehicle} changed`, summary: (d.gaps || []).slice(0, 3).join('; '), status: 'changed' });
       case 'lead-reminders-set': return entry({ ...base, category: 'configured', type: 'personal.lead-reminders',
         headline: d.offsets ? `You set ${d.kind} lead reminders: ${d.offsets.join(', ')} days before` : `You cleared ${d.kind} lead reminders`,

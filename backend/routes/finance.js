@@ -1,12 +1,13 @@
 'use strict';
 
 /**
- * Build 23 — /api/finance: the household Finance domain over Tally.
+ * /api/finance — NEURO's finance domain over Tally's finance-intelligence-v1
+ * contract (Build 26). Every figure is Tally's; NEURO adds operational meaning.
  *
- * Read-only towards Tally and towards money: nothing here pays, moves,
- * cancels or edits anything. Every write is a statement Nick makes about how
- * NEURO should read his finances, and the authority matrix refuses machines on
- * all of them. Literal paths are registered before parameterised ones.
+ * Read-only towards Tally and towards money. Recurring, unusual and category
+ * decisions moved to Tally in Build 26 and answer 410 here. The only finance
+ * statements NEURO still takes are Nick's operational obligations, and the
+ * authority matrix refuses machines on all of them. Literal paths first.
  */
 
 const express = require('express');
@@ -17,12 +18,12 @@ const send = (res, out) => (out && out.ok === false ? res.status(out.status || 4
 const fail = (res, e) => { console.error('[Finance]', e.message); res.status(500).json({ ok: false, error: e.message }); };
 const hasBody = (req) => !!(req.body && typeof req.body === 'object');
 
-// GET /api/finance — household finance: bank-feed health, coverage, monthly summaries, recurring payments, upcoming money out, unusual items, category quality, obligations. Keywords: money, spending, bills, budget, finance, Tally.
+// GET /api/finance — household finance from Tally: source health, position, forecast, pressure, major changes, upcoming money, what needs action, cross-domain links, obligations. Keywords: money, spending, bills, cashflow, finance, Tally.
 router.get('/', (req, res) => {
   try { res.json(fin().read()); } catch (e) { fail(res, e); }
 });
 
-// GET /api/finance/monthly/:month — the stored summary for one month (YYYY-MM): spending by domain, money out, income, coverage. Keywords: monthly spending, month summary.
+// GET /api/finance/monthly/:month — Tally's summary for one month (YYYY-MM): spending, money in and out, categories, coverage. Keywords: monthly spending.
 router.get('/monthly/:month', (req, res) => {
   try {
     if (!/^\d{4}-\d{2}$/.test(req.params.month)) return res.status(400).json({ ok: false, error: 'month must be YYYY-MM' });
@@ -32,47 +33,27 @@ router.get('/monthly/:month', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
-// GET /api/finance/reconnect — after a bank reconnect in Tally: accounts relinked, newest and oldest backfilled transactions, gap left, double imports. Keywords: TrueLayer, NatWest, reconnect.
+// GET /api/finance/reconnect — bank feed health per account, as Tally reports it. Keywords: TrueLayer, NatWest, reconnect.
 router.get('/reconnect', (req, res) => {
-  try { const r = fin().read(); res.json({ ok: true, health: r.health, reconnect: r.reconnect || null, lastRead: r.lastRead }); } catch (e) { fail(res, e); }
+  try { const r = fin().read(); res.json({ ok: true, health: r.health, lastRead: r.lastRead }); } catch (e) { fail(res, e); }
 });
 
-// POST /api/finance/sync — read Tally now (read-only) and rebuild the finance view. Normally a scheduled job.
+// POST /api/finance/sync — read Tally's finance contract now. Normally a scheduled job.
 router.post('/sync', async (req, res) => {
   try { send(res, await fin().refresh()); } catch (e) { fail(res, e); }
 });
 
-// POST /api/finance/transactions/:txnId/decide — Nick categorises one transaction from the review list. The category is written INTO Tally through Tally's API (Tally is the one store); remember=true makes it Tally's merchant rule. Body: decision (confirm|unknown), categoryId (a Tally category id), remember (boolean), confirmRule (boolean, when Tally asked to confirm a rule).
-router.post('/transactions/:txnId/decide', async (req, res) => {
-  try {
-    if (!hasBody(req)) return res.status(400).json({ ok: false, error: 'a JSON body is required' });
-    const { decision, categoryId, remember, confirmRule } = req.body;
-    send(res, await fin().decide(req.params.txnId, { decision, categoryId, remember: !!remember, confirmRule: !!confirmRule }));
-  } catch (e) { fail(res, e); }
-});
+// POST /api/finance/transactions/:txnId/decide — retired in Build 26: categories are set in Tally.
+router.post('/transactions/:txnId/decide', (req, res) => send(res, fin().movedToTally('A transaction\'s category')));
 
-// POST /api/finance/rules/:ruleId/retire — Nick retires a finance classification rule. Decisions it made stop applying on the next read.
-router.post('/rules/:ruleId/retire', async (req, res) => {
-  try { send(res, await fin().retireRule(req.params.ruleId)); } catch (e) { fail(res, e); }
-});
+// POST /api/finance/rules/:ruleId/retire — retired in Build 26: rules live in Tally.
+router.post('/rules/:ruleId/retire', (req, res) => send(res, fin().movedToTally('A categorisation rule')));
 
-// POST /api/finance/recurring/:seriesKey/decide — Nick says a payment series is (or is not) recurring. Body: decision (recurring|not-recurring|clear).
-router.post('/recurring/:seriesKey/decide', async (req, res) => {
-  try {
-    if (!hasBody(req)) return res.status(400).json({ ok: false, error: 'a JSON body is required' });
-    const { decision } = req.body;
-    send(res, await fin().decideRecurring(req.params.seriesKey, { decision }));
-  } catch (e) { fail(res, e); }
-});
+// POST /api/finance/recurring/:seriesKey/decide — retired in Build 26: recurrence is decided in Tally.
+router.post('/recurring/:seriesKey/decide', (req, res) => send(res, fin().movedToTally('Whether a payment recurs')));
 
-// POST /api/finance/review/:itemKey/decide — Nick answers an unusual-spend or possible-duplicate item. Body: decision (expected|not-duplicate|leave|look-into-it). Nothing is disputed.
-router.post('/review/:itemKey/decide', async (req, res) => {
-  try {
-    if (!hasBody(req)) return res.status(400).json({ ok: false, error: 'a JSON body is required' });
-    const { decision } = req.body;
-    send(res, await fin().decideReview(req.params.itemKey, { decision }));
-  } catch (e) { fail(res, e); }
-});
+// POST /api/finance/review/:itemKey/decide — retired in Build 26: unusual items are answered in Tally.
+router.post('/review/:itemKey/decide', (req, res) => send(res, fin().movedToTally('An unusual-spend item')));
 
 // POST /api/finance/obligations — Nick records a finance obligation (renewal, bill, annual fee). Body: kind, title, dueDate, expectedAmountPence, seriesKey, requiresDecision, scope, linkedTaskRef, linkedReminderRef.
 router.post('/obligations', (req, res) => {

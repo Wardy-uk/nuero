@@ -1296,7 +1296,7 @@ function start() {
       why: 'Reads Tally (read-only) for motoring candidates, refreshes MPG readiness quietly and stores last month\'s vehicle summary once. Idempotent; a missed day heals on the next.',
       run: async () => require('./vehicle').refresh(),
     });
-    // Build 23: the household finance view, from the same read-only Tally source.
+    // Build 26: the household finance view, read from Tally's finance-intelligence-v1 contract.
     require('./runtime-jobs').defineJob({
       name: 'finance-refresh',
       cron: '41 */3 * * *',
@@ -1306,7 +1306,7 @@ function start() {
       maxAttempts: 2,
       backoffMs: [20 * 60 * 1000],
       timeoutMs: 5 * 60 * 1000,
-      why: 'Reads Tally (read-only) and rebuilds the finance view: feed health, monthly summaries, recurring payments, review items. Every 3 hours so a bank reconnect is noticed the same morning. Idempotent; a missed run heals on the next.',
+      why: 'Reads Tally\'s finance-intelligence-v1 contract (Tally calculates; NEURO keeps the snapshot and records what changed). Every 3 hours so a bank reconnect is noticed the same morning. Idempotent; a missed run heals on the next.',
       run: async () => require('./finance').refresh(),
     });
     // Build 24: personal projects — re-read the vault's Projects/ folder and
