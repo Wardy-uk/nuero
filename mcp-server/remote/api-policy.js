@@ -45,6 +45,13 @@ export const interactive = {
   post_loops_personal_dates_declared: 'A birthday or anniversary written into a People or Companions note is Nick\'s own statement. He sets it in NEURO → Life.',
   post_loops_hiking_deny:'Saying a day was not a hike is Nick\'s own statement. He does it in NEURO → Life.',
   post_loops_hiking_denials_by_id_withdraw: 'Taking back a "not a hike" is Nick\'s statement. He does it in NEURO → Life.',
+  // Build 29: route plans and activity links (a route, Ember) are Nick's own.
+  post_outdoor_routes: 'A route plan is Nick\'s own. He adds it in NEURO → Life → Outdoor.',
+  post_outdoor_routes_by_routeId: 'Changing or cancelling a route plan is Nick\'s statement. He does it in NEURO → Life → Outdoor.',
+  post_outdoor_activities_by_activityId_route: 'Which planned route a walk or hike followed is Nick\'s explicit link. He makes it in NEURO → Life → Outdoor.',
+  post_outdoor_activities_by_activityId_route_remove: 'Unlinking a route is Nick\'s choice. He does it in NEURO → Life → Outdoor.',
+  post_outdoor_activities_by_activityId_companion: 'Whether Ember came along is Nick\'s statement, never inferred. He marks it in NEURO → Life → Outdoor.',
+  post_outdoor_activities_by_activityId_companion_remove: 'Removing Ember from an activity is Nick\'s statement. He does it in NEURO → Life → Outdoor.',
   // Build 19P: goals, what a goal is about, what prepares for what, and what a
   // calendar or list is for are Nick's own statements. An agent may read the
   // Future Radar and obligations; it must never make these links itself.

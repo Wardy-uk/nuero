@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../api';
 import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when, Fold } from './canonicalUi';
-import HikingLoopCard from './HikingLoopCard';
+import OutdoorCard from './OutdoorCard';
 import PersonalDatesCard from './PersonalDatesCard';
 import CompanionCareCard from './CompanionCareCard';
 import TransportCard from './TransportCard';
@@ -61,6 +61,8 @@ export default function LifePanel({ onNavigate = null } = {}) {
       <HomeCard />
       <FutureRadarCard />
       <Goals data={data} busy={busy} act={act} />
+      {/* Build 29: Outdoor carries the Hike weekly loop (its confirm / not-a-hike controls). */}
+      <OutdoorCard />
       <PersonalAdminCard />
       <TransportCard />
       <FinanceCard />
@@ -127,8 +129,6 @@ function Goals({ data, busy, act }) {
           </li>
         ))}
       </ul>
-      {/* Build 15S: draws nothing unless a "hike weekly" goal is active. */}
-      <HikingLoopCard />
       <PersonalDatesCard />
       <form className="cn-goalform" onSubmit={add}>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. hike once a fortnight" maxLength={300} aria-label="Goal" />

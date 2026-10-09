@@ -1252,6 +1252,7 @@ function _workMeetingMinutesToday(nowMs, people, ctx = null) {
  */
 let _radarMemo = null;
 let _homeMemo = null;
+let _outdoorMemo = null;
 async function now({ now: nowMs = Date.now(), decision = null } = {}) {
   const gaps = [];
   let dec = decision;
@@ -1334,6 +1335,15 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
       relevant: h.needsYou.length > 0 || (h.exceptions || []).length > 0,
     };
   } catch (e) { payload.home = null; gaps.push({ input: 'home', why: e.message }); }
+  // Build 29Y: Outdoor earns a place on Now only when a hike is planned today or
+  // tomorrow, severe weather threatens a plan, the weekly goal is genuinely at
+  // risk late in the week, a 24h window is asking, or the workout source fails.
+  // Never "no hike yet" on a Monday. No network, no write, memoised per minute.
+  try {
+    const minute = Math.floor(nowMs / 60000);
+    if (!_outdoorMemo || _outdoorMemo.minute !== minute) _outdoorMemo = { minute, o: require('./outdoor').nowBlock({ now: nowMs }) };
+    payload.outdoor = _outdoorMemo.o;
+  } catch (e) { payload.outdoor = null; gaps.push({ input: 'outdoor', why: e.message }); }
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
   // allowed to fail the feed: null means "render the way you did before".

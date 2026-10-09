@@ -217,4 +217,16 @@ const BUILD_28 = Object.freeze([
     why: 'Every entity of each has been unavailable for 12–24 days. NEURO lists them under Life → Home as "offline for over a week" rather than as faults; HA\'s own watchdog still counts them every morning. If they are retired, removing them from Home Assistant makes "offline" mean something again.' },
 ]);
 
-module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, BUILD_27, BUILD_28, validate, reconcile, verify };
+// Build 29 (9 Oct 2026): outdoor life. The phone can now send a workout's GPS
+// route, but none has ever arrived — so today only Nick's word can confirm a
+// hike. Two things only he can do. "Go hiking" is NOT a task and never will be.
+const BUILD_29 = Object.freeze([
+  { key: 'prove-workout-route', build: 'Build 29', lifeDomains: ['fitness'],
+    title: 'Record your next planned hike as a Hiking workout on the Watch, so its GPS route reaches NEURO',
+    why: 'NEURO iOS build 243 can send a workout\'s route, but none has arrived yet (no hike or walk workout since 6 Aug). Until one does, a hike can only be confirmed by you pressing "I hiked that day" in Life → Outdoor.' },
+  { key: 'hiking-workout-minimum', build: 'Build 29', lifeDomains: ['fitness'],
+    title: 'Decide whether a Hiking workout needs a minimum length to count as a hike (e.g. 60 minutes, like a walk)',
+    why: 'Today a Hiking workout with its GPS route counts whatever its length. Five "Hiking" workouts between 25 Feb and 2 Mar lasted 13–25 minutes and about 1 km each — they would have counted. Your call; NEURO has not changed the rule.' },
+]);
+
+module.exports = { LEDGER_KEY, BUILD_23, BUILD_24, BUILD_25, BUILD_26, BUILD_27, BUILD_28, BUILD_29, validate, reconcile, verify };

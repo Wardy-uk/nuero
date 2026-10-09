@@ -3616,6 +3616,24 @@
     "stream": false
   },
   {
+    "id": "get_outdoor",
+    "method": "GET",
+    "route": "/api/outdoor",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 16,
+    "description": "GET /api/outdoor. Outdoor Life: this week, Hike weekly goal state, confirmed hikes, walks, refused (not a hike), route plans, weather, outdoor sources.",
+    "params": [],
+    "query": [
+      "weeks"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_people_gap",
     "method": "GET",
     "route": "/api/people-gap",
@@ -4676,7 +4694,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 251,
+    "line": 253,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -9519,6 +9537,142 @@
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_activities_by_activityId_companion",
+    "method": "POST",
+    "route": "/api/outdoor/activities/:activityId/companion",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 52,
+    "description": "POST /api/outdoor/activities/:activityId/companion. Nick says Ember (a companion) came on this walk or hike.",
+    "params": [
+      "activityId"
+    ],
+    "query": [],
+    "body": [
+      "companionId"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_activities_by_activityId_companion_remove",
+    "method": "POST",
+    "route": "/api/outdoor/activities/:activityId/companion/remove",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 59,
+    "description": "POST /api/outdoor/activities/:activityId/companion/remove. Nick removes a companion (Ember) from an activity.",
+    "params": [
+      "activityId"
+    ],
+    "query": [],
+    "body": [
+      "companionId"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_activities_by_activityId_route",
+    "method": "POST",
+    "route": "/api/outdoor/activities/:activityId/route",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 40,
+    "description": "POST /api/outdoor/activities/:activityId/route. Nick links a hike/walk to the planned route it followed. Explicit only.",
+    "params": [
+      "activityId"
+    ],
+    "query": [],
+    "body": [
+      "routeId"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_activities_by_activityId_route_remove",
+    "method": "POST",
+    "route": "/api/outdoor/activities/:activityId/route/remove",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 47,
+    "description": "POST /api/outdoor/activities/:activityId/route/remove. Nick unlinks a route from an activity.",
+    "params": [
+      "activityId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_routes",
+    "method": "POST",
+    "route": "/api/outdoor/routes",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 28,
+    "description": "POST /api/outdoor/routes. Nick adds a route plan (hike or walk, by hand or GPX file). A plan, never activity.",
+    "params": [],
+    "query": [],
+    "body": [
+      "difficulty",
+      "distanceKm",
+      "elevationGainM",
+      "emberPlanned",
+      "gpx",
+      "kind",
+      "name",
+      "notes",
+      "plannedDate",
+      "region",
+      "status"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_routes_by_routeId",
+    "method": "POST",
+    "route": "/api/outdoor/routes/:routeId",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 34,
+    "description": "POST /api/outdoor/routes/:routeId. Nick changes a route plan (date, name, notes, cancel or re-plan via status).",
+    "params": [
+      "routeId"
+    ],
+    "query": [],
+    "body": [
+      "difficulty",
+      "distanceKm",
+      "elevationGainM",
+      "emberPlanned",
+      "gpx",
+      "kind",
+      "name",
+      "notes",
+      "plannedDate",
+      "region",
+      "status"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

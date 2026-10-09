@@ -295,6 +295,19 @@ function _plansFromCalendar(fromDay, toDay, today) {
   return out;
 }
 
+/**
+ * Build 29L: a HIKE route plan Nick dated (Life → Outdoor) is a plan exactly
+ * like a calendar entry — a plan, never evidence. Cancelled plans are not
+ * plans. No table (older DB) = no route plans.
+ */
+function _plansFromRoutes(fromDay, toDay) {
+  try {
+    return db.all(`SELECT route_id, name, planned_date FROM outdoor_routes WHERE kind = 'hike' AND status = 'planned'
+                    AND planned_date >= ? AND planned_date <= ?`, [fromDay, toDay])
+      .map((r) => ({ day: r.planned_date, source: 'route', routeId: r.route_id, name: r.name }));
+  } catch { return []; }
+}
+
 function entries(goalId) {
   return db.all(`SELECT * FROM goal_loop_entries WHERE goal_id = ? AND withdrawn_at IS NULL ORDER BY day`, [goalId])
     .map((r) => ({ id: r.id, kind: r.kind, day: r.day, note: r.note, createdAt: r.created_at }));
@@ -427,6 +440,21 @@ function _goals() {
   try { return db.all(`SELECT goal_id, title, status, importance FROM goals`).map((g) => ({ goalId: g.goal_id, title: g.title, status: g.status, importance: g.importance })); } catch { return []; }
 }
 
+/**
+ * Build 29: hike plans from today up to `days` ahead, by the loop's OWN rule
+ * (calendar entries titled hiking, dated hike route plans, Nick's manual
+ * plans) — so Outdoor never re-implements what counts as a planned hike.
+ */
+function plansAhead({ now = Date.now(), days = 14 } = {}) {
+  const today = localDay(now instanceof Date ? now.getTime() : now);
+  const to = addDays(today, days);
+  const goal = findGoal(_goals());
+  const manual = goal ? entries(goal.goalId).filter((e) => e.kind === 'plan' && e.day >= today && e.day <= to)
+    .map((e) => ({ day: e.day, source: 'manual', id: e.id })) : [];
+  const all = [..._plansFromCalendar(today, to, today), ..._plansFromRoutes(today, to), ...manual];
+  return [...new Map(all.map((p) => [`${p.day}:${p.source}:${p.routeId || ''}`, p])).values()].sort((a, b) => a.day.localeCompare(b.day));
+}
+
 /** The loop, read now. `{ active:false }` when there is no explicit goal. */
 function read({ now = Date.now(), weeks = 6 } = {}) {
   const nowMs = now instanceof Date ? now.getTime() : now;
@@ -441,7 +469,7 @@ function read({ now = Date.now(), weeks = 6 } = {}) {
   const rel = _reliability(today);
   const manual = entries(goal.goalId);
   const denied = denials(goal.goalId);
-  const plans = [..._plansFromCalendar(first, last, today),
+  const plans = [..._plansFromCalendar(first, last, today), ..._plansFromRoutes(first, last),
     ...manual.filter((e) => e.kind === 'plan').map((e) => ({ day: e.day, source: 'manual', id: e.id }))];
   const confirms = manual.filter((e) => e.kind === 'confirm');
   const workouts = _workouts(first, last);
@@ -565,5 +593,5 @@ module.exports = {
   CONFIRM_WINDOW_MIN, MIN_TRACK_POINTS, WALK_TRACK_MIN, STATES,
   localDay, addDays, weekStart, weekDays, dayName, entryDay, findGoal, reliability, weekState, evidenceFor,
   trackVerdict, judgeDay, windowClosesAt, locationByDay, routeFromPayload, parseStamp: _sqlMs,
-  read, refresh, addEntry, withdraw, withdrawDenial, entries, denials, events,
+  read, refresh, addEntry, plansAhead, withdraw, withdrawDenial, entries, denials, events,
 };

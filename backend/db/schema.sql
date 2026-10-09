@@ -3094,3 +3094,42 @@ CREATE TABLE IF NOT EXISTS personal_admin_annotations (
   set_at     TEXT NOT NULL,
   CHECK (state IS NOT 'blocked' OR (note IS NOT NULL AND length(note) > 0))
 );
+
+-- ── Build 29: Outdoor Life ────────────────────────────────────────────────
+-- A route PLAN Nick added (by hand or from a GPX file). A plan is never
+-- activity and never completion. Geometry (simplified, <=300 points) is kept
+-- only to compare a plan with an actual track, and is never returned by a read.
+-- 'completed' is not a status: it is DERIVED from an explicit link to a
+-- confirmed activity, so a plan cannot be marked done by itself.
+CREATE TABLE IF NOT EXISTS outdoor_routes (
+  route_id         TEXT PRIMARY KEY,
+  name             TEXT NOT NULL,
+  kind             TEXT NOT NULL CHECK (kind IN ('hike', 'walk')),
+  status           TEXT NOT NULL CHECK (status IN ('planned', 'cancelled')),
+  planned_date     TEXT,
+  distance_km      REAL,
+  elevation_gain_m REAL,
+  region           TEXT,
+  difficulty       TEXT,
+  notes            TEXT,
+  ember_planned    INTEGER NOT NULL DEFAULT 0,
+  source           TEXT NOT NULL CHECK (source IN ('manual', 'gpx')),
+  route_ref        TEXT,
+  point_count      INTEGER,
+  geometry_json    TEXT,
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_outdoor_routes_date ON outdoor_routes(planned_date);
+
+-- Nick's explicit links on an activity: who came (a companion) and which
+-- planned route it was. Never inferred. Every add/remove is ALSO written to
+-- personal_ops_events (append-only), which is the audit trail.
+CREATE TABLE IF NOT EXISTS outdoor_activity_links (
+  activity_id TEXT NOT NULL,
+  relation    TEXT NOT NULL CHECK (relation IN ('companion', 'route')),
+  target_id   TEXT NOT NULL,
+  label       TEXT,
+  set_at      TEXT NOT NULL,
+  PRIMARY KEY (activity_id, relation, target_id)
+);

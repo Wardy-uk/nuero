@@ -1494,7 +1494,10 @@ function registerDurableJobs() {
       // Build 25W: the admin source becoming active, stale or recovered — one line each.
       let admin = null;
       try { admin = require('./personal-admin').refresh(); } catch (e) { admin = { ok: false, error: e.message }; }
-      return { ...radar, nags, home, admin };
+      // Build 29: Outdoor's one network call — HA's daily forecast, cached so reads write nothing.
+      let outdoor = null;
+      try { outdoor = await require('./outdoor').refresh(); } catch (e) { outdoor = { ok: false, error: e.message }; }
+      return { ...radar, nags, home, admin, outdoor };
     },
   });
 

@@ -206,6 +206,8 @@ app.use('/api/canonical', require('./routes/canonical'));
 app.use('/api/vehicle', require('./routes/vehicle'));
 // Build 27: Life → Transport, read-only.
 app.use('/api/transport', require('./routes/transport'));
+// Build 29: Life → Outdoor. Hikes stay the hiking loop's verdict.
+app.use('/api/outdoor', require('./routes/outdoor'));
 app.use('/api/finance', require('./routes/finance'));
 // Build 24: personal projects — vault Projects/, GitHub metadata, linked tasks. Never writes to GitHub.
 app.use('/api/projects', require('./routes/projects'));

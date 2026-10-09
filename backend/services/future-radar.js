@@ -116,7 +116,8 @@ function _prepState(prep, away) {
  */
 function composeRadar({ today, horizonDays = 14, events = [], dates = [], obligations = [], goals = [], hikeGoal = null,
   prepBySubject = new Map(), goalsByEntity = new Map(), coverage = {}, undatedObligations = 0, workExcluded = 0,
-  care = [], careByEntity = new Map(), leadReminders = {}, vehicles = [], finances = [], projects = [] } = {}) {
+  care = [], careByEntity = new Map(), leadReminders = {}, vehicles = [], finances = [], projects = [],
+  outdoorPlans = [], outdoorWeather = new Map() } = {}) {
   const last = addDays(today, horizonDays);
   const inWindow = (d) => d && d >= today && d <= last;
   const items = [];
@@ -199,6 +200,40 @@ function composeRadar({ today, horizonDays = 14, events = [], dates = [], obliga
     }
     folded.set(key, item);
     items.push(item);
+  }
+
+  // ── Build 29Z: route plans Nick dated in Life → Outdoor. A hike route on a
+  // day the calendar already plans a hike FOLDS into that item (one plan, not
+  // two); otherwise it is its own planned item. Plans only — never activity.
+  for (const p of outdoorPlans) {
+    if (!inWindow(p.day)) continue;
+    const routeWhy = `you planned the route "${p.name}" in Life → Outdoor`;
+    const held = p.kind === 'hike' ? folded.get(`hike|${p.day}`) : null;
+    if (held) {
+      held.title = `Hike planned: ${p.name}`;
+      held.sourceRefs.push(p.routeId);
+      held.whyVisible.push(routeWhy);
+      if (p.emberPlanned) held.linkedEntityRefs.push('companion:ember');
+      continue;
+    }
+    const item = {
+      id: `radar:outdoor:${p.routeId}`, title: `${p.kind === 'walk' ? 'Walk' : 'Hike'} planned: ${p.name}`, date: p.day, time: null, window: null,
+      domain: null, sphere: 'personal', kind: p.kind === 'hike' ? 'hike' : 'outdoor-plan', sourceRefs: [p.routeId],
+      linkedEntityRefs: p.emberPlanned ? ['companion:ember'] : [], linkedTaskRefs: [],
+      linkedGoals: p.kind === 'hike' && hikeGoal ? [{ goalId: hikeGoal.id, title: hikeGoal.title, basis: 'route-plan' }] : [],
+      importance: null, actionState: 'planned', confidence: 'high', whyVisible: [routeWhy], when: whenWords(today, p.day),
+    };
+    if (p.kind === 'hike') folded.set(`hike|${p.day}`, item);
+    items.push(item);
+  }
+  // Weather is CONTEXT on a planned outing; only a SEVERE forecast within two
+  // days asks Nick for a decision (keep it, move it, drop it). Never a push.
+  for (const it of items) {
+    if (!['hike', 'outdoor-plan'].includes(it.kind)) continue;
+    const w = outdoorWeather.get(it.date);
+    if (!w || w.state === 'unknown') continue;
+    it.weather = { state: w.state, severe: !!w.severe, line: w.line };
+    if (w.severe) { it.actionState = 'needs_you'; it.whyVisible.push(`severe weather forecast — ${w.line}`); }
   }
 
   // ── personal obligations with a date in the window (or needing him now) ──
@@ -464,8 +499,15 @@ function read({ now = Date.now(), horizonDays = 14 } = {}) {
   if (financeRead.error) { gaps.push({ input: 'finance', why: financeRead.error }); cov.reasons.push('finance dates could not be read'); }
   const projectRead = require('./projects').radar({ today, last, now: nowMs });
   if (projectRead.error) { gaps.push({ input: 'projects', why: projectRead.error }); cov.reasons.push('personal-project dates could not be read'); }
+  const outdoorRead = require('./outdoor').radar({ today, last });
+  if (outdoorRead.error) { gaps.push({ input: 'outdoor', why: outdoorRead.error }); cov.reasons.push('route plans could not be read'); }
+  const outdoorWeather = new Map();
+  for (let i = 0; i <= 2; i += 1) {
+    const d = addDays(today, i);
+    try { outdoorWeather.set(d, require('./outdoor').weatherNear(d, nowMs)); } catch { /* no weather: context only */ }
+  }
   const radar = composeRadar({
-    today, horizonDays, events, dates, obligations: obl ? obl.items : [], goals, hikeGoal,
+    today, horizonDays, outdoorPlans: outdoorRead.items, outdoorWeather, events, dates, obligations: obl ? obl.items : [], goals, hikeGoal,
     prepBySubject: _prepBySubject(prep.bySubject, taskIndex), goalsByEntity, coverage: cov,
     undatedObligations: obl ? obl.counts.undated : 0, workExcluded: obl ? obl.counts.workExcluded : 0,
     care: careRead.items, careByEntity: cc.linkMap(), leadReminders: require('./date-nags').cadences(),
