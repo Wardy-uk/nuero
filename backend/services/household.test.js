@@ -37,7 +37,7 @@ const MEMBERS = [
 
 test('the roster: Nick first, residents, visitors, then Ember — and Ember is never a person with a whereabouts', () => {
   const m = hh.compose({ nick: 'work', householdMembers: MEMBERS }, [{ name: 'Ember', species: 'Dog' }]);
-  assert.deepEqual(m.map((x) => x.id), ['nick', 'helen', 'isaac', 'daniel', 'lizzy', 'ember']);
+  assert.deepEqual(m.map((x) => x.id), ['nick', 'helen', 'isaac', 'daniel', 'lizzy', 'matt', 'ember']);
   assert.deepEqual(m[0], { id: 'nick', name: 'Nick', role: 'self', state: 'away', detail: 'At work' });
   assert.equal(m.find((x) => x.id === 'ember').state, 'untracked');
   assert.equal(m.find((x) => x.id === 'daniel').state, 'unknown', 'unknown stays unknown');
@@ -70,7 +70,10 @@ test('a down presence source makes EVERYONE unknown — never "everyone is out"'
   await bus.pumpAll();
   const out = hh.read();
   assert.equal(out.known, false);
-  for (const m of out.members.filter((x) => x.role !== 'companion')) assert.equal(m.state, 'unknown', m.id);
+  // Untracked people (Matt) never came from the source, so its outage cannot change them.
+  const tracked = out.members.filter((x) => x.role !== 'companion' && x.tracked !== false);
+  assert.ok(tracked.length >= 1, 'positive control: there are tracked people to check');
+  for (const m of tracked) assert.equal(m.state, 'unknown', m.id);
 });
 
 test('photos: found by id from the photo dir, never by a path the caller supplies', () => {
