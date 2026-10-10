@@ -141,6 +141,11 @@ test('life-state: the geofence names WORK, sits under the room sensor, over the 
   // A name matching the work zones counts even without a kind.
   assert.equal(lifeState.placeFor({ region: { known: true, place: { name: 'Office', kind: null } } }).kind, 'work');
   assert.equal(lifeState.placeFor({ region: { known: true, place: { name: 'Gym', kind: null } } }).kind, 'elsewhere');
+  // ...and a kind-less "Home" is home — the live saved place has no kind, and
+  // reading it as elsewhere told him he was out while he was in bed.
+  assert.equal(lifeState.placeFor({ region: { known: true, place: { name: 'Home', kind: null } } }).kind, 'home');
+  // An explicit non-home kind still wins over the name.
+  assert.equal(lifeState.placeFor({ region: { known: true, place: { name: 'Home', kind: 'other' } } }).kind, 'elsewhere');
   // The room sensor still wins.
   assert.equal(lifeState.placeFor({ room: { known: true, room: 'study' }, region }).basis, 'watch room sensor');
   // An unknown geofence changes nothing.

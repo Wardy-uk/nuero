@@ -141,7 +141,11 @@ function placeFor({ room, phone, region }) {
   if (region && region.known && region.place && region.place.name) {
     const { name, kind } = region.place;
     if (kind === 'work' || (!kind && WORK_ZONES.includes(lower(name)))) return { kind: 'work', label: name, basis: 'phone geofence' };
-    if (kind === 'home') return { kind: 'home', label: null, basis: 'phone geofence' };
+    // A kind-less place NAMED "Home" is home, exactly as a kind-less "Office"
+    // is work above. Without this the saved "Home" place (kind null) read as
+    // `elsewhere` → doing `out`, and NEURO said "Out and about" with him in bed
+    // whenever the watch dropped off the room sensor (10 Oct 2026).
+    if (kind === 'home' || (!kind && lower(name) === 'home')) return { kind: 'home', label: null, basis: 'phone geofence' };
     return { kind: 'elsewhere', label: name, basis: 'phone geofence' };
   }
   if (WORK_ZONES.includes(zone)) return { kind: 'work', label: phone.zone, basis: 'phone zone' };
