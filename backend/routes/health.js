@@ -225,7 +225,7 @@ router.get('/ring-week', (req, res) => {
       firmware: firmware ? {
         installedVersion: firmware.version,
         observedAt: firmware.receivedAt,
-        latestStatus: 'unknown — J2301 has no published firmware release feed or documented OTA route',
+        latestStatus: `installed version ${firmware.version} was read directly from the ring; the newest available version is unknown because J2301 has no published release feed or documented OTA route`,
       } : {
         installedVersion: null,
         observedAt: null,
