@@ -16,6 +16,11 @@ const RING_DIAGNOSTIC_STATE_KEY = 'jc_ring_diagnostic';
 const MAX_RING_DIAGNOSTIC_PACKETS = 500;
 const MAX_RING_DIAGNOSTIC_CHARACTERISTICS = 100;
 const MAX_RING_DIAGNOSTIC_PROBES = 300;
+// The clock on Nick's J2301 ring is currently one hour slow.  Keep the raw
+// packet unchanged, but use the agreed corrected wall-clock time for every
+// decoded history value shown in NEURO.  Battery replies have a phone receipt
+// time (ISO with a T/Z) and deliberately pass through unchanged.
+const JC_RING_CLOCK_OFFSET_MINUTES = 60;
 const JC_RING_METRICS = [
   'heart_rate', 'battery_level_percent', 'hrv', 'blood_oxygen_saturation', 'skin_temperature_celsius',
   'vendor_bp_systolic_estimate', 'vendor_bp_diastolic_estimate', 'vendor_vascular_age',
@@ -30,6 +35,13 @@ function shortText(value, limit) {
   return typeof value === 'string' && value.length <= limit ? value : null;
 }
 
+function correctedJCRingTimestamp(value) {
+  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(value))) return value;
+  const date = new Date(`${value.replace(' ', 'T')}Z`);
+  date.setUTCMinutes(date.getUTCMinutes() + JC_RING_CLOCK_OFFSET_MINUTES);
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 // The raw capture remains available for protocol work, but confirmed readings
 // are also made durable here. They use their own table so nothing from a
 // consumer ring is blended into Apple Health or a HiLo measurement.
@@ -37,7 +49,8 @@ function persistJCRingReadings(packets, receivedAt) {
   const decoded = jcRingProtocol.inspect(packets);
   let stored = 0;
   const put = (metric, value, at, sampleIndex = 0) => {
-    if (Number.isFinite(value) && db.insertJCRingSample(metric, value, at, sampleIndex, receivedAt)) stored++;
+    const correctedAt = correctedJCRingTimestamp(at);
+    if (Number.isFinite(value) && db.insertJCRingSample(metric, value, correctedAt, sampleIndex, receivedAt)) stored++;
   };
   for (const sample of decoded.heartRateSamples) {
     put('heart_rate', sample.bpm, sample.timestamp, sample.sampleIndex);
@@ -195,7 +208,7 @@ router.get('/ring-readings', (req, res) => {
   try {
     const latest = Object.fromEntries(JC_RING_METRICS.map(metric => [metric, db.getLatestJCRingSample(metric) || null]));
     return res.json({ available: Object.values(latest).some(Boolean), latest,
-      caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring timestamps are device-local.' });
+      caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring history times are corrected +1 hour from the current ring clock.' });
   } catch {
     return res.status(500).json({ error: 'could not read JC Ring samples' });
   }
@@ -244,7 +257,8 @@ router.get('/ring-week', (req, res) => {
         'exercise sessions / sport records — command layout still being traced',
         'blood-sugar feature (vendor value; not suitable for health use) — command layout still being traced',
       ],
-      caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring timestamps are device-local.',
+      clockCorrectionMinutes: JC_RING_CLOCK_OFFSET_MINUTES,
+      caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring history times are corrected +1 hour from the current ring clock.',
     });
   } catch {
     return res.status(500).json({ error: 'could not read JC Ring week monitor' });
@@ -312,7 +326,7 @@ router.get('/ring-comparison', (req, res) => {
             } : null,
       },
       caveats: [
-        'JC Ring timestamps are the ring local clock; Apple Health/HiLo timestamps are UTC.',
+        'JC Ring history timestamps are corrected +1 hour from the current ring clock; Apple Health/HiLo timestamps are UTC.',
         'Ring BP is a vendor estimate, never a measured HiLo or cuff value.',
         'A difference is not a calibration point unless the readings were taken close together in comparable conditions.',
       ],
