@@ -270,6 +270,7 @@ const ROUTE_RULES = Object.freeze([
   // that could check Nick in could silence the alert. All of it is his.
   R('POST', '/api/outdoor/safety/contacts', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/safety/trips', 'hike.safety-alert'),
+  R('POST', '/api/outdoor/safety/trips/:tripId/edit', 'hike.safety-alert'),
   R('POST', '/api/outdoor/safety/trips/:tripId/checkin', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/safety/trips/:tripId/extend', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/safety/trips/:tripId/cancel', 'internal.state', { machine: 'refuse' }),

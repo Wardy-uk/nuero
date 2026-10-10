@@ -477,3 +477,120 @@ test('23. VESTA renders the walk for real: plan view, positions with Maps links,
   html = render(hike.householdView({ now: L('2026-10-11T16:10') }));
   assert.match(html, />overdue</); assert.match(html, /Nick planned to be back by 15:00 and hasn’t checked in — 70 min late/); assert.match(html, /call 999/);
 });
+
+// ── who else is walking, and editing an armed walk ─────────────────────────
+
+const PARTY = [{ name: 'Dave Smith', phone: '07700 900123' }, { name: 'Sam' }];
+
+test('24. the walking party is on the card, high in the alert, and on Helen’s view; a bad phone is refused', async () => {
+  reset();
+  assert.match(model.validateParty([{ name: 'Dave', phone: 'call me' }]).error, /not a phone number/);
+  assert.match(model.validateParty([{ phone: '07700 900123' }]).error, /needs a name/);
+  assert.deepEqual(model.validateParty([{ name: '', phone: '' }]).party, [], 'an empty form row is not a person');
+  const f = fakes();
+  const id = await armed(f, { party: PARTY, emberPlanned: true });
+  const card = db.get('SELECT card_text FROM hike_trips WHERE trip_id = ?', [id]).card_text;
+  assert.match(card, /Walkers: Nick Ward with Dave Smith \(07700 900123\), Sam and Ember \(dog\)/);
+  assert.match(card, /Party: 3 people and a dog/);
+  await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
+  assert.match(f.drafts[0].body, /He is walking with Dave Smith \(07700 900123\) and Sam\./);
+  assert.ok(f.drafts[0].body.indexOf('walking with Dave') < f.drafts[0].body.indexOf('What to do'), 'said before the instructions');
+  assert.deepEqual(hike.householdView({ now: L('2026-10-11T16:05') }).party, PARTY);
+});
+
+test('25. editing re-freezes the card and the recipients, moves the alert, and earns a fresh reminder', async () => {
+  reset();
+  const f = fakes();
+  const id = await armed(f);
+  const before = db.get('SELECT card_hash, card_text FROM hike_trips WHERE trip_id = ?', [id]);
+  await hike.tick({ now: L('2026-10-11T15:00'), deps: f.deps });
+  assert.equal(f.pushes.length, 1);
+  hike.setContacts([...HELEN, { name: 'Mum', email: 'mum@example.com' }]);
+  const e = await hike.edit(id, { plannedFinish: '2026-10-11T17:00', party: PARTY, notes: 'Parked at Seathwaite' }, { now: L('2026-10-11T15:05'), deps: f.deps });
+  assert.ok(e.ok, e.error);
+  assert.equal(e.trip.alertAt, '2026-10-11T18:00');
+  const row = db.get('SELECT * FROM hike_trips WHERE trip_id = ?', [id]);
+  assert.notEqual(row.card_hash, before.card_hash);
+  assert.match(row.card_text, /planned finish: about 17:00/); assert.match(row.card_text, /Parked at Seathwaite/); assert.match(row.card_text, /Dave Smith/);
+  assert.match(row.card_text, /Highest point: 451 m/, 'the stored GPX still draws the card');
+  assert.deepEqual(JSON.parse(row.recipients_json).map((c) => c.name), ['Helen', 'Mum'], 'who gets the alert is frozen again');
+  assert.equal(row.reminded_at, null, 'a new finish time earns a new reminder');
+  await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
+  assert.equal(f.drafts.length, 0, 'the old deadline no longer alerts');
+  await hike.tick({ now: L('2026-10-11T18:00'), deps: f.deps });
+  assert.deepEqual(f.drafts[0].to.map((t) => t.email), ['helen@example.com', 'mum@example.com']);
+});
+
+test('26. editing is refused once the alert has gone, and refused (changing nothing) when email cannot be sent', async () => {
+  reset();
+  let f = fakes();
+  const id = await armed(f);
+  f.ready = false;
+  const r = await hike.edit(id, { plannedFinish: '2026-10-11T18:00' }, { now: L('2026-10-11T12:00'), deps: f.deps });
+  assert.equal(r.status, 409);
+  assert.equal(db.get('SELECT planned_finish p FROM hike_trips WHERE trip_id = ?', [id]).p, new Date(L(FINISH)).toISOString(), 'unchanged');
+  f = fakes();
+  assert.match((await hike.edit(id, { plannedFinish: '2026-10-11T08:00' }, { now: L('2026-10-11T12:00'), deps: f.deps })).error, /after the planned start|already passed/);
+  await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
+  assert.match((await hike.edit(id, { notes: 'x' }, { now: L('2026-10-11T16:05'), deps: f.deps })).error, /check in instead/);
+});
+
+test('27. a new GPX on edit replaces the route plan (the old one is cancelled, not deleted)', async () => {
+  reset();
+  const f = fakes();
+  const id = await armed(f);
+  const old = db.get('SELECT route_id FROM hike_trips WHERE trip_id = ?', [id]).route_id;
+  const gpx2 = GPX.replace('Catbells loop', 'Catbells the other way');
+  const e = await hike.edit(id, { gpx: gpx2, gpxName: 'other.gpx', name: 'Catbells the other way' }, { now: L('2026-10-11T10:00'), deps: f.deps });
+  assert.ok(e.ok, e.error);
+  const row = db.get('SELECT route_id, gpx_name, card_text FROM hike_trips WHERE trip_id = ?', [id]);
+  assert.notEqual(row.route_id, old); assert.equal(row.gpx_name, 'other.gpx');
+  assert.equal(db.get('SELECT status FROM outdoor_routes WHERE route_id = ?', [old]).status, 'cancelled');
+  assert.match(row.card_text, /ROUTE CARD — Catbells the other way/);
+});
+
+test('28. edit over HTTP, and refused to a machine', async () => {
+  reset();
+  assert.equal(matrix.machineDecision('POST', '/api/outdoor/safety/trips/x/edit').allow, false);
+  const id = await armed(fakes());
+  const express = require('express');
+  const app = express(); app.use(express.json()); app.use('/api/outdoor', require('../routes/outdoor'));
+  const server = app.listen(0); const port = server.address().port;
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/api/outdoor/safety/trips/${encodeURIComponent(id)}/edit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ party: [{ name: 'X', phone: 'nope' }] }) });
+    assert.equal(r.status, 400, 'validation reaches the route (the real deps would refuse later for want of Microsoft)');
+    assert.match((await r.json()).error, /not a phone number/);
+  } finally { server.closeAllConnections(); server.close(); }
+});
+
+test('29. the edit form and the party render for real, on NEURO and on VESTA', async () => {
+  const React = require('react');
+  const { renderToString } = require('react-dom/server');
+  const esbuild = require('esbuild');
+  const bundle = async (rel) => {
+    const out = await esbuild.build({
+      entryPoints: [path.join(__dirname, '..', '..', ...rel)], bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic',
+      external: ['react', 'react-dom', 'leaflet'], logLevel: 'silent',
+      plugins: [{ name: 'stub', setup(b) {
+        b.onResolve({ filter: /\.css$/ }, (a) => ({ path: a.path, namespace: 'css' }));
+        b.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
+        b.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
+        b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiFetch = async () => ({ ok: true, json: async () => ({}) }); export const hike = async () => ({});', loader: 'js' }));
+      } }],
+    });
+    const m = { exports: {} };
+    // eslint-disable-next-line no-new-func
+    new Function('module', 'exports', 'require', out.outputFiles[0].text)(m, m.exports, require);
+    return m.exports;
+  };
+  reset();
+  const f = fakes();
+  await armed(f, { party: PARTY });
+  const neuro = await bundle(['frontend', 'src', 'components', 'canonical', 'HikeSafetyCard.jsx']);
+  const html = renderToString(React.createElement(neuro.HikeSafetyView, { data: hike.read({ now: L('2026-10-11T12:00') }), act: () => true })).replace(/<!-- -->/g, '');
+  assert.match(html, /Walking with Dave Smith \(07700 900123\), Sam/);
+  assert.match(html, />Edit walk</);
+  const vesta = await bundle(['vesta', 'src', 'components', 'Walk.jsx']);
+  const v = renderToString(React.createElement(vesta.default, { hike: hike.householdView({ now: L('2026-10-11T12:00') }), token: 't' })).replace(/<!-- -->/g, '').replace(/<\/?span>/g, '');
+  assert.match(v, /Walking with Dave Smith \(<a href="tel:07700900123">07700 900123<\/a>\) and Sam/);
+});

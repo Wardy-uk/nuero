@@ -10000,6 +10000,7 @@
       "graceMinutes",
       "name",
       "notes",
+      "party",
       "plannedFinish",
       "plannedStart",
       "routeId"
@@ -10015,7 +10016,7 @@
     "route": "/api/outdoor/safety/trips/:tripId/cancel",
     "domain": "outdoor",
     "source": "routes/outdoor.js",
-    "line": 101,
+    "line": 108,
     "description": "POST /api/outdoor/safety/trips/:tripId/cancel. cancel an armed hike before anyone is alerted.",
     "params": [
       "tripId"
@@ -10033,7 +10034,7 @@
     "route": "/api/outdoor/safety/trips/:tripId/checkin",
     "domain": "outdoor",
     "source": "routes/outdoor.js",
-    "line": 89,
+    "line": 96,
     "description": "POST /api/outdoor/safety/trips/:tripId/checkin. hike check-in: back safe; sends an all-clear if an alert went.",
     "params": [
       "tripId"
@@ -10048,12 +10049,40 @@
     "stream": false
   },
   {
+    "id": "post_outdoor_safety_trips_by_tripId_edit",
+    "method": "POST",
+    "route": "/api/outdoor/safety/trips/:tripId/edit",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 89,
+    "description": "POST /api/outdoor/safety/trips/:tripId/edit. edit an armed hike: name, times, grace, Ember, notes, who is walking (party), or a new GPX.",
+    "params": [
+      "tripId"
+    ],
+    "query": [],
+    "body": [
+      "emberPlanned",
+      "gpx",
+      "gpxName",
+      "graceMinutes",
+      "name",
+      "notes",
+      "party",
+      "plannedFinish",
+      "plannedStart"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_outdoor_safety_trips_by_tripId_extend",
     "method": "POST",
     "route": "/api/outdoor/safety/trips/:tripId/extend",
     "domain": "outdoor",
     "source": "routes/outdoor.js",
-    "line": 95,
+    "line": 102,
     "description": "POST /api/outdoor/safety/trips/:tripId/extend. hike running late: push the check-in time back.",
     "params": [
       "tripId"

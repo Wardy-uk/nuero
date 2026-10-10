@@ -54,6 +54,17 @@ export default function Walk({ hike: initial, gap, token }) {
           <strong>{hike.name}</strong>{hike.ember ? ` with ${hike.companion || 'Ember'}` : ''}
           <span className={`walk__chip${overdue ? ' walk__chip--overdue' : ''}`}>{overdue ? 'overdue' : hike.state === 'out' ? 'out walking' : 'not started yet'}</span>
         </p>
+        {(hike.party || []).length > 0 && (
+          <p className="walk__party" data-testid="walk-party">
+            Walking with{' '}
+            {hike.party.map((x, i) => (
+              <span key={i}>
+                {i > 0 ? (i === hike.party.length - 1 ? ' and ' : ', ') : ''}
+                {x.name}{x.phone ? <> (<a href={`tel:${x.phone.replace(/[^+0-9]/g, '')}`}>{x.phone}</a>)</> : null}
+              </span>
+            ))}
+          </p>
+        )}
         {overdue ? (
           <p className="walk__alert" role="alert">
             Nick planned to be back by {time(hike.due)} and hasn’t checked in — {hike.minutesLate} min late.

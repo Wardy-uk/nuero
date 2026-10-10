@@ -81,8 +81,15 @@ router.post('/safety/contacts', (req, res) => {
 
 // POST /api/outdoor/safety/trips — arm a walk: GPX + approx start/finish → route card; alert if no check-in.
 router.post('/safety/trips', async (req, res) => {
-  const { gpx, gpxName, routeId, name, plannedStart, plannedFinish, graceMinutes, emberPlanned, notes } = req.body || {};
-  try { send(res, await hike.arm({ gpx, gpxName, routeId, name, plannedStart, plannedFinish, graceMinutes, emberPlanned, notes })); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  const { gpx, gpxName, routeId, name, plannedStart, plannedFinish, graceMinutes, emberPlanned, notes, party } = req.body || {};
+  try { send(res, await hike.arm({ gpx, gpxName, routeId, name, plannedStart, plannedFinish, graceMinutes, emberPlanned, notes, party })); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/outdoor/safety/trips/:tripId/edit — edit an armed hike: name, times, grace, Ember, notes, who is walking (party), or a new GPX.
+router.post('/safety/trips/:tripId/edit', async (req, res) => {
+  const { gpx, gpxName, name, plannedStart, plannedFinish, graceMinutes, emberPlanned, notes, party } = req.body || {};
+  const body = Object.fromEntries(Object.entries({ gpx, gpxName, name, plannedStart, plannedFinish, graceMinutes, emberPlanned, notes, party }).filter(([, v]) => v !== undefined));
+  try { send(res, await hike.edit(req.params.tripId, body)); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // POST /api/outdoor/safety/trips/:tripId/checkin — hike check-in: back safe; sends an all-clear if an alert went.

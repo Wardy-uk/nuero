@@ -18,17 +18,24 @@ function localInput(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-function ArmForm({ act, busy }) {
+/**
+ * Arm a walk, or (with `trip`) edit the armed one. Edit sends every field, and
+ * a GPX only if a new file was chosen — the server keeps the old one otherwise.
+ */
+function WalkForm({ act, busy, trip = null, onDone = null }) {
   const now = new Date();
   const start = new Date(now.getTime() + 30 * 60000); start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
   const [gpx, setGpx] = useState(null);
   const [gpxName, setGpxName] = useState('');
-  const [name, setName] = useState('');
-  const [plannedStart, setStart] = useState(localInput(start));
-  const [plannedFinish, setFinish] = useState(localInput(new Date(start.getTime() + 5 * 3600000)));
-  const [grace, setGrace] = useState(60);
-  const [ember, setEmber] = useState(false);
-  const [notes, setNotes] = useState('');
+  const [name, setName] = useState(trip ? trip.name : '');
+  const [plannedStart, setStart] = useState(trip ? trip.startLocal : localInput(start));
+  const [plannedFinish, setFinish] = useState(trip ? trip.finishLocal : localInput(new Date(start.getTime() + 5 * 3600000)));
+  const [grace, setGrace] = useState(trip ? trip.graceMin : 60);
+  const [ember, setEmber] = useState(trip ? !!trip.ember : false);
+  const [notes, setNotes] = useState(trip ? trip.notes || '' : '');
+  const [party, setParty] = useState(trip && trip.party && trip.party.length ? trip.party.map((x) => ({ name: x.name, phone: x.phone || '' })) : []);
+  const graces = [...new Set([30, 60, 90, 120, Number(grace)])].sort((a, b) => a - b);
+  const setPerson = (i, k, v) => setParty(party.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
   const pick = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) { setGpx(null); setGpxName(''); return; }
@@ -38,19 +45,40 @@ function ArmForm({ act, busy }) {
   };
   const submit = async (e) => {
     e.preventDefault();
-    await act('/api/outdoor/safety/trips', { gpx: gpx || undefined, gpxName: gpxName || undefined, name: name.trim() || undefined, plannedStart, plannedFinish, graceMinutes: Number(grace), emberPlanned: ember, notes: notes.trim() || undefined });
+    const body = {
+      gpx: gpx || undefined, gpxName: gpx ? gpxName : undefined, name: name.trim() || undefined, plannedStart, plannedFinish,
+      graceMinutes: Number(grace), emberPlanned: ember, notes: trip ? notes.trim() : notes.trim() || undefined,
+      party: party.filter((x) => x.name.trim() || x.phone.trim()).map((x) => (x.phone.trim() ? { name: x.name.trim(), phone: x.phone.trim() } : { name: x.name.trim() })),
+    };
+    const ok = await act(trip ? `/api/outdoor/safety/trips/${encodeURIComponent(trip.tripId)}/edit` : '/api/outdoor/safety/trips', body);
+    if (ok && onDone) onDone();
   };
   return (
-    <form className="hs-form" onSubmit={submit} data-testid="hike-arm-form">
-      <label>GPX route <input type="file" accept=".gpx,application/gpx+xml,application/octet-stream" onChange={pick} aria-label="GPX file" /></label>
+    <form className="hs-form" onSubmit={submit} data-testid={trip ? 'hike-edit-form' : 'hike-arm-form'}>
+      <label>{trip ? 'Replace the GPX (optional)' : 'GPX route'} <input type="file" accept=".gpx,application/gpx+xml,application/octet-stream" onChange={pick} aria-label="GPX file" /></label>
       {gpxName && <span className="cn-muted cn-small">{gpxName}</span>}
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder={gpx ? 'name (or the GPX file’s own)' : 'walk name'} maxLength={120} aria-label="Walk name" />
       <label>Start (approx) <input type="datetime-local" value={plannedStart} onChange={(e) => setStart(e.target.value)} required /></label>
       <label>Finish (approx) <input type="datetime-local" value={plannedFinish} onChange={(e) => setFinish(e.target.value)} required /></label>
-      <label>Alert if not back after <select value={grace} onChange={(e) => setGrace(e.target.value)}>{[30, 60, 90, 120].map((m) => <option key={m} value={m}>{m} min</option>)}</select></label>
+      <label>Alert if not back after <select value={grace} onChange={(e) => setGrace(e.target.value)}>{graces.map((m) => <option key={m} value={m}>{m} min</option>)}</select></label>
+      <fieldset className="hs-party" data-testid="hike-party">
+        <legend>Walking with you</legend>
+        {party.map((x, i) => (
+          <div key={i} className="hs-contact">
+            <input value={x.name} onChange={(e) => setPerson(i, 'name', e.target.value)} placeholder="name" aria-label="Walker name" maxLength={60} />
+            <input type="tel" value={x.phone} onChange={(e) => setPerson(i, 'phone', e.target.value)} placeholder="phone (optional)" aria-label="Walker phone" />
+            <button type="button" className="cn-btn cn-btn--tiny" onClick={() => setParty(party.filter((_, j) => j !== i))} aria-label="Remove walker">Remove</button>
+          </div>
+        ))}
+        {party.length < 8 && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => setParty([...party, { name: '', phone: '' }])}>Add someone walking with you</button>}
+      </fieldset>
       <label className="cn-small"><input type="checkbox" checked={ember} onChange={(e) => setEmber(e.target.checked)} /> Ember coming (her tracker joins the trail)</label>
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="notes for the card — where you’ve parked, kit, plan B" maxLength={1000} rows={2} />
-      <button type="submit" className="cn-btn" disabled={busy || (!gpx && !name.trim())}>Arm this walk</button>
+      <div className="hs-actions">
+        <button type="submit" className="cn-btn" disabled={busy || (!trip && !gpx && !name.trim())}>{trip ? 'Save changes' : 'Arm this walk'}</button>
+        {trip && onDone && <button type="button" className="cn-btn cn-btn--tiny" onClick={onDone}>Cancel editing</button>}
+      </div>
+      {trip && <span className="cn-muted cn-small">Saving redraws the route card and re-reads who gets the alert.</span>}
     </form>
   );
 }
@@ -74,6 +102,7 @@ function Contacts({ contacts, act, busy }) {
 
 export function HikeSafetyView({ data, act = null, busy = false }) {
   const t = data.active;
+  const [editing, setEditing] = useState(false);
   const contacts = data.contacts || [];
   const alertLine = t && ALERT_WORDS[t.alert.status];
   return (
@@ -86,14 +115,17 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
             {t.due.slice(0, 10) !== t.start.slice(0, 10) ? ` on ${t.alertAt.slice(0, 10)}` : ''}
             {t.status === 'armed' && t.minutesToAlert > 0 && t.minutesToAlert < 600 ? ` · in ${t.minutesToAlert} min` : ''}
           </div>
+          {(t.party || []).length > 0 && <div className="cn-small" data-testid="hike-party-line">Walking with {t.party.map((x) => (x.phone ? `${x.name} (${x.phone})` : x.name)).join(', ')}{t.ember ? ' and Ember' : ''}</div>}
           {alertLine && <div className={`cn-small ${t.alert.status === 'sent' || t.alert.status === 'confirmed' ? '' : 'cn-error'}`}>{alertLine}{t.alert.error ? ` — ${t.alert.error}` : ''}</div>}
           {act && (
             <div className="hs-actions">
               <button type="button" className="cn-btn hs-checkin" disabled={busy} onClick={() => act(`/api/outdoor/safety/trips/${encodeURIComponent(t.tripId)}/checkin`, { via: 'NEURO' })}>I’m back — check in</button>
               {t.status === 'armed' && [30, 60].map((m) => <button key={m} type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/safety/trips/${encodeURIComponent(t.tripId)}/extend`, { minutes: m })}>+{m} min</button>)}
+              {t.status === 'armed' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => setEditing(!editing)}>{editing ? 'Close edit' : 'Edit walk'}</button>}
               {t.status === 'armed' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/safety/trips/${encodeURIComponent(t.tripId)}/cancel`, {})}>Cancel walk</button>}
             </div>
           )}
+          {editing && act && t.status === 'armed' && <WalkForm act={act} busy={busy} trip={t} onDone={() => setEditing(false)} />}
           <div className="cn-small cn-muted" data-testid="hike-trail">
             Trail: {t.trail.points} point{t.trail.points === 1 ? '' : 's'}
             {t.trail.sources.map((s) => ` · ${s.label}: ${s.lastSeen}, ${s.modeWords}${s.battery != null ? `, battery ${s.battery}%` : ''}`).join('')}
@@ -111,7 +143,7 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
         </div>
       ) : (
         contacts.length
-          ? (act && <ArmForm act={act} busy={busy} />)
+          ? (act && <WalkForm act={act} busy={busy} />)
           : <div className="cn-error cn-small">Add who gets the alert before you can arm a walk.</div>
       )}
       <Fold title="Who gets the alert" meta={contacts.length ? contacts.map((c) => c.name).join(', ') : 'nobody yet'} open={!contacts.length}>

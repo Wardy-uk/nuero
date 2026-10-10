@@ -56,6 +56,7 @@ export const interactive = {
   post_outdoor_safety_contacts: 'Who gets a hike safety alert is Nick\'s choice. He sets it in NEURO → Life → Outdoor → Hike safety.',
   post_outdoor_safety_trips: 'Arming a walk approves an alert email to the people on its card. Nick arms it in NEURO → Life → Outdoor.',
   post_outdoor_safety_trips_by_tripId_checkin: 'Checking in from a walk stops the safety alert — only Nick can say he is back. He checks in in NEURO.',
+  post_outdoor_safety_trips_by_tripId_edit: 'Editing an armed walk changes the route card and alert the people on it would be sent. Nick does it in NEURO.',
   post_outdoor_safety_trips_by_tripId_extend: 'Extending a walk moves when the alert goes. Nick does it in NEURO.',
   post_outdoor_safety_trips_by_tripId_cancel: 'Cancelling an armed walk stops its alert. Nick does it in NEURO.',
   // Build 30: leisure items and corrections (liked, finished, not mine) are Nick's own.

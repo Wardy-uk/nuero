@@ -529,6 +529,15 @@ async function init() {
     console.error('[DB] Build 3B migration check failed:', e.message);
   }
 
+  // Migration: hike safety — who else is on the walk (10 Oct 2026). The table
+  // shipped the same day without it, so the live one needs the column added.
+  try {
+    const have = db.prepare('PRAGMA table_info(hike_trips)').all().map(r => r.name);
+    if (have.length && !have.includes('party_json')) { db.exec('ALTER TABLE hike_trips ADD COLUMN party_json TEXT'); console.log('[DB] hike_trips.party_json added'); }
+  } catch (e) {
+    console.error('[DB] hike_trips migration failed:', e.message);
+  }
+
   // Migration: Build 27 — vehicle identity fields Nick may know, and the end of
   // NEURO's copy of vehicle finance. Which transactions are the car's, and every
   // figure about them, moved to Tally (exported first to

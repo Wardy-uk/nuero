@@ -71,7 +71,7 @@ function _defaultDeps() {
 
 function _log(kind, subjectId, detail, nowMs) {
   try {
-    return require('./personal-obligations').logEvent(kind, { subjectId, actor: kind === 'hike-armed' || kind === 'hike-checked-in' || kind === 'hike-extended' || kind === 'hike-cancelled' ? 'nick' : 'neuro', detail, dedupeKey: `${kind}:${subjectId}:${nowMs}:${crypto.randomBytes(3).toString('hex')}`, now: nowMs });
+    return require('./personal-obligations').logEvent(kind, { subjectId, actor: kind === 'hike-armed' || kind === 'hike-edited' || kind === 'hike-checked-in' || kind === 'hike-extended' || kind === 'hike-cancelled' ? 'nick' : 'neuro', detail, dedupeKey: `${kind}:${subjectId}:${nowMs}:${crypto.randomBytes(3).toString('hex')}`, now: nowMs });
   } catch { return false; }
 }
 
@@ -101,6 +101,7 @@ function _shape(r) {
     tripId: r.trip_id, routeId: r.route_id, name: r.name, status: r.status,
     startMs: _ms(r.planned_start), finishMs: _ms(r.planned_finish), extendedUntilMs: _ms(r.extended_until),
     graceMin: r.grace_minutes, ember: r.ember === 1, companion: r.companion, notes: r.notes,
+    party: _json(r.party_json, []),
     recipients: _json(r.recipients_json, []), card: r.card_text, cardHash: r.card_hash, gpxName: r.gpx_name,
     remindedAt: r.reminded_at, warnedAt: r.warned_at, drivingPromptAt: r.driving_prompt_at,
     alertStatus: r.alert_status, alertAt: r.alert_at, alertAttempts: r.alert_attempts, alertError: r.alert_error,
@@ -134,6 +135,37 @@ function _companionName(ember) {
  * plannedFinish, graceMinutes?, emberPlanned?, notes? }. A GPX also becomes a
  * route plan (outdoor.createRoute) — one route model, not two.
  */
+/** The route a walk's card is drawn from: a fresh GPX, the stored one, or a route plan. */
+function _routeFor({ gpx = null, routeId = null }) {
+  if (gpx) {
+    const g = require('./outdoor-model').parseGpx(gpx);
+    return g.ok ? { route: g } : { error: g.error };
+  }
+  if (routeId) {
+    const r = _db().get('SELECT * FROM outdoor_routes WHERE route_id = ?', [routeId]);
+    if (!r) return { error: 'no such route', status: 404 };
+    return { route: { distanceKm: r.distance_km, elevationGainM: r.elevation_gain_m, geometry: _json(r.geometry_json, []), highest: null, name: r.name } };
+  }
+  return { route: null };
+}
+
+function _card(f, { route, gpxName, gpxText }) {
+  const companion = _companionName(f.ember);
+  const card = model.routeCard({ name: f.name, startMs: f.startMs, finishMs: f.finishMs, graceMin: f.grace, route, ember: f.ember, companion,
+    party: f.party, vehicle: _vehicleLine(), notes: f.notes, gpxName: gpxName && gpxText && gpxText.length <= MAX_GPX_ATTACH ? gpxName : null });
+  return { card, hash: crypto.createHash('sha256').update(card).digest('hex'), companion };
+}
+
+function _gpxName(body, name) {
+  if (body.gpxName !== undefined && (typeof body.gpxName !== 'string' || body.gpxName.length > 120)) return { error: 'gpxName must be a file name' };
+  return { gpxName: (body.gpxName && body.gpxName.trim()) || `${name.replace(/[^\w -]+/g, '').trim() || 'route'}.gpx` };
+}
+
+/**
+ * Arm a walk. `body`: { gpx?, gpxName?, routeId?, name?, plannedStart,
+ * plannedFinish, graceMinutes?, emberPlanned?, notes?, party? }. A GPX also
+ * becomes a route plan (outdoor.createRoute) — one route model, not two.
+ */
 async function arm(body = {}, { now = Date.now(), deps = _defaultDeps() } = {}) {
   const nowMs = _now(now);
   const v = model.validateTrip(body, { nowMs });
@@ -145,32 +177,82 @@ async function arm(body = {}, { now = Date.now(), deps = _defaultDeps() } = {}) 
   if (!(await deps.mailReady())) {
     return { ok: false, status: 409, error: 'NEURO cannot send email right now (Microsoft sign-in) — the alert could not go, so the walk is not armed. Tell someone directly.' };
   }
-
-  let route = null; let routeId = null;
+  const rf = _routeFor({ gpx: body.gpx || null, routeId: body.gpx ? null : body.routeId || null });
+  if (rf.error) return { ok: false, status: rf.status || 400, error: rf.error };
+  const route = rf.route;
+  const f = { ...v.fields, name: v.fields.name || (route && route.name) || 'Walk' };
+  let routeId = body.gpx ? null : body.routeId || null;
   if (body.gpx) {
-    const g = require('./outdoor-model').parseGpx(body.gpx);
-    if (!g.ok) return { ok: false, status: 400, error: g.error };
-    route = g;
-    const created = require('./outdoor').createRoute({ name: v.fields.name || g.name || 'Walk', kind: 'hike', plannedDate: model.msToLocal(v.fields.startMs).slice(0, 10), emberPlanned: v.fields.ember, gpx: body.gpx }, { now: nowMs });
+    const created = require('./outdoor').createRoute({ name: f.name.slice(0, 120), kind: 'hike', plannedDate: model.msToLocal(f.startMs).slice(0, 10), emberPlanned: f.ember, gpx: body.gpx }, { now: nowMs });
     if (created.ok) routeId = created.routeId;
-  } else if (body.routeId) {
-    const r = _db().get('SELECT * FROM outdoor_routes WHERE route_id = ?', [body.routeId]);
-    if (!r) return { ok: false, status: 404, error: 'no such route' };
-    routeId = r.route_id;
-    route = { distanceKm: r.distance_km, elevationGainM: r.elevation_gain_m, geometry: _json(r.geometry_json, []), highest: null, name: r.name };
   }
-  const name = v.fields.name || (route && route.name) || 'Walk';
-  if (body.gpxName !== undefined && (typeof body.gpxName !== 'string' || body.gpxName.length > 120)) return { ok: false, status: 400, error: 'gpxName must be a file name' };
-  const gpxName = body.gpx ? (body.gpxName && body.gpxName.trim()) || `${name.replace(/[^\w -]+/g, '').trim() || 'route'}.gpx` : null;
-  const companion = _companionName(v.fields.ember);
-  const card = model.routeCard({ name, startMs: v.fields.startMs, finishMs: v.fields.finishMs, graceMin: v.fields.grace, route, ember: v.fields.ember, companion, vehicle: _vehicleLine(), notes: v.fields.notes, gpxName: gpxName && body.gpx.length <= MAX_GPX_ATTACH ? gpxName : null });
+  const gn = body.gpx ? _gpxName(body, f.name) : { gpxName: null };
+  if (gn.error) return { ok: false, status: 400, error: gn.error };
+  const gpxText = body.gpx && body.gpx.length <= MAX_GPX_ATTACH ? body.gpx : null;
+  const c = _card(f, { route, gpxName: gn.gpxName, gpxText });
   const tripId = `hike:${crypto.randomUUID()}`;
   _db().run(`INSERT INTO hike_trips (trip_id, route_id, name, status, planned_start, planned_finish, grace_minutes, ember, companion, notes,
-      recipients_json, card_text, card_hash, gpx_name, gpx_text, armed_at) VALUES (?, ?, ?, 'armed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  [tripId, routeId, name, _iso(v.fields.startMs), _iso(v.fields.finishMs), v.fields.grace, v.fields.ember ? 1 : 0, companion, v.fields.notes,
-    JSON.stringify(people), card, crypto.createHash('sha256').update(card).digest('hex'), gpxName,
-    body.gpx && body.gpx.length <= MAX_GPX_ATTACH ? body.gpx : null, _iso(nowMs)]);
-  _log('hike-armed', tripId, { name, start: model.msToLocal(v.fields.startMs), finish: model.msToLocal(v.fields.finishMs), graceMin: v.fields.grace, alerting: people.map((p) => p.name) }, nowMs);
+      party_json, recipients_json, card_text, card_hash, gpx_name, gpx_text, armed_at) VALUES (?, ?, ?, 'armed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  [tripId, routeId, f.name, _iso(f.startMs), _iso(f.finishMs), f.grace, f.ember ? 1 : 0, c.companion, f.notes,
+    JSON.stringify(f.party), JSON.stringify(people), c.card, c.hash, gn.gpxName, gpxText, _iso(nowMs)]);
+  _log('hike-armed', tripId, { name: f.name, start: model.msToLocal(f.startMs), finish: model.msToLocal(f.finishMs), graceMin: f.grace, party: f.party.map((x) => x.name), alerting: people.map((x) => x.name) }, nowMs);
+  return { ok: true, trip: view(_shape(_get(tripId)), { nowMs }) };
+}
+
+/**
+ * Change an armed walk: any of name, times, grace, Ember, notes, party, or a
+ * new GPX. Omitted fields keep their value. The route card and the people to
+ * alert are FROZEN AGAIN — what Helen would be sent is always what the screen
+ * now shows. Refused once the alert has gone: then he checks in.
+ */
+async function edit(tripId, body = {}, { now = Date.now(), deps = _defaultDeps() } = {}) {
+  const nowMs = _now(now);
+  const r = _get(tripId);
+  if (!r) return { ok: false, status: 404, error: 'no such walk' };
+  if (r.status !== 'armed') return { ok: false, status: 409, error: r.status === 'alerted' ? 'the alert has already gone — check in instead' : `that walk is ${r.status.replace('_', ' ')}` };
+  const t = _shape(r);
+  const merged = {
+    name: body.name !== undefined ? body.name : t.name,
+    plannedStart: body.plannedStart !== undefined ? body.plannedStart : model.msToLocal(t.startMs),
+    plannedFinish: body.plannedFinish !== undefined ? body.plannedFinish : model.msToLocal(t.finishMs),
+    graceMinutes: body.graceMinutes !== undefined ? body.graceMinutes : t.graceMin,
+    emberPlanned: body.emberPlanned !== undefined ? body.emberPlanned : t.ember,
+    notes: body.notes !== undefined ? body.notes : t.notes,
+    party: body.party !== undefined ? body.party : t.party,
+  };
+  const v = model.validateTrip(merged, { nowMs });
+  if (v.error) return { ok: false, status: 400, error: v.error };
+  const people = contacts();
+  if (!people.length) return { ok: false, status: 409, error: 'nobody to alert — add who gets the alert first' };
+  if (!(await deps.mailReady())) {
+    return { ok: false, status: 409, error: 'NEURO cannot send email right now (Microsoft sign-in) — not changed. The walk is still armed as it was.' };
+  }
+  const f = { ...v.fields, name: v.fields.name || t.name };
+  let routeId = t.routeId; let gpxName = r.gpx_name; let gpxText = r.gpx_text;
+  const rf = _routeFor({ gpx: body.gpx || gpxText || null, routeId: body.gpx || gpxText ? null : routeId });
+  if (rf.error) return { ok: false, status: rf.status || 400, error: rf.error };
+  if (body.gpx) {
+    const created = require('./outdoor').createRoute({ name: f.name.slice(0, 120), kind: 'hike', plannedDate: model.msToLocal(f.startMs).slice(0, 10), emberPlanned: f.ember, gpx: body.gpx }, { now: nowMs });
+    if (created.ok) {
+      if (routeId) require('./outdoor').updateRoute(routeId, { status: 'cancelled' }, { now: nowMs }); // the old plan was replaced
+      routeId = created.routeId;
+    }
+    const gn = _gpxName(body, f.name);
+    if (gn.error) return { ok: false, status: 400, error: gn.error };
+    gpxName = gn.gpxName; gpxText = body.gpx.length <= MAX_GPX_ATTACH ? body.gpx : null;
+  }
+  const c = _card(f, { route: rf.route, gpxName, gpxText });
+  const timesMoved = f.startMs !== t.startMs || f.finishMs !== t.finishMs || f.grace !== t.graceMin;
+  const changes = {
+    name: f.name, route_id: routeId, planned_start: _iso(f.startMs), planned_finish: _iso(f.finishMs), grace_minutes: f.grace,
+    ember: f.ember ? 1 : 0, companion: c.companion, notes: f.notes, party_json: JSON.stringify(f.party),
+    recipients_json: JSON.stringify(people), card_text: c.card, card_hash: c.hash, gpx_name: gpxName, gpx_text: gpxText,
+  };
+  // New times earn their own reminder and warning; an extension was relative to the old finish.
+  if (timesMoved) Object.assign(changes, { reminded_at: null, warned_at: null, extended_until: f.finishMs !== t.finishMs ? null : r.extended_until });
+  _set(tripId, changes);
+  const changed = Object.keys(body).filter((k) => ['name', 'plannedStart', 'plannedFinish', 'graceMinutes', 'emberPlanned', 'notes', 'party', 'gpx'].includes(k));
+  _log('hike-edited', tripId, { name: f.name, changed, finish: model.msToLocal(f.finishMs), party: f.party.map((x) => x.name) }, nowMs);
   return { ok: true, trip: view(_shape(_get(tripId)), { nowMs }) };
 }
 
@@ -412,7 +494,8 @@ function view(trip, { nowMs }) {
   return {
     tripId: trip.tripId, name: trip.name, status: trip.status, routeId: trip.routeId,
     start: model.msToLocal(trip.startMs), finish: model.msToLocal(trip.finishMs), due: model.msToLocal(dueMs), alertAt: model.msToLocal(deadlineMs),
-    extended: !!trip.extendedUntilMs, graceMin: trip.graceMin, ember: trip.ember,
+    extended: !!trip.extendedUntilMs, graceMin: trip.graceMin, ember: trip.ember, party: trip.party, notes: trip.notes,
+    startLocal: model.msToLocal(trip.startMs), finishLocal: model.msToLocal(trip.finishMs),
     minutesToAlert: Math.round((deadlineMs - nowMs) / 60000),
     alerting: trip.recipients.map((c) => c.name),
     alert: { status: trip.alertStatus, at: trip.alertAt, error: trip.alertError, allClear: trip.allClearStatus },
@@ -509,7 +592,7 @@ function householdView({ now = Date.now() } = {}) {
     name: trip.name,
     state: trip.status === 'alerted' ? 'overdue' : started ? 'out' : 'not-started',
     start: model.msToLocal(trip.startMs), due: model.msToLocal(dueMs), alertAt: model.msToLocal(deadlineMs),
-    extended: !!trip.extendedUntilMs, ember: trip.ember, companion: trip.companion,
+    extended: !!trip.extendedUntilMs, ember: trip.ember, companion: trip.companion, party: trip.party,
     minutesLate: trip.status === 'alerted' ? Math.max(0, Math.round((nowMs - dueMs) / 60000)) : null,
     alerted: trip.status === 'alerted' ? { at: trip.alertAt ? model.msToLocal(_ms(trip.alertAt)) : null, sent: ['sent', 'confirmed'].includes(trip.alertStatus) } : null,
     ...map,
@@ -519,4 +602,4 @@ function householdView({ now = Date.now() } = {}) {
 
 const TABLES = ['hike_trips', 'hike_breadcrumbs'];
 
-module.exports = { WRITER, CONTACTS_KEY, PUSH_TYPE, TABLES, contacts, setContacts, arm, checkIn, extend, cancel, tick, purge, read, view, householdView };
+module.exports = { WRITER, CONTACTS_KEY, PUSH_TYPE, TABLES, contacts, setContacts, arm, edit, checkIn, extend, cancel, tick, purge, read, view, householdView };

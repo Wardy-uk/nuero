@@ -178,6 +178,32 @@ function validateContacts(list) {
   return { contacts: out };
 }
 
+const PHONE_RE = /^\+?[0-9][0-9 ()-]{5,19}$/;
+
+/** Who else is walking: [{ name, phone? }], up to 8. Refused, never cleaned up silently. */
+function validateParty(list) {
+  if (list === undefined || list === null) return { party: [] };
+  if (!Array.isArray(list) || list.length > 8) return { error: 'up to eight people walking with you' };
+  const out = [];
+  for (const p of list) {
+    const name = p && typeof p.name === 'string' ? p.name.trim() : '';
+    const phone = p && typeof p.phone === 'string' ? p.phone.trim() : '';
+    if (!name && !phone) continue; // an empty row on the form, not a person
+    if (!name || name.length > 60) return { error: 'each person walking needs a name (up to 60 characters)' };
+    if (phone && !PHONE_RE.test(phone)) return { error: `"${phone}" is not a phone number` };
+    out.push(phone ? { name, phone } : { name });
+  }
+  return { party: out };
+}
+
+/** "Nick Ward with Dave Smith (07700 900123), Sam and Ember (dog)" */
+function walkersLine({ walker = 'Nick Ward', party = [], ember = false, companion = null }) {
+  const others = party.map((p) => (p.phone ? `${p.name} (${p.phone})` : p.name));
+  if (ember) others.push(`${companion || 'Ember'} (dog)`);
+  if (!others.length) return walker;
+  return `${walker} with ${others.length === 1 ? others[0] : `${others.slice(0, -1).join(', ')} and ${others[others.length - 1]}`}`;
+}
+
 /**
  * What arming a walk needs. Times are local wall clock ("YYYY-MM-DDTHH:MM").
  * Returns { fields } or { error }.
@@ -200,7 +226,9 @@ function validateTrip(b, { nowMs }) {
   }
   if (b.notes !== undefined && b.notes !== null && (typeof b.notes !== 'string' || b.notes.length > 1000)) return { error: 'notes must be text up to 1000 characters' };
   if (b.emberPlanned !== undefined && typeof b.emberPlanned !== 'boolean') return { error: 'emberPlanned must be true or false' };
-  return { fields: { name, startMs, finishMs, grace, notes: b.notes ? b.notes.trim() : null, ember: b.emberPlanned === true } };
+  const pv = validateParty(b.party);
+  if (pv.error) return { error: pv.error };
+  return { fields: { name, startMs, finishMs, grace, notes: b.notes ? b.notes.trim() : null, ember: b.emberPlanned === true, party: pv.party } };
 }
 
 // ── what is due ────────────────────────────────────────────────────────────
@@ -303,12 +331,13 @@ function sourceLabel(entityId, role) {
 }
 
 /** The route card, frozen when the walk is armed. Plain text — it has to survive any mail client. */
-function routeCard({ name, walker = 'Nick Ward', startMs, finishMs, graceMin, route = null, ember = false, companion = null, vehicle = null, notes = null, gpxName = null }) {
+function routeCard({ name, walker = 'Nick Ward', startMs, finishMs, graceMin, route = null, ember = false, companion = null, party = [], vehicle = null, notes = null, gpxName = null }) {
   const deadlineMs = finishMs + graceMin * MIN;
   const lines = [
     `ROUTE CARD — ${name}`,
     '',
-    `Walker: ${walker}${ember ? ` with ${companion || 'Ember'} (dog)` : ''}`,
+    `${party.length ? 'Walkers' : 'Walker'}: ${walkersLine({ walker, party, ember, companion })}`,
+    ...(party.length ? [`Party: ${party.length + 1} people${ember ? ' and a dog' : ''}`] : []),
     `Date: ${dayWords(startMs)}`,
     `Planned start: ${hhmm(startMs)} · planned finish: about ${hhmm(finishMs)}${dayWords(finishMs) !== dayWords(startMs) ? ` on ${dayWords(finishMs)}` : ''}`,
     `Alert sent if he has not checked in by: ${hhmm(deadlineMs)}`,
@@ -364,6 +393,7 @@ function alertEmail({ trip, card, fixes, nowMs, recipients }) {
     '',
     `This is an automatic message from NEURO, Nick's own system. Before going walking Nick set a time to check in, and asked that you be told if he didn't.`,
     '',
+    ...((trip.party || []).length ? [`He is walking with ${walkersLine({ walker: '', party: trip.party }).replace(/^ with /, '')}.`, ''] : []),
     `He planned to be back by ${hhmm(dueMs)}${trip.extendedUntilMs ? ' (he extended it during the walk)' : ''}. It is now ${hhmm(nowMs)} — ${late} minutes later — and he has not checked in. The alert was set for ${hhmm(deadlineMs)}.`,
     '',
     `This does not mean something has happened. Nick's phone may be out of signal or flat. But he asked for you to know.`,
@@ -397,5 +427,5 @@ module.exports = {
   osgbEN, gridRef, mapsLink, placeLine,
   validateContacts, validateTrip, times, plan,
   modeOf, speedBetween, fixFromState, drivingLately, haversineM, sourceLabel,
-  routeCard, alertEmail, allClearEmail,
+  routeCard, alertEmail, allClearEmail, validateParty, walkersLine,
 };

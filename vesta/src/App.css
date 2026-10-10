@@ -373,3 +373,5 @@ body {
 .walk__maps { font-size: 0.85rem; color: var(--ember); }
 .walk__card summary { cursor: pointer; color: var(--ink-dim); }
 .walk__card pre { white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; color: var(--ink-dim); }
+.walk__party { margin: 0; font-size: 0.92rem; }
+.walk__party a { color: var(--ember); }

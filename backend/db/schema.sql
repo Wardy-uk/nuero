@@ -3235,6 +3235,7 @@ CREATE TABLE IF NOT EXISTS hike_trips (
   ember              INTEGER NOT NULL DEFAULT 0,
   companion          TEXT,
   notes              TEXT,
+  party_json         TEXT,                   -- who else is walking: [{name, phone}]
   recipients_json    TEXT NOT NULL,          -- frozen at arming
   card_text          TEXT NOT NULL,          -- frozen at arming
   card_hash          TEXT NOT NULL,
