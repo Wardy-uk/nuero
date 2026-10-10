@@ -17,7 +17,7 @@ const MAX_RING_DIAGNOSTIC_PACKETS = 500;
 const MAX_RING_DIAGNOSTIC_CHARACTERISTICS = 100;
 const MAX_RING_DIAGNOSTIC_PROBES = 300;
 const JC_RING_METRICS = [
-  'heart_rate', 'hrv', 'blood_oxygen_saturation', 'skin_temperature_celsius',
+  'heart_rate', 'battery_level_percent', 'hrv', 'blood_oxygen_saturation', 'skin_temperature_celsius',
   'vendor_bp_systolic_estimate', 'vendor_bp_diastolic_estimate',
 ];
 
@@ -40,6 +40,7 @@ function persistJCRingReadings(packets, receivedAt) {
   for (const sample of decoded.hrvSamples) put('hrv', sample.value, sample.timestamp);
   for (const sample of decoded.oxygenSamples) put('blood_oxygen_saturation', sample.saturation, sample.timestamp);
   for (const sample of decoded.temperatureSamples) put('skin_temperature_celsius', sample.celsius, sample.timestamp);
+  for (const sample of decoded.batterySamples) put('battery_level_percent', sample.percent, sample.receivedAt);
   for (const sample of decoded.vendorBloodPressureEstimates) {
     put('vendor_bp_systolic_estimate', sample.systolic, sample.timestamp);
     put('vendor_bp_diastolic_estimate', sample.diastolic, sample.timestamp);
@@ -186,7 +187,7 @@ router.get('/ring-week', (req, res) => {
       latest,
       daily: db.getJCRingDailySummary(since),
       notConnectedYet: [
-        'battery level', 'steps and activity history', 'sleep history',
+        'steps and activity history', 'sleep history',
         'exercise sessions', 'blood-sugar feature',
       ],
       caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring timestamps are device-local.',

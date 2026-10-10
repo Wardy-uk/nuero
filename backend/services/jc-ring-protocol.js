@@ -36,6 +36,7 @@ function inspect(packets) {
   const hrvSamples = [];
   const oxygenSamples = [];
   const temperatureSamples = [];
+  const batterySamples = [];
   const vendorBloodPressureEstimates = [];
   let notifications = 0;
 
@@ -48,6 +49,12 @@ function inspect(packets) {
     headers[header] = (headers[header] || 0) + 1;
     for (const time of timestamps(bytes)) {
       if (embeddedTimes.length < 200) embeddedTimes.push({ ...time, receivedAt: packet.receivedAt, header });
+    }
+
+    // Documented J2301 battery reply: 13, percentage, ... . It has no ring
+    // timestamp, so retain the phone's receipt time as the observation time.
+    if (bytes[0] === 0x13 && bytes[1] >= 0 && bytes[1] <= 100) {
+      batterySamples.push({ percent: bytes[1], receivedAt: packet.receivedAt });
     }
 
     // J2301 automatic HR history: 54, sequence, 00, timestamp, then fifteen
@@ -124,6 +131,7 @@ function inspect(packets) {
     hrvSamples,
     oxygenSamples,
     temperatureSamples,
+    batterySamples,
     vendorBloodPressureEstimates,
     caution: '0x54 heart-rate history and 0x56 vendor BP estimates are decoded. Consumer wearable readings are not clinical measurements; BP estimates need comparison against a validated cuff or HiLo before they are used for a trend.',
   };

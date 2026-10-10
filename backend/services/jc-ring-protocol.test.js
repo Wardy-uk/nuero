@@ -53,3 +53,11 @@ test('decodes the confirmed oxygen and skin-temperature history layouts', () => 
   assert.deepEqual(decoded.oxygenSamples, [{ timestamp: '2026-10-09 17:15:20', saturation: 96 }]);
   assert.deepEqual(decoded.temperatureSamples, [{ timestamp: '2026-10-09 16:59:59', celsius: 34.6 }]);
 });
+
+test('decodes the documented battery percentage reply', () => {
+  const decoded = protocol.inspect([{
+    kind: 'notification', receivedAt: '2026-10-10T07:50:00Z',
+    hex: '13 54 00 00 00 00 00 00 00 00 00 00 00 00 00 67',
+  }]);
+  assert.deepEqual(decoded.batterySamples, [{ percent: 84, receivedAt: '2026-10-10T07:50:00Z' }]);
+});
