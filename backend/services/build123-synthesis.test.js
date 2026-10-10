@@ -81,6 +81,34 @@ test('1c. ordinary telemetry is HIDDEN with its ref, never drawn and never throw
   assert.ok(!/20°|17°/.test(allText(syn)), 'no raw temperature reaches a theme');
 });
 
+test('1d. `covered` names what a DRAWN theme says — the rest stays drawable (10 Oct 2026)', () => {
+  const out = compose(sunday());
+  const syn = out.synthesis;
+  const covered = new Set(syn.covered);
+  // The schedule theme says the hike, recovery says the night, presence says who is home.
+  assert.ok(covered.has('sleep'));
+  assert.ok(covered.has('household'));
+  assert.ok(covered.has('place'));
+  assert.ok(syn.themes.some((t) => t.itemRef && covered.has(t.itemRef)));
+  // The room and the weather are NOT in any theme, so a renderer must still draw them.
+  assert.ok(!covered.has('room'));
+  assert.ok(!covered.has('weather'));
+  const drawable = out.context.filter((c) => !covered.has(c.id)).map((c) => c.id);
+  assert.ok(drawable.includes('room') && drawable.includes('weather'), drawable.join(','));
+});
+
+test('1e. a theme CUT by the budget covers nothing — its facts are not lost with it', () => {
+  // A P0 shrinks the themes to one; presence is cut, so who is home must stay drawable.
+  const out = compose(sunday({
+    approvals: { known: true, needsApproval: 1, needsReview: 0, say: 'The weekly report is ready for your approval.', where: 'Actions, in NEURO on the desktop', newestAt: '2026-10-04T16:00:00Z' },
+  }));
+  const syn = out.synthesis;
+  assert.equal(syn.themes.length, 1);
+  assert.ok(!syn.themes.some((t) => t.type === 'presence'), 'precondition: presence was cut');
+  assert.ok(!syn.covered.includes('household'), 'a cut presence theme must not swallow the household line');
+  assert.ok(syn.hidden.some((h) => h.ref === 'context:household'));
+});
+
 // ── 12.3C — health ──────────────────────────────────────────────────────────
 
 test('2. health telemetry is hidden when the brain did not call it notable', () => {

@@ -311,13 +311,17 @@ function presenceTheme(pres, payload, used) {
  */
 function synthesise(pres, payload = {}) {
   if (!pres || !pres.situation) return null;
-  const used = new Set();
+  // Each theme records the presentation ids it draws on in its OWN set, so
+  // `covered` names only what a DRAWN theme says. A theme cut by the budget
+  // covers nothing: its facts stay with the context/observations they came from.
+  const usedBy = new Map();
+  const own = (fn) => { const u = new Set(); const t = fn(u); if (t) usedBy.set(t, u); return t; };
   const candidates = [
     degradedTheme(pres),
-    scheduleTheme(pres, used),
-    weatherTheme(pres, used),
-    recoveryTheme(pres, payload, used),
-    pres.mode === 'degraded' ? null : presenceTheme(pres, payload, used),
+    own((u) => scheduleTheme(pres, u)),
+    own((u) => weatherTheme(pres, u)),
+    own((u) => recoveryTheme(pres, payload, u)),
+    pres.mode === 'degraded' ? null : own((u) => presenceTheme(pres, payload, u)),
   ].filter(Boolean);
 
   candidates.sort((a, b) => (PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority])
@@ -325,6 +329,8 @@ function synthesise(pres, payload = {}) {
   const cap = THEME_CAP[pres.mode] ?? DEFAULT_CAP;
   const themes = candidates.slice(0, cap);
   const cut = candidates.slice(cap).map((t) => ({ ref: t.id, kind: t.type, label: t.headline, why: 'over the theme budget for this mode' }));
+  const used = new Set();
+  for (const t of themes) for (const id of (usedBy.get(t) || [])) used.add(id);
 
   // Everything not drawn into a theme, by ref, so "why" can still show it.
   const hidden = [...cut];
@@ -354,6 +360,13 @@ function synthesise(pres, payload = {}) {
     },
     themes,
     hidden,
+    // ⚠ Additive (10 Oct 2026). The ids of Next items, context annotations and
+    //   observations a DRAWN theme already says. A renderer that draws themes
+    //   draws everything ELSE from the presentation as before — said once, never
+    //   dropped. Without it the native phone showed only the themes and lost the
+    //   room, the weather, the hike verdict and every unpromoted observation the
+    //   web still shows on the same payload.
+    covered: [...used],
   };
 }
 
