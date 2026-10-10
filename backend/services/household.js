@@ -7,7 +7,9 @@
  *   • Nick       — `person.nick`, via the presence projection (Build 13H).
  *   • residents  — Helen, Isaac  } HA's household sensor, which names each
  *   • visitors   — Lizzy, Daniel } member with a role and a state CLASS.
- *   • companions — Ember, from `wm_companions` (household) — not tracked.
+ *   • companions — Ember, from `wm_companions` (household); her whereabouts
+ *                  from her Tractive tracker in HA when one exists, else
+ *                  `untracked`. A companion never counts as someone home.
  *
  * ⚠ States are home | away | unknown | untracked, and only as good as the
  * source: a failing or stale presence source makes everyone `unknown`, never
@@ -52,10 +54,55 @@ function photoFile(id) {
   return null;
 }
 
+// A companion's tracker (10 Oct 2026). Ember wears a Tractive, which HA's
+// Tractive integration names by the pet: device_tracker.<slug>_tracker plus
+// sensor.<slug>_status, binary_sensor.<slug>_power_saving and
+// binary_sensor.<slug>_tracker_battery_charging. The router can never see it —
+// it reports over LTE and only SCANS Wi-Fi, so the cloud is the one route.
+const COMPANION_LOW_BATTERY = 20;
+const COMPANION_CACHE_MAX_MS = 15 * 60 * 1000;
+
+/**
+ * PURE. HA states → where a companion is. `states` null = HA not read.
+ * Returns null when nothing tracks her (no device_tracker) — she stays
+ * `untracked`. Otherwise { state: home|away|unknown, detail }.
+ *
+ * ⚠ ON CHARGE IS UNKNOWN, never home: the tracker is on the charger, not on
+ * the dog, so its position is the charger's.
+ * ⚠ POWER SAVING ON IS HOME: Tractive enters it only when it sees the home
+ * Wi-Fi, which beats a 30m GPS fix against a 47m home zone.
+ * ⚠ A tracker that is not reporting, switched off or unavailable is unknown,
+ * never "out" — and an uncertain fix outside the zone is unknown too.
+ */
+function companionPresence(states, name) {
+  const id = slug(name).replace(/-/g, '_');
+  if (!id) return null;
+  if (!Array.isArray(states)) return { state: 'unknown', detail: "Can't read Home Assistant" };
+  const get = (eid) => states.find((e) => e && e.entity_id === eid) || null;
+  const tracker = get(`device_tracker.${id}_tracker`);
+  if (!tracker) return null;
+  const status = (get(`sensor.${id}_status`) || {}).state;
+  const charging = (get(`binary_sensor.${id}_tracker_battery_charging`) || {}).state === 'on';
+  const saving = (get(`binary_sensor.${id}_power_saving`) || {}).state === 'on';
+  const batRaw = Number((get(`sensor.${id}_tracker_battery`) || {}).state ?? (tracker.attributes || {}).battery_level);
+  const battery = Number.isFinite(batRaw) ? batRaw : null;
+  const low = battery != null && battery <= COMPANION_LOW_BATTERY ? ` · tracker ${battery}%` : '';
+
+  if (charging) return { state: 'unknown', detail: 'Tracker on charge' };
+  if (status === 'system_shutdown_user') return { state: 'unknown', detail: 'Tracker switched off' };
+  if (status === 'not_reporting' || tracker.state === 'unavailable' || tracker.state === 'unknown') {
+    return { state: 'unknown', detail: `Tracker not reporting${low}` };
+  }
+  if (saving || tracker.state === 'home') return { state: 'home', detail: low ? `Home${low}` : null };
+  if (status === 'inaccurate_position') return { state: 'unknown', detail: 'Position uncertain' };
+  return { state: 'away', detail: low ? `Out${low}` : null };
+}
+
 /**
  * PURE. Presence read + companions → the card's members, in a stable order.
+ * `haStates` (optional) lets a tracked companion carry a real whereabouts.
  */
-function compose(presence, companions = []) {
+function compose(presence, companions = [], haStates) {
   const p = presence || {};
   const members = [];
   const nickClass = p.nick || 'unknown';
@@ -75,7 +122,10 @@ function compose(presence, companions = []) {
   }
   for (const c of companions) {
     if (!c || !c.name) continue;
-    members.push({ id: slug(c.name), name: c.name, role: 'companion', state: 'untracked', detail: c.species || null });
+    const where = haStates === undefined ? null : companionPresence(haStates, c.name);
+    members.push(where
+      ? { id: slug(c.name), name: c.name, role: 'companion', state: where.state, detail: where.detail, tracked: true }
+      : { id: slug(c.name), name: c.name, role: 'companion', state: 'untracked', detail: c.species || null });
   }
   const seen = new Set();
   return members
@@ -90,11 +140,20 @@ function read({ now = Date.now() } = {}) {
   try {
     companions = require('../db/database').all('SELECT name, species FROM wm_companions WHERE household = 1 ORDER BY name');
   } catch { companions = []; }
-  const members = compose(presence, companions).map((m) => {
+  // Companion trackers read the HA cache — no network on a polled read. A cache
+  // older than 15 min is not a reading, so she is "can't tell" rather than stale.
+  let haStates = null;
+  try {
+    const ha = require('./ha');
+    const at = ha.cachedStatesAt();
+    haStates = at && now - at <= COMPANION_CACHE_MAX_MS ? ha.cachedStates() : null;
+  } catch { haStates = null; }
+  const members = compose(presence, companions, haStates).map((m) => {
     const f = photoFile(m.id);
     return { ...m, photo: f ? { version: f.version } : null };
   });
-  const home = members.filter((m) => m.state === 'home');
+  // People only: a dog at home is not someone home.
+  const home = members.filter((m) => m.state === 'home' && m.role !== 'companion');
   return {
     at: new Date(now).toISOString(),
     source: presence ? presence.source : { state: 'unknown', freshness: 'unknown' },
@@ -104,4 +163,4 @@ function read({ now = Date.now() } = {}) {
   };
 }
 
-module.exports = { UNTRACKED_MEMBERS, compose, read, photoFile, photoDir, slug };
+module.exports = { UNTRACKED_MEMBERS, compose, companionPresence, read, photoFile, photoDir, slug };

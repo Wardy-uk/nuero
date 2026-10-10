@@ -14,7 +14,9 @@ import './HouseholdCard.css';
  *   away      — faded and greyed, "Out" (or "At work" for Nick)
  *   unknown   — dashed ring, "Can't tell" — the house could not be read, which
  *               is NOT "out"
- *   untracked — Ember: no ring and no claim; nothing tracks her
+ *   untracked — a companion nothing tracks: no ring and no claim. Ember wears
+ *               a Tractive (10 Oct 2026), so she reads home/away/unknown like
+ *               a person — but never counts towards "N home".
  * A presence source that is down makes every person `unknown` server-side, and
  * the card says so in words — it never renders a confident empty house.
  *

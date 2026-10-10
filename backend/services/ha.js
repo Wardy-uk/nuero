@@ -53,6 +53,11 @@ function cachedStates() {
   return _cache.states && _cache.states.length ? _cache.states : null;
 }
 
+/** When the cached states were fetched (ms), or null if never. */
+function cachedStatesAt() {
+  return _cache.states && _cache.states.length ? _cache.at : null;
+}
+
 async function getEntity(entityId) {
   const states = await getStates();
   return states.find(e => e.entity_id === entityId) || null;
@@ -489,6 +494,7 @@ module.exports = {
   // must fail the run, not be answered from the 60s cache).
   fetchStates,
   cachedStates,
+  cachedStatesAt,
   resolvePhoneEntities,
   phoneEntity,
   getStates,

@@ -159,3 +159,52 @@ test('Matt is on the card, untracked and out — and a tracked Matt beats the ty
   assert.equal(matts.length, 1, 'one Matt only');
   assert.equal(matts[0].state, 'home', 'the measured state wins');
 });
+
+// Ember's Tractive (10 Oct 2026) — entity shapes copied off the live HA.
+const emberStates = (o = {}) => [
+  { entity_id: 'device_tracker.ember_tracker', state: o.tracker ?? 'home', attributes: { battery_level: o.battery ?? 72, gps_accuracy: 30 } },
+  { entity_id: 'sensor.ember_status', state: o.status ?? 'operational', attributes: {} },
+  { entity_id: 'binary_sensor.ember_power_saving', state: o.saving ?? 'off', attributes: {} },
+  { entity_id: 'binary_sensor.ember_tracker_battery_charging', state: o.charging ?? 'off', attributes: {} },
+  { entity_id: 'sensor.ember_tracker_battery', state: String(o.battery ?? 72), attributes: {} },
+];
+
+test('Ember: no tracker entity stays untracked; HA unread is "can\'t tell", never out', () => {
+  assert.equal(hh.companionPresence([], 'Ember'), null);
+  assert.equal(hh.companionPresence(null, 'Ember').state, 'unknown');
+  const m = hh.compose({ nick: 'home' }, [{ name: 'Ember', species: 'Dog' }], []);
+  assert.equal(m.find((x) => x.id === 'ember').state, 'untracked');
+});
+
+test('Ember: home / out / power-saving-means-home', () => {
+  assert.deepEqual(hh.companionPresence(emberStates(), 'Ember'), { state: 'home', detail: null });
+  assert.equal(hh.companionPresence(emberStates({ tracker: 'not_home' }), 'Ember').state, 'away');
+  assert.equal(hh.companionPresence(emberStates({ tracker: 'Park' }), 'Ember').state, 'away', 'another zone is out');
+  assert.equal(hh.companionPresence(emberStates({ tracker: 'not_home', saving: 'on' }), 'Ember').state, 'home', 'sees the home Wi-Fi');
+});
+
+test('Ember: on charge, switched off, not reporting or an uncertain fix outside = unknown, never out', () => {
+  assert.deepEqual(hh.companionPresence(emberStates({ charging: 'on', tracker: 'home' }), 'Ember'), { state: 'unknown', detail: 'Tracker on charge' });
+  assert.equal(hh.companionPresence(emberStates({ status: 'system_shutdown_user', tracker: 'not_home' }), 'Ember').state, 'unknown');
+  assert.equal(hh.companionPresence(emberStates({ status: 'not_reporting', tracker: 'not_home' }), 'Ember').state, 'unknown');
+  assert.equal(hh.companionPresence(emberStates({ tracker: 'unavailable' }), 'Ember').state, 'unknown');
+  assert.equal(hh.companionPresence(emberStates({ status: 'inaccurate_position', tracker: 'not_home' }), 'Ember').state, 'unknown');
+  assert.equal(hh.companionPresence(emberStates({ status: 'inaccurate_position' }), 'Ember').state, 'home', 'inside the zone is still home');
+});
+
+test('Ember: a low tracker battery is said; a healthy one is not', () => {
+  assert.equal(hh.companionPresence(emberStates({ battery: 15 }), 'Ember').detail, 'Home · tracker 15%');
+  assert.equal(hh.companionPresence(emberStates({ battery: 15, tracker: 'not_home' }), 'Ember').detail, 'Out · tracker 15%');
+});
+
+test('Ember at home is not someone home — the roster carries her, the count and occupancy do not', () => {
+  const m = hh.compose({ nick: 'away', householdMembers: [] }, [{ name: 'Ember', species: 'Dog' }], emberStates());
+  const ember = m.find((x) => x.id === 'ember');
+  assert.equal(ember.state, 'home');
+  assert.equal(ember.role, 'companion');
+  const { occupancyFrom } = require('./home');
+  if (occupancyFrom) {
+    const occ = occupancyFrom({ known: true, source: { state: 'healthy', freshness: 'fresh' }, members: m });
+    assert.notEqual(occ.state, 'occupied', 'a dog alone does not make the house occupied');
+  }
+});
