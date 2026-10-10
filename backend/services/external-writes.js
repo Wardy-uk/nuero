@@ -93,6 +93,16 @@ const WRITERS = Object.freeze({
     why: "Nick's own finance app and Tally is the one store (9 Oct 2026); his click is the approval; every change is re-categorisable in Tally.",
     readback: 'Tally answers the updated transaction; its category_id must equal the one chosen',
   },
+  'hike.safety-alert': {
+    target: 'the people Nick listed for hike safety (email, as Nick)', authority: 'A3', initiation: 'timer, armed by Nick', ledger: true,
+    // A duplicate overdue alert costs far less than a missing one, so an unknown
+    // outcome is looked for in Sent Items and then RE-ATTEMPTED — the opposite of
+    // the governed executor's rule, deliberately (Nick, 10 Oct 2026).
+    idempotentTarget: true,
+    effect: 'one overdue alert (route card + last known positions + GPX) per armed walk, and one all-clear if he then checks in',
+    why: 'Arming the walk is the approval of this card to these people, sent only if he is overdue; the approver is the person missing, so it cannot wait for the approval code. Machine clients cannot arm, extend, cancel or check in.',
+    readback: 'Sent Items by internetMessageId; a draft no longer a draft counts as sent',
+  },
   'email.self': {
     target: 'Nick\'s own mailbox', authority: 'A2', initiation: 'timer', ledger: false,
     effect: 'briefing / [TEST] copy to Nick only (refuses any other recipient)', why: 'nobody else is told.', readback: 'none',

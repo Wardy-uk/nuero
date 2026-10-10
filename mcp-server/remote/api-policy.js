@@ -52,6 +52,12 @@ export const interactive = {
   post_outdoor_activities_by_activityId_route_remove: 'Unlinking a route is Nick\'s choice. He does it in NEURO → Life → Outdoor.',
   post_outdoor_activities_by_activityId_companion: 'Whether Ember came along is Nick\'s statement, never inferred. He marks it in NEURO → Life → Outdoor.',
   post_outdoor_activities_by_activityId_companion_remove: 'Removing Ember from an activity is Nick\'s statement. He does it in NEURO → Life → Outdoor.',
+  // Hike safety: arming approves an unattended alert email; checking in silences it. Both Nick's, never an agent's.
+  post_outdoor_safety_contacts: 'Who gets a hike safety alert is Nick\'s choice. He sets it in NEURO → Life → Outdoor → Hike safety.',
+  post_outdoor_safety_trips: 'Arming a walk approves an alert email to the people on its card. Nick arms it in NEURO → Life → Outdoor.',
+  post_outdoor_safety_trips_by_tripId_checkin: 'Checking in from a walk stops the safety alert — only Nick can say he is back. He checks in in NEURO.',
+  post_outdoor_safety_trips_by_tripId_extend: 'Extending a walk moves when the alert goes. Nick does it in NEURO.',
+  post_outdoor_safety_trips_by_tripId_cancel: 'Cancelling an armed walk stops its alert. Nick does it in NEURO.',
   // Build 30: leisure items and corrections (liked, finished, not mine) are Nick's own.
   post_leisure_items: 'What Nick is watching, reading, playing or into is his own statement. He adds it in NEURO → Life → Leisure.',
   post_leisure_items_by_itemId: 'Editing a leisure item is Nick\'s statement. He does it in NEURO → Life → Leisure.',

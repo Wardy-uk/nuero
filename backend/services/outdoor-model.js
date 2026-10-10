@@ -395,10 +395,14 @@ function parseGpx(text) {
   const linkM = text.match(/<link\s+href=["']([^"']{1,300})["']/i);
   const step = Math.max(1, Math.ceil(pts.length / MAX_STORED_POINTS));
   const geometry = pts.filter((_, i) => i % step === 0 || i === pts.length - 1).map((p) => [Math.round(p.lat * 1e5) / 1e5, Math.round(p.lon * 1e5) / 1e5]);
+  // The highest point, for a hike's route card (where to look first). null when the file carries no elevation.
+  let highest = null;
+  for (const p of pts) if (Number.isFinite(p.ele) && (!highest || p.ele > highest.ele)) highest = p;
   return {
     ok: true, name: nameM ? nameM[1].trim() : null, sourceLink: linkM ? linkM[1] : null,
     pointCount: pts.length, distanceKm: Math.round(dist / 100) / 10,
     elevationGainM: pts.some((p) => Number.isFinite(p.ele)) ? Math.round(ascent) : null,
+    highest: highest ? { lat: Math.round(highest.lat * 1e5) / 1e5, lon: Math.round(highest.lon * 1e5) / 1e5, ele: Math.round(highest.ele) } : null,
     geometry,
   };
 }

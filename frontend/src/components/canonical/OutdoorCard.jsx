@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useCanonical, postCanonical, Fold, HowItWorks } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
+import HikeSafetyCard from './HikeSafetyCard';
 
 /**
  * Life → Outdoor (Build 29). One compact section: this week, the Hike weekly
@@ -94,7 +95,7 @@ function RouteForm({ act, busy }) {
   );
 }
 
-export function OutdoorView({ data, act = null, busy = false, hikeLoop = null }) {
+export function OutdoorView({ data, act = null, busy = false, hikeLoop = null, safety = null }) {
   const s = data.summary;
   const g = data.goal;
   const routes = data.routes || [];
@@ -122,6 +123,8 @@ export function OutdoorView({ data, act = null, busy = false, hikeLoop = null })
         </div>
       )}
       {(data.now && data.now.needsYou || []).map((n, i) => <div key={i} className="cn-error" data-testid="outdoor-needs-you">{n.line}</div>)}
+
+      {safety && <Fold title="Hike safety" meta="route card + check-in" open>{safety}</Fold>}
 
       <Fold title="Hike goal" meta={goalMeta}>
         {hikeLoop}
@@ -168,7 +171,7 @@ export function OutdoorView({ data, act = null, busy = false, hikeLoop = null })
       </Fold>
 
       <HowItWorks>
-        {data.rule} {data.evidence && data.evidence.nickWins} Week: {data.week && data.week.convention}. Nothing here is a fitness score, nothing pushes, and NEURO keeps no record of where you went — only workouts Apple Health sent, your route plans, and what you link.
+        {data.rule} {data.evidence && data.evidence.nickWins} Week: {data.week && data.week.convention}. Nothing here is a fitness score, nothing pushes except Hike safety’s check-in prompts, and NEURO keeps no record of where you went — only workouts Apple Health sent, your route plans, and what you link — except during a walk you arm in Hike safety, whose trail is deleted 30 days after it ends.
       </HowItWorks>
     </section>
   );
@@ -186,7 +189,7 @@ export default function OutdoorCard() {
   };
   return (
     <>
-      <OutdoorView data={data} act={act} busy={busy} hikeLoop={<HikingLoopCard />} />
+      <OutdoorView data={data} act={act} busy={busy} hikeLoop={<HikingLoopCard />} safety={<HikeSafetyCard />} />
       {msg && <div className="cn-error">Not saved — {msg}</div>}
     </>
   );

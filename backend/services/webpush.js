@@ -81,6 +81,10 @@ const ALWAYS_DELIVER = new Set([
   // notification a week cannot cause fatigue; a missed compliance report in
   // front of the person assessing the PIP is the expensive direction.
   'weekly_risk',
+  // Hike safety: "back from your walk?", "alert in 30 min", "alert sent". A walk
+  // ending at 22:30 still needs its check-in prompt, and missing one is how an
+  // alert reaches Helen while Nick is sitting at home.
+  'hike_checkin',
   'test',
 ]);
 

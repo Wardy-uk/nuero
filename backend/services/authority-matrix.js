@@ -58,6 +58,7 @@ const CAPABILITIES = Object.freeze({
   'calendar.solo': { authority: 'A2', effect: "events with NO attendees in Nick's own calendar (task blocks, day planner, Plaud admin blocks)", machine: 'execute', approval: 'none', registry: 'external-writes:microsoft.calendar.solo', ledger: false, verification: null, idempotent: 'UNIQUE(date,start) / ledgers' },
   'mail.read-state': { authority: 'A2', effect: 'mark an email read on dismiss', machine: 'execute', approval: 'none', registry: 'external-writes:microsoft.mail.read-state', ledger: false, verification: null, idempotent: true },
   'weather.wu-publish': { authority: 'A2', effect: "upload our own weather station's readings to Weather Underground (ICOALV59)", machine: 'execute', approval: 'none', registry: 'external-writes:wunderground.publish', ledger: false, verification: 'WU answers "success"', idempotent: 'WU folds a repeat dateutc' },
+  'hike.safety-alert': { authority: 'A3', effect: 'the overdue alert (and all-clear) for a walk Nick armed, emailed to his listed contacts', machine: 'refuse', approval: 'arming the walk', registry: 'external-writes:hike.safety-alert', ledger: true, verification: 'sent-items', idempotent: true },
   'email.self': { authority: 'A2', effect: 'a [TEST] copy to Nick only (refuses any other recipient)', machine: 'execute', approval: 'none', registry: 'external-writes:email.self', ledger: false, verification: null, idempotent: false },
   'desktop.launch': { authority: 'A2', effect: "open an ALLOWLISTED app on Nick's laptop (no arguments)", machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'agent outcome', idempotent: 'queue de-dupes' },
   'plaud.pull': { authority: 'A2', effect: 'pull recordings from PLAUD into the vault', machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'sync ledger', idempotent: 'canonical plaud_id' },
@@ -265,6 +266,13 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/outdoor/activities/:activityId/route/remove', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/activities/:activityId/companion', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/outdoor/activities/:activityId/companion/remove', 'internal.state', { machine: 'refuse' }),
+  // Hike safety: arming is the approval of an unattended email, and a machine
+  // that could check Nick in could silence the alert. All of it is his.
+  R('POST', '/api/outdoor/safety/contacts', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/outdoor/safety/trips', 'hike.safety-alert'),
+  R('POST', '/api/outdoor/safety/trips/:tripId/checkin', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/outdoor/safety/trips/:tripId/extend', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/outdoor/safety/trips/:tripId/cancel', 'internal.state', { machine: 'refuse' }),
   // Build 30: what Nick is into, liked, finished or dropped is his own word.
   // Machines read Leisure; they never write it.
   R('POST', '/api/leisure/items', 'internal.state', { machine: 'refuse' }),

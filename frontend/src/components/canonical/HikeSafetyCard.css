@@ -1,0 +1,14 @@
+/* Life → Outdoor → Hike safety. Uses the canonical cn-* tokens; only layout here. */
+.hs { display: flex; flex-direction: column; gap: 0.5rem; }
+.hs-form { display: flex; flex-direction: column; gap: 0.4rem; max-width: 32rem; }
+.hs-form label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.85rem; }
+.hs-form label.cn-small { flex-direction: row; align-items: center; gap: 0.4rem; }
+.hs-form input, .hs-form select, .hs-form textarea { font: inherit; padding: 0.35rem 0.5rem; }
+.hs-contact { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.hs-contact input { flex: 1 1 10rem; min-width: 0; }
+.hs-active { border-left: 3px solid var(--accent); padding: 0.5rem 0.75rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.hs-active--alerted { border-left-color: var(--danger); }
+.hs-title { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.hs-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+.hs-checkin { font-weight: 600; padding: 0.6rem 1rem; }
+.hs-card { white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; margin: 0; }

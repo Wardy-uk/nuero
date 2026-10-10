@@ -1283,6 +1283,23 @@ function start() {
     // External weather (EA rain gauge, WU) registers its own jobs, kept out of
     // registerDurableJobs() so runtime tests that register it make no network calls.
     require('./weather-jobs').register();
+    // Hike safety: the trail, the check-in prompts and the overdue alert. Every
+    // minute, durable, never too late — an alert missed during a restart must
+    // still go the moment the backend is back. Here (not registerDurableJobs)
+    // because it reads Home Assistant and can send email.
+    require('./runtime-jobs').defineJob({
+      name: 'hike-safety',
+      cron: '* * * * *',
+      class: 'correctness-critical',
+      catchUp: 'latest',
+      maxLagMs: null,
+      maxAttempts: 2,
+      backoffMs: [20 * 1000],
+      timeoutMs: 2 * 60 * 1000,
+      lookbackMs: 48 * 3600 * 1000,
+      why: 'An armed walk: breadcrumbs from Home Assistant, the check-in prompts, and the overdue alert email if Nick has not checked in by finish + grace.',
+      run: async () => { const r = await require('./hike-safety').tick(); return { trips: r.trips, crumbs: r.crumbs, pushed: r.pushed, alerts: r.alerts.map((a) => a.outcome) }; },
+    });
     // Build 21/27: the vehicle's daily pass. Since Build 27 it reads nothing outside NEURO (Tally's
     // figures arrive through finance-refresh); kept here, beside finance-refresh, where it always ran.
     require('./runtime-jobs').defineJob({

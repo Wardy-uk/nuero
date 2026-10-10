@@ -62,4 +62,44 @@ router.post('/activities/:activityId/companion/remove', (req, res) => {
   try { send(res, outdoor.removeCompanion(req.params.activityId, companionId)); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ── Hike safety ─────────────────────────────────────────────────────────────
+// Arming, extending, cancelling, checking in and the contacts are Nick's; the
+// authority matrix refuses every one to machine clients — an agent that could
+// check him in could silence the alert.
+const hike = require('../services/hike-safety');
+
+// GET /api/outdoor/safety — hike safety: the armed walk (route card, alert time, trail ages), recent walks, who gets the alert.
+router.get('/safety', (req, res) => {
+  try { res.json(hike.read()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/outdoor/safety/contacts — who gets the overdue alert email (hike safety contacts).
+router.post('/safety/contacts', (req, res) => {
+  const { contacts } = req.body || {};
+  try { send(res, hike.setContacts(contacts)); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/outdoor/safety/trips — arm a walk: GPX + approx start/finish → route card; alert if no check-in.
+router.post('/safety/trips', async (req, res) => {
+  const { gpx, gpxName, routeId, name, plannedStart, plannedFinish, graceMinutes, emberPlanned, notes } = req.body || {};
+  try { send(res, await hike.arm({ gpx, gpxName, routeId, name, plannedStart, plannedFinish, graceMinutes, emberPlanned, notes })); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/outdoor/safety/trips/:tripId/checkin — hike check-in: back safe; sends an all-clear if an alert went.
+router.post('/safety/trips/:tripId/checkin', async (req, res) => {
+  const { via } = req.body || {};
+  try { send(res, await hike.checkIn(req.params.tripId, { via })); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/outdoor/safety/trips/:tripId/extend — hike running late: push the check-in time back.
+router.post('/safety/trips/:tripId/extend', (req, res) => {
+  const { minutes } = req.body || {};
+  try { send(res, hike.extend(req.params.tripId, minutes)); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/outdoor/safety/trips/:tripId/cancel — cancel an armed hike before anyone is alerted.
+router.post('/safety/trips/:tripId/cancel', (req, res) => {
+  try { send(res, hike.cancel(req.params.tripId)); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 module.exports = router;

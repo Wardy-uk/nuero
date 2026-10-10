@@ -665,7 +665,10 @@ test('33. no send path exists outside the governed executor', () => {
     .filter((f) => f.endsWith('.js') && !f.endsWith('.test.js'));
   assert.ok(files.length > 50, 'positive control: the scan sees the codebase');
   const draftSend = files.filter((f) => /\bsendDraft\s*\(|createDraft\s*\(/.test(fs.readFileSync(path.join(root, f), 'utf8')));
-  assert.deepEqual(draftSend.sort(), ['services/action-executor.js', 'services/action-mail.js']);
+  // The ONE stated exception (Nick, 10 Oct 2026): the hike-safety overdue alert
+  // cannot wait for an approval — the approver is the person missing — so arming
+  // the walk is the approval. It is on its own external-writes ledger entry.
+  assert.deepEqual(draftSend.sort(), ['services/action-executor.js', 'services/action-mail.js', 'services/hike-safety.js']);
   // The chase surfaces import no sender of any kind.
   for (const f of ['services/prepared-actions.js', 'routes/prepared-actions.js', 'services/waiting-on.js', 'routes/waiting-on.js', 'services/approval-proof.js']) {
     const src = fs.readFileSync(path.join(root, f), 'utf8');

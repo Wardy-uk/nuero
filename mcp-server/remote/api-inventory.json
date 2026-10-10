@@ -3750,6 +3750,22 @@
     "stream": false
   },
   {
+    "id": "get_outdoor_safety",
+    "method": "GET",
+    "route": "/api/outdoor/safety",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 72,
+    "description": "GET /api/outdoor/safety. hike safety: the armed walk (route card, alert time, trail ages), recent walks, who gets the alert.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_people",
     "method": "GET",
     "route": "/api/people",
@@ -9927,6 +9943,108 @@
       "plannedDate",
       "region",
       "status"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_safety_contacts",
+    "method": "POST",
+    "route": "/api/outdoor/safety/contacts",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 77,
+    "description": "POST /api/outdoor/safety/contacts. who gets the overdue alert email (hike safety contacts).",
+    "params": [],
+    "query": [],
+    "body": [
+      "contacts"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_safety_trips",
+    "method": "POST",
+    "route": "/api/outdoor/safety/trips",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 83,
+    "description": "POST /api/outdoor/safety/trips. arm a walk: GPX + approx start/finish → route card; alert if no check-in.",
+    "params": [],
+    "query": [],
+    "body": [
+      "emberPlanned",
+      "gpx",
+      "gpxName",
+      "graceMinutes",
+      "name",
+      "notes",
+      "plannedFinish",
+      "plannedStart",
+      "routeId"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_safety_trips_by_tripId_cancel",
+    "method": "POST",
+    "route": "/api/outdoor/safety/trips/:tripId/cancel",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 101,
+    "description": "POST /api/outdoor/safety/trips/:tripId/cancel. cancel an armed hike before anyone is alerted.",
+    "params": [
+      "tripId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_safety_trips_by_tripId_checkin",
+    "method": "POST",
+    "route": "/api/outdoor/safety/trips/:tripId/checkin",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 89,
+    "description": "POST /api/outdoor/safety/trips/:tripId/checkin. hike check-in: back safe; sends an all-clear if an alert went.",
+    "params": [
+      "tripId"
+    ],
+    "query": [],
+    "body": [
+      "via"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_outdoor_safety_trips_by_tripId_extend",
+    "method": "POST",
+    "route": "/api/outdoor/safety/trips/:tripId/extend",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 95,
+    "description": "POST /api/outdoor/safety/trips/:tripId/extend. hike running late: push the check-in time back.",
+    "params": [
+      "tripId"
+    ],
+    "query": [],
+    "body": [
+      "minutes"
     ],
     "queryOpen": false,
     "bodyOpen": true,

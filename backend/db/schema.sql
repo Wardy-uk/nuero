@@ -3217,3 +3217,63 @@ CREATE TABLE IF NOT EXISTS person_decisions (
   revoked_at  TEXT,
   PRIMARY KEY (kind, subject, person_id)
 );
+
+-- ── Hike safety (10 Oct 2026) ───────────────────────────────────────────────
+-- A walk Nick ARMED: a route card frozen at arming, the people to alert, and
+-- the times. If he has not checked in by finish + grace, NEURO emails the
+-- people on the card — no approval at send time: arming IS the approval, of
+-- this card to these people. Every step is also in personal_ops_events.
+CREATE TABLE IF NOT EXISTS hike_trips (
+  trip_id            TEXT PRIMARY KEY,
+  route_id           TEXT,
+  name               TEXT NOT NULL,
+  status             TEXT NOT NULL CHECK (status IN ('armed','checked_in','cancelled','alerted')),
+  planned_start      TEXT NOT NULL,          -- ISO instant
+  planned_finish     TEXT NOT NULL,
+  extended_until     TEXT,
+  grace_minutes      INTEGER NOT NULL,
+  ember              INTEGER NOT NULL DEFAULT 0,
+  companion          TEXT,
+  notes              TEXT,
+  recipients_json    TEXT NOT NULL,          -- frozen at arming
+  card_text          TEXT NOT NULL,          -- frozen at arming
+  card_hash          TEXT NOT NULL,
+  gpx_name           TEXT,
+  gpx_text           TEXT,                   -- attached to the alert; dropped with the trail
+  armed_at           TEXT NOT NULL,
+  reminded_at        TEXT,
+  warned_at          TEXT,
+  driving_prompt_at  TEXT,
+  alert_status       TEXT NOT NULL DEFAULT 'none' CHECK (alert_status IN ('none','sending','sent','confirmed','uncertain','failed')),
+  alert_draft_id     TEXT,
+  alert_message_id   TEXT,
+  alert_at           TEXT,
+  alert_attempts     INTEGER NOT NULL DEFAULT 0,
+  alert_error        TEXT,
+  all_clear_status   TEXT CHECK (all_clear_status IN ('sent','confirmed','uncertain','failed')),
+  checked_in_at      TEXT,
+  checked_in_via     TEXT,
+  cancelled_at       TEXT,
+  closed_at          TEXT,
+  trail_purged_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_hike_trips_status ON hike_trips(status);
+
+-- Where he was during an ARMED walk, from Home Assistant's trackers (Life360,
+-- the HA phone app, Ember's collar). The one place NEURO keeps coordinates of
+-- where Nick went, and only for a walk he armed: deleted 30 days after the
+-- walk closes. Never published to the event log, never read by anything else.
+CREATE TABLE IF NOT EXISTS hike_breadcrumbs (
+  trip_id      TEXT NOT NULL,
+  source       TEXT NOT NULL,
+  role         TEXT NOT NULL CHECK (role IN ('nick','ember')),
+  observed_at  INTEGER NOT NULL,             -- the tracker's own time, ms
+  lat          REAL NOT NULL,
+  lon          REAL NOT NULL,
+  accuracy_m   INTEGER,
+  speed_kmh    REAL,
+  mode         TEXT NOT NULL,
+  battery      INTEGER,
+  received_at  INTEGER NOT NULL,
+  PRIMARY KEY (trip_id, source, observed_at)
+);

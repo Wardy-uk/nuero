@@ -68,12 +68,19 @@ const _recips = (list) => (list || []).map((x) => ({ emailAddress: { address: x.
  * `contentType` is 'Text' (default) or 'HTML' (the weekly report).
  * Returns { ok, id, internetMessageId } or { ok:false, category, status }.
  */
-async function createDraft({ to, cc = [], subject, body, contentType = 'Text' }) {
+async function createDraft({ to, cc = [], subject, body, contentType = 'Text', attachments = [] }) {
+  // `attachments`: [{ name, contentType, text }] — small files only (Graph takes
+  // inline attachments up to ~3 MB on create). The hike route card's GPX.
+  const files = (attachments || []).filter((a) => a && a.name && typeof a.text === 'string').map((a) => ({
+    '@odata.type': '#microsoft.graph.fileAttachment', name: a.name, contentType: a.contentType || 'application/octet-stream',
+    contentBytes: Buffer.from(a.text, 'utf8').toString('base64'),
+  }));
   const r = await _req('POST', '/me/messages', {
     subject,
     body: { contentType: contentType === 'HTML' ? 'HTML' : 'Text', content: body },
     toRecipients: _recips(to),
     ...(cc && cc.length ? { ccRecipients: _recips(cc) } : {}),
+    ...(files.length ? { attachments: files } : {}),
   });
   if (r.status === 201 || (r.status >= 200 && r.status < 300)) {
     return { ok: true, id: r.data && r.data.id, internetMessageId: r.data && r.data.internetMessageId, status: r.status };
