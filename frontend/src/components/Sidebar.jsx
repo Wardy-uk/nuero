@@ -28,6 +28,7 @@ const GROUPS = [
     // Tasks span every domain (work | personal), so they sit under Life.
     { id: 'todos',      label: 'Tasks',      icon: '☑' },
     { id: 'health',     label: 'My Health',  icon: '♥' },
+    { id: 'jc-ring',    label: 'JC Ring',    icon: '◌' },
     { id: 'medical',    label: 'Medical',    icon: '✚' },
     { id: 'weather',    label: 'Weather',    icon: '☁' },
     { id: 'journal',    label: 'Journal',    icon: '>' },

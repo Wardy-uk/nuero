@@ -61,6 +61,7 @@ const NotionSyncPanel = lazy(() => import('./components/NotionSyncPanel'));
 const CataloguesPanel = lazy(() => import('./components/CataloguesPanel'));
 const ProfilePanel = lazy(() => import('./components/ProfilePanel'));
 const HealthPanel = lazy(() => import('./components/HealthPanel'));
+const JCRingPanel = lazy(() => import('./components/JCRingPanel'));
 const MeetingPrep = lazy(() => import('./components/MeetingPrep'));
 // Build 10: the first screens that read the canonical world model.
 const CommitmentsPanel = lazy(() => import('./components/canonical/CommitmentsPanel'));
@@ -386,6 +387,7 @@ function AuthenticatedApp() {
       case 'standups': return <StandupsPanel />;
       case 'insights': return <InsightsPanel onNavigate={handleNavigate} />;
       case 'health': return <HealthPanel />;
+      case 'jc-ring': return <JCRingPanel />;
       case 'pi-health': return <PiHealthPanel />;
       case 'screen-usage': return <ScreenUsagePanel />;
       case 'notion-sync': return <NotionSyncPanel />;
