@@ -122,10 +122,11 @@ export default function JCRingPanel() {
         <div className="jr-grid">
           {METRICS.map(([key, label, unit]) => {
             const reading = data.latest?.[key];
+            const unavailable = key === 'vendor_vascular_age' ? 'Not supplied by this ring' : '—';
             return <article className="jr-card" key={key}>
               <div className="jr-label">{label}</div>
-              <div className="jr-value">{number(reading?.value)} <small>{reading ? unit : ''}</small></div>
-              <div className="jr-at">{when(reading?.recorded_at_local)}</div>
+              <div className="jr-value">{reading ? number(reading.value) : unavailable} <small>{reading ? unit : ''}</small></div>
+              <div className="jr-at">{reading ? when(reading.recorded_at_local) : 'No decoded vendor value received'}</div>
             </article>;
           })}
         </div>
