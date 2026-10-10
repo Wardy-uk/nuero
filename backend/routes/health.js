@@ -18,7 +18,8 @@ const MAX_RING_DIAGNOSTIC_CHARACTERISTICS = 100;
 const MAX_RING_DIAGNOSTIC_PROBES = 300;
 const JC_RING_METRICS = [
   'heart_rate', 'battery_level_percent', 'hrv', 'blood_oxygen_saturation', 'skin_temperature_celsius',
-  'vendor_bp_systolic_estimate', 'vendor_bp_diastolic_estimate',
+  'vendor_bp_systolic_estimate', 'vendor_bp_diastolic_estimate', 'vendor_vascular_age',
+  'vendor_stress_score', 'vendor_heart_rate_during_hrv',
 ];
 
 function shortText(value, limit) {
@@ -41,6 +42,9 @@ function persistJCRingReadings(packets, receivedAt) {
   for (const sample of decoded.oxygenSamples) put('blood_oxygen_saturation', sample.saturation, sample.timestamp);
   for (const sample of decoded.temperatureSamples) put('skin_temperature_celsius', sample.celsius, sample.timestamp);
   for (const sample of decoded.batterySamples) put('battery_level_percent', sample.percent, sample.receivedAt);
+  for (const sample of decoded.vascularAgeSamples) put('vendor_vascular_age', sample.value, sample.timestamp);
+  for (const sample of decoded.stressSamples) put('vendor_stress_score', sample.value, sample.timestamp);
+  for (const sample of decoded.hrvHeartRateSamples) put('vendor_heart_rate_during_hrv', sample.value, sample.timestamp);
   for (const sample of decoded.vendorBloodPressureEstimates) {
     put('vendor_bp_systolic_estimate', sample.systolic, sample.timestamp);
     put('vendor_bp_diastolic_estimate', sample.diastolic, sample.timestamp);
@@ -181,14 +185,30 @@ router.get('/ring-week', (req, res) => {
     const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
       .toISOString().slice(0, 19).replace('T', ' ');
     const latest = Object.fromEntries(JC_RING_METRICS.map(metric => [metric, db.getLatestJCRingSample(metric) || null]));
+    const raw = db.getState(RING_DIAGNOSTIC_STATE_KEY);
+    const captured = raw ? JSON.parse(raw) : null;
+    const decoded = captured ? jcRingProtocol.inspect(captured.packets) : null;
+    const firmware = decoded?.firmwareVersions?.at(-1) || null;
     return res.json({
       generatedAt: now.toISOString(),
       sinceLocal: since,
       latest,
       daily: db.getJCRingDailySummary(since),
+      firmware: firmware ? {
+        installedVersion: firmware.version,
+        observedAt: firmware.receivedAt,
+        latestStatus: 'unknown — J2301 has no published firmware release feed or documented OTA route',
+      } : {
+        installedVersion: null,
+        observedAt: null,
+        latestStatus: 'not read yet — sync the ring once after updating NEURO',
+      },
       notConnectedYet: [
-        'steps and activity history', 'sleep history',
-        'exercise sessions', 'blood-sugar feature',
+        'daily activity: steps, active time, distance, calories and goal',
+        'detailed activity: short activity buckets',
+        'sleep history: duration and sleep-stage stream',
+        'exercise sessions / sport records',
+        'blood-sugar feature (vendor value; not suitable for health use)',
       ],
       caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring timestamps are device-local.',
     });

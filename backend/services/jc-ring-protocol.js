@@ -37,6 +37,10 @@ function inspect(packets) {
   const oxygenSamples = [];
   const temperatureSamples = [];
   const batterySamples = [];
+  const firmwareVersions = [];
+  const vascularAgeSamples = [];
+  const stressSamples = [];
+  const hrvHeartRateSamples = [];
   const vendorBloodPressureEstimates = [];
   let notifications = 0;
 
@@ -55,6 +59,16 @@ function inspect(packets) {
     // timestamp, so retain the phone's receipt time as the observation time.
     if (bytes[0] === 0x13 && bytes[1] >= 0 && bytes[1] <= 100) {
       batterySamples.push({ percent: bytes[1], receivedAt: packet.receivedAt });
+    }
+
+    // The J2301 SDK renders bytes 1...4 of a 0x27 reply as a dotted
+    // hexadecimal firmware identifier. This is a read-only identifier, not
+    // evidence that a newer version exists or that NEURO can safely install it.
+    if (bytes[0] === 0x27 && bytes.length >= 5) {
+      firmwareVersions.push({
+        version: bytes.slice(1, 5).map(value => value.toString(16).toUpperCase()).join('.'),
+        receivedAt: packet.receivedAt,
+      });
     }
 
     // J2301 automatic HR history: 54, sequence, 00, timestamp, then fifteen
@@ -87,6 +101,15 @@ function inspect(packets) {
       if (!timestamp) continue;
       if (bytes[i + 9] > 0 && hrvSamples.length < 100) {
         hrvSamples.push({ timestamp, value: bytes[i + 9] });
+      }
+      if (bytes[i + 10] > 0 && vascularAgeSamples.length < 100) {
+        vascularAgeSamples.push({ timestamp, value: bytes[i + 10] });
+      }
+      if (bytes[i + 12] > 0 && stressSamples.length < 100) {
+        stressSamples.push({ timestamp, value: bytes[i + 12] });
+      }
+      if (bytes[i + 11] > 0 && hrvHeartRateSamples.length < 100) {
+        hrvHeartRateSamples.push({ timestamp, value: bytes[i + 11] });
       }
       if (bytes[i + 13] === 0 || bytes[i + 14] === 0 || vendorBloodPressureEstimates.length >= 100) continue;
       vendorBloodPressureEstimates.push({
@@ -132,6 +155,10 @@ function inspect(packets) {
     oxygenSamples,
     temperatureSamples,
     batterySamples,
+    firmwareVersions,
+    vascularAgeSamples,
+    stressSamples,
+    hrvHeartRateSamples,
     vendorBloodPressureEstimates,
     caution: '0x54 heart-rate history and 0x56 vendor BP estimates are decoded. Consumer wearable readings are not clinical measurements; BP estimates need comparison against a validated cuff or HiLo before they are used for a trend.',
   };

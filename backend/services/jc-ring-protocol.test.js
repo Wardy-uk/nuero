@@ -61,3 +61,14 @@ test('decodes the documented battery percentage reply', () => {
   }]);
   assert.deepEqual(decoded.batterySamples, [{ percent: 84, receivedAt: '2026-10-10T07:50:00Z' }]);
 });
+
+test('reads the firmware identifier and exposes ancillary vendor fields without treating them as clinical values', () => {
+  const decoded = protocol.inspect([
+    { kind: 'notification', receivedAt: '2026-10-10T08:00:00Z', hex: '27 01 0A FF 20 00 00 00 00 00 00 00 00 00 00 51' },
+    { kind: 'notification', hex: '56 00 00 26 10 10 08 01 00 1F 2D 41 32 6E 3C' },
+  ]);
+  assert.deepEqual(decoded.firmwareVersions, [{ version: '1.A.FF.20', receivedAt: '2026-10-10T08:00:00Z' }]);
+  assert.deepEqual(decoded.vascularAgeSamples, [{ timestamp: '2026-10-10 08:01:00', value: 45 }]);
+  assert.deepEqual(decoded.hrvHeartRateSamples, [{ timestamp: '2026-10-10 08:01:00', value: 65 }]);
+  assert.deepEqual(decoded.stressSamples, [{ timestamp: '2026-10-10 08:01:00', value: 50 }]);
+});
