@@ -44,9 +44,9 @@ function unsignedLE(bytes, index, size) {
   return value;
 }
 
-// The vendor SDK's GetPPG handler identifies a 0x3A packet by its two-byte
-// sequence number, then reads the remaining bytes as 16-bit little-endian
-// samples.  A full J2301 packet holds 75 samples.  This is raw optical data;
+// The J2301 BLE dispatcher identifies a 0x3A packet by its two-byte sequence
+// number, then reads the remaining bytes as 24-bit big-endian samples. A full
+// 153-byte packet holds 50 samples. This is raw optical data;
 // the ring does not return a glucose number with it.
 function metabolicPpgRuns(packets) {
   const runs = [];
@@ -64,8 +64,8 @@ function metabolicPpgRuns(packets) {
     }
     current.lastSequence = sequence;
     current.frames++;
-    for (let index = 3; index + 1 < bytes.length; index += 2) {
-      current.samples.push(unsignedLE(bytes, index, 2));
+    for (let index = 3; index + 2 < bytes.length; index += 3) {
+      current.samples.push((bytes[index] * 65536) + (bytes[index + 1] * 256) + bytes[index + 2]);
     }
     previousSequence = sequence;
   }

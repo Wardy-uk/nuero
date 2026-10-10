@@ -92,11 +92,11 @@ test('decodes the documented daily, detailed-activity and sleep reply layouts wi
   }]);
 });
 
-test('decodes documented metabolic PPG frames as 16-bit little-endian waveform samples', () => {
+test('decodes documented metabolic PPG frames as 24-bit big-endian waveform samples', () => {
   const runs = protocol.metabolicPpgRuns([
-    { kind: 'notification', receivedAt: '2026-10-10T14:00:00Z', hex: '3A 00 00 10 27 20 4E 30 75' },
-    { kind: 'notification', receivedAt: '2026-10-10T14:00:01Z', hex: '3A 01 00 40 9C 50 C3 60 EA' },
-    { kind: 'notification', receivedAt: '2026-10-10T14:02:00Z', hex: '3A 00 00 01 00 02 00' },
+    { kind: 'notification', receivedAt: '2026-10-10T14:00:00Z', hex: '3A 00 00 00 27 10 00 4E 20 00 75 30' },
+    { kind: 'notification', receivedAt: '2026-10-10T14:00:01Z', hex: '3A 01 00 00 9C 40 00 C3 50 00 EA 60' },
+    { kind: 'notification', receivedAt: '2026-10-10T14:02:00Z', hex: '3A 00 00 00 00 01 00 00 02' },
   ]);
   assert.equal(runs.length, 2);
   assert.deepEqual(runs[0], {
