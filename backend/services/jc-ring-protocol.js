@@ -44,6 +44,64 @@ function unsignedLE(bytes, index, size) {
   return value;
 }
 
+function mean(values) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function standardDeviation(values, average) {
+  return Math.sqrt(values.reduce((sum, value) => sum + ((value - average) ** 2), 0) / values.length);
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const ordered = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+}
+
+// These are waveform features, not glucose or blood-pressure values. They
+// let us judge whether a capture is stable enough to train a future personal
+// model, and independently cross-check its pulse timing against the ring HR.
+function ppgFeatures(values, sampleRateHz = 50) {
+  const average = mean(values);
+  const deviation = standardDeviation(values, average);
+  const smoothed = values.map((_, index) => {
+    const start = Math.max(0, index - 2);
+    const end = Math.min(values.length, index + 3);
+    return mean(values.slice(start, end));
+  });
+  const residual = smoothed.map((value, index) => {
+    const start = Math.max(0, index - sampleRateHz);
+    const end = Math.min(smoothed.length, index + sampleRateHz + 1);
+    return value - mean(smoothed.slice(start, end));
+  });
+  const threshold = standardDeviation(residual, mean(residual)) * 0.25;
+  const separation = Math.round(sampleRateHz * 0.35);
+  const peaks = [];
+  for (let index = 1; index + 1 < residual.length; index++) {
+    if (residual[index] <= threshold || residual[index] < residual[index - 1] || residual[index] < residual[index + 1]) continue;
+    const previous = peaks.at(-1);
+    if (previous !== undefined && index - previous < separation) {
+      if (residual[index] > residual[previous]) peaks[peaks.length - 1] = index;
+    } else {
+      peaks.push(index);
+    }
+  }
+  const intervals = peaks.slice(1).map((peak, index) => peak - peaks[index]).filter(interval => interval > 0);
+  const medianInterval = median(intervals);
+  const candidatePulseBpm = intervals.length >= 5 && medianInterval ? Math.round((60 * sampleRateHz) / medianInterval) : null;
+  const intervalDeviationMs = intervals.length >= 5
+    ? Math.round((standardDeviation(intervals, mean(intervals)) * 1000) / sampleRateHz)
+    : null;
+  return {
+    estimatedDurationSeconds: Math.round((values.length / sampleRateHz) * 10) / 10,
+    perfusionIndexPercent: average > 0 ? Math.round((deviation / average) * 10000) / 100 : null,
+    candidatePulseBpm: candidatePulseBpm && candidatePulseBpm >= 35 && candidatePulseBpm <= 220 ? candidatePulseBpm : null,
+    pulseIntervalVariabilityMs: intervalDeviationMs,
+    pulseCount: peaks.length,
+  };
+}
+
 // The J2301 BLE dispatcher identifies a 0x3A packet by its two-byte sequence
 // number, then reads the remaining bytes as 24-bit big-endian samples. A full
 // 153-byte packet holds 50 samples. This is raw optical data;
@@ -56,8 +114,7 @@ function metabolicPpgRuns(packets) {
     if (packet?.kind !== 'notification') continue;
     const bytes = hexBytes(packet.hex);
     if (bytes[0] !== 0x3A || bytes.length < 5) continue;
-    const sequence = unsignedLE(bytes, 1, 2);
-    if (sequence === null) continue;
+    const sequence = (bytes[1] * 256) + bytes[2];
     if (!current || sequence <= previousSequence) {
       current = { receivedAt: packet.receivedAt || null, firstSequence: sequence, lastSequence: sequence, frames: 0, samples: [] };
       runs.push(current);
@@ -73,7 +130,10 @@ function metabolicPpgRuns(packets) {
     const values = run.samples.filter(Number.isFinite);
     const minimum = Math.min(...values);
     const maximum = Math.max(...values);
-    const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const average = mean(values);
+    const features = ppgFeatures(values);
+    const missingFrames = Math.max(0, (run.lastSequence - run.firstSequence + 1) - run.frames);
+    const clippedSamples = values.filter(value => value <= 1 || value >= 0xFFFFFE).length;
     // Keep the API and chart bounded even for a long manually requested run.
     const points = Math.min(300, values.length);
     const waveform = Array.from({ length: points }, (_, index) => values[Math.floor(index * values.length / points)]);
@@ -87,6 +147,11 @@ function metabolicPpgRuns(packets) {
       maximum,
       average: Math.round(average),
       range: maximum - minimum,
+      missingFrames,
+      clippedSamples,
+      signalQuality: features.candidatePulseBpm && missingFrames === 0 && clippedSamples === 0
+        ? 'usable pulse pattern' : 'raw signal captured; pulse pattern needs review',
+      ...features,
       waveform,
     };
   }).filter(run => run.sampleCount > 0);

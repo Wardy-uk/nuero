@@ -78,6 +78,7 @@ function MetabolicPpg({ data }) {
           <path d={path} vectorEffect="non-scaling-stroke" />
         </svg>
         <div className="jr-ppg-stats"><span>Low {number(run.minimum)}</span><span>Mean {number(run.average)}</span><span>High {number(run.maximum)}</span><span>Range {number(run.range)}</span></div>
+        <div className="jr-ppg-stats jr-ppg-derived"><span>{run.signalQuality}</span><span>Pulse candidate {number(run.candidatePulseBpm)} bpm</span><span>Pulse variation {number(run.pulseIntervalVariabilityMs)} ms</span><span>Perfusion proxy {number(run.perfusionIndexPercent)}%</span><span>{run.missingFrames} dropped frames · {run.clippedSamples} clipped samples</span></div>
       </article>;
     })}
   </section>;

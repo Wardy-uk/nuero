@@ -95,14 +95,18 @@ test('decodes the documented daily, detailed-activity and sleep reply layouts wi
 test('decodes documented metabolic PPG frames as 24-bit big-endian waveform samples', () => {
   const runs = protocol.metabolicPpgRuns([
     { kind: 'notification', receivedAt: '2026-10-10T14:00:00Z', hex: '3A 00 00 00 27 10 00 4E 20 00 75 30' },
-    { kind: 'notification', receivedAt: '2026-10-10T14:00:01Z', hex: '3A 01 00 00 9C 40 00 C3 50 00 EA 60' },
+    { kind: 'notification', receivedAt: '2026-10-10T14:00:01Z', hex: '3A 00 01 00 9C 40 00 C3 50 00 EA 60' },
     { kind: 'notification', receivedAt: '2026-10-10T14:02:00Z', hex: '3A 00 00 00 00 01 00 00 02' },
   ]);
   assert.equal(runs.length, 2);
   assert.deepEqual(runs[0], {
     receivedAt: '2026-10-10T14:00:00Z', firstSequence: 0, lastSequence: 1,
     frameCount: 2, sampleCount: 6, minimum: 10000, maximum: 60000,
-    average: 35000, range: 50000, waveform: [10000, 20000, 30000, 40000, 50000, 60000],
+    average: 35000, range: 50000, missingFrames: 0, clippedSamples: 0,
+    signalQuality: 'raw signal captured; pulse pattern needs review',
+    estimatedDurationSeconds: 0.1, perfusionIndexPercent: 48.8,
+    candidatePulseBpm: null, pulseIntervalVariabilityMs: null, pulseCount: 0,
+    waveform: [10000, 20000, 30000, 40000, 50000, 60000],
   });
   assert.equal(runs[1].sampleCount, 2);
   assert.deepEqual(runs[1].waveform, [1, 2]);
