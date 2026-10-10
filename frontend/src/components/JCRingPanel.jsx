@@ -68,6 +68,15 @@ export default function JCRingPanel() {
               <div className="jr-label">{label}</div>
               <div className="jr-value">{number(reading?.value)} <small>{reading ? unit : ''}</small></div>
               <div className="jr-at">{when(reading?.recorded_at_local)}</div>
+              <details className="jr-history">
+                <summary>History ({data.history?.[key]?.length || 0})</summary>
+                <div className="jr-history-list">
+                  {(data.history?.[key] || []).map((item, index) => <div key={`${item.recorded_at_local}-${item.sample_index}-${index}`}>
+                    <span>{when(item.recorded_at_local)}</span><strong>{number(item.value)} {unit}</strong>
+                  </div>)}
+                  {!data.history?.[key]?.length && <span>No readings in the last week.</span>}
+                </div>
+              </details>
             </article>;
           })}
         </div>

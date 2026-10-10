@@ -13,6 +13,11 @@
 .jr-value { font-size: 24px; font-weight: 600; margin-top: 5px; }
 .jr-value small { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
 .jr-at { margin-top: 5px; font-size: 11px; }
+.jr-history { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 7px; }
+.jr-history summary { color: var(--text-secondary); cursor: pointer; font-size: 12px; }
+.jr-history-list { max-height: 260px; overflow: auto; margin-top: 7px; display: grid; gap: 4px; font-size: 11px; }
+.jr-history-list div { display: flex; justify-content: space-between; gap: 8px; }
+.jr-history-list span { color: var(--text-muted); }
 .jr-firmware { padding: 14px; }
 .jr-firmware div { display: flex; gap: 12px; justify-content: space-between; }
 .jr-firmware span { color: var(--text-muted); }

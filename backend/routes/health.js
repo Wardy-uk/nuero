@@ -185,6 +185,9 @@ router.get('/ring-week', (req, res) => {
     const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
       .toISOString().slice(0, 19).replace('T', ' ');
     const latest = Object.fromEntries(JC_RING_METRICS.map(metric => [metric, db.getLatestJCRingSample(metric) || null]));
+    const history = Object.fromEntries(JC_RING_METRICS.map(metric => [
+      metric, db.getJCRingMetricHistory(metric, since, 500),
+    ]));
     const raw = db.getState(RING_DIAGNOSTIC_STATE_KEY);
     const captured = raw ? JSON.parse(raw) : null;
     const decoded = captured ? jcRingProtocol.inspect(captured.packets) : null;
@@ -194,6 +197,7 @@ router.get('/ring-week', (req, res) => {
       sinceLocal: since,
       latest,
       daily: db.getJCRingDailySummary(since),
+      history,
       firmware: firmware ? {
         installedVersion: firmware.version,
         observedAt: firmware.receivedAt,

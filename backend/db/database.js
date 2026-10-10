@@ -1700,6 +1700,20 @@ function getJCRingDailySummary(sinceLocal) {
   );
 }
 
+// Raw, source-labelled history for the Ring monitor. A bounded per-metric
+// limit keeps a long-running automatic HR stream from making the PWA payload
+// unbounded, while still leaving each measurement inspectable by timestamp.
+function getJCRingMetricHistory(metric, sinceLocal, limit = 500) {
+  return all(
+    `SELECT value, recorded_at_local, sample_index, received_at
+       FROM jc_ring_samples
+      WHERE metric = ? AND recorded_at_local >= ?
+      ORDER BY recorded_at_local DESC, sample_index DESC
+      LIMIT ?`,
+    [metric, sinceLocal, limit]
+  );
+}
+
 // What is actually in the health series, per metric. Powers the MCP tool and
 // the ingest status view. Reports first/last seen as well as counts, because
 // "we have 4,000 rows" and "nothing has arrived since Tuesday" look identical
@@ -2976,6 +2990,7 @@ module.exports = {
   insertJCRingSample,
   getLatestJCRingSample,
   getJCRingDailySummary,
+  getJCRingMetricHistory,
   // Location visits
   saveLocationVisit,
   insertHostMetrics,
