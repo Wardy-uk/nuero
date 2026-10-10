@@ -21,6 +21,7 @@ const MAX_RING_DIAGNOSTIC_PROBES = 300;
 // decoded history value shown in NEURO.  Battery replies have a phone receipt
 // time (ISO with a T/Z) and deliberately pass through unchanged.
 const JC_RING_CLOCK_OFFSET_MINUTES = 60;
+const JC_RING_CLOCK_FIX_DEPLOYED_AT = '2026-10-10T14:20:00.000Z';
 const JC_RING_METRICS = [
   'heart_rate', 'battery_level_percent', 'hrv', 'blood_oxygen_saturation', 'skin_temperature_celsius',
   'vendor_bp_systolic_estimate', 'vendor_bp_diastolic_estimate', 'vendor_vascular_age',
@@ -40,6 +41,20 @@ function correctedJCRingTimestamp(value) {
   const date = new Date(`${value.replace(' ', 'T')}Z`);
   date.setUTCMinutes(date.getUTCMinutes() + JC_RING_CLOCK_OFFSET_MINUTES);
   return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+// Samples captured before the correction was deployed remain byte-for-byte in
+// the database.  Correct them only at the API boundary: rewriting them would
+// merge duplicate history records which have the same metric/time/index.
+function presentedJCRingSample(sample) {
+  if (!sample || !sample.recorded_at_local || String(sample.received_at || '') >= JC_RING_CLOCK_FIX_DEPLOYED_AT) return sample;
+  return { ...sample, recorded_at_local: correctedJCRingTimestamp(sample.recorded_at_local) };
+}
+
+function latestJCRingMetrics() {
+  return Object.fromEntries(JC_RING_METRICS.map(metric => [
+    metric, presentedJCRingSample(db.getLatestJCRingSample(metric) || null),
+  ]));
 }
 
 // The raw capture remains available for protocol work, but confirmed readings
@@ -206,7 +221,7 @@ router.get('/ring-diagnostic/decoded', (req, res) => {
 // vendor BP fields are estimates and never presented as measured pressure.
 router.get('/ring-readings', (req, res) => {
   try {
-    const latest = Object.fromEntries(JC_RING_METRICS.map(metric => [metric, db.getLatestJCRingSample(metric) || null]));
+    const latest = latestJCRingMetrics();
     return res.json({ available: Object.values(latest).some(Boolean), latest,
       caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring history times are corrected +1 hour from the current ring clock.' });
   } catch {
@@ -221,9 +236,9 @@ router.get('/ring-week', (req, res) => {
     const now = new Date();
     const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
       .toISOString().slice(0, 19).replace('T', ' ');
-    const latest = Object.fromEntries(JC_RING_METRICS.map(metric => [metric, db.getLatestJCRingSample(metric) || null]));
+    const latest = latestJCRingMetrics();
     const history = Object.fromEntries(JC_RING_METRICS.map(metric => [
-      metric, db.getJCRingMetricHistory(metric, since, 500),
+      metric, db.getJCRingMetricHistory(metric, since, 500).map(presentedJCRingSample),
     ]));
     const raw = db.getState(RING_DIAGNOSTIC_STATE_KEY);
     const captured = raw ? JSON.parse(raw) : null;
@@ -290,7 +305,7 @@ router.post('/ring-readings/backfill', (req, res) => {
 // enough in time to compare, and the ring clock remains device-local.
 router.get('/ring-comparison', (req, res) => {
   try {
-    const ring = Object.fromEntries(JC_RING_METRICS.map(metric => [metric, db.getLatestJCRingSample(metric) || null]));
+    const ring = latestJCRingMetrics();
     const apple = {
       heart_rate: db.getLatestHealthSample('heartRate') || null,
       hrv: db.getLatestHealthSample('hrv') || null,
