@@ -23,7 +23,11 @@ async function fetchStates() {
     signal: AbortSignal.timeout(5000),
   });
   if (!res.ok) throw new Error(`HA API error: ${res.status}`);
-  return res.json();
+  const states = await res.json();
+  // Every fresh read refreshes the cache, so the 2-min presence poll keeps
+  // cachedStates() current for no-network readers (household's companions).
+  if (Array.isArray(states) && states.length) _cache = { at: Date.now(), states };
+  return states;
 }
 
 // 60s in-memory cache — phone state changes often but chat/journal calls
