@@ -1679,6 +1679,27 @@ function getLatestJCRingSample(metric) {
   );
 }
 
+// Seven-day source-labelled monitoring for the direct JC Ring feed. This is
+// deliberately an aggregate rather than a raw dump: the phone can show
+// whether a stream is alive and how it moved without an unbounded payload.
+function getJCRingDailySummary(sinceLocal) {
+  return all(
+    `SELECT metric,
+            substr(recorded_at_local, 1, 10) AS day,
+            COUNT(*) AS samples,
+            MIN(value) AS minimum,
+            MAX(value) AS maximum,
+            AVG(value) AS average,
+            MIN(recorded_at_local) AS first_at,
+            MAX(recorded_at_local) AS last_at
+       FROM jc_ring_samples
+      WHERE recorded_at_local >= ?
+      GROUP BY metric, substr(recorded_at_local, 1, 10)
+      ORDER BY day ASC, metric ASC`,
+    [sinceLocal]
+  );
+}
+
 // What is actually in the health series, per metric. Powers the MCP tool and
 // the ingest status view. Reports first/last seen as well as counts, because
 // "we have 4,000 rows" and "nothing has arrived since Tuesday" look identical
@@ -2954,6 +2975,7 @@ module.exports = {
   getLatestHealthSample,
   insertJCRingSample,
   getLatestJCRingSample,
+  getJCRingDailySummary,
   // Location visits
   saveLocationVisit,
   insertHostMetrics,

@@ -172,6 +172,30 @@ router.get('/ring-readings', (req, res) => {
   }
 });
 
+// A compact one-week monitoring view. Values remain in their source units and
+// are never calibrated, merged into Apple Health, or presented as medical BP.
+router.get('/ring-week', (req, res) => {
+  try {
+    const now = new Date();
+    const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 19).replace('T', ' ');
+    const latest = Object.fromEntries(JC_RING_METRICS.map(metric => [metric, db.getLatestJCRingSample(metric) || null]));
+    return res.json({
+      generatedAt: now.toISOString(),
+      sinceLocal: since,
+      latest,
+      daily: db.getJCRingDailySummary(since),
+      notConnectedYet: [
+        'battery level', 'steps and activity history', 'sleep history',
+        'exercise sessions', 'blood-sugar feature',
+      ],
+      caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring timestamps are device-local.',
+    });
+  } catch {
+    return res.status(500).json({ error: 'could not read JC Ring week monitor' });
+  }
+});
+
 // POST /api/health/ring-readings/backfill — explicitly decode the last raw
 // capture after a server upgrade. This is intentionally a write route rather
 // than a side effect of reading /ring-readings: a diagnostic capture remains
