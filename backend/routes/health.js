@@ -13,6 +13,7 @@ const jcRingProtocol = require('../services/jc-ring-protocol');
 // slower and a different statistic. Refused, never clamped.
 const MAX_SAMPLE_HOURS = 24 * 7;
 const RING_DIAGNOSTIC_STATE_KEY = 'jc_ring_diagnostic';
+const RING_SYNC_TIMELINE_STATE_KEY = 'jc_ring_sync_timeline';
 const MAX_RING_DIAGNOSTIC_PACKETS = 500;
 const MAX_RING_DIAGNOSTIC_CHARACTERISTICS = 100;
 const MAX_RING_DIAGNOSTIC_PROBES = 300;
@@ -166,12 +167,16 @@ function ringDiagnostic(body, client) {
     receivedAt: new Date().toISOString(),
     client: shortText(client, 80) || 'unknown',
     pairedName: shortText(body.pairedName, 120),
+    syncSource: ['manual', 'background'].includes(body.syncSource) ? body.syncSource : 'unknown',
     capturedAt: shortText(body.capturedAt, 64),
     characteristics,
     packets,
     probes,
   };
   db.setState(RING_DIAGNOSTIC_STATE_KEY, JSON.stringify(capture));
+  const timeline = (() => { try { return JSON.parse(db.getState(RING_SYNC_TIMELINE_STATE_KEY) || '[]'); } catch { return []; } })();
+  timeline.unshift({ receivedAt: capture.receivedAt, capturedAt: capture.capturedAt, source: capture.syncSource, packets: capture.packets.length });
+  db.setState(RING_SYNC_TIMELINE_STATE_KEY, JSON.stringify(timeline.slice(0, 100)));
   const persisted = persistJCRingReadings(packets, capture.receivedAt);
   return { ok: true, packetsStored: packets.length, characteristicsStored: characteristics.length,
     probesStored: probes.length, readingsStored: persisted.stored, receivedAt: capture.receivedAt };
@@ -242,6 +247,7 @@ router.get('/ring-week', (req, res) => {
     ]));
     const raw = db.getState(RING_DIAGNOSTIC_STATE_KEY);
     const captured = raw ? JSON.parse(raw) : null;
+    const syncTimeline = (() => { try { return JSON.parse(db.getState(RING_SYNC_TIMELINE_STATE_KEY) || '[]'); } catch { return []; } })();
     const decoded = captured ? jcRingProtocol.inspect(captured.packets) : null;
     const firmware = decoded?.firmwareVersions?.at(-1) || null;
     return res.json({
@@ -263,6 +269,7 @@ router.get('/ring-week', (req, res) => {
         runs: decoded.metabolicPpg.slice(-5),
         note: 'Raw optical waveform from the J2301 metabolic PPG command. The ring returned no numeric glucose result in this capture.',
       } : null,
+      syncTimeline,
       notConnectedYet: [
         decoded?.totalActivity?.length
           ? 'daily activity is now decoded from this ring'

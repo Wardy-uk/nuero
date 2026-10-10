@@ -149,6 +149,8 @@ export default function JCRingPanel() {
 
       <MetabolicPpg data={data.metabolicPpg} />
 
+      <section className="jr-section"><h2>Sync timeline</h2><div className="jr-week">{(data.syncTimeline || []).map((event, index) => <div className="jr-day" key={`${event.receivedAt}-${index}`}><strong>{event.source} sync</strong><span>{when(event.receivedAt)} · {event.packets} packets</span></div>)}{!data.syncTimeline?.length && <p className="jr-message">New phone uploads will appear here with their manual/background source.</p>}</div></section>
+
       <section className="jr-section jr-firmware">
         <h2>Firmware</h2>
         <div><span>Installed version</span><strong>{data.firmware?.installedVersion || 'Not read yet'}</strong></div>
