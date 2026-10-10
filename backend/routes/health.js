@@ -259,6 +259,10 @@ router.get('/ring-week', (req, res) => {
         observedAt: null,
         latestStatus: 'not read yet — sync the ring once after updating NEURO',
       },
+      metabolicPpg: decoded ? {
+        runs: decoded.metabolicPpg.slice(-5),
+        note: 'Raw optical waveform from the J2301 metabolic PPG command. The ring returned no numeric glucose result in this capture.',
+      } : null,
       notConnectedYet: [
         decoded?.totalActivity?.length
           ? 'daily activity is now decoded from this ring'
@@ -270,7 +274,9 @@ router.get('/ring-week', (req, res) => {
           ? 'sleep duration and raw stage stream are now decoded; stage labels remain to be verified'
           : 'sleep history: duration and sleep-stage stream — awaiting this ring’s reply',
         'exercise sessions / sport records — command layout still being traced',
-        'blood-sugar feature (vendor value; not suitable for health use) — command layout still being traced',
+        decoded?.metabolicPpg?.length
+          ? 'metabolic PPG waveform is now decoded; this ring did not return a numeric glucose result'
+          : 'metabolic PPG / blood-sugar flow — awaiting a direct capture',
       ],
       clockCorrectionMinutes: JC_RING_CLOCK_OFFSET_MINUTES,
       caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring history times are corrected +1 hour from the current ring clock.',

@@ -44,6 +44,54 @@ function unsignedLE(bytes, index, size) {
   return value;
 }
 
+// The vendor SDK's GetPPG handler identifies a 0x3A packet by its two-byte
+// sequence number, then reads the remaining bytes as 16-bit little-endian
+// samples.  A full J2301 packet holds 75 samples.  This is raw optical data;
+// the ring does not return a glucose number with it.
+function metabolicPpgRuns(packets) {
+  const runs = [];
+  let current = null;
+  let previousSequence = null;
+  for (const packet of Array.isArray(packets) ? packets : []) {
+    if (packet?.kind !== 'notification') continue;
+    const bytes = hexBytes(packet.hex);
+    if (bytes[0] !== 0x3A || bytes.length < 5) continue;
+    const sequence = unsignedLE(bytes, 1, 2);
+    if (sequence === null) continue;
+    if (!current || sequence <= previousSequence) {
+      current = { receivedAt: packet.receivedAt || null, firstSequence: sequence, lastSequence: sequence, frames: 0, samples: [] };
+      runs.push(current);
+    }
+    current.lastSequence = sequence;
+    current.frames++;
+    for (let index = 3; index + 1 < bytes.length; index += 2) {
+      current.samples.push(unsignedLE(bytes, index, 2));
+    }
+    previousSequence = sequence;
+  }
+  return runs.map(run => {
+    const values = run.samples.filter(Number.isFinite);
+    const minimum = Math.min(...values);
+    const maximum = Math.max(...values);
+    const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+    // Keep the API and chart bounded even for a long manually requested run.
+    const points = Math.min(300, values.length);
+    const waveform = Array.from({ length: points }, (_, index) => values[Math.floor(index * values.length / points)]);
+    return {
+      receivedAt: run.receivedAt,
+      firstSequence: run.firstSequence,
+      lastSequence: run.lastSequence,
+      frameCount: run.frames,
+      sampleCount: values.length,
+      minimum,
+      maximum,
+      average: Math.round(average),
+      range: maximum - minimum,
+      waveform,
+    };
+  }).filter(run => run.sampleCount > 0);
+}
+
 // The companion SDK accepts either the 26-byte older total-activity record or
 // the 27-byte form with a two-byte goal.  Keep that distinction rather than
 // guessing from a value that happens to be small.
@@ -134,6 +182,7 @@ function inspect(packets) {
   const totalActivity = [];
   const detailedActivity = [];
   const sleepHistory = [];
+  const metabolicPpg = metabolicPpgRuns(packets);
   let notifications = 0;
 
   for (const packet of Array.isArray(packets) ? packets : []) {
@@ -259,8 +308,9 @@ function inspect(packets) {
     totalActivity,
     detailedActivity,
     sleepHistory,
+    metabolicPpg,
     caution: '0x54 heart-rate history and 0x56 vendor BP estimates are decoded. Consumer wearable readings are not clinical measurements; BP estimates need comparison against a validated cuff or HiLo before they are used for a trend.',
   };
 }
 
-module.exports = { hexBytes, ringTimestamp, timestamps, inspect };
+module.exports = { hexBytes, ringTimestamp, timestamps, metabolicPpgRuns, inspect };

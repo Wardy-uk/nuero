@@ -57,6 +57,32 @@ function ringTimeLabel(row, full) {
     : { hour: '2-digit', minute: '2-digit' });
 }
 
+function MetabolicPpg({ data }) {
+  const runs = data?.runs || [];
+  if (!runs.length) return null;
+  return <section className="jr-section">
+    <h2>Metabolic PPG</h2>
+    <p className="jr-copy">{data.note}</p>
+    {runs.map((run, index) => {
+      const values = run.waveform || [];
+      const min = run.minimum;
+      const range = Math.max(1, run.range);
+      const path = values.map((value, point) => {
+        const x = values.length < 2 ? 0 : (point / (values.length - 1)) * 100;
+        const y = 100 - ((value - min) / range) * 100;
+        return `${point ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
+      }).join(' ');
+      return <article className="jr-ppg" key={`${run.receivedAt}-${run.firstSequence}-${index}`}>
+        <div className="jr-ppg-head"><strong>Capture {index + 1}</strong><span>{run.frameCount} frames · {run.sampleCount.toLocaleString()} samples</span></div>
+        <svg className="jr-ppg-wave" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label={`Raw optical waveform for capture ${index + 1}`}>
+          <path d={path} vectorEffect="non-scaling-stroke" />
+        </svg>
+        <div className="jr-ppg-stats"><span>Low {number(run.minimum)}</span><span>Mean {number(run.average)}</span><span>High {number(run.maximum)}</span><span>Range {number(run.range)}</span></div>
+      </article>;
+    })}
+  </section>;
+}
+
 export default function JCRingPanel() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -119,6 +145,8 @@ export default function JCRingPanel() {
           />)}
         </div>
       </section>
+
+      <MetabolicPpg data={data.metabolicPpg} />
 
       <section className="jr-section jr-firmware">
         <h2>Firmware</h2>

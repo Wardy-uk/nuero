@@ -30,4 +30,9 @@
 .jr-section ul { margin: 8px 0; padding-left: 20px; color: var(--text-secondary); }
 .jr-section li { margin: 7px 0; }
 .jr-caution { border-left: 2px solid var(--warning); padding-left: 10px; max-width: 900px; }
+.jr-ppg { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-top: 10px; }
+.jr-ppg-head, .jr-ppg-stats { display: flex; gap: 12px; justify-content: space-between; flex-wrap: wrap; font-size: 12px; }
+.jr-ppg-head span, .jr-ppg-stats { color: var(--text-muted); }
+.jr-ppg-wave { display: block; width: 100%; height: 112px; margin: 12px 0 9px; background: var(--bg-secondary); border-radius: var(--radius-sm); }
+.jr-ppg-wave path { fill: none; stroke: var(--accent); stroke-width: 1.2; }
 @media (max-width: 600px) { .jr { padding: 16px 14px 30px; } .jr-head { flex-direction: column; } .jr-refresh { width: 100%; } }
