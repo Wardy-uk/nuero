@@ -30,6 +30,7 @@ const GROUPS = [
     { id: 'health',     label: 'My Health',  icon: '♥' },
     { id: 'jc-ring',    label: 'JC Ring',    icon: '◌' },
     { id: 'medical',    label: 'Medical',    icon: '✚' },
+    { id: 'hike-safety', label: 'Hike safety', icon: '⛰' },
     { id: 'weather',    label: 'Weather',    icon: '☁' },
     { id: 'journal',    label: 'Journal',    icon: '>' },
     { id: 'catalogues', label: 'Catalogues', icon: '▤' },

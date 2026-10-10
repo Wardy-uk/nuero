@@ -19,6 +19,7 @@ process.env.NEURO_DB_PATH = path.join(tmp, 'h.db');
 process.env.NEURO_TIMEZONE = 'Europe/London';
 process.env.HA_TOKEN = '';
 process.env.HA_URL = 'http://127.0.0.1:9';
+process.env.NEURO_API_TOKEN = 'test-signing-secret-hike';
 
 const db = require('../db/database');
 const model = require('./hike-safety-model');
@@ -180,7 +181,7 @@ test('8. end to end: reminder, warning, then ONE alert email to Helen with the c
   assert.match(mail.subject, /Nick hasn't checked in from his walk — Catbells loop/);
   assert.match(mail.body, /planned to be back by 15:00\. It is now 16:00 — 60 minutes later/);
   assert.match(mail.body, /This does not mean something has happened/);
-  assert.match(mail.body, /His phone \(Life360\), 13:40 \(2 h 20 min ago\)/);
+  assert.match(mail.body, /Nick’s phone \(Life360\), 13:40 \(2 h 20 min ago\)/);
   assert.match(mail.body, /walking pace · battery 41%/);
   assert.match(mail.body, /ROUTE CARD — Catbells loop/);
   assert.equal(mail.attachments[0].name, 'catbells.gpx');
@@ -301,10 +302,13 @@ test('16. the read carries no trail coordinates, and the trail is deleted 30 day
   const id = await armed(f);
   f.states = [person, trk('device_tracker.life360_nick', 54.123456, -3.654321, L('2026-10-11T11:00'), { speed: 4 })];
   await hike.tick({ now: L('2026-10-11T11:01'), deps: f.deps });
-  const out = JSON.stringify(hike.read({ now: L('2026-10-11T11:02') }));
-  assert.ok(out.includes('"points":1'), 'positive control: the trail is there');
-  assert.ok(!out.includes('54.12346') && !out.includes('54.123456'), 'no trail coordinate in the read');
+  const live = hike.read({ now: L('2026-10-11T11:02') });
+  assert.equal(live.active.trail.points, 1);
+  assert.deepEqual(live.active.map.trail, [[54.12346, -3.65432]], 'the map carries the trail while the walk is live');
   await hike.checkIn(id, { now: L('2026-10-11T14:00'), deps: f.deps });
+  const closed = JSON.stringify(hike.read({ now: L('2026-10-11T14:01') }));
+  assert.ok(closed.includes('Catbells loop'), 'positive control: the closed walk is listed');
+  assert.ok(!closed.includes('54.12346') && !closed.includes('54.123456'), 'no trail coordinate once the walk is closed');
   assert.equal(hike.purge({ now: L('2026-11-05T12:00') }), 0);
   assert.equal(hike.purge({ now: L('2026-11-11T12:00') }), 1);
   assert.equal(db.get('SELECT COUNT(*) n FROM hike_breadcrumbs WHERE trip_id = ?', [id]).n, 0);
@@ -344,7 +348,7 @@ test('19. the card renders for real: arm form, then the armed walk with check-in
   const esbuild = require('esbuild');
   const out = await esbuild.build({
     entryPoints: [path.join(__dirname, '..', '..', 'frontend', 'src', 'components', 'canonical', 'HikeSafetyCard.jsx')],
-    bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic', external: ['react', 'react-dom'], logLevel: 'silent',
+    bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic', external: ['react', 'react-dom', 'leaflet'], logLevel: 'silent',
     plugins: [{ name: 'stub', setup(b) {
       b.onResolve({ filter: /\.css$/ }, (a) => ({ path: a.path, namespace: 'css' }));
       b.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
@@ -366,8 +370,110 @@ test('19. the card renders for real: arm form, then the armed walk with check-in
   assert.match(html, /Catbells loop/); assert.match(html, /Back by <strong>15:00/); assert.match(html, /alert to Helen at <strong>16:00/);
   assert.match(html, /I’m back — check in/); assert.match(html, /\+30 min/); assert.match(html, /Cancel walk/);
   assert.match(html, /ROUTE CARD — Catbells loop/);
+  assert.match(html, /class="walk-map"/, 'the map is on the page while the walk is live');
   assert.ok(!/arm-form/.test(html), 'no second walk can be armed while one is');
   await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
   html = render(hike.read({ now: L('2026-10-11T16:01') }));
   assert.match(html, />overdue</); assert.match(html, /alert sent/); assert.ok(!/\+30 min/.test(html), 'no extending once the alert has gone');
+});
+
+// ── VESTA: the household route tracker (the `hike` scope) ──────────────────
+
+test('20. household view: nothing when no walk; route, trail and positions while out; no coordinates once he is back', async () => {
+  reset();
+  assert.deepEqual(hike.householdView({ now: NOW }), { active: false });
+  const f = fakes();
+  const id = await armed(f, { emberPlanned: true });
+  f.states = [person,
+    trk('device_tracker.life360_nick', 54.556, -3.171, L('2026-10-11T11:00'), { speed: 4, battery_level: 62, last_seen: new Date(L('2026-10-11T11:00')).toISOString() }),
+    trk('device_tracker.ember_tracker', 54.5561, -3.1711, L('2026-10-11T11:00'))];
+  await hike.tick({ now: L('2026-10-11T11:01'), deps: f.deps });
+  const v = hike.householdView({ now: L('2026-10-11T11:30') });
+  assert.equal(v.active, true); assert.equal(v.state, 'out'); assert.equal(v.due, '2026-10-11T15:00');
+  assert.ok(v.route.length >= 2, 'the planned route is drawn');
+  assert.equal(v.trail.length, 1); assert.equal(v.emberTrail.length, 1);
+  assert.equal(v.positions[0].who, 'nick', 'his own trackers first');
+  assert.match(v.positions[0].gridRef, /^NY \d{4} \d{4}$/);
+  assert.equal(v.positions[0].ago, '30 min ago'); assert.equal(v.positions[0].battery, 62);
+  assert.match(v.positions[0].maps, /^https:\/\/www\.google\.com\/maps\?q=54\.55600,-3\.17100$/);
+  await hike.checkIn(id, { now: L('2026-10-11T14:00'), deps: f.deps });
+  const back = hike.householdView({ now: L('2026-10-11T14:05') });
+  assert.deepEqual(back, { active: false, back: { name: 'Catbells loop', checkedInAt: '2026-10-11T14:00' } });
+  assert.ok(!/54\.55|-3\.17/.test(JSON.stringify(back)), 'no coordinate once he is back');
+  assert.deepEqual(hike.householdView({ now: L('2026-10-11T21:00') }), { active: false }, 'and nothing at all hours later');
+});
+
+test('21. overdue shows on the household view with how late and that the email went', async () => {
+  reset();
+  const f = fakes();
+  await armed(f);
+  await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
+  const v = hike.householdView({ now: L('2026-10-11T16:10') });
+  assert.equal(v.state, 'overdue'); assert.equal(v.minutesLate, 70); assert.equal(v.alerted.sent, true);
+  assert.deepEqual(v.positions, [], 'no tracker reported — an empty list, said as such by the page');
+});
+
+test('22. VESTA over HTTP: the hike block and /hike exist only behind the `hike` scope', async () => {
+  reset();
+  const capture = require('./capture-links');
+  assert.ok(!capture.normaliseScopes(undefined).includes('hike'), 'not a default');
+  for (const s of ['calendar', 'kitchen', 'presence']) assert.ok(!capture.normaliseScopes([s]).includes('hike'), `${s} must not carry hike`);
+  for (const u of ['hk-no', 'hk-yes']) { try { capture.revoke(u); } catch { /* fresh */ } }
+  capture.create({ label: 'No Hike', username: 'hk-no', pin: '482915', scopes: ['tasks', 'presence'] });
+  capture.create({ label: 'Hike', username: 'hk-yes', pin: '593016', scopes: ['tasks', 'hike'] });
+  await armed(fakes());
+  const express = require('express');
+  const app = express(); app.use(express.json()); app.use('/api/v', require('../routes/vesta'));
+  const server = app.listen(0); const port = server.address().port;
+  const call = async (p, { token, body } = {}) => {
+    const r = await fetch(`http://127.0.0.1:${port}/api/v${p}`, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    return { status: r.status, json: await r.json() };
+  };
+  try {
+    const no = (await call('/login', { body: { username: 'hk-no', pin: '482915' } })).json.token;
+    const yes = (await call('/login', { body: { username: 'hk-yes', pin: '593016' } })).json.token;
+    assert.ok(no && yes, 'positive control: both signed in');
+    const hn = await call('/home', { token: no });
+    assert.equal(hn.status, 200); assert.ok(!('hike' in hn.json), 'absent, not hidden');
+    assert.equal((await call('/hike', { token: no })).status, 403);
+    const hy = await call('/home', { token: yes });
+    assert.equal(hy.json.hike.active, true); assert.equal(hy.json.hike.name, 'Catbells loop');
+    const poll = await call('/hike', { token: yes });
+    assert.equal(poll.status, 200); assert.equal(poll.json.hike.alertAt, '2026-10-11T16:00');
+    assert.equal((await call('/hike')).status, 401, 'no session, no walk');
+  } finally { server.closeAllConnections(); server.close(); }
+});
+
+test('23. VESTA renders the walk for real: plan view, positions with Maps links, overdue wording, and the quiet states', async () => {
+  const React = require('react');
+  const { renderToString } = require('react-dom/server');
+  const esbuild = require('esbuild');
+  const out = await esbuild.build({
+    entryPoints: [path.join(__dirname, '..', '..', 'vesta', 'src', 'components', 'Walk.jsx')],
+    bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic', external: ['react', 'react-dom', 'leaflet'], logLevel: 'silent',
+    plugins: [{ name: 'stub', setup(b) {
+      b.onResolve({ filter: /\.css$/ }, (a) => ({ path: a.path, namespace: 'css' }));
+      b.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
+      b.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
+      b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const hike = async () => ({ hike: null });', loader: 'js' }));
+    } }],
+  });
+  const m = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(m, m.exports, require);
+  const render = (hk, gap = null) => renderToString(React.createElement(m.exports.default, { hike: hk, gap, token: 't' })).replace(/<!-- -->/g, '');
+  reset();
+  assert.match(render({ active: false }), /isn’t out on a walk/);
+  assert.match(render(null, 'could not read the walk'), /couldn&rsquo;t read this|couldn’t read this/i);
+  const f = fakes();
+  await armed(f);
+  f.states = [person, trk('device_tracker.life360_nick', 54.556, -3.171, L('2026-10-11T11:00'), { speed: 4, battery_level: 62, last_seen: new Date(L('2026-10-11T11:00')).toISOString() })];
+  await hike.tick({ now: L('2026-10-11T11:01'), deps: f.deps });
+  let html = render(hike.householdView({ now: L('2026-10-11T11:30') }));
+  assert.match(html, /class="walk-map"/, 'the map is mounted');
+  assert.match(html, /Nick’s phone \(Life360\)/); assert.ok(!/\b(his|him)\b/i.test(html), 'VESTA names Nick, even in server-sent labels'); assert.match(html, /Open in Maps/); assert.match(html, /out walking/);
+  assert.match(html, /back by 15:00/);
+  await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
+  html = render(hike.householdView({ now: L('2026-10-11T16:10') }));
+  assert.match(html, />overdue</); assert.match(html, /Nick planned to be back by 15:00 and hasn’t checked in — 70 min late/); assert.match(html, /call 999/);
 });

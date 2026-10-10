@@ -67,7 +67,11 @@ const STATE_KEY = 'capture_links';
 // so it is its own scope, granted deliberately, and it is NOT in DEFAULT_SCOPES.
 // Nothing bundles it with `calendar` or `kitchen`: a scope that arrives as a
 // side effect of wanting the shopping list is not consent.
-const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence'];
+// ⚠ `hike` is Nick's live position ON A HILL, during a walk he armed in hike
+// safety — coordinates, his trail and the route. Finer still than `presence`,
+// so it is its own scope and not a default. It shows nothing at all unless a
+// walk is armed, and no coordinates once he has checked in.
+const SCOPES = ['tasks', 'calendar', 'kitchen', 'shared-tasks', 'presence', 'hike'];
 const DEFAULT_SCOPES = ['tasks'];
 
 /** Normalise a requested scope list. Unknown scopes are DROPPED, never passed

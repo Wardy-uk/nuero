@@ -32,7 +32,9 @@
  *   phone arriving home are prompts, never a check-in.
  * ⚠ Coordinates of where Nick went exist here and nowhere else, only for an
  *   armed walk, never on the event log, and are deleted 30 days after it closes.
- *   The read returns ages and modes, not the trail: the trail is for the alert.
+ *   The map (route, trail, last positions) is in the read ONLY while a walk is
+ *   live — for Nick's Hike safety page and Helen's VESTA tracker — and gone
+ *   from both the moment he checks in.
  * ⚠ The honest limit: this runs on pi5. If the Pi, Microsoft sign-in or the
  *   house internet is down at the deadline, the alert does not go. Arming
  *   refuses when email cannot be sent; the 30-minute warning says so too.
@@ -49,7 +51,7 @@ const PURGE_AFTER_DAYS = 30;
 const MAX_ALERT_ATTEMPTS = 60;
 const MAX_GPX_ATTACH = 2.5 * 1024 * 1024;
 const PUSH_TYPE = 'hike_checkin';
-const PUSH_URL = '/?view=life';
+const PUSH_URL = '/?view=hike-safety';
 
 function _db() { return require('../db/database'); }
 const _iso = (ms) => new Date(ms).toISOString();
@@ -416,6 +418,7 @@ function view(trip, { nowMs }) {
     alert: { status: trip.alertStatus, at: trip.alertAt, error: trip.alertError, allClear: trip.allClearStatus },
     checkedInAt: trip.checkedInAt ? model.msToLocal(_ms(trip.checkedInAt)) : null, checkedInVia: trip.checkedInVia,
     card: trip.card, gpxAttached: !!trip.gpxName,
+    map: ['armed', 'alerted'].includes(trip.status) ? _mapData(trip, nowMs) : null,
     trail: {
       points: crumbs.length,
       sources: [...latest.values()].map((c) => ({ label: model.sourceLabel(c.source, c.role), lastSeen: model.ago(c.observedMs, nowMs), mode: c.mode, modeWords: model.MODE_WORDS[c.mode], battery: c.battery })),
@@ -440,6 +443,80 @@ function read({ now = Date.now() } = {}) {
   };
 }
 
+/** The map of a live walk: the planned route, the trails, each tracker's last position. Live walks only. */
+function _mapData(trip, nowMs) {
+  const db = _db();
+  let route = [];
+  if (trip.routeId) {
+    try { route = _json(db.get('SELECT geometry_json FROM outdoor_routes WHERE route_id = ?', [trip.routeId]).geometry_json, []); } catch { route = []; }
+  }
+  const crumbs = _crumbs(trip.tripId);
+  const latest = new Map();
+  for (const c of crumbs) latest.set(c.source, c);
+  const r5 = (v) => Math.round(v * 1e5) / 1e5;
+  return {
+    route: _thin(route, MAX_ROUTE_PTS),
+    trail: _thin(crumbs.filter((c) => c.role === 'nick').map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
+    emberTrail: _thin(crumbs.filter((c) => c.role === 'ember').map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
+    positions: [...latest.values()].sort((a, b) => (a.role === b.role ? b.observedMs - a.observedMs : a.role === 'nick' ? -1 : 1)).map((c) => ({
+      who: c.role, label: c.role === 'ember' ? `${trip.companion || 'Ember'}’s collar` : model.sourceLabel(c.source, c.role),
+      lat: r5(c.lat), lon: r5(c.lon),
+      at: model.msToLocal(c.observedMs), ago: model.ago(c.observedMs, nowMs), minutesAgo: Math.round((nowMs - c.observedMs) / 60000),
+      accuracyM: c.accuracyM, mode: c.mode, modeWords: model.MODE_WORDS[c.mode], battery: c.battery,
+      gridRef: model.gridRef(c.lat, c.lon), maps: model.mapsLink(c.lat, c.lon),
+    })),
+  };
+}
+
+/**
+ * The walk as VESTA shows it (the `hike` scope) — Helen's route tracker.
+ *
+ * ⚠ POSITIONS ONLY WHILE A WALK IS ARMED OR OVERDUE. The moment he checks in
+ *   the answer drops to "back at HH:MM" with no coordinates at all: she needs
+ *   to know where he is on the hill, not where he walked last Tuesday. Nothing
+ *   at all is returned when no walk is live or recent — a public mount says
+ *   nothing it does not need to.
+ * ⚠ Each tracker is its own row with its own age — never merged into one dot.
+ */
+const RECENT_BACK_MS = 6 * 3600 * 1000;
+const MAX_ROUTE_PTS = 200;
+const MAX_TRAIL_PTS = 300;
+
+function _thin(points, max) {
+  if (points.length <= max) return points;
+  const step = points.length / max;
+  const out = [];
+  for (let i = 0; i < max - 1; i += 1) out.push(points[Math.floor(i * step)]);
+  out.push(points[points.length - 1]);
+  return out;
+}
+
+function householdView({ now = Date.now() } = {}) {
+  const nowMs = _now(now);
+  const db = _db();
+  const live = db.get("SELECT * FROM hike_trips WHERE status IN ('armed','alerted') ORDER BY planned_start LIMIT 1");
+  if (!live) {
+    const back = db.get("SELECT * FROM hike_trips WHERE status = 'checked_in' AND checked_in_at >= ? ORDER BY checked_in_at DESC LIMIT 1", [_iso(nowMs - RECENT_BACK_MS)]);
+    if (!back) return { active: false };
+    return { active: false, back: { name: back.name, checkedInAt: model.msToLocal(_ms(back.checked_in_at)) } };
+  }
+  const trip = _shape(live);
+  const { dueMs, deadlineMs } = model.times(trip);
+  const started = nowMs >= trip.startMs;
+  const map = _mapData(trip, nowMs);
+  return {
+    active: true,
+    name: trip.name,
+    state: trip.status === 'alerted' ? 'overdue' : started ? 'out' : 'not-started',
+    start: model.msToLocal(trip.startMs), due: model.msToLocal(dueMs), alertAt: model.msToLocal(deadlineMs),
+    extended: !!trip.extendedUntilMs, ember: trip.ember, companion: trip.companion,
+    minutesLate: trip.status === 'alerted' ? Math.max(0, Math.round((nowMs - dueMs) / 60000)) : null,
+    alerted: trip.status === 'alerted' ? { at: trip.alertAt ? model.msToLocal(_ms(trip.alertAt)) : null, sent: ['sent', 'confirmed'].includes(trip.alertStatus) } : null,
+    ...map,
+    card: trip.card,
+  };
+}
+
 const TABLES = ['hike_trips', 'hike_breadcrumbs'];
 
-module.exports = { WRITER, CONTACTS_KEY, PUSH_TYPE, TABLES, contacts, setContacts, arm, checkIn, extend, cancel, tick, purge, read, view };
+module.exports = { WRITER, CONTACTS_KEY, PUSH_TYPE, TABLES, contacts, setContacts, arm, checkIn, extend, cancel, tick, purge, read, view, householdView };

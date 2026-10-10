@@ -97,6 +97,19 @@ router.get('/home', requireAccount, async (req, res) => {
     out.gaps.push({ block: 'tasks', why: e.message });
   }
 
+  // ── Nick's walk (hike safety) ────────────────────────────────────────────
+  // ⚠ ABSENT without the `hike` scope. With it, positions only while a walk is
+  // armed or overdue — services/hike-safety.householdView decides, not here.
+  if (capture.hasScope(req.account, 'hike')) {
+    try {
+      out.hike = require('../services/hike-safety').householdView();
+    } catch (e) {
+      out.hike = null;
+      out.gaps.push({ block: 'hike', why: 'could not read the walk' });
+      console.error('[Vesta] Hike block failed:', e.message);
+    }
+  }
+
   // ── Where Nick is in the house ───────────────────────────────────────────
   //
   // ⚠ ABSENT unless the account holds `presence`, not hidden. The section is
@@ -227,6 +240,19 @@ router.get('/calendar', requireAccount, (req, res) => {
     // ⚠ `events: null` with a reason, never an empty array — "I could not read
     // your diary" and "nothing on that day" must not render alike.
     res.status(500).json({ ok: false, error: 'I could not read the diary just now.' });
+  }
+});
+
+// GET /api/v/hike — Nick's armed walk for the household tracker, polled while he is out. Same `hike` scope as the home block.
+router.get('/hike', requireAccount, (req, res) => {
+  if (!capture.hasScope(req.account, 'hike')) {
+    return res.status(403).json({ ok: false, error: 'Not enabled for this account.' });
+  }
+  try {
+    res.json({ ok: true, hike: require('../services/hike-safety').householdView() });
+  } catch (e) {
+    console.error('[Vesta] Hike read failed:', e.message);
+    res.status(500).json({ ok: false, error: 'I could not read the walk just now.' });
   }
 });
 

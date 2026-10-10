@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useCanonical, postCanonical, Fold, HowItWorks } from './canonicalUi';
 import './HikeSafetyCard.css';
+import WalkMap from '../WalkMap';
 
 /**
  * Life → Outdoor → Hike safety (10 Oct 2026). Upload a GPX with an approximate
@@ -98,6 +99,12 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
             {t.trail.sources.map((s) => ` · ${s.label}: ${s.lastSeen}, ${s.modeWords}${s.battery != null ? `, battery ${s.battery}%` : ''}`).join('')}
             {!t.trail.points && ' — no position has reached NEURO yet (tracking runs from 15 min before your start)'}
           </div>
+          {t.map && <WalkMap route={t.map.route} trail={t.map.trail} emberTrail={t.map.emberTrail} positions={t.map.positions} />}
+          {t.map && t.map.positions.length > 0 && (
+            <ul className="cn-list" data-testid="hike-positions">
+              {t.map.positions.map((p, i) => <li key={i}><strong>{p.label}</strong> <span className="cn-muted">{p.at.slice(11)} ({p.ago}){p.gridRef ? ` · ${p.gridRef}` : ''} · {p.modeWords}{p.battery != null ? ` · battery ${p.battery}%` : ''}</span> <a href={p.maps} target="_blank" rel="noreferrer">Maps</a></li>)}
+            </ul>
+          )}
           <Fold title="Route card" meta={t.gpxAttached ? 'GPX attached to the alert' : 'no GPX'}>
             <pre className="hs-card">{t.card}</pre>
           </Fold>

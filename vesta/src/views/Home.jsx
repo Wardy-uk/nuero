@@ -5,6 +5,7 @@ import Calendar from '../components/Calendar.jsx';
 import Kitchen from '../components/Kitchen.jsx';
 import Meals from '../components/Meals.jsx';
 import Presence from '../components/Presence.jsx';
+import Walk from '../components/Walk.jsx';
 
 const KITCHEN_SLUG = 'kitchen';
 
@@ -112,6 +113,9 @@ export default function Home({ onSignedOut }) {
       {/* A refresh that failed while we still have the last good screen: say so
           rather than either blanking it or pretending it is current. */}
       {error && <p className="home__stale" role="status">{error} Showing what I last had.</p>}
+
+      {/* First when he is out on a walk: if he is overdue it is the most important thing on the page. */}
+      {can('hike') && <Walk hike={data.hike} gap={gapFor('hike')} token={token} />}
 
       <Tasks tasks={data.tasks} gap={gapFor('tasks')} people={data.people || []} onAdd={addTask} onUpdate={updateTask} />
 

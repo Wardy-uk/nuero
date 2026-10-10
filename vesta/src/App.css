@@ -350,3 +350,26 @@ body {
   font-size: 0.85rem;
   color: var(--muted, #7a7f87);
 }
+
+/* Nick's walk (hike safety). The plan view is shapes, not a map. */
+.walk { display: flex; flex-direction: column; gap: 0.5rem; }
+.walk__head { margin: 0; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 1.05rem; }
+.walk__chip { font-size: 0.8rem; padding: 0.1rem 0.55rem; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-dim); }
+.walk__chip--overdue { background: var(--warn); border-color: var(--warn); color: #1a1208; font-weight: 600; }
+.walk__times { margin: 0; color: var(--ink-dim); font-size: 0.9rem; }
+.walk__alert { margin: 0; padding: 0.6rem 0.75rem; border-radius: var(--radius); background: var(--panel-2); border-left: 4px solid var(--warn); }
+.walk__back { margin: 0; }
+.walk__plan { width: 100%; height: auto; max-height: 260px; background: var(--panel-2); border-radius: var(--radius); }
+.walk__route { fill: none; stroke: var(--ink-faint); stroke-width: 2; stroke-dasharray: 5 4; }
+.walk__trail { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.walk__ember { fill: none; stroke: var(--ember); stroke-width: 2; stroke-linejoin: round; }
+.walk__start { fill: var(--good); }
+.walk__dot { fill: var(--ember); stroke: var(--bg); stroke-width: 2; }
+.walk__dot--ember { fill: var(--ember-soft); }
+.walk__legend { margin: 0; font-size: 0.78rem; color: var(--ink-faint); }
+.walk__positions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.walk__fine { font-size: 0.82rem; color: var(--ink-dim); }
+.walk__old { color: var(--warn); }
+.walk__maps { font-size: 0.85rem; color: var(--ember); }
+.walk__card summary { cursor: pointer; color: var(--ink-dim); }
+.walk__card pre { white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; color: var(--ink-dim); }

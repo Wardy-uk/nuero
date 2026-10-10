@@ -74,6 +74,9 @@ export const login = (username, pin) =>
 
 export const home = (token) => call('/home', { token });
 
+/** Nick's armed walk, polled while he is out (the `hike` scope). */
+export const hike = (token) => call('/hike', { token });
+
 /** One day of his diary, for the date picker. Redacted server-side like /home. */
 export const calendarDay = (token, date) =>
   call(`/calendar?date=${encodeURIComponent(date)}`, { token });

@@ -295,11 +295,11 @@ function drivingLately(fixes, { trip, nowMs }) {
 
 // ── the words ──────────────────────────────────────────────────────────────
 
-const LABELS = { nick: 'His phone', ember: 'Ember’s collar tracker' };
+const LABELS = { nick: 'Nick’s phone', ember: 'Ember’s collar tracker' };
 function sourceLabel(entityId, role) {
   if (role === 'ember') return LABELS.ember;
-  if (/life360/.test(entityId)) return 'His phone (Life360)';
-  return 'His phone (Home Assistant app)';
+  if (/life360/.test(entityId)) return 'Nick’s phone (Life360)';
+  return 'Nick’s phone (Home Assistant app)';
 }
 
 /** The route card, frozen when the walk is armed. Plain text — it has to survive any mail client. */
@@ -366,7 +366,7 @@ function alertEmail({ trip, card, fixes, nowMs, recipients }) {
     '',
     `He planned to be back by ${hhmm(dueMs)}${trip.extendedUntilMs ? ' (he extended it during the walk)' : ''}. It is now ${hhmm(nowMs)} — ${late} minutes later — and he has not checked in. The alert was set for ${hhmm(deadlineMs)}.`,
     '',
-    `This does not mean something has happened. His phone may be out of signal or flat. But he asked for you to know.`,
+    `This does not mean something has happened. Nick's phone may be out of signal or flat. But he asked for you to know.`,
     '',
     'What to do: try calling him. If you can\'t reach him and you are worried, call 999, ask for the Police and say he is a walker overdue on the hills — they call Mountain Rescue. Read them the route card below.',
     '',
