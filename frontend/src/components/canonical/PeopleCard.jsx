@@ -42,14 +42,37 @@ function SphereSelect({ value, onChange, disabled }) {
   );
 }
 
+// What a relationship already answers. Mirrors people-model's sphereOfType (the
+// server derives sphere from the relationship, basis "follows"), so asking again
+// is a question with only one sensible answer. Household is only implied where
+// the relationship IS the answer; "work" types never live with you by default.
+const IMPLIED = {
+  colleague: { sphere: 'work', household: false }, manager: { sphere: 'work', household: false },
+  direct_report: { sphere: 'work', household: false }, professional_contact: { sphere: 'work', household: false },
+  service_contact: { household: false },
+  household_member: { sphere: 'personal', household: true },
+  spouse_partner: { sphere: 'personal' }, child: { sphere: 'personal' }, parent: { sphere: 'personal' },
+  sibling: { sphere: 'personal' }, extended_family: { sphere: 'personal' }, friend: { sphere: 'personal' },
+};
+
 /** One editor for "Who is this?" and "Change". Only fields Nick touches are sent. */
 function Classify({ person, act, busy, compact = false }) {
   const [draft, setDraft] = useState({});
+  const [more, setMore] = useState(false);
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
   const dirty = Object.keys(draft).length > 0;
   const rel = draft.relationshipType !== undefined ? draft.relationshipType : (person.relationship.basis === 'declared' ? person.relationship.type : null);
   const sph = draft.sphere !== undefined ? draft.sphere : (person.sphere.basis === 'declared' ? person.sphere.value : null);
   const hh = draft.household !== undefined ? draft.household : (person.household.basis === 'declared' ? person.household.value : null);
+  const implied = (rel && IMPLIED[rel]) || {};
+  // Hidden only while Nick has not answered it himself — an explicit answer
+  // (e.g. "Work & personal" for a colleague who is also a friend) stays visible.
+  const askSphere = more || !implied.sphere || sph != null;
+  const askHousehold = more || implied.household === undefined || hh != null;
+  const impliedNote = [
+    !askSphere ? SPHERE[implied.sphere] : null,
+    !askHousehold ? (implied.household ? 'lives with you' : 'doesn’t live with you') : null,
+  ].filter(Boolean).join(' · ');
   return (
     <div className="cn-row-actions" data-testid="people-classify">
       <RelSelect value={rel} disabled={busy} onChange={(v) => set('relationshipType', v)} />
@@ -58,13 +81,27 @@ function Classify({ person, act, busy, compact = false }) {
           value={draft.relationshipDetail !== undefined ? draft.relationshipDetail || '' : person.relationship.detail || ''}
           onChange={(e) => set('relationshipDetail', e.target.value || null)} />
       )}
-      <SphereSelect value={sph} disabled={busy} onChange={(v) => set('sphere', v)} />
-      <select value={hh === true ? 'yes' : hh === false ? 'no' : ''} disabled={busy} aria-label="Lives with you"
-        onChange={(e) => set('household', e.target.value === 'yes' ? true : e.target.value === 'no' ? false : null)}>
-        <option value="">lives with you?</option><option value="yes">Lives with you</option><option value="no">Doesn’t live with you</option>
-      </select>
+      {askSphere && <SphereSelect value={sph} disabled={busy} onChange={(v) => set('sphere', v)} />}
+      {askHousehold && (
+        <select value={hh === true ? 'yes' : hh === false ? 'no' : ''} disabled={busy} aria-label="Lives with you"
+          onChange={(e) => set('household', e.target.value === 'yes' ? true : e.target.value === 'no' ? false : null)}>
+          <option value="">lives with you?</option><option value="yes">Lives with you</option><option value="no">Doesn’t live with you</option>
+        </select>
+      )}
+      {impliedNote && (
+        <span className="cn-muted cn-small" data-testid="people-implied">
+          {impliedNote}{' '}
+          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => setMore(true)}>Not quite?</button>
+        </span>
+      )}
       <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !dirty}
-        onClick={async () => { if (await act(`/api/people/${encodeURIComponent(person.personId)}/classify`, draft)) setDraft({}); }}>Save</button>
+        onClick={async () => {
+          // What the line says is what gets recorded: a hidden "doesn't live with
+          // you" is written as household:false, never left as an unstated guess.
+          // Sphere needs no write — the server derives it from the relationship.
+          const body = !askHousehold && implied.household === false && draft.relationshipType ? { ...draft, household: false } : draft;
+          if (await act(`/api/people/${encodeURIComponent(person.personId)}/classify`, body)) { setDraft({}); setMore(false); }
+        }}>Save</button>
     </div>
   );
 }
