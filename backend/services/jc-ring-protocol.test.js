@@ -72,3 +72,22 @@ test('reads the firmware identifier and exposes ancillary vendor fields without 
   assert.deepEqual(decoded.hrvHeartRateSamples, [{ timestamp: '2026-10-10 08:01:00', value: 65 }]);
   assert.deepEqual(decoded.stressSamples, [{ timestamp: '2026-10-10 08:01:00', value: 50 }]);
 });
+
+test('decodes the documented daily, detailed-activity and sleep reply layouts without labelling raw sleep codes', () => {
+  const decoded = protocol.inspect([
+    { kind: 'notification', hex: '51 00 26 10 10 00 10 00 00 2D 00 00 00 10 27 00 00 39 30 00 00 88 13 2D 00 00 00' },
+    { kind: 'notification', hex: '52 00 00 26 10 10 08 30 00 78 00 D2 04 2C 01 01 02 03 04 05 06 07 08 09 0A' },
+    { kind: 'notification', hex: '53 00 00 26 10 10 23 00 00 04 01 02 03 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00' },
+  ]);
+  assert.deepEqual(decoded.totalActivity, [{
+    timestamp: '2026-10-10 00:00:00', steps: 4096, activeTimeMinutes: 45, activeMinutes: 45,
+    distanceKilometres: 100, caloriesKilocalories: 123.45, goal: 5000,
+  }]);
+  assert.deepEqual(decoded.detailedActivity, [{
+    timestamp: '2026-10-10 08:30:00', steps: 120, caloriesKilocalories: 12.34,
+    distanceKilometres: 3, bucketSteps: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  }]);
+  assert.deepEqual(decoded.sleepHistory, [{
+    timestamp: '2026-10-10 23:00:00', durationMinutes: 20, unitMinutes: 5, stageCodes: [1, 2, 3, 4],
+  }]);
+});

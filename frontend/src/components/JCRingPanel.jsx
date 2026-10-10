@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
+import { TrendChart } from './HealthPanel';
 import './JCRingPanel.css';
 
 const METRICS = [
@@ -13,6 +14,18 @@ const METRICS = [
   ['vendor_vascular_age', 'Vendor vascular age', 'years'],
   ['vendor_stress_score', 'Vendor stress score', ''],
   ['vendor_heart_rate_during_hrv', 'Heart rate during HRV capture', 'bpm'],
+  ['daily_steps', 'Daily steps', 'steps'],
+  ['daily_active_time_minutes', 'Daily active time', 'min'],
+  ['daily_active_minutes', 'Daily active minutes', 'min'],
+  ['daily_distance_kilometres', 'Daily distance', 'km'],
+  ['daily_calories_kilocalories', 'Daily calories', 'kcal'],
+  ['daily_step_goal', 'Daily step goal', 'steps'],
+  ['activity_detail_steps', 'Activity-bucket total steps', 'steps'],
+  ['activity_detail_calories_kilocalories', 'Activity-bucket calories', 'kcal'],
+  ['activity_detail_distance_kilometres', 'Activity-bucket distance', 'km'],
+  ['activity_bucket_steps', 'Activity sub-bucket steps', 'steps'],
+  ['sleep_duration_minutes', 'Sleep duration', 'min'],
+  ['sleep_stage_code', 'Sleep stage · raw ring code', ''],
 ];
 
 function number(value) {
@@ -24,6 +37,24 @@ function when(value) {
   if (!value) return 'No reading yet';
   const parsed = new Date(value.replace(' ', 'T'));
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function chartRows(readings) {
+  // The API deliberately supplies newest-first, matching the health-history
+  // endpoint. TrendChart reverses that order so time reads left to right.
+  return (readings || []).map(reading => ({
+    day: reading.recorded_at_local,
+    value: reading.value,
+  }));
+}
+
+function ringTimeLabel(row, full) {
+  if (!row?.day) return '';
+  const parsed = new Date(row.day.replace(' ', 'T'));
+  if (Number.isNaN(parsed.getTime())) return row.day;
+  return parsed.toLocaleString([], full
+    ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
+    : { hour: '2-digit', minute: '2-digit' });
 }
 
 export default function JCRingPanel() {
@@ -68,17 +99,24 @@ export default function JCRingPanel() {
               <div className="jr-label">{label}</div>
               <div className="jr-value">{number(reading?.value)} <small>{reading ? unit : ''}</small></div>
               <div className="jr-at">{when(reading?.recorded_at_local)}</div>
-              <details className="jr-history">
-                <summary>History ({data.history?.[key]?.length || 0})</summary>
-                <div className="jr-history-list">
-                  {(data.history?.[key] || []).map((item, index) => <div key={`${item.recorded_at_local}-${item.sample_index}-${index}`}>
-                    <span>{when(item.recorded_at_local)}</span><strong>{number(item.value)} {unit}</strong>
-                  </div>)}
-                  {!data.history?.[key]?.length && <span>No readings in the last week.</span>}
-                </div>
-              </details>
             </article>;
           })}
+        </div>
+      </section>
+
+      <section className="jr-section">
+        <h2>History · last seven days</h2>
+        <div className="hp-grid jr-chart-grid">
+          {METRICS.map(([key, label, unit]) => <TrendChart
+            key={key}
+            title={label}
+            unit={unit ? ` ${unit}` : ''}
+            dp={key === 'skin_temperature_celsius' ? 1 : 0}
+            days={chartRows(data.history?.[key])}
+            valueKey="value"
+            xLabel={ringTimeLabel}
+            note="Direct-ring readings, using the ring's recorded time."
+          />)}
         </div>
       </section>
 

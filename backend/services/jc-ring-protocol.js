@@ -20,6 +20,14 @@ function ringTimestamp(bytes, index) {
   return `20${String(year).padStart(2, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`;
 }
 
+function ringDateAtMidnight(bytes, index) {
+  if (index + 2 >= bytes.length) return null;
+  const bcd = n => ((n >> 4) <= 9 && (n & 0x0f) <= 9) ? ((n >> 4) * 10) + (n & 0x0f) : null;
+  const [year, month, day] = bytes.slice(index, index + 3).map(bcd);
+  if ([year, month, day].some(n => n === null) || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `20${String(year).padStart(2, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} 00:00:00`;
+}
+
 function timestamps(bytes) {
   const result = [];
   for (let i = 0; i < bytes.length; i++) {
@@ -27,6 +35,87 @@ function timestamps(bytes) {
     if (value) result.push({ offset: i, value });
   }
   return result;
+}
+
+function unsignedLE(bytes, index, size) {
+  if (index < 0 || index + size > bytes.length) return null;
+  let value = 0;
+  for (let offset = 0; offset < size; offset++) value += bytes[index + offset] * (256 ** offset);
+  return value;
+}
+
+// The companion SDK accepts either the 26-byte older total-activity record or
+// the 27-byte form with a two-byte goal.  Keep that distinction rather than
+// guessing from a value that happens to be small.
+function totalActivityRecordLength(bytes) {
+  if (bytes.length >= 27 && bytes.length % 27 === 0) return 27;
+  if (bytes.length >= 26 && bytes.length % 26 === 0) return 26;
+  return null;
+}
+
+function totalActivitySamples(bytes) {
+  if (bytes[0] !== 0x51) return [];
+  const size = totalActivityRecordLength(bytes);
+  if (!size) return [];
+  const samples = [];
+  for (let index = 0; index + size <= bytes.length; index += size) {
+    const timestamp = ringDateAtMidnight(bytes, index + 2);
+    if (!timestamp) continue;
+    const goal = unsignedLE(bytes, index + 21, size === 27 ? 2 : 1);
+    const activeMinutes = unsignedLE(bytes, index + size - 4, 4);
+    const steps = unsignedLE(bytes, index + 5, 4);
+    const activeTime = unsignedLE(bytes, index + 9, 4);
+    const distance = unsignedLE(bytes, index + 13, 4);
+    const calories = unsignedLE(bytes, index + 17, 4);
+    if ([goal, activeMinutes, steps, activeTime, distance, calories].some(value => value === null)) continue;
+    samples.push({
+      timestamp, steps, activeTimeMinutes: activeTime, activeMinutes,
+      distanceKilometres: distance / 100, caloriesKilocalories: calories / 100, goal,
+    });
+  }
+  return samples;
+}
+
+function detailedActivitySamples(bytes) {
+  if (bytes[0] !== 0x52 || bytes.length < 25 || bytes.length % 25 !== 0) return [];
+  const samples = [];
+  for (let index = 0; index + 25 <= bytes.length; index += 25) {
+    const timestamp = ringTimestamp(bytes, index + 3);
+    if (!timestamp) continue;
+    const steps = unsignedLE(bytes, index + 9, 2);
+    const calories = unsignedLE(bytes, index + 11, 2);
+    const distance = unsignedLE(bytes, index + 13, 2);
+    if ([steps, calories, distance].some(value => value === null)) continue;
+    samples.push({
+      timestamp, steps, caloriesKilocalories: calories / 100, distanceKilometres: distance / 100,
+      bucketSteps: bytes.slice(index + 15, index + 25),
+    });
+  }
+  return samples;
+}
+
+function sleepSamples(bytes) {
+  if (bytes[0] !== 0x53) return [];
+  // Some firmware returns a 130-byte one-minute stream; the older reply is a
+  // 34-byte five-minute stream.  Its stage numbers are retained as raw vendor
+  // codes until we have validated their labels against the ring/app.
+  const oneMinute = bytes.length === 130 || bytes.length === 132;
+  const size = oneMinute ? bytes.length : 34;
+  if (!oneMinute && (bytes.length < size || bytes.length % size !== 0)) return [];
+  const samples = [];
+  const count = oneMinute ? 1 : Math.floor(bytes.length / size);
+  for (let record = 0; record < count; record++) {
+    const index = record * size;
+    const timestamp = ringTimestamp(bytes, index + 3);
+    const duration = bytes[index + 9];
+    if (!timestamp || !Number.isInteger(duration) || duration === 0) continue;
+    const available = Math.min(duration, Math.max(0, bytes.length - (index + 10)));
+    samples.push({
+      timestamp, durationMinutes: duration * (oneMinute ? 1 : 5), unitMinutes: oneMinute ? 1 : 5,
+      stageCodes: bytes.slice(index + 10, index + 10 + available),
+    });
+  }
+  return samples;
 }
 
 function inspect(packets) {
@@ -42,6 +131,9 @@ function inspect(packets) {
   const stressSamples = [];
   const hrvHeartRateSamples = [];
   const vendorBloodPressureEstimates = [];
+  const totalActivity = [];
+  const detailedActivity = [];
+  const sleepHistory = [];
   let notifications = 0;
 
   for (const packet of Array.isArray(packets) ? packets : []) {
@@ -70,6 +162,10 @@ function inspect(packets) {
         receivedAt: packet.receivedAt,
       });
     }
+
+    totalActivity.push(...totalActivitySamples(bytes));
+    detailedActivity.push(...detailedActivitySamples(bytes));
+    sleepHistory.push(...sleepSamples(bytes));
 
     // J2301 automatic HR history: 54, sequence, 00, timestamp, then fifteen
     // one-byte BPM values. The within-record cadence is not proven by the
@@ -160,6 +256,9 @@ function inspect(packets) {
     stressSamples,
     hrvHeartRateSamples,
     vendorBloodPressureEstimates,
+    totalActivity,
+    detailedActivity,
+    sleepHistory,
     caution: '0x54 heart-rate history and 0x56 vendor BP estimates are decoded. Consumer wearable readings are not clinical measurements; BP estimates need comparison against a validated cuff or HiLo before they are used for a trend.',
   };
 }

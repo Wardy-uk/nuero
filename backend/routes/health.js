@@ -20,6 +20,10 @@ const JC_RING_METRICS = [
   'heart_rate', 'battery_level_percent', 'hrv', 'blood_oxygen_saturation', 'skin_temperature_celsius',
   'vendor_bp_systolic_estimate', 'vendor_bp_diastolic_estimate', 'vendor_vascular_age',
   'vendor_stress_score', 'vendor_heart_rate_during_hrv',
+  'daily_steps', 'daily_active_time_minutes', 'daily_active_minutes', 'daily_distance_kilometres',
+  'daily_calories_kilocalories', 'daily_step_goal', 'activity_detail_steps',
+  'activity_detail_calories_kilocalories', 'activity_detail_distance_kilometres', 'activity_bucket_steps', 'sleep_duration_minutes',
+  'sleep_stage_code',
 ];
 
 function shortText(value, limit) {
@@ -48,6 +52,26 @@ function persistJCRingReadings(packets, receivedAt) {
   for (const sample of decoded.vendorBloodPressureEstimates) {
     put('vendor_bp_systolic_estimate', sample.systolic, sample.timestamp);
     put('vendor_bp_diastolic_estimate', sample.diastolic, sample.timestamp);
+  }
+  for (const sample of decoded.totalActivity) {
+    put('daily_steps', sample.steps, sample.timestamp);
+    put('daily_active_time_minutes', sample.activeTimeMinutes, sample.timestamp);
+    put('daily_active_minutes', sample.activeMinutes, sample.timestamp);
+    put('daily_distance_kilometres', sample.distanceKilometres, sample.timestamp);
+    put('daily_calories_kilocalories', sample.caloriesKilocalories, sample.timestamp);
+    put('daily_step_goal', sample.goal, sample.timestamp);
+  }
+  for (const sample of decoded.detailedActivity) {
+    put('activity_detail_steps', sample.steps, sample.timestamp);
+    put('activity_detail_calories_kilocalories', sample.caloriesKilocalories, sample.timestamp);
+    put('activity_detail_distance_kilometres', sample.distanceKilometres, sample.timestamp);
+    for (const [index, value] of sample.bucketSteps.entries()) {
+      put('activity_bucket_steps', value, sample.timestamp, index + 1);
+    }
+  }
+  for (const sample of decoded.sleepHistory) {
+    put('sleep_duration_minutes', sample.durationMinutes, sample.timestamp);
+    for (const [index, value] of sample.stageCodes.entries()) put('sleep_stage_code', value, sample.timestamp, index + 1);
   }
   return { decoded, stored };
 }
@@ -208,11 +232,17 @@ router.get('/ring-week', (req, res) => {
         latestStatus: 'not read yet — sync the ring once after updating NEURO',
       },
       notConnectedYet: [
-        'daily activity: steps, active time, distance, calories and goal',
-        'detailed activity: short activity buckets',
-        'sleep history: duration and sleep-stage stream',
-        'exercise sessions / sport records',
-        'blood-sugar feature (vendor value; not suitable for health use)',
+        decoded?.totalActivity?.length
+          ? 'daily activity is now decoded from this ring'
+          : 'daily activity: steps, active time, distance, calories and goal — awaiting this ring’s reply',
+        decoded?.detailedActivity?.length
+          ? 'detailed activity is now decoded from this ring'
+          : 'detailed activity: short activity buckets — awaiting this ring’s reply',
+        decoded?.sleepHistory?.length
+          ? 'sleep duration and raw stage stream are now decoded; stage labels remain to be verified'
+          : 'sleep history: duration and sleep-stage stream — awaiting this ring’s reply',
+        'exercise sessions / sport records — command layout still being traced',
+        'blood-sugar feature (vendor value; not suitable for health use) — command layout still being traced',
       ],
       caution: 'JC Ring blood-pressure fields are vendor estimates, not cuff or HiLo measurements. Ring timestamps are device-local.',
     });
