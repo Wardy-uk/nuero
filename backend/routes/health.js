@@ -33,6 +33,17 @@ const JC_RING_METRICS = [
   'sleep_stage_code',
 ];
 
+// Nick's initial, personal comparison set: five near-simultaneous pairs from
+// 10 October 2026. Keep the direct-ring values intact and derive these only at
+// read time so the calibration is visible, reversible and never mistaken for a
+// measurement produced by the ring.
+const JC_RING_BP_CALIBRATION = Object.freeze({
+  systolicOffset: 25,
+  diastolicOffset: 21,
+  pairedReadings: 5,
+  comparedAgainst: 'HiLo',
+});
+
 function shortText(value, limit) {
   return typeof value === 'string' && value.length <= limit ? value : null;
 }
@@ -56,6 +67,16 @@ function latestJCRingMetrics() {
   return Object.fromEntries(JC_RING_METRICS.map(metric => [
     metric, presentedJCRingSample(db.getLatestJCRingSample(metric) || null),
   ]));
+}
+
+function calibratedJCRingBloodPressure(sample, offset) {
+  if (!sample || !Number.isFinite(sample.value)) return null;
+  return {
+    ...sample,
+    value: sample.value + offset,
+    derived: true,
+    calibrationOffset: offset,
+  };
 }
 
 // The raw capture remains available for protocol work, but confirmed readings
@@ -245,6 +266,14 @@ router.get('/ring-week', (req, res) => {
     const history = Object.fromEntries(JC_RING_METRICS.map(metric => [
       metric, db.getJCRingMetricHistory(metric, since, 500).map(presentedJCRingSample),
     ]));
+    latest.calibrated_bp_systolic_estimate = calibratedJCRingBloodPressure(
+      latest.vendor_bp_systolic_estimate, JC_RING_BP_CALIBRATION.systolicOffset);
+    latest.calibrated_bp_diastolic_estimate = calibratedJCRingBloodPressure(
+      latest.vendor_bp_diastolic_estimate, JC_RING_BP_CALIBRATION.diastolicOffset);
+    history.calibrated_bp_systolic_estimate = history.vendor_bp_systolic_estimate.map(sample =>
+      calibratedJCRingBloodPressure(sample, JC_RING_BP_CALIBRATION.systolicOffset));
+    history.calibrated_bp_diastolic_estimate = history.vendor_bp_diastolic_estimate.map(sample =>
+      calibratedJCRingBloodPressure(sample, JC_RING_BP_CALIBRATION.diastolicOffset));
     const raw = db.getState(RING_DIAGNOSTIC_STATE_KEY);
     const captured = raw ? JSON.parse(raw) : null;
     const syncTimeline = (() => { try { return JSON.parse(db.getState(RING_SYNC_TIMELINE_STATE_KEY) || '[]'); } catch { return []; } })();
@@ -254,6 +283,7 @@ router.get('/ring-week', (req, res) => {
       generatedAt: now.toISOString(),
       sinceLocal: since,
       latest,
+      bloodPressureCalibration: JC_RING_BP_CALIBRATION,
       daily: db.getJCRingDailySummary(since),
       history,
       firmware: firmware ? {

@@ -9,8 +9,6 @@ const METRICS = [
   ['hrv', 'HRV', 'ms'],
   ['blood_oxygen_saturation', 'Blood oxygen', '%'],
   ['skin_temperature_celsius', 'Skin temperature', '°C'],
-  ['vendor_bp_systolic_estimate', 'Ring BP estimate · systolic', 'mmHg'],
-  ['vendor_bp_diastolic_estimate', 'Ring BP estimate · diastolic', 'mmHg'],
   ['vendor_vascular_age', 'Vendor vascular age', 'years'],
   ['vendor_stress_score', 'Vendor stress score', ''],
   ['vendor_heart_rate_during_hrv', 'Heart rate during HRV capture', 'bpm'],
@@ -26,6 +24,13 @@ const METRICS = [
   ['activity_bucket_steps', 'Activity sub-bucket steps', 'steps'],
   ['sleep_duration_minutes', 'Sleep duration', 'min'],
   ['sleep_stage_code', 'Sleep stage · raw ring code', ''],
+];
+
+const BP_METRICS = [
+  ['vendor_bp_systolic_estimate', 'Ring BP · systolic', 'mmHg'],
+  ['vendor_bp_diastolic_estimate', 'Ring BP · diastolic', 'mmHg'],
+  ['calibrated_bp_systolic_estimate', 'Personal calibrated BP · systolic', 'mmHg'],
+  ['calibrated_bp_diastolic_estimate', 'Personal calibrated BP · diastolic', 'mmHg'],
 ];
 
 function number(value) {
@@ -45,6 +50,15 @@ function chartRows(readings) {
   return (readings || []).map(reading => ({
     day: reading.recorded_at_local,
     value: reading.value,
+  }));
+}
+
+function bloodPressureChartRows(rawReadings, calibratedReadings) {
+  const calibratedByTime = new Map((calibratedReadings || []).map(reading => [reading.recorded_at_local, reading.value]));
+  return (rawReadings || []).map(reading => ({
+    day: reading.recorded_at_local,
+    raw: reading.value,
+    calibrated: calibratedByTime.get(reading.recorded_at_local),
   }));
 }
 
@@ -129,6 +143,39 @@ export default function JCRingPanel() {
               <div className="jr-at">{reading ? when(reading.recorded_at_local) : 'No decoded vendor value received'}</div>
             </article>;
           })}
+          {BP_METRICS.map(([key, label, unit]) => {
+            const reading = data.latest?.[key];
+            return <article className="jr-card" key={key}>
+              <div className="jr-label">{label}</div>
+              <div className="jr-value">{reading ? number(reading.value) : '—'} <small>{reading ? unit : ''}</small></div>
+              <div className="jr-at">{reading ? when(reading.recorded_at_local) : 'No decoded vendor value received'}</div>
+            </article>;
+          })}
+        </div>
+      </section>
+
+      <section className="jr-section">
+        <h2>Blood-pressure history · last seven days</h2>
+        <p className="jr-copy">Raw is the value the ring supplied. Personal calibrated adds {data.bloodPressureCalibration?.systolicOffset ?? '—'} / {data.bloodPressureCalibration?.diastolicOffset ?? '—'} mmHg from {data.bloodPressureCalibration?.pairedReadings ?? '—'} paired HiLo readings.</p>
+        <div className="hp-grid jr-chart-grid">
+          <TrendChart
+            title="Blood pressure · systolic"
+            unit=" mmHg"
+            dp={0}
+            days={bloodPressureChartRows(data.history?.vendor_bp_systolic_estimate, data.history?.calibrated_bp_systolic_estimate)}
+            series={[{ key: 'raw', label: 'Ring raw' }, { key: 'calibrated', label: 'Personal calibrated' }]}
+            xLabel={ringTimeLabel}
+            note="Direct-ring vendor estimate and the personal calibrated estimate."
+          />
+          <TrendChart
+            title="Blood pressure · diastolic"
+            unit=" mmHg"
+            dp={0}
+            days={bloodPressureChartRows(data.history?.vendor_bp_diastolic_estimate, data.history?.calibrated_bp_diastolic_estimate)}
+            series={[{ key: 'raw', label: 'Ring raw' }, { key: 'calibrated', label: 'Personal calibrated' }]}
+            xLabel={ringTimeLabel}
+            note="Direct-ring vendor estimate and the personal calibrated estimate."
+          />
         </div>
       </section>
 
