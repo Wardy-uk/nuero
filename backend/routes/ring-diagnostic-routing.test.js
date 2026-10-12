@@ -113,7 +113,9 @@ test('an upload stores its readings, and an explicit backfill of the same captur
     }],
   });
   assert.equal(receipt.status, 200);
-  assert.equal((await receipt.json()).readingsStored, 3, 'the upload decodes and stores HRV + both BP estimates');
+  // One 0x56 HRV frame carries five readings: HRV, both vendor BP estimates,
+  // the vendor stress score and the heart rate during the capture.
+  assert.equal((await receipt.json()).readingsStored, 5, 'the upload decodes and stores all five readings in the frame');
 
   const backfill = await fetch(`${base}/api/health/ring-readings/backfill`, { method: 'POST' });
   assert.equal(backfill.status, 200);
@@ -129,10 +131,12 @@ test('an upload stores its readings, and an explicit backfill of the same captur
   assert.equal(readings.latest.hrv.value, 49);
   assert.equal(readings.latest.vendor_bp_systolic_estimate.value, 112);
   assert.equal(readings.latest.vendor_bp_diastolic_estimate.value, 62);
+  assert.ok(readings.latest.vendor_stress_score, 'stress score stored');
+  assert.ok(readings.latest.vendor_heart_rate_during_hrv, 'heart rate during HRV stored');
 
   // Positive control: the case backfill exists for (readings absent after an
   // upgrade) still converts — so the 0 above is idempotency, not a dead route.
   db.run('DELETE FROM jc_ring_samples', []);
   const again = await (await fetch(`${base}/api/health/ring-readings/backfill`, { method: 'POST' })).json();
-  assert.equal(again.readingsStored, 3);
+  assert.equal(again.readingsStored, 5);
 });
