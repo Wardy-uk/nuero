@@ -474,7 +474,7 @@ function nutrition({ nutrition: n, bpHigh }) {
       insight: anyLogging ? {
         id: 'nutrition-sparse', domain: 'nutrition', level: 'gap', view: 'health',
         title: 'Keep logging food for a few more days',
-        finding: `${s.loggedDays} day${plural(s.loggedDays)} logged in MyFitnessPal in the last ${n.windowDays}, not counting today.`,
+        finding: `${s.loggedDays} day${plural(s.loggedDays)} logged in MyFitnessPal in the last ${n.windowDays}, today included.`,
         action: `Log ${more} more day${plural(more)} and NEURO can average it against the guidelines.`,
         basis: `An average needs at least ${NUTRITION_MIN_DAYS} logged days.`,
         evidence: [],

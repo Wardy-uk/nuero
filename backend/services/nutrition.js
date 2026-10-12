@@ -13,7 +13,7 @@
  *     carries no totals — it is never averaged in as an empty plate.
  *   • EVERY LOGGED DAY COUNTS, however low. A fast day is a real day (Nick, 12
  *     Oct 2026), so there is no calorie floor that decides what is "complete".
- *     Only TODAY is left out of the averages, because it is still being eaten.
+ *     TODAY COUNTS TOO: he logs the whole day in advance (Nick, 12 Oct 2026).
  *   • MYFITNESSPAL WRITES 0 FOR A NUTRIENT ITS FOOD ENTRY LACKS. Calcium, iron and
  *     vitamin C averaged ~0 per meal across six months of history. So vitamins and
  *     minerals are FLOORS (`floor: true`) and are never judged as "too low".
@@ -107,8 +107,8 @@ function localDay(recordedAt, tz = TZ()) {
 
 /**
  * PURE. samples: [{ metric, value, recorded_at }] (UTC). today: local key.
- * windowDays counts back from YESTERDAY: today is still being eaten, so it is
- * shown but never averaged.
+ * windowDays is the last N days INCLUDING today (Nick logs a day in advance,
+ * so today is as complete as any other).
  */
 function compose({ samples = [], today, windowDays = 14, tz } = {}) {
   const byDay = new Map();
@@ -122,7 +122,7 @@ function compose({ samples = [], today, windowDays = 14, tz } = {}) {
     t[s.metric] = (t[s.metric] || 0) + Number(s.value);
   }
 
-  const firstDay = shiftDay(today, -windowDays);
+  const firstDay = shiftDay(today, -(windowDays - 1));
   const days = [];
   for (let k = today; k >= firstDay; k = shiftDay(k, -1)) {
     const raw = byDay.get(k);
@@ -143,7 +143,7 @@ function compose({ samples = [], today, windowDays = 14, tz } = {}) {
     });
   }
 
-  const counted = days.filter((d) => !d.today && d.logged);
+  const counted = days.filter((d) => d.logged);
   const lastLogged = [...byDay.keys()].sort().pop() || null;
 
   const nutrients = NUTRIENTS.map((n) => {
@@ -171,14 +171,14 @@ function compose({ samples = [], today, windowDays = 14, tz } = {}) {
     known: true,
     summary: {
       loggedDays: counted.length,
-      unloggedDays: days.filter((d) => !d.today && !d.logged).length,
+      unloggedDays: days.filter((d) => !d.logged).length,
       lastLoggedDay: lastLogged,
       todayKcal: days[0]?.kcal ?? null,
     },
     days,
     nutrients,
     groups: GROUPS,
-    note: `Averages use every day with food logged, except today, which is still in progress. A day with nothing logged is left out, never counted as zero. MyFitnessPal records 0 for nutrients a food's entry lacks, so vitamin and mineral figures are a floor, not a measurement. Reference values are UK adult-male figures and are not a diagnosis.`,
+    note: `Averages use every day with food logged, today included. A day with nothing logged is left out, never counted as zero. MyFitnessPal records 0 for nutrients a food's entry lacks, so vitamin and mineral figures are a floor, not a measurement. Reference values are UK adult-male figures and are not a diagnosis.`,
   };
 }
 

@@ -10,8 +10,8 @@ import './NutritionSection.css';
  *
  * ⚠ Three distinctions the payload carries and this keeps visible:
  *   • a day with nothing logged reads "not logged", never 0 kcal;
- *   • every logged day counts, however low (a fast day is a real day) — only
- *     today is left out of the averages, because it is still being eaten;
+ *   • every logged day counts, however low (a fast day is a real day), and
+ *     today counts too — it is logged in advance;
  *   • vitamins and minerals are FLOORS (MyFitnessPal writes 0 for missing data),
  *     so they are shown muted and never coloured as "too low".
  */
@@ -67,7 +67,7 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
           <div className="nut-summary">
             <span><b>{s.loggedDays}</b> day{s.loggedDays === 1 ? '' : 's'} logged</span>
             <span><b>{s.unloggedDays}</b> not logged</span>
-            {s.todayKcal != null && <span>today so far <b>{s.todayKcal}</b> kcal</span>}
+            {s.todayKcal != null && <span>today <b>{s.todayKcal}</b> kcal</span>}
           </div>
 
           <div className="nut-scroll">
@@ -101,7 +101,7 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
 
           <h4 className="nut-h4">Daily average over {s.loggedDays} logged day{s.loggedDays === 1 ? '' : 's'}</h4>
           {s.loggedDays === 0 ? (
-            <div className="hp-quiet">No logged day before today in this window yet, so there is nothing to average.</div>
+            <div className="hp-quiet">No logged day in this window yet, so there is nothing to average.</div>
           ) : (
             <table className="hp-table nut-avg">
               <thead>

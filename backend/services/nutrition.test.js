@@ -33,12 +33,15 @@ test('a day with nothing logged is not a zero day', () => {
   assert.equal(out.nutrients.find((x) => x.metric === 'dietary_energy_consumed').avg, 2200);
 });
 
-test('a low (fast) day counts like any other; only today is left out of the averages', () => {
+test('a low (fast) day counts like any other, and so does today', () => {
   const samples = [...dayOf('2026-10-11'), ...dayOf('2026-10-10', { kcal: 400 }), ...dayOf(TODAY, { kcal: 300 })];
   const out = nutrition.compose({ samples, today: TODAY, windowDays: 7 });
-  assert.equal(out.summary.loggedDays, 2);
+  assert.equal(out.summary.loggedDays, 3);
   assert.equal(out.summary.todayKcal, 300);
-  assert.equal(out.nutrients.find((x) => x.metric === 'dietary_energy_consumed').avg, 1300);
+  assert.equal(out.nutrients.find((x) => x.metric === 'dietary_energy_consumed').avg, 967);
+  // The window is the last 7 days INCLUDING today.
+  assert.equal(out.days.length, 7);
+  assert.equal(out.days[out.days.length - 1].day, '2026-10-06');
 });
 
 test('salt is sodium x 2.5 and judged against 6g; minerals are floors, never "under"', () => {
