@@ -61,9 +61,32 @@ function Item({ item, onNotUseful, dismissed }) {
   );
 }
 
-export function DailyView({ briefing, onNotUseful = null, dismissedKinds = [] }) {
+// Work = sphere 'work'. Personal = everything else (personal, health, context).
+// A view filter only: the server's selection is unchanged, so "All" is exactly
+// what was composed.
+export const MODES = [['all', 'All'], ['work', 'Work'], ['personal', 'Personal']];
+export function inMode(sphere, mode) {
+  if (mode === 'work') return sphere === 'work';
+  if (mode === 'personal') return sphere !== 'work';
+  return true;
+}
+
+export function ModeToggle({ mode, onChange }) {
+  return (
+    <div className="brf-tabs brf-mode" role="radiogroup" aria-label="Show">
+      {MODES.map(([id, label]) => (
+        <button key={id} type="button" role="radio" aria-checked={mode === id} className={`brf-tab${mode === id ? ' brf-tab--on' : ''}`} onClick={() => onChange(id)}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+export function DailyView({ briefing, onNotUseful = null, dismissedKinds = [], mode = 'all' }) {
   const p = briefing?.payload;
   if (!p) return <p className="brf-meta">No daily briefing yet.</p>;
+  const sections = (p.sections || [])
+    .map((s) => ({ ...s, items: s.items.filter((i) => inMode(i.sphere, mode)) }))
+    .filter((s) => s.items.length);
   const held = p.held || {};
   const heldBits = [];
   if (held.work) heldBits.push(`${held.work} work item${held.work === 1 ? '' : 's'} (day off)`);
@@ -77,22 +100,97 @@ export function DailyView({ briefing, onNotUseful = null, dismissedKinds = [] })
       </div>
       {p.context?.weather ? <p className="brf-meta">Weather: {p.context.weather}</p> : null}
       <Delivery delivery={briefing.delivery} />
-      {(p.sections || []).map((s) => (
+      {sections.map((s) => (
         <section key={s.id} className={`brf-section brf-section--${s.id}`}>
           <h3>{s.label}</h3>
           <ul className="brf-items">{s.items.map((i) => <Item key={i.key} item={i} onNotUseful={onNotUseful} dismissed={dismissedKinds.includes(i.kind)} />)}</ul>
         </section>
       ))}
+      {!sections.length && mode !== 'all' ? (
+        <p className="brf-meta">Nothing {mode === 'work' ? 'work-related' : 'personal'} earned a place today.</p>
+      ) : null}
       <Gaps gaps={p.gaps} />
-      <p className="brf-close">{p.close}</p>
+      <p className="brf-close">{mode === 'all' ? p.close : `${p.close} (Showing ${mode} only.)`}</p>
       {heldBits.length ? <p className="brf-meta">Held back: {heldBits.join(' · ')}.</p> : null}
     </div>
   );
 }
 
-export function WeeklyView({ briefing }) {
+function shortDay(ymd) {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function hoursLabel(h) {
+  if (h == null) return '—';
+  const whole = Math.floor(h);
+  return `${whole}h${String(Math.round((h - whole) * 60)).padStart(2, '0')}`;
+}
+
+/** The personal half of the weekly: the week ahead, and last week's body. Never emailed. */
+function PersonalWeek({ p }) {
+  const ahead = p.weekAhead;
+  const h = p.health;
+  const bp = p.bp;
+  const row = (label, cur, prev, fmt, unit = '') => (
+    <tr>
+      <td>{label}</td>
+      <td>{cur.median != null ? `${fmt(cur.median)}${unit}` : 'no readings'}{cur.days ? <span className="brf-partial-muted"> ({cur.days} day{cur.days === 1 ? '' : 's'})</span> : null}</td>
+      <td>{prev.median != null ? `${fmt(prev.median)}${unit}` : '—'}</td>
+    </tr>
+  );
+  return (
+    <>
+      <section className="brf-section">
+        <h3>Your week ahead</h3>
+        {!ahead || !ahead.known
+          ? <p className="brf-meta">Couldn’t read the Future Radar — not the same as an empty week.</p>
+          : ahead.items.length
+            ? (
+              <ul className="brf-items">
+                {ahead.items.map((i, n) => (
+                  <li key={n} className="brf-item brf-item--personal">
+                    <div className="brf-item-head">
+                      <span className="brf-item-title"><span className="brf-when">{shortDay(i.date)}{i.time ? ` ${i.time}` : ''}</span>{i.title}</span>
+                      {i.needsYou ? <span className="brf-sphere">needs you</span> : null}
+                    </div>
+                    {i.why ? <p className="brf-detail">{i.why}</p> : null}
+                  </li>
+                ))}
+              </ul>
+            )
+            : <p className="brf-meta">Nothing personal on the radar for the next 7 days.</p>}
+      </section>
+      {h || bp ? (
+        <section className="brf-section">
+          <h3>Your body last week</h3>
+          <table className="brf-table">
+            <thead><tr><th></th><th>Last week (median)</th><th>Week before</th></tr></thead>
+            <tbody>
+              {h ? row('Sleep', h.sleepHours.now, h.sleepHours.was, hoursLabel) : null}
+              {h ? row('Resting heart rate', h.restingHr.now, h.restingHr.was, (v) => Math.round(v), ' bpm') : null}
+              {bp ? (
+                <tr>
+                  <td>Blood pressure</td>
+                  <td>{bp.now.days ? `${bp.now.systolic}/${bp.now.diastolic} mmHg` : 'no readings'}{bp.now.days ? <span className="brf-partial-muted"> ({bp.now.days} day{bp.now.days === 1 ? '' : 's'})</span> : null}</td>
+                  <td>{bp.was.days ? `${bp.was.systolic}/${bp.was.diastolic}` : '—'}</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+          <p className="brf-meta">Here and on your phone only — never in the work email.</p>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
+export function WeeklyView({ briefing, mode = 'all' }) {
   const p = briefing?.payload;
   if (!p) return <p className="brf-meta">No weekly briefing yet.</p>;
+  const showWork = mode !== 'personal';
+  const showPersonal = mode !== 'work';
   const lb = p.leaderboard;
   // No "days worked": NOVA's `days` counts days with a row on the board, weekends included.
   const agent = (a) => `${a.agentName} — score ${Math.round(a.compositeScore)}, ${a.solved} solved, SLA ${pct(a.slaCompliancePct)}`;
@@ -104,6 +202,7 @@ export function WeeklyView({ briefing }) {
       </div>
       <Delivery delivery={briefing.delivery} />
 
+      {showWork ? (<>
       {(p.sla && p.sla.length) || (p.csatRows && p.csatRows.length) || p.supportSla ? (
         <section className="brf-section">
           <h3>Team SLA and CSAT</h3>
@@ -189,17 +288,9 @@ export function WeeklyView({ briefing }) {
           ))}
         </section>
       ) : null}
+      </>) : null}
 
-      {p.bp && (p.bp.now?.days || p.bp.was?.days) ? (
-        <section className="brf-section">
-          <h3>Blood pressure</h3>
-          <p>
-            Last week: {p.bp.now.days ? `${p.bp.now.systolic}/${p.bp.now.diastolic} mmHg (median of ${p.bp.now.days} day${p.bp.now.days === 1 ? '' : 's'})` : 'no readings'}
-            {' · '}Week before: {p.bp.was.days ? `${p.bp.was.systolic}/${p.bp.was.diastolic}` : 'no readings'}
-          </p>
-          <p className="brf-meta">Here and on your phone only — never in the work email.</p>
-        </section>
-      ) : null}
+      {showPersonal ? <PersonalWeek p={p} /> : null}
 
       <Gaps gaps={p.gaps} />
       <p className="brf-close">{p.close}</p>
@@ -218,6 +309,14 @@ export default function BriefingsPanel() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState([]);
+  // A per-device convenience, so it is remembered here and nowhere else.
+  const [mode, setModeState] = useState(() => {
+    try { const v = window.localStorage.getItem('neuro_briefing_mode'); return MODES.some(([id]) => id === v) ? v : 'all'; } catch { return 'all'; }
+  });
+  const setMode = (m) => {
+    setModeState(m);
+    try { window.localStorage.setItem('neuro_briefing_mode', m); } catch { /* storage unavailable: still works for this visit */ }
+  };
 
   const load = useCallback(async (k, id = null) => {
     setError(null);
@@ -276,6 +375,7 @@ export default function BriefingsPanel() {
             </button>
           ))}
         </div>
+        <ModeToggle mode={mode} onChange={setMode} />
         <div className="brf-controls">
           {history.length > 1 ? (
             <select value={selected || ''} onChange={(e) => load(kind, Number(e.target.value))} aria-label="Earlier briefings">
@@ -290,8 +390,8 @@ export default function BriefingsPanel() {
         : 'Mondays at 08:00, for the 09:00 tech leadership meeting. Rebuilding here does not send it again.'}</p>
       {error ? <p className="brf-error">{error}</p> : null}
       {kind === 'daily'
-        ? <DailyView briefing={briefing} onNotUseful={notUseful} dismissedKinds={dismissed} />
-        : <WeeklyView briefing={briefing} />}
+        ? <DailyView briefing={briefing} onNotUseful={notUseful} dismissedKinds={dismissed} mode={mode} />
+        : <WeeklyView briefing={briefing} mode={mode} />}
     </div>
   );
 }

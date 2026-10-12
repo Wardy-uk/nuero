@@ -132,7 +132,8 @@ test('weekly: the email has KPIs and the SLM points, never blood pressure', asyn
       volumes: async () => ({ series: [{ key: 'nt_legacy_new_tickets', points: [{ day: '2026-10-06', value: 40 }] }] }),
       leaderboard: async () => ({ ranked: [{ rank: 1, agentName: 'Top Person', compositeScore: 88, solved: 60, slaCompliancePct: 97, daysWorked: 5 }, { rank: 2, agentName: 'Last Person', compositeScore: 41, solved: 12, slaCompliancePct: 80, daysWorked: 5 }] }),
       slm: async () => ({ known: true, note: { name: '2026-10-09 – Support Leadership Meeting' }, highlights: ['Tier 2 SLA recovered'], lowlights: [], blockers: ['Dev ack slow'] }),
-      bp: async () => [{ day: '2026-10-06', bpSystolic: 151, bpDiastolic: 91 }],
+      bp: async () => [{ day: '2026-10-06', bpSystolic: 151, bpDiastolic: 91, asleepHours: 7.5, rhrMedian: 71 }],
+      weekAhead: async () => ({ ok: true, items: [{ title: 'Helen’s birthday', date: '2026-10-16', actionState: 'needs_you', sphere: 'personal', kind: 'birthday' }] }),
     },
   });
   assert.equal(f.sent.email.length, 1);
@@ -142,6 +143,10 @@ test('weekly: the email has KPIs and the SLM points, never blood pressure', asyn
   assert.match(html, /Last Person/);
   assert.match(html, /Tier 2 SLA recovered/);
   assert.doesNotMatch(html, /151/);
+  assert.doesNotMatch(html, /birthday/, 'the personal week ahead never reaches the Nurtur mailbox');
+  assert.equal(b.payload.weekAhead.items.length, 1);
+  assert.equal(b.payload.health.sleepHours.now.median, 7.5);
+  assert.match(f.sent.push[0].body, /Your week ahead: 1 thing, 1 needs you/);
   assert.equal(b.payload.bp.now.systolic, 151); // on the screen
   assert.match(f.sent.push[0].body, /CSAT 4\.2\/5/);
 });
@@ -156,6 +161,7 @@ test('weekly: NOVA answering "ok" with no compliance rows is a named gap, never 
       leaderboard: async () => ({ ranked: [] }),
       slm: async () => ({ known: false, why: 'none' }),
       bp: async () => [],
+      weekAhead: async () => ({ ok: true, items: [] }),
     },
   });
   assert.ok(b.payload.gaps.some((g) => /per-queue SLA/.test(g.source)));

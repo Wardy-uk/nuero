@@ -285,6 +285,45 @@ function bpWeek(rows, weeks) {
   return { now: pick(weeks.report), was: pick(weeks.prior) };
 }
 
+// ── The personal half (12 Oct 2026: "both are heavy on the work side") ──────
+
+/**
+ * Last week's body against the week before: median sleep, median resting heart
+ * rate. Medians, as health-daily uses. A week with no readings is null. PURE.
+ */
+function healthWeek(rows, weeks) {
+  const pick = (w, field) => {
+    const vals = (rows || []).filter((r) => r && _inWeek(r.day, w) && Number.isFinite(r[field])).map((r) => r[field]);
+    return { days: vals.length, median: vals.length ? Math.round(_median(vals) * 10) / 10 : null };
+  };
+  const both = (field) => {
+    const now = pick(weeks.report, field);
+    const was = pick(weeks.prior, field);
+    return { now, was, delta: now.median != null && was.median != null ? Math.round((now.median - was.median) * 10) / 10 : null };
+  };
+  return { sleepHours: both('asleepHours'), restingHr: both('rhrMedian') };
+}
+
+/**
+ * The week AHEAD, personal side: the Future Radar's next 7 days, taken as given
+ * (its own needs-you and lead-time rules). Work items are excluded. PURE over
+ * the radar payload.
+ */
+function weekAheadFrom(radar) {
+  if (!radar || radar.ok === false) return { known: false, items: [] };
+  const items = (radar.items || [])
+    .filter((it) => it && it.title && it.sphere !== 'work')
+    .map((it) => ({
+      title: it.title,
+      date: it.date || null,
+      time: it.time || null,
+      kind: it.kind || null,
+      needsYou: it.actionState === 'needs_you',
+      why: Array.isArray(it.whyVisible) && it.whyVisible[0] ? it.whyVisible[0] : null,
+    }));
+  return { known: true, items, heading: radar.heading || null };
+}
+
 // ── Assembly ─────────────────────────────────────────────────────────────────
 
 async function _pull(name, fn, gaps, label) {
@@ -355,11 +394,15 @@ async function gatherWeekly({ now = new Date(), overrides = {} } = {}) {
 
   const bpRows = await _pull('bp', use('bp', () => require('./health-daily').recentDays(21)), gaps, 'blood pressure');
   const bp = bpRows ? bpWeek(bpRows, weeks) : null;
+  const health = bpRows ? healthWeek(bpRows, weeks) : null;
 
-  return { today, weeks, sla, supportSla, csatRows, volumes, leaderboard, slm, bp, gaps };
+  const radar = await _pull('weekAhead', use('weekAhead', () => require('./future-radar').read({ now: now.getTime(), horizonDays: 7 })), gaps, 'the week ahead (Future Radar)');
+  const weekAhead = weekAheadFrom(radar);
+
+  return { today, weeks, sla, supportSla, csatRows, volumes, leaderboard, slm, bp, health, weekAhead, gaps };
 }
 
 module.exports = {
-  gatherWeekly, reportWeeks, volumesFor, supportCompliance, supportSlaKeys, SUPPORT_QUEUES, leaderboardSummary, findSlmNote, parseSlmPoints, slmPoints, bpWeek,
+  gatherWeekly, reportWeeks, volumesFor, supportCompliance, healthWeek, weekAheadFrom, supportSlaKeys, SUPPORT_QUEUES, leaderboardSummary, findSlmNote, parseSlmPoints, slmPoints, bpWeek,
   VOLUME_KEYS, SLM_PROMPT,
 };

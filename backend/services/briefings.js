@@ -155,6 +155,11 @@ function weeklyPush(w) {
     lines.push(`${v.raised.now ?? '?'} raised · ${v.closed.now ?? '?'} closed`);
   }
   if (w.leaderboard?.top) lines.push(`Top: ${w.leaderboard.top.agentName}`);
+  const ahead = w.weekAhead?.known ? w.weekAhead.items : null;
+  if (ahead && ahead.length) {
+    const need = ahead.filter((i) => i.needsYou).length;
+    lines.push(`Your week ahead: ${ahead.length} thing${ahead.length === 1 ? '' : 's'}${need ? `, ${need} need${need === 1 ? 's' : ''} you` : ''}`);
+  }
   if (!lines.length) lines.push('Could not read the week’s KPIs — open the briefing for what is missing.');
   return { title: `Weekly briefing — week to ${_shortDate(w.weeks.report.to)}`, body: lines.join('\n') };
 }
@@ -180,6 +185,9 @@ async function composeWeekly({ now = new Date(), overrides = {} } = {}) {
     leaderboard: w.leaderboard,
     slm: w.slm,
     bp: w.bp,
+    // The personal half — screen and push only, never the Nurtur email.
+    health: w.health || null,
+    weekAhead: w.weekAhead || null,
     gaps: w.gaps,
     close: blind.length ? `I couldn’t read ${blind.join(', ')}, so this isn’t the whole picture.` : 'Everything above was read.',
     push: { title, body },

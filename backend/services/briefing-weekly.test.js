@@ -82,6 +82,30 @@ test('Support compliance asks NOVA for exactly the three queues, both metrics', 
   assert.ok(!keys.some((k) => /tier_3|development/.test(k)));
 });
 
+test('healthWeek: medians per week; a week with no readings is null, not zero', () => {
+  const rows = [
+    { day: '2026-10-05', asleepHours: 7, rhrMedian: 70 },
+    { day: '2026-10-06', asleepHours: 8, rhrMedian: 74 },
+    { day: '2026-10-07', asleepHours: 6.5, rhrMedian: null },
+  ];
+  const r = w.healthWeek(rows, weeks);
+  assert.deepEqual(r.sleepHours.now, { days: 3, median: 7 });
+  assert.deepEqual(r.restingHr.now, { days: 2, median: 72 });
+  assert.equal(r.sleepHours.was.median, null);
+  assert.equal(r.sleepHours.delta, null);
+});
+
+test('weekAheadFrom: personal items only; an unreadable radar is unknown, not an empty week', () => {
+  const r = w.weekAheadFrom({ items: [
+    { title: 'Birthday', date: '2026-10-16', actionState: 'needs_you', sphere: 'personal' },
+    { title: 'Work thing', date: '2026-10-14', sphere: 'work' },
+  ] });
+  assert.deepEqual(r.items.map((i) => i.title), ['Birthday']);
+  assert.equal(r.items[0].needsYou, true);
+  assert.equal(w.weekAheadFrom(null).known, false);
+  assert.equal(w.weekAheadFrom({ ok: false }).known, false);
+});
+
 test('leaderboard: top is rank 1, weakest is last; one ranked agent has no weakest', () => {
   const two = w.leaderboardSummary({ ranked: [{ rank: 1, agentName: 'A' }, { rank: 2, agentName: 'B' }, { rank: 3, agentName: 'C' }] });
   assert.equal(two.top.agentName, 'A');

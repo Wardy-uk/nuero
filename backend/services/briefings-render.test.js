@@ -116,6 +116,41 @@ test('weekly: KPIs, volumes, leaderboard, SLM and BP render; unmeasured says so'
   assert.match(html, /Not delivered/);
 });
 
+test('daily toggle: Work shows only work, Personal only personal and health', async () => {
+  const { DailyView } = await load();
+  const work = renderToString(React.createElement(DailyView, { briefing: daily, mode: 'work' })).replace(/<!-- -->/g, '');
+  assert.doesNotMatch(work, /Helen’s birthday/);
+  assert.match(work, /Nothing work-related earned a place today/);
+  const personal = renderToString(React.createElement(DailyView, { briefing: daily, mode: 'personal' })).replace(/<!-- -->/g, '');
+  assert.match(personal, /Helen’s birthday/);
+  assert.match(personal, /Slept 5h40/);
+  assert.match(personal, /Showing personal only/);
+});
+
+test('weekly toggle: Personal hides the KPIs and shows the week ahead and the body', async () => {
+  const { WeeklyView } = await load();
+  const b = { id: 9, kind: 'weekly', delivery: null, payload: {
+    weeks: { report: { from: '2026-10-05', to: '2026-10-11' } },
+    csatRows: [{ key: 'csat-score', label: 'CSAT average score', now: '3.7 / 5', was: '3.0 / 5', delta: '▲' }],
+    sla: [], volumes: [], leaderboard: null, slm: null,
+    bp: { now: { days: 7, systolic: 144, diastolic: 85 }, was: { days: 7, systolic: 145, diastolic: 86 } },
+    health: { sleepHours: { now: { days: 7, median: 7.5 }, was: { days: 7, median: 8 }, delta: -0.5 }, restingHr: { now: { days: 7, median: 76 }, was: { days: 6, median: 74 }, delta: 2 } },
+    weekAhead: { known: true, items: [{ title: 'Helen’s birthday', date: '2026-10-16', needsYou: true }] },
+    gaps: [], close: 'Everything above was read.',
+  } };
+  const personal = renderToString(React.createElement(WeeklyView, { briefing: b, mode: 'personal' })).replace(/<!-- -->/g, '');
+  assert.doesNotMatch(personal, /CSAT average score/);
+  assert.match(personal, /Your week ahead/);
+  assert.match(personal, /Helen’s birthday/);
+  assert.match(personal, /7h30/);
+  assert.match(personal, /144\/85 mmHg/);
+  const work = renderToString(React.createElement(WeeklyView, { briefing: b, mode: 'work' }));
+  assert.match(work, /CSAT average score/);
+  assert.doesNotMatch(work, /Your week ahead/);
+  const unread = { ...b, payload: { ...b.payload, weekAhead: { known: false, items: [] } } };
+  assert.match(renderToString(React.createElement(WeeklyView, { briefing: unread, mode: 'personal' })), /not the same as an empty week/);
+});
+
 test('an empty store renders a plain "none yet", not a crash', async () => {
   const { DailyView, WeeklyView } = await load();
   assert.match(renderToString(React.createElement(DailyView, { briefing: null })), /No daily briefing yet/);
