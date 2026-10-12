@@ -110,9 +110,14 @@ function localDay(recordedAt, tz = TZ()) {
  * windowDays is the last N days INCLUDING today (Nick logs a day in advance,
  * so today is as complete as any other).
  */
-function compose({ samples = [], today, windowDays = 14, tz } = {}) {
+function compose({ samples = [], entries = [], today, windowDays = 14, tz } = {}) {
+  // `entries` are per-HealthKit-sample (nutrition_entries); `samples` are the
+  // older health_samples rows, which fold entries sharing a minute. For any day
+  // the entries cover, they are the whole truth and the folded rows are ignored.
+  const entryDays = new Set(entries.map((e) => localDay(e.recorded_at, tz)).filter(Boolean));
+  const rows = [...entries, ...samples.filter((s) => !entryDays.has(localDay(s.recorded_at, tz)))];
   const byDay = new Map();
-  for (const s of samples) {
+  for (const s of rows) {
     const def = NUTRIENTS.find((n) => n.metric === s.metric);
     if (!def || !Number.isFinite(Number(s.value))) continue;
     const day = localDay(s.recorded_at, tz);
@@ -198,7 +203,8 @@ function read({ now = new Date(), days = 14 } = {}) {
       samples.push({ metric: n.metric, value: r.value, recorded_at: r.recorded_at });
     }
   }
-  return compose({ samples, today: localDayKey(now), windowDays: days });
+  const entries = db.getNutritionEntriesSince(since);
+  return compose({ samples, entries, today: localDayKey(now), windowDays: days });
 }
 
 module.exports = { compose, read, localDay, NUTRIENTS, SODIUM_TO_SALT };

@@ -135,6 +135,20 @@ router.post('/ingest', (req, res) => {
 
     const skipped = parsed.samples.length - inserted;
 
+    // Food goes to its own UUID-keyed table as well — regardless of whether
+    // health_samples folded it, because folding is exactly what loses a meal
+    // logged in the same minute as another.
+    let nutritionNew = 0;
+    for (const s of parsed.samples) {
+      if (!/^dietary_/.test(s.metric) || !s.sourceUuid) continue;
+      try {
+        if (db.insertNutritionEntry(s.metric, s.value, s.recordedAt, s.sourceUuid)) nutritionNew++;
+      } catch (e) {
+        parsed.rejected.push({ metric: s.metric, reason: `nutrition entry: ${e.message}` });
+      }
+    }
+    if (nutritionNew) console.log(`[AppleHealth] ${nutritionNew} new food entr${nutritionNew === 1 ? 'y' : 'ies'}`);
+
     // Workouts are records rather than scalars and go to their own table. This
     // is what retires Strava — the section has been arriving all along and was
     // counted and discarded until 5 Sep 2026.

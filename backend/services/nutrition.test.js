@@ -54,6 +54,18 @@ test('salt is sodium x 2.5 and judged against 6g; minerals are floors, never "un
   assert.equal(calcium.state, 'floor');
 });
 
+test('several entries logged in the same minute all count (MyFitnessPal logs a sitting at one time)', () => {
+  const at = '2026-10-12 18:04:00';
+  const entries = [294, 520, 744].map((kcal) => ({ metric: 'dietary_energy_consumed', value: kcal, recorded_at: at }));
+  // health_samples kept only the first, folded on (metric, recorded_at).
+  const samples = [{ metric: 'dietary_energy_consumed', value: 294, recorded_at: at }];
+  const out = nutrition.compose({ samples, entries, today: TODAY, windowDays: 7 });
+  assert.equal(out.days[0].kcal, 1558);
+  // A day the entries table does not cover still reads from health_samples.
+  const legacy = nutrition.compose({ samples: dayOf('2026-10-10'), entries, today: TODAY, windowDays: 7 });
+  assert.equal(legacy.days.find((d) => d.day === '2026-10-10').kcal, 2200);
+});
+
 test('a UTC stamp after 23:00 in BST belongs to the next local day', () => {
   assert.equal(nutrition.localDay('2026-10-10 23:30:00', 'Europe/London'), '2026-10-11');
   assert.equal(nutrition.localDay('2026-12-10 23:30:00', 'Europe/London'), '2026-12-10');

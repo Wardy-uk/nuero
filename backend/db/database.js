@@ -1666,6 +1666,24 @@ function insertHealthSampleWithUuid(metric, value, recordedAt, source, sourceUui
   return r.changes > 0;
 }
 
+// One row per HealthKit food sample, keyed on its UUID (see schema.sql: a food
+// log legitimately has several entries at the same instant).
+function insertNutritionEntry(metric, value, recordedAt, sourceUuid) {
+  if (!sourceUuid) return false;
+  const r = run(
+    `INSERT OR IGNORE INTO nutrition_entries (metric, value, recorded_at, source_uuid) VALUES (?, ?, ?, ?)`,
+    [metric, value, recordedAt, sourceUuid]
+  );
+  return r.changes > 0;
+}
+
+function getNutritionEntriesSince(sinceIso) {
+  return all(
+    `SELECT metric, value, recorded_at FROM nutrition_entries WHERE recorded_at >= ? ORDER BY recorded_at`,
+    [sinceIso]
+  );
+}
+
 function getHealthSamples(metric, sinceIso, limit) {
   return all(
     `SELECT value, recorded_at FROM health_samples
@@ -3031,6 +3049,8 @@ module.exports = {
   // Health samples
   insertHealthSample,
   insertHealthSampleWithUuid,
+  insertNutritionEntry,
+  getNutritionEntriesSince,
   getHealthMetricSummary,
   getDailyMetricAggregates,
   getHealthSamplesBetween,

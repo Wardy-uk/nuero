@@ -936,6 +936,24 @@ CREATE TABLE IF NOT EXISTS health_samples (
 
 CREATE INDEX IF NOT EXISTS idx_health_samples_metric_time ON health_samples(metric, recorded_at DESC);
 
+-- Food entries, one row per HealthKit sample (12 Oct 2026).
+-- ⚠ health_samples' UNIQUE(metric, recorded_at) is right for a sensor and WRONG
+-- for a food log: MyFitnessPal stamps every entry logged in one sitting with the
+-- same minute, so a whole day logged at 19:04 folded to its first meal (294 of
+-- 1,558 kcal on the day this was found). Keyed on the sample's own UUID instead,
+-- so several entries at one instant are several entries and a re-send still folds.
+-- health_samples keeps receiving them too (its readers only ask "was anything
+-- logged"); nutrition.js sums from HERE for any day this table covers.
+CREATE TABLE IF NOT EXISTS nutrition_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  metric TEXT NOT NULL,
+  value REAL NOT NULL,
+  recorded_at DATETIME NOT NULL,
+  source_uuid TEXT NOT NULL UNIQUE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_nutrition_entries_time ON nutrition_entries(recorded_at);
+
 -- Direct J2301 ring readings remain separate from Apple Health. In particular,
 -- its vendor blood-pressure figures are estimates, never cuff measurements.
 -- `recorded_at_local` is the ring's own displayed clock; retaining it avoids
