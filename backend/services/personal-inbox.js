@@ -62,7 +62,7 @@ async function _readText(c, uid, bodyStructure, maxBytes) {
   const chunks = [];
   for await (const chunk of r.content) chunks.push(chunk);
   const text = Buffer.concat(chunks).toString('utf8');
-  return tp.type === 'text/html' ? stripHtml(text) : text.trim();
+  return require('./gmail-intake').cleanText(tp.type === 'text/html' ? stripHtml(text) : text).replace(/[ \t]+/g, ' ').trim();
 }
 
 /**
@@ -579,7 +579,80 @@ async function trash(id, { deps } = {}) {
   } finally { if (c) await _close(c); }
 }
 
+const BULK_MAX = 200;
+
+/**
+ * Mark read or delete MANY messages (12 Oct 2026, Nick: multi-select). One IMAP
+ * connection per mailbox and one command per folder, never one per message.
+ * Same rules as the single-message paths: delete MOVES to that mailbox's own
+ * Bin/Trash (recoverable), and a folder renumbered since we read it is refused
+ * for every message in it (a uid from an old numbering names another message).
+ * Returns { ok, done, failed:[{id, reason}] } — never throws.
+ */
+async function bulk(action, ids, { deps } = {}) {
+  if (!['read', 'delete'].includes(action)) return { ok: false, error: 'action must be read or delete' };
+  if (!Array.isArray(ids) || !ids.length) return { ok: false, error: 'no messages chosen' };
+  if (ids.length > BULK_MAX) return { ok: false, error: `at most ${BULK_MAX} at a time` };
+  deps = _withDefaults(deps);
+  const gi = require('./gmail-intake');
+  const db = _db();
+  const failed = [];
+  const groups = new Map(); // mailbox -> folder -> { uidValidity, items:[{id, uid}] }
+  for (const id of [...new Set(ids.map(String))]) {
+    let target = null;
+    if (gi.isGmailId(id)) {
+      const g = gmailEntry(id);
+      if (g) target = { mailbox: 'gmail', folder: g.gmail.path, uidValidity: String(g.gmail.uidValidity), uid: Number(g.gmail.uid) };
+    } else {
+      const p = parseId(id);
+      if (p) target = { mailbox: p.mailbox, folder: 'INBOX', uidValidity: p.uidValidity, uid: p.uid };
+    }
+    if (!target || !Number.isFinite(target.uid)) { failed.push({ id, reason: 'not-found' }); continue; }
+    if (!groups.has(target.mailbox)) groups.set(target.mailbox, new Map());
+    const folders = groups.get(target.mailbox);
+    const key = `${target.folder}\u0000${target.uidValidity}`;
+    if (!folders.has(key)) folders.set(key, { folder: target.folder, uidValidity: target.uidValidity, items: [] });
+    folders.get(key).items.push({ id, uid: target.uid });
+  }
+  let done = 0;
+  for (const [mailbox, folders] of groups) {
+    let c;
+    const all = [...folders.values()].flatMap((f) => f.items);
+    try {
+      const o = await _open(mailbox, deps);
+      if (o.error) { for (const it of all) failed.push({ id: it.id, reason: o.error }); continue; }
+      c = o.c;
+      let bin = null;
+      if (action === 'delete') {
+        const list = await c.list().catch(() => []);
+        bin = (list.find((m) => m.specialUse === '\\Trash') || {}).path || (mailbox === 'gmail' ? null : 'Trash');
+        if (!bin) { for (const it of all) failed.push({ id: it.id, reason: 'no-trash-folder' }); continue; }
+      }
+      for (const f of folders.values()) {
+        const lock = await c.getMailboxLock(f.folder);
+        try {
+          if (String((c.mailbox || {}).uidValidity) !== f.uidValidity) { for (const it of f.items) failed.push({ id: it.id, reason: 'renumbered' }); continue; }
+          const uids = f.items.map((it) => it.uid).join(',');
+          if (action === 'read') await c.messageFlagsAdd(uids, ['\\Seen'], { uid: true });
+          else await c.messageMove(uids, bin, { uid: true });
+          for (const it of f.items) {
+            if (action === 'read') db.run('UPDATE personal_inbox SET seen = 1 WHERE id = ?', [it.id]);
+            else db.run('DELETE FROM personal_inbox WHERE id = ?', [it.id]);
+            done += 1;
+          }
+        } finally { lock.release(); }
+      }
+    } catch (e) {
+      const why = pm.classifyError(e).kind || 'error';
+      const settled = new Set(failed.map((x) => x.id));
+      for (const it of all) if (!settled.has(it.id)) failed.push({ id: it.id, reason: why });
+    } finally { if (c) await _close(c); }
+  }
+  return { ok: failed.length === 0, done, failed };
+}
+
 module.exports = {
+  bulk, BULK_MAX,
   trash, backfillGmail, setGmailSender, gmailRules, BACKFILL_MAX_DAYS,
   INBOXES, WATCHED, WINDOW, ID_PREFIX, isPersonalId, parseId, idFor, gmailEntry,
   refresh, refreshMailbox, list, overview, readMessage, markRead,

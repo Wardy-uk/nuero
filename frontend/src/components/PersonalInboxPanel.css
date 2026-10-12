@@ -51,3 +51,10 @@
 .pi-rule-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
 .pi-rule { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--border, #333); border-radius: 4px; padding: 2px 6px; }
 .pi-btn-small { padding: 1px 6px; font-size: 11px; }
+/* Multi-select (12 Oct 2026). */
+.pi-row { display: flex; align-items: flex-start; }
+.pi-row .pi-row-btn { flex: 1; min-width: 0; }
+.pi-pick { margin: 11px 0 0 10px; flex: none; cursor: pointer; }
+.pi-selected .pi-row-btn { background: var(--bg-tertiary); }
+.pi-listcol { min-width: 0; }
+.pi-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0; font-size: 13px; }

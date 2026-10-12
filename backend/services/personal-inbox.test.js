@@ -224,6 +224,17 @@ test('the screen, really rendered: newest first with unread marked, saim@ labels
   const rules = renderToString(React.createElement(mod.exports.GmailRules, { rules: { keep: ['@payzilch.com'], hide: ['info@account.netflix.com'], reasons: { important: 'Gmail marks it Important' }, correspondents: { count: 16 } }, onSet() {}, busy: false })).replace(/<!-- -->/g, '');
   assert.match(rules, /1 always shown, 1 hidden/); assert.match(rules, /@payzilch\.com <button[^>]*>Remove/); assert.match(rules, /info@account\.netflix\.com <button[^>]*>Show again/);
   assert.match(rules, /People you write to: 16/);
+  // Multi-select: a checkbox per row, and the bar counts, offers the actions, and Gmail-only sender hiding.
+  const picked = renderToString(React.createElement(MessageList, { items, onOpen() {}, now, selected: new Set(['a']), onToggle() {} })).replace(/<!-- -->/g, '');
+  assert.equal((picked.match(/class="pi-pick"/g) || []).length, 2);
+  assert.match(picked, /pi-row pi-unread pi-selected/);
+  assert.doesNotMatch(renderToString(React.createElement(MessageList, { items, onOpen() {}, now })), /pi-pick/, 'no checkboxes where selection is not offered');
+  const bar = (p) => renderToString(React.createElement(mod.exports.BulkBar, { total: 5, onAll() {}, onNone() {}, onRead() {}, onDelete() {}, busy: false, ...p })).replace(/<!-- -->/g, '');
+  assert.match(bar({ count: 0 }), /Select all/); assert.doesNotMatch(bar({ count: 0 }), /Mark read/);
+  assert.match(bar({ count: 2 }), /2 selected/); assert.match(bar({ count: 2 }), /Mark read/); assert.match(bar({ count: 2 }), />Delete</);
+  assert.doesNotMatch(bar({ count: 2 }), /Stop showing these senders/);
+  assert.match(bar({ count: 2, onHideSenders() {} }), /Stop showing these senders/);
+  assert.equal(bar({ count: 0, total: 0 }), '', 'nothing to select, no bar');
 });
 
 // ── Gmail moved here (Nick, 12 Oct 2026) ────────────────────────────────────
@@ -378,6 +389,47 @@ test('delete MOVES to the mailbox\'s Trash (recoverable), and refuses when the f
   r = await inbox.trash('pmail:contact:4:1', { deps: { imap } });
   assert.deepEqual([r.deleted, r.reason], [false, 'renumbered'], 'a uid from an old numbering could name another message');
   assert.equal(moves.length, 1);
+});
+
+test('bulk: one connection per mailbox, ONE command per folder; delete moves to the Bin; a renumbered folder is refused for every message in it', async () => {
+  const srv = fasthosts({ INBOX: { messages: [mail(1), mail(2), mail(3)] }, Trash: { messages: [] } });
+  const calls = { connects: 0, flags: [], moves: [] };
+  const imap = () => {
+    const c = srv.imap();
+    const connect = c.connect;
+    c.connect = async () => { calls.connects += 1; return connect(); };
+    c.list = async () => [{ path: 'INBOX', specialUse: '\\Inbox' }, { path: 'Trash', specialUse: '\\Trash' }];
+    c.messageFlagsAdd = async (uids, flags) => { calls.flags.push({ uids, flags }); };
+    c.messageMove = async (uids, to) => { calls.moves.push({ uids, to }); };
+    return c;
+  };
+  db.run("DELETE FROM personal_inbox WHERE mailbox = 'contact'");
+  await inbox.refreshMailbox('contact', { deps: { imap } });
+  calls.connects = 0;
+  assert.equal((await inbox.bulk('archive', ['pmail:contact:5:1'])).ok, false, 'unknown action refused');
+  assert.equal((await inbox.bulk('read', [])).ok, false, 'nothing chosen is refused');
+  assert.equal((await inbox.bulk('read', Array.from({ length: inbox.BULK_MAX + 1 }, (_, i) => `x${i}`))).ok, false, 'over the cap is refused, not clamped');
+  assert.equal(calls.connects, 0, 'a refused request opens nothing');
+
+  let r = await inbox.bulk('read', ['pmail:contact:5:1', 'pmail:contact:5:3', 'pmail:contact:5:1'], { deps: { imap } });
+  assert.deepEqual([r.ok, r.done, r.failed], [true, 2, []], 'a repeated id counts once');
+  assert.equal(calls.connects, 1);
+  assert.deepEqual(calls.flags, [{ uids: '1,3', flags: ['\\Seen'] }], 'one STORE for the folder');
+  assert.deepEqual(inbox.list('contact').filter((m) => m.seen).map((m) => m.id).sort(), ['pmail:contact:5:1', 'pmail:contact:5:3']);
+
+  r = await inbox.bulk('delete', ['pmail:contact:5:2', 'pmail:contact:4:9', 'gmail:nope'], { deps: { imap } });
+  assert.equal(r.done, 1);
+  assert.deepEqual(calls.moves, [{ uids: '2', to: 'Trash' }], 'only the current numbering is moved, to the Bin');
+  assert.deepEqual(r.failed.map((f) => [f.id, f.reason]).sort(), [['gmail:nope', 'not-found'], ['pmail:contact:4:9', 'renumbered']]);
+  assert.equal(inbox.list('contact').some((m) => m.id === 'pmail:contact:5:2'), false);
+});
+
+test('preview text: numeric entities decoded and invisible preheader padding dropped', () => {
+  const gi = require('./gmail-intake');
+  assert.equal(gi.cleanText('One-time passcode &#8204;&#8204;&#8204;&#8204; 123456'), 'One-time passcode  123456');
+  assert.equal(gi.cleanText('Fish &amp; chips &#x2014; &lt;b&gt;'), 'Fish & chips — <b>');
+  assert.equal(gi.cleanText('a‌​b﻿'), 'ab');
+  assert.doesNotMatch(gi.stripHtml('<p>Hi&#8204;&#8204;</p>&amp;'), /&#|&amp;/);
 });
 
 test('compose: refuses an unknown or unready From, empty fields and bad addresses; prepares with the chosen mailbox bound', () => {

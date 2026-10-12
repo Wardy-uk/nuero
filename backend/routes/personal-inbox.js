@@ -80,6 +80,16 @@ router.post('/gmail/backfill', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// POST /api/personal-inbox/bulk — mark read or delete several messages at once (delete moves them to that mailbox's Bin, recoverable there). Nick only. Keywords: multi-select, bulk, mark all read. Body: { action: 'read' | 'delete', ids }
+router.post('/bulk', async (req, res) => {
+  try {
+    const { action, ids } = req.body && typeof req.body === 'object' ? req.body : {};
+    const r = await inbox.bulk(action, ids);
+    if (r.error) return res.status(400).json(r);
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // GET /api/personal-inbox/compose/options — the addresses a new email can come from (work, nick@, contact@, Gmail) and, for the recipients given, which one NEURO suggests and why. Query: to (comma-separated)
 router.get('/compose/options', (req, res) => {
   const mi = require('../services/mail-identity');

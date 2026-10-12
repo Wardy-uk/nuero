@@ -36,12 +36,13 @@ export function ago(iso, now = Date.now()) {
 
 const KIND_WORDS = { bounce: 'Bounced', 'auto-reply': 'Auto-reply', reply: 'Reply to SAiM' };
 
-export function MessageList({ items, onOpen, openId, now }) {
+export function MessageList({ items, onOpen, openId, now, selected = null, onToggle = null }) {
   if (!items.length) return <div className="pi-empty">Nothing in this mailbox.</div>;
   return (
     <ul className="pi-list">
       {items.map((m) => (
-        <li key={m.id} className={`pi-row${m.seen ? '' : ' pi-unread'}${openId === m.id ? ' pi-open' : ''}`}>
+        <li key={m.id} className={`pi-row${m.seen ? '' : ' pi-unread'}${openId === m.id ? ' pi-open' : ''}${selected && selected.has(m.id) ? ' pi-selected' : ''}`}>
+          {onToggle && <input type="checkbox" className="pi-pick" aria-label={`Select ${m.subject}`} checked={!!(selected && selected.has(m.id))} onChange={() => onToggle(m.id)} />}
           <button type="button" className="pi-row-btn" onClick={() => onOpen(m.id)}>
             <span className="pi-from">{m.from}</span>
             {m.kind && <span className={`pi-kind pi-kind-${m.kind}`}>{KIND_WORDS[m.kind] || m.kind}</span>}
@@ -99,6 +100,32 @@ export function ComposeForm({ options, suggestion, onRecipients, onSend, onCance
         <button type="button" className="pi-btn" disabled={busy} onClick={onCancel}>Close</button>
       </div>
       {outcome && <div className={`pi-outcome pi-outcome-${outcome.tone}`}>{outcome.text}</div>}
+    </div>
+  );
+}
+
+/**
+ * Multi-select actions (12 Oct 2026, Nick). Delete asks once, names the count
+ * and where the mail goes. "Stop showing" is Gmail-only and acts on SENDERS.
+ */
+export function BulkBar({ count, total, onAll, onNone, onRead, onDelete, onHideSenders, busy }) {
+  const [confirm, setConfirm] = useState(false);
+  if (!total) return null;
+  return (
+    <div className="pi-bulk" data-testid="pi-bulk">
+      <label className="pi-check"><input type="checkbox" checked={count > 0 && count === total} ref={(el) => { if (el) el.indeterminate = count > 0 && count < total; }} onChange={() => (count === total ? onNone() : onAll())} /> {count ? `${count} selected` : 'Select all'}</label>
+      {count > 0 && (confirm
+        ? <>
+            <span className="pi-confirm">Move {count} to the mailbox’s Bin? (recoverable there)</span>
+            <button type="button" className="pi-btn pi-btn-danger" disabled={busy} onClick={() => { setConfirm(false); onDelete(); }}>Delete {count}</button>
+            <button type="button" className="pi-btn" disabled={busy} onClick={() => setConfirm(false)}>Keep</button>
+          </>
+        : <>
+            <button type="button" className="pi-btn" disabled={busy} onClick={onRead}>Mark read</button>
+            <button type="button" className="pi-btn" disabled={busy} onClick={() => setConfirm(true)}>Delete</button>
+            {onHideSenders && <button type="button" className="pi-btn" disabled={busy} onClick={onHideSenders} title="Hide these senders here; Gmail is not changed">Stop showing these senders</button>}
+            <button type="button" className="pi-btn" disabled={busy} onClick={onNone}>Clear</button>
+          </>)}
     </div>
   );
 }
@@ -175,6 +202,7 @@ export default function PersonalInboxPanel() {
   const [options, setOptions] = useState([]);
   const [suggestion, setSuggestion] = useState(null);
   const [rules, setRules] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
 
   const startCompose = async () => {
     setComposing(true); setOutcome(null); setSuggestion(null);
@@ -223,7 +251,35 @@ export default function PersonalInboxPanel() {
       await load();
     } finally { setBusy(false); }
   };
-  useEffect(() => { setOpenId(null); setView(null); setOutcome(null); load(); }, [load]);
+  useEffect(() => { setOpenId(null); setView(null); setOutcome(null); setSelected(new Set()); load(); }, [load]);
+  // A selection only ever names messages still in the list.
+  useEffect(() => { setSelected((s) => { const keep = new Set([...s].filter((id) => items.some((m) => m.id === id))); return keep.size === s.size ? s : keep; }); }, [items]);
+  const toggle = (id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const runBulk = async (action) => {
+    setBusy(true); setError(null); setOutcome(null);
+    try {
+      const ids = [...selected];
+      const d = await call('/api/personal-inbox/bulk', 'POST', { action, ids });
+      if (d && d.error) { setError(d.error); return; }
+      const failed = (d && d.failed) || [];
+      setOutcome({ tone: failed.length ? 'warn' : 'ok', text: `${action === 'read' ? 'Marked read' : 'Moved to the Bin'}: ${d.done || 0}${failed.length ? ` — ${failed.length} could not be (${[...new Set(failed.map((f) => f.reason))].join(', ')})` : ''}.` });
+      if (action === 'delete' && openId && ids.includes(openId)) { setOpenId(null); setView(null); }
+      setSelected(new Set(failed.map((f) => f.id)));
+      await load();
+    } finally { setBusy(false); }
+  };
+  const hideSenders = async () => {
+    const senders = [...new Set(items.filter((m) => selected.has(m.id)).map((m) => m.fromEmail).filter(Boolean))];
+    if (!senders.length) return;
+    setBusy(true); setError(null);
+    try {
+      const bad = [];
+      for (const s of senders) { const d = await call('/api/personal-inbox/gmail/rules', 'POST', { sender: s, list: 'hide' }); if (!d || !d.ok) bad.push(s); }
+      setOutcome({ tone: bad.length ? 'warn' : 'ok', text: `Hidden here: ${senders.length - bad.length} sender${senders.length - bad.length === 1 ? '' : 's'} (still in Gmail).${bad.length ? ` Could not hide ${bad.join(', ')}.` : ''} Undo under “Why mail is here”.` });
+      setSelected(new Set());
+      await load();
+    } finally { setBusy(false); }
+  };
 
   const open = async (id) => {
     setOpenId(id); setView(null); setOutcome(null); setError(null);
@@ -276,7 +332,10 @@ export default function PersonalInboxPanel() {
       {error && <div className="pi-warn">{error}</div>}
       {composing && <ComposeForm options={options} suggestion={suggestion} onRecipients={recipients} onSend={sendNew} onCancel={() => setComposing(false)} busy={busy} outcome={outcome} initialFrom={current && !current.watchedOnly && current.configured ? current.key : null} />}
       <div className="pi-split">
-        <MessageList items={items} onOpen={open} openId={openId} />
+        <div className="pi-listcol">
+          <BulkBar count={selected.size} total={items.length} onAll={() => setSelected(new Set(items.map((m) => m.id)))} onNone={() => setSelected(new Set())} onRead={() => runBulk('read')} onDelete={() => runBulk('delete')} onHideSenders={tab === 'gmail' ? hideSenders : null} busy={busy} />
+          <MessageList items={items} onOpen={open} openId={openId} selected={selected} onToggle={current && current.watchedOnly ? null : toggle} />
+        </div>
         <MessageView data={view} onRead={markRead} onReply={reply} onDelete={remove} busy={busy} outcome={composing ? null : outcome} canReply={!!(current && !current.watchedOnly)} onSender={tab === 'gmail' ? setSender : null} />
       </div>
     </div>

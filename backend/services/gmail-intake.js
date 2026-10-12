@@ -63,10 +63,25 @@ function hasAttachment(node) {
   return String(node.disposition || '').toLowerCase() === 'attachment';
 }
 
+/**
+ * Decode the entities mail carries and drop the invisible characters
+ * marketing mail pads its preheader with (&#8204; = U+200C, repeated dozens of
+ * times) — undecoded they render as a row of "&#8204;" in the list. PURE.
+ */
+function cleanText(s) {
+  return String(s || '')
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => { const n = parseInt(h, 16); return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : ' '; })
+    .replace(/&#(\d+);/g, (m, d) => { const n = Number(d); return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : ' '; })
+    .replace(/&nbsp;/g, ' ').replace(/&zwnj;|&zwj;|&shy;/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&')
+    .replace(/[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g, '')
+    .replace(/\u00a0/g, ' ');
+}
+
 function stripHtml(s) {
   return String(s || '').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/[\s\S]*/, (t) => cleanText(t))
     .replace(/[ \t]+/g, ' ').replace(/\n\s*\n\s*\n+/g, '\n\n').trim();
 }
 
@@ -78,7 +93,7 @@ async function _readText(c, uid, bodyStructure, maxBytes) {
   const chunks = [];
   for await (const chunk of r.content) chunks.push(chunk);
   const text = Buffer.concat(chunks).toString('utf8');
-  return tp.type === 'text/html' ? stripHtml(text) : text.trim();
+  return cleanText(tp.type === 'text/html' ? stripHtml(text) : text).replace(/[ \t]+/g, ' ').trim();
 }
 
 /** A Gmail message in the SAME shape as microsoft.fetchRecentEmailsDetailed, plus where it lives. PURE. */
@@ -191,5 +206,5 @@ async function readMessage(emailId, { deps } = {}) {
 module.exports = {
   WATERMARK_KEY, STATUS_KEY, ID_PREFIX, isGmailId,
   markRead, readMessage, status,
-  toTriageEmail, textPartOf, hasAttachment, stripHtml,
+  toTriageEmail, textPartOf, hasAttachment, stripHtml, cleanText,
 };
