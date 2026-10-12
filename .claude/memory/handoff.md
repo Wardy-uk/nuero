@@ -9,14 +9,14 @@
 - Build both iOS apps (nuero-ios up to 8282d0a): hike section (party, edit, idle state), GPS track sending. After install, open NEURO on the phone → Health re-sends past hikes/walks with tracks → Saturday's walk (hike:6aeef77b…) draws the real 14,562-point track.
 
 ## NEXT BUILD — personal email identity + personal inbox (Nick, 12 Oct 2026)
-**Asks:** (1) EVERYTHING NEURO sends can go from work OR personal, "depending on who sees it"; (2) an inbox in NEURO for the personal mailboxes (contact@ and a new neuro@nickward.co.uk), SEPARATE from the work inbox.
+**Asks:** (1) EVERYTHING NEURO sends can go from work OR personal, "depending on who sees it"; (2) an inbox in NEURO for the personal mailboxes (contact@ and a new saim@nickward.co.uk — Nick, 12 Oct: SAiM is the one that comes to him, so mail from NEURO goes out as SAiM), SEPARATE from the work inbox.
 **Facts:** mail host = Fasthosts (livemail). SMTP `smtp.livemail.co.uk` (465 SSL / 587 STARTTLS), IMAP `imap.livemail.co.uk` 993 — confirm against Fasthosts docs. Fasthosts DKIM-signs (verify in the first test email's headers: dkim=pass d=nickward.co.uk). Work = Graph (nickw@nurtur.tech).
-**Nick's to-do first:** create mailbox `neuro@nickward.co.uk` in Fasthosts; have the contact@ and neuro@ passwords ready to paste into NEURO Settings (never into chat / repo).
+**Nick's to-do first:** create mailbox `saim@nickward.co.uk` in Fasthosts; have the contact@ and saim@ passwords ready to paste into NEURO Settings (never into chat / repo).
 **Design agreed (to build):**
 - Credentials per personal mailbox in agent_state, set from Settings (machine-refused, gateway interactive), never returned (the WU key / RescueTime key idiom).
 - `mail-identity` (pure): decides work vs personal per message from WHO SEES IT — nurtur.tech / People notes sphere work → work; family/household/personal People + listed personal addresses → personal; replies go from the mailbox the email arrived in; mixed/unknown → ask/refuse; hike alerts → personal with work as fallback. Every sender (action-executor's governed types, hike-safety, email-sender self mail) goes through it; approval code / ledger / send-once rules unchanged whichever identity sends.
 - SMTP transport (nodemailer) beside action-mail.js; SMTP has no Sent Items → verify by IMAP APPEND to Sent + read-back, or record "accepted by server" honestly.
-- Personal inbox: IMAP read (contact@ + neuro@), own store + own screen (Life → Personal inbox?), mark read / reply via SMTP as the same mailbox; NOT mixed into email-triage (work). Decide whether the AI triage runs on personal mail (Nick's call).
+- Personal inbox: IMAP read (contact@ + saim@), own store + own screen (Life → Personal inbox?), mark read / reply via SMTP as the same mailbox; NOT mixed into email-triage (work). Decide whether the AI triage runs on personal mail (Nick's call).
 - Watch the build7/build8 scans: "no send path outside the executor" (test 33) and `email-sender` self-only — both need deliberate, named updates.
 
 ## Gotchas found this session
