@@ -1,3 +1,32 @@
+# Session Handoff — 2026-10-12 (Hike safety → personal email identity)
+
+## Done and deployed (origin/main 5581392, pi5, VESTA on Netlify)
+- **Hike safety** (`services/hike-safety{,-model}.js`, Life → **Hike safety** page, VESTA "Nick's walk" behind the `hike` scope, iOS `LifeHikeSafetySection`): arm with GPX + approx times → frozen route card (OS grid refs) → check-in pushes → overdue alert email to Helen (no approval: arming IS the approval; writer `hike.safety-alert`; one stated exception in build7 test 33). Edit, walking party (names + phones), Leaflet/OpenTopoMap map (`WalkMap.jsx`, a deliberate copy in frontend/ and vesta/), past walks on the map, trail = trackers merged, ≤30 m fixes, drive trimmed, mode from geometry.
+- **Watch GPS track**: Health routes now carry points for Hiking/Walking (nuero-ios 8282d0a, `TrackThinning`, anchor `.r2`) → `workout_routes` → walk map draws it (`trailSource: 'watch'`). Reverses Build 17's "never coordinates" (Nick's call).
+- **DMARC added** to nickward.co.uk (Netlify DNS zone 6138dd04f49697e5a7cd4377, record id 6acca41566946bfcf9a688f5): `v=DMARC1; p=none; rua=mailto:contact@nickward.co.uk; adkim=r; aspf=r; fo=1`. SPF (`include:_spf.livemail.co.uk`) and DKIM (`livemail1/livemail2._domainkey` CNAMEs → Fasthosts) ALREADY existed and resolve. Move DMARC to `p=quarantine` after ~2 weeks of clean reports.
+
+## Waiting on the Mac
+- Build both iOS apps (nuero-ios up to 8282d0a): hike section (party, edit, idle state), GPS track sending. After install, open NEURO on the phone → Health re-sends past hikes/walks with tracks → Saturday's walk (hike:6aeef77b…) draws the real 14,562-point track.
+
+## NEXT BUILD — personal email identity + personal inbox (Nick, 12 Oct 2026)
+**Asks:** (1) EVERYTHING NEURO sends can go from work OR personal, "depending on who sees it"; (2) an inbox in NEURO for the personal mailboxes (contact@ and a new neuro@nickward.co.uk), SEPARATE from the work inbox.
+**Facts:** mail host = Fasthosts (livemail). SMTP `smtp.livemail.co.uk` (465 SSL / 587 STARTTLS), IMAP `imap.livemail.co.uk` 993 — confirm against Fasthosts docs. Fasthosts DKIM-signs (verify in the first test email's headers: dkim=pass d=nickward.co.uk). Work = Graph (nickw@nurtur.tech).
+**Nick's to-do first:** create mailbox `neuro@nickward.co.uk` in Fasthosts; have the contact@ and neuro@ passwords ready to paste into NEURO Settings (never into chat / repo).
+**Design agreed (to build):**
+- Credentials per personal mailbox in agent_state, set from Settings (machine-refused, gateway interactive), never returned (the WU key / RescueTime key idiom).
+- `mail-identity` (pure): decides work vs personal per message from WHO SEES IT — nurtur.tech / People notes sphere work → work; family/household/personal People + listed personal addresses → personal; replies go from the mailbox the email arrived in; mixed/unknown → ask/refuse; hike alerts → personal with work as fallback. Every sender (action-executor's governed types, hike-safety, email-sender self mail) goes through it; approval code / ledger / send-once rules unchanged whichever identity sends.
+- SMTP transport (nodemailer) beside action-mail.js; SMTP has no Sent Items → verify by IMAP APPEND to Sent + read-back, or record "accepted by server" honestly.
+- Personal inbox: IMAP read (contact@ + neuro@), own store + own screen (Life → Personal inbox?), mark read / reply via SMTP as the same mailbox; NOT mixed into email-triage (work). Decide whether the AI triage runs on personal mail (Nick's call).
+- Watch the build7/build8 scans: "no send path outside the executor" (test 33) and `email-sender` self-only — both need deliberate, named updates.
+
+## Gotchas found this session
+- Pi prints TAP, laptop prints spec — the deploy gate must parse both (`not ok N - title` / `✖ title`) and name expected failures by title. Script: scratchpad deploy.sh pattern (pull → npm install → build → test → gate → restart → gateway).
+- Date bombs: any test going through a route's real clock must build fixtures off Date.now() (hike test 28, build29 test 43–47 fixed).
+- Pre-existing failure still on main: JC Ring "explicit backfill…" (date bomb, other session's area). Push-test-routing flakes under full-suite load only.
+- VESTA deploy = vite build + zip POST to Netlify API (CLI fails on ARM64) — memory vesta-deployment.
+
+---
+
 # Session Handoff — 2026-10-09 (Build 31: Personal relationships & people context)
 
 - DEPLOYED: NEURO 0fe184a → 88bcf26 (+ docs/dedupe commit) on origin/main + pi5 (gate 6065/0, 17 skipped; frontend built; neuro-backend restarted; gateway rebuilt for /api/people). Worktree nuero-b26, branch build31 (rebased once over the ring inventory 5bb6d6c).
