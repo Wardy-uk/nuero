@@ -162,6 +162,24 @@
     "stream": false
   },
   {
+    "id": "delete_mail_accounts_by_key_credential",
+    "method": "DELETE",
+    "route": "/api/mail/accounts/:key/credential",
+    "domain": "mail",
+    "source": "routes/personal-mail.js",
+    "line": 36,
+    "description": "DELETE /api/mail/accounts/:key/credential. forget a mailbox password. Keywords: remove mailbox password.",
+    "params": [
+      "key"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "delete_medical_records_by_id",
     "method": "DELETE",
     "route": "/api/medical/records/:id",
@@ -3276,6 +3294,38 @@
     "stream": false
   },
   {
+    "id": "get_mail_accounts",
+    "method": "GET",
+    "route": "/api/mail/accounts",
+    "domain": "mail",
+    "source": "routes/personal-mail.js",
+    "line": 17,
+    "description": "GET /api/mail/accounts. the five personal mailboxes: job, hosts, whether a password is saved, the last connection check, and the From / Reply-To each sends as. Never a password. Keywords: personal email, mailbox settings, nick@ saim@ contact@ neuro@ Gmail.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_mail_tests",
+    "method": "GET",
+    "route": "/api/mail/tests",
+    "domain": "mail",
+    "source": "routes/personal-mail.js",
+    "line": 22,
+    "description": "GET /api/mail/tests. recent test emails and the SPF / DKIM / DMARC verdict the receiving server gave each. Keywords: email authentication test, DKIM pass.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_medical_records",
     "method": "GET",
     "route": "/api/medical/records",
@@ -4933,7 +4983,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 260,
+    "line": 261,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -9508,6 +9558,60 @@
       "days",
       "id"
     ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_mail_accounts_by_key_check",
+    "method": "POST",
+    "route": "/api/mail/accounts/:key/check",
+    "domain": "mail",
+    "source": "routes/personal-mail.js",
+    "line": 43,
+    "description": "POST /api/mail/accounts/:key/check. log in to the mailbox over IMAP (and SMTP if it sends) and report what happened. Sends nothing.",
+    "params": [
+      "key"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_mail_accounts_by_key_credential",
+    "method": "POST",
+    "route": "/api/mail/accounts/:key/credential",
+    "domain": "mail",
+    "source": "routes/personal-mail.js",
+    "line": 27,
+    "description": "POST /api/mail/accounts/:key/credential. save a mailbox password (Gmail: address + app password). The value is never returned. Body: { password, address }",
+    "params": [
+      "key"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_mail_accounts_by_key_test_send",
+    "method": "POST",
+    "route": "/api/mail/accounts/:key/test-send",
+    "domain": "mail",
+    "source": "routes/personal-mail.js",
+    "line": 53,
+    "description": "POST /api/mail/accounts/:key/test-send. send a test email to another of Nick's own mailboxes and read it back for its SPF / DKIM / DMARC verdict. Body: { to }",
+    "params": [
+      "key"
+    ],
+    "query": [],
+    "body": [],
     "queryOpen": false,
     "bodyOpen": true,
     "multipart": false,

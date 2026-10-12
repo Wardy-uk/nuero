@@ -1,0 +1,22 @@
+.pm-box {
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+.pm-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.pm-addr { font-weight: 600; word-break: break-all; }
+.pm-state { font-size: 12px; }
+.pm-job { font-size: 13px; margin: 4px 0; }
+.pm-sends { font-size: 13px; margin: 4px 0; word-break: break-word; }
+.pm-hosts { font-size: 12px; color: var(--text-muted, #8a93a3); margin-bottom: 6px; }
+.pm-check { font-size: 13px; margin: 4px 0; }
+.pm-test { margin-top: 6px; }
+.pm-small { font-size: 12px; }
+.pm-muted { color: var(--text-muted, #8a93a3); font-size: 13px; }
+.pm-good { color: var(--success, #3fb950); }
+.pm-bad { color: var(--warning, #d29922); }
+.pm-sub { font-weight: 600; margin: 10px 0 4px; }
+.pm-tests ul { margin: 0; padding-left: 18px; font-size: 13px; }
+.pm-tests li { margin-bottom: 6px; word-break: break-word; }
+.pm-test select { max-width: 100%; }

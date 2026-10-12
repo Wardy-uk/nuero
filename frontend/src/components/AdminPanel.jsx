@@ -7,6 +7,7 @@ import './AdminPanel.css';
 // configuration, and configuration lives here.
 import NotionSyncPanel from './NotionSyncPanel';
 import VestaAccounts from './VestaAccounts';
+import PersonalMailCard from './PersonalMailCard';
 
 
 /**
@@ -1162,6 +1163,7 @@ export default function AdminPanel({ pushState = {} }) {
       <CollapsibleSection title="Notion Sync">
         <NotionSyncPanel embedded />
       </CollapsibleSection>
+      <PersonalMailCard />
       <RescueTimeCard />
       <WeatherUndergroundCard />
 
