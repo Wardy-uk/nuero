@@ -28,18 +28,17 @@ test('a day with nothing logged is not a zero day', () => {
   assert.equal(unlogged.logged, false);
   assert.equal(unlogged.kcal, null);
   assert.deepEqual(unlogged.totals, {});
-  assert.equal(out.summary.fullDays, 1);
+  assert.equal(out.summary.loggedDays, 1);
   // The average is over the one logged day, not diluted across the week.
   assert.equal(out.nutrients.find((x) => x.metric === 'dietary_energy_consumed').avg, 2200);
 });
 
-test('a part-logged day and today are shown but never averaged', () => {
+test('a low (fast) day counts like any other; only today is left out of the averages', () => {
   const samples = [...dayOf('2026-10-11'), ...dayOf('2026-10-10', { kcal: 400 }), ...dayOf(TODAY, { kcal: 300 })];
   const out = nutrition.compose({ samples, today: TODAY, windowDays: 7 });
-  assert.equal(out.summary.fullDays, 1);
-  assert.equal(out.summary.partialDays, 1);
+  assert.equal(out.summary.loggedDays, 2);
   assert.equal(out.summary.todayKcal, 300);
-  assert.equal(out.nutrients.find((x) => x.metric === 'dietary_energy_consumed').avg, 2200);
+  assert.equal(out.nutrients.find((x) => x.metric === 'dietary_energy_consumed').avg, 1300);
 });
 
 test('salt is sodium x 2.5 and judged against 6g; minerals are floors, never "under"', () => {
@@ -65,7 +64,7 @@ test('My Health: salt over the limit is ACT when blood pressure is high, WATCH o
   assert.equal(normal.insights.find((i) => i.id === 'nutrition-salt').level, 'watch');
 });
 
-test('My Health: too few full days is a gap only once logging has started; never logging says nothing', () => {
+test('My Health: too few logged days is a gap only once logging has started; never logging says nothing', () => {
   const few = nutrition.compose({ samples: days(2), today: TODAY, windowDays: 14 });
   const r = picture._internals.nutrition({ nutrition: few, bpHigh: false });
   assert.equal(r.system.status, 'unknown');

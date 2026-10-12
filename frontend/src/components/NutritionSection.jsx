@@ -10,7 +10,8 @@ import './NutritionSection.css';
  *
  * ⚠ Three distinctions the payload carries and this keeps visible:
  *   • a day with nothing logged reads "not logged", never 0 kcal;
- *   • a part-logged day is shown and marked, and is not in the averages;
+ *   • every logged day counts, however low (a fast day is a real day) — only
+ *     today is left out of the averages, because it is still being eaten;
  *   • vitamins and minerals are FLOORS (MyFitnessPal writes 0 for missing data),
  *     so they are shown muted and never coloured as "too low".
  */
@@ -64,8 +65,7 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
       ) : (
         <>
           <div className="nut-summary">
-            <span><b>{s.fullDays}</b> full day{s.fullDays === 1 ? '' : 's'} logged</span>
-            {s.partialDays > 0 && <span><b>{s.partialDays}</b> part-logged (not averaged)</span>}
+            <span><b>{s.loggedDays}</b> day{s.loggedDays === 1 ? '' : 's'} logged</span>
             <span><b>{s.unloggedDays}</b> not logged</span>
             {s.todayKcal != null && <span>today so far <b>{s.todayKcal}</b> kcal</span>}
           </div>
@@ -80,11 +80,10 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
               </thead>
               <tbody>
                 {data.days.map((d) => (
-                  <tr key={d.day} className={!d.logged ? 'nut-row--none' : !d.full && !d.today ? 'nut-row--part' : ''}>
+                  <tr key={d.day} className={!d.logged ? 'nut-row--none' : ''}>
                     <td>
                       {dayLabel(d.day)}
                       {d.today && <span className="nut-tag">today</span>}
-                      {d.logged && !d.full && !d.today && <span className="nut-tag" title={`under ${data.fullDayKcal} kcal logged, so left out of the averages`}>part</span>}
                     </td>
                     {d.logged ? (
                       <>
@@ -100,9 +99,9 @@ export function NutritionView({ data, range, onRange, showAll, onToggleAll }) {
             </table>
           </div>
 
-          <h4 className="nut-h4">Daily average over {s.fullDays} full day{s.fullDays === 1 ? '' : 's'}</h4>
-          {s.fullDays === 0 ? (
-            <div className="hp-quiet">No fully logged day in this window yet, so there is nothing to average.</div>
+          <h4 className="nut-h4">Daily average over {s.loggedDays} logged day{s.loggedDays === 1 ? '' : 's'}</h4>
+          {s.loggedDays === 0 ? (
+            <div className="hp-quiet">No logged day before today in this window yet, so there is nothing to average.</div>
           ) : (
             <table className="hp-table nut-avg">
               <thead>

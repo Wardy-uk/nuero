@@ -459,13 +459,13 @@ function nutrition({ nutrition: n, bpHigh }) {
   if (!n || !n.known) return { system: { ...system, status: 'unknown', value: null, sub: 'Could not read nutrition' }, insight: null };
   const s = n.summary || {};
   const by = Object.fromEntries((n.nutrients || []).map((x) => [x.metric, x]));
-  if (s.fullDays < NUTRITION_MIN_DAYS) {
-    const anyLogging = s.fullDays + s.partialDays > 0 || s.todayKcal != null;
+  if (s.loggedDays < NUTRITION_MIN_DAYS) {
+    const anyLogging = s.loggedDays > 0 || s.todayKcal != null;
     const plural = (k) => (k === 1 ? '' : 's');
     const sub = anyLogging
-      ? `${s.fullDays} full day${plural(s.fullDays)} logged in the last ${n.windowDays} — needs ${NUTRITION_MIN_DAYS}`
+      ? `${s.loggedDays} day${plural(s.loggedDays)} logged in the last ${n.windowDays} — needs ${NUTRITION_MIN_DAYS}`
       : `Nothing logged in the last ${n.windowDays} days${s.lastLoggedDay ? ` · last ${s.lastLoggedDay}` : ''}`;
-    const more = NUTRITION_MIN_DAYS - s.fullDays;
+    const more = NUTRITION_MIN_DAYS - s.loggedDays;
     return {
       system: { ...system, status: 'unknown', value: s.todayKcal != null ? String(s.todayKcal) : null,
         unit: s.todayKcal != null ? 'kcal today' : undefined, sub },
@@ -474,9 +474,9 @@ function nutrition({ nutrition: n, bpHigh }) {
       insight: anyLogging ? {
         id: 'nutrition-sparse', domain: 'nutrition', level: 'gap', view: 'health',
         title: 'Keep logging food for a few more days',
-        finding: `${s.fullDays} full day${plural(s.fullDays)} (${n.fullDayKcal}+ kcal) logged in MyFitnessPal in the last ${n.windowDays}${s.partialDays ? `, plus ${s.partialDays} part-logged` : ''}.`,
-        action: `Log everything for ${more} more full day${plural(more)} and NEURO can average it against the guidelines.`,
-        basis: `A part-logged day would read as a fast, so only days with ${n.fullDayKcal} kcal or more count.`,
+        finding: `${s.loggedDays} day${plural(s.loggedDays)} logged in MyFitnessPal in the last ${n.windowDays}, not counting today.`,
+        action: `Log ${more} more day${plural(more)} and NEURO can average it against the guidelines.`,
+        basis: `An average needs at least ${NUTRITION_MIN_DAYS} logged days.`,
         evidence: [],
       } : null,
     };
@@ -486,7 +486,7 @@ function nutrition({ nutrition: n, bpHigh }) {
   const salt = by.dietary_sodium;
   const protein = by.dietary_protein?.avg;
   const sysOut = { ...system, value: kcal != null ? String(kcal) : null, unit: 'kcal/day',
-    sub: [`${s.fullDays} full days logged`, salt?.avg != null ? `salt ${salt.avg}g` : null,
+    sub: [`${s.loggedDays} days logged`, salt?.avg != null ? `salt ${salt.avg}g` : null,
       protein != null ? `protein ${protein}g` : null].filter(Boolean).join(' · ') };
   const evidenceOf = (x) => ({ source: 'MyFitnessPal',
     text: `${x.label} ${x.avg}${x.unit}/day over ${x.daysWithData} days (${x.ref.kind === 'max' ? 'limit' : 'target'} ${x.ref.value}${x.unit})` });
@@ -497,7 +497,7 @@ function nutrition({ nutrition: n, bpHigh }) {
     insights.push({
       id: 'nutrition-salt', domain: 'nutrition', level: bpHigh ? 'act' : 'watch', view: 'health',
       title: `Salt is averaging ${salt.avg}g a day, against ${salt.ref.value}g`,
-      finding: `Across ${salt.daysWithData} fully logged days in MyFitnessPal.${bpHigh ? ' Your blood pressure is above the home threshold, and salt is the dietary change that moves it most.' : ''}`,
+      finding: `Across ${salt.daysWithData} logged days in MyFitnessPal.${bpHigh ? ' Your blood pressure is above the home threshold, and salt is the dietary change that moves it most.' : ''}`,
       action: 'Open the day in MyFitnessPal with the most salt and find the one or two foods behind it: bread, cured meat, cheese, sauces and ready meals are the usual ones. Swap those first.',
       basis: `NHS: no more than ${salt.ref.value}g of salt a day for adults. Cutting salt lowers blood pressure within weeks.`,
       caveat,
@@ -524,7 +524,7 @@ function nutrition({ nutrition: n, bpHigh }) {
     insights.push({
       id: 'nutrition-ok', domain: 'nutrition', level: 'good', view: 'health',
       title: 'Logged days are within the guidelines',
-      finding: `Salt, saturated fat, sugars and fibre all sit within UK guidance across ${s.fullDays} fully logged days.`,
+      finding: `Salt, saturated fat, sugars and fibre all sit within UK guidance across ${s.loggedDays} logged days.`,
       action: null, basis: 'NHS guidance and UK food-label reference intakes.', caveat, evidence: [],
     });
   }

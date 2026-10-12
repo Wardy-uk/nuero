@@ -9,7 +9,6 @@
 .nut-days { min-width: 620px; }
 .nut-unit { color: var(--text-muted); font-weight: 400; }
 .nut-row--none td { color: var(--text-muted); }
-.nut-row--part td { color: var(--text-secondary); }
 .nut-none { font-style: italic; }
 .nut-tag {
   margin-left: 6px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px;

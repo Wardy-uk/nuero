@@ -57,12 +57,13 @@ function render(data, extra = {}) {
     .replace(/<!-- -->/g, '');
 }
 
-test('logged, part-logged and unlogged days render as three different things', async () => {
+test('logged and unlogged days render differently, and a low day is not marked', async () => {
   await load();
-  const data = nutrition.compose({ samples: [...meal('2026-10-11', 2100, 3), ...meal('2026-10-10', 500, 1)], today: TODAY, windowDays: 7 });
+  const data = nutrition.compose({ samples: [...meal('2026-10-11', 2100, 3), ...meal('2026-10-10', 500, 3)], today: TODAY, windowDays: 7 });
   const html = render(data);
   assert.match(html, /2100/);
-  assert.match(html, />part</);
+  assert.doesNotMatch(html, />part</);
+  assert.match(html, /500/);
   assert.match(html, /not logged/);
   // Salt is shown as salt (sodium × 2.5), against the 6g limit.
   assert.match(html, /7\.5 g/);
