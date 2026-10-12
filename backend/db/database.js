@@ -216,6 +216,12 @@ async function init() {
         db.exec('ALTER TABLE environment_readings ADD COLUMN place TEXT');
         console.log('[DB] environment_readings.place added');
       }
+      // 12 Oct 2026: which receiver took the reading. A reading the Pi got over
+      // Bluetooth proves the logger is IN THE HOUSE, whatever Nick's place is.
+      if (envCols.length && !envCols.includes('via')) {
+        db.exec('ALTER TABLE environment_readings ADD COLUMN via TEXT');
+        console.log('[DB] environment_readings.via added');
+      }
       const senCols = db.prepare('PRAGMA table_info(environment_sensors)').all().map(r => r.name);
       if (senCols.length && !senCols.includes('role')) {
         db.exec('ALTER TABLE environment_sensors ADD COLUMN role TEXT');

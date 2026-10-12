@@ -65,3 +65,32 @@ test('presentation: away from home the air here and the track appear in context;
   const home = (composePresentation({ ...base, life: { place: { kind: 'home' } } }) || {}).context || [];
   assert.equal(home.find((c) => c.id === 'here'), undefined);
 });
+
+test('a reading the Pi received is AT HOME: tagged home, and never "here" while he is at work (12 Oct 2026)', () => {
+  const now = 1_800_100_000;
+  env.store('PIHOME', 'Blue Maestro Disc Maxi', [{ t: now - 60, tempC: 19.5, humidityPct: 60, pressureHpa: 995, timingErrorSeconds: 0 }],
+    { place: 'work', source: 'pi', nowSeconds: now });
+  const row = db.get("SELECT place, via FROM environment_readings WHERE sensor_id = 'PIHOME'");
+  assert.equal(row.via, 'pi');
+  assert.equal(row.place, 'home', 'the Pi hears the logger only in the house — never "work"');
+  const h = env.here({ nowSeconds: now });
+  assert.equal(h.roaming.sensorId, 'PIHOME');
+  assert.equal(h.roaming.fresh, true);
+  assert.equal(h.roaming.atHome, true);
+  const ctx = (composePresentation({ life: { place: { kind: 'work' } }, environmentHere: h }) || {}).context || [];
+  assert.equal(ctx.find((c) => c.id === 'here'), undefined, 'the shelf at home is not "Here" in the office');
+  // The phone barometer still answers when it is fresh.
+  const withPhone = { ...h, pressure: { fresh: true, pressureHpa: 1004.6 } };
+  const ctx2 = (composePresentation({ life: { place: { kind: 'work' } }, environmentHere: withPhone }) || {}).context || [];
+  const here = ctx2.find((c) => c.id === 'here');
+  assert.equal(here.value, '1005 hPa');
+  assert.equal(here.basis, 'phone barometer');
+});
+
+test('a reading from a receiver that travels with him still takes his place', () => {
+  const now = 1_800_200_000;
+  env.store('PHONE1', 'Blue Maestro Disc Maxi', [{ t: now - 60, tempC: 22, humidityPct: 45, pressureHpa: 1004, timingErrorSeconds: 0 }],
+    { place: 'work', source: 'iphone', nowSeconds: now });
+  assert.equal(db.get("SELECT place FROM environment_readings WHERE sensor_id = 'PHONE1'").place, 'work');
+  assert.equal(env.here({ nowSeconds: now }).roaming.atHome, false);
+});

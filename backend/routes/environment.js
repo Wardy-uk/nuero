@@ -64,7 +64,7 @@ router.post('/readings', async (req, res) => {
     // Live readings are tagged with where Nick is NOW (env.store only applies
     // it to readings within LIVE_WINDOW_S of their own time).
     const place = await currentPlace();
-    const { stored, duplicate } = env.store(v.sensorId, v.model, v.accepted, { intervalSeconds: v.intervalSeconds, place });
+    const { stored, duplicate } = env.store(v.sensorId, v.model, v.accepted, { intervalSeconds: v.intervalSeconds, place, source: v.source });
     // The cursor moves only AFTER the readings are stored, so a failure above
     // leaves it where it was and the next download fetches them again.
     let cursorMoved = null;

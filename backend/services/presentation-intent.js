@@ -387,7 +387,9 @@ function composePresentation(p, { now = Date.now() } = {}) {
   // above already answer. Only a FRESH reading is "here"; stale says nothing.
   const eh = p.environmentHere || null;
   if (place.kind && place.kind !== 'home' && eh) {
-    const r = eh.roaming && eh.roaming.fresh ? eh.roaming : null;
+    // ⚠ A reading the house's own receiver took is the air AT HOME (12 Oct
+    //   2026: "Here 20°" in the office was the logger on the shelf at home).
+    const r = eh.roaming && eh.roaming.fresh && !eh.roaming.atHome ? eh.roaming : null;
     const pr = r && r.pressureHpa != null ? r.pressureHpa : (eh.pressure && eh.pressure.fresh ? eh.pressure.pressureHpa : null);
     const parts = [];
     if (r && r.tempC != null) parts.push(temp(r.tempC));

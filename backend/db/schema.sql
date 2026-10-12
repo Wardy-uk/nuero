@@ -577,6 +577,8 @@ CREATE TABLE IF NOT EXISTS environment_readings (
   pressure_hpa REAL,
   timing_error_s INTEGER NOT NULL DEFAULT 0,
   received_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  -- Who received it ('pi' = the house's own receiver). See environment.js HOME_RECEIVERS.
+  via TEXT,
   UNIQUE(sensor_id, t)
 );
 

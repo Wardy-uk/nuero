@@ -309,11 +309,21 @@ const HERE_FRESH_S = 30 * 60;
 // where Nick is now; an older one (a log download) is not, rather than tagging
 // last Tuesday's walk with today's office.
 const LIVE_WINDOW_S = 15 * 60;
+// Receivers fixed in the house (12 Oct 2026). The Pi hears the logger over
+// Bluetooth — a few metres — so a reading it received was taken AT HOME, even
+// while Nick is at work. Before this, such a reading was tagged with his place
+// and shown as "Here" in the office: the air on the shelf at home.
+const HOME_RECEIVERS = Object.freeze(['pi']);
+const isHomeReceiver = (via) => typeof via === 'string' && HOME_RECEIVERS.includes(via);
 
-function store(sensorId, model, accepted, { intervalSeconds = null, place = null, nowSeconds = Math.floor(Date.now() / 1000) } = {}) {
+function store(sensorId, model, accepted, { intervalSeconds = null, place = null, source = null, nowSeconds = Math.floor(Date.now() / 1000) } = {}) {
   if (!accepted.length) return { stored: 0, duplicate: 0 };
   const db = require('../db/database');
   const tol = dedupeToleranceSeconds(intervalSeconds);
+  const via = typeof source === 'string' && source ? source.slice(0, 32) : null;
+  // A home receiver's live reading is at home by construction; anyone else's
+  // takes Nick's place (the receiver is assumed to travel with him).
+  const livePlace = isHomeReceiver(via) ? 'home' : place;
   let stored = 0;
   db.batchSaves(() => {
     for (const r of accepted) {
@@ -323,10 +333,10 @@ function store(sensorId, model, accepted, { intervalSeconds = null, place = null
       )) continue;
       const info = db.run(
         `INSERT OR IGNORE INTO environment_readings
-           (sensor_id, model, t, temperature_c, humidity_pct, pressure_hpa, timing_error_s, place)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (sensor_id, model, t, temperature_c, humidity_pct, pressure_hpa, timing_error_s, place, via)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [sensorId, model, r.t, r.tempC, r.humidityPct, r.pressureHpa, r.timingErrorSeconds,
-          place && nowSeconds - r.t <= LIVE_WINDOW_S ? place : null]
+          livePlace && nowSeconds - r.t <= LIVE_WINDOW_S ? livePlace : null, via]
       );
       stored += info.changes;
     }
@@ -407,12 +417,15 @@ function here({ nowSeconds = Math.floor(Date.now() / 1000) } = {}) {
   const ids = (role) => sensors.filter((r) => roleOf(r) === role).map((r) => r.sensor_id);
   const latestOf = (list) => {
     if (!list.length) return null;
-    const row = db.get(`SELECT sensor_id, t, temperature_c, humidity_pct, pressure_hpa, place FROM environment_readings
+    const row = db.get(`SELECT sensor_id, t, temperature_c, humidity_pct, pressure_hpa, place, via FROM environment_readings
                          WHERE sensor_id IN (${list.map(() => '?').join(',')}) ORDER BY t DESC LIMIT 1`, list);
     if (!row) return null;
     const ageS = nowSeconds - row.t;
     return { sensorId: row.sensor_id, at: new Date(row.t * 1000).toISOString(), ageMinutes: Math.round(ageS / 60),
-      fresh: ageS <= HERE_FRESH_S, tempC: row.temperature_c, humidityPct: row.humidity_pct, pressureHpa: row.pressure_hpa, place: row.place || null };
+      fresh: ageS <= HERE_FRESH_S, tempC: row.temperature_c, humidityPct: row.humidity_pct, pressureHpa: row.pressure_hpa, place: row.place || null,
+      // `atHome`: received by a house receiver, so the logger was at home then.
+      // Fresh is about AGE; atHome is about WHERE — "here" needs both answered.
+      via: row.via || null, atHome: isHomeReceiver(row.via) };
   };
   const p = db.get('SELECT source, t, pressure_hpa, place FROM environment_pressure ORDER BY t DESC LIMIT 1');
   const pAge = p ? nowSeconds - p.t : null;
