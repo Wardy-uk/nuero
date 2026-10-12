@@ -191,6 +191,35 @@ test('the REAL smtpSend: SAiM\'s From and Reply-To, the stored Message-ID, and t
   } finally { srv.close(); }
 });
 
+test('Fasthosts answers a Message-ID HEADER search with nothing (live, 12 Oct) — NEURO finds it by reading envelopes', async () => {
+  resetMail();
+  pm.setCredential('saim', { password: 'pw' });
+  pm.setCredential('nick', { password: 'pw' });
+  const id = 'neuro-b83066fcd9ed707c23193a01@nickward.co.uk';
+  const queries = [];
+  // The live server, as measured: the message is in the folder, header search says [].
+  const fasthosts = () => ({
+    on() {}, async connect() {}, async logout() {},
+    async list() { return [{ path: 'INBOX', specialUse: '\\Inbox' }, { path: 'Sent', specialUse: '\\Sent' }, { path: 'Junk', specialUse: '\\Junk' }]; },
+    async getMailboxLock() { return { release() {} }; },
+    async search(q) { queries.push(q); return q.header ? [] : [11, 12]; },
+    async *fetch() {
+      yield { uid: 11, envelope: { messageId: '<someone-else@x>' } };
+      yield { uid: 12, envelope: { messageId: `<${id}>` }, headers: Buffer.from('') };
+    },
+    async fetchOne() { return { headers: Buffer.from('Authentication-Results: mx.livemail.co.uk; spf=pass; dkim=pass header.d=nickward.co.uk; dmarc=pass\r\n') }; },
+  });
+  const sent = await transport.findInSent('saim', `<${id}>`, { imap: fasthosts });
+  assert.equal(sent.ok, true);
+  assert.equal(sent.messages.length, 1, 'found by envelope, not by the server search');
+  assert.ok(queries.every((q) => !q.header), 'off Gmail the header search is never relied on');
+  const inbox = await transport.findByMessageId('nick', pm.credentialFor('nick'), `<${id}>`, transport.defaultDeps && { ...transport.defaultDeps(), imap: fasthosts });
+  assert.equal(inbox.found, true);
+  assert.equal(inbox.folder, 'Inbox');
+  const missing = await transport.findInSent('saim', '<not-there@x>', { imap: fasthosts });
+  assert.deepEqual([missing.ok, missing.messages.length], [true, 0]);
+});
+
 // ── the hike alert goes from saim@, work as the fallback ────────────────────
 
 const L = (s) => model.localToMs(s);

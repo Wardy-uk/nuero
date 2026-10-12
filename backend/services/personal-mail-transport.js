@@ -65,6 +65,30 @@ function importantFolder(list) {
   return hit ? hit.path : null;
 }
 
+/**
+ * UIDs of messages in the OPEN folder whose Message-ID is `id` (no brackets).
+ * ⚠ Fasthosts' IMAP answers a HEADER Message-ID search with NOTHING even when
+ *   the message is there (measured live 12 Oct 2026: the message in Sent, its
+ *   envelope carrying exactly that Message-ID, both search forms → []). So off
+ *   Gmail, NEURO lists the recent messages and compares envelopes itself.
+ *   Gmail's own rfc822msgid search works and is used there.
+ */
+const SCAN_DAYS = 7;
+const SCAN_MAX = 300;
+async function _uidsForMessageId(c, id, { gmail = false, now = Date.now() } = {}) {
+  if (gmail) return (await c.search({ gmraw: `rfc822msgid:${id}` }, { uid: true })) || [];
+  const recent = (await c.search({ since: new Date(now - SCAN_DAYS * 86400000) }, { uid: true })) || [];
+  const tail = recent.slice(-SCAN_MAX);
+  if (!tail.length) return [];
+  const want = `<${id}>`.toLowerCase();
+  const hits = [];
+  for await (const msg of c.fetch(tail.join(','), { envelope: true }, { uid: true })) {
+    const mid = msg && msg.envelope && msg.envelope.messageId ? String(msg.envelope.messageId).toLowerCase() : '';
+    if (mid === want || mid === want.slice(1, -1)) hits.push(msg.uid);
+  }
+  return hits;
+}
+
 async function _openImap(key, cred, deps) {
   const client = deps.imap(imapConfig(key, cred));
   // An unhandled 'error' event on a socket would take the process down.
@@ -129,8 +153,7 @@ async function findByMessageId(key, cred, messageId, deps) {
       const lock = await c.getMailboxLock(place.path);
       try {
         const id = messageId.replace(/^<|>$/g, '');
-        const query = place.gm ? { gmraw: `rfc822msgid:${id}` } : { header: { 'message-id': id } };
-        const uids = await c.search(query, { uid: true });
+        const uids = await _uidsForMessageId(c, id, { gmail: Boolean(place.gm), now: deps.now() });
         if (uids && uids.length) {
           const msg = await c.fetchOne(String(uids[uids.length - 1]), { headers: true, labels: Boolean(place.gm) }, { uid: true });
           let folder = place.label;
@@ -329,7 +352,7 @@ async function findInSent(key, messageId, deps) {
       const lock = await c.getMailboxLock(path);
       try {
         const id = String(messageId).replace(/^<|>$/g, '');
-        const uids = await c.search(gmail ? { gmraw: `rfc822msgid:${id}` } : { header: { 'message-id': id } }, { uid: true });
+        const uids = await _uidsForMessageId(c, id, { gmail, now: deps.now() });
         return { ok: true, messages: (uids || []).map(() => ({ internetMessageId: `<${id}>` })), evidence: gmail ? 'filed by Gmail in Sent Mail' : 'NEURO’s own copy in Sent (Fasthosts does not file SMTP sends itself)' };
       } finally { lock.release(); }
     } finally { await _close(c); }
