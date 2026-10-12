@@ -535,9 +535,11 @@ async function init() {
     const have = db.prepare('PRAGMA table_info(hike_trips)').all().map(r => r.name);
     if (have.length && !have.includes('party_json')) { db.exec('ALTER TABLE hike_trips ADD COLUMN party_json TEXT'); console.log('[DB] hike_trips.party_json added'); }
     // 12 Oct 2026: which mailbox the alert / all-clear went from (saim@ or work).
-    for (const col of ['alert_mailbox', 'all_clear_mailbox']) {
+    for (const col of ['alert_mailbox', 'all_clear_mailbox', 'copy_mailbox', 'copy_status', 'copy_draft_id', 'copy_message_id', 'copy_error', 'all_clear_copy_status']) {
       if (have.length && !have.includes(col)) { db.exec(`ALTER TABLE hike_trips ADD COLUMN ${col} TEXT`); console.log(`[DB] hike_trips.${col} added`); }
     }
+    // The Gmail copy of the alert (12 Oct 2026) counts its own attempts.
+    if (have.length && !have.includes('copy_attempts')) { db.exec('ALTER TABLE hike_trips ADD COLUMN copy_attempts INTEGER NOT NULL DEFAULT 0'); console.log('[DB] hike_trips.copy_attempts added'); }
   } catch (e) {
     console.error('[DB] hike_trips migration failed:', e.message);
   }

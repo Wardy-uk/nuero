@@ -81,11 +81,20 @@ function _mailFor(deps, mailbox) {
   return deps.smtpFor ? deps.smtpFor(mailbox) : require('./smtp-mail').forMailbox(mailbox);
 }
 
-// Which mailbox a NEW alert attempt uses: whatever mail-identity says for mail
-// NEURO writes itself (saim@ when usable, else work).
-function _neuroMailbox(deps) {
-  if (deps.identity) return deps.identity();
-  try { return require('./mail-identity').forNeuroGenerated().mailbox; } catch { return 'work'; }
+// Who the alert goes from (Nick, 12 Oct 2026): saim@ AND a copy from his Gmail,
+// two independent sends; work only as a LAST RESORT when neither can send.
+// mail-identity.forHikeAlert is the one answer; the page renders the same.
+function _plan(deps) {
+  if (deps.plan) return deps.plan();
+  if (deps.identity) return { primary: deps.identity(), copy: null };
+  try { return require('./mail-identity').forHikeAlert(); } catch { return { primary: 'work', copy: null }; }
+}
+function _neuroMailbox(deps) { return _plan(deps).primary; }
+
+// Is the Gmail copy still able to reach them? While it is, a refused primary is
+// retried as itself — work is only for when NEITHER personal mailbox can send.
+function _copyAlive(row) {
+  return !!(row && row.copy_mailbox && row.copy_status !== 'failed');
 }
 
 function _log(kind, subjectId, detail, nowMs) {
@@ -125,6 +134,7 @@ function _shape(r) {
     remindedAt: r.reminded_at, warnedAt: r.warned_at, drivingPromptAt: r.driving_prompt_at,
     alertStatus: r.alert_status, alertAt: r.alert_at, alertAttempts: r.alert_attempts, alertError: r.alert_error,
     allClearStatus: r.all_clear_status, alertMailbox: r.alert_mailbox || null, allClearMailbox: r.all_clear_mailbox || null,
+    copyMailbox: r.copy_mailbox || null, copyStatus: r.copy_status || null, copyError: r.copy_error || null,
     checkedInAt: r.checked_in_at, checkedInVia: r.checked_in_via,
     cancelledAt: r.cancelled_at, armedAt: r.armed_at, closedAt: r.closed_at,
   };
@@ -404,9 +414,11 @@ async function _sendAlert(trip, { nowMs, deps, forceMailbox = null }) {
   if (!b.ok) return { ok: false, outcome: 'refused', why: b.why };
 
   const { subject, body } = model.alertEmail({ trip, card: trip.card, fixes: _crumbs(trip.tripId), nowMs, recipients });
-  // ⚠ A personal mailbox that FAILED last time is not tried again: work is the
-  //   fallback, because a duplicate alert is better than none.
-  const mailbox = forceMailbox || (row.alert_status === 'failed' && prevMailbox !== 'work' ? 'work' : _neuroMailbox(deps));
+  // ⚠ A personal mailbox that FAILED last time falls back to work ONLY when the
+  //   Gmail copy cannot reach them either — Nick: not from work, unless nothing
+  //   else can send (a missing alert is worse than one from the wrong address).
+  const mailbox = forceMailbox
+    || (row.alert_status === 'failed' && prevMailbox !== 'work' && !_copyAlive(row) ? 'work' : _neuroMailbox(deps));
   const mail = _mailFor(deps, mailbox);
   const who = mailbox === 'work' ? 'Microsoft' : `${mailbox}@ (SMTP)`;
   _set(trip.tripId, { alert_status: 'sending', alert_attempts: row.alert_attempts + 1, alert_at: row.alert_at || _iso(nowMs) });
@@ -418,7 +430,7 @@ async function _sendAlert(trip, { nowMs, deps, forceMailbox = null }) {
     if (!d || !d.ok) {
       _set(trip.tripId, { alert_status: 'failed', alert_mailbox: mailbox, alert_error: `could not create the email from ${who} (${(d && d.category) || 'unknown'})` });
       ew.settle(b.entry.id, { status: 'failed', result: { stage: 'draft', category: d && d.category, mailbox }, now: nowMs });
-      if (mailbox !== 'work' && !forceMailbox) return _sendAlert(_shape(_get(trip.tripId)), { nowMs, deps, forceMailbox: 'work' });
+      if (mailbox !== 'work' && !forceMailbox && !_copyAlive(_get(trip.tripId))) return _sendAlert(_shape(_get(trip.tripId)), { nowMs, deps, forceMailbox: 'work' });
       return { ok: false, outcome: 'failed' };
     }
     draftId = d.id;
@@ -435,13 +447,77 @@ async function _sendAlert(trip, { nowMs, deps, forceMailbox = null }) {
     _set(trip.tripId, { alert_status: 'failed', alert_error: `${who} refused the send (${s.category || s.status})` });
     ew.settle(b.entry.id, { status: 'failed', result: { status: s.status, category: s.category, mailbox }, now: nowMs });
     _log('hike-alert-failed', trip.tripId, { name: trip.name, why: s.category || s.status, from: mailbox }, nowMs);
-    // Proven unsent from saim@ — go straight to the work address, this pass.
-    if (mailbox !== 'work' && !forceMailbox) return _sendAlert(_shape(_get(trip.tripId)), { nowMs, deps, forceMailbox: 'work' });
+    // Proven unsent from saim@ and the Gmail copy cannot reach them either —
+    // the work address, this pass, as the last resort.
+    if (mailbox !== 'work' && !forceMailbox && !_copyAlive(_get(trip.tripId))) return _sendAlert(_shape(_get(trip.tripId)), { nowMs, deps, forceMailbox: 'work' });
     return { ok: false, outcome: 'failed' };
   }
   _set(trip.tripId, { alert_status: 'uncertain', alert_error: `send outcome unknown from ${who} (${s.category || 'unknown'}) — checking Sent` });
   ew.settle(b.entry.id, { status: 'uncertain', result: { status: s.status, category: s.category }, now: nowMs });
   return { ok: false, outcome: 'uncertain' };
+}
+
+/**
+ * The SECOND, independent copy of the alert (Nick, 12 Oct 2026): from his Gmail,
+ * alongside saim@, so one being refused or spam-foldered does not leave Helen
+ * with nothing. Its own ledger key, its own draft/message ids, its own
+ * "look in Sent before sending again" — the primary's rules, run twice.
+ */
+const COPY_NOTE = "(The same alert is also coming from SAiM — Nick's assistant. This copy is from Nick's own Gmail, so at least one reaches you.)";
+async function _sendCopy(trip, { nowMs, deps }) {
+  const row = _get(trip.tripId);
+  const box = row && row.copy_mailbox;
+  if (!box || row.copy_status === 'confirmed') return null;
+  const key = `hike-alert-copy:${trip.tripId}`;
+  const ew = require('./external-writes');
+  const mail = _mailFor(deps, box);
+  if (row.copy_message_id && ['sending', 'uncertain', 'sent'].includes(row.copy_status)) {
+    const found = await mail.findSent(row.copy_message_id);
+    if (found && found.ok && found.messages.length) {
+      _set(trip.tripId, { copy_status: 'confirmed' });
+      const e = ew.byKey(key); if (e) ew.settle(e.id, { status: 'confirmed', readback: found.evidence || 'found in Sent', now: nowMs });
+      return { ok: true, outcome: 'confirmed', mailbox: box };
+    }
+    if (row.copy_status === 'sent') return { ok: true, outcome: 'sent', mailbox: box };
+    if (row.copy_draft_id) {
+      const st = await mail.draftState(row.copy_draft_id);
+      if (st === 'not-draft' || st === 'gone') { _set(trip.tripId, { copy_status: 'sent' }); return { ok: true, outcome: 'sent', mailbox: box }; }
+    }
+  }
+  if ((row.copy_attempts || 0) >= MAX_ALERT_ATTEMPTS) return { ok: false, outcome: 'gave-up', mailbox: box };
+  const recipients = trip.recipients;
+  const b = ew.begin({ writer: WRITER, key, target: recipients.map((c) => c.email).join(', '), request: { tripId: trip.tripId, cardHash: trip.cardHash, copy: box }, initiatedBy: 'timer:armed-by-nick', now: nowMs });
+  if (!b.ok && b.duplicate) { _set(trip.tripId, { copy_status: 'confirmed' }); return { ok: true, outcome: 'already', mailbox: box }; }
+  if (!b.ok) return { ok: false, outcome: 'refused', why: b.why, mailbox: box };
+  const { subject, body } = model.alertEmail({ trip, card: trip.card, fixes: _crumbs(trip.tripId), nowMs, recipients });
+  _set(trip.tripId, { copy_status: 'sending', copy_attempts: (row.copy_attempts || 0) + 1 });
+  let draftId = row.copy_draft_id;
+  if (!draftId || (await mail.draftState(draftId)) !== 'draft') {
+    const attachments = row.gpx_text && row.gpx_name ? [{ name: row.gpx_name, contentType: 'application/gpx+xml', text: row.gpx_text }] : [];
+    const d = await mail.createDraft({ to: recipients.map((c) => ({ email: c.email, name: c.name })), subject, body: `${COPY_NOTE}\n\n${body}`, contentType: 'Text', attachments });
+    if (!d || !d.ok) {
+      _set(trip.tripId, { copy_status: 'failed', copy_error: `could not create the Gmail copy (${(d && d.category) || 'unknown'})` });
+      ew.settle(b.entry.id, { status: 'failed', result: { stage: 'draft', category: d && d.category, mailbox: box }, now: nowMs });
+      return { ok: false, outcome: 'failed', mailbox: box };
+    }
+    draftId = d.id;
+    _set(trip.tripId, { copy_draft_id: d.id, copy_message_id: d.internetMessageId || null });
+  }
+  const s = await mail.sendDraft(draftId);
+  if (s.outcome === 'accepted') {
+    _set(trip.tripId, { copy_status: 'sent', copy_error: null });
+    ew.settle(b.entry.id, { status: 'applied-unverified', result: { status: s.status, mailbox: box }, readback: 'accepted; verified against Sent on the next pass', now: nowMs });
+    _log('hike-alert-sent', trip.tripId, { name: trip.name, to: recipients.map((c) => c.name), from: box, copy: true }, nowMs);
+    return { ok: true, outcome: 'sent', mailbox: box };
+  }
+  if (s.outcome === 'rejected') {
+    _set(trip.tripId, { copy_status: 'failed', copy_error: `${box} refused the send (${s.category || s.status})` });
+    ew.settle(b.entry.id, { status: 'failed', result: { status: s.status, category: s.category, mailbox: box }, now: nowMs });
+    return { ok: false, outcome: 'failed', mailbox: box };
+  }
+  _set(trip.tripId, { copy_status: 'uncertain', copy_error: `send outcome unknown from ${box} — checking Sent` });
+  ew.settle(b.entry.id, { status: 'uncertain', result: { status: s.status, category: s.category }, now: nowMs });
+  return { ok: false, outcome: 'uncertain', mailbox: box };
 }
 
 async function _sendAllClear(trip, { nowMs, deps, via }) {
@@ -462,7 +538,22 @@ async function _sendAllClear(trip, { nowMs, deps, via }) {
   ew.settle(b.entry.id, { status: status === 'sent' ? 'applied-unverified' : status, result: { status: s.status, mailbox }, now: nowMs });
   _set(trip.tripId, { all_clear_status: status, all_clear_mailbox: mailbox });
   _log('hike-all-clear', trip.tripId, { name: trip.name, outcome: status, from: mailbox }, nowMs);
-  return { outcome: status, mailbox };
+  // If the Gmail copy of the alert went (or may have), the all-clear follows it
+  // from Gmail too — whoever saw that copy gets the answer to it.
+  let copy = null;
+  if (row && row.copy_mailbox && ['sent', 'confirmed', 'uncertain'].includes(row.copy_status) && row.copy_mailbox !== mailbox) {
+    const bc = ew.begin({ writer: WRITER, key: `hike-allclear-copy:${trip.tripId}`, target: trip.recipients.map((c) => c.email).join(', '), request: { tripId: trip.tripId, kind: 'all-clear', copy: row.copy_mailbox }, initiatedBy: 'nick', now: nowMs });
+    if (bc.ok) {
+      const cm = _mailFor(deps, row.copy_mailbox);
+      const cd = await cm.createDraft({ to: trip.recipients.map((c) => ({ email: c.email, name: c.name })), subject, body, contentType: 'Text' });
+      const cs = cd && cd.ok ? await cm.sendDraft(cd.id) : { outcome: 'rejected' };
+      const cst = cs.outcome === 'accepted' ? 'sent' : cs.outcome === 'rejected' ? 'failed' : 'uncertain';
+      ew.settle(bc.entry.id, { status: cst === 'sent' ? 'applied-unverified' : cst, result: { mailbox: row.copy_mailbox }, now: nowMs });
+      _set(trip.tripId, { all_clear_copy_status: cst });
+      copy = { outcome: cst, mailbox: row.copy_mailbox };
+    }
+  }
+  return { outcome: status, mailbox, copy };
 }
 
 // ── the job ────────────────────────────────────────────────────────────────
@@ -503,9 +594,19 @@ async function tick({ now = Date.now(), deps = _defaultDeps() } = {}) {
     }
     if (p.alert) {
       if (trip.status === 'armed') _set(trip.tripId, { status: 'alerted' });
+      // Decided ONCE, on the first alert pass, and recorded: the Gmail copy
+      // (when saim@ is the primary and Gmail can send).
+      const before = _get(trip.tripId);
+      if (!before.copy_mailbox && (before.alert_status || 'none') === 'none') {
+        const plan = _plan(deps);
+        if (plan.copy) _set(trip.tripId, { copy_mailbox: plan.copy });
+      }
       const r = await _sendAlert(_shape(_get(trip.tripId)), { nowMs, deps });
-      out.alerts.push({ tripId: trip.tripId, ...r });
-      if (r.outcome === 'sent' && trip.alertStatus !== 'sent') {
+      const c = await _sendCopy(_shape(_get(trip.tripId)), { nowMs, deps });
+      out.alerts.push({ tripId: trip.tripId, ...r, copy: c });
+      const wentNow = r.outcome === 'sent' || (c && c.outcome === 'sent');
+      const wentBefore = ['sent', 'confirmed'].includes(trip.alertStatus) || ['sent', 'confirmed'].includes(trip.copyStatus);
+      if (wentNow && !wentBefore) {
         await _push(deps, `Alert sent to ${trip.recipients.map((c) => c.name).join(' and ')}`, `You hadn’t checked in from ${trip.name}. Check in now and they get the all-clear.`, { tripId: trip.tripId });
       }
     }
@@ -547,6 +648,7 @@ function view(trip, { nowMs }) {
       // The address it actually went from — from the record, not today's choice.
       sentFrom: trip.alertMailbox ? _senderAddress(trip.alertMailbox) : null,
       allClearFrom: trip.allClearMailbox ? _senderAddress(trip.allClearMailbox) : null,
+      copy: trip.copyMailbox ? { from: _senderAddress(trip.copyMailbox), status: trip.copyStatus, error: trip.copyError } : null,
     },
     checkedInAt: trip.checkedInAt ? model.msToLocal(_ms(trip.checkedInAt)) : null, checkedInVia: trip.checkedInVia,
     card: trip.card, gpxAttached: !!trip.gpxName,
@@ -587,8 +689,17 @@ function read({ now = Date.now() } = {}) {
 /** Who an alert would come from NOW — the same answer the send uses (mail-identity). */
 function _sendsFrom() {
   try {
-    const s = require('./mail-identity').forNeuroGenerated();
-    return { mailbox: s.mailbox, address: s.address, from: s.from, replyTo: s.replyTo || null, why: s.why, fallback: s.fallback ? s.fallback.address : null };
+    const mi = require('./mail-identity');
+    const plan = mi.forHikeAlert();
+    const sender = (box) => (box === 'work' ? mi.workSender() : mi.personalSender(box));
+    const p = sender(plan.primary);
+    const c = plan.copy ? sender(plan.copy) : null;
+    return {
+      mailbox: plan.primary, address: p && p.address, from: p && p.from, replyTo: (p && p.replyTo) || null,
+      copy: c ? { mailbox: plan.copy, address: c.address, from: c.from } : null,
+      lastResort: plan.lastResort ? sender(plan.lastResort).address : null,
+      why: plan.why,
+    };
   } catch { return null; }
 }
 
@@ -704,7 +815,7 @@ function householdView({ now = Date.now() } = {}) {
     start: model.msToLocal(trip.startMs), due: model.msToLocal(dueMs), alertAt: model.msToLocal(deadlineMs),
     extended: !!trip.extendedUntilMs, ember: trip.ember, companion: trip.companion, party: trip.party,
     minutesLate: trip.status === 'alerted' ? Math.max(0, Math.round((nowMs - dueMs) / 60000)) : null,
-    alerted: trip.status === 'alerted' ? { at: trip.alertAt ? model.msToLocal(_ms(trip.alertAt)) : null, sent: ['sent', 'confirmed'].includes(trip.alertStatus) } : null,
+    alerted: trip.status === 'alerted' ? { at: trip.alertAt ? model.msToLocal(_ms(trip.alertAt)) : null, sent: ['sent', 'confirmed'].includes(trip.alertStatus) || ['sent', 'confirmed'].includes(trip.copyStatus) } : null,
     ...map,
     card: trip.card,
   };

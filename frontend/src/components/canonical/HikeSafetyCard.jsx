@@ -133,9 +133,10 @@ function SendsFrom({ s }) {
   if (!s) return null;
   return (
     <div className="cn-small cn-muted" data-testid="hike-sends-from">
-      Alert sends from <strong>{s.from}</strong>{s.replyTo ? ` · replies to ${s.replyTo}` : ''}
-      {s.mailbox !== 'work' && s.fallback ? ` · if that fails, from ${s.fallback}` : ''}
-      {s.mailbox === 'work' && s.why ? ` — ${s.why}` : ''}
+      Alert sends from <strong>{s.from}</strong>{s.copy ? <> and from <strong>{s.copy.address}</strong></> : null}
+      {s.replyTo ? ` · replies to ${s.replyTo}` : ''}
+      {s.mailbox !== 'work' && s.lastResort ? ` · only if neither can send, from ${s.lastResort}` : ''}
+      {(s.mailbox === 'work' || !s.copy) && s.why ? ` — ${s.why}` : ''}
     </div>
   );
 }
@@ -161,6 +162,7 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
           </div>
           {(t.party || []).length > 0 && <div className="cn-small" data-testid="hike-party-line">Walking with {t.party.map((x) => (x.phone ? `${x.name} (${x.phone})` : x.name)).join(', ')}{t.ember ? ' and Ember' : ''}</div>}
           {alertLine && <div className={`cn-small ${t.alert.status === 'sent' || t.alert.status === 'confirmed' ? '' : 'cn-error'}`}>{alertLine}{t.alert.sentFrom ? ` (from ${t.alert.sentFrom})` : ''}{t.alert.error ? ` — ${t.alert.error}` : ''}</div>}
+          {t.alert.copy && t.alert.copy.status && <div className={`cn-small ${['sent', 'confirmed'].includes(t.alert.copy.status) ? '' : 'cn-error'}`} data-testid="hike-copy-line">Copy from {t.alert.copy.from}: {ALERT_WORDS[t.alert.copy.status] || t.alert.copy.status}{t.alert.copy.error ? ` — ${t.alert.copy.error}` : ''}</div>}
           {!t.alert.sentFrom && <SendsFrom s={data.sendsFrom} />}
           {act && (
             <div className="hs-actions">

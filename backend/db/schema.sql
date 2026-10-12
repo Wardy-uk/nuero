@@ -3254,6 +3254,13 @@ CREATE TABLE IF NOT EXISTS hike_trips (
   all_clear_status   TEXT CHECK (all_clear_status IN ('sent','confirmed','uncertain','failed')),
   alert_mailbox      TEXT,                   -- 'work' (Graph) or a personal mailbox key (12 Oct 2026)
   all_clear_mailbox  TEXT,
+  copy_mailbox       TEXT,                   -- the second, independent alert (Gmail), 12 Oct 2026
+  copy_status        TEXT,                   -- sending | sent | confirmed | uncertain | failed
+  copy_draft_id      TEXT,
+  copy_message_id    TEXT,
+  copy_attempts      INTEGER NOT NULL DEFAULT 0,
+  copy_error         TEXT,
+  all_clear_copy_status TEXT,
   checked_in_at      TEXT,
   checked_in_via     TEXT,
   cancelled_at       TEXT,

@@ -63,6 +63,22 @@ function forNeuroGenerated() {
 }
 
 /**
+ * The hike overdue alert (Nick, 12 Oct 2026): from saim@ AND a copy from his
+ * Gmail — two independent sends, so one being refused or spam-foldered does
+ * not leave Helen with nothing. Not from work. The work address is a LAST
+ * RESORT only, used when neither personal mailbox can send at that moment
+ * (a missing alert is worse than one from the wrong address).
+ *   { primary, copy, lastResort, why }
+ */
+function forHikeAlert() {
+  const saim = usable('saim').ok;
+  const gmail = usable('gmail').ok;
+  if (saim) return { primary: 'saim', copy: gmail ? 'gmail' : null, lastResort: 'work', why: gmail ? 'From SAiM, and a copy from your Gmail.' : `From SAiM only — ${usable('gmail').why}.` };
+  if (gmail) return { primary: 'gmail', copy: null, lastResort: 'work', why: `From your Gmail only — ${usable('saim').why}.` };
+  return { primary: 'work', copy: null, lastResort: null, why: `Neither saim@ nor your Gmail can send (${usable('saim').why}; ${usable('gmail').why}), so the last resort — your work address — would be used.` };
+}
+
+/**
  * A governed action. Derived from the SAME registry field the executor
  * dispatches on, so the card and the send cannot disagree: every executor today
  * is Microsoft, so every governed action sends as the work address.
@@ -142,4 +158,4 @@ function defaultLookups() {
   };
 }
 
-module.exports = { WORK_DOMAINS, WORK_ADDRESS, workSender, personalSender, senderFor, usable, forNeuroGenerated, forAction, classifyAddress, decide, defaultLookups };
+module.exports = { WORK_DOMAINS, WORK_ADDRESS, workSender, personalSender, senderFor, usable, forNeuroGenerated, forHikeAlert, forAction, classifyAddress, decide, defaultLookups };

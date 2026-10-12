@@ -231,7 +231,7 @@ const L = (s) => model.localToMs(s);
 function hikeFakes({ smtp = () => ({ outcome: 'accepted' }), graph = () => 'accepted', inSent = () => [] } = {}) {
   const f = { graphDrafts: [], smtpSends: [], smtpLooks: [], pushes: [] };
   const smtpTransport = {
-    smtpSend: async (key, msg) => { f.smtpSends.push({ key, msg }); return smtp(msg); },
+    smtpSend: async (key, msg) => { f.smtpSends.push({ key, msg }); return smtp(msg, key); },
     findInSent: async (key, mid) => { f.smtpLooks.push({ key, mid }); return { ok: true, messages: inSent(mid), evidence: 'NEURO’s own copy in Sent' }; },
   };
   f.deps = {
@@ -265,7 +265,8 @@ test('with saim@ set up, the overdue alert and the all-clear go from SAiM, and t
   const id = await armHike(f);
   const before = hike.read({ now: L('2026-10-11T10:00') });
   assert.equal(before.sendsFrom.from, '"SAiM (for Nick Ward)" <saim@nickward.co.uk>');
-  assert.equal(before.sendsFrom.fallback, 'nickw@nurtur.tech');
+  assert.equal(before.sendsFrom.lastResort, 'nickw@nurtur.tech');
+  assert.equal(before.sendsFrom.copy, null, 'no Gmail saved here, so no copy');
   await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
   assert.equal(f.smtpSends.length, 1); assert.equal(f.graphDrafts.length, 0);
   assert.equal(f.smtpSends[0].msg.from, '"SAiM (for Nick Ward)" <saim@nickward.co.uk>');
@@ -307,6 +308,69 @@ test('an UNCERTAIN saim@ send is checked in saim@\'s Sent — never Graph\'s, ne
   assert.equal(f.smtpSends.length, 1, 'found in Sent, so not sent again');
   assert.equal(db.get('SELECT alert_status s FROM hike_trips WHERE trip_id = ?', [id]).s, 'confirmed');
   assert.match(ew.byKey(`hike-alert:${id}`).readback || '', /own copy in Sent/);
+});
+
+// ── Nick (12 Oct 2026): from saim@ AND his Gmail; work only if neither can send ──
+
+const GMAIL = 'n.example@gmail.com';
+function withGmail() {
+  resetMail();
+  pm.setCredential('saim', { password: 'pw' });
+  pm.setCredential('gmail', { address: GMAIL, password: 'abcd efgh ijkl mnop' });
+}
+
+test('with saim@ and Gmail: the alert goes from BOTH, independently; the Gmail copy says why; the all-clear follows both', async () => {
+  withGmail();
+  const f = hikeFakes();
+  const id = await armHike(f);
+  const page = hike.read({ now: L('2026-10-11T10:00') }).sendsFrom;
+  assert.equal(page.address, 'saim@nickward.co.uk');
+  assert.equal(page.copy.address, GMAIL);
+  assert.equal(page.lastResort, 'nickw@nurtur.tech');
+  await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
+  assert.deepEqual(f.smtpSends.map((s) => s.key), ['saim', 'gmail']);
+  assert.equal(f.graphDrafts.length, 0, 'not from work');
+  assert.equal(f.smtpSends[1].msg.from, `"Nick Ward" <${GMAIL}>`);
+  assert.match(f.smtpSends[1].msg.text, /^\(The same alert is also coming from SAiM/);
+  assert.match(f.smtpSends[1].msg.subject, /checked in from his walk/);
+  assert.equal(f.pushes.filter((p) => /Alert sent/.test(p.title)).length, 1, 'one "alert sent" push, not two');
+  const row = db.get('SELECT alert_mailbox, alert_status, copy_mailbox, copy_status FROM hike_trips WHERE trip_id = ?', [id]);
+  assert.deepEqual(row, { alert_mailbox: 'saim', alert_status: 'sent', copy_mailbox: 'gmail', copy_status: 'sent' });
+  assert.equal(ew.byKey(`hike-alert-copy:${id}`).status, 'applied-unverified', 'the copy has its own ledger entry');
+  await hike.tick({ now: L('2026-10-11T16:01'), deps: f.deps });
+  assert.equal(f.smtpSends.length, 2, 'neither copy is sent twice');
+  const c = await hike.checkIn(id, { via: 'NEURO', now: L('2026-10-11T16:20'), deps: f.deps });
+  assert.equal(c.allClear.mailbox, 'saim'); assert.equal(c.allClear.copy.mailbox, 'gmail');
+  assert.deepEqual(f.smtpSends.slice(2).map((s) => s.key), ['saim', 'gmail']);
+});
+
+test('saim@ refused but the Gmail copy went → NOT from work; both refused → work, as the last resort', async () => {
+  withGmail();
+  let f = hikeFakes({ smtp: (msg, key) => (key === 'saim' ? { outcome: 'rejected', status: 535, category: 'auth' } : { outcome: 'accepted' }) });
+  let id = await armHike(f);
+  await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
+  await hike.tick({ now: L('2026-10-11T16:01'), deps: f.deps });
+  assert.equal(f.graphDrafts.length, 0, 'the Gmail copy reached them, so work is never used');
+  assert.equal(db.get('SELECT copy_status FROM hike_trips WHERE trip_id = ?', [id]).copy_status, 'sent');
+  assert.equal(hike.householdView({ now: L('2026-10-11T16:02') }).alerted.sent, true, 'Helen\'s view says the alert went');
+
+  withGmail();
+  f = hikeFakes({ smtp: () => ({ outcome: 'rejected', status: 535, category: 'auth' }) });
+  id = await armHike(f);
+  await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
+  await hike.tick({ now: L('2026-10-11T16:01'), deps: f.deps });
+  assert.equal(f.graphDrafts.length, 1, 'neither personal mailbox could send — the work address, as the last resort');
+  assert.equal(db.get('SELECT alert_mailbox FROM hike_trips WHERE trip_id = ?', [id]).alert_mailbox, 'work');
+});
+
+test('the hike page names both senders before anything is sent', async () => {
+  const { HikeSafetyView } = await bundle('canonical/HikeSafetyCard.jsx');
+  withGmail();
+  const f = hikeFakes();
+  await armHike(f);
+  const clean = (h) => h.replace(/<!-- -->/g, '').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  const html = clean(renderToString(React.createElement(HikeSafetyView, { data: hike.read({ now: L('2026-10-11T10:00') }) })));
+  assert.match(html, /Alert sends from <strong>"SAiM \(for Nick Ward\)" <saim@nickward\.co\.uk><\/strong> and from <strong>n\.example@gmail\.com<\/strong> · replies to nick@nickward\.co\.uk · only if neither can send, from nickw@nurtur\.tech/);
 });
 
 test('without saim@ the alert goes from work, exactly as before', async () => {
@@ -362,7 +426,7 @@ test('the hike page shows where the alert sends from, before and after', async (
   await armHike(f);
   const clean = (h) => h.replace(/<!-- -->/g, '').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
   let html = clean(renderToString(React.createElement(HikeSafetyView, { data: hike.read({ now: L('2026-10-11T10:00') }) })));
-  assert.match(html, /Alert sends from <strong>"SAiM \(for Nick Ward\)" <saim@nickward\.co\.uk><\/strong> · replies to nick@nickward\.co\.uk · if that fails, from nickw@nurtur\.tech/);
+  assert.match(html, /Alert sends from <strong>"SAiM \(for Nick Ward\)" <saim@nickward\.co\.uk><\/strong> · replies to nick@nickward\.co\.uk · only if neither can send, from nickw@nurtur\.tech/);
   await hike.tick({ now: L('2026-10-11T16:00'), deps: f.deps });
   html = clean(renderToString(React.createElement(HikeSafetyView, { data: hike.read({ now: L('2026-10-11T16:05') }) })));
   assert.match(html, /\(from saim@nickward\.co\.uk\)/);
