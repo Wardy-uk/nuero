@@ -62,6 +62,22 @@ const LANES = new Set(['urgent', 'reply']);
 
 const LEDGER_KEY = 'email_actions_seen';
 
+/**
+ * The PERSONAL inbox (nick@, contact@, Gmail — 12 Oct 2026, Nick: "the same
+ * task scanning … to add personal tasks"). Same engine, same queue, same four
+ * rules; three things differ and each is load-bearing:
+ *  - its OWN seen-ledger: each ledger is pruned to the ids its source still
+ *    holds, so sharing one would have each inbox forget the other's answers
+ *    and re-buy them every pass;
+ *  - its own prompt: a bill to pay, a card to update or a person to reply to is
+ *    an ask at home, where the work prompt frames Nick as Head of Support;
+ *  - candidates carry domain 'personal', so approving one makes a PERSONAL
+ *    task (the executor used to default every candidate to work).
+ * Mail Nick sent himself, and calendar notices, are never asks.
+ */
+const PERSONAL_ENABLED = process.env.PERSONAL_EMAIL_ACTIONS_ENABLED !== 'false';
+const PERSONAL_LEDGER_KEY = 'personal_email_actions_seen';
+
 /** Meeting invitations, updates, cancellations and responses — never an ask of Nick. */
 const CALENDAR_NOTICE = /^(canceled|cancelled|accepted|declined|tentative|updated invitation|invitation|new time proposed)\b\s*:?/i;
 
@@ -104,9 +120,9 @@ function sourcePathFor(id) {
   return `email:${String(id)}`;
 }
 
-function readLedger() {
+function readLedger(key = LEDGER_KEY) {
   try {
-    const raw = db.getState(LEDGER_KEY);
+    const raw = db.getState(key);
     const parsed = raw ? JSON.parse(raw) : {};
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
@@ -114,9 +130,9 @@ function readLedger() {
   }
 }
 
-function writeLedger(ledger) {
+function writeLedger(ledger, key = LEDGER_KEY) {
   try {
-    db.setState(LEDGER_KEY, JSON.stringify(ledger));
+    db.setState(key, JSON.stringify(ledger));
   } catch (e) {
     console.warn('[EmailActions] Could not persist the seen-ledger:', e.message);
   }
@@ -144,13 +160,30 @@ function pruneLedger(ledger, liveIds) {
  * NICK'S: an email describing what somebody else is going to do is information,
  * not a task. It is NOT asked for a date (rule 4).
  */
-function buildPrompt(batch) {
+function buildPrompt(batch, scope = 'work') {
   const list = batch.map((e, i) => [
     `[${i}]`,
     `From: ${e.from || '(unknown)'} <${e.fromEmail || ''}>`,
     `Subject: ${e.subject || '(no subject)'}`,
     `Preview: ${String(e.preview || '').slice(0, 400) || '(no preview)'}`,
   ].join('\n')).join('\n\n');
+
+  if (scope === 'personal') return `You are reading Nick Ward's PERSONAL email (home, family, money, life admin — not his work at Nurtur).
+
+For each email, decide whether it needs NICK to DO something specific.
+
+Rules:
+- Counts as something to do: a person asking Nick for something or waiting on a reply; a bill, payment, renewal or expiring card he must deal with; a form, booking, appointment or document he must complete, arrange or send.
+- Write it as a short action starting with a verb, in plain words, under 15 words, naming who or what it is for.
+- Answer null for: receipts, payment confirmations, "thanks for your payment", order and delivery updates, sign-in or verification codes, password resets he did not ask about, newsletters, marketing, offers, surveys, and anything describing what SOMEBODY ELSE will do. Most email is null. Answering null is the correct and expected answer.
+- Do not invent a deadline or a date. Do not restate the subject line as the action.
+
+Respond with ONLY a JSON array, one entry per email:
+[{"index": 0, "action": "Update the expired card on the Fasthosts account"}, {"index": 1, "action": null}]
+
+The ${batch.length} emails:
+
+${list}`;
 
   return `You are reading Nick Ward's email. Nick is Head of Technical Support at Nurtur.
 
@@ -203,14 +236,15 @@ function usable(text) {
  * field — that is what lets the existing queue, fold and approval path take it
  * with no change of their own.
  */
-function buildCandidate(email, text) {
+function buildCandidate(email, text, scope = 'work') {
   const sourcePath = sourcePathFor(email.id);
   const who = email.from || email.fromEmail || 'an email';
+  const personal = scope === 'personal';
   return {
     type: 'capture_todo',
     text,
     confidence: CONFIDENCE,
-    reason: `Asked of you by ${who} — "${String(email.subject || '').slice(0, 60)}"`,
+    reason: `${personal ? 'Personal email: asked of you' : 'Asked of you'} by ${who} — "${String(email.subject || '').slice(0, 60)}"`,
     sourcePath,
     focusItemId: actionCandidates.buildFocusItemId(sourcePath, text),
     semanticSignature: actionCandidates.buildSemanticSignature(text),
@@ -225,7 +259,10 @@ function buildCandidate(email, text) {
       // ⚠ Carried so promotion does not stamp `meeting-promotion` on something
       // that never came from a meeting. Provenance nobody can trust is worse
       // than none — and `inferOrigin` reads exactly this field.
-      source: 'email-promotion',
+      source: personal ? 'personal-email-promotion' : 'email-promotion',
+      // ⚠ Only a personal candidate names a domain: a work one passes nothing and
+      // keeps task-store's default, so every existing row behaves as before.
+      ...(personal ? { domain: 'personal' } : {}),
       email: {
         id: email.id,
         from: email.from || null,
@@ -233,6 +270,7 @@ function buildCandidate(email, text) {
         subject: email.subject || null,
         received: email.received || null,
         lane: email.lane || null,
+        ...(personal ? { mailbox: email.mailbox || null } : {}),
       },
       metadata: todoIntelligence.triageTodo({ text, sourcePath, dueDate: null }),
     },
@@ -254,13 +292,38 @@ function alreadyRaised(candidate) {
  */
 async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
   if (!ENABLED) return { ok: true, skipped: 'disabled', created: 0, considered: 0 };
-
-  const live = (entries || []).filter((e) => e && e.id);
-  const ledger = pruneLedger(readLedger(), new Set(live.map((e) => String(e.id))));
-
   // Calendar notices are not asks (5 Oct 2026: "Canceled: Support Improvement
   // Plan" became "Send update on key progress and blockers").
-  const eligible = live.filter((e) => LANES.has(e.lane) && !e.dismissed && !CALENDAR_NOTICE.test(String(e.subject || '')));
+  return _extract(entries, {
+    limit, ledgerKey: LEDGER_KEY, scope: 'work', tag: 'EmailActions',
+    eligible: (e) => LANES.has(e.lane) && !e.dismissed && !CALENDAR_NOTICE.test(String(e.subject || '')),
+  });
+}
+
+/**
+ * Personal-inbox mail: no lanes here (that inbox is newest-first, no AI), so
+ * eligibility is "not from Nick himself and not a calendar notice"; the model
+ * does the rest and answers null for most of it. `own` is every address Nick
+ * sends from. Rows are personal_inbox rows (id, mailbox, from_email, …).
+ */
+async function extractFromPersonal(rows = [], { limit = MAX_PER_RUN, own = [] } = {}) {
+  if (!PERSONAL_ENABLED) return { ok: true, skipped: 'disabled', created: 0, considered: 0 };
+  const mine = new Set((own || []).map((a) => String(a || '').toLowerCase()).filter(Boolean));
+  const entries = (rows || []).map((r) => ({
+    id: r.id, mailbox: r.mailbox, from: r.from_name || r.from || r.from_email || null,
+    fromEmail: String(r.from_email || r.fromEmail || '').toLowerCase() || null,
+    subject: r.subject || null, preview: r.preview || '', received: r.received || null,
+  }));
+  return _extract(entries, {
+    limit, ledgerKey: PERSONAL_LEDGER_KEY, scope: 'personal', tag: 'PersonalEmailActions',
+    eligible: (e) => !mine.has(String(e.fromEmail || '')) && !CALENDAR_NOTICE.test(String(e.subject || '')),
+  });
+}
+
+async function _extract(entries, { limit, ledgerKey, scope, tag, eligible: isEligible }) {
+  const live = (entries || []).filter((e) => e && e.id);
+  const ledger = pruneLedger(readLedger(ledgerKey), new Set(live.map((e) => String(e.id))));
+  const eligible = live.filter(isEligible);
   const unread = eligible.filter((e) => !ledger[String(e.id)]);
   const batchable = unread.slice(0, limit);
 
@@ -276,7 +339,7 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
   };
 
   if (!batchable.length) {
-    writeLedger(ledger);
+    writeLedger(ledger, ledgerKey);
     return result;
   }
 
@@ -287,7 +350,7 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
     let answers;
     try {
       const res = await aiRouting.runTask('email_summary', {
-        prompt: buildPrompt(batch),
+        prompt: buildPrompt(batch, scope),
         maxTokens: 700,
         temperature: 0.1,
       });
@@ -296,7 +359,7 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
       answers = parseAnswer(res.text, batch.length);
     } catch (e) {
       result.failedBatches += 1;
-      console.warn(`[EmailActions] batch ${offset}-${offset + batch.length - 1} failed: ${e.message}`);
+      console.warn(`[${tag}] batch ${offset}-${offset + batch.length - 1} failed: ${e.message}`);
       // ⚠ Nothing is written to the ledger for a failed batch, so these emails
       // are asked about again next run rather than silently reading as quiet.
       continue;
@@ -317,7 +380,7 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
         return;
       }
 
-      const candidate = buildCandidate(email, text);
+      const candidate = buildCandidate(email, text, scope);
       ledger[key] = { at: new Date().toISOString(), obligation: true, text };
       result.withObligation += 1;
 
@@ -337,15 +400,15 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
         );
         result.created += 1;
       } catch (e) {
-        console.warn(`[EmailActions] could not queue "${text.slice(0, 50)}": ${e.message}`);
+        console.warn(`[${tag}] could not queue "${text.slice(0, 50)}": ${e.message}`);
       }
     });
   }
 
-  writeLedger(ledger);
+  writeLedger(ledger, ledgerKey);
 
   if (result.created || result.failedBatches) {
-    console.log(`[EmailActions] ${result.asked} emails read, ${result.withObligation} carried an ask, `
+    console.log(`[${tag}] ${result.asked} emails read, ${result.withObligation} carried an ask, `
       + `${result.created} queued for review`
       + (result.failedBatches ? `, ${result.failedBatches} batch(es) failed and will be retried` : '')
       + (result.deferred ? `, ${result.deferred} left for the next run` : ''));
@@ -355,6 +418,8 @@ async function extractFromTriage(entries = [], { limit = MAX_PER_RUN } = {}) {
 
 module.exports = {
   extractFromTriage,
+  extractFromPersonal,
+  PERSONAL_LEDGER_KEY,
   // Pure, and exported for the tests: the rules are the product.
   buildPrompt,
   parseAnswer,

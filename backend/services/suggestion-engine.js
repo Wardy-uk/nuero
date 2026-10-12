@@ -803,6 +803,9 @@ ${String(message?.body || message?.preview || '').slice(0, 4000)}`;
         // Note-sourced candidates pass nothing — their path already reads as a
         // sentence, and an empty object stores as NULL.
         origin_detail: payload.email ? { email: payload.email } : null,
+        // ⚠ A personal-inbox candidate says it is personal (12 Oct 2026). Anything
+        // that names no domain keeps task-store's default, exactly as before.
+        ...(payload.domain ? { domain: payload.domain } : {}),
       });
       return {
         ok: true,

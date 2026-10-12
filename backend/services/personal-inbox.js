@@ -455,7 +455,20 @@ async function refresh({ deps, only = null } = {}) {
   for (const key of only || [...INBOXES, ...WATCHED]) results.push(await refreshMailbox(key, { deps }));
   const saim = results.find((r) => r.key === 'saim');
   const bounced = saim && saim.addedIds ? await _noticeHikeBounces(saim.addedIds, { deps }) : [];
-  const status = { at: new Date().toISOString(), results: results.map(({ addedIds, ...r }) => r), hikeBounces: bounced.length };
+  // Personal tasks out of personal mail (12 Oct 2026) — the same review-only
+  // extractor the work inbox uses; it buys each email's answer once, so a pass
+  // with no new mail costs nothing. Never allowed to fail the refresh.
+  let tasks = null;
+  if (!only || only.some((k) => INBOXES.includes(k))) {
+    try {
+      const rows = _db().all(`SELECT * FROM personal_inbox WHERE mailbox IN (${INBOXES.map(() => '?').join(',')})`, INBOXES);
+      const own = [...INBOXES.map((k) => pm.addressFor(k)), require('./mail-identity').WORK_ADDRESS];
+      const extract = (deps && deps.extractTasks) || require('./email-actions').extractFromPersonal;
+      const r = await extract(rows, { own });
+      tasks = { created: r.created || 0, asked: r.asked || 0, ...(r.failedBatches ? { failedBatches: r.failedBatches } : {}), ...(r.skipped ? { skipped: r.skipped } : {}) };
+    } catch (e) { tasks = { error: e.message }; console.warn('[PersonalInbox] task scan failed:', e.message); }
+  }
+  const status = { at: new Date().toISOString(), results: results.map(({ addedIds, ...r }) => r), hikeBounces: bounced.length, ...(tasks ? { tasks } : {}) };
   _db().setState(STATUS_KEY, JSON.stringify(status));
   return status;
 }
