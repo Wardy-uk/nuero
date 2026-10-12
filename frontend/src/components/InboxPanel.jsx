@@ -271,6 +271,14 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
         <div className="inbox-detail">
           {loading && <div className="inbox-detail-loading">Loading recipients...</div>}
 
+          {/* Nick (12 Oct 2026): every email screen says which address it sends from — the server's answer. */}
+          {detail?.sendsFrom && (
+            <div className="inbox-recip-row" data-testid="inbox-sends-from">
+              <span className="inbox-recip-label">From</span>
+              <div className="inbox-recip-chips"><span className="inbox-chip">{detail.sendsFrom.address}</span></div>
+            </div>
+          )}
+
           <div className="inbox-recip-row">
             <span className="inbox-recip-label">To</span>
             <div className="inbox-recip-chips">

@@ -247,6 +247,9 @@ router.get('/triage/:emailId', async (req, res) => {
         preview: merged.preview || '',
         body: merged.body || merged.preview || '',
         replyDefaults: await buildReplyDefaults(merged),
+        // The address a reply goes from (mail-identity): a reply prepares a
+        // governed reply_email, so it is the same answer its approval card shows.
+        sendsFrom: (() => { const s = require('../services/mail-identity').forAction({ actionType: 'reply_email' }); return s ? { address: s.address, via: s.via } : null; })(),
       },
     });
   } catch (e) {

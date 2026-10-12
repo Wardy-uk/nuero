@@ -65,8 +65,27 @@ function _defaultDeps() {
     // The type is written at the call so push-types.test sees what this sends.
     push: (title, body, data) => require('./webpush').sendToAll(title, body, { ...data, type: 'hike_checkin' }),
     mail: require('./action-mail'),
-    mailReady: async () => { try { return !!(await require('./microsoft').getAccessToken()); } catch { return false; } },
+    // 12 Oct 2026: the alert goes from saim@ (mail-identity) with work as the
+    // fallback, so EITHER working mailbox means the alert can go.
+    mailReady: async () => {
+      if (require('./mail-identity').usable('saim').ok) return true;
+      try { return !!(await require('./microsoft').getAccessToken()); } catch { return false; }
+    },
   };
+}
+
+// Which transport a mailbox key means. 'work' is Graph (deps.mail, injectable);
+// a personal key is that mailbox over SMTP (smtp-mail.js), same interface.
+function _mailFor(deps, mailbox) {
+  if (!mailbox || mailbox === 'work') return deps.mail;
+  return deps.smtpFor ? deps.smtpFor(mailbox) : require('./smtp-mail').forMailbox(mailbox);
+}
+
+// Which mailbox a NEW alert attempt uses: whatever mail-identity says for mail
+// NEURO writes itself (saim@ when usable, else work).
+function _neuroMailbox(deps) {
+  if (deps.identity) return deps.identity();
+  try { return require('./mail-identity').forNeuroGenerated().mailbox; } catch { return 'work'; }
 }
 
 function _log(kind, subjectId, detail, nowMs) {
@@ -105,7 +124,8 @@ function _shape(r) {
     recipients: _json(r.recipients_json, []), card: r.card_text, cardHash: r.card_hash, gpxName: r.gpx_name,
     remindedAt: r.reminded_at, warnedAt: r.warned_at, drivingPromptAt: r.driving_prompt_at,
     alertStatus: r.alert_status, alertAt: r.alert_at, alertAttempts: r.alert_attempts, alertError: r.alert_error,
-    allClearStatus: r.all_clear_status, checkedInAt: r.checked_in_at, checkedInVia: r.checked_in_via,
+    allClearStatus: r.all_clear_status, alertMailbox: r.alert_mailbox || null, allClearMailbox: r.all_clear_mailbox || null,
+    checkedInAt: r.checked_in_at, checkedInVia: r.checked_in_via,
     cancelledAt: r.cancelled_at, armedAt: r.armed_at, closedAt: r.closed_at,
   };
 }
@@ -175,7 +195,7 @@ async function arm(body = {}, { now = Date.now(), deps = _defaultDeps() } = {}) 
   const live = _db().get("SELECT trip_id, name FROM hike_trips WHERE status IN ('armed','alerted')");
   if (live) return { ok: false, status: 409, error: `“${live.name}” is still armed — check in or cancel it first` };
   if (!(await deps.mailReady())) {
-    return { ok: false, status: 409, error: 'NEURO cannot send email right now (Microsoft sign-in) — the alert could not go, so the walk is not armed. Tell someone directly.' };
+    return { ok: false, status: 409, error: 'NEURO cannot send email right now (neither saim@ nor your work email is working) — the alert could not go, so the walk is not armed. Tell someone directly.' };
   }
   const rf = _routeFor({ gpx: body.gpx || null, routeId: body.gpx ? null : body.routeId || null });
   if (rf.error) return { ok: false, status: rf.status || 400, error: rf.error };
@@ -225,7 +245,7 @@ async function edit(tripId, body = {}, { now = Date.now(), deps = _defaultDeps()
   const people = contacts();
   if (!people.length) return { ok: false, status: 409, error: 'nobody to alert — add who gets the alert first' };
   if (!(await deps.mailReady())) {
-    return { ok: false, status: 409, error: 'NEURO cannot send email right now (Microsoft sign-in) — not changed. The walk is still armed as it was.' };
+    return { ok: false, status: 409, error: 'NEURO cannot send email right now (neither saim@ nor your work email is working) — not changed. The walk is still armed as it was.' };
   }
   const f = { ...v.fields, name: v.fields.name || t.name };
   let routeId = t.routeId; let gpxName = r.gpx_name; let gpxText = r.gpx_text;
@@ -349,24 +369,27 @@ async function _push(deps, title, body, extra = {}) {
   try { await deps.push(title, body, { type: PUSH_TYPE, url: PUSH_URL, ...extra }); return true; } catch (e) { console.warn(`[HikeSafety] push failed: ${e.message}`); return false; }
 }
 
-async function _sendAlert(trip, { nowMs, deps }) {
+async function _sendAlert(trip, { nowMs, deps, forceMailbox = null }) {
   const key = `hike-alert:${trip.tripId}`;
   const ew = require('./external-writes');
   const row = _get(trip.tripId);
   const recipients = trip.recipients;
   const to = recipients.map((c) => ({ email: c.email, name: c.name }));
+  // The mailbox the LAST attempt used — its outcome is checked there, never elsewhere.
+  const prevMailbox = row.alert_mailbox || 'work';
+  const prevMail = _mailFor(deps, prevMailbox);
 
   // An earlier attempt whose outcome is unknown: look before sending again.
   if (row.alert_message_id && ['sending', 'uncertain', 'sent'].includes(row.alert_status)) {
-    const found = await deps.mail.findSent(row.alert_message_id);
+    const found = await prevMail.findSent(row.alert_message_id);
     if (found && found.ok && found.messages.length) {
       _set(trip.tripId, { alert_status: 'confirmed' });
-      const e = ew.byKey(key); if (e) ew.settle(e.id, { status: 'confirmed', readback: 'found in Sent Items', now: nowMs });
+      const e = ew.byKey(key); if (e) ew.settle(e.id, { status: 'confirmed', readback: found.evidence || 'found in Sent Items', now: nowMs });
       return { ok: true, outcome: 'confirmed' };
     }
     if (row.alert_status === 'sent') return { ok: true, outcome: 'sent' }; // accepted; Sent Items has not caught up yet
     if (row.alert_draft_id) {
-      const st = await deps.mail.draftState(row.alert_draft_id);
+      const st = await prevMail.draftState(row.alert_draft_id);
       if (st === 'not-draft' || st === 'gone') {
         _set(trip.tripId, { alert_status: 'sent' });
         const e = ew.byKey(key); if (e) ew.settle(e.id, { status: 'applied-unverified', readback: `draft ${st}`, now: nowMs });
@@ -381,33 +404,42 @@ async function _sendAlert(trip, { nowMs, deps }) {
   if (!b.ok) return { ok: false, outcome: 'refused', why: b.why };
 
   const { subject, body } = model.alertEmail({ trip, card: trip.card, fixes: _crumbs(trip.tripId), nowMs, recipients });
+  // ⚠ A personal mailbox that FAILED last time is not tried again: work is the
+  //   fallback, because a duplicate alert is better than none.
+  const mailbox = forceMailbox || (row.alert_status === 'failed' && prevMailbox !== 'work' ? 'work' : _neuroMailbox(deps));
+  const mail = _mailFor(deps, mailbox);
+  const who = mailbox === 'work' ? 'Microsoft' : `${mailbox}@ (SMTP)`;
   _set(trip.tripId, { alert_status: 'sending', alert_attempts: row.alert_attempts + 1, alert_at: row.alert_at || _iso(nowMs) });
-  let draftId = row.alert_draft_id;
-  if (!draftId || (await deps.mail.draftState(draftId)) !== 'draft') {
+  // A draft is only reused in the mailbox that made it.
+  let draftId = row.alert_mailbox === mailbox ? row.alert_draft_id : null;
+  if (!draftId || (await mail.draftState(draftId)) !== 'draft') {
     const attachments = row.gpx_text && row.gpx_name ? [{ name: row.gpx_name, contentType: 'application/gpx+xml', text: row.gpx_text }] : [];
-    const d = await deps.mail.createDraft({ to, subject, body, contentType: 'Text', attachments });
+    const d = await mail.createDraft({ to, subject, body, contentType: 'Text', attachments });
     if (!d || !d.ok) {
-      _set(trip.tripId, { alert_status: 'failed', alert_error: `could not create the email (${(d && d.category) || 'unknown'})` });
-      ew.settle(b.entry.id, { status: 'failed', result: { stage: 'draft', category: d && d.category }, now: nowMs });
+      _set(trip.tripId, { alert_status: 'failed', alert_mailbox: mailbox, alert_error: `could not create the email from ${who} (${(d && d.category) || 'unknown'})` });
+      ew.settle(b.entry.id, { status: 'failed', result: { stage: 'draft', category: d && d.category, mailbox }, now: nowMs });
+      if (mailbox !== 'work' && !forceMailbox) return _sendAlert(_shape(_get(trip.tripId)), { nowMs, deps, forceMailbox: 'work' });
       return { ok: false, outcome: 'failed' };
     }
     draftId = d.id;
-    _set(trip.tripId, { alert_draft_id: d.id, alert_message_id: d.internetMessageId || null });
+    _set(trip.tripId, { alert_draft_id: d.id, alert_message_id: d.internetMessageId || null, alert_mailbox: mailbox });
   }
-  const s = await deps.mail.sendDraft(draftId);
+  const s = await mail.sendDraft(draftId);
   if (s.outcome === 'accepted') {
     _set(trip.tripId, { alert_status: 'sent', alert_error: null });
-    ew.settle(b.entry.id, { status: 'applied-unverified', result: { status: s.status }, readback: 'accepted by Microsoft; verified against Sent Items on the next pass', now: nowMs });
-    _log('hike-alert-sent', trip.tripId, { name: trip.name, to: recipients.map((c) => c.name) }, nowMs);
-    return { ok: true, outcome: 'sent' };
+    ew.settle(b.entry.id, { status: 'applied-unverified', result: { status: s.status, mailbox }, readback: `accepted by ${who}; verified against Sent on the next pass`, now: nowMs });
+    _log('hike-alert-sent', trip.tripId, { name: trip.name, to: recipients.map((c) => c.name), from: mailbox }, nowMs);
+    return { ok: true, outcome: 'sent', mailbox };
   }
   if (s.outcome === 'rejected') {
-    _set(trip.tripId, { alert_status: 'failed', alert_error: `Microsoft refused the send (${s.category || s.status})` });
-    ew.settle(b.entry.id, { status: 'failed', result: { status: s.status, category: s.category }, now: nowMs });
-    _log('hike-alert-failed', trip.tripId, { name: trip.name, why: s.category || s.status }, nowMs);
+    _set(trip.tripId, { alert_status: 'failed', alert_error: `${who} refused the send (${s.category || s.status})` });
+    ew.settle(b.entry.id, { status: 'failed', result: { status: s.status, category: s.category, mailbox }, now: nowMs });
+    _log('hike-alert-failed', trip.tripId, { name: trip.name, why: s.category || s.status, from: mailbox }, nowMs);
+    // Proven unsent from saim@ — go straight to the work address, this pass.
+    if (mailbox !== 'work' && !forceMailbox) return _sendAlert(_shape(_get(trip.tripId)), { nowMs, deps, forceMailbox: 'work' });
     return { ok: false, outcome: 'failed' };
   }
-  _set(trip.tripId, { alert_status: 'uncertain', alert_error: `send outcome unknown (${s.category || 'unknown'}) — checking Sent Items` });
+  _set(trip.tripId, { alert_status: 'uncertain', alert_error: `send outcome unknown from ${who} (${s.category || 'unknown'}) — checking Sent` });
   ew.settle(b.entry.id, { status: 'uncertain', result: { status: s.status, category: s.category }, now: nowMs });
   return { ok: false, outcome: 'uncertain' };
 }
@@ -417,14 +449,20 @@ async function _sendAllClear(trip, { nowMs, deps, via }) {
   const b = ew.begin({ writer: WRITER, key: `hike-allclear:${trip.tripId}`, target: trip.recipients.map((c) => c.email).join(', '), request: { tripId: trip.tripId, kind: 'all-clear' }, initiatedBy: 'nick', now: nowMs });
   if (!b.ok) return { outcome: b.duplicate ? 'already' : 'refused' };
   const { subject, body } = model.allClearEmail({ trip, nowMs, recipients: trip.recipients, via });
-  const d = await deps.mail.createDraft({ to: trip.recipients.map((c) => ({ email: c.email, name: c.name })), subject, body, contentType: 'Text' });
-  if (!d || !d.ok) { ew.settle(b.entry.id, { status: 'failed', now: nowMs }); _set(trip.tripId, { all_clear_status: 'failed' }); return { outcome: 'failed' }; }
-  const s = await deps.mail.sendDraft(d.id);
+  // From the mailbox the alert went from, so it reads as the answer to it —
+  // unless that mailbox is no longer usable, then whatever NEURO mail uses now.
+  const row = _get(trip.tripId);
+  const alertBox = row && row.alert_mailbox;
+  const mailbox = alertBox && (alertBox === 'work' || require('./mail-identity').usable(alertBox).ok) ? alertBox : _neuroMailbox(deps);
+  const mail = _mailFor(deps, mailbox);
+  const d = await mail.createDraft({ to: trip.recipients.map((c) => ({ email: c.email, name: c.name })), subject, body, contentType: 'Text' });
+  if (!d || !d.ok) { ew.settle(b.entry.id, { status: 'failed', now: nowMs }); _set(trip.tripId, { all_clear_status: 'failed', all_clear_mailbox: mailbox }); return { outcome: 'failed', mailbox }; }
+  const s = await mail.sendDraft(d.id);
   const status = s.outcome === 'accepted' ? 'sent' : s.outcome === 'rejected' ? 'failed' : 'uncertain';
-  ew.settle(b.entry.id, { status: status === 'sent' ? 'applied-unverified' : status, result: { status: s.status }, now: nowMs });
-  _set(trip.tripId, { all_clear_status: status });
-  _log('hike-all-clear', trip.tripId, { name: trip.name, outcome: status }, nowMs);
-  return { outcome: status };
+  ew.settle(b.entry.id, { status: status === 'sent' ? 'applied-unverified' : status, result: { status: s.status, mailbox }, now: nowMs });
+  _set(trip.tripId, { all_clear_status: status, all_clear_mailbox: mailbox });
+  _log('hike-all-clear', trip.tripId, { name: trip.name, outcome: status, from: mailbox }, nowMs);
+  return { outcome: status, mailbox };
 }
 
 // ── the job ────────────────────────────────────────────────────────────────
@@ -504,7 +542,12 @@ function view(trip, { nowMs }) {
     startLocal: model.msToLocal(trip.startMs), finishLocal: model.msToLocal(trip.finishMs),
     minutesToAlert: Math.round((deadlineMs - nowMs) / 60000),
     alerting: trip.recipients.map((c) => c.name),
-    alert: { status: trip.alertStatus, at: trip.alertAt, error: trip.alertError, allClear: trip.allClearStatus },
+    alert: {
+      status: trip.alertStatus, at: trip.alertAt, error: trip.alertError, allClear: trip.allClearStatus,
+      // The address it actually went from — from the record, not today's choice.
+      sentFrom: trip.alertMailbox ? _senderAddress(trip.alertMailbox) : null,
+      allClearFrom: trip.allClearMailbox ? _senderAddress(trip.allClearMailbox) : null,
+    },
     checkedInAt: trip.checkedInAt ? model.msToLocal(_ms(trip.checkedInAt)) : null, checkedInVia: trip.checkedInVia,
     card: trip.card, gpxAttached: !!trip.gpxName,
     map: ['armed', 'alerted'].includes(trip.status) ? _mapData(trip, nowMs) : null,
@@ -534,10 +577,27 @@ function read({ now = Date.now() } = {}) {
       };
     }),
     contacts: people.map((c) => ({ name: c.name, email: c.email })),
+    sendsFrom: _sendsFrom(),
     defaults: { graceMinutes: model.DEFAULT_GRACE_MIN, graceRange: model.GRACE_RANGE, extendRange: model.EXTEND_RANGE },
     rule: `If you have not checked in by your finish time plus ${model.DEFAULT_GRACE_MIN} minutes, NEURO emails the route card and your last known positions to the people listed — no approval needed; arming the walk is the approval. Only a check-in closes a walk. The trail is kept only for an armed walk and deleted ${PURGE_AFTER_DAYS} days after it ends.`,
-    limits: 'This runs on NEURO’s Pi at home. If the Pi, Microsoft sign-in or the house internet is down at the alert time, the alert does not go — still tell someone your plan.',
+    limits: 'This runs on NEURO’s Pi at home. If the Pi or the house internet is down at the alert time — or neither saim@ nor your work email can send — the alert does not go. Still tell someone your plan.',
   };
+}
+
+/** Who an alert would come from NOW — the same answer the send uses (mail-identity). */
+function _sendsFrom() {
+  try {
+    const s = require('./mail-identity').forNeuroGenerated();
+    return { mailbox: s.mailbox, address: s.address, from: s.from, replyTo: s.replyTo || null, why: s.why, fallback: s.fallback ? s.fallback.address : null };
+  } catch { return null; }
+}
+
+function _senderAddress(mailbox) {
+  try {
+    const mi = require('./mail-identity');
+    const s = mailbox === 'work' ? mi.workSender() : mi.personalSender(mailbox);
+    return s ? s.address : mailbox;
+  } catch { return mailbox; }
 }
 
 /** The map of a live walk: the planned route, the trails, each tracker's last position. Live walks only. */

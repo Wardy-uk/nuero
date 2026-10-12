@@ -196,6 +196,13 @@ function draftFor(actionType, commitment, target) {
 
 // ── the store ───────────────────────────────────────────────────────────────
 
+function _sendsFrom(actionType) {
+  try {
+    const s = require('./mail-identity').forAction({ actionType });
+    return s ? { mailbox: s.mailbox, address: s.address, from: s.from, replyTo: s.replyTo, via: s.via, kind: s.kind } : null;
+  } catch { return null; }
+}
+
 function shape(r) {
   if (!r) return null;
   const policy = registry.policyFor(r.action_type);
@@ -218,6 +225,10 @@ function shape(r) {
     lastBlock: r.last_block || null, lastCheckAt: r.last_check_at || null,
     history: parse(r.history_json) || [], updatedAt: r.updated_at,
     idempotencyKey: r.idempotency_key,
+    // Nick (12 Oct 2026): every screen dealing with an email shows the address
+    // it sends from. mail-identity derives it from the SAME registry field the
+    // executor dispatches on, so the card and the send cannot disagree.
+    sendsFrom: _sendsFrom(r.action_type),
     // From the registry, on every read, so no surface can imply otherwise.
     registered: !!policy,
     executes: registry.canExecute(r.action_type),

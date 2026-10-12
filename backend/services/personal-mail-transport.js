@@ -4,10 +4,9 @@
  * Personal mailboxes — the network half: check a login, send a TEST, read it back.
  *
  * ⚠ This is the ONLY module that loads nodemailer (pinned by build7 test 33).
- * Its one send is `sendTest`, and a test goes ONLY to another of Nick's own
- * mailboxes — the same rule as email-sender.sendMail being self-only. Sending
- * to anyone else from a personal identity is a later build, and goes through
- * the governed executor like every other outbound email.
+ * Two sends: `sendTest` (only ever to another of Nick's own mailboxes) and
+ * `smtpSend`, whose ONLY caller is smtp-mail.js — the ledgered adapter the hike
+ * alert (and later the governed executor) uses. Pinned in build7 test 33.
  *
  * Why read it back: SMTP's "250 accepted" says nothing about whether SPF, DKIM
  * and DMARC passed. The receiving server writes that verdict into the message's
@@ -235,4 +234,108 @@ async function sendTest(fromKey, toKey, deps) {
   return { ok: accepted, status: accepted ? 200 : 502, test: done, ...(accepted ? {} : { error: 'The server did not accept the message.' }) };
 }
 
-module.exports = { check, sendTest, importantFolder, readBack, findByMessageId, smtpConfig, imapConfig, defaultDeps, READBACK_ATTEMPTS, READBACK_GAP_MS };
+// ── Real sends (12 Oct 2026) ────────────────────────────────────────────────
+//
+// ⚠ smtpSend is called ONLY by smtp-mail.js (pinned in build7 test 33), which
+// keeps the ledger: the Message-ID is generated and stored BEFORE the network.
+
+const CONNECT_PHASE = /^(CONN|EHLO|HELO|LHLO|STARTTLS|AUTH.*|MAIL FROM|RCPT TO)$/i;
+
+/**
+ * accepted  the server answered 250 to the whole message
+ * rejected  PROVEN not sent: the server answered with a refusal code, or the
+ *           failure happened before the message began (connect, login, envelope)
+ * uncertain no answer once the message had started — it MAY have gone. Verify,
+ *           never resend automatically. PURE.
+ */
+function classifySend(err) {
+  if (!err) return { outcome: 'accepted' };
+  const c = pm.classifyError(err);
+  if (Number.isFinite(err.responseCode)) return { outcome: 'rejected', status: err.responseCode, category: c.kind };
+  if (err.code === 'EAUTH' || err.code === 'EENVELOPE' || err.code === 'EDNS') return { outcome: 'rejected', status: null, category: c.kind };
+  if (err.command && CONNECT_PHASE.test(String(err.command))) return { outcome: 'rejected', status: null, category: c.kind };
+  return { outcome: 'uncertain', status: null, category: c.kind };
+}
+
+/** Compose once; the SAME bytes are sent and filed in Sent. */
+async function _compose(message) {
+  const mod = require('nodemailer/lib/mail-composer');
+  const MailComposer = mod.default || mod;
+  return new MailComposer(message).compile().build();
+}
+
+/**
+ * Send one composed message from a personal mailbox. `message` is a nodemailer
+ * message object that MUST carry its own messageId. Returns
+ * { outcome, status, category, response, appended }.
+ */
+async function smtpSend(fromKey, message, deps) {
+  deps = _withDefaults(deps);
+  const cred = pm.credentialFor(fromKey);
+  if (!cred) return { outcome: 'rejected', status: null, category: 'auth', error: 'no password saved' };
+  if (!message || !message.messageId) return { outcome: 'rejected', status: null, category: 'other', error: 'no Message-ID' };
+  let raw;
+  try { raw = await _compose(message); } catch (e) { return { outcome: 'rejected', status: null, category: 'other', error: 'could not compose' }; }
+  const envelope = {
+    from: cred.address,
+    to: [...(message.to || []), ...(message.cc || [])].map((r) => (typeof r === 'string' ? r : r.address)).filter(Boolean),
+  };
+  let info;
+  try {
+    const t = deps.smtp(smtpConfig(fromKey, cred));
+    info = await t.sendMail({ envelope, raw });
+    if (typeof t.close === 'function') t.close();
+  } catch (e) {
+    return { ...classifySend(e), response: String((e && (e.response || e.message)) || '').slice(0, 160) };
+  }
+  const accepted = Array.isArray(info && info.accepted) && info.accepted.length > 0 && !(info.rejected && info.rejected.length);
+  const out = accepted
+    ? { outcome: 'accepted', status: 250, category: null, response: String((info && info.response) || '').slice(0, 160) }
+    : { outcome: 'rejected', status: null, category: 'other', response: String((info && info.response) || '').slice(0, 160) };
+  // Gmail files SMTP sends in Sent Mail itself; Fasthosts does not, so NEURO
+  // files the identical bytes. Best effort: a failed copy never fails the send.
+  out.appended = false;
+  if (accepted && pm.box(fromKey).provider !== 'gmail') {
+    try {
+      const c = await _openImap(fromKey, cred, deps);
+      try {
+        const list = await c.list().catch(() => []);
+        const sent = (list.find((m) => m.specialUse === '\\Sent') || {}).path || 'Sent';
+        await c.append(sent, raw, ['\\Seen']);
+        out.appended = true;
+      } finally { await _close(c); }
+    } catch { /* the send stands; the copy is missing and findInSent will say so */ }
+  }
+  return out;
+}
+
+/**
+ * Is a message with this Message-ID in the mailbox's Sent folder?
+ * { ok:true, messages, evidence } or { ok:false, category } — "could not look"
+ * is never an empty folder. Gmail files sends itself (provider evidence);
+ * on Fasthosts the copy is NEURO's own (appended-copy) and says so.
+ */
+async function findInSent(key, messageId, deps) {
+  deps = _withDefaults(deps);
+  const cred = pm.credentialFor(key);
+  if (!cred) return { ok: false, category: 'auth' };
+  const gmail = pm.box(key).provider === 'gmail';
+  try {
+    const c = await _openImap(key, cred, deps);
+    try {
+      const list = await c.list().catch(() => []);
+      const path = (list.find((m) => m.specialUse === '\\Sent') || {}).path || (gmail ? null : 'Sent');
+      if (!path) return { ok: false, category: 'other' };
+      const lock = await c.getMailboxLock(path);
+      try {
+        const id = String(messageId).replace(/^<|>$/g, '');
+        const uids = await c.search(gmail ? { gmraw: `rfc822msgid:${id}` } : { header: { 'message-id': id } }, { uid: true });
+        return { ok: true, messages: (uids || []).map(() => ({ internetMessageId: `<${id}>` })), evidence: gmail ? 'filed by Gmail in Sent Mail' : 'NEURO’s own copy in Sent (Fasthosts does not file SMTP sends itself)' };
+      } finally { lock.release(); }
+    } finally { await _close(c); }
+  } catch (e) {
+    return { ok: false, category: pm.classifyError(e).kind };
+  }
+}
+
+module.exports = { check, sendTest, importantFolder, smtpSend, findInSent, classifySend, readBack, findByMessageId, smtpConfig, imapConfig, defaultDeps, READBACK_ATTEMPTS, READBACK_GAP_MS };

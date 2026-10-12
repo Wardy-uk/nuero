@@ -3252,6 +3252,8 @@ CREATE TABLE IF NOT EXISTS hike_trips (
   alert_attempts     INTEGER NOT NULL DEFAULT 0,
   alert_error        TEXT,
   all_clear_status   TEXT CHECK (all_clear_status IN ('sent','confirmed','uncertain','failed')),
+  alert_mailbox      TEXT,                   -- 'work' (Graph) or a personal mailbox key (12 Oct 2026)
+  all_clear_mailbox  TEXT,
   checked_in_at      TEXT,
   checked_in_via     TEXT,
   cancelled_at       TEXT,
@@ -3307,4 +3309,21 @@ CREATE TABLE IF NOT EXISTS briefings (
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL,
   UNIQUE (kind, date_key)
+);
+
+-- Personal-mailbox outbox (12 Oct 2026). The SMTP "draft": a message composed
+-- and given its Message-ID BEFORE anything is sent, so every outcome after
+-- that (accepted, refused, timed out, process killed) can be checked against
+-- the mailbox's Sent folder. Graph sends do not use this table.
+CREATE TABLE IF NOT EXISTS smtp_outbox (
+  id              TEXT PRIMARY KEY,
+  mailbox         TEXT NOT NULL,
+  message_id      TEXT NOT NULL UNIQUE,
+  message_json    TEXT NOT NULL,           -- to/cc/subject/body/attachments/threading
+  state           TEXT NOT NULL CHECK (state IN ('draft','sending','sent','refused','deleted')),
+  server_response TEXT,
+  appended        INTEGER,                 -- 1 when NEURO filed the copy in Sent
+  created_at      TEXT NOT NULL,
+  sent_at         TEXT,
+  updated_at      TEXT NOT NULL
 );

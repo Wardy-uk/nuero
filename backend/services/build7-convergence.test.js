@@ -668,13 +668,23 @@ test('33. no send path exists outside the governed executor', () => {
   // The ONE stated exception (Nick, 10 Oct 2026): the hike-safety overdue alert
   // cannot wait for an approval — the approver is the person missing — so arming
   // the walk is the approval. It is on its own external-writes ledger entry.
-  assert.deepEqual(draftSend.sort(), ['services/action-executor.js', 'services/action-mail.js', 'services/hike-safety.js']);
+  // + smtp-mail.js (12 Oct 2026): the personal-mailbox transport, same draft →
+  // send interface as action-mail.js. Its only user is the hike alert (pinned below).
+  assert.deepEqual(draftSend.sort(), ['services/action-executor.js', 'services/action-mail.js', 'services/hike-safety.js', 'services/smtp-mail.js']);
   // SMTP (12 Oct 2026): the personal mailboxes are the first sender that is not
   // Graph. ONE file may load nodemailer, and its only send is a test to another
   // of Nick's own mailboxes (pinned in personal-mail.test.js). A second file
   // loading it is a new send path, and must be a decision, not a drift.
-  const smtp = files.filter((f) => /require\(['"]nodemailer['"]\)/.test(fs.readFileSync(path.join(root, f), 'utf8')));
+  const smtp = files.filter((f) => /require\(['"]nodemailer(\/[^'"]*)?['"]\)/.test(fs.readFileSync(path.join(root, f), 'utf8')));
   assert.deepEqual(smtp, ['services/personal-mail-transport.js']);
+  // Its real send, smtpSend, has ONE caller: smtp-mail.js, the ledgered adapter
+  // (Message-ID stored before the network). And that adapter has ONE user: the
+  // hike alert (Nick's 10 Oct exception). Wiring it into anything else — the
+  // governed executor included — is a decision that must change this line.
+  const smtpCallers = files.filter((f) => f !== 'services/personal-mail-transport.js' && /\.smtpSend\(/.test(fs.readFileSync(path.join(root, f), 'utf8')));
+  assert.deepEqual(smtpCallers, ['services/smtp-mail.js']);
+  const adapterUsers = files.filter((f) => f !== 'services/smtp-mail.js' && /require\(['"]\.\/smtp-mail['"]\)/.test(fs.readFileSync(path.join(root, f), 'utf8')));
+  assert.deepEqual(adapterUsers, ['services/hike-safety.js']);
   // The chase surfaces import no sender of any kind.
   for (const f of ['services/prepared-actions.js', 'routes/prepared-actions.js', 'services/waiting-on.js', 'routes/waiting-on.js', 'services/approval-proof.js']) {
     const src = fs.readFileSync(path.join(root, f), 'utf8');

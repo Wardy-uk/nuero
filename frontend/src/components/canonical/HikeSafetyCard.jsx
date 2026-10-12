@@ -128,6 +128,18 @@ function Contacts({ contacts, act, busy }) {
   );
 }
 
+// The address the alert goes from — the server's answer (mail-identity), never composed here.
+function SendsFrom({ s }) {
+  if (!s) return null;
+  return (
+    <div className="cn-small cn-muted" data-testid="hike-sends-from">
+      Alert sends from <strong>{s.from}</strong>{s.replyTo ? ` · replies to ${s.replyTo}` : ''}
+      {s.mailbox !== 'work' && s.fallback ? ` · if that fails, from ${s.fallback}` : ''}
+      {s.mailbox === 'work' && s.why ? ` — ${s.why}` : ''}
+    </div>
+  );
+}
+
 export function HikeSafetyView({ data, act = null, busy = false }) {
   const t = data.active;
   const [editing, setEditing] = useState(false);
@@ -148,7 +160,8 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
             {t.status === 'armed' && t.minutesToAlert > 0 && t.minutesToAlert < 600 ? ` · in ${t.minutesToAlert} min` : ''}
           </div>
           {(t.party || []).length > 0 && <div className="cn-small" data-testid="hike-party-line">Walking with {t.party.map((x) => (x.phone ? `${x.name} (${x.phone})` : x.name)).join(', ')}{t.ember ? ' and Ember' : ''}</div>}
-          {alertLine && <div className={`cn-small ${t.alert.status === 'sent' || t.alert.status === 'confirmed' ? '' : 'cn-error'}`}>{alertLine}{t.alert.error ? ` — ${t.alert.error}` : ''}</div>}
+          {alertLine && <div className={`cn-small ${t.alert.status === 'sent' || t.alert.status === 'confirmed' ? '' : 'cn-error'}`}>{alertLine}{t.alert.sentFrom ? ` (from ${t.alert.sentFrom})` : ''}{t.alert.error ? ` — ${t.alert.error}` : ''}</div>}
+          {!t.alert.sentFrom && <SendsFrom s={data.sendsFrom} />}
           {act && (
             <div className="hs-actions">
               <button type="button" className="cn-btn hs-checkin" disabled={busy} onClick={() => act(`/api/outdoor/safety/trips/${encodeURIComponent(t.tripId)}/checkin`, { via: 'NEURO' })}>I’m back — check in</button>
@@ -191,6 +204,7 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
         </div>
       )}
       <Fold title="Who gets the alert" meta={contacts.length ? contacts.map((c) => c.name).join(', ') : 'nobody yet'} open={!contacts.length}>
+        <SendsFrom s={data.sendsFrom} />
         <ul className="cn-list">{contacts.map((c) => <li key={c.email}><strong>{c.name}</strong> <span className="cn-muted">{c.email}</span></li>)}</ul>
         {act && <Contacts contacts={contacts} act={act} busy={busy} />}
       </Fold>

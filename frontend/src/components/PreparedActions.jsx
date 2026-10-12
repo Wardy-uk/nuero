@@ -219,6 +219,8 @@ export function PreparedCard({ action, busy, onApprove, onReject, onEdit, onSend
       <div className="ap-reason">{action.reason}</div>
 
       <dl className="ap-fields">
+        {/* Nick (12 Oct 2026): every email screen says which address it sends from — the server's answer, never composed here. */}
+        {action.sendsFrom && <div className="ap-field" data-testid="pa-sends-from"><dt>{calendar ? 'Invite from' : 'From'}</dt><dd className="mono">{action.sendsFrom.address}{action.sendsFrom.via ? <span className="pa-tz"> ({action.sendsFrom.via})</span> : null}</dd></div>}
         <div className="ap-field"><dt>{calendar ? 'Attendees' : 'To'}</dt><dd className="mono">{toAll.join(', ')}</dd></div>
         {calendar && (
           <>
