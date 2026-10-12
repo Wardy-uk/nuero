@@ -628,3 +628,29 @@ test('30. after a check-in the page says so — the last walk, when he checked i
   assert.match(html, />Plan a new walk</);
   assert.ok(!/hike-arm-form/.test(html));
 });
+
+test('31. a finished walk can be put back on the map — on Nick’s page only, until the trail is purged', async () => {
+  reset();
+  const f = fakes();
+  const id = await armed(f, { emberPlanned: true });
+  for (const [i, at] of ['2026-10-11T10:00', '2026-10-11T11:00', '2026-10-11T12:00'].entries()) {
+    db.setState('hike_safety_last_poll', '0');
+    f.states = [person,
+      trk('device_tracker.life360_nick', 54.556 + i * 0.002, -3.171, L(at), { speed: 4, last_seen: new Date(L(at)).toISOString() }),
+      trk('device_tracker.ember_tracker', 54.5561 + i * 0.002, -3.1711, L(at))];
+    await hike.tick({ now: L(at) + 60000, deps: f.deps });
+  }
+  await hike.checkIn(id, { via: 'NEURO', now: L('2026-10-11T15:12'), deps: f.deps });
+  const last = hike.read({ now: L('2026-10-12T09:00') }).recent[0];
+  assert.equal(last.trailPoints, 3); assert.equal(last.trailUntil, '2026-11-10');
+  const m = hike.walkMap(id, { now: L('2026-10-12T09:00') });
+  assert.equal(m.ok, true); assert.equal(m.points, 3);
+  assert.equal(m.firstFix, '2026-10-11T10:00'); assert.equal(m.lastFix, '2026-10-11T12:00'); assert.equal(m.checkedInAt, '2026-10-11T15:12');
+  assert.equal(m.trail.length, 3); assert.equal(m.emberTrail.length, 3); assert.ok(m.route.length >= 2);
+  assert.deepEqual(m.modes, { walking: 3 });
+  assert.deepEqual(hike.householdView({ now: L('2026-10-12T09:00') }), { active: false }, 'VESTA never sees a closed walk');
+  hike.purge({ now: L('2026-11-11T12:00') });
+  assert.deepEqual(hike.walkMap(id, { now: L('2026-11-11T12:00') }), { ok: true, tripId: id, name: 'Catbells loop', purged: true, purgedAt: '2026-11-11' });
+  assert.equal(hike.read({ now: L('2026-11-11T12:00') }).recent[0].trailPoints, 0);
+  assert.equal(hike.walkMap('hike:nope').status, 404);
+});

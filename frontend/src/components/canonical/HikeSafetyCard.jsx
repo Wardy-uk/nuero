@@ -19,6 +19,26 @@ function dayLabel(local) {
   return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}` : 'an unknown day';
 }
 
+const MODE_SHORT = { walking: 'walking pace', still: 'stopped', fast: 'faster than walking', driving: 'driving', unknown: 'speed unknown' };
+
+/** A finished walk on the map, fetched when asked for. Nick's page only. */
+function PastWalk({ tripId }) {
+  const { data, error } = useCanonical(`/api/outdoor/safety/trips/${encodeURIComponent(tripId)}/map`);
+  if (error && !data) return <div className="cn-error cn-small">Couldn’t read this walk’s map — {error}.</div>;
+  if (!data) return <div className="cn-muted cn-small">Reading the walk…</div>;
+  if (data.purged) return <div className="cn-muted cn-small">This walk’s trail was deleted on {dayLabel(data.purgedAt)} (30 days after it ended).</div>;
+  const modes = Object.entries(data.modes || {}).sort((a, b) => b[1] - a[1]).map(([m, n]) => `${n} ${MODE_SHORT[m] || m}`).join(' · ');
+  return (
+    <div className="hs-past" data-testid="hike-past-map">
+      <WalkMap route={data.route || []} trail={data.trail || []} emberTrail={data.emberTrail || []} positions={data.positions || []} />
+      <div className="cn-small cn-muted">
+        {data.points ? `${data.points} points from ${String(data.firstFix).slice(11)} to ${String(data.lastFix).slice(11)}` : 'No position reached NEURO on this walk'}
+        {modes ? ` · ${modes}` : ''}{data.checkedInAt ? ` · checked in ${String(data.checkedInAt).slice(11)}` : ''}
+      </div>
+    </div>
+  );
+}
+
 function localInput(d) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -111,6 +131,8 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
   const [editing, setEditing] = useState(false);
   const [planning, setPlanning] = useState(false);
   const last = (data.recent || [])[0] || null;
+  const [shown, setShown] = useState(null);
+  const toggle = (id) => setShown(shown === id ? null : id);
   const contacts = data.contacts || [];
   const alertLine = t && ALERT_WORDS[t.alert.status];
   return (
@@ -156,8 +178,10 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
               No walk armed. Last: <strong>{last.name}</strong> — {last.status === 'checked_in'
                 ? `you checked in at ${String(last.checkedInAt || '').slice(11, 16)} on ${dayLabel(last.checkedInAt)}${last.alert && last.alert !== 'none' ? ` (after the alert went at ${String(last.alertAt || '').slice(11, 16)})` : ', no alert sent'}.`
                 : `cancelled before it started.`}
+              {last.trailPoints > 0 && <> <button type="button" className="cn-btn cn-btn--tiny" onClick={() => toggle(last.tripId)}>{shown === last.tripId ? 'Hide map' : 'Show on map'}</button></>}
             </div>
           ) : <div className="cn-small cn-muted">No walk armed.</div>}
+          {last && shown === last.tripId && <PastWalk tripId={last.tripId} />}
           {!contacts.length && <div className="cn-error cn-small">Add who gets the alert before you can arm a walk.</div>}
           {act && contacts.length > 0 && (planning
             ? <WalkForm act={act} busy={busy} onDone={() => setPlanning(false)} />
@@ -170,7 +194,13 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
       </Fold>
       {(data.recent || []).length > 0 && (
         <Fold title="Recent walks" meta={`${data.recent.length}`}>
-          <ul className="cn-list">{data.recent.map((r) => <li key={r.tripId}><strong>{r.name}</strong> <span className="cn-muted">{r.start.replace('T', ' ')} · {r.status === 'checked_in' ? `checked in ${String(r.checkedInAt || '').slice(11, 16)}` : 'cancelled'}{r.alert !== 'none' ? ` · alert ${r.alert}` : ''}</span></li>)}</ul>
+          <ul className="cn-list">{data.recent.map((r) => (
+            <li key={r.tripId}>
+              <strong>{r.name}</strong> <span className="cn-muted">{r.start.replace('T', ' ')} · {r.status === 'checked_in' ? `checked in ${String(r.checkedInAt || '').slice(11, 16)}` : 'cancelled'}{r.alert !== 'none' ? ` · alert ${r.alert}` : ''}{r.trailPoints ? ` · trail kept until ${dayLabel(r.trailUntil)}` : ''}</span>
+              {r.trailPoints > 0 && <> <button type="button" className="cn-btn cn-btn--tiny" onClick={() => toggle(r.tripId)}>{shown === r.tripId ? 'Hide map' : 'Map'}</button></>}
+              {shown === r.tripId && (!last || last.tripId !== r.tripId || t) && <PastWalk tripId={r.tripId} />}
+            </li>
+          ))}</ul>
         </Fold>
       )}
       <HowItWorks>{data.rule} {data.limits}</HowItWorks>

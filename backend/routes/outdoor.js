@@ -73,6 +73,11 @@ router.get('/safety', (req, res) => {
   try { res.json(hike.read()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// GET /api/outdoor/safety/trips/:tripId/map — a walk on the map: route, trail, Ember's trail, last positions (past walks until the trail is purged).
+router.get('/safety/trips/:tripId/map', (req, res) => {
+  try { send(res, hike.walkMap(req.params.tripId)); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // POST /api/outdoor/safety/contacts — who gets the overdue alert email (hike safety contacts).
 router.post('/safety/contacts', (req, res) => {
   const { contacts } = req.body || {};

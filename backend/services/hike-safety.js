@@ -518,7 +518,15 @@ function read({ now = Date.now() } = {}) {
   return {
     ok: true, contract: 'hike-safety-v1',
     active: active ? view(_shape(active), { nowMs }) : null,
-    recent: recent.map((r) => ({ tripId: r.trip_id, name: r.name, status: r.status, start: model.msToLocal(_ms(r.planned_start)), checkedInAt: r.checked_in_at ? model.msToLocal(_ms(r.checked_in_at)) : null, alert: r.alert_status, alertAt: r.alert_at ? model.msToLocal(_ms(r.alert_at)) : null })),
+    recent: recent.map((r) => {
+      const points = r.trail_purged_at ? 0 : (db.get("SELECT COUNT(*) n FROM hike_breadcrumbs WHERE trip_id = ? AND role = 'nick'", [r.trip_id]) || {}).n || 0;
+      return {
+        tripId: r.trip_id, name: r.name, status: r.status, start: model.msToLocal(_ms(r.planned_start)),
+        checkedInAt: r.checked_in_at ? model.msToLocal(_ms(r.checked_in_at)) : null, alert: r.alert_status, alertAt: r.alert_at ? model.msToLocal(_ms(r.alert_at)) : null,
+        trailPoints: points, hasRoute: !!r.route_id,
+        trailUntil: r.trail_purged_at ? null : r.closed_at ? model.msToLocal(_ms(r.closed_at) + PURGE_AFTER_DAYS * 24 * 3600 * 1000).slice(0, 10) : null,
+      };
+    }),
     contacts: people.map((c) => ({ name: c.name, email: c.email })),
     defaults: { graceMinutes: model.DEFAULT_GRACE_MIN, graceRange: model.GRACE_RANGE, extendRange: model.EXTEND_RANGE },
     rule: `If you have not checked in by your finish time plus ${model.DEFAULT_GRACE_MIN} minutes, NEURO emails the route card and your last known positions to the people listed — no approval needed; arming the walk is the approval. Only a check-in closes a walk. The trail is kept only for an armed walk and deleted ${PURGE_AFTER_DAYS} days after it ends.`,
@@ -600,6 +608,32 @@ function householdView({ now = Date.now() } = {}) {
   };
 }
 
+/**
+ * A finished walk on the map — Nick's own page only (VESTA never sees a closed
+ * walk's coordinates). The route plan, his trail, Ember's, where each tracker
+ * was last seen, and when the trail went quiet. Until the trail is purged.
+ */
+function walkMap(tripId, { now = Date.now() } = {}) {
+  const nowMs = _now(now);
+  const r = _get(tripId);
+  if (!r) return { ok: false, status: 404, error: 'no such walk' };
+  const trip = _shape(r);
+  if (r.trail_purged_at) return { ok: true, tripId, name: trip.name, purged: true, purgedAt: model.msToLocal(_ms(r.trail_purged_at)).slice(0, 10) };
+  const map = _mapData(trip, nowMs);
+  const nick = _crumbs(tripId).filter((c) => c.role === 'nick');
+  const modes = {};
+  for (const c of nick) modes[c.mode] = (modes[c.mode] || 0) + 1;
+  return {
+    ok: true, tripId, name: trip.name, status: trip.status, purged: false,
+    start: model.msToLocal(trip.startMs), checkedInAt: trip.checkedInAt ? model.msToLocal(_ms(trip.checkedInAt)) : null,
+    firstFix: nick.length ? model.msToLocal(nick[0].observedMs) : null,
+    lastFix: nick.length ? model.msToLocal(nick[nick.length - 1].observedMs) : null,
+    points: nick.length, modes,
+    party: trip.party, ember: trip.ember,
+    ...map,
+  };
+}
+
 const TABLES = ['hike_trips', 'hike_breadcrumbs'];
 
-module.exports = { WRITER, CONTACTS_KEY, PUSH_TYPE, TABLES, contacts, setContacts, arm, edit, checkIn, extend, cancel, tick, purge, read, view, householdView };
+module.exports = { WRITER, CONTACTS_KEY, PUSH_TYPE, TABLES, contacts, setContacts, arm, edit, checkIn, extend, cancel, tick, purge, read, view, householdView, walkMap };

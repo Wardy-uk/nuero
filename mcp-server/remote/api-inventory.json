@@ -3766,6 +3766,24 @@
     "stream": false
   },
   {
+    "id": "get_outdoor_safety_trips_by_tripId_map",
+    "method": "GET",
+    "route": "/api/outdoor/safety/trips/:tripId/map",
+    "domain": "outdoor",
+    "source": "routes/outdoor.js",
+    "line": 77,
+    "description": "GET /api/outdoor/safety/trips/:tripId/map. a walk on the map: route, trail, Ember's trail, last positions (past walks until the trail is purged).",
+    "params": [
+      "tripId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_people",
     "method": "GET",
     "route": "/api/people",
@@ -9971,7 +9989,7 @@
     "route": "/api/outdoor/safety/contacts",
     "domain": "outdoor",
     "source": "routes/outdoor.js",
-    "line": 77,
+    "line": 82,
     "description": "POST /api/outdoor/safety/contacts. who gets the overdue alert email (hike safety contacts).",
     "params": [],
     "query": [],
@@ -9989,7 +10007,7 @@
     "route": "/api/outdoor/safety/trips",
     "domain": "outdoor",
     "source": "routes/outdoor.js",
-    "line": 83,
+    "line": 88,
     "description": "POST /api/outdoor/safety/trips. arm a walk: GPX + approx start/finish → route card; alert if no check-in.",
     "params": [],
     "query": [],
@@ -10016,7 +10034,7 @@
     "route": "/api/outdoor/safety/trips/:tripId/cancel",
     "domain": "outdoor",
     "source": "routes/outdoor.js",
-    "line": 108,
+    "line": 113,
     "description": "POST /api/outdoor/safety/trips/:tripId/cancel. cancel an armed hike before anyone is alerted.",
     "params": [
       "tripId"
@@ -10034,7 +10052,7 @@
     "route": "/api/outdoor/safety/trips/:tripId/checkin",
     "domain": "outdoor",
     "source": "routes/outdoor.js",
-    "line": 96,
+    "line": 101,
     "description": "POST /api/outdoor/safety/trips/:tripId/checkin. hike check-in: back safe; sends an all-clear if an alert went.",
     "params": [
       "tripId"
@@ -10054,7 +10072,7 @@
     "route": "/api/outdoor/safety/trips/:tripId/edit",
     "domain": "outdoor",
     "source": "routes/outdoor.js",
-    "line": 89,
+    "line": 94,
     "description": "POST /api/outdoor/safety/trips/:tripId/edit. edit an armed hike: name, times, grace, Ember, notes, who is walking (party), or a new GPX.",
     "params": [
       "tripId"
@@ -10082,7 +10100,7 @@
     "route": "/api/outdoor/safety/trips/:tripId/extend",
     "domain": "outdoor",
     "source": "routes/outdoor.js",
-    "line": 102,
+    "line": 107,
     "description": "POST /api/outdoor/safety/trips/:tripId/extend. hike running late: push the check-in time back.",
     "params": [
       "tripId"
