@@ -740,6 +740,12 @@ function read(vehicleId, { now = Date.now(), snapshot = undefined } = {}) {
   const today = localDay(now);
   const judged = judgeMileage(_readings(vehicleId));
   const current = currentMileage(judged);
+  // Approved journeys since the latest reading (vehicle-journeys.js). An
+  // ESTIMATE on top of the odometer, never a reading: dates due by mileage are
+  // judged against it and say so.
+  const journeys = require('./vehicle-journeys').forVehicle(vehicleId);
+  const est = journeys.estimate && journeys.estimate.basis === 'journeys' ? journeys.estimate : null;
+  const dueMileage = est ? { ...current, miles: est.miles } : current;
   const events = _events(vehicleId);
   const check = _latestCheck(vehicleId);
   const lastChecks = _db().all('SELECT * FROM vehicle_official_checks WHERE vehicle_id = ? ORDER BY checked_at DESC, id DESC LIMIT 5', [vehicleId]);
@@ -748,7 +754,8 @@ function read(vehicleId, { now = Date.now(), snapshot = undefined } = {}) {
     const due = effectiveDue(ob, events);
     const task = ob.linked_task_ref ? taskIndex.get(ob.linked_task_ref) || null : null;
     const reminder = ob.linked_reminder_ref ? taskIndex.get(ob.linked_reminder_ref) || null : null;
-    const st = obligationState(ob, { today, mileage: current, due, task: task || reminder });
+    const st = obligationState(ob, { today, mileage: dueMileage, due, task: task || reminder });
+    if (est && st.dueBy === 'mileage') st.why += ` (estimated: ${est.why})`;
     const conflict = officialConflict(ob, check);
     const actionDone = [task, reminder].filter((t) => t && t.state === 'completed');
     return {
@@ -797,7 +804,8 @@ function read(vehicleId, { now = Date.now(), snapshot = undefined } = {}) {
         ...(!v.fuel_type ? ['fuel type'] : []), ...(!v.vin ? ['VIN'] : []), ...(!v.ownership_start ? ['ownership start'] : []), ...(!current ? ['mileage'] : []),
       ],
     },
-    mileage: { current, readings: judged.slice().reverse(), needsReview: judged.filter((r) => r.state === 'needs-review').length },
+    mileage: { current, estimate: journeys.estimate, readings: judged.slice().reverse(), needsReview: judged.filter((r) => r.state === 'needs-review').length },
+    journeys,
     obligations,
     nextObligation: obligations.filter((o) => o.recordStatus === 'open' && o.dueDate).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] || null,
     history: events.map((e) => ({ id: e.event_id, type: e.type, date: e.event_date, mileage: e.mileage, description: e.description, costRef: e.cost_ref,
@@ -894,7 +902,7 @@ async function refresh({ now = Date.now() } = {}) {
   return out;
 }
 
-const TABLES = ['vehicles', 'vehicle_mileage', 'vehicle_events', 'vehicle_obligations', 'vehicle_official_checks', 'vehicle_fuel_fills'];
+const TABLES = ['vehicles', 'vehicle_mileage', 'vehicle_events', 'vehicle_obligations', 'vehicle_official_checks', 'vehicle_fuel_fills', 'vehicle_journeys'];
 
 module.exports = {
   OBLIGATION_TYPES, OBLIGATION_LABELS, EVENT_TYPES, TYRE_ACTIONS, OUTCOMES, MILEAGE_SOURCES, OFFICIAL_SOURCES, TABLES,

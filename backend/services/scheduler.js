@@ -1296,6 +1296,21 @@ function start() {
       why: 'An armed walk: breadcrumbs from Home Assistant, the check-in prompts, and the overdue alert email if Nick has not checked in by finish + grace.',
       run: async () => { const r = await require('./hike-safety').tick(); return { trips: r.trips, crumbs: r.crumbs, pushed: r.pushed, alerts: r.alerts.map((a) => a.outcome) }; },
     });
+    // 12 Oct 2026: car journeys from Life360 history, stored as PENDING for
+    // Nick to approve. Reads HA from a cursor, so a missed pass loses nothing
+    // while HA still holds the history (~10 days).
+    require('./runtime-jobs').defineJob({
+      name: 'vehicle-journeys',
+      cron: '*/15 * * * *',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 60 * 60 * 1000,
+      maxAttempts: 1,
+      timeoutMs: 2 * 60 * 1000,
+      lookbackMs: 24 * 3600 * 1000,
+      why: 'Detect finished car journeys in Home Assistant's Life360 history and hold them for Nick to approve before they count towards the mileage estimate.',
+      run: async () => { const r = await require('./vehicle-journeys').sync(); if (!r.ok) throw new Error(r.error); return { fixes: r.fixes, detected: r.detectedCount, skipped: r.skipped }; },
+    });
     // 12 Oct 2026: the personal inbox (nick@, contact@) and saim@'s bounce
     // watch. Here, not registerDurableJobs(), because it reaches Fasthosts.
     require('./runtime-jobs').defineJob({

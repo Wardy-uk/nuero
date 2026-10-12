@@ -8,9 +8,10 @@ import { useCanonical, postCanonical, HowItWorks, Fold } from './canonicalUi';
  * (Tally's figures, shown exactly as Tally gives them), and whether you need to
  * do anything. Which transactions are the car's is decided in Tally (Outlook →
  * Motoring) — this card never classifies spending. Unknown stays unknown and
- * says so; a figure that cannot be honestly worked out shows the reason. No map,
- * no route, no trip diary, and nothing here recommends keeping, selling or
- * buying a car.
+ * says so; a figure that cannot be honestly worked out shows the reason. No map
+ * or route, and nothing here recommends keeping, selling or buying a car.
+ * Journeys (12 Oct 2026) are detected from Life360 and wait for Nick: an
+ * approved one moves a mileage ESTIMATE, never the odometer reading.
  */
 
 const OB_TYPES = [['mot', 'MOT'], ['tax', 'Vehicle tax'], ['insurance', 'Insurance'], ['service', 'Service'], ['warranty', 'Warranty'], ['breakdown_cover', 'Breakdown cover']];
@@ -82,6 +83,7 @@ export function OneVehicle({ r, driving, tallyUrl, tasks = [], busy, act }) {
         <span className="cn-rowtitle">{name}</span>
         <span className="cn-muted">{[v.registration, v.plateDescriptor, v.variant, v.fuelType].filter(Boolean).join(' · ')}</span>
         <span className="cn-muted">{v.currentMileage != null ? `${v.currentMileage.toLocaleString()} mi (${v.mileageObservedAt})` : 'mileage not recorded'}</span>
+        {r.mileage.estimate && r.mileage.estimate.basis === 'journeys' && <span className="cn-chip cn-chip--soft" title={r.mileage.estimate.why}>≈ {r.mileage.estimate.miles.toLocaleString()} mi now</span>}
         {driving && <span className="cn-chip cn-chip--soft" title={`${driving.why}. ${driving.note}.`}>{DRIVE_WORDS[driving.state] || driving.state}</span>}
       </div>
 
@@ -124,6 +126,12 @@ export function OneVehicle({ r, driving, tallyUrl, tasks = [], busy, act }) {
       <Fold title="Mileage" meta={v.currentMileage != null ? `${v.currentMileage.toLocaleString()} mi on ${v.mileageObservedAt}` : 'not recorded'}>
         <Mileage r={r} base={base} busy={busy} act={act} />
       </Fold>
+
+      {r.journeys && (
+        <Fold title="Journeys" meta={journeysMeta(r.journeys)} open={r.journeys.pending.length > 0}>
+          <Journeys j={r.journeys} est={r.mileage.estimate} busy={busy} act={act} />
+        </Fold>
+      )}
 
       <Fold title="Fuel & MPG" meta={r.fuel.mpg.latest ? `${r.fuel.mpg.latest.mpg} mpg (${r.fuel.mpg.latest.quality})` : 'not enough data'}>
         <Fuel r={r} base={base} busy={busy} act={act} />
@@ -317,6 +325,55 @@ function Official({ r, base, busy, act }) {
         <input type="date" value={f.taxDueDate} onChange={(e) => setF({ ...f, taxDueDate: e.target.value })} aria-label="Tax due" />
         <button type="submit" className="cn-btn" disabled={busy || !Object.values(f).some(Boolean)}>Record</button>
       </form>
+    </>
+  );
+}
+
+const PLACE = (p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : null);
+const when = (ms) => new Date(ms).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const hhmm = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const route = (j) => [PLACE(j.start.place), PLACE(j.end.place)].some(Boolean) ? `${PLACE(j.start.place) || 'somewhere'} → ${PLACE(j.end.place) || 'somewhere'}` : null;
+
+function journeysMeta(j) {
+  const failed = j.lastSync && j.lastSync.ok === false ? 'last check couldn’t read Life360' : null;
+  const waiting = j.pending.length ? `${j.pending.length} to approve` : j.tracking ? 'nothing to approve' : 'starts on the next pass';
+  return [waiting, failed].filter(Boolean).join(' · ');
+}
+
+export function Journeys({ j, est, busy, act }) {
+  const [miles, setMiles] = useState({});
+  const go = (id, verb, body = {}) => act(() => postCanonical(`/api/vehicle/journeys/${encodeURIComponent(id)}/${verb}`, body));
+  const rec = j.reconciliation && j.reconciliation[0];
+  return (
+    <>
+      {j.lastSync && j.lastSync.ok === false && <div className="cn-error">The last pass couldn’t read Life360 ({j.lastSync.error}) — journeys since then aren’t missing, just not read yet.</div>}
+      {est && <div className="cn-small cn-muted">{est.basis === 'journeys' ? `Estimate ≈ ${est.miles.toLocaleString()} mi: ${est.why}.` : `Mileage is ${est.why}.`}{est.pendingCount ? ` ${est.pendingCount} journey${est.pendingCount === 1 ? '' : 's'} (${est.pendingMiles} mi) waiting for you — not counted until approved.` : ''}</div>}
+      {!j.pending.length && <div className="cn-muted">{j.tracking ? 'No journeys waiting.' : 'Tracking starts on its first pass (every 15 minutes), from your latest odometer reading.'}</div>}
+      {j.pending.length > 0 && (
+        <ul className="cn-list">
+          {j.pending.map((x) => (
+            <li key={x.id} className="cn-hike-form">
+              <span>{when(x.startedAt)}–{hhmm(x.endedAt)}{route(x) ? ` · ${route(x)}` : ''} · {x.measuredMiles} mi measured</span>
+              <span className="cn-muted cn-small">{x.movingMinutes} min moving · top {x.peakKmh} km/h{x.gapMinutes ? ` · ${x.gapMinutes} min with no fix (distance across it is a straight line)` : ''}</span>
+              <input className="cn-input--tiny" type="number" min="0.1" step="0.1" value={miles[x.id] ?? x.measuredMiles} onChange={(e) => setMiles({ ...miles, [x.id]: e.target.value })} aria-label="Miles to count" />
+              <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !(Number(miles[x.id] ?? x.measuredMiles) > 0)} onClick={() => go(x.id, 'approve', { miles: Number(miles[x.id] ?? x.measuredMiles) })}>Approve</button>
+              <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reject', { reason: 'not-the-car' })}>Not the car</button>
+              <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reject', { reason: 'not-a-journey' })}>Not a journey</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {rec && <div className="cn-small cn-muted">Between your readings on {rec.from} and {rec.to} the odometer went up {rec.odometerMiles} mi; approved journeys account for {rec.journeyMiles} mi{rec.coverage != null ? ` (${rec.coverage}%)` : ''}. The rest is driving that wasn’t detected, rejected, or someone else at the wheel.</div>}
+      {j.recent.length > 0 && (
+        <details className="cn-details"><summary>Decided ({j.recent.length})</summary>
+          <ul className="cn-act-lines">{j.recent.map((x) => (
+            <li key={x.id}>{when(x.startedAt)}{route(x) ? ` · ${route(x)}` : ''} — {x.status === 'approved' ? `${x.miles} mi${x.edited ? ` (measured ${x.measuredMiles})` : ''}` : x.rejectReason === 'not-the-car' ? 'not the car' : 'not a journey'}
+              {' '}<button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reopen')}>Undo</button></li>
+          ))}</ul>
+        </details>
+      )}
+      <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical('/api/vehicle/journeys/sync', {}))}>Check now</button>
+      <HowItWorks>Detected from Life360 in Home Assistant every 15 minutes. A journey counts for nothing until you approve it, and then only towards an estimate on top of your last odometer reading — it is never written as a reading. Your next real reading shows how far the estimate had drifted.</HowItWorks>
     </>
   );
 }

@@ -2943,6 +2943,33 @@ CREATE TABLE IF NOT EXISTS vehicle_fuel_fills (
   withdrawn_at   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_vehicle_fuel_fills ON vehicle_fuel_fills(vehicle_id, filled_on);
+-- Car journeys detected from Life360 (12 Oct 2026). A detected journey is a
+-- PROPOSAL: it counts for nothing until Nick approves it, and an approved one
+-- is never an odometer reading — it feeds a running estimate on top of the
+-- latest reading (services/vehicle-journeys.js).
+CREATE TABLE IF NOT EXISTS vehicle_journeys (
+  journey_id      TEXT PRIMARY KEY,             -- vj:<source>:<startedAt ms>
+  vehicle_id      TEXT,                         -- NULL until it can be said which car
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  reject_reason   TEXT CHECK (reject_reason IS NULL OR reject_reason IN ('not-the-car','not-a-journey')),
+  source          TEXT NOT NULL,
+  started_at      INTEGER NOT NULL,
+  ended_at        INTEGER NOT NULL,
+  start_lat REAL, start_lon REAL, end_lat REAL, end_lon REAL,
+  start_place     TEXT,                         -- the HA zone it began in, NULL = not in a zone
+  end_place       TEXT,
+  measured_miles  REAL NOT NULL,                -- what the fixes measured
+  miles           REAL,                         -- what counts, once approved (Nick may edit)
+  moving_minutes  INTEGER,
+  peak_kmh        REAL,
+  fix_count       INTEGER,
+  gap_minutes     INTEGER,                      -- time inside the journey with no fix
+  note            TEXT,
+  detected_at     TEXT NOT NULL,
+  decided_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_vehicle_journeys_time ON vehicle_journeys(source, started_at);
+CREATE INDEX IF NOT EXISTS idx_vehicle_journeys_status ON vehicle_journeys(status, started_at);
 -- (Build 21's tally_vehicle_txns, vehicle_spend_decisions, vehicle_spend_rules
 -- and vehicle_monthly_summaries were dropped in Build 27: which transactions are
 -- the car's, and every figure about them, live in Tally now.)

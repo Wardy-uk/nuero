@@ -247,6 +247,12 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/vehicle/:id/official-check', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/:id/official-by-hand', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/obligations/:obligationId', 'internal.state', { machine: 'refuse' }),
+  // 12 Oct 2026: car journeys. Approving one is Nick saying it was the car — a
+  // machine that could approve would be writing his mileage estimate for him.
+  R('POST', '/api/vehicle/journeys/sync', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/journeys/:journeyId/approve', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/journeys/:journeyId/reject', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/journeys/:journeyId/reopen', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/obligations/:obligationId/resolve', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/finance/sync', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/finance/transactions/:txnId/decide', 'internal.state', { machine: 'refuse' }),

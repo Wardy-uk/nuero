@@ -53,6 +53,54 @@ router.post('/finance/transactions/:txnId/decide', (req, res) => send(res, moved
 // POST /api/vehicle/finance/rules/:ruleId/retire — retired in Build 27: rules live in Tally.
 router.post('/finance/rules/:ruleId/retire', (req, res) => send(res, moved('A vehicle-spend rule')));
 
+const jr = () => require('../services/vehicle-journeys');
+
+// GET /api/vehicle/journeys — car journeys detected from Life360. Query: status (pending|approved|rejected|all, default pending), limit. Keywords: journey, trip, drive, mileage, approve.
+router.get('/journeys', (req, res) => {
+  try {
+    const status = String(req.query.status || 'pending');
+    if (!['pending', 'approved', 'rejected', 'all'].includes(status)) return res.status(400).json({ ok: false, error: 'status must be pending, approved, rejected or all' });
+    res.json({ ok: true, status, journeys: jr().list({ status, limit: req.query.limit }) });
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/vehicle/journeys/sync — read Home Assistant's Life360 history now and store finished journeys as pending. Body: dryRun (stores nothing), fromDays (look back, dry run only). Keywords: journey detect.
+router.post('/journeys/sync', async (req, res) => {
+  try {
+    const { dryRun, fromDays } = req.body;
+    if (fromDays !== undefined && !dryRun) return res.status(400).json({ ok: false, error: 'fromDays is for a dry run only — the live pass reads from its cursor' });
+    let from = null;
+    if (fromDays !== undefined) {
+      const d = Number(fromDays);
+      if (!Number.isFinite(d) || d <= 0 || d > 9) return res.status(400).json({ ok: false, error: 'fromDays must be between 1 and 9 (Home Assistant keeps about ten days)' });
+      from = Date.now() - d * 86400000;
+    }
+    const out = await jr().sync({ dryRun: !!dryRun, from });
+    res.status(out.ok ? 200 : 502).json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/vehicle/journeys/:journeyId/approve — Nick says this journey was the car. Body: miles (optional correction), vehicleId (when more than one), note. Counts in the mileage estimate, never as an odometer reading.
+router.post('/journeys/:journeyId/approve', (req, res) => {
+  try {
+    const { miles, vehicleId, note } = req.body;
+    send(res, jr().approve(req.params.journeyId, { miles, vehicleId: vehicleId ? idOf(vehicleId) : undefined, note }));
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/vehicle/journeys/:journeyId/reject — not the car, or not a journey. Body: reason (not-the-car|not-a-journey). Kept, counts for nothing.
+router.post('/journeys/:journeyId/reject', (req, res) => {
+  try {
+    const { reason } = req.body;
+    send(res, jr().reject(req.params.journeyId, { reason }));
+  } catch (e) { fail(res, e); }
+});
+
+// POST /api/vehicle/journeys/:journeyId/reopen — undo an approval or rejection; the journey is pending again.
+router.post('/journeys/:journeyId/reopen', (req, res) => {
+  try { send(res, jr().reopen(req.params.journeyId)); } catch (e) { fail(res, e); }
+});
+
 // POST /api/vehicle/obligations/:obligationId — edit an open vehicle obligation's due date, due mileage or linked task/reminder. Body: dueDate, dueMileage, linkedTaskRef, linkedReminderRef.
 router.post('/obligations/:obligationId', (req, res) => {
   try {

@@ -358,7 +358,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 888,
+    "line": 899,
     "description": "DELETE /api/todos/moscow. remove MoSCoW rating for a task",
     "params": [],
     "query": [],
@@ -378,7 +378,7 @@
     "route": "/api/todos/ms-queue/:msId",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 495,
+    "line": 506,
     "description": "DELETE /api/todos/ms-queue/:msId.",
     "params": [
       "msId"
@@ -5382,7 +5382,7 @@
     "route": "/api/todos",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 61,
+    "line": 64,
     "description": "GET /api/todos. reads tasks from Obsidian vault + 90-day plan",
     "params": [],
     "query": [
@@ -5400,7 +5400,7 @@
     "route": "/api/todos/focus",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 243,
+    "line": 253,
     "description": "GET /api/todos/focus. smart prioritised shortlist for drill-downs",
     "params": [],
     "query": [
@@ -5420,7 +5420,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 837,
+    "line": 848,
     "description": "GET /api/todos/moscow. MoSCoW ratings, keyed by task id for the tasks NEURO owns",
     "params": [],
     "query": [],
@@ -5436,7 +5436,7 @@
     "route": "/api/todos/moscow/review",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 902,
+    "line": 913,
     "description": "GET /api/todos/moscow/review. untriaged tasks for the swipe review.",
     "params": [],
     "query": [],
@@ -5452,7 +5452,7 @@
     "route": "/api/todos/ms/:msId",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 672,
+    "line": 683,
     "description": "GET /api/todos/ms/:msId.",
     "params": [
       "msId"
@@ -5473,7 +5473,7 @@
     "route": "/api/todos/ms-queue",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 474,
+    "line": 485,
     "description": "GET /api/todos/ms-queue.",
     "params": [],
     "query": [],
@@ -5933,7 +5933,7 @@
     "route": "/api/vehicle/:id",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 77,
+    "line": 125,
     "description": "GET /api/vehicle/:id. one vehicle: obligations, mileage, history, official checks, running costs, health evidence.",
     "params": [
       "id"
@@ -5971,6 +5971,25 @@
     "description": "GET /api/vehicle/finance/rules/preview. retired in Build 27: vehicle-spend rules live in Tally.",
     "params": [],
     "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_vehicle_journeys",
+    "method": "GET",
+    "route": "/api/vehicle/journeys",
+    "domain": "vehicle",
+    "source": "routes/vehicle.js",
+    "line": 59,
+    "description": "GET /api/vehicle/journeys. car journeys detected from Life360. Query: status (pending|approved|rejected|all, default pending), limit. Keywords: journey, trip, drive, mileage, approve.",
+    "params": [],
+    "query": [
+      "limit",
+      "status"
+    ],
     "body": [],
     "queryOpen": false,
     "bodyOpen": false,
@@ -6409,7 +6428,7 @@
     "route": "/api/todos/ms/:msId",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 720,
+    "line": 731,
     "description": "PATCH /api/todos/ms/:msId.",
     "params": [
       "msId"
@@ -6435,7 +6454,7 @@
     "route": "/api/todos/ms/:msId/local",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 639,
+    "line": 650,
     "description": "PATCH /api/todos/ms/:msId/local.",
     "params": [
       "msId"
@@ -12727,7 +12746,7 @@
     "route": "/api/todos/complete-ms",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 797,
+    "line": 808,
     "description": "POST /api/todos/complete-ms. complete a Microsoft To-Do/Planner task and",
     "params": [],
     "query": [],
@@ -12747,7 +12766,7 @@
     "route": "/api/todos/lane/defer",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 554,
+    "line": 565,
     "description": "POST /api/todos/lane/defer.",
     "params": [],
     "query": [],
@@ -12767,7 +12786,7 @@
     "route": "/api/todos/lane/undefer",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 604,
+    "line": 615,
     "description": "POST /api/todos/lane/undefer.",
     "params": [],
     "query": [],
@@ -12785,7 +12804,7 @@
     "route": "/api/todos/moscow",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 866,
+    "line": 877,
     "description": "POST /api/todos/moscow.",
     "params": [],
     "query": [],
@@ -12804,7 +12823,7 @@
     "route": "/api/todos/ms-queue/drain",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 482,
+    "line": 493,
     "description": "POST /api/todos/ms-queue/drain.",
     "params": [],
     "query": [],
@@ -12820,7 +12839,7 @@
     "route": "/api/todos/suggestions/:actionId/fields",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 961,
+    "line": 972,
     "description": "POST /api/todos/suggestions/:actionId/fields. set the moscow, priority and",
     "params": [
       "actionId"
@@ -12842,7 +12861,7 @@
     "route": "/api/todos/toggle",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 365,
+    "line": 376,
     "description": "POST /api/todos/toggle. toggle a task's done status in the vault",
     "params": [],
     "query": [],
@@ -12861,7 +12880,7 @@
     "route": "/api/todos/wip-ms",
     "domain": "todos",
     "source": "routes/todos.js",
-    "line": 394,
+    "line": 405,
     "description": "POST /api/todos/wip-ms.",
     "params": [],
     "query": [],
@@ -13264,7 +13283,7 @@
     "route": "/api/vehicle/:id",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 85,
+    "line": 133,
     "description": "POST /api/vehicle/:id. Nick fills in what he knows about a vehicle. Body: plateDescriptor, registration, variant, fuelType, ownershipState, vin, firstRegistered, ownershipStart.",
     "params": [
       "id"
@@ -13291,7 +13310,7 @@
     "route": "/api/vehicle/:id/events",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 110,
+    "line": 158,
     "description": "POST /api/vehicle/:id/events. Nick records a service, repair, tyre or other maintenance event. Body: type, date, mileage, description, costRef (tally:<id>; amounts live in Tally), action, axle, position, brand, model, count, outcome.",
     "params": [
       "id"
@@ -13323,7 +13342,7 @@
     "route": "/api/vehicle/:id/events/:eventId/withdraw",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 119,
+    "line": 167,
     "description": "POST /api/vehicle/:id/events/:eventId/withdraw. take back a history entry recorded in error.",
     "params": [
       "id",
@@ -13342,7 +13361,7 @@
     "route": "/api/vehicle/:id/fuel",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 124,
+    "line": 172,
     "description": "POST /api/vehicle/:id/fuel. Nick records a fuel fill for MPG. Body: filledOn, litres, odometer, odometerUnit (mi|km), fullTank, note. Never an amount — that is Tally's.",
     "params": [
       "id"
@@ -13369,7 +13388,7 @@
     "route": "/api/vehicle/:id/fuel/:fillId/withdraw",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 133,
+    "line": 181,
     "description": "POST /api/vehicle/:id/fuel/:fillId/withdraw. take back a fuel fill recorded in error.",
     "params": [
       "id",
@@ -13388,7 +13407,7 @@
     "route": "/api/vehicle/:id/mileage",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 96,
+    "line": 144,
     "description": "POST /api/vehicle/:id/mileage. Nick records an odometer reading. Body: value, unit (mi|km), observedOn, source, confidence, correction, note. Implausible readings are kept and flagged.",
     "params": [
       "id"
@@ -13415,7 +13434,7 @@
     "route": "/api/vehicle/:id/mileage/:readingId/withdraw",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 105,
+    "line": 153,
     "description": "POST /api/vehicle/:id/mileage/:readingId/withdraw. take back an odometer reading entered in error.",
     "params": [
       "id",
@@ -13434,7 +13453,7 @@
     "route": "/api/vehicle/:id/obligations",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 138,
+    "line": 186,
     "description": "POST /api/vehicle/:id/obligations. Nick records an MOT, insurance, service, warranty, breakdown cover or tax date. Body: type, dueDate, dueMileage, intervalMonths, intervalMiles, intervalBasis, linkedTaskRef, linkedReminderRef, note.",
     "params": [
       "id"
@@ -13463,7 +13482,7 @@
     "route": "/api/vehicle/:id/official-by-hand",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 152,
+    "line": 200,
     "description": "POST /api/vehicle/:id/official-by-hand. Nick records what gov.uk showed (Check MOT history / Check if a vehicle is taxed). Body: motStatus, motExpiryDate, taxStatus, taxDueDate.",
     "params": [
       "id"
@@ -13486,7 +13505,7 @@
     "route": "/api/vehicle/:id/official-check",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 147,
+    "line": 195,
     "description": "POST /api/vehicle/:id/official-check. ask DVLA (Vehicle Enquiry Service) for MOT and tax status. Needs DVLA_VES_API_KEY and the registration; records 'unavailable' otherwise.",
     "params": [
       "id"
@@ -13551,12 +13570,91 @@
     "stream": false
   },
   {
+    "id": "post_vehicle_journeys_by_journeyId_approve",
+    "method": "POST",
+    "route": "/api/vehicle/journeys/:journeyId/approve",
+    "domain": "vehicle",
+    "source": "routes/vehicle.js",
+    "line": 84,
+    "description": "POST /api/vehicle/journeys/:journeyId/approve. Nick says this journey was the car. Body: miles (optional correction), vehicleId (when more than one), note. Counts in the mileage estimate, never as an odometer reading.",
+    "params": [
+      "journeyId"
+    ],
+    "query": [],
+    "body": [
+      "miles",
+      "note",
+      "vehicleId"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_vehicle_journeys_by_journeyId_reject",
+    "method": "POST",
+    "route": "/api/vehicle/journeys/:journeyId/reject",
+    "domain": "vehicle",
+    "source": "routes/vehicle.js",
+    "line": 92,
+    "description": "POST /api/vehicle/journeys/:journeyId/reject. not the car, or not a journey. Body: reason (not-the-car|not-a-journey). Kept, counts for nothing.",
+    "params": [
+      "journeyId"
+    ],
+    "query": [],
+    "body": [
+      "reason"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_vehicle_journeys_by_journeyId_reopen",
+    "method": "POST",
+    "route": "/api/vehicle/journeys/:journeyId/reopen",
+    "domain": "vehicle",
+    "source": "routes/vehicle.js",
+    "line": 100,
+    "description": "POST /api/vehicle/journeys/:journeyId/reopen. undo an approval or rejection; the journey is pending again.",
+    "params": [
+      "journeyId"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_vehicle_journeys_sync",
+    "method": "POST",
+    "route": "/api/vehicle/journeys/sync",
+    "domain": "vehicle",
+    "source": "routes/vehicle.js",
+    "line": 68,
+    "description": "POST /api/vehicle/journeys/sync. read Home Assistant's Life360 history now and store finished journeys as pending. Body: dryRun (stores nothing), fromDays (look back, dry run only). Keywords: journey detect.",
+    "params": [],
+    "query": [],
+    "body": [
+      "dryRun",
+      "fromDays"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_vehicle_obligations_by_obligationId",
     "method": "POST",
     "route": "/api/vehicle/obligations/:obligationId",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 57,
+    "line": 105,
     "description": "POST /api/vehicle/obligations/:obligationId. edit an open vehicle obligation's due date, due mileage or linked task/reminder. Body: dueDate, dueMileage, linkedTaskRef, linkedReminderRef.",
     "params": [
       "obligationId"
@@ -13579,7 +13677,7 @@
     "route": "/api/vehicle/obligations/:obligationId/resolve",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 68,
+    "line": 116,
     "description": "POST /api/vehicle/obligations/:obligationId/resolve. Nick says an MOT/insurance/service/tax is actually done (evidence required — a ticked task is not evidence). Body: outcome, evidence, completedOn, nextDueDate, nextDueMileage.",
     "params": [
       "obligationId"
