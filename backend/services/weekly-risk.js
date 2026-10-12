@@ -66,6 +66,14 @@ const COMPLIANCE_TARGET = 95;
 const AMBER_BAND = 20;
 /** A reason-code vocabulary is broken past this share of `unknown`. */
 const UNKNOWN_REASON_ESCALATE_SHARE = 0.5;
+// The only escalation_type raised through a screen that asks for a reason.
+const REASON_FORM_TYPE = 'manual';
+const ESCALATION_TYPE_LABEL = {
+  jira_transition: 'tier moves synced from Jira',
+  ai_agent: 'AI routings',
+  sla_risk: 'SLA-risk flags',
+  complaint_portal: 'complaint-portal intakes',
+};
 /** Consecutive weeks below target before a slide is an escalation, not a blip. */
 const SLIDE_WEEKS = 3;
 /** Snapshot older than this many days is reported as stale, not as fact. */
@@ -919,26 +927,42 @@ function assess(snap) {
   }
 
   // Escalation reason-code capture.
+  //
+  // Judged on escalations raised through the Escalate FORM ONLY — the one path
+  // that asks for a reason. NOVA's escalation log also records every upward
+  // tier move synced from Jira (`jira_transition`) and every AI routing
+  // (`ai_agent`), and neither has a reason field to fill. Counting them made
+  // the first live line read "857 of 858 escalations logged as unknown
+  // (99.9%)" over a month with ONE form escalation, which was coded: a
+  // reporting defect manufactured by the denominator, in a document Chris reads.
+  // Without a per-type breakdown nothing is judged — the old denominator is
+  // exactly the bug.
   let reasons = null;
   const stats = snap?.escalationStats;
-  if (stats && Array.isArray(stats.by_reason)) {
-    const total = stats.by_reason.reduce((s, r) => s + (num(r.count) || 0), 0);
-    const unknown = stats.by_reason
-      .filter(r => !r.reason_code || String(r.reason_code).toLowerCase() === 'unknown')
+  if (stats && Array.isArray(stats.by_reason) && Array.isArray(stats.by_type)) {
+    const typeCount = t => stats.by_type
+      .filter(r => String(r.escalation_type || '').toLowerCase() === t)
       .reduce((s, r) => s + (num(r.count) || 0), 0);
+    const total = typeCount(REASON_FORM_TYPE);
+    const coded = stats.by_reason.filter(r => r.reason_code && String(r.reason_code).toLowerCase() !== 'unknown');
+    const codedCount = Math.min(total, coded.reduce((s, r) => s + (num(r.count) || 0), 0));
+    const unknown = total - codedCount;
     const share = total ? unknown / total : 0;
     reasons = {
       total,
       unknown,
       share: total ? Math.round(share * 1000) / 10 : null,
-      coded: stats.by_reason.filter(r => r.reason_code && String(r.reason_code).toLowerCase() !== 'unknown'),
+      coded,
+      excluded: stats.by_type
+        .filter(r => String(r.escalation_type || '').toLowerCase() !== REASON_FORM_TYPE && (num(r.count) || 0) > 0)
+        .map(r => ({ type: r.escalation_type, count: num(r.count) })),
     };
     if (total > 0 && share > UNKNOWN_REASON_ESCALATE_SHARE) {
       findings.push({
         severity: 'escalate',
         kind: 'reason-capture-broken',
-        title: `Escalation reason capture is not working — ${unknown} of ${total} logged as \`unknown\``,
-        detail: `${reasons.share}% of escalations in the last 30 days carry no reason code. Escalation reporting cannot be meaningful until coding is fixed.`,
+        title: `Escalation reason capture is not working — ${unknown} of ${total} form escalations have no reason code`,
+        detail: `${reasons.share}% of escalations raised through the Escalate form in the last 30 days carry no reason code.`,
       });
     }
   }
@@ -1640,8 +1664,6 @@ function render(a) {
 
   lines.push('## 1. Week-on-week trend');
   lines.push('');
-  lines.push('_Added at Chris\'s request, 12 Aug 2026 — a single week cannot distinguish "bad" from "getting worse"._');
-  lines.push('');
   lines.push(complianceTable(a.trend, a.csat, a.reportWeek));
   lines.push('');
 
@@ -1671,7 +1693,15 @@ function render(a) {
   lines.push('## 4. Overtime');
   lines.push('');
   const ot = a.overtime;
-  if (ot?.available) {
+  // What Nick typed WINS when the log holds nothing for the cycle: an empty
+  // log rendered "0 overtime hours across 0 claims" over 2.75 hours he had
+  // entered, contradicting him in a document he signs. The log is the better
+  // evidence only when it actually holds claims.
+  const logHasClaims = ot?.available && (ot.totalClaims || 0) > 0;
+  if (manual.overtime.hours !== null && !logHasClaims) {
+    lines.push(`**${manual.overtime.hours} overtime hours** this cycle. Approvals outstanding against the five-step checklist: **${manual.overtime.approvalsOutstanding ?? 0}**.`);
+    if (manual.overtime.note) { lines.push(''); lines.push(manual.overtime.note); }
+  } else if (ot?.available) {
     // Measured, not typed. Every figure here is a consequence of approvals
     // actually recorded against the Section 8 checklist, which is what makes it
     // audit evidence rather than a self-report.
@@ -1688,8 +1718,6 @@ function render(a) {
     }
     lines.push('');
     lines.push('_From the overtime approval log. Each approval records all five Section 8 checks; the log refuses to mark a claim approved while any check is unanswered._');
-  } else if (manual.overtime.hours !== null) {
-    lines.push(`**${manual.overtime.hours} overtime hours** logged this cycle (entered manually). Approvals outstanding against the five-step checklist: **${manual.overtime.approvalsOutstanding ?? 0}**.`);
     if (manual.overtime.note) { lines.push(''); lines.push(manual.overtime.note); }
   } else {
     lines.push('> ⚠️ **NOT ENTERED.** No overtime source available and nothing typed — this must be stated, not assumed. An empty section here would read as nil.');
@@ -1699,7 +1727,12 @@ function render(a) {
   lines.push('## 5. Reporting exceptions / data quality');
   lines.push('');
   if (a.reasons) {
-    lines.push(`- **Escalation reason capture:** ${a.reasons.unknown} of ${a.reasons.total} escalations in 30 days logged as \`unknown\` (**${a.reasons.share}%**).${a.reasons.coded.length ? ` Correctly coded: ${a.reasons.coded.map(c => `\`${c.reason_code}\` ${c.count}`).join(', ')}.` : ''}`);
+    const r = a.reasons;
+    const head = r.total
+      ? `${r.total} escalation${r.total === 1 ? '' : 's'} raised through the Escalate form in 30 days; ${r.total - r.unknown} with a reason code${r.coded.length ? ` (${r.coded.map(c => `\`${c.reason_code}\` ${c.count}`).join(', ')})` : ''}${r.unknown ? `, **${r.unknown} without (${r.share}%)**` : ''}.`
+      : 'No escalations raised through the Escalate form in 30 days.';
+    const excl = (r.excluded || []).map(e => `${e.count} ${ESCALATION_TYPE_LABEL[e.type] || e.type}`);
+    lines.push(`- **Escalation reason capture:** ${head}${excl.length ? ` Not counted: ${excl.join(', ')} — ticket movement with no reason field to fill.` : ''}`);
   }
   if (warn.length) {
     lines.push(bullet(warn, f => `- **${f.title}** — ${f.detail}`));

@@ -165,31 +165,51 @@ test('a compliance KPI below target for 3+ consecutive weeks is an escalation', 
 
 // ── Anomaly rules ────────────────────────────────────────────────────────────
 
-test('a broken reason-code vocabulary escalates on share, not on raw count', () => {
+test('form escalations without a reason escalate on share', () => {
   const snap = baseSnapshot({
     escalationStats: {
-      by_reason: [
-        { reason_code: 'unknown', count: 1285 },
-        { reason_code: 'nova_stranded', count: 52 },
-      ],
+      by_type: [{ escalation_type: 'manual', count: 10 }],
+      by_reason: [{ reason_code: 'unknown', count: 8 }, { reason_code: 'reputational', count: 2 }],
     },
   });
   const a = weeklyRisk.assess(snap);
   const f = a.findings.find(x => x.kind === 'reason-capture-broken');
   assert.ok(f);
   assert.equal(f.severity, 'escalate');
-  assert.equal(a.reasons.unknown, 1285);
-  assert.equal(a.reasons.total, 1337);
-  assert.equal(a.reasons.share, 96.1);
+  assert.equal(a.reasons.unknown, 8);
+  assert.equal(a.reasons.total, 10);
+  assert.equal(a.reasons.share, 80);
 });
 
-test('a mostly-coded vocabulary does not escalate', () => {
+test('tier moves and AI routings are not counted as uncoded escalations', () => {
+  // The live 12 Oct 2026 payload: 610 Jira tier moves + 248 AI routings + ONE
+  // form escalation, which was coded. The old denominator read 99.9% unknown.
   const snap = baseSnapshot({
-    escalationStats: { by_reason: [{ reason_code: 'unknown', count: 10 }, { reason_code: 'nova_stranded', count: 90 }] },
+    escalationStats: {
+      by_type: [
+        { escalation_type: 'jira_transition', count: 610 },
+        { escalation_type: 'ai_agent', count: 248 },
+        { escalation_type: 'manual', count: 1 },
+      ],
+      by_reason: [{ reason_code: 'unknown', count: 858 }, { reason_code: 'reputational', count: 1 }],
+    },
   });
   const a = weeklyRisk.assess(snap);
   assert.equal(a.findings.find(x => x.kind === 'reason-capture-broken'), undefined);
-  assert.equal(a.reasons.share, 10);
+  assert.equal(a.reasons.total, 1);
+  assert.equal(a.reasons.unknown, 0);
+  const md = weeklyRisk.render(a);
+  assert.doesNotMatch(md, /858|99\.9%/);
+  assert.match(md, /1 escalation raised through the Escalate form/);
+  assert.match(md, /Not counted: 610 tier moves synced from Jira, 248 AI routings/);
+});
+
+test('no per-type breakdown means reason capture is not judged at all', () => {
+  const a = weeklyRisk.assess(baseSnapshot({
+    escalationStats: { by_reason: [{ reason_code: 'unknown', count: 1285 }] },
+  }));
+  assert.equal(a.reasons, null);
+  assert.equal(a.findings.find(x => x.kind === 'reason-capture-broken'), undefined);
 });
 
 test('a stale KPI snapshot escalates rather than being reported as today', () => {
@@ -523,6 +543,27 @@ test('a nil-overtime week renders the claim, not the warning', () => {
   assert.match(md, /\*\*0 overtime hours\*\*/);
   assert.doesNotMatch(md, /NOT ENTERED/);
   assert.match(md, /Nothing to escalate this week/);
+});
+
+test('typed overtime beats an empty overtime log', () => {
+  // Live 12 Oct 2026: 2.75 hours entered, the report said "0 across 0 claims".
+  const manual = weeklyRisk.emptyManual();
+  manual.overtime.hours = 2.75;
+  manual.overtime.approvalsOutstanding = 0;
+  manual.overtime.note = '1 agent solving 10 tickets';
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({
+    manual,
+    overtime: { available: true, hours: 0, totalClaims: 0, approved: 0, pending: 0, declined: 0,
+      approvedWithoutFullChecklist: 0, checklistOutstanding: 0, overLimit: [] },
+  })));
+  assert.match(md, /\*\*2\.75 overtime hours\*\*/);
+  assert.match(md, /1 agent solving 10 tickets/);
+  assert.doesNotMatch(md, /across \*\*0\*\* claims/);
+});
+
+test('the trend section carries no request-attribution line', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot()));
+  assert.doesNotMatch(md, /Chris's request/);
 });
 
 // ── The send gate ────────────────────────────────────────────────────────────
