@@ -153,3 +153,13 @@ test('⚠ the local date key never uses toISOString', () => {
   assert.ok(!/toISOString/.test(body), 'todayKey must build from local getters');
   assert.match(body, /getFullYear\(\)/);
 });
+
+test('personal and household filters: positive values only, one widening group', () => {
+  assert.equal(mod.FILTER_PREDICATES.personal({ domain: 'personal' }), true);
+  assert.equal(mod.FILTER_PREDICATES.personal({ domain: null }), false, 'unset is the work default, not personal');
+  assert.equal(mod.FILTER_PREDICATES.personal({ domain: 'work' }), false);
+  assert.equal(mod.FILTER_PREDICATES.household({ household: 1 }), true);
+  assert.equal(mod.FILTER_PREDICATES.household({ household: 0 }), false);
+  assert.equal(mod.FILTER_PREDICATES.household({}), false);
+  assert.equal(mod.FILTER_GROUPS.personal, mod.FILTER_GROUPS.household, 'picking both should widen, not narrow');
+});

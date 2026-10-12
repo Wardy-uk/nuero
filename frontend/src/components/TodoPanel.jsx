@@ -85,7 +85,7 @@ function isMineOverdue(todo) {
  * commitment and continual improvement), so letting them stack would offer
  * combinations that are always empty.
  */
-const FILTER_GROUPS = {
+export const FILTER_GROUPS = {
   mustdo: 'lane',
   overdue: 'date',
   today: 'date',
@@ -98,6 +98,9 @@ const FILTER_GROUPS = {
   vault: 'source',
   ms: 'source',
   unestimated: 'size',
+  // One group, so picking both WIDENS: "my own life" is personal OR shared.
+  personal: 'home',
+  household: 'home',
 };
 
 /**
@@ -143,6 +146,10 @@ export const FILTER_PREDICATES = {
   // A NEURO task with no estimate (so no size). Only NEURO rows can carry one;
   // a Microsoft or vault line is not "unestimated", it cannot be estimated here.
   unestimated: t => Boolean(t.task_id) && t.estimateMinutes == null,
+  // Positively personal. An unset domain is the 'work' default, never personal.
+  personal: t => t.domain === 'personal',
+  // On the shared VESTA list (needs /api/todos to carry `household`).
+  household: t => t.household === 1 || t.household === true,
 };
 
 /** The sub-category a row falls under, within a selected source group. */
@@ -2820,6 +2827,8 @@ export default function TodoPanel({ focusContext, onClearContext }) {
           { key: 'vault', label: `Vault Todos (${countFor('vault')})` },
           { key: 'ms', label: `MS Tasks (${countFor('ms')})` },
           { key: 'unestimated', label: `Not estimated (${countFor('unestimated')})` },
+          { key: 'personal', label: `Personal (${countFor('personal')})` },
+          { key: 'household', label: `Shared with household (${countFor('household')})` },
         ].map(f => (
           <button
             key={f.key}
