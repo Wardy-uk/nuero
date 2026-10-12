@@ -560,10 +560,12 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
   // definition, then each row's stored daily values for that week.
   const tracker = novaReady
     ? await pull('kpi-tracker', async () => {
-      const t = await nova.call('/api/neuro-bridge/kpi-tracker?days=1');
+      // 90s: /kpi-tracker also builds NOVA's live Jira snapshot, which is slow
+      // cold — at the 15s default the whole headline went missing.
+      const t = await nova.call('/api/neuro-bridge/kpi-tracker?days=1', { timeoutMs: FLOW_TIMEOUT_MS });
       const rows = (t?.data || t)?.rows || [];
       const keys = rows.filter(r => r.kpiKey && !r.extra).map(r => r.kpiKey);
-      const s = await nova.call(`/api/neuro-bridge/kpi-org-series?days=7&to=${addDays(reportWeek, 6)}&keys=${keys.join(',')}`);
+      const s = await nova.call(`/api/neuro-bridge/kpi-org-series?days=7&to=${addDays(reportWeek, 6)}&keys=${keys.join(',')}`, { timeoutMs: FLOW_TIMEOUT_MS });
       return { rows, series: s?.data || s };
     })
     : { name: 'kpi-tracker', ok: false, error: 'NOVA bridge not configured', data: null };
