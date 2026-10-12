@@ -8,6 +8,13 @@
 ## Waiting on the Mac
 - Build both iOS apps (nuero-ios up to 8282d0a): hike section (party, edit, idle state), GPS track sending. After install, open NEURO on the phone → Health re-sends past hikes/walks with tracks → Saturday's walk (hike:6aeef77b…) draws the real 14,562-point track.
 
+## PROGRESS — step 1 DEPLOYED (12 Oct 2026, ac2fb28, worktree nuero-mail, branch mail-identity)
+- Settings → Personal email (`PersonalMailCard`): 5 mailboxes, password in agent_state `personal_mail_credentials` (never returned), Check connection (IMAP + SMTP login, Gmail Important folder found?), self-only Send test → read back over IMAP for the receiver's Authentication-Results + folder. Routes `/api/mail/{accounts,tests,accounts/:key/{credential,check,test-send}}`, config.security, gateway interactive. `services/personal-mail.js` (registry/pure) + `personal-mail-transport.js` (ONLY file allowed nodemailer — build7 test 33).
+- ⚠ HOSTS VERIFIED from pi5: Fasthosts IMAP is **mail.livemail.co.uk:993** (imap.livemail.co.uk resolves but times out — the brief below was wrong); SMTP smtp.livemail.co.uk 465/587; Gmail imap/smtp.gmail.com.
+- Nick's rule (12 Oct): every screen dealing with an email shows the address it sends from — `personal-mail.senderFor()` is the one answer; Settings renders it. Carry it onto every compose/approve/reply surface in step 2.
+- WAITING ON NICK: enter passwords, send tests from saim@ and nick@, confirm DKIM d=nickward.co.uk + DMARC pass. THEN: mail-identity + routing sends; Gmail Important intake. ASK before personal inbox: AI sorting or just a list? CONFIRM neuro@ capture before building it.
+- Live-verified: accounts lists 5 with correct hosts/From; 409 without password; API token refused (A4); 401 unauthenticated; bundle has the card. Gate 6162/1 (known JC Ring date bomb).
+
 ## NEXT BUILD — personal email identity + personal inbox (Nick, 12 Oct 2026)
 **Asks:** (1) EVERYTHING NEURO sends can go from work OR personal, "depending on who sees it"; (2) an inbox in NEURO for the personal mailboxes (contact@ and a new saim@nickward.co.uk — Nick, 12 Oct: SAiM is the one that comes to him, so mail from NEURO goes out as SAiM), SEPARATE from the work inbox.
 **Facts:** mail host = Fasthosts (livemail). SMTP `smtp.livemail.co.uk` (465 SSL / 587 STARTTLS), IMAP `imap.livemail.co.uk` 993 — confirm against Fasthosts docs. Fasthosts DKIM-signs (verify in the first test email's headers: dkim=pass d=nickward.co.uk). Work = Graph (nickw@nurtur.tech).
