@@ -138,8 +138,11 @@ function weeklyPush(w) {
   const lines = [];
   const csat = (w.csatRows || []).find((r) => r.key === 'csat-score');
   if (csat) lines.push(`CSAT ${csat.now}${csat.delta && csat.delta !== '—' ? ` (${csat.delta})` : ''}`);
-  const headline = (w.sla || []).filter((r) => /Open Queue|Resolved Today/.test(r.kpi) && r.measured);
-  if (headline.length) lines.push(headline.map((r) => `${r.kpi.replace(/ Compliance.*$/, '')} ${_pct(r.now)}`).join(' · '));
+  // The whole-desk rows: a compliance KPI with no queue in brackets ("FRT
+  // compliance %"). Matched by the ABSENCE of a queue, never by a queue name —
+  // NOVA renamed these once already and a name match went silent.
+  const headline = (w.sla || []).filter((r) => r.measured && !/\([^)]+\)\s*$/.test(r.kpi));
+  if (headline.length) lines.push(headline.map((r) => `${r.kpi.replace(/\s*compliance.*$/i, '')} ${_pct(r.now)}`).join(' · '));
   const v = Object.fromEntries((w.volumes || []).map((r) => [r.name, r]));
   if (v.raised && v.closed && (v.raised.now != null || v.closed.now != null)) {
     lines.push(`${v.raised.now ?? '?'} raised · ${v.closed.now ?? '?'} closed`);

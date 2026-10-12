@@ -248,6 +248,9 @@ function radar(now, today, gaps) {
     const out = [];
     for (const it of r.items || []) {
       if (!it || !it.id || !it.title) continue;
+      // A NEURO task is the tasks gatherer's to report; the Radar carrying it
+      // too put the same task on the briefing twice (found live, 12 Oct).
+      if (/^(radar:)?task:neuro:/.test(String(it.id))) continue;
       const sphere = it.sphere === 'work' ? 'work' : 'personal';
       const isToday = it.date === today;
       const important = /critical|important/.test(String(it.importance || ''));
