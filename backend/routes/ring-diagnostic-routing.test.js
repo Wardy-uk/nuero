@@ -100,7 +100,11 @@ test('an oversized or malformed protocol probe is refused', async () => {
   assert.equal(result.capture.probes.length, 2, 'the useful capture remains intact');
 });
 
-test('an explicit backfill converts the saved capture into separate JC Ring readings', async () => {
+// The upload itself decodes and stores the readings (persistJCRingReadings runs
+// on POST). The backfill re-reads the same saved capture, so against the
+// UNIQUE(metric, recorded_at_local, sample_index) key it must store NOTHING new:
+// a backfill that double-counted would inflate every ring history it touched.
+test('an upload stores its readings, and an explicit backfill of the same capture adds no duplicates', async () => {
   const receipt = await post({
     ...capture,
     packets: [{
@@ -109,13 +113,14 @@ test('an explicit backfill converts the saved capture into separate JC Ring read
     }],
   });
   assert.equal(receipt.status, 200);
+  assert.equal((await receipt.json()).readingsStored, 3, 'the upload decodes and stores HRV + both BP estimates');
 
   const backfill = await fetch(`${base}/api/health/ring-readings/backfill`, { method: 'POST' });
   assert.equal(backfill.status, 200);
   assert.deepEqual(await backfill.json(), {
     ok: true,
     packetsRead: 1,
-    readingsStored: 3,
+    readingsStored: 0,
     receivedAt: (await (await fetch(`${base}/api/health/ring-diagnostic`)).json()).capture.receivedAt,
   });
 
@@ -124,4 +129,10 @@ test('an explicit backfill converts the saved capture into separate JC Ring read
   assert.equal(readings.latest.hrv.value, 49);
   assert.equal(readings.latest.vendor_bp_systolic_estimate.value, 112);
   assert.equal(readings.latest.vendor_bp_diastolic_estimate.value, 62);
+
+  // Positive control: the case backfill exists for (readings absent after an
+  // upgrade) still converts — so the 0 above is idempotency, not a dead route.
+  db.run('DELETE FROM jc_ring_samples', []);
+  const again = await (await fetch(`${base}/api/health/ring-readings/backfill`, { method: 'POST' })).json();
+  assert.equal(again.readingsStored, 3);
 });

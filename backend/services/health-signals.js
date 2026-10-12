@@ -227,6 +227,28 @@ function assess({ days = [], metrics = [], now = new Date() } = {}) {
  * threshold would either shout about the weight or never notice the heart.
  */
 function sensorsQuiet(metrics = [], now = new Date()) {
+  // ⚠ A RENAMED METRIC IS NOT A STOPPED ONE (12 Oct 2026). When the phone's
+  // health client changed (FreeReps → NeuroKit, ~10 Sep 2026) the sleep stages
+  // started arriving as `sleep_core_hours` instead of `sleep_asleep_core_hours`,
+  // and the whole-night block as `sleep_unspecified_hours`. The old names went
+  // quiet and this reported four "stopped arriving" warnings over sleep data
+  // that never stopped. So a metric is judged by WHAT IT MEASURES: if another
+  // metric carrying the same measurement is still arriving and is newer, it was
+  // a rename. Sleep's aliases come from apple-health.sleepStage, the one place
+  // that already canonicalises them — never a second list here.
+  const measures = (m) => {
+    const stage = require('./apple-health').sleepStage(m);
+    return stage ? `sleep:${stage}` : m;
+  };
+  const freshest = new Map();
+  for (const row of metrics) {
+    if (!row || !row.metric || !row.last_at) continue;
+    const ms = Date.parse(`${String(row.last_at).replace(' ', 'T')}Z`);
+    if (!Number.isFinite(ms)) continue;
+    const key = measures(row.metric);
+    if (!freshest.has(key) || ms > freshest.get(key).ms) freshest.set(key, { ms, metric: row.metric });
+  }
+
   const entries = [];
   for (const row of metrics) {
     if (!row || !row.metric || !row.last_at || !row.first_at) continue;
@@ -242,6 +264,12 @@ function sensorsQuiet(metrics = [], now = new Date()) {
     const typicalGapDays = spanDays / row.samples;
     const silentDays = (now.getTime() - lastMs) / 86400000;
     if (silentDays < Math.max(QUIET_FLOOR_DAYS, typicalGapDays * QUIET_RATIO)) continue;
+
+    // Its successor must be genuinely arriving (inside the floor), not merely
+    // newer — two names that both stopped are still a stopped measurement.
+    const successor = freshest.get(measures(row.metric));
+    if (successor && successor.metric !== row.metric && successor.ms > lastMs
+      && (now.getTime() - successor.ms) / 86400000 < QUIET_FLOOR_DAYS) continue;
 
     entries.push({
       metric: row.metric,

@@ -260,3 +260,34 @@ test('no acknowledgements changes nothing at all', () => {
   assert.deepEqual(out.acknowledged, []);
   assert.deepEqual(out.stale, []);
 });
+
+// ── A renamed metric is not a stopped one (12 Oct 2026) ─────────────────────
+// The live case: the phone's health client changed ~10 Sep 2026 and sleep began
+// arriving under new names. The old names went quiet; the sleep did not.
+const RENAME_NOW = new Date('2026-10-12T10:00:00Z');
+
+test('an old sleep name whose successor is still arriving is not quiet', () => {
+  const quiet = signals.sensorsQuiet([
+    { metric: 'sleep_asleep_unspecified_hours', samples: 539, first_at: '2024-08-24 06:33:04', last_at: '2026-09-26 21:00:00' },
+    { metric: 'sleep_unspecified_hours', samples: 76, first_at: '2026-08-16 02:50:00', last_at: '2026-10-11 21:40:00' },
+    { metric: 'sleep_asleep_core_hours', samples: 8853, first_at: '2024-08-16 23:43:19', last_at: '2026-09-10 06:06:50' },
+    { metric: 'sleep_core_hours', samples: 404, first_at: '2026-09-10 21:30:41', last_at: '2026-10-12 06:01:44' },
+  ], RENAME_NOW);
+  assert.deepEqual(quiet, []);
+});
+
+test('if both names have stopped, the measurement stopped and is still reported', () => {
+  const quiet = signals.sensorsQuiet([
+    { metric: 'sleep_asleep_unspecified_hours', samples: 539, first_at: '2024-08-24 06:33:04', last_at: '2026-08-01 21:00:00' },
+    { metric: 'sleep_unspecified_hours', samples: 76, first_at: '2026-05-16 02:50:00', last_at: '2026-08-20 21:40:00' },
+  ], RENAME_NOW);
+  assert.ok(quiet.some((q) => q.evidence.some((e) => e.metric === 'sleep_asleep_unspecified_hours')));
+});
+
+test('a different measurement arriving never excuses a stopped one', () => {
+  const quiet = signals.sensorsQuiet([
+    { metric: 'sleep_asleep_deep_hours', samples: 2417, first_at: '2024-08-17 00:22:19', last_at: '2026-09-10 01:20:04' },
+    { metric: 'sleep_core_hours', samples: 404, first_at: '2026-09-10 21:30:41', last_at: '2026-10-12 06:01:44' },
+  ], RENAME_NOW);
+  assert.equal(quiet.length, 1, 'core arriving says nothing about deep');
+});
