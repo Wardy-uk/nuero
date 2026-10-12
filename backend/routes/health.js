@@ -542,6 +542,17 @@ router.get('/history', (req, res) => {
   }
 });
 
+// GET /api/health/picture — My Health: every source (Watch, HiLo via Apple
+// Health, JC Ring, medical records, exertion) composed into ranked, actionable
+// insights. Pull-only; an unreadable source is named, never an all-clear.
+router.get('/picture', (req, res) => {
+  try {
+    res.json(require('../services/health-picture').read());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/health/readiness — how much this body has to give today, and why.
 router.get('/readiness', (req, res) => {
   try {

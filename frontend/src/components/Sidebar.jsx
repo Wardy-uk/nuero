@@ -27,7 +27,11 @@ const GROUPS = [
     { id: 'life',       label: 'Life',       icon: '◍' },
     // Tasks span every domain (work | personal), so they sit under Life.
     { id: 'todos',      label: 'Tasks',      icon: '☑' },
-    { id: 'health',     label: 'My Health',  icon: '♥' },
+    // My Health is the whole picture across every source; Apple Health is the
+    // deep view over the Watch + HiLo data (its view id stays 'health' so deep
+    // links keep working).
+    { id: 'my-health',  label: 'My Health',    icon: '♥' },
+    { id: 'health',     label: 'Apple Health', icon: '♡' },
     { id: 'jc-ring',    label: 'JC Ring',    icon: '◌' },
     { id: 'medical',    label: 'Medical',    icon: '✚' },
     { id: 'hike-safety', label: 'Hike safety', icon: '⛰' },

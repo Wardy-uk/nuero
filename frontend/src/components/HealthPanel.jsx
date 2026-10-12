@@ -4,7 +4,8 @@ import './HealthPanel.css';
 import PerformanceSection from './PerformanceSection';
 
 /**
- * My Health — the deep view over two years of Apple Health.
+ * Apple Health — the deep view over two years of Apple Health (Watch + HiLo).
+ * The whole picture across every source is MyHealthPanel.
  *
  * WHY A PAGE AND NOT A BIGGER CARD. `HealthCard` answers "how am I today" in a
  * sidebar glance and that is all it should do. Everything worth knowing here is
@@ -698,7 +699,7 @@ export default function HealthPanel() {
   return (
     <div className="hp">
       <div className="hp-head">
-        <h2 className="hp-h2">My Health</h2>
+        <h2 className="hp-h2">Apple Health</h2>
         <div className="hp-controls">
           {/* A hairline between the sample-backed windows and the rollup-backed
               ones. They are different statistics, and grouping them says so
