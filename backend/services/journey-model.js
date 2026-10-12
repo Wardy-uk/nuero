@@ -147,6 +147,9 @@ function segment(fixes = [], { readEndMs = null } = {}) {
       fixCount: e - s + 1,
       gapMinutes: Math.round(gapMs / 60000),
       open: end - fixes[run.last].t < STOP_GAP_MS,
+      // Already moving at the first fix read: the window cut this drive, so
+      // its start is not here. An earlier pass saw it whole and decided.
+      truncated: run.first === 0,
     };
   });
 }

@@ -185,6 +185,20 @@ test('sync: tracking starts at the latest reading; a finished drive after it is 
   assert.equal(J.list({ status: 'all' }).length, 2);
 });
 
+test('a drive the read window cut in half is never stored as a new journey (live, 12 Oct 2026)', async () => {
+  const whole = drive(localNoon(2) + 3 * 3600000, { lat0: 53.6, minutes: 30 });
+  const cut = whole.slice(25); // starts mid-drive: no parked fix before the moving ones
+  const segs = M.segment(M.fixesFromHistory(cut), { readEndMs: NOW });
+  assert.equal(segs.length, 1);
+  assert.equal(segs[0].truncated, true);
+  assert.equal(M.segment(M.fixesFromHistory(whole), { readEndMs: NOW })[0].truncated, false, 'positive control');
+  const before = J.list({ status: 'all' }).length;
+  const r = await J.sync({ now: NOW, fetchImpl: fakeFetch(cut), from: localNoon(2) + 3 * 3600000 });
+  assert.equal(r.skipped.truncated, 1);
+  assert.equal(r.detectedCount, 0);
+  assert.equal(J.list({ status: 'all' }).length, before);
+});
+
 test('Home Assistant unreadable is a FAILED pass, never "no journeys"', async () => {
   const r = await J.sync({ now: NOW, fetchImpl: async () => ({ ok: false, status: 500 }) });
   assert.equal(r.ok, false);

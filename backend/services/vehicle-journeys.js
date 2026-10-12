@@ -115,9 +115,15 @@ async function sync({ now = Date.now(), fetchImpl, dryRun = false, from = null }
   const fixes = model.fixesFromHistory(rows);
   const segs = model.segment(fixes, { readEndMs: now });
   const vehicleId = _onlyCurrentVehicle();
-  const out = { ok: true, at: now, from: fromMs, fixes: fixes.length, detected: [], skipped: { open: 0, existing: 0, beforeTracking: 0, tooShort: 0, tooSlow: 0 }, notes, dryRun };
+  const out = { ok: true, at: now, from: fromMs, fixes: fixes.length, detected: [], skipped: { open: 0, truncated: 0, existing: 0, beforeTracking: 0, tooShort: 0, tooSlow: 0 }, notes, dryRun };
   let openStart = null;
   for (const s of segs) {
+    // A drive the read window cut in half was seen whole by an earlier pass
+    // (the cursor never passes a journey still going), which stored it or
+    // decided not to. Re-reading its tail as a new journey invented one live
+    // on 12 Oct 2026: the commute's last 4.5 mi, after the 15-minute job had
+    // rightly skipped the whole commute as before tracking.
+    if (s.truncated && !s.open) { out.skipped.truncated++; continue; }
     if (s.open) { out.skipped.open++; openStart = openStart == null ? s.startedAt : Math.min(openStart, s.startedAt); continue; }
     const why = model.rejectReason(s);
     if (why) { out.skipped[why === 'too-short' ? 'tooShort' : 'tooSlow']++; continue; }
