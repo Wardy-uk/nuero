@@ -67,22 +67,20 @@ function importantFolder(list) {
 
 /**
  * UIDs of messages in the OPEN folder whose Message-ID is `id` (no brackets).
- * ⚠ Fasthosts' IMAP answers a HEADER Message-ID search with NOTHING even when
- *   the message is there (measured live 12 Oct 2026: the message in Sent, its
- *   envelope carrying exactly that Message-ID, both search forms → []). So off
- *   Gmail, NEURO lists the recent messages and compares envelopes itself.
- *   Gmail's own rfc822msgid search works and is used there.
+ * ⚠ Fasthosts' IMAP SEARCH answers [] to EVERYTHING — Message-ID header, SINCE,
+ *   SUBJECT, even ALL — while FETCH reads the same folder fine (measured live
+ *   12 Oct 2026 on saim@'s Sent: 1 message, every search → []). So off Gmail
+ *   NEURO never searches: it FETCHes the newest SCAN_MAX messages by sequence
+ *   and compares envelope Message-IDs itself. Gmail's rfc822msgid works.
  */
-const SCAN_DAYS = 7;
 const SCAN_MAX = 300;
-async function _uidsForMessageId(c, id, { gmail = false, now = Date.now() } = {}) {
+async function _uidsForMessageId(c, id, { gmail = false } = {}) {
   if (gmail) return (await c.search({ gmraw: `rfc822msgid:${id}` }, { uid: true })) || [];
-  const recent = (await c.search({ since: new Date(now - SCAN_DAYS * 86400000) }, { uid: true })) || [];
-  const tail = recent.slice(-SCAN_MAX);
-  if (!tail.length) return [];
+  const exists = c.mailbox && Number(c.mailbox.exists);
+  if (!exists) return [];
   const want = `<${id}>`.toLowerCase();
   const hits = [];
-  for await (const msg of c.fetch(tail.join(','), { envelope: true }, { uid: true })) {
+  for await (const msg of c.fetch(`${Math.max(1, exists - SCAN_MAX + 1)}:*`, { envelope: true, uid: true })) {
     const mid = msg && msg.envelope && msg.envelope.messageId ? String(msg.envelope.messageId).toLowerCase() : '';
     if (mid === want || mid === want.slice(1, -1)) hits.push(msg.uid);
   }
