@@ -158,8 +158,20 @@ function pointValue(point) {
   return null;
 }
 
+// Nutrition MASSES are stored in GRAMS — measured on the live store, 12 Oct 2026:
+// two years of MyFitnessPal history arrived via HAE in grams (sodium 0.3 per
+// meal, caffeine 0.046), while the native app sends sodium in mg and vitamins in
+// mcg. Unnormalised, one series would jump 1000x the day the source changed and
+// nothing would error. Energy (kcal) and water (L) are not masses.
+const DIETARY_NON_MASS = new Set(['dietary_energy_consumed', 'dietary_water']);
+const MASS_TO_GRAMS = { g: 1, mg: 0.001, mcg: 1e-6, 'µg': 1e-6, 'μg': 1e-6, ug: 1e-6, kg: 1000 };
+
+function isDietaryMass(metric) {
+  return /^dietary_/.test(metric) && !DIETARY_NON_MASS.has(metric);
+}
+
 function convertUnits(metric, value, units) {
-  const rule = UNIT_RULES[metric];
+  const rule = UNIT_RULES[metric] || (isDietaryMass(metric) ? MASS_TO_GRAMS : null);
   if (!rule) return { ok: true, value };
   const u = String(units || '').trim().toLowerCase();
   const factor = rule[u];

@@ -49,6 +49,18 @@ test('the native app\'s short nutrition names land on the dietary_* names reader
   assert.equal(ah.metricName('dietary_water'), 'dietary_water');
 });
 
+test('nutrient masses are stored in grams whatever unit arrives', () => {
+  const g = (metric, v, u) => ah.convertUnits(metric, v, u);
+  assert.deepEqual(g('dietary_sodium', 1200, 'mg'), { ok: true, value: 1.2 });
+  assert.ok(Math.abs(g('dietary_vitamin_d', 10, 'mcg').value - 0.00001) < 1e-12);
+  assert.deepEqual(g('dietary_protein', 30, 'g'), { ok: true, value: 30 });
+  // An unknown unit is refused, never stored at an unknown scale.
+  assert.equal(g('dietary_iron', 5, 'iu').ok, false);
+  // Calories and water are not masses and pass through untouched.
+  assert.deepEqual(g('dietary_energy_consumed', 500, 'kcal'), { ok: true, value: 500 });
+  assert.deepEqual(g('dietary_water', 0.5, 'L'), { ok: true, value: 0.5 });
+});
+
 test('every other metric keeps its HAE name verbatim — no allowlist', () => {
   // Nick asked for everything the app offers. An allowlist would have to be
   // maintained forever and is wrong the moment Apple adds a type.
@@ -76,9 +88,9 @@ test('HRV units are enforced, because a silent rescale would not error anywhere'
   assert.deepEqual(ah.convertUnits('hrv', 45, 'ms'), { ok: true, value: 45 });
   assert.deepEqual(ah.convertUnits('hrv', 0.045, 's'), { ok: true, value: 45 });
   assert.equal(ah.convertUnits('hrv', 45, 'furlongs').ok, false);
-  // Metrics nothing interprets pass through unchecked — we do not pretend to
-  // know what the right unit for dietary_molybdenum is.
-  assert.deepEqual(ah.convertUnits('dietary_molybdenum', 12, 'mcg'), { ok: true, value: 12 });
+  // Metrics nothing interprets pass through unchecked. (Nutrient masses are the
+  // exception since 12 Oct 2026 — normalised to grams, tested above.)
+  assert.deepEqual(ah.convertUnits('environmental_audio_exposure', 62, 'dBASPL'), { ok: true, value: 62 });
 });
 
 test('a realistic payload parses, and a bad point is rejected rather than dropped', () => {

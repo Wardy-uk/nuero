@@ -553,6 +553,22 @@ router.get('/picture', (req, res) => {
   }
 });
 
+// GET /api/health/nutrition?days=14 — food from MyFitnessPal (via Apple Health):
+// daily totals, averages over fully logged days, and UK reference values.
+// Keywords: nutrition, diet, food, calories, macros, protein, salt, myfitnesspal.
+// days is 7, 14, 30 or 90; anything else is refused, never clamped.
+router.get('/nutrition', (req, res) => {
+  const days = req.query.days === undefined ? 14 : Number(req.query.days);
+  if (![7, 14, 30, 90].includes(days)) {
+    return res.status(400).json({ error: 'days must be 7, 14, 30 or 90' });
+  }
+  try {
+    res.json(require('../services/nutrition').read({ days }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/health/readiness — how much this body has to give today, and why.
 router.get('/readiness', (req, res) => {
   try {

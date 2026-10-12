@@ -45,7 +45,7 @@ const HILO_STALE_HOURS = 48;
 
 const ANTIHYPERTENSIVES = /amlodipine|ramipril|lisinopril|perindopril|losartan|candesartan|irbesartan|indapamide|bendroflumethiazide|bisoprolol|doxazosin/i;
 
-const DOMAIN_ORDER = ['bp', 'recovery', 'weight', 'fitness', 'activity', 'oxygen', 'heart', 'sleep', 'daylight', 'medical', 'sources'];
+const DOMAIN_ORDER = ['bp', 'recovery', 'weight', 'nutrition', 'fitness', 'activity', 'oxygen', 'heart', 'sleep', 'daylight', 'medical', 'sources'];
 
 function round(n, dp = 1) {
   if (!Number.isFinite(n)) return null;
@@ -449,6 +449,89 @@ function daylight({ days, today }) {
   };
 }
 
+// Nutrition (MyFitnessPal via Apple Health). Judged only on the nutrients a food
+// log measures reliably — salt, saturated fat, sugars, fibre. Vitamins and
+// minerals are floors (MFP writes 0 for missing data) and are never judged here.
+const NUTRITION_MIN_DAYS = 4;
+
+function nutrition({ nutrition: n, bpHigh }) {
+  const system = { id: 'nutrition', label: 'Nutrition', sources: ['MyFitnessPal (via Apple Health)'], view: 'health' };
+  if (!n || !n.known) return { system: { ...system, status: 'unknown', value: null, sub: 'Could not read nutrition' }, insight: null };
+  const s = n.summary || {};
+  const by = Object.fromEntries((n.nutrients || []).map((x) => [x.metric, x]));
+  if (s.fullDays < NUTRITION_MIN_DAYS) {
+    const anyLogging = s.fullDays + s.partialDays > 0 || s.todayKcal != null;
+    const plural = (k) => (k === 1 ? '' : 's');
+    const sub = anyLogging
+      ? `${s.fullDays} full day${plural(s.fullDays)} logged in the last ${n.windowDays} — needs ${NUTRITION_MIN_DAYS}`
+      : `Nothing logged in the last ${n.windowDays} days${s.lastLoggedDay ? ` · last ${s.lastLoggedDay}` : ''}`;
+    const more = NUTRITION_MIN_DAYS - s.fullDays;
+    return {
+      system: { ...system, status: 'unknown', value: s.todayKcal != null ? String(s.todayKcal) : null,
+        unit: s.todayKcal != null ? 'kcal today' : undefined, sub },
+      // Not logging is a choice, not a gap to nag about. Only once he has started
+      // does "keep going" earn a line.
+      insight: anyLogging ? {
+        id: 'nutrition-sparse', domain: 'nutrition', level: 'gap', view: 'health',
+        title: 'Keep logging food for a few more days',
+        finding: `${s.fullDays} full day${plural(s.fullDays)} (${n.fullDayKcal}+ kcal) logged in MyFitnessPal in the last ${n.windowDays}${s.partialDays ? `, plus ${s.partialDays} part-logged` : ''}.`,
+        action: `Log everything for ${more} more full day${plural(more)} and NEURO can average it against the guidelines.`,
+        basis: `A part-logged day would read as a fast, so only days with ${n.fullDayKcal} kcal or more count.`,
+        evidence: [],
+      } : null,
+    };
+  }
+
+  const kcal = by.dietary_energy_consumed?.avg;
+  const salt = by.dietary_sodium;
+  const protein = by.dietary_protein?.avg;
+  const sysOut = { ...system, value: kcal != null ? String(kcal) : null, unit: 'kcal/day',
+    sub: [`${s.fullDays} full days logged`, salt?.avg != null ? `salt ${salt.avg}g` : null,
+      protein != null ? `protein ${protein}g` : null].filter(Boolean).join(' · ') };
+  const evidenceOf = (x) => ({ source: 'MyFitnessPal',
+    text: `${x.label} ${x.avg}${x.unit}/day over ${x.daysWithData} days (${x.ref.kind === 'max' ? 'limit' : 'target'} ${x.ref.value}${x.unit})` });
+  const caveat = 'A food log is only as good as the entries in it. Restaurant meals and home recipes are often under-counted.';
+
+  const insights = [];
+  if (salt && salt.state === 'over') {
+    insights.push({
+      id: 'nutrition-salt', domain: 'nutrition', level: bpHigh ? 'act' : 'watch', view: 'health',
+      title: `Salt is averaging ${salt.avg}g a day, against ${salt.ref.value}g`,
+      finding: `Across ${salt.daysWithData} fully logged days in MyFitnessPal.${bpHigh ? ' Your blood pressure is above the home threshold, and salt is the dietary change that moves it most.' : ''}`,
+      action: 'Open the day in MyFitnessPal with the most salt and find the one or two foods behind it: bread, cured meat, cheese, sauces and ready meals are the usual ones. Swap those first.',
+      basis: `NHS: no more than ${salt.ref.value}g of salt a day for adults. Cutting salt lowers blood pressure within weeks.`,
+      caveat,
+      evidence: [evidenceOf(salt)],
+    });
+  }
+  const others = ['dietary_fat_saturated', 'dietary_sugar', 'dietary_fiber']
+    .map((m) => by[m]).filter((x) => x && (x.state === 'over' || x.state === 'under'));
+  if (others.length) {
+    const words = others.map((x) => `${x.label.toLowerCase()} ${x.avg}${x.unit} (${x.state === 'over' ? 'limit' : 'target'} ${x.ref.value}${x.unit})`);
+    insights.push({
+      id: 'nutrition-guidelines', domain: 'nutrition', level: 'watch', view: 'health',
+      title: others.length === 1 ? `${others[0].label} is off the guideline on logged days` : `${others.length} nutrients off the guidelines on logged days`,
+      finding: `Daily averages: ${words.join(', ')}.`,
+      action: others.some((x) => x.metric === 'dietary_fiber')
+        ? 'Fibre is the easiest to move: oats, beans, wholemeal bread or an extra portion of veg each add 3–6g.'
+        : 'Check MyFitnessPal for the two or three foods that supply most of it and swap one.',
+      basis: 'NHS: at most 30g saturated fat a day for men and 30g of fibre a day; 90g is the food-label reference for total sugars.',
+      caveat,
+      evidence: others.map(evidenceOf),
+    });
+  }
+  if (!insights.length) {
+    insights.push({
+      id: 'nutrition-ok', domain: 'nutrition', level: 'good', view: 'health',
+      title: 'Logged days are within the guidelines',
+      finding: `Salt, saturated fat, sugars and fibre all sit within UK guidance across ${s.fullDays} fully logged days.`,
+      action: null, basis: 'NHS guidance and UK food-label reference intakes.', caveat, evidence: [],
+    });
+  }
+  const status = insights.some((i) => i.level === 'act') ? 'act' : insights.some((i) => i.level === 'watch') ? 'watch' : 'good';
+  return { system: { ...sysOut, status }, insights };
+}
+
 function medicalGap({ medical }) {
   if (!medical || medical.unreadable) return null;
   if (medical.total > 0) return null;
@@ -483,7 +566,7 @@ function sourceRows({ sources, nowMs }) {
  * a rule whose input is unread does not run and its system says so.
  */
 function compose({ today, nowMs, days = [], perf = null, fitnessData = null, exertionRows = [], medical = null,
-  ring = null, signals = [], sources = {}, unread = [] } = {}) {
+  ring = null, nutrition: nutritionData = null, signals = [], sources = {}, unread = [] } = {}) {
   const insights = [];
   const systems = [];
   unread = unread.filter((u, i) => unread.findIndex((x) => x.input === u.input) === i);
@@ -498,11 +581,16 @@ function compose({ today, nowMs, days = [], perf = null, fitnessData = null, exe
     if (!out) return;
     if (out.system) systems.push(out.system);
     if (out.insight) insights.push(out.insight);
+    if (Array.isArray(out.insights)) insights.push(...out.insights);
   };
 
   run(['days'], { id: 'bp', label: 'Blood pressure' }, () => bloodPressure({ days, today, medical }));
   run(['performance'], { id: 'recovery', label: 'Recovery today' }, () => recovery({ perf }));
   run(['days'], { id: 'weight', label: 'Weight' }, () => weight({ days, today }));
+  // Salt matters more when blood pressure is already high, so this reads the bp
+  // system the rule above has just decided: one judgement, not a second one.
+  const bpHigh = systems.find((x) => x.id === 'bp')?.status === 'act';
+  run(['nutrition'], { id: 'nutrition', label: 'Nutrition' }, () => nutrition({ nutrition: nutritionData, bpHigh }));
   run(['fitness', 'days'], { id: 'fitness', label: 'Cardio fitness' }, () => fitness({ fitnessData, days, exertionRows, today }));
   run(['days'], { id: 'activity', label: 'Activity' }, () => activity({ days, today }));
   run(['days'], { id: 'heart', label: 'Resting heart' }, () => heart({ days, today }));
@@ -552,7 +640,7 @@ function compose({ today, nowMs, days = [], perf = null, fitnessData = null, exe
     systems,
     sources: sourceList,
     complete: unread.length === 0,
-    note: 'Pulled from Apple Health (Watch and HiLo), the JC Ring, medical records and the exertion model. It shows measurements and trends, and is not a diagnosis.',
+    note: 'Pulled from Apple Health (Watch, HiLo and MyFitnessPal), the JC Ring, medical records and the exertion model. It shows measurements and trends, and is not a diagnosis.',
   };
 }
 
@@ -586,6 +674,7 @@ function read({ now = new Date() } = {}) {
     return { total, summary: s, diagnoses: names('diagnosis'), prescriptions: names('prescription'),
       latest: Object.values(s).map((x) => x.latest).filter(Boolean).sort().pop() || null };
   }, null);
+  const nutritionData = attempt('nutrition', () => require('./nutrition').read({ now, days: 14 }), null);
   const signals = attempt('signals', () => require('./health-signals').snapshot({ now }).findings || [], []);
 
   const nowMs = now.getTime();
@@ -610,13 +699,13 @@ function read({ now = new Date() } = {}) {
   }, null);
 
   return compose({ today: localDayKey(now), nowMs, days, perf, fitnessData, exertionRows, medical, ring,
-    signals, sources, unread });
+    nutrition: nutritionData, signals, sources, unread });
 }
 
 module.exports = {
   compose,
   read,
-  _internals: { monthLabel, bloodPressure, weight, fitness, activity, recovery, oxygen, heart, sleep, daylight, medicalGap, daysBetween, median },
+  _internals: { monthLabel, bloodPressure, weight, nutrition, fitness, activity, recovery, oxygen, heart, sleep, daylight, medicalGap, daysBetween, median },
   BP_HOME_STAGE1,
   BP_HOME_STAGE2,
   NHS_WEEKLY_MINUTES,

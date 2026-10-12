@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { apiUrl, apiFetch } from '../api';
 import './HealthPanel.css';
 import PerformanceSection from './PerformanceSection';
+import NutritionSection from './NutritionSection';
 
 /**
  * Apple Health — the deep view over two years of Apple Health (Watch + HiLo).
@@ -966,6 +967,10 @@ export default function HealthPanel() {
           );
         })}
       </section>
+
+      {/* ── Nutrition ── MyFitnessPal via Apple Health; its own range control,
+          because a food log is read by the week, not by the chart window. */}
+      <NutritionSection />
 
       {/* ── What is arriving ───────────────────────────────────────
           The diagnostic half. Freshness, not volume, is what says a feed has
