@@ -125,6 +125,9 @@ router.get('/', (req, res) => {
       // saved from the card landed in the DB and came back null on the reload,
       // so the card read "not estimated" again (12 Oct 2026). /focus had it.
       estimateMinutes: t.estimateMinutes == null ? null : t.estimateMinutes,
+      // On the shared VESTA list. Missing here, the checkbox always read
+      // unticked, so every press re-sent "on" and it could never be unticked.
+      household: t.household === 1 || t.household === true ? 1 : 0,
       context: t.context || null,
       needsToday: Boolean(t.needsToday),
       createdAt: t.createdAt || null,

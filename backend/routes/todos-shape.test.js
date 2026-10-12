@@ -74,3 +74,8 @@ test('estimateMinutes survives it — a saved size must come back on reload', ()
   // came back null, so the card read "not estimated" after every save.
   assert.ok(mappedBlock().includes('estimateMinutes:'), 'estimateMinutes dropped: saved sizes vanish on reload');
 });
+
+test('household survives it — the share checkbox reads it back', () => {
+  // 12 Oct 2026: absent here, the box always rendered unticked after a save.
+  assert.ok(mappedBlock().includes('household:'), 'household dropped: the share box can never show ticked');
+});
