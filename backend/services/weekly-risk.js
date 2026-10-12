@@ -515,7 +515,9 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
   const [kpi, trend, orgTrend, escalationStats, flow, csatNow, csatPrior] = novaReady
     ? await Promise.all([
       pull('kpi-snapshot', () => nova.call(`/api/neuro-bridge/kpi-snapshot${date ? `?date=${date}` : ''}`)),
-      pull('kpi-trend', () => nova.call('/api/neuro-bridge/kpi-trend?weeks=6')),
+      // Long timeout: at the 15s default a busy NOVA dropped this, and the
+      // trend table rendered with nothing but its two CSAT rows (12 Oct 2026).
+      pull('kpi-trend', () => nova.call('/api/neuro-bridge/kpi-trend?weeks=6', { timeoutMs: FLOW_TIMEOUT_MS })),
       // ⚠⚠ THE LIVE TABLE. `kpi-trend` reads `jira_kpi_daily`, the LEGACY
       // n8n-written one, which stopped producing 39 KPIs on 5 Sep 2026 — weekday
       // runs went 113 rows to 74, taking every per-tier FRT and Resolution
@@ -526,7 +528,7 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
       // table. `kpi-org-daily` is also the better number — NOVA's own
       // `kpi-org/backfill.ts` says of the legacy values "those were inflated
       // 2-3x".
-      pull('kpi-org-trend', () => nova.call('/api/neuro-bridge/kpi-org-trend?weeks=6')),
+      pull('kpi-org-trend', () => nova.call('/api/neuro-bridge/kpi-org-trend?weeks=6', { timeoutMs: FLOW_TIMEOUT_MS })),
       pull('escalation-stats', () => nova.call('/api/neuro-bridge/escalation-stats?days=30')),
       // How tickets MOVE. The Support Review was written from these five facts
       // and every one was computable from NOVA on the day it was written — so
