@@ -327,9 +327,15 @@ function _record(trip, fixes, nowMs) {
   for (const f of fixes) {
     if (f.observedMs < trip.startMs - 15 * 60000) continue; // a stale fix from before the walk is not part of it
     const prev = _db().get('SELECT * FROM hike_breadcrumbs WHERE trip_id = ? AND source = ? ORDER BY observed_at DESC LIMIT 1', [trip.tripId, f.source]);
-    const speed = f.speedKmh != null ? f.speedKmh
-      : model.speedBetween(prev && { lat: prev.lat, lon: prev.lon, observedMs: prev.observed_at, accuracyM: prev.accuracy_m }, f);
-    const mode = model.modeOf({ speedKmh: speed, driving: f.driving });
+    // The geometry decides (distance over time from this tracker's last fix);
+    // the tracker's own report is only a fallback for its first fix.
+    const seg = prev && f.observedMs > prev.observed_at
+      ? model.speedBetween({ lat: prev.lat, lon: prev.lon, observedMs: prev.observed_at, accuracyM: prev.accuracy_m }, f) : null;
+    // Stored: the tracker's OWN speed (km/h) when it gave one — annotateTrail
+    // trusts a high one — else the computed one.
+    const speed = f.speedKmh != null ? f.speedKmh : seg;
+    const mode = f.speedKmh != null && f.speedKmh >= 20 ? 'driving'
+      : model.modeOf({ speedKmh: seg != null ? seg : f.speedKmh, driving: seg != null ? null : f.driving });
     const r = _db().run(`INSERT OR IGNORE INTO hike_breadcrumbs (trip_id, source, role, observed_at, lat, lon, accuracy_m, speed_kmh, mode, battery, received_at)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [trip.tripId, f.source, f.role, f.observedMs, f.lat, f.lon, f.accuracyM, speed, mode, f.battery, nowMs]);
     if (r && r.changes) added += 1;
@@ -535,20 +541,26 @@ function read({ now = Date.now() } = {}) {
 }
 
 /** The map of a live walk: the planned route, the trails, each tracker's last position. Live walks only. */
-function _mapData(trip, nowMs) {
+function _mapData(trip, nowMs, { trimEnd = false } = {}) {
   const db = _db();
   let route = [];
   if (trip.routeId) {
     try { route = _json(db.get('SELECT geometry_json FROM outdoor_routes WHERE route_id = ?', [trip.routeId]).geometry_json, []); } catch { route = []; }
   }
-  const crumbs = _crumbs(trip.tripId);
+  // Modes re-read from the geometry, so a walk recorded before that rule
+  // (11 Oct 2026) draws right too. While a walk is live the end is NOT trimmed:
+  // if he is driving home without checking in, that is where he is.
+  const crumbs = model.annotateTrail(_crumbs(trip.tripId));
   const latest = new Map();
   for (const c of crumbs) latest.set(c.source, c);
   const r5 = (v) => Math.round(v * 1e5) / 1e5;
+  const nick = model.walkTrail(crumbs, { role: 'nick', trimEnd });
+  const ember = model.walkTrail(crumbs, { role: 'ember', trimEnd });
   return {
     route: _thin(route, MAX_ROUTE_PTS),
-    trail: _thin(crumbs.filter((c) => c.role === 'nick').map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
-    emberTrail: _thin(crumbs.filter((c) => c.role === 'ember').map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
+    trail: _thin(nick.points.map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
+    emberTrail: _thin(ember.points.map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
+    driveTrimmed: nick.trimmed,
     positions: [...latest.values()].sort((a, b) => (a.role === b.role ? b.observedMs - a.observedMs : a.role === 'nick' ? -1 : 1)).map((c) => ({
       who: c.role, label: c.role === 'ember' ? `${trip.companion || 'Ember'}’s collar` : model.sourceLabel(c.source, c.role),
       lat: r5(c.lat), lon: r5(c.lon),
@@ -619,8 +631,8 @@ function walkMap(tripId, { now = Date.now() } = {}) {
   if (!r) return { ok: false, status: 404, error: 'no such walk' };
   const trip = _shape(r);
   if (r.trail_purged_at) return { ok: true, tripId, name: trip.name, purged: true, purgedAt: model.msToLocal(_ms(r.trail_purged_at)).slice(0, 10) };
-  const map = _mapData(trip, nowMs);
-  const nick = _crumbs(tripId).filter((c) => c.role === 'nick');
+  const map = _mapData(trip, nowMs, { trimEnd: true });
+  const nick = model.walkTrail(_crumbs(tripId), { role: 'nick', trimEnd: true }).points;
   const modes = {};
   for (const c of nick) modes[c.mode] = (modes[c.mode] || 0) + 1;
   return {

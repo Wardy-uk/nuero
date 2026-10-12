@@ -106,7 +106,11 @@ test('4. walking vs driving from speed, with Life360’s own flag winning', () =
   assert.equal(model.modeOf({ speedKmh: 4.5 }), 'walking');
   assert.equal(model.modeOf({ speedKmh: 12 }), 'fast');
   assert.equal(model.modeOf({ speedKmh: 45 }), 'driving');
-  assert.equal(model.modeOf({ speedKmh: 3, driving: true }), 'driving');
+  // Life360's flag stays on in the car park (seen live, 11 Oct 2026): it only
+  // counts when the speed is unknown or faster than walking.
+  assert.equal(model.modeOf({ speedKmh: 3, driving: true }), 'walking');
+  assert.equal(model.modeOf({ driving: true }), 'driving');
+  assert.equal(model.modeOf({ speedKmh: 30, driving: true }), 'driving');
   assert.equal(model.modeOf({}), 'unknown');
   const a = { lat: 54.56, lon: -3.17, observedMs: 0, accuracyM: 10 };
   const b = { lat: 54.5645, lon: -3.17, observedMs: 600000, accuracyM: 10 }; // 500 m in 10 min
@@ -289,7 +293,8 @@ test('15. driving after the walk started prompts ONCE, and never checks him in',
   const base = L('2026-10-11T14:00');
   for (let i = 0; i < 3; i += 1) {
     db.setState('hike_safety_last_poll', '0');
-    f.states = [person, trk('device_tracker.life360_nick', 54.6 + i * 0.01, -3.1, base + i * 300000, { speed: 60, driving: true, last_seen: new Date(base + i * 300000).toISOString() })];
+    // 0.05° of latitude (~5.5 km) every 5 minutes: ~66 km/h from the geometry, which is what decides.
+    f.states = [person, trk('device_tracker.life360_nick', 54.6 + i * 0.05, -3.1, base + i * 300000, { speed: 60, driving: true, last_seen: new Date(base + i * 300000).toISOString() })];
     await hike.tick({ now: base + i * 300000 + 30000, deps: f.deps });
   }
   assert.equal(f.pushes.filter((p) => p.title === 'Back at the car?').length, 1);
@@ -653,4 +658,50 @@ test('31. a finished walk can be put back on the map — on Nick’s page only, 
   assert.deepEqual(hike.walkMap(id, { now: L('2026-11-11T12:00') }), { ok: true, tripId: id, name: 'Catbells loop', purged: true, purgedAt: '2026-11-11' });
   assert.equal(hike.read({ now: L('2026-11-11T12:00') }).recent[0].trailPoints, 0);
   assert.equal(hike.walkMap('hike:nope').status, 404);
+});
+
+test('32. the drawn walk is the WALK: the drive there and back is cut, the car-park flag and 0-speed walking are read from the geometry', () => {
+  // The patterns of the first real walk (11 Oct 2026), moved onto the test fixture:
+  // Ember's collar still at home (no speed) then in the car; Life360 at driving
+  // speed on the way, its driving flag still on in the car park at speed 0;
+  // Life360 reporting 0 while walking; a 70 m HA-app fix; the drive away at 46 km/h.
+  const t0 = L('2026-10-11T10:15');
+  const at = (min) => t0 + min * 60000;
+  const fx = (source, role, min, lat, lon, extra = {}) => ({ source, role, observedMs: at(min), lat, lon, accuracyM: 15, mode: 'unknown', speedKmh: null, ...extra });
+  const L360 = 'device_tracker.life360_nick'; const APP = 'device_tracker.nicks_iphone_2'; const EMB = 'device_tracker.ember_tracker';
+  const fixes = [
+    fx(EMB, 'ember', 0, 54.70, -3.00, { accuracyM: 3 }),                         // at home
+    fx(L360, 'nick', 4, 54.62, -3.10, { speedKmh: 97 }),                          // driving there
+    fx(EMB, 'ember', 10, 54.572, -3.17, { accuracyM: 3 }),                        // in the car, pulling in
+    fx(L360, 'nick', 14, 54.5687, -3.1726, { speedKmh: 0, mode: 'driving' }),     // car park, flag still on
+    fx(EMB, 'ember', 20, 54.5687, -3.1726, { accuracyM: 3 }),
+    fx(L360, 'nick', 24, 54.5660, -3.1715, { speedKmh: 0 }),                      // walking, Life360 says 0
+    fx(EMB, 'ember', 30, 54.5640, -3.1705, { accuracyM: 3 }),
+    fx(L360, 'nick', 34, 54.5630, -3.1700, { speedKmh: 0 }),
+    fx(APP, 'nick', 36, 54.5700, -3.1600, { accuracyM: 70 }),                     // a bad fix
+    fx(EMB, 'ember', 40, 54.5610, -3.1700, { accuracyM: 3 }),
+    fx(L360, 'nick', 44, 54.5600, -3.1700, { speedKmh: 4.5 }),
+    fx(L360, 'nick', 54, 54.5650, -3.1720, { speedKmh: 0 }),
+    fx(L360, 'nick', 64, 54.5686, -3.1725, { speedKmh: 0 }),                      // back at the car
+    fx(L360, 'nick', 76, 54.5686, -3.1925, { speedKmh: 46 }),                     // driving home: 1.3 km in 12 min averages to walking pace, as it did for real
+  ];
+  const nick = model.walkTrail(fixes, { role: 'nick', trimEnd: true });
+  // The car-park fix is ARRIVED AT at driving speed, so it ends the drive: the walk
+  // starts at the next fix — as on the real walk (10:39).
+  assert.deepEqual(nick.trimmed, { before: 2, after: 1 }, 'the drive there and the drive home are cut');
+  assert.equal(model.msToLocal(nick.points[0].observedMs), '2026-10-11T10:39', 'the walk starts after the car park');
+  assert.ok(nick.points.every((p) => p.accuracyM <= 30), 'the 70 m fix is not drawn');
+  assert.ok(nick.points.filter((p) => p.mode === 'walking').length >= 3, 'Life360’s 0 while walking is read as walking from the geometry');
+  assert.ok(!nick.points.some((p) => p.mode === 'driving'), 'the car-park flag is not a drive');
+  const live = model.walkTrail(fixes, { role: 'nick', trimEnd: false });
+  assert.equal(live.trimmed.after, 0, 'while the walk is live, the drive home is where he is — kept');
+  const ember = model.walkTrail(fixes, { role: 'ember', trimEnd: true });
+  assert.equal(ember.trimmed.before, 2, 'her fix from home and the one in the car are cut');
+  assert.equal(model.msToLocal(ember.points[0].observedMs), '2026-10-11T10:35');
+});
+
+test('33. the HA phone app reports m/s; Life360 km/h', () => {
+  const app = model.fixFromState({ entity_id: 'device_tracker.nicks_iphone_2', last_updated: '2026-10-11T09:00:00Z', attributes: { latitude: 54.5, longitude: -3.1, speed: 11 } }, { role: 'nick' });
+  const l360 = model.fixFromState({ entity_id: 'device_tracker.life360_nick', last_updated: '2026-10-11T09:00:00Z', attributes: { latitude: 54.5, longitude: -3.1, speed: 46.2 } }, { role: 'nick' });
+  assert.equal(app.speedKmh, 39.6); assert.equal(l360.speedKmh, 46.2);
 });

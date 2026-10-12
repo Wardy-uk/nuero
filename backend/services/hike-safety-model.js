@@ -265,7 +265,9 @@ function plan(trip, nowMs) {
  * — NEURO cannot tell which and says so), above that driving.
  */
 function modeOf({ speedKmh = null, driving = null } = {}) {
-  if (driving === true) return 'driving';
+  // Life360's flag stays on in the car park, so it only counts when the speed
+  // is unknown or at least faster than walking.
+  if (driving === true && (!Number.isFinite(speedKmh) || speedKmh > 7)) return 'driving';
   if (!Number.isFinite(speedKmh)) return 'unknown';
   if (speedKmh < 0.8) return 'still';
   if (speedKmh <= 7) return 'walking';
@@ -309,16 +311,78 @@ function fixFromState(s, { role }) {
   return {
     source: s.entity_id, role, lat, lon, observedMs,
     accuracyM: Number.isFinite(Number(a.gps_accuracy)) ? Math.round(Number(a.gps_accuracy)) : null,
-    speedKmh: Number.isFinite(speed) && speed >= 0 ? speed : null,
+    // Life360 reports km/h (this house's HA is metric); the HA phone app reports m/s.
+    speedKmh: Number.isFinite(speed) && speed >= 0 ? (role === 'nick' && !/life360/.test(s.entity_id) ? Math.round(speed * 3.6 * 10) / 10 : speed) : null,
     driving: typeof a.driving === 'boolean' ? a.driving : null,
     battery: Number.isFinite(Number(a.battery_level)) ? Number(a.battery_level) : null,
   };
 }
 
+/**
+ * Pure. Each fix's mode, worked out from the GEOMETRY — the distance to the
+ * same tracker's previous fix over the time between them — never trusted from
+ * what the tracker reports. Measured on the first real walk (11 Oct 2026):
+ * Life360 reported speed 0 while walking (37 of 65 fixes read "stopped"), its
+ * `driving` flag stayed on in the car park, and the HA app reports m/s, not
+ * km/h. A fix with no usable predecessor keeps the mode it was recorded with.
+ */
+function annotateTrail(fixes) {
+  const bySource = new Map();
+  for (const f of fixes) bySource.set(f.source, [...(bySource.get(f.source) || []), f]);
+  const out = [];
+  for (const list of bySource.values()) {
+    list.sort((a, b) => a.observedMs - b.observedMs);
+    list.forEach((f, i) => {
+      const seg = i > 0 ? speedBetween(list[i - 1], f) : null;
+      // A HIGH reported speed is trustworthy (Life360 said 46 km/h leaving the
+      // car park, where five-minute fixes averaged the drive to walking pace);
+      // only its LOW readings are not (0 while walking).
+      const mode = Number.isFinite(f.speedKmh) && f.speedKmh >= 20 ? 'driving'
+        : seg != null ? modeOf({ speedKmh: seg }) : (f.mode || 'unknown');
+      out.push({ ...f, mode, segKmh: seg });
+    });
+  }
+  return out.sort((a, b) => a.observedMs - b.observedMs);
+}
+
+const DRAW_ACCURACY_M = 30;
+const DEDUPE_M = 15;
+
+/**
+ * Pure. The line to draw for one walker: their trackers MERGED by time, only
+ * fixes accurate to DRAW_ACCURACY_M (a 70 m fix zig-zags the line), near-
+ * duplicates folded, and the DRIVE trimmed — leading driving/"fast" fixes (the
+ * drive to the start; tracking begins 15 min early) and, when `trimEnd`,
+ * trailing ones (the drive home). `trimmed` says what was left off.
+ */
+function walkTrail(fixes, { role, trimEnd = true } = {}) {
+  const mine = annotateTrail(fixes.filter((f) => f.role === role))
+    .filter((f) => f.accuracyM == null || f.accuracyM <= DRAW_ACCURACY_M);
+  const kept = [];
+  for (const f of mine) {
+    const prev = kept[kept.length - 1];
+    if (prev && haversineM(prev, f) < DEDUPE_M) continue;
+    kept.push(f);
+  }
+  // The walk is from the first walking-pace fix to the last. Everything up to
+  // the last drive BEFORE it is the journey there (including a fix from home
+  // with no speed at all — Ember's collar, 11 Oct); everything from the first
+  // drive AFTER it is the journey back. No walking-pace fix: nothing is cut.
+  const moving = (f) => f.mode === 'driving' || f.mode === 'fast';
+  const firstWalk = kept.findIndex((f) => f.mode === 'walking');
+  let a = 0; let b = kept.length;
+  if (firstWalk >= 0) {
+    const lastWalk = kept.length - 1 - [...kept].reverse().findIndex((f) => f.mode === 'walking');
+    for (let i = 0; i < firstWalk; i += 1) if (moving(kept[i])) a = i + 1;
+    if (trimEnd) for (let i = kept.length - 1; i > lastWalk; i -= 1) if (moving(kept[i])) b = i;
+  }
+  return { points: kept.slice(a, b), trimmed: { before: a, after: kept.length - b } };
+}
+
 /** Has he been driving lately? Two of his own fixes at driving pace in 15 min, after the walk started. */
 function drivingLately(fixes, { trip, nowMs }) {
   const since = Math.max(trip.startMs + DRIVING_AFTER_START_MIN * MIN, nowMs - 15 * MIN);
-  return fixes.filter((f) => f.role === 'nick' && f.observedMs >= since && f.mode === 'driving').length >= 2;
+  return annotateTrail(fixes).filter((f) => f.role === 'nick' && f.observedMs >= since && f.mode === 'driving').length >= 2;
 }
 
 // ── the words ──────────────────────────────────────────────────────────────
@@ -426,6 +490,6 @@ module.exports = {
   msToLocal, localToMs, hhmm, dayWords, ago,
   osgbEN, gridRef, mapsLink, placeLine,
   validateContacts, validateTrip, times, plan,
-  modeOf, speedBetween, fixFromState, drivingLately, haversineM, sourceLabel,
+  modeOf, speedBetween, fixFromState, drivingLately, annotateTrail, walkTrail, haversineM, sourceLabel,
   routeCard, alertEmail, allClearEmail, validateParty, walkersLine,
 };
