@@ -106,7 +106,7 @@ export function WeeklyView({ briefing }) {
 
       {(p.sla && p.sla.length) || (p.csatRows && p.csatRows.length) || p.supportSla ? (
         <section className="brf-section">
-          <h3>CSAT and SLAs</h3>
+          <h3>Team SLA and CSAT</h3>
           <table className="brf-table">
             <thead><tr><th>KPI</th><th>Last week</th><th>Week before</th><th>Δ</th><th>Target</th></tr></thead>
             <tbody>
@@ -124,11 +124,22 @@ export function WeeklyView({ briefing }) {
                 );
               })}
               {(p.csatRows || []).map((r) => <tr key={r.key}><td>{r.label}</td><td>{r.now}</td><td>{r.was}</td><td>{r.delta}</td><td>—</td></tr>)}
-              {(p.sla || []).map((r) => (
+            </tbody>
+          </table>
+        </section>
+      ) : null}
+
+      {p.sla && p.sla.length ? (
+        <section className="brf-section">
+          <h3>SLA by queue</h3>
+          <table className="brf-table">
+            <thead><tr><th>KPI</th><th>Last week</th><th>Week before</th><th>Δ</th><th>Target</th></tr></thead>
+            <tbody>
+              {p.sla.map((r) => (
                 <tr key={r.kpi} className={r.measured && r.target != null && r.now != null && r.now < r.target ? 'brf-below' : ''}>
                   <td>{r.kpi}</td>
-                  <td>{r.measured ? pct(r.now) : `not measured${r.lastSeen ? ` (last ${r.lastSeen})` : ''}`}</td>
-                  <td>{pct(r.was)}</td>
+                  <td>{r.measured ? pct1(r.now) : `not measured${r.lastSeen ? ` (last ${r.lastSeen})` : ''}`}</td>
+                  <td>{pct1(r.was)}</td>
                   <td>{signed(r.delta)}</td>
                   <td>{r.targetMoved ? 'moved' : r.target == null ? '—' : `${r.target}%${r.measured && r.now != null ? (r.now >= r.target ? ' · met' : ' · missed') : ''}`}</td>
                 </tr>

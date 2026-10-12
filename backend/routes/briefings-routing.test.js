@@ -146,6 +146,21 @@ test('weekly: the email has KPIs and the SLM points, never blood pressure', asyn
   assert.match(f.sent.push[0].body, /CSAT 4\.2\/5/);
 });
 
+test('weekly: NOVA answering "ok" with no compliance rows is a named gap, never a short table', async () => {
+  const f = fakeSend();
+  const b = await briefings.run('weekly', {
+    now: new Date(2026, 9, 12, 8, 0), send: f.send, force: true,
+    overrides: {
+      kpi: async () => ({ trend: [], csatRows: [] }),
+      volumes: async () => ({ series: [] }),
+      leaderboard: async () => ({ ranked: [] }),
+      slm: async () => ({ known: false, why: 'none' }),
+      bp: async () => [],
+    },
+  });
+  assert.ok(b.payload.gaps.some((g) => /per-queue SLA/.test(g.source)));
+});
+
 test('routes: list, latest and /:id — literal paths are not read as an id', async () => {
   const list = await get('/api/briefings');
   assert.equal(list.status, 200);

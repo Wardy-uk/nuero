@@ -216,9 +216,12 @@ function weeklyEmailHtml(p) {
   const team = supportRows(p.supportSla);
   if (sla.length || csat.length || team.length) {
     const teamRows = team.map((r) => `<tr><td><strong>${_esc(r.label)}</strong></td><td><strong>${_pct1(r.now)}</strong>${r.nowDetail ? ` <span style="color:#777">(${_esc(r.nowDetail)})</span>` : ''}</td><td>${_pct1(r.was)}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td><td>95%</td></tr>`);
-    const rows = teamRows.concat(sla.map((r) => `<tr><td>${_esc(r.kpi)}</td><td>${r.measured ? _pct(r.now) : `not measured${r.lastSeen ? ` (last ${_esc(r.lastSeen)})` : ''}`}</td><td>${_pct(r.was)}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td><td>${r.target == null ? '—' : `${r.target}%`}</td></tr>`)
-      .concat(csat.map((r) => `<tr><td>${_esc(r.label)}</td><td>${_esc(r.now)}</td><td>${_esc(r.was)}</td><td>${_esc(r.delta)}</td><td>—</td></tr>`)));
-    parts.push(`<h3>CSAT and SLAs</h3><table cellpadding="4" style="border-collapse:collapse;font-size:13px"><tr style="text-align:left"><th>KPI</th><th>Week to ${_esc(_shortDate(p.weeks.report.to))}</th><th>Week before</th><th>Δ</th><th>Target</th></tr>${rows.join('')}</table>`);
+    const head = `<tr style="text-align:left"><th>KPI</th><th>Week to ${_esc(_shortDate(p.weeks.report.to))}</th><th>Week before</th><th>Δ</th><th>Target</th></tr>`;
+    const table = (rows) => `<table cellpadding="4" style="border-collapse:collapse;font-size:13px">${head}${rows.join('')}</table>`;
+    const top = teamRows.concat(csat.map((r) => `<tr><td>${_esc(r.label)}</td><td>${_esc(r.now)}</td><td>${_esc(r.was)}</td><td>${_esc(r.delta)}</td><td>—</td></tr>`));
+    if (top.length) parts.push(`<h3>Team SLA and CSAT</h3>${table(top)}`);
+    const byQueue = sla.map((r) => `<tr><td>${_esc(r.kpi)}</td><td>${r.measured ? _pct1(r.now) : `not measured${r.lastSeen ? ` (last ${_esc(r.lastSeen)})` : ''}`}</td><td>${_pct1(r.was)}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td><td>${r.target == null ? '—' : `${r.target}%`}</td></tr>`);
+    if (byQueue.length) parts.push(`<h3>SLA by queue</h3>${table(byQueue)}`);
   }
   if (p.volumes) {
     const rows = p.volumes.map((r) => `<tr><td>${_esc(volumeLabel(r.name))}</td><td>${r.now ?? '—'}${r.flow && r.nowDays && r.nowDays < 7 ? ` <span style="color:#a15c00">(${r.nowDays}/7 days)</span>` : ''}</td><td>${r.was ?? '—'}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td></tr>`);

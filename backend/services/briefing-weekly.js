@@ -332,6 +332,11 @@ async function gatherWeekly({ now = new Date(), overrides = {} } = {}) {
         lastSeen: t.measured ? null : (t.lastSeen?.period || null),
       }));
     csatRows = assessment.csatRows || null;
+    // ⚠ Found live (12 Oct): NOVA answered kpi-org-trend "ok" with no rows
+    // during a busy moment, and the per-queue table rendered short with no
+    // gap. An empty answer from a source that always has these KPIs is a
+    // failure to read, never "no queues".
+    if (!sla.length) gaps.push({ source: 'per-queue SLA compliance from NOVA', why: 'NOVA answered but returned no compliance rows — rebuild to try again' });
   }
 
   const series = await _pull('volumes', use('volumes', () => {

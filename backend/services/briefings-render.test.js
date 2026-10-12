@@ -98,6 +98,8 @@ test('weekly: KPIs, volumes, leaderboard, SLM and BP render; unmeasured says so'
   };
   const html = renderToString(React.createElement(WeeklyView, { briefing: weekly })).replace(/<!-- -->/g, '');
   assert.match(html, /CSAT average score/);
+  // The per-queue breakdown is its own tile, after the team tile (Nick, 12 Oct).
+  assert.ok(html.indexOf('SLA by queue') > html.indexOf('Team SLA and CSAT'));
   assert.match(html, /FRT compliance % \(Support: CC \+ T2 \+ Prod\)/);
   assert.match(html, /600 of 624 tickets/);
   assert.match(html, /540 of 611 tickets, 5\/7 days/);
