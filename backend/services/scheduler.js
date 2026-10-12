@@ -1308,7 +1308,7 @@ function start() {
       maxAttempts: 1,
       timeoutMs: 2 * 60 * 1000,
       lookbackMs: 24 * 3600 * 1000,
-      why: 'Detect finished car journeys in Home Assistant's Life360 history and hold them for Nick to approve before they count towards the mileage estimate.',
+      why: 'Detect finished car journeys in the Life360 history Home Assistant keeps and hold them for Nick to approve before they count towards the mileage estimate.',
       run: async () => { const r = await require('./vehicle-journeys').sync(); if (!r.ok) throw new Error(r.error); return { fixes: r.fixes, detected: r.detectedCount, skipped: r.skipped }; },
     });
     // 12 Oct 2026: the personal inbox (nick@, contact@) and saim@'s bounce
