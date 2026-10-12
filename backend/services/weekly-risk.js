@@ -1295,8 +1295,8 @@ function assess(snap) {
         kind: 'management-overdue',
         title: `${mgmt.overdueCount} overdue management action${mgmt.overdueCount === 1 ? '' : 's'}`,
         detail: mgmt.breachesFiveDay?.length
-          ? `${mgmt.breachesFiveDay.length} past the five-working-day standard. Baseline was ${mgmt.baseline.count} at ${formatUk(mgmt.baseline.date)}, target zero by ${formatUk(mgmt.baseline.targetDate)}.`
-          : `None yet past the five-working-day standard. Baseline ${mgmt.baseline.count} at ${formatUk(mgmt.baseline.date)}.`,
+          ? `${mgmt.breachesFiveDay.length} past the five-working-day standard.`
+          : 'None yet past the five-working-day standard.',
       });
     }
     if (mgmt.lateLogged?.length) {
@@ -1931,21 +1931,7 @@ function render(a) {
     const m = a.management;
     lines.push(`Open items **${m.totals.open}** · overdue **${m.overdueCount}** · past the five-working-day standard **${m.breachesFiveDay.length}**.`);
     lines.push('');
-    // ⚠ THREE renderings, and conflating them is how an unrecorded PIP
-    // deliverable came to read as a met one for six weeks. See
-    // management-log.assessBaseline — the log begins 12 Aug, the baseline date
-    // is 27 Jul, and counting rows that did not exist yet produced a confident
-    // "0" that nothing had measured.
-    const b = m.baseline;
-    if (!b.known) {
-      lines.push(`> ⚠️ **Competency 4 baseline (as at ${formatUk(b.date)}): NOT RECORDED.** ${b.reason} It is **not zero** — nothing measured it. Agreeing the figure with Chris is itself an outstanding PIP action. Target 0 by ${formatUk(b.targetDate)}.`);
-      lines.push('');
-      lines.push(`Separately, **${b.stillOpen}** management action${b.stillOpen === 1 ? ' is' : 's are'} overdue and open on the log as it stands, which is the figure that can be evidenced.`);
-    } else if (b.source === 'agreed') {
-      lines.push(`**Competency 4 baseline (as at ${formatUk(b.date)}): ${b.count}** — agreed with Chris${b.agreedOn ? ` on ${formatUk(b.agreedOn)}` : ''}. **${b.stillOpen}** of the log's own items still open. Target 0 by ${formatUk(b.targetDate)}.${b.note ? ` ${b.note}` : ''}`);
-    } else {
-      lines.push(`**Competency 4 baseline (as at ${formatUk(b.date)}): ${b.count}** — counted from the ${b.rowsCoveringDate} log entr${b.rowsCoveringDate === 1 ? 'y' : 'ies'} that existed on that date, of which **${b.stillOpen}** still open. Target 0 by ${formatUk(b.targetDate)}.`);
-    }
+    // The competency-4 baseline line went when the PIP closed (12 Oct 2026).
     const week = m.loggedInWeek || [];
     lines.push('');
     if (week.length) {
