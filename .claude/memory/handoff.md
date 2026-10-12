@@ -11,7 +11,7 @@
 ## NEXT BUILD — personal email identity + personal inbox (Nick, 12 Oct 2026)
 **Asks:** (1) EVERYTHING NEURO sends can go from work OR personal, "depending on who sees it"; (2) an inbox in NEURO for the personal mailboxes (contact@ and a new saim@nickward.co.uk — Nick, 12 Oct: SAiM is the one that comes to him, so mail from NEURO goes out as SAiM), SEPARATE from the work inbox.
 **Facts:** mail host = Fasthosts (livemail). SMTP `smtp.livemail.co.uk` (465 SSL / 587 STARTTLS), IMAP `imap.livemail.co.uk` 993 — confirm against Fasthosts docs. Fasthosts DKIM-signs (verify in the first test email's headers: dkim=pass d=nickward.co.uk). Work = Graph (nickw@nurtur.tech).
-**Nick's to-do first:** create mailbox `saim@nickward.co.uk` in Fasthosts; have the contact@ and saim@ passwords ready to paste into NEURO Settings (never into chat / repo).
+**Mailboxes: DONE (12 Oct) — contact@ and saim@nickward.co.uk both exist in Fasthosts.** Nick has the contact@ and saim@ passwords ready to paste into NEURO Settings (never into chat / repo).
 **Design agreed (to build):**
 - Credentials per personal mailbox in agent_state, set from Settings (machine-refused, gateway interactive), never returned (the WU key / RescueTime key idiom).
 - `mail-identity` (pure): decides work vs personal per message from WHO SEES IT — nurtur.tech / People notes sphere work → work; family/household/personal People + listed personal addresses → personal; replies go from the mailbox the email arrived in; mixed/unknown → ask/refuse; hike alerts → personal with work as fallback. Every sender (action-executor's governed types, hike-safety, email-sender self mail) goes through it; approval code / ledger / send-once rules unchanged whichever identity sends.
