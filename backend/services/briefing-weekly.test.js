@@ -49,6 +49,39 @@ test('volumes: a KPI with no series is UNKNOWN (null), never zero', () => {
   assert.equal(rows.closed.delta, null);
 });
 
+test('Support compliance is POOLED by tickets across CC + T2 + Prod, never an average of percentages', () => {
+  const data = { series: [
+    // Customer Care: 380 of 400 met (95%). Tier 2: 5 of 20 met (25%).
+    series('nt_sla_res_customer_care_met', [['2026-10-06', 380]]),
+    series('nt_sla_res_customer_care_breached', [['2026-10-06', 20]]),
+    series('nt_sla_res_tier_2_met', [['2026-10-06', 5]]),
+    series('nt_sla_res_tier_2_breached', [['2026-10-06', 15]]),
+    // Tier 3 is a hand-off and must NOT count, however bad.
+    series('nt_sla_res_tier_3_met', [['2026-10-06', 0]]),
+    series('nt_sla_res_tier_3_breached', [['2026-10-06', 500]]),
+  ] };
+  const r = w.supportCompliance(data, weeks);
+  assert.equal(r.res.now.pct, 91.7); // 385 / 420 — the average of 95 and 25 would be 60
+  assert.equal(r.res.now.met, 385);
+  assert.equal(r.res.now.breached, 35);
+  assert.deepEqual(r.res.now.queues, ['Customer Care', 'Tier 2']);
+  assert.equal(r.res.now.days, 1);
+});
+
+test('Support compliance: a week with no counts is null, never 0% or 100%', () => {
+  const r = w.supportCompliance({ series: [] }, weeks);
+  assert.equal(r.frt.now.pct, null);
+  assert.equal(r.frt.was.pct, null);
+  assert.equal(r.frt.delta, null);
+});
+
+test('Support compliance asks NOVA for exactly the three queues, both metrics', () => {
+  const keys = w.supportSlaKeys();
+  assert.equal(keys.length, 12);
+  assert.ok(keys.includes('nt_sla_frt_production_breached'));
+  assert.ok(!keys.some((k) => /tier_3|development/.test(k)));
+});
+
 test('leaderboard: top is rank 1, weakest is last; one ranked agent has no weakest', () => {
   const two = w.leaderboardSummary({ ranked: [{ rank: 1, agentName: 'A' }, { rank: 2, agentName: 'B' }, { rank: 3, agentName: 'C' }] });
   assert.equal(two.top.agentName, 'A');

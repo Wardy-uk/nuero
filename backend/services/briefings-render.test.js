@@ -81,6 +81,10 @@ test('weekly: KPIs, volumes, leaderboard, SLM and BP render; unmeasured says so'
     payload: {
       weeks: { report: { from: '2026-10-05', to: '2026-10-11' } },
       csatRows: [{ key: 'csat-score', label: 'CSAT average score', now: '4.2/5', was: '4.0/5', delta: '▲ +0.2' }],
+      supportSla: {
+        frt: { label: 'FRT compliance % (Support: CC + T2 + Prod)', target: 95, delta: 1.2, now: { pct: 96.1, met: 600, breached: 24, days: 7 }, was: { pct: 94.9, met: 0, breached: 0, days: 7 } },
+        res: { label: 'Resolution compliance % (Support: CC + T2 + Prod)', target: 95, delta: -2, now: { pct: 88.4, met: 540, breached: 71, days: 5 }, was: { pct: 90.4, met: 0, breached: 0, days: 7 } },
+      },
       sla: [
         { kpi: 'FRT Compliance (Open Queue)', measured: true, now: 88, was: 91, delta: -3, target: 90 },
         { kpi: 'Resolution Compliance (Tier 3)', measured: false, now: null, was: null, delta: null, target: null, lastSeen: '2026-09-29' },
@@ -94,6 +98,9 @@ test('weekly: KPIs, volumes, leaderboard, SLM and BP render; unmeasured says so'
   };
   const html = renderToString(React.createElement(WeeklyView, { briefing: weekly })).replace(/<!-- -->/g, '');
   assert.match(html, /CSAT average score/);
+  assert.match(html, /FRT compliance % \(Support: CC \+ T2 \+ Prod\)/);
+  assert.match(html, /600 of 624 tickets/);
+  assert.match(html, /540 of 611 tickets, 5\/7 days/);
   assert.match(html, /90% · missed/);
   assert.match(html, /not measured \(last 2026-09-29\)/);
   assert.match(html, /5\/7 days captured/);

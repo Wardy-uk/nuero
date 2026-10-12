@@ -138,11 +138,16 @@ function weeklyPush(w) {
   const lines = [];
   const csat = (w.csatRows || []).find((r) => r.key === 'csat-score');
   if (csat) lines.push(`CSAT ${csat.now}${csat.delta && csat.delta !== '—' ? ` (${csat.delta})` : ''}`);
-  // The whole-desk rows: a compliance KPI with no queue in brackets ("FRT
-  // compliance %"). Matched by the ABSENCE of a queue, never by a queue name —
-  // NOVA renamed these once already and a name match went silent.
-  const headline = (w.sla || []).filter((r) => r.measured && !/\([^)]+\)\s*$/.test(r.kpi));
-  if (headline.length) lines.push(headline.map((r) => `${r.kpi.replace(/\s*compliance.*$/i, '')} ${_pct(r.now)}`).join(' · '));
+  // The Support team's pooled figure (CC + T2 + Prod) is the headline Nick
+  // asked for. Falls back to the whole-desk rows — a compliance KPI with no
+  // queue in brackets, matched by the ABSENCE of a queue, never by its name.
+  const ss = w.supportSla;
+  if (ss && (ss.frt?.now?.pct != null || ss.res?.now?.pct != null)) {
+    lines.push(`Support SLA: FRT ${_pct(ss.frt?.now?.pct)} · Resolution ${_pct(ss.res?.now?.pct)}`);
+  } else {
+    const headline = (w.sla || []).filter((r) => r.measured && !/\([^)]+\)\s*$/.test(r.kpi));
+    if (headline.length) lines.push(headline.map((r) => `${r.kpi.replace(/\s*compliance.*$/i, '')} ${_pct(r.now)}`).join(' · '));
+  }
   const v = Object.fromEntries((w.volumes || []).map((r) => [r.name, r]));
   if (v.raised && v.closed && (v.raised.now != null || v.closed.now != null)) {
     lines.push(`${v.raised.now ?? '?'} raised · ${v.closed.now ?? '?'} closed`);
@@ -167,6 +172,7 @@ async function composeWeekly({ now = new Date(), overrides = {} } = {}) {
     dayLabel: _dayLabel(w.today),
     weeks: w.weeks,
     sla: w.sla,
+    supportSla: w.supportSla || null,
     csatRows: w.csatRows,
     volumes: w.volumes,
     leaderboard: w.leaderboard,
@@ -205,9 +211,11 @@ function weeklyEmailHtml(p) {
   const parts = [];
   const csat = p.csatRows || [];
   const sla = p.sla || [];
-  if (sla.length || csat.length) {
-    const rows = sla.map((r) => `<tr><td>${_esc(r.kpi)}</td><td>${r.measured ? _pct(r.now) : `not measured${r.lastSeen ? ` (last ${_esc(r.lastSeen)})` : ''}`}</td><td>${_pct(r.was)}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td><td>${r.target == null ? '—' : `${r.target}%`}</td></tr>`)
-      .concat(csat.map((r) => `<tr><td>${_esc(r.label)}</td><td>${_esc(r.now)}</td><td>${_esc(r.was)}</td><td>${_esc(r.delta)}</td><td>—</td></tr>`));
+  const team = supportRows(p.supportSla);
+  if (sla.length || csat.length || team.length) {
+    const teamRows = team.map((r) => `<tr><td><strong>${_esc(r.label)}</strong></td><td><strong>${_pct(r.now)}</strong>${r.nowDetail ? ` <span style="color:#777">(${_esc(r.nowDetail)})</span>` : ''}</td><td>${_pct(r.was)}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td><td>95%</td></tr>`);
+    const rows = teamRows.concat(sla.map((r) => `<tr><td>${_esc(r.kpi)}</td><td>${r.measured ? _pct(r.now) : `not measured${r.lastSeen ? ` (last ${_esc(r.lastSeen)})` : ''}`}</td><td>${_pct(r.was)}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td><td>${r.target == null ? '—' : `${r.target}%`}</td></tr>`)
+      .concat(csat.map((r) => `<tr><td>${_esc(r.label)}</td><td>${_esc(r.now)}</td><td>${_esc(r.was)}</td><td>${_esc(r.delta)}</td><td>—</td></tr>`)));
     parts.push(`<h3>CSAT and SLAs</h3><table cellpadding="4" style="border-collapse:collapse;font-size:13px"><tr style="text-align:left"><th>KPI</th><th>Week to ${_esc(_shortDate(p.weeks.report.to))}</th><th>Week before</th><th>Δ</th><th>Target</th></tr>${rows.join('')}</table>`);
   }
   if (p.volumes) {
@@ -228,6 +236,24 @@ function weeklyEmailHtml(p) {
   const workGaps = (p.gaps || []).filter((g) => !/blood pressure/i.test(g.source));
   if (workGaps.length) parts.push(`<p style="color:#a15c00">Couldn’t read: ${_esc(workGaps.map((g) => `${g.source} (${g.why})`).join('; '))}.</p>`);
   return _wrap(`Weekly briefing — week to ${_shortDate(p.weeks.report.to)}`, parts.join(''));
+}
+
+/** The two Support-team rows, shaped once for the email and the screen. PURE. */
+function supportRows(ss) {
+  if (!ss) return [];
+  return ['frt', 'res'].filter((m) => ss[m]).map((m) => {
+    const r = ss[m];
+    const total = r.now.met + r.now.breached;
+    return {
+      key: `support-${m}`,
+      label: r.label,
+      now: r.now.pct,
+      was: r.was.pct,
+      delta: r.delta,
+      target: r.target,
+      nowDetail: total ? `${r.now.met} of ${total} tickets${r.now.days < 7 ? `, ${r.now.days}/7 days captured` : ''}` : 'no tickets solved',
+    };
+  });
 }
 
 function volumeLabel(name) {
@@ -315,5 +341,5 @@ async function run(kind, { now = new Date(), deliver = true, force = false, over
 
 module.exports = {
   run, get, getById, list, composeDaily, composeWeekly, weeklyPush, dailyEmailHtml, weeklyEmailHtml,
-  readFeedback, recordFeedback, volumeLabel,
+  readFeedback, recordFeedback, volumeLabel, supportRows,
 };

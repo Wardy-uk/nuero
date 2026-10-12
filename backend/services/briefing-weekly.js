@@ -35,6 +35,24 @@ const VOLUME_KEYS = Object.freeze({
 });
 const FLOW_KEYS = new Set(['raised', 'closed']);
 
+// The Support team's own queues (Nick, 12 Oct 2026): Customer Care, Tier 2 and
+// Production. Tier 3 and Development are hand-offs and are left out.
+const SUPPORT_QUEUES = Object.freeze([
+  ['customer_care', 'Customer Care'],
+  ['tier_2', 'Tier 2'],
+  ['production', 'Production'],
+]);
+const SLA_METRICS = Object.freeze([['frt', 'FRT'], ['res', 'Resolution']]);
+
+/** kpi_org_daily keys for the daily met / breached counts per queue. */
+function supportSlaKeys() {
+  const out = [];
+  for (const [m] of SLA_METRICS) {
+    for (const [q] of SUPPORT_QUEUES) out.push(`nt_sla_${m}_${q}_met`, `nt_sla_${m}_${q}_breached`);
+  }
+  return out;
+}
+
 // ── Weeks ────────────────────────────────────────────────────────────────────
 
 function _addDays(ymd, n) {
@@ -94,6 +112,57 @@ function volumesFor(seriesData, weeks) {
     });
   }
   return rows;
+}
+
+/**
+ * The Support team's compliance, POOLED: every met and every breached ticket
+ * across Customer Care, Tier 2 and Production, summed over the week, then
+ * met ÷ (met + breached). PURE.
+ *
+ * ⚠ Never an average of the three queue percentages: a queue that solved 20
+ * tickets would count as much as one that solved 400. Weighting by tickets is
+ * the same ratio NOVA defines each queue's compliance by (ratioOf met/breached).
+ *
+ * A week with no counts is null, never 100% or 0%. `days` says how many of the
+ * 7 carried counts, and `queues` says which queues contributed.
+ */
+function supportCompliance(seriesData, weeks) {
+  const byKey = new Map((seriesData?.series || []).map((s) => [s.key, s]));
+  const sumWeek = (key, w) => {
+    const s = byKey.get(key);
+    if (!s) return { total: 0, days: new Set(), known: false };
+    const pts = (s.points || []).filter((p) => p && _inWeek(p.day, w) && Number.isFinite(p.value));
+    return { total: pts.reduce((n, p) => n + p.value, 0), days: new Set(pts.map((p) => p.day)), known: true };
+  };
+  const out = {};
+  for (const [m, label] of SLA_METRICS) {
+    const one = (w) => {
+      let met = 0;
+      let breached = 0;
+      const days = new Set();
+      const queues = [];
+      for (const [q, qLabel] of SUPPORT_QUEUES) {
+        const a = sumWeek(`nt_sla_${m}_${q}_met`, w);
+        const b = sumWeek(`nt_sla_${m}_${q}_breached`, w);
+        if (!a.known && !b.known) continue;
+        met += a.total;
+        breached += b.total;
+        for (const d of [...a.days, ...b.days]) days.add(d);
+        if (a.total + b.total > 0) queues.push(qLabel);
+      }
+      const n = met + breached;
+      return { pct: n > 0 ? Math.round((met / n) * 1000) / 10 : null, met, breached, days: days.size, queues };
+    };
+    const now = one(weeks.report);
+    const was = one(weeks.prior);
+    out[m] = {
+      label: `${label} compliance % (Support: CC + T2 + Prod)`,
+      now, was,
+      delta: now.pct != null && was.pct != null ? Math.round((now.pct - was.pct) * 10) / 10 : null,
+      target: 95,
+    };
+  }
+  return out;
 }
 
 // ── Leaderboard (PURE) ───────────────────────────────────────────────────────
@@ -266,10 +335,11 @@ async function gatherWeekly({ now = new Date(), overrides = {} } = {}) {
   }
 
   const series = await _pull('volumes', use('volumes', () => {
-    const keys = Object.values(VOLUME_KEYS).join(',');
+    const keys = [...Object.values(VOLUME_KEYS), ...supportSlaKeys()].join(',');
     return nova.call(`/api/neuro-bridge/kpi-org-series?days=21&keys=${keys}&to=${weeks.report.to}`);
   }), gaps, 'ticket volumes from NOVA');
   const volumes = series ? volumesFor(series, weeks) : null;
+  const supportSla = series ? supportCompliance(series, weeks) : null;
 
   const lb = await _pull('leaderboard', use('leaderboard', () => nova.call(`/api/neuro-bridge/agent-leaderboard?anchor=${weeks.report.to}`)), gaps, 'the agent leaderboard');
   const leaderboard = lb ? leaderboardSummary(lb) : null;
@@ -281,10 +351,10 @@ async function gatherWeekly({ now = new Date(), overrides = {} } = {}) {
   const bpRows = await _pull('bp', use('bp', () => require('./health-daily').recentDays(21)), gaps, 'blood pressure');
   const bp = bpRows ? bpWeek(bpRows, weeks) : null;
 
-  return { today, weeks, sla, csatRows, volumes, leaderboard, slm, bp, gaps };
+  return { today, weeks, sla, supportSla, csatRows, volumes, leaderboard, slm, bp, gaps };
 }
 
 module.exports = {
-  gatherWeekly, reportWeeks, volumesFor, leaderboardSummary, findSlmNote, parseSlmPoints, slmPoints, bpWeek,
+  gatherWeekly, reportWeeks, volumesFor, supportCompliance, supportSlaKeys, SUPPORT_QUEUES, leaderboardSummary, findSlmNote, parseSlmPoints, slmPoints, bpWeek,
   VOLUME_KEYS, SLM_PROMPT,
 };

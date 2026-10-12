@@ -102,12 +102,25 @@ export function WeeklyView({ briefing }) {
       </div>
       <Delivery delivery={briefing.delivery} />
 
-      {(p.sla && p.sla.length) || (p.csatRows && p.csatRows.length) ? (
+      {(p.sla && p.sla.length) || (p.csatRows && p.csatRows.length) || p.supportSla ? (
         <section className="brf-section">
           <h3>CSAT and SLAs</h3>
           <table className="brf-table">
             <thead><tr><th>KPI</th><th>Last week</th><th>Week before</th><th>Δ</th><th>Target</th></tr></thead>
             <tbody>
+              {['frt', 'res'].filter((m) => p.supportSla && p.supportSla[m]).map((m) => {
+                const r = p.supportSla[m];
+                const total = r.now.met + r.now.breached;
+                return (
+                  <tr key={`support-${m}`} className={`brf-team${r.now.pct != null && r.now.pct < r.target ? ' brf-below' : ''}`}>
+                    <td>{r.label}</td>
+                    <td>{pct(r.now.pct)}<span className="brf-partial-muted"> {total ? `(${r.now.met} of ${total} tickets${r.now.days < 7 ? `, ${r.now.days}/7 days` : ''})` : '(no tickets solved)'}</span></td>
+                    <td>{pct(r.was.pct)}</td>
+                    <td>{signed(r.delta)}</td>
+                    <td>{`${r.target}%${r.now.pct != null ? (r.now.pct >= r.target ? ' · met' : ' · missed') : ''}`}</td>
+                  </tr>
+                );
+              })}
               {(p.csatRows || []).map((r) => <tr key={r.key}><td>{r.label}</td><td>{r.now}</td><td>{r.was}</td><td>{r.delta}</td><td>—</td></tr>)}
               {(p.sla || []).map((r) => (
                 <tr key={r.kpi} className={r.measured && r.target != null && r.now != null && r.now < r.target ? 'brf-below' : ''}>

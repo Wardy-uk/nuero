@@ -55,3 +55,5 @@
   .brf-table { font-size: 0.78rem; }
   .brf-item-head { flex-direction: column; }
 }
+.brf-team td { font-weight: 600; }
+.brf-partial-muted { color: var(--text-muted); font-size: 0.78rem; font-weight: 400; }
