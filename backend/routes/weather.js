@@ -74,7 +74,7 @@ router.get('/latest', (req, res) => {
   }
 });
 
-// GET /api/weather/overview — the Weather screen: station readings bucketed for a range (hour|day|week|month|year) with the standing forecast aligned onto the same buckets, the latest reading and its staleness, and the 6/12/24 hour trend summary. Keywords: weather, temperature, humidity, pressure, forecast, outlook. Query: range, node
+// GET /api/weather/overview — the Weather screen: station readings bucketed for a range (hour|day|week|month|year) with the standing forecast aligned onto the same buckets, the latest reading and its staleness, and the 6/12/24 hour trend summary. Keywords: weather, temperature, humidity, dew point, pressure, forecast, outlook. Query: range, node
 router.get('/overview', (req, res) => {
   try {
     const range = String(req.query.range || 'day');
@@ -94,8 +94,10 @@ router.get('/overview', (req, res) => {
     const series = local.map((l, i) => ({
       t: l.t,
       n: l.n,
-      local: { temperatureC: l.temperatureC, humidityPct: l.humidityPct, pressureHpa: l.pressureHpa },
-      forecast: aligned[i] ? { temperatureC: aligned[i].temperatureC, humidityPct: aligned[i].humidityPct, pressureHpa: aligned[i].pressureHpa } : null,
+      // Dew point is DERIVED (from the bucket's mean T and RH), never measured —
+      // the same formula on both lines, so the comparison is like for like.
+      local: { temperatureC: l.temperatureC, humidityPct: l.humidityPct, dewPointC: station.dewPointC(l.temperatureC, l.humidityPct), pressureHpa: l.pressureHpa },
+      forecast: aligned[i] ? { temperatureC: aligned[i].temperatureC, humidityPct: aligned[i].humidityPct, dewPointC: station.dewPointC(aligned[i].temperatureC, aligned[i].humidityPct), pressureHpa: aligned[i].pressureHpa } : null,
     }));
 
     // The summary reads its OWN windows, not the chart's: the last six hours of

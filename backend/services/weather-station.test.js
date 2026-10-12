@@ -110,3 +110,13 @@ test('hourly is raw minutes; the daily view runs 12 hours into the forecast', ()
 test('an unknown range is refused, never defaulted', () => {
   assert.equal(s.bucketPlan('fortnight', NOW), null);
 });
+
+test('dew point: known values, and nothing from a missing reading', () => {
+  assert.equal(s.dewPointC(20, 50), 9.3);
+  assert.equal(s.dewPointC(10, 100), 10);
+  assert.equal(s.dewPointC(13.9, 62), 6.7);
+  assert.equal(s.dewPointC(null, 50), null);
+  assert.equal(s.dewPointC(20, null), null);
+  assert.equal(s.dewPointC(20, 0), null);
+  assert.equal(s.dewPointC(20, 101), null);
+});

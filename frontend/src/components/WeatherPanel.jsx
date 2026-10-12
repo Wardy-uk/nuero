@@ -29,6 +29,8 @@ const LOCAL_LABEL = 'Local sensor';
 export const METRICS = [
   { key: 'temperatureC', title: 'Temperature', unit: '°C', dp: 1 },
   { key: 'humidityPct', title: 'Relative humidity', unit: '%', dp: 0 },
+  { key: 'dewPointC', title: 'Dew point', unit: '°C', dp: 1,
+    hint: 'Calculated from temperature and relative humidity (Magnus formula), not measured. The moisture actually in the air: it does not swing with the daily temperature the way relative humidity does.' },
   { key: 'pressureHpa', title: 'Pressure', unit: ' hPa', dp: 1, alignForecast: true,
     hint: 'Station pressure, not sea-level. The model’s surface pressure sits at a different height, so where the two overlap the forecast line is drawn shifted by their median difference — the shape is what is comparable. The tooltip gives the forecast as issued.' },
 ];
@@ -418,13 +420,14 @@ function DataTable({ data }) {
   return (
     <div className="wx-table-wrap">
       <table className="wx-table">
-        <thead><tr><th>Time (Europe/London)</th><th>Temp local</th><th>Temp fcst</th><th>RH local</th><th>RH fcst</th><th>hPa local</th><th>hPa fcst</th></tr></thead>
+        <thead><tr><th>Time (Europe/London)</th><th>Temp local</th><th>Temp fcst</th><th>RH local</th><th>RH fcst</th><th>Dew local</th><th>Dew fcst</th><th>hPa local</th><th>hPa fcst</th></tr></thead>
         <tbody>
           {rows.map((s) => (
             <tr key={s.t}>
               <td>{exactTime(s.t, data.plan.bucketMs)}</td>
               <td>{num(s.local.temperatureC, 1)}</td><td>{num(s.forecast?.temperatureC, 1)}</td>
               <td>{num(s.local.humidityPct, 0)}</td><td>{num(s.forecast?.humidityPct, 0)}</td>
+              <td>{num(s.local.dewPointC, 1)}</td><td>{num(s.forecast?.dewPointC, 1)}</td>
               <td>{num(s.local.pressureHpa, 1)}</td><td>{num(s.forecast?.pressureHpa, 1)}</td>
             </tr>
           ))}

@@ -306,8 +306,22 @@ function count(nodeId) {
   return r ? { n: r.n, firstObservedAt: r.first } : { n: 0, firstObservedAt: null };
 }
 
+/**
+ * Dew point (°C) from air temperature and relative humidity — Magnus formula,
+ * Alduchov & Eskridge constants (±0.35 °C over -45..60 °C). PURE. Null when
+ * either input is missing or the humidity is not a usable fraction: a dew point
+ * computed from a missing reading would be a number about nothing.
+ */
+function dewPointC(temperatureC, humidityPct) {
+  if (!Number.isFinite(temperatureC) || !Number.isFinite(humidityPct)) return null;
+  if (humidityPct <= 0 || humidityPct > 100) return null;
+  const g = Math.log(humidityPct / 100) + (17.625 * temperatureC) / (243.04 + temperatureC);
+  return Math.round(((243.04 * g) / (17.625 - g)) * 10) / 10;
+}
+
 module.exports = {
   SCHEMA, BOUNDS, STALE_AFTER_MS, MAX_BATCH, RANGES,
+  dewPointC,
   validateObservation, assignBoot, bucketPlan,
   ingest, nodes, defaultNode, latest, buckets, recent, count,
 };
