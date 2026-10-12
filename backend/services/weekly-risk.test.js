@@ -635,7 +635,7 @@ test('an absent RAG is unrated, and unrated is excluded from the percentages', (
     kpi: {
       date: '2026-08-17', ageDays: 0,
       rows: [
-        { KPI: 'a', RAG: 1 }, { KPI: 'b', RAG: 1 }, { KPI: 'c', RAG: 3 }, { KPI: 'd', RAG: null },
+        { KPI: 'Open: Tier 2', RAG: 1 }, { KPI: 'Open: Tier 3', RAG: 1 }, { KPI: 'Open: Production', RAG: 3 }, { KPI: 'Solved by NOVA', RAG: null },
       ],
     },
   }));
@@ -646,17 +646,24 @@ test('an absent RAG is unrated, and unrated is excluded from the percentages', (
   assert.equal(a.rag.greenPct, 67, 'percentages are of RATED rows, not of all rows');
 });
 
-test('the live 17 Aug shape produces a real headline, not a dash', () => {
-  // 47 green / 1 amber / 63 red — the actual counts from the live snapshot.
+test('the headline is computed over the 35 business KPIs only, never the whole snapshot', () => {
+  const names = weeklyRisk.BUSINESS_KPIS.filter(b => b.kpi).map(b => b.kpi);
+  assert.equal(weeklyRisk.BUSINESS_KPIS.length, 35);
   const rows = [
-    ...Array.from({ length: 47 }, (_, i) => ({ KPI: `g${i}`, RAG: 1 })),
-    { KPI: 'a0', RAG: 2 },
-    ...Array.from({ length: 63 }, (_, i) => ({ KPI: `r${i}`, RAG: 3 })),
+    ...names.slice(0, 20).map(KPI => ({ KPI, RAG: 1 })),
+    ...names.slice(20, 30).map(KPI => ({ KPI, RAG: 3 })),
+    // 100 rows NOT reported to the business, all red: must not move the headline.
+    ...Array.from({ length: 100 }, (_, i) => ({ KPI: `other${i}`, RAG: 3 })),
   ];
-  const a = weeklyRisk.assess(baseSnapshot({ kpi: { date: '2026-08-17', ageDays: 0, rows } }));
-  assert.equal(a.rag.rated, 111);
-  assert.equal(a.rag.greenPct, 42);
-  assert.equal(a.rag.redPct, 57);
+  const a = weeklyRisk.assess(baseSnapshot({ kpi: { date: '2026-10-12', ageDays: 0, rows } }));
+  assert.equal(a.rag.rated, 30);
+  assert.equal(a.rag.greenPct, 67);
+  assert.equal(a.rag.redPct, 33);
+  assert.deepEqual(a.rag.notMeasured, ['CI in progress (unmitigated)']);
+  assert.equal(a.rag.missing.length, 4, 'mapped but absent rows are named, not dropped');
+  const md = weeklyRisk.render(a);
+  assert.match(md, /## Business KPI scorecard/);
+  assert.match(md, /CI in progress \(unmitigated\) \| — \| — \| not measured by NOVA/);
 });
 
 // ── Test send ────────────────────────────────────────────────────────────────
@@ -1130,7 +1137,9 @@ test('neither CSAT row is RAGged against 95% — they are not percentages', () =
   // target would invent a standard neither has, and NOVA's own two definitions
   // of the CSAT target disagree (registry 95%, jira_kpi_daily 80%).
   const md = weeklyRisk.render(weeklyRisk.assess(csatSnapshot(RATED, RATED)));
-  for (const line of md.split('\n').filter(l => l.startsWith('| CSAT'))) {
+  // The trend table only — the business scorecard below shows NOVA's own RAG.
+  const trend = md.slice(md.indexOf('## 1. Week-on-week trend'), md.indexOf('## 2.'));
+  for (const line of trend.split('\n').filter(l => l.startsWith('| CSAT'))) {
     assert.doesNotMatch(line, /🟢|🟠|🔴/, `no RAG on: ${line}`);
     assert.match(line, /\| — \|$/, 'the vs-95% cell is empty, not coloured');
   }

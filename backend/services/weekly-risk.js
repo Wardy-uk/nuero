@@ -66,6 +66,90 @@ const COMPLIANCE_TARGET = 95;
 const AMBER_BAND = 20;
 /** A reason-code vocabulary is broken past this share of `unknown`. */
 const UNKNOWN_REASON_ESCALATE_SHARE = 0.5;
+// The 35 KPIs reported to the business (Nick's list, 12 Oct 2026), in its
+// order, each mapped to the NOVA snapshot row that measures it. The headline
+// green/red % is computed over THESE ONLY — NOVA's snapshot carries 135 rows,
+// and rating all of them let a family with seven rows (e.g. "Over SLO
+// (non-actionable)") move the headline more than a family with one.
+// `kpi: null` = NOVA does not measure it; named as a gap, never dropped.
+// New Tickets / Total Solved map to the 4-week averages because those are the
+// rows that carry the business target (115); the raw daily counts have none.
+const BUSINESS_KPIS = [
+  { label: 'New Tickets', kpi: 'New tickets (4-week working-day avg)' },
+  { label: 'Total Solved', kpi: 'Tickets solved (4-week working-day avg)' },
+  { label: 'Solved by NOVA', kpi: 'Solved by NOVA' },
+  { label: 'CSAT', kpi: 'CSAT % (satisfied, 30 days)' },
+  { label: 'Tickets in CC - Incidents', kpi: 'Open: CC Incidents' },
+  { label: 'Tickets in CC - Service Requests', kpi: 'Open: CC Service Requests' },
+  { label: 'Tickets in CC - TPJ', kpi: 'Open: CC TPJ' },
+  { label: 'Tickets in Production', kpi: 'Open: Production' },
+  { label: 'Tickets in Tier 2', kpi: 'Open: Tier 2' },
+  { label: 'Tickets in Tier 3', kpi: 'Open: Tier 3' },
+  { label: 'No reply in CC - Incidents', kpi: 'No reply: CC Incidents' },
+  { label: 'No reply in CC - Service Requests', kpi: 'No reply: CC Service Requests' },
+  { label: 'No reply in CC - TPJ', kpi: 'No reply: CC TPJ' },
+  { label: 'No reply in Tier 2', kpi: 'No reply: Tier 2' },
+  { label: 'No reply in Tier 3', kpi: 'No reply: Tier 3' },
+  { label: 'CC over SLA (actionable) - Incidents', kpi: 'Over SLO (actionable): CC Incidents' },
+  { label: 'CC over SLA (actionable) - Service Requests', kpi: 'Over SLO (actionable): CC Service Requests' },
+  { label: 'CC over SLA (actionable) - TPJ', kpi: 'Over SLO (actionable): CC TPJ' },
+  { label: 'Tier 2 over SLA (actionable)', kpi: 'Over SLO (actionable): Tier 2' },
+  { label: 'Tier 3 over SLA (actionable)', kpi: 'Over SLO (actionable): Tier 3' },
+  { label: 'CC over SLA (not actionable) - Incidents', kpi: 'Over SLO (non-actionable): CC Incidents' },
+  { label: 'CC over SLA (not actionable) - Service Requests', kpi: 'Over SLO (non-actionable): CC Service Requests' },
+  { label: 'CC over SLA (not actionable) - TPJ', kpi: 'Over SLO (non-actionable): CC TPJ' },
+  { label: 'Tier 2 over SLA (not actionable)', kpi: 'Over SLO (non-actionable): Tier 2' },
+  { label: 'Tier 3 over SLA (not actionable)', kpi: 'Over SLO (non-actionable): Tier 3' },
+  { label: 'Oldest actionable (days) - CC Incident', kpi: 'Oldest actionable (days): CC Incidents' },
+  { label: 'Oldest actionable (days) - CC Service Requests', kpi: 'Oldest actionable (days): CC Service Requests' },
+  { label: 'Oldest actionable (days) - CC TPJ', kpi: 'Oldest actionable (days): CC TPJ' },
+  { label: 'Oldest actionable (days) - Production', kpi: 'Oldest actionable (days): Production' },
+  { label: 'Oldest actionable (days) - Tier 2', kpi: 'Oldest actionable (days): Tier 2' },
+  { label: 'Oldest actionable (days) - Tier 3', kpi: 'Oldest actionable (days): Tier 3' },
+  { label: 'Tickets in Development', kpi: 'Open: Development' },
+  { label: 'TPJ tickets in Dev', kpi: 'TPJ tickets in Development / Tier 3' },
+  { label: 'Failed Jobs remaining on Board', kpi: 'Failed Jobs remaining on Board' },
+  { label: 'CI in progress (unmitigated)', kpi: null },
+];
+
+/**
+ * RAG rollup over the business KPI list. PURE. Returns the counts plus the
+ * per-KPI rows (in the business order) and what could not be rated, by name:
+ * `notMeasured` (no NOVA source), `missing` (mapped but absent from today's
+ * snapshot), `unrated` (present, no target). None of them count either way.
+ */
+function businessRag(rows) {
+  const byName = new Map((rows || []).map(r => [r.KPI, r]));
+  const buckets = { green: 0, amber: 0, red: 0, unrated: 0 };
+  const items = [];
+  const notMeasured = [];
+  const missing = [];
+  const unrated = [];
+  for (const b of BUSINESS_KPIS) {
+    if (!b.kpi) { notMeasured.push(b.label); items.push({ ...b, bucket: 'not-measured', value: null, target: null }); continue; }
+    const r = byName.get(b.kpi);
+    if (!r) { missing.push(b.label); items.push({ ...b, bucket: 'missing', value: null, target: null }); continue; }
+    const bucket = ragBucket(r.RAG);
+    buckets[bucket] += 1;
+    if (bucket === 'unrated') unrated.push(b.label);
+    items.push({ ...b, bucket, value: num(r.Count), target: num(r.KPITarget) });
+  }
+  const rated = buckets.green + buckets.amber + buckets.red;
+  return {
+    ...buckets,
+    scope: 'business',
+    total: BUSINESS_KPIS.length,
+    rated,
+    greenPct: rated ? Math.round((buckets.green / rated) * 100) : null,
+    redPct: rated ? Math.round((buckets.red / rated) * 100) : null,
+    notMeasured,
+    missing,
+    unratedNames: unrated,
+    items,
+    snapshotRows: (rows || []).length,
+  };
+}
+
 // The only escalation_type raised through a screen that asks for a reason.
 const REASON_FORM_TYPE = 'manual';
 const ESCALATION_TYPE_LABEL = {
@@ -846,17 +930,9 @@ function assess(snap) {
     });
   }
 
-  // RAG rollup — the headline Chris reads first.
-  const buckets = { green: 0, amber: 0, red: 0, unrated: 0 };
-  for (const r of rows) buckets[ragBucket(r.RAG)] += 1;
-  const rated = buckets.green + buckets.amber + buckets.red;
-  const rag = {
-    ...buckets,
-    total: rows.length,
-    rated,
-    greenPct: rated ? Math.round((buckets.green / rated) * 100) : null,
-    redPct: rated ? Math.round((buckets.red / rated) * 100) : null,
-  };
+  // RAG rollup — the headline Chris reads first. Over the 35 business KPIs
+  // only (BUSINESS_KPIS), never the whole snapshot.
+  const rag = businessRag(rows);
 
   // Sustained compliance slides.
   for (const t of trend) {
@@ -1655,7 +1731,8 @@ function render(a) {
     lines.push(manual.headline);
   } else if (a.rag.rated) {
     const worst = escalate[0];
-    lines.push(`**${a.rag.greenPct}%** of rated KPIs green (target 80%), **${a.rag.redPct}%** red (target ≤10%), across **${a.rag.rated}** rated KPIs${a.rag.unrated ? ` (${a.rag.unrated} unrated)` : ''}.${worst ? ` The material concern this week is **${worst.title}**.` : ''}${escalate.length > 1 ? ` ${escalate.length} items are flagged for escalation.` : ''}`);
+    const notRated = (a.rag.unratedNames?.length || 0) + (a.rag.missing?.length || 0) + (a.rag.notMeasured?.length || 0);
+    lines.push(`**${a.rag.greenPct}%** of the business KPIs green (target 80%), **${a.rag.redPct}%** red (target ≤10%) — **${a.rag.rated}** of the ${a.rag.total} reported to the business carry a target and are rated${notRated ? `; ${notRated} are not (listed in the scorecard below)` : ''}.${worst ? ` The material concern this week is **${worst.title}**.` : ''}${escalate.length > 1 ? ` ${escalate.length} items are flagged for escalation.` : ''}`);
   } else {
     lines.push('_No KPI data available this week — see above._');
   }
@@ -1894,6 +1971,17 @@ function render(a) {
 
   lines.push('---');
   lines.push('');
+  if (a.rag?.items?.length) {
+    const mark = { green: '🟢', amber: '🟠', red: '🔴', unrated: 'no target', missing: 'not in snapshot', 'not-measured': 'not measured by NOVA' };
+    lines.push('## Business KPI scorecard');
+    lines.push('');
+    lines.push(`_The ${a.rag.total} KPIs reported to the business — the headline percentages are computed over these only._`);
+    lines.push('');
+    lines.push('| KPI | Value | Target | RAG |\n|---|---|---|---|');
+    lines.push(a.rag.items.map(i => `| ${i.label} | ${i.value ?? '—'} | ${i.target ?? '—'} | ${mark[i.bucket] || i.bucket} |`).join('\n'));
+    lines.push('');
+  }
+
   lines.push('## Data sources');
   lines.push('');
   lines.push(bullet(a.sources, s => `- \`${s.name}\` — ${s.ok ? '✅ answered' : `❌ ${s.error}`}`));
@@ -2449,7 +2537,7 @@ module.exports = {
   snapshot, assess, render, build, publish, publishedAt, queueSend, testSend,
   markSent, recordExternalSend, sentRecord, sentSummary, isLocked, reopen,
   getManual, setManual, manualBlockers, emptyManual, carryForward,
-  weekCommencing, previousWeek, loggedInWeek, buildTrend, consecutiveBelowTarget, ragBucket,
+  weekCommencing, previousWeek, loggedInWeek, businessRag, BUSINESS_KPIS, buildTrend, consecutiveBelowTarget, ragBucket,
   taskCounts,
   QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder, byTrendOrder, isComplianceKpi,
   csatSummaryRows,
