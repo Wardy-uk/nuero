@@ -3278,3 +3278,16 @@ CREATE TABLE IF NOT EXISTS hike_breadcrumbs (
   received_at  INTEGER NOT NULL,
   PRIMARY KEY (trip_id, source, observed_at)
 );
+
+-- The GPS track of a Hiking or Walking workout, as recorded by the watch and
+-- sent from Apple Health (10 Oct 2026 onward; Nick's call). Kept APART from
+-- health_workouts.payload so a 2,000-point track does not ride along on every
+-- workout read. Points are [lat, lon, ele|null, unixSeconds], thinned on the
+-- phone to roughly one per 5 m. The track for a walk is what Life → Hike
+-- safety draws, and what a walkingwithember route will be built from.
+CREATE TABLE IF NOT EXISTS workout_routes (
+  source_uuid  TEXT PRIMARY KEY,
+  points_json  TEXT NOT NULL,
+  point_count  INTEGER NOT NULL,
+  received_at  TEXT NOT NULL
+);

@@ -32,7 +32,9 @@ function PastWalk({ tripId }) {
     <div className="hs-past" data-testid="hike-past-map">
       <WalkMap route={data.route || []} trail={data.trail || []} emberTrail={data.emberTrail || []} positions={data.positions || []} />
       <div className="cn-small cn-muted">
-        {data.points ? `${data.points} points from ${String(data.firstFix).slice(11)} to ${String(data.lastFix).slice(11)}` : 'No position reached NEURO on this walk'}
+        {data.trailSource === 'watch'
+          ? `Your watch’s GPS track (${data.track.type}): ${data.points.toLocaleString('en-GB')} points, ${String(data.firstFix).slice(11)}–${String(data.lastFix).slice(11)}`
+          : data.points ? `${data.points} tracker fixes from ${String(data.firstFix).slice(11)} to ${String(data.lastFix).slice(11)} — the watch’s own track hasn’t reached NEURO` : 'No position reached NEURO on this walk'}
         {modes ? ` · ${modes}` : ''}{data.checkedInAt ? ` · checked in ${String(data.checkedInAt).slice(11)}` : ''}
       </div>
     </div>

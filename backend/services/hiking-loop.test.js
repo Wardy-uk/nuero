@@ -260,7 +260,11 @@ test('a route arriving with a workout is stamped on arrival; one re-sent later i
   assert.equal(db.all(`SELECT COUNT(*) n FROM health_workouts WHERE source_uuid = 'w-aug'`)[0].n, 1, 'no duplicate workout');
 });
 
-test('NeuroKit sends a route SUMMARY — never coordinates (cross-repo guard)', () => {
+// ⚠ REVERSED on 12 Oct 2026 (Nick's call): the track itself now leaves the
+// phone, for Hiking and Walking workouts only, thinned — Hike safety draws it
+// and walkingwithember routes are built from it. What stays pinned: only the
+// route types a hike can be, the summary still travels, the points are THINNED.
+test('NeuroKit sends a hike/walk route as its summary plus a THINNED track (cross-repo guard)', () => {
   const p = path.join(__dirname, '..', '..', '..', 'nuero-ios', 'NeuroKit', 'Sources', 'NeuroKit', 'HealthSync.swift');
   if (!fs.existsSync(p)) return; // the iOS repo is a sibling checkout; absent on the Pi
   const src = fs.readFileSync(p, 'utf8');
@@ -270,6 +274,8 @@ test('NeuroKit sends a route SUMMARY — never coordinates (cross-repo guard)', 
   const body = fn.slice(0, end);
   assert.ok(end > 200, 'the function body was found');
   assert.match(body, /"pointCount"/);
-  assert.doesNotMatch(body, /latitude|longitude|coordinate/, 'no coordinates leave the phone');
-  assert.doesNotMatch(src, /\/usr\/bin\/bash/);
+  assert.match(body, /"points": track\.map/, 'the track is sent');
+  assert.match(body, /TrackThinning\.thin\(/, 'only ever thinned, never every raw fix');
+  assert.match(src, /static let routeTypes: Set<HKWorkoutActivityType> = \[\.hiking, \.walking\]/, 'and only for the workouts a hike can be');
 });
+

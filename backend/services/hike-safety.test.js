@@ -705,3 +705,35 @@ test('33. the HA phone app reports m/s; Life360 km/h', () => {
   const l360 = model.fixFromState({ entity_id: 'device_tracker.life360_nick', last_updated: '2026-10-11T09:00:00Z', attributes: { latitude: 54.5, longitude: -3.1, speed: 46.2 } }, { role: 'nick' });
   assert.equal(app.speedKmh, 39.6); assert.equal(l360.speedKmh, 46.2);
 });
+
+test('34. the watch’s GPS track from Apple Health is stored apart from the workout, and the walk map draws IT instead of the breadcrumbs', async () => {
+  reset();
+  db.run('DELETE FROM health_workouts'); db.run('DELETE FROM workout_routes');
+  const f = fakes();
+  const id = await armed(f);
+  // A sparse breadcrumb, so there is something the track must replace.
+  db.setState('hike_safety_last_poll', '0');
+  f.states = [person, trk('device_tracker.life360_nick', 54.56, -3.17, L('2026-10-11T11:00'), { speed: 4 })];
+  await hike.tick({ now: L('2026-10-11T11:01'), deps: f.deps });
+  // What NEURO iOS sends from now on: the route summary PLUS its points.
+  const t0 = L('2026-10-11T09:40') / 1000;
+  const points = Array.from({ length: 600 }, (_, i) => [54.5687 - i * 0.00002, -3.1726 + i * 0.00001, 90 + i * 0.5, t0 + i * 20]);
+  const { parsePayload } = require('./apple-health');
+  const parsed = parsePayload({ data: { metrics: [], workouts: [{ id: 'HK-UUID-1', name: 'Hiking', start: '2026-10-11 09:40:00 +0100', end: '2026-10-11 13:00:00 +0100', duration: 12000,
+    route: { pointCount: 600, firstAt: '2026-10-11 09:40:00 +0100', lastAt: '2026-10-11 13:00:00 +0100', points } }] } });
+  assert.equal(parsed.workouts.length, 1, 'positive control: the workout parsed');
+  db.insertWorkouts(parsed.workouts);
+  const w = db.get("SELECT payload FROM health_workouts WHERE source_uuid = 'HK-UUID-1'");
+  const route = JSON.parse(w.payload).route;
+  assert.equal(route.points, undefined, 'the coordinates are not in the workout payload');
+  assert.equal(route.trackPoints, 600); assert.equal(route.pointCount, 600); assert.ok(route.receivedAt, 'the hiking loop’s summary is unchanged');
+  assert.equal(db.getWorkoutRoute('HK-UUID-1').pointCount, 600);
+  await hike.checkIn(id, { now: L('2026-10-11T15:00'), deps: f.deps });
+  const m = hike.walkMap(id, { now: L('2026-10-12T09:00') });
+  assert.equal(m.trailSource, 'watch'); assert.equal(m.trail.length, 600); assert.equal(m.points, 600);
+  assert.equal(m.firstFix, '2026-10-11T09:40');
+  assert.equal(m.modes, null, 'speed modes are a breadcrumb idea; the track is the walk');
+  // A re-send folds onto the same row rather than adding a second track.
+  db.insertWorkouts(parsePayload({ data: { metrics: [], workouts: [{ id: 'HK-UUID-1', name: 'Hiking', start: '2026-10-11 09:40:00 +0100', duration: 12000, route: { pointCount: 600, points } }] } }).workouts);
+  assert.equal(db.get('SELECT COUNT(*) n FROM workout_routes').n, 1);
+});

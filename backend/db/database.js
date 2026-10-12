@@ -2279,6 +2279,35 @@ function getHealthRecordCounts() {
  * on start time — would merge two genuinely different activities that began in
  * the same minute.
  */
+/**
+ * A route's points as the phone sent them: [lat, lon, ele|null, unixSeconds].
+ * Anything malformed is dropped point by point; nothing usable → null. Capped,
+ * thinned evenly, so one runaway track cannot fill the database.
+ */
+const MAX_ROUTE_POINTS = 20000;
+function _cleanRoutePoints(list) {
+  if (!Array.isArray(list)) return null;
+  const out = [];
+  for (const p of list) {
+    if (!Array.isArray(p)) continue;
+    const [lat, lon, ele, t] = p.map((v) => (v === null ? null : Number(v)));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180 || !Number.isFinite(t)) continue;
+    out.push([Math.round(lat * 1e6) / 1e6, Math.round(lon * 1e6) / 1e6, Number.isFinite(ele) ? Math.round(ele * 10) / 10 : null, Math.round(t)]);
+  }
+  if (out.length < 2) return null;
+  out.sort((a, b) => a[3] - b[3]);
+  if (out.length <= MAX_ROUTE_POINTS) return out;
+  const step = out.length / MAX_ROUTE_POINTS;
+  return Array.from({ length: MAX_ROUTE_POINTS }, (_, i) => out[Math.floor(i * step)]);
+}
+
+/** A workout's recorded GPS track, or null. */
+function getWorkoutRoute(sourceUuid) {
+  const r = get('SELECT points_json, point_count, received_at FROM workout_routes WHERE source_uuid = ?', [sourceUuid]);
+  if (!r) return null;
+  try { return { points: JSON.parse(r.points_json), pointCount: r.point_count, receivedAt: r.received_at }; } catch { return null; }
+}
+
 function insertWorkouts(rows) {
   if (!rows || !rows.length) return 0;
   let inserted = 0;
@@ -2291,7 +2320,17 @@ function insertWorkouts(rows) {
       // re-sent later for a workout already stored is attached with ITS arrival
       // time, so a late backfill can never pass for an on-time track.
       if (w.payload && w.payload.route && typeof w.payload.route === 'object') {
-        w.payload = { ...w.payload, route: { ...w.payload.route, receivedAt } };
+        // The track's coordinates go to workout_routes; the payload keeps only
+        // the summary (and that a track is held), as it always has.
+        const pts = _cleanRoutePoints(w.payload.route.points);
+        const { points: _drop, ...summary } = w.payload.route;
+        if (pts && w.sourceUuid) {
+          run(`INSERT INTO workout_routes (source_uuid, points_json, point_count, received_at) VALUES (?, ?, ?, ?)
+               ON CONFLICT(source_uuid) DO UPDATE SET points_json = excluded.points_json, point_count = excluded.point_count, received_at = excluded.received_at`,
+          [w.sourceUuid, JSON.stringify(pts), pts.length, receivedAt]);
+          summary.trackPoints = pts.length;
+        }
+        w.payload = { ...w.payload, route: { ...summary, receivedAt } };
         if (w.sourceUuid) {
           run(`UPDATE health_workouts SET payload = json_set(COALESCE(payload, '{}'), '$.route', json(?))
                 WHERE source_uuid = ? AND (payload IS NULL OR json_extract(payload, '$.route') IS NULL)`,
@@ -3025,6 +3064,7 @@ module.exports = {
   getHealthRecordCounts,
   // Workouts (records, not scalars)
   insertWorkouts,
+  getWorkoutRoute,
   getWorkoutsBetween,
   getLatestWorkout,
   // Device status (device self-report)

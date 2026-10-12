@@ -541,6 +541,33 @@ function read({ now = Date.now() } = {}) {
 }
 
 /** The map of a live walk: the planned route, the trails, each tracker's last position. Live walks only. */
+/**
+ * The GPS track the watch recorded for this walk, from Apple Health: the
+ * Hiking or Walking workout that overlaps the walk's window and has a track.
+ * Far better than the five-minute breadcrumbs (14,562 fixes against 65 on the
+ * first real walk) — but it only exists once the workout has ended and the
+ * phone has synced, so the breadcrumbs remain the live answer.
+ */
+const MAX_TRACK_DRAW = 3000;
+function _sqlUtc(ms) { return new Date(ms).toISOString().slice(0, 19).replace('T', ' '); }
+function _recordedTrack(trip) {
+  const db = _db();
+  const endMs = trip.checkedInAt ? _ms(trip.checkedInAt) : model.times(trip).deadlineMs;
+  let rows = [];
+  try {
+    rows = db.all(`SELECT id, source_uuid, activity_type, started_at, ended_at FROM health_workouts
+                   WHERE (activity_type LIKE '%hik%' OR activity_type LIKE '%alk%') AND source_uuid IS NOT NULL
+                     AND started_at <= ? AND COALESCE(ended_at, started_at) >= ?`,
+    [_sqlUtc(endMs + 3 * 3600 * 1000), _sqlUtc(trip.startMs - 3 * 3600 * 1000)]);
+  } catch { return null; }
+  let best = null;
+  for (const w of rows) {
+    const r = db.getWorkoutRoute(w.source_uuid);
+    if (r && (!best || r.pointCount > best.pointCount)) best = { ...r, workoutId: w.id, type: w.activity_type };
+  }
+  return best;
+}
+
 function _mapData(trip, nowMs, { trimEnd = false } = {}) {
   const db = _db();
   let route = [];
@@ -556,9 +583,12 @@ function _mapData(trip, nowMs, { trimEnd = false } = {}) {
   const r5 = (v) => Math.round(v * 1e5) / 1e5;
   const nick = model.walkTrail(crumbs, { role: 'nick', trimEnd });
   const ember = model.walkTrail(crumbs, { role: 'ember', trimEnd });
+  const track = _recordedTrack(trip);
   return {
     route: _thin(route, MAX_ROUTE_PTS),
-    trail: _thin(nick.points.map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
+    trail: track ? _thin(track.points.map((p) => [r5(p[0]), r5(p[1])]), MAX_TRACK_DRAW) : _thin(nick.points.map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
+    trailSource: track ? 'watch' : 'trackers',
+    track: track ? { points: track.pointCount, type: track.type, from: model.msToLocal(track.points[0][3] * 1000), to: model.msToLocal(track.points[track.points.length - 1][3] * 1000) } : null,
     emberTrail: _thin(ember.points.map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
     driveTrimmed: nick.trimmed,
     positions: [...latest.values()].sort((a, b) => (a.role === b.role ? b.observedMs - a.observedMs : a.role === 'nick' ? -1 : 1)).map((c) => ({
@@ -638,9 +668,9 @@ function walkMap(tripId, { now = Date.now() } = {}) {
   return {
     ok: true, tripId, name: trip.name, status: trip.status, purged: false,
     start: model.msToLocal(trip.startMs), checkedInAt: trip.checkedInAt ? model.msToLocal(_ms(trip.checkedInAt)) : null,
-    firstFix: nick.length ? model.msToLocal(nick[0].observedMs) : null,
-    lastFix: nick.length ? model.msToLocal(nick[nick.length - 1].observedMs) : null,
-    points: nick.length, modes,
+    firstFix: map.track ? map.track.from : nick.length ? model.msToLocal(nick[0].observedMs) : null,
+    lastFix: map.track ? map.track.to : nick.length ? model.msToLocal(nick[nick.length - 1].observedMs) : null,
+    points: map.track ? map.track.points : nick.length, modes: map.track ? null : modes,
     party: trip.party, ember: trip.ember,
     ...map,
   };
