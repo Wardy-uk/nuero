@@ -196,9 +196,9 @@ function draftFor(actionType, commitment, target) {
 
 // ── the store ───────────────────────────────────────────────────────────────
 
-function _sendsFrom(actionType) {
+function _sendsFrom(actionType, target) {
   try {
-    const s = require('./mail-identity').forAction({ actionType });
+    const s = require('./mail-identity').forAction({ actionType, target });
     return s ? { mailbox: s.mailbox, address: s.address, from: s.from, replyTo: s.replyTo, via: s.via, kind: s.kind } : null;
   } catch { return null; }
 }
@@ -228,7 +228,7 @@ function shape(r) {
     // Nick (12 Oct 2026): every screen dealing with an email shows the address
     // it sends from. mail-identity derives it from the SAME registry field the
     // executor dispatches on, so the card and the send cannot disagree.
-    sendsFrom: _sendsFrom(r.action_type),
+    sendsFrom: _sendsFrom(r.action_type, parse(r.target_json)),
     // From the registry, on every read, so no surface can imply otherwise.
     registered: !!policy,
     executes: registry.canExecute(r.action_type),
@@ -825,6 +825,15 @@ function _liveFor(actionType, subjectKey, { andSent = false } = {}) {
 const REPLY_DEPS = {
   // READ-ONLY (mail-read.js): preparing imports no sender — pinned since Build 5.
   mail: () => require('./mail-read'),
+  // A Gmail email (12 Oct 2026) is read from GMAIL — gmail-intake is read-only
+  // and loads no sender (pinned). Same answer shape as mail-read.
+  gmail: () => ({
+    readMessage: async (id) => {
+      const m = await require('./gmail-intake').readMessage(id);
+      return m && m.ok && m.exists ? { ...m, receivedAt: m.received || null } : m;
+    },
+    signedInAddress: async () => require('./personal-mail').addressFor('gmail'),
+  }),
 };
 
 /**
@@ -845,7 +854,11 @@ const REPLY_DEPS = {
  */
 async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = null, origin = 'composer', now = Date.now(), deps = {} } = {}) {
   const d = { ...REPLY_DEPS, ...deps };
-  const mail = typeof d.mail === 'function' ? d.mail() : d.mail;
+  // Which mailbox the email arrived in decides where it is read AND (via
+  // target.mailbox, bound into the approval) which mailbox the reply goes from.
+  const viaGmail = require('./gmail-intake').isGmailId(emailId);
+  const pick = viaGmail ? d.gmail : d.mail;
+  const mail = typeof pick === 'function' ? pick() : pick;
   const nowMs = msOf(now);
   const text = String(body || '').replace(/\r\n/g, '\n').trim();
   if (!emailId) return { ok: false, code: 400, error: 'which email is this a reply to? (no emailId)' };
@@ -887,6 +900,9 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
   const target = {
     kind: 'email-thread', emailId, conversationId: orig.conversationId, internetMessageId: orig.internetMessageId,
     from: lcs(orig.from), fromName: orig.fromName || null, originalSubject: orig.subject || '', receivedAt: orig.receivedAt || null,
+    // Present ONLY for a personal mailbox, so every work reply hashes exactly
+    // as it did before (canonical() drops undefined keys).
+    ...(viaGmail ? { mailbox: 'gmail', references: orig.references || null } : {}),
   };
   const draft = {
     channel: 'email', voice: 'nick', mode,

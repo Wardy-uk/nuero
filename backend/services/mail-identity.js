@@ -70,6 +70,13 @@ function forNeuroGenerated() {
 function forAction(action) {
   const policy = action && require('./action-registry').policyFor(action.actionType);
   if (!policy || !policy.executable) return null;
+  // The executor's _forAction reads this same field and the same allow-list.
+  const box = action.target && action.target.mailbox;
+  if (box && box !== 'work') {
+    if (!(policy.personalMailboxes || []).includes(box)) return null; // the executor refuses it, so it sends from nowhere
+    const s = personalSender(box);
+    return s ? { ...s, kind: 'email' } : null;
+  }
   if (policy.executor === 'microsoft.mail' || policy.executor === 'microsoft.calendar') {
     return { ...workSender(), kind: policy.executor === 'microsoft.calendar' ? 'invite' : 'email' };
   }

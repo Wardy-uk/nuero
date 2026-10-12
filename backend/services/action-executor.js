@@ -134,6 +134,21 @@ function _deps(over) {
   };
 }
 
+/**
+ * The mail API for ONE action (12 Oct 2026). Work (no target.mailbox) is
+ * Microsoft, as always; a personal mailbox the registry allows for the type
+ * (commonChecks refuses any other) is that mailbox's personal-mail-api — the
+ * same methods, so every rule below is unchanged whichever mailbox sends.
+ * mail-identity.forAction reads the SAME field, so the card's "From" and the
+ * transport cannot disagree.
+ */
+function _forAction(action, d) {
+  const box = action && action.target && action.target.mailbox;
+  if (!box || box === 'work') return d;
+  return { ...d, mailApi: d.personalMail ? d.personalMail(box) : require('./personal-mail-api').forMailbox(box) };
+}
+const _via = (mail) => (mail && mail.providerLabel) || 'Microsoft';
+
 const waitingKey = (subjectRef) => (String(subjectRef || '').startsWith('waiting-on:') ? subjectRef.slice('waiting-on:'.length) : null);
 
 // ── preflight (PURE) ────────────────────────────────────────────────────────
@@ -159,6 +174,11 @@ function commonChecks({ action, policy, nowMs }) {
 
   const draft = action.draft || {};
   const target = action.target || {};
+  // A personal mailbox only where the registry allows it for this type
+  // (12 Oct 2026: reply_email from Gmail). Anything else is refused, unsent.
+  if (target.mailbox && target.mailbox !== 'work' && !(policy.personalMailboxes || []).includes(target.mailbox)) {
+    return stop('mailbox-not-allowed', `${action.actionType} may not be sent from ${target.mailbox}`);
+  }
   const to = Array.isArray(draft.to) ? draft.to : [];
   const cc = Array.isArray(draft.cc) ? draft.cc : [];
   if (!to.length || to.length + cc.length > (policy.maxRecipients || 1) || to.some((r) => !EMAIL_RE.test(lc(r && r.email)))) {
@@ -518,7 +538,7 @@ async function _mailExecutor(action, claim, d, clock) {
       const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
       if (!p.ok) {
         try { await mail.deleteDraft(dr.id); } catch { /* best effort */ }
-        return failBeforeSend(p.category || 'unknown', 'Microsoft would not set the reply\'s recipients', p.status);
+        return failBeforeSend(p.category || 'unknown', `${_via(mail)} would not set the reply's recipients`, p.status);
       }
       if (!same(p.to.map(lc).sort(), wantTo) || !same(p.cc.map(lc).sort(), wantCc) || (p.bcc && p.bcc.length) || p.subject !== draft.subject) {
         try { await mail.deleteDraft(dr.id); } catch { /* best effort */ }
@@ -535,11 +555,11 @@ async function _mailExecutor(action, claim, d, clock) {
       contentType: policy.bodyFormat === 'html' ? 'HTML' : 'Text',
     });
   }
-  if (!dr.ok) return failBeforeSend(dr.category || 'unknown', 'Microsoft would not create the draft', dr.status);
+  if (!dr.ok) return failBeforeSend(dr.category || 'unknown', `${_via(mail)} would not create the draft`, dr.status);
   if (!dr.id || !dr.internetMessageId) {
     if (dr.id) _attemptSet(claim.attemptId, { draft_id: dr.id });
     try { if (dr.id) await mail.deleteDraft(dr.id); } catch { /* best effort */ }
-    return failBeforeSend('no-handle', 'Microsoft returned no message id to verify against');
+    return failBeforeSend('no-handle', `${_via(mail)} returned no message id to verify against`);
   }
   // ⚠ The handle reaches the ledger BEFORE the send is requested. This is what
   // makes every later outcome verifiable, including this process dying mid-send.
@@ -551,24 +571,24 @@ async function _mailExecutor(action, claim, d, clock) {
   const now = clock();
   if (s.outcome === 'accepted') {
     _attemptFinish(claim.attemptId, { send_outcome: 'accepted', send_http_status: s.status, retry_safe: 0, final_state: 'executed' }, now);
-    pa.transition(id, 'executed', { now, allowedFrom: ['executing'], note: `Microsoft accepted the send (HTTP ${s.status}) — verifying`,
+    pa.transition(id, 'executed', { now, allowedFrom: ['executing'], note: `${_via(mail)} accepted the send (${mail.providerLabel ? `SMTP ${s.status}` : `HTTP ${s.status}`}) — verifying`,
       set: { executed_at: iso(now), retry_safe: 0 }, eventExtra: { attempt: claim.attempt, messageRef: shortHash(dr.internetMessageId) } });
     _recordChase(id, d, now);
     console.log(`[Executor] ${id} executed (accepted by Microsoft); verifying in Sent Items`);
   } else if (s.outcome === 'rejected') {
     _attemptFinish(claim.attemptId, { send_outcome: 'rejected', send_http_status: s.status, error_category: s.category || null,
-      error_detail: 'Microsoft refused the send', retry_safe: 1, final_state: 'failed' }, now);
-    pa.transition(id, 'failed', { now, allowedFrom: ['executing'], note: `Microsoft refused the send (${s.category || s.status})`,
-      set: { retry_safe: 1, outcome_detail: `Microsoft refused the send (${s.category || `HTTP ${s.status}`}) — nothing was sent` },
+      error_detail: `${_via(mail)} refused the send`, retry_safe: 1, final_state: 'failed' }, now);
+    pa.transition(id, 'failed', { now, allowedFrom: ['executing'], note: `${_via(mail)} refused the send (${s.category || s.status})`,
+      set: { retry_safe: 1, outcome_detail: `${_via(mail)} refused the send (${s.category || `HTTP ${s.status}`}) — nothing was sent` },
       eventExtra: { attempt: claim.attempt, code: s.category || `http_${s.status}` } });
     try { await mail.deleteDraft(dr.id); } catch { /* best effort */ }
     console.log(`[Executor] ${id} failed: send refused (${s.category || s.status}); nothing sent`);
-    return { ok: false, status: 'failed', code: s.category || 'refused', detail: 'Microsoft refused the send — nothing was sent', action: pa.get(id) };
+    return { ok: false, status: 'failed', code: s.category || 'refused', detail: `${_via(mail)} refused the send — nothing was sent`, action: pa.get(id) };
   } else {
     _attemptFinish(claim.attemptId, { send_outcome: 'uncertain', send_http_status: s.status, error_category: s.category || 'unknown',
-      error_detail: 'no definite answer from Microsoft', retry_safe: 0, final_state: 'execution_uncertain' }, now);
+      error_detail: `no definite answer from ${_via(mail)}`, retry_safe: 0, final_state: 'execution_uncertain' }, now);
     pa.transition(id, 'execution_uncertain', { now, allowedFrom: ['executing'], note: `no definite answer (${s.category || s.status}) — verifying, never resending`,
-      set: { retry_safe: 0, outcome_detail: 'Microsoft gave no definite answer, so it may have been sent. NEURO is checking Sent Items and will NOT resend it.' },
+      set: { retry_safe: 0, outcome_detail: `${_via(mail)} gave no definite answer, so it may have been sent. NEURO is checking Sent and will NOT resend it.` },
       eventExtra: { attempt: claim.attempt, code: s.category || 'unknown', messageRef: shortHash(dr.internetMessageId) } });
     console.log(`[Executor] ${id} execution uncertain (${s.category || s.status}); verifying, will not resend`);
   }
@@ -665,7 +685,8 @@ async function execute(actionId, { now, deps } = {}) {
 
   inFlight.add(actionId);
   try {
-    const pre = await preflight(action, policy, d, clock());
+    const da = _forAction(action, d);
+    const pre = await preflight(action, policy, da, clock());
     if (!pre.ok) {
       if (pre.terminal) {
         const to = pre.code === 'approval-expired' ? 'expired' : 'cancelled';
@@ -680,7 +701,7 @@ async function execute(actionId, { now, deps } = {}) {
     const claim = _claim(action, clock());
     if (!claim) return { ok: true, already: true, status: pa.get(actionId).status };
     console.log(`[Executor] ${actionId} claimed (attempt ${claim.attempt})`);
-    return await run(pa.get(actionId), claim, d, clock);
+    return await run(pa.get(actionId), claim, da, clock);
   } finally {
     inFlight.delete(actionId);
   }
@@ -748,7 +769,7 @@ async function verify(actionId, { now, deps } = {}) {
     return { outcome: 'ambiguous', detail: 'no verification handle' };
   }
 
-  const mail = d.mailApi;
+  const mail = _forAction(action, d).mailApi;
   const proof = { attemptId: attempt.attempt_id, messageRef: shortHash(attempt.internet_message_id) };
   const found = await mail.findSent(attempt.internet_message_id);
   let outcome;
@@ -933,7 +954,7 @@ async function _recoverInterrupted(row, d, nowMs) {
       set: { retry_safe: 1, outcome_detail: 'NEURO stopped before asking Microsoft to send it. Nothing was sent. Edit it to send again.' },
       eventExtra: { attempt: att.attempt, code: 'interrupted-before-send' } });
     const pol = registry.policyFor(row.action_type || (pa.get(row.action_id) || {}).actionType) || {};
-    if (att.draft_id && pol.executor === 'microsoft.mail') { try { await d.mailApi.deleteDraft(att.draft_id); } catch { /* best effort */ } }
+    if (att.draft_id && pol.executor === 'microsoft.mail') { try { await _forAction(pa.get(row.action_id), d).mailApi.deleteDraft(att.draft_id); } catch { /* best effort */ } }
     return 'failed-unsent';
   }
   _attemptFinish(att.attempt_id, { send_outcome: 'uncertain', error_category: 'interrupted', error_detail: 'interrupted after the send was requested',

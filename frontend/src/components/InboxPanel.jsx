@@ -218,6 +218,8 @@ function EmailCard({ email, borderClass, onDismiss, dismissing, onReplied, onPro
     <div className={`inbox-item ${borderClass}`}>
       <div className="inbox-item-header">
         <span className="inbox-item-from">{email.from}</span>
+        {/* Gmail's Important mail, triaged alongside work mail (12 Oct 2026). */}
+        {email.source === 'gmail' && <span className="inbox-item-source inbox-item-source-gmail" title="From your Gmail (marked Important by Gmail). Replies go from Gmail.">Gmail</span>}
         {age && (
           <span
             className={`inbox-item-age${age.days >= OLD_MAIL_DAYS ? ' inbox-item-age-old' : ''}`}

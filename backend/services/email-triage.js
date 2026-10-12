@@ -803,7 +803,7 @@ async function runTriage({ force = false } = {}) {
 
   try {
     const fetched = await microsoft.fetchRecentEmailsDetailed(LOOKBACK_HOURS, MAX_FETCH);
-    const emails = fetched?.emails ?? null;
+    const graphEmails = fetched?.emails ?? null;
     const complete = !!fetched?.complete;
 
     // `null` means we could not READ the mailbox; `[]` means we read it and
@@ -813,10 +813,24 @@ async function runTriage({ force = false } = {}) {
     // all-clear NEURO never actually established is the exact failure the
     // retired scanner's pile was the other half of. Leave the last known state
     // alone and say why.
-    if (emails === null) {
+    if (graphEmails === null) {
       console.warn('[EmailTriage] Mailbox unreachable — keeping the last known triage rather than publishing an empty one');
       return { ok: false, reason: 'mailbox unreachable', stale: true };
     }
+
+    // Gmail's Important mail (12 Oct 2026) — a SOURCE in this same pass, never
+    // a second store. Only NEW mail above the watermark; a Gmail failure is
+    // logged and recorded by gmail-intake and never fails the work triage.
+    let gmailEmails = [];
+    try {
+      const g = await require('./gmail-intake').fetchNew({ lookbackHours: LOOKBACK_HOURS });
+      if (g.ok) gmailEmails = g.emails || [];
+      else console.warn(`[EmailTriage] Gmail not read this pass: ${g.why}`);
+      if (g.watermarkSet) console.log('[EmailTriage] Gmail connected — watermark set; only mail from now on will be read');
+    } catch (e) {
+      console.warn(`[EmailTriage] Gmail intake failed: ${e.message}`);
+    }
+    const emails = [...graphEmails, ...gmailEmails];
 
     // An empty read used to wipe everything undismissed. It no longer gets a
     // branch of its own: it is just a fetch containing nothing, and the merge
@@ -881,6 +895,9 @@ async function runTriage({ force = false } = {}) {
 
     for (const e of stored) {
       if (e.dismissed || fetchedIds.has(e.id)) continue;
+      // Gmail is read INCREMENTALLY (above a watermark), so a Gmail entry's
+      // absence from this pass says nothing about whether it left Gmail.
+      if (e.source === 'gmail') continue;
       // We could not see the whole window, so its absence says nothing.
       if (!complete) continue;
       const arrived = e.received ? Date.parse(e.received) : NaN;

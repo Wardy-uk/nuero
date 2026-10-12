@@ -45,7 +45,10 @@ async function buildReplyDefaults(merged) {
   const sender = merged.fromEmail
     ? [{ name: merged.from || merged.fromEmail, email: merged.fromEmail }]
     : [];
-  const me = (await microsoft.getSignedInAddress() || '').toLowerCase();
+  // "Me" is the mailbox the email arrived in — Gmail for a Gmail entry.
+  const me = (require('../services/gmail-intake').isGmailId(merged.id)
+    ? require('../services/personal-mail').addressFor('gmail') || ''
+    : (await microsoft.getSignedInAddress() || '')).toLowerCase();
   const others = [
     ...(merged.recipients?.to || []),
     ...(merged.recipients?.cc || []),
@@ -72,6 +75,17 @@ async function loadEmail(emailId) {
   const triage = emailTriage.getTriageByCategory();
   const all = [...triage.urgent, ...triage.reply, ...triage.delegate, ...triage.fyi, ...triage.ignore];
   const triageItem = all.find((item) => item.id === emailId) || null;
+  // A Gmail entry is read from Gmail over IMAP — a Gmail id must never reach Graph.
+  const gmailIntake = require('../services/gmail-intake');
+  if (gmailIntake.isGmailId(emailId)) {
+    const g = await gmailIntake.readMessage(emailId);
+    const message = g && g.ok && g.exists ? {
+      subject: g.subject, from: g.fromName || g.from, fromEmail: g.from, to: g.to, cc: g.cc, body: g.body,
+      received: g.received, recipients: { to: g.to, cc: g.cc },
+    } : null;
+    if (!message && !triageItem) return null;
+    return { triageItem, live: Boolean(message), merged: { ...(triageItem || {}), ...(message || {}), id: emailId } };
+  }
   const message = await microsoft.fetchEmailById(emailId);
   if (!message && !triageItem) return null;
   // `live` false means this is the cached triage record only — Graph (and the
@@ -249,7 +263,12 @@ router.get('/triage/:emailId', async (req, res) => {
         replyDefaults: await buildReplyDefaults(merged),
         // The address a reply goes from (mail-identity): a reply prepares a
         // governed reply_email, so it is the same answer its approval card shows.
-        sendsFrom: (() => { const s = require('../services/mail-identity').forAction({ actionType: 'reply_email' }); return s ? { address: s.address, via: s.via } : null; })(),
+        sendsFrom: (() => {
+          const gmail = require('../services/gmail-intake').isGmailId(merged.id);
+          const s = require('../services/mail-identity').forAction({ actionType: 'reply_email', target: gmail ? { mailbox: 'gmail' } : {} });
+          return s ? { address: s.address, via: s.via } : null;
+        })(),
+        source: require('../services/gmail-intake').isGmailId(merged.id) ? 'gmail' : 'outlook',
       },
     });
   } catch (e) {
@@ -389,7 +408,14 @@ router.post('/triage/dismiss/:emailId', async (req, res) => {
     let markedRead = null;
     let readError = null;
 
-    if (req.body?.markRead) {
+    const gmailIntake = require('../services/gmail-intake');
+    const isGmail = gmailIntake.isGmailId(emailId);
+    if (req.body?.markRead && isGmail) {
+      // A Gmail dismiss marks it read in GMAIL — never asks Graph.
+      const result = await gmailIntake.markRead(emailId);
+      markedRead = result.marked;
+      if (!result.marked) readError = `Dismissed here, but marking it read in Gmail failed (${result.reason}).`;
+    } else if (req.body?.markRead) {
       const result = await microsoft.markEmailRead(emailId);
       markedRead = result.marked;
       if (!result.marked) {
@@ -411,7 +437,9 @@ router.post('/triage/dismiss/:emailId', async (req, res) => {
     // never allowed to fail the dismissal — the mute proceeds without it, and
     // the panel's list is what makes that recoverable.
     let selfAddress = null;
-    try { selfAddress = await microsoft.getSignedInAddress(); } catch { /* proceed */ }
+    try {
+      selfAddress = isGmail ? require('../services/personal-mail').addressFor('gmail') : await microsoft.getSignedInAddress();
+    } catch { /* proceed */ }
 
     // `mute`: 'subject' (default for not-relevant) or 'sender' (the Mute sender button).
     const result = emailTriage.dismissEmail(emailId, req.body?.reason, { selfAddress, mute: req.body?.mute || null });

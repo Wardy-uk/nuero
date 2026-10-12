@@ -669,8 +669,9 @@ test('33. no send path exists outside the governed executor', () => {
   // cannot wait for an approval — the approver is the person missing — so arming
   // the walk is the approval. It is on its own external-writes ledger entry.
   // + smtp-mail.js (12 Oct 2026): the personal-mailbox transport, same draft →
-  // send interface as action-mail.js. Its only user is the hike alert (pinned below).
-  assert.deepEqual(draftSend.sort(), ['services/action-executor.js', 'services/action-mail.js', 'services/hike-safety.js', 'services/smtp-mail.js']);
+  // send interface as action-mail.js; + personal-mail-api.js, which hands it to
+  // the governed executor (a Gmail reply: same approval, ledger and verify).
+  assert.deepEqual(draftSend.sort(), ['services/action-executor.js', 'services/action-mail.js', 'services/hike-safety.js', 'services/personal-mail-api.js', 'services/smtp-mail.js']);
   // SMTP (12 Oct 2026): the personal mailboxes are the first sender that is not
   // Graph. ONE file may load nodemailer, and its only send is a test to another
   // of Nick's own mailboxes (pinned in personal-mail.test.js). A second file
@@ -678,13 +679,16 @@ test('33. no send path exists outside the governed executor', () => {
   const smtp = files.filter((f) => /require\(['"]nodemailer(\/[^'"]*)?['"]\)/.test(fs.readFileSync(path.join(root, f), 'utf8')));
   assert.deepEqual(smtp, ['services/personal-mail-transport.js']);
   // Its real send, smtpSend, has ONE caller: smtp-mail.js, the ledgered adapter
-  // (Message-ID stored before the network). And that adapter has ONE user: the
-  // hike alert (Nick's 10 Oct exception). Wiring it into anything else — the
-  // governed executor included — is a decision that must change this line.
+  // (Message-ID stored before the network). That adapter has TWO users: the
+  // hike alert (Nick's 10 Oct exception) and personal-mail-api, whose ONE user
+  // is the governed executor (Gmail replies, 12 Oct 2026 — registry
+  // personalMailboxes). Any other wiring is a decision that changes these lines.
   const smtpCallers = files.filter((f) => f !== 'services/personal-mail-transport.js' && /\.smtpSend\(/.test(fs.readFileSync(path.join(root, f), 'utf8')));
   assert.deepEqual(smtpCallers, ['services/smtp-mail.js']);
   const adapterUsers = files.filter((f) => f !== 'services/smtp-mail.js' && /require\(['"]\.\/smtp-mail['"]\)/.test(fs.readFileSync(path.join(root, f), 'utf8')));
-  assert.deepEqual(adapterUsers, ['services/hike-safety.js']);
+  assert.deepEqual(adapterUsers.sort(), ['services/hike-safety.js', 'services/personal-mail-api.js']);
+  const apiUsers = files.filter((f) => f !== 'services/personal-mail-api.js' && /require\(['"]\.\/personal-mail-api['"]\)/.test(fs.readFileSync(path.join(root, f), 'utf8')));
+  assert.deepEqual(apiUsers, ['services/action-executor.js']);
   // The chase surfaces import no sender of any kind.
   for (const f of ['services/prepared-actions.js', 'routes/prepared-actions.js', 'services/waiting-on.js', 'routes/waiting-on.js', 'services/approval-proof.js']) {
     const src = fs.readFileSync(path.join(root, f), 'utf8');

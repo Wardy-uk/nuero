@@ -56,7 +56,24 @@ function SendsAs({ sender }) {
   );
 }
 
-function Mailbox({ m, onChange }) {
+// Gmail → work triage (12 Oct 2026): watching Important from a watermark; nothing older is ever read.
+function GmailIntake({ s }) {
+  if (!s || !s.configured) return null;
+  const wm = s.watermark;
+  const last = s.last;
+  return (
+    <div className="pm-small" data-testid="pm-gmail-intake">
+      {wm
+        ? <>Triage watches Gmail’s Important mail that arrived after <strong>{when(wm.setAt)}</strong> — nothing older is read.</>
+        : <>Triage starts watching Gmail’s Important mail on its next run (it marks that moment; nothing older is read).</>}
+      {last && (last.ok
+        ? <span className="pm-muted"> Last pass {when(last.at)}: {last.fetched || 0} message{last.fetched === 1 ? '' : 's'}.</span>
+        : <span className="pm-bad"> Last pass {when(last.at)} could not read Gmail — {last.why}</span>)}
+    </div>
+  );
+}
+
+function Mailbox({ m, onChange, gmailIntake = null }) {
   const [password, setPassword] = useState('');
   const [address, setAddress] = useState('');
   const [busy, setBusy] = useState(null);
@@ -94,6 +111,7 @@ function Mailbox({ m, onChange }) {
       </div>
       <div className="pm-job">{m.job}</div>
       <SendsAs sender={m.sender} />
+      {m.key === 'gmail' && <GmailIntake s={gmailIntake} />}
       <div className="pm-hosts">{m.providerLabel}: IMAP {m.hosts.imap}{m.sends ? ` · SMTP ${m.hosts.smtp}` : ''}</div>
 
       {!m.configured ? (
@@ -191,7 +209,7 @@ export default function PersonalMailCard() {
         </p>
         {error && <div className="admin-error">{error}</div>}
         {!data && !error && <div className="pm-muted">Loading…</div>}
-        {data && data.mailboxes.map((m) => <Mailbox key={m.key} m={m} onChange={load} />)}
+        {data && data.mailboxes.map((m) => <Mailbox key={m.key} m={m} onChange={load} gmailIntake={data.gmailIntake} />)}
         {tests.length > 0 && (
           <div className="pm-tests">
             <div className="pm-sub">Test emails</div>

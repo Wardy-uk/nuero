@@ -43,27 +43,8 @@ function smtpConfig(key, cred) {
   };
 }
 
-function imapConfig(key, cred) {
-  const p = pm.PROVIDERS[pm.box(key).provider].imap;
-  return {
-    host: p.host, port: p.port, secure: p.secure,
-    auth: { user: cred.address, pass: cred.password },
-    logger: false, emitLogs: false,
-    connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 60_000,
-  };
-}
-
-/**
- * Gmail's Important folder. ⚠ imapflow maps \All, \Junk, \Sent… to `specialUse`
- * but NOT \Important — on Nick's live account (12 Oct 2026) `[Gmail]/Important`
- * came back `specialUse: null` with `\Important` only in `flags`. Read both.
- * PURE.
- */
-function importantFolder(list) {
-  const hit = (list || []).find((m) => m.specialUse === '\\Important'
-    || (m.flags && [...m.flags].includes('\\Important')));
-  return hit ? hit.path : null;
-}
+// Pure, and shared with the READ-only modules (gmail-intake) so they never load this sender.
+const { imapConfig, importantFolder } = pm;
 
 /**
  * UIDs of messages in the OPEN folder whose Message-ID is `id` (no brackets).
@@ -351,7 +332,25 @@ async function findInSent(key, messageId, deps) {
       try {
         const id = String(messageId).replace(/^<|>$/g, '');
         const uids = await _uidsForMessageId(c, id, { gmail, now: deps.now() });
-        return { ok: true, messages: (uids || []).map(() => ({ internetMessageId: `<${id}>` })), evidence: gmail ? 'filed by Gmail in Sent Mail' : 'NEURO’s own copy in Sent (Fasthosts does not file SMTP sends itself)' };
+        // What the governed executor's judgeSentItem checks: recipients, copies,
+        // subject, time, sender — and the Gmail thread. Never the body.
+        const messages = [];
+        for (const uid of uids || []) {
+          const m = await c.fetchOne(String(uid), { uid: true, envelope: true, internalDate: true, threadId: gmail }, { uid: true });
+          const env = (m && m.envelope) || {};
+          const addrs = (l) => (l || []).map((a) => String(a.address || '').toLowerCase()).filter(Boolean);
+          messages.push({
+            id: String(uid),
+            internetMessageId: env.messageId || `<${id}>`,
+            subject: env.subject || '',
+            to: addrs(env.to), cc: addrs(env.cc), bcc: addrs(env.bcc),
+            from: addrs(env.from)[0] || null,
+            sentAt: env.date ? new Date(env.date).toISOString() : (m && m.internalDate ? new Date(m.internalDate).toISOString() : null),
+            conversationId: m && m.threadId ? String(m.threadId) : null,
+            bodyText: null,
+          });
+        }
+        return { ok: true, messages, evidence: gmail ? 'filed by Gmail in Sent Mail' : 'NEURO’s own copy in Sent (Fasthosts does not file SMTP sends itself)' };
       } finally { lock.release(); }
     } finally { await _close(c); }
   } catch (e) {
@@ -359,4 +358,35 @@ async function findInSent(key, messageId, deps) {
   }
 }
 
-module.exports = { check, sendTest, importantFolder, smtpSend, findInSent, classifySend, readBack, findByMessageId, smtpConfig, imapConfig, defaultDeps, READBACK_ATTEMPTS, READBACK_GAP_MS };
+/**
+ * Has anything been sent in this Gmail thread since `sinceIso`? { count } or
+ * null when it could not be read — the executor then WAITS, never sends.
+ * Gmail only: it answers thread and date searches (Fasthosts answers none).
+ */
+async function sentInThreadSince(key, threadId, sinceIso, deps) {
+  deps = _withDefaults(deps);
+  if (pm.box(key).provider !== 'gmail' || !threadId) return null;
+  const cred = pm.credentialFor(key);
+  if (!cred) return null;
+  try {
+    const c = await _openImap(key, cred, deps);
+    try {
+      const list = await c.list().catch(() => []);
+      const path = (list.find((m) => m.specialUse === '\\Sent') || {}).path;
+      if (!path) return null;
+      const lock = await c.getMailboxLock(path);
+      try {
+        const since = Date.parse(sinceIso);
+        const uids = (await c.search({ threadId: String(threadId) }, { uid: true })) || [];
+        let count = 0;
+        for (const uid of uids) {
+          const m = await c.fetchOne(String(uid), { uid: true, internalDate: true }, { uid: true });
+          if (!Number.isFinite(since) || (m && Date.parse(m.internalDate) >= since)) count += 1;
+        }
+        return { count };
+      } finally { lock.release(); }
+    } finally { await _close(c); }
+  } catch { return null; }
+}
+
+module.exports = { sentInThreadSince, check, sendTest, importantFolder, smtpSend, findInSent, classifySend, readBack, findByMessageId, smtpConfig, imapConfig, defaultDeps, READBACK_ATTEMPTS, READBACK_GAP_MS };

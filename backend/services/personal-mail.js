@@ -208,6 +208,28 @@ function classifyError(err) {
   return { kind, error: `${plain} (${msg.replace(/\s+/g, ' ').slice(0, 160)})` };
 }
 
+/** IMAP connection settings for a mailbox. PURE. Shared by the sender and the readers. */
+function imapConfig(key, cred) {
+  const p = PROVIDERS[box(key).provider].imap;
+  return {
+    host: p.host, port: p.port, secure: p.secure,
+    auth: { user: cred.address, pass: cred.password },
+    logger: false, emitLogs: false,
+    connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 60_000,
+  };
+}
+
+/**
+ * Gmail's Important folder. ⚠ imapflow maps \All, \Junk, \Sent… to `specialUse`
+ * but NOT \Important — on Nick's live account (12 Oct 2026) `[Gmail]/Important`
+ * came back `specialUse: null` with `\Important` only in `flags`. Read both. PURE.
+ */
+function importantFolder(list) {
+  const hit = (list || []).find((m) => m.specialUse === '\\Important'
+    || (m.flags && [...m.flags].includes('\\Important')));
+  return hit ? hit.path : null;
+}
+
 // ── Stored state ────────────────────────────────────────────────────────────
 
 function setCredential(key, input, now = Date.now()) {
@@ -297,7 +319,7 @@ function tests(now = Date.now()) {
 module.exports = {
   PROVIDERS, MAILBOXES, KEYS, DOMAIN,
   box, credentialFor, addressFor, senderFor, configuredKeys,
-  validateCredential, formatAddress, testTargets, parseAuthResults, verdictSummary, classifyError,
+  validateCredential, formatAddress, testTargets, imapConfig, importantFolder, parseAuthResults, verdictSummary, classifyError,
   setCredential, clearCredential, recordCheck, status, recordTest, tests,
   _internals: { CRED_STATE, CHECK_STATE, TEST_STATE },
 };

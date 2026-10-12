@@ -554,8 +554,11 @@ async function executeAction(action) {
       let draft = payload.body || '';
       if (!draft) {
         try {
-          const microsoft = require('./microsoft');
-          const message = await microsoft.fetchEmailById(emailId);
+          // A Gmail email is read from Gmail — a Gmail id never reaches Graph.
+          const gi = require('./gmail-intake');
+          const message = gi.isGmailId(emailId)
+            ? await gi.readMessage(emailId).then((m) => (m && m.ok && m.exists ? { from: m.fromName || m.from, subject: m.subject, body: m.body } : null))
+            : await require('./microsoft').fetchEmailById(emailId);
           const prompt = `Draft a reply to this email as Nick Ward, Head of Technical Support at Nurtur. Direct, warm, concise — British English, no corporate padding. Sign off "Nick". Output only the reply body, no subject line and no commentary.
 
 From: ${message?.from || payload.from || 'Unknown'}

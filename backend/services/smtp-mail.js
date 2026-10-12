@@ -85,13 +85,38 @@ function forMailbox(key, deps = {}) {
     return 'unavailable';
   }
 
+  /**
+   * Set EXACTLY these recipients and subject on an unsent draft, and report what
+   * it now holds — the governed executor compares that against the approval.
+   * A draft that has started sending is never edited.
+   */
+  async function patchDraft(id, { to, cc = [], subject }) {
+    const row = _db().get('SELECT * FROM smtp_outbox WHERE id = ? AND mailbox = ?', [id, key]);
+    if (!row) return { ok: false, status: 404, category: 'http_4xx' };
+    if (row.state !== 'draft' && row.state !== 'refused') return { ok: false, status: 409, category: 'http_4xx' };
+    const message = JSON.parse(row.message_json);
+    message.to = _addr(to);
+    message.cc = _addr(cc);
+    if (subject !== undefined) message.subject = subject;
+    _db().run('UPDATE smtp_outbox SET message_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify(message), _now(), id]);
+    const stored = JSON.parse(_db().get('SELECT message_json FROM smtp_outbox WHERE id = ?', [id]).message_json);
+    return {
+      ok: true,
+      to: stored.to.map((r) => r.address.toLowerCase()),
+      cc: stored.cc.map((r) => r.address.toLowerCase()),
+      bcc: [],
+      subject: stored.subject,
+      internetMessageId: row.message_id,
+    };
+  }
+
   async function deleteDraft(id) {
     if ((await draftState(id)) !== 'draft') return false;
     _db().run("UPDATE smtp_outbox SET state = 'deleted', updated_at = ? WHERE id = ?", [_now(), id]);
     return true;
   }
 
-  return { mailbox: key, createDraft, sendDraft, findSent, draftState, deleteDraft };
+  return { mailbox: key, createDraft, patchDraft, sendDraft, findSent, draftState, deleteDraft };
 }
 
 module.exports = { forMailbox };

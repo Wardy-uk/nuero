@@ -15,7 +15,9 @@ const router = express.Router();
 
 // GET /api/mail/accounts — the five personal mailboxes: job, hosts, whether a password is saved, the last connection check, and the From / Reply-To each sends as. Never a password. Keywords: personal email, mailbox settings, nick@ saim@ contact@ neuro@ Gmail.
 router.get('/accounts', (req, res) => {
-  res.json({ ok: true, ...pm.status() });
+  let gmailIntake = null;
+  try { gmailIntake = require('../services/gmail-intake').status(); } catch { /* shown as unknown */ }
+  res.json({ ok: true, ...pm.status(), gmailIntake });
 });
 
 // GET /api/mail/tests — recent test emails and the SPF / DKIM / DMARC verdict the receiving server gave each. Keywords: email authentication test, DKIM pass.

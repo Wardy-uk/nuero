@@ -126,6 +126,10 @@ const ACTION_TYPES = Object.freeze({
     attachments: false,
     sendMode: 'reply',
     bodyFormat: 'text',
+    // 12 Oct 2026: a reply goes from the mailbox the email arrived in. Gmail is
+    // the one personal mailbox allowed today (personal-mail-api over SMTP, the
+    // same ledger and verification); anything else is refused by commonChecks.
+    personalMailboxes: Object.freeze(['gmail']),
     duplicate: 'one live reply per source email; none once a reply to that email has gone since it was prepared',
     preparation: 'Nick\'s words from the Inbox composer, or an approved draft_reply; recipients resolved from the original message',
     execution: 'original message still exists in the same thread from the same sender, no reply already sent in that thread since it was prepared',
@@ -441,7 +445,10 @@ function bindFor(actionType, target, draft) {
   const t = target || {};
   const d = draft || {};
   if (actionType === 'reply_email') {
-    return { emailId: t.emailId || null, conversationId: t.conversationId || null, mode: d.mode || 'reply' };
+    // `mailbox` (12 Oct 2026) decides which mailbox SENDS, so it is bound: a
+    // reply approved from Gmail cannot be re-pointed at another identity.
+    // Omitted when absent, so every work reply hashes as it always has.
+    return { emailId: t.emailId || null, conversationId: t.conversationId || null, mode: d.mode || 'reply', mailbox: t.mailbox || undefined };
   }
   if (actionType === 'chase_agenda') return { eventId: t.eventId || null, start: t.start || null };
   if (actionType === 'send_weekly_risk_report') {
