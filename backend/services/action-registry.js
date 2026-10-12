@@ -137,6 +137,34 @@ const ACTION_TYPES = Object.freeze({
     execution: 'original message still exists in the same thread from the same sender, no reply already sent in that thread since it was prepared',
     label: 'Reply to an email',
   }),
+  // 12 Oct 2026: a NEW email Nick writes in Personal inbox → Compose, from the
+  // address he picks (work via Microsoft, or nick@ / contact@ / Gmail over
+  // SMTP). His words, his recipients, his chosen From — bound into the
+  // approval (bindFor) and sent on his click like an Inbox reply.
+  compose_email: Object.freeze({
+    type: 'compose_email',
+    authority: 'A4',
+    requiresApproval: true,
+    executable: true,
+    executor: 'microsoft.mail',
+    verification: 'sent-items',
+    channel: 'email',
+    retryPolicy: 'human-review',
+    uncertaintyPolicy: 'verify-only',
+    approvalTtlHours: 24,
+    preparedTtlHours: 72,
+    maxRecipients: 25,
+    targetIsRecipient: false,
+    cc: true,
+    attachments: false,
+    sendMode: 'new-message',
+    bodyFormat: 'text',
+    personalMailboxes: Object.freeze(['nick', 'contact', 'gmail']),
+    duplicate: 'each compose is its own message; pressing Send twice spends one intent grant once',
+    preparation: 'Nick\'s words in Personal inbox → Compose, with the From he chose',
+    execution: 'the chosen mailbox can send; recipients, subject and body exactly as approved',
+    label: 'Send a new email',
+  }),
   // Build 8D. Ask a meeting organiser what the meeting is for (Nick's 14 Aug
   // policy: any meeting with no agenda or outcome gets one polite request).
   // A new email, one recipient: the organiser.
@@ -453,6 +481,8 @@ function bindFor(actionType, target, draft) {
     return { emailId: t.emailId || null, conversationId: t.conversationId || null, mode: d.mode || 'reply', mailbox: t.mailbox || undefined };
   }
   if (actionType === 'chase_agenda') return { eventId: t.eventId || null, start: t.start || null };
+  // Which mailbox SENDS is the whole point of a compose's From dropdown — bound.
+  if (actionType === 'compose_email') return { mailbox: t.mailbox || 'work' };
   if (actionType === 'send_weekly_risk_report') {
     return { week: t.week || null, reportVersion: t.reportVersion || null, htmlHash: d.html ? sha256(String(d.html)) : null };
   }

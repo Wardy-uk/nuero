@@ -37,3 +37,9 @@
 .pi-outcome { font-size: 13px; margin-top: 8px; }
 .pi-outcome-ok { color: var(--success); }
 .pi-outcome-warn, .pi-outcome-bad { color: var(--warning); }
+.pi-compose { border: 1px solid var(--accent); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+.pi-compose-row { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: center; }
+.pi-compose-row label { font-size: 12px; color: var(--text-secondary); }
+.pi-compose input, .pi-compose select, .pi-compose textarea { width: 100%; box-sizing: border-box; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; font-family: var(--font-sans); font-size: 13px; }
+.pi-btn-danger { border-color: var(--danger); color: var(--danger); }
+.pi-confirm { font-size: 12px; color: var(--text-secondary); }

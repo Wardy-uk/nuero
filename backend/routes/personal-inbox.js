@@ -49,6 +49,39 @@ router.post('/message/:id/read', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// POST /api/personal-inbox/message/:id/delete — move it to that mailbox's Bin/Trash (recoverable there). Nick only.
+router.post('/message/:id/delete', async (req, res) => {
+  try {
+    const r = await inbox.trash(req.params.id);
+    res.status(r.deleted ? 200 : r.reason === 'not-found' ? 404 : 502).json({ ok: r.deleted, ...r });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// GET /api/personal-inbox/compose/options — the addresses a new email can come from (work, nick@, contact@, Gmail) and, for the recipients given, which one NEURO suggests and why. Query: to (comma-separated)
+router.get('/compose/options', (req, res) => {
+  const mi = require('../services/mail-identity');
+  const pm = require('../services/personal-mail');
+  const options = [{ key: 'work', address: mi.WORK_ADDRESS, via: 'Microsoft (Outlook)', ready: true }];
+  for (const key of ['nick', 'contact', 'gmail']) {
+    const address = pm.addressFor(key);
+    if (address) options.push({ key, address, via: pm.PROVIDERS[pm.box(key).provider].label, ready: Boolean(pm.credentialFor(key)) });
+  }
+  const to = String(req.query.to || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const suggestion = to.length ? mi.decide({ kind: 'compose', recipients: to, lookups: mi.defaultLookups() }) : null;
+  res.json({ ok: true, options, suggestion: suggestion ? { mailbox: suggestion.mailbox || null, ask: !!suggestion.ask, why: suggestion.why, recipients: (suggestion.recipients || []).map((r) => ({ address: r.address, sphere: r.sphere, why: r.why })) } : null });
+});
+
+// POST /api/personal-inbox/compose — prepare a NEW email from the chosen address (governed compose_email; nothing is sent here — it goes on Nick's click). Body: { from, to, cc, subject, body }
+router.post('/compose', (req, res) => {
+  try {
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const { from, to, cc, subject, body } = b;
+    const r = require('../services/prepared-actions').prepareCompose({ from, to, cc, subject, body, origin: 'composer' });
+    if (!r.ok) return res.status(r.code || 400).json({ ok: false, error: r.error });
+    res.json({ ok: true, prepared: true, action: r.action });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // POST /api/personal-inbox/message/:id/reply — prepare a reply from the SAME mailbox (governed reply_email; nothing is sent here). Body: { body, replyAll }
 router.post('/message/:id/reply', async (req, res) => {
   try {

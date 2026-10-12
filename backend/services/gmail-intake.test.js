@@ -128,29 +128,23 @@ test('reading never imports a sender: gmail-intake loads the IMAP library, not t
 
 // ── the triage merge ────────────────────────────────────────────────────────
 
-test('runTriage: Gmail mail joins the SAME store as a source, and is never closed as "left the inbox" for being absent', async () => {
+test('runTriage: Gmail MOVED to the Personal inbox (Nick, 12 Oct) — the work triage never reads it, and drops any it held', async () => {
   const microsoft = require('./microsoft');
   const triage = require('./email-triage');
   const real = { fetch: microsoft.fetchRecentEmailsDetailed, auth: microsoft.isAuthenticated, gmail: gi.fetchNew };
   const work = (id) => ({ id, subject: `Work ${id}`, from: 'Sam', fromEmail: 'sam@nurtur.tech', received: new Date(Date.now() - 3600000).toISOString(), isRead: true, preview: 'p' });
-  let graph = [work('AAMk-1'), work('AAMk-2')];
-  let gmail = [gi.toTriageEmail(msg(460), { path: '[Gmail]/Important', uidValidity: 7n, text: 'hello' })];
+  let fetched = 0;
   microsoft.isAuthenticated = async () => true;
-  microsoft.fetchRecentEmailsDetailed = async () => ({ emails: graph, complete: true });
-  gi.fetchNew = async () => ({ ok: true, emails: gmail });
+  microsoft.fetchRecentEmailsDetailed = async () => ({ emails: [work('AAMk-1'), work('AAMk-2')], complete: true });
+  gi.fetchNew = async () => { fetched += 1; return { ok: true, emails: [] }; };
   try {
-    db.setState('email_triage', '[]'); db.setState('email_triage_input', '');
+    // A Gmail entry left from the hours Gmail was triaged here.
+    db.setState('email_triage', JSON.stringify([{ ...gi.toTriageEmail(msg(460), { path: '[Gmail]/Important', uidValidity: 7n, text: 'x' }), lane: 'reply', category: 'ACTION', dismissed: false }]));
+    db.setState('email_triage_input', '');
     await triage.runTriage({ force: true });
-    let stored = JSON.parse(db.getState('email_triage'));
-    assert.equal(stored.length, 3, 'one store');
-    const g = stored.find((e) => e.id === 'gmail:1460');
-    assert.equal(g.source, 'gmail'); assert.ok(g.lane, 'triaged into a lane like work mail');
-    // Next pass: Gmail returns nothing new (incremental) and AAMk-2 left Outlook.
-    graph = [work('AAMk-1')]; gmail = [];
-    await triage.runTriage({ force: true });
-    stored = JSON.parse(db.getState('email_triage'));
-    assert.equal(stored.find((e) => e.id === 'AAMk-2').dismissReason, 'left-inbox', 'positive control: a work email that left IS closed');
-    assert.equal(stored.find((e) => e.id === 'gmail:1460').dismissed, false, 'the Gmail entry is carried, not closed');
+    const stored = JSON.parse(db.getState('email_triage'));
+    assert.deepEqual(stored.map((e) => e.id).sort(), ['AAMk-1', 'AAMk-2'], 'work mail only — the old Gmail entry is gone');
+    assert.equal(fetched, 0, 'the work triage never asks Gmail');
   } finally {
     microsoft.fetchRecentEmailsDetailed = real.fetch; microsoft.isAuthenticated = real.auth; gi.fetchNew = real.gmail;
   }

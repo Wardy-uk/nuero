@@ -158,7 +158,7 @@ test('routes: open (never marks read), mark read, and a reply PREPARED from nick
     assert.deepEqual(r.action.draft.to.map((x) => x.email), ['sam@example.com']);
     assert.equal(r.action.origin, 'composer', 'sent on the click, like an Inbox reply');
     const ov = await (await fetch(`${base}/api/personal-inbox`)).json();
-    assert.deepEqual(ov.mailboxes.map((m) => m.key), ['nick', 'contact', 'saim']);
+    assert.deepEqual(ov.mailboxes.map((m) => m.key), ['nick', 'contact', 'gmail', 'saim']);
     assert.equal(ov.mailboxes.find((m) => m.key === 'saim').watchedOnly, true);
   } finally {
     server.closeAllConnections?.(); server.close();
@@ -183,8 +183,21 @@ test('the screen, really rendered: newest first with unread marked, saim@ labels
   const mod = { exports: {} };
   // eslint-disable-next-line no-new-func
   new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, require);
-  const { MessageList, MessageView } = mod.exports;
-  assert.ok(MessageList && MessageView, 'positive control: the views are exported');
+  const { MessageList, MessageView, ComposeForm } = mod.exports;
+  assert.ok(MessageList && MessageView && ComposeForm, 'positive control: the views are exported');
+  const options = [{ key: 'work', address: 'nickw@nurtur.tech', via: 'Microsoft (Outlook)', ready: true }, { key: 'nick', address: 'nick@nickward.co.uk', via: 'Fasthosts', ready: true }, { key: 'gmail', address: 'n.example@gmail.com', via: 'Gmail', ready: false }];
+  const compose = (suggestion, initialFrom = 'nick') => renderToString(React.createElement(ComposeForm, { options, suggestion, initialFrom, onRecipients() {}, onSend() {}, onCancel() {}, busy: false })).replace(/<!-- -->/g, '');
+  let html = compose(null);
+  assert.match(html, /<select id="pi-from"/);
+  assert.match(html, /nickw@nurtur\.tech/); assert.match(html, /nick@nickward\.co\.uk/);
+  assert.match(html, /n\.example@gmail\.com \(no password saved\)/);
+  assert.match(html, /Sends from <strong>nick@nickward\.co\.uk<\/strong>/);
+  html = compose({ mailbox: 'work', ask: false, why: 'Everyone on it is work.' });
+  assert.match(html, /data-testid="pi-compose-mismatch"/, 'personal From to work people is called out');
+  html = compose({ ask: true, why: 'NEURO cannot tell whether some of these people are work or personal.' });
+  assert.match(html, /Check the From/);
+  html = compose({ mailbox: 'nick', ask: false, why: 'Everyone on it is personal.' });
+  assert.doesNotMatch(html, /pi-compose-mismatch/);
   const now = Date.parse('2026-10-12T12:00:00Z');
   const items = [
     { id: 'a', from: 'Sam', subject: 'Newer', received: '2026-10-12T11:30:00Z', seen: false, preview: 'p' },
@@ -202,6 +215,135 @@ test('the screen, really rendered: newest first with unread marked, saim@ labels
   const watched = renderToString(React.createElement(MessageView, { data, onRead() {}, onReply() {}, busy: false, canReply: false }));
   assert.doesNotMatch(watched, /Your reply/, 'saim@ is watched, never replied from');
   assert.equal(renderToString(React.createElement(MessageList, { items: [], onOpen() {} })).includes('Nothing in this mailbox'), true);
+});
+
+// ── Gmail moved here (Nick, 12 Oct 2026) ────────────────────────────────────
+
+function gmailServer({ uidValidity = 7n, messages = [], uidNext = null } = {}) {
+  const s = { uidValidity, messages, uidNext, moved: [], ranges: [] };
+  s.imap = () => {
+    let cur = null;
+    return {
+      on() {}, async connect() {}, async logout() {},
+      get mailbox() { return { uidValidity: s.uidValidity, uidNext: s.uidNext || (s.messages.at(-1) || { uid: 0 }).uid + 1, exists: s.messages.length }; },
+      async list() { return [{ path: 'INBOX', specialUse: '\\Inbox' }, { path: '[Gmail]/Important', specialUse: null, flags: new Set(['\\Important']) }, { path: '[Gmail]/Bin', specialUse: '\\Trash' }]; },
+      async getMailboxLock(p) { cur = p; return { release() {} }; },
+      async *fetch(range) {
+        s.ranges.push(range);
+        const from = Number(String(range).split(':')[0]);
+        const hit = s.messages.filter((m) => m.uid >= from);
+        for (const m of (hit.length ? hit : s.messages.slice(-1))) yield m; // n:* past the end → the highest
+      },
+      async download(uid) { const m = s.messages.find((x) => String(x.uid) === String(uid)); return { content: (async function* () { yield Buffer.from(m ? m.text : ''); })() }; },
+      async messageMove(uid, to) { s.moved.push({ from: cur, uid, to }); s.messages = s.messages.filter((m) => String(m.uid) !== String(uid)); },
+    };
+  };
+  return s;
+}
+const gmsg = (uid) => ({ ...mail(uid), emailId: 2000n + BigInt(uid), threadId: 3000n + BigInt(uid), envelope: { ...mail(uid).envelope, to: [{ address: 'n.example@gmail.com' }], messageId: `<g${uid}@example.com>` } });
+
+test('the Gmail tab: Important only, nothing before the watermark, the n:* quirk dropped, unlabelled mail leaves; Settings sees the pass', async () => {
+  pm.setCredential('gmail', { address: 'n.example@gmail.com', password: 'abcd efgh ijkl mnop' });
+  const gi = require('./gmail-intake');
+  db.setState(gi.WATERMARK_KEY, '');
+  const srv = gmailServer({ messages: [gmsg(40), gmsg(41)] });
+  let r = await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
+  assert.equal(r.watermarkSet, true); assert.equal(srv.ranges.length, 0, 'first connect reads NOTHING');
+  assert.equal(JSON.parse(db.getState(gi.WATERMARK_KEY)).uidNext, 42);
+  srv.uidNext = 43; // 42 arrived and was deleted: "42:*" is asked, the server hands back 41
+  r = await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
+  assert.equal(srv.ranges.length, 1); assert.deepEqual(inbox.list('gmail'), [], 'uid 41 is below the line');
+  srv.uidNext = null; srv.messages.push(gmsg(43), gmsg(44));
+  r = await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
+  assert.deepEqual(inbox.list('gmail').map((m) => m.id), ['gmail:2044', 'gmail:2043'], 'newest first, Gmail ids kept');
+  assert.equal(inbox.gmailEntry('gmail:2044').gmail.path, '[Gmail]/Important');
+  srv.messages = srv.messages.filter((m) => m.uid !== 43); // no longer Important
+  await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
+  assert.deepEqual(inbox.list('gmail').map((m) => m.id), ['gmail:2044']);
+  assert.equal(inbox.INBOXES.includes('gmail'), true);
+  assert.equal(gi.status().last.ok, true, 'Settings reads the Personal inbox\'s Gmail pass');
+  // Delete moves it to Gmail's Bin.
+  const d = await inbox.trash('gmail:2044', { deps: { imap: srv.imap } });
+  assert.deepEqual(d, { deleted: true, to: '[Gmail]/Bin' });
+  assert.deepEqual(srv.moved, [{ from: '[Gmail]/Important', uid: '44', to: '[Gmail]/Bin' }]);
+  assert.deepEqual(inbox.list('gmail'), []);
+});
+
+test('delete MOVES to the mailbox\'s Trash (recoverable), and refuses when the folder was renumbered', async () => {
+  const srv = fasthosts({ INBOX: { messages: [mail(1), mail(2)] }, Trash: { messages: [] } });
+  const moves = [];
+  const imap = () => { const c = srv.imap(); c.list = async () => [{ path: 'INBOX', specialUse: '\\Inbox' }, { path: 'Trash', specialUse: '\\Trash' }]; c.messageMove = async (uid, to) => { moves.push({ uid, to }); }; return c; };
+  db.run("DELETE FROM personal_inbox WHERE mailbox = 'contact'");
+  await inbox.refreshMailbox('contact', { deps: { imap } });
+  let r = await inbox.trash('pmail:contact:5:2', { deps: { imap } });
+  assert.deepEqual(r, { deleted: true, to: 'Trash' });
+  assert.deepEqual(moves, [{ uid: '2', to: 'Trash' }]);
+  assert.deepEqual(inbox.list('contact').map((m) => m.id), ['pmail:contact:5:1']);
+  r = await inbox.trash('pmail:contact:4:1', { deps: { imap } });
+  assert.deepEqual([r.deleted, r.reason], [false, 'renumbered'], 'a uid from an old numbering could name another message');
+  assert.equal(moves.length, 1);
+});
+
+test('compose: refuses an unknown or unready From, empty fields and bad addresses; prepares with the chosen mailbox bound', () => {
+  const pa = require('./prepared-actions');
+  const registry = require('./action-registry');
+  assert.equal(pa.prepareCompose({ from: 'saim', to: ['a@b.co'], subject: 's', body: 'b' }).ok, false, 'SAiM is NEURO\'s voice, not Nick\'s');
+  assert.equal(pa.prepareCompose({ from: 'nick', to: [], subject: 's', body: 'b' }).ok, false);
+  assert.equal(pa.prepareCompose({ from: 'nick', to: ['not-an-address'], subject: 's', body: 'b' }).ok, false);
+  assert.equal(pa.prepareCompose({ from: 'nick', to: ['a@b.co'], subject: '', body: 'b' }).ok, false);
+  const r = pa.prepareCompose({ from: 'nick', to: ['helen@example.com'], cc: ['mum@example.org'], subject: 'Saturday', body: 'See you at 10.' });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.action.target.mailbox, 'nick');
+  assert.equal(r.action.sendsFrom.address, 'nick@nickward.co.uk');
+  assert.equal(r.action.origin, 'composer', 'sent on the click');
+  assert.notEqual(r.action.payloadHash, registry.payloadHash({ actionType: 'compose_email', version: 1, commitmentId: r.action.commitmentId, target: { ...r.action.target, mailbox: 'contact' }, draft: r.action.draft }), 'the From is bound');
+  const w = pa.prepareCompose({ from: 'work', to: ['chris.middleton@nurtur.tech'], subject: 'x', body: 'y' });
+  assert.equal(w.action.sendsFrom.address, 'nickw@nurtur.tech');
+  assert.ok(registry.canExecute('compose_email'));
+});
+
+test('a composed email from nick@: approved with the code, sent from nick@ over SMTP, verified in Sent — Graph untouched', async () => {
+  const pa = require('./prepared-actions');
+  const ex = require('./action-executor');
+  const proofs = require('./approval-proof');
+  const papi = require('./personal-mail-api');
+  if (!proofs.codeStatus().set) assert.equal(proofs.setCode('pinbox approval code').ok, true);
+  const NOW = Date.now();
+  const r = pa.prepareCompose({ from: 'nick', to: ['helen@example.com'], subject: 'Saturday walk', body: 'Catbells at 10?', now: NOW });
+  const a = r.action;
+  const sent = [];
+  const transport = {
+    smtpSend: async (key, m) => { sent.push({ key, m }); return { outcome: 'accepted', status: 250 }; },
+    findInSent: async (key, mid) => { const s = sent.find((x) => x.m.messageId === mid); return { ok: true, messages: s ? [{ id: '1', internetMessageId: mid, subject: s.m.subject, to: s.m.to.map((x) => x.address), cc: [], bcc: [], from: 'nick@nickward.co.uk', sentAt: new Date(NOW + 300000).toISOString(), conversationId: null, bodyText: null }] : [] }; },
+    sentInThreadSince: async () => ({ count: 0 }),
+  };
+  const ch = proofs.issue({ actionId: a.actionId, version: a.version, payloadHash: a.payloadHash, now: NOW + 60000 });
+  assert.equal(pa.approve(a.actionId, { approver: 'nick', payloadHash: a.payloadHash, challengeId: ch.challengeId, approvalCode: 'pinbox approval code', now: NOW + 60000, sending: () => true }).ok, true);
+  const graph = new Proxy({}, { get: (t, k) => async () => { throw new Error(`Graph mail.${String(k)} called for a nick@ compose`); } });
+  const x = await ex.execute(a.actionId, { now: NOW + 120000, deps: { mail: graph, enabled: () => true, personalMail: (box) => papi.forMailbox(box, { smtp: { transport }, transport }) } });
+  assert.equal(x.status, 'verified', JSON.stringify(x));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].m.from, '"Nick Ward" <nick@nickward.co.uk>');
+  assert.deepEqual(sent[0].m.to.map((t) => t.address), ['helen@example.com']);
+  assert.equal(sent[0].m.inReplyTo, undefined, 'a new email, not a reply');
+});
+
+test('compose routes: From options and a suggestion — a work recipient suggests work, a mix is ASKED about', async () => {
+  const express = require('express');
+  const app = express(); app.use(express.json()); app.use('/api/personal-inbox', require('../routes/personal-inbox'));
+  const server = http.createServer(app); await new Promise((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    let r = await (await fetch(`${base}/api/personal-inbox/compose/options`)).json();
+    assert.deepEqual(r.options.map((o) => o.key), ['work', 'nick', 'contact', 'gmail']);
+    assert.equal(r.suggestion, null);
+    r = await (await fetch(`${base}/api/personal-inbox/compose/options?to=${encodeURIComponent('chris.middleton@nurtur.tech')}`)).json();
+    assert.equal(r.suggestion.mailbox, 'work');
+    r = await (await fetch(`${base}/api/personal-inbox/compose/options?to=${encodeURIComponent('chris.middleton@nurtur.tech,stranger@example.net')}`)).json();
+    assert.equal(r.suggestion.ask, true);
+    r = await (await fetch(`${base}/api/personal-inbox/compose`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ from: 'contact', to: ['x@y.co'], subject: 'Hi', body: 'Hello' }) })).json();
+    assert.equal(r.ok, true); assert.equal(r.action.sendsFrom.address, 'contact@nickward.co.uk');
+  } finally { server.closeAllConnections?.(); server.close(); }
 });
 
 // ── a nick@ reply through the governed executor ─────────────────────────────

@@ -941,6 +941,41 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
 }
 
 /**
+ * 12 Oct 2026 — a NEW email Nick wrote in Personal inbox → Compose, from the
+ * mailbox he chose (`from`: 'work' | 'nick' | 'contact' | 'gmail'). Prepared,
+ * never sent here; it goes on his click (origin 'composer') through the same
+ * executor, ledger and Sent verification as everything else.
+ */
+function prepareCompose({ from = 'work', to = [], cc = [], subject = '', body = '', origin = 'composer', now = Date.now() } = {}) {
+  const nowMs = msOf(now);
+  const policy = registry.policyFor('compose_email');
+  const mailbox = String(from || 'work');
+  if (mailbox !== 'work' && !policy.personalMailboxes.includes(mailbox)) return { ok: false, code: 400, error: `you cannot send from "${mailbox}"` };
+  if (mailbox !== 'work' && !require('./personal-mail').credentialFor(mailbox)) return { ok: false, code: 409, error: 'that mailbox has no password saved — add it in Settings → Personal email' };
+  const t = _recipients(to); const c = _recipients(cc);
+  if (t.bad || c.bad) return { ok: false, code: 400, error: 'one of the addresses is not a valid email address' };
+  const toList = t.list; const ccList = c.list.filter((x) => !toList.some((y) => y.email === x.email));
+  if (!toList.length) return { ok: false, code: 400, error: 'add at least one recipient' };
+  if (toList.length + ccList.length > policy.maxRecipients) return { ok: false, code: 400, error: `an email may reach at most ${policy.maxRecipients} people` };
+  const subj = String(subject || '').trim();
+  const text = String(body || '').replace(/\r\n/g, '\n').trim();
+  if (!subj) return { ok: false, code: 400, error: 'add a subject' };
+  if (!text) return { ok: false, code: 400, error: 'the email is empty' };
+  if (text.length > MAX_BODY) return { ok: false, code: 400, error: `the email must be at most ${MAX_BODY} characters` };
+  const id = crypto.randomBytes(8).toString('hex');
+  const subjectKey = `compose:${id}`;
+  const target = { kind: 'compose', mailbox };
+  const draft = { channel: 'email', voice: 'nick', generatedBy: 'typed by Nick in Personal inbox → Compose', to: toList, cc: ccList, subject: subj, body: text, placeholders: _placeholders(text) };
+  const evidence = { origin, from: mailbox };
+  const action = _insertPrepared({
+    actionType: 'compose_email', subjectKey, findingId: subjectKey, subjectRef: subjectKey, target, draft, evidence, origin,
+    reason: `New email to ${toList.map((r) => r.name || r.email).join(', ')}: "${subj}"`,
+    idemRoot: subjectKey, nowMs,
+  });
+  return { ok: true, action };
+}
+
+/**
  * 8D — prepare an agenda request for a meeting meeting-triage judged needs
  * one. Sync: the caller has already fetched the event. ONE per meeting, ever
  * (a sent one blocks for good; the database repeats it in an index).
@@ -1295,7 +1330,7 @@ module.exports = {
   MIN_CONFIDENCE, RECENT_CHASE_DAYS, EXPIRY_HOURS, STATUSES, TERMINAL, LIVE,
   shouldPrepare, draftFor, actionPhrase,
   prepareFromRisk, prepareFromWaitingOn, shouldPrepareFromButton, chaseBlock, legacyHistory,
-  prepareReply, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, agendaAsked,
+  prepareReply, prepareCompose, prepareAgendaChase, prepareWeeklyReport, weeklyReportFor, agendaAsked,
   prepareCalendarCreate, prepareCalendarReschedule, prepareCalendarCancel,
   approve, reject, edit, sweep, transition, note, governedChaseLive,
   counterpartyFor: _counterparty, ACCEPTED_TARGET_METHODS,

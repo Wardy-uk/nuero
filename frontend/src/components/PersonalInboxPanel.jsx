@@ -56,9 +56,56 @@ export function MessageList({ items, onOpen, openId, now }) {
   );
 }
 
-export function MessageView({ data, onRead, onReply, busy, outcome, canReply }) {
+const splitAddrs = (s) => String(s || '').split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+
+/**
+ * Compose a new email (12 Oct 2026). The From dropdown lists the addresses the
+ * server says can send; NEURO suggests one from who it is going to, and SAYS
+ * when the choice and the recipients disagree — it never picks silently.
+ */
+export function ComposeForm({ options, suggestion, onRecipients, onSend, onCancel, busy, outcome, initialFrom = null }) {
+  const ready = (options || []).filter((o) => o.ready);
+  const [from, setFrom] = useState(initialFrom || (ready[0] && ready[0].key) || 'work');
+  const [to, setTo] = useState('');
+  const [cc, setCc] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [touchedFrom, setTouchedFrom] = useState(false);
+  useEffect(() => {
+    if (!touchedFrom && suggestion && suggestion.mailbox && ready.some((o) => o.key === suggestion.mailbox)) setFrom(suggestion.mailbox);
+  }, [suggestion, touchedFrom]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosen = (options || []).find((o) => o.key === from);
+  const mismatch = suggestion && !suggestion.ask && suggestion.mailbox && suggestion.mailbox !== from
+    && !(suggestion.mailbox === 'nick' && from !== 'work');
+  return (
+    <div className="pi-compose" data-testid="pi-compose">
+      <div className="pi-compose-row">
+        <label htmlFor="pi-from">From</label>
+        <select id="pi-from" value={from} onChange={(e) => { setFrom(e.target.value); setTouchedFrom(true); }}>
+          {(options || []).map((o) => <option key={o.key} value={o.key} disabled={!o.ready}>{o.address}{o.ready ? '' : ' (no password saved)'}</option>)}
+        </select>
+      </div>
+      {suggestion && suggestion.ask && <div className="pi-warn" data-testid="pi-compose-ask">{suggestion.why} Check the From.</div>}
+      {mismatch && <div className="pi-warn" data-testid="pi-compose-mismatch">NEURO would send this from {(options.find((o) => o.key === suggestion.mailbox) || {}).address} — {suggestion.why}</div>}
+      <div className="pi-compose-row"><label htmlFor="pi-to">To</label><input id="pi-to" value={to} onChange={(e) => setTo(e.target.value)} onBlur={() => onRecipients(splitAddrs(`${to},${cc}`))} placeholder="name@example.com, …" /></div>
+      <div className="pi-compose-row"><label htmlFor="pi-cc">Cc</label><input id="pi-cc" value={cc} onChange={(e) => setCc(e.target.value)} onBlur={() => onRecipients(splitAddrs(`${to},${cc}`))} placeholder="optional" /></div>
+      <div className="pi-compose-row"><label htmlFor="pi-subject">Subject</label><input id="pi-subject" value={subject} onChange={(e) => setSubject(e.target.value)} /></div>
+      <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} placeholder="Your email…" />
+      <div className="pi-from-line" data-testid="pi-compose-from">Sends from <strong>{chosen ? chosen.address : from}</strong>{chosen ? ` (${chosen.via})` : ''}</div>
+      <div className="pi-actions">
+        <button type="button" className="pi-btn pi-btn-primary" disabled={busy || !splitAddrs(to).length || !subject.trim() || !body.trim()}
+          onClick={async () => { if (await onSend({ from, to: splitAddrs(to), cc: splitAddrs(cc), subject, body })) { setTo(''); setCc(''); setSubject(''); setBody(''); } }}>{busy ? 'Sending…' : 'Send'}</button>
+        <button type="button" className="pi-btn" disabled={busy} onClick={onCancel}>Close</button>
+      </div>
+      {outcome && <div className={`pi-outcome pi-outcome-${outcome.tone}`}>{outcome.text}</div>}
+    </div>
+  );
+}
+
+export function MessageView({ data, onRead, onReply, onDelete, busy, outcome, canReply }) {
   const [text, setText] = useState('');
   const [replyAll, setReplyAll] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   if (!data) return null;
   const m = data.message;
   return (
@@ -69,6 +116,13 @@ export function MessageView({ data, onRead, onReply, busy, outcome, canReply }) 
       <pre className="pi-body">{m.body || '(no text)'}</pre>
       <div className="pi-actions">
         <button type="button" className="pi-btn" disabled={busy} onClick={onRead}>Mark read</button>
+        {onDelete && (confirmDelete
+          ? <>
+              <span className="pi-confirm">Move to the mailbox’s Bin? (recoverable there)</span>
+              <button type="button" className="pi-btn pi-btn-danger" disabled={busy} onClick={() => { setConfirmDelete(false); onDelete(); }}>Delete</button>
+              <button type="button" className="pi-btn" disabled={busy} onClick={() => setConfirmDelete(false)}>Keep</button>
+            </>
+          : <button type="button" className="pi-btn" disabled={busy} onClick={() => setConfirmDelete(true)}>Delete</button>)}
       </div>
       {canReply && (
         <div className="pi-reply">
@@ -94,6 +148,39 @@ export default function PersonalInboxPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [outcome, setOutcome] = useState(null);
+  const [composing, setComposing] = useState(false);
+  const [options, setOptions] = useState([]);
+  const [suggestion, setSuggestion] = useState(null);
+
+  const startCompose = async () => {
+    setComposing(true); setOutcome(null); setSuggestion(null);
+    const d = await call('/api/personal-inbox/compose/options');
+    if (d && d.ok) setOptions(d.options);
+  };
+  const recipients = async (list) => {
+    if (!list.length) { setSuggestion(null); return; }
+    const d = await call(`/api/personal-inbox/compose/options?to=${encodeURIComponent(list.join(','))}`);
+    if (d && d.ok) { setOptions(d.options); setSuggestion(d.suggestion); }
+  };
+  const sendNew = async (fields) => {
+    setBusy(true); setOutcome(null); setError(null);
+    try {
+      const p = await call('/api/personal-inbox/compose', 'POST', fields);
+      if (!p.ok) { setError(p.error || 'Could not prepare the email.'); return false; }
+      const x = await executeDirect(p.action);
+      setOutcome(directOutcome(x));
+      return x.ok;
+    } finally { setBusy(false); }
+  };
+  const remove = async () => {
+    setBusy(true); setError(null);
+    try {
+      const d = await call(`/api/personal-inbox/message/${encodeURIComponent(openId)}/delete`, 'POST', {});
+      if (!d.ok) { setError(`Could not delete it (${d.reason || 'error'}).`); return; }
+      setOpenId(null); setView(null);
+      await load();
+    } finally { setBusy(false); }
+  };
 
   const load = useCallback(async () => {
     const [o, l] = await Promise.all([call('/api/personal-inbox'), call(`/api/personal-inbox/mail/${tab}`)]);
@@ -133,23 +220,28 @@ export default function PersonalInboxPanel() {
     <div className="pi" data-testid="personal-inbox">
       <div className="pi-head">
         <h1 className="pi-title">Personal inbox</h1>
-        <button type="button" className="pi-btn" disabled={busy} onClick={refresh}>{busy ? 'Checking…' : 'Check now'}</button>
+        <div className="pi-actions">
+          <button type="button" className="pi-btn pi-btn-primary" disabled={busy} onClick={startCompose}>Compose</button>
+          <button type="button" className="pi-btn" disabled={busy} onClick={refresh}>{busy ? 'Checking…' : 'Check now'}</button>
+        </div>
       </div>
       <p className="pi-lede">{overview ? overview.rule : 'Loading…'}</p>
       <div className="pi-tabs" role="tablist">
         {boxes.map((b) => (
           <button key={b.key} type="button" role="tab" aria-selected={tab === b.key} className={`pi-tab${tab === b.key ? ' pi-tab-on' : ''}`} onClick={() => setTab(b.key)}>
-            {b.address}{b.watchedOnly ? ' (bounces)' : ''}{b.unread ? <span className="pi-badge">{b.unread}</span> : null}
+            {b.address || b.key}{b.watchedOnly ? ' (bounces)' : b.key === 'gmail' ? ' (Important)' : ''}{b.unread ? <span className="pi-badge">{b.unread}</span> : null}
           </button>
         ))}
       </div>
       {current && !current.configured && <div className="pi-warn">No password saved for {current.address} — add it in Settings → Personal email.</div>}
       {current && current.last && current.last.ok === false && <div className="pi-warn">Last check could not read {current.address}: {current.last.why}</div>}
       {current && current.watchedOnly && <div className="pi-note">SAiM sends from here with replies going to nick@, so what lands here is mostly machinery. A bounced hike alert is flagged and pushed to you.</div>}
+      {current && current.key === 'gmail' && <div className="pi-note">Only mail Gmail marks Important, and only mail that arrived after NEURO connected to Gmail.</div>}
       {error && <div className="pi-warn">{error}</div>}
+      {composing && <ComposeForm options={options} suggestion={suggestion} onRecipients={recipients} onSend={sendNew} onCancel={() => setComposing(false)} busy={busy} outcome={outcome} initialFrom={current && !current.watchedOnly && current.configured ? current.key : null} />}
       <div className="pi-split">
         <MessageList items={items} onOpen={open} openId={openId} />
-        <MessageView data={view} onRead={markRead} onReply={reply} busy={busy} outcome={outcome} canReply={!!(current && !current.watchedOnly)} />
+        <MessageView data={view} onRead={markRead} onReply={reply} onDelete={remove} busy={busy} outcome={composing ? null : outcome} canReply={!!(current && !current.watchedOnly)} />
       </div>
     </div>
   );

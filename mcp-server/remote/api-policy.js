@@ -164,6 +164,8 @@ export const interactive = {
     'post_rescuetime_key', 'delete_rescuetime_key', 'post_weather_wu_key', 'delete_weather_wu_key',
     'post_mail_accounts_by_key_credential', 'delete_mail_accounts_by_key_credential',
     'post_mail_accounts_by_key_check', 'post_mail_accounts_by_key_test_send',
+    // Deleting personal mail (to that mailbox's Bin) is Nick's, in NEURO → Personal inbox.
+    'post_personal_inbox_message_by_id_delete',
   ].map(id => [id, 'Credentials, switches, accounts, trusted devices and push endpoints are Nick\'s to change, in NEURO → Settings. An agent cannot.'])),
 };
 // Path params the backend accepts only from a closed set. The inventory is

@@ -328,6 +328,15 @@ const PREFLIGHT = {
   },
 
   // 8E: the week must not already be sent, and this must be the newest report.
+  // 12 Oct 2026: a new email Nick wrote. Nothing in the world can have moved
+  // under it (no thread, no meeting, no commitment) — commonChecks has already
+  // bound the payload, recipients and the chosen mailbox. Only: not twice.
+  async compose_email(action) {
+    const other = _otherSent(action);
+    if (other) return stopWith('duplicate', `this email (${other.action_id}) is already ${other.status}`);
+    return { ok: true };
+  },
+
   async send_weekly_risk_report(action, policy, d) {
     const t = action.target || {};
     const other = _otherSent(action);

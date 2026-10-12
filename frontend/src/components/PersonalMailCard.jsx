@@ -64,8 +64,8 @@ function GmailIntake({ s }) {
   return (
     <div className="pm-small" data-testid="pm-gmail-intake">
       {wm
-        ? <>Triage watches Gmail’s Important mail that arrived after <strong>{when(wm.setAt)}</strong> — nothing older is read.</>
-        : <>Triage starts watching Gmail’s Important mail on its next run (it marks that moment; nothing older is read).</>}
+        ? <>Personal inbox shows Gmail’s Important mail that arrived after <strong>{when(wm.setAt)}</strong> — nothing older is read.</>
+        : <>Personal inbox starts showing Gmail’s Important mail on its next check (it marks that moment; nothing older is read).</>}
       {last && (last.ok
         ? <span className="pm-muted"> Last pass {when(last.at)}: {last.fetched || 0} message{last.fetched === 1 ? '' : 's'}.</span>
         : <span className="pm-bad"> Last pass {when(last.at)} could not read Gmail — {last.why}</span>)}

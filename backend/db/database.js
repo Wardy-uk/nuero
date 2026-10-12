@@ -538,6 +538,11 @@ async function init() {
     for (const col of ['alert_mailbox', 'all_clear_mailbox', 'copy_mailbox', 'copy_status', 'copy_draft_id', 'copy_message_id', 'copy_error', 'all_clear_copy_status']) {
       if (have.length && !have.includes(col)) { db.exec(`ALTER TABLE hike_trips ADD COLUMN ${col} TEXT`); console.log(`[DB] hike_trips.${col} added`); }
     }
+    // Gmail moved into the personal inbox (12 Oct 2026): its folder coordinates.
+    try {
+      const pi = db.prepare('PRAGMA table_info(personal_inbox)').all().map(r => r.name);
+      if (pi.length && !pi.includes('ext_json')) { db.exec('ALTER TABLE personal_inbox ADD COLUMN ext_json TEXT'); console.log('[DB] personal_inbox.ext_json added'); }
+    } catch (e) { console.error('[DB] personal_inbox migration failed:', e.message); }
     // The Gmail copy of the alert (12 Oct 2026) counts its own attempts.
     if (have.length && !have.includes('copy_attempts')) { db.exec('ALTER TABLE hike_trips ADD COLUMN copy_attempts INTEGER NOT NULL DEFAULT 0'); console.log('[DB] hike_trips.copy_attempts added'); }
   } catch (e) {

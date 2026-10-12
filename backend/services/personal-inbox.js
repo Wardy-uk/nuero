@@ -17,7 +17,9 @@
 
 const pm = require('./personal-mail');
 
-const INBOXES = ['nick', 'contact'];
+// Gmail moved here from the work triage (Nick, 12 Oct 2026): still ONLY its
+// Important mail, still only what arrived after the watermark — no AI sorting.
+const INBOXES = ['nick', 'contact', 'gmail'];
 const WATCHED = ['saim'];
 const WINDOW = 100;
 const PREVIEW_CHARS = 300;
@@ -98,9 +100,90 @@ function _row(r) {
   };
 }
 
+/**
+ * Gmail: its IMPORTANT folder, at or above the watermark only (gmail-intake's
+ * WATERMARK_KEY — set on first connect, when NOTHING is read; re-set, never read
+ * back, if Gmail renumbers the folder). Mirrored like the others; ids stay
+ * `gmail:<X-GM-MSGID>` so reply / mark-read route exactly as before.
+ */
+async function _refreshGmail(deps) {
+  const r = await _refreshGmailInner(deps);
+  // Settings → Personal email reads this to say what the last Gmail pass did.
+  try {
+    _db().setState(require('./gmail-intake').STATUS_KEY, JSON.stringify(r.ok
+      ? { at: new Date(deps.now()).toISOString(), ok: true, fetched: r.added || 0, ...(r.watermarkSet ? { watermarkSet: true } : {}) }
+      : { at: new Date(deps.now()).toISOString(), ok: false, why: r.why }));
+  } catch { /* status only */ }
+  return r;
+}
+
+async function _refreshGmailInner(deps) {
+  const gi = require('./gmail-intake');
+  const db = _db();
+  const at = new Date(deps.now()).toISOString();
+  let c;
+  const added = [];
+  try {
+    const o = await _open('gmail', deps);
+    if (o.error) return { key: 'gmail', ok: true, skipped: o.error };
+    c = o.c;
+    const list = await c.list().catch(() => []);
+    const path = pm.importantFolder(list);
+    if (!path) return { key: 'gmail', ok: false, why: 'Gmail has no Important folder visible over IMAP — tick "Show in IMAP" for Important in Gmail → Settings → Labels.' };
+    const lock = await c.getMailboxLock(path);
+    try {
+      const box = c.mailbox || {};
+      const uidValidity = String(box.uidValidity);
+      const uidNext = Number(box.uidNext);
+      let wm = null;
+      try { wm = JSON.parse(db.getState(gi.WATERMARK_KEY) || 'null'); } catch { wm = null; }
+      if (!wm || wm.uidValidity !== uidValidity) {
+        db.setState(gi.WATERMARK_KEY, JSON.stringify({ uidValidity, uidNext, setAt: at, path, ...(wm ? { previous: wm } : {}) }));
+        db.run("DELETE FROM personal_inbox WHERE mailbox = 'gmail'");
+        return { key: 'gmail', ok: true, added: 0, addedIds: [], watermarkSet: true };
+      }
+      const from = Number(wm.uidNext);
+      const known = new Map(db.all("SELECT id FROM personal_inbox WHERE mailbox = 'gmail'").map((r) => [r.id, true]));
+      const seenIds = new Set();
+      const msgs = [];
+      if (uidNext > from) {
+        // `n:*` returns the highest message even when it is below n — the UID filter is load-bearing.
+        for await (const m of c.fetch(`${from}:*`, { uid: true, envelope: true, flags: true, internalDate: true, bodyStructure: true, threadId: true, emailId: true }, { uid: true })) {
+          if (m.uid >= from) msgs.push(m);
+        }
+      }
+      for (const m of msgs.slice(-WINDOW)) {
+        const e = gi.toTriageEmail(m, { path, uidValidity });
+        seenIds.add(e.id);
+        if (known.has(e.id)) { db.run('UPDATE personal_inbox SET seen = ?, fetched_at = ? WHERE id = ?', [e.isRead ? 1 : 0, at, e.id]); continue; }
+        let text = '';
+        try { text = await _readText(c, m.uid, m.bodyStructure, 16 * 1024); } catch { /* subject-only is still mail */ }
+        db.run(`INSERT INTO personal_inbox (id, mailbox, uid, uid_validity, message_id, from_email, from_name, subject, received, seen, preview,
+                  to_json, cc_json, kind, bounce_of, ext_json, fetched_at) VALUES (?, 'gmail', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+        [e.id, m.uid, uidValidity, e.gmail.messageId, e.fromEmail, e.from, e.subject, e.received || at, e.isRead ? 1 : 0,
+          String(text || '').replace(/\s+/g, ' ').trim().slice(0, PREVIEW_CHARS), JSON.stringify(e.to), JSON.stringify(e.cc), JSON.stringify(e.gmail), at]);
+        added.push(e.id);
+      }
+      // Mirror: no longer Important (or deleted) → it leaves.
+      for (const id of known.keys()) if (!seenIds.has(id)) db.run('DELETE FROM personal_inbox WHERE id = ?', [id]);
+    } finally { lock.release(); }
+    return { key: 'gmail', ok: true, added: added.length, addedIds: added };
+  } catch (e) {
+    return { key: 'gmail', ok: false, why: pm.classifyError(e).error };
+  } finally { if (c) await _close(c); }
+}
+
+/** The stored Gmail coordinates for an id (gmail-intake reads/marks through these). */
+function gmailEntry(id) {
+  const r = _db().get("SELECT ext_json FROM personal_inbox WHERE id = ? AND mailbox = 'gmail'", [id]);
+  if (!r || !r.ext_json) return null;
+  try { return { id, gmail: JSON.parse(r.ext_json) }; } catch { return null; }
+}
+
 /** Mirror one mailbox's newest WINDOW messages. Never throws. */
 async function refreshMailbox(key, { deps } = {}) {
   deps = _withDefaults(deps);
+  if (key === 'gmail') return pm.credentialFor('gmail') ? _refreshGmail(deps) : { key, ok: true, skipped: 'not-configured' };
   const at = new Date(deps.now()).toISOString();
   if (!pm.credentialFor(key)) return { key, ok: true, skipped: 'not-configured' };
   let c;
@@ -244,6 +327,10 @@ async function _withMessage(id, fn, deps) {
  * no thread id, and a reply is matched to it by In-Reply-To.
  */
 async function readMessage(id, { deps } = {}) {
+  if (require('./gmail-intake').isGmailId(id)) {
+    const g = await require('./gmail-intake').readMessage(id, { deps });
+    return g && g.ok && g.exists ? { ...g, mailbox: 'gmail' } : g;
+  }
   return _withMessage(id, async (c, p) => {
     const m = await c.fetchOne(String(p.uid), { uid: true, envelope: true, bodyStructure: true, internalDate: true, headers: ['references'] }, { uid: true });
     if (!m || !m.envelope) return { ok: true, exists: false };
@@ -264,6 +351,11 @@ async function readMessage(id, { deps } = {}) {
 }
 
 async function markRead(id, { deps } = {}) {
+  if (require('./gmail-intake').isGmailId(id)) {
+    const g = await require('./gmail-intake').markRead(id, { deps });
+    if (g.marked) _db().run('UPDATE personal_inbox SET seen = 1 WHERE id = ?', [id]);
+    return g;
+  }
   const r = await _withMessage(id, async (c, p) => {
     await c.messageFlagsAdd(String(p.uid), ['\\Seen'], { uid: true });
     return { ok: true };
@@ -272,8 +364,41 @@ async function markRead(id, { deps } = {}) {
   return r.ok && r.exists !== false ? { marked: true } : { marked: false, reason: r.reason || 'gone' };
 }
 
+/**
+ * Delete = MOVE to that mailbox's own Bin/Trash (Fasthosts "Trash", Gmail
+ * "[Gmail]/Bin"), never an expunge — a mis-tap is recoverable in the mailbox.
+ * Refused when the folder was renumbered since we read it (the uid would name
+ * a different message). Returns { deleted, to } or { deleted:false, reason }.
+ */
+async function trash(id, { deps } = {}) {
+  deps = _withDefaults(deps);
+  const gmail = require('./gmail-intake').isGmailId(id);
+  const g = gmail ? gmailEntry(id) : null;
+  const p = gmail ? (g ? { mailbox: 'gmail', uid: g.gmail.uid, uidValidity: String(g.gmail.uidValidity), folder: g.gmail.path } : null) : parseId(id);
+  if (!p) return { deleted: false, reason: 'not-found' };
+  let c;
+  try {
+    const o = await _open(p.mailbox, deps);
+    if (o.error) return { deleted: false, reason: o.error };
+    c = o.c;
+    const list = await c.list().catch(() => []);
+    const bin = (list.find((m) => m.specialUse === '\\Trash') || {}).path || (gmail ? null : 'Trash');
+    if (!bin) return { deleted: false, reason: 'no-trash-folder' };
+    const lock = await c.getMailboxLock(p.folder || 'INBOX');
+    try {
+      if (String((c.mailbox || {}).uidValidity) !== p.uidValidity) return { deleted: false, reason: 'renumbered' };
+      await c.messageMove(String(p.uid), bin, { uid: true });
+    } finally { lock.release(); }
+    _db().run('DELETE FROM personal_inbox WHERE id = ?', [id]);
+    return { deleted: true, to: bin };
+  } catch (e) {
+    return { deleted: false, reason: pm.classifyError(e).kind, error: pm.classifyError(e).error };
+  } finally { if (c) await _close(c); }
+}
+
 module.exports = {
-  INBOXES, WATCHED, WINDOW, ID_PREFIX, isPersonalId, parseId, idFor,
+  trash,
+  INBOXES, WATCHED, WINDOW, ID_PREFIX, isPersonalId, parseId, idFor, gmailEntry,
   refresh, refreshMailbox, list, overview, readMessage, markRead,
   classifyWatched, bouncedMessageId,
 };

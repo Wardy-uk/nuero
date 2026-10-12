@@ -818,19 +818,10 @@ async function runTriage({ force = false } = {}) {
       return { ok: false, reason: 'mailbox unreachable', stale: true };
     }
 
-    // Gmail's Important mail (12 Oct 2026) — a SOURCE in this same pass, never
-    // a second store. Only NEW mail above the watermark; a Gmail failure is
-    // logged and recorded by gmail-intake and never fails the work triage.
-    let gmailEmails = [];
-    try {
-      const g = await require('./gmail-intake').fetchNew({ lookbackHours: LOOKBACK_HOURS });
-      if (g.ok) gmailEmails = g.emails || [];
-      else console.warn(`[EmailTriage] Gmail not read this pass: ${g.why}`);
-      if (g.watermarkSet) console.log('[EmailTriage] Gmail connected — watermark set; only mail from now on will be read');
-    } catch (e) {
-      console.warn(`[EmailTriage] Gmail intake failed: ${e.message}`);
-    }
-    const emails = [...graphEmails, ...gmailEmails];
+    // Gmail's Important mail was a source here for a few hours on 12 Oct 2026;
+    // Nick then moved it to the Personal inbox (personal-inbox.js), which keeps
+    // the same watermark. The work triage is work mail again.
+    const emails = graphEmails;
 
     // An empty read used to wipe everything undismissed. It no longer gets a
     // branch of its own: it is just a fetch containing nothing, and the merge
@@ -849,8 +840,8 @@ async function runTriage({ force = false } = {}) {
       // mail, so gating it behind "new mail arrived" would leave an FYI that
       // crossed the seven-day line sitting in the section until something else
       // landed — a rule that only fires when it happens to be convenient.
-      const swept = ageOutInformational(stored);
-      if (swept.aged) {
+      const swept = ageOutInformational(stored.filter((e) => e.source !== 'gmail'));
+      if (swept.aged || swept.entries.length !== stored.length) {
         storeTriage(swept.entries);
         console.log(`[EmailTriage] Aged out ${swept.aged} informational email(s) older than ${AGE_OUT_DAYS}d`);
       }
@@ -891,7 +882,9 @@ async function runTriage({ force = false } = {}) {
 
     // Keying on id also removes a duplicate the old shape produced: a dismissed
     // email still inside the window appeared in both halves of the list.
-    const byId = new Map(stored.map(e => [e.id, e]));
+    // Gmail entries left from the hours Gmail was triaged here are dropped —
+    // Gmail lives in the Personal inbox now, and must not show in both.
+    const byId = new Map(stored.filter(e => e.source !== 'gmail').map(e => [e.id, e]));
 
     for (const e of stored) {
       if (e.dismissed || fetchedIds.has(e.id)) continue;

@@ -76,6 +76,7 @@ const ORIGIN_WORDS = {
 const TYPE_WORDS = {
   chase_commitment: 'Chase by email',
   reply_email: 'Reply to an email',
+  compose_email: 'New email',
   chase_agenda: 'Ask an organiser for the agenda',
   send_weekly_risk_report: 'Weekly risk report',
   create_calendar_event: 'Calendar invite',

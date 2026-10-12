@@ -192,7 +192,13 @@ async function fetchNew({ lookbackHours = 14 * 24, deps } = {}) {
   } finally { if (c) await _close(c); }
 }
 
+// Where a Gmail message's coordinates live: the Personal inbox since Gmail moved
+// there (12 Oct 2026); the work triage store for anything from before.
 function _entry(emailId) {
+  try {
+    const p = require('./personal-inbox').gmailEntry(emailId);
+    if (p) return p;
+  } catch { /* fall through */ }
   const t = require('./email-triage').getStoredTriage();
   return t.find((e) => e.id === emailId) || null;
 }
