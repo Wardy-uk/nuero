@@ -234,7 +234,13 @@ async function unsubscribe(sender, { deps, fetchImpl, lookup, apply = true } = {
   if (!s) return { ok: false, error: 'not an email address' };
   const row = ((_json(SCAN_KEY) || {}).senders || []).find((x) => x.sender === s);
   const u = row && row.unsubscribe;
-  if (!u || !u.kind) return { ok: false, error: 'this sender offers no unsubscribe — use Archive' };
+  // No unsubscribe offered: archive instead (Nick, 12 Oct 2026) — and SAY so;
+  // the result names it, so it is never mistaken for an unsubscribe.
+  if (!u || !u.kind) {
+    setRule(s, 'archive', { unsubscribe: { method: 'none', status: 'no unsubscribe offered — archived instead' } });
+    const archive = await archiveNow(s);
+    return { ok: true, sender: s, method: 'archived-instead', archived: archive.archived || 0, note: 'This sender offers no unsubscribe, so its mail now skips your inbox instead.' };
+  }
   if (u.kind !== 'one-click') {
     setRule(s, 'unsubscribed', { unsubscribe: { method: u.kind, status: 'opened-by-nick' } });
     const archive = await archiveNow(s);
@@ -287,21 +293,23 @@ async function decideMany(senders, action, { deps, fetchImpl, lookup } = {}) {
   if (!['archive', 'keep', 'unsubscribe', 'clear'].includes(action)) return { ok: false, error: 'action must be archive, keep, unsubscribe or clear' };
   if (!Array.isArray(senders) || !senders.length) return { ok: false, error: 'no senders chosen' };
   if (senders.length > BULK_MAX) return { ok: false, error: `at most ${BULK_MAX} at a time` };
-  const done = []; const failed = []; const links = [];
+  const done = []; const failed = []; const links = []; const archivedInstead = [];
   for (const raw of [...new Set(senders.map((x) => String(x || '').toLowerCase()))]) {
     let r;
     if (action === 'unsubscribe') r = await unsubscribe(raw, { deps, fetchImpl, lookup, apply: false });
     else r = setRule(raw, action === 'clear' ? null : action);
     if (!r.ok) { failed.push({ sender: raw, reason: r.error }); continue; }
     done.push(r.sender);
+    if (r.method === 'archived-instead') archivedInstead.push(r.sender);
     if (r.link) links.push({ sender: r.sender, link: r.link, method: r.method });
   }
-  let archived = 0; let archiveError = null;
+  let archived = 0; let archiveError = null; let more = false;
   if ((action === 'archive' || action === 'unsubscribe') && done.length) {
     const a = await applyRules({ deps, only: done });
     archived = a.archived || 0; if (!a.ok) archiveError = a.error;
+    if (a.more) more = true;
   }
-  return { ok: failed.length === 0, action, done, failed, links, archived, ...(archiveError ? { archiveError } : {}) };
+  return { ok: failed.length === 0, action, done, failed, links, archivedInstead, archived, ...(archiveError ? { archiveError } : {}), ...(more ? { more: true } : {}) };
 }
 
 module.exports = {

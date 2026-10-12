@@ -41,7 +41,7 @@ export function CleanupView({ data, onDecide, onRescan, busy, outcome, selected 
         <div className="pi-bulk gc-bulk" data-testid="gc-bulk">
           <label className="pi-check"><input type="checkbox" checked={sel.size > 0 && sel.size === senders.length} ref={(el) => { if (el) el.indeterminate = sel.size > 0 && sel.size < senders.length; }} onChange={() => onSelectAll(sel.size === senders.length ? [] : senders.map((s) => s.sender))} /> {sel.size ? `${sel.size} selected` : 'Select all'}</label>
           {sel.size > 0 && <>
-            <button type="button" className="pi-btn" disabled={busy || !senders.some((s) => sel.has(s.sender) && s.unsubscribe && s.unsubscribe.kind)} onClick={() => onBulk('unsubscribe')}>Unsubscribe</button>
+            <button type="button" className="pi-btn" disabled={busy} title="Senders with no unsubscribe are archived instead" onClick={() => onBulk('unsubscribe')}>Unsubscribe</button>
             <button type="button" className="pi-btn" disabled={busy} onClick={() => onBulk('archive')}>Archive</button>
             <button type="button" className="pi-btn" disabled={busy} onClick={() => onBulk('keep')}>Keep</button>
             <button type="button" className="pi-btn" disabled={busy} onClick={() => onSelectAll([])}>Clear</button>
@@ -103,7 +103,9 @@ export default function GmailCleanup({ onChanged }) {
       const r = await call('/api/personal-inbox/gmail/cleanup', 'POST', { sender, action });
       if (!r.ok) { setOutcome({ tone: 'warn', text: r.error || 'That did not work.' }); return; }
       const moved = typeof r.archived === 'number' && r.archived > 0 ? ` ${r.archived} moved out of the inbox.` : '';
-      const text = action === 'unsubscribe'
+      const text = action === 'unsubscribe' && r.method === 'archived-instead'
+        ? `${sender} offers no unsubscribe, so it is archived instead.${moved}`
+        : action === 'unsubscribe'
         ? `${sender}: ${r.method === 'one-click' && r.status === 'sent' ? 'unsubscribed' : 'unsubscribe link opened'}.${moved}${r.note ? ` ${r.note}` : ''}`
         : action === 'archive' ? `${sender} now skips your inbox.${moved}` : action === 'keep' ? `${sender} kept.` : `${sender}: decision undone (nothing moved back).`;
       setOutcome({ tone: 'ok', text, link: r.link || null });
@@ -120,9 +122,10 @@ export default function GmailCleanup({ onChanged }) {
       if (r && r.error) { setOutcome({ tone: 'warn', text: r.error }); return; }
       const failed = (r && r.failed) || [];
       const word = { unsubscribe: 'Unsubscribed', archive: 'Archived', keep: 'Kept' }[action] || 'Done';
-      const moved = r && r.archived ? ` ${r.archived} moved out of the inbox.` : '';
+      const moved = r && r.archived ? ` ${r.archived} moved out of the inbox${r.more ? ' so far — the rest move over the next few passes' : ''}.` : '';
+      const instead = r && r.archivedInstead && r.archivedInstead.length ? ` ${r.archivedInstead.length} offer no unsubscribe, so they are archived instead: ${r.archivedInstead.join(', ')}.` : '';
       const skipped = failed.length ? ` ${failed.length} not done: ${failed.map((f) => `${f.sender} (${f.reason})`).join('; ')}.` : '';
-      setOutcome({ tone: failed.length ? 'warn' : 'ok', text: `${word}: ${(r && r.done ? r.done.length : 0)} sender${r && r.done && r.done.length === 1 ? '' : 's'}.${moved}${skipped}${r && r.links && r.links.length ? ' These need you to finish on their own page:' : ''}`, links: (r && r.links) || [] });
+      setOutcome({ tone: failed.length ? 'warn' : 'ok', text: `${word}: ${(r && r.done ? r.done.length - ((r.archivedInstead || []).length) : 0)} sender${r && r.done && r.done.length - ((r.archivedInstead || []).length) === 1 ? '' : 's'}.${moved}${instead}${skipped}${r && r.links && r.links.length ? ' These need you to finish on their own page:' : ''}`, links: (r && r.links) || [] });
       setSelected(new Set(failed.map((f) => f.sender)));
       await load();
       if (onChanged) onChanged();

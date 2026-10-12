@@ -113,11 +113,13 @@ test('unsubscribe: one-click is POSTed once and ledgered; web/mailto hand Nick t
   assert.deepEqual([r.ok, r.method, r.link], [true, 'web', 'https://web.example/unsub']);
   assert.equal(posts.length, 1, 'a web link is NOT called by NEURO');
   assert.equal(gc.readRules().senders['promo@web.example'].action, 'unsubscribed');
-  assert.equal((await gc.decide('nolist@x.example', 'unsubscribe')).ok, false, 'no unsubscribe offered → refused, use Archive');
+  const inst = await gc.decide('nolist@x.example', 'unsubscribe', { deps: { imap: gmail([]).imap } });
+  assert.deepEqual([inst.ok, inst.method], [true, 'archived-instead'], 'no unsubscribe offered → archived instead, and said');
+  assert.equal(gc.readRules().senders['nolist@x.example'].action, 'archive');
 
   const view = gc.view();
-  assert.deepEqual(view.senders.map((x) => x.sender), ['nolist@x.example'], 'decided senders leave the list');
-  assert.deepEqual(view.decided.map((x) => x.sender).sort(), ['deals@shop.example', 'promo@web.example']);
+  assert.deepEqual(view.senders.map((x) => x.sender), [], 'decided senders leave the list');
+  assert.deepEqual(view.decided.map((x) => x.sender).sort(), ['deals@shop.example', 'nolist@x.example', 'promo@web.example']);
 });
 
 test('a one-click URL that resolves privately is never called — Nick gets the link', async () => {
@@ -129,7 +131,7 @@ test('a one-click URL that resolves privately is never called — Nick gets the 
   assert.deepEqual([r.ok, r.method, r.link, called], [true, 'web', 'https://lan.example/u', 0]);
 });
 
-test('bulk: each sender decided as one would be, then ONE archive pass; no-unsubscribe senders are reported, not quietly archived', async () => {
+test('bulk: each sender decided as one would be, then ONE archive pass; a sender with no unsubscribe is ARCHIVED INSTEAD and named as such', async () => {
   db.setState(gc.RULES_KEY, '');
   db.setState(gc.SCAN_KEY, JSON.stringify({ at: 'x', days: 30, total: 4, senders: [
     { sender: 'a@one.example', count: 5, opened: 0, unsubscribe: { kind: 'one-click', oneClick: 'https://one.example/u', link: 'https://one.example/u' } },
@@ -141,18 +143,19 @@ test('bulk: each sender decided as one would be, then ONE archive pass; no-unsub
   const imap = () => { connects += 1; return srv.imap(); };
   const posts = [];
   const r = await gc.decideMany(['A@one.example', 'b@web.example', 'c@none.example', 'a@one.example'], 'unsubscribe', { deps: { imap }, fetchImpl: async (u) => { posts.push(u); return { status: 202 }; }, lookup: async () => [{ address: '93.184.216.34' }] });
-  assert.deepEqual(r.done, ['a@one.example', 'b@web.example'], 'a repeated sender counts once');
-  assert.deepEqual(r.failed.map((f) => f.sender), ['c@none.example']);
-  assert.match(r.failed[0].reason, /use Archive/);
+  assert.deepEqual(r.done, ['a@one.example', 'b@web.example', 'c@none.example'], 'a repeated sender counts once');
+  assert.deepEqual(r.failed, []);
+  assert.deepEqual(r.archivedInstead, ['c@none.example'], 'named as archived, never counted as unsubscribed');
   assert.deepEqual(r.links.map((l) => l.sender), ['b@web.example']);
   assert.deepEqual(posts, ['https://one.example/u']);
   assert.equal(connects, 1, 'ONE Gmail connection for the whole batch');
-  assert.deepEqual(srv.removed.map((x) => x.uids).sort(), ['1', '2'], 'the no-unsubscribe sender was not archived behind his back');
-  assert.equal(gc.readRules().senders['c@none.example'], undefined);
+  assert.deepEqual(srv.removed.map((x) => x.uids).sort(), ['1', '2', '3'], 'all three leave the inbox, in the one pass');
+  assert.equal(gc.readRules().senders['c@none.example'].action, 'archive');
+  assert.equal(posts.length, 1, 'nothing was POSTed for the sender with no unsubscribe');
 
   connects = 0; srv.removed.length = 0;
   const k = await gc.decideMany(['c@none.example'], 'archive', { deps: { imap } });
-  assert.deepEqual([k.ok, k.archived, connects], [true, 1, 1]);
+  assert.deepEqual([k.ok, connects], [true, 1]);
   const keep = await gc.decideMany(['x@keep.example', 'not-an-address'], 'keep');
   assert.deepEqual([keep.done, keep.failed.map((f) => f.sender)], [['x@keep.example'], ['not-an-address']]);
   assert.equal((await gc.decideMany([], 'keep')).ok, false);
