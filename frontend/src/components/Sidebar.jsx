@@ -35,6 +35,8 @@ const GROUPS = [
     { id: 'jc-ring',    label: 'JC Ring',    icon: '◌' },
     { id: 'medical',    label: 'Medical',    icon: '✚' },
     { id: 'hike-safety', label: 'Hike safety', icon: '⛰' },
+    // nick@ / contact@ newest first — separate from the work Inbox (12 Oct 2026).
+    { id: 'personal-inbox', label: 'Personal inbox', icon: '✉' },
     { id: 'weather',    label: 'Weather',    icon: '☁' },
     { id: 'journal',    label: 'Journal',    icon: '>' },
     { id: 'catalogues', label: 'Catalogues', icon: '▤' },

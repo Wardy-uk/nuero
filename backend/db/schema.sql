@@ -3334,3 +3334,28 @@ CREATE TABLE IF NOT EXISTS smtp_outbox (
   sent_at         TEXT,
   updated_at      TEXT NOT NULL
 );
+
+-- The personal inbox (12 Oct 2026): a MIRROR of the newest messages in nick@ and
+-- contact@ (newest first, no AI), plus saim@ watched for bounces/auto-replies.
+-- Separate from the work triage. Refreshed every 5 minutes; a message gone from
+-- the mailbox leaves this table.
+CREATE TABLE IF NOT EXISTS personal_inbox (
+  id            TEXT PRIMARY KEY,          -- pmail:<mailbox>:<uidvalidity>:<uid>
+  mailbox       TEXT NOT NULL,
+  uid           INTEGER NOT NULL,
+  uid_validity  TEXT NOT NULL,
+  message_id    TEXT,
+  from_email    TEXT,
+  from_name     TEXT,
+  subject       TEXT,
+  received      TEXT,
+  seen          INTEGER NOT NULL DEFAULT 0,
+  preview       TEXT,
+  to_json       TEXT,
+  cc_json       TEXT,
+  kind          TEXT,                      -- saim@ only: bounce | auto-reply | reply
+  bounce_of     TEXT,                      -- the Message-ID a bounce is about
+  hike_trip_id  TEXT,                      -- a bounced hike alert
+  fetched_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_personal_inbox_mailbox ON personal_inbox(mailbox, received);

@@ -185,6 +185,11 @@ const ROUTE_RULES = Object.freeze([
   R('*', '/api/mail/accounts/:key/credential', 'config.security'),
   R('POST', '/api/mail/accounts/:key/check', 'config.security'),
   R('POST', '/api/mail/accounts/:key/test-send', 'config.security'),
+  // The personal inbox (12 Oct 2026): a reply is a governed email; reading and
+  // marking read are the same as the work inbox's.
+  R('POST', '/api/personal-inbox/refresh', 'internal.state'),
+  R('POST', '/api/personal-inbox/message/:id/read', 'mail.read-state'),
+  R('POST', '/api/personal-inbox/message/:id/reply', 'email.send'),
   // Build 15: Nick's own statements about his goal — never a machine's.
   R('POST', '/api/loops/hiking/confirm', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/plan', 'internal.state', { machine: 'refuse' }),

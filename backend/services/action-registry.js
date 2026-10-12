@@ -129,7 +129,9 @@ const ACTION_TYPES = Object.freeze({
     // 12 Oct 2026: a reply goes from the mailbox the email arrived in. Gmail is
     // the one personal mailbox allowed today (personal-mail-api over SMTP, the
     // same ledger and verification); anything else is refused by commonChecks.
-    personalMailboxes: Object.freeze(['gmail']),
+    // + nick@ and contact@ (the personal inbox): their thread is the original's
+    // Message-ID, matched by In-Reply-To, since Fasthosts has no thread id.
+    personalMailboxes: Object.freeze(['gmail', 'nick', 'contact']),
     duplicate: 'one live reply per source email; none once a reply to that email has gone since it was prepared',
     preparation: 'Nick\'s words from the Inbox composer, or an approved draft_reply; recipients resolved from the original message',
     execution: 'original message still exists in the same thread from the same sender, no reply already sent in that thread since it was prepared',

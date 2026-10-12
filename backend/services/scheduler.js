@@ -1296,6 +1296,20 @@ function start() {
       why: 'An armed walk: breadcrumbs from Home Assistant, the check-in prompts, and the overdue alert email if Nick has not checked in by finish + grace.',
       run: async () => { const r = await require('./hike-safety').tick(); return { trips: r.trips, crumbs: r.crumbs, pushed: r.pushed, alerts: r.alerts.map((a) => a.outcome) }; },
     });
+    // 12 Oct 2026: the personal inbox (nick@, contact@) and saim@'s bounce
+    // watch. Here, not registerDurableJobs(), because it reaches Fasthosts.
+    require('./runtime-jobs').defineJob({
+      name: 'personal-inbox',
+      cron: '*/5 * * * *',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 10 * 60 * 1000,
+      maxAttempts: 1,
+      timeoutMs: 3 * 60 * 1000,
+      lookbackMs: 24 * 3600 * 1000,
+      why: 'Mirror the newest mail in nick@ and contact@ for the Personal inbox, and watch saim@ for bounces and auto-replies (a bounced hike alert is pushed).',
+      run: async () => { const r = await require('./personal-inbox').refresh(); return { results: r.results.map((x) => `${x.key}:${x.ok ? (x.skipped || `+${x.added || 0}`) : 'failed'}`), hikeBounces: r.hikeBounces }; },
+    });
     // 12 Oct 2026: the briefings. Durable so a restart at 07:59 still sends
     // the morning's briefing — late, but never more than three hours late
     // (past that it is no longer a morning briefing). Registered here, not in

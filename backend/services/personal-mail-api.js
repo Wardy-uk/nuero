@@ -40,11 +40,12 @@ function forMailbox(key, deps = {}) {
   if (!box || !box.sends) throw new Error(`${key} is not a sending mailbox`);
   const gmail = box.provider === 'gmail';
   const adapter = require('./smtp-mail').forMailbox(key, deps.smtp || {});
-  const reader = deps.reader || require('./gmail-intake');
+  // Gmail mail comes through the Gmail intake; nick@ / contact@ through the
+  // personal inbox. Both readers are read-only and answer the same shape.
+  const reader = deps.reader || (gmail ? require('./gmail-intake') : require('./personal-inbox'));
   const transport = deps.transport || require('./personal-mail-transport');
 
   async function readMessage(emailId) {
-    if (!gmail) return { ok: false, category: 'unsupported' };
     return reader.readMessage(emailId, { deps: deps.readDeps });
   }
 
@@ -53,9 +54,10 @@ function forMailbox(key, deps = {}) {
     providerLabel: pm.PROVIDERS[box.provider].label,
     readMessage,
     signedInAddress: async () => pm.addressFor(key),
-    // Gmail answers a thread search; Fasthosts answers no search at all (see
-    // personal-mail-transport), so off Gmail this is "could not look".
-    sentInConversationSince: async (threadId, sinceIso) => (gmail ? transport.sentInThreadSince(key, threadId, sinceIso, deps.transportDeps) : null),
+    // Gmail: a thread search. Fasthosts (no search, no thread id): its Sent
+    // envelopes scanned for In-Reply-To = the original's Message-ID. null =
+    // could not look, so the executor waits rather than sending.
+    sentInConversationSince: async (threadId, sinceIso) => transport.sentInThreadSince(key, threadId, sinceIso, deps.transportDeps),
     sentToSince: async () => null,
     readEvent: async () => ({ ok: false, category: 'unsupported' }),
     async createReplyDraft(emailId, { mode = 'reply', comment = '' } = {}) {

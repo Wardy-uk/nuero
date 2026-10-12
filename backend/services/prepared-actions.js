@@ -834,6 +834,14 @@ const REPLY_DEPS = {
     },
     signedInAddress: async () => require('./personal-mail').addressFor('gmail'),
   }),
+  // nick@ / contact@ (the personal inbox) — read-only, same shape.
+  personal: (mailbox) => ({
+    readMessage: async (id) => {
+      const m = await require('./personal-inbox').readMessage(id);
+      return m && m.ok && m.exists ? { ...m, receivedAt: m.received || null } : m;
+    },
+    signedInAddress: async () => require('./personal-mail').addressFor(mailbox),
+  }),
 };
 
 /**
@@ -857,7 +865,9 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
   // Which mailbox the email arrived in decides where it is read AND (via
   // target.mailbox, bound into the approval) which mailbox the reply goes from.
   const viaGmail = require('./gmail-intake').isGmailId(emailId);
-  const pick = viaGmail ? d.gmail : d.mail;
+  const personalBox = !viaGmail ? (require('./personal-inbox').parseId(emailId) || {}).mailbox || null : null;
+  const viaPersonal = viaGmail ? 'gmail' : personalBox;
+  const pick = viaGmail ? d.gmail : personalBox ? () => (typeof d.personal === 'function' ? d.personal(personalBox) : d.personal) : d.mail;
   const mail = typeof pick === 'function' ? pick() : pick;
   const nowMs = msOf(now);
   const text = String(body || '').replace(/\r\n/g, '\n').trim();
@@ -902,7 +912,7 @@ async function prepareReply({ emailId, body, mode = 'reply', to = null, cc = nul
     from: lcs(orig.from), fromName: orig.fromName || null, originalSubject: orig.subject || '', receivedAt: orig.receivedAt || null,
     // Present ONLY for a personal mailbox, so every work reply hashes exactly
     // as it did before (canonical() drops undefined keys).
-    ...(viaGmail ? { mailbox: 'gmail', references: orig.references || null } : {}),
+    ...(viaPersonal ? { mailbox: viaPersonal, references: orig.references || null } : {}),
   };
   const draft = {
     channel: 'email', voice: 'nick', mode,

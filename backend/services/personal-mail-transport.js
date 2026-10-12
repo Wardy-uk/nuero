@@ -346,7 +346,9 @@ async function findInSent(key, messageId, deps) {
             to: addrs(env.to), cc: addrs(env.cc), bcc: addrs(env.bcc),
             from: addrs(env.from)[0] || null,
             sentAt: env.date ? new Date(env.date).toISOString() : (m && m.internalDate ? new Date(m.internalDate).toISOString() : null),
-            conversationId: m && m.threadId ? String(m.threadId) : null,
+            // Gmail: its thread id. Fasthosts: the message it replies to (In-Reply-To),
+            // which is what a personal-inbox reply's target.conversationId holds.
+            conversationId: m && m.threadId ? String(m.threadId) : (env.inReplyTo || null),
             bodyText: null,
           });
         }
@@ -365,18 +367,32 @@ async function findInSent(key, messageId, deps) {
  */
 async function sentInThreadSince(key, threadId, sinceIso, deps) {
   deps = _withDefaults(deps);
-  if (pm.box(key).provider !== 'gmail' || !threadId) return null;
+  if (!threadId) return null;
+  const gmail = pm.box(key).provider === 'gmail';
   const cred = pm.credentialFor(key);
   if (!cred) return null;
   try {
     const c = await _openImap(key, cred, deps);
     try {
       const list = await c.list().catch(() => []);
-      const path = (list.find((m) => m.specialUse === '\\Sent') || {}).path;
+      const path = (list.find((m) => m.specialUse === '\\Sent') || {}).path || (gmail ? null : 'Sent');
       if (!path) return null;
       const lock = await c.getMailboxLock(path);
       try {
         const since = Date.parse(sinceIso);
+        if (!gmail) {
+          // Fasthosts: no SEARCH, no thread id. The "thread" is the original's
+          // Message-ID; a reply carries it as In-Reply-To. Scan the newest Sent.
+          const exists = Number((c.mailbox || {}).exists) || 0;
+          if (!exists) return { count: 0 };
+          const want = String(threadId).toLowerCase();
+          let count = 0;
+          for await (const m of c.fetch(`${Math.max(1, exists - SCAN_MAX + 1)}:*`, { uid: true, envelope: true, internalDate: true })) {
+            const irt = String((m.envelope && m.envelope.inReplyTo) || '').toLowerCase();
+            if (irt === want && (!Number.isFinite(since) || Date.parse(m.internalDate) >= since)) count += 1;
+          }
+          return { count };
+        }
         const uids = (await c.search({ threadId: String(threadId) }, { uid: true })) || [];
         let count = 0;
         for (const uid of uids) {

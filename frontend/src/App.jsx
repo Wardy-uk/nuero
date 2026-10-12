@@ -50,6 +50,7 @@ const RecentPanel = lazy(() => import('./components/RecentPanel'));
 const VaultBrowser = lazy(() => import('./components/VaultBrowser'));
 const BrainHealthPanel = lazy(() => import('./components/BrainHealthPanel'));
 const WeatherPanel = lazy(() => import('./components/WeatherPanel'));
+const PersonalInboxPanel = lazy(() => import('./components/PersonalInboxPanel'));
 const HikeSafetyPanel = lazy(() => import('./components/HikeSafetyPanel'));
 const BriefingsPanel = lazy(() => import('./components/BriefingsPanel'));
 const MedicalPanel = lazy(() => import('./components/MedicalPanel'));
@@ -374,6 +375,7 @@ function AuthenticatedApp() {
       case 'brain-health': return <BrainHealthPanel />;
       case 'hike-safety': return <HikeSafetyPanel />;
       case 'weather': return <WeatherPanel />;
+      case 'personal-inbox': return <PersonalInboxPanel />;
       case 'briefings': return <BriefingsPanel />;
       case 'medical': return <MedicalPanel />;
       case 'setup': return <SetupWizard onNavigate={handleNavigate} />;

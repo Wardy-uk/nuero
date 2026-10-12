@@ -249,16 +249,16 @@ test('a Gmail reply: prepared from Gmail, bound to the mailbox, approved with th
   assert.equal(sent.length, 1);
 });
 
-test('the registry allows a personal mailbox only where it says so: a reply from nick@ is refused before anything is drafted', () => {
+test('the registry allows a personal mailbox only where it says so: a reply "from" saim@ is refused before anything is drafted', () => {
   const ex = require('./action-executor');
   const registry = require('./action-registry');
-  assert.deepEqual([...registry.policyFor('reply_email').personalMailboxes], ['gmail']);
-  const action = { actionType: 'reply_email', version: 1, target: { emailId: 'x', mailbox: 'nick' }, draft: { to: [{ email: 'a@b.co' }], subject: 's', body: 'b', mode: 'reply' } };
+  assert.ok(!registry.policyFor('reply_email').personalMailboxes.includes('saim'), 'SAiM never replies as itself');
+  const action = { actionType: 'reply_email', version: 1, target: { emailId: 'x', mailbox: 'saim' }, draft: { to: [{ email: 'a@b.co' }], subject: 's', body: 'b', mode: 'reply' } };
   action.payloadHash = registry.payloadHash({ ...action, commitmentId: undefined });
   action.approval = { payloadHash: action.payloadHash, expiresAt: new Date(Date.now() + 3600000).toISOString() };
   const r = ex.commonChecks({ action, policy: registry.policyFor('reply_email'), nowMs: Date.now() });
   assert.equal(r.code, 'mailbox-not-allowed');
-  assert.equal(require('./mail-identity').forAction({ actionType: 'reply_email', target: { mailbox: 'nick' } }), null, 'and the card claims no From for it');
+  assert.equal(require('./mail-identity').forAction({ actionType: 'reply_email', target: { mailbox: 'saim' } }), null, 'and the card claims no From for it');
   assert.equal(require('./mail-identity').forAction({ actionType: 'chase_commitment', target: { mailbox: 'gmail' } }), null);
 });
 

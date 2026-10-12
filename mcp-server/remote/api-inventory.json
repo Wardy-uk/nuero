@@ -95,7 +95,7 @@
     "route": "/api/email/triage/muted/:address",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 167,
+    "line": 181,
     "description": "DELETE /api/email/triage/muted/:address. un-mute a sender.",
     "params": [
       "address"
@@ -167,7 +167,7 @@
     "route": "/api/mail/accounts/:key/credential",
     "domain": "mail",
     "source": "routes/personal-mail.js",
-    "line": 36,
+    "line": 38,
     "description": "DELETE /api/mail/accounts/:key/credential. forget a mailbox password. Keywords: remove mailbox password.",
     "params": [
       "key"
@@ -1745,7 +1745,7 @@
     "route": "/api/email/replies",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 89,
+    "line": 103,
     "description": "GET /api/email/replies. replies Nick has sent from triage (#69).",
     "params": [],
     "query": [
@@ -1764,7 +1764,7 @@
     "route": "/api/email/triage",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 98,
+    "line": 112,
     "description": "GET /api/email/triage. get classified inbox",
     "params": [],
     "query": [],
@@ -1780,7 +1780,7 @@
     "route": "/api/email/triage/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 213,
+    "line": 227,
     "description": "GET /api/email/triage/:emailId. fetch email detail, summary, and suggested reply",
     "params": [
       "emailId"
@@ -1798,7 +1798,7 @@
     "route": "/api/email/triage/feedback",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 128,
+    "line": 142,
     "description": "GET /api/email/triage/feedback.",
     "params": [],
     "query": [],
@@ -1814,7 +1814,7 @@
     "route": "/api/email/triage/muted",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 140,
+    "line": 154,
     "description": "GET /api/email/triage/muted. what is muted: whole senders (\"Mute sender\") and single subjects from a sender (\"Not relevant\").",
     "params": [],
     "query": [],
@@ -3331,7 +3331,7 @@
     "route": "/api/mail/tests",
     "domain": "mail",
     "source": "routes/personal-mail.js",
-    "line": 22,
+    "line": 24,
     "description": "GET /api/mail/tests. recent test emails and the SPF / DKIM / DMARC verdict the receiving server gave each. Keywords: email authentication test, DKIM pass.",
     "params": [],
     "query": [],
@@ -4120,6 +4120,60 @@
     "line": 248,
     "description": "GET /api/person/summary/all. lightweight per-person tasks + decisions for cards",
     "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_personal_inbox",
+    "method": "GET",
+    "route": "/api/personal-inbox",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 16,
+    "description": "GET /api/personal-inbox. the mailboxes (nick@, contact@, saim@ watched), counts and unread, and the last refresh. Keywords: personal email inbox, nick@nickward.co.uk, contact@.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_personal_inbox_mail_by_mailbox",
+    "method": "GET",
+    "route": "/api/personal-inbox/mail/:mailbox",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 21,
+    "description": "GET /api/personal-inbox/mail/:mailbox. one mailbox's messages, newest first. Keywords: personal inbox list.",
+    "params": [
+      "mailbox"
+    ],
+    "query": [
+      "limit"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_personal_inbox_message_by_id",
+    "method": "GET",
+    "route": "/api/personal-inbox/message/:id",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 33,
+    "description": "GET /api/personal-inbox/message/:id. one message, read live from its mailbox (opening never marks it read), with the address a reply would go from.",
+    "params": [
+      "id"
+    ],
     "query": [],
     "body": [],
     "queryOpen": false,
@@ -4999,7 +5053,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 261,
+    "line": 262,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -8217,7 +8271,7 @@
     "route": "/api/email/triage/:emailId/draft",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 296,
+    "line": 315,
     "description": "POST /api/email/triage/:emailId/draft. AI-drafted reply, falls back to the",
     "params": [
       "emailId"
@@ -8237,7 +8291,7 @@
     "route": "/api/email/triage/:emailId/reply",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 338,
+    "line": 357,
     "description": "POST /api/email/triage/:emailId/reply. PREPARE a reply (prepare reply, draft reply, compose): binds the exact recipients and words as a governed action for Nick to approve with his approval code. Sends NOTHING. Body: { body, to?, cc?, replyAll? }",
     "params": [
       "emailId"
@@ -8260,7 +8314,7 @@
     "route": "/api/email/triage/:emailId/summary",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 262,
+    "line": 281,
     "description": "POST /api/email/triage/:emailId/summary. AI summary, falls back to the",
     "params": [
       "emailId"
@@ -8278,7 +8332,7 @@
     "route": "/api/email/triage/clear",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 445,
+    "line": 473,
     "description": "POST /api/email/triage/clear. clear all cached triage data and re-scan",
     "params": [],
     "query": [],
@@ -8294,7 +8348,7 @@
     "route": "/api/email/triage/clear-fyi",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 204,
+    "line": 218,
     "description": "POST /api/email/triage/clear-fyi. clear the whole FYI section.",
     "params": [],
     "query": [],
@@ -8312,7 +8366,7 @@
     "route": "/api/email/triage/dismiss/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 386,
+    "line": 405,
     "description": "POST /api/email/triage/dismiss/:emailId. dismiss an email from triage.",
     "params": [
       "emailId"
@@ -8334,7 +8388,7 @@
     "route": "/api/email/triage/muted-subjects/unmute",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 151,
+    "line": 165,
     "description": "POST /api/email/triage/muted-subjects/unmute. un-mute one subject. Keywords: unmute subject, email subject rule. Body: key (from the muted list).",
     "params": [],
     "query": [],
@@ -8352,7 +8406,7 @@
     "route": "/api/email/triage/promote/:emailId",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 431,
+    "line": 459,
     "description": "POST /api/email/triage/promote/:emailId. \"this should have been an action\".",
     "params": [
       "emailId"
@@ -8370,7 +8424,7 @@
     "route": "/api/email/triage/purge-fyi",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 186,
+    "line": 200,
     "description": "POST /api/email/triage/purge-fyi.",
     "params": [],
     "query": [],
@@ -8389,7 +8443,7 @@
     "route": "/api/email/triage/run",
     "domain": "email",
     "source": "routes/email-triage.js",
-    "line": 373,
+    "line": 392,
     "description": "POST /api/email/triage/run. trigger a fresh triage cycle.",
     "params": [],
     "query": [],
@@ -9585,7 +9639,7 @@
     "route": "/api/mail/accounts/:key/check",
     "domain": "mail",
     "source": "routes/personal-mail.js",
-    "line": 43,
+    "line": 45,
     "description": "POST /api/mail/accounts/:key/check. log in to the mailbox over IMAP (and SMTP if it sends) and report what happened. Sends nothing.",
     "params": [
       "key"
@@ -9603,7 +9657,7 @@
     "route": "/api/mail/accounts/:key/credential",
     "domain": "mail",
     "source": "routes/personal-mail.js",
-    "line": 27,
+    "line": 29,
     "description": "POST /api/mail/accounts/:key/credential. save a mailbox password (Gmail: address + app password). The value is never returned. Body: { password, address }",
     "params": [
       "key"
@@ -9621,7 +9675,7 @@
     "route": "/api/mail/accounts/:key/test-send",
     "domain": "mail",
     "source": "routes/personal-mail.js",
-    "line": 53,
+    "line": 55,
     "description": "POST /api/mail/accounts/:key/test-send. send a test email to another of Nick's own mailboxes and read it back for its SPF / DKIM / DMARC verdict. Body: { to }",
     "params": [
       "key"
@@ -10578,6 +10632,58 @@
     "body": [],
     "queryOpen": false,
     "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_message_by_id_read",
+    "method": "POST",
+    "route": "/api/personal-inbox/message/:id/read",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 45,
+    "description": "POST /api/personal-inbox/message/:id/read. mark it read in the mailbox.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_message_by_id_reply",
+    "method": "POST",
+    "route": "/api/personal-inbox/message/:id/reply",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 53,
+    "description": "POST /api/personal-inbox/message/:id/reply. prepare a reply from the SAME mailbox (governed reply_email; nothing is sent here). Body: { body, replyAll }",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_refresh",
+    "method": "POST",
+    "route": "/api/personal-inbox/refresh",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 28,
+    "description": "POST /api/personal-inbox/refresh. read the personal mailboxes now (it also runs every 5 minutes). Sends nothing.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },
