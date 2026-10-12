@@ -90,3 +90,31 @@ test('room ids read as places', () => {
   assert.equal(roomLabel('living-room'), 'Living Room');
   assert.equal(roomLabel(''), '');
 });
+
+// ⚠ 12 Oct 2026: the laptop (a `mobile` room sensor) was shut all Sunday and the
+// watchdog pushed "Laptop sensor has gone quiet" at 21:30. A sleeping machine is
+// asleep, not broken — but only when an independent witness agrees.
+const asleepDesk = { known: true, awake: false, lastAt: at(9 * 3600) };
+const awakeDesk = { known: true, awake: true, lastAt: at(30) };
+const laptop = (over = {}) => sensor({ room: 'laptop', mobile: true, at: at(12 * 3600), ...over });
+
+test('a mobile sensor whose desktop agent has also gone quiet is off (asleep), not stale', () => {
+  const [row] = sensorRows(payload([laptop()]), NOW, { desk: asleepDesk });
+  assert.equal(row.state, 'off');
+  assert.match(row.why, /asleep/);
+});
+
+test('a mobile sensor that stopped while its desktop agent still reports is a real fault', () => {
+  const [row] = sensorRows(payload([laptop()]), NOW, { desk: awakeDesk });
+  assert.equal(row.state, 'stale');
+});
+
+test('an unreadable or never-heard desktop agent concludes nothing', () => {
+  assert.equal(sensorRows(payload([laptop()]), NOW, { desk: null })[0].state, 'stale');
+  assert.equal(sensorRows(payload([laptop()]), NOW, { desk: { known: false, awake: null, lastAt: null } })[0].state, 'stale');
+});
+
+test('a fixed sensor never borrows the laptop excuse', () => {
+  const [row] = sensorRows(payload([sensor({ at: at(12 * 3600) })]), NOW, { desk: asleepDesk });
+  assert.equal(row.state, 'stale');
+});

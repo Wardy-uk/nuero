@@ -104,9 +104,21 @@ function roomLabel(room) {
  * anything past 30s is a fault, not a quiet patch. That is the same bar SAiM's own
  * arbitration uses to call a reading stale.
  *
+ * ⚠ A MOBILE SENSOR ON A SLEEPING MACHINE IS ASLEEP, NOT BROKEN (12 Oct 2026).
+ * The laptop listens for the watch too, and declares itself `mobile: true`. Shut
+ * all Sunday, it went `stale`, the watchdog called that a dead core sense after
+ * 12h and pushed "Laptop sensor has gone quiet" at 21:30 on a hiking day. When
+ * the DESKTOP AGENT — an independent witness on the same machine — has also
+ * stopped reporting, the machine is asleep or shut and the row is `off`, which
+ * the watchdog never raises. If the agent is still reporting, the sensor really
+ * has stopped and stays `stale`; if the agent cannot be read, nothing is
+ * concluded and it stays `stale` too.
+ *
  * @param {{ok, why, sensors}} payload from room-presence.sensors()
+ * @param {Date} now
+ * @param {{desk?: {known: boolean, awake: boolean, lastAt: string|null}|null}} opts
  */
-function sensorRows(payload, now = new Date()) {
+function sensorRows(payload, now = new Date(), { desk = null } = {}) {
   const what = 'which room you are in, for SAiM’s screens and greetings';
   if (!payload || !payload.ok) {
     return [{
@@ -151,6 +163,14 @@ function sensorRows(payload, now = new Date()) {
       return { id: `room-${room}`, label: `${roomLabel(room)} sensor`, what, state: 'error', ageMinutes: null, why: 'no timestamp on its last report' };
     }
     if (ageMs > 30000) {
+      if (s.mobile === true && desk && desk.known && desk.awake === false) {
+        return {
+          id: `room-${room}`, label: `${roomLabel(room)} sensor`, what,
+          state: 'off', ageMinutes,
+          why: `asleep — the ${roomLabel(room).toLowerCase()} is shut or sleeping (its desktop agent has gone quiet too), not a fault`,
+          detail: bits.join(' · ') || undefined,
+        };
+      }
       return {
         id: `room-${room}`, label: `${roomLabel(room)} sensor`, what,
         state: 'stale', ageMinutes,
@@ -587,7 +607,19 @@ function snapshot(now = new Date(), { rooms = null } = {}) {
   // Passed IN rather than fetched here: they live on SAiM (:3005) behind a network
   // call, and this page must not add a round trip per row. The route awaits one
   // read and hands it over; `sensorRows` is pure and does the judging.
-  if (rooms !== null) for (const row of sensorRows(rooms, now)) add(row);
+  if (rooms !== null) {
+    // The desktop agent is the witness for a mobile (laptop) room sensor: if it
+    // has gone quiet too, the machine is asleep. Unreadable → null → no verdict.
+    let desk = null;
+    try {
+      const da = require('./desktop-activity');
+      const latest = da.samples()[0];
+      desk = latest
+        ? { known: true, lastAt: latest.at, awake: rate(latest.at, da.FRESH_MINUTES, now, { staleAfter: da.FRESH_MINUTES * 3 }).state === 'live' }
+        : { known: false, awake: null, lastAt: null };
+    } catch { desk = null; }
+    for (const row of sensorRows(rooms, now, { desk })) add(row);
+  }
 
   // ── Deliberately NOT a row: Location ─────────────────────────────────────
   //
