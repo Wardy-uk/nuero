@@ -68,3 +68,9 @@ test('origin is passed through RAW, never defaulted', () => {
 test('domain survives it too — the chip that never rendered', () => {
   assert.ok(mappedBlock().includes('domain:'), 'domain dropped: the personal badge cannot fire');
 });
+
+test('estimateMinutes survives it — a saved size must come back on reload', () => {
+  // 12 Oct 2026: absent here, a size picked on the card landed in the DB and
+  // came back null, so the card read "not estimated" after every save.
+  assert.ok(mappedBlock().includes('estimateMinutes:'), 'estimateMinutes dropped: saved sizes vanish on reload');
+});

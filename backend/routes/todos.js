@@ -121,6 +121,10 @@ router.get('/', (req, res) => {
       // chip has never once rendered on this screen. Same whitelist, same
       // silent drop, one line to close it.
       domain: t.domain || null,
+      // The estimate (and so the T-shirt size). Missing from this list, a size
+      // saved from the card landed in the DB and came back null on the reload,
+      // so the card read "not estimated" again (12 Oct 2026). /focus had it.
+      estimateMinutes: t.estimateMinutes == null ? null : t.estimateMinutes,
       context: t.context || null,
       needsToday: Boolean(t.needsToday),
       createdAt: t.createdAt || null,
