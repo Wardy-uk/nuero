@@ -216,7 +216,9 @@ function weeklyEmailHtml(p) {
   }
   if (p.leaderboard) {
     const lb = p.leaderboard;
-    const line = (a) => `${_esc(a.agentName)} — score ${a.compositeScore}, ${a.solved} solved, SLA ${_pct(a.slaCompliancePct)}, ${a.daysWorked} day${a.daysWorked === 1 ? '' : 's'} worked`;
+    // No "days worked": NOVA's `days` counts days the agent has a ROW on the
+    // board (weekends included — every agent read 7), not days worked.
+    const line = (a) => `${_esc(a.agentName)} — score ${Math.round(a.compositeScore)}, ${a.solved} solved, SLA ${_pct(a.slaCompliancePct)}`;
     parts.push(`<h3>Leaderboard</h3>${lb.top ? `<p>Top: ${line(lb.top)}</p>` : '<p>No one ranked.</p>'}${lb.weakest ? `<p>Weakest: ${line(lb.weakest)}</p>` : ''}`);
   }
   if (p.slm?.known) {

@@ -92,7 +92,8 @@ export function WeeklyView({ briefing }) {
   const p = briefing?.payload;
   if (!p) return <p className="brf-meta">No weekly briefing yet.</p>;
   const lb = p.leaderboard;
-  const agent = (a) => `${a.agentName} — score ${a.compositeScore}, ${a.solved} solved, SLA ${pct(a.slaCompliancePct)}, ${a.daysWorked} day${a.daysWorked === 1 ? '' : 's'} worked`;
+  // No "days worked": NOVA's `days` counts days with a row on the board, weekends included.
+  const agent = (a) => `${a.agentName} — score ${Math.round(a.compositeScore)}, ${a.solved} solved, SLA ${pct(a.slaCompliancePct)}`;
   return (
     <div className="brf-body">
       <div className="brf-head">
