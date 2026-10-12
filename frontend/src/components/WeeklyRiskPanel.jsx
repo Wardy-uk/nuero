@@ -778,7 +778,7 @@ export default function WeeklyRiskPanel({ onNavigate }) {
           <Stat
             label="KPIs green" tone={report.rag.greenPct === null ? 'unknown' : report.rag.greenPct >= 80 ? 'good' : 'bad'}
             value={report.rag.greenPct === null ? '—' : `${report.rag.greenPct}%`}
-            sub={report.rag.greenPct === null ? 'no data' : `avg ${report.rag.avgGreen}/day of ${report.rag.rated} · target 80%`}
+            sub={report.rag.greenPct === null ? 'no data' : `avg ${report.rag.avgGreen}/day of ${report.rag.sheetRows} · target 80%`}
           />
           <Stat
             label="KPIs red" tone={report.rag.redPct === null ? 'unknown' : report.rag.redPct <= 10 ? 'good' : 'bad'}

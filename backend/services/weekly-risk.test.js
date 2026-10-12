@@ -663,6 +663,10 @@ test('the headline is last week, Monday to Friday, with amber counted as red', (
   assert.deepEqual(a.rag.days.map(d => d.red), [2, 2, 2, 2, 2]);
   assert.equal(a.rag.avgRed, 2);
   assert.equal(a.rag.rated, 3);
+  // The sheet's arithmetic: 5 tracker rows + CSAT = 6, green = not red.
+  assert.equal(a.rag.sheetRows, 6);
+  assert.equal(a.rag.greenPct, 67);
+  assert.equal(a.rag.redPct, 33);
   assert.deepEqual(a.rag.notMeasured, ['No. of CI In Progress (unmitigated)']);
   assert.deepEqual(a.rag.noTarget, ['Number of TPJ Tickets in Dev']);
   assert.ok(a.rag.days[0].redItems.some(i => i.label === 'Number of Tickets in Tier 2' && i.rag === 'amber'));

@@ -125,7 +125,15 @@ function trackerRag(tracker, reportWeek) {
   }
   const m = days.filter(d => d.measured);
   const avg = f => m.length ? Math.round((m.reduce((s, d) => s + d[f], 0) / m.length) * 10) / 10 : null;
-  const avgRed = avg('red'); const avgGreen = avg('green'); const rated = avg('rated');
+  const avgRed = avg('red'); const rated = avg('rated');
+  // ⚠ THE SHEET'S ARITHMETIC: green % is every row that is not red, over every
+  // row on the sheet — 35 = NOVA's 34 tracker rows + the CSAT row it carries
+  // as `extra`. A row with no target (New Tickets, Total Solved…) is green
+  // there. Dividing by the 29 rated rows instead read 57% against the sheet's
+  // 65% for the same week (Nick, 12 Oct 2026).
+  const sheetRows = rows.length + tracker.rows.filter(r => r.extra && /csat/i.test(r.label || '')).length;
+  for (const d of days) d.green = d.measured ? sheetRows - d.red : null;
+  const avgGreen = avgRed === null ? null : Math.round((sheetRows - avgRed) * 10) / 10;
   return {
     scope: 'tracker',
     days,
@@ -133,8 +141,9 @@ function trackerRag(tracker, reportWeek) {
     avgRed,
     avgGreen,
     rated,
-    greenPct: rated ? Math.round((avgGreen / rated) * 100) : null,
-    redPct: rated ? Math.round((avgRed / rated) * 100) : null,
+    sheetRows,
+    greenPct: avgRed === null ? null : Math.round(((sheetRows - avgRed) / sheetRows) * 100),
+    redPct: avgRed === null ? null : Math.round((avgRed / sheetRows) * 100),
     notMeasured,
     noTarget: [...noTarget],
     total: rows.length,
@@ -1739,7 +1748,7 @@ function render(a) {
     const worst = escalate[0];
     const r = a.rag;
     const perDay = r.days.map(d => `${dayName(d.day)} ${d.measured ? d.red : '—'}`).join(', ');
-    lines.push(`Daily KPI Tracker, week of ${formatUk(a.reportWeek)}: on average **${r.avgRed} red** and **${r.avgGreen} green** a day of the ${r.rated} rated KPIs (**${r.redPct}%** red, target ≤10%; **${r.greenPct}%** green, target 80%). Red by day: ${perDay}.${r.measuredDays < TRACKER_WEEKDAYS ? ` Only ${r.measuredDays} of ${TRACKER_WEEKDAYS} weekdays had stored readings.` : ''} Amber counts as red, as on the tracker.${worst ? ` The material concern this week is **${worst.title}**.` : ''}${escalate.length > 1 ? ` ${escalate.length} items are flagged for escalation.` : ''}`);
+    lines.push(`Daily KPI Tracker, week of ${formatUk(a.reportWeek)}: on average **${r.avgRed} red** and **${r.avgGreen} green** a day of the ${r.sheetRows} tracker KPIs (**${r.greenPct}%** green, target 80%; **${r.redPct}%** red, target ≤10%). Red by day: ${perDay}.${r.measuredDays < TRACKER_WEEKDAYS ? ` Only ${r.measuredDays} of ${TRACKER_WEEKDAYS} weekdays had stored readings.` : ''} As on the tracker, amber counts as red and a KPI without a target counts as green.${worst ? ` The material concern this week is **${worst.title}**.` : ''}${escalate.length > 1 ? ` ${escalate.length} items are flagged for escalation.` : ''}`);
   } else {
     lines.push('_No KPI data available this week — see above._');
   }
