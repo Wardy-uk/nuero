@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import { executeDirect, directOutcome } from '../directAction';
+import GmailCleanup from './GmailCleanup';
 import './PersonalInboxPanel.css';
 
 /**
@@ -203,6 +204,7 @@ export default function PersonalInboxPanel() {
   const [suggestion, setSuggestion] = useState(null);
   const [rules, setRules] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
+  const [cleanup, setCleanup] = useState(false);
 
   const startCompose = async () => {
     setComposing(true); setOutcome(null); setSuggestion(null);
@@ -329,6 +331,8 @@ export default function PersonalInboxPanel() {
       {current && current.last && current.last.ok === false && <div className="pi-warn">Last check could not read {current.address}: {current.last.why}</div>}
       {current && current.watchedOnly && <div className="pi-note">SAiM sends from here with replies going to nick@, so what lands here is mostly machinery. A bounced hike alert is flagged and pushed to you.</div>}
       {current && current.key === 'gmail' && <GmailRules rules={rules} onSet={setSender} busy={busy} />}
+      {current && current.key === 'gmail' && current.configured && <div className="pi-actions"><button type="button" className="pi-btn" onClick={() => setCleanup((v) => !v)}>{cleanup ? 'Close clean-up' : 'Clean up senders'}</button></div>}
+      {current && current.key === 'gmail' && cleanup && <GmailCleanup onChanged={load} />}
       {error && <div className="pi-warn">{error}</div>}
       {composing && <ComposeForm options={options} suggestion={suggestion} onRecipients={recipients} onSend={sendNew} onCancel={() => setComposing(false)} busy={busy} outcome={outcome} initialFrom={current && !current.watchedOnly && current.configured ? current.key : null} />}
       <div className="pi-split">

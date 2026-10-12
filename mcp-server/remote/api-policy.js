@@ -169,6 +169,7 @@ export const interactive = {
     'post_personal_inbox_gmail_rules',
     'post_personal_inbox_gmail_backfill',
     'post_personal_inbox_bulk',
+    'post_personal_inbox_gmail_cleanup', 'post_personal_inbox_gmail_cleanup_scan',
   ].map(id => [id, 'Credentials, switches, accounts, trusted devices and push endpoints are Nick\'s to change, in NEURO → Settings. An agent cannot.'])),
 };
 // Path params the backend accepts only from a closed set. The inventory is

@@ -1,0 +1,14 @@
+.gc { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; margin: 8px 0 12px; }
+.gc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.gc-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.gc-empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+.gc-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.gc-row { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; align-items: center; padding: 6px 0; }
+.gc-row + .gc-row { border-top: 1px solid var(--border); }
+.gc-who { display: flex; flex-direction: column; min-width: 0; }
+.gc-name { color: var(--text-primary); font-size: 13px; }
+.gc-addr, .gc-last { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gc-num { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.gc-acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.gc-decided { margin-top: 10px; }
+@media (max-width: 760px) { .gc-row { grid-template-columns: 1fr; } .gc-acts { justify-content: flex-start; } }

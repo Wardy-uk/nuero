@@ -103,6 +103,14 @@ const WRITERS = Object.freeze({
     why: 'Arming the walk is the approval of this card to these people, sent only if he is overdue; the approver is the person missing, so it cannot wait for the approval code. Machine clients cannot arm, extend, cancel or check in.',
     readback: 'Sent Items by internetMessageId; a draft no longer a draft counts as sent',
   },
+  'gmail.unsubscribe': {
+    target: "a mailing list's own one-click unsubscribe URL (RFC 8058)", authority: 'A3', initiation: 'Nick pressing Unsubscribe on the Gmail clean-up screen', ledger: true,
+    // Unsubscribing twice is harmless, so Nick may re-try an unknown outcome.
+    idempotentTarget: true,
+    effect: 'one POST of "List-Unsubscribe=One-Click" to the sender\'s https URL — public hosts only, no redirects followed',
+    why: 'Nick chose that sender on the screen; the URL is the sender\'s own. A machine client cannot press it.',
+    readback: 'the HTTP status the sender returned; anything not 2xx/3xx hands Nick the link instead',
+  },
   'email.self': {
     target: 'Nick\'s own mailbox', authority: 'A2', initiation: 'timer', ledger: false,
     effect: 'briefing / [TEST] copy to Nick only (refuses any other recipient)', why: 'nobody else is told.', readback: 'none',

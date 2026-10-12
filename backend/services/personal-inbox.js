@@ -455,6 +455,15 @@ async function refresh({ deps, only = null } = {}) {
   for (const key of only || [...INBOXES, ...WATCHED]) results.push(await refreshMailbox(key, { deps }));
   const saim = results.find((r) => r.key === 'saim');
   const bounced = saim && saim.addedIds ? await _noticeHikeBounces(saim.addedIds, { deps }) : [];
+  // The Gmail clean-up screen's archive rules (12 Oct 2026): each pass archives
+  // what those senders have in the inbox now. Never allowed to fail the refresh.
+  let archived = null;
+  if (!only || only.includes('gmail')) {
+    try {
+      const a = await ((deps && deps.applyCleanup) || ((o) => require('./gmail-cleanup').applyRules(o)))({ deps });
+      if (a && (a.archived || a.error)) archived = { archived: a.archived || 0, ...(a.error ? { error: a.error } : {}), ...(a.more ? { more: true } : {}) };
+    } catch (e) { archived = { error: e.message }; }
+  }
   // Personal tasks out of personal mail (12 Oct 2026) — the same review-only
   // extractor the work inbox uses; it buys each email's answer once, so a pass
   // with no new mail costs nothing. Never allowed to fail the refresh.
@@ -468,7 +477,7 @@ async function refresh({ deps, only = null } = {}) {
       tasks = { created: r.created || 0, asked: r.asked || 0, ...(r.failedBatches ? { failedBatches: r.failedBatches } : {}), ...(r.skipped ? { skipped: r.skipped } : {}) };
     } catch (e) { tasks = { error: e.message }; console.warn('[PersonalInbox] task scan failed:', e.message); }
   }
-  const status = { at: new Date().toISOString(), results: results.map(({ addedIds, ...r }) => r), hikeBounces: bounced.length, ...(tasks ? { tasks } : {}) };
+  const status = { at: new Date().toISOString(), results: results.map(({ addedIds, ...r }) => r), hikeBounces: bounced.length, ...(tasks ? { tasks } : {}), ...(archived ? { cleanup: archived } : {}) };
   _db().setState(STATUS_KEY, JSON.stringify(status));
   return status;
 }

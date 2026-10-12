@@ -59,6 +59,7 @@ const CAPABILITIES = Object.freeze({
   'mail.read-state': { authority: 'A2', effect: 'mark an email read on dismiss', machine: 'execute', approval: 'none', registry: 'external-writes:microsoft.mail.read-state', ledger: false, verification: null, idempotent: true },
   'weather.wu-publish': { authority: 'A2', effect: "upload our own weather station's readings to Weather Underground (ICOALV59)", machine: 'execute', approval: 'none', registry: 'external-writes:wunderground.publish', ledger: false, verification: 'WU answers "success"', idempotent: 'WU folds a repeat dateutc' },
   'hike.safety-alert': { authority: 'A3', effect: 'the overdue alert (and all-clear) for a walk Nick armed, emailed to his listed contacts', machine: 'refuse', approval: 'arming the walk', registry: 'external-writes:hike.safety-alert', ledger: true, verification: 'sent-items', idempotent: true },
+  'gmail.unsubscribe': { authority: 'A3', effect: "POST a mailing list's own one-click unsubscribe, on Nick's press", machine: 'refuse', approval: 'click', registry: 'external-writes:gmail.unsubscribe', ledger: true, verification: 'http status', idempotent: true },
   'email.self': { authority: 'A2', effect: 'a [TEST] copy to Nick only (refuses any other recipient)', machine: 'execute', approval: 'none', registry: 'external-writes:email.self', ledger: false, verification: null, idempotent: false },
   'desktop.launch': { authority: 'A2', effect: "open an ALLOWLISTED app on Nick's laptop (no arguments)", machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'agent outcome', idempotent: 'queue de-dupes' },
   'plaud.pull': { authority: 'A2', effect: 'pull recordings from PLAUD into the vault', machine: 'execute', approval: 'none', registry: null, ledger: true, verification: 'sync ledger', idempotent: 'canonical plaud_id' },
@@ -197,6 +198,9 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/personal-inbox/gmail/rules', 'internal.state', { machine: 'refuse' }),
   // Bulk mark-read / delete (to the Bin) — Nick's, never a machine's.
   R('POST', '/api/personal-inbox/bulk', 'mail.read-state', { machine: 'refuse' }),
+  // Gmail clean-up: a rescan is a read; a decision (archive rule / keep / unsubscribe) is Nick's.
+  R('POST', '/api/personal-inbox/gmail/cleanup/scan', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/personal-inbox/gmail/cleanup', 'gmail.unsubscribe'),
   R('POST', '/api/personal-inbox/gmail/backfill', 'internal.state', { machine: 'refuse' }),
   // Build 15: Nick's own statements about his goal — never a machine's.
   R('POST', '/api/loops/hiking/confirm', 'internal.state', { machine: 'refuse' }),

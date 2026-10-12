@@ -90,6 +90,37 @@ router.post('/bulk', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// GET /api/personal-inbox/gmail/cleanup — the Gmail clean-up screen: senders in the last 30 days by volume with how many were opened and whether they offer an unsubscribe, plus the decisions already made. Scans first if never scanned. Keywords: gmail cleanup, unsubscribe, archive sender, newsletters.
+router.get('/gmail/cleanup', async (req, res) => {
+  try {
+    const gc = require('../services/gmail-cleanup');
+    let v = gc.view();
+    let scanError = null;
+    if (!v.scannedAt) { const s = await gc.scan(); if (!s.ok) scanError = s.error; v = gc.view(); }
+    res.json({ ok: true, ...v, ...(scanError ? { scanError } : {}) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/personal-inbox/gmail/cleanup/scan — re-read the last 30 days of the Gmail inbox (headers only) for the clean-up screen. Changes nothing.
+router.post('/gmail/cleanup/scan', async (req, res) => {
+  try {
+    const gc = require('../services/gmail-cleanup');
+    const s = await gc.scan();
+    if (!s.ok) return res.status(502).json(s);
+    res.json({ ok: true, ...gc.view() });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/personal-inbox/gmail/cleanup — decide a Gmail sender: archive (it skips the inbox from now on, existing mail too; nothing deleted), keep, unsubscribe (the sender's own one-click unsubscribe, or the link to open; also archives), or clear. Nick only. Body: { sender, action: 'archive' | 'keep' | 'unsubscribe' | 'clear' }
+router.post('/gmail/cleanup', async (req, res) => {
+  try {
+    const { sender, action } = req.body && typeof req.body === 'object' ? req.body : {};
+    if (!['archive', 'keep', 'unsubscribe', 'clear'].includes(action)) return res.status(400).json({ ok: false, error: 'action must be archive, keep, unsubscribe or clear' });
+    const r = await require('../services/gmail-cleanup').decide(sender, action);
+    res.status(r.ok ? 200 : 400).json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // GET /api/personal-inbox/compose/options — the addresses a new email can come from (work, nick@, contact@, Gmail) and, for the recipients given, which one NEURO suggests and why. Query: to (comma-separated)
 router.get('/compose/options', (req, res) => {
   const mi = require('../services/mail-identity');
