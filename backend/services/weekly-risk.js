@@ -159,6 +159,23 @@ function previousWeek(week) {
   return todayLocal(dt);
 }
 
+/**
+ * Management-log rows that happened OR were written down in the Monday-to-
+ * Sunday week starting `weekStart`, open or closed. PURE. The report used to
+ * show overdue items only, so a week of actions logged and completed on time
+ * rendered as "Nothing overdue" — the evidence of the work vanished precisely
+ * because the work was done.
+ */
+function loggedInWeek(rows, weekStart) {
+  if (!weekStart || !Array.isArray(rows)) return [];
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const weekEnd = todayLocal(new Date(y, m - 1, d + 6));
+  const inWeek = v => { const s = v ? String(v).slice(0, 10) : null; return Boolean(s && s >= weekStart && s <= weekEnd); };
+  return rows
+    .filter(r => inWeek(r.entry_date) || inWeek(r.logged_at))
+    .sort((a, b) => String(a.entry_date || '').localeCompare(String(b.entry_date || '')) || (a.id || 0) - (b.id || 0));
+}
+
 function formatUk(date) {
   if (!date) return '—';
   const [y, m, d] = date.split('-').map(Number);
@@ -1253,7 +1270,7 @@ function assess(snap) {
     positives,
     findings,
     escalateCount: findings.filter(f => f.severity === 'escalate').length,
-    management: mgmt || null,
+    management: mgmt ? { ...mgmt, loggedInWeek: loggedInWeek(mgmt.rows, reportWeek) } : null,
     tasks,
     jiraEscalations: snap.jiraEscalations,
     sources: snap.sources,
@@ -1836,7 +1853,19 @@ function render(a) {
     } else {
       lines.push(`**Competency 4 baseline (as at ${formatUk(b.date)}): ${b.count}** — counted from the ${b.rowsCoveringDate} log entr${b.rowsCoveringDate === 1 ? 'y' : 'ies'} that existed on that date, of which **${b.stillOpen}** still open. Target 0 by ${formatUk(b.targetDate)}.`);
     }
+    const week = m.loggedInWeek || [];
+    lines.push('');
+    if (week.length) {
+      lines.push(`**Logged in the week of ${formatUk(a.reportWeek)}** (${week.length}):`);
+      lines.push('');
+      lines.push('| Date | Item | Person | Owner | Due | Status |\n|---|---|---|---|---|---|');
+      lines.push(week.map(r => `| ${formatUk(r.entry_date)} | ${r.summary} | ${r.person || '—'} | ${r.owner || '—'} | ${r.due_date ? formatUk(r.due_date) : '—'} | ${r.status} |`).join('\n'));
+    } else {
+      lines.push('_Nothing logged in the week this report covers._');
+    }
     if (m.overdue.length) {
+      lines.push('');
+      lines.push('**Overdue:**');
       lines.push('');
       lines.push('| Item | Owner | Due | Working days over |\n|---|---|---|---|');
       lines.push(m.overdue.slice(0, 10).map(o => `| ${o.summary} | ${o.owner || '—'} | ${o.dueDate} | ${o.workingDaysOverdue} |`).join('\n'));
@@ -2420,7 +2449,7 @@ module.exports = {
   snapshot, assess, render, build, publish, publishedAt, queueSend, testSend,
   markSent, recordExternalSend, sentRecord, sentSummary, isLocked, reopen,
   getManual, setManual, manualBlockers, emptyManual, carryForward,
-  weekCommencing, previousWeek, buildTrend, consecutiveBelowTarget, ragBucket,
+  weekCommencing, previousWeek, loggedInWeek, buildTrend, consecutiveBelowTarget, ragBucket,
   taskCounts,
   QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder, byTrendOrder, isComplianceKpi,
   csatSummaryRows,

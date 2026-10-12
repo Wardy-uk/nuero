@@ -1695,3 +1695,14 @@ test('the real report colours its deltas end to end', () => {
   const html = weeklyRisk.markdownToEmailHtml(md);
   assert.match(html, /color:#1a7f37/, 'the rendered report reaches the mail coloured');
 });
+
+test('management rows logged in the report week show even when complete', () => {
+  const rows = [
+    { id: 1, entry_date: '2026-10-06', logged_at: '2026-10-06 09:00:00', summary: 'Done on time', status: 'done' },
+    { id: 2, entry_date: '2026-09-29', logged_at: '2026-10-07 10:00:00', summary: 'Written up late', status: 'open' },
+    { id: 3, entry_date: '2026-09-28', logged_at: '2026-09-28 10:00:00', summary: 'Week before', status: 'done' },
+    { id: 4, entry_date: '2026-10-12', logged_at: '2026-10-12 10:00:00', summary: 'This week', status: 'open' },
+  ];
+  const got = weeklyRisk.loggedInWeek(rows, '2026-10-05').map(r => r.id);
+  assert.deepEqual(got, [2, 1]);
+});

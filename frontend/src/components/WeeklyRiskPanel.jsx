@@ -995,23 +995,46 @@ export default function WeeklyRiskPanel({ onNavigate }) {
                 )}
               </p>
             )}
-            <table className="wr-table">
-              <thead>
-                <tr><th>Item</th><th>Person</th><th>Owner</th><th>Due</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {(showLog ? log.rows : log.overdue.slice(0, 5)).map(r => (
-                  <tr key={r.id}>
-                    <td>{r.summary}</td>
-                    <td>{r.person || '—'}</td>
-                    <td>{r.owner || <span className="wr-bad">unowned</span>}</td>
-                    <td>{r.due_date || r.dueDate || <span className="wr-bad">not set</span>}</td>
-                    <td>{r.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!showLog && log.overdue.length === 0 && <p className="wr-empty">Nothing overdue.</p>}
+            {(() => {
+              // Default view: what was logged in the week this report covers,
+              // open or done, then anything overdue on top. "Nothing overdue"
+              // alone hid a week of actions completed on time.
+              const week = report.management?.loggedInWeek || [];
+              const weekIds = new Set(week.map(r => r.id));
+              const overdue = (log.overdue || []).filter(r => !weekIds.has(r.id)).slice(0, 5);
+              const rows = showLog ? log.rows : [...week, ...overdue];
+              return (
+                <>
+                  {!showLog && (
+                    <p className="wr-hint">
+                      {week.length
+                        ? `${week.length} logged in the week of ${fmtUk(report.reportWeek)}`
+                        : `Nothing logged in the week of ${fmtUk(report.reportWeek)}`}
+                      {' · '}{log.overdue.length ? `${log.overdue.length} overdue` : 'nothing overdue'}
+                    </p>
+                  )}
+                  {rows.length > 0 && (
+                    <table className="wr-table">
+                      <thead>
+                        <tr><th>Date</th><th>Item</th><th>Person</th><th>Owner</th><th>Due</th><th>Status</th></tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(r => (
+                          <tr key={r.id}>
+                            <td>{r.entry_date ? fmtUk(r.entry_date) : '—'}</td>
+                            <td>{r.summary}</td>
+                            <td>{r.person || '—'}</td>
+                            <td>{r.owner || <span className="wr-bad">unowned</span>}</td>
+                            <td>{r.due_date || r.dueDate || <span className="wr-bad">not set</span>}</td>
+                            <td>{r.status}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </>
+              );
+            })()}
           </>
         )}
       </section>
