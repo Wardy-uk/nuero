@@ -244,6 +244,28 @@ test('a test that never arrives is "not-found", never a pass', async () => {
   assert.equal(t.verdict, undefined);
 });
 
+test('Gmail Important is found by its \\Important FLAG — imapflow leaves specialUse null for it (live list, 12 Oct 2026)', () => {
+  const live = [
+    { path: 'INBOX', specialUse: '\\Inbox', flags: new Set(['\\HasNoChildren']) },
+    { path: '[Gmail]/All Mail', specialUse: '\\All', flags: new Set(['\\All', '\\HasNoChildren']) },
+    { path: '[Gmail]/Important', specialUse: null, flags: new Set(['\\HasNoChildren', '\\Important']) },
+    { path: 'Helen', specialUse: null, flags: new Set(['\\HasNoChildren']) },
+  ];
+  assert.equal(transport.importantFolder(live), '[Gmail]/Important');
+  assert.equal(transport.importantFolder(live.filter((m) => m.path !== '[Gmail]/Important')), null);
+});
+
+test('a read-back a restart killed is reported interrupted, never pending for ever (read-time only)', () => {
+  const sentAt = '2026-10-12T10:00:00.000Z';
+  pm.recordTest({ id: 'stale1', messageId: '<x@y>', sentAt, readback: 'pending' });
+  const at = (min) => Date.parse(sentAt) + min * 60000;
+  assert.equal(pm.tests(at(2)).find((t) => t.id === 'stale1').readback, 'pending');
+  const late = pm.tests(at(11)).find((t) => t.id === 'stale1');
+  assert.equal(late.readback, 'interrupted');
+  assert.doesNotMatch(late.readbackError, /pass/);
+  assert.equal(pm.tests(at(2)).find((t) => t.id === 'stale1').readback, 'pending', 'nothing was stored by reading');
+});
+
 test('defaultDeps are the real libraries and construct offline', () => {
   const d = transport.defaultDeps();
   const t = d.smtp({ host: '127.0.0.1', port: 1, secure: false });

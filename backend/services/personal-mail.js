@@ -279,8 +279,19 @@ function recordTest(entry) {
   _write(TEST_STATE, { tests: list.slice(0, MAX_TESTS) });
 }
 
-function tests() {
-  return _read(TEST_STATE, { tests: [] }).tests || [];
+// The read-back runs in-process; a backend restart (several a day on deploys)
+// kills it and the stored row would say "pending" for ever. Past this age a
+// pending row is reported as interrupted — decided at READ time, never stored.
+const STALE_PENDING_MS = 10 * 60 * 1000;
+
+function tests(now = Date.now()) {
+  return (_read(TEST_STATE, { tests: [] }).tests || []).map((t) => {
+    const age = now - Date.parse(t.sentAt || '');
+    if (t.readback === 'pending' && Number.isFinite(age) && age > STALE_PENDING_MS) {
+      return { ...t, readback: 'interrupted', readbackError: 'The read-back stopped before it finished (most likely NEURO restarted). The email may well have arrived — send another test to get a verdict.' };
+    }
+    return t;
+  });
 }
 
 module.exports = {

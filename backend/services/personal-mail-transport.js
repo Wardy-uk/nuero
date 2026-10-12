@@ -54,6 +54,18 @@ function imapConfig(key, cred) {
   };
 }
 
+/**
+ * Gmail's Important folder. ⚠ imapflow maps \All, \Junk, \Sent… to `specialUse`
+ * but NOT \Important — on Nick's live account (12 Oct 2026) `[Gmail]/Important`
+ * came back `specialUse: null` with `\Important` only in `flags`. Read both.
+ * PURE.
+ */
+function importantFolder(list) {
+  const hit = (list || []).find((m) => m.specialUse === '\\Important'
+    || (m.flags && [...m.flags].includes('\\Important')));
+  return hit ? hit.path : null;
+}
+
 async function _openImap(key, cred, deps) {
   const client = deps.imap(imapConfig(key, cred));
   // An unhandled 'error' event on a socket would take the process down.
@@ -83,8 +95,7 @@ async function check(key, deps) {
       if (b.provider === 'gmail') {
         // Gmail's Important view is what later builds read; say now whether it is there.
         const list = await c.list().catch(() => []);
-        const imp = list.find((m) => m.specialUse === '\\Important');
-        result.imap.important = imp ? imp.path : null;
+        result.imap.important = importantFolder(list);
       }
     } finally { await _close(c); }
   } catch (e) {
@@ -224,4 +235,4 @@ async function sendTest(fromKey, toKey, deps) {
   return { ok: accepted, status: accepted ? 200 : 502, test: done, ...(accepted ? {} : { error: 'The server did not accept the message.' }) };
 }
 
-module.exports = { check, sendTest, readBack, findByMessageId, smtpConfig, imapConfig, defaultDeps, READBACK_ATTEMPTS, READBACK_GAP_MS };
+module.exports = { check, sendTest, importantFolder, readBack, findByMessageId, smtpConfig, imapConfig, defaultDeps, READBACK_ATTEMPTS, READBACK_GAP_MS };
