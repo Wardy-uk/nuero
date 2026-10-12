@@ -223,4 +223,24 @@ function forVehicle(vehicleId) {
   };
 }
 
-module.exports = { SOURCE, REJECT_REASONS, sync, approve, reject, reopen, list, forVehicle, endOfLocalDay, _fetchHistory };
+/**
+ * The evening nudge (Nick, 12 Oct 2026): one push when journeys are waiting.
+ * Silent when nothing is pending, once a day at most, and SUPPRESSIBLE — quiet
+ * hours, the dedupe and the hourly cap all apply. It says what is waiting and
+ * where; it never approves anything.
+ */
+const K_NUDGED = 'vehicle_journeys_nudged_on';
+async function nudge({ now = Date.now(), push } = {}) {
+  const pending = list({ status: 'pending', limit: 200 });
+  if (!pending.length) return { sent: false, why: 'nothing waiting' };
+  const day = new Date(endOfLocalDay(now)).toDateString();
+  if (_db().getState(K_NUDGED) === day) return { sent: false, why: 'already nudged today' };
+  const miles = Math.round(pending.reduce((s, j) => s + Number(j.measuredMiles || 0), 0) * 10) / 10;
+  const n = pending.length;
+  const send = push || ((t, b, d) => require('./webpush').sendToAll(t, b, d));
+  await send('Car journeys to approve', `${n} journey${n === 1 ? '' : 's'} (${miles} mi) waiting — they don’t count towards the mileage until you approve them. Life → Transport.`, { type: 'journeys', url: '/?view=life' });
+  _db().setState(K_NUDGED, day);
+  return { sent: true, count: n, miles };
+}
+
+module.exports = { SOURCE, REJECT_REASONS, sync, approve, reject, reopen, list, forVehicle, nudge, endOfLocalDay, _fetchHistory };

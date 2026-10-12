@@ -297,3 +297,22 @@ test('render: pending journeys can be approved / rejected on the Transport card,
   assert.match(html, /an estimate until the next odometer reading/);
   assert.match(html, /143,673 mi/, 'the odometer reading is still shown as itself');
 });
+
+test('evening nudge: silent with nothing waiting, one push when something is, never twice a day', async () => {
+  const sent = [];
+  const push = async (t, b, d) => sent.push({ t, b, d });
+  const pend = J.list({ status: 'pending' });
+  assert.ok(pend.length >= 1, 'fixture: something is waiting');
+  const a = await J.nudge({ now: NOW, push });
+  assert.equal(a.sent, true);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].d.type, 'journeys');
+  assert.match(sent[0].b, /waiting — they don’t count towards the mileage until you approve them/);
+  assert.equal((await J.nudge({ now: NOW + 60000, push })).sent, false, 'once a day');
+  assert.equal(sent.length, 1);
+  for (const j of pend) J.reject(j.id, { reason: 'not-a-journey' });
+  const b = await J.nudge({ now: NOW + 2 * DAY, push });
+  assert.equal(b.sent, false);
+  assert.equal(b.why, 'nothing waiting');
+  assert.equal(sent.length, 1);
+});

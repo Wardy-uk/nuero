@@ -1311,6 +1311,20 @@ function start() {
       why: 'Detect finished car journeys in the Life360 history Home Assistant keeps and hold them for Nick to approve before they count towards the mileage estimate.',
       run: async () => { const r = await require('./vehicle-journeys').sync(); if (!r.ok) throw new Error(r.error); return { fixes: r.fixes, detected: r.detectedCount, skipped: r.skipped }; },
     });
+    // One evening push when journeys are waiting (Nick, 12 Oct 2026). maxLag
+    // keeps a late catch-up from pushing after quiet hours begin.
+    require('./runtime-jobs').defineJob({
+      name: 'vehicle-journeys-nudge',
+      cron: '0 20 * * *',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 90 * 60 * 1000,
+      maxAttempts: 1,
+      timeoutMs: 60 * 1000,
+      lookbackMs: 24 * 3600 * 1000,
+      why: 'At 20:00, one push if car journeys are waiting for approval; silent otherwise.',
+      run: async () => { await require('./vehicle-journeys').sync().catch(() => null); return require('./vehicle-journeys').nudge(); },
+    });
     // 12 Oct 2026: the personal inbox (nick@, contact@) and saim@'s bounce
     // watch. Here, not registerDurableJobs(), because it reaches Fasthosts.
     require('./runtime-jobs').defineJob({

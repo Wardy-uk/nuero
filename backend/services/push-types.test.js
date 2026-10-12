@@ -49,6 +49,9 @@ const SUPPRESSIBLE = new Set([
   // A sense going quiet (watchdog.checkSenses). SUPPRESSIBLE: a deaf room sensor
   // at midnight is a breakfast problem, not a 03:00 one.
   'sense_alert',
+  // Car journeys waiting for approval — once an evening; a breakfast problem
+  // if quiet hours eat it, never a reason to interrupt.
+  'journeys',
 ]);
 
 const ROOTS = ['services', 'routes'];
