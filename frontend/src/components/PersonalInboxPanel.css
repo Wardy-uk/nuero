@@ -43,3 +43,11 @@
 .pi-compose input, .pi-compose select, .pi-compose textarea { width: 100%; box-sizing: border-box; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; font-family: var(--font-sans); font-size: 13px; }
 .pi-btn-danger { border-color: var(--danger); color: var(--danger); }
 .pi-confirm { font-size: 12px; color: var(--text-secondary); }
+
+/* Gmail tab (12 Oct 2026): why a message is here, and the sender lists. */
+.pi-why { font-size: 11px; color: var(--text-muted, #888); border: 1px solid var(--border, #333); border-radius: 10px; padding: 0 6px; }
+.pi-rules { margin: 8px 0; font-size: 13px; }
+.pi-rules summary { cursor: pointer; color: var(--text-muted, #888); }
+.pi-rule-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.pi-rule { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--border, #333); border-radius: 4px; padding: 2px 6px; }
+.pi-btn-small { padding: 1px 6px; font-size: 11px; }

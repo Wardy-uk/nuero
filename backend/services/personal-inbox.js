@@ -17,8 +17,8 @@
 
 const pm = require('./personal-mail');
 
-// Gmail moved here from the work triage (Nick, 12 Oct 2026): still ONLY its
-// Important mail, still only what arrived after the watermark — no AI sorting.
+// Gmail moved here from the work triage (Nick, 12 Oct 2026); which Gmail mail
+// shows is gmail-rule's call (see _refreshGmail) — no AI sorting.
 const INBOXES = ['nick', 'contact', 'gmail'];
 const WATCHED = ['saim'];
 const WINDOW = 100;
@@ -91,34 +91,101 @@ function bouncedMessageId(raw, ownId) {
   return null;
 }
 
+function _why(ext) {
+  try { const e = JSON.parse(ext || 'null'); return e && e.reason ? (require('./gmail-rule').REASON_WORDS[e.reason] || null) : null; } catch { return null; }
+}
+
 function _row(r) {
   if (!r) return null;
   return {
     id: r.id, mailbox: r.mailbox, from: r.from_name || r.from_email, fromEmail: r.from_email, subject: r.subject,
     received: r.received, seen: r.seen === 1, preview: r.preview || '', kind: r.kind || null,
     bounceOf: r.bounce_of || null, hikeTripId: r.hike_trip_id || null,
+    why: r.mailbox === 'gmail' ? _why(r.ext_json) : null,
   };
 }
 
 /**
- * Gmail: its IMPORTANT folder, at or above the watermark only (gmail-intake's
- * WATERMARK_KEY — set on first connect, when NOTHING is read; re-set, never read
- * back, if Gmail renumbers the folder). Mirrored like the others; ids stay
- * `gmail:<X-GM-MSGID>` so reply / mark-read route exactly as before.
+ * Gmail (12 Oct 2026, Nick — the review that found 97% of a month's Gmail was
+ * mailing lists): Gmail's INBOX folder, judged by gmail-rule (Important is one
+ * reason beside starred, people he writes to, his always-show list and
+ * personal-looking Primary mail; his hide list beats all of it). Every row
+ * carries the reason it was shown.
+ *
+ * ⚠ The cursor (gmail-intake's WATERMARK_KEY, on INBOX) starts at UIDNEXT on
+ *   first connect — NOTHING old is read by the timer. History comes in only by
+ *   an explicit backfill (Nick asked for the last 30 days, 12 Oct), which
+ *   rewinds the cursor and lets the same pass judge it.
+ * ⚠ A pass scans at most GMAIL_SCAN_MAX messages and continues from where it
+ *   stopped next time — never skips ahead.
+ * ⚠ Mirrored: a shown message that leaves the inbox (archived, deleted) leaves
+ *   the tab. Nothing here changes the mailbox; ids stay `gmail:<X-GM-MSGID>`.
  */
+const GMAIL_SCAN_MAX = 2500;
+const GMAIL_HEADERS = ['list-unsubscribe', 'list-id', 'precedence', 'auto-submitted'];
+const BACKFILL_MAX_DAYS = 90;
+
 async function _refreshGmail(deps) {
   const r = await _refreshGmailInner(deps);
   // Settings → Personal email reads this to say what the last Gmail pass did.
   try {
     _db().setState(require('./gmail-intake').STATUS_KEY, JSON.stringify(r.ok
-      ? { at: new Date(deps.now()).toISOString(), ok: true, fetched: r.added || 0, ...(r.watermarkSet ? { watermarkSet: true } : {}) }
+      ? { at: new Date(deps.now()).toISOString(), ok: true, fetched: r.added || 0, scanned: r.scanned || 0, ...(r.more ? { more: true } : {}), ...(r.watermarkSet ? { watermarkSet: true } : {}) }
       : { at: new Date(deps.now()).toISOString(), ok: false, why: r.why }));
   } catch { /* status only */ }
   return r;
 }
 
-async function _refreshGmailInner(deps) {
+const _sentPath = (list) => (list.find((m) => m.specialUse === '\\Sent' || (m.flags instanceof Set && m.flags.has('\\Sent'))) || {}).path || null;
+
+/** Everyone Nick has written to from Gmail in the last year, cached a day. A failed read keeps the last answer. */
+async function _correspondents(c, deps) {
+  const gr = require('./gmail-rule');
+  const cached = gr.readCorrespondents();
+  if (!gr.correspondentsStale(cached, deps.now())) return new Set(cached.addresses);
+  try {
+    const sent = _sentPath(await c.list());
+    if (!sent) return new Set(cached ? cached.addresses : []);
+    const out = [];
+    const lock = await c.getMailboxLock(sent);
+    try {
+      const uids = await c.search({ since: new Date(deps.now() - 365 * 86400000) }, { uid: true });
+      for (let i = 0; uids && i < uids.length; i += 500) {
+        for await (const m of c.fetch(uids.slice(i, i + 500).join(','), { uid: true, envelope: true }, { uid: true })) {
+          const env = m.envelope || {};
+          for (const a of [...(env.to || []), ...(env.cc || []), ...(env.bcc || [])]) if (a.address) out.push(String(a.address).toLowerCase());
+        }
+      }
+    } finally { lock.release(); }
+    gr.writeCorrespondents(out, new Date(deps.now()).toISOString());
+    return new Set(out);
+  } catch { return new Set(cached ? cached.addresses : []); }
+}
+
+function _readCursor() {
+  try { return JSON.parse(_db().getState(require('./gmail-intake').WATERMARK_KEY) || 'null'); } catch { return null; }
+}
+function _writeCursor(cur) { _db().setState(require('./gmail-intake').WATERMARK_KEY, JSON.stringify(cur)); }
+
+/** Insert one judged message (INSERT OR IGNORE — a backfill may meet rows already shown). */
+async function _insertGmail(c, m, { uidValidity, reason, at }) {
   const gi = require('./gmail-intake');
+  let full = m;
+  if (!m.bodyStructure) {
+    try { full = { ...m, ...((await c.fetchOne(String(m.uid), { uid: true, bodyStructure: true }, { uid: true })) || {}) }; } catch { /* subject-only */ }
+  }
+  let text = '';
+  try { text = await _readText(c, m.uid, full.bodyStructure, 16 * 1024); } catch { /* subject-only is still mail */ }
+  const e = gi.toTriageEmail(full, { path: 'INBOX', uidValidity });
+  const r = _db().run(`INSERT OR IGNORE INTO personal_inbox (id, mailbox, uid, uid_validity, message_id, from_email, from_name, subject, received, seen, preview,
+            to_json, cc_json, kind, bounce_of, ext_json, fetched_at) VALUES (?, 'gmail', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+  [e.id, m.uid, uidValidity, e.gmail.messageId, e.fromEmail, e.from, e.subject, e.received || at, e.isRead ? 1 : 0,
+    String(text || '').replace(/\s+/g, ' ').trim().slice(0, PREVIEW_CHARS), JSON.stringify(e.to), JSON.stringify(e.cc), JSON.stringify({ ...e.gmail, reason }), at]);
+  return r && r.changes ? e.id : null;
+}
+
+async function _refreshGmailInner(deps) {
+  const gr = require('./gmail-rule');
   const db = _db();
   const at = new Date(deps.now()).toISOString();
   let c;
@@ -127,50 +194,166 @@ async function _refreshGmailInner(deps) {
     const o = await _open('gmail', deps);
     if (o.error) return { key: 'gmail', ok: true, skipped: o.error };
     c = o.c;
-    const list = await c.list().catch(() => []);
-    const path = pm.importantFolder(list);
-    if (!path) return { key: 'gmail', ok: false, why: 'Gmail has no Important folder visible over IMAP — tick "Show in IMAP" for Important in Gmail → Settings → Labels.' };
-    const lock = await c.getMailboxLock(path);
+    const correspondents = await _correspondents(c, deps);
+    const lock = await c.getMailboxLock('INBOX');
+    let scanned = 0; let more = false;
     try {
       const box = c.mailbox || {};
       const uidValidity = String(box.uidValidity);
       const uidNext = Number(box.uidNext);
-      let wm = null;
-      try { wm = JSON.parse(db.getState(gi.WATERMARK_KEY) || 'null'); } catch { wm = null; }
-      if (!wm || wm.uidValidity !== uidValidity) {
-        db.setState(gi.WATERMARK_KEY, JSON.stringify({ uidValidity, uidNext, setAt: at, path, ...(wm ? { previous: wm } : {}) }));
+      const cur = _readCursor();
+      if (!cur || cur.folder !== 'INBOX' || cur.uidValidity !== uidValidity) {
+        _writeCursor({ folder: 'INBOX', uidValidity, uidNext, scannedTo: uidNext, setAt: at, ...(cur ? { previous: { folder: cur.folder || cur.path || null, uidValidity: cur.uidValidity, setAt: cur.setAt } } : {}) });
         db.run("DELETE FROM personal_inbox WHERE mailbox = 'gmail'");
         return { key: 'gmail', ok: true, added: 0, addedIds: [], watermarkSet: true };
       }
-      const from = Number(wm.uidNext);
-      const known = new Map(db.all("SELECT id FROM personal_inbox WHERE mailbox = 'gmail'").map((r) => [r.id, true]));
-      const seenIds = new Set();
-      const msgs = [];
+      const rules = gr.readRules();
+      const own = pm.addressFor('gmail');
+      const from = Number(cur.scannedTo);
       if (uidNext > from) {
+        let primaryUids = [];
+        try { primaryUids = (await c.search({ uid: `${from}:*`, gmraw: 'category:primary' }, { uid: true })) || []; } catch { primaryUids = []; }
+        const primary = new Set(primaryUids);
+        const msgs = [];
         // `n:*` returns the highest message even when it is below n — the UID filter is load-bearing.
-        for await (const m of c.fetch(`${from}:*`, { uid: true, envelope: true, flags: true, internalDate: true, bodyStructure: true, threadId: true, emailId: true }, { uid: true })) {
+        for await (const m of c.fetch(`${from}:*`, { uid: true, envelope: true, flags: true, labels: true, internalDate: true, threadId: true, emailId: true, headers: GMAIL_HEADERS }, { uid: true })) {
           if (m.uid >= from) msgs.push(m);
         }
+        msgs.sort((a, b) => a.uid - b.uid);
+        const batch = msgs.slice(0, GMAIL_SCAN_MAX);
+        more = msgs.length > GMAIL_SCAN_MAX;
+        for (const m of batch) {
+          scanned += 1;
+          const env = m.envelope || {};
+          const sender = String(((env.from && env.from[0]) || {}).address || '').toLowerCase();
+          const v = gr.judge({ fromEmail: sender, labels: m.labels, flags: m.flags, headers: m.headers ? m.headers.toString('utf8') : '', primary: primary.has(m.uid) },
+            { ...rules, correspondents, own });
+          if (!v.show) continue;
+          const id = await _insertGmail(c, m, { uidValidity, reason: v.reason, at });
+          if (id) added.push(id);
+        }
+        const next = more ? batch.at(-1).uid + 1 : Math.max(uidNext, from);
+        _writeCursor({ ...cur, uidNext, scannedTo: next, lastScanAt: at });
+        if (more) console.warn(`[PersonalInbox] Gmail: ${msgs.length} messages to judge; judged ${batch.length}, the rest next pass`);
       }
-      for (const m of msgs.slice(-WINDOW)) {
-        const e = gi.toTriageEmail(m, { path, uidValidity });
-        seenIds.add(e.id);
-        if (known.has(e.id)) { db.run('UPDATE personal_inbox SET seen = ?, fetched_at = ? WHERE id = ?', [e.isRead ? 1 : 0, at, e.id]); continue; }
-        let text = '';
-        try { text = await _readText(c, m.uid, m.bodyStructure, 16 * 1024); } catch { /* subject-only is still mail */ }
-        db.run(`INSERT INTO personal_inbox (id, mailbox, uid, uid_validity, message_id, from_email, from_name, subject, received, seen, preview,
-                  to_json, cc_json, kind, bounce_of, ext_json, fetched_at) VALUES (?, 'gmail', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
-        [e.id, m.uid, uidValidity, e.gmail.messageId, e.fromEmail, e.from, e.subject, e.received || at, e.isRead ? 1 : 0,
-          String(text || '').replace(/\s+/g, ' ').trim().slice(0, PREVIEW_CHARS), JSON.stringify(e.to), JSON.stringify(e.cc), JSON.stringify(e.gmail), at]);
-        added.push(e.id);
+      // Mirror: a shown message that left the inbox (or whose sender Nick hid) leaves.
+      const rows = db.all("SELECT id, from_email, ext_json FROM personal_inbox WHERE mailbox = 'gmail'");
+      const live = [];
+      for (const r of rows) {
+        let ext = null;
+        try { ext = JSON.parse(r.ext_json || 'null'); } catch { ext = null; }
+        if (!ext || ext.path !== 'INBOX' || String(ext.uidValidity) !== uidValidity || gr.senderMatches(rules.hide, r.from_email)) { db.run('DELETE FROM personal_inbox WHERE id = ?', [r.id]); continue; }
+        live.push({ id: r.id, uid: Number(ext.uid) });
       }
-      // Mirror: no longer Important (or deleted) → it leaves.
-      for (const id of known.keys()) if (!seenIds.has(id)) db.run('DELETE FROM personal_inbox WHERE id = ?', [id]);
+      const present = new Map();
+      for (let i = 0; i < live.length; i += 500) {
+        const uids = live.slice(i, i + 500).map((x) => x.uid);
+        for await (const m of c.fetch(uids.join(','), { uid: true, flags: true }, { uid: true })) if (uids.includes(m.uid)) present.set(m.uid, m);
+      }
+      for (const x of live) {
+        const m = present.get(x.uid);
+        if (!m) { db.run('DELETE FROM personal_inbox WHERE id = ?', [x.id]); continue; }
+        const flags = m.flags instanceof Set ? m.flags : new Set(m.flags || []);
+        db.run('UPDATE personal_inbox SET seen = ?, fetched_at = ? WHERE id = ?', [flags.has('\\Seen') ? 1 : 0, at, x.id]);
+      }
     } finally { lock.release(); }
-    return { key: 'gmail', ok: true, added: added.length, addedIds: added };
+    return { key: 'gmail', ok: true, added: added.length, addedIds: added, scanned, more };
   } catch (e) {
     return { key: 'gmail', ok: false, why: pm.classifyError(e).error };
   } finally { if (c) await _close(c); }
+}
+
+/**
+ * One-off: judge the last `days` of Gmail's inbox (Nick, 12 Oct 2026 — "get
+ * the ones you identified as important in my inbox"). Rewinds the cursor to
+ * the first message in the window, then runs the ordinary pass. Days are 1–90,
+ * refused (not clamped) otherwise. Changes nothing in Gmail.
+ */
+async function backfillGmail(days, { deps } = {}) {
+  const n = Number(days);
+  if (!Number.isInteger(n) || n < 1 || n > BACKFILL_MAX_DAYS) return { ok: false, error: `days must be a whole number from 1 to ${BACKFILL_MAX_DAYS}` };
+  deps = _withDefaults(deps);
+  if (!pm.credentialFor('gmail')) return { ok: false, error: 'no Gmail password saved' };
+  const at = new Date(deps.now()).toISOString();
+  const since = new Date(deps.now() - n * 86400000);
+  let c;
+  try {
+    const o = await _open('gmail', deps);
+    if (o.error) return { ok: false, error: o.error };
+    c = o.c;
+    const lock = await c.getMailboxLock('INBOX');
+    try {
+      const box = c.mailbox || {};
+      const uidValidity = String(box.uidValidity);
+      const uidNext = Number(box.uidNext);
+      const uids = await c.search({ since }, { uid: true });
+      const first = uids && uids.length ? Math.min(...uids) : uidNext;
+      let cur = _readCursor();
+      if (!cur || cur.folder !== 'INBOX' || cur.uidValidity !== uidValidity) {
+        _db().run("DELETE FROM personal_inbox WHERE mailbox = 'gmail'");
+        cur = { folder: 'INBOX', uidValidity, uidNext, scannedTo: uidNext, setAt: at };
+      }
+      _writeCursor({ ...cur, scannedTo: Math.min(Number(cur.scannedTo), first), backfill: { days: n, since: since.toISOString(), at, messages: uids ? uids.length : 0 } });
+    } finally { lock.release(); }
+  } catch (e) {
+    return { ok: false, error: pm.classifyError(e).error };
+  } finally { if (c) await _close(c); }
+  const r = await _refreshGmail(deps);
+  return r.ok ? { ok: true, days: n, scanned: r.scanned || 0, shown: r.added || 0, more: !!r.more } : { ok: false, error: r.why };
+}
+
+/**
+ * "Always show" / "Stop showing" a sender (address or @domain), or clear it.
+ * Hide removes that sender's rows at once. Keep pulls that sender's inbox mail
+ * from the last 30 days in (a failed pull keeps the rule and says so).
+ */
+async function setGmailSender(sender, list, { deps } = {}) {
+  const gr = require('./gmail-rule');
+  const r = gr.setRule(sender, list);
+  if (!r.ok) return r;
+  const db = _db();
+  if (list === 'hide') {
+    for (const row of db.all("SELECT id, from_email FROM personal_inbox WHERE mailbox = 'gmail'")) {
+      if (gr.senderMatches([r.sender], row.from_email)) db.run('DELETE FROM personal_inbox WHERE id = ?', [row.id]);
+    }
+    return r;
+  }
+  if (list !== 'keep') return r;
+  deps = _withDefaults(deps);
+  const at = new Date(deps.now()).toISOString();
+  let c;
+  const pulled = [];
+  try {
+    const o = await _open('gmail', deps);
+    if (o.error) return { ...r, pulled: null, why: o.error };
+    c = o.c;
+    const lock = await c.getMailboxLock('INBOX');
+    try {
+      const uidValidity = String((c.mailbox || {}).uidValidity);
+      const cur = _readCursor();
+      if (!cur || cur.folder !== 'INBOX' || cur.uidValidity !== uidValidity) return { ...r, pulled: 0 };
+      const needle = r.sender.startsWith('@') ? r.sender.slice(1) : r.sender;
+      const uids = await c.search({ since: new Date(deps.now() - 30 * 86400000), from: needle }, { uid: true });
+      if (uids && uids.length) {
+        for await (const m of c.fetch(uids.join(','), { uid: true, envelope: true, flags: true, internalDate: true, threadId: true, emailId: true, bodyStructure: true }, { uid: true })) {
+          const env = m.envelope || {};
+          const sender = String(((env.from && env.from[0]) || {}).address || '').toLowerCase();
+          if (!gr.senderMatches([r.sender], sender)) continue;
+          const id = await _insertGmail(c, m, { uidValidity, reason: 'keep', at });
+          if (id) pulled.push(id);
+        }
+      }
+    } finally { lock.release(); }
+    return { ...r, pulled: pulled.length };
+  } catch (e) {
+    return { ...r, pulled: null, why: pm.classifyError(e).error };
+  } finally { if (c) await _close(c); }
+}
+
+function gmailRules() {
+  const gr = require('./gmail-rule');
+  const c = gr.readCorrespondents();
+  return { ...gr.readRules(), correspondents: c ? { count: c.addresses.length, at: c.at } : null, reasons: gr.REASON_WORDS, cursor: _readCursor() };
 }
 
 /** The stored Gmail coordinates for an id (gmail-intake reads/marks through these). */
@@ -397,7 +580,7 @@ async function trash(id, { deps } = {}) {
 }
 
 module.exports = {
-  trash,
+  trash, backfillGmail, setGmailSender, gmailRules, BACKFILL_MAX_DAYS,
   INBOXES, WATCHED, WINDOW, ID_PREFIX, isPersonalId, parseId, idFor, gmailEntry,
   refresh, refreshMailbox, list, overview, readMessage, markRead,
   classifyWatched, bouncedMessageId,

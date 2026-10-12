@@ -193,6 +193,9 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/personal-inbox/compose', 'email.send'),
   // Delete moves a message to that mailbox's Bin/Trash — Nick's, never a machine's.
   R('POST', '/api/personal-inbox/message/:id/delete', 'mail.read-state', { machine: 'refuse' }),
+  // Which Gmail mail shows, and the one-off backfill of it — Nick's choices, never a machine's.
+  R('POST', '/api/personal-inbox/gmail/rules', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/personal-inbox/gmail/backfill', 'internal.state', { machine: 'refuse' }),
   // Build 15: Nick's own statements about his goal — never a machine's.
   R('POST', '/api/loops/hiking/confirm', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/plan', 'internal.state', { machine: 'refuse' }),

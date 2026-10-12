@@ -69,57 +69,6 @@ const msg = (uid, over = {}) => ({
   ...over,
 });
 
-test('first connect marks the line and reads NOTHING; later passes read only above it; the n:* quirk is filtered', async () => {
-  db.setState(gi.WATERMARK_KEY, '');
-  const srv = gmailServer({ messages: [msg(448), msg(449), msg(450)] });
-  let r = await gi.fetchNew({ deps: { imap: srv.imap } });
-  assert.equal(r.ok, true); assert.deepEqual(r.emails, []);
-  assert.equal(JSON.parse(db.getState(gi.WATERMARK_KEY)).uidNext, 451, 'the line is the folder\'s UIDNEXT at connect');
-  assert.equal(srv.ranges.length, 0, 'nothing fetched on the first connect — not even once');
-
-  r = await gi.fetchNew({ deps: { imap: srv.imap } });
-  assert.deepEqual(r.emails, []);
-  assert.equal(srv.ranges.length, 0, 'nothing new → nothing fetched');
-
-  // Mail 451 arrived and was deleted: UIDNEXT moved to 452, so "451:*" IS asked
-  // for, and an IMAP server answers it with the highest message it has — 450,
-  // which is below the line.
-  srv.uidNext = 452;
-  r = await gi.fetchNew({ deps: { imap: srv.imap } });
-  assert.equal(srv.ranges.length, 1, 'positive control: the range was fetched');
-  assert.deepEqual(r.emails, [], 'uid 450 came back for "451:*" — below the line, dropped');
-  srv.uidNext = null;
-
-  srv.messages.push(msg(451, { flags: new Set(['\\Seen']) }), msg(452));
-  r = await gi.fetchNew({ deps: { imap: srv.imap } });
-  assert.deepEqual(r.emails.map((e) => e.id), ['gmail:1451', 'gmail:1452']);
-  const e = r.emails[0];
-  assert.equal(e.source, 'gmail');
-  assert.equal(e.fromEmail, 'helen@example.com');
-  assert.equal(e.isRead, true);
-  assert.equal(e.preview, 'Body of 451');
-  assert.deepEqual(e.gmail, { uid: 451, uidValidity: '7', path: '[Gmail]/Important', threadId: '5451', messageId: '<m451@example.com>', emailId: '1451' });
-});
-
-test('Gmail renumbering the folder re-marks the line at its current end — the past is still never read', async () => {
-  db.setState(gi.WATERMARK_KEY, JSON.stringify({ uidValidity: '7', uidNext: 451, setAt: 'x' }));
-  const srv = gmailServer({ uidValidity: 9n, messages: [msg(1), msg(2), msg(3)] });
-  const r = await gi.fetchNew({ deps: { imap: srv.imap } });
-  assert.deepEqual(r.emails, []);
-  assert.equal(r.reset, true);
-  const wm = JSON.parse(db.getState(gi.WATERMARK_KEY));
-  assert.deepEqual([wm.uidValidity, wm.uidNext], ['9', 4]);
-  assert.equal(srv.ranges.length, 0);
-});
-
-test('an unreadable Gmail is a recorded gap, never an empty inbox and never a thrown triage', async () => {
-  const r = await gi.fetchNew({ deps: { imap: () => ({ on() {}, async connect() { throw Object.assign(new Error('Invalid credentials (Failure)'), { authenticationFailed: true }); } }) } });
-  assert.equal(r.ok, false);
-  assert.match(r.why, /refused the login/);
-  assert.deepEqual(r.emails, []);
-  assert.equal(gi.status().last.ok, false);
-});
-
 test('reading never imports a sender: gmail-intake loads the IMAP library, not the transport or nodemailer', () => {
   const src = fs.readFileSync(path.join(__dirname, 'gmail-intake.js'), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
   assert.match(src, /require\('imapflow'\)/, 'positive control: it does load an IMAP client');

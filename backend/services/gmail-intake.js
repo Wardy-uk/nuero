@@ -1,39 +1,26 @@
 'use strict';
 
 /**
- * Gmail's Important mail into the work triage (12 Oct 2026, Nick): ONLY what
- * Gmail marks Important, ONLY mail that arrives after NEURO connects, triaged
- * exactly like work mail — same lanes, mute, Needs action, age-out — as a
- * SOURCE on each triage entry, never a second store.
+ * Reading Gmail (12 Oct 2026): message coordinates, the live read for the detail
+ * view and for preparing a reply, and mark-read. WHICH Gmail mail is shown is
+ * personal-inbox + gmail-rule's job; this module only reads.
  *
- * ⚠⚠ NOTHING HISTORICAL, NOT EVEN ONCE. The first time this runs it records the
- *   Important folder's UIDNEXT as a WATERMARK and fetches nothing. Every later
- *   read asks only for UIDs at or above it. Measured at connect: the Gmail inbox
- *   holds 114,468 messages — the watermark is what keeps them out.
- * ⚠ UIDVALIDITY changing means Gmail renumbered the folder; the old watermark
- *   then means nothing, so it is RE-SET to the current UIDNEXT (nothing old is
- *   read) and the gap is reported, never silently bridged.
- * ⚠ Off the triage window (LOOKBACK) a message is not re-fetched; its entry
- *   stays in the triage store, carried forward like any unanswered work mail.
  * ⚠ Bodies are read with BODY.PEEK (imapflow download) — reading never marks a
- *   message read. Only an explicit dismiss-with-markRead sets \Seen.
- *
- * Gmail search works (rfc822msgid etc.) — unlike Fasthosts — but nothing here
- * needs it: a UID range is the whole query.
+ *   message read. Only an explicit Mark read sets Seen.
  */
 
 const pm = require('./personal-mail');
 
-const WATERMARK_KEY = 'gmail_important_watermark';
+// The Gmail tab's cursor on Gmail's INBOX (personal-inbox owns the pass). The
+// old Important-folder watermark ('gmail_important_watermark') is abandoned.
+const WATERMARK_KEY = 'gmail_inbox_cursor';
 const STATUS_KEY = 'gmail_intake_status';
-const MAX_PER_RUN = 200;
 const PREVIEW_CHARS = 300;
 const BODY_MAX = 200 * 1024;
 const ID_PREFIX = 'gmail:';
 
 function _db() { return require('../db/database'); }
 function _readJson(key) { try { const v = _db().getState(key); return v ? JSON.parse(v) : null; } catch { return null; } }
-function _writeJson(key, v) { _db().setState(key, JSON.stringify(v)); }
 
 function isGmailId(id) { return typeof id === 'string' && id.startsWith(ID_PREFIX); }
 
@@ -130,68 +117,6 @@ function status() {
   };
 }
 
-function _record(st) { _writeJson(STATUS_KEY, st); return st; }
-
-/**
- * New Important mail at or above the watermark, inside `lookbackHours`.
- * Returns { ok, emails, watermarkSet?, reset? } or { ok:false, why } —
- * never throws; triage must never fail on Gmail's account.
- */
-async function fetchNew({ lookbackHours = 14 * 24, deps } = {}) {
-  deps = _withDefaults(deps);
-  const at = new Date(deps.now()).toISOString();
-  if (!pm.credentialFor('gmail')) return { ok: true, emails: [], skipped: 'not-configured' };
-  let c;
-  try {
-    const o = await _open(deps);
-    if (o.error) return { ok: true, emails: [], skipped: o.error };
-    c = o.c;
-    const list = await c.list().catch(() => []);
-    const path = pm.importantFolder(list);
-    if (!path) return _record({ at, ok: false, why: 'Gmail has no Important folder visible over IMAP — tick "Show in IMAP" for Important in Gmail → Settings → Labels.' });
-    const lock = await c.getMailboxLock(path);
-    try {
-      const box = c.mailbox || {};
-      const uidValidity = String(box.uidValidity);
-      const uidNext = Number(box.uidNext);
-      const wm = _readJson(WATERMARK_KEY);
-      // First connect: mark the line and read NOTHING.
-      if (!wm) {
-        _writeJson(WATERMARK_KEY, { uidValidity, uidNext, setAt: at, path });
-        return { ..._record({ at, ok: true, fetched: 0, watermarkSet: true }), emails: [] };
-      }
-      // Renumbered: re-mark at the current end, never read the past.
-      if (wm.uidValidity !== uidValidity) {
-        _writeJson(WATERMARK_KEY, { uidValidity, uidNext, setAt: at, path, previous: wm });
-        console.warn(`[GmailIntake] Important was renumbered (UIDVALIDITY ${wm.uidValidity} → ${uidValidity}) — watermark re-set; mail in between is not read`);
-        return { ..._record({ at, ok: true, fetched: 0, reset: true }), emails: [] };
-      }
-      const from = Number(wm.uidNext);
-      if (!(uidNext > from)) return { ..._record({ at, ok: true, fetched: 0 }), emails: [] };
-      const since = deps.now() - lookbackHours * 3600000;
-      const msgs = [];
-      // `n:*` returns the highest message even when it is below n — the UID filter is load-bearing.
-      for await (const m of c.fetch(`${from}:*`, { uid: true, envelope: true, flags: true, internalDate: true, bodyStructure: true, threadId: true, emailId: true }, { uid: true })) {
-        if (!(m.uid >= from)) continue;
-        if (m.internalDate && Date.parse(m.internalDate) < since) continue;
-        msgs.push(m);
-      }
-      const newest = msgs.slice(-MAX_PER_RUN);
-      if (msgs.length > MAX_PER_RUN) console.warn(`[GmailIntake] ${msgs.length} new Important messages; reading the newest ${MAX_PER_RUN}`);
-      const emails = [];
-      for (const m of newest) {
-        let text = '';
-        try { text = await _readText(c, m.uid, m.bodyStructure, 16 * 1024); } catch { /* subject-only is still mail */ }
-        emails.push(toTriageEmail(m, { path, uidValidity, text }));
-      }
-      _record({ at, ok: true, fetched: emails.length });
-      return { ok: true, emails };
-    } finally { lock.release(); }
-  } catch (e) {
-    return { ..._record({ at, ok: false, why: pm.classifyError(e).error }), emails: [] };
-  } finally { if (c) await _close(c); }
-}
-
 // Where a Gmail message's coordinates live: the Personal inbox since Gmail moved
 // there (12 Oct 2026); the work triage store for anything from before.
 function _entry(emailId) {
@@ -265,6 +190,6 @@ async function readMessage(emailId, { deps } = {}) {
 
 module.exports = {
   WATERMARK_KEY, STATUS_KEY, ID_PREFIX, isGmailId,
-  fetchNew, markRead, readMessage, status,
+  markRead, readMessage, status,
   toTriageEmail, textPartOf, hasAttachment, stripHtml,
 };

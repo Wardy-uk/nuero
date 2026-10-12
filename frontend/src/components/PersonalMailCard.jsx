@@ -56,7 +56,7 @@ function SendsAs({ sender }) {
   );
 }
 
-// Gmail → work triage (12 Oct 2026): watching Important from a watermark; nothing older is ever read.
+// Gmail → the Personal inbox (12 Oct 2026): the inbox judged by NEURO's rule from a cursor; history only by an explicit backfill.
 function GmailIntake({ s }) {
   if (!s || !s.configured) return null;
   const wm = s.watermark;
@@ -64,10 +64,10 @@ function GmailIntake({ s }) {
   return (
     <div className="pm-small" data-testid="pm-gmail-intake">
       {wm
-        ? <>Personal inbox shows Gmail’s Important mail that arrived after <strong>{when(wm.setAt)}</strong> — nothing older is read.</>
-        : <>Personal inbox starts showing Gmail’s Important mail on its next check (it marks that moment; nothing older is read).</>}
+        ? <>Personal inbox shows the Gmail mail NEURO’s rule picks out, from <strong>{when(wm.setAt)}</strong>{wm.backfill ? <> — plus the {wm.backfill.days} days before, read once {when(wm.backfill.at)}</> : ''}. Nothing in Gmail is changed.</>
+        : <>Personal inbox starts reading Gmail on its next check (it marks that moment; nothing older is read).</>}
       {last && (last.ok
-        ? <span className="pm-muted"> Last pass {when(last.at)}: {last.fetched || 0} message{last.fetched === 1 ? '' : 's'}.</span>
+        ? <span className="pm-muted"> Last pass {when(last.at)}: {last.fetched || 0} shown{last.scanned ? ` of ${last.scanned} read` : ''}{last.more ? ' (more to read next pass)' : ''}.</span>
         : <span className="pm-bad"> Last pass {when(last.at)} could not read Gmail — {last.why}</span>)}
     </div>
   );

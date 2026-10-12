@@ -46,6 +46,7 @@ export function MessageList({ items, onOpen, openId, now }) {
             <span className="pi-from">{m.from}</span>
             {m.kind && <span className={`pi-kind pi-kind-${m.kind}`}>{KIND_WORDS[m.kind] || m.kind}</span>}
             {m.hikeTripId && <span className="pi-kind pi-kind-bounce">hike alert</span>}
+            {m.why && <span className="pi-why" title="Why this is here">{m.why}</span>}
             <span className="pi-age">{ago(m.received, now)}</span>
             <span className="pi-subject">{m.subject}</span>
             {m.preview && <span className="pi-preview">{m.preview.slice(0, 140)}</span>}
@@ -102,7 +103,25 @@ export function ComposeForm({ options, suggestion, onRecipients, onSend, onCance
   );
 }
 
-export function MessageView({ data, onRead, onReply, onDelete, busy, outcome, canReply }) {
+/**
+ * The Gmail tab's rule (12 Oct 2026): what lets a message in, and Nick's two
+ * sender lists, each entry removable. Nothing here changes Gmail.
+ */
+export function GmailRules({ rules, onSet, busy }) {
+  if (!rules) return null;
+  const keep = rules.keep || [];
+  const hide = rules.hide || [];
+  return (
+    <details className="pi-rules" data-testid="pi-gmail-rules">
+      <summary>Why mail is here — {keep.length} always shown, {hide.length} hidden</summary>
+      <p className="pi-note">NEURO shows a Gmail message when it is: {Object.values(rules.reasons || {}).join(' · ')}. Mailing lists and anything else stay in Gmail, untouched. Hidden senders beat every reason.{rules.correspondents ? ` People you write to: ${rules.correspondents.count} addresses from your Gmail Sent (last 12 months).` : ''}</p>
+      {keep.length > 0 && <div className="pi-rule-list"><strong>Always shown</strong>{keep.map((s) => <span key={s} className="pi-rule">{s} <button type="button" className="pi-btn pi-btn-small" disabled={busy} onClick={() => onSet(s, null)}>Remove</button></span>)}</div>}
+      {hide.length > 0 && <div className="pi-rule-list"><strong>Hidden</strong>{hide.map((s) => <span key={s} className="pi-rule">{s} <button type="button" className="pi-btn pi-btn-small" disabled={busy} onClick={() => onSet(s, null)}>Show again</button></span>)}</div>}
+    </details>
+  );
+}
+
+export function MessageView({ data, onRead, onReply, onDelete, busy, outcome, canReply, onSender = null }) {
   const [text, setText] = useState('');
   const [replyAll, setReplyAll] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -123,6 +142,10 @@ export function MessageView({ data, onRead, onReply, onDelete, busy, outcome, ca
               <button type="button" className="pi-btn" disabled={busy} onClick={() => setConfirmDelete(false)}>Keep</button>
             </>
           : <button type="button" className="pi-btn" disabled={busy} onClick={() => setConfirmDelete(true)}>Delete</button>)}
+        {onSender && m.from && <>
+          <button type="button" className="pi-btn" disabled={busy} onClick={() => onSender(m.from, 'keep')} data-testid="pi-keep">Always show {m.from}</button>
+          <button type="button" className="pi-btn" disabled={busy} onClick={() => onSender(m.from, 'hide')} data-testid="pi-hide">Stop showing {m.from}</button>
+        </>}
       </div>
       {canReply && (
         <div className="pi-reply">
@@ -151,6 +174,7 @@ export default function PersonalInboxPanel() {
   const [composing, setComposing] = useState(false);
   const [options, setOptions] = useState([]);
   const [suggestion, setSuggestion] = useState(null);
+  const [rules, setRules] = useState(null);
 
   const startCompose = async () => {
     setComposing(true); setOutcome(null); setSuggestion(null);
@@ -186,7 +210,19 @@ export default function PersonalInboxPanel() {
     const [o, l] = await Promise.all([call('/api/personal-inbox'), call(`/api/personal-inbox/mail/${tab}`)]);
     if (o && o.ok) setOverview(o); else setError((o && o.error) || 'Could not read the personal inbox.');
     if (l && l.ok) setItems(l.items); else setItems([]);
+    if (tab === 'gmail') { const r = await call('/api/personal-inbox/gmail/rules'); setRules(r && r.ok ? r : null); }
   }, [tab]);
+  const setSender = async (sender, list) => {
+    setBusy(true); setError(null);
+    try {
+      const d = await call('/api/personal-inbox/gmail/rules', 'POST', { sender, list });
+      if (!d.ok) { setError(d.error || 'Could not change that.'); return; }
+      if (list === 'hide') { setOpenId(null); setView(null); }
+      setOutcome(list === 'keep' ? { tone: 'ok', text: `Mail from ${d.sender} will always show${typeof d.pulled === 'number' ? ` — ${d.pulled} from the last 30 days brought in` : d.why ? ` (could not pull older mail: ${d.why})` : ''}.` }
+        : list === 'hide' ? { tone: 'ok', text: `Mail from ${d.sender} is hidden here (still in Gmail). Undo under “Why mail is here”.` } : null);
+      await load();
+    } finally { setBusy(false); }
+  };
   useEffect(() => { setOpenId(null); setView(null); setOutcome(null); load(); }, [load]);
 
   const open = async (id) => {
@@ -229,19 +265,19 @@ export default function PersonalInboxPanel() {
       <div className="pi-tabs" role="tablist">
         {boxes.map((b) => (
           <button key={b.key} type="button" role="tab" aria-selected={tab === b.key} className={`pi-tab${tab === b.key ? ' pi-tab-on' : ''}`} onClick={() => setTab(b.key)}>
-            {b.address || b.key}{b.watchedOnly ? ' (bounces)' : b.key === 'gmail' ? ' (Important)' : ''}{b.unread ? <span className="pi-badge">{b.unread}</span> : null}
+            {b.address || b.key}{b.watchedOnly ? ' (bounces)' : ''}{b.unread ? <span className="pi-badge">{b.unread}</span> : null}
           </button>
         ))}
       </div>
       {current && !current.configured && <div className="pi-warn">No password saved for {current.address} — add it in Settings → Personal email.</div>}
       {current && current.last && current.last.ok === false && <div className="pi-warn">Last check could not read {current.address}: {current.last.why}</div>}
       {current && current.watchedOnly && <div className="pi-note">SAiM sends from here with replies going to nick@, so what lands here is mostly machinery. A bounced hike alert is flagged and pushed to you.</div>}
-      {current && current.key === 'gmail' && <div className="pi-note">Only mail Gmail marks Important, and only mail that arrived after NEURO connected to Gmail.</div>}
+      {current && current.key === 'gmail' && <GmailRules rules={rules} onSet={setSender} busy={busy} />}
       {error && <div className="pi-warn">{error}</div>}
       {composing && <ComposeForm options={options} suggestion={suggestion} onRecipients={recipients} onSend={sendNew} onCancel={() => setComposing(false)} busy={busy} outcome={outcome} initialFrom={current && !current.watchedOnly && current.configured ? current.key : null} />}
       <div className="pi-split">
         <MessageList items={items} onOpen={open} openId={openId} />
-        <MessageView data={view} onRead={markRead} onReply={reply} onDelete={remove} busy={busy} outcome={composing ? null : outcome} canReply={!!(current && !current.watchedOnly)} />
+        <MessageView data={view} onRead={markRead} onReply={reply} onDelete={remove} busy={busy} outcome={composing ? null : outcome} canReply={!!(current && !current.watchedOnly)} onSender={tab === 'gmail' ? setSender : null} />
       </div>
     </div>
   );

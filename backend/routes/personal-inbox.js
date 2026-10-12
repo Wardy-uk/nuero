@@ -57,6 +57,29 @@ router.post('/message/:id/delete', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// GET /api/personal-inbox/gmail/rules — the Gmail tab's rule: always-show and hidden senders, how many people Nick writes to, the reasons a message can be shown, and the cursor. Keywords: gmail rules, keep sender, hide sender, important.
+router.get('/gmail/rules', (req, res) => {
+  res.json({ ok: true, ...inbox.gmailRules() });
+});
+
+// POST /api/personal-inbox/gmail/rules — always show (keep), stop showing (hide) or clear a Gmail sender (a full address or @domain). Keep also pulls that sender's last 30 days in. Changes nothing in Gmail. Body: { sender, list: 'keep' | 'hide' | null }
+router.post('/gmail/rules', async (req, res) => {
+  try {
+    const { sender, list } = req.body && typeof req.body === 'object' ? req.body : {};
+    const r = await inbox.setGmailSender(sender, list === undefined ? null : list);
+    res.status(r.ok ? 200 : 400).json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// POST /api/personal-inbox/gmail/backfill — judge the last N days of the Gmail inbox by the Gmail tab's rule (one-off; the timer only reads new mail). Changes nothing in Gmail. Body: { days } (1–90, refused otherwise)
+router.post('/gmail/backfill', async (req, res) => {
+  try {
+    const { days } = req.body && typeof req.body === 'object' ? req.body : {};
+    const r = await inbox.backfillGmail(days);
+    res.status(r.ok ? 200 : (/days must/.test(r.error || '') ? 400 : 502)).json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // GET /api/personal-inbox/compose/options — the addresses a new email can come from (work, nick@, contact@, Gmail) and, for the recipients given, which one NEURO suggests and why. Query: to (comma-separated)
 router.get('/compose/options', (req, res) => {
   const mi = require('../services/mail-identity');

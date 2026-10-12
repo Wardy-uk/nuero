@@ -50,7 +50,7 @@ const MAILBOXES = [
   { key: 'neuro', address: `neuro@${DOMAIN}`, provider: 'fasthosts', displayName: 'NEURO', sends: false,
     job: 'Capture by email. Nothing reads it yet — its job is still to be confirmed.' },
   { key: 'gmail', address: null, provider: 'gmail', displayName: 'Nick Ward', sends: true,
-    job: 'Your Gmail. Only mail Gmail marks Important, only new mail, triaged like work mail.' },
+    job: 'Your Gmail. The Personal inbox shows the inbox mail NEURO\'s rule picks out — Important, starred, people you write to, your always-show list, personal-looking Primary mail — and leaves the mailing lists out.' },
 ];
 
 const KEYS = MAILBOXES.map((m) => m.key);

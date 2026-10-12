@@ -215,58 +215,154 @@ test('the screen, really rendered: newest first with unread marked, saim@ labels
   const watched = renderToString(React.createElement(MessageView, { data, onRead() {}, onReply() {}, busy: false, canReply: false }));
   assert.doesNotMatch(watched, /Your reply/, 'saim@ is watched, never replied from');
   assert.equal(renderToString(React.createElement(MessageList, { items: [], onOpen() {} })).includes('Nothing in this mailbox'), true);
+  // Gmail tab: each row says why it is here; the sender can be kept or hidden; the rule lists both, each undoable.
+  const gl = renderToString(React.createElement(MessageList, { items: [{ id: 'gmail:1', from: 'Zilch', subject: 'Quick reminder', received: '2026-10-12T11:00:00Z', seen: false, why: 'On your always-show list' }], onOpen() {}, now })).replace(/<!-- -->/g, '');
+  assert.match(gl, /pi-why[^>]*>On your always-show list/);
+  const gv = renderToString(React.createElement(MessageView, { data, onRead() {}, onReply() {}, onSender() {}, busy: false, canReply: true })).replace(/<!-- -->/g, '');
+  assert.match(gv, /Always show sam@example\.com/); assert.match(gv, /Stop showing sam@example\.com/);
+  assert.doesNotMatch(renderToString(React.createElement(MessageView, { data, onRead() {}, onReply() {}, busy: false, canReply: true })), /Always show/, 'only the Gmail tab offers it');
+  const rules = renderToString(React.createElement(mod.exports.GmailRules, { rules: { keep: ['@payzilch.com'], hide: ['info@account.netflix.com'], reasons: { important: 'Gmail marks it Important' }, correspondents: { count: 16 } }, onSet() {}, busy: false })).replace(/<!-- -->/g, '');
+  assert.match(rules, /1 always shown, 1 hidden/); assert.match(rules, /@payzilch\.com <button[^>]*>Remove/); assert.match(rules, /info@account\.netflix\.com <button[^>]*>Show again/);
+  assert.match(rules, /People you write to: 16/);
 });
 
 // ── Gmail moved here (Nick, 12 Oct 2026) ────────────────────────────────────
 
-function gmailServer({ uidValidity = 7n, messages = [], uidNext = null } = {}) {
-  const s = { uidValidity, messages, uidNext, moved: [], ranges: [] };
+function gmailServer({ uidValidity = 7n, messages = [], sent = [], uidNext = null } = {}) {
+  const s = { uidValidity, messages, sent, uidNext, moved: [], ranges: [], searches: [], connectFails: false };
+  const folder = (cur) => (cur === '[Gmail]/Sent Mail' ? s.sent : s.messages);
   s.imap = () => {
     let cur = null;
     return {
-      on() {}, async connect() {}, async logout() {},
-      get mailbox() { return { uidValidity: s.uidValidity, uidNext: s.uidNext || (s.messages.at(-1) || { uid: 0 }).uid + 1, exists: s.messages.length }; },
-      async list() { return [{ path: 'INBOX', specialUse: '\\Inbox' }, { path: '[Gmail]/Important', specialUse: null, flags: new Set(['\\Important']) }, { path: '[Gmail]/Bin', specialUse: '\\Trash' }]; },
+      on() {}, async connect() { if (s.connectFails) throw Object.assign(new Error('Invalid credentials (Failure)'), { authenticationFailed: true }); }, async logout() {},
+      get mailbox() { const f = folder(cur); return { uidValidity: s.uidValidity, uidNext: (cur === 'INBOX' && s.uidNext) || (f.at(-1) || { uid: 0 }).uid + 1, exists: f.length }; },
+      async list() { return [{ path: 'INBOX', specialUse: '\\Inbox' }, { path: '[Gmail]/Important', specialUse: null, flags: new Set(['\\Important']) }, { path: '[Gmail]/Sent Mail', specialUse: '\\Sent' }, { path: '[Gmail]/Bin', specialUse: '\\Trash' }]; },
       async getMailboxLock(p) { cur = p; return { release() {} }; },
-      async *fetch(range) {
-        s.ranges.push(range);
-        const from = Number(String(range).split(':')[0]);
-        const hit = s.messages.filter((m) => m.uid >= from);
-        for (const m of (hit.length ? hit : s.messages.slice(-1))) yield m; // n:* past the end → the highest
+      async search(q) {
+        s.searches.push({ folder: cur, q });
+        let f = folder(cur);
+        if (q.uid) f = f.filter((m) => m.uid >= Number(String(q.uid).split(':')[0]));
+        if (q.gmraw === 'category:primary') f = f.filter((m) => m.primary);
+        if (q.since) f = f.filter((m) => m.internalDate >= q.since);
+        if (q.from) f = f.filter((m) => String(m.envelope.from[0].address).includes(q.from));
+        return f.map((m) => m.uid);
       },
-      async download(uid) { const m = s.messages.find((x) => String(x.uid) === String(uid)); return { content: (async function* () { yield Buffer.from(m ? m.text : ''); })() }; },
+      async *fetch(range) {
+        if (cur === 'INBOX') s.ranges.push(range);
+        const f = folder(cur);
+        if (String(range).includes(':')) {
+          const from = Number(String(range).split(':')[0]);
+          const hit = f.filter((m) => m.uid >= from);
+          for (const m of (hit.length ? hit : f.slice(-1))) yield m; // n:* past the end → the highest
+        } else {
+          const want = String(range).split(',').map(Number);
+          for (const m of f) if (want.includes(m.uid)) yield m;
+        }
+      },
+      async fetchOne(uid) { return folder(cur).find((x) => String(x.uid) === String(uid)) || null; },
+      async download(uid) { const m = folder(cur).find((x) => String(x.uid) === String(uid)); return { content: (async function* () { yield Buffer.from(m ? m.text : ''); })() }; },
       async messageMove(uid, to) { s.moved.push({ from: cur, uid, to }); s.messages = s.messages.filter((m) => String(m.uid) !== String(uid)); },
     };
   };
   return s;
 }
-const gmsg = (uid) => ({ ...mail(uid), emailId: 2000n + BigInt(uid), threadId: 3000n + BigInt(uid), envelope: { ...mail(uid).envelope, to: [{ address: 'n.example@gmail.com' }], messageId: `<g${uid}@example.com>` } });
+const BULK_HEADERS = Buffer.from('List-Unsubscribe: <https://x.example/u>\r\n');
+const gmsg = (uid, over = {}) => {
+  const base = mail(uid);
+  const { from, ...rest } = over;
+  return {
+    ...base, emailId: 2000n + BigInt(uid), threadId: 3000n + BigInt(uid), labels: new Set(), headers: Buffer.from(''), primary: false,
+    envelope: { ...base.envelope, from: [{ name: 'Sender', address: from || 'news@shop.example' }], to: [{ address: 'n.example@gmail.com' }], messageId: `<g${uid}@example.com>` },
+    ...rest,
+  };
+};
 
-test('the Gmail tab: Important only, nothing before the watermark, the n:* quirk dropped, unlabelled mail leaves; Settings sees the pass', async () => {
+test('the Gmail tab: Gmail\'s INBOX judged by NEURO\'s rule — nothing read on first connect, each row says why, mailing lists stay out', async () => {
   pm.setCredential('gmail', { address: 'n.example@gmail.com', password: 'abcd efgh ijkl mnop' });
   const gi = require('./gmail-intake');
+  const gr = require('./gmail-rule');
   db.setState(gi.WATERMARK_KEY, '');
-  const srv = gmailServer({ messages: [gmsg(40), gmsg(41)] });
+  db.setState(gr.CORRESPONDENTS_KEY, '');
+  const old = Date.parse('2026-09-20T09:00:00Z');
+  const srv = gmailServer({
+    messages: [gmsg(40, { internalDate: new Date(old), from: 'support@payzilch.com', headers: BULK_HEADERS }), gmsg(41, { internalDate: new Date(old + 60000), labels: new Set(['\\Important']) })],
+    sent: [{ uid: 1, internalDate: new Date(), envelope: { to: [{ address: 'Lizzy@Example.com' }], cc: [] } }],
+  });
   let r = await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
-  assert.equal(r.watermarkSet, true); assert.equal(srv.ranges.length, 0, 'first connect reads NOTHING');
-  assert.equal(JSON.parse(db.getState(gi.WATERMARK_KEY)).uidNext, 42);
-  srv.uidNext = 43; // 42 arrived and was deleted: "42:*" is asked, the server hands back 41
-  r = await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
-  assert.equal(srv.ranges.length, 1); assert.deepEqual(inbox.list('gmail'), [], 'uid 41 is below the line');
-  srv.uidNext = null; srv.messages.push(gmsg(43), gmsg(44));
-  r = await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
-  assert.deepEqual(inbox.list('gmail').map((m) => m.id), ['gmail:2044', 'gmail:2043'], 'newest first, Gmail ids kept');
-  assert.equal(inbox.gmailEntry('gmail:2044').gmail.path, '[Gmail]/Important');
-  srv.messages = srv.messages.filter((m) => m.uid !== 43); // no longer Important
+  assert.equal(r.watermarkSet, true);
+  assert.equal(srv.ranges.length, 0, 'first connect reads NOTHING from the inbox');
+  assert.equal(JSON.parse(db.getState(gi.WATERMARK_KEY)).scannedTo, 42);
+
+  srv.uidNext = 43; // 42 arrived and was deleted: "42:*" hands back 41 (Important — it WOULD show), below the line
   await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
-  assert.deepEqual(inbox.list('gmail').map((m) => m.id), ['gmail:2044']);
-  assert.equal(inbox.INBOXES.includes('gmail'), true);
-  assert.equal(gi.status().last.ok, true, 'Settings reads the Personal inbox\'s Gmail pass');
-  // Delete moves it to Gmail's Bin.
+  assert.deepEqual(inbox.list('gmail'), []);
+  srv.uidNext = null;
+
+  srv.messages.push(
+    gmsg(43, { headers: BULK_HEADERS }), // a mailing list
+    gmsg(44, { headers: BULK_HEADERS, labels: new Set(['\\Important']) }),
+    gmsg(45, { from: 'lizzy@example.com', headers: BULK_HEADERS }), // someone he writes to
+    gmsg(46, { from: 'pal@example.com', primary: true }), // personal Primary mail
+    gmsg(47, { from: 'robot@example.com', primary: true, headers: Buffer.from('Auto-Submitted: auto-generated\r\n') }),
+    gmsg(48, { from: 'n.example@gmail.com', primary: true }), // his own
+  );
+  r = await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
+  assert.equal(r.scanned, 6);
+  const rows = inbox.list('gmail');
+  assert.deepEqual(rows.map((m) => [m.id, m.why]), [
+    ['gmail:2046', 'Personal-looking: Primary tab, not a mailing list'],
+    ['gmail:2045', 'Someone you have written to'],
+    ['gmail:2044', 'Gmail marks it Important'],
+  ]);
+  assert.equal(inbox.gmailEntry('gmail:2044').gmail.path, 'INBOX');
+  assert.equal(gi.status().last.scanned, 6, 'Settings reads the pass');
+
+  // Nothing re-read: the cursor moved past 48.
+  srv.ranges.length = 0;
+  await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
+  assert.equal(srv.ranges.some((x) => x.includes(':')), false, 'no range scan when nothing is new');
+
+  // The backfill Nick asked for: days are 1–90, refused not clamped; it judges the window once.
+  for (const bad of [0, 91, 1.5, 'x', undefined]) assert.equal((await inbox.backfillGmail(bad, { deps: { imap: srv.imap } })).ok, false, String(bad));
+  const b = await inbox.backfillGmail(30, { deps: { imap: srv.imap, now: () => Date.parse('2026-10-12T12:00:00Z') } });
+  assert.equal(b.ok, true);
+  assert.deepEqual(inbox.list('gmail').map((m) => m.id), ['gmail:2046', 'gmail:2045', 'gmail:2044', 'gmail:2041'], 'the old Important one comes in; the old Zilch mailing-list mail does not');
+  assert.equal(JSON.parse(db.getState(gi.WATERMARK_KEY)).backfill.days, 30);
+
+  // Always show: Zilch is pulled in from the last 30 days and kept from now on.
+  const k = await inbox.setGmailSender('@payzilch.com', 'keep', { deps: { imap: srv.imap, now: () => Date.parse('2026-10-12T12:00:00Z') } });
+  assert.equal(k.pulled, 1);
+  assert.equal(inbox.list('gmail').find((m) => m.id === 'gmail:2040').why, 'On your always-show list');
+  assert.equal((await inbox.setGmailSender('payzilch', 'keep')).ok, false, 'not an address or @domain');
+
+  // Stop showing: gone at once and on every pass after, Gmail untouched.
+  await inbox.setGmailSender('lizzy@example.com', 'hide');
+  assert.equal(inbox.list('gmail').some((m) => m.id === 'gmail:2045'), false);
+  await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
+  assert.equal(inbox.list('gmail').some((m) => m.id === 'gmail:2045'), false);
+  assert.equal(srv.messages.some((m) => m.uid === 45), true, 'still in Gmail');
+  assert.deepEqual(inbox.gmailRules().hide, ['lizzy@example.com']);
+
+  // Archived in Gmail (left the inbox) → leaves; read in Gmail → read here.
+  srv.messages = srv.messages.filter((m) => m.uid !== 46);
+  srv.messages.find((m) => m.uid === 44).flags = new Set(['\\Seen']);
+  await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
+  assert.equal(inbox.list('gmail').some((m) => m.id === 'gmail:2046'), false);
+  assert.equal(inbox.list('gmail').find((m) => m.id === 'gmail:2044').seen, true);
+
+  // Delete moves it to Gmail's Bin, from the inbox.
   const d = await inbox.trash('gmail:2044', { deps: { imap: srv.imap } });
   assert.deepEqual(d, { deleted: true, to: '[Gmail]/Bin' });
-  assert.deepEqual(srv.moved, [{ from: '[Gmail]/Important', uid: '44', to: '[Gmail]/Bin' }]);
-  assert.deepEqual(inbox.list('gmail'), []);
+  assert.deepEqual(srv.moved, [{ from: 'INBOX', uid: '44', to: '[Gmail]/Bin' }]);
+
+  // An unreadable Gmail is a recorded gap, never an empty tab.
+  const before = inbox.list('gmail').length;
+  srv.connectFails = true;
+  r = await inbox.refreshMailbox('gmail', { deps: { imap: srv.imap } });
+  assert.equal(r.ok, false);
+  assert.equal(gi.status().last.ok, false);
+  assert.equal(inbox.list('gmail').length, before);
+  assert.equal(inbox.INBOXES.includes('gmail'), true);
 });
 
 test('delete MOVES to the mailbox\'s Trash (recoverable), and refuses when the folder was renumbered', async () => {
