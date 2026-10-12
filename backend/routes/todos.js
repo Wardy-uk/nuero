@@ -286,6 +286,7 @@ router.get('/focus', async (req, res) => {
         moscowSet: t.moscow || null,
         moscowProposed: Boolean(t.moscowProposed),
         estimateMinutes: t.estimateMinutes == null ? null : t.estimateMinutes,
+        household: t.household === 1 || t.household === true ? 1 : 0,
         due_date: t.due_date || null,
         source: t.source || null,
         done: t.status === 'done' ? 1 : 0,
