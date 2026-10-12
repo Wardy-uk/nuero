@@ -451,29 +451,35 @@ test('43–47. corrections over real HTTP: confirm, not a hike, link/unlink rout
   const evBefore = db.get('SELECT COUNT(*) n FROM personal_ops_events').n;
 
   // 43/44: hike confirm and not-a-hike stay on the loop's routes — one place decides a hike.
-  assert.equal((await post('/api/loops/hiking/confirm', { day: '2026-10-07' })).status, 200);
+  // ⚠ The routes read the REAL clock's week, so the day must be in it: a fixed
+  // 2026-10-07 went red when the week rolled over on 12 Oct 2026.
+  const day = loop.localDay(Date.now());
+  assert.equal((await post('/api/loops/hiking/confirm', { day })).status, 200);
   let o = await (await fetch(`${base}/api/outdoor?weeks=1`)).json();
   assert.equal(o.goal.state, 'achieved');
-  assert.equal((await post('/api/loops/hiking/deny', { day: '2026-10-07' })).status, 200);
+  assert.equal((await post('/api/loops/hiking/deny', { day })).status, 200);
   o = await (await fetch(`${base}/api/outdoor?weeks=1`)).json();
   assert.notEqual(o.goal.state, 'achieved');
-  assert.ok(o.refused.some((x) => x.day === '2026-10-07' && x.by === 'you'));
+  assert.ok(o.refused.some((x) => x.day === day && x.by === 'you'));
 
-  // 45: link / unlink a route.
+  // 45: link / unlink a route. A walk an hour ago on the REAL clock, read over
+  // two weeks — the route reads the real week, so a fixed date goes stale.
   const route = await post('/api/outdoor/routes', { name: 'Edale skyline', kind: 'hike' });
   assert.equal(route.status, 200);
-  const act = `workout:${WALK_TODAY}`;
+  const anHourAgo = require('./world-model').localMinute(Date.now() - 3600000).replace('T', ' ') + ':00';
+  const act = `workout:${workout('w-http', 'Walking', anHourAgo, 40, { distanceM: 3100 })}`;
   assert.equal((await post(`/api/outdoor/activities/${encodeURIComponent(act)}/route`, { routeId: route.body.routeId })).status, 200);
-  o = await (await fetch(`${base}/api/outdoor?weeks=1`)).json();
+  o = await (await fetch(`${base}/api/outdoor?weeks=2`)).json();
   assert.equal([...o.walks, ...o.hikes].find((a) => a.activityId === act).route.name, 'Edale skyline');
   assert.equal((await post(`/api/outdoor/activities/${encodeURIComponent(act)}/route/remove`)).status, 200);
   assert.equal((await post('/api/outdoor/routes', { name: 'x', status: 'cancelled' })).status, 400);
   assert.equal((await post('/api/outdoor/routes', { name: 'x', plannedDate: '2026-02-31' })).status, 400, 'refused, never rolled');
   assert.equal((await post(`/api/outdoor/routes/${encodeURIComponent(route.body.routeId)}`, { status: 'done' })).status, 400, 'completed only via a link');
 
-  // 46: Ember on and off.
+  // 46: Ember on and off (this walk starts without her, so on first).
+  assert.equal((await post(`/api/outdoor/activities/${encodeURIComponent(act)}/companion`, { companionId: EMBER })).status, 200);
   assert.equal((await post(`/api/outdoor/activities/${encodeURIComponent(act)}/companion/remove`, { companionId: EMBER })).status, 200);
-  o = await (await fetch(`${base}/api/outdoor?weeks=1`)).json();
+  o = await (await fetch(`${base}/api/outdoor?weeks=2`)).json();
   assert.equal([...o.walks, ...o.hikes].find((a) => a.activityId === act).kind, 'walk');
   assert.equal((await post(`/api/outdoor/activities/${encodeURIComponent(act)}/companion`, { companionId: EMBER })).status, 200);
 
