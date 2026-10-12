@@ -778,12 +778,12 @@ export default function WeeklyRiskPanel({ onNavigate }) {
           <Stat
             label="KPIs green" tone={report.rag.greenPct === null ? 'unknown' : report.rag.greenPct >= 80 ? 'good' : 'bad'}
             value={report.rag.greenPct === null ? '—' : `${report.rag.greenPct}%`}
-            sub={report.rag.greenPct === null ? 'no data' : `target 80% · ${report.rag.green} of ${report.rag.rated} business KPIs`}
+            sub={report.rag.greenPct === null ? 'no data' : `avg ${report.rag.avgGreen}/day of ${report.rag.rated} · target 80%`}
           />
           <Stat
             label="KPIs red" tone={report.rag.redPct === null ? 'unknown' : report.rag.redPct <= 10 ? 'good' : 'bad'}
             value={report.rag.redPct === null ? '—' : `${report.rag.redPct}%`}
-            sub={report.rag.redPct === null ? 'no data' : `target ≤10% · ${report.rag.red} of ${report.rag.rated} business KPIs`}
+            sub={report.rag.redPct === null ? 'no data' : `avg ${report.rag.avgRed}/day (${(report.rag.days || []).map(d => d.measured ? d.red : '—').join(' · ')}) · target ≤10%`}
           />
           <Stat label="To escalate" value={report.escalateCount} tone={report.escalateCount ? 'bad' : 'good'} />
           <Stat

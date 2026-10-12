@@ -57,7 +57,7 @@ test('no KPI data yields null percentages, never 0% — 0% green reads as a cris
   const a = weeklyRisk.assess(baseSnapshot());
   assert.equal(a.rag.greenPct, null);
   assert.equal(a.rag.redPct, null);
-  assert.equal(a.rag.rated, 0);
+  assert.equal(a.rag.measuredDays, 0);
 });
 
 test('an unanswered manual section blocks publication and names what the silence would claim', () => {
@@ -627,43 +627,66 @@ test('letter RAG still maps, so a column type change cannot break this silently'
   assert.equal(weeklyRisk.ragBucket('Amber'), 'amber');
 });
 
-test('an absent RAG is unrated, and unrated is excluded from the percentages', () => {
+test('an absent RAG is unrated', () => {
   assert.equal(weeklyRisk.ragBucket(null), 'unrated');
   assert.equal(weeklyRisk.ragBucket(''), 'unrated');
   assert.equal(weeklyRisk.ragBucket(0), 'unrated');
-  const a = weeklyRisk.assess(baseSnapshot({
-    kpi: {
-      date: '2026-08-17', ageDays: 0,
-      rows: [
-        { KPI: 'Open: Tier 2', RAG: 1 }, { KPI: 'Open: Tier 3', RAG: 1 }, { KPI: 'Open: Production', RAG: 3 }, { KPI: 'Solved by NOVA', RAG: null },
-      ],
-    },
-  }));
-  assert.equal(a.rag.green, 2);
-  assert.equal(a.rag.red, 1);
-  assert.equal(a.rag.unrated, 1);
-  assert.equal(a.rag.rated, 3);
-  assert.equal(a.rag.greenPct, 67, 'percentages are of RATED rows, not of all rows');
 });
 
-test('the headline is computed over the 35 business KPIs only, never the whole snapshot', () => {
-  const names = weeklyRisk.BUSINESS_KPIS.filter(b => b.kpi).map(b => b.kpi);
-  assert.equal(weeklyRisk.BUSINESS_KPIS.length, 35);
-  const rows = [
-    ...names.slice(0, 20).map(KPI => ({ KPI, RAG: 1 })),
-    ...names.slice(20, 30).map(KPI => ({ KPI, RAG: 3 })),
-    // 100 rows NOT reported to the business, all red: must not move the headline.
-    ...Array.from({ length: 100 }, (_, i) => ({ KPI: `other${i}`, RAG: 3 })),
-  ];
-  const a = weeklyRisk.assess(baseSnapshot({ kpi: { date: '2026-10-12', ageDays: 0, rows } }));
-  assert.equal(a.rag.rated, 30);
-  assert.equal(a.rag.greenPct, 67);
-  assert.equal(a.rag.redPct, 33);
-  assert.deepEqual(a.rag.notMeasured, ['CI in progress (unmitigated)']);
-  assert.equal(a.rag.missing.length, 4, 'mapped but absent rows are named, not dropped');
-  const md = weeklyRisk.render(a);
-  assert.match(md, /## Business KPI scorecard/);
-  assert.match(md, /CI in progress \(unmitigated\) \| — \| — \| not measured by NOVA/);
+// The live w/c 5 Oct 2026 tracker, cut down: per-day red counts on the sheet
+// were 13/10/16/12/10, and NOVA's red + amber reproduced them exactly.
+function trackerFixture() {
+  const days = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'];
+  const pts = (vals, rags, target) => days.map((day, i) => ({ day, value: vals[i], target, rag: rags[i] }));
+  return {
+    rows: [
+      { label: 'Number of Tickets in CC - Service Requests', kpiKey: 'sr' },
+      { label: 'Number of Tickets in Tier 2', kpiKey: 't2' },
+      { label: 'Number of Tickets in CC - Incidents', kpiKey: 'inc' },
+      { label: 'Number of TPJ Tickets in Dev', kpiKey: 'tpj' },
+      { label: 'No. of CI In Progress (unmitigated)', kpiKey: null },
+      { label: 'CSAT % (satisfied, 30 days)', kpiKey: 'csat', extra: true },
+    ],
+    series: { series: [
+      { key: 'sr', points: pts([66, 77, 71, 63, 62], ['red', 'red', 'red', 'red', 'red'], 40) },
+      { key: 't2', points: pts([21, 18, 22, 24, 23], ['amber', 'green', 'amber', 'amber', 'amber'], 20) },
+      { key: 'inc', points: pts([20, 44, 33, 20, 21], ['green', 'amber', 'green', 'green', 'green'], 40) },
+      { key: 'tpj', points: pts([73, 74, 72, 74, 75], [null, null, null, null, null], null) },
+      { key: 'csat', points: pts([66, 64, 62, 69, 66], ['red', 'red', 'red', 'red', 'red'], 80) },
+    ] },
+  };
+}
+
+test('the headline is last week, Monday to Friday, with amber counted as red', () => {
+  const a = weeklyRisk.assess(baseSnapshot({ week: '2026-10-12', tracker: trackerFixture() }));
+  assert.equal(a.rag.measuredDays, 5);
+  assert.deepEqual(a.rag.days.map(d => d.red), [2, 2, 2, 2, 2]);
+  assert.equal(a.rag.avgRed, 2);
+  assert.equal(a.rag.rated, 3);
+  assert.deepEqual(a.rag.notMeasured, ['No. of CI In Progress (unmitigated)']);
+  assert.deepEqual(a.rag.noTarget, ['Number of TPJ Tickets in Dev']);
+  assert.ok(a.rag.days[0].redItems.some(i => i.label === 'Number of Tickets in Tier 2' && i.rag === 'amber'));
+});
+
+test('extra rows beyond the tracker (CSAT) never count', () => {
+  const a = weeklyRisk.assess(baseSnapshot({ week: '2026-10-12', tracker: trackerFixture() }));
+  assert.ok(!a.rag.days.some(d => d.redItems.some(i => /CSAT/.test(i.label))));
+});
+
+test('the red KPIs are named per day in the report', () => {
+  const md = weeklyRisk.render(weeklyRisk.assess(baseSnapshot({ week: '2026-10-12', tracker: trackerFixture() })));
+  assert.match(md, /## Daily KPI Tracker — red by day/);
+  assert.match(md, /Mon 5 Oct 2026 — 2 red:\*\* Number of Tickets in CC - Service Requests 66 \(target 40\); Number of Tickets in Tier 2 21 \(target 20\)/);
+  assert.match(md, /Red by day: Mon 2, Tue 2, Wed 2, Thu 2, Fri 2/);
+});
+
+test('a weekday with no stored readings is left out of the average, not read as clean', () => {
+  const t = trackerFixture();
+  for (const x of t.series.series) x.points = x.points.filter(p => p.day !== '2026-10-09');
+  const a = weeklyRisk.assess(baseSnapshot({ week: '2026-10-12', tracker: t }));
+  assert.equal(a.rag.measuredDays, 4);
+  assert.equal(a.rag.days[4].red, null);
+  assert.equal(a.rag.avgRed, 2);
 });
 
 // ── Test send ────────────────────────────────────────────────────────────────

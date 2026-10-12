@@ -66,87 +66,78 @@ const COMPLIANCE_TARGET = 95;
 const AMBER_BAND = 20;
 /** A reason-code vocabulary is broken past this share of `unknown`. */
 const UNKNOWN_REASON_ESCALATE_SHARE = 0.5;
-// The 35 KPIs reported to the business (Nick's list, 12 Oct 2026), in its
-// order, each mapped to the NOVA snapshot row that measures it. The headline
-// green/red % is computed over THESE ONLY — NOVA's snapshot carries 135 rows,
-// and rating all of them let a family with seven rows (e.g. "Over SLO
-// (non-actionable)") move the headline more than a family with one.
-// `kpi: null` = NOVA does not measure it; named as a gap, never dropped.
-// New Tickets / Total Solved map to the 4-week averages because those are the
-// rows that carry the business target (115); the raw daily counts have none.
-const BUSINESS_KPIS = [
-  { label: 'New Tickets', kpi: 'New tickets (4-week working-day avg)' },
-  { label: 'Total Solved', kpi: 'Tickets solved (4-week working-day avg)' },
-  { label: 'Solved by NOVA', kpi: 'Solved by NOVA' },
-  { label: 'CSAT', kpi: 'CSAT % (satisfied, 30 days)' },
-  { label: 'Tickets in CC - Incidents', kpi: 'Open: CC Incidents' },
-  { label: 'Tickets in CC - Service Requests', kpi: 'Open: CC Service Requests' },
-  { label: 'Tickets in CC - TPJ', kpi: 'Open: CC TPJ' },
-  { label: 'Tickets in Production', kpi: 'Open: Production' },
-  { label: 'Tickets in Tier 2', kpi: 'Open: Tier 2' },
-  { label: 'Tickets in Tier 3', kpi: 'Open: Tier 3' },
-  { label: 'No reply in CC - Incidents', kpi: 'No reply: CC Incidents' },
-  { label: 'No reply in CC - Service Requests', kpi: 'No reply: CC Service Requests' },
-  { label: 'No reply in CC - TPJ', kpi: 'No reply: CC TPJ' },
-  { label: 'No reply in Tier 2', kpi: 'No reply: Tier 2' },
-  { label: 'No reply in Tier 3', kpi: 'No reply: Tier 3' },
-  { label: 'CC over SLA (actionable) - Incidents', kpi: 'Over SLO (actionable): CC Incidents' },
-  { label: 'CC over SLA (actionable) - Service Requests', kpi: 'Over SLO (actionable): CC Service Requests' },
-  { label: 'CC over SLA (actionable) - TPJ', kpi: 'Over SLO (actionable): CC TPJ' },
-  { label: 'Tier 2 over SLA (actionable)', kpi: 'Over SLO (actionable): Tier 2' },
-  { label: 'Tier 3 over SLA (actionable)', kpi: 'Over SLO (actionable): Tier 3' },
-  { label: 'CC over SLA (not actionable) - Incidents', kpi: 'Over SLO (non-actionable): CC Incidents' },
-  { label: 'CC over SLA (not actionable) - Service Requests', kpi: 'Over SLO (non-actionable): CC Service Requests' },
-  { label: 'CC over SLA (not actionable) - TPJ', kpi: 'Over SLO (non-actionable): CC TPJ' },
-  { label: 'Tier 2 over SLA (not actionable)', kpi: 'Over SLO (non-actionable): Tier 2' },
-  { label: 'Tier 3 over SLA (not actionable)', kpi: 'Over SLO (non-actionable): Tier 3' },
-  { label: 'Oldest actionable (days) - CC Incident', kpi: 'Oldest actionable (days): CC Incidents' },
-  { label: 'Oldest actionable (days) - CC Service Requests', kpi: 'Oldest actionable (days): CC Service Requests' },
-  { label: 'Oldest actionable (days) - CC TPJ', kpi: 'Oldest actionable (days): CC TPJ' },
-  { label: 'Oldest actionable (days) - Production', kpi: 'Oldest actionable (days): Production' },
-  { label: 'Oldest actionable (days) - Tier 2', kpi: 'Oldest actionable (days): Tier 2' },
-  { label: 'Oldest actionable (days) - Tier 3', kpi: 'Oldest actionable (days): Tier 3' },
-  { label: 'Tickets in Development', kpi: 'Open: Development' },
-  { label: 'TPJ tickets in Dev', kpi: 'TPJ tickets in Development / Tier 3' },
-  { label: 'Failed Jobs remaining on Board', kpi: 'Failed Jobs remaining on Board' },
-  { label: 'CI in progress (unmitigated)', kpi: null },
-];
+// The headline RAG is the Daily KPI Tracker — the rows Nick reports to the
+// business every day — read from NOVA's own definition (`TRACKER_ROWS`, served
+// on /kpi-tracker) rather than a copy here, and judged on LAST WEEK'S stored
+// end-of-day values, Monday to Friday, exactly as the sheet is.
+//
+// ⚠ THE SHEET HAS NO AMBER. NOVA rates some rows amber; the sheet colours them
+// red, and its "Red KPIs" line counts them. Verified 12 Oct 2026 against the
+// sheet for w/c 5 Oct: NOVA red + amber = 13/10/16/12/10, the sheet's own
+// bottom row exactly. The first cut of this rated NOVA's whole 135-row snapshot
+// as at the morning the report was built — 53% green — which was neither the
+// set the business sees nor the week the report covers.
+const TRACKER_WEEKDAYS = 5;
+
+function dayName(day) {
+  const [y, m, d] = day.split('-').map(Number);
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(y, m - 1, d).getDay()];
+}
+
+function addDays(day, n) {
+  const [y, m, d] = day.split('-').map(Number);
+  return todayLocal(new Date(y, m - 1, d + n));
+}
 
 /**
- * RAG rollup over the business KPI list. PURE. Returns the counts plus the
- * per-KPI rows (in the business order) and what could not be rated, by name:
- * `notMeasured` (no NOVA source), `missing` (mapped but absent from today's
- * snapshot), `unrated` (present, no target). None of them count either way.
+ * Per-weekday RAG over the tracker rows. PURE. `tracker` is
+ * `{ rows: TRACKER_ROWS, series: kpi-org-series payload }`. A row with no
+ * kpiKey is NOT measured by NOVA; a point with no rating has no target; a day
+ * with no points at all is unmeasured and kept out of the average rather than
+ * read as a clean day.
  */
-function businessRag(rows) {
-  const byName = new Map((rows || []).map(r => [r.KPI, r]));
-  const buckets = { green: 0, amber: 0, red: 0, unrated: 0 };
-  const items = [];
-  const notMeasured = [];
-  const missing = [];
-  const unrated = [];
-  for (const b of BUSINESS_KPIS) {
-    if (!b.kpi) { notMeasured.push(b.label); items.push({ ...b, bucket: 'not-measured', value: null, target: null }); continue; }
-    const r = byName.get(b.kpi);
-    if (!r) { missing.push(b.label); items.push({ ...b, bucket: 'missing', value: null, target: null }); continue; }
-    const bucket = ragBucket(r.RAG);
-    buckets[bucket] += 1;
-    if (bucket === 'unrated') unrated.push(b.label);
-    items.push({ ...b, bucket, value: num(r.Count), target: num(r.KPITarget) });
+function trackerRag(tracker, reportWeek) {
+  const empty = { scope: 'tracker', days: [], measuredDays: 0, avgRed: null, avgGreen: null, rated: null,
+    greenPct: null, redPct: null, notMeasured: [], noTarget: [], total: 0 };
+  if (!tracker || !reportWeek || !Array.isArray(tracker.rows)) return empty;
+  const rows = tracker.rows.filter(r => !r.extra);
+  const list = Array.isArray(tracker.series?.series) ? tracker.series.series
+    : Array.isArray(tracker.series) ? tracker.series : [];
+  const byKey = new Map(list.map(x => [x.key, x]));
+  const notMeasured = rows.filter(r => !r.kpiKey).map(r => r.label);
+  const noTarget = new Set();
+  const days = [];
+  for (let i = 0; i < TRACKER_WEEKDAYS; i += 1) {
+    const day = addDays(reportWeek, i);
+    let green = 0; let red = 0; let any = false;
+    const redItems = [];
+    for (const r of rows) {
+      if (!r.kpiKey) continue;
+      const p = (byKey.get(r.kpiKey)?.points || []).find(x => x.day === day);
+      if (!p) continue;
+      any = true;
+      const bucket = ragBucket(p.rag);
+      if (bucket === 'unrated') { noTarget.add(r.label); continue; }
+      if (bucket === 'green') green += 1;
+      else { red += 1; redItems.push({ label: r.label, value: num(p.value), target: num(p.target), rag: bucket }); }
+    }
+    days.push({ day, measured: any, green: any ? green : null, red: any ? red : null, rated: any ? green + red : null, redItems });
   }
-  const rated = buckets.green + buckets.amber + buckets.red;
+  const m = days.filter(d => d.measured);
+  const avg = f => m.length ? Math.round((m.reduce((s, d) => s + d[f], 0) / m.length) * 10) / 10 : null;
+  const avgRed = avg('red'); const avgGreen = avg('green'); const rated = avg('rated');
   return {
-    ...buckets,
-    scope: 'business',
-    total: BUSINESS_KPIS.length,
+    scope: 'tracker',
+    days,
+    measuredDays: m.length,
+    avgRed,
+    avgGreen,
     rated,
-    greenPct: rated ? Math.round((buckets.green / rated) * 100) : null,
-    redPct: rated ? Math.round((buckets.red / rated) * 100) : null,
+    greenPct: rated ? Math.round((avgGreen / rated) * 100) : null,
+    redPct: rated ? Math.round((avgRed / rated) * 100) : null,
     notMeasured,
-    missing,
-    unratedNames: unrated,
-    items,
-    snapshotRows: (rows || []).length,
+    noTarget: [...noTarget],
+    total: rows.length,
   };
 }
 
@@ -565,6 +556,18 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
       { name: 'csat-compare', ok: false, error: 'NOVA bridge not configured', data: null },
     ];
 
+  // The Daily KPI Tracker for the week this report covers: NOVA's row
+  // definition, then each row's stored daily values for that week.
+  const tracker = novaReady
+    ? await pull('kpi-tracker', async () => {
+      const t = await nova.call('/api/neuro-bridge/kpi-tracker?days=1');
+      const rows = (t?.data || t)?.rows || [];
+      const keys = rows.filter(r => r.kpiKey && !r.extra).map(r => r.kpiKey);
+      const s = await nova.call(`/api/neuro-bridge/kpi-org-series?days=7&to=${addDays(reportWeek, 6)}&keys=${keys.join(',')}`);
+      return { rows, series: s?.data || s };
+    })
+    : { name: 'kpi-tracker', ok: false, error: 'NOVA bridge not configured', data: null };
+
   // Nick's own task position. Competency 4 is about overdue management actions,
   // but the 12 Aug review also put a number on his own work backlog — 400+ items
   // since 1 June — so "open / overdue / closed last week" is the movement that
@@ -581,9 +584,10 @@ async function snapshot({ week = weekCommencing(), date } = {}) {
     week,
     generatedAt: new Date().toISOString(),
     today: todayLocal(),
-    sources: [kpi, trend, orgTrend, escalationStats, flow, csatNow, csatPrior]
+    sources: [kpi, tracker, trend, orgTrend, escalationStats, flow, csatNow, csatPrior]
       .map(s => ({ name: s.name, ok: s.ok, error: s.error || null })),
     kpi: kpi.data,
+    tracker: tracker.data,
     trend: trend.data,
     orgTrend: orgTrend.data,
     escalationStats: escalationStats.data,
@@ -930,9 +934,9 @@ function assess(snap) {
     });
   }
 
-  // RAG rollup — the headline Chris reads first. Over the 35 business KPIs
-  // only (BUSINESS_KPIS), never the whole snapshot.
-  const rag = businessRag(rows);
+  // RAG rollup — the headline Chris reads first: the Daily KPI Tracker, last
+  // week, Monday to Friday (see trackerRag).
+  const rag = trackerRag(snap?.tracker, reportWeek);
 
   // Sustained compliance slides.
   for (const t of trend) {
@@ -1729,10 +1733,11 @@ function render(a) {
   lines.push('');
   if (manual.headline) {
     lines.push(manual.headline);
-  } else if (a.rag.rated) {
+  } else if (a.rag.measuredDays) {
     const worst = escalate[0];
-    const notRated = (a.rag.unratedNames?.length || 0) + (a.rag.missing?.length || 0) + (a.rag.notMeasured?.length || 0);
-    lines.push(`**${a.rag.greenPct}%** of the business KPIs green (target 80%), **${a.rag.redPct}%** red (target ≤10%) — **${a.rag.rated}** of the ${a.rag.total} reported to the business carry a target and are rated${notRated ? `; ${notRated} are not (listed in the scorecard below)` : ''}.${worst ? ` The material concern this week is **${worst.title}**.` : ''}${escalate.length > 1 ? ` ${escalate.length} items are flagged for escalation.` : ''}`);
+    const r = a.rag;
+    const perDay = r.days.map(d => `${dayName(d.day)} ${d.measured ? d.red : '—'}`).join(', ');
+    lines.push(`Daily KPI Tracker, week of ${formatUk(a.reportWeek)}: on average **${r.avgRed} red** and **${r.avgGreen} green** a day of the ${r.rated} rated KPIs (**${r.redPct}%** red, target ≤10%; **${r.greenPct}%** green, target 80%). Red by day: ${perDay}.${r.measuredDays < TRACKER_WEEKDAYS ? ` Only ${r.measuredDays} of ${TRACKER_WEEKDAYS} weekdays had stored readings.` : ''} Amber counts as red, as on the tracker.${worst ? ` The material concern this week is **${worst.title}**.` : ''}${escalate.length > 1 ? ` ${escalate.length} items are flagged for escalation.` : ''}`);
   } else {
     lines.push('_No KPI data available this week — see above._');
   }
@@ -1971,14 +1976,15 @@ function render(a) {
 
   lines.push('---');
   lines.push('');
-  if (a.rag?.items?.length) {
-    const mark = { green: '🟢', amber: '🟠', red: '🔴', unrated: 'no target', missing: 'not in snapshot', 'not-measured': 'not measured by NOVA' };
-    lines.push('## Business KPI scorecard');
+  if (a.rag?.measuredDays) {
+    lines.push('## Daily KPI Tracker — red by day');
     lines.push('');
-    lines.push(`_The ${a.rag.total} KPIs reported to the business — the headline percentages are computed over these only._`);
+    lines.push(`_The rows reported to the business daily, end-of-day readings, amber counted as red as on the tracker.${a.rag.noTarget.length ? ` No target, so not rated: ${a.rag.noTarget.join(', ')}.` : ''}${a.rag.notMeasured.length ? ` Not measured by NOVA: ${a.rag.notMeasured.join(', ')}.` : ''}_`);
     lines.push('');
-    lines.push('| KPI | Value | Target | RAG |\n|---|---|---|---|');
-    lines.push(a.rag.items.map(i => `| ${i.label} | ${i.value ?? '—'} | ${i.target ?? '—'} | ${mark[i.bucket] || i.bucket} |`).join('\n'));
+    for (const d of a.rag.days) {
+      if (!d.measured) { lines.push(`- **${dayName(d.day)} ${formatUk(d.day)}** — no stored readings`); continue; }
+      lines.push(`- **${dayName(d.day)} ${formatUk(d.day)} — ${d.red} red:** ${d.redItems.map(i => `${i.label} ${i.value ?? '—'}${i.target !== null ? ` (target ${i.target})` : ''}`).join('; ') || 'none'}`);
+    }
     lines.push('');
   }
 
@@ -2537,7 +2543,7 @@ module.exports = {
   snapshot, assess, render, build, publish, publishedAt, queueSend, testSend,
   markSent, recordExternalSend, sentRecord, sentSummary, isLocked, reopen,
   getManual, setManual, manualBlockers, emptyManual, carryForward,
-  weekCommencing, previousWeek, loggedInWeek, businessRag, BUSINESS_KPIS, buildTrend, consecutiveBelowTarget, ragBucket,
+  weekCommencing, previousWeek, loggedInWeek, trackerRag, buildTrend, consecutiveBelowTarget, ragBucket,
   taskCounts,
   QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder, byTrendOrder, isComplianceKpi,
   csatSummaryRows,
