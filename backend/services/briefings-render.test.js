@@ -101,6 +101,8 @@ test('weekly: KPIs, volumes, leaderboard, SLM and BP render; unmeasured says so'
   assert.match(html, /FRT compliance % \(Support: CC \+ T2 \+ Prod\)/);
   assert.match(html, /600 of 624 tickets/);
   assert.match(html, /540 of 611 tickets, 5\/7 days/);
+  // One decimal on the team rows: 94.7 must never read as a met 95%.
+  assert.match(html, /88\.4%/);
   assert.match(html, /90% · missed/);
   assert.match(html, /not measured \(last 2026-09-29\)/);
   assert.match(html, /5\/7 days captured/);

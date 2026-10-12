@@ -132,6 +132,8 @@ async function composeDaily({ now = new Date(), overrides = {} } = {}) {
 }
 
 function _pct(v) { return v == null ? '—' : `${Math.round(v)}%`; }
+// One decimal for the team figures: 94.7 must not read as a met 95% target.
+function _pct1(v) { return v == null ? "—" : `${Math.round(v * 10) / 10}%`; }
 
 /** The weekly's push: the four numbers worth glancing at. PURE. */
 function weeklyPush(w) {
@@ -143,7 +145,7 @@ function weeklyPush(w) {
   // queue in brackets, matched by the ABSENCE of a queue, never by its name.
   const ss = w.supportSla;
   if (ss && (ss.frt?.now?.pct != null || ss.res?.now?.pct != null)) {
-    lines.push(`Support SLA: FRT ${_pct(ss.frt?.now?.pct)} · Resolution ${_pct(ss.res?.now?.pct)}`);
+    lines.push(`Support SLA: FRT ${_pct1(ss.frt?.now?.pct)} · Resolution ${_pct1(ss.res?.now?.pct)}`);
   } else {
     const headline = (w.sla || []).filter((r) => r.measured && !/\([^)]+\)\s*$/.test(r.kpi));
     if (headline.length) lines.push(headline.map((r) => `${r.kpi.replace(/\s*compliance.*$/i, '')} ${_pct(r.now)}`).join(' · '));
@@ -213,7 +215,7 @@ function weeklyEmailHtml(p) {
   const sla = p.sla || [];
   const team = supportRows(p.supportSla);
   if (sla.length || csat.length || team.length) {
-    const teamRows = team.map((r) => `<tr><td><strong>${_esc(r.label)}</strong></td><td><strong>${_pct(r.now)}</strong>${r.nowDetail ? ` <span style="color:#777">(${_esc(r.nowDetail)})</span>` : ''}</td><td>${_pct(r.was)}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td><td>95%</td></tr>`);
+    const teamRows = team.map((r) => `<tr><td><strong>${_esc(r.label)}</strong></td><td><strong>${_pct1(r.now)}</strong>${r.nowDetail ? ` <span style="color:#777">(${_esc(r.nowDetail)})</span>` : ''}</td><td>${_pct1(r.was)}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td><td>95%</td></tr>`);
     const rows = teamRows.concat(sla.map((r) => `<tr><td>${_esc(r.kpi)}</td><td>${r.measured ? _pct(r.now) : `not measured${r.lastSeen ? ` (last ${_esc(r.lastSeen)})` : ''}`}</td><td>${_pct(r.was)}</td><td>${r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + r.delta}</td><td>${r.target == null ? '—' : `${r.target}%`}</td></tr>`)
       .concat(csat.map((r) => `<tr><td>${_esc(r.label)}</td><td>${_esc(r.now)}</td><td>${_esc(r.was)}</td><td>${_esc(r.delta)}</td><td>—</td></tr>`)));
     parts.push(`<h3>CSAT and SLAs</h3><table cellpadding="4" style="border-collapse:collapse;font-size:13px"><tr style="text-align:left"><th>KPI</th><th>Week to ${_esc(_shortDate(p.weeks.report.to))}</th><th>Week before</th><th>Δ</th><th>Target</th></tr>${rows.join('')}</table>`);

@@ -11,6 +11,8 @@ import './BriefingsPanel.css';
 // in amber with the reason.
 
 function pct(v) { return v == null ? '—' : `${Math.round(v)}%`; }
+// One decimal for the team figures: 94.7 must not read as a met 95% target.
+function pct1(v) { return v == null ? "—" : `${Math.round(v * 10) / 10}%`; }
 function signed(v) { return v == null ? '—' : `${v > 0 ? '+' : ''}${v}`; }
 
 const VOLUME_LABEL = {
@@ -114,8 +116,8 @@ export function WeeklyView({ briefing }) {
                 return (
                   <tr key={`support-${m}`} className={`brf-team${r.now.pct != null && r.now.pct < r.target ? ' brf-below' : ''}`}>
                     <td>{r.label}</td>
-                    <td>{pct(r.now.pct)}<span className="brf-partial-muted"> {total ? `(${r.now.met} of ${total} tickets${r.now.days < 7 ? `, ${r.now.days}/7 days` : ''})` : '(no tickets solved)'}</span></td>
-                    <td>{pct(r.was.pct)}</td>
+                    <td>{pct1(r.now.pct)}<span className="brf-partial-muted"> {total ? `(${r.now.met} of ${total} tickets${r.now.days < 7 ? `, ${r.now.days}/7 days` : ''})` : '(no tickets solved)'}</span></td>
+                    <td>{pct1(r.was.pct)}</td>
                     <td>{signed(r.delta)}</td>
                     <td>{`${r.target}%${r.now.pct != null ? (r.now.pct >= r.target ? ' · met' : ' · missed') : ''}`}</td>
                   </tr>
