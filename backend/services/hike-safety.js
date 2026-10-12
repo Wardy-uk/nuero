@@ -518,7 +518,7 @@ function read({ now = Date.now() } = {}) {
   return {
     ok: true, contract: 'hike-safety-v1',
     active: active ? view(_shape(active), { nowMs }) : null,
-    recent: recent.map((r) => ({ tripId: r.trip_id, name: r.name, status: r.status, start: model.msToLocal(_ms(r.planned_start)), checkedInAt: r.checked_in_at ? model.msToLocal(_ms(r.checked_in_at)) : null, alert: r.alert_status })),
+    recent: recent.map((r) => ({ tripId: r.trip_id, name: r.name, status: r.status, start: model.msToLocal(_ms(r.planned_start)), checkedInAt: r.checked_in_at ? model.msToLocal(_ms(r.checked_in_at)) : null, alert: r.alert_status, alertAt: r.alert_at ? model.msToLocal(_ms(r.alert_at)) : null })),
     contacts: people.map((c) => ({ name: c.name, email: c.email })),
     defaults: { graceMinutes: model.DEFAULT_GRACE_MIN, graceRange: model.GRACE_RANGE, extendRange: model.EXTEND_RANGE },
     rule: `If you have not checked in by your finish time plus ${model.DEFAULT_GRACE_MIN} minutes, NEURO emails the route card and your last known positions to the people listed — no approval needed; arming the walk is the approval. Only a check-in closes a walk. The trail is kept only for an armed walk and deleted ${PURGE_AFTER_DAYS} days after it ends.`,

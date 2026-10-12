@@ -363,7 +363,9 @@ test('19. the card renders for real: arm form, then the armed walk with check-in
   const render = (data) => renderToString(React.createElement(m.exports.HikeSafetyView, { data, act: () => true })).replace(/<!-- -->/g, '');
   reset();
   let html = render(hike.read({ now: NOW }));
-  assert.match(html, /data-testid="hike-arm-form"/); assert.match(html, /type="file"/); assert.match(html, /Arm this walk/);
+  // Idle: a button, never an open form — the form trapped Nick with no way back (12 Oct 2026).
+  assert.match(html, /No walk armed\./); assert.match(html, />Plan a new walk</);
+  assert.ok(!/hike-arm-form/.test(html), 'the arm form is not open until asked for');
   const f = fakes();
   await armed(f);
   html = render(hike.read({ now: L('2026-10-11T12:00') }));
@@ -552,7 +554,12 @@ test('27. a new GPX on edit replaces the route plan (the old one is cancelled, n
 test('28. edit over HTTP, and refused to a machine', async () => {
   reset();
   assert.equal(matrix.machineDecision('POST', '/api/outdoor/safety/trips/x/edit').allow, false);
-  const id = await armed(fakes());
+  // ⚠ The route runs on the REAL clock, so this walk must be in the real future —
+  // a fixed date here went red the day after it was written (12 Oct 2026).
+  const soon = Date.now();
+  const r0 = await hike.arm({ gpx: GPX, plannedStart: model.msToLocal(soon + 3600000), plannedFinish: model.msToLocal(soon + 5 * 3600000) }, { now: soon, deps: fakes().deps });
+  assert.ok(r0.ok, r0.error);
+  const id = r0.trip.tripId;
   const express = require('express');
   const app = express(); app.use(express.json()); app.use('/api/outdoor', require('../routes/outdoor'));
   const server = app.listen(0); const port = server.address().port;
@@ -593,4 +600,31 @@ test('29. the edit form and the party render for real, on NEURO and on VESTA', a
   const vesta = await bundle(['vesta', 'src', 'components', 'Walk.jsx']);
   const v = renderToString(React.createElement(vesta.default, { hike: hike.householdView({ now: L('2026-10-11T12:00') }), token: 't' })).replace(/<!-- -->/g, '').replace(/<\/?span>/g, '');
   assert.match(v, /Walking with Dave Smith \(<a href="tel:07700900123">07700 900123<\/a>\) and Sam/);
+});
+
+test('30. after a check-in the page says so — the last walk, when he checked in, no alert — and offers a new one', async () => {
+  const React = require('react');
+  const { renderToString } = require('react-dom/server');
+  const esbuild = require('esbuild');
+  const out = await esbuild.build({
+    entryPoints: [path.join(__dirname, '..', '..', 'frontend', 'src', 'components', 'canonical', 'HikeSafetyCard.jsx')],
+    bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic', external: ['react', 'react-dom', 'leaflet'], logLevel: 'silent',
+    plugins: [{ name: 'stub', setup(b) {
+      b.onResolve({ filter: /\.css$/ }, (a) => ({ path: a.path, namespace: 'css' }));
+      b.onLoad({ filter: /.*/, namespace: 'css' }, () => ({ contents: '', loader: 'js' }));
+      b.onResolve({ filter: /(^|\/)api$/ }, () => ({ path: 'api', namespace: 'stub' }));
+      b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const apiFetch = async () => ({ ok: true, json: async () => ({}) });', loader: 'js' }));
+    } }],
+  });
+  const m = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('module', 'exports', 'require', out.outputFiles[0].text)(m, m.exports, require);
+  reset();
+  const f = fakes();
+  const id = await armed(f);
+  await hike.checkIn(id, { via: 'NEURO', now: L('2026-10-11T15:12'), deps: f.deps });
+  const html = renderToString(React.createElement(m.exports.HikeSafetyView, { data: hike.read({ now: L('2026-10-12T09:00') }), act: () => true })).replace(/<!-- -->/g, '');
+  assert.match(html, /No walk armed\. Last: <strong>Catbells loop<\/strong> — you checked in at 15:12 on 11 Oct, no alert sent\./);
+  assert.match(html, />Plan a new walk</);
+  assert.ok(!/hike-arm-form/.test(html));
 });

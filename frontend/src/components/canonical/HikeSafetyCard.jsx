@@ -13,6 +13,12 @@ import WalkMap from '../WalkMap';
 
 const ALERT_WORDS = { none: null, sending: 'sending the alert…', sent: 'alert sent', confirmed: 'alert sent (in Sent Items)', uncertain: 'alert send unconfirmed — retrying', failed: 'alert could not be sent — retrying' };
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dayLabel(local) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(local || ''));
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}` : 'an unknown day';
+}
+
 function localInput(d) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -76,7 +82,7 @@ function WalkForm({ act, busy, trip = null, onDone = null }) {
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="notes for the card — where you’ve parked, kit, plan B" maxLength={1000} rows={2} />
       <div className="hs-actions">
         <button type="submit" className="cn-btn" disabled={busy || (!trip && !gpx && !name.trim())}>{trip ? 'Save changes' : 'Arm this walk'}</button>
-        {trip && onDone && <button type="button" className="cn-btn cn-btn--tiny" onClick={onDone}>Cancel editing</button>}
+        {onDone && <button type="button" className="cn-btn cn-btn--tiny" onClick={onDone}>{trip ? 'Cancel editing' : 'Cancel'}</button>}
       </div>
       {trip && <span className="cn-muted cn-small">Saving redraws the route card and re-reads who gets the alert.</span>}
     </form>
@@ -103,6 +109,8 @@ function Contacts({ contacts, act, busy }) {
 export function HikeSafetyView({ data, act = null, busy = false }) {
   const t = data.active;
   const [editing, setEditing] = useState(false);
+  const [planning, setPlanning] = useState(false);
+  const last = (data.recent || [])[0] || null;
   const contacts = data.contacts || [];
   const alertLine = t && ALERT_WORDS[t.alert.status];
   return (
@@ -142,9 +150,19 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
           </Fold>
         </div>
       ) : (
-        contacts.length
-          ? (act && <WalkForm act={act} busy={busy} />)
-          : <div className="cn-error cn-small">Add who gets the alert before you can arm a walk.</div>
+        <div className="hs-idle" data-testid="hike-idle">
+          {last ? (
+            <div className="cn-small" data-testid="hike-last">
+              No walk armed. Last: <strong>{last.name}</strong> — {last.status === 'checked_in'
+                ? `you checked in at ${String(last.checkedInAt || '').slice(11, 16)} on ${dayLabel(last.checkedInAt)}${last.alert && last.alert !== 'none' ? ` (after the alert went at ${String(last.alertAt || '').slice(11, 16)})` : ', no alert sent'}.`
+                : `cancelled before it started.`}
+            </div>
+          ) : <div className="cn-small cn-muted">No walk armed.</div>}
+          {!contacts.length && <div className="cn-error cn-small">Add who gets the alert before you can arm a walk.</div>}
+          {act && contacts.length > 0 && (planning
+            ? <WalkForm act={act} busy={busy} onDone={() => setPlanning(false)} />
+            : <div className="hs-actions"><button type="button" className="cn-btn" onClick={() => setPlanning(true)}>Plan a new walk</button></div>)}
+        </div>
       )}
       <Fold title="Who gets the alert" meta={contacts.length ? contacts.map((c) => c.name).join(', ') : 'nobody yet'} open={!contacts.length}>
         <ul className="cn-list">{contacts.map((c) => <li key={c.email}><strong>{c.name}</strong> <span className="cn-muted">{c.email}</span></li>)}</ul>
