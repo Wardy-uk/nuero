@@ -1108,11 +1108,16 @@ function MicrosoftTaskControls({ todo, onSaved }) {
       </div>
 
       <div className="todo-edit-group">
-        <button className="btn btn-primary btn-sm" disabled={!dirty || saving} onClick={save}>
+        <button className="btn btn-primary btn-sm" disabled={!dirty || saving || loaded.editable === false} onClick={save}>
           {saving ? 'Saving…' : `Save to ${isPlanner ? 'Planner' : 'To Do'}`}
         </button>
         <span className="todo-edit-note">
-          {isPlanner
+          {/* `editable === false` is Graph's own refusal, measured: boards made in
+              a Teams meeting, Loop or Planner Premium can be read but not edited
+              by any app. null (unknown) keeps the button on. */}
+          {loaded.editable === false
+            ? 'Microsoft does not let apps edit this board (made in a Teams meeting, Loop or Planner Premium) — change it in Planner itself.'
+            : isPlanner
             ? 'Planner owns this task — the change goes straight to the board.'
             : 'Microsoft To Do owns this task — the change goes straight to your list.'}
         </span>

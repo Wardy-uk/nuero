@@ -23,7 +23,10 @@ const SUGGESTION_CAP = 200;
 // the task while the editor was open, which is the etag doing its job.
 const MS_EDIT_REASONS = {
   auth: 'Microsoft sign-in expired — reconnect 365.',
-  scope: 'Tasks permission not granted — re-consent to Microsoft.',
+  // A 403 is NOT necessarily missing consent: Graph also answers 403 for a
+  // board it cannot edit (a Teams-meeting, Loop or Premium plan) with
+  // Tasks.ReadWrite granted — measured 12 Oct 2026.
+  scope: 'Microsoft refused the change (403). If this board was made in a Teams meeting, Loop or Planner Premium, Graph cannot edit it — change it in Planner.',
   conflict: 'Someone changed this task in Planner while you were editing — reopen it and try again.',
   list_not_found: 'Could not find the task in any To Do list.',
   not_found: 'Microsoft no longer has this task — it may have been completed or deleted.',
@@ -436,7 +439,7 @@ router.post('/wip-ms', async (req, res) => {
 
     const reasons = {
       auth: 'Microsoft sign-in expired — reconnect 365.',
-      scope: 'Tasks permission not granted — re-consent to Microsoft.',
+      scope: 'Microsoft refused the change (403). If this board was made in a Teams meeting, Loop or Planner Premium, Graph cannot edit it — change it in Planner.',
       list_not_found: 'Could not find the task in any To Do list.',
       not_found: 'Task not found in Planner.',
     };

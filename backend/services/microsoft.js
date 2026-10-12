@@ -1362,6 +1362,42 @@ function _dueDateOf(value) {
  * it. Hence a real read, and `notesReadable: false` when the description could
  * not be fetched, so the client can refuse to edit what it could not see.
  */
+/**
+ * Can Graph WRITE to tasks on this Planner board?
+ *
+ * Measured 12 Oct 2026: with Tasks.ReadWrite granted, a same-title PATCH to a
+ * task on a Microsoft 365 GROUP plan answers 204, and the identical PATCH to a
+ * task on a plan whose container Graph reports as `unknownFutureValue` (plans
+ * made in a Teams meeting, a Loop component or Planner Premium) answers 403 —
+ * "You do not have the required permissions". Graph can READ those boards and
+ * not edit them. That 403 used to be reported as "permission not granted —
+ * re-consent", which sent Nick to fix a connection that was fine.
+ *
+ * Three answers: true (group plan), false (any other container — Graph will
+ * refuse), null (could not look — never treated as read-only, so a failed
+ * lookup cannot take editing away). Cached per plan for the process; a plan's
+ * container does not change.
+ */
+const _planWritable = new Map();
+async function plannerPlanWritable(planId, token) {
+  if (!planId) return null;
+  if (_planWritable.has(planId)) return _planWritable.get(planId);
+  try {
+    const res = await fetch(`https://graph.microsoft.com/beta/planner/plans/${encodeURIComponent(planId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const plan = await res.json();
+    const type = plan?.container?.type;
+    if (!type) return null;
+    const writable = type === 'group';
+    _planWritable.set(planId, writable);
+    return writable;
+  } catch {
+    return null;
+  }
+}
+
 async function readMicrosoftTask(taskId, source = null, listId = null) {
   if (!taskId) return { ok: false, reason: 'no_task_id' };
   const token = await getAccessToken();
@@ -1391,6 +1427,9 @@ async function readMicrosoftTask(taskId, source = null, listId = null) {
           dueDate: _dueDateOf(task.dueDateTime),
           notes,
           notesReadable,
+          // false = this board is one Graph will not let any app edit; the
+          // card says so instead of offering a Save that 403s. null = unknown.
+          editable: await plannerPlanWritable(task.planId, token),
         };
       }
     } catch (e) {

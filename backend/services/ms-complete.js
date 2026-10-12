@@ -42,7 +42,7 @@ const msQueue = require('./ms-push-queue');
 // What a Graph refusal MEANS, in words Nick can act on.
 const REASONS = {
   auth: 'Microsoft sign-in expired — reconnect 365.',
-  scope: 'Tasks permission not granted — re-consent to Microsoft.',
+  scope: 'Microsoft refused the change (403). If this board was made in a Teams meeting, Loop or Planner Premium, Graph cannot edit it — complete it in Planner.',
   list_not_found: 'Could not find the task in any To Do list.',
   not_found: 'Task not found in Planner.',
   readback_disagrees: 'Microsoft accepted it but still shows the task open.',
