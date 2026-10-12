@@ -378,15 +378,29 @@ export default function WeeklyRiskPanel({ onNavigate }) {
     }
   }
 
+  /**
+   * One press sends (Nick, 12 Oct 2026): prepare the frozen report, then spend
+   * a one-use intent grant on that exact version at once — the same governed
+   * path as the Send on the card, without a second trip through Actions. If
+   * the send step is refused, the prepared report stays for Review & send.
+   */
   async function doQueueSend() {
+    if (!window.confirm("Send this week's report to Chris now?")) return;
     const out = await post('/api/weekly-risk/queue-send', {}, 'send');
-    if (out?.ok) {
-      confirmOn('send', 'Prepared');
+    if (!out?.ok) return;
+    setBusy('send');
+    try {
+      const x = await executeDirect(out.action);
+      const o = directOutcome(x);
+      const sent = x.ok && ['executed', 'verified'].includes(x.status);
+      if (sent) confirmOn('send', 'Sent to Chris');
+      else setShowApproval(true);
+      setNotice({ tone: sent ? 'ok' : 'bad', text: sent ? `Sent to ${out.recipient?.email} — confirming it in Sent Items.` : o.text });
+    } catch (e) {
       setShowApproval(true);
-      setNotice({
-        tone: 'ok',
-        text: `${out.note || 'Prepared.'} To: ${out.recipient?.email}. NOTHING HAS BEEN SENT.`,
-      });
+      setNotice({ tone: 'bad', text: `Prepared but not sent: ${e.message}` });
+    } finally {
+      setBusy(null);
       await load();
     }
   }
@@ -612,9 +626,9 @@ export default function WeeklyRiskPanel({ onNavigate }) {
               type="button" className={`wr-send${done?.key === 'send' ? ' wr-confirmed' : ''}`}
               onClick={queued ? () => setShowApproval(v => !v) : doQueueSend}
               disabled={!ready || busy === 'send'}
-              title={ready ? 'Queues for approval — sends nothing' : 'Finish your sections first'}
+              title={ready ? 'Sends this report to Chris (asks first)' : 'Finish your sections first'}
             >
-              {busy === 'send' ? 'Queueing…' : queued ? (showApproval ? 'Hide the send' : 'Review & send to Chris') : labelFor('send', 'Queue send to Chris')}
+              {busy === 'send' ? 'Sending…' : queued ? (showApproval ? 'Hide the send' : 'Review & send to Chris') : labelFor('send', 'Send to Chris')}
             </button>
           )}
           {/* Not gated on `ready` — seeing an unfinished report in an inbox is
