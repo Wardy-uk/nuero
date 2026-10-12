@@ -19,8 +19,9 @@ async function call(path, method = 'GET', body) {
 const WORDS = { archive: 'Archived', keep: 'Kept', unsubscribed: 'Unsubscribed' };
 const UNSUB_WORDS = { 'one-click': 'Unsubscribe', web: 'Unsubscribe (opens page)', mailto: 'Unsubscribe (opens email)' };
 
-export function CleanupView({ data, onDecide, onRescan, busy, outcome }) {
+export function CleanupView({ data, onDecide, onRescan, busy, outcome, selected = null, onToggle = null, onSelectAll = null, onBulk = null }) {
   const [showDecided, setShowDecided] = useState(false);
+  const sel = selected || new Set();
   if (!data) return <div className="gc-empty">Loading…</div>;
   const senders = data.senders || [];
   const decided = data.decided || [];
@@ -35,13 +36,25 @@ export function CleanupView({ data, onDecide, onRescan, busy, outcome }) {
       </div>
       {data.scanError && <div className="pi-warn">Could not read Gmail: {data.scanError}</div>}
       {data.note && <p className="pi-note">{data.note}</p>}
-      {outcome && <div className={`pi-outcome pi-outcome-${outcome.tone}`}>{outcome.text}{outcome.link && <> <a href={outcome.link} target="_blank" rel="noopener noreferrer" data-testid="gc-unsub-link">Open the unsubscribe page</a></>}</div>}
+      {outcome && <div className={`pi-outcome pi-outcome-${outcome.tone}`}>{outcome.text}{outcome.link && <> <a href={outcome.link} target="_blank" rel="noopener noreferrer" data-testid="gc-unsub-link">Open the unsubscribe page</a></>}{(outcome.links || []).length > 0 && <ul className="gc-links">{outcome.links.map((l) => <li key={l.sender}><a href={l.link} target="_blank" rel="noopener noreferrer">{l.sender}</a> — finish unsubscribing</li>)}</ul>}</div>}
+      {onBulk && senders.length > 0 && (
+        <div className="pi-bulk gc-bulk" data-testid="gc-bulk">
+          <label className="pi-check"><input type="checkbox" checked={sel.size > 0 && sel.size === senders.length} ref={(el) => { if (el) el.indeterminate = sel.size > 0 && sel.size < senders.length; }} onChange={() => onSelectAll(sel.size === senders.length ? [] : senders.map((s) => s.sender))} /> {sel.size ? `${sel.size} selected` : 'Select all'}</label>
+          {sel.size > 0 && <>
+            <button type="button" className="pi-btn" disabled={busy || !senders.some((s) => sel.has(s.sender) && s.unsubscribe && s.unsubscribe.kind)} onClick={() => onBulk('unsubscribe')}>Unsubscribe</button>
+            <button type="button" className="pi-btn" disabled={busy} onClick={() => onBulk('archive')}>Archive</button>
+            <button type="button" className="pi-btn" disabled={busy} onClick={() => onBulk('keep')}>Keep</button>
+            <button type="button" className="pi-btn" disabled={busy} onClick={() => onSelectAll([])}>Clear</button>
+          </>}
+        </div>
+      )}
       {senders.length === 0
         ? <div className="gc-empty">{data.scannedAt ? 'Every sender has a decision.' : 'Nothing read yet.'}</div>
         : (
           <ul className="gc-list">
             {senders.map((s) => (
-              <li key={s.sender} className="gc-row">
+              <li key={s.sender} className={`gc-row${onToggle ? ' gc-pickable' : ''}${sel.has(s.sender) ? ' gc-selected' : ''}`}>
+                {onToggle && <input type="checkbox" className="pi-pick gc-pick" aria-label={`Select ${s.name || s.sender}`} checked={sel.has(s.sender)} onChange={() => onToggle(s.sender)} />}
                 <div className="gc-who">
                   <span className="gc-name">{s.name || s.sender}</span>
                   <span className="gc-addr">{s.sender}</span>
@@ -81,6 +94,7 @@ export default function GmailCleanup({ onChanged }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
   const load = useCallback(async () => { const d = await call('/api/personal-inbox/gmail/cleanup'); setData(d && d.ok ? d : { scanError: (d && d.error) || 'could not load', senders: [], decided: [] }); }, []);
   useEffect(() => { load(); }, [load]);
   const decide = async (sender, action) => {
@@ -97,6 +111,23 @@ export default function GmailCleanup({ onChanged }) {
       if (onChanged) onChanged();
     } finally { setBusy(false); }
   };
+  const toggle = (s) => setSelected((cur) => { const n = new Set(cur); if (n.has(s)) n.delete(s); else n.add(s); return n; });
+  const bulk = async (action) => {
+    setBusy(true); setOutcome(null);
+    try {
+      const senders = [...selected];
+      const r = await call('/api/personal-inbox/gmail/cleanup/bulk', 'POST', { senders, action });
+      if (r && r.error) { setOutcome({ tone: 'warn', text: r.error }); return; }
+      const failed = (r && r.failed) || [];
+      const word = { unsubscribe: 'Unsubscribed', archive: 'Archived', keep: 'Kept' }[action] || 'Done';
+      const moved = r && r.archived ? ` ${r.archived} moved out of the inbox.` : '';
+      const skipped = failed.length ? ` ${failed.length} not done: ${failed.map((f) => `${f.sender} (${f.reason})`).join('; ')}.` : '';
+      setOutcome({ tone: failed.length ? 'warn' : 'ok', text: `${word}: ${(r && r.done ? r.done.length : 0)} sender${r && r.done && r.done.length === 1 ? '' : 's'}.${moved}${skipped}${r && r.links && r.links.length ? ' These need you to finish on their own page:' : ''}`, links: (r && r.links) || [] });
+      setSelected(new Set(failed.map((f) => f.sender)));
+      await load();
+      if (onChanged) onChanged();
+    } finally { setBusy(false); }
+  };
   const rescan = async () => { setBusy(true); setOutcome(null); try { const d = await call('/api/personal-inbox/gmail/cleanup/scan', 'POST', {}); if (d && d.ok) setData(d); else setOutcome({ tone: 'warn', text: (d && d.error) || 'Could not read Gmail.' }); } finally { setBusy(false); } };
-  return <CleanupView data={data} onDecide={decide} onRescan={rescan} busy={busy} outcome={outcome} />;
+  return <CleanupView data={data} onDecide={decide} onRescan={rescan} busy={busy} outcome={outcome} selected={selected} onToggle={toggle} onSelectAll={(list) => setSelected(new Set(list))} onBulk={bulk} />;
 }

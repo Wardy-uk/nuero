@@ -12,3 +12,9 @@
 .gc-acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .gc-decided { margin-top: 10px; }
 @media (max-width: 760px) { .gc-row { grid-template-columns: 1fr; } .gc-acts { justify-content: flex-start; } }
+.gc-pickable { grid-template-columns: auto 1fr auto auto; }
+.gc-pick { margin: 0; }
+.gc-selected { background: var(--bg-tertiary); }
+.gc-bulk { margin-top: 8px; border-radius: var(--radius-sm); border-bottom: 1px solid var(--border); }
+.gc-links { margin: 6px 0 0; padding-left: 18px; font-size: 12px; }
+@media (max-width: 760px) { .gc-pickable { grid-template-columns: auto 1fr; } .gc-pickable .gc-num, .gc-pickable .gc-acts { grid-column: 2; } }

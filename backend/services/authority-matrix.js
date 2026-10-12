@@ -201,6 +201,7 @@ const ROUTE_RULES = Object.freeze([
   // Gmail clean-up: a rescan is a read; a decision (archive rule / keep / unsubscribe) is Nick's.
   R('POST', '/api/personal-inbox/gmail/cleanup/scan', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/personal-inbox/gmail/cleanup', 'gmail.unsubscribe'),
+  R('POST', '/api/personal-inbox/gmail/cleanup/bulk', 'gmail.unsubscribe'),
   R('POST', '/api/personal-inbox/gmail/backfill', 'internal.state', { machine: 'refuse' }),
   // Build 15: Nick's own statements about his goal — never a machine's.
   R('POST', '/api/loops/hiking/confirm', 'internal.state', { machine: 'refuse' }),

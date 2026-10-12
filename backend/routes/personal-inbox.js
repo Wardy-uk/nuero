@@ -111,6 +111,16 @@ router.post('/gmail/cleanup/scan', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// POST /api/personal-inbox/gmail/cleanup/bulk — the same decision for several Gmail senders at once (archive / keep / unsubscribe / clear); one archive pass covers them all. Nick only. Keywords: multi-select, bulk unsubscribe. Body: { senders, action }
+router.post('/gmail/cleanup/bulk', async (req, res) => {
+  try {
+    const { senders, action } = req.body && typeof req.body === 'object' ? req.body : {};
+    const r = await require('../services/gmail-cleanup').decideMany(senders, action);
+    if (r.error) return res.status(400).json(r);
+    res.json(r);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // POST /api/personal-inbox/gmail/cleanup — decide a Gmail sender: archive (it skips the inbox from now on, existing mail too; nothing deleted), keep, unsubscribe (the sender's own one-click unsubscribe, or the link to open; also archives), or clear. Nick only. Body: { sender, action: 'archive' | 'keep' | 'unsubscribe' | 'clear' }
 router.post('/gmail/cleanup', async (req, res) => {
   try {

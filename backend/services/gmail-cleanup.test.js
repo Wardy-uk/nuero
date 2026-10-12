@@ -129,6 +129,37 @@ test('a one-click URL that resolves privately is never called — Nick gets the 
   assert.deepEqual([r.ok, r.method, r.link, called], [true, 'web', 'https://lan.example/u', 0]);
 });
 
+test('bulk: each sender decided as one would be, then ONE archive pass; no-unsubscribe senders are reported, not quietly archived', async () => {
+  db.setState(gc.RULES_KEY, '');
+  db.setState(gc.SCAN_KEY, JSON.stringify({ at: 'x', days: 30, total: 4, senders: [
+    { sender: 'a@one.example', count: 5, opened: 0, unsubscribe: { kind: 'one-click', oneClick: 'https://one.example/u', link: 'https://one.example/u' } },
+    { sender: 'b@web.example', count: 3, opened: 0, unsubscribe: { kind: 'web', oneClick: null, link: 'https://web.example/u' } },
+    { sender: 'c@none.example', count: 2, opened: 0, unsubscribe: null },
+  ] }));
+  let connects = 0;
+  const srv = gmail([{ uid: 1, from: 'a@one.example' }, { uid: 2, from: 'b@web.example' }, { uid: 3, from: 'c@none.example' }]);
+  const imap = () => { connects += 1; return srv.imap(); };
+  const posts = [];
+  const r = await gc.decideMany(['A@one.example', 'b@web.example', 'c@none.example', 'a@one.example'], 'unsubscribe', { deps: { imap }, fetchImpl: async (u) => { posts.push(u); return { status: 202 }; }, lookup: async () => [{ address: '93.184.216.34' }] });
+  assert.deepEqual(r.done, ['a@one.example', 'b@web.example'], 'a repeated sender counts once');
+  assert.deepEqual(r.failed.map((f) => f.sender), ['c@none.example']);
+  assert.match(r.failed[0].reason, /use Archive/);
+  assert.deepEqual(r.links.map((l) => l.sender), ['b@web.example']);
+  assert.deepEqual(posts, ['https://one.example/u']);
+  assert.equal(connects, 1, 'ONE Gmail connection for the whole batch');
+  assert.deepEqual(srv.removed.map((x) => x.uids).sort(), ['1', '2'], 'the no-unsubscribe sender was not archived behind his back');
+  assert.equal(gc.readRules().senders['c@none.example'], undefined);
+
+  connects = 0; srv.removed.length = 0;
+  const k = await gc.decideMany(['c@none.example'], 'archive', { deps: { imap } });
+  assert.deepEqual([k.ok, k.archived, connects], [true, 1, 1]);
+  const keep = await gc.decideMany(['x@keep.example', 'not-an-address'], 'keep');
+  assert.deepEqual([keep.done, keep.failed.map((f) => f.sender)], [['x@keep.example'], ['not-an-address']]);
+  assert.equal((await gc.decideMany([], 'keep')).ok, false);
+  assert.equal((await gc.decideMany(['a@b.co'], 'delete')).ok, false);
+  assert.equal((await gc.decideMany(Array.from({ length: gc.BULK_MAX + 1 }, (_, i) => `s${i}@x.co`), 'keep')).ok, false, 'over the cap is refused, not clamped');
+});
+
 test('the screen, really rendered: rows by volume with opened counts, the right unsubscribe wording, decided with Undo', async () => {
   const React = require('react');
   const { renderToString } = require('react-dom/server');
@@ -162,4 +193,11 @@ test('the screen, really rendered: rows by volume with opened counts, the right 
   assert.match(html, /Show decided \(1\)/);
   assert.match(html, /data-testid="gc-unsub-link"/, 'an unsubscribe Nick must finish is a link, not a blocked popup');
   assert.match(html, /300 emails in the last 30 days/);
+  const picked = renderToString(React.createElement(CleanupView, { data, onDecide() {}, onRescan() {}, busy: false, selected: new Set(['promo@web.example']), onToggle() {}, onSelectAll() {}, onBulk() {}, outcome: { tone: 'warn', text: 'y', links: [{ sender: 'promo@web.example', link: 'https://web.example/unsub' }] } })).replace(/<!-- -->/g, '');
+  assert.equal((picked.match(/class="pi-pick gc-pick"/g) || []).length, 3);
+  assert.match(picked, /gc-row gc-pickable gc-selected/);
+  assert.match(picked, /1 selected/);
+  assert.match(picked, /data-testid="gc-bulk"/);
+  assert.match(picked, /href="https:\/\/web\.example\/unsub"[^>]*>promo@web\.example<\/a> — finish unsubscribing/);
+  assert.doesNotMatch(html, /gc-pick/, 'no tickboxes without the multi-select wiring');
 });

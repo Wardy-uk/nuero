@@ -185,7 +185,8 @@ async function _archiveSender(c, sender, cap) {
  */
 async function applyRules({ deps, only = null } = {}) {
   const rules = readRules().senders;
-  const senders = Object.entries(rules).filter(([s, r]) => (r.action === 'archive' || r.action === 'unsubscribed') && (!only || s === only)).map(([s]) => s);
+  const onlySet = only == null ? null : new Set([].concat(only));
+  const senders = Object.entries(rules).filter(([s, r]) => (r.action === 'archive' || r.action === 'unsubscribed') && (!onlySet || onlySet.has(s))).map(([s]) => s);
   if (!senders.length) return { ok: true, archived: 0, senders: 0 };
   deps = _withDefaults(deps);
   let c; let archived = 0; let budget = ARCHIVE_PER_PASS;
@@ -227,7 +228,8 @@ async function safeTarget(url, { lookup } = {}) {
  * Unsubscribe from one sender. One-click when offered (POSTed, ledgered);
  * otherwise the link is returned for Nick to open. Sets the archive rule either way.
  */
-async function unsubscribe(sender, { deps, fetchImpl, lookup } = {}) {
+async function unsubscribe(sender, { deps, fetchImpl, lookup, apply = true } = {}) {
+  const archiveNow = (s) => (apply ? applyRules({ deps, only: s }) : Promise.resolve({ ok: true, archived: 0 }));
   const s = normAddr(sender);
   if (!s) return { ok: false, error: 'not an email address' };
   const row = ((_json(SCAN_KEY) || {}).senders || []).find((x) => x.sender === s);
@@ -235,13 +237,13 @@ async function unsubscribe(sender, { deps, fetchImpl, lookup } = {}) {
   if (!u || !u.kind) return { ok: false, error: 'this sender offers no unsubscribe — use Archive' };
   if (u.kind !== 'one-click') {
     setRule(s, 'unsubscribed', { unsubscribe: { method: u.kind, status: 'opened-by-nick' } });
-    const archive = await applyRules({ deps, only: s });
+    const archive = await archiveNow(s);
     return { ok: true, sender: s, method: u.kind, link: u.link, archived: archive.archived || 0, note: 'Open the link to finish unsubscribing; their mail now skips your inbox.' };
   }
   const safe = await safeTarget(u.oneClick, { lookup });
   if (!safe.ok) {
     setRule(s, 'unsubscribed', { unsubscribe: { method: 'web', status: 'opened-by-nick' } });
-    const archive = await applyRules({ deps, only: s });
+    const archive = await archiveNow(s);
     return { ok: true, sender: s, method: 'web', link: u.oneClick, archived: archive.archived || 0, note: `NEURO will not call that link itself (${safe.why}) — open it to finish; their mail now skips your inbox.` };
   }
   const ext = require('./external-writes');
@@ -260,7 +262,7 @@ async function unsubscribe(sender, { deps, fetchImpl, lookup } = {}) {
     }
   }
   setRule(s, 'unsubscribed', { unsubscribe: { method: 'one-click', status } });
-  const archive = await applyRules({ deps, only: s });
+  const archive = await archiveNow(s);
   return { ok: true, sender: s, method: 'one-click', status, archived: archive.archived || 0, ...(status !== 'sent' && status !== 'already' ? { link: u.oneClick, note: 'The sender did not confirm — open the link to make sure. Their mail now skips your inbox either way.' } : {}) };
 }
 
@@ -273,7 +275,37 @@ async function decide(sender, action, { deps, fetchImpl, lookup } = {}) {
   return r;
 }
 
+const BULK_MAX = 100;
+
+/**
+ * The same decision for many senders (12 Oct 2026, Nick: multi-select). Each is
+ * decided exactly as one would be; then ONE archive pass covers all of them, so
+ * twenty senders open Gmail once, not twenty times. Unsubscribe on a sender that
+ * offers none is reported, never silently turned into something else.
+ */
+async function decideMany(senders, action, { deps, fetchImpl, lookup } = {}) {
+  if (!['archive', 'keep', 'unsubscribe', 'clear'].includes(action)) return { ok: false, error: 'action must be archive, keep, unsubscribe or clear' };
+  if (!Array.isArray(senders) || !senders.length) return { ok: false, error: 'no senders chosen' };
+  if (senders.length > BULK_MAX) return { ok: false, error: `at most ${BULK_MAX} at a time` };
+  const done = []; const failed = []; const links = [];
+  for (const raw of [...new Set(senders.map((x) => String(x || '').toLowerCase()))]) {
+    let r;
+    if (action === 'unsubscribe') r = await unsubscribe(raw, { deps, fetchImpl, lookup, apply: false });
+    else r = setRule(raw, action === 'clear' ? null : action);
+    if (!r.ok) { failed.push({ sender: raw, reason: r.error }); continue; }
+    done.push(r.sender);
+    if (r.link) links.push({ sender: r.sender, link: r.link, method: r.method });
+  }
+  let archived = 0; let archiveError = null;
+  if ((action === 'archive' || action === 'unsubscribe') && done.length) {
+    const a = await applyRules({ deps, only: done });
+    archived = a.archived || 0; if (!a.ok) archiveError = a.error;
+  }
+  return { ok: failed.length === 0, action, done, failed, links, archived, ...(archiveError ? { archiveError } : {}) };
+}
+
 module.exports = {
+  decideMany, BULK_MAX,
   RULES_KEY, SCAN_KEY, ACTIONS, ARCHIVE_PER_PASS,
   parseUnsubscribe, groupSenders, safeTarget, normAddr,
   readRules, setRule, scan, view, applyRules, unsubscribe, decide,
