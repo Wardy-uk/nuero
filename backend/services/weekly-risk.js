@@ -2389,7 +2389,7 @@ module.exports = {
   getManual, setManual, manualBlockers, emptyManual, carryForward,
   weekCommencing, previousWeek, buildTrend, consecutiveBelowTarget, ragBucket,
   taskCounts,
-  QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder, byTrendOrder,
+  QUEUE_ORDER, queueOf, complianceSortKey, byComplianceOrder, byTrendOrder, isComplianceKpi,
   csatSummaryRows,
   weekSpan, periodInWeek, shortUk, targetOf, ragCell, AMBER_BAND,
   buildCsat, csatScoreCell, csatDaysCell, deltaArrow, DAYS_IN_WEEK,

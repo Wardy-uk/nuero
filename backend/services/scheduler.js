@@ -1247,13 +1247,9 @@ function start() {
 
   // ── Proactive briefings ──────────────────────────────────────────────────
 
-  // 9am Mon-Fri — morning brief
-  cron.schedule('0 9 * * 1-5', async () => {
-    console.log('[Scheduler] 9am — morning brief');
-    try {
-      await require('./briefing').buildAndDeliver({ label: 'morning' });
-    } catch (e) { console.error('[Scheduler] Morning brief failed:', e.message); }
-  });
+  // The 9am morning brief was RETIRED on 12 Oct 2026: the 08:00 daily briefing
+  // (services/briefings.js, durable job 'briefing-daily', registered below)
+  // replaces it, every day rather than weekdays only.
 
   // 1pm Mon-Fri — midday brief
   cron.schedule('0 13 * * 1-5', async () => {
@@ -1299,6 +1295,34 @@ function start() {
       lookbackMs: 48 * 3600 * 1000,
       why: 'An armed walk: breadcrumbs from Home Assistant, the check-in prompts, and the overdue alert email if Nick has not checked in by finish + grace.',
       run: async () => { const r = await require('./hike-safety').tick(); return { trips: r.trips, crumbs: r.crumbs, pushed: r.pushed, alerts: r.alerts.map((a) => a.outcome) }; },
+    });
+    // 12 Oct 2026: the briefings. Durable so a restart at 07:59 still sends
+    // the morning's briefing — late, but never more than three hours late
+    // (past that it is no longer a morning briefing). Registered here, not in
+    // registerDurableJobs(), because they reach NOVA, Graph and the push service.
+    require('./runtime-jobs').defineJob({
+      name: 'briefing-daily',
+      cron: '0 8 * * *',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 3 * 60 * 60 * 1000,
+      maxAttempts: 2,
+      backoffMs: [5 * 60 * 1000],
+      timeoutMs: 5 * 60 * 1000,
+      why: 'The 08:00 daily briefing: push, work-only email, Briefings screen. Delivered once per day (the stored row records the attempt).',
+      run: async () => { await require('./briefings').run('daily'); },
+    });
+    require('./runtime-jobs').defineJob({
+      name: 'briefing-weekly',
+      cron: '0 8 * * 1',
+      class: 'freshness-sensitive',
+      catchUp: 'latest',
+      maxLagMs: 3 * 60 * 60 * 1000,
+      maxAttempts: 2,
+      backoffMs: [5 * 60 * 1000],
+      timeoutMs: 8 * 60 * 1000,
+      why: 'The Monday weekly briefing for the 09:00 tech leadership meeting: CSAT, SLAs, volumes, backlog, leaderboard, Friday SLM points.',
+      run: async () => { await require('./briefings').run('weekly'); },
     });
     // Build 21/27: the vehicle's daily pass. Since Build 27 it reads nothing outside NEURO (Tally's
     // figures arrive through finance-refresh); kept here, beside finance-refresh, where it always ran.

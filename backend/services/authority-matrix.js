@@ -310,7 +310,7 @@ const DOMAIN_DEFAULTS = Object.freeze({
   location: 'ingest', health: 'ingest', device: 'ingest', apple: 'ingest', environment: 'ingest', weather: 'ingest', desktop: 'ingest', router: 'ingest', 'nova-signals': 'ingest',
   v1: 'ingest', mobile: 'ingest', performance: 'ingest', rescuetime: 'ingest', jira: 'ingest',
   // notifications to Nick
-  nudges: 'push.self', briefing: 'push.self', push: 'push.self',
+  nudges: 'push.self', briefing: 'push.self', briefings: 'push.self', push: 'push.self',
   // preferences
   setup: 'config.preference', 'weekly-target': 'config.preference', greeting: 'config.preference', tts: 'config.preference',
   // NEURO's own state

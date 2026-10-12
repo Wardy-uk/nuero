@@ -1,0 +1,290 @@
+'use strict';
+
+/**
+ * The Monday briefing, in readiness for the 09:00 tech leadership meeting
+ * (12 Oct 2026).
+ *
+ * Nick's starting set — "start there and we'll add more once I see it":
+ *   - CSAT and SLA compliance for last Monday–Sunday, against the week before
+ *     (read through weekly-risk, never computed twice — its ratings-based CSAT
+ *     and per-queue targets are the only correct ones)
+ *   - top and weakest agent off NOVA's KPI Rebuild leaderboard (Model A), via
+ *     the bridge's /agent-leaderboard, which ranks with the SAME shared rule
+ *   - raised and closed volumes, and the backlog split Support vs Development
+ *   - the Friday Support Leadership Meeting's highlights, lowlights and
+ *     blockers/escalations, pulled out of the Plaud note
+ *   - blood pressure, the one standing health issue: the week, not the morning
+ *
+ * Everything it could not read is a named gap. A section that silently
+ * disappears reads as "nothing to report", which in a leadership briefing is a
+ * claim about the team.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const nova = require('./nova-client');
+const { todayLocal } = require('./briefing-gather');
+
+// kpi_org_daily keys (NOVA registry). Daily counts for raised/closed; point-in-time stocks for backlog.
+const VOLUME_KEYS = Object.freeze({
+  raised: 'nt_legacy_new_tickets',
+  closed: 'nt_legacy_solved_today',
+  backlogSupport: 'nt_open_support_owned',
+  backlogDevelopment: 'nt_development',
+  backlogTotal: 'nt_legacy_open_tickets',
+});
+const FLOW_KEYS = new Set(['raised', 'closed']);
+
+// ── Weeks ────────────────────────────────────────────────────────────────────
+
+function _addDays(ymd, n) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return todayLocal(new Date(y, m - 1, d + n));
+}
+
+/** The completed Monday–Sunday before `today`, and the week before that. PURE. */
+function reportWeeks(today) {
+  const [y, m, d] = today.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const shift = (dt.getDay() + 6) % 7; // Mon=0
+  const thisMonday = todayLocal(new Date(y, m - 1, d - shift));
+  const from = _addDays(thisMonday, -7);
+  const priorFrom = _addDays(thisMonday, -14);
+  return {
+    thisMonday,
+    report: { from, to: _addDays(from, 6) },
+    prior: { from: priorFrom, to: _addDays(priorFrom, 6) },
+  };
+}
+
+// ── Volumes (PURE over the series payload) ───────────────────────────────────
+
+function _inWeek(day, w) {
+  return day >= w.from && day <= w.to;
+}
+
+function _weekFigure(series, w, flow) {
+  if (!series) return { value: null, days: 0 };
+  const pts = (series.points || []).filter((p) => p && _inWeek(p.day, w) && Number.isFinite(p.value));
+  if (!pts.length) return { value: null, days: 0 };
+  if (flow) return { value: pts.reduce((s, p) => s + p.value, 0), days: pts.length };
+  const last = pts.sort((a, b) => a.day.localeCompare(b.day))[pts.length - 1];
+  return { value: last.value, days: pts.length, asOf: last.day };
+}
+
+/**
+ * Raised/closed summed over the week; backlog taken at the last day captured.
+ * `days` says how many of the 7 held a value — a week with three captured days
+ * is reported as three, never scaled up, never read as a quiet week.
+ */
+function volumesFor(seriesData, weeks) {
+  const byKey = new Map((seriesData?.series || []).map((s) => [s.key, s]));
+  const rows = [];
+  for (const [name, key] of Object.entries(VOLUME_KEYS)) {
+    const s = byKey.get(key);
+    const flow = FLOW_KEYS.has(name);
+    const now = _weekFigure(s, weeks.report, flow);
+    const was = _weekFigure(s, weeks.prior, flow);
+    rows.push({
+      name, key, label: s?.label || key, flow,
+      now: now.value, nowDays: now.days, asOf: now.asOf || null,
+      was: was.value, wasDays: was.days,
+      delta: now.value != null && was.value != null ? Math.round((now.value - was.value) * 10) / 10 : null,
+      known: Boolean(s),
+    });
+  }
+  return rows;
+}
+
+// ── Leaderboard (PURE) ───────────────────────────────────────────────────────
+
+function leaderboardSummary(data) {
+  const ranked = Array.isArray(data?.ranked) ? data.ranked : [];
+  if (!ranked.length) return { known: true, enough: false, top: null, weakest: null, rankedCount: 0, unranked: data?.unranked || [] };
+  return {
+    known: true,
+    enough: ranked.length >= 2,
+    top: ranked[0],
+    weakest: ranked.length >= 2 ? ranked[ranked.length - 1] : null,
+    rankedCount: ranked.length,
+    unranked: Array.isArray(data?.unranked) ? data.unranked : [],
+    rule: data?.rule || null,
+    from: data?.from || null,
+    to: data?.to || null,
+  };
+}
+
+// ── The Friday Support Leadership Meeting ────────────────────────────────────
+
+const SLM_PATTERN = /support leadership/i;
+
+/**
+ * The SLM note for the report week: a Meetings/ note whose filename carries a
+ * date inside the week and "Support Leadership". A Plaud " 2" twin loses to the
+ * original. Returns null when none exists — never a guess at another meeting.
+ */
+function findSlmNote(vaultRoot, week) {
+  if (!vaultRoot) return { found: false, why: 'vault not configured' };
+  const months = new Set([week.from.slice(0, 7), week.to.slice(0, 7)]);
+  const hits = [];
+  for (const ym of months) {
+    const dir = path.join(vaultRoot, 'Meetings', ym.slice(0, 4), ym.slice(5, 7));
+    let names;
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      if (!name.endsWith('.md')) continue;
+      const m = /^(\d{4}-\d{2}-\d{2})/.exec(name);
+      if (!m || !_inWeek(m[1], week) || !SLM_PATTERN.test(name)) continue;
+      hits.push({ date: m[1], name, file: path.join(dir, name), twin: / \d+\.md$/.test(name) });
+    }
+  }
+  if (!hits.length) return { found: false, why: `no Support Leadership Meeting note dated ${week.from} – ${week.to}` };
+  hits.sort((a, b) => (a.twin - b.twin) || b.date.localeCompare(a.date));
+  const pick = hits[0];
+  return { found: true, date: pick.date, name: pick.name.replace(/\.md$/, ''), file: pick.file, relPath: path.relative(vaultRoot, pick.file).split(path.sep).join('/') };
+}
+
+function _stripFrontmatter(text) {
+  return String(text || '').replace(/^---[\s\S]*?\n---\s*\n/, '');
+}
+
+const SLM_PROMPT = `You are pulling the key points out of the notes of a weekly Support Leadership Meeting (three people: the Head of Technical Support and two senior agents), for a briefing read before the Monday tech leadership meeting.
+
+Return ONLY a JSON object, no prose, in exactly this shape:
+{"highlights":[], "lowlights":[], "blockers":[]}
+
+- highlights: things that went well or improved.
+- lowlights: things that went badly, slipped or got worse.
+- blockers: blockers and escalations — things stuck, waiting on another team, or needing a decision or help from leadership.
+Each entry is one plain sentence of at most 25 words, stating a fact from the notes. At most 5 per list. Use an empty list when the notes say nothing for it. Do not invent, infer or add advice. Do not attribute points to people.
+
+Meeting notes:
+`;
+
+/** Parse the model's answer. Anything unreadable is null — never an empty list. PURE. */
+function parseSlmPoints(text) {
+  const s = String(text || '');
+  const start = s.indexOf('{');
+  const end = s.lastIndexOf('}');
+  if (start === -1 || end <= start) return null;
+  let obj;
+  try { obj = JSON.parse(s.slice(start, end + 1)); } catch { return null; }
+  const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()).slice(0, 5) : null);
+  const out = { highlights: list(obj.highlights), lowlights: list(obj.lowlights), blockers: list(obj.blockers) };
+  if (!out.highlights || !out.lowlights || !out.blockers) return null;
+  return out;
+}
+
+async function slmPoints(vaultRoot, week, { extract = null } = {}) {
+  const note = findSlmNote(vaultRoot, week);
+  if (!note.found) return { known: false, why: note.why };
+  let body;
+  try { body = _stripFrontmatter(fs.readFileSync(note.file, 'utf8')).slice(0, 16000); } catch (e) {
+    return { known: false, why: `could not read ${note.name}: ${e.message}`, note };
+  }
+  let text = null;
+  try {
+    text = extract
+      ? await extract(SLM_PROMPT + body)
+      : (await require('./ai-routing').runTask('briefing_synthesis', { prompt: SLM_PROMPT + body, maxTokens: 900 }))?.text;
+  } catch (e) {
+    return { known: false, why: `could not summarise the note: ${e.message}`, note };
+  }
+  const points = parseSlmPoints(text);
+  if (!points) return { known: false, why: 'the summary came back unreadable', note };
+  return { known: true, note, ...points };
+}
+
+// ── Blood pressure for the week (PURE over health_daily rows) ────────────────
+
+function _median(xs) {
+  const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+}
+
+function bpWeek(rows, weeks) {
+  const pick = (w) => {
+    const days = (rows || []).filter((r) => r && _inWeek(r.day, w) && Number.isFinite(r.bpSystolic) && Number.isFinite(r.bpDiastolic));
+    return {
+      days: days.length,
+      systolic: days.length ? Math.round(_median(days.map((r) => r.bpSystolic))) : null,
+      diastolic: days.length ? Math.round(_median(days.map((r) => r.bpDiastolic))) : null,
+    };
+  };
+  return { now: pick(weeks.report), was: pick(weeks.prior) };
+}
+
+// ── Assembly ─────────────────────────────────────────────────────────────────
+
+async function _pull(name, fn, gaps, label) {
+  try { return await fn(); } catch (e) {
+    gaps.push({ source: label, why: e.message });
+    return null;
+  }
+}
+
+/**
+ * Gather the weekly. `overrides` swaps any source (tests). Never throws.
+ */
+async function gatherWeekly({ now = new Date(), overrides = {} } = {}) {
+  const today = todayLocal(now);
+  const weeks = reportWeeks(today);
+  const gaps = [];
+  const use = (name, fn) => (typeof overrides[name] === 'function' ? overrides[name] : fn);
+
+  // KPIs through weekly-risk: one CSAT and one compliance definition in NEURO.
+  const assessment = await _pull('kpi', use('kpi', async () => {
+    if (!nova.isConfigured()) throw new Error('NOVA bridge not configured');
+    const wr = require('./weekly-risk');
+    const snap = await wr.snapshot({ week: weeks.thisMonday });
+    for (const s of snap.sources || []) {
+      if (!s.ok && /kpi-org-trend|csat-reported/.test(s.name)) gaps.push({ source: `NOVA ${s.name}`, why: s.error });
+    }
+    return wr.assess(snap);
+  }), gaps, 'KPIs from NOVA');
+
+  let sla = null;
+  let csatRows = null;
+  if (assessment) {
+    const wr = require('./weekly-risk');
+    sla = (assessment.trend || [])
+      .filter((t) => wr.isComplianceKpi(t.kpi))
+      .sort((a, b) => wr.byComplianceOrder(a.kpi, b.kpi))
+      .map((t) => ({
+        kpi: t.kpi,
+        measured: t.measured,
+        now: t.reported?.value ?? null,
+        was: t.compare?.value ?? null,
+        delta: t.delta,
+        target: t.target ?? null,
+        targetMoved: Boolean(t.targetMoved),
+        lastSeen: t.measured ? null : (t.lastSeen?.period || null),
+      }));
+    csatRows = assessment.csatRows || null;
+  }
+
+  const series = await _pull('volumes', use('volumes', () => {
+    const keys = Object.values(VOLUME_KEYS).join(',');
+    return nova.call(`/api/neuro-bridge/kpi-org-series?days=21&keys=${keys}&to=${weeks.report.to}`);
+  }), gaps, 'ticket volumes from NOVA');
+  const volumes = series ? volumesFor(series, weeks) : null;
+
+  const lb = await _pull('leaderboard', use('leaderboard', () => nova.call(`/api/neuro-bridge/agent-leaderboard?anchor=${weeks.report.to}`)), gaps, 'the agent leaderboard');
+  const leaderboard = lb ? leaderboardSummary(lb) : null;
+
+  const vaultRoot = process.env.OBSIDIAN_VAULT_PATH || null;
+  const slm = await use('slm', () => slmPoints(vaultRoot, weeks.report))();
+  if (slm && !slm.known) gaps.push({ source: 'the Friday Support Leadership Meeting', why: slm.why });
+
+  const bpRows = await _pull('bp', use('bp', () => require('./health-daily').recentDays(21)), gaps, 'blood pressure');
+  const bp = bpRows ? bpWeek(bpRows, weeks) : null;
+
+  return { today, weeks, sla, csatRows, volumes, leaderboard, slm, bp, gaps };
+}
+
+module.exports = {
+  gatherWeekly, reportWeeks, volumesFor, leaderboardSummary, findSlmNote, parseSlmPoints, slmPoints, bpWeek,
+  VOLUME_KEYS, SLM_PROMPT,
+};

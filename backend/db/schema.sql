@@ -3291,3 +3291,20 @@ CREATE TABLE IF NOT EXISTS workout_routes (
   point_count  INTEGER NOT NULL,
   received_at  TEXT NOT NULL
 );
+
+-- ── Daily / weekly briefings (12 Oct 2026) ─────────────────────────────────
+-- One row per briefing per day: the composed payload exactly as Nick saw it,
+-- and what delivery did (push / email / skipped, with the reason). Rebuilding
+-- a day replaces the payload; `delivery` records whether it already went out,
+-- so a durable-job retry or a restart never pushes the same morning twice.
+CREATE TABLE IF NOT EXISTS briefings (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind        TEXT NOT NULL CHECK (kind IN ('daily', 'weekly')),
+  date_key    TEXT NOT NULL,
+  day_type    TEXT,
+  payload     TEXT NOT NULL,
+  delivery    TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL,
+  UNIQUE (kind, date_key)
+);

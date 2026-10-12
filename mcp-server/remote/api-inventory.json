@@ -914,6 +914,61 @@
     "stream": false
   },
   {
+    "id": "get_briefings",
+    "method": "GET",
+    "route": "/api/briefings",
+    "domain": "briefings",
+    "source": "routes/briefings.js",
+    "line": 11,
+    "description": "GET /api/briefings. daily and weekly briefing history, newest first",
+    "params": [],
+    "query": [
+      "kind",
+      "limit"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_briefings_by_id",
+    "method": "GET",
+    "route": "/api/briefings/:id",
+    "domain": "briefings",
+    "source": "routes/briefings.js",
+    "line": 64,
+    "description": "GET /api/briefings/:id. one stored briefing in full",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_briefings_latest",
+    "method": "GET",
+    "route": "/api/briefings/latest",
+    "domain": "briefings",
+    "source": "routes/briefings.js",
+    "line": 31,
+    "description": "GET /api/briefings/latest. ?kind=daily|weekly — the most recent briefing of a kind",
+    "params": [],
+    "query": [
+      "kind"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_c_tasks",
     "method": "GET",
     "route": "/api/c/tasks",
@@ -4878,7 +4933,7 @@
     "route": "/api/status",
     "domain": "status",
     "source": "server.js",
-    "line": 257,
+    "line": 260,
     "description": "GET /api/status.",
     "params": [],
     "query": [],
@@ -6883,6 +6938,45 @@
     ],
     "queryOpen": false,
     "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_briefings_feedback",
+    "method": "POST",
+    "route": "/api/briefings/feedback",
+    "domain": "briefings",
+    "source": "routes/briefings.js",
+    "line": 54,
+    "description": "POST /api/briefings/feedback. mark a kind of briefing item not useful (or undo); lowers its rank, bounded",
+    "params": [],
+    "query": [],
+    "body": [
+      "kind",
+      "undo"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_briefings_run",
+    "method": "POST",
+    "route": "/api/briefings/run",
+    "domain": "briefings",
+    "source": "routes/briefings.js",
+    "line": 42,
+    "description": "POST /api/briefings/run. build a daily or weekly briefing now (briefing run rebuild); delivers only when asked",
+    "params": [],
+    "query": [],
+    "body": [
+      "deliver",
+      "force",
+      "kind"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
     "multipart": false,
     "stream": false
   },

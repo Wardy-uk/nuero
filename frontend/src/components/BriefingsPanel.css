@@ -1,0 +1,57 @@
+/* Briefings screen. Sphere and "below target" are said in words, not by colour alone. */
+
+.brf-panel { padding: 16px; max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; color: var(--text-primary); }
+.brf-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.brf-top h1 { margin: 0; font-size: 1.3rem; }
+.brf-tabs { display: flex; gap: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; }
+.brf-tab { background: none; border: 0; color: var(--text-secondary); padding: 6px 14px; border-radius: 4px; cursor: pointer; font: inherit; font-size: 0.85rem; }
+.brf-tab--on { background: var(--bg-tertiary); color: var(--text-primary); }
+.brf-controls { display: flex; gap: 8px; align-items: center; }
+.brf-controls select { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; font: inherit; font-size: 0.85rem; }
+.brf-btn { background: none; border: 1px solid var(--accent); color: var(--accent); border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer; font: inherit; font-size: 0.85rem; }
+.brf-btn:disabled { opacity: 0.6; cursor: progress; }
+.brf-hint { color: var(--text-muted); font-size: 0.85rem; margin: 0; }
+.brf-error { color: var(--danger); margin: 0; }
+
+.brf-body { display: flex; flex-direction: column; gap: 12px; }
+.brf-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.brf-head h2 { margin: 0; font-size: 1.1rem; }
+.brf-daytype { font-size: 0.8rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
+.brf-daytype--off { color: var(--success); border-color: var(--success); }
+.brf-meta { color: var(--text-muted); font-size: 0.82rem; margin: 0; }
+
+.brf-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.brf-section h3 { margin: 0 0 8px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.brf-section h4 { margin: 10px 0 4px; font-size: 0.85rem; }
+.brf-section--needs-you { border-left: 3px solid var(--warning); }
+
+.brf-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.brf-item { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--bg-secondary); }
+.brf-item-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.brf-item-title { font-weight: 500; }
+.brf-when { font-family: var(--font-mono); color: var(--accent); margin-right: 8px; }
+.brf-sphere { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); white-space: nowrap; }
+.brf-detail { margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem; }
+.brf-sub { margin: 4px 0 0; padding-left: 18px; color: var(--text-secondary); font-size: 0.85rem; }
+.brf-item-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; align-items: center; }
+.brf-why { color: var(--text-muted); font-size: 0.78rem; }
+.brf-link { background: none; border: 0; color: var(--text-muted); text-decoration: underline; cursor: pointer; font: inherit; font-size: 0.78rem; padding: 0; white-space: nowrap; }
+.brf-link:hover { color: var(--text-primary); }
+
+.brf-gaps { border: 1px solid var(--warning); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--warning); font-size: 0.85rem; }
+.brf-gaps ul { margin: 4px 0; padding-left: 18px; }
+.brf-gaps p { margin: 4px 0 0; }
+.brf-close { margin: 0; color: var(--text-secondary); }
+
+.brf-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.brf-table th, .brf-table td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
+.brf-table th { color: var(--text-muted); font-weight: 500; }
+.brf-below td:nth-child(5) { color: var(--warning); }
+.brf-partial { color: var(--warning); font-size: 0.78rem; }
+.brf-slm ul { margin: 0; padding-left: 18px; }
+
+@media (max-width: 600px) {
+  .brf-panel { padding: 12px 16px; }
+  .brf-table { font-size: 0.78rem; }
+  .brf-item-head { flex-direction: column; }
+}

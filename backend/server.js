@@ -154,6 +154,9 @@ app.use('/api/focus', focusRoutes);
 app.use('/api/session', require('./routes/focus-session'));
 app.use('/api/time', timeRoutes);
 app.use('/api/briefing', briefingRoutes);
+// The 08:00 daily and Monday weekly briefings (12 Oct 2026). Plural on purpose:
+// '/api/briefing' is the older 13:00 brief and keeps its own contract.
+app.use('/api/briefings', require('./routes/briefings'));
 app.use('/api/actions', actionsRoutes);
 app.use('/api/ha', haRoutes);
 app.use('/api/plaud', plaudRoutes);

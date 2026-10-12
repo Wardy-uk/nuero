@@ -52,6 +52,8 @@ const GROUPS = [
     { id: 'standups',    label: 'Standup history', icon: '>' },
   ] },
   { id: 'reports', label: 'REPORTS', items: [
+    // The 08:00 daily and the Monday weekly briefing (12 Oct 2026).
+    { id: 'briefings',      label: 'Briefings',      icon: '☀' },
     // The Monday report to Chris — a deadline and a named recipient.
     { id: 'weekly-risk',    label: 'Weekly Risk',    icon: '▲' },
     // A running record, logged the day it happens (Nick, 7 Sep 2026).
