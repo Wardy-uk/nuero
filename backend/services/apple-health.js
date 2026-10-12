@@ -49,6 +49,17 @@ const NEURO_ALIAS = {
   step_count: 'steps',
   active_energy: 'activeEnergy',
   respiratory_rate: 'respiratoryRate',
+  // ⚠ The native NeuroKit catalogue (HealthCatalog.swift) sends SHORT nutrition
+  // names, while two years of history and every reader (ambient's "not eaten",
+  // attention-learning, the Senses row) use the dietary_* spelling. Unmapped,
+  // MyFitnessPal food landed as `dietary_energy` and was read by nothing — the
+  // `sleep_core_hours` species again. Mapped here, once (12 Oct 2026).
+  dietary_energy: 'dietary_energy_consumed',
+  protein: 'dietary_protein',
+  carbohydrates: 'dietary_carbohydrates',
+  total_fat: 'dietary_fat_total',
+  fiber: 'dietary_fiber',
+  sodium: 'dietary_sodium',
 };
 
 // Units are checked ONLY for the metrics something actually interprets. A silent

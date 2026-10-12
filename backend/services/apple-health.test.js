@@ -37,6 +37,18 @@ test('the six metrics NEURO already reads keep their existing names', () => {
   assert.equal(ah.metricName('respiratory_rate'), 'respiratoryRate');
 });
 
+test('the native app\'s short nutrition names land on the dietary_* names readers use', () => {
+  assert.equal(ah.metricName('dietary_energy'), 'dietary_energy_consumed');
+  assert.equal(ah.metricName('protein'), 'dietary_protein');
+  assert.equal(ah.metricName('carbohydrates'), 'dietary_carbohydrates');
+  assert.equal(ah.metricName('total_fat'), 'dietary_fat_total');
+  assert.equal(ah.metricName('fiber'), 'dietary_fiber');
+  assert.equal(ah.metricName('sodium'), 'dietary_sodium');
+  // Already the stored spelling — must pass through unchanged.
+  assert.equal(ah.metricName('dietary_sugar'), 'dietary_sugar');
+  assert.equal(ah.metricName('dietary_water'), 'dietary_water');
+});
+
 test('every other metric keeps its HAE name verbatim — no allowlist', () => {
   // Nick asked for everything the app offers. An allowlist would have to be
   // maintained forever and is wrong the moment Apple adds a type.
