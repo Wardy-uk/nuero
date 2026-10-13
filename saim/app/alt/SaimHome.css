@@ -1,0 +1,121 @@
+/* SAiM Alt — the companion page. Sits OVER her field: panels are translucent
+   and lit by --saim-rgb (set once on the shell from the live read), so when
+   she shifts colour every card shifts with her. */
+
+.alt-home {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.alt-home--bare { min-height: 50vh; justify-content: center; }
+.alt-home__bare { color: var(--muted); text-align: center; font-family: 'Newsreader', Georgia, serif; font-size: 1.2rem; }
+.alt-home__stale, .alt-home__note {
+  margin: 0 auto; max-width: 760px; padding: 0.45rem 0.75rem; border-radius: 8px;
+  font-size: 0.8rem; color: #f5c66b; background: rgba(245, 198, 107, 0.08); border: 1px solid rgba(245, 198, 107, 0.3);
+}
+
+.is-unknown { color: var(--muted); font-style: italic; }
+
+.alt-presence { display: flex; flex-wrap: wrap; gap: 0.4rem 0.6rem; align-items: center; font-size: 0.82rem; }
+.alt-presence__fact {
+  padding: 0.25rem 0.6rem; border-radius: 999px;
+  background: rgba(11, 15, 20, 0.55); border: 1px solid var(--line);
+}
+.alt-presence__phase {
+  margin-left: auto; padding: 0.25rem 0.6rem; border-radius: 999px; letter-spacing: 0.06em; font-size: 0.72rem;
+  color: rgb(var(--saim-rgb, 114, 150, 211)); border: 1px solid rgba(var(--saim-rgb, 114, 150, 211), 0.45);
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.08);
+}
+.alt-presence__detail { letter-spacing: 0; text-transform: none; color: var(--text); }
+
+.alt-card {
+  background: rgba(20, 27, 36, 0.72);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(var(--saim-rgb, 114, 150, 211), 0.22);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+}
+.alt-card__eyebrow { margin: 0 0 0.5rem; font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.alt-label { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-right: 0.4rem; }
+
+.alt-thread { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.4); }
+.alt-thread__title { margin: 0; font-family: 'Newsreader', Georgia, serif; font-size: 1.45rem; line-height: 1.3; font-weight: 300; }
+.alt-thread__sub { margin: 0.25rem 0 0; color: var(--text); opacity: 0.85; }
+.alt-thread__why { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.88rem; }
+.alt-thread__step { margin-top: 0.85rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; }
+.alt-thread__steptext { font-size: 1rem; }
+.alt-thread__actions { margin-top: 0.85rem; display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.alt-warn { margin: 0.5rem 0 0; color: #f5c66b; font-size: 0.85rem; }
+
+.alt-pill {
+  font: inherit; font-size: 0.85rem; cursor: pointer;
+  padding: 0.38rem 0.8rem; border-radius: 999px;
+  color: var(--text); background: rgba(28, 37, 48, 0.85); border: 1px solid var(--line);
+}
+.alt-pill:hover:not(:disabled) { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.7); }
+.alt-pill:disabled { opacity: 0.45; cursor: default; }
+.alt-pill--strong { background: rgba(var(--saim-rgb, 114, 150, 211), 0.22); border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.6); }
+
+.alt-tools__top { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.9rem; }
+.alt-tools__primary {
+  font: inherit; font-size: 1.05rem; font-weight: 600; cursor: pointer;
+  padding: 0.6rem 1.3rem; border-radius: 10px;
+  color: #0b0f14; background: rgb(var(--saim-rgb, 114, 150, 211)); border: none;
+}
+.alt-tools__primary:disabled { opacity: 0.5; cursor: default; }
+.alt-tools__because { color: var(--muted); font-size: 0.85rem; }
+.alt-tools__none { margin: 0; color: var(--muted); }
+.alt-tools__alts { list-style: none; margin: 0.8rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 0.9rem; }
+.alt-tools__alts li { display: flex; flex-direction: column; gap: 0.15rem; }
+.alt-tools__alt {
+  font: inherit; font-size: 0.82rem; cursor: pointer; padding: 0.3rem 0.7rem; border-radius: 8px;
+  color: var(--text); background: transparent; border: 1px solid var(--line);
+}
+.alt-tools__alt:disabled { opacity: 0.4; cursor: not-allowed; }
+.alt-tools__why { font-size: 0.72rem; color: var(--muted); max-width: 16rem; }
+.alt-desk { font-size: 0.72rem; color: var(--muted); }
+.alt-desk--opened { color: #7fd6a4; }
+.alt-desk--failed, .alt-desk--expired { color: #f08a7e; }
+
+.alt-next { font-size: 0.88rem; color: var(--text); padding: 0 0.2rem; }
+.alt-next__q { color: var(--muted); }
+
+.alt-held { padding: 0 0.2rem; font-size: 0.85rem; color: var(--muted); }
+.alt-held__line { margin: 0 0 0.25rem; }
+.alt-held__list { margin: 0.35rem 0 0; padding-left: 1.1rem; color: var(--text); }
+.alt-held__why { color: var(--muted); }
+
+.alt-judge { border-color: rgba(245, 198, 107, 0.35); }
+.alt-judge__text { margin: 0 0 0.4rem; }
+.alt-judge__where { margin: 0.4rem 0 0; font-size: 0.75rem; color: var(--muted); }
+
+.alt-link {
+  font: inherit; font-size: 0.82rem; background: none; border: none; padding: 0; cursor: pointer;
+  color: rgb(var(--saim-rgb, 114, 150, 211)); text-decoration: none;
+}
+.alt-link:hover { text-decoration: underline; }
+
+.alt-input {
+  font: inherit; color: var(--text); background: rgba(11, 15, 20, 0.7);
+  border: 1px solid var(--line); border-radius: 10px; padding: 0.5rem 0.7rem;
+}
+.alt-input:focus { outline: none; border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.7); }
+.alt-stepform { display: flex; gap: 0.4rem; flex: 1 1 18rem; }
+.alt-stepform .alt-input { flex: 1; }
+
+.alt-dock { margin-top: 0.4rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.alt-dock__box { width: 100%; resize: vertical; box-sizing: border-box; }
+.alt-dock__row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.alt-dock__note { font-size: 0.8rem; color: var(--muted); }
+.alt-dock__note.is-bad { color: #f08a7e; font-weight: 600; }
+.alt-dock__answer { background: rgba(20, 27, 36, 0.72); border: 1px solid var(--line); border-radius: 12px; padding: 0.7rem 0.9rem; }
+.alt-dock__q { margin: 0 0 0.3rem; color: var(--muted); font-size: 0.82rem; }
+.alt-dock__a { margin: 0 0 0.4rem; font-family: 'Newsreader', Georgia, serif; font-size: 1.05rem; white-space: pre-wrap; }
+
+@media (max-width: 520px) {
+  .alt-presence__phase { margin-left: 0; }
+  .alt-thread__title { font-size: 1.2rem; }
+}

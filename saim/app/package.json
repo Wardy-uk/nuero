@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:alt": "vite build --config vite.config.alt.js --mode alt",
+    "dev:alt": "vite --config vite.config.alt.js --mode alt",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -1,0 +1,47 @@
+/* SAiM Alt shell. Loaded AFTER the control's App.css and only overrides it
+   under `.alt-app`, so nothing here can reach the control build. */
+
+/* Desktop: the shell spans the window so her field is full-screen behind it;
+   the content column stays readable in the middle. */
+.app.alt-app { max-width: none; }
+.alt-app__field { position: fixed; inset: 0; }
+
+.alt-app__header { align-items: center; border-bottom: none; background: linear-gradient(rgba(11, 15, 20, 0.8), rgba(11, 15, 20, 0)); }
+.alt-app__spacer { flex: 1; }
+.alt-marker {
+  font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700;
+  padding: 0.12rem 0.45rem; border-radius: 4px;
+  color: #f5c66b; border: 1px solid rgba(245, 198, 107, 0.55); background: rgba(245, 198, 107, 0.08);
+}
+.alt-app__link { font-size: 0.75rem; color: var(--muted); text-decoration: none; }
+.alt-app__link:hover { color: var(--text); text-decoration: underline; }
+
+.alt-app__nav {
+  position: relative; z-index: 1;
+  display: flex; justify-content: center; gap: 0.25rem;
+  padding: 0.2rem 1rem 0.4rem;
+}
+.alt-app__tab {
+  font: inherit; font-size: 0.85rem; cursor: pointer;
+  padding: 0.35rem 0.9rem; border-radius: 999px;
+  color: var(--muted); background: transparent; border: 1px solid transparent;
+}
+.alt-app__tab:hover { color: var(--text); }
+.alt-app__tab.is-on {
+  color: var(--text);
+  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.55);
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.12);
+}
+
+/* The reused views were written for a 720px column; keep them there. */
+.alt-app__view > :not(.alt-home):not(.alt-app__handoff):not(.alt-home__note) { max-width: 720px; margin-left: auto; margin-right: auto; }
+
+.alt-app__handoff {
+  max-width: 760px; margin: 0 auto 0.8rem; padding: 0.5rem 0.8rem; border-radius: 8px;
+  font-size: 0.82rem; background: rgba(20, 27, 36, 0.85); border: 1px solid var(--line);
+  display: flex; gap: 0.6rem; align-items: center;
+}
+
+@media (max-width: 560px) {
+  .alt-app__nav { overflow-x: auto; justify-content: flex-start; }
+}
