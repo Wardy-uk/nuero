@@ -146,44 +146,35 @@ export const UNKNOWN_THREAD = Object.freeze({
   prompt: 'Tell me what you were doing, or capture the next thing.',
 });
 
-// What NEURO's life read calls his own time, said to him. Only kinds whose
-// meaning is unambiguous get a sentence; anything else keeps NEURO's title.
-const LIFE_HEADLINE = Object.freeze({ hobby: 'You’re in your own project.' });
-const LIFE_PHRASE = Object.freeze({ hobby: 'on your own project' });
-
 /** Is work being held back right now because of what he is doing? NEURO's word. */
 const workHeld = (d) => Boolean(d && d.life && d.life.showWork === false);
+// How NEURO's life read is said in the held line. Unknown kinds say nothing.
+const LIFE_PHRASE = Object.freeze({ hobby: 'on your own project' });
 
 /**
- * The current thread. Every word about WORK is NEURO's; the only sentences
- * written here describe the situation when there is no task plan.
+ * The current thread, and which of the two page modes it calls for.
  *
- * `state`:
- *   'item'    — an attention ITEM is the thread (NEURO's say/title verbatim);
- *   'work'    — a focus session / live task block current-work names;
- *   'context' — NEURO's context read (e.g. his own project) — described, with
- *               the moves that fit it, never dressed up as a task;
- *   'unknown' — the context itself is unknown, or nothing at all.
+ * `mode`:
+ *   'thread' — there IS a thread: an attention ITEM (NEURO's say/title
+ *              verbatim), a focus session or live task block current-work
+ *              names, or a step he has named. The compact card renders.
+ *   'quiet'  — no thread and no named step (his own time, or a context NEURO
+ *              cannot read). Uncertainty is a QUIET state: no card, no
+ *              questions, the field dominant — see `statement`.
  *
- * `nextStep` is the step HE named on the session — never invented.
- * `moves` are the context moves this page can offer (keep / name / return);
- * `actions` are the server's lifecycle utterances, verbatim.
+ * `nextStep` is the step HE named on the session — never invented, never asked
+ * for unprompted. `actions` are the server's lifecycle utterances, verbatim.
  */
 export function currentThread(d, session = null) {
   const primary = (d && d.primary) || null;
   const work = (d && d.work) || null;
-  const life = (d && d.life) || null;
-  const activity = d && d.context ? d.context.activity : null;
   const s = session && session.session ? session.session : null;
   const nextStep = s && s.nextStep ? { known: true, text: s.nextStep } : { known: false, text: null };
-  const sessionActive = Boolean(s && s.active !== false && s.status !== 'finished');
   const actions = ((d && d.utterances) || [])
     .filter((u) => u && u.intent && LIFECYCLE_KINDS.has(u.intent.kind) && u.say);
 
-  let state;
   let item = null;
   if (primary && primary.kind === 'item') {
-    state = 'item';
     item = {
       kind: 'item',
       type: primary.type || null,
@@ -192,54 +183,76 @@ export function currentThread(d, session = null) {
       reason: primary.reason && primary.reason !== primary.say ? primary.reason : null,
     };
   } else if (work && work.known && work.task) {
-    state = 'work';
     item = { kind: 'work', type: null, title: work.task, sub: null, reason: work.why || null };
-  } else if (primary && primary.kind === 'context' && activity && activity !== 'unknown') {
-    state = 'context';
-    const doing = life && life.doing;
-    item = {
-      kind: 'context',
-      type: null,
-      // The context card's `say` repeats the place ("… · living-room"); only
-      // its title is NEURO's description of the situation.
-      title: (doing && LIFE_HEADLINE[doing]) || primary.title || null,
-      sub: workHeld(d) ? 'I’m holding work while you’re here.' : null,
-      reason: null,
-    };
-  } else {
-    state = 'unknown';
-  }
-
-  // What SAiM can honestly say about where things stand, when there is no
-  // named step: what is in front of him (observed) and that the step is unknown.
-  let situation = null;
-  if (state !== 'item' && !nextStep.known) {
-    const atDesk = work && work.deskKnown !== false && work.atDesk;
-    const front = atDesk && work.app ? `${appName(work.app)} is already open.` : null;
-    situation = [front, 'I don’t yet know the next step.'].filter(Boolean).join(' ');
-  }
-
-  // Moves for a situation without a task plan. None queues a desktop intent.
-  const doing = life && life.doing && life.doing !== 'unknown' ? life.doing : null;
-  const moves = [];
-  if (state === 'context' || state === 'unknown') {
-    if (state === 'context' && doing) moves.push({ id: 'keep', label: 'Keep working here', doing });
-    if (!nextStep.known) moves.push({ id: 'name', label: 'Name the next step' });
-    if (workHeld(d) && doing !== 'working') moves.push({ id: 'return', label: 'Return to work', doing: 'working' });
-  } else if (state === 'work' && !nextStep.known) {
-    moves.push({ id: 'name', label: 'Name the next step' });
+  } else if (nextStep.known) {
+    // A named step on his own time: the context title is NEURO's, verbatim.
+    item = { kind: 'context', type: null, title: (primary && primary.title) || (d && d.life && d.life.label) || null, sub: null, reason: null };
   }
 
   return {
-    state,
+    mode: item ? 'thread' : 'quiet',
     item,
-    unknown: state === 'unknown' ? UNKNOWN_THREAD : null,
-    situation,
     nextStep,
-    sessionActive,
-    moves,
     actions,
   };
+}
+
+/**
+ * The quiet statement — what SAiM says over her field when there is no thread.
+ * Short, honest, and asks nothing of him.
+ *
+ *   lines      — `You’re home. VS Code is open.` / `I’m holding work for now.`
+ *   qualifiers — small, honest caveats: a room heard via a DEVICE (never Nick
+ *                placed in it), and anything NEURO could not read.
+ *   actions    — at most two quiet links: tell her what you're doing; bring
+ *                work back (only while work is actually held).
+ */
+export function statement(d) {
+  const p = presence(d);
+  const work = (d && d.work) || null;
+  const place = d && d.context && d.context.place;
+  const where = p.whereKnown ? p.line1.replace(/^Nick · /, '') : null;
+
+  let placeSay;
+  if (!where) placeSay = 'I can’t place you right now.';
+  else if (where === 'Home') placeSay = 'You’re home.';
+  else if (where === 'Work') placeSay = 'You’re at work.';
+  else placeSay = `You’re at ${where}.`;
+
+  let deskSay = null;
+  if (!work || work.deskKnown === false) deskSay = 'I can’t see the laptop.';
+  else if (work.atDesk && work.app) deskSay = `${appName(work.app)} is open.`;
+  else if (!work.atDesk) deskSay = 'You’re away from the laptop.';
+
+  const lines = [[placeSay, deskSay].filter(Boolean).join(' ')];
+  const blind = silence(d);
+  if (blind && blind.kind === 'blind') lines.push(blind.text);
+  else if (workHeld(d)) lines.push('I’m holding work for now.');
+  else if (d && d.context && d.context.activity === 'unknown') lines.push('I’m not sure what you’re doing.');
+
+  const qualifiers = [];
+  if (place && place.room) {
+    const what = place.roomSubject ? cap(String(place.roomSubject)) : 'A device';
+    qualifiers.push(`${what} heard in the ${prettyRoom(place.room)}.`);
+  }
+  const gaps = gapsOf(d);
+  if (gaps.length) qualifiers.push(`Can’t read: ${gaps.join('; ')}.`);
+
+  const actions = [{ id: 'tell', label: 'Tell me what you’re doing' }];
+  if (workHeld(d)) actions.push({ id: 'bring', label: 'Bring work back' });
+
+  return { lines, qualifiers, actions, operation: p.operation };
+}
+
+/** Every input NEURO says it could not read, named. */
+function gapsOf(d) {
+  const ctx = (d && d.context) || {};
+  const gaps = [];
+  const add = (g) => { if (g && !gaps.includes(g)) gaps.push(g); };
+  if (Array.isArray(ctx.unknowns)) ctx.unknowns.forEach((u) => add(typeof u === 'string' ? u : (u && (u.input || u.why)) || null));
+  if (Array.isArray(ctx.cannotSee)) ctx.cannotSee.forEach((u) => add(typeof u === 'string' ? u : (u && (u.label || u.input || u.why)) || null));
+  if (Array.isArray(d && d.gaps)) d.gaps.forEach((g) => add(g && (g.input ? `${g.input}${g.why ? ` — ${g.why}` : ''}` : g.why)));
+  return gaps;
 }
 
 // ── Tool handoff ────────────────────────────────────────────────────────────
@@ -454,43 +467,6 @@ export function judgement(d) {
     text: a.say || `${count} waiting for your judgement.`,
     where: a.where || 'NEURO',
   };
-}
-
-// ── Evidence trail ──────────────────────────────────────────────────────────
-
-/**
- * A compact trail of what SAiM is going on, each line a DIFFERENT kind of
- * fact, never merged into a claim about Nick:
- *   desk     — the laptop agent (seen / not seen / away) and what is in front;
- *   device   — a room sensor hearing a DEVICE ("Watch heard in the living room");
- *   location — only when NEURO could not place him;
- *   held     — that work context is being held;
- *   gaps     — every input NEURO says it could not read.
- */
-export function evidence(d) {
-  const lines = [];
-  const work = (d && d.work) || null;
-  if (!work || work.deskKnown === false) lines.push({ kind: 'desk', text: 'Laptop not seen', unknown: true });
-  else if (work.atDesk) lines.push({ kind: 'desk', text: `Desk active${work.app ? ` · ${appName(work.app)} open` : ''}` });
-  else lines.push({ kind: 'desk', text: 'Away from the laptop' });
-
-  const place = d && d.context && d.context.place;
-  if (place && place.room) {
-    const what = place.roomSubject ? cap(String(place.roomSubject)) : 'A device';
-    lines.push({ kind: 'device', text: `${what} heard in the ${prettyRoom(place.room)}` });
-  }
-  if (!presence(d).whereKnown) lines.push({ kind: 'location', text: 'Location unknown', unknown: true });
-  if (workHeld(d)) lines.push({ kind: 'held', text: 'Work context held' });
-
-  const ctx = (d && d.context) || {};
-  const gaps = [];
-  const add = (g) => { if (g && !gaps.includes(g)) gaps.push(g); };
-  if (Array.isArray(ctx.unknowns)) ctx.unknowns.forEach((u) => add(typeof u === 'string' ? u : (u && (u.input || u.why)) || null));
-  if (Array.isArray(ctx.cannotSee)) ctx.cannotSee.forEach((u) => add(typeof u === 'string' ? u : (u && (u.label || u.input || u.why)) || null));
-  if (Array.isArray(d && d.gaps)) d.gaps.forEach((g) => add(g && (g.input ? `${g.input}${g.why ? ` — ${g.why}` : ''}` : g.why)));
-  if (d && d.poolAvailable === false) add('your work queue');
-
-  return { lines, gaps };
 }
 
 // ── Field drive ─────────────────────────────────────────────────────────────

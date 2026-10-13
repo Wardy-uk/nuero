@@ -29,19 +29,20 @@ Frame (`AltShell.jsx`, pure): the unchanged `Field` full-screen; a discreet corn
 marker, Control/NEURO links, lock); a persistent bottom bar — tagline left, the five icon buttons
 centre, "Updated HH:MM" (the read on screen) right.
 
-The SAiM page (`SaimHome.jsx`) — one dominant thread card and a quiet rail:
-- **Presence** (top): `Nick · Office|Home|location unknown`, then `desk seen · VS Code open ·
-  standing by`. A room is always attributed to the device a sensor heard ("watch heard in the
-  living room"), never stated as where Nick is.
-- **Thread card**: NEURO's item / current-work / context title verbatim — or, when the context is
-  unknown or there is nothing, "I can't recover the thread from what I can see. Tell me what you
-  were doing, or capture the next thing." Then the next step he named (never invented), the
-  server's lifecycle sentences, **Best next place** (one primary "Open X" + why), **Other ways in**
-  (one AI tool, Music, up to three context apps; the rest behind "More available apps"), and a
-  one-line Ask / Save dock (Save goes through the same outbox as Capture).
-- **Rail**: Needs your judgement (statement + "Review in NEURO", never approve) · Next (only when
-  there is a transition or a meeting later today) · Holding the day (count + reasons, local
-  Show/Hide that reranks nothing) · What I can see (NEURO's evidence lines and named gaps).
+The SAiM page (`SaimHome.jsx`) has two modes (`model.mjs → currentThread`):
+- **Quiet** — no thread and no named step (his own time, or a context NEURO can't read). The
+  field is the content: a small statement low on the left ("You're home. VS Code is open." /
+  "I'm holding work for now."), a compact qualifier ("Watch heard in the living room." — a device,
+  never Nick placed in a room; anything NEURO couldn't read), and at most two quiet links: **Tell
+  me what you're doing** (opens a compact Ask/Save input) and **Bring work back** (only while work
+  is held; tells NEURO he is working and re-reads — no step invented). No card, no app chooser, no
+  rail, no form, no prompts to decide. A waiting approval or a relevant transition appears only
+  when there is one; held work is a "Show what's held (n)" link.
+- **Thread** — an attention item, a focus session / task block, or a step he named. A compact
+  card: NEURO's wording verbatim, "Next: <step>", the server's lifecycle sentences, and **Best
+  next place + Open** only when a named step points at a declared app that is NOT already in front
+  (if it is: "You're already in X.", no button). Other apps appear only after a genuine
+  recommendation or when he presses "Help me move this forward".
 
 ### Tool handoff rules (`model.mjs → toolHandoff`)
 - Only apps in `work.deskOffer.apps` (the agent's declared `canOpen`, intersected server-side with

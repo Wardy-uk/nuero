@@ -1,123 +1,125 @@
-/* SAiM Alt — the companion page. One dominant statement and a quiet rail,
-   both translucent over her field and lit by --saim-rgb (set once on the shell
-   from the live read), so when she shifts colour the page shifts with her.
-   Deliberately narrower and lighter than a dashboard: the field is meant to be
-   seen around it. */
+/* SAiM Alt — the companion page. Lit by --saim-rgb (set once on the shell from
+   the live read), so when she shifts colour the page shifts with her.
 
-.alt-home { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
-.alt-home--bare { min-height: 50vh; justify-content: center; align-items: center; }
-.alt-home__bare { color: var(--muted); text-align: center; font-family: 'Newsreader', Georgia, serif; font-size: 1.25rem; }
-.alt-home__baredock { width: min(600px, 100%); }
+   Quiet mode is mostly FIELD: a small statement sits low on the left, no card,
+   no borders, no rail. Thread mode is one compact card. */
+
+.alt-home { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.9rem; }
 .alt-home__stale, .alt-home__note {
-  margin: 0 auto; max-width: 1040px; padding: 0.4rem 0.75rem; border-radius: 8px;
-  font-size: 0.8rem; color: #f5c66b; background: rgba(245, 198, 107, 0.08); border: 1px solid rgba(245, 198, 107, 0.3);
+  margin: 0 auto 0.6rem; max-width: 860px; padding: 0.35rem 0.7rem; border-radius: 8px;
+  font-size: 0.78rem; color: #f5c66b; background: rgba(245, 198, 107, 0.06); border: 1px solid rgba(245, 198, 107, 0.25);
 }
 .is-unknown { color: var(--muted); font-style: italic; }
 
-/* ── Presence ───────────────────────────────────────────────────────────── */
-.alt-presence { padding: 0 0.2rem; display: flex; align-items: baseline; gap: 0.9rem; flex-wrap: wrap; }
-.alt-presence__who { margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 1.4rem; letter-spacing: 0.01em; }
-.alt-presence__op { margin: 0; font-size: 0.78rem; letter-spacing: 0.04em; color: rgb(var(--saim-rgb, 114, 150, 211)); opacity: 0.85; }
+.alt-label { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-right: 0.5rem; }
 
-/* ── Two columns ────────────────────────────────────────────────────────── */
-.alt-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 2rem; align-items: start; }
-
-/* ── The thread ─────────────────────────────────────────────────────────── */
-.alt-thread {
-  background: rgba(14, 19, 26, 0.58);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(var(--saim-rgb, 114, 150, 211), 0.26);
-  border-radius: 16px;
-  padding: 1.3rem 1.4rem 1.05rem;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+/* A quiet control: text, not a button-shaped object. */
+.alt-quietlink {
+  font: inherit; font-size: 0.82rem; cursor: pointer; padding: 0.1rem 0; background: none; border: none;
+  color: rgba(var(--saim-rgb, 114, 150, 211), 0.95); border-bottom: 1px solid rgba(var(--saim-rgb, 114, 150, 211), 0.3);
 }
-.alt-thread__title { margin: 0; font-family: 'Newsreader', Georgia, serif; font-size: 1.8rem; line-height: 1.22; font-weight: 300; }
-.alt-thread__sub { margin: 0.3rem 0 0; color: rgba(230, 237, 243, 0.82); font-size: 1rem; }
-.alt-thread__why { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.88rem; }
-.alt-thread__situation { margin: 0.85rem 0 0; color: var(--muted); font-size: 0.92rem; }
-.alt-thread__next { margin: 0.85rem 0 0; font-size: 1.02rem; }
-.alt-thread__actions { margin-top: 0.8rem; display: flex; flex-wrap: wrap; gap: 0.45rem; }
-.alt-thread__dock { margin-top: 0.95rem; padding-top: 0.8rem; border-top: 1px solid rgba(255, 255, 255, 0.06); }
-.alt-warn { margin: 0.5rem 0 0; color: #f5c66b; font-size: 0.88rem; }
+.alt-quietlink:hover:not(:disabled) { border-bottom-color: rgb(var(--saim-rgb, 114, 150, 211)); }
+.alt-quietlink:disabled { opacity: 0.45; cursor: default; }
+.alt-link {
+  font: inherit; font-size: 0.8rem; background: none; border: none; padding: 0; cursor: pointer;
+  color: rgba(230, 237, 243, 0.65); text-decoration: none;
+}
+.alt-link:hover { color: var(--text); text-decoration: underline; }
 
-.alt-label { font-size: 0.64rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-right: 0.35rem; }
+/* ── Quiet: the field is the content ────────────────────────────────────── */
+.alt-home--quiet { max-width: none; min-height: 100%; justify-content: flex-end; }
+.alt-quiet {
+  max-width: 460px; padding: 0 0 1.4rem 0.4rem;
+  /* A soft local scrim, no border: legibility without a card. */
+  background: radial-gradient(ellipse at 20% 60%, rgba(11, 15, 20, 0.55), rgba(11, 15, 20, 0) 70%);
+}
+.alt-quiet__line { margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 1.5rem; line-height: 1.3; }
+.alt-quiet__sub { margin: 0.2rem 0 0; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 1.1rem; color: rgba(230, 237, 243, 0.78); }
+.alt-quiet__qual { margin: 0.45rem 0 0; font-size: 0.74rem; color: var(--muted); }
+.alt-quiet__op { color: rgba(var(--saim-rgb, 114, 150, 211), 0.85); }
+.alt-quiet__actions { margin-top: 0.75rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 1.1rem; }
+.alt-quiet__dock { margin-top: 0.7rem; }
+
+.alt-held { display: inline-flex; flex-direction: column; gap: 0.25rem; }
+.alt-held__list { margin: 0.2rem 0 0; padding-left: 1rem; font-size: 0.78rem; color: rgba(230, 237, 243, 0.78); }
+.alt-held__why { color: var(--muted); }
+
+.alt-notices { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.8rem; }
+.alt-notice { margin: 0; font-size: 0.84rem; color: rgba(230, 237, 243, 0.85); }
+.alt-notice--judge { color: #f5c66b; }
+.alt-notice__sub { color: var(--muted); }
+
+/* ── Thread: one compact card ───────────────────────────────────────────── */
+.alt-presence { padding: 0 0.2rem; display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; }
+.alt-presence__who { margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 300; font-size: 1.3rem; }
+.alt-presence__op { margin: 0; font-size: 0.76rem; color: rgba(var(--saim-rgb, 114, 150, 211), 0.85); }
+
+.alt-thread {
+  background: rgba(14, 19, 26, 0.55);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(var(--saim-rgb, 114, 150, 211), 0.22);
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem 0.9rem;
+}
+.alt-thread__title { margin: 0; font-family: 'Newsreader', Georgia, serif; font-size: 1.6rem; line-height: 1.22; font-weight: 300; }
+.alt-thread__sub { margin: 0.25rem 0 0; color: rgba(230, 237, 243, 0.82); }
+.alt-thread__why { margin: 0.3rem 0 0; color: var(--muted); font-size: 0.86rem; }
+.alt-thread__next { margin: 0.8rem 0 0; font-size: 1.02rem; }
+.alt-thread__actions { margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.alt-thread__foot { margin-top: 0.8rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 1.1rem; }
+.alt-thread__dock { margin-top: 0.7rem; }
+.alt-warn { margin: 0.5rem 0 0; color: #f5c66b; font-size: 0.86rem; }
 
 .alt-pill {
-  font: inherit; font-size: 0.84rem; cursor: pointer;
-  padding: 0.34rem 0.85rem; border-radius: 999px;
-  color: var(--text); background: rgba(28, 37, 48, 0.7); border: 1px solid var(--line);
+  font: inherit; font-size: 0.82rem; cursor: pointer;
+  padding: 0.3rem 0.8rem; border-radius: 999px;
+  color: var(--text); background: rgba(28, 37, 48, 0.6); border: 1px solid var(--line);
 }
 .alt-pill:hover:not(:disabled) { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.7); }
 .alt-pill:disabled { opacity: 0.45; cursor: default; }
-.alt-pill--strong { background: rgba(var(--saim-rgb, 114, 150, 211), 0.2); border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.55); }
 
-/* ── Tools: compact, subordinate to the thread ──────────────────────────── */
-.alt-place { margin-top: 0.95rem; }
-.alt-place__best { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.7rem; margin-bottom: 0.55rem; }
+.alt-place__best { margin-top: 0.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; }
 .alt-place__name { font-size: 1rem; font-weight: 600; }
-.alt-place__already { margin: 0 0 0.5rem; font-size: 0.86rem; color: var(--muted); }
-.alt-place__none { margin: 0; font-size: 0.84rem; color: var(--muted); }
+.alt-place__already { margin: 0.6rem 0 0; font-size: 0.86rem; color: var(--muted); }
+.alt-place__none { margin: 0.6rem 0 0; font-size: 0.82rem; color: var(--muted); }
 
 .alt-tool { display: inline-flex; align-items: center; gap: 0.4rem; }
 .alt-tool__primary {
-  font: inherit; font-size: 0.88rem; font-weight: 600; cursor: pointer;
-  padding: 0.36rem 0.95rem; border-radius: 9px; border: none;
+  font: inherit; font-size: 0.86rem; font-weight: 600; cursor: pointer;
+  padding: 0.32rem 0.9rem; border-radius: 8px; border: none;
   color: #0b0f14; background: rgb(var(--saim-rgb, 114, 150, 211));
 }
 .alt-tool__primary:disabled { opacity: 0.55; cursor: default; }
 .alt-tool__btn {
-  font: inherit; font-size: 0.75rem; cursor: pointer; padding: 0.18rem 0.55rem; border-radius: 7px;
+  font: inherit; font-size: 0.74rem; cursor: pointer; padding: 0.16rem 0.5rem; border-radius: 6px;
   color: rgba(230, 237, 243, 0.85); background: transparent; border: 1px solid rgba(255, 255, 255, 0.09);
 }
-.alt-tool__btn:hover:not(:disabled) { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.6); color: var(--text); }
+.alt-tool__btn:hover:not(:disabled) { border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.6); }
 .alt-tool__btn:disabled { opacity: 0.5; cursor: default; }
-.alt-tool--off { font-size: 0.74rem; color: var(--muted); }
+.alt-tool--off { font-size: 0.72rem; color: var(--muted); }
 .alt-tool__why { font-size: 0.72rem; color: var(--muted); }
-
-.alt-ways { display: flex; flex-direction: column; gap: 0.3rem; }
-.alt-ways__row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; }
+.alt-ways { margin-top: 0.7rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.alt-ways__row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.55rem; }
 
 .alt-desk { font-size: 0.72rem; color: var(--muted); }
 .alt-desk--opened { color: #7fd6a4; }
 .alt-desk--failed, .alt-desk--expired { color: #f08a7e; }
 
-/* ── The rail: quiet ────────────────────────────────────────────────────── */
-.alt-rail { display: flex; flex-direction: column; gap: 1rem; padding-top: 0.3rem; opacity: 0.88; }
-.alt-rail__block { padding: 0 0.2rem 0.85rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
-.alt-rail__block:last-child { border-bottom: none; }
-.alt-rail__head { margin: 0 0 0.3rem; font-size: 0.62rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
-.alt-rail__text { margin: 0 0 0.25rem; font-size: 0.84rem; color: rgba(230, 237, 243, 0.8); }
-.alt-rail__text.is-strong { color: #f5c66b; }
-.alt-rail__sub { color: var(--muted); font-size: 0.78rem; }
-.alt-held__list { margin: 0.3rem 0 0; padding-left: 1rem; font-size: 0.8rem; }
-.alt-trail { list-style: none; margin: 0; padding: 0; font-size: 0.8rem; color: rgba(230, 237, 243, 0.75); display: flex; flex-direction: column; gap: 0.2rem; }
-.alt-trail__gap { color: #f5c66b; }
-
-.alt-link {
-  font: inherit; font-size: 0.78rem; background: none; border: none; padding: 0; cursor: pointer;
-  color: rgb(var(--saim-rgb, 114, 150, 211)); text-decoration: none;
-}
-.alt-link:hover { text-decoration: underline; }
-
+/* ── Compact contextual input ───────────────────────────────────────────── */
 .alt-input {
-  font: inherit; color: var(--text); background: rgba(11, 15, 20, 0.6);
-  border: 1px solid var(--line); border-radius: 10px; padding: 0.42rem 0.7rem;
+  font: inherit; color: var(--text); background: rgba(11, 15, 20, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 0.38rem 0.65rem;
 }
 .alt-input:focus { outline: none; border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.7); }
-.alt-stepform { display: flex; gap: 0.4rem; margin-top: 0.6rem; }
-.alt-stepform .alt-input { flex: 1; }
-
-/* ── Ask / Save dock ────────────────────────────────────────────────────── */
-.alt-dock__line { display: flex; gap: 0.4rem; align-items: center; }
-.alt-dock__input { flex: 1; min-width: 0; }
+.alt-dock__line { display: flex; gap: 0.8rem; align-items: center; }
+.alt-dock__input { flex: 1; min-width: 0; font-size: 0.88rem; }
 .alt-dock__note { margin: 0.3rem 0 0; font-size: 0.72rem; color: var(--muted); }
 .alt-dock__note.is-bad { color: #f08a7e; font-weight: 600; }
-.alt-dock__answer { margin-bottom: 0.55rem; padding: 0.6rem 0.8rem; border-radius: 10px; background: rgba(11, 15, 20, 0.55); border: 1px solid var(--line); }
-.alt-dock__q { margin: 0 0 0.25rem; color: var(--muted); font-size: 0.78rem; }
-.alt-dock__a { margin: 0 0 0.35rem; font-family: 'Newsreader', Georgia, serif; font-size: 1.02rem; white-space: pre-wrap; }
+.alt-dock__answer { margin-bottom: 0.5rem; }
+.alt-dock__q { margin: 0 0 0.15rem; color: var(--muted); font-size: 0.76rem; }
+.alt-dock__a { margin: 0; font-family: 'Newsreader', Georgia, serif; font-size: 1rem; white-space: pre-wrap; }
 
 @media (max-width: 900px) {
-  .alt-grid { grid-template-columns: 1fr; }
-  .alt-thread { padding: 1rem 1.05rem; }
-  .alt-thread__title { font-size: 1.4rem; }
+  .alt-thread__title { font-size: 1.3rem; }
+  .alt-quiet__line { font-size: 1.25rem; }
 }
