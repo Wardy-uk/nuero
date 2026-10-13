@@ -139,8 +139,8 @@ function segment(fixes = [], { readEndMs = null } = {}) {
     const endFix = fixes[e];
     return {
       startedAt: startFix.t, endedAt: endFix.t,
-      start: { lat: startFix.lat, lon: startFix.lon, place: startFix.place },
-      end: { lat: endFix.lat, lon: endFix.lon, place: endFix.place },
+      start: { lat: startFix.lat, lon: startFix.lon, place: startFix.place || zoneNear(fixes, s, -1) },
+      end: { lat: endFix.lat, lon: endFix.lon, place: endFix.place || zoneNear(fixes, e, +1) },
       measuredMiles: round1(metres / MILE_M),
       movingMinutes: Math.round(movingMs / 60000),
       peakKmh: Math.round(peak),
@@ -152,6 +152,24 @@ function segment(fixes = [], { readEndMs = null } = {}) {
       truncated: run.first === 0,
     };
   });
+}
+
+/**
+ * The zone a journey began (dir -1) or ended (dir +1) in, when its own fix
+ * carries none. Life360 goes quiet while parked: on 13 Oct its last "home"
+ * fix was 69 minutes before the first moving one, 85 m away, so the drive read
+ * "somewhere → Office". The nearest fix with a zone counts only if it is
+ * within ZONE_NEAR_M of where the drive began or ended — the place is judged
+ * by WHERE, never by how recent, and a zone further away is not this one.
+ */
+const ZONE_NEAR_M = 300;
+function zoneNear(fixes, i, dir) {
+  for (let k = i + dir; k >= 0 && k < fixes.length; k += dir) {
+    const f = fixes[k];
+    if (haversineM(f, fixes[i]) > ZONE_NEAR_M) return null;
+    if (f.place) return f.place;
+  }
+  return null;
 }
 
 /** Is this a journey worth asking Nick about? PURE. Returns null or the reason it is not. */

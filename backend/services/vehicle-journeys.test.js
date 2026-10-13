@@ -316,3 +316,19 @@ test('evening nudge: silent with nothing waiting, one push when something is, ne
   assert.equal(b.why, 'nothing waiting');
   assert.equal(sent.length, 1);
 });
+
+test('a quiet Life360 before the drive still names the start: the nearest zone fix within 300 m, however old (13 Oct 2026)', () => {
+  const t0 = localNoon(2);
+  // "home" 69 minutes before the first moving fix, ~85 m away — the live shape.
+  const rows = [row(t0 - 69 * 60000, 52.7370, -1.3499, 0, 'home')];
+  let lat = 52.7377;
+  for (let i = 0; i < 40; i++) { rows.push(row(t0 + i * 30000, lat, -1.3491, 60, 'driving')); lat += 0.5 * KM_LAT; }
+  for (let k = 1; k <= 8; k++) rows.push(row(t0 + 40 * 30000 + k * 60000, lat, -1.3491, 0, 'Office'));
+  const segs = M.segment(M.fixesFromHistory(rows), { readEndMs: NOW });
+  assert.equal(segs.length, 1);
+  assert.equal(segs[0].start.place, 'home');
+  assert.equal(segs[0].end.place, 'Office');
+  // Negative: a zone fix 2 km from where the drive began is not where it began.
+  const far = [row(t0 - 69 * 60000, 52.7190, -1.3499, 0, 'home'), ...rows.slice(1)];
+  assert.equal(M.segment(M.fixesFromHistory(far), { readEndMs: NOW })[0].start.place, null);
+});
