@@ -158,20 +158,27 @@ export function currentThread(d, session = null) {
   };
 }
 
+
 // ── Tool handoff ────────────────────────────────────────────────────────────
 
 /**
- * The desk-agent vocabulary this shell knows how to SHOW. Whether any of these
- * is actually openable is decided by the agent's declared `canOpen`, carried as
- * `work.deskOffer.apps` — this list never makes something available.
+ * The desk-agent vocabulary this shell knows how to SHOW and ORDER. Whether any
+ * of these is actually openable is decided by the agent's declared `canOpen`,
+ * carried as `work.deskOffer.apps` — this list never makes something available.
  *
- * ⚠ `ai` is not yet in NEURO's `desk-intents.APPS`. Until it is (and the
- *   laptop's apps.json maps it), the AI slot renders as UNAVAILABLE with the
- *   reason — it is shown "always" as the brief asks, and never pressable.
+ * NEURO's `desk-intents.APPS` gained the AI tools and the work apps on 13 Oct
+ * 2026 (Nick: the first four were only ever examples).
  */
+export const AI_IDS = Object.freeze(['claude', 'chatgpt']);
+/** Shown, disabled, when no AI tool is offered — the AI slot always appears. */
 export const AI_SLOT = Object.freeze({ id: 'ai', label: 'AI assistant' });
 export const MUSIC_SLOT = Object.freeze({ id: 'music', label: 'Music' });
-const OTHER_ORDER = Object.freeze(['browser', 'code', 'terminal']);
+// After AI and Music, in this order when offered.
+const OTHER_ORDER = Object.freeze([
+  'outlook', 'teams', 'obsidian', 'excel', 'word',
+  'nova', 'vantage', 'neuro', 'plaud',
+  'browser', 'code', 'terminal', 'ssms', 'postman',
+]);
 
 // Foreground process names the desk agent reports → the app id that reopens it.
 // Process names only; never titles (the agent never sends them).
@@ -187,17 +194,42 @@ const FOREGROUND = Object.freeze({
   cmd: 'terminal',
   terminal: 'terminal',
   iterm2: 'terminal',
-  claude: 'ai',
-  chatgpt: 'ai',
+  claude: 'claude',
+  chatgpt: 'chatgpt',
+  codex: 'chatgpt',
+  olk: 'outlook',
+  outlook: 'outlook',
+  'ms-teams': 'teams',
+  msteams: 'teams',
+  teams: 'teams',
+  obsidian: 'obsidian',
+  excel: 'excel',
+  winword: 'word',
+  plaud: 'plaud',
+  ssms: 'ssms',
+  postman: 'postman',
 });
 
-// Words in the WORK's own text that point at a tool. Deliberately small: a
-// tool picked on a weak word is labelled uncertain, never stated as fact.
+// Words in the WORK's own text that point at a tool. Deliberately small and
+// specific: a tool picked on a word is labelled uncertain, never stated as fact.
 const TEXT_HINTS = Object.freeze([
-  { id: 'code', re: /\b(code|bug|deploy|commit|repo|refactor|test suite|script|endpoint)\b/i },
+  { id: 'nova', re: /\bnova\b/i },
+  { id: 'vantage', re: /\bvantage\b/i },
+  { id: 'plaud', re: /\b(plaud|transcript|recording)\b/i },
+  { id: 'ssms', re: /\b(sql|query|database|stored procedure)\b/i },
+  { id: 'excel', re: /\b(spreadsheet|excel|csv|xlsx)\b/i },
+  { id: 'word', re: /\b(word doc|docx)\b/i },
+  { id: 'outlook', re: /\b(email|e-mail|inbox|reply to)\b/i },
+  { id: 'obsidian', re: /\b(vault|obsidian|write-up|write up)\b/i },
+  { id: 'postman', re: /\b(postman|api call|endpoint)\b/i },
+  { id: 'code', re: /\b(code|bug|deploy|commit|repo|refactor|test suite|script)\b/i },
   { id: 'terminal', re: /\b(ssh|terminal|pm2|server log|shell)\b/i },
   { id: 'browser', re: /\b(jira|confluence|ticket|portal|website|dashboard|grafana|netlify)\b/i },
 ]);
+
+// The KIND of card in hand, when NEURO says what it is. Only kinds that name
+// their own tool; a meeting does not say whether it is in Teams.
+const TYPE_HINTS = Object.freeze({ email: 'outlook' });
 
 /**
  * The one recommended tool plus the fixed alternatives.
@@ -207,11 +239,12 @@ const TEXT_HINTS = Object.freeze([
  *      unseen, or a machine that has not declared → nothing pressable, and the
  *      offer's own `why` is said.
  *   2. The TOP candidate is chosen from offered apps only, by evidence in this
- *      order: the app he is already in → a tool the work text names → none.
- *      With no evidence the first offered alternative is still OFFERED, marked
- *      `certain: false`, and the reason says SAiM is unsure.
- *   3. Alternatives, fixed order: AI (always shown), Music (always shown), then
- *      browser / code / terminal if offered — minus whichever is on top.
+ *      order: the app he is already in → the kind of card in hand → a tool the
+ *      work text names → none. With no evidence the first offered app is still
+ *      OFFERED, marked `certain: false`, and the reason says SAiM is unsure.
+ *   3. Alternatives, fixed order: AI tools (always — one disabled "AI
+ *      assistant" when none is offered), Music (always), then the other
+ *      offered apps in OTHER_ORDER — minus whichever is on top.
  */
 export function toolHandoff(d, thread = null) {
   const work = (d && d.work) || null;
@@ -238,29 +271,35 @@ export function toolHandoff(d, thread = null) {
     let why = null;
     if (!available) {
       if (blockedWhy) why = blockedWhy;
-      else if (id === AI_SLOT.id) why = 'no AI tool is set up on the desk agent yet';
+      else if (id === AI_SLOT.id) why = 'no AI tool is set up on the desk agent';
       else why = 'not set up on this laptop';
     }
     return { id, label: labelOf(id), available, why };
   };
 
+  const offeredAi = AI_IDS.filter((id) => offeredIds.has(id));
+  const order = [...(offeredAi.length ? offeredAi : [AI_SLOT.id]), MUSIC_SLOT.id, ...OTHER_ORDER];
+
   // ── The top candidate ─────────────────────────────────────────────────
   let top = null;
   if (!blockedWhy) {
     const fg = work && work.app ? FOREGROUND[String(work.app).toLowerCase().replace(/\.exe$/, '')] : null;
+    const type = d && d.primary && d.primary.type ? TYPE_HINTS[d.primary.type] : null;
     const text = [thread && thread.item && thread.item.title, work && work.task].filter(Boolean).join(' ');
     const hint = text ? TEXT_HINTS.find((h) => h.re.test(text) && offeredIds.has(h.id)) : null;
     if (fg && offeredIds.has(fg)) {
       top = { ...slot(fg), certain: true, because: `you’re already in ${work.app}` };
+    } else if (type && offeredIds.has(type)) {
+      top = { ...slot(type), certain: false, because: 'that’s where this kind of thing lives — I’m not certain' };
     } else if (hint) {
       top = { ...slot(hint.id), certain: false, because: 'the work mentions it — I’m not certain this is the right tool' };
     } else {
-      const firstOffered = [AI_SLOT.id, ...OTHER_ORDER, MUSIC_SLOT.id].find((id) => offeredIds.has(id));
+      const firstOffered = order.find((id) => offeredIds.has(id));
       if (firstOffered) top = { ...slot(firstOffered), certain: false, because: 'I’m not sure which tool this needs — this is my best guess' };
     }
   }
 
-  const alternatives = [slot(AI_SLOT.id), slot(MUSIC_SLOT.id)];
+  const alternatives = [...(offeredAi.length ? offeredAi.map(slot) : [slot(AI_SLOT.id)]), slot(MUSIC_SLOT.id)];
   for (const id of OTHER_ORDER) if (offeredIds.has(id)) alternatives.push(slot(id));
 
   return {

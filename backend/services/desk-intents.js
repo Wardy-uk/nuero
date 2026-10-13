@@ -124,11 +124,27 @@ const STATE_KEY = 'desk_intents';
 // still does nothing until the agent's own config on the laptop maps it to a
 // command. Two independent edits, on two machines, are required to make this
 // server able to start a new kind of program.
+// The first four were the original examples. Nick, 13 Oct 2026: they were
+// never meant as the whole list — widened from the laptop's own Start menu to
+// the apps he actually works in (Slack and Xelion deliberately left out).
 const APPS = {
   music: 'your music player',
   code: 'VS Code',
   terminal: 'a terminal',
   browser: 'your browser',
+  claude: 'Claude',
+  chatgpt: 'ChatGPT',
+  outlook: 'Outlook',
+  teams: 'Teams',
+  nova: 'NOVA',
+  vantage: 'VANTAGE',
+  neuro: 'NEURO',
+  obsidian: 'Obsidian',
+  excel: 'Excel',
+  word: 'Word',
+  plaud: 'Plaud',
+  ssms: 'SQL Server Management Studio',
+  postman: 'Postman',
 };
 
 // ⚠ TWO LABELS PER APP, AND THEY ARE NOT INTERCHANGEABLE. `APPS` is PROSE, for
@@ -144,6 +160,19 @@ const BUTTON_LABELS = {
   code: 'VS Code',
   terminal: 'Terminal',
   browser: 'Browser',
+  claude: 'Claude',
+  chatgpt: 'ChatGPT',
+  outlook: 'Outlook',
+  teams: 'Teams',
+  nova: 'NOVA',
+  vantage: 'VANTAGE',
+  neuro: 'NEURO',
+  obsidian: 'Obsidian',
+  excel: 'Excel',
+  word: 'Word',
+  plaud: 'Plaud',
+  ssms: 'SSMS',
+  postman: 'Postman',
 };
 
 const TTL_MS = 5 * 60 * 1000;

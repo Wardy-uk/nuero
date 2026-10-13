@@ -199,7 +199,40 @@ test('rendered: unavailable tools are disabled buttons with their reason beside 
   assert.match(html, /<button[^>]*class="alt-tools__primary"[^>]*>VS Code<\/button>/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>AI assistant<\/button>/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>Music<\/button>/);
-  assert.match(html, /no AI tool is set up on the desk agent yet/);
+  assert.match(html, /no AI tool is set up on the desk agent/);
+});
+
+// The widened vocabulary (13 Oct 2026): Claude and ChatGPT fill the AI slot,
+// and the work apps are ordered after Music.
+const WIDE = [
+  ['claude', 'Claude'], ['chatgpt', 'ChatGPT'], ['music', 'Music'], ['outlook', 'Outlook'], ['teams', 'Teams'],
+  ['nova', 'NOVA'], ['browser', 'Browser'], ['code', 'VS Code'], ['terminal', 'Terminal'],
+].map(([id, label]) => ({ id, label }));
+const wide = (over = {}) => live({ work: { ...live().work, app: 'explorer', ...over, deskOffer: { known: true, host: 'H', why: null, apps: WIDE } } });
+
+test('offered AI tools fill the AI slot, pressable, ahead of Music and the work apps', () => {
+  const t = M.toolHandoff(wide({ app: 'code' }));
+  assert.equal(t.top.id, 'code');
+  assert.deepEqual(t.alternatives.map((a) => a.id), ['claude', 'chatgpt', 'music', 'outlook', 'teams', 'nova', 'browser', 'terminal']);
+  assert.ok(t.alternatives.every((a) => a.available), 'everything listed was offered');
+  assert.ok(!t.alternatives.some((a) => a.id === 'ai'), 'no disabled placeholder once a real AI tool is offered');
+});
+
+test('the app in front wins; the kind of card and the work’s words are only guesses', () => {
+  assert.deepEqual(
+    (({ id, certain }) => ({ id, certain }))(M.toolHandoff(wide({ app: 'claude' })).top),
+    { id: 'claude', certain: true },
+  );
+  const email = M.toolHandoff(wide(), M.currentThread(live({ primary: { kind: 'item', type: 'email', title: 'Reply needed', say: 'Reply needed' } })));
+  assert.equal(M.toolHandoff(live({ ...wide(), primary: { kind: 'item', type: 'email', title: 'x' } })).top.id, 'outlook');
+  assert.equal(email.top.certain, false);
+  const nova = M.toolHandoff(wide(), { item: { title: 'Check the NOVA escalation list' } });
+  assert.equal(nova.top.id, 'nova');
+  assert.equal(nova.top.certain, false);
+  // No evidence: the first offered tool, said to be a guess.
+  const guess = M.toolHandoff(wide());
+  assert.equal(guess.top.id, 'claude');
+  assert.match(guess.top.because, /not sure/);
 });
 
 test('rendered: a surface that cannot reach the desk queue offers nothing pressable', () => {

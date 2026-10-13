@@ -154,8 +154,16 @@ $AppOverridePath = Join-Path $env:LOCALAPPDATA 'neuro-agent\apps.json'
 if (Test-Path $AppOverridePath) {
   try {
     $o = Get-Content -Raw $AppOverridePath | ConvertFrom-Json
-    foreach ($k in $AppCommands.Keys.Clone()) {
-      if ($o.PSObject.Properties.Name -contains $k -and $o.$k) { $AppCommands[$k] = [string]$o.$k }
+    # The file both OVERRIDES the built-ins and ADDS ids (13 Oct 2026). Adding
+    # is still a deliberate edit on THIS machine — the Pi cannot write here —
+    # and the server only ever hands out ids in its own APPS list, so an id
+    # here that NEURO does not know is simply never offered. A key must look
+    # like an id, and the value is still only ever a bare command: no arguments.
+    foreach ($p in $o.PSObject.Properties) {
+      $k = [string]$p.Name
+      if ($k -cmatch '^[a-z][a-z0-9-]{0,23}$' -and $p.Value -is [string] -and $p.Value) {
+        $AppCommands[$k] = [string]$p.Value
+      }
     }
   } catch {
     Write-Warning "could not read $AppOverridePath - using built-in app commands"

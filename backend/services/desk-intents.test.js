@@ -52,7 +52,11 @@ test('⚠ the queued intent carries an ID ONLY — never a path or an argument',
 test('the vocabulary is small and deliberate', () => {
   // Growing this is a decision, and it still does nothing until the agent's own
   // config on the laptop maps the key to a command.
-  assert.deepEqual(Object.keys(di.APPS).sort(), ['browser', 'code', 'music', 'terminal']);
+  assert.deepEqual(Object.keys(di.APPS).sort(), [
+    'browser', 'chatgpt', 'claude', 'code', 'excel', 'music', 'neuro', 'nova',
+    'obsidian', 'outlook', 'plaud', 'postman', 'ssms', 'teams', 'terminal', 'vantage', 'word',
+  ]);
+  assert.deepEqual(Object.keys(di.BUTTON_LABELS).sort(), Object.keys(di.APPS).sort(), 'every app has a button label');
 });
 
 // ── Expiry ───────────────────────────────────────────────────────────────────
