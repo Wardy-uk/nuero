@@ -225,3 +225,4 @@
 .wx-hgrid thead th { border-top: none; color: var(--text-muted); font-weight: 500; font-size: 0.78rem; }
 .wx-hgrid tbody th { text-align: left; color: var(--text-muted); font-weight: 500; }
 .wx-hgrid td { font-family: var(--font-mono); color: var(--text-secondary); }
+.wx-headline-conf { color: var(--text-muted); font-size: 0.85em; }

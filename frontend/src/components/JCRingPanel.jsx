@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import { TrendChart } from './HealthPanel';
+import { Headline, HowItWorks } from './canonical/canonicalUi';
+import './canonical/Canonical.css';
 import './JCRingPanel.css';
 
 const METRICS = [
@@ -123,7 +125,6 @@ export default function JCRingPanel() {
     <header className="jr-head">
       <div>
         <h1>JC Ring</h1>
-        <p>Direct-ring readings, kept separate from Apple Watch and HiLo.</p>
       </div>
       <button className="jr-refresh" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
     </header>
@@ -131,8 +132,16 @@ export default function JCRingPanel() {
     {error && <p className="jr-message jr-message--error">{error}</p>}
     {!data && !error && <p className="jr-message">Loading ring readings…</p>}
     {data && <>
+      {(() => {
+        // The answer: when the ring last delivered. The timeline is stored newest-first.
+        const last = (data.syncTimeline || [])[0];
+        return <Headline pill={last ? 'Last sync' : 'No sync'} testid="jc-ring-headline">
+          {last ? `${when(last.receivedAt)} · ${last.source} · ${last.packets} packets.` : 'No phone upload from the ring yet.'}
+        </Headline>;
+      })()}
       <section className="jr-section">
         <h2>Latest readings</h2>
+        <p className="jr-copy">An empty tile means no decoded vendor value has been received for it.</p>
         <div className="jr-grid">
           {METRICS.map(([key, label, unit]) => {
             const reading = data.latest?.[key];
@@ -140,7 +149,7 @@ export default function JCRingPanel() {
             return <article className="jr-card" key={key}>
               <div className="jr-label">{label}</div>
               <div className="jr-value">{reading ? number(reading.value) : unavailable} <small>{reading ? unit : ''}</small></div>
-              <div className="jr-at">{reading ? when(reading.recorded_at_local) : 'No decoded vendor value received'}</div>
+              <div className="jr-at">{reading ? when(reading.recorded_at_local) : ''}</div>
             </article>;
           })}
           {BP_METRICS.map(([key, label, unit]) => {
@@ -148,7 +157,7 @@ export default function JCRingPanel() {
             return <article className="jr-card" key={key}>
               <div className="jr-label">{label}</div>
               <div className="jr-value">{reading ? number(reading.value) : '—'} <small>{reading ? unit : ''}</small></div>
-              <div className="jr-at">{reading ? when(reading.recorded_at_local) : 'No decoded vendor value received'}</div>
+              <div className="jr-at">{reading ? when(reading.recorded_at_local) : ''}</div>
             </article>;
           })}
         </div>
@@ -203,7 +212,6 @@ export default function JCRingPanel() {
         <h2>Firmware</h2>
         <div><span>Installed version</span><strong>{data.firmware?.installedVersion || 'Not read yet'}</strong></div>
         <p>{data.firmware?.latestStatus}</p>
-        <p>NEURO can read the version. It will not attempt a firmware update without the manufacturer’s signed update file and exact update method.</p>
       </section>
 
       <section className="jr-section">
@@ -223,6 +231,10 @@ export default function JCRingPanel() {
         <p className="jr-copy">These are advertised by the J2301 ring protocol, but are not presented as measurements until the replies from this ring have been decoded and checked.</p>
         <ul>{(data.notConnectedYet || []).map(item => <li key={item}>{item}</li>)}</ul>
       </section>
+      <HowItWorks>
+        Direct-ring readings, kept separate from Apple Watch and HiLo. The firmware version is read from the ring;
+        no firmware update is attempted without the manufacturer’s signed update file and exact update method.
+      </HowItWorks>
       <p className="jr-caution">Vendor fields — especially BP estimate, vascular age and stress — are for comparison only. They are not trusted health measurements. {data.caution}</p>
     </>}
   </main>;

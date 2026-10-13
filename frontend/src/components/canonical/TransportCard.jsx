@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, HowItWorks, Fold } from './canonicalUi';
+import { useCanonical, postCanonical, HowItWorks, Fold, Headline, StatTiles, Stat, TileGrid, Tile, Group, dayLabel } from './canonicalUi';
 
 /**
  * Build 21 → 27 — Life → Transport.
@@ -22,6 +22,7 @@ const BUCKETS = [['fuelSpendPence', 'Fuel'], ['insuranceSpendPence', 'Insurance'
 const STATE_WORDS = { overdue: 'Overdue', needs_you: 'Needs you', preparation_open: 'In hand', upcoming: 'Upcoming', later: 'Later', unknown: 'No date', complete: 'Done' };
 const CONF_WORDS = { verified: 'verified', stated: 'your record', conflict: 'differs from official', unknown: 'unknown' };
 const HEALTH_WORDS = { current: 'Current', attention_needed: 'Needs attention', incomplete_data: 'Incomplete', unknown: 'Unknown' };
+const HEALTH_TONE = { current: 'good', attention_needed: 'warn' };
 const DRIVE_WORDS = { driving: 'Driving now', recently_drove: 'Was in the car recently', parked: 'Not driving', unknown: 'Driving: unknown' };
 // Tally's pence, displayed — formatting only, never arithmetic.
 const money = (p) => (p == null ? '—' : `£${(p / 100).toFixed(2)}`);
@@ -49,7 +50,7 @@ export function TransportView({ data, tasks = [], busy = false, act = () => {}, 
       <h3>Transport</h3>
       {note && <div className="cn-error">{note}</div>}
       {!data.vehicles.length
-        ? <><div className="cn-muted">No vehicle recorded. Add one and only what you know about it.</div><CreateVehicle busy={busy} act={act} /></>
+        ? <><Headline pill="No vehicle">Nothing recorded yet — add one, with only what you know about it.</Headline><CreateVehicle busy={busy} act={act} /></>
         : data.vehicles.map((v) => <OneVehicle key={v.vehicle.id} r={v} driving={data.driving} tallyUrl={data.tallyUrl} tasks={tasks} busy={busy} act={act} />)}
     </section>
   );
@@ -77,32 +78,55 @@ export function OneVehicle({ r, driving, tallyUrl, tasks = [], busy, act }) {
   const urgent = r.needsYou.length > 0;
   const fin = r.finance;
   const next = r.nextObligation;
+  const est = r.mileage.estimate && r.mileage.estimate.basis === 'journeys' ? r.mileage.estimate : null;
+  const mpg = r.fuel.mpg;
+  const cpm = r.costPerMile;
+  const lcm = fin.available ? fin.latestCompleteMonth : null;
+  const healthWord = HEALTH_WORDS[r.health.state] || r.health.state;
   return (
     <div className="cn-care">
-      <div className="cn-care-row">
-        <span className="cn-rowtitle">{name}</span>
-        <span className="cn-muted">{[v.registration, v.plateDescriptor, v.variant, v.fuelType].filter(Boolean).join(' · ')}</span>
-        <span className="cn-muted">{v.currentMileage != null ? `${v.currentMileage.toLocaleString()} mi (${v.mileageObservedAt})` : 'mileage not recorded'}</span>
-        {r.mileage.estimate && r.mileage.estimate.basis === 'journeys' && <span className="cn-chip cn-chip--soft" title={r.mileage.estimate.why}>≈ {r.mileage.estimate.miles.toLocaleString()} mi now</span>}
-        {driving && <span className="cn-chip cn-chip--soft" title={`${driving.why}. ${driving.note}.`}>{DRIVE_WORDS[driving.state] || driving.state}</span>}
-      </div>
+      <Headline tone={urgent ? 'warn' : HEALTH_TONE[r.health.state]} pill={urgent ? 'Needs you' : healthWord}
+        detail={(
+          <>
+            <span className="cn-rowtitle">{name}</span>
+            <span className="cn-muted">{[v.registration, v.plateDescriptor, v.variant, v.fuelType].filter(Boolean).map((x) => ` · ${x}`).join('')}</span>
+            {driving && <span className="cn-chip cn-chip--soft" title={`${driving.why}. ${driving.note}.`}>{DRIVE_WORDS[driving.state] || driving.state}</span>}
+            {urgent && <span className="cn-chip cn-chip--soft" title={r.health.why.join(' ')}>Health: {healthWord}</span>}
+          </>
+        )}>
+        <span title={urgent ? undefined : r.health.why.join(' ')}>
+          {urgent ? `${r.needsYou[0].line}${r.needsYou.length > 1 ? ` (+${r.needsYou.length - 1} more)` : ''}`
+            : next ? `Next: ${next.label}${next.dueDate ? `, ${dayLabel(next.dueDate)}` : ''}.`
+              : 'No MOT, tax, insurance or service date recorded yet.'}
+        </span>
+      </Headline>
 
-      {r.needsYou.length > 0 && (
-        <ul className="cn-act-lines">{r.needsYou.map((n) => <li key={n.id} className="cn-error">Needs you — {n.line}</li>)}</ul>
+      <StatTiles>
+        <Stat v={v.currentMileage != null ? `${v.currentMileage.toLocaleString()} mi` : null}
+          l={v.currentMileage != null ? `odometer, ${dayLabel(v.mileageObservedAt)}` : 'mileage not recorded'} />
+        {est && <Stat v={`≈ ${est.miles.toLocaleString()} mi`} l="now (estimate)" title={est.why} />}
+        <Stat v={mpg.latest ? `${mpg.latest.mpg}` : null} l={mpg.latest ? `mpg (${mpg.latest.quality})` : 'mpg — not enough data'} title={mpg.why || undefined} />
+        <Stat v={lcm ? money(lcm.totalVehicleSpendPence) : null} l={lcm ? `${lcm.month} running costs (Tally)` : 'running costs (Tally)'} title={fin.available ? undefined : fin.why} />
+        <Stat v={cpm.value != null ? `${cpm.value}p` : null} l="per mile" title={cpm.why || undefined} />
+      </StatTiles>
+
+      {r.needsYou.length > 1 && (
+        <Group label="Needs you" meta={r.needsYou.length}>
+          <ul className="cn-list">{r.needsYou.map((n) => <li key={n.id}>{n.line}</li>)}</ul>
+        </Group>
       )}
 
-      <div className="cn-glance">
-        {!open.length && <span className="cn-muted">No MOT, tax, insurance or service date recorded yet.</span>}
-        {open.map((o) => (
-          <span key={o.id} className={`cn-chip ${o.status === 'needs_you' || o.status === 'overdue' ? 'cn-chip--firm' : 'cn-chip--soft'}`} title={o.statusWhy}>
-            {o.label} {o.dueDate || '—'} · {STATE_WORDS[o.status] || o.status}
-          </span>
-        ))}
-        <span className="cn-chip cn-chip--soft" title={r.health.why.join(' ')}>Health: {HEALTH_WORDS[r.health.state] || r.health.state}</span>
-      </div>
-      {next && <div className="cn-small cn-muted">Next: {next.label} {next.dueDate} — {next.statusWhy}</div>}
+      {open.length > 0 && (
+        <Group label="Dates">
+          <TileGrid>{open.map((o) => (
+            <Tile key={o.id} title={o.label} why={o.statusWhy} accent={o.status === 'needs_you' || o.status === 'overdue'}
+              sub={o.dueDate ? dayLabel(o.dueDate) : 'no date'}
+              foot={<span className={`cn-chip ${o.status === 'needs_you' || o.status === 'overdue' ? 'cn-chip--firm' : 'cn-chip--soft'}`}>{STATE_WORDS[o.status] || o.status}</span>} />
+          ))}</TileGrid>
+        </Group>
+      )}
 
-      <Fold title="Dates" meta={open.length ? `${open.length} recorded${urgent ? ' — needs you' : ''}` : 'none recorded'} open={urgent}>
+      <Fold title="Edit dates" meta={open.length ? `${open.length} recorded${urgent ? ' — needs you' : ''}` : 'none recorded'} open={urgent}>
         <ul className="cn-list">{open.map((o) => <Obligation key={o.id} o={o} busy={busy} act={act} />)}</ul>
         {r.actionSuggestions.map((s) => (
           <div key={`${s.obligationId}:${s.taskId}`} className="cn-hike-form">
@@ -123,7 +147,7 @@ export function OneVehicle({ r, driving, tallyUrl, tasks = [], busy, act }) {
         <Costs r={r} tallyUrl={tallyUrl} />
       </Fold>
 
-      <Fold title="Mileage" meta={v.currentMileage != null ? `${v.currentMileage.toLocaleString()} mi on ${v.mileageObservedAt}` : 'not recorded'}>
+      <Fold title="Mileage" meta={v.currentMileage != null ? `${v.currentMileage.toLocaleString()} mi on ${dayLabel(v.mileageObservedAt)}` : 'not recorded'}>
         <Mileage r={r} base={base} busy={busy} act={act} />
       </Fold>
 
@@ -145,7 +169,7 @@ export function OneVehicle({ r, driving, tallyUrl, tasks = [], busy, act }) {
         <VehicleFacts v={v} base={base} busy={busy} act={act} />
       </Fold>
 
-      <Fold title="Official record" meta={r.official.latest ? `checked ${r.official.latest.checked_at.slice(0, 10)}` : 'no reading yet'}>
+      <Fold title="Official record" meta={r.official.latest ? `checked ${dayLabel(r.official.latest.checked_at)}` : 'no reading yet'}>
         <Official r={r} base={base} busy={busy} act={act} />
       </Fold>
 
@@ -177,20 +201,26 @@ function Costs({ r, tallyUrl }) {
   }
   const m = fin.latestCompleteMonth;
   const cur = fin.currentMonth;
-  const line = (x) => BUCKETS.filter(([k]) => x[k]).map(([k, l]) => `${l} ${money(x[k])}`).join(' · ') || 'nothing classified';
+  const buckets = m ? BUCKETS.filter(([k]) => m[k]) : [];
   return (
     <>
-      {m && <div className="cn-care-row"><span className="cn-now-k">{m.month}</span><span>{money(m.totalVehicleSpendPence)}</span><span className="cn-muted">{line(m)}</span></div>}
-      {cur && cur !== m && <div className="cn-care-row"><span className="cn-now-k">{cur.month} so far</span><span>{money(cur.totalVehicleSpendPence)}</span><span className="cn-muted">partial — {cur.reasons.join('; ') || 'month not over'}</span></div>}
-      {[['Last 3 months', fin.last3CompleteMonths], ['Last 12 months', fin.rolling12m]].map(([l, w]) => (
-        <div key={l} className="cn-care-row"><span className="cn-now-k">{l}</span>{w.available ? <><span>{money(w.totalVehicleSpendPence)}</span><span className="cn-muted">{w.from} – {w.to}</span></> : <span className="cn-muted">{w.why}</span>}</div>
-      ))}
-      <div className="cn-care-row"><span className="cn-now-k">Trend</span><span>{String(fin.trend.state).replace(/_/g, ' ')}</span>{fin.trend.why && <span className="cn-muted">{fin.trend.why}</span>}</div>
-      <div className="cn-care-row"><span className="cn-now-k">Per mile</span>
-        {cpm.value != null
-          ? <span>{cpm.value}p ({cpm.fuelValue}p fuel) — Tally’s {money(cpm.numerator.totalPence)} over {cpm.numerator.from} – {cpm.numerator.to} ÷ {cpm.denominator.miles.toLocaleString()} mi from your readings{cpm.why ? ` — ${cpm.why}` : ''}</span>
-          : <span className="cn-muted">{cpm.why}</span>}
-      </div>
+      <StatTiles>
+        {m && <Stat v={money(m.totalVehicleSpendPence)} l={m.month} />}
+        {cur && cur !== m && <Stat v={money(cur.totalVehicleSpendPence)} l={`${cur.month} so far (partial)`} title={cur.reasons.join('; ') || 'month not over'} />}
+        {[['last 3 months', fin.last3CompleteMonths], ['last 12 months', fin.rolling12m]].map(([l, w]) => (
+          <Stat key={l} v={w.available ? money(w.totalVehicleSpendPence) : null} l={w.available ? `${l} (${w.from} – ${w.to})` : l} title={w.available ? undefined : w.why} />
+        ))}
+        <Stat v={String(fin.trend.state).replace(/_/g, ' ')} l="trend" title={fin.trend.why || undefined} />
+        <Stat v={cpm.value != null ? `${cpm.value}p` : null} l={cpm.value != null ? `per mile (${cpm.fuelValue}p fuel)` : 'per mile'}
+          title={cpm.value != null ? `Tally’s ${money(cpm.numerator.totalPence)} over ${cpm.numerator.from} – ${cpm.numerator.to} ÷ ${cpm.denominator.miles.toLocaleString()} mi from your readings${cpm.why ? ` — ${cpm.why}` : ''}` : cpm.why} />
+      </StatTiles>
+      {m && (
+        <Group label={`${m.month} by kind`}>
+          {buckets.length
+            ? <StatTiles>{buckets.map(([k, l]) => <Stat key={k} v={money(m[k])} l={l} />)}</StatTiles>
+            : <div className="cn-muted cn-small">nothing classified</div>}
+        </Group>
+      )}
       {fin.review && fin.review.pending > 0 && <div className="cn-small cn-muted">{fin.review.pending} transaction{fin.review.pending === 1 ? '' : 's'} might be the car’s — review them in <a href={tallyUrl} target="_blank" rel="noreferrer">Tally</a> → Outlook → Motoring.</div>}
       <HowItWorks>Every figure here is Tally’s ({fin.confidence} confidence). {fin.explanation.join(' ')} Cost per mile is the one sum NEURO does: Tally’s total for a window of complete months divided by the miles your odometer readings measure across the same window.</HowItWorks>
     </>
@@ -215,7 +245,7 @@ function Fuel({ r, base, busy, act }) {
       </form>
       {r.fuel.fills.length > 0 && (
         <ul className="cn-act-lines">{r.fuel.fills.slice(0, 6).map((x) => (
-          <li key={x.id}>{x.filledOn} — {x.litres} L{x.odometer != null ? ` at ${Number(x.odometer).toLocaleString()} ${x.odometerUnit}` : ''}{x.fullTank ? ' · brim' : ''}
+          <li key={x.id}>{dayLabel(x.filledOn)} — {x.litres} L{x.odometer != null ? ` at ${Number(x.odometer).toLocaleString()} ${x.odometerUnit}` : ''}{x.fullTank ? ' · brim' : ''}
             {' '}<button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(`${base}/fuel/${encodeURIComponent(x.id)}/withdraw`, {}))}>Remove</button></li>))}</ul>
       )}
       <div className="cn-small cn-muted">Litres and the odometer only — what a fill cost is Tally’s.</div>
@@ -252,7 +282,7 @@ function Obligation({ o, busy, act }) {
   return (
     <li className="cn-row">
       <span className="cn-rowtitle">{o.label}</span>
-      <span className="cn-muted">{o.dueDate || 'no date'}{o.dueMileage != null ? ` · or ${Number(o.dueMileage).toLocaleString()} mi` : ''}{o.dueDerived ? ` · from your ${o.interval.basis} interval` : ''}</span>
+      <span className="cn-muted">{o.dueDate ? dayLabel(o.dueDate) : 'no date'}{o.dueMileage != null ? ` · or ${Number(o.dueMileage).toLocaleString()} mi` : ''}{o.dueDerived ? ` · from your ${o.interval.basis} interval` : ''}</span>
       <span className={`cn-chip ${firm ? 'cn-chip--firm' : 'cn-chip--soft'}`} title={o.statusWhy}>{STATE_WORDS[o.status] || o.status}</span>
       <span className="cn-muted">{o.statusWhy} · {CONF_WORDS[o.confidence] || o.confidence}</span>
       {o.linkedTask && <span className="cn-muted">action: “{o.linkedTask.description}” ({o.linkedTask.state})</span>}
@@ -311,7 +341,7 @@ function Official({ r, base, busy, act }) {
   return (
     <>
       {latest
-        ? <div className="cn-muted">Last official reading ({latest.source}, {latest.checked_at.slice(0, 10)}): MOT {latest.mot_status || '—'}{latest.mot_expiry_date ? ` to ${latest.mot_expiry_date}` : ''}; tax {latest.tax_status || '—'}{latest.tax_due_date ? ` due ${latest.tax_due_date}` : ''}.</div>
+        ? <div className="cn-muted">Last official reading ({latest.source}, {dayLabel(latest.checked_at)}): MOT {latest.mot_status || '—'}{latest.mot_expiry_date ? ` to ${dayLabel(latest.mot_expiry_date)}` : ''}; tax {latest.tax_status || '—'}{latest.tax_due_date ? ` due ${dayLabel(latest.tax_due_date)}` : ''}.</div>
         : <div className="cn-muted">No official reading yet.</div>}
       <ul className="cn-act-lines">{r.official.sources.map((s) => <li key={s.source}>{s.name}: {s.available ? 'available' : `not available — ${s.why}`}</li>)}</ul>
       {r.official.sources.find((s) => s.source === 'dvla-ves').available && (
@@ -415,7 +445,7 @@ function Mileage({ r, base, busy, act }) {
       {r.mileage.readings.length > 0 && (
         <ul className="cn-act-lines">
           {r.mileage.readings.slice(0, 6).map((m) => (
-            <li key={m.id}>{m.observedOn} — {m.miles.toLocaleString()} mi ({m.source}){m.state === 'needs-review' ? <span className="cn-error"> needs review: {m.review}</span> : ''}
+            <li key={m.id}>{dayLabel(m.observedOn)} — {m.miles.toLocaleString()} mi ({m.source}){m.state === 'needs-review' ? <span className="cn-error"> needs review: {m.review}</span> : ''}
               {' '}<button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(`${base}/mileage/${m.id}/withdraw`, {}))}>Remove</button>
             </li>
           ))}
@@ -440,7 +470,7 @@ function History({ r, base, busy, act }) {
       {!r.history.length && <div className="cn-muted">No service, repair or tyre history recorded. A garage payment never creates one by itself.</div>}
       <ul className="cn-act-lines">
         {r.history.map((h) => (
-          <li key={h.id}>{h.date} — {label(EV_TYPES, h.type)}: {h.description}{h.mileage != null ? ` · ${Number(h.mileage).toLocaleString()} mi` : ''}
+          <li key={h.id}>{dayLabel(h.date)} — {label(EV_TYPES, h.type)}: {h.description}{h.mileage != null ? ` · ${Number(h.mileage).toLocaleString()} mi` : ''}
             {h.detail ? ` · ${Object.entries(h.detail).map(([k, x]) => `${k} ${x}`).join(', ')}` : ''}{h.costRef ? ' · cost in Tally' : ''}
           </li>
         ))}

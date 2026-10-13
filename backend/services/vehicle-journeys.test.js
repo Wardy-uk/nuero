@@ -293,7 +293,9 @@ test('render: pending journeys can be approved / rejected on the Transport card,
   assert.match(html, />Approve</);
   assert.match(html, />Not the car</);
   assert.match(html, />Not a journey</);
-  assert.match(html, /≈ [\d,]+ mi now/);
+  // 13 Oct 2026 (design rules): the estimate is a stat tile — '≈ N mi' over 'now (estimate)'.
+  assert.match(html, /≈ [\d,]+ mi</);
+  assert.match(html, /now \(estimate\)/);
   assert.match(html, /an estimate until the next odometer reading/);
   assert.match(html, /143,673 mi/, 'the odometer reading is still shown as itself');
 });

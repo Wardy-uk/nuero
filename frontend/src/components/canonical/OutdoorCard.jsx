@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions } from './canonicalUi';
+import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions, Headline, Stat, StatTiles, Tile, TileGrid, Group, PrimaryAction, dayLabel } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
 
 /**
@@ -23,12 +23,9 @@ const km = (v) => (v === null || v === undefined ? null : `${v} km`);
 const mins = (v) => (v === null || v === undefined ? null : v >= 60 ? `${Math.floor(v / 60)} h ${v % 60} min` : `${v} min`);
 const facts = (a) => [a.durationMin != null ? mins(a.durationMin) : null, km(a.distanceKm), a.elevationM != null ? `${a.elevationM} m up` : null].filter(Boolean).join(' · ');
 
-const GOAL_PILL = { achieved: 'cn-pill--good', planned: 'cn-pill--plan', recording_gap: 'cn-pill--warn' };
+// Tones are meanings (docs/design-rules.md): "not yet" is neutral, never a guilt colour.
+const GOAL_TONE = { achieved: 'good', planned: 'plan', recording_gap: 'warn' };
 const WEATHER_PILL = { favourable: 'cn-pill--good', mixed: 'cn-pill--warn', poor: 'cn-pill--bad' };
-
-function Stat({ v, l, title }) {
-  return <div className="cn-stattile" title={title}><div className="cn-stattile-v">{v}</div><div className="cn-stattile-l">{l}</div></div>;
-}
 
 // The forecast as its verdict plus each input it rests on — the same facts the
 // server's sentence carries, laid out so they can be read at a glance.
@@ -45,38 +42,37 @@ function Weather({ w }) {
   );
 }
 
-function ActivityRow({ a, routes, companions, act, busy }) {
+// One hike or walk as a tile: day and kind, its numbers, its chips and the
+// corrections. The evidence (or why it is not a hike) rides on hover.
+function ActivityTile({ a, routes, companions, act, busy }) {
   const [routeId, setRouteId] = useState('');
   const ember = companions[0] || null;
   const hasEmber = ember && a.companions.some((c) => c.id === ember.id);
   const planned = routes.filter((r) => r.status === 'planned');
+  const why = a.kind === 'hike' ? a.evidence.join(' · ') : a.hike ? `Not a hike — ${a.hike.why}.` : a.evidence.join(' · ');
   return (
-    <li data-testid="outdoor-activity">
-      <strong>{a.day}</strong> {KIND_WORDS[a.kind] || a.kind}
-      {a.kind === 'hike' && <span className="cn-chip">{STATE_WORDS[a.state] || a.state}</span>}
-      {facts(a) && <span className="cn-muted"> · {facts(a)}</span>}
-      {a.route && <span className="cn-chip" title="you linked it">route: {a.route.name || a.route.routeId}</span>}
-      <div className="cn-muted cn-small">{a.kind === 'hike' ? a.evidence.join(' · ') : a.hike ? `Not a hike — ${a.hike.why}.` : a.evidence.join(' · ')}</div>
+    <Tile testid="outdoor-activity" why={why} title={`${dayLabel(a.day)} · ${KIND_WORDS[a.kind] || a.kind}`} sub={facts(a) || null}
+      foot={<>
+        {a.kind === 'hike' && <span className="cn-chip">{STATE_WORDS[a.state] || a.state}</span>}
+        {a.kind !== 'hike' && a.hike && <span className="cn-chip">not a hike</span>}
+        {a.route && <span className="cn-chip" title="you linked it">route: {a.route.name || a.route.routeId}</span>}
+        {act && ember && (hasEmber
+          ? <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/activities/${encodeURIComponent(a.activityId)}/companion/remove`, { companionId: ember.id })}>{ember.name} wasn’t there</button>
+          : <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/activities/${encodeURIComponent(a.activityId)}/companion`, { companionId: ember.id })}>{ember.name} came</button>)}
+        {act && (a.route
+          ? <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/activities/${encodeURIComponent(a.activityId)}/route/remove`, {})}>Unlink route</button>
+          : planned.length > 0 && (
+            <span>
+              <select value={routeId} onChange={(e) => setRouteId(e.target.value)} aria-label="Planned route it followed">
+                <option value="">it followed route…</option>
+                {planned.map((r) => <option key={r.routeId} value={r.routeId}>{r.name}{r.plannedDate ? ` (${dayLabel(r.plannedDate)})` : ''}</option>)}
+              </select>
+              <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !routeId} onClick={() => act(`/api/outdoor/activities/${encodeURIComponent(a.activityId)}/route`, { routeId })}>Link</button>
+            </span>
+          ))}
+      </>}>
       <LoggerConditions c={a.conditions} quietIfUnknown={a.kind !== 'hike'} />
-      {act && (
-        <div className="cn-row-actions">
-          {ember && (hasEmber
-            ? <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/activities/${encodeURIComponent(a.activityId)}/companion/remove`, { companionId: ember.id })}>{ember.name} wasn’t there</button>
-            : <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/activities/${encodeURIComponent(a.activityId)}/companion`, { companionId: ember.id })}>{ember.name} came</button>)}
-          {a.route
-            ? <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/activities/${encodeURIComponent(a.activityId)}/route/remove`, {})}>Unlink route</button>
-            : planned.length > 0 && (
-              <span>
-                <select value={routeId} onChange={(e) => setRouteId(e.target.value)} aria-label="Planned route it followed">
-                  <option value="">it followed route…</option>
-                  {planned.map((r) => <option key={r.routeId} value={r.routeId}>{r.name}{r.plannedDate ? ` (${r.plannedDate})` : ''}</option>)}
-                </select>
-                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !routeId} onClick={() => act(`/api/outdoor/activities/${encodeURIComponent(a.activityId)}/route`, { routeId })}>Link</button>
-              </span>
-            )}
-        </div>
-      )}
-    </li>
+    </Tile>
   );
 }
 
@@ -113,23 +109,25 @@ function RouteForm({ act, busy }) {
 }
 
 export function OutdoorView({ data, act = null, busy = false, hikeLoop = null }) {
+  const [planning, setPlanning] = useState(false);
   const s = data.summary;
   const g = data.goal;
   const routes = data.routes || [];
   const companions = data.companions || [];
+  const refused = data.refused || [];
   const recent = [...(data.hikes || []), ...(data.walks || [])].sort((x, y) => y.day.localeCompare(x.day));
-  const goalMeta = g ? `${GOAL_WORDS[g.state] || g.state}${g.lastConfirmed ? ` · last confirmed ${g.lastConfirmed}` : ''}` : 'no active goal';
+  const goalMeta = g ? `${GOAL_WORDS[g.state] || g.state}${g.lastConfirmed ? ` · last confirmed ${dayLabel(g.lastConfirmed)}` : ''}` : 'no active goal';
   const sourceProblems = (data.sources || []).filter((x) => !['healthy', 'proven', 'manual'].includes(x.state));
+  const next = data.nextPlan;
   return (
     <section className="cn-section" data-testid="outdoor-card">
       <h3>Outdoor</h3>
-      <div className="cn-headline" data-testid="outdoor-week">
-        {g && <span className={`cn-pill ${GOAL_PILL[g.state] || ''}`}>{GOAL_WORDS[g.state] || g.state}</span>}
-        <span className="cn-headline-text">{g ? <>This week: <strong>{g.line}</strong></> : 'No active Hike weekly goal.'}</span>
-      </div>
-      {data.atRisk && data.atRisk.atRisk && <div className="cn-muted" data-testid="outdoor-at-risk">{data.atRisk.why}.</div>}
+      <Headline testid="outdoor-week" tone={g ? GOAL_TONE[g.state] : undefined} pill={g ? (GOAL_WORDS[g.state] || g.state) : 'no goal'}
+        detail={data.atRisk && data.atRisk.atRisk ? <span data-testid="outdoor-at-risk">{data.atRisk.why}.</span> : null}>
+        {g ? <>This week: <strong>{g.line}</strong></> : 'No active Hike weekly goal.'}
+      </Headline>
 
-      <div className="cn-tiles-stat">
+      <StatTiles>
         <Stat v={s.confirmedHikes} l={`confirmed hike${s.confirmedHikes === 1 ? '' : 's'} this week`} />
         <Stat v={s.meaningfulWalks} l={`walk${s.meaningfulWalks === 1 ? '' : 's'} this week`} />
         {s.knownDurationMin != null && <Stat v={mins(s.knownDurationMin)} l="outside on those" />}
@@ -137,60 +135,70 @@ export function OutdoorView({ data, act = null, busy = false, hikeLoop = null })
           <Stat v={mins(s.daylight.minutes)} title={s.daylight.line}
             l={`in daylight · ${s.daylight.daysWithReading} of ${s.daylight.daysElapsed} day${s.daylight.daysElapsed === 1 ? '' : 's'}${s.daylight.covered ? '' : ', today partial'}`} />
         )}
-      </div>
+      </StatTiles>
 
-      {data.nextPlan && (
-        <div className="cn-tile cn-tile--next" data-testid="outdoor-next">
-          <span className="cn-tile-foot" style={{ paddingTop: 0, marginTop: 0 }}>Next</span>
-          <span className="cn-tile-big">{data.nextPlan.label} · {data.nextPlan.when}
-            {data.nextPlan.routes.some((r) => r.emberPlanned) && <span className="cn-chip" style={{ marginLeft: 8 }}>with Ember</span>}</span>
-          <Weather w={data.nextPlan.weather} />
+      {(data.now && data.now.needsYou || []).map((n, i) => <div key={i} className="cn-error" data-testid="outdoor-needs-you">{n.line}</div>)}
+
+      {next && (
+        <Group label="Next">
+          <Tile as="div" accent testid="outdoor-next" title={`${next.label} · ${next.when}`}
+            foot={next.routes.some((r) => r.emberPlanned) ? <span className="cn-chip">with Ember</span> : null}>
+            <Weather w={next.weather} />
+          </Tile>
+        </Group>
+      )}
+
+      {act && (
+        <div className="cn-actions">
+          <PrimaryAction onClick={() => setPlanning((v) => !v)}>{planning ? 'Close the route form' : 'Plan a route'}</PrimaryAction>
         </div>
       )}
-      {(data.now && data.now.needsYou || []).map((n, i) => <div key={i} className="cn-error" data-testid="outdoor-needs-you">{n.line}</div>)}
+      {act && planning && <RouteForm act={act} busy={busy} />}
 
       <Fold title="Hike goal" meta={goalMeta}>
         {hikeLoop}
       </Fold>
 
       <Fold title="Recent hikes and walks" meta={`${recent.length} in ${data.weeksShown || 4} weeks${data.shortWalks ? ` · ${data.shortWalks} short walk${data.shortWalks === 1 ? '' : 's'} not listed` : ''}`}>
-        {recent.length ? <ul className="cn-list">{recent.map((a) => <ActivityRow key={a.activityId} a={a} routes={routes} companions={companions} act={act} busy={busy} />)}</ul>
-          : <div className="cn-muted">No hike or walk recorded in this window.</div>}
         {(data.hikeGaps || []).length > 0 && (
-          <div className="cn-muted cn-small">Hike workouts NEURO can’t confirm: {data.hikeGaps.map((a) => `${a.day} (${a.hike.why})`).join('; ')}.</div>
+          <div className="cn-group-why">Hike workouts NEURO can’t confirm: {data.hikeGaps.map((a) => `${dayLabel(a.day)} (${a.hike.why})`).join('; ')}.</div>
         )}
+        {recent.length ? <TileGrid>{recent.map((a) => <ActivityTile key={a.activityId} a={a} routes={routes} companions={companions} act={act} busy={busy} />)}</TileGrid>
+          : <div className="cn-group-why">No hike or walk recorded in this window.</div>}
       </Fold>
 
-      <Fold title="Not counted as a hike" meta={`${(data.refused || []).length} day${(data.refused || []).length === 1 ? '' : 's'}`}>
-        <ul className="cn-list" data-testid="outdoor-refused">
-          {(data.refused || []).map((r) => (
-            <li key={r.day}>
-              <strong>{r.day}</strong> <span className="cn-chip">{STATE_WORDS[r.state]}</span> {r.by === 'you' ? '(you said so)' : ''}
-              <div className="cn-muted cn-small">{r.why}{r.saw && r.saw.steps != null ? ` — NEURO saw ${r.saw.steps.toLocaleString('en-GB')} steps${r.saw.distanceKm != null ? `, ${r.saw.distanceKm} km` : ''}; neither confirms a hike.` : ''}</div>
-            </li>
+      <Fold title="Not counted as a hike" meta={`${refused.length} day${refused.length === 1 ? '' : 's'}`}>
+        {refused.some((r) => r.saw && r.saw.steps != null) && <div className="cn-group-why">Steps and distance never confirm a hike on their own — hover a day for why.</div>}
+        <TileGrid testid="outdoor-refused">
+          {refused.map((r) => (
+            <Tile key={r.day} title={dayLabel(r.day)} why={`${r.day}: ${r.why}`}
+              sub={r.saw && r.saw.steps != null ? `${r.saw.steps.toLocaleString('en-GB')} steps${r.saw.distanceKm != null ? ` · ${r.saw.distanceKm} km` : ''}` : r.why}
+              foot={<><span className="cn-chip">{STATE_WORDS[r.state]}</span>{r.by === 'you' && <span>you said so</span>}</>} />
           ))}
-        </ul>
+        </TileGrid>
       </Fold>
 
       <Fold title="Route plans" meta={`${routes.filter((r) => r.status === 'planned').length} planned`}>
-        <ul className="cn-list">
-          {routes.map((r) => (
-            <li key={r.routeId} data-testid="outdoor-route">
-              <strong>{r.name}</strong> <span className="cn-muted">{r.kind}{r.plannedDate ? ` · ${r.plannedDate}` : ' · no date'}{r.distanceKm ? ` · ${r.distanceKm} km` : ''}{r.elevationGainM ? ` · ${r.elevationGainM} m up` : ''}{r.source === 'gpx' ? ' · GPX' : ''}</span>
-              {r.outcome && <span className="cn-chip">{r.outcome === 'completed' ? 'done (linked)' : r.outcome === 'not-linked' ? 'nothing linked' : r.outcome}</span>}
-              {r.emberPlanned && <span className="cn-chip">Ember planned</span>}
-              {act && r.status === 'planned' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/routes/${encodeURIComponent(r.routeId)}`, { status: 'cancelled' })}>Cancel</button>}
-              {act && r.status === 'cancelled' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/routes/${encodeURIComponent(r.routeId)}`, { status: 'planned' })}>Re-plan</button>}
-            </li>
-          ))}
-        </ul>
-        {act && <RouteForm act={act} busy={busy} />}
+        {routes.length ? (
+          <TileGrid>
+            {routes.map((r) => (
+              <Tile key={r.routeId} testid="outdoor-route" title={r.name}
+                sub={[r.kind, r.plannedDate ? dayLabel(r.plannedDate) : 'no date', r.distanceKm ? `${r.distanceKm} km` : null, r.elevationGainM ? `${r.elevationGainM} m up` : null, r.source === 'gpx' ? 'GPX' : null].filter(Boolean).join(' · ')}
+                foot={<>
+                  {r.outcome && <span className="cn-chip">{r.outcome === 'completed' ? 'done (linked)' : r.outcome === 'not-linked' ? 'nothing linked' : r.outcome}</span>}
+                  {r.emberPlanned && <span className="cn-chip">Ember planned</span>}
+                  {act && r.status === 'planned' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/routes/${encodeURIComponent(r.routeId)}`, { status: 'cancelled' })}>Cancel</button>}
+                  {act && r.status === 'cancelled' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/routes/${encodeURIComponent(r.routeId)}`, { status: 'planned' })}>Re-plan</button>}
+                </>} />
+            ))}
+          </TileGrid>
+        ) : <div className="cn-group-why">No route plans yet — Plan a route adds one.</div>}
       </Fold>
 
       <Fold title="Sources" meta={sourceProblems.length ? `${sourceProblems.length} to know about` : 'all working'}>
-        <ul className="cn-list" data-testid="outdoor-sources">
-          {(data.sources || []).map((x) => <li key={x.id}><strong>{x.label}</strong> <span className="cn-chip">{SOURCE_WORDS[x.state] || x.state}</span><div className="cn-muted cn-small">{x.line}</div></li>)}
-        </ul>
+        <TileGrid testid="outdoor-sources">
+          {(data.sources || []).map((x) => <Tile key={x.id} title={x.label} sub={SOURCE_WORDS[x.state] || x.state} why={x.line} />)}
+        </TileGrid>
       </Fold>
 
       <HowItWorks>

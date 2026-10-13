@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
+import { Headline, Stat, StatTiles, HowItWorks } from './canonical/canonicalUi';
+import './canonical/Canonical.css';
 import './MyHealthPanel.css';
 
 /**
@@ -85,12 +87,26 @@ export function MyHealthView({ data, onNavigate }) {
   const doThis = insights.filter((i) => i.level === 'act' || i.level === 'watch');
   const gaps = insights.filter((i) => i.level === 'gap');
   const good = insights.filter((i) => i.level === 'good');
+  const counts = data.counts || null;
+  // The pill restates the server's own counts and completeness; nothing is judged here.
+  const [tone, pill] = counts?.act ? ['warn', 'Act']
+    : !data.complete ? ['warn', 'Partial']
+      : counts?.watch ? ['plan', 'Watch']
+        : ['good', 'Holding up'];
   return (
     <>
-      <div className={`mh-headline ${data.counts?.act ? 'mh-headline--act' : ''}`}>
-        <p>{data.headline}</p>
-        {!data.complete && <p className="mh-incomplete">Part of the picture could not be read, so this is not an all-clear.</p>}
-      </div>
+      <Headline tone={tone} pill={pill} testid="my-health-headline"
+        detail={!data.complete && !/not an all-clear/.test(data.headline || "") ? <span className="mh-incomplete">Part of the picture could not be read, so this is not an all-clear.</span> : null}>
+        {data.headline}
+      </Headline>
+      {counts && (
+        <StatTiles>
+          <Stat v={counts.act ?? null} l="To act on" tone={counts.act ? 'warn' : undefined} />
+          <Stat v={counts.watch ?? null} l="Worth watching" />
+          <Stat v={counts.gap ?? null} l="Can’t see" />
+          <Stat v={counts.good ?? null} l="Holding up" />
+        </StatTiles>
+      )}
 
       {doThis.length > 0 && (
         <section className="mh-section">
@@ -143,7 +159,7 @@ export function MyHealthView({ data, onNavigate }) {
             </div>
           ))}
         </div>
-        <p className="mh-note">{data.note}</p>
+        <HowItWorks>{data.note}</HowItWorks>
       </section>
     </>
   );
@@ -176,7 +192,6 @@ export default function MyHealthPanel({ onNavigate }) {
       <header className="mh-head">
         <div>
           <h1>My Health</h1>
-          <p>Watch, HiLo, JC Ring and medical records, read together.</p>
         </div>
         <button type="button" className="mh-refresh" onClick={load} disabled={loading}>{loading ? 'Reading…' : 'Refresh'}</button>
       </header>

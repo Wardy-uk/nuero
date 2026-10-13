@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiUrl, apiFetch } from '../api';
 import './HealthPanel.css';
+import { Headline } from './canonical/canonicalUi';
+import './canonical/Canonical.css';
 import PerformanceSection from './PerformanceSection';
 import NutritionSection from './NutritionSection';
 import DrinksSection from './DrinksSection';
@@ -721,6 +723,20 @@ export default function HealthPanel() {
         </div>
       </div>
 
+      {/* The page's answer: readiness's own state and sentence, verbatim. An
+          unknown read says the service's reason rather than a middling guess. */}
+      <Headline
+        testid="apple-health-headline"
+        tone={readiness?.known ? (readiness.state === 'low' ? 'warn' : readiness.state === 'high' ? 'good' : undefined) : 'warn'}
+        pill={readiness?.known
+          ? (readiness.state === 'low' ? 'Running low' : readiness.state === 'high' ? 'Well recovered' : 'About normal')
+          : 'Unknown'}
+      >
+        {readiness?.known
+          ? (readiness.sentence || `Readiness ${readiness.score} today${readiness.partial ? ' (partial)' : ''}.`)
+          : `Readiness can’t be read: ${readiness?.reason || 'not available'}.`}
+      </Headline>
+
       {/* ── Today ──────────────────────────────────────────────────
           A hero figure, not a chart: one number about right now has no axis to
           sit on. The two scores are LABELLED by window, because they measure
@@ -746,7 +762,6 @@ export default function HealthPanel() {
         </div>
 
         <div className="hp-today-body">
-          {readiness?.sentence && <p className="hp-sentence">{readiness.sentence}</p>}
           <div className="hp-tiles">
             {(readiness?.contributors || []).map(c => (
               <div className={`hp-tile hp-tile--${c.flag}`} key={c.input}>

@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when } from './canonicalUi';
+import {
+  useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when,
+  Headline, StatTiles, Stat, TileGrid, Tile, Fold, PrimaryAction, Pill, dayLabel,
+} from './canonicalUi';
 import './GoalsCard.css';
 
 /**
@@ -21,11 +24,16 @@ const STATE_WORDS = {
   met: 'At target', 'on-track': 'On track', behind: 'Behind', 'not-moving': 'Not moving',
   'moving-away': 'Going the wrong way', unknown: 'Can’t tell yet',
 };
+// A state's tone is a MEANING (docs/design-rules.md): good = there or getting
+// there, warn = worth a look. Never "bad" — a goal moving slowly is not a fault.
+const STATE_TONE = { met: 'good', 'on-track': 'good', behind: 'warn', 'not-moving': 'warn', 'moving-away': 'warn', unknown: 'neutral' };
 const NEEDS_HELP = new Set(['behind', 'not-moving', 'moving-away']);
+const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
 
 export default function GoalsCard({ data, busy, act }) {
   const progress = useCanonical('/api/canonical/goals/progress');
   const catalogue = useCanonical('/api/canonical/goals/measures');
+  const [adding, setAdding] = useState(false);
   const measures = (catalogue.data && catalogue.data.measures) || [];
   const goals = data ? data.goals || [] : [];
   const live = goals.filter((g) => g.status === 'active' || g.status === 'paused');
@@ -36,30 +44,62 @@ export default function GoalsCard({ data, busy, act }) {
   const run = (fn) => act(async () => { await fn(); await progress.reload(); });
   const update = (g, body) => run(() => postCanonical(`/api/canonical/goals/${encodeURIComponent(g.id)}`, body));
 
+  // Tallies of the SERVER's states — nothing here judges a goal.
+  const active = live.filter((g) => g.status === 'active');
+  const paused = live.length - active.length;
+  const known = !!progress.data;
+  const stateOf = (g) => { const p = byGoal.get(g.id); return p && p.progress ? p.progress.state : null; };
+  const onTrack = active.filter((g) => ['met', 'on-track'].includes(stateOf(g))).length;
+  const help = active.filter((g) => NEEDS_HELP.has(stateOf(g))).length;
+  const cantTell = active.filter((g) => g.measure && stateOf(g) === 'unknown').length;
+  const unmeasured = active.filter((g) => !g.measure).length;
+  const gaps = progress.data && progress.data.gaps && progress.data.gaps.length > 0
+    ? `Couldn’t read: ${progress.data.gaps.map((g) => g.input).join(', ')} — goals that rely on them say “can’t tell”.` : null;
+
+  const head = !data
+    ? { tone: 'neutral', pill: 'Reading', text: 'Reading your goals…' }
+    : !goals.length
+      ? { tone: 'neutral', pill: 'None', text: 'No goals stored.', detail: 'NEURO only shows goals you write down here — it never makes them up, and a goal never becomes a reminder by itself.' }
+      : progress.error
+        ? { tone: 'warn', pill: 'Can’t tell', text: `Couldn’t read how goals are moving — ${progress.error}. This is not “no progress”.` }
+        : help > 0
+          ? { tone: 'warn', pill: 'Needs a look', text: `${help} of ${n(active.length, 'active goal', 'active goals')} ${help === 1 ? 'is' : 'are'} not on track.` }
+          : known && onTrack > 0 && cantTell === 0
+            ? { tone: 'good', pill: 'On track', text: 'Every measured goal is on track or at target.' }
+            : { tone: 'plan', pill: 'Active', text: `${n(active.length, 'active goal', 'active goals')}${paused ? `, ${paused} paused` : ''}.` };
+
   return (
     <section className="cn-section">
       <h3 className="cn-h3">Goals and intentions</h3>
-      {data && !goals.length && <div className="cn-empty">None stored. NEURO only shows goals you write down here — it never makes them up, and a goal never becomes a reminder by itself.</div>}
-      {progress.error && <div className="cn-error">Couldn’t read how goals are moving — {progress.error}. This is not “no progress”.</div>}
-      {progress.data && progress.data.gaps && progress.data.gaps.length > 0 && (
-        <div className="cn-muted">Couldn’t read: {progress.data.gaps.map((g) => g.input).join(', ')} — goals that rely on them say “can’t tell”.</div>
+      <Headline tone={head.tone} pill={head.pill} detail={head.detail || gaps}>{head.text}</Headline>
+      {goals.length > 0 && (
+        <StatTiles>
+          <Stat v={active.length} l="active" />
+          <Stat v={known ? onTrack : null} l="on track" tone={onTrack ? 'good' : undefined} />
+          <Stat v={known ? help : null} l="need a look" tone={help ? 'warn' : undefined} />
+          {cantTell > 0 && <Stat v={cantTell} l="can’t tell yet" />}
+          <Stat v={unmeasured} l="not measured" title="NEURO only knows about items you link to these. “Measure it” lets it track a number." />
+          {paused > 0 && <Stat v={paused} l="paused" title="A paused goal lends nothing to anything." />}
+        </StatTiles>
       )}
-      <ul className="cn-list">
-        {live.map((g) => (
-          <GoalRow key={g.id} g={g} p={byGoal.get(g.id)} measures={measures} busy={busy} update={update} />
-        ))}
-      </ul>
-      <AddGoal measures={measures} busy={busy} run={run} />
+      <div className="cn-actions">
+        <PrimaryAction onClick={() => setAdding((v) => !v)}>{adding ? 'Close' : 'Add a goal'}</PrimaryAction>
+      </div>
+      {adding && <AddGoal measures={measures} busy={busy} run={run} />}
+      {live.length > 0 && (
+        <TileGrid wide>
+          {live.map((g) => <GoalRow key={g.id} g={g} p={byGoal.get(g.id)} measures={measures} busy={busy} update={update} />)}
+        </TileGrid>
+      )}
       {done.length > 0 && (
-        <details className="cn-details">
-          <summary>{done.length} achieved or dropped</summary>
+        <Fold title="Achieved or dropped" meta={`${done.length}`}>
           <ul className="cn-list">
             {done.map((g) => (
               <li key={g.id} className="cn-row"><span className="cn-rowtitle">{g.title}</span> <span className="cn-muted">{STATUS_WORDS[g.status]}</span>
-                <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'active' })}>Make active again</button></li>
+                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => update(g, { status: 'active' })}>Make active again</button></li>
             ))}
           </ul>
-        </details>
+        </Fold>
       )}
     </section>
   );
@@ -70,58 +110,63 @@ function GoalRow({ g, p, measures, busy, update }) {
   const prog = p && p.progress;
   const levers = (p && p.levers) || [];
   const label = g.measure ? (measures.find((m) => m.kind === g.measure.kind) || {}).label || g.measure.kind : null;
-  return (
-    <li className={`cn-row cn-goal${g.status === 'paused' ? ' cn-goal--paused' : ''}`}>
-      <span className="cn-rowtitle">{g.title}</span>
+  const facts = [
+    g.reviewDate ? `review ${dayLabel(g.reviewDate)}` : null,
+    g.lastReviewedAt ? `reviewed ${when(g.lastReviewedAt)}` : null,
+    g.links && g.links.length > 0 ? `${g.links.length} linked` : null,
+  ].filter(Boolean).join(' · ');
+  const foot = (
+    <>
       {g.domains.length
         ? g.domains.map((d) => <span key={d.domain} className="cn-chip cn-chip--firm">{DOMAIN_LABELS[d.domain] || d.domain}</span>)
         : <span className="cn-chip cn-chip--unknown">no type</span>}
       <ImportanceChip value={g.importance} basis="declared" />
-      {g.status === 'paused' && <span className="cn-chip cn-chip--soft">paused — lends nothing to anything</span>}
-      {g.reviewDate && <span className="cn-muted">review {g.reviewDate}</span>}
-      {g.lastReviewedAt && <span className="cn-muted">reviewed {when(g.lastReviewedAt)}</span>}
-      {g.links && g.links.length > 0 && <span className="cn-muted">{g.links.length} linked</span>}
-      <span className="cn-goal-actions">
-        <select value={g.importance || ''} disabled={busy} aria-label="How much it matters to you"
-          onChange={(e) => update(g, { importance: e.target.value || null })}>
-          <option value="">importance not said</option>
-          {IMPORTANCE_IDS.filter((i) => i !== 'work-critical').map((i) => <option key={i} value={i}>{IMPORTANCE_LABELS[i]}</option>)}
-        </select>
-        <button type="button" className="cn-btn" disabled={busy} onClick={() => setEditing((v) => !v)}>{g.measure ? 'Change measure' : 'Measure it'}</button>
-        <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { reviewed: true })}>Reviewed</button>
-        {g.status === 'active'
-          ? <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'paused' })}>Pause</button>
-          : <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'active' })}>Resume</button>}
-        <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'achieved' })}>Achieved</button>
-        <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'dropped' })}>Drop</button>
-      </span>
-      {g.description && <div className="cn-muted cn-goal-desc">{g.description}</div>}
-
+      {g.status === 'paused' && <span className="cn-chip cn-chip--soft" title="A paused goal lends nothing to anything">paused</span>}
+      {facts && <span>{facts}</span>}
+    </>
+  );
+  return (
+    <Tile title={g.title} why={g.description || undefined} foot={foot}>
       {g.status === 'active' && (
         <div className="cn-goal-progress">
-          {!g.measure && <div className="cn-muted">Not measured — NEURO only knows about items you link to it. “Measure it” lets it track a number.</div>}
-          {g.measure && !prog && <div className="cn-muted">Measured by {label}. Reading…</div>}
+          {!g.measure && <span className="cn-tile-sub" title="NEURO only knows about items you link to it. “Measure it” lets it track a number.">Not measured</span>}
+          {g.measure && !prog && <span className="cn-tile-sub">Measured by {label}. Reading…</span>}
           {g.measure && prog && <GoalProgress prog={prog} label={label} />}
           {levers.length > 0 && <Levers levers={levers} open={!!prog && NEEDS_HELP.has(prog.state)} />}
         </div>
       )}
-      {editing && (
-        <MeasureEditor initial={g.measure} domain={g.domains[0] && g.domains[0].domain} measures={measures} busy={busy}
-          onCancel={() => setEditing(false)}
-          onSave={async (measure) => { await update(g, { measure }); setEditing(false); }} />
-      )}
-    </li>
+      <Fold title="Change">
+        <div className="cn-goal-actions">
+          <select value={g.importance || ''} disabled={busy} aria-label="How much it matters to you"
+            onChange={(e) => update(g, { importance: e.target.value || null })}>
+            <option value="">importance not said</option>
+            {IMPORTANCE_IDS.filter((i) => i !== 'work-critical').map((i) => <option key={i} value={i}>{IMPORTANCE_LABELS[i]}</option>)}
+          </select>
+          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => setEditing((v) => !v)}>{g.measure ? 'Change measure' : 'Measure it'}</button>
+          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => update(g, { reviewed: true })}>Reviewed</button>
+          {g.status === 'active'
+            ? <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => update(g, { status: 'paused' })}>Pause</button>
+            : <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => update(g, { status: 'active' })}>Resume</button>}
+          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => update(g, { status: 'achieved' })}>Achieved</button>
+          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => update(g, { status: 'dropped' })}>Drop</button>
+        </div>
+        {editing && (
+          <MeasureEditor initial={g.measure} domain={g.domains[0] && g.domains[0].domain} measures={measures} busy={busy}
+            onCancel={() => setEditing(false)}
+            onSave={async (measure) => { await update(g, { measure }); setEditing(false); }} />
+        )}
+      </Fold>
+    </Tile>
   );
 }
 
+/** The state as a badge and the server's line; where the number came from is on hover. */
 export function GoalProgress({ prog, label }) {
+  const src = `Measured by ${label || prog.label}${prog.targetText ? ` · target ${prog.targetText}` : ''}${prog.by ? ` by ${prog.by}` : ''}${prog.source ? ` · ${prog.source}` : ''}`;
   return (
-    <div className="cn-goal-measure">
-      <span className={`cn-goal-state cn-goal-state--${prog.state}`}>{STATE_WORDS[prog.state] || prog.state}</span>
-      <span>{prog.line}</span>
-      <div className="cn-muted cn-goal-src">
-        Measured by {label || prog.label}{prog.targetText ? ` · target ${prog.targetText}` : ''}{prog.by ? ` by ${prog.by}` : ''}{prog.source ? ` · ${prog.source}` : ''}
-      </div>
+    <div className="cn-goal-measure" title={src}>
+      <Pill tone={STATE_TONE[prog.state] || 'neutral'}>{STATE_WORDS[prog.state] || prog.state}</Pill>
+      <span className="cn-tile-sub">{prog.line}</span>
     </div>
   );
 }
@@ -130,17 +175,16 @@ export function Levers({ levers, open }) {
   return (
     <details className="cn-goal-levers" open={open}>
       <summary>What would help ({levers.length})</summary>
-      <ul>
+      <div className="cn-group-why">Things NEURO can see that bear on the goal — not a diagnosis, and not a claim about what caused anything.</div>
+      <ul className="cn-act-lines">
         {levers.map((l) => (
-          <li key={l.id} className={`cn-lever cn-lever--${l.level}`}>
+          <li key={l.id} className={`cn-lever cn-lever--${l.level}`}
+            title={[l.finding, `from ${l.source}`, l.basis].filter(Boolean).join(' · ')}>
             <div className="cn-lever-title">{l.title}</div>
-            {l.finding && <div className="cn-muted">{l.finding}</div>}
             <div className="cn-lever-action">{l.action}</div>
-            <div className="cn-muted cn-goal-src">from {l.source}{l.basis ? ` · ${l.basis}` : ''}</div>
           </li>
         ))}
       </ul>
-      <div className="cn-muted cn-goal-src">These are things NEURO can see that bear on the goal — not a diagnosis, and not a claim about what caused anything.</div>
     </details>
   );
 }

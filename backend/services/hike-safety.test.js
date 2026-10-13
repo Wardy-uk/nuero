@@ -369,12 +369,12 @@ test('19. the card renders for real: arm form, then the armed walk with check-in
   reset();
   let html = render(hike.read({ now: NOW }));
   // Idle: a button, never an open form — the form trapped Nick with no way back (12 Oct 2026).
-  assert.match(html, /No walk armed\./); assert.match(html, />Plan a new walk</);
+  assert.match(html, />no walk armed</i, 'the headline says no walk is armed'); assert.match(html, />Plan a new walk</);
   assert.ok(!/hike-arm-form/.test(html), 'the arm form is not open until asked for');
   const f = fakes();
   await armed(f);
   html = render(hike.read({ now: L('2026-10-11T12:00') }));
-  assert.match(html, /Catbells loop/); assert.match(html, /Back by <strong>15:00/); assert.match(html, /alert to Helen at <strong>16:00/);
+  assert.match(html, /Catbells loop/); assert.match(html, /cn-stattile-v">15:00<\/div><div class="cn-stattile-l">Back by</); assert.match(html, /cn-stattile-v">16:00<\/div><div class="cn-stattile-l">Alert to Helen</);
   assert.match(html, /I’m back — check in/); assert.match(html, /\+30 min/); assert.match(html, /Cancel walk/);
   assert.match(html, /ROUTE CARD — Catbells loop/);
   assert.match(html, /class="walk-map"/, 'the map is on the page while the walk is live');
@@ -629,7 +629,9 @@ test('30. after a check-in the page says so — the last walk, when he checked i
   const id = await armed(f);
   await hike.checkIn(id, { via: 'NEURO', now: L('2026-10-11T15:12'), deps: f.deps });
   const html = renderToString(React.createElement(m.exports.HikeSafetyView, { data: hike.read({ now: L('2026-10-12T09:00') }), act: () => true })).replace(/<!-- -->/g, '');
-  assert.match(html, /No walk armed\. Last: <strong>Catbells loop<\/strong> — you checked in at 15:12 on 11 Oct, no alert sent\./);
+  // 13 Oct 2026 (design rules): the headline says no walk is armed; the last walk is a tile saying when he checked in and that no alert went.
+  assert.match(html, />no walk armed</i);
+  assert.match(html, /data-testid="hike-last"><span class="cn-tile-title">Catbells loop<\/span><span class="cn-tile-sub">checked in 15:12 on Sun 11 Oct, no alert sent</);
   assert.match(html, />Plan a new walk</);
   assert.ok(!/hike-arm-form/.test(html));
 });

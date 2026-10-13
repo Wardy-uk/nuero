@@ -10,7 +10,7 @@
 .mh-headline { background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--success); border-radius: var(--radius); padding: 14px 16px; }
 .mh-headline--act { border-left-color: var(--danger); }
 .mh-headline p { margin: 0; font-size: 16px; line-height: 1.45; }
-.mh-headline .mh-incomplete { margin-top: 6px; font-size: 13px; color: var(--warning); }
+.mh-incomplete { font-size: 13px; color: var(--warning); }
 
 .mh-section { margin: 26px 0; }
 .mh-section h2 { font-size: 15px; margin: 0 0 12px; }

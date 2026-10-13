@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, HowItWorks, Fold, when } from './canonicalUi';
+import { useCanonical, postCanonical, HowItWorks, Fold, when, Headline, Stat, StatTiles, Tile, TileGrid } from './canonicalUi';
 
 /**
  * Build 24 — Life → Personal projects. Personal projects only: NOVA and every
@@ -39,14 +39,29 @@ export function ProjectsView({ data, busy, act, note = null }) {
   const rest = projects.filter((p) => !['ready', 'closed', 'parked'].includes(p.focus.focus));
   const parked = projects.filter((p) => p.focus.focus === 'parked');
   const closed = projects.filter((p) => p.focus.focus === 'closed');
+  const blocked = projects.filter((p) => p.focus.focus === 'blocked');
+  const unclassified = (data.needsClassifying || []).length;
+  // The answer: what is ready to pick up — every word of it is the server's focus verdict.
+  const head = !projects.length
+    ? { tone: unclassified ? 'warn' : null, pill: unclassified ? 'Needs you' : 'None yet', text: unclassified ? `${unclassified} project${unclassified === 1 ? '' : 's'} to classify — none is filed as personal for you.` : 'No project is classified as personal yet.' }
+    : ready.length
+      ? { tone: 'plan', pill: `${ready.length} ready`, text: <>Ready to pick up: <strong>{ready.map((p) => p.name).join(', ')}</strong></> }
+      : { tone: blocked.length ? 'warn' : null, pill: blocked.length ? `${blocked.length} blocked` : 'None ready', text: 'Nothing is ready to pick up right now.' };
   return (
     <section className="cn-section cn-projects">
       <h3>Personal projects</h3>
       {note && <div className="cn-error">{note}</div>}
-      <div className="cn-muted cn-small">{ghLine}</div>
-      {!projects.length && <div className="cn-muted">No project is classified as personal yet. Say whose each project is below — NEURO never decides that for you.</div>}
-      {ready.length > 0 && <div className="cn-small cn-muted">Ready to pick up: {ready.map((p) => p.name).join(', ')}</div>}
-      {[...ready, ...rest].map((p) => <Project key={p.projectId} p={p} busy={busy} act={act} />)}
+      <Headline tone={head.tone} pill={head.pill} detail={ghLine}>{head.text}</Headline>
+      <StatTiles>
+        <Stat v={ready.length + rest.length} l="current" />
+        <Stat v={ready.length} l="ready to continue" />
+        <Stat v={blocked.length} l="blocked" tone={blocked.length ? 'warn' : undefined} />
+        <Stat v={parked.length} l="parked" />
+        {unclassified > 0 && <Stat v={unclassified} l="to classify" tone="warn" />}
+      </StatTiles>
+      {[...ready, ...rest].length > 0 && (
+        <TileGrid wide>{[...ready, ...rest].map((p) => <Project key={p.projectId} p={p} busy={busy} act={act} />)}</TileGrid>
+      )}
       {parked.length > 0 && (
         <Fold title="Parked" meta={`${parked.length} not currently active`}>
           <div className="cn-classify">
@@ -66,7 +81,7 @@ export function ProjectsView({ data, busy, act, note = null }) {
       )}
       <NeedsClassifying items={data.needsClassifying || []} busy={busy} act={act} />
       <LikelyLinks items={data.likelyLinks || []} busy={busy} act={act} />
-      <HowItWorks>{data.rule}</HowItWorks>
+      <HowItWorks>{data.rule} NEURO never decides whether a project is personal or work; until you say, it stays out of this list.</HowItWorks>
     </section>
   );
 }
@@ -89,18 +104,16 @@ function Project({ p, busy, act }) {
   const touched = p.lastActivity && (!progress || p.lastActivity.at !== progress.at) ? p.lastActivity : null;
   const statusWord = p.status.status === 'unknown' ? (p.rawStatus ? `“${p.rawStatus}”` : 'no status') : STATUS_WORDS[p.status.status];
   const confirmed = p.repos.filter((r) => r.state === 'confirmed').length;
+  const alt = p.displayTitle && !p.displayTitle.toLowerCase().startsWith(p.name.toLowerCase()) ? p.displayTitle : null;
   return (
-    <div className="cn-row cn-proj">
-      <div className="cn-proj-head">
-        <span className="cn-proj-name">{p.name}{p.displayTitle && !p.displayTitle.toLowerCase().startsWith(p.name.toLowerCase()) && <span className="cn-proj-alt">{p.displayTitle}</span>}</span>
-        <span className="cn-proj-chips">
-          <span className={`cn-chip ${FOCUS_CHIP[p.focus.focus] || ''}`}>{FOCUS_WORDS[p.focus.focus]}</span>
-          <span className="cn-chip cn-chip--soft" title={p.status.why}>{statusWord}</span>
-          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} title="Not currently active — moves it to Parked (written to the project's note)" onClick={() => act(`${base}/status`, { status: 'parked' })}>Park</button>
-        </span>
-      </div>
-      {p.description && <div className="cn-proj-desc" title={p.description}>{p.description}</div>}
-      {p.nextAction && <div className="cn-proj-next">Next: {p.nextAction.text}{p.nextAction.due ? <span className="cn-muted"> · due {p.nextAction.due}</span> : null}</div>}
+    <Tile accent={p.focus.focus === 'ready'} why={p.description || undefined}
+      title={<>{p.name}{alt && <span className="cn-proj-alt">{alt}</span>}</>}
+      sub={p.nextAction ? <>Next: {p.nextAction.text}{p.nextAction.due ? ` · due ${p.nextAction.due}` : ''}</> : (p.description || null)}
+      foot={<>
+        <span className={`cn-chip ${FOCUS_CHIP[p.focus.focus] || ''}`}>{FOCUS_WORDS[p.focus.focus]}</span>
+        <span className="cn-chip cn-chip--soft" title={p.status.why}>{statusWord}</span>
+        <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} title="Not currently active — moves it to Parked (written to the project's note)" onClick={() => act(`${base}/status`, { status: 'parked' })}>Park</button>
+      </>}>
       {p.blockers.map((b) => (
         <div key={b.id} className="cn-error">Blocked: {b.what}{b.unblock ? ` — unblocks when ${b.unblock}` : ''}{' '}
           {b.source === 'you' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`${base}/blockers/${enc(b.id)}/resolve`, {})}>Unblocked</button>}
@@ -114,7 +127,7 @@ function Project({ p, busy, act }) {
         {p.parkedComponents.length > 0 && <span><b>Parked</b>{p.parkedComponents.join(', ')}</span>}
       </div>
       <Fold title="Details" meta={`${plural(confirmed, 'repo')} · ${plural(p.tasks.open.length, 'open task')}`}>
-        <div className="cn-small cn-muted">Why shown: {p.whyShown.join('; ')}</div>
+        <div className="cn-group-why">Why shown: {p.whyShown.join('; ')}</div>
         {p.repos.length > 0 && (
           <ul className="cn-list cn-small">
             {p.repos.map((r) => (
@@ -153,7 +166,7 @@ function Project({ p, busy, act }) {
           <button type="submit" className="cn-btn cn-btn--tiny" disabled={busy || !blocker.trim()}>Add blocker</button>
         </form>
       </Fold>
-    </div>
+    </Tile>
   );
 }
 
@@ -161,7 +174,7 @@ function NeedsClassifying({ items, busy, act }) {
   if (!items.length) return null;
   return (
     <Fold title="Whose are these?" meta={`${items.length} not yet classified`}>
-      <div className="cn-small cn-muted">NEURO does not decide whether a project is personal or work. Until you say, it stays out of this list.</div>
+      <div className="cn-group-why">Until you say whose a project is, it stays out of this list.</div>
       <div className="cn-classify">
         {items.map((it) => (
           <React.Fragment key={it.projectId}>

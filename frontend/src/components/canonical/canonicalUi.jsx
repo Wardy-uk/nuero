@@ -192,3 +192,88 @@ export function LoggerConditions({ c, quietIfUnknown = false }) {
     </div>
   );
 }
+
+/* ── Card building blocks (13 Oct 2026) ─────────────────────────────────────
+ * The rules these enforce are in docs/design-rules.md. A Life card is built
+ * from these and nothing else at its top level:
+ *   <Headline>     one status badge + one short sentence — the card's answer
+ *   <StatTiles>    numbers, each in a tile, never inside a sentence
+ *   <TileGrid>     a collection (≤ ~12) as small cards
+ *   <PrimaryAction> the one thing to do here, as a real button
+ *   <Fold>         things you edit or rarely open
+ *   <HowItWorks>   the only grey paragraph
+ */
+
+// tone: good | plan | warn | bad | neutral. A tone is a MEANING, never a colour
+// a caller liked; "warn" and "bad" are for things that need him.
+export function Pill({ tone = 'neutral', children, title }) {
+  const cls = tone && tone !== 'neutral' ? ` cn-pill--${tone}` : '';
+  return <span className={`cn-pill${cls}`} title={title}>{children}</span>;
+}
+
+/** The card's answer in one line: badge + sentence (+ optional detail line). */
+export function Headline({ tone, pill, children, detail = null, testid }) {
+  return (
+    <div className="cn-headline-wrap" data-testid={testid} data-ui="headline">
+      <div className="cn-headline">
+        {pill && <Pill tone={tone}>{pill}</Pill>}
+        <span className="cn-headline-text">{children}</span>
+      </div>
+      {detail && <div className="cn-headline-detail">{detail}</div>}
+    </div>
+  );
+}
+
+/** A number and what it counts. `v` null renders "—", never 0. */
+export function Stat({ v, l, title, tone }) {
+  return (
+    <div className={`cn-stattile${tone ? ` cn-stattile--${tone}` : ''}`} title={title}>
+      <div className="cn-stattile-v">{v == null || v === '' ? '—' : v}</div>
+      <div className="cn-stattile-l">{l}</div>
+    </div>
+  );
+}
+export function StatTiles({ children }) {
+  return <div className="cn-tiles-stat" data-ui="stats">{children}</div>;
+}
+
+/** A small card: title, optional sub line, optional footer (chips, actions). */
+export function Tile({ title, sub = null, foot = null, children = null, accent = false, why, testid, as = 'li' }) {
+  const Tag = as;
+  return (
+    <Tag className={`cn-tile${accent ? ' cn-tile--next' : ''}`} title={why || undefined} data-testid={testid}>
+      {title != null && <span className="cn-tile-title">{title}</span>}
+      {sub != null && <span className="cn-tile-sub">{sub}</span>}
+      {children}
+      {foot != null && <span className="cn-tile-foot">{foot}</span>}
+    </Tag>
+  );
+}
+export function TileGrid({ children, testid, wide = false }) {
+  return <ul className={`cn-tiles${wide ? ' cn-tiles--wide' : ''}`} data-testid={testid} data-ui="tiles">{children}</ul>;
+}
+
+/** A labelled group inside a card. `why` is a reason shared by everything in it — said once. */
+export function Group({ label, meta = null, why = null, children }) {
+  return (
+    <div className="cn-group" data-ui="group">
+      <h4 className="cn-h4 cn-group-label">{label}{meta != null && meta !== '' && <span className="cn-group-meta">{meta}</span>}</h4>
+      {why && <div className="cn-group-why">{why}</div>}
+      {children}
+    </div>
+  );
+}
+
+export function PrimaryAction({ children, onClick, disabled, title }) {
+  return <button type="button" className="cn-btn cn-btn--primary" onClick={onClick} disabled={disabled} title={title}>{children}</button>;
+}
+
+/** A date key as "Sat 21 Nov" — built from its parts, never parsed as UTC. */
+const _DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const _MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export function dayLabel(key) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(key || ''));
+  if (!m) return key;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return `${_DOW[d.getDay()]} ${Number(m[3])} ${_MON[Number(m[2]) - 1]}`;
+}

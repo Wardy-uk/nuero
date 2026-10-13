@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, Fold, HowItWorks } from './canonicalUi';
+import { useCanonical, postCanonical, Fold, HowItWorks, Headline, Stat, StatTiles, Tile, TileGrid, Group, dayLabel } from './canonicalUi';
 
 /**
  * Life → People (Build 31). Who the people in Nick's life are to him — only
@@ -106,39 +106,65 @@ function Classify({ person, act, busy, compact = false }) {
   );
 }
 
-function PersonRow({ p, act, busy, showWork = false }) {
-  const [open, setOpen] = useState(false);
+const relLabel = (p) => (p.relationship.detail ? `${REL[p.relationship.type] || p.relationship.type} · ${p.relationship.detail}` : REL[p.relationship.type] || p.relationship.type);
+
+/** Where the relationship came from — on hover, never a line under every person. */
+function provenance(p) {
+  const basis = p.relationship.basis !== 'none' && BASIS[p.relationship.basis] ? ` (${BASIS[p.relationship.basis]})` : '';
+  return `${relLabel(p)}${basis}: ${p.relationship.why || ''}`.trim();
+}
+
+/** One person as a tile. Details open below the grid, full width, so the editor has room. */
+function PersonTile({ p, open, onToggle }) {
   const c = p.commitments || { open: 0 };
   const next = (p.dates || [])[0];
   return (
-    <li data-testid="people-person">
-      <strong>{p.name}</strong>
-      <span className="cn-chip" title={p.relationship.why}>{p.relationship.detail ? `${REL[p.relationship.type] || p.relationship.type} · ${p.relationship.detail}` : REL[p.relationship.type] || p.relationship.type}</span>
-      {p.relationship.basis !== 'none' && BASIS[p.relationship.basis] && <span className="cn-muted cn-small"> ({BASIS[p.relationship.basis]})</span>}
-      {p.sphere.value !== 'unknown' && <span className="cn-chip" title={p.sphere.why}>{SPHERE[p.sphere.value]}</span>}
-      {p.presence && <span className="cn-chip" title={p.presence.why}>{PRESENCE[p.presence.state] || p.presence.state}</span>}
-      {next && <span className="cn-chip" title={next.reminder.why}>{next.kind} {next.date.slice(5)}{next.reminder.policy === 'none' ? '' : ' · reminders on'}</span>}
-      {c.open > 0 && <span className="cn-chip">{[c.nickOwes ? `you owe ${c.nickOwes}` : null, c.owesNick ? `owes you ${c.owesNick}` : null].filter(Boolean).join(' · ')}</span>}
-      <button type="button" className="cn-btn cn-btn--tiny" onClick={() => setOpen((o) => !o)}>{open ? 'Close' : 'Details'}</button>
-      {open && (
-        <div className="cn-small" data-testid="people-detail">
-          <div className="cn-muted">Why: {p.relationship.why} {p.sphere.basis !== 'none' ? p.sphere.why : ''} {p.household.basis !== 'none' ? p.household.why : ''}</div>
-          <YouWrote lines={p.youWrote} />
-          {(p.dates || []).map((d) => <div key={d.id}>{d.kind === 'birthday' ? 'Birthday' : d.kind === 'anniversary' ? 'Anniversary' : 'Date'} {d.date} — {d.reminder.why}</div>)}
-          {(c.items || []).map((i) => <div key={i.id}>{i.direction === 'nick-owes' ? 'You owe' : 'Owes you'}: {i.description}{i.due ? ` (by ${i.due.date})` : ''}{i.linkedBy === 'unique-first-name' ? ' — linked by first name only' : ''}</div>)}
-          {c.open > (c.items || []).length && <div className="cn-muted">…and {c.open - c.items.length} more open.</div>}
-          {p.context && p.context.personal && <div>Likes: {p.context.personal.likes.join(', ')}</div>}
-          {showWork && p.context && p.context.work && <div className="cn-muted">{[p.context.work.role, p.context.work.team].filter(Boolean).join(' · ')}</div>}
-          {p.relationship.type !== 'self' && <Classify person={p} act={act} busy={busy} />}
-          {p.rosterMatch && (
-            <div className="cn-muted">Home Assistant’s “{p.rosterMatch.name}” is matched to this note by {p.rosterMatch.method === 'exact-alias' ? 'an alias' : 'its exact name'}.{' '}
-              <button type="button" className="cn-btn cn-btn--tiny" disabled={busy}
-                onClick={() => act('/api/people/links/reject', { subject: p.rosterMatch.subject, personId: p.personId })}>Not this person</button>
-            </div>
-          )}
+    <Tile testid="people-person" title={p.name} sub={relLabel(p)} why={provenance(p)}
+      foot={<>
+        {p.sphere.value !== 'unknown' && <span className="cn-chip" title={p.sphere.why}>{SPHERE[p.sphere.value]}</span>}
+        {p.presence && <span className="cn-chip" title={p.presence.why}>{PRESENCE[p.presence.state] || p.presence.state}</span>}
+        {next && <span className="cn-chip" title={next.reminder.why}>{next.kind} {dayLabel(next.date)}{next.reminder.policy === 'none' ? '' : ' · reminders on'}</span>}
+        {c.open > 0 && <span className="cn-chip">{[c.nickOwes ? `you owe ${c.nickOwes}` : null, c.owesNick ? `owes you ${c.owesNick}` : null].filter(Boolean).join(' · ')}</span>}
+        <button type="button" className="cn-btn cn-btn--tiny" aria-expanded={open} onClick={onToggle}>{open ? 'Close' : 'Details'}</button>
+      </>} />
+  );
+}
+
+function PersonDetail({ p, act, busy, showWork = false, onClose }) {
+  const c = p.commitments || { open: 0 };
+  return (
+    <div className="cn-small cn-tile-detail" data-testid="people-detail">
+      <div><strong>{p.name}</strong> <button type="button" className="cn-btn cn-btn--tiny" onClick={onClose}>Close</button></div>
+      <div className="cn-muted">Why: {p.relationship.why} {p.sphere.basis !== 'none' ? p.sphere.why : ''} {p.household.basis !== 'none' ? p.household.why : ''}</div>
+      <YouWrote lines={p.youWrote} />
+      {(p.dates || []).map((d) => <div key={d.id}>{d.kind === 'birthday' ? 'Birthday' : d.kind === 'anniversary' ? 'Anniversary' : 'Date'} {dayLabel(d.date)} — {d.reminder.why}</div>)}
+      {(c.items || []).map((i) => <div key={i.id}>{i.direction === 'nick-owes' ? 'You owe' : 'Owes you'}: {i.description}{i.due ? ` (by ${dayLabel(i.due.date)})` : ''}{i.linkedBy === 'unique-first-name' ? ' — linked by first name only' : ''}</div>)}
+      {c.open > (c.items || []).length && <div className="cn-muted">…and {c.open - c.items.length} more open.</div>}
+      {p.context && p.context.personal && <div>Likes: {p.context.personal.likes.join(', ')}</div>}
+      {showWork && p.context && p.context.work && <div className="cn-muted">{[p.context.work.role, p.context.work.team].filter(Boolean).join(' · ')}</div>}
+      {p.relationship.type !== 'self' && <Classify person={p} act={act} busy={busy} />}
+      {p.rosterMatch && (
+        <div className="cn-muted">Home Assistant’s “{p.rosterMatch.name}” is matched to this note by {p.rosterMatch.method === 'exact-alias' ? 'an alias' : 'its exact name'}.{' '}
+          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy}
+            onClick={() => act('/api/people/links/reject', { subject: p.rosterMatch.subject, personId: p.personId })}>Not this person</button>
         </div>
       )}
-    </li>
+    </div>
+  );
+}
+
+/** A set of people as tiles (plus, for the household, roster entries with no note yet). */
+function PeopleTiles({ people, roster = [], act, busy, showWork = false, testid }) {
+  const [openId, setOpenId] = useState(null);
+  const opened = people.find((p) => p.personId === openId) || null;
+  return (
+    <>
+      <TileGrid testid={testid}>
+        {people.map((p) => <PersonTile key={p.personId} p={p} open={openId === p.personId} onToggle={() => setOpenId(openId === p.personId ? null : p.personId)} />)}
+        {roster.map((m) => <CreateFromRoster key={m.subject} m={m} act={act} busy={busy} />)}
+      </TileGrid>
+      {opened && <PersonDetail p={opened} act={act} busy={busy} showWork={showWork} onClose={() => setOpenId(null)} />}
+    </>
   );
 }
 
@@ -152,10 +178,8 @@ function CreateFromRoster({ m, act, busy }) {
   const [name, setName] = useState(m.name);
   const [rel, setRel] = useState(null);
   return (
-    <li data-testid="people-unlinked">
-      <strong>{m.name}</strong> <span className="cn-chip">{m.role === 'resident' ? 'resident' : 'visiting'}</span>
-      {m.presence && <span className="cn-chip">{PRESENCE[m.presence.state] || m.presence.state}</span>}
-      <div className="cn-muted cn-small">{m.why}</div>
+    <Tile testid="people-unlinked" title={m.name} sub={m.role === 'resident' ? 'Lives here · no People note yet' : 'Visiting · no People note yet'} why={m.why}
+      foot={m.presence ? <span className="cn-chip">{PRESENCE[m.presence.state] || m.presence.state}</span> : null}>
       <YouWrote lines={m.youWrote} />
       <div className="cn-row-actions">
         <input type="text" value={name} maxLength={60} disabled={busy} aria-label="Full name for the People note" onChange={(e) => setName(e.target.value)} />
@@ -164,7 +188,7 @@ function CreateFromRoster({ m, act, busy }) {
           onClick={() => act('/api/people', { name: name.trim(), rosterName: m.name, relationshipType: rel || undefined, household: m.role === 'resident' ? true : undefined })}>
           Create People note</button>
       </div>
-    </li>
+    </Tile>
   );
 }
 
@@ -186,7 +210,13 @@ export function PeopleView({ data, error = null, act, busy = false, msg = null, 
   const sec = (id) => (sections.find((s) => s.id === id) || { people: [] }).people;
   const queue = data ? data.queue.next.filter((p) => !skipped.includes(p.personId)) : [];
   const counts = data ? data.counts : null;
-  const meta = counts ? `${counts.classified} of ${counts.active - (data.self ? 1 : 0)} known · ${counts.unknown} not said` : null;
+  const household = sec('household');
+  const unlinked = data ? data.unlinkedHousehold : [];
+  const known = counts ? counts.active - (data.self ? 1 : 0) : null;
+  // Presence is "home now" for the household and nothing else (the server's answer).
+  const homeNow = [...household.filter((p) => p.presence && p.presence.state === 'home').map((p) => p.name.split(' ')[0]),
+    ...unlinked.filter((m) => m.presence && m.presence.state === 'home').map((m) => m.name)];
+  const names = (xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
   return (
     <section className="cn-section" data-testid="people-card">
@@ -196,19 +226,25 @@ export function PeopleView({ data, error = null, act, busy = false, msg = null, 
       {!data && !error && <div className="cn-muted">Reading…</div>}
       {data && (
         <>
-          <p className="cn-muted cn-small">{meta}. Who someone is to you comes only from what you’ve told NEURO.</p>
+          <Headline testid="people-headline" tone={data.duplicates.length ? 'warn' : counts.unknown ? undefined : 'good'}
+            pill={data.duplicates.length ? 'check duplicates' : counts.unknown ? 'some not said' : 'all placed'}>
+            {homeNow.length ? `${names(homeNow)} ${homeNow.length === 1 ? 'is' : 'are'} home now.` : 'Who people are to you — only as you’ve said.'}
+          </Headline>
+          <StatTiles>
+            <Stat v={counts.classified} l={`known of ${known}`} />
+            <Stat v={counts.unknown} l="not said yet" />
+            <Stat v={household.length + unlinked.length} l="household" />
+            <Stat v={sec('work').length} l="work contacts" />
+          </StatTiles>
 
-          {(sec('household').length > 0 || data.unlinkedHousehold.length > 0) && (
-            <Fold title="Household" meta={`${sec('household').length + data.unlinkedHousehold.length}`} open>
-              <ul className="cn-list">
-                {sec('household').map((p) => <PersonRow key={p.personId} p={p} act={act} busy={busy} />)}
-                {data.unlinkedHousehold.map((m) => <CreateFromRoster key={m.subject} m={m} act={act} busy={busy} />)}
-              </ul>
-            </Fold>
+          {(household.length > 0 || unlinked.length > 0) && (
+            <Group label="Household" meta={`${household.length + unlinked.length}`}>
+              <PeopleTiles people={household} roster={unlinked} act={act} busy={busy} testid="people-household" />
+            </Group>
           )}
 
           {queue.length > 0 && (
-            <Fold title="Who is this?" meta={`${data.queue.total} not said`} open={sec('household').length === 0}>
+            <Fold title="Who is this?" meta={`${data.queue.total} not said`} open={household.length === 0}>
               <p className="cn-muted cn-small">A few at a time is fine. “Leave as not said” takes someone off this list.</p>
               <ul className="cn-list">
                 {queue.map((p) => (
@@ -222,31 +258,36 @@ export function PeopleView({ data, error = null, act, busy = false, msg = null, 
             </Fold>
           )}
 
-          {['family', 'friends', 'other', 'unknown'].map((id) => sec(id).length > 0 && (
-            <Fold key={id} title={sections.find((s) => s.id === id).label} meta={`${sec(id).length}`} open={id !== 'unknown'}>
-              <ul className="cn-list">{sec(id).map((p) => <PersonRow key={p.personId} p={p} act={act} busy={busy} />)}</ul>
-            </Fold>
+          {['family', 'friends', 'other'].map((id) => sec(id).length > 0 && (
+            <Group key={id} label={sections.find((s) => s.id === id).label} meta={`${sec(id).length}`}>
+              <PeopleTiles people={sec(id)} act={act} busy={busy} testid={`people-${id}`} />
+            </Group>
           ))}
+          {sec('unknown').length > 0 && (
+            <Fold title={sections.find((s) => s.id === 'unknown').label} meta={`${sec('unknown').length}`}>
+              <PeopleTiles people={sec('unknown')} act={act} busy={busy} testid="people-unknown" />
+            </Fold>
+          )}
 
           {/* 13 Oct 2026 — work people live on the People board (People & meetings),
               with the 1-2-1s and who owes what. Here they are one line, and the
               list stays one click away only to correct who counts as work. */}
           {sec('work').length > 0 && (
             <div className="cn-nowstrip" data-testid="people-work-link">
-              <span>{sec('work').length} work contact{sec('work').length === 1 ? '' : 's'} — they live on the People board, with the 1-2-1s.</span>
+              <span>Work contacts live on the People board, with the 1-2-1s.</span>
               {onNavigate && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => onNavigate('people')}>Open People board</button>}
             </div>
           )}
           {sec('work').length > 0 && (
             <Fold title="Work — correct who counts as work" meta={`${sec('work').length}`}>
-              <ul className="cn-list">{sec('work').map((p) => <PersonRow key={p.personId} p={p} act={act} busy={busy} showWork />)}</ul>
+              <PeopleTiles people={sec('work')} act={act} busy={busy} showWork testid="people-work" />
             </Fold>
           )}
 
           {data.unlinkedDates.length > 0 && (
             <Fold title="Dates with no person" meta={`${data.unlinkedDates.length}`}>
               <ul className="cn-list">{data.unlinkedDates.map((d) => (
-                <li key={d.id} data-testid="people-unlinked-date">{d.title} — {d.date}<div className="cn-muted cn-small">{d.why} {d.reminder.why}</div></li>
+                <li key={d.id} data-testid="people-unlinked-date">{d.title} — {dayLabel(d.date)}<div className="cn-muted cn-small">{d.why} {d.reminder.why}</div></li>
               ))}</ul>
             </Fold>
           )}
@@ -271,7 +312,7 @@ export function PeopleView({ data, error = null, act, busy = false, msg = null, 
               <li key={s.id} data-testid="people-source"><strong>{s.label}</strong> <span className="cn-chip">{s.state}</span><div className="cn-muted cn-small">{s.detail}</div></li>
             ))}</ul>
           </Fold>
-          <HowItWorks>{data.rule} NEURO never counts how often you see, meet or message anyone, never scores a relationship and never reminds you to keep in touch. A birthday is a fact; it only reminds you if you set lead reminders for that kind of date.</HowItWorks>
+          <HowItWorks>{data.rule} Who someone is to you comes only from what you’ve told NEURO; hover a person to see where it came from. NEURO never counts how often you see, meet or message anyone, never scores a relationship and never reminds you to keep in touch. A birthday is a fact; it only reminds you if you set lead reminders for that kind of date.</HowItWorks>
         </>
       )}
     </section>

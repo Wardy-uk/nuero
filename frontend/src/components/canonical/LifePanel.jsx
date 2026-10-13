@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../api';
-import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, when, Fold } from './canonicalUi';
+import {
+  useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, when, Fold, HowItWorks,
+  Headline, StatTiles, Stat, TileGrid, Tile, Group,
+} from './canonicalUi';
 import GoalsCard from './GoalsCard';
 import OutdoorCard from './OutdoorCard';
 import LeisureCard from './LeisureCard';
@@ -208,20 +211,44 @@ function Classifications({ data, busy, act }) {
   const cal = { main: split(calendars.filter((c) => !ignoredCal(c))) };
   const superseded = containers.filter((c) => c.superseded).length;
 
+  // Tallies of what the server returned; "classified" is a choice Nick made.
+  const classified = cal.main.filter((c) => c.classification && (c.classification.domains || []).length > 0).length;
+  const unclassified = cal.main.length - classified;
+  const head = !data
+    ? { tone: 'neutral', pill: 'Reading', text: 'Reading your calendars…' }
+    : !containers.length
+      ? { tone: 'neutral', pill: 'None seen', text: 'No calendars or lists seen yet — they appear after the phone next pushes.' }
+      : !cal.main.length
+        ? { tone: 'neutral', pill: 'No calendars', text: `No calendar is being read${ignoredCals.length ? ` (${ignoredCals.length} ignored)` : ''}.` }
+      : unclassified > 0
+        ? { tone: 'neutral', pill: 'Unknown', text: `${unclassified} of ${cal.main.length} calendar${cal.main.length === 1 ? '' : 's'} not classified yet — their events stay domain unknown.` }
+        : { tone: 'good', pill: 'Set', text: `Every calendar NEURO reads has a part of life${ignoredCals.length ? `; ${ignoredCals.length} ignored` : ''}.` };
+
   return (
     <section className="cn-section">
       <h3 className="cn-h3">What each calendar and list is for</h3>
-      <p className="cn-muted">A calendar or a reminder list says nothing about your life until you say so here — the phone is not "personal" and Outlook is not "work" by themselves. Unclassified stays unknown.</p>
-      {data && !containers.length && <div className="cn-empty">No calendars or lists seen yet — they appear after the phone next pushes.</div>}
-      {cal.main.length > 0 && <><div className="cn-now-k cn-class-k">Calendars</div><ul className="cn-list cn-class-list">{cal.main.map((c) => <Row key={c.sourceKey} c={c} />)}</ul></>}
-      {lists.length > 0 && <p className="cn-muted cn-class-k">Reminder lists — what each is for and whether NEURO reads it — are set in “Reminder lists” above.</p>}
-      {ignoredCals.length > 0 && (
-        <details className="cn-details">
-          <summary>{ignoredCals.length} ignored calendar{ignoredCals.length === 1 ? '' : 's'} — their events no longer reach NEURO</summary>
-          <ul className="cn-list cn-class-list">{ignoredCals.map((c) => <Row key={c.sourceKey} c={c} />)}</ul>
-        </details>
+      <Headline tone={head.tone} pill={head.pill}>{head.text}</Headline>
+      {containers.length > 0 && (
+        <StatTiles>
+          <Stat v={cal.main.length} l="calendars read" />
+          <Stat v={classified} l="classified" />
+          <Stat v={ignoredCals.length} l="ignored" />
+          <Stat v={lists.length} l="reminder lists" title="Set in “Reminder lists” above" />
+          {superseded > 0 && <Stat v={superseded} l="older-build duplicates"
+            title={`${superseded} name-only entr${superseded === 1 ? 'y' : 'ies'} from older app builds are the same calendars and lists as above, and use their choices.`} />}
+        </StatTiles>
       )}
-      {superseded > 0 && <p className="cn-muted cn-class-k">{superseded} name-only entr{superseded === 1 ? 'y' : 'ies'} from older app builds are the same calendars and lists as above, and use their choices.</p>}
+      {cal.main.length > 0 && (
+        <Group label="Calendars" why={lists.length > 0 ? 'Reminder lists — what each is for and whether NEURO reads it — are set in “Reminder lists” above.' : null}>
+          <ul className="cn-list cn-class-list">{cal.main.map((c) => <Row key={c.sourceKey} c={c} />)}</ul>
+        </Group>
+      )}
+      {ignoredCals.length > 0 && (
+        <Fold title="Ignored calendars" meta={`${ignoredCals.length} — their events no longer reach NEURO`}>
+          <ul className="cn-list cn-class-list">{ignoredCals.map((c) => <Row key={c.sourceKey} c={c} />)}</ul>
+        </Fold>
+      )}
+      <HowItWorks>A calendar or a reminder list says nothing about your life until you say so here — the phone is not "personal" and Outlook is not "work" by themselves. Unclassified stays unknown. Two calendars with the same name are numbered (1 of 2) and kept apart by their id.</HowItWorks>
       {viewing && <EntriesModal c={viewing} onClose={() => setViewing(null)} />}
     </section>
   );
@@ -320,21 +347,21 @@ function Companions({ data, busy, act }) {
   return (
     <section className="cn-section">
       <h3 className="cn-h3">Companions</h3>
-      {data && !companions.length && <div className="cn-empty">None yet. Add one below — NEURO writes a note in Companions/ marked <code>type: pet</code>, and never guesses one for you.</div>}
-      <ul className="cn-list">
-        {companions.map((c) => (
-          <li key={c.id} className="cn-row">
-            <div className="cn-comp-head">
-              <span className="cn-rowtitle">{c.name}</span>
-              {c.species && <span className="cn-muted">{c.species}{c.breed ? ` · ${c.breed}` : ''}</span>}
-              {c.household === true && <span className="cn-chip cn-chip--soft">lives with you</span>}
-              {c.goals && c.goals.length > 0 && <span className="cn-muted">goals: {c.goals.map((g) => g.title).join(', ')}</span>}
-            </div>
-            {c.upcoming && c.upcoming.length > 0 && <div className="cn-muted">Coming up (mentions {c.name}): {c.upcoming.map((e) => `${when(e.start)} ${e.title}`).join('; ')}</div>}
-            <CompanionCareCard companion={c} />
-          </li>
-        ))}
-      </ul>
+      {data && !companions.length && (
+        <Headline pill="None" detail={<>Add one below — NEURO writes a note in Companions/ marked <code>type: pet</code>, and never guesses one for you.</>}>No companions yet.</Headline>
+      )}
+      {companions.map((c) => (
+        <Group key={c.id} label={c.name}
+          meta={[c.species ? `${c.species}${c.breed ? ` · ${c.breed}` : ''}` : null, c.household === true ? 'lives with you' : null].filter(Boolean).join(' · ')}
+          why={c.goals && c.goals.length > 0 ? `Goals: ${c.goals.map((g) => g.title).join(', ')}` : null}>
+          <CompanionCareCard companion={c} />
+          {c.upcoming && c.upcoming.length > 0 && (
+            <Group label={`Coming up that mentions ${c.name}`} why="A mention by name, not a link — it counts as care only once you link it.">
+              <TileGrid>{c.upcoming.map((e, i) => <Tile key={`${e.start}-${i}`} title={e.title} sub={when(e.start)} />)}</TileGrid>
+            </Group>
+          )}
+        </Group>
+      ))}
       <Fold title="Add a companion" meta="NEURO writes a note in Companions/">
       <form className="cn-goalform" onSubmit={create}>
         <input className="cn-input--short" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" maxLength={60} aria-label="Companion name" />
@@ -351,9 +378,22 @@ function Companions({ data, busy, act }) {
 
 function Coverage({ data, onNavigate }) {
   if (!data) return null;
+  const rows = data.coverage.domains;
+  const seen = rows.filter((r) => r.commitments || r.tasks || r.upcoming || r.sources || r.containers || r.goals).length;
+  const unk = data.coverage.unknown;
+  const gaps = data.gaps && data.gaps.length > 0;
   return (
     <section className="cn-section">
       <h3 className="cn-h3">What NEURO can see, by part of your life</h3>
+      <Headline tone={gaps ? 'warn' : 'neutral'} pill={gaps ? 'Partly read' : 'Counts'}>
+        {`Evidence in ${seen} of ${rows.length} parts of life — counts, not judgements.`}
+      </Headline>
+      <StatTiles>
+        <Stat v={seen} l="parts of life with evidence" />
+        <Stat v={unk.commitments} l="commitments, domain unknown" />
+        <Stat v={unk.tasks} l="tasks, domain unknown" />
+        <Stat v={unk.upcoming} l="upcoming, domain unknown" />
+      </StatTiles>
       <table className="cn-table">
         <thead><tr><th>Domain</th><th>Commitments</th><th>Tasks</th><th>Upcoming events</th><th>Sources</th><th>Calendars &amp; lists</th><th>Goals</th><th>Set by you</th></tr></thead>
         <tbody>
@@ -370,11 +410,11 @@ function Coverage({ data, onNavigate }) {
                 : data.coverage.unknown.commitments}</td><td>{data.coverage.unknown.tasks}</td><td>{data.coverage.unknown.upcoming}</td><td>—</td><td>{data.coverage.unknown.containers}</td><td>—</td><td>—</td></tr>
         </tbody>
       </table>
-      {data.coverage.unknown.commitments > 0 && onNavigate && (
-        <p className="cn-muted">Click the unknown commitments figure to tag them in Commitments, one pick per row (it opens on "I owe"; "Owed to me" has its own).</p>
-      )}
-      <p className="cn-muted">These are counts of evidence, not judgements. Work leans on a colleague’s People note or a task’s default; nothing is guessed for health, family or money.</p>
-      {data.gaps && data.gaps.length > 0 && <div className="cn-error">Couldn’t read: {data.gaps.map((g) => g.input).join(', ')}</div>}
+      {gaps && <div className="cn-error">Couldn’t read: {data.gaps.map((g) => g.input).join(', ')}</div>}
+      <HowItWorks>
+        These are counts of evidence, not judgements. Work leans on a colleague’s People note or a task’s default; nothing is guessed for health, family or money.
+        {unk.commitments > 0 && onNavigate ? ' Click the unknown commitments figure in the table to tag them in Commitments, one pick per row (it opens on "I owe"; "Owed to me" has its own).' : ''}
+      </HowItWorks>
     </section>
   );
 }

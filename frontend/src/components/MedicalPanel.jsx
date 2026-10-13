@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
+import { Headline, Stat, StatTiles, HowItWorks, dayLabel } from './canonical/canonicalUi';
+import './canonical/Canonical.css';
 import './MedicalPanel.css';
 
 // ── Medical — test results, diagnoses and prescriptions from the NHS app ─────
@@ -120,11 +122,6 @@ function Scanner({ onSaved }) {
   return (
     <section className="med-card">
       <h2>Add from the NHS app</h2>
-      <p className="med-hint">
-        Screenshot a test result, your conditions or your prescriptions in the NHS App and add them here.
-        Several screenshots of one scrolling page can go in together. Nothing is saved until you choose what to keep,
-        and the screenshots themselves are not stored.
-      </p>
       <label className={`med-upload${busy ? ' med-upload--busy' : ''}`}>
         <input type="file" accept="image/*" multiple disabled={busy} onChange={onFiles} />
         {busy ? 'Reading…' : 'Choose screenshots'}
@@ -176,6 +173,12 @@ function Scanner({ onSaved }) {
           <p className="med-hint">Check values against the screenshot before saving — this is a transcription, not a reading of what they mean.</p>
         </div>
       )}
+      <HowItWorks>
+        Screenshot a test result, your conditions or your prescriptions in the NHS App and add them here.
+        Several screenshots of one scrolling page can go in together. Nothing is saved until you choose what to keep,
+        and the screenshots themselves are not stored. Records can also arrive from ChatGPT, which parses the
+        screenshots itself and saves them to NEURO (post_medical_records).
+      </HowItWorks>
     </section>
   );
 }
@@ -208,6 +211,33 @@ function History({ name, onClose }) {
         </table>
       )}
     </div>
+  );
+}
+
+/**
+ * The page's answer: how much of the record NEURO holds and how recent it is.
+ * Counts and the latest date are the server's summary, read verbatim.
+ */
+function MedicalHeadline({ summary, error }) {
+  if (!summary) {
+    return error
+      ? <Headline tone="warn" pill="Unread" testid="medical-headline">Couldn’t read your medical record.</Headline>
+      : <Headline pill="Reading" testid="medical-headline">Reading your medical record…</Headline>;
+  }
+  const total = KINDS.reduce((n, k) => n + (summary[k]?.count || 0), 0);
+  const latest = KINDS.map((k) => summary[k]?.latest).filter(Boolean).sort().pop() || null;
+  return (
+    <>
+      <Headline tone={total ? 'good' : undefined} pill={total ? `${total} record${total === 1 ? '' : 's'}` : 'Empty'} testid="medical-headline">
+        {total ? `Latest from ${dayLabel(latest) || 'an undated record'}.` : 'Nothing recorded yet.'}
+      </Headline>
+      <StatTiles>
+        {KINDS.map((k) => (
+          <Stat key={k} v={summary[k] ? summary[k].count : null} l={KIND_LABEL[k]}
+            title={summary[k]?.latest ? `Latest ${summary[k].latest}` : undefined} />
+        ))}
+      </StatTiles>
+    </>
   );
 }
 
@@ -251,6 +281,8 @@ export default function MedicalPanel() {
         </div>
       </div>
 
+      <MedicalHeadline summary={data && data.summary} error={error} />
+
       <Scanner onSaved={load} />
 
       <section className="med-card">
@@ -258,13 +290,13 @@ export default function MedicalPanel() {
         {error && <p className="med-error">Couldn’t read your medical record: {error}</p>}
         {!error && !data && <p>Loading…</p>}
         {!error && data && data.records.length === 0 && (
-          <p className="med-hint">Nothing recorded yet. Add screenshots above, or ask ChatGPT to parse them and save them to NEURO (post_medical_records).</p>
+          <p className="med-hint">No {KIND_LABEL[kind].toLowerCase()} recorded yet.</p>
         )}
         {history && <History name={history} onClose={() => setHistory(null)} />}
         {!error && data && data.records.length > 0 && (
           <ul className="med-rows">
             {data.records.map(r => (
-              <li key={r.id} className="med-row med-row--saved">
+              <li key={r.id} className="med-row med-row--saved" title={enteredLine(r)}>
                 <div className="med-row-main">
                   {kind === 'test_result'
                     ? <button type="button" className="med-link" onClick={() => setHistory(r.name)}>{r.name}</button>
@@ -277,7 +309,6 @@ export default function MedicalPanel() {
                   <span className="med-date">{r.date || 'no date'}</span>
                 </div>
                 <div className="med-row-meta">
-                  <span>{enteredLine(r)}</span>
                   <button type="button" className="med-delete" onClick={() => remove(r)}>Delete</button>
                 </div>
               </li>

@@ -569,9 +569,9 @@ test('Life → People renders the real read: household, who-is-this, work folded
   const html = renderToString(React.createElement(m.exports.PeopleView, { data, act: async () => true }));
   assert.match(html, /data-testid="people-card"/);
   assert.match(html, /Household/);
-  assert.match(html, /<strong>Helen Ward<\/strong>/);
+  assert.match(html, /class="cn-tile-title">Helen Ward</, 'a household member is a tile, named');
   assert.match(html, /home now/);
-  assert.match(html, /<strong>Daniel<\/strong>/, 'a visitor who is here now is listed');
+  assert.match(html, /class="cn-tile-title">Daniel</, 'a visitor who is here now is listed');
   assert.match(html, /Create People note<\/button>/, 'the roster entry can become a person');
   assert.match(html, /Who is this\?/);
   assert.match(html, /Not now<\/button>/);

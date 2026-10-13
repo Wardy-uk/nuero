@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, Fold } from './canonicalUi';
+import { useCanonical, postCanonical, Fold, HowItWorks, Headline, Stat, StatTiles, Tile, TileGrid, Group, dayLabel } from './canonicalUi';
 
 /**
  * Personal dates with lead time (Build 17L–Q), on Life.
@@ -15,7 +15,35 @@ import { useCanonical, postCanonical, Fold } from './canonicalUi';
  * otherwise "Known dates from currently available sources" with the reasons.
  * Build 18Q: Nick can add, change or remove a birthday/anniversary on a People
  * or Companions note here. Explicit only; nothing creates a calendar event.
+ * 13 Oct 2026 (docs/design-rules.md): opens with a Headline, dates as tiles;
+ * each date's full server line is on hover, its prep and any disagreement
+ * between sources are chips.
  */
+const KIND_WORD = { birthday: 'Birthday', anniversary: 'Anniversary' };
+const kindWord = (k) => KIND_WORD[k] || 'Date';
+// The server counts the days (`away`); this only words them.
+const whenWord = (d) => (d.away === 0 ? 'today' : d.away === 1 ? 'tomorrow' : d.away === -1 ? 'yesterday' : dayLabel(d.date));
+
+/** Chips under a date: the prep it is linked to, and any disagreement between sources. */
+function DateFoot({ d }) {
+  const open = (d.prep || []).find((p) => p.status === 'open');
+  const prep = open || (d.prep || [])[0];
+  const chips = [];
+  if (prep) chips.push(<span key="prep" className="cn-chip" title={prep.link ? `Linked because it ${prep.link}` : undefined}>“{prep.title}” {open ? 'open' : 'done'}</span>);
+  if (prep) chips.push(<span key="by" className="cn-chip">linked by name</span>);
+  if (d.conflict) chips.push(<span key="cf" className="cn-chip" title={d.conflict.note}>sources disagree{(d.conflict.otherDates || []).length ? ` — also ${d.conflict.otherDates.map((o) => dayLabel(o.date)).join(', ')}` : ''}</span>);
+  if (d.sources && d.sources.length > 1) chips.push(<span key="src" className="cn-chip">seen in {d.sources.length} places</span>);
+  return chips.length ? <>{chips}</> : null;
+}
+
+function DateTile({ d, later = false }) {
+  return (
+    <Tile testid="personal-date" title={d.person || d.title} accent={d.state === 'action-may-be-needed'}
+      sub={`${kindWord(d.kind)} · ${later ? dayLabel(d.date) : whenWord(d)}`}
+      why={d.line || (d.conflict ? d.conflict.note : undefined)} foot={<DateFoot d={d} />} />
+  );
+}
+
 export default function PersonalDatesCard() {
   const { data, error, reload } = useCanonical('/api/loops/personal-dates');
   const ents = useCanonical('/api/loops/personal-dates/entities');
@@ -28,13 +56,15 @@ export default function PersonalDatesCard() {
   const { active = [], later = [], passed = [], gaps = [], coverage = null } = data;
   const entities = (ents.data && ents.data.entities) || [];
   const declared = entities.filter((e) => e.birthday || e.anniversary);
+  const needs = active.find((d) => d.state === 'action-may-be-needed');
+  const partial = coverage && coverage.state !== 'complete' && (coverage.reasons || []).length ? coverage.reasons.join(' ') : null;
 
   const save = async (body) => {
     setMsg(null);
     try {
       const r = await postCanonical('/api/loops/personal-dates/declared', body);
       const conflict = r.conflicts && r.conflicts.length
-        ? ` Your phone’s calendar says ${r.conflicts.map((c) => c.date.slice(5)).join(', ')} — both are shown; NEURO has not picked one.` : '';
+        ? ` Your phone’s calendar says ${r.conflicts.map((c) => dayLabel(c.date)).join(', ')} — both are shown; NEURO has not picked one.` : '';
       setMsg(r.changed ? `Saved.${conflict}` : 'Already says that — nothing changed.');
       setDate('');
       reload(); ents.reload();
@@ -42,30 +72,49 @@ export default function PersonalDatesCard() {
   };
 
   return (
-    <div className="cn-hike" aria-label="Personal dates">
-      <div className="cn-k">{data.heading || 'Dates coming up'}</div>
-      {coverage && coverage.state !== 'complete' && coverage.reasons.map((r) => <div key={r} className="cn-muted">{r}</div>)}
-      {active.length === 0 && <div className="cn-muted">Nothing inside its lead time.</div>}
-      {active.map((d) => (
-        <div key={d.id} className="cn-hike-line">
-          {d.line}
-          {d.prep && d.prep.length > 0 && <span className="cn-muted"> (linked by name)</span>}
-          {d.sources && d.sources.length > 1 && <span className="cn-muted"> · seen in {d.sources.length} places</span>}
-        </div>
-      ))}
-      {passed.map((d) => <div key={d.id} className="cn-muted">{d.line}</div>)}
-      {later.length > 0 && (
-        <div className="cn-muted">Later: {later.map((d) => `${d.person || d.title} (${d.date.slice(5)})${d.conflict ? ' — sources disagree' : ''}`).join(' · ')}</div>
+    <div aria-label="Personal dates" data-testid="personal-dates">
+      <h3 className="cn-h3">{data.heading || 'Dates coming up'}</h3>
+      {needs ? (
+        <Headline tone="warn" pill="needs a look" detail={partial}>{needs.line}</Headline>
+      ) : active.length ? (
+        <Headline tone="plan" pill="coming up" detail={partial}>{active[0].line}</Headline>
+      ) : (
+        <Headline pill="all quiet" detail={partial}>Nothing inside its lead time.</Headline>
       )}
-      {gaps.map((g) => <div key={g.input} className="cn-muted">Couldn’t read {g.input}: {g.why}.</div>)}
+      <StatTiles>
+        <Stat v={active.length} l="Inside lead time" />
+        <Stat v={later.length} l="Later" />
+        <Stat v={ents.data ? declared.length : null} l="Written in your notes" title={ents.data ? undefined : 'Not read yet'} />
+      </StatTiles>
+
+      {active.length > 0 && (
+        <Group label="Coming up">
+          <TileGrid testid="personal-dates-active">{active.map((d) => <DateTile key={d.id} d={d} />)}</TileGrid>
+        </Group>
+      )}
+      {passed.length > 0 && (
+        <Group label="Just passed">
+          <TileGrid>{passed.map((d) => <DateTile key={d.id} d={d} />)}</TileGrid>
+        </Group>
+      )}
+      {later.length > 0 && (
+        <Group label="Later" meta="outside their lead time">
+          <TileGrid testid="personal-dates-later">{later.map((d) => <DateTile key={d.id} d={d} later />)}</TileGrid>
+        </Group>
+      )}
+      {gaps.map((g) => <div key={g.input} className="cn-error cn-small">Couldn’t read {g.input}: {g.why}.</div>)}
 
       <Fold title="Your dates and reminders" meta={`${declared.length ? `${declared.length} written down` : 'none written down'}`}>
-        {declared.map((e) => ['birthday', 'anniversary'].filter((k) => e[k]).map((k) => (
-          <div key={`${e.entity}:${k}`} className="cn-hike-line">
-            {e.entity.split('/')[1]} — {k} {e[k]}{' '}
-            <button type="button" className="cn-btn cn-btn--tiny" onClick={() => save({ entity: e.entity, kind: k, date: null })}>Remove</button>
-          </div>
-        )))}
+        {declared.length > 0 && (
+          <ul className="cn-list">
+            {declared.map((e) => ['birthday', 'anniversary'].filter((k) => e[k]).map((k) => (
+              <li key={`${e.entity}:${k}`}>
+                <strong>{e.entity.split('/')[1]}</strong> <span className="cn-muted">{k} {e[k]}</span>{' '}
+                <button type="button" className="cn-btn cn-btn--tiny" onClick={() => save({ entity: e.entity, kind: k, date: null })}>Remove</button>
+              </li>
+            )))}
+          </ul>
+        )}
         <div className="cn-goalform">
           <select value={entity} onChange={(e) => setEntity(e.target.value)} aria-label="Person or companion">
             <option value="">Person or companion…</option>
@@ -80,8 +129,8 @@ export default function PersonalDatesCard() {
         </div>
         {msg && <div className="cn-muted">{msg}</div>}
         <LeadReminders />
-        <div className="cn-small cn-muted">{data.rule} Lead reminders: the first shows on the Radar only, the middle ones prompt harder, the last is Needs You and one notification — skipped if the prep you linked is done. A date you remove is gone — NEURO never restores it.</div>
       </Fold>
+      <HowItWorks>{data.rule} A date outside its lead time is listed under Later and nowhere else; nothing here creates a task. Lead reminders: the first shows on the Radar only, the middle ones prompt harder, the last is Needs You and one notification — skipped if the prep you linked is done. A date you remove is gone — NEURO never restores it.</HowItWorks>
     </div>
   );
 }

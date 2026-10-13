@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions } from './canonicalUi';
+import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions, Headline, Stat, StatTiles, Tile, TileGrid, Group, PrimaryAction, dayLabel as uiDay } from './canonicalUi';
 import './HikeSafetyCard.css';
 import WalkMap from '../WalkMap';
 
@@ -13,10 +13,16 @@ import WalkMap from '../WalkMap';
 
 const ALERT_WORDS = { none: null, sending: 'sending the alert…', sent: 'alert sent', confirmed: 'alert sent (in Sent Items)', uncertain: 'alert send unconfirmed — retrying', failed: 'alert could not be sent — retrying' };
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// "Sat 11 Oct" from a local datetime — sliced, never parsed as UTC.
 function dayLabel(local) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(local || ''));
-  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}` : 'an unknown day';
+  return /^\d{4}-\d{2}-\d{2}/.test(String(local || '')) ? uiDay(local) : 'an unknown day';
+}
+const hhmm = (local) => String(local || '').slice(11, 16);
+
+/** What happened on a closed walk, in a few words — the server's facts. */
+function closedWords(r) {
+  if (r.status !== 'checked_in') return 'cancelled before it started';
+  return `checked in ${hhmm(r.checkedInAt)} on ${dayLabel(r.checkedInAt)}${r.alert && r.alert !== 'none' ? ` (after the alert went at ${hhmm(r.alertAt)})` : ', no alert sent'}`;
 }
 
 const MODE_SHORT = { walking: 'walking pace', still: 'stopped', fast: 'faster than walking', driving: 'driving', unknown: 'speed unknown' };
@@ -151,23 +157,39 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
   const toggle = (id) => setShown(shown === id ? null : id);
   const contacts = data.contacts || [];
   const alertLine = t && ALERT_WORDS[t.alert.status];
+  const alertees = t ? t.alerting.join(' and ') : '';
+  const one = t ? t.alerting.length === 1 : true;
+  const sameDay = t ? t.due.slice(0, 10) === t.start.slice(0, 10) : true;
   return (
     <div className="hs" data-testid="hike-safety">
       {t ? (
+        <Headline testid="hike-headline" tone={t.status === 'alerted' ? 'bad' : 'plan'} pill={t.status === 'alerted' ? 'overdue' : 'armed'}>
+          <strong>{t.name}</strong> — {t.status === 'alerted'
+            ? `you haven’t checked in, so ${alertees} ${one ? 'has' : 'have'} been sent the alert.`
+            : `check in when you’re back, or ${alertees} get${one ? 's' : ''} the alert.`}
+        </Headline>
+      ) : (
+        <Headline testid="hike-headline" pill="no walk armed">
+          {last
+            ? <>Last walk: <strong>{last.name}</strong>, {last.status === 'checked_in' ? dayLabel(last.checkedInAt) : 'cancelled'}.</>
+            : 'No walk has been armed yet.'}
+        </Headline>
+      )}
+      {t ? (
         <div className={`hs-active${t.status === 'alerted' ? ' hs-active--alerted' : ''}`} data-testid="hike-active">
-          <div className="hs-title"><strong>{t.name}</strong> <span className="cn-chip">{t.status === 'alerted' ? 'overdue' : 'armed'}</span></div>
-          <div className="cn-small">
-            Back by <strong>{t.due.slice(11)}</strong>{t.extended ? ' (extended)' : ''} · alert to {t.alerting.join(' and ')} at <strong>{t.alertAt.slice(11)}</strong>
-            {t.due.slice(0, 10) !== t.start.slice(0, 10) ? ` on ${t.alertAt.slice(0, 10)}` : ''}
-            {t.status === 'armed' && t.minutesToAlert > 0 && t.minutesToAlert < 600 ? ` · in ${t.minutesToAlert} min` : ''}
-          </div>
+          <StatTiles>
+            <Stat v={t.due.slice(11)} l={t.extended ? 'Back by (extended)' : 'Back by'} />
+            <Stat v={sameDay ? t.alertAt.slice(11) : `${dayLabel(t.alertAt)} ${t.alertAt.slice(11)}`} l={`Alert to ${alertees}`} tone={t.status === 'alerted' ? 'bad' : undefined} />
+            {t.status === 'armed' && t.minutesToAlert > 0 && t.minutesToAlert < 600 && <Stat v={`${t.minutesToAlert} min`} l="Until the alert" />}
+            <Stat v={t.trail.points} l={`Trail point${t.trail.points === 1 ? '' : 's'}`} />
+          </StatTiles>
           {(t.party || []).length > 0 && <div className="cn-small" data-testid="hike-party-line">Walking with {t.party.map((x) => (x.phone ? `${x.name} (${x.phone})` : x.name)).join(', ')}{t.ember ? ' and Ember' : ''}</div>}
           {alertLine && <div className={`cn-small ${t.alert.status === 'sent' || t.alert.status === 'confirmed' ? '' : 'cn-error'}`}>{alertLine}{t.alert.sentFrom ? ` (from ${t.alert.sentFrom})` : ''}{t.alert.error ? ` — ${t.alert.error}` : ''}</div>}
           {t.alert.copy && t.alert.copy.status && <div className={`cn-small ${['sent', 'confirmed'].includes(t.alert.copy.status) ? '' : 'cn-error'}`} data-testid="hike-copy-line">Copy from {t.alert.copy.from}: {ALERT_WORDS[t.alert.copy.status] || t.alert.copy.status}{t.alert.copy.error ? ` — ${t.alert.copy.error}` : ''}</div>}
           {!t.alert.sentFrom && <SendsFrom s={data.sendsFrom} />}
           {act && (
-            <div className="hs-actions">
-              <button type="button" className="cn-btn hs-checkin" disabled={busy} onClick={() => act(`/api/outdoor/safety/trips/${encodeURIComponent(t.tripId)}/checkin`, { via: 'NEURO' })}>I’m back — check in</button>
+            <div className="cn-actions">
+              <PrimaryAction disabled={busy} onClick={() => act(`/api/outdoor/safety/trips/${encodeURIComponent(t.tripId)}/checkin`, { via: 'NEURO' })}>I’m back — check in</PrimaryAction>
               {t.status === 'armed' && [30, 60].map((m) => <button key={m} type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/safety/trips/${encodeURIComponent(t.tripId)}/extend`, { minutes: m })}>+{m} min</button>)}
               {t.status === 'armed' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => setEditing(!editing)}>{editing ? 'Close edit' : 'Edit walk'}</button>}
               {t.status === 'armed' && <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(`/api/outdoor/safety/trips/${encodeURIComponent(t.tripId)}/cancel`, {})}>Cancel walk</button>}
@@ -175,8 +197,9 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
           )}
           {editing && act && t.status === 'armed' && <WalkForm act={act} busy={busy} trip={t} onDone={() => setEditing(false)} />}
           <div className="cn-small cn-muted" data-testid="hike-trail">
-            Trail: {t.trail.points} point{t.trail.points === 1 ? '' : 's'}
-            {t.trail.sources.map((s) => ` · ${s.label}: ${s.lastSeen}, ${s.modeWords}${s.battery != null ? `, battery ${s.battery}%` : ''}`).join('')}
+            {t.trail.sources.length
+              ? t.trail.sources.map((s) => `${s.label}: ${s.lastSeen}, ${s.modeWords}${s.battery != null ? `, battery ${s.battery}%` : ''}`).join(' · ')
+              : 'No tracker has reported yet'}
             {!t.trail.points && ' — no position has reached NEURO yet (tracking runs from 15 min before your start)'}
           </div>
           {t.map && <WalkMap route={t.map.route} trail={t.map.trail} emberTrail={t.map.emberTrail} positions={t.map.positions} />}
@@ -191,19 +214,20 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
         </div>
       ) : (
         <div className="hs-idle" data-testid="hike-idle">
-          {last ? (
-            <div className="cn-small" data-testid="hike-last">
-              No walk armed. Last: <strong>{last.name}</strong> — {last.status === 'checked_in'
-                ? `you checked in at ${String(last.checkedInAt || '').slice(11, 16)} on ${dayLabel(last.checkedInAt)}${last.alert && last.alert !== 'none' ? ` (after the alert went at ${String(last.alertAt || '').slice(11, 16)})` : ', no alert sent'}.`
-                : `cancelled before it started.`}
-              {last.trailPoints > 0 && <> <button type="button" className="cn-btn cn-btn--tiny" onClick={() => toggle(last.tripId)}>{shown === last.tripId ? 'Hide map' : 'Show on map'}</button></>}
-            </div>
-          ) : <div className="cn-small cn-muted">No walk armed.</div>}
-          {last && shown === last.tripId && <PastWalk tripId={last.tripId} />}
           {!contacts.length && <div className="cn-error cn-small">Add who gets the alert before you can arm a walk.</div>}
           {act && contacts.length > 0 && (planning
             ? <WalkForm act={act} busy={busy} onDone={() => setPlanning(false)} />
-            : <div className="hs-actions"><button type="button" className="cn-btn" onClick={() => setPlanning(true)}>Plan a new walk</button></div>)}
+            : <div className="cn-actions"><PrimaryAction onClick={() => setPlanning(true)}>Plan a new walk</PrimaryAction></div>)}
+          {last && (
+            <Group label="Last walk">
+              <TileGrid>
+                <Tile testid="hike-last" title={last.name} sub={closedWords(last)}
+                  why={last.trailPoints && last.trailUntil ? `Trail kept until ${dayLabel(last.trailUntil)}` : undefined}
+                  foot={last.trailPoints > 0 ? <button type="button" className="cn-btn cn-btn--tiny" onClick={() => toggle(last.tripId)}>{shown === last.tripId ? 'Hide map' : 'Show on map'}</button> : null} />
+              </TileGrid>
+              {shown === last.tripId && <PastWalk tripId={last.tripId} />}
+            </Group>
+          )}
         </div>
       )}
       <Fold title="Who gets the alert" meta={contacts.length ? contacts.map((c) => c.name).join(', ') : 'nobody yet'} open={!contacts.length}>
@@ -215,14 +239,14 @@ export function HikeSafetyView({ data, act = null, busy = false }) {
         <Fold title="Recent walks" meta={`${data.recent.length}`}>
           <ul className="cn-list">{data.recent.map((r) => (
             <li key={r.tripId}>
-              <strong>{r.name}</strong> <span className="cn-muted">{r.start.replace('T', ' ')} · {r.status === 'checked_in' ? `checked in ${String(r.checkedInAt || '').slice(11, 16)}` : 'cancelled'}{r.alert !== 'none' ? ` · alert ${r.alert}` : ''}{r.trailPoints ? ` · trail kept until ${dayLabel(r.trailUntil)}` : ''}</span>
+              <strong>{r.name}</strong> <span className="cn-muted">{dayLabel(r.start)} {hhmm(r.start)} · {r.status === 'checked_in' ? `checked in ${hhmm(r.checkedInAt)}` : 'cancelled'}{r.alert !== 'none' ? ` · alert ${r.alert}` : ''}{r.trailPoints ? ` · trail kept until ${dayLabel(r.trailUntil)}` : ''}</span>
               {r.trailPoints > 0 && <> <button type="button" className="cn-btn cn-btn--tiny" onClick={() => toggle(r.tripId)}>{shown === r.tripId ? 'Hide map' : 'Map'}</button></>}
               {shown === r.tripId && (!last || last.tripId !== r.tripId || t) && <PastWalk tripId={r.tripId} />}
             </li>
           ))}</ul>
         </Fold>
       )}
-      <HowItWorks>{data.rule} {data.limits}</HowItWorks>
+      <HowItWorks>Arm a walk with its GPX and approximate times, and check in when you’re back. {data.rule} {data.limits}</HowItWorks>
     </div>
   );
 }

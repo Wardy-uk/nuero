@@ -389,3 +389,27 @@
 .cn-group-why { font-size: 12px; color: var(--text-secondary); margin: 12px 0 6px; }
 .cn-group-why:first-of-type { margin-top: 4px; }
 .cn-nowstrip { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-secondary); margin: 0 0 6px; }
+
+/* Building blocks (canonicalUi) — see docs/design-rules.md */
+.cn-headline-wrap { margin: 2px 0 14px; }
+.cn-headline-wrap .cn-headline { margin: 0; }
+.cn-headline-detail { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.cn-stattile--warn .cn-stattile-v { color: var(--warning); }
+.cn-stattile--bad .cn-stattile-v { color: var(--danger); }
+.cn-stattile--good .cn-stattile-v { color: var(--success); }
+.cn-group { margin-top: 18px; }
+.cn-panel > .cn-section h4.cn-group-label, h4.cn-group-label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted); margin: 0 0 8px; padding: 0; border: none; display: flex; gap: 8px; align-items: baseline; }
+.cn-group-meta { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-muted); }
+.cn-group .cn-group-why { margin-top: -2px; }
+.cn-btn--primary { color: var(--text-primary); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--bg-card)); padding: 7px 14px; }
+.cn-btn--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 26%, var(--bg-card)); }
+.cn-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 14px; }
+.cn-tiles--wide { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.cn-tile .cn-row-actions input, .cn-tile .cn-row-actions select { min-width: 0; flex: 1 1 100%; }
+.cn-tile-detail { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); padding: 12px 14px; margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.cn-panel > .cn-section a.cn-btn, a.cn-btn { color: var(--text-primary); text-decoration: none; display: inline-block; }
+.cn-headline-detail { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.cn-panel .cn-headline-detail .cn-chip { margin-left: 0; }
+.cn-tile .cn-measureform, .cn-tile .cn-goal-actions { width: 100%; flex-wrap: wrap; }

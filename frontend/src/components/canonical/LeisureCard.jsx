@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, Fold, HowItWorks } from './canonicalUi';
+import { useCanonical, postCanonical, Fold, HowItWorks, Headline, Stat, StatTiles, Tile, TileGrid, Group, PrimaryAction, dayLabel } from './canonicalUi';
 
 /**
  * Life → Leisure (Build 30). Compact on purpose: now playing, coming up, what
@@ -40,49 +40,24 @@ function ItemActions({ it, act, busy }) {
   );
 }
 
-function ItemRow({ it, act, busy, extra = null }) {
-  return (
-    <li data-testid="leisure-item">
-      <strong>{it.title}</strong>{it.creator && <span className="cn-muted"> — {it.creator}</span>}
-      <span className="cn-chip">{KIND[it.kind] || it.kind}</span>
-      {it.state && <span className="cn-chip">{STATE[it.state] || it.state}</span>}
-      {it.progress && <span className="cn-chip">{it.progress}</span>}
-      {(it.preference === 'liked' || it.preference === 'loved') && <span className="cn-chip">{it.preference}</span>}
-      <div className="cn-muted cn-small">{it.why || it.stateWhy}</div>
-      {extra}
-      <ItemActions it={it} act={act} busy={busy} />
-    </li>
-  );
-}
-
-// A date key shown as "Sat 21 Nov" — built from its parts, never parsed as UTC.
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function dayLabel(key) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
-  if (!m) return key;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  return `${DOW[d.getDay()]} ${Number(m[3])} ${MON[Number(m[2]) - 1]}`;
-}
-
-// One thing in progress, as a tile: what it is, by whom, and one short fact.
-// The full reason rides on hover; a reason every tile shares is said once in
-// the heading instead (13 Oct 2026 — the card was a wall of repeated sentences).
-function ContinueTile({ it, act, busy }) {
+// One item as a tile: what it is, by whom, and one short fact. The full reason
+// rides on hover; a reason every tile shares is said once in its Group instead
+// (13 Oct 2026 — the card was a wall of repeated sentences). A phone-heard
+// album shows how many days it played and carries no corrections (it is
+// evidence, not something Nick added).
+function ItemTile({ it, act, busy, sub = null }) {
   const phone = it.basis === 'listening';
   return (
-    <li className="cn-tile" data-testid="leisure-item" title={it.why || it.stateWhy || ''}>
-      <span className="cn-tile-title">{it.title}</span>
-      {it.creator && <span className="cn-tile-sub">{it.creator}</span>}
-      <span className="cn-tile-foot">
+    <Tile testid="leisure-item" why={it.why || it.stateWhy || undefined} title={it.title} sub={sub || it.creator || null}
+      foot={<>
         <span className="cn-chip">{KIND[it.kind] || it.kind}</span>
         {phone && it.daysThisWeek != null ? <span>{it.daysThisWeek} of 7 days</span>
           : it.state && <span className="cn-chip">{STATE[it.state] || it.state}</span>}
         {it.progress && <span>{it.progress}</span>}
         {(it.preference === 'liked' || it.preference === 'loved') && <span className="cn-chip">{it.preference}</span>}
-      </span>
+      </>}>
       {!phone && <ItemActions it={it} act={act} busy={busy} />}
-    </li>
+    </Tile>
   );
 }
 
@@ -98,18 +73,16 @@ const RATINGS = [
 const RATING_CHIP = { love: '♥ love', like: 'you like this', background: 'background', 'not-for-me': 'not for you' };
 
 function Listening({ rows, act, busy }) {
-  if (!rows.length) return <p className="cn-muted cn-small">Nothing heard on the phone's Music app since NEURO started keeping count.</p>;
+  if (!rows.length) return <div className="cn-group-why">Nothing heard on the phone's Music app since counting began.</div>;
   return (
     <ul className="cn-list">
       {rows.map((o) => {
         const rated = o.rating || null;
         return (
-        <li key={o.ref} data-testid="leisure-listening">
+        <li key={o.ref} data-testid="leisure-listening" title={o.why || undefined}>
           <strong>{o.title}</strong>{o.creator && <span className="cn-muted"> — {o.creator}</span>}
-          <span className={`cn-chip${rated === 'love' ? ' cn-chip--love' : ''}`}>{rated ? RATING_CHIP[rated] : (AFF[o.affinity] || o.affinity)}</span>
-          {!rated && o.onRepeat
-            ? <div className="cn-small cn-repeat">You keep coming back to this — love it?</div>
-            : !rated && <div className="cn-muted cn-small">{o.why}</div>}
+          <span className={`cn-chip${rated === 'love' ? ' cn-chip--love' : ''}`} title={o.why || undefined}>{rated ? RATING_CHIP[rated] : (AFF[o.affinity] || o.affinity)}</span>
+          {!rated && o.onRepeat && <div className="cn-small cn-repeat">You keep coming back to this — love it?</div>}
           {act && (
             <div className="cn-row-actions cn-rate" role="group" aria-label={`Rate ${o.title}`}>
               {RATINGS.map((r) => (
@@ -215,116 +188,131 @@ function Discovery({ d, act, busy }) {
   const save = (x) => act && act('/api/leisure/items', { kind: 'artist', title: x.name, state: 'saved', notes: x.why || null });
   const nope = (x) => act && act('/api/leisure/items', { kind: 'artist', title: x.name, preference: 'not-for-me' });
   const again = () => act && act('/api/leisure/discovery/refresh', {});
-  const meta = d.known && d.asOf ? `from ${d.seeds.length} artist${d.seeds.length === 1 ? '' : 's'} you play` : '';
+  const meta = d.known
+    ? [d.asOf ? `from ${d.seeds.length} artist${d.seeds.length === 1 ? '' : 's'} you play` : null,
+      `${d.source}${d.ageHours != null ? `, ${d.ageHours < 1 ? 'just now' : `${d.ageHours} h ago`}` : ''}`].filter(Boolean).join(' · ')
+    : null;
+  // The state of the list, said once as the group's line — never a paragraph per case.
+  const state = !d.known ? d.why
+    : !d.seeds.length ? 'Nothing to go on yet. Rate a song or artist below, or play one on a few days across two weeks.'
+      : !d.items.length && !d.lastError ? 'No new artists right now — everything Deezer relates to yours you have already heard or answered.'
+        : null;
   return (
-    <>
-      <h4>You might like <span className="cn-muted cn-small">{meta}</span></h4>
-      {!d.known && <p className="cn-muted cn-small">{d.why}</p>}
-      {d.known && !d.seeds.length && (
-        <p className="cn-muted cn-small">Nothing to go on yet. Say you like a song or artist below, or play one on a few days across two weeks.</p>
-      )}
-      {d.known && d.seeds.length > 0 && !d.items.length && !d.lastError && (
-        <p className="cn-muted cn-small">No new artists right now — everything Deezer relates to yours you have already heard or answered.</p>
-      )}
-      {d.lastError && <p className="cn-error cn-small">Couldn’t ask Deezer last time ({d.lastError}){d.items.length ? ' — this is the last list it gave.' : '.'}</p>}
+    <Group label="You might like" meta={meta} why={state}>
+      {d.lastError && <div className="cn-error cn-small">Couldn’t ask Deezer last time ({d.lastError}){d.items.length ? ' — this is the last list it gave.' : '.'}</div>}
       {d.items.length > 0 && groupBy(d.items, (x) => x.why || '').map(([why, xs]) => (
         <React.Fragment key={why || '-'}>
           {why && <div className="cn-group-why">{why.charAt(0).toUpperCase() + why.slice(1)}</div>}
-          <ul className="cn-tiles">
+          <TileGrid>
             {xs.map((x) => (
-              <li key={x.name} data-testid="leisure-discovery" className="cn-tile">
-                <span className="cn-tile-title">{x.link ? <a href={x.link} target="_blank" rel="noreferrer">{x.name}</a> : x.name}</span>
-                {x.track && (
-                  <span className="cn-tile-sub">
-                    try {x.track.link ? <a href={x.track.link} target="_blank" rel="noreferrer">“{x.track.title}”</a> : `“${x.track.title}”`}
-                  </span>
-                )}
-                <span className="cn-tile-foot">
+              <Tile key={x.name} testid="leisure-discovery"
+                title={x.link ? <a href={x.link} target="_blank" rel="noreferrer">{x.name}</a> : x.name}
+                sub={x.track ? <>try {x.track.link ? <a href={x.track.link} target="_blank" rel="noreferrer">“{x.track.title}”</a> : `“${x.track.title}”`}</> : null}
+                foot={<>
                   {x.track && x.track.preview && <Preview src={x.track.preview} />}
                   {act && <Btn busy={busy} onClick={() => save(x)} title="Keep it in Saved for later">Save</Btn>}
                   {act && <Btn busy={busy} onClick={() => nope(x)} title="Never suggest this artist again">Not for me</Btn>}
-                </span>
-              </li>
+                </>} />
             ))}
-          </ul>
+          </TileGrid>
         </React.Fragment>
       ))}
-      {d.known && (
-        <p className="cn-muted cn-small">
-          From {d.source}{d.ageHours != null ? `, ${d.ageHours < 1 ? 'just now' : `${d.ageHours} h ago`}` : ''}.
-          {d.unmatched && d.unmatched.length > 0 && ` Deezer didn’t recognise ${d.unmatched.join(', ')}.`}
-          {act && <> <Btn busy={busy} onClick={again}>Ask again</Btn></>}
-        </p>
+      {d.known && (act || (d.unmatched && d.unmatched.length > 0)) && (
+        <div className="cn-actions">
+          {act && <Btn busy={busy} onClick={again}>Ask again</Btn>}
+          {d.unmatched && d.unmatched.length > 0 && <span className="cn-small">Deezer didn’t recognise {d.unmatched.join(', ')}.</span>}
+        </div>
       )}
-    </>
+    </Group>
   );
 }
 
+// The card's answer: what is playing now, else what is coming up, else what is
+// on the go — taken from the server's lists in that order, nothing judged here.
+function leisureHeadline({ now, comingUp, cont }) {
+  if (now && now.playing) {
+    return {
+      tone: 'good', pill: 'Playing',
+      text: <span data-testid="leisure-now">Playing <strong>{now.playing.title}</strong>{now.playing.artist ? ` — ${now.playing.artist}` : ''}
+        <span className="cn-small"> · on your phone{now.playing.ageMinutes ? `, ${now.playing.ageMinutes} min ago` : ''}</span></span>,
+    };
+  }
+  if (comingUp.length) {
+    const c = comingUp[0];
+    return { tone: 'plan', pill: 'Coming up', text: <>{c.title} · {dayLabel(c.date)}{c.time ? ` ${c.time}` : ''}</> };
+  }
+  if (cont.length) return { tone: null, pill: 'On the go', text: `${cont.length} thing${cont.length === 1 ? '' : 's'} in progress.` };
+  return { tone: null, pill: 'Quiet', text: 'Nothing in progress that you’ve told NEURO about.' };
+}
+
 export function LeisureView({ data, act = null, busy = false, msg = null }) {
+  const [adding, setAdding] = useState(false);
   if (!data) return null;
   const { now, comingUp = [], continue: cont = [], recentlyEnjoyed = [], hobbies = [], saved = [], quiet = [], listening = { artists: [], albums: [], tracks: [] },
     household = [], preferences = { liked: [], disliked: [] }, profile = { interests: [] }, suggestions = [], discovery = null, sources = [] } = data;
+  const h = leisureHeadline({ now, comingUp, cont });
+  const tv = now && (now.tv || []).length > 0
+    ? <>{now.tv.map((t) => `${t.name} is ${t.state}${t.title ? ` (${t.title})` : ''}`).join(' · ')} — household, not counted as yours.</>
+    : null;
   return (
     <section className="cn-section" data-testid="leisure-card">
       <h3>Leisure</h3>
       {msg && <p className="cn-error cn-small">{msg}</p>}
 
-      {now && ((now.playing) || (now.tv || []).length > 0) && (
-        <div className="cn-nowstrip">
-          {now.playing && (
-            <span data-testid="leisure-now">Playing <strong>{now.playing.title}</strong>{now.playing.artist ? ` — ${now.playing.artist}` : ''}
-              <span className="cn-muted cn-small"> · on your phone{now.playing.ageMinutes ? `, ${now.playing.ageMinutes} min ago` : ''}</span></span>
-          )}
-          {(now.tv || []).length > 0 && (
-            <span className="cn-muted cn-small">{now.tv.map((t) => `${t.name} is ${t.state}${t.title ? ` (${t.title})` : ''}`).join(' · ')} — household, not counted as yours.</span>
-          )}
+      <Headline tone={h.tone} pill={h.pill} detail={tv}>{h.text}</Headline>
+
+      <StatTiles>
+        <Stat v={cont.length} l="on the go" />
+        <Stat v={comingUp.length} l="coming up" />
+        <Stat v={hobbies.length} l={`hobb${hobbies.length === 1 ? 'y' : 'ies'}`} />
+        <Stat v={saved.length} l="saved for later" />
+      </StatTiles>
+
+      {act && (
+        <div className="cn-actions">
+          <PrimaryAction onClick={() => setAdding((v) => !v)}>{adding ? 'Close' : 'Add something'}</PrimaryAction>
         </div>
       )}
+      {act && adding && <AddForm act={act} busy={busy} />}
 
       {comingUp.length > 0 && (
-        <>
-          <h4>Coming up</h4>
-          <ul className="cn-tiles">{comingUp.map((c) => (
-            <li key={`${c.ref}|${c.date}`} className="cn-tile cn-tile--next" title={c.why}>
-              <span className="cn-tile-big">{dayLabel(c.date)}{c.time ? ` · ${c.time}` : ''}</span>
-              <span className="cn-tile-sub">{c.title}</span>
-            </li>))}
-          </ul>
-        </>
+        <Group label="Coming up">
+          <TileGrid>{comingUp.map((c) => (
+            <Tile key={`${c.ref}|${c.date}`} accent why={c.why} title={`${dayLabel(c.date)}${c.time ? ` · ${c.time}` : ''}`} sub={c.title} />))}
+          </TileGrid>
+        </Group>
       )}
 
-      <h4>Continue{cont.some((it) => it.basis === 'listening') && <span className="cn-muted cn-small"> · albums are what the phone played this week</span>}</h4>
-      {cont.length ? <ul className="cn-tiles">{cont.map((it) => <ContinueTile key={it.ref} it={it} act={it.basis === 'you' ? act : null} busy={busy} />)}</ul>
-        : <p className="cn-muted cn-small">Nothing in progress that NEURO knows of. Add what you're watching, reading or playing below — NEURO can't see your TV or books.</p>}
+      <Group label="Continue" why={cont.some((it) => it.basis === 'listening') ? 'Albums are what the phone played this week.' : (!cont.length ? 'Nothing in progress you’ve told NEURO about — Add something puts it here.' : null)}>
+        {cont.length > 0 && <TileGrid>{cont.map((it) => <ItemTile key={it.ref} it={it} act={it.basis === 'you' ? act : null} busy={busy} />)}</TileGrid>}
+      </Group>
 
       {suggestions.length > 0 && (
-        <>
-          <h4>Next, if you want it</h4>
-          <ul className="cn-list">{suggestions.map((s) => <li key={`${s.ref}|${s.type}`} data-testid="leisure-suggestion">{s.line} <span className="cn-muted cn-small">— {s.why} ({s.confidence} confidence)</span></li>)}</ul>
-        </>
+        <Group label="Next, if you want it">
+          <TileGrid>{suggestions.map((s) => <Tile key={`${s.ref}|${s.type}`} testid="leisure-suggestion" title={s.line} sub={`${s.confidence} confidence`} why={s.why} />)}</TileGrid>
+        </Group>
       )}
 
       <Discovery d={discovery} act={act} busy={busy} />
 
       {recentlyEnjoyed.length > 0 && (
-        <>
-          <h4>Recently enjoyed</h4>
-          <ul className="cn-list">{recentlyEnjoyed.map((it) => <li key={it.ref}><strong>{it.title}</strong>{it.creator ? ` — ${it.creator}` : ''} <span className="cn-muted cn-small">— {it.why}</span></li>)}</ul>
-        </>
+        <Group label="Recently enjoyed">
+          <TileGrid>{recentlyEnjoyed.map((it) => <Tile key={it.ref} title={it.title} sub={it.creator || null} why={it.why} />)}</TileGrid>
+        </Group>
       )}
 
-      <h4>Hobbies</h4>
-      {hobbies.length ? <ul className="cn-list">{hobbies.map((h) => <ItemRow key={h.ref} it={h} act={act} busy={busy} extra={h.project ? <div className="cn-muted cn-small">Linked project: {h.project.name}</div> : null} />)}</ul>
-        : <p className="cn-muted cn-small">No hobbies tracked. NEURO won't turn a line in your profile into one — add it below if you want it here.</p>}
+      <Group label="Hobbies" why={hobbies.length ? null : 'None tracked — Add something puts one here.'}>
+        {hobbies.length > 0 && <TileGrid>{hobbies.map((hb) => <ItemTile key={hb.ref} it={hb} act={act} busy={busy} sub={hb.project ? `Linked project: ${hb.project.name}` : null} />)}</TileGrid>}
+      </Group>
 
       {(saved.length > 0 || quiet.length > 0) && (
         <Fold title="Saved for later and gone quiet" meta={`${saved.length + quiet.length}`}>
-          <ul className="cn-list">{[...saved, ...quiet].map((it) => <ItemRow key={it.ref} it={it} act={act} busy={busy} />)}</ul>
+          <TileGrid>{[...saved, ...quiet].map((it) => <ItemTile key={it.ref} it={it} act={act} busy={busy} />)}</TileGrid>
         </Fold>
       )}
 
       <Fold title="What the phone has heard" meta={listening.since ? `since ${listening.since}` : 'nothing yet'}>
-        <p className="cn-muted cn-small">Days each song, artist or album was playing on the iPhone Music app. Rate them: what you <strong>love</strong> counts most when NEURO looks for new music, and “just background” never counts. Listening alone never becomes “you like it”.</p>
+        <div className="cn-group-why">Days each song, artist or album was playing on the iPhone Music app. What you <strong>love</strong> counts most when NEURO looks for new music; “just background” never counts. Hover a row for what was heard.</div>
         <h5>Songs{listening.tracksSince && <span className="cn-muted cn-small"> · kept since {listening.tracksSince}</span>}</h5>
         <Listening rows={listening.tracks || []} act={act} busy={busy} />
         <h5>Artists</h5>
@@ -335,41 +323,38 @@ export function LeisureView({ data, act = null, busy = false, msg = null }) {
 
       {household.length > 0 && (
         <Fold title="Household viewing" meta={`${household.length}`}>
-          <ul className="cn-list">{household.map((h) => (
-            <li key={h.ref}><strong>{h.title}</strong> <span className="cn-muted cn-small">— {h.why}</span>
-              {act && <div className="cn-row-actions"><Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: h.ref, action: 'this-was-me' })}>This was me</Btn></div>}
-            </li>))}
-          </ul>
+          <TileGrid>{household.map((hh) => (
+            <Tile key={hh.ref} title={hh.title} why={hh.why}
+              foot={act ? <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: hh.ref, action: 'this-was-me' })}>This was me</Btn> : null} />))}
+          </TileGrid>
         </Fold>
       )}
 
       {(preferences.disliked.length > 0 || preferences.liked.length > 0) && (
         <Fold title="What you've said you like and don't" meta={`${preferences.liked.length} liked · ${preferences.disliked.length} not for you`}>
-          <ul className="cn-list">
-            {preferences.liked.map((p) => <li key={p.ref}>Liked: {p.title}{p.creator ? ` — ${p.creator}` : ''}{p.wantMore ? ' (more like this)' : ''}</li>)}
-            {preferences.disliked.map((p) => <li key={p.ref}>Not for you: {p.title} <span className="cn-muted cn-small">— {p.scope}</span></li>)}
-          </ul>
+          <TileGrid>
+            {preferences.liked.map((p) => <Tile key={p.ref} title={p.title} sub={p.creator || null} foot={<><span className="cn-chip">liked</span>{p.wantMore && <span>more like this</span>}</>} />)}
+            {preferences.disliked.map((p) => <Tile key={p.ref} title={p.title} sub={p.scope} foot={<span className="cn-chip">not for you</span>} />)}
+          </TileGrid>
         </Fold>
       )}
 
       {profile.interests && profile.interests.length > 0 && (
-        <Fold title="From your profile" meta={`${profile.interests.length}`}>
-          <p className="cn-muted cn-small">Shown as written in Me/About Nick.md. NEURO does not turn these into tracked items or tastes.</p>
+        <Fold title="From your profile" meta={`${profile.interests.length} · as written in Me/About Nick.md`}>
           <ul className="cn-list">{profile.interests.map((i) => <li key={i.text}>{i.text}</li>)}</ul>
         </Fold>
       )}
 
-      {act && <Fold title="Add something"><AddForm act={act} busy={busy} /></Fold>}
-
       <Fold title="Sources" meta={`${sources.filter((s) => ['seeing', 'quiet', 'ok', 'identity', 'context-only'].includes(s.state)).length} of ${sources.length} readable`}>
-        <ul className="cn-list">{sources.map((s) => <li key={s.id} data-testid="leisure-source"><strong>{s.label}</strong>: {SRC[s.state] || s.state} <span className="cn-muted cn-small">— {s.detail}</span></li>)}</ul>
+        <ul className="cn-list">{sources.map((s) => <li key={s.id} data-testid="leisure-source" title={s.detail}><strong>{s.label}</strong>: {SRC[s.state] || s.state} <span className="cn-small">— {s.detail}</span></li>)}</ul>
       </Fold>
 
       <HowItWorks>
         Playing on your phone is evidence that something was playing, not that you chose or like it. Listening across several days and weeks reads as
         interest; only you can say you like something. Shared TVs and speakers are household, never your taste. Nothing is marked finished because it
-        started, and nothing is dropped because it went quiet. Suggestions only come from what you've saved or are partway through; ask SAiM for anything wider.
-        Nothing here interrupts you.
+        started, and nothing is dropped because it went quiet. NEURO can’t see your TV or books, so what you watch and read is only what you add; it never
+        turns a line in your profile into a tracked item, taste or hobby. Suggestions only come from what you've saved or are partway through; ask SAiM for
+        anything wider. Nothing here interrupts you.
       </HowItWorks>
     </section>
   );

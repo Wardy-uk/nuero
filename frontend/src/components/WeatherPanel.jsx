@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../api';
+import { Headline } from './canonical/canonicalUi';
+import './canonical/Canonical.css';
 import './WeatherPanel.css';
 import { RainChart, SourcesStrip, NearbyStations, NowcastCard, rainQuery } from './WeatherRain';
 
@@ -382,10 +384,27 @@ export function Outlook({ summary, nowMs, tiles = null }) {
           <h2>Together</h2>
           <span className="wx-conf">{VERDICT_LABEL[c.verdict] || '—'} · {CONFIDENCE_LABEL[summary.confidence] || 'Low confidence'}</span>
         </div>
-        <p className="wx-summary-text">{c.text}</p>
+        {/* The comparison sentence is the page's headline (WeatherHeadline); said once. */}
         {c.watch && <p className="wx-watch"><strong>Watch for:</strong> {c.watch}</p>}
       </section>
     </div>
+  );
+}
+
+/**
+ * The page's answer: the server's own comparison of sensor and forecast, in its
+ * words. Nothing is re-judged here; a stale station only colours the pill.
+ * An older backend without the split has no comparison, so no headline.
+ */
+function WeatherHeadline({ summary, latest }) {
+  const c = summary?.comparison;
+  if (!summary?.sensor || !summary?.forecast || !c) return null;
+  return (
+    <Headline testid="weather-headline" tone={latest?.stale ? 'warn' : undefined}
+      pill={latest?.stale ? 'Station stale' : (VERDICT_LABEL[c.verdict] || '—')}>
+      {c.text || 'Nothing to compare yet.'}
+      <span className="wx-headline-conf"> · {CONFIDENCE_LABEL[summary.confidence] || 'Low confidence'}</span>
+    </Headline>
   );
 }
 
@@ -478,6 +497,7 @@ export function WeatherView({ data, range, onRange, error, loading, onRetry, rai
 
       {data && data.node && (
         <>
+          <WeatherHeadline summary={data.summary} latest={data.latest} />
           <Outlook summary={data.summary} nowMs={data.plan?.nowMs}
             tiles={<Latest latest={data.latest} staleAfterMs={data.staleAfterMs} />} />
           <StaleWarning latest={data.latest} staleAfterMs={data.staleAfterMs} />

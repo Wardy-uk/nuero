@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical } from './canonicalUi';
+import { useCanonical, postCanonical, Headline, TileGrid, Tile, Group, Fold, PrimaryAction, dayLabel } from './canonicalUi';
 
 /**
  * The "hike weekly" loop (Build 15S–X), under the goal it serves on Life.
@@ -8,11 +8,18 @@ import { useCanonical, postCanonical } from './canonicalUi';
  * otherwise and this draws nothing. Every line is the server's: planned vs
  * recorded vs "I can't tell" is decided once, there, and is never re-worded.
  * A missing workout is never shown as a missed hike.
+ *
+ * 13 Oct 2026 (docs/design-rules.md): headline = this week's verdict, the
+ * weeks as tiles (the server's line on hover), the rule said once, the
+ * record-a-day form folded.
  */
 
 // Build 17A: no "likely" — a day is confirmed (GPS track or you), not a hike,
 // can't tell (recording unavailable), or pending inside its 24-hour window.
 const RESULT_WORD = { done: 'hike confirmed', pending: 'waiting on a GPS track', 'cant-tell': "can't tell", 'none-recorded': 'no hike recorded', 'in-progress': 'this week' };
+// A tone is a meaning: done is good, waiting/can't-tell needs a look. "No hike
+// recorded" is neutral — never a guilt colour for something not done.
+const RESULT_TONE = { done: 'good', pending: 'warn', 'cant-tell': 'warn' };
 
 export default function HikingLoopCard() {
   // Build 16M: earlier weeks on demand, so a past Saturday can be confirmed.
@@ -33,39 +40,43 @@ export default function HikingLoopCard() {
   };
   const denialFor = (d) => (data.entries || []).find((e) => e.kind === 'deny' && e.day === d);
   const ask = cur.needsNick && cur.needsNick.kind === 'confirm' ? cur.needsNick.day : null;
+  const w = cur.weather;
+  const forecast = w ? (w.known
+    ? `Forecast for ${w.day}: ${w.condition}${w.tempHighC != null ? `, ${Math.round(w.tempHighC)}°C` : ''}${w.precipitationProbability != null ? `, ${w.precipitationProbability}% rain` : ''}`
+    : `No forecast for ${w.day} yet (${w.why}).`) : null;
   return (
     <div className="cn-hike" aria-label="Weekly hike">
-      <div className="cn-k">Hike weekly — this week</div>
-      <div className="cn-hike-line">{cur.line}</div>
-      {cur.weather && (cur.weather.known
-        ? <div className="cn-muted">Forecast for {cur.weather.day}: {cur.weather.condition}{cur.weather.tempHighC != null ? `, ${Math.round(cur.weather.tempHighC)}°C` : ''}{cur.weather.precipitationProbability != null ? `, ${cur.weather.precipitationProbability}% rain` : ''}</div>
-        : <div className="cn-muted">No forecast for {cur.weather.day} yet ({cur.weather.why}).</div>)}
-      <div className="cn-muted">{data.rule}{data.lastConfirmed ? ` Last confirmed hike ${data.lastConfirmed}.` : ''}</div>
-      <div className="cn-hike-weeks">
-        {data.weeks.slice(1).map((w) => {
-          const asks = w.needsNick && w.needsNick.kind === 'confirm' ? w.needsNick.day : null;
-          const mine = (w.confirmed || []).find((c) => c.by === 'you' && c.entryId);
-          const tracked = (w.confirmed || []).find((c) => c.by === 'gps-track');
-          const denied = (w.days || []).map((v) => v.by === 'you' && v.state === 'not_hike' && denialFor(v.day)).find(Boolean);
-          return (
-            <span key={w.start} className="cn-chip" title={w.line}>
-              w/c {w.start.slice(5)} · {RESULT_WORD[w.result] || w.result}
-              {asks && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => act('confirm', asks)}>Yes, {asks.slice(5)}</button>}
-              {mine && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => undo(mine.entryId)}>Undo</button>}
-              {tracked && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => act('deny', tracked.day)}>Not a hike</button>}
-              {denied && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => undo(denied.id, true)}>Undo</button>}
-            </span>
-          );
-        })}
-        <button type="button" className="cn-btn cn-btn--tiny" onClick={() => setEarlier((v) => !v)}>{earlier ? 'Fewer weeks' : 'Earlier weeks'}</button>
-      </div>
-      <div className="cn-hike-form">
-        {ask && <button type="button" className="cn-btn" onClick={() => act('confirm', ask)}>Yes, I hiked on {ask}</button>}
-        <input type="date" value={day} onChange={(e) => setDay(e.target.value)} aria-label="Day" />
-        <button type="button" className="cn-btn" disabled={!day} onClick={() => act('confirm', day)}>I hiked that day</button>
-        <button type="button" className="cn-btn" disabled={!day} onClick={() => act('deny', day)}>Not a hike</button>
-        <button type="button" className="cn-btn" disabled={!day} onClick={() => act('plan', day)}>Plan a hike</button>
-      </div>
+      <Headline tone={RESULT_TONE[cur.result]} pill={RESULT_WORD[cur.result] || 'this week'} detail={forecast}>{cur.line}</Headline>
+      {ask && <div className="cn-actions"><PrimaryAction onClick={() => act('confirm', ask)}>Yes, I hiked on {dayLabel(ask)}</PrimaryAction></div>}
+      <Group label="Earlier weeks" meta={data.lastConfirmed ? `last confirmed hike ${dayLabel(data.lastConfirmed)}` : null} why={data.rule}>
+        <TileGrid>
+          {data.weeks.slice(1).map((wk) => {
+            const asks = wk.needsNick && wk.needsNick.kind === 'confirm' ? wk.needsNick.day : null;
+            const mine = (wk.confirmed || []).find((c) => c.by === 'you' && c.entryId);
+            const tracked = (wk.confirmed || []).find((c) => c.by === 'gps-track');
+            const denied = (wk.days || []).map((v) => v.by === 'you' && v.state === 'not_hike' && denialFor(v.day)).find(Boolean);
+            const buttons = asks || mine || tracked || denied;
+            return (
+              <Tile key={wk.start} title={`w/c ${dayLabel(wk.start)}`} sub={RESULT_WORD[wk.result] || wk.result} why={wk.line}
+                foot={buttons ? <>
+                  {asks && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => act('confirm', asks)}>Yes, {dayLabel(asks)}</button>}
+                  {mine && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => undo(mine.entryId)}>Undo</button>}
+                  {tracked && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => act('deny', tracked.day)}>Not a hike</button>}
+                  {denied && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => undo(denied.id, true)}>Undo</button>}
+                </> : null} />
+            );
+          })}
+        </TileGrid>
+        <div className="cn-actions"><button type="button" className="cn-btn cn-btn--tiny" onClick={() => setEarlier((v) => !v)}>{earlier ? 'Fewer weeks' : 'Earlier weeks'}</button></div>
+      </Group>
+      <Fold title="Record or plan a day">
+        <div className="cn-hike-form">
+          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} aria-label="Day" />
+          <button type="button" className="cn-btn" disabled={!day} onClick={() => act('confirm', day)}>I hiked that day</button>
+          <button type="button" className="cn-btn" disabled={!day} onClick={() => act('deny', day)}>Not a hike</button>
+          <button type="button" className="cn-btn" disabled={!day} onClick={() => act('plan', day)}>Plan a hike</button>
+        </div>
+      </Fold>
       {msg && <div className="cn-error">{msg}</div>}
     </div>
   );

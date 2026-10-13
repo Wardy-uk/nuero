@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, Fold, HowItWorks } from './canonicalUi';
+import { useCanonical, postCanonical, Fold, HowItWorks, Headline, TileGrid, Tile, PrimaryAction, dayLabel } from './canonicalUi';
 
 /**
  * Build 20K — a companion's care, compact, under Life → Companions.
@@ -59,47 +59,52 @@ export default function CompanionCareCard({ companion }) {
     });
   };
 
+  // The care's answer: today's walk as the badge, the next dated care as the
+  // sentence. A care item that needs him outranks both. Counts are tallies of
+  // the server's states; no tone here is a guilt colour (no walk is neutral).
+  const needs = data.open.filter((i) => i.actionState === 'needs_you');
+  const walkTone = walk.state === 'confirmed' ? 'good' : walk.state === 'planned' ? 'plan' : 'neutral';
+  const nextLine = data.next
+    ? `Next: ${data.next.title} — ${dayLabel(data.next.dueDate)}${data.next.dueTime ? ` ${data.next.dueTime}` : ''}${data.next.recurrenceWords ? ` (${data.next.recurrenceWords})` : ''}`
+    : `Nothing dated for ${name}.`;
+  const head = needs.length
+    ? { tone: 'warn', pill: 'Needs you', text: `${needs.length} care item${needs.length === 1 ? ' needs' : 's need'} you.`, detail: nextLine }
+    : { tone: walkTone, pill: WALK_WORDS[walk.state] || walk.state, text: nextLine, detail: walk.state !== 'not_applicable' ? walk.why : null };
+  const walks = `${path.replace('/care', '/walks')}`;
+
   return (
     <div className="cn-care">
+      <Headline tone={head.tone} pill={head.pill} detail={head.detail}>{head.text}</Headline>
       {note && <div className="cn-error">{note}</div>}
 
-      <div className="cn-care-row">
-        <span className="cn-now-k">Walk today</span>
-        <span className={`cn-chip ${walk.state === 'confirmed' ? 'cn-chip--firm' : 'cn-chip--soft'}`}>{WALK_WORDS[walk.state] || walk.state}</span>
-        {walk.state !== 'not_applicable' && <span className="cn-muted cn-small">{walk.why}</span>}
-        {walk.state !== 'confirmed' && <button type="button" className="cn-btn" disabled={busy} onClick={() => act(() => postCanonical(`${path.replace('/care', '/walks')}`, { mark: 'walked' }))}>Walked</button>}
+      <div className="cn-actions">
+        {walk.state !== 'confirmed' && <PrimaryAction disabled={busy} onClick={() => act(() => postCanonical(walks, { mark: 'walked' }))}>Walked today</PrimaryAction>}
         {walk.state !== 'not_applicable' && walk.state !== 'confirmed' && data.walk.setUp && (
-          <button type="button" className="cn-btn" disabled={busy} onClick={() => act(() => postCanonical(`${path.replace('/care', '/walks')}`, { mark: 'not-applicable' }))}>No walk needed</button>
+          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(walks, { mark: 'not-applicable' }))}>No walk needed</button>
         )}
         {(walk.evidence || []).some((e) => e.kind === 'confirmation') && (
-          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(`${path.replace('/care', '/walks/remove')}`, { day: data.today }))}>Undo</button>
+          <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(`${path.replace('/care', '/walks/remove')}`, { day: data.today }))}>Undo walk</button>
         )}
       </div>
       {data.walk.history.some((d) => d.state !== 'not_applicable') && (
-        <div className="cn-muted cn-care-week">
-          Last week: {data.walk.history.map((d) => `${d.day.slice(5)} ${WALK_WORDS[d.state] || d.state}`).join(' · ')}
+        <div className="cn-nowstrip cn-care-week">
+          {data.walk.history.map((d) => <span key={d.day}>{dayLabel(d.day)} {WALK_WORDS[d.state] || d.state}</span>)}
         </div>
       )}
 
-      <div className="cn-care-row">
-        <span className="cn-now-k">Next</span>
-        {data.next
-          ? <span>{data.next.title} — {data.next.dueDate}{data.next.dueTime ? ` ${data.next.dueTime}` : ''}{data.next.recurrenceWords ? ` (${data.next.recurrenceWords})` : ''}</span>
-          : <span className="cn-muted">Nothing dated.</span>}
-      </div>
-
       {data.open.length > 0 && (
-        <ul className="cn-list">
+        <TileGrid>
           {data.open.map((i) => (
-            <li key={i.id} className="cn-row">
-              <span className="cn-rowtitle">{i.title}</span>
-              <span className="cn-muted">{i.kindLabel} · {i.dueDate || 'no date'}{i.recurrenceWords ? ` · ${i.recurrenceWords}` : ''}</span>
-              {ACTION_WORDS[i.actionState] && <span className={`cn-chip ${i.actionState === 'needs_you' ? 'cn-chip--firm' : 'cn-chip--soft'}`} title={i.why}>{ACTION_WORDS[i.actionState]}</span>}
-              <button type="button" className="cn-btn" disabled={busy} onClick={() => act(() => postCanonical(`/api/canonical/care/${encodeURIComponent(i.id)}/done`, {}))}>Done</button>
-              <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(`/api/canonical/care/${encodeURIComponent(i.id)}/cancel`, {}))}>Cancel</button>
-            </li>
+            <Tile key={i.id} title={i.title} accent={i.actionState === 'needs_you'}
+              sub={`${i.kindLabel} · ${i.dueDate ? dayLabel(i.dueDate) : 'no date'}`}
+              why={[i.why, i.recurrenceWords].filter(Boolean).join(' · ') || undefined}
+              foot={<>
+                {ACTION_WORDS[i.actionState] && <span className={`cn-chip ${i.actionState === 'needs_you' ? 'cn-chip--firm' : 'cn-chip--soft'}`}>{ACTION_WORDS[i.actionState]}</span>}
+                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(`/api/canonical/care/${encodeURIComponent(i.id)}/done`, {}))}>Done</button>
+                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical(`/api/canonical/care/${encodeURIComponent(i.id)}/cancel`, {}))}>Cancel</button>
+              </>} />
           ))}
-        </ul>
+        </TileGrid>
       )}
 
       <Fold title="Add care" meta="vet, vaccination, flea, worming…">
@@ -124,7 +129,7 @@ export default function CompanionCareCard({ companion }) {
           {data.linked.map((l) => (
             <li key={l.entityId} className="cn-row">
               <span className="cn-rowtitle">{l.found ? l.title : 'no longer held by NEURO'}</span>
-              <span className="cn-muted">{l.careKind}{l.kindOf ? ` · ${l.kindOf === 'meeting' ? 'calendar' : l.kindOf}` : ''}{l.day ? ` · ${l.day}` : l.dueDate ? ` · due ${l.dueDate}` : ''}{l.status ? ` · ${l.status}` : ''}</span>
+              <span className="cn-muted">{l.careKind}{l.kindOf ? ` · ${l.kindOf === 'meeting' ? 'calendar' : l.kindOf}` : ''}{l.day ? ` · ${dayLabel(l.day)}` : l.dueDate ? ` · due ${dayLabel(l.dueDate)}` : ''}{l.status ? ` · ${l.status}` : ''}</span>
               {l.hidden && <span className="cn-muted">{l.why}</span>}
               <button type="button" className="cn-btn cn-btn--tiny" disabled={busy}
                 onClick={() => act(() => postCanonical(`${path.replace('/care', '/links/remove')}`, { entityId: l.entityId, label: l.title }))}>Unlink</button>
@@ -149,10 +154,9 @@ export default function CompanionCareCard({ companion }) {
       </Fold>
 
       {data.recent.length > 0 && (
-        <details className="cn-details">
-          <summary>Recently done ({data.recent.length})</summary>
-          <ul className="cn-act-lines">{data.recent.map((r, i) => <li key={`${r.careId}-${i}`}>{r.doneOn} — {r.title}{r.nextDue ? ` (next ${r.nextDue})` : ''}</li>)}</ul>
-        </details>
+        <Fold title="Recently done" meta={`${data.recent.length}`}>
+          <ul className="cn-act-lines">{data.recent.map((r, i) => <li key={`${r.careId}-${i}`}>{dayLabel(r.doneOn)} — {r.title}{r.nextDue ? ` (next ${dayLabel(r.nextDue)})` : ''}</li>)}</ul>
+        </Fold>
       )}
       <HowItWorks>{data.walk.rule} NEURO schedules nothing for {name} by itself; a task or calendar entry counts as her care only when you link it.</HowItWorks>
     </div>
