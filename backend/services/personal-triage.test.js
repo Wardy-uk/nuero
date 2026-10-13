@@ -78,8 +78,10 @@ test('the real classifier is asked the PERSONAL question, once per message: answ
   const prompts = [];
   aiProvider.triageEmails = async (prompt) => {
     prompts.push(prompt);
-    const ids = [...prompt.matchAll(/^\[(\d+)\]/gm)].map((m) => Number(m[1]));
-    return { provider: 'stub', text: JSON.stringify(ids.map((i) => ({ index: i, category: i === 0 ? 'ACTION' : 'IGNORE', urgency: i === 0 ? 'high' : 'low', reason: 'stub' }))) };
+    // Decide by the message's own words, never its position: two messages
+    // received in the same second have no guaranteed order (red on the Pi).
+    const rows = [...prompt.matchAll(/^\[(\d+)\]([\s\S]*?)(?=^\[\d+\]|$(?![\s\S]))/gm)].map((m) => ({ i: Number(m[1]), act: /card expires/i.test(m[2]) }));
+    return { provider: 'stub', text: JSON.stringify(rows.map((x) => ({ index: x.i, category: x.act ? 'ACTION' : 'IGNORE', urgency: x.act ? 'high' : 'low', reason: 'stub' }))) };
   };
   let r = await triage.classifyPending();
   assert.equal(prompts.length, 1);
