@@ -46,12 +46,16 @@ function ToolButton({ app, onDeskOpen, deskStates, primary = false }) {
  * Pure presentational half, exported so it renders under test with no fetch.
  * Every handler is optional; a missing one means the control is not offered.
  */
+/**
+ * Pure presentational half, exported so it renders under test with no fetch.
+ * Every handler is optional; a missing one means the control is not offered.
+ */
 export function SaimHomeView({
   data, session = null, error = null, neuroUrl = null,
   deskStates = {}, onDeskOpen = null, onAct = null, busy = false,
   heldOpen = false, onToggleHeld = null,
   moreOpen = false, onToggleMore = null,
-  onNameStep = null,
+  stepOpen = false, onMove = null, onNameStep = null,
   dock = null,
 }) {
   if (!data) {
@@ -70,30 +74,46 @@ export function SaimHomeView({
   const change = nextChange(data);
   const held = heldWork(data);
   const judge = judgement(data);
-  const seen = evidence(data);
+  const trail = evidence(data);
   const actionsLink = neuroLink(neuroUrl, 'actions');
+  const others = (
+    <div className="alt-ways">
+      <span className="alt-label">{tools.top || tools.already ? 'Other ways in' : 'Or open'}</span>
+      <div className="alt-ways__row">
+        {tools.row.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
+        {tools.more.length > 0 && onToggleMore && (
+          <button type="button" className="alt-link" aria-expanded={moreOpen} onClick={onToggleMore}>
+            {moreOpen ? 'Fewer' : `More available apps (${tools.more.length})`}
+          </button>
+        )}
+      </div>
+      {moreOpen && tools.more.length > 0 && (
+        <div className="alt-ways__row alt-ways__more">
+          {tools.more.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="alt-home">
-      {/* ── Presence: who and where, then the desk and what she is doing ─── */}
+      {/* ── Presence ─────────────────────────────────────────────────────── */}
       <header className="alt-presence" aria-label="Presence">
         <p className={`alt-presence__who${p.whereKnown ? '' : ' is-unknown'}`}>{p.line1}</p>
-        <p className="alt-presence__desk">
-          {p.line2}
-          {p.operationDetail ? ` — ${p.operationDetail}` : ''}
-          {p.device ? <span className="alt-presence__device"> · {p.device}</span> : null}
-        </p>
+        {p.operation && (
+          <p className="alt-presence__op">{p.operation}{p.operationDetail ? ` — ${p.operationDetail}` : ''}</p>
+        )}
       </header>
 
       {error && <p className="alt-home__stale" role="status">Couldn’t refresh — {error}. Showing the last read.</p>}
 
       <div className="alt-grid">
-        {/* ── The thread: the one dominant card ────────────────────────── */}
+        {/* ── The thread: one dominant statement ───────────────────────── */}
         <section className="alt-thread" aria-label="The current thread">
           {thread.state === 'unknown' ? (
             <>
               <p className="alt-thread__title">{thread.unknown.title}</p>
-              <p className="alt-thread__prompt">{thread.unknown.prompt}</p>
+              <p className="alt-thread__sub">{thread.unknown.prompt}</p>
             </>
           ) : (
             <>
@@ -104,20 +124,22 @@ export function SaimHomeView({
           )}
           {blind && blind.kind === 'blind' && <p className="alt-warn">{blind.text}</p>}
 
-          {thread.state !== 'unknown' && (
-            <div className="alt-thread__step">
-              <span className="alt-label">Next step</span>
-              {thread.nextStep.known
-                ? <span className="alt-thread__steptext">{thread.nextStep.text}</span>
-                : <span className="alt-thread__steptext is-unknown">No next step named.</span>}
-              {onNameStep && thread.sessionActive && !thread.nextStep.known && (
-                <StepForm onSubmit={onNameStep} disabled={busy} />
-              )}
-            </div>
-          )}
+          {thread.nextStep.known
+            ? <p className="alt-thread__next"><span className="alt-label">Next</span> {thread.nextStep.text}</p>
+            : thread.situation && <p className="alt-thread__situation">{thread.situation}</p>}
 
-          {thread.actions.length > 0 && (
+          {(thread.moves.length > 0 || thread.actions.length > 0) && (
             <div className="alt-thread__actions">
+              {thread.moves.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`alt-pill${m.id === 'keep' ? ' alt-pill--strong' : ''}`}
+                  disabled={!onMove || busy}
+                  aria-expanded={m.id === 'name' ? stepOpen : undefined}
+                  onClick={() => onMove && onMove(m)}
+                >{m.label}</button>
+              ))}
               {thread.actions.map((u) => (
                 <button
                   key={`${u.intent.kind}:${u.intent.action || ''}:${u.say}`}
@@ -129,41 +151,25 @@ export function SaimHomeView({
               ))}
             </div>
           )}
+          {stepOpen && onNameStep && <StepForm onSubmit={onNameStep} disabled={busy} />}
 
-          {/* ── Best next place ─────────────────────────────────────────── */}
-          <div className="alt-place" aria-label="Best next place">
-            <span className="alt-label">Best next place{tools.host ? ` · ${tools.host}` : ''}</span>
-            {tools.top ? (
-              <>
-                <p className="alt-place__name">{tools.top.label}</p>
-                <p className="alt-place__because">{tools.top.because}</p>
+          {/* ── Tools: subordinate to the thread ───────────────────────── */}
+          <div className="alt-place" aria-label="Tools on the laptop">
+            {tools.mode === 'blocked' && <p className="alt-place__none">Nothing to open — {tools.blockedWhy}.</p>}
+            {tools.mode === 'step' && tools.top && (
+              <div className="alt-place__best">
+                <span className="alt-label">Best next place</span>
+                <span className="alt-place__name">{tools.top.label}</span>
                 <ToolButton app={tools.top} onDeskOpen={onDeskOpen} deskStates={deskStates} primary />
-                {!onDeskOpen && <p className="alt-tool__why">This screen can’t reach the desk queue, so nothing here can open.</p>}
-
-                <div className="alt-ways">
-                  <span className="alt-label">Other ways in</span>
-                  <div className="alt-ways__row">
-                    {[tools.ai, tools.music, ...tools.context].filter(Boolean).map((a) => (
-                      <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />
-                    ))}
-                  </div>
-                  {tools.more.length > 0 && onToggleMore && (
-                    <>
-                      <button type="button" className="alt-link" aria-expanded={moreOpen} onClick={onToggleMore}>
-                        {moreOpen ? 'Fewer apps' : `More available apps (${tools.more.length})`}
-                      </button>
-                      {moreOpen && (
-                        <div className="alt-ways__row alt-ways__more">
-                          {tools.more.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </>
-            ) : (
-              <p className="alt-place__none">Nothing to open — {tools.blockedWhy}.</p>
+              </div>
             )}
+            {tools.mode === 'step' && tools.already && (
+              <p className="alt-place__already">{tools.already.because}</p>
+            )}
+            {tools.mode !== 'blocked' && !onDeskOpen && (
+              <p className="alt-tool__why">This screen can’t reach the laptop, so nothing here can open.</p>
+            )}
+            {tools.mode !== 'blocked' && others}
           </div>
 
           <div className="alt-thread__dock">{dock}</div>
@@ -193,9 +199,7 @@ export function SaimHomeView({
               <p className="alt-rail__text">Nothing held back.</p>
             ) : (
               <>
-                <p className="alt-rail__text">
-                  {`Holding ${held.count} back${held.reasons.length ? `: ${held.reasons.join('; ')}` : ''}.`}
-                </p>
+                <p className="alt-rail__text">{held.line}</p>
                 {onToggleHeld && (
                   <button type="button" className="alt-link" aria-expanded={heldOpen} onClick={onToggleHeld}>
                     {heldOpen ? 'Hide held work' : 'Show held work'}
@@ -212,15 +216,14 @@ export function SaimHomeView({
             )}
           </section>
 
-          <section className="alt-rail__block" aria-label="What SAiM can see">
-            <h2 className="alt-rail__head">What I can see</h2>
-            {seen.seen.length === 0 && seen.gaps.length === 0 && <p className="alt-rail__text is-unknown">NEURO gave no evidence with this read.</p>}
-            {seen.seen.length > 0 && (
-              <ul className="alt-rail__list">{seen.seen.map((s, i) => <li key={i}>{s}</li>)}</ul>
-            )}
-            {seen.gaps.length > 0 && (
-              <p className="alt-rail__gap">Can’t read: {seen.gaps.join('; ')}.</p>
-            )}
+          <section className="alt-rail__block" aria-label="Evidence">
+            <h2 className="alt-rail__head">Going on</h2>
+            <ul className="alt-trail">
+              {trail.lines.map((l) => (
+                <li key={l.kind} className={l.unknown ? 'is-unknown' : undefined}>{l.text}</li>
+              ))}
+              {trail.gaps.length > 0 && <li className="alt-trail__gap">Can’t read: {trail.gaps.join('; ')}</li>}
+            </ul>
           </section>
         </aside>
       </div>
@@ -358,6 +361,7 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
   const [busy, setBusy] = useState(false);
   const [heldOpen, setHeldOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [stepOpen, setStepOpen] = useState(false);
   const [deskStates, setDeskStates] = useState({});
   const [deskReachable, setDeskReachable] = useState(true);
   const [actNote, setActNote] = useState(null);
@@ -468,13 +472,45 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
     }
   }
 
+  // Naming the step: onto the running focus session, or — when none is running
+  // — a session started ON that step, named after what NEURO says he is doing.
+  // A 409 means a different session is running; nothing is switched silently.
   async function nameStep(step) {
     setBusy(true);
+    setActNote(null);
     try {
-      await apiFetch('/api/session/next-step', { method: 'POST', body: JSON.stringify({ step }) });
+      const running = session && session.session && session.session.active !== false;
+      if (running) {
+        await apiFetch('/api/session/next-step', { method: 'POST', body: JSON.stringify({ step }) });
+      } else {
+        const d = state.data || {};
+        const text = (d.work && d.work.task) || (d.life && d.life.label) || (d.primary && d.primary.title) || step;
+        await apiFetch('/api/session/start', { method: 'POST', body: JSON.stringify({ text, nextStep: step, source: 'saim-alt' }) });
+      }
+      setStepOpen(false);
       await load();
     } catch (e) {
-      setActNote(e.message || 'The step wasn’t saved.');
+      setActNote(/409/.test(String(e.message)) ? 'Another focus session is running — the step wasn’t saved. Finish or pause it in Now.' : (e.message || 'The step wasn’t saved.'));
+    } finally { setBusy(false); }
+  }
+
+  // The context moves. None of them queues a desktop intent.
+  //   keep   — confirms what NEURO already reads him as doing (his word beats
+  //            the inference for a while); SAiM stays present.
+  //   name   — opens the step box.
+  //   return — tells NEURO he is working, which is what releases held work.
+  async function onMove(move) {
+    if (!move) return;
+    if (move.id === 'name') { setStepOpen((o) => !o); return; }
+    if (move.id !== 'keep' && move.id !== 'return') return;
+    setBusy(true);
+    setActNote(null);
+    try {
+      await apiFetch('/api/signals/life/declare', { method: 'POST', body: JSON.stringify({ doing: move.doing }) });
+      setActNote(move.id === 'keep' ? 'Got it — I’ll stay with this.' : 'Back to work — I’ll bring the held work back.');
+      await load();
+    } catch (e) {
+      setActNote(e.message || 'That didn’t go through.');
     } finally { setBusy(false); }
   }
 
@@ -494,6 +530,8 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
         onToggleHeld={() => setHeldOpen((o) => !o)}
         moreOpen={moreOpen}
         onToggleMore={() => setMoreOpen((o) => !o)}
+        stepOpen={stepOpen}
+        onMove={onMove}
         onNameStep={nameStep}
         dock={<Dock utterances={state.data?.utterances} onSay={onSay} />}
       />

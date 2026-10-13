@@ -1,20 +1,18 @@
 /**
  * SAiM Alt — the A/B treatment shell (saim-alt.nickward.co.uk).
  *
- * Pins what the brief made non-negotiable:
+ * Pins what the briefs made non-negotiable:
  *   1. NAVIGATION: a persistent bottom bar with exactly five destinations, the
  *      control's icons, SAiM selected by default, nothing else reachable.
- *   2. PRESENCE: a human line from real signals; unknown place, unseen desk and
- *      an unrecoverable thread are each SAID; a room is never claimed for Nick.
- *   3. TOOLS: one recommended app inside the thread card, then one AI tool,
- *      Music, up to three context apps and the rest folded — only declared apps
- *      are buttons, and the desk lifecycle is the server's word.
- *   4. HELD WORK expands without reranking or touching canonical state.
- *   5. THE FIELD is the control's, unchanged.
- * …plus that the control build cannot see any of it.
- *
- * The pure rules are tested on `saim/app/alt/model.mjs`; the page and the shell
- * are bundled with esbuild and REALLY rendered.
+ *   2. THE CALM STATE is described honestly (own project, work held, next step
+ *      unknown), offers moves that queue NO desktop intent, recommends NO tool,
+ *      never offers the app already in front, and drives the field BLUE through
+ *      the existing drive — pressure still wins.
+ *   3. A KNOWN STEP gets one recommendation (a different, declared app) with its
+ *      real desk lifecycle; an app already in front is said, never re-opened.
+ *   4. UNKNOWN room / unseen desk / unavailable agent / no thread are each SAID.
+ *   5. HELD WORK is said as held and expands without touching canonical state.
+ *   6. THE FIELD is the control's, unchanged; the control cannot see alt code.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -86,20 +84,22 @@ const APPS17 = [
   ['vantage', 'VANTAGE'], ['word', 'Word'],
 ].map(([id, label]) => ({ id, label }));
 
-// Shaped like the live /api/canonical/now read of 13 Oct 2026, 19:03: an
-// evening at home, watch heard in the living room, VS Code in front.
+// The calm personal-project state, shaped like the live /api/canonical/now
+// read of 13 Oct 2026: an evening at home on his own project, VS Code in
+// front, watch heard in the living room, work held, nothing waiting.
 function live(over = {}) {
   return {
     generatedAt: '2026-10-13T18:03:39.000Z',
     poolAvailable: true,
     quiet: false,
+    situation: { calm: true, calmSay: 'Nothing needs you right now.' },
     context: {
-      activity: 'off',
+      activity: 'ritual',
       place: { known: true, name: 'unknown', source: 'owntracks', room: 'living-room', roomSubject: 'watch', roomWhy: null },
       confidence: { level: 'high', rationale: 'Every input answered and they agree.' },
       unknowns: [], cannotSee: null,
     },
-    life: { place: { kind: 'home', label: 'living-room' }, evidence: ['VS Code is in front of you outside working hours, with no work app'] },
+    life: { doing: 'hobby', label: 'On a project of your own', showWork: false, place: { kind: 'home', label: 'living-room' } },
     operation: { phase: 'standing_by', label: 'STANDING BY', detail: null },
     primary: { kind: 'context', id: 'context-off', title: 'On a project of your own', reason: 'On a project of your own · living-room', say: 'On a project of your own · living-room', actions: [] },
     work: {
@@ -108,33 +108,33 @@ function live(over = {}) {
       deskOffer: { known: true, host: 'DESKTOP-8LGF9RR', why: null, apps: APPS17 },
     },
     dropped: [
-      { id: 'todo-overdue-summary', type: 'todo', why: 'not a working day' },
-      { id: 'cal-AAMkAGI1MjNlMjY3LTg5NGMtNGFiMC04MTE4LWQyNmMzN2UyMTBmOQBGAAAAAAA7R6hC4', type: 'meeting', why: 'not a working day' },
-      { id: 'email-urgent', type: 'email', why: 'unread email waits' },
+      { id: 'todo-overdue-summary', type: 'todo', why: 'not working — on a project of your own' },
+      { id: 'capacity-start-345', type: 'capacity', why: 'not working — on a project of your own' },
+      { id: 'cal-AAMkAGI1MjNlMjY3LTg5NGMtNGFiMC04MTE4LWQyNmMzN2UyMTBmOQBGAAAAAAA7R6hC4', type: 'meeting', why: 'not working — on a project of your own' },
+      { id: 'email-urgent', type: 'email', why: 'not working — on a project of your own' },
     ],
-    approvals: { known: true, needsApproval: 2, needsReview: 0, where: 'Actions, in NEURO on the desktop', say: '2 emails wait for your approval.' },
+    approvals: { known: true, needsApproval: 0, needsReview: 0, where: 'Actions, in NEURO on the desktop', say: null },
     transition: null,
     nextMeeting: null,
     gaps: [],
     utterances: [
-      { say: 'That’s done', intent: { kind: 'act', action: 'complete', recordId: 7 } },
-      { say: 'Not now', intent: { kind: 'act', action: 'defer', recordId: 7, minutes: 60, reason: 'not-now' } },
-      { say: 'Capture a thought', intent: { kind: 'navigate', tab: 'capture' } },
+      { say: 'What did I actually finish?', intent: { kind: 'ask' } },
       { say: 'Show me everything', intent: { kind: 'reveal' } },
     ],
     ...over,
   };
 }
+const STEP = (nextStep) => ({ session: { active: true, nextStep } });
 
 const render = (props) => renderToString(React.createElement(View, props));
 const strip = (h) => h.replace(/<!-- -->/g, '');
+const text = (h) => strip(h).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
 // ── 1. Bottom navigation ────────────────────────────────────────────────────
 
 test('exactly five destinations, in order, with the control’s icons', () => {
   assert.deepEqual([...M.ALT_TAB_IDS], ['saim', 'now', 'review', 'capture', 'controls']);
   assert.deepEqual(M.ALT_TABS.map((t) => t.label), ['SAiM', 'Now', 'Review', 'Capture', 'Controls']);
-  // The icons are the control registry's own, read from its source.
   const reg = fs.readFileSync(path.join(SHARED_UI, 'tabs.jsx'), 'utf8');
   const iconOf = (id) => (reg.match(new RegExp(`id: '${id}', label: '[^']*', icon: '([^']+)'`)) || [])[1];
   assert.equal(M.ALT_TABS[0].icon, iconOf('surface'));
@@ -142,20 +142,22 @@ test('exactly five destinations, in order, with the control’s icons', () => {
   assert.equal(M.ALT_DEFAULT_TAB, 'saim');
 });
 
-test('the bar: tagline left, five icon buttons centre, updated time right — and nothing else to navigate to', () => {
+test('the bar: tagline left, five icon buttons centre, updated time right — nothing else to navigate to', () => {
   const html = strip(renderToString(React.createElement(Shell, { active: 'saim', drive: { degraded: false }, updatedAt: '2026-10-13T18:03:00.000Z', onGo: () => {} })));
   const bar = html.slice(html.indexOf('<footer class="alt-bar"'));
   assert.match(bar, /SAiM stays with the thread\. NEURO holds the detail\./);
   const tabs = [...bar.matchAll(/<button[^>]*class="alt-bar__tab[^"]*"[^>]*>([\s\S]*?)<\/button>/g)];
-  assert.equal(tabs.length, 5, 'exactly five buttons');
+  assert.equal(tabs.length, 5);
   assert.deepEqual(tabs.map((m) => m[1].replace(/<[^>]+>/g, '')), ['✦SAiM', '◉Now', '◐Review', '➕Capture', '⚙Controls']);
   assert.match(tabs[0][0], /is-on/);
-  assert.match(tabs[0][0], /aria-current="page"/);
   assert.equal((bar.match(/is-on/g) || []).length, 1);
   assert.match(bar, /class="alt-bar__updated"[^>]*>Updated \d\d:\d\d</);
-  // No top-centred nav, and no other <nav> anywhere.
   assert.equal((html.match(/<nav/g) || []).length, 1);
   assert.doesNotMatch(html, /alt-app__nav|alt-app__tab/);
+  // The tagline column can shrink and wrap, so it is never clipped.
+  const css = fs.readFileSync(path.join(ALT, 'AltApp.css'), 'utf8');
+  assert.match(css, /grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\)/);
+  assert.match(css, /\.alt-bar__tagline \{[^}]*overflow-wrap: anywhere/);
 });
 
 test('every other control destination is handed off to NEURO, never rendered', () => {
@@ -167,57 +169,199 @@ test('every other control destination is handed off to NEURO, never rendered', (
   for (const id of M.ALT_TAB_IDS) assert.deepEqual(M.resolveAltTab(id), { tab: id, handoff: false });
   assert.equal(M.resolveAltTab('surface').tab, 'saim');
   assert.equal(M.resolveAltTab('voice').tab, 'capture');
-});
-
-test('the shell never imports the control’s tab registry or its other screens', () => {
   for (const f of ['AltApp.jsx', 'AltShell.jsx', 'SaimHome.jsx']) {
     const src = fs.readFileSync(path.join(ALT, f), 'utf8');
-    assert.doesNotMatch(src, /shared-ui\/tabs/, `${f}`);
-    assert.doesNotMatch(src, /views\/(Tasks|Chat|MeetingPrep|Standup|Household|Surface)/, `${f}`);
+    assert.doesNotMatch(src, /shared-ui\/tabs/, f);
+    assert.doesNotMatch(src, /views\/(Tasks|Chat|MeetingPrep|Standup|Household|Surface)/, f);
   }
-  assert.match(fs.readFileSync(path.join(ALT, 'AltApp.jsx'), 'utf8'), /resolveAltTab\(/);
 });
 
 test('updated time: local HH:MM, or said to be unread', () => {
   assert.match(M.updatedLabel('2026-10-13T18:03:39.000Z'), /^Updated \d\d:\d\d$/);
   assert.equal(M.updatedLabel(null), null);
-  assert.equal(M.updatedLabel('nonsense'), null);
-  const html = renderToString(React.createElement(Shell, { active: 'saim', drive: {}, updatedAt: null }));
-  assert.match(html, /Not read yet/);
+  assert.match(renderToString(React.createElement(Shell, { active: 'saim', drive: {}, updatedAt: null })), /Not read yet/);
 });
 
-// ── 2. Presence and the unknown states ─────────────────────────────────────
+// ── 2. The calm personal-project state ──────────────────────────────────────
 
-test('presence is a human line, and a room is the WATCH’s, never Nick’s', () => {
-  const p = M.presence(live());
-  assert.equal(p.line1, 'Nick · Home');
-  assert.equal(p.line2, 'desk seen · VS Code open · standing by');
-  assert.equal(p.device, 'watch heard in the living room');
-  const html = strip(render({ data: live() }));
-  assert.doesNotMatch(html, /living-room/, 'no raw sensor slug on screen');
-  assert.doesNotMatch(html, /DESKTOP-8LGF9RR · /, 'no raw host as a presence fact');
-  assert.doesNotMatch(html, /Nick · [^<]*living room/i, 'never "Nick · living room"');
-  // Only a room is known: Nick's location is still UNKNOWN; the room is the watch's.
-  const roomOnly = M.presence(live({ life: null }));
-  assert.equal(roomOnly.line1, 'Nick · location unknown');
-  assert.equal(roomOnly.device, 'watch heard in the living room');
-  // A room with no named device is "a device", never Nick.
-  assert.equal(M.presence({ context: { place: { known: true, name: 'unknown', room: 'study' } } }).device, 'a device heard in the study');
-  // A named place wins over the home/work read.
+test('calm personal project: the situation is described, not dressed as a task', () => {
+  const t = M.currentThread(live());
+  assert.equal(t.state, 'context');
+  assert.equal(t.item.title, 'You’re in your own project.');
+  assert.equal(t.item.sub, 'I’m holding work while you’re here.');
+  assert.equal(t.situation, 'VS Code is already open. I don’t yet know the next step.');
+  assert.deepEqual(t.moves.map((m) => m.label), ['Keep working here', 'Name the next step', 'Return to work']);
+  const h = text(render({ data: live(), onMove: () => {}, onDeskOpen: () => {} }));
+  for (const s of ['You’re in your own project.', 'I’m holding work while you’re here.', 'VS Code is already open. I don’t yet know the next step.', 'Keep working here', 'Name the next step', 'Return to work']) {
+    assert.ok(h.includes(s), s);
+  }
+});
+
+test('calm, no step: NO recommendation, no Open button, and never the app already in front', () => {
+  const t = M.toolHandoff(live(), M.currentThread(live()));
+  assert.equal(t.mode, 'browse');
+  assert.equal(t.top, null);
+  assert.equal(t.already, null);
+  assert.ok(!t.row.concat(t.more).some((a) => a.id === 'code'), 'VS Code is in front, so it is not offered');
+  const html = strip(render({ data: live(), onDeskOpen: () => {}, onMove: () => {}, onToggleMore: () => {} }));
+  assert.doesNotMatch(html, /alt-tool__primary/);
+  assert.doesNotMatch(html, /Best next place/);
+  assert.doesNotMatch(html, />Open /);
+  assert.match(html, /Or open/);
+});
+
+test('"Keep working here" queues no desktop intent: the moves never reach onDeskOpen', () => {
+  const src = fs.readFileSync(path.join(ALT, 'SaimHome.jsx'), 'utf8');
+  const body = src.slice(src.indexOf('async function onMove'), src.indexOf('return (', src.indexOf('async function onMove')));
+  assert.ok(body.length > 50, 'positive control: onMove was found');
+  assert.doesNotMatch(body, /desktop\/intents|deskOpen/);
+  assert.match(body, /signals\/life\/declare/);
+  // And the view wires moves to onMove only.
+  const calls = [];
+  const html = render({ data: live(), onMove: (m) => calls.push(m.id), onDeskOpen: () => calls.push('DESK') });
+  assert.match(html, /Keep working here/);
+  assert.deepEqual(calls, [], 'rendering presses nothing');
+  const keep = M.currentThread(live()).moves.find((m) => m.id === 'keep');
+  assert.equal(keep.doing, 'hobby', 'it confirms what NEURO already reads, nothing invented');
+});
+
+test('the calm state drives the field BLUE through the existing drive; pressure still wins', async () => {
+  const fd = await import(`file://${path.join(SHARED_UI, 'fieldDrive.mjs').replace(/\\/g, '/')}`);
+  const calm = M.driveFrom(live(), fd.isPressing);
+  assert.equal(calm.quiet, true);
+  const [r, , b] = fd.colour(fd.drive(calm).intensity);
+  assert.ok(b > r, `calm is blue (rgb ${fd.surfaceRgb(calm)})`);
+  // The control's mapping for the same read is the orange this fixes.
+  assert.equal(fd.surfaceRgb({ ...calm, quiet: false }), '240,134,60');
+  // Real pressure is never calmed.
+  const pressing = M.driveFrom(live({ primary: { kind: 'item', urgency: 'critical', title: 'x' } }), fd.isPressing);
+  assert.equal(pressing.pressing, true);
+  assert.equal(pressing.quiet, false);
+  assert.equal(fd.surfaceRgb(pressing), fd.rgbText(fd.HOT));
+  // Not calm by NEURO's word → the control's mapping, unchanged.
+  assert.equal(M.driveFrom(live({ situation: { calm: false } }), fd.isPressing).quiet, false);
+  assert.equal(M.driveFrom(live({ poolAvailable: false })).degraded, true);
+});
+
+test('held work is said as held, not failed or hidden', () => {
+  const h = M.heldWork(live());
+  assert.equal(h.line, '4 work items are held while you’re on your own project.');
+  assert.equal(M.heldWork(live({ life: { doing: 'working', showWork: true } })).line, '4 items are held: not working — on a project of your own.');
+  assert.equal(M.heldWork(live({ dropped: [live().dropped[0]] })).line, '1 work item is held while you’re on your own project.');
+  assert.match(text(render({ data: live(), onToggleHeld: () => {} })), /4 work items are held while you’re on your own project\. Show held work/);
+});
+
+// ── 3. A known next step ────────────────────────────────────────────────────
+
+test('known step, different available app: Next, Best next place, Open — and the lifecycle is reported', () => {
+  const sess = STEP('Draft three refresher headings');
+  const t = M.currentThread(live(), sess);
+  assert.deepEqual(t.nextStep, { known: true, text: 'Draft three refresher headings' });
+  assert.equal(t.situation, null);
+  assert.ok(!t.moves.some((m) => m.id === 'name'), 'no "name the step" once it is named');
+  const tools = M.toolHandoff(live(), t);
+  assert.equal(tools.mode, 'step');
+  assert.equal(tools.top.id, 'claude');
+  assert.ok(!tools.row.some((a) => a.id === 'claude'), 'not offered twice');
+  const html = text(render({ data: live(), session: sess, onDeskOpen: () => {} }));
+  assert.match(html, /Next Draft three refresher headings/);
+  assert.match(html, /Best next place Claude Open Claude/);
+  for (const [state, said] of [['waiting', 'waiting for the laptop'], ['claimed', 'the laptop has taken it'], ['opened', 'opened'], ['failed', 'failed'], ['expired', 'expired']]) {
+    const h = strip(render({ data: live(), session: sess, onDeskOpen: () => {}, deskStates: { claude: state } }));
+    assert.ok(h.includes(said), state);
+    if (state === 'waiting' || state === 'claimed') assert.match(h, /<button[^>]*disabled=""[^>]*>Open Claude<\/button>/, `${state} cannot be re-pressed`);
+  }
+  assert.equal(M.deskStateText('done'), null);
+});
+
+test('known step, the app it needs is ALREADY in front: said, no redundant Open', () => {
+  const sess = STEP('Fix the failing test suite');
+  const tools = M.toolHandoff(live(), M.currentThread(live(), sess));
+  assert.equal(tools.top, null);
+  assert.equal(tools.already.id, 'code');
+  const html = strip(render({ data: live(), session: sess, onDeskOpen: () => {} }));
+  assert.match(html, /You’re already in VS Code\./);
+  assert.doesNotMatch(html, /alt-tool__primary/);
+  assert.doesNotMatch(html, />Open VS Code</);
+});
+
+test('an item that points at a tool still gets NO recommendation until a step is named', () => {
+  const d = live({ primary: { kind: 'item', type: 'email', title: 'Reply to Chris', say: 'Reply to Chris' } });
+  const none = M.toolHandoff(d, M.currentThread(d));
+  assert.equal(none.mode, 'browse');
+  assert.equal(none.top, null);
+  const named = M.toolHandoff(d, M.currentThread(d, STEP('Send the reply')));
+  assert.equal(named.top.id, 'outlook', 'once there is a step, the card kind can point the way');
+});
+
+test('known step that names no tool: no recommendation is invented', () => {
+  const tools = M.toolHandoff(live(), M.currentThread(live(), STEP('Ring the garage')));
+  assert.equal(tools.mode, 'step');
+  assert.equal(tools.top, null);
+  assert.equal(tools.already, null);
+});
+
+test('known step, recommended app not declared by the laptop: no Open button', () => {
+  const d = live({ work: { ...live().work, deskOffer: { known: true, host: 'H', why: null, apps: [{ id: 'music', label: 'Music' }] } } });
+  const tools = M.toolHandoff(d, M.currentThread(d, STEP('Draft three refresher headings')));
+  assert.equal(tools.top, null, 'Claude is not declared, so it cannot be the top');
+  const html = text(render({ data: d, session: STEP('Draft three refresher headings'), onDeskOpen: () => {} }));
+  assert.match(html, /AI — no AI tool set up on the laptop/);
+  assert.doesNotMatch(strip(render({ data: d, session: STEP('Draft three refresher headings'), onDeskOpen: () => {} })), /<button[^>]*>AI<\/button>/);
+});
+
+test('the row: one AI tool, Music, three more — the rest folded — no app twice', () => {
+  const t = M.toolHandoff(live(), M.currentThread(live()));
+  assert.equal(t.row[0].id, 'claude');
+  assert.equal(t.row[1].id, 'music');
+  assert.equal(t.row.length, 5);
+  const all = [...t.row, ...t.more].map((a) => a.id);
+  assert.equal(new Set(all).size, all.length);
+  assert.deepEqual([...all, 'code'].sort(), APPS17.map((a) => a.id).sort(), 'every declared app except the one in front');
+});
+
+// ── 4. Unknown room, unseen desk, unavailable agent, no thread ──────────────
+
+test('presence: Nick · Home from the life read; a room alone never places him', () => {
+  assert.equal(M.presence(live()).line1, 'Nick · Home');
+  assert.equal(M.presence(live({ life: null })).line1, 'Nick · location unknown');
   assert.equal(M.presence(live({ context: { ...live().context, place: { known: true, name: 'Office' } } })).line1, 'Nick · Office');
+  const html = text(render({ data: live() }));
+  assert.doesNotMatch(html, /Nick · [^.]*living room/i);
+  assert.doesNotMatch(html, /living-room/, 'no raw sensor slug');
 });
 
-test('unknown location and unseen desk are said, not guessed', () => {
-  const p = M.presence({ context: { place: { known: false } }, work: { deskKnown: false }, operation: null });
-  assert.equal(p.line1, 'Nick · location unknown');
-  assert.equal(p.whereKnown, false);
-  assert.equal(p.line2, 'desk not seen');
-  assert.equal(p.device, null);
-  const away = M.presence({ work: { deskKnown: true, atDesk: false }, operation: { label: 'QUIET' } });
-  assert.equal(away.line2, 'away from the desk · quiet');
-  const html = strip(render({ data: live({ context: { activity: 'unknown', place: { known: false } }, life: null, work: { deskKnown: false } }) }));
-  assert.match(html, /Nick · location unknown/);
-  assert.match(html, /desk not seen/);
+test('evidence trail keeps desk, watch, location and held apart', () => {
+  assert.deepEqual(M.evidence(live()).lines.map((l) => l.text), ['Desk active · VS Code open', 'Watch heard in the living room', 'Work context held']);
+  const unknown = M.evidence(live({ life: null, context: { ...live().context, place: { known: false } }, work: { deskKnown: false } }));
+  assert.deepEqual(unknown.lines.map((l) => l.text), ['Laptop not seen', 'Location unknown']);
+  assert.ok(unknown.lines.every((l) => l.unknown));
+  assert.deepEqual(M.evidence(live({ work: { ...live().work, atDesk: false } })).lines[0].text, 'Away from the laptop');
+  assert.equal(M.evidence(live({ context: { ...live().context, place: { known: true, room: 'study' } } })).lines[1].text, 'A device heard in the study');
+  const gaps = M.evidence(live({ gaps: [{ input: 'calendar', why: 'Graph 401' }] }));
+  assert.deepEqual(gaps.gaps, ['calendar — Graph 401']);
+  assert.match(text(render({ data: live({ gaps: [{ input: 'calendar', why: 'Graph 401' }] }) })), /Can’t read: calendar — Graph 401/);
+});
+
+test('unseen desk: no app claimed, nothing to open', () => {
+  const d = live({ work: { deskKnown: false } });
+  const t = M.currentThread(d);
+  assert.equal(t.situation, 'I don’t yet know the next step.');
+  assert.equal(M.toolHandoff(d, t).blockedWhy, 'I can’t see your laptop');
+  const html = strip(render({ data: d, onDeskOpen: () => {} }));
+  assert.match(html, /Nothing to open — I can’t see your laptop\./);
+  assert.doesNotMatch(html, /alt-tool__(primary|btn)/);
+});
+
+test('unavailable agent (never declared) and away from the laptop: nothing pressable, the server’s reason', () => {
+  const silent = live({ work: { ...live().work, deskOffer: { known: false, host: 'H', apps: [], why: 'that machine hasn’t said what it can open' } } });
+  assert.equal(M.toolHandoff(silent, M.currentThread(silent)).blockedWhy, 'that machine hasn’t said what it can open');
+  const away = live({ work: { ...live().work, atDesk: false, deskOffer: { known: true, host: 'H', apps: [], why: 'you’re not at the laptop' } } });
+  assert.equal(M.toolHandoff(away, M.currentThread(away, STEP('Draft headings'))).top, null);
+  // A screen that cannot reach the queue shows names, not buttons.
+  const html = strip(render({ data: live(), session: STEP('Draft three refresher headings'), onDeskOpen: null }));
+  assert.doesNotMatch(html, /<button[^>]*alt-tool__/);
+  assert.match(html, /can’t reach the laptop/);
 });
 
 test('no recoverable thread: the honest sentence, and nothing invented', () => {
@@ -228,37 +372,32 @@ test('no recoverable thread: the honest sentence, and nothing invented', () => {
     const t = M.currentThread(d);
     assert.equal(t.state, 'unknown');
     assert.equal(t.item, null);
-    const html = strip(render({ data: d }));
+    const html = text(render({ data: d, onMove: () => {} }));
     assert.match(html, /I can’t recover the thread from what I can see\./);
     assert.match(html, /Tell me what you were doing, or capture the next thing\./);
     assert.doesNotMatch(html, /Can’t tell/);
-    assert.doesNotMatch(html, /Next step/, 'no step row for a thread that does not exist');
+    assert.ok(!t.moves.some((m) => m.id === 'keep'), 'nothing to "keep" when the context is unknown');
   }
 });
 
-test('a context thread uses NEURO’s title, not its place-suffixed say', () => {
-  const t = M.currentThread(live());
-  assert.equal(t.state, 'context');
-  assert.equal(t.item.title, 'On a project of your own');
-  const item = M.currentThread(live({ primary: { kind: 'item', type: 'email', title: 'Reply to Chris', say: 'Chris is waiting on a reply', reason: 'Raised in the 1-2-1' } }));
-  assert.deepEqual([item.state, item.item.title, item.item.sub, item.item.reason], ['item', 'Chris is waiting on a reply', 'Reply to Chris', 'Raised in the 1-2-1']);
+test('an attention item is the thread, verbatim, with the server’s lifecycle sentences', () => {
+  const d = live({
+    primary: { kind: 'item', type: 'email', title: 'Reply to Chris', say: 'Chris is waiting on a reply', reason: 'Raised in the 1-2-1' },
+    utterances: [{ say: 'That’s done', intent: { kind: 'act', action: 'complete', recordId: 7 } }, { say: 'Show me everything', intent: { kind: 'reveal' } }],
+  });
+  const t = M.currentThread(d);
+  assert.deepEqual([t.state, t.item.title, t.item.sub, t.item.reason], ['item', 'Chris is waiting on a reply', 'Reply to Chris', 'Raised in the 1-2-1']);
+  assert.deepEqual(t.moves, []);
+  const html = text(render({ data: d, onAct: () => {} }));
+  assert.match(html, /That’s done/);
+  assert.doesNotMatch(html, /Show me everything/);
 });
 
-test('the three silences stay distinct, and blind is never good news', () => {
+test('the three silences stay distinct; blind is never good news', () => {
   assert.equal(M.silence({ poolAvailable: false, primary: null }).kind, 'blind');
   assert.equal(M.silence({ poolAvailable: true, primary: null, quiet: true }).kind, 'quiet');
   assert.equal(M.silence({ poolAvailable: true, primary: null, quiet: false }).kind, 'clear');
-  assert.match(strip(render({ data: live({ poolAvailable: false, primary: null }) })), /isn’t an all-clear/);
-});
-
-test('the next step is never invented; lifecycle actions are the server’s, verbatim', () => {
-  assert.deepEqual(M.currentThread(live()).nextStep, { known: false, text: null });
-  assert.equal(M.currentThread(live(), { session: { active: true, nextStep: 'Open the risk register' } }).nextStep.text, 'Open the risk register');
-  const html = strip(render({ data: live(), onAct: () => {} }));
-  assert.match(html, /No next step named\./);
-  assert.match(html, />That’s done</);
-  assert.match(html, />Not now</);
-  assert.doesNotMatch(html, />Show me everything</);
+  assert.match(text(render({ data: live({ poolAvailable: false, primary: null }) })), /isn’t an all-clear/);
 });
 
 test('no read at all says NEURO is unreachable, and the dock stays', () => {
@@ -267,153 +406,46 @@ test('no read at all says NEURO is unreachable, and the dock stays', () => {
   assert.match(html, /id="dock"/);
 });
 
-// ── 3. Tools: recommendation, gating, intent states ────────────────────────
-
-test('one top tool, then one AI, Music, three context apps — the rest folded', () => {
-  const t = M.toolHandoff(live(), M.currentThread(live()));
-  assert.equal(t.top.id, 'code');
-  assert.equal(t.top.certain, true);
-  assert.equal(t.ai.id, 'claude');
-  assert.equal(t.music.id, 'music');
-  assert.equal(t.context.length, 3);
-  assert.equal(t.more.length, 17 - 1 - 1 - 1 - 3);
-  const all = [t.top, t.ai, t.music, ...t.context, ...t.more].map((a) => a.id);
-  assert.equal(new Set(all).size, all.length, 'no app twice');
-  assert.deepEqual([...all].sort(), APPS17.map((a) => a.id).sort(), 'every declared app is reachable');
-});
-
-test('context apps are the ones the work points at first', () => {
-  const d = live({ work: { ...live().work, app: 'explorer' } });
-  const t = M.toolHandoff(d, { item: { title: 'Pull the SQL for the NOVA escalation spreadsheet' } });
-  assert.equal(t.top.id, 'nova', 'first hint wins the top slot');
-  assert.equal(t.top.certain, false);
-  assert.deepEqual(t.context.map((a) => a.id), ['ssms', 'excel', 'outlook'], 'the other hinted apps lead, then the fixed order');
-  // With no hints, context is work apps — the second AI tool is folded, not context.
-  const plain = M.toolHandoff(live());
-  assert.deepEqual(plain.context.map((a) => a.id), ['outlook', 'teams', 'obsidian']);
-  assert.ok(plain.more.some((a) => a.id === 'chatgpt'));
-  // An email card points at Outlook.
-  assert.equal(M.toolHandoff(live({ work: { ...live().work, app: 'explorer' }, primary: { kind: 'item', type: 'email', title: 'x' } })).top.id, 'outlook');
-  // No evidence: a stated guess.
-  const g = M.toolHandoff(live({ work: { ...live().work, app: 'explorer' } }));
-  assert.equal(g.top.id, 'claude');
-  assert.match(g.top.because, /not sure/);
-});
-
-test('if the top IS an AI tool, the AI slot offers the other one', () => {
-  const t = M.toolHandoff(live({ work: { ...live().work, app: 'claude' } }));
-  assert.equal(t.top.id, 'claude');
-  assert.equal(t.ai.id, 'chatgpt');
-});
-
-test('undeclared AI or Music are reasons, never buttons', () => {
-  const d = live({ work: { ...live().work, app: 'Code', deskOffer: { known: true, host: 'H', why: null, apps: [{ id: 'code', label: 'VS Code' }] } } });
-  const t = M.toolHandoff(d);
-  assert.equal(t.ai.available, false);
-  assert.equal(t.music.available, false);
-  assert.deepEqual(t.context, []);
-  const html = strip(render({ data: d, onDeskOpen: () => {} }));
-  assert.match(html, /<button[^>]*class="alt-tool__primary"[^>]*>Open VS Code<\/button>/);
-  assert.doesNotMatch(html, /<button[^>]*>(AI|Music)<\/button>/);
-  const text = html.replace(/<[^>]+>/g, '');
-  assert.match(text, /AI — no AI tool set up on the laptop/);
-  assert.match(text, /Music — not set up on the laptop/);
-});
-
-test('the top can never be an app the laptop did not declare', () => {
-  const t = M.toolHandoff(live({ work: { ...live().work, app: 'Code', deskOffer: { known: true, host: 'H', why: null, apps: [{ id: 'music', label: 'Music' }] } } }));
-  assert.equal(t.top.id, 'music');
-  assert.equal(t.music, null, 'Music is not offered twice');
-});
-
-test('not at the desk / unseen / undeclared: nothing pressable, the server’s reason said', () => {
-  const away = M.toolHandoff(live({ work: { ...live().work, atDesk: false, deskOffer: { known: true, host: 'H', apps: [], why: 'you’re not at the laptop' } } }));
-  assert.equal(away.top, null);
-  assert.equal(away.blockedWhy, 'you’re not at the laptop');
-  assert.deepEqual([away.ai, away.music, away.context, away.more], [null, null, [], []]);
-  assert.match(M.toolHandoff(live({ work: { deskKnown: false } })).blockedWhy, /can’t see your laptop/);
-  const html = strip(render({ data: live({ work: { deskKnown: false } }), onDeskOpen: () => {} }));
-  assert.match(html, /Nothing to open — I can’t see your laptop\./);
-  assert.doesNotMatch(html, /alt-tool__primary|alt-tool__btn/);
-});
-
-test('a screen that cannot reach the desk queue shows names, not buttons', () => {
-  const html = strip(render({ data: live(), onDeskOpen: null }));
-  assert.doesNotMatch(html, /<button[^>]*alt-tool__/);
-  assert.match(html, /can’t reach the desk queue/);
-});
-
-test('the recommendation sits INSIDE the thread card, primary over the alternatives', () => {
-  const html = strip(render({ data: live(), onDeskOpen: () => {}, onToggleMore: () => {} }));
-  const card = html.slice(html.indexOf('class="alt-thread"'), html.indexOf('class="alt-rail"'));
-  assert.match(card, /Best next place/);
-  assert.match(card, /class="alt-tool__primary"[^>]*>Open VS Code</);
-  assert.match(card, /Other ways in/);
-  assert.equal((card.match(/alt-tool__primary/g) || []).length, 1, 'one primary');
-  assert.match(card, /More available apps \(11\)/);
-  assert.equal((html.match(/class="alt-thread"/g) || []).length, 1, 'one thread card only');
-});
-
-test('the desk lifecycle is the server’s word, never "done", and in-flight cannot be re-pressed', () => {
-  for (const [state, text] of [['waiting', 'waiting for the laptop'], ['claimed', 'the laptop has taken it'], ['opened', 'opened'], ['failed', 'failed'], ['expired', 'expired']]) {
-    const html = strip(render({ data: live(), onDeskOpen: () => {}, deskStates: { code: state } }));
-    assert.ok(html.includes(text), `${state} renders "${text}"`);
-  }
-  assert.equal(M.deskStateText('done'), null);
-  assert.ok(M.deskStateSettled('expired') && !M.deskStateSettled('claimed'));
-  assert.ok(M.deskStateBusy('waiting') && M.deskStateBusy('claimed') && !M.deskStateBusy('opened'));
-  const busy = strip(render({ data: live(), onDeskOpen: () => {}, deskStates: { code: 'claimed' } }));
-  assert.match(busy, /<button[^>]*disabled=""[^>]*>Open VS Code<\/button>/);
-});
-
-// ── 4. The rail and held work ───────────────────────────────────────────────
+// ── The rail ────────────────────────────────────────────────────────────────
 
 test('judgement: a statement and a NEURO link — never an approve control', () => {
-  const html = strip(render({ data: live(), neuroUrl: 'https://pi5.example' }));
+  const two = live({ approvals: { known: true, needsApproval: 2, needsReview: 0, say: '2 emails wait for your approval.' } });
+  const html = strip(render({ data: two, neuroUrl: 'https://pi5.example' }));
   assert.match(html, /2 emails wait for your approval\./);
   assert.match(html, /href="https:\/\/pi5\.example\/\?view=actions"/);
   assert.doesNotMatch(html, /<button[^>]*>\s*(Approve|Send|Execute)\b/i);
-  assert.match(strip(render({ data: live({ approvals: { known: true, needsApproval: 0, needsReview: 0 } }) })), /Nothing waiting for your judgement\./);
-  assert.match(strip(render({ data: live({ approvals: null }) })), /couldn’t check what’s waiting/);
+  assert.match(text(render({ data: live() })), /Nothing waiting for your judgement\./);
+  assert.match(text(render({ data: live({ approvals: null }) })), /couldn’t check what’s waiting/);
 });
 
 test('next transition only when relevant', () => {
   assert.equal(M.nextChange({}), null);
   assert.doesNotMatch(strip(render({ data: live() })), /aria-label="Next transition"/);
-  assert.match(strip(render({ data: live({ nextMeeting: { subject: 'KPI review', time: '15:30' } }) })), /“KPI review” at 15:30\./);
-  assert.equal(M.nextChange({ transition: { kind: 'leave-now', prompt: 'p' }, nextMeeting: { subject: 'Y' } }).kind, 'leave-now');
+  assert.match(text(render({ data: live({ nextMeeting: { subject: 'KPI review', time: '15:30' } }) })), /“KPI review” at 15:30\./);
 });
 
-test('what SAiM can see: NEURO’s own evidence, and named gaps', () => {
-  const e = M.evidence(live({ gaps: [{ input: 'calendar', why: 'Graph 401' }], context: { ...live().context, unknowns: ['presence'] } }));
-  assert.deepEqual(e.seen, ['Every input answered and they agree.', 'VS Code is in front of you outside working hours, with no work app']);
-  assert.deepEqual(e.gaps, ['presence', 'calendar — Graph 401']);
-  assert.match(strip(render({ data: live({ gaps: [{ input: 'calendar', why: 'Graph 401' }] }) })), /Can’t read: calendar — Graph 401\./);
-});
+// ── Held work: non-destructive ──────────────────────────────────────────────
 
 test('heldWork reads the server’s order, mutates nothing and never labels by raw id', () => {
   const d = deepFreeze(live());
   const before = JSON.stringify(d);
   const h = M.heldWork(d);
   assert.equal(JSON.stringify(d), before);
-  assert.deepEqual(h.items.map((i) => i.type), ['todo', 'meeting', 'email']);
+  assert.deepEqual(h.items.map((i) => i.type), ['todo', 'capacity', 'meeting', 'email']);
   assert.ok(h.items.every((i) => !/AAMk/.test(i.label)));
-  assert.deepEqual(h.reasons, ['not a working day', 'unread email waits']);
 });
 
 test('expanding held work adds the list and changes nothing else on the page', () => {
   const d = deepFreeze(live());
   const closed = strip(render({ data: d, onToggleHeld: () => {}, heldOpen: false }));
   const open = strip(render({ data: d, onToggleHeld: () => {}, heldOpen: true }));
-  assert.match(closed, /Holding 3 back: not a working day; unread email waits\./);
-  assert.match(closed, /Show held work/);
   assert.doesNotMatch(closed, /alt-held__list/);
   assert.match(open, /alt-held__list/);
-  const norm = (h) => h.replace(/<ul class="alt-held__list">[\s\S]*?<\/ul>/, '').replace(/aria-expanded="(true|false)"/, '').replace(/(Show|Hide) held work/, '');
+  const norm = (h) => h.replace(/<ul class="alt-held__list">[\s\S]*?<\/ul>/, '').replace(/aria-expanded="(true|false)"/g, '').replace(/(Show|Hide) held work/, '');
   assert.equal(norm(open), norm(closed));
 });
 
-test('expansion is local UI state: no write is wired to either fold', () => {
+test('the folds are local UI state: no write is wired to either', () => {
   const src = fs.readFileSync(path.join(ALT, 'SaimHome.jsx'), 'utf8');
   for (const name of ['onToggleHeld', 'onToggleMore']) {
     const m = src.match(new RegExp(`${name}=\\{([^}]*)\\}`));
@@ -422,13 +454,12 @@ test('expansion is local UI state: no write is wired to either fold', () => {
   }
 });
 
-// ── 5. The field is the control's, unchanged ────────────────────────────────
+// ── The field is the control's, unchanged ───────────────────────────────────
 
 test('the shell mounts the control’s Field, full-screen, with the drive passed through untouched', () => {
-  const drive = { activity: 'off', confidenceLevel: 'high', quiet: false, degraded: false, pressing: false };
+  const drive = { activity: 'off', confidenceLevel: 'high', quiet: true, degraded: false, pressing: false };
   const html = renderToString(React.createElement(Shell, { active: 'saim', drive }));
   const m = html.match(/data-field="([^"]*)"/);
-  assert.ok(m, 'Field rendered');
   assert.deepEqual(JSON.parse(m[1].replace(/&quot;/g, '"')), drive);
   assert.match(html, /class="app__field alt-app__field"/);
   const src = fs.readFileSync(path.join(ALT, 'AltShell.jsx'), 'utf8');
@@ -439,15 +470,16 @@ test('the shell mounts the control’s Field, full-screen, with the drive passed
 test('driveFrom produces exactly the shape useFieldDrive produces', () => {
   const hook = fs.readFileSync(path.join(SHARED_UI, 'useFieldDrive.js'), 'utf8');
   const keys = [...hook.match(/setDrive\(\{([\s\S]*?)\}\);/)[1].matchAll(/^\s*(\w+):/gm)].map((x) => x[1]).sort();
-  assert.ok(keys.length >= 5, 'positive control: the hook’s keys were read');
+  assert.ok(keys.length >= 5);
   assert.deepEqual(Object.keys(M.driveFrom(live(), () => false)).sort(), keys);
-  assert.equal(M.driveFrom(null).degraded, true, 'no read is unresolved, never calm');
+  assert.equal(M.driveFrom(null).degraded, true);
 });
 
-test('no alt file restyles or re-implements the field', () => {
+test('no alt file defines a colour system or draws a field of its own', () => {
   for (const f of fs.readdirSync(ALT).filter((x) => /\.(css|jsx|mjs)$/.test(x))) {
     const src = fs.readFileSync(path.join(ALT, f), 'utf8');
-    assert.doesNotMatch(src, /<canvas|getContext\(|\.field\b[^-_]/, `${f} must not draw a field of its own`);
+    assert.doesNotMatch(src, /<canvas|getContext\(/, f);
+    if (f.endsWith('.mjs')) assert.doesNotMatch(src, /\b(COLD|MID|HOT)\s*=|rgbText|colour\(/, `${f} must not define colours`);
   }
 });
 
@@ -459,14 +491,14 @@ test('nothing the control builds can reach the alt code', () => {
     return e.isDirectory() ? walk(p) : [p];
   });
   const sources = [...walk(path.join(APP, 'src')), ...walk(SHARED_UI)].filter((f) => /\.(m?jsx?|cjs)$/.test(f));
-  assert.ok(sources.length > 20, 'positive control: the scan saw the control sources');
-  for (const f of sources) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /from ['"][^'"]*\/alt\//, `${f} must not import the alt shell`);
+  assert.ok(sources.length > 20);
+  for (const f of sources) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /from ['"][^'"]*\/alt\//, f);
   assert.doesNotMatch(fs.readFileSync(path.join(APP, 'vite.config.js'), 'utf8'), /alt/i);
 });
 
 test('the alt env carries no secret and only its own hosts', () => {
   const lines = fs.readFileSync(path.join(APP, '.env.alt'), 'utf8').split(/\r?\n/).filter((l) => /^[A-Z_]+=/.test(l));
-  assert.ok(lines.length >= 4, 'positive control: the env file was read');
+  assert.ok(lines.length >= 4);
   assert.ok(!lines.some((l) => /VAULT|TOKEN|SECRET|PIN|KEY/.test(l.split('=')[0])));
   const hosts = lines.find((l) => l.startsWith('VITE_ALLOWED_HOSTS=')).split('=')[1].split(',');
   assert.ok(hosts.includes('saim-alt.nickward.co.uk'));

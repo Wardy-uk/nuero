@@ -13,12 +13,12 @@
 //
 // What this module DECIDES, and what it must not:
 //   * It decides which of FIVE destinations exist and where anything else goes.
-//   * It decides how to SAY presence in a sentence, from NEURO's own signals —
-//     and how to say that a signal is missing.
-//   * It decides which desk tool to put first — a TOOL choice, never a choice
-//     about which WORK matters. The work, its wording, its lifecycle verbs and
-//     its uncertainty are NEURO's and are passed through verbatim.
-//   * It never makes an unavailable capability look actionable.
+//   * It decides how to SAY the situation in a sentence, from NEURO's own
+//     signals — and how to say that a signal is missing.
+//   * It decides which desk tool to put first, and ONLY when there is a real
+//     named next step. A TOOL choice, never a choice about which WORK matters.
+//   * It never makes an unavailable capability look actionable, and never
+//     invents a next step, an app, a location, a confidence or an urgency.
 
 // ── Navigation ──────────────────────────────────────────────────────────────
 
@@ -81,6 +81,7 @@ export function updatedLabel(at) {
 
 /** `living-room` → `living room`. A sensor slug is not a place name. */
 const prettyRoom = (r) => String(r).replace(/[-_]+/g, ' ').trim();
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 // Foreground process names the desk agent reports → what a person calls them.
 const APP_NAMES = Object.freeze({
@@ -97,13 +98,12 @@ export function appName(app) {
 }
 
 /**
- * Presence as two short lines, from NEURO's own signals:
- *   line 1 — `Nick · Office` / `Nick · Home` / `Nick · location unknown`
- *   line 2 — `desk seen · VS Code open · standing by`
+ * Presence: `Nick · Office|Home|Work|location unknown`, plus what SAiM is
+ * doing (the operation phase, lower-case, beside it — never a badge).
  *
- * ⚠ A ROOM is never stated as where Nick IS. The room comes from a sensor that
- *   hears a DEVICE (his watch), so it is said as that — "watch heard in the
- *   living room" — and only when NEURO says which device it heard.
+ * ⚠ The place comes from NEURO's place read (a named place) or its life read
+ *   (home / work). A ROOM is never used here: the room comes from a sensor that
+ *   hears a DEVICE, and is reported in the evidence trail as exactly that.
  */
 export function presence(d) {
   const ctx = (d && d.context) || {};
@@ -114,34 +114,12 @@ export function presence(d) {
   if (place && place.known === true && place.name && place.name !== 'unknown') where = String(place.name);
   else if (life && life.place && life.place.kind === 'home') where = 'Home';
   else if (life && life.place && life.place.kind === 'work') where = 'Work';
-  const line1 = `Nick · ${where || 'location unknown'}`;
-
-  let device = null;
-  if (place && place.room) {
-    const subject = place.roomSubject ? String(place.roomSubject) : null;
-    device = subject
-      ? `${subject} heard in the ${prettyRoom(place.room)}`
-      : `a device heard in the ${prettyRoom(place.room)}`;
-  }
-
-  const work = (d && d.work) || null;
-  let desk;
-  if (!work || work.deskKnown === false) desk = { known: false, text: 'desk not seen' };
-  else if (work.atDesk) desk = { known: true, text: 'desk seen', app: work.app ? `${appName(work.app)} open` : null };
-  else desk = { known: true, text: 'away from the desk' };
 
   const op = (d && d.operation) || null;
-  const operation = op && op.label ? String(op.label).toLowerCase() : null;
-
-  const line2 = [desk.text, desk.app, operation].filter(Boolean).join(' · ');
-
   return {
-    line1,
-    line2,
+    line1: `Nick · ${where || 'location unknown'}`,
     whereKnown: Boolean(where),
-    device,
-    deskKnown: desk.known,
-    operation,
+    operation: op && op.label ? String(op.label).toLowerCase() : null,
     operationDetail: op && op.detail ? op.detail : null,
   };
 }
@@ -168,24 +146,39 @@ export const UNKNOWN_THREAD = Object.freeze({
   prompt: 'Tell me what you were doing, or capture the next thing.',
 });
 
+// What NEURO's life read calls his own time, said to him. Only kinds whose
+// meaning is unambiguous get a sentence; anything else keeps NEURO's title.
+const LIFE_HEADLINE = Object.freeze({ hobby: 'You’re in your own project.' });
+const LIFE_PHRASE = Object.freeze({ hobby: 'on your own project' });
+
+/** Is work being held back right now because of what he is doing? NEURO's word. */
+const workHeld = (d) => Boolean(d && d.life && d.life.showWork === false);
+
 /**
- * The current thread, the next physical step and the permitted lifecycle
- * actions. Every word about the work is NEURO's:
- *   * an attention ITEM (`primary.kind === 'item'`) is the thread;
- *   * else a focus session or live task block current-work names;
- *   * else NEURO's CONTEXT card, by its title — unless the context itself is
- *     unknown, which is the honest "I can't recover the thread" state;
- *   * the next step is the step HE named on the session — never invented;
- *   * the actions are the server's utterances, already bounded by what the
- *     attention record allows.
+ * The current thread. Every word about WORK is NEURO's; the only sentences
+ * written here describe the situation when there is no task plan.
  *
- * `state` is 'item' | 'work' | 'context' | 'unknown'.
+ * `state`:
+ *   'item'    — an attention ITEM is the thread (NEURO's say/title verbatim);
+ *   'work'    — a focus session / live task block current-work names;
+ *   'context' — NEURO's context read (e.g. his own project) — described, with
+ *               the moves that fit it, never dressed up as a task;
+ *   'unknown' — the context itself is unknown, or nothing at all.
+ *
+ * `nextStep` is the step HE named on the session — never invented.
+ * `moves` are the context moves this page can offer (keep / name / return);
+ * `actions` are the server's lifecycle utterances, verbatim.
  */
 export function currentThread(d, session = null) {
   const primary = (d && d.primary) || null;
   const work = (d && d.work) || null;
+  const life = (d && d.life) || null;
   const activity = d && d.context ? d.context.activity : null;
   const s = session && session.session ? session.session : null;
+  const nextStep = s && s.nextStep ? { known: true, text: s.nextStep } : { known: false, text: null };
+  const sessionActive = Boolean(s && s.active !== false && s.status !== 'finished');
+  const actions = ((d && d.utterances) || [])
+    .filter((u) => u && u.intent && LIFECYCLE_KINDS.has(u.intent.kind) && u.say);
 
   let state;
   let item = null;
@@ -202,24 +195,49 @@ export function currentThread(d, session = null) {
     state = 'work';
     item = { kind: 'work', type: null, title: work.task, sub: null, reason: work.why || null };
   } else if (primary && primary.kind === 'context' && activity && activity !== 'unknown') {
-    // The context card's `say`/`reason` repeat the place ("… · living-room");
-    // the place is said once, in the presence line, so only the title is used.
     state = 'context';
-    item = { kind: 'context', type: null, title: primary.title || null, sub: null, reason: null };
+    const doing = life && life.doing;
+    item = {
+      kind: 'context',
+      type: null,
+      // The context card's `say` repeats the place ("… · living-room"); only
+      // its title is NEURO's description of the situation.
+      title: (doing && LIFE_HEADLINE[doing]) || primary.title || null,
+      sub: workHeld(d) ? 'I’m holding work while you’re here.' : null,
+      reason: null,
+    };
   } else {
     state = 'unknown';
   }
 
-  const nextStep = s && s.nextStep ? { known: true, text: s.nextStep } : { known: false, text: null };
-  const actions = ((d && d.utterances) || [])
-    .filter((u) => u && u.intent && LIFECYCLE_KINDS.has(u.intent.kind) && u.say);
+  // What SAiM can honestly say about where things stand, when there is no
+  // named step: what is in front of him (observed) and that the step is unknown.
+  let situation = null;
+  if (state !== 'item' && !nextStep.known) {
+    const atDesk = work && work.deskKnown !== false && work.atDesk;
+    const front = atDesk && work.app ? `${appName(work.app)} is already open.` : null;
+    situation = [front, 'I don’t yet know the next step.'].filter(Boolean).join(' ');
+  }
+
+  // Moves for a situation without a task plan. None queues a desktop intent.
+  const doing = life && life.doing && life.doing !== 'unknown' ? life.doing : null;
+  const moves = [];
+  if (state === 'context' || state === 'unknown') {
+    if (state === 'context' && doing) moves.push({ id: 'keep', label: 'Keep working here', doing });
+    if (!nextStep.known) moves.push({ id: 'name', label: 'Name the next step' });
+    if (workHeld(d) && doing !== 'working') moves.push({ id: 'return', label: 'Return to work', doing: 'working' });
+  } else if (state === 'work' && !nextStep.known) {
+    moves.push({ id: 'name', label: 'Name the next step' });
+  }
 
   return {
     state,
     item,
     unknown: state === 'unknown' ? UNKNOWN_THREAD : null,
+    situation,
     nextStep,
-    sessionActive: Boolean(s && s.active !== false && s.status !== 'finished'),
+    sessionActive,
+    moves,
     actions,
   };
 }
@@ -250,8 +268,7 @@ const FOREGROUND = Object.freeze({
   obsidian: 'obsidian', excel: 'excel', winword: 'word', plaud: 'plaud', ssms: 'ssms', postman: 'postman',
 });
 
-// Words in the WORK's own text that point at a tool. Specific on purpose: a
-// tool picked on a word is labelled uncertain, never stated as fact.
+// Words that point at a tool. Specific on purpose.
 const TEXT_HINTS = Object.freeze([
   { id: 'nova', re: /\bnova\b/i },
   { id: 'vantage', re: /\bvantage\b/i },
@@ -260,31 +277,41 @@ const TEXT_HINTS = Object.freeze([
   { id: 'excel', re: /\b(spreadsheet|excel|csv|xlsx)\b/i },
   { id: 'word', re: /\b(word doc|docx)\b/i },
   { id: 'outlook', re: /\b(email|e-mail|inbox|reply to)\b/i },
-  { id: 'obsidian', re: /\b(vault|obsidian|write-up|write up)\b/i },
+  { id: 'obsidian', re: /\b(vault|obsidian|write-up|write up|note)\b/i },
   { id: 'postman', re: /\b(postman|api call|endpoint)\b/i },
+  { id: 'claude', re: /\b(claude|draft|outline|headings|summari[sz]e|rewrite)\b/i },
   { id: 'code', re: /\b(code|bug|deploy|commit|repo|refactor|test suite|script)\b/i },
   { id: 'terminal', re: /\b(ssh|terminal|pm2|server log|shell)\b/i },
   { id: 'browser', re: /\b(jira|confluence|ticket|portal|website|dashboard|grafana|netlify)\b/i },
 ]);
 
-// The KIND of card in hand, when NEURO says what it is. Only kinds that name
-// their own tool; a meeting does not say whether it is in Teams.
+// The KIND of card in hand, when NEURO says what it is.
 const TYPE_HINTS = Object.freeze({ email: 'outlook' });
 
+/** The app id of what is in front of him, if the laptop says. */
+export function foregroundId(d) {
+  const work = d && d.work;
+  if (!work || work.deskKnown === false || !work.atDesk || !work.app) return null;
+  return FOREGROUND[String(work.app).toLowerCase().replace(/\.exe$/, '')] || null;
+}
+
 /**
- * The best next place, plus a SHORT set of other ways in.
+ * The tool area.
  *
- *   top      — the one recommended tool (offered apps only), with `because`:
- *              app already in front (certain) → card kind → a word in the work
- *              → first offered (a stated guess).
- *   ai       — ONE AI tool other than the top (or a not-available note).
- *   music    — Music, unless it is the top (or a not-available note).
- *   context  — up to three more offered apps, those the work points at first.
- *   more     — every remaining offered app, for a "More available apps" fold.
+ * `mode`:
+ *   'blocked' — laptop unseen / away / undeclared: nothing pressable, reason said.
+ *   'browse'  — no named next step: NO recommendation. Only a compact row of
+ *               other ways in, never including what is already in front.
+ *   'step'    — a named next step: one recommendation, from the step's own
+ *               words (then the card kind). If that app is ALREADY in front,
+ *               `already` is set and there is no Open button. If the step names
+ *               no tool, there is no recommendation — never a guess.
  *
- * ⚠ Only OFFERED apps ever appear as entries with `available: true`. The AI and
- *   Music slots, when not offered, carry `available: false` and a reason — the
- *   view renders those as text, never as buttons.
+ * A primary `top` (an Open button) exists ONLY when: a named step, a
+ * recommended app that is NOT in front, and the laptop declared it.
+ *
+ * `row` = one AI tool, Music, up to three context apps (never the foreground
+ * app, never the top); `more` = the rest of the declared apps.
  */
 export function toolHandoff(d, thread = null) {
   const work = (d && d.work) || null;
@@ -293,63 +320,50 @@ export function toolHandoff(d, thread = null) {
   const offeredIds = new Set(offered.map((a) => a.id));
   const label = (id) => (offered.find((a) => a.id === id) || {}).label || id;
   const host = (offer && offer.host) || (work && work.host) || null;
+  const step = thread && thread.nextStep && thread.nextStep.known ? thread.nextStep.text : null;
 
   let blockedWhy = null;
   if (!work || work.deskKnown === false) blockedWhy = 'I can’t see your laptop';
   else if (!offer) blockedWhy = 'the laptop hasn’t said what it can open';
   else if (offeredIds.size === 0) blockedWhy = offer.why || 'nothing it can open is set up here';
-  if (blockedWhy) return { host, top: null, ai: null, music: null, context: [], more: [], blockedWhy };
+  if (blockedWhy) return { mode: 'blocked', host, step, top: null, already: null, row: [], more: [], blockedWhy };
 
+  const fg = foregroundId(d);
   const entry = (id) => ({ id, label: label(id), available: true, why: null });
 
-  // Evidence, strongest first. Everything here is restricted to offered ids.
-  const fg = work && work.app ? FOREGROUND[String(work.app).toLowerCase().replace(/\.exe$/, '')] : null;
-  const type = d && d.primary && d.primary.type ? TYPE_HINTS[d.primary.type] : null;
-  const text = [thread && thread.item && thread.item.title, work && work.task].filter(Boolean).join(' ');
-  const hinted = text ? TEXT_HINTS.filter((h) => h.re.test(text) && offeredIds.has(h.id)).map((h) => h.id) : [];
-
-  let top;
-  if (fg && offeredIds.has(fg)) {
-    top = { ...entry(fg), certain: true, because: `You’re already in ${appName(work.app)}.` };
-  } else if (type && offeredIds.has(type)) {
-    top = { ...entry(type), certain: false, because: 'That’s where this kind of thing lives — I’m not certain.' };
-  } else if (hinted.length) {
-    top = { ...entry(hinted[0]), certain: false, because: 'The work mentions it — I’m not certain it’s the right place.' };
-  } else {
-    const first = [...AI_IDS, MUSIC_ID, ...OTHER_ORDER].find((id) => offeredIds.has(id))
-      || offered[0].id;
-    top = { ...entry(first), certain: false, because: 'I’m not sure where this needs to happen — this is my best guess.' };
+  let top = null;
+  let already = null;
+  if (step) {
+    const type = d && d.primary && d.primary.type ? TYPE_HINTS[d.primary.type] : null;
+    const hinted = TEXT_HINTS.filter((h) => h.re.test(step) && offeredIds.has(h.id)).map((h) => h.id);
+    const pick = hinted[0] || (type && offeredIds.has(type) ? type : null);
+    if (pick && pick === fg) already = { ...entry(pick), because: `You’re already in ${label(pick)}.` };
+    else if (pick) top = { ...entry(pick), because: hinted[0] ? 'The step names it.' : 'That’s where this kind of thing lives.' };
   }
 
-  const used = new Set([top.id]);
+  const used = new Set([fg, top && top.id, already && already.id].filter(Boolean));
+  const row = [];
   const aiId = AI_IDS.find((id) => offeredIds.has(id) && !used.has(id));
-  let ai = null;
-  if (aiId) { ai = entry(aiId); used.add(aiId); }
-  else if (!AI_IDS.includes(top.id)) ai = { id: 'ai', label: 'AI', available: false, why: 'no AI tool set up on the laptop' };
-
-  let music = null;
-  if (top.id !== MUSIC_ID) {
-    music = offeredIds.has(MUSIC_ID) ? entry(MUSIC_ID) : { id: MUSIC_ID, label: 'Music', available: false, why: 'not set up on the laptop' };
+  if (aiId) { row.push(entry(aiId)); used.add(aiId); }
+  else if (!AI_IDS.some((id) => used.has(id))) row.push({ id: 'ai', label: 'AI', available: false, why: 'no AI tool set up on the laptop' });
+  if (!used.has(MUSIC_ID)) {
+    row.push(offeredIds.has(MUSIC_ID) ? entry(MUSIC_ID) : { id: MUSIC_ID, label: 'Music', available: false, why: 'not set up on the laptop' });
     used.add(MUSIC_ID);
   }
-
-  // The rest of the offered apps: those the work points at first, then a fixed
-  // order, then anything else the laptop declared. Never re-orders NEURO's work.
   const rest = [];
   const push = (id) => { if (offeredIds.has(id) && !used.has(id) && !rest.includes(id)) rest.push(id); };
-  if (fg) push(fg);
-  if (type) push(type);
-  hinted.forEach(push);
+  if (step) TEXT_HINTS.filter((h) => h.re.test(step)).forEach((h) => push(h.id));
   OTHER_ORDER.forEach(push);
   AI_IDS.forEach(push); // a second AI tool is a fallback, not context
   offered.forEach((a) => push(a.id));
 
   return {
+    mode: step ? 'step' : 'browse',
     host,
+    step,
     top,
-    ai,
-    music,
-    context: rest.slice(0, CONTEXT_LIMIT).map(entry),
+    already,
+    row: [...row, ...rest.slice(0, CONTEXT_LIMIT).map(entry)],
     more: rest.slice(CONTEXT_LIMIT).map(entry),
     blockedWhy: null,
   };
@@ -401,6 +415,9 @@ const TYPE_LABELS = Object.freeze({
  * the server's order, never sorts, never filters and never mutates — expanding
  * the disclosure must not rerank or change any canonical state. Raw ids (a
  * Graph event id is 150 characters of base64) are never used as a label.
+ *
+ * `line` says it as held, never as failed or hidden: when NEURO's life read is
+ * holding WORK because of what he is doing, it says so in those terms.
  */
 export function heldWork(d) {
   const dropped = Array.isArray(d && d.dropped) ? d.dropped : [];
@@ -411,7 +428,16 @@ export function heldWork(d) {
   }));
   const reasons = [];
   for (const it of items) if (it.why && !reasons.includes(it.why)) reasons.push(it.why);
-  return { count: items.length, reasons, items };
+  const n = items.length;
+  let line = null;
+  if (n > 0) {
+    const doing = d && d.life && d.life.doing;
+    const phrase = workHeld(d) && doing ? LIFE_PHRASE[doing] : null;
+    const noun = n === 1 ? 'item is' : 'items are';
+    if (phrase) line = `${n} work ${noun} held while you’re ${phrase}.`;
+    else line = `${n} ${noun} held${reasons.length ? `: ${reasons.join('; ')}` : ''}.`;
+  }
+  return { count: n, reasons, items, line };
 }
 
 // ── Needs your judgement ────────────────────────────────────────────────────
@@ -430,20 +456,33 @@ export function judgement(d) {
   };
 }
 
-// ── What SAiM can see ───────────────────────────────────────────────────────
+// ── Evidence trail ──────────────────────────────────────────────────────────
 
 /**
- * Concise evidence and NAMED gaps, from what NEURO already reports. Nothing is
- * inferred here: the confidence rationale, the life read's own evidence lines,
- * and every input NEURO says it could not read.
+ * A compact trail of what SAiM is going on, each line a DIFFERENT kind of
+ * fact, never merged into a claim about Nick:
+ *   desk     — the laptop agent (seen / not seen / away) and what is in front;
+ *   device   — a room sensor hearing a DEVICE ("Watch heard in the living room");
+ *   location — only when NEURO could not place him;
+ *   held     — that work context is being held;
+ *   gaps     — every input NEURO says it could not read.
  */
 export function evidence(d) {
-  const ctx = (d && d.context) || {};
-  const seen = [];
-  if (ctx.confidence && ctx.confidence.rationale) seen.push(ctx.confidence.rationale);
-  const life = d && d.life;
-  if (life && Array.isArray(life.evidence)) for (const e of life.evidence.slice(0, 2)) if (e) seen.push(String(e));
+  const lines = [];
+  const work = (d && d.work) || null;
+  if (!work || work.deskKnown === false) lines.push({ kind: 'desk', text: 'Laptop not seen', unknown: true });
+  else if (work.atDesk) lines.push({ kind: 'desk', text: `Desk active${work.app ? ` · ${appName(work.app)} open` : ''}` });
+  else lines.push({ kind: 'desk', text: 'Away from the laptop' });
 
+  const place = d && d.context && d.context.place;
+  if (place && place.room) {
+    const what = place.roomSubject ? cap(String(place.roomSubject)) : 'A device';
+    lines.push({ kind: 'device', text: `${what} heard in the ${prettyRoom(place.room)}` });
+  }
+  if (!presence(d).whereKnown) lines.push({ kind: 'location', text: 'Location unknown', unknown: true });
+  if (workHeld(d)) lines.push({ kind: 'held', text: 'Work context held' });
+
+  const ctx = (d && d.context) || {};
   const gaps = [];
   const add = (g) => { if (g && !gaps.includes(g)) gaps.push(g); };
   if (Array.isArray(ctx.unknowns)) ctx.unknowns.forEach((u) => add(typeof u === 'string' ? u : (u && (u.input || u.why)) || null));
@@ -451,24 +490,33 @@ export function evidence(d) {
   if (Array.isArray(d && d.gaps)) d.gaps.forEach((g) => add(g && (g.input ? `${g.input}${g.why ? ` — ${g.why}` : ''}` : g.why)));
   if (d && d.poolAvailable === false) add('your work queue');
 
-  return { seen, gaps, level: ctx.confidence && ctx.confidence.level ? ctx.confidence.level : null };
+  return { lines, gaps };
 }
 
 // ── Field drive ─────────────────────────────────────────────────────────────
 
 /**
- * The same mapping `useFieldDrive` applies, from a payload the page already
- * holds — so the field is driven live on the SAiM page without a second poll.
- * `isPressing` is passed in (it lives in the shared field module) so this file
- * stays dependency-free.
+ * What the field is told, in `useFieldDrive`'s exact shape, from a payload the
+ * page already holds. The field, the drive function and the colour ramp are
+ * the control's, UNCHANGED.
+ *
+ * ⚠ THE ONE TREATMENT DIFFERENCE (13 Oct 2026, Nick): the shared drive maps a
+ *   confident, non-quiet read to intensity 0.60 — ORANGE — so a calm evening on
+ *   his own project rendered in the colour reserved for pressure. NEURO already
+ *   says when nothing needs him: `situation.calm`. When that is true and
+ *   nothing is pressing, the drive is told `quiet`, which is its own existing
+ *   low-intensity BLUE. Degraded and pressing still win exactly as before, so
+ *   orange and red stay reserved for real pressure. No new colour is defined.
  */
 export function driveFrom(d, isPressing) {
   if (!d) return { activity: undefined, confidenceLevel: 'low', quiet: false, degraded: true, pressing: false };
+  const pressing = typeof isPressing === 'function' ? Boolean(isPressing(d.primary)) : false;
+  const calm = Boolean(d.situation && d.situation.calm === true) && !pressing;
   return {
     activity: d.context && d.context.activity,
     confidenceLevel: (d.context && d.context.confidence && d.context.confidence.level) || 'low',
-    quiet: d.quiet === true,
+    quiet: d.quiet === true || calm,
     degraded: d.poolAvailable === false || d.available === false,
-    pressing: typeof isPressing === 'function' ? Boolean(isPressing(d.primary)) : false,
+    pressing,
   };
 }
