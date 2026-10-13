@@ -355,3 +355,5 @@
 .cn-rate-btn--on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-card)); }
 .cn-rate-btn--love.cn-rate-btn--on, .cn-chip--love { color: #f07ca0; border-color: #f07ca0; }
 .cn-rate-btn--love.cn-rate-btn--on { background: color-mix(in srgb, #f07ca0 12%, var(--bg-card)); }
+.cn-repeat { color: #f07ca0; margin-top: 2px; }
+.cn-rate-btn--ask { color: #f07ca0; border-color: #f07ca0; }

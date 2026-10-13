@@ -287,7 +287,7 @@ test('10. the three production jobs register with their audited policies', () =>
   assert.equal(j.get('action-executor').maxAttempts, 1);
   assert.ok(!fs.readFileSync(path.join(__dirname, 'scheduler.js'), 'utf8').includes('action-executor\').reconcile();\n  })'),
     'the reconciler must not also be on node-cron');
-  assert.equal(j.get('calendar-sync').cron, '*/20 * * * *');
+  assert.equal(j.get('calendar-sync').cron, '*/5 * * * *');
   assert.equal(j.get('calendar-sync').maxLagMs, null, 'a late calendar sync is as good as an on-time one');
   assert.equal(j.get('calendar-sync').maxAttempts, 2);
   assert.equal(j.get('source-staleness').cron, '*/5 * * * *');

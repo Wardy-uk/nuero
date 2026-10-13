@@ -285,7 +285,9 @@ function read({ now = Date.now(), asked = false, haStates } = {}) {
   const listen = observations.filter((o) => o.kind !== 'tv_series').map((o) => {
     const explicit = byRef.get(o.ref) || null;
     const aff = M.affinity({ explicit, days: o.days, today });
-    return { ...o, explicit, affinity: aff, daysHeard: o.days.length, daysLast30: o.days.filter((d) => M.daysBetween(d, today) < 30).length };
+    return { ...o, explicit, affinity: aff, daysHeard: o.days.length, daysLast30: o.days.filter((d) => M.daysBetween(d, today) < 30).length,
+      // Asked about, not assumed: only while he has not rated it.
+      onRepeat: aff.state === 'interest' && M.onRepeat(o.days, today) };
   });
   const rank = { strong_interest: 0, interest: 1, unknown: 2, disliked: 3, excluded: 4 };
   const sortListen = (a, b) => (rank[a.affinity.state] - rank[b.affinity.state]) || (b.daysLast30 - a.daysLast30) || String(b.lastSeen).localeCompare(String(a.lastSeen));
@@ -373,7 +375,7 @@ function _listenOut(o) {
   return { ref: o.ref, kind: o.kind, title: o.title, creator: o.creator, daysHeard: o.daysHeard, daysLast30: o.daysLast30, lastSeen: o.lastSeen,
     affinity: o.affinity.state, affinityBasis: o.affinity.basis, why: o.affinity.why, itemRef: o.explicit ? o.explicit.itemId : null,
     // Nick's rating, as he gave it: love / like / background / not-for-me, or null.
-    rating: _rating(o.explicit) };
+    rating: _rating(o.explicit), onRepeat: !!o.onRepeat };
 }
 
 /** One item or aggregate with only its relevant fields and why NEURO believes its state. */

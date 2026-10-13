@@ -26,9 +26,11 @@ const crypto = require('crypto');
 const db = require('../db/database');
 
 // Source-health identity for this path (Build 1, the nervous system). The
-// cadence is the scheduler's every-20-minutes; three missed runs is stale.
+// cadence is the scheduler's every-5-minutes (was 20 until 13 Oct 2026 — Nick
+// rearranged his day and NEURO lagged it by up to 20 min). Stale stays at an
+// hour: a few missed 5-minute runs are a blip, not a blind source.
 const SOURCE_ID = 'microsoft.calendar';
-const EXPECTED_INTERVAL_MS = 20 * 60 * 1000;
+const EXPECTED_INTERVAL_MS = 5 * 60 * 1000;
 const STALE_AFTER_MS = 60 * 60 * 1000;
 
 function _beginRun() {

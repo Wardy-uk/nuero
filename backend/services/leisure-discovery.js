@@ -57,6 +57,7 @@ function seedsFrom({ observations = [], items = [], today }) {
     const what = o.kind === 'artist' ? 'you' : `“${o.title}”`;
     const loved = explicit && explicit.preference === 'loved';
     if (a.state === 'strong_interest') add(artist, loved ? 5 : 3, o.kind === 'artist' ? (loved ? 'you love them' : 'you like them') : `you ${loved ? 'love' : 'like'} ${what}`);
+    else if (a.state === 'interest' && M.onRepeat(o.days, today)) add(artist, 2, o.kind === 'artist' ? 'you keep playing them' : `you keep playing ${what}`);
     else if (a.state === 'interest') add(artist, 1, o.kind === 'artist' ? 'you play them a lot' : `you play ${what} a lot`);
   }
   // Things Nick added himself (not from listening) that he likes.

@@ -1457,7 +1457,9 @@ function registerDurableJobs() {
 
   runtime.defineJob({
     name: 'calendar-sync',
-    cron: '*/20 * * * *',
+    // Every 5 min (13 Oct 2026): a diary rearranged in Outlook should reach
+    // Now, the meeting buttons and the agenda within minutes, not twenty.
+    cron: '*/5 * * * *',
     class: 'correctness-critical',
     catchUp: 'latest',
     maxLagMs: null,

@@ -138,6 +138,18 @@ const PUSH_TO_POOL = {
 };
 
 /** The record key for a push of `type` about `ref`. PURE. */
+/**
+ * The key a card with an explicit `dedupeKey` was filed under BEFORE 13 Oct
+ * 2026, when `attention.itemCard` dropped the explicit key and the record fell
+ * back to `type:id`. Null when there is no difference. Used only to adopt and
+ * recognise those records — never to open a new one.
+ */
+function legacyKeyFor(card) {
+  if (!card || typeof card !== 'object' || !card.dedupeKey) return null;
+  const legacy = dedupeKeyFor({ ...card, dedupeKey: null });
+  return legacy && legacy !== String(card.dedupeKey) ? legacy : null;
+}
+
 function dedupeKeyForPush(type, ref) {
   const t = String(type || 'system');
   if (Object.prototype.hasOwnProperty.call(PUSH_TO_POOL, t)) return PUSH_TO_POOL[t];
@@ -514,7 +526,17 @@ function upsert(card, { now = new Date(), confidence = null, operational = false
   const shaped = _shape(card, now, confidence);
   if (!shaped.dedupeKey) return null;
 
-  const existing = db.getOpenAttentionRecord(shaped.dedupeKey);
+  let existing = db.getOpenAttentionRecord(shaped.dedupeKey);
+  if (!existing) {
+    // Adopt a record filed under the pre-13-Oct key, so a deferral, an ack or
+    // a nag count made then is kept — not reset by a fresh record.
+    const legacy = legacyKeyFor(card);
+    const old = legacy ? db.getOpenAttentionRecord(legacy) : null;
+    if (old) {
+      db.run('UPDATE attention_records SET dedupe_key = ? WHERE id = ?', [shaped.dedupeKey, old.id]);
+      existing = db.getOpenAttentionRecord(shaped.dedupeKey);
+    }
+  }
   if (existing) {
     // ⚠ An OPERATIONAL sighting never overwrites an existing record. A push
     // carries only what its caller happened to pass — `nudges.js` sends a type
@@ -957,6 +979,7 @@ module.exports = {
   reconcile,
   releaseDeferrals,
   deferredKeys,
+  legacyKeyFor,
   sweep,
   act,
   recordNotification,

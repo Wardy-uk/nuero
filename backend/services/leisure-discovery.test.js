@@ -169,3 +169,21 @@ test('"just background" beats any amount of listening — never interest, never 
   assert.equal(leisure.read({ now: NOW, haStates: [] }).listening.artists.find((a) => a.title === 'Coldplay').rating, 'background');
   assert.deepEqual(D.seedsFrom({ observations: leisure.listObservations(), items: leisure.listItems(), today: '2026-10-13' }), []);
 });
+
+test('a song on repeat is ASKED about ("love it?") and seeds more strongly — never rated for him', () => {
+  reset();
+  const M = require('./leisure-model');
+  const days = ['2026-09-22', '2026-09-29', '2026-10-06', '2026-10-09', '2026-10-12'];
+  assert.equal(M.onRepeat(days, '2026-10-13'), true);
+  assert.equal(M.onRepeat(days.slice(1), '2026-10-13'), false, 'four days is a lot, not on repeat');
+  heard('Foals', 'My Number');
+  db.run("UPDATE leisure_observations SET days_json = ? WHERE kind = 'music_track'", [JSON.stringify(days)]);
+  db.run("UPDATE leisure_observations SET days_json = ? WHERE kind = 'artist'", [JSON.stringify(days.slice(0, 1))]);
+  const song = leisure.read({ now: NOW, haStates: [] }).listening.tracks[0];
+  assert.equal(song.onRepeat, true);
+  assert.equal(song.rating, null, 'NEURO asks; it does not answer for him');
+  const seeds = D.seedsFrom({ observations: leisure.listObservations(), items: leisure.listItems(), today: '2026-10-13' });
+  assert.deepEqual(seeds.map((s) => [s.name, s.weight]), [['Foals', 2]], 'on repeat outweighs merely played a lot (1)');
+  leisure.correct(song.ref, 'loved', { now: NOW });
+  assert.equal(leisure.read({ now: NOW, haStates: [] }).listening.tracks[0].onRepeat, false, 'once rated, no longer asked');
+});

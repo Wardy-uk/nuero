@@ -63,6 +63,11 @@ const ACTIONS = Object.freeze({
 // Thresholds — passive listening (see the header for why it caps at interest).
 const INTEREST_MIN_DAYS = 3;            // distinct days heard in the last 30
 const INTEREST_MIN_WEEKS = 2;           // …spread over at least two ISO weeks
+// "On repeat" (13 Oct 2026, Nick: "a song I play over and over should suggest
+// that I really like it"). Days, not plays — the phone's report cannot tell a
+// deliberate repeat from a wake — and still NOT "you like it": it is a question
+// put to him ("love it?") and a stronger seed until he answers.
+const ON_REPEAT_MIN_DAYS = 5;
 const THREAD_MIN_DAYS = 2;              // an album heard on 2 of the last 7 days is a "listening thread"
 const QUIET_AFTER_DAYS = 60;            // an active item untouched this long is "gone quiet" (not abandoned)
 const CONTINUE_LIMIT = 5;
@@ -182,6 +187,12 @@ function episodeCompletion({ reliable = false, reportedComplete = false, positio
   }
   return { complete: false, basis: 'in-progress', why: Number.isFinite(position) && Number.isFinite(duration) && duration > 0
     ? `${Math.round((100 * position) / duration)}% played — not enough to call it finished` : 'no reliable progress' };
+}
+
+/** Heard on ON_REPEAT_MIN_DAYS+ days across 2+ ISO weeks in the last 30. PURE. */
+function onRepeat(days = [], today) {
+  const recent = (days || []).filter((d) => isDay(d) && today && daysBetween(d, today) >= 0 && daysBetween(d, today) < 30);
+  return recent.length >= ON_REPEAT_MIN_DAYS && new Set(recent.map(isoWeek)).size >= INTEREST_MIN_WEEKS;
 }
 
 /**
@@ -469,7 +480,7 @@ module.exports = {
   INTEREST_MIN_DAYS, INTEREST_MIN_WEEKS, THREAD_MIN_DAYS, QUIET_AFTER_DAYS, CONTINUE_LIMIT, DAYS_KEPT,
   EPISODE_COMPLETE_FRACTION,
   norm, isDay, daysBetween, addDays, isoWeek,
-  musicKeys, foldDay, isSighting, tvObservation, episodeCompletion, affinity,
+  musicKeys, foldDay, isSighting, tvObservation, episodeCompletion, affinity, onRepeat, ON_REPEAT_MIN_DAYS,
   validateItem, effectiveState, hobbyState, progressLine, nextEpisode, continueList, recentlyEnjoyed,
   dislikeIndex, excludedByDislike, suggestions, leisureEventFromTitle, profileInterests, correctionFits,
 };

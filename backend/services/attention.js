@@ -213,6 +213,11 @@ function itemCard(item, now) {
   return {
     kind: 'item',
     id: item.id,
+    // ⚠ The item's OWN identity, when it declares one (capacity, weekly-risk,
+    // source-blind). Dropped here until 13 Oct 2026, so the lifecycle filed the
+    // record under `type:id` while the deferred filter looked for the explicit
+    // key — a deferral was stored and the card never left Now.
+    ...(item.dedupeKey ? { dedupeKey: item.dedupeKey } : {}),
     type: item.type,
     title: item.title,
     reason: item.reason || null,
@@ -1012,7 +1017,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     const held = lifecycle.deferredKeys(now);
     if (held.size > 0) {
       visible = items.filter((item) => {
-        const entry = held.get(lifecycle.dedupeKeyFor(item));
+        const entry = held.get(lifecycle.dedupeKeyFor(item)) || held.get(lifecycle.legacyKeyFor(item));
         if (!entry) return true;
         // Named, never silently withheld — `dropped` is the contract for that.
         snoozed.push({

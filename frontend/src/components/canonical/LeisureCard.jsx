@@ -76,12 +76,14 @@ function Listening({ rows, act, busy }) {
         <li key={o.ref} data-testid="leisure-listening">
           <strong>{o.title}</strong>{o.creator && <span className="cn-muted"> — {o.creator}</span>}
           <span className={`cn-chip${rated === 'love' ? ' cn-chip--love' : ''}`}>{rated ? RATING_CHIP[rated] : (AFF[o.affinity] || o.affinity)}</span>
-          {!rated && <div className="cn-muted cn-small">{o.why}</div>}
+          {!rated && o.onRepeat
+            ? <div className="cn-small cn-repeat">You keep coming back to this — love it?</div>
+            : !rated && <div className="cn-muted cn-small">{o.why}</div>}
           {act && (
             <div className="cn-row-actions cn-rate" role="group" aria-label={`Rate ${o.title}`}>
               {RATINGS.map((r) => (
                 <button key={r.id} type="button" disabled={busy} title={r.title} aria-pressed={rated === r.id}
-                  className={`cn-btn cn-btn--tiny cn-rate-btn${rated === r.id ? ' cn-rate-btn--on' : ''}${r.id === 'love' ? ' cn-rate-btn--love' : ''}`}
+                  className={`cn-btn cn-btn--tiny cn-rate-btn${rated === r.id ? ' cn-rate-btn--on' : ''}${r.id === 'love' ? ' cn-rate-btn--love' : ''}${r.id === 'love' && !rated && o.onRepeat ? ' cn-rate-btn--ask' : ''}`}
                   onClick={() => act('/api/leisure/correct', { ref: o.ref, action: rated === r.id ? 'clear-preference' : r.action })}>
                   {r.label}
                 </button>
