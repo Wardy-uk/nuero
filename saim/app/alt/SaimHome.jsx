@@ -3,26 +3,44 @@ import { apiFetch, chatStream } from '../src/api';
 import { enqueue, flush, outcomeFor } from '../src/mobile/outbox';
 import { matchSaid } from '../../../shared/heard.cjs';
 import {
-  presence, silence, currentThread, toolHandoff, nextChange, heldWork, judgement,
-  neuroLink, deskStateText, deskStateSettled,
+  presence, silence, currentThread, toolHandoff, nextChange, heldWork, judgement, evidence,
+  neuroLink, deskStateText, deskStateSettled, deskStateBusy,
 } from './model.mjs';
 import './SaimHome.css';
 
 // SAiM Alt — the desktop companion page.
 //
-// A persistent work companion over her field, not a dashboard: where he is,
-// the thread he is on, the one tool to reach for, what is coming, what she is
-// holding back and what needs his judgement. Every sentence about WORK is
-// NEURO's (`/api/canonical/now`), rendered verbatim; `model.mjs` decides only
-// layout, the tool order, and how to say "I can't tell".
+// ONE dominant thread and a quiet supporting rail, over her field. Every
+// sentence about WORK is NEURO's (`/api/canonical/now`), rendered verbatim;
+// `model.mjs` decides only how presence is said, which tool comes first, and
+// how to say "I can't tell".
 //
 // ⚠ Nothing here approves or sends. Approvals are a statement and a link to
-//   NEURO, where the approval code lives. An ambient surface that can send is
-//   one that can send by accident.
+//   NEURO, where the approval code lives.
 // ⚠ A request sent is not an action completed: desk opens report the server's
 //   own lifecycle (waiting → claimed → opened | failed | expired), never "done".
+// ⚠ An app the laptop did not offer is never a button.
 
 const POLL_MS = 60_000;
+
+/** A desk app as a button — or, when it can't be pressed, as plain text. */
+function ToolButton({ app, onDeskOpen, deskStates, primary = false }) {
+  const st = deskStates[app.id];
+  if (!app.available || !onDeskOpen) {
+    return <span className="alt-tool alt-tool--off">{app.label}{app.why ? <span className="alt-tool__why"> — {app.why}</span> : null}</span>;
+  }
+  return (
+    <span className="alt-tool">
+      <button
+        type="button"
+        className={primary ? 'alt-tool__primary' : 'alt-tool__btn'}
+        disabled={deskStateBusy(st)}
+        onClick={() => onDeskOpen(app.id)}
+      >{primary ? `Open ${app.label}` : app.label}</button>
+      {st ? <span className={`alt-desk alt-desk--${st}`}>{deskStateText(st)}</span> : null}
+    </span>
+  );
+}
 
 /**
  * Pure presentational half, exported so it renders under test with no fetch.
@@ -32,164 +50,180 @@ export function SaimHomeView({
   data, session = null, error = null, neuroUrl = null,
   deskStates = {}, onDeskOpen = null, onAct = null, busy = false,
   heldOpen = false, onToggleHeld = null,
-  onNameStep = null, onNavigate = null,
+  moreOpen = false, onToggleMore = null,
+  onNameStep = null,
   dock = null,
 }) {
   if (!data) {
     return (
       <div className="alt-home alt-home--bare">
         <p className="alt-home__bare">{error ? `I can’t reach NEURO — ${error}.` : 'Reading the room…'}</p>
-        {dock}
+        <div className="alt-home__baredock">{dock}</div>
       </div>
     );
   }
 
   const p = presence(data);
-  const quietLine = silence(data);
+  const blind = silence(data);
   const thread = currentThread(data, session);
   const tools = toolHandoff(data, thread);
   const change = nextChange(data);
   const held = heldWork(data);
   const judge = judgement(data);
+  const seen = evidence(data);
   const actionsLink = neuroLink(neuroUrl, 'actions');
 
   return (
     <div className="alt-home">
+      {/* ── Presence: who and where, then the desk and what she is doing ─── */}
+      <header className="alt-presence" aria-label="Presence">
+        <p className={`alt-presence__who${p.whereKnown ? '' : ' is-unknown'}`}>{p.line1}</p>
+        <p className="alt-presence__desk">
+          {p.line2}
+          {p.operationDetail ? ` — ${p.operationDetail}` : ''}
+          {p.device ? <span className="alt-presence__device"> · {p.device}</span> : null}
+        </p>
+      </header>
+
       {error && <p className="alt-home__stale" role="status">Couldn’t refresh — {error}. Showing the last read.</p>}
 
-      {/* ── Presence ───────────────────────────────────────────────────── */}
-      <section className="alt-presence" aria-label="Where SAiM thinks you are">
-        <span className={`alt-presence__fact${p.where.known ? '' : ' is-unknown'}`}>{p.where.text}</span>
-        <span className={`alt-presence__fact${p.desk.known ? '' : ' is-unknown'}`}>{p.desk.text}</span>
-        <span className={`alt-presence__phase${p.operation.known ? '' : ' is-unknown'}`}>
-          {p.operation.known ? p.operation.label : 'I can’t say what I’m doing'}
-          {p.operation.detail ? <span className="alt-presence__detail"> · {p.operation.detail}</span> : null}
-        </span>
-      </section>
-
-      {/* ── The current thread ─────────────────────────────────────────── */}
-      <section className="alt-card alt-thread" aria-label="The current thread">
-        <h2 className="alt-card__eyebrow">The thread</h2>
-        {thread.item ? (
-          <>
-            <p className="alt-thread__title">{thread.item.say || thread.item.title}</p>
-            {thread.item.say && thread.item.title && thread.item.title !== thread.item.say && (
-              <p className="alt-thread__sub">{thread.item.title}</p>
-            )}
-            {thread.item.reason && <p className="alt-thread__why">{thread.item.reason}</p>}
-          </>
-        ) : (
-          <p className="alt-thread__title">{quietLine ? quietLine.text : 'Nothing in hand.'}</p>
-        )}
-        {quietLine && quietLine.kind === 'blind' && thread.item && <p className="alt-warn">{quietLine.text}</p>}
-        {!thread.item && thread.workWhy && <p className="alt-thread__why">{thread.workWhy}</p>}
-
-        <div className="alt-thread__step">
-          <span className="alt-label">Next step</span>
-          {thread.nextStep.known
-            ? <span className="alt-thread__steptext">{thread.nextStep.text}</span>
-            : <span className="alt-thread__steptext is-unknown">No next step named.</span>}
-          {onNameStep && thread.sessionActive && !thread.nextStep.known && (
-            <StepForm onSubmit={onNameStep} disabled={busy} />
+      <div className="alt-grid">
+        {/* ── The thread: the one dominant card ────────────────────────── */}
+        <section className="alt-thread" aria-label="The current thread">
+          {thread.state === 'unknown' ? (
+            <>
+              <p className="alt-thread__title">{thread.unknown.title}</p>
+              <p className="alt-thread__prompt">{thread.unknown.prompt}</p>
+            </>
+          ) : (
+            <>
+              <p className="alt-thread__title">{thread.item.title}</p>
+              {thread.item.sub && <p className="alt-thread__sub">{thread.item.sub}</p>}
+              {thread.item.reason && <p className="alt-thread__why">{thread.item.reason}</p>}
+            </>
           )}
-        </div>
+          {blind && blind.kind === 'blind' && <p className="alt-warn">{blind.text}</p>}
 
-        {thread.actions.length > 0 && (
-          <div className="alt-thread__actions">
-            {thread.actions.map((u) => (
-              <button
-                key={`${u.intent.kind}:${u.intent.action || ''}:${u.say}`}
-                type="button"
-                className="alt-pill"
-                disabled={!onAct || busy}
-                onClick={() => onAct && onAct(u)}
-              >{u.say}</button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ── Tool handoff ───────────────────────────────────────────────── */}
-      <section className="alt-card alt-tools" aria-label="Open on the desk">
-        <h2 className="alt-card__eyebrow">Open on {tools.host || 'the desk'}</h2>
-        {tools.top ? (
-          <div className="alt-tools__top">
-            <button
-              type="button"
-              className="alt-tools__primary"
-              disabled={!onDeskOpen || !tools.top.available || deskStates[tools.top.id] === 'waiting' || deskStates[tools.top.id] === 'claimed'}
-              onClick={() => onDeskOpen && onDeskOpen(tools.top.id)}
-            >{tools.top.label}</button>
-            <span className="alt-tools__because">
-              {tools.top.because}
-              {deskStates[tools.top.id] ? <strong className={`alt-desk alt-desk--${deskStates[tools.top.id]}`}> · {deskStateText(deskStates[tools.top.id])}</strong> : null}
-            </span>
-          </div>
-        ) : (
-          <p className="alt-tools__none">Nothing to open — {tools.blockedWhy}.</p>
-        )}
-        <ul className="alt-tools__alts">
-          {tools.alternatives.map((a) => (
-            <li key={a.id}>
-              <button
-                type="button"
-                className="alt-tools__alt"
-                disabled={!onDeskOpen || !a.available || deskStates[a.id] === 'waiting' || deskStates[a.id] === 'claimed'}
-                aria-describedby={a.why ? `why-${a.id}` : undefined}
-                onClick={() => onDeskOpen && a.available && onDeskOpen(a.id)}
-              >{a.label}</button>
-              {!a.available && <span id={`why-${a.id}`} className="alt-tools__why">{a.why}</span>}
-              {deskStates[a.id] && <span className={`alt-desk alt-desk--${deskStates[a.id]}`}>{deskStateText(deskStates[a.id])}</span>}
-            </li>
-          ))}
-        </ul>
-        {!onDeskOpen && tools.top && <p className="alt-tools__why">This screen can’t reach the desk queue.</p>}
-      </section>
-
-      {/* ── Next context change — only when relevant ───────────────────── */}
-      {change && (
-        <section className="alt-next" aria-label="What changes next">
-          <span className="alt-label">Next</span> {change.text}
-          {change.question ? <span className="alt-next__q"> {change.question}</span> : null}
-        </section>
-      )}
-
-      {/* ── Holding the day ─────────────────────────────────────────────── */}
-      {held.count > 0 && (
-        <section className="alt-held" aria-label="Held back">
-          <p className="alt-held__line">
-            {`Holding ${held.count} back${held.reasons.length ? `: ${held.reasons.join('; ')}` : ''}.`}
-          </p>
-          {onToggleHeld && (
-            <button type="button" className="alt-link" aria-expanded={heldOpen} onClick={onToggleHeld}>
-              {heldOpen ? 'Hide held work' : 'Show held work'}
-            </button>
+          {thread.state !== 'unknown' && (
+            <div className="alt-thread__step">
+              <span className="alt-label">Next step</span>
+              {thread.nextStep.known
+                ? <span className="alt-thread__steptext">{thread.nextStep.text}</span>
+                : <span className="alt-thread__steptext is-unknown">No next step named.</span>}
+              {onNameStep && thread.sessionActive && !thread.nextStep.known && (
+                <StepForm onSubmit={onNameStep} disabled={busy} />
+              )}
+            </div>
           )}
-          {heldOpen && (
-            <ul className="alt-held__list">
-              {held.items.map((it, i) => (
-                <li key={i}>{it.label}{it.why ? <span className="alt-held__why"> — {it.why}</span> : null}</li>
+
+          {thread.actions.length > 0 && (
+            <div className="alt-thread__actions">
+              {thread.actions.map((u) => (
+                <button
+                  key={`${u.intent.kind}:${u.intent.action || ''}:${u.say}`}
+                  type="button"
+                  className="alt-pill"
+                  disabled={!onAct || busy}
+                  onClick={() => onAct && onAct(u)}
+                >{u.say}</button>
               ))}
-            </ul>
+            </div>
           )}
-        </section>
-      )}
 
-      {/* ── Needs your judgement ───────────────────────────────────────── */}
-      {(judge.count > 0 || !judge.known) && (
-        <section className="alt-card alt-judge" aria-label="Needs your judgement">
-          <h2 className="alt-card__eyebrow">Needs your judgement</h2>
-          <p className="alt-judge__text">{judge.text}</p>
-          {judge.known && actionsLink && (
-            <a className="alt-link" href={actionsLink} target="_blank" rel="noopener noreferrer">
-              Review in NEURO →
-            </a>
+          {/* ── Best next place ─────────────────────────────────────────── */}
+          <div className="alt-place" aria-label="Best next place">
+            <span className="alt-label">Best next place{tools.host ? ` · ${tools.host}` : ''}</span>
+            {tools.top ? (
+              <>
+                <p className="alt-place__name">{tools.top.label}</p>
+                <p className="alt-place__because">{tools.top.because}</p>
+                <ToolButton app={tools.top} onDeskOpen={onDeskOpen} deskStates={deskStates} primary />
+                {!onDeskOpen && <p className="alt-tool__why">This screen can’t reach the desk queue, so nothing here can open.</p>}
+
+                <div className="alt-ways">
+                  <span className="alt-label">Other ways in</span>
+                  <div className="alt-ways__row">
+                    {[tools.ai, tools.music, ...tools.context].filter(Boolean).map((a) => (
+                      <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />
+                    ))}
+                  </div>
+                  {tools.more.length > 0 && onToggleMore && (
+                    <>
+                      <button type="button" className="alt-link" aria-expanded={moreOpen} onClick={onToggleMore}>
+                        {moreOpen ? 'Fewer apps' : `More available apps (${tools.more.length})`}
+                      </button>
+                      {moreOpen && (
+                        <div className="alt-ways__row alt-ways__more">
+                          {tools.more.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="alt-place__none">Nothing to open — {tools.blockedWhy}.</p>
+            )}
+          </div>
+
+          <div className="alt-thread__dock">{dock}</div>
+        </section>
+
+        {/* ── The rail: quiet, supporting ──────────────────────────────── */}
+        <aside className="alt-rail" aria-label="Supporting">
+          <section className="alt-rail__block" aria-label="Needs your judgement">
+            <h2 className="alt-rail__head">Needs your judgement</h2>
+            <p className={`alt-rail__text${judge.count > 0 ? ' is-strong' : ''}${judge.known ? '' : ' is-unknown'}`}>{judge.text}</p>
+            {judge.count > 0 && actionsLink && (
+              <a className="alt-link" href={actionsLink} target="_blank" rel="noopener noreferrer">Review in NEURO →</a>
+            )}
+          </section>
+
+          {change && (
+            <section className="alt-rail__block" aria-label="Next transition">
+              <h2 className="alt-rail__head">Next</h2>
+              <p className="alt-rail__text">{change.text}</p>
+              {change.question && <p className="alt-rail__sub">{change.question}</p>}
+            </section>
           )}
-          {judge.known && judge.where && <p className="alt-judge__where">Approve in {judge.where}. Nothing is approved or sent from here.</p>}
-        </section>
-      )}
 
-      {dock}
+          <section className="alt-rail__block" aria-label="Holding the day">
+            <h2 className="alt-rail__head">Holding the day</h2>
+            {held.count === 0 ? (
+              <p className="alt-rail__text">Nothing held back.</p>
+            ) : (
+              <>
+                <p className="alt-rail__text">
+                  {`Holding ${held.count} back${held.reasons.length ? `: ${held.reasons.join('; ')}` : ''}.`}
+                </p>
+                {onToggleHeld && (
+                  <button type="button" className="alt-link" aria-expanded={heldOpen} onClick={onToggleHeld}>
+                    {heldOpen ? 'Hide held work' : 'Show held work'}
+                  </button>
+                )}
+                {heldOpen && (
+                  <ul className="alt-held__list">
+                    {held.items.map((it, i) => (
+                      <li key={i}>{it.label}{it.why ? <span className="alt-rail__sub"> — {it.why}</span> : null}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="alt-rail__block" aria-label="What SAiM can see">
+            <h2 className="alt-rail__head">What I can see</h2>
+            {seen.seen.length === 0 && seen.gaps.length === 0 && <p className="alt-rail__text is-unknown">NEURO gave no evidence with this read.</p>}
+            {seen.seen.length > 0 && (
+              <ul className="alt-rail__list">{seen.seen.map((s, i) => <li key={i}>{s}</li>)}</ul>
+            )}
+            {seen.gaps.length > 0 && (
+              <p className="alt-rail__gap">Can’t read: {seen.gaps.join('; ')}.</p>
+            )}
+          </section>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -215,11 +249,12 @@ function StepForm({ onSubmit, disabled }) {
 }
 
 /**
- * "Ask SAiM or capture anything." One box, two verbs.
- * Capture goes through the SAME outbox as the Capture tab: on disk first, then
- * sent, and the box is cleared only once the words are safely queued.
+ * "Ask SAiM or capture anything…" — one line, two clearly different verbs.
+ *   Ask  (Enter) — a question; an offered sentence is acted on, else chat.
+ *   Save         — a capture, through the SAME outbox as the Capture tab: on
+ *                  disk first, then sent; the box clears only once it is queued.
  */
-function Dock({ utterances, onSay }) {
+export function Dock({ utterances, onSay }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);       // { ok, msg }
@@ -239,15 +274,15 @@ function Dock({ utterances, onSay }) {
       return;
     }
     setText('');
-    setNote({ ok: true, msg: 'Queued on this device — not in NEURO yet.' });
+    setNote({ ok: true, msg: 'Saved on this device — not in NEURO yet.' });
     try {
       const result = await flush();
       const outcome = outcomeFor(result.receipts[queued.operationId]);
-      if (outcome.state === 'confirmed') setNote({ ok: true, msg: 'Saved to NEURO.' });
+      if (outcome.state === 'confirmed') setNote({ ok: true, msg: 'Capture saved to NEURO.' });
       else if (outcome.state === 'refused') setNote({ ok: false, msg: `${outcome.message} It’s waiting in Capture.` });
-      else setNote({ ok: true, msg: 'Queued on this device — I’ll send it when there’s signal.' });
+      else setNote({ ok: true, msg: 'Saved on this device — I’ll send it when there’s signal.' });
     } catch {
-      setNote({ ok: true, msg: 'Queued on this device — I’ll send it when there’s signal.' });
+      setNote({ ok: true, msg: 'Saved on this device — I’ll send it when there’s signal.' });
     } finally {
       setBusy(false);
     }
@@ -256,6 +291,7 @@ function Dock({ utterances, onSay }) {
   async function ask() {
     const question = text.trim();
     if (!question || busy) return;
+    setNote(null);
     // A sentence she offered is acted on, not chatted about — matched by string
     // equality against the server's own phrases, never parsed here.
     const heard = matchSaid(question, utterances);
@@ -289,29 +325,29 @@ function Dock({ utterances, onSay }) {
   }
 
   return (
-    <section className="alt-dock" aria-label="Ask SAiM or capture anything">
+    <div className="alt-dock" aria-label="Ask SAiM or capture anything">
       {answer && (
         <div className="alt-dock__answer">
-          <p className="alt-dock__q">{answer.question}</p>
+          <p className="alt-dock__q">You asked: {answer.question}</p>
           <p className="alt-dock__a">{answer.error ? `I couldn’t answer — ${answer.error}` : (answer.text || (answer.thinking ? '…' : ''))}</p>
           <button type="button" className="alt-link" onClick={() => setAnswer(null)}>Clear</button>
         </div>
       )}
-      <textarea
-        className="alt-input alt-dock__box"
-        rows={2}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); } }}
-        placeholder="Ask SAiM or capture anything"
-        aria-label="Ask SAiM or capture anything"
-      />
-      <div className="alt-dock__row">
-        <button type="button" className="alt-pill alt-pill--strong" disabled={busy || !text.trim()} onClick={ask}>Ask</button>
-        <button type="button" className="alt-pill" disabled={busy || !text.trim()} onClick={capture}>Capture</button>
-        {note && <span className={`alt-dock__note${note.ok ? '' : ' is-bad'}`} role="status">{note.msg}</span>}
-      </div>
-    </section>
+      <form className="alt-dock__line" onSubmit={(e) => { e.preventDefault(); ask(); }}>
+        <input
+          className="alt-input alt-dock__input"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Ask SAiM or capture anything…"
+          aria-label="Ask SAiM or capture anything"
+        />
+        <button type="submit" className="alt-pill alt-pill--strong" disabled={busy || !text.trim()} title="Ask SAiM (Enter)">Ask</button>
+        <button type="button" className="alt-pill" disabled={busy || !text.trim()} onClick={capture} title="Save as a capture in NEURO">Save</button>
+      </form>
+      <p className={`alt-dock__note${note && !note.ok ? ' is-bad' : ''}`} role="status">
+        {note ? note.msg : 'Ask gets an answer. Save keeps it as a capture in NEURO.'}
+      </p>
+    </div>
   );
 }
 
@@ -321,6 +357,7 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
   const [session, setSession] = useState(null);
   const [busy, setBusy] = useState(false);
   const [heldOpen, setHeldOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [deskStates, setDeskStates] = useState({});
   const [deskReachable, setDeskReachable] = useState(true);
   const [actNote, setActNote] = useState(null);
@@ -455,8 +492,9 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
         busy={busy}
         heldOpen={heldOpen}
         onToggleHeld={() => setHeldOpen((o) => !o)}
+        moreOpen={moreOpen}
+        onToggleMore={() => setMoreOpen((o) => !o)}
         onNameStep={nameStep}
-        onNavigate={onNavigate}
         dock={<Dock utterances={state.data?.utterances} onSay={onSay} />}
       />
     </>

@@ -25,14 +25,23 @@ Five destinations only: **SAiM · Now · Review · Capture · Controls**. Now/Re
 are the control's own views, mounted unchanged. Any route they ask for that is not one of the five
 (Tasks, Chat, Prep, Ritual, Who's in) opens NEURO in a new tab with a note — never a sixth screen.
 
-The SAiM page (`SaimHome.jsx`) over the unchanged `Field`:
-presence (place, desk, operation phase, each with an honest unknown) · the current thread
-(NEURO's primary/current-work wording verbatim, the next step **he** named on the session or
-"No next step named.", lifecycle sentences from the server's utterances) · tool handoff · next
-context change (server transition, else next real meeting) · "Holding N back" with a local
-Show/Hide disclosure · needs-your-judgement (a statement + "Review in NEURO", no approve) ·
-"Ask SAiM or capture anything" (capture through the same outbox; ask matches offered sentences,
-else chat).
+Frame (`AltShell.jsx`, pure): the unchanged `Field` full-screen; a discreet corner (SAiM Alt
+marker, Control/NEURO links, lock); a persistent bottom bar — tagline left, the five icon buttons
+centre, "Updated HH:MM" (the read on screen) right.
+
+The SAiM page (`SaimHome.jsx`) — one dominant thread card and a quiet rail:
+- **Presence** (top): `Nick · Office|Home|location unknown`, then `desk seen · VS Code open ·
+  standing by`. A room is always attributed to the device a sensor heard ("watch heard in the
+  living room"), never stated as where Nick is.
+- **Thread card**: NEURO's item / current-work / context title verbatim — or, when the context is
+  unknown or there is nothing, "I can't recover the thread from what I can see. Tell me what you
+  were doing, or capture the next thing." Then the next step he named (never invented), the
+  server's lifecycle sentences, **Best next place** (one primary "Open X" + why), **Other ways in**
+  (one AI tool, Music, up to three context apps; the rest behind "More available apps"), and a
+  one-line Ask / Save dock (Save goes through the same outbox as Capture).
+- **Rail**: Needs your judgement (statement + "Review in NEURO", never approve) · Next (only when
+  there is a transition or a meeting later today) · Holding the day (count + reasons, local
+  Show/Hide that reranks nothing) · What I can see (NEURO's evidence lines and named gaps).
 
 ### Tool handoff rules (`model.mjs → toolHandoff`)
 - Only apps in `work.deskOffer.apps` (the agent's declared `canOpen`, intersected server-side with

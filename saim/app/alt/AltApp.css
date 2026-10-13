@@ -1,40 +1,34 @@
 /* SAiM Alt shell. Loaded AFTER the control's App.css and only overrides it
    under `.alt-app`, so nothing here can reach the control build. */
 
-/* Desktop: the shell spans the window so her field is full-screen behind it;
-   the content column stays readable in the middle. */
-.app.alt-app { max-width: none; }
+/* Desktop: the shell spans the window so her field is full-screen behind it. */
+.app.alt-app { max-width: none; height: 100dvh; }
 .alt-app__field { position: fixed; inset: 0; }
 
-.alt-app__header { align-items: center; border-bottom: none; background: linear-gradient(rgba(11, 15, 20, 0.8), rgba(11, 15, 20, 0)); }
-.alt-app__spacer { flex: 1; }
-.alt-marker {
-  font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700;
-  padding: 0.12rem 0.45rem; border-radius: 4px;
-  color: #f5c66b; border: 1px solid rgba(245, 198, 107, 0.55); background: rgba(245, 198, 107, 0.08);
-}
-.alt-app__link { font-size: 0.75rem; color: var(--muted); text-decoration: none; }
-.alt-app__link:hover { color: var(--text); text-decoration: underline; }
-
-.alt-app__nav {
+.alt-app__view {
   position: relative; z-index: 1;
-  display: flex; justify-content: center; gap: 0.25rem;
-  padding: 0.2rem 1rem 0.4rem;
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 1.6rem 2rem 1.2rem;
 }
-.alt-app__tab {
-  font: inherit; font-size: 0.85rem; cursor: pointer;
-  padding: 0.35rem 0.9rem; border-radius: 999px;
-  color: var(--muted); background: transparent; border: 1px solid transparent;
-}
-.alt-app__tab:hover { color: var(--text); }
-.alt-app__tab.is-on {
-  color: var(--text);
-  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.55);
-  background: rgba(var(--saim-rgb, 114, 150, 211), 0.12);
-}
+/* The control's own screens were written for a 720px column; keep them there. */
+.alt-app__column { max-width: 720px; margin: 0 auto; }
 
-/* The reused views were written for a 720px column; keep them there. */
-.alt-app__view > :not(.alt-home):not(.alt-app__handoff):not(.alt-home__note) { max-width: 720px; margin-left: auto; margin-right: auto; }
+/* ── Discreet corner: experiment marker, links back, lock ─────────────── */
+.alt-corner {
+  position: fixed; top: 0.7rem; right: 1rem; z-index: 3;
+  display: flex; align-items: center; gap: 0.6rem;
+  font-size: 0.7rem; opacity: 0.6; transition: opacity 0.15s;
+}
+.alt-corner:hover, .alt-corner:focus-within { opacity: 1; }
+.alt-marker {
+  font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700;
+  padding: 0.1rem 0.4rem; border-radius: 4px;
+  color: #f5c66b; border: 1px solid rgba(245, 198, 107, 0.5); background: rgba(245, 198, 107, 0.06);
+}
+.alt-corner__build { color: var(--muted); }
+.alt-corner__link { color: var(--muted); text-decoration: none; }
+.alt-corner__link:hover { color: var(--text); text-decoration: underline; }
+.alt-corner__lock { background: none; border: none; cursor: pointer; font-size: 0.8rem; padding: 0; }
 
 .alt-app__handoff {
   max-width: 760px; margin: 0 auto 0.8rem; padding: 0.5rem 0.8rem; border-radius: 8px;
@@ -42,6 +36,35 @@
   display: flex; gap: 0.6rem; align-items: center;
 }
 
-@media (max-width: 560px) {
-  .alt-app__nav { overflow-x: auto; justify-content: flex-start; }
+/* ── Persistent bottom bar ─────────────────────────────────────────────── */
+.alt-bar {
+  position: relative; z-index: 2;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem;
+  padding: 0.45rem 1.5rem calc(0.45rem + env(safe-area-inset-bottom));
+  background: rgba(11, 15, 20, 0.82);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(var(--saim-rgb, 114, 150, 211), 0.18);
+}
+.alt-bar__tagline { font-size: 0.76rem; color: var(--muted); font-family: 'Newsreader', Georgia, serif; font-style: italic; }
+.alt-bar__nav { display: flex; gap: 0.2rem; }
+.alt-bar__tab {
+  display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
+  min-width: 4.6rem; padding: 0.35rem 0.6rem; border-radius: 10px;
+  font: inherit; font-size: 0.7rem; cursor: pointer;
+  color: var(--muted); background: transparent; border: 1px solid transparent;
+}
+.alt-bar__tab:hover { color: var(--text); }
+.alt-bar__tab.is-on {
+  color: rgb(var(--saim-rgb, 114, 150, 211));
+  background: rgba(var(--saim-rgb, 114, 150, 211), 0.1);
+  border-color: rgba(var(--saim-rgb, 114, 150, 211), 0.35);
+}
+.alt-bar__icon { font-size: 1.1rem; line-height: 1; }
+.alt-bar__updated { justify-self: end; font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 820px) {
+  .alt-bar { grid-template-columns: auto 1fr; }
+  .alt-bar__tagline { display: none; }
+  .alt-bar__tab { min-width: 3.6rem; }
+  .alt-app__view { padding: 1.2rem 1rem; }
 }
