@@ -418,7 +418,7 @@ function AuthenticatedApp() {
       case 'activity': return <ActivityPanel />;
       case 'life': return <LifePanel />;
       case 'home': return <LifeHomePage />;
-      case 'family': return <LifeFamilyPage />;
+      case 'family': return <LifeFamilyPage onNavigate={handleNavigate} />;
       case 'outdoor': return <LifeOutdoorPage />;
       case 'money': return <LifeMoneyPage />;
       case 'leisure': return <LifeLeisurePage />;

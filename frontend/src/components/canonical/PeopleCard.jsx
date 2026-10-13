@@ -168,7 +168,7 @@ function CreateFromRoster({ m, act, busy }) {
   );
 }
 
-export default function PeopleCard() {
+export default function PeopleCard({ onNavigate = null } = {}) {
   const { data, error, reload } = useCanonical('/api/people');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -176,11 +176,11 @@ export default function PeopleCard() {
     setBusy(true); setMsg(null);
     try { await postCanonical(path, body); reload(); return true; } catch (e) { setMsg(e.message); return false; } finally { setBusy(false); }
   };
-  return <PeopleView data={data} error={error} act={act} busy={busy} msg={msg} />;
+  return <PeopleView data={data} error={error} act={act} busy={busy} msg={msg} onNavigate={onNavigate} />;
 }
 
 /** The view, from a `people-v1` payload. Exported so it renders in tests from the REAL read. */
-export function PeopleView({ data, error = null, act, busy = false, msg = null }) {
+export function PeopleView({ data, error = null, act, busy = false, msg = null, onNavigate = null }) {
   const [skipped, setSkipped] = useState([]);
   const sections = data ? data.sections : [];
   const sec = (id) => (sections.find((s) => s.id === id) || { people: [] }).people;
@@ -228,10 +228,20 @@ export function PeopleView({ data, error = null, act, busy = false, msg = null }
             </Fold>
           ))}
 
-          <Fold title="Work" meta={`${sec('work').length}`}>
-            <p className="cn-muted cn-small">Kept separate from your personal life. The People board has the 1-2-1s.</p>
-            <ul className="cn-list">{sec('work').map((p) => <PersonRow key={p.personId} p={p} act={act} busy={busy} showWork />)}</ul>
-          </Fold>
+          {/* 13 Oct 2026 — work people live on the People board (People & meetings),
+              with the 1-2-1s and who owes what. Here they are one line, and the
+              list stays one click away only to correct who counts as work. */}
+          {sec('work').length > 0 && (
+            <div className="cn-nowstrip" data-testid="people-work-link">
+              <span>{sec('work').length} work contact{sec('work').length === 1 ? '' : 's'} — they live on the People board, with the 1-2-1s.</span>
+              {onNavigate && <button type="button" className="cn-btn cn-btn--tiny" onClick={() => onNavigate('people')}>Open People board</button>}
+            </div>
+          )}
+          {sec('work').length > 0 && (
+            <Fold title="Work — correct who counts as work" meta={`${sec('work').length}`}>
+              <ul className="cn-list">{sec('work').map((p) => <PersonRow key={p.personId} p={p} act={act} busy={busy} showWork />)}</ul>
+            </Fold>
+          )}
 
           {data.unlinkedDates.length > 0 && (
             <Fold title="Dates with no person" meta={`${data.unlinkedDates.length}`}>

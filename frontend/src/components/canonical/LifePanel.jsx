@@ -99,12 +99,12 @@ export function LifeHomePage() {
   );
 }
 
-export function LifeFamilyPage() {
+export function LifeFamilyPage({ onNavigate = null } = {}) {
   const life = useLifeData();
   return (
     <LifePage title="Family & friends" life={life} sub="Who people are to you — only as you have said — their dates, and Ember.">
       {/* Build 31: who people are to Nick — only as he has said. */}
-      <PeopleCard />
+      <PeopleCard onNavigate={onNavigate} />
       <section className="cn-section"><PersonalDatesCard /></section>
       <Companions data={life.data} busy={life.busy} act={life.act} />
     </LifePage>
