@@ -54,6 +54,7 @@ function personalPrompt(batch, emailList) {
 Put each email in exactly one category:
 - ACTION: Nick has to do something or reply — a person waiting on him, a bill, payment problem, renewal or expiring card, a form, booking or appointment to sort.
 - DELEGATE: it is for someone else in the household (for example Helen) to deal with, or should be passed on.
+An invitation or calendar event sent TO Nick is his, whoever organised it: ACTION if it needs an answer (accept, decline, reply), otherwise FYI — never DELEGATE.
 - FYI: worth knowing, nothing to do — receipts, payment confirmations, order and delivery updates, statements, sign-in codes he asked for.
 - IGNORE: marketing, newsletters, offers, surveys, automated noise.
 And an urgency: high (money at risk, a deadline today or tomorrow, someone waiting urgently), medium, or low. Most personal email is low.
