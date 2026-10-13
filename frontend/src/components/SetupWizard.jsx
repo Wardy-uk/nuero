@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import './SetupWizard.css';
+import CapabilityGaps from './CapabilityGaps';
 
 // Set up — what has not been set up that NEURO needs, one step at a time.
 //
@@ -134,6 +135,8 @@ export default function SetupWizard({ onNavigate }) {
           </div>
         </section>
       )}
+
+      <CapabilityGaps />
 
       <nav className="setup__surfaces" aria-label="Devices">
         <button type="button" className={surface === 'all' ? 'on' : ''} onClick={() => setSurface('all')}>All</button>

@@ -3235,7 +3235,7 @@ CREATE INDEX IF NOT EXISTS idx_leisure_items_event ON leisure_items(event_date);
 CREATE TABLE IF NOT EXISTS leisure_observations (
   obs_key       TEXT PRIMARY KEY,
   source        TEXT NOT NULL,
-  kind          TEXT NOT NULL CHECK (kind IN ('artist','album','tv_series')),
+  kind          TEXT NOT NULL CHECK (kind IN ('artist','album','music_track','tv_series')),
   title         TEXT NOT NULL,
   creator       TEXT,
   ownership     TEXT NOT NULL CHECK (ownership IN ('nick-device','household')),

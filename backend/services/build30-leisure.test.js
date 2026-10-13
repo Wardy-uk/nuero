@@ -368,12 +368,18 @@ test('Continue also carries an album on 2 of the last 7 days — never a one-off
 
 test('34–37. no play log, reading writes nothing, household never a resident, aggregates only', () => {
   resetLeisure();
-  for (let i = 0; i < 50; i += 1) leisure.observeNowPlaying({ ...ENIGMA, title: `Secret track ${i}`, at: new Date(NOW - i * 30000).toISOString() });
-  assert.equal(count('leisure_observations'), 2, '34. one artist + one album row, not 50 plays');
+  // Songs ARE kept since 13 Oct 2026 (Nick's call, reversing Build 30) — but
+  // as one aggregate per song, never a play log: 50 plays of one song in a day
+  // are one song row holding one day.
+  for (let i = 0; i < 50; i += 1) leisure.observeNowPlaying({ ...ENIGMA, title: 'Secret track', at: new Date(NOW - i * 30000).toISOString() });
+  assert.equal(count('leisure_observations'), 3, '34. one artist + one album + one song row, not 50 plays');
   const row = db.get("SELECT * FROM leisure_observations WHERE kind = 'artist'");
   assert.deepEqual(JSON.parse(row.days_json), [TODAY]);
-  for (const t of ['leisure_items', 'leisure_observations', 'personal_ops_events']) {
-    assert.ok(!JSON.stringify(db.all(`SELECT * FROM ${t}`)).includes('Secret track'), `37. no track title in ${t}`);
+  const song = db.get("SELECT * FROM leisure_observations WHERE kind = 'music_track'");
+  assert.equal(song.title, 'Secret track');
+  assert.deepEqual(JSON.parse(song.days_json), [TODAY], '37. a song holds the DAYS it was heard, never the plays');
+  for (const t of ['leisure_items', 'personal_ops_events']) {
+    assert.ok(!JSON.stringify(db.all(`SELECT * FROM ${t}`)).includes('Secret track'), `37. listening alone writes no song into ${t}`);
   }
   const cols = db.all("PRAGMA table_info(leisure_observations)").map((c) => c.name);
   assert.ok(!cols.some((c) => /room|position|at$|time/.test(c) && c !== 'first_seen' && c !== 'last_seen'), `37. aggregate columns only: ${cols}`);
@@ -588,4 +594,19 @@ test('Life → Leisure renders the live shape: playing, continue, listening as e
   assert.match(html, /Marillion/);
   assert.match(html, /Podcasts &amp; audiobooks<\/strong>: (<!-- -->)?no source/);
   assert.ok(!/<svg|<canvas|<img|\bscore\s*[:=]?\s*\d|\d+\s*-?day streak|recommended for you/i.test(html), 'no art wall, charts, scores, streaks or feed');
+});
+
+test('songs: a song is its own record — keyed on artist + title, not the album — and can be liked', () => {
+  resetLeisure();
+  leisure.observeNowPlaying({ ...ENIGMA, title: 'Return To Innocence', album: 'The Cross Of Changes', at: new Date(NOW).toISOString() });
+  leisure.observeNowPlaying({ ...ENIGMA, title: 'Return To Innocence', album: 'Greatest Hits', at: new Date(NOW + 60000).toISOString() });
+  const r = leisure.read({ now: NOW, haStates: [] });
+  assert.equal(r.listening.tracks.length, 1, 'the same song on two albums is one song');
+  assert.equal(r.listening.tracks[0].title, 'Return To Innocence');
+  assert.equal(r.listening.tracks[0].affinity, 'unknown', 'one play is never interest');
+  assert.equal(r.listening.counts.tracks, 1);
+  const ref = r.listening.tracks[0].ref;
+  assert.equal(leisure.correct(ref, 'liked', { now: NOW }).ok, true);
+  assert.equal(leisure.read({ now: NOW, haStates: [] }).listening.tracks[0].affinity, 'strong_interest');
+  assert.equal(leisure.correct(ref, 'completed', { now: NOW }).ok, false, 'a song is not something you finish');
 });

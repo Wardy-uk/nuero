@@ -625,3 +625,21 @@ test('no fitness score, streak, calories or guilt in anything Outdoor says', () 
   assert.ok(!/"score"|streak|calorie|kcal|readiness|leaderboard/i.test(text));
   assert.ok(!/\b(missed|failed|should|behind|lazy|guilt|you need to)\b/i.test([o.goal.line, o.atRisk.why, ...o.now.items.map((i) => i.line), ...o.routes.map((r) => r.outcomeWhy || '')].join(' ')));
 });
+
+test('a walk the logger went on shows its conditions on Outdoor; one it sat out shows none', () => {
+  const carried = workout('w-env-carried', 'Walking', '2026-10-08 10:00:00', 120, { distanceM: 8000 });
+  const shelf = workout('w-env-shelf', 'Walking', '2026-10-07 10:00:00', 120, { distanceM: 8000 });
+  const put = (startSql, temps) => {
+    const s = Date.parse(startSql.replace(' ', 'T') + 'Z') / 1000;
+    temps.forEach(([off, tc]) => db.run('INSERT OR IGNORE INTO environment_readings (sensor_id, t, temperature_c, humidity_pct, pressure_hpa) VALUES (?, ?, ?, 60, 1000)', ['TEST', s + off, tc]));
+  };
+  put('2026-10-08 10:00:00', [[-3600, 21], [-1800, 21], [900, 11], [3600, 10], [6300, 11]]);
+  put('2026-10-07 10:00:00', [[-3600, 21], [-1800, 21], [900, 21], [3600, 21], [6300, 21]]);
+  const o = outdoor.read({ now: NOW, weeks: 4 });
+  const walk = (id) => o.walks.find((a) => a.activityId === `workout:${id}`);
+  assert.equal(walk(carried).conditions.carried, true);
+  assert.equal(walk(carried).conditions.tempMinC, 10);
+  assert.equal(walk(shelf).conditions.carried, false);
+  assert.equal(walk(shelf).conditions.tempMeanC, undefined);
+  assert.ok(!o.gaps.some((g) => g.input === 'environment-logger'));
+});

@@ -287,7 +287,7 @@
     "route": "/api/setup/skip/:id",
     "domain": "setup",
     "source": "routes/setup.js",
-    "line": 48,
+    "line": 66,
     "description": "DELETE /api/setup/skip/:id. undo \"not needed\" on a set-up item.",
     "params": [
       "id"
@@ -1118,7 +1118,7 @@
     "route": "/api/canonical/companions/:id/care",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 346,
+    "line": 356,
     "description": "GET /api/canonical/companions/:id/care. a companion's care (Ember): next explicit care item, open items, recent completions, linked tasks/reminders/calendar entries, mentions (inference), walk state today and the last week. Keywords: Ember care, dog walk, vet, flea.",
     "params": [
       "id"
@@ -1183,12 +1183,44 @@
     "stream": false
   },
   {
+    "id": "get_canonical_goals_measures",
+    "method": "GET",
+    "route": "/api/canonical/goals/measures",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 230,
+    "description": "GET /api/canonical/goals/measures. the closed catalogue of things a goal can be measured by, with units and target shape. Keywords: goal measure types.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_canonical_goals_progress",
+    "method": "GET",
+    "route": "/api/canonical/goals/progress",
+    "domain": "canonical",
+    "source": "routes/canonical.js",
+    "line": 225,
+    "description": "GET /api/canonical/goals/progress. how each active goal is moving by the measure Nick chose (hikes a week, blood-pressure average, weight, steps, sleep, resting heart, a project finished), with levers: other things NEURO can see that bear on it, each with an action. Keywords: goal progress, goal ins",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_canonical_lead_reminders",
     "method": "GET",
     "route": "/api/canonical/lead-reminders",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 451,
+    "line": 461,
     "description": "GET /api/canonical/lead-reminders. the lead-reminder cadence Nick set per kind of personal date (e.g. anniversary: 10, 5, 1 days before). Keywords: anniversary reminder, birthday nag.",
     "params": [],
     "query": [],
@@ -1273,7 +1305,7 @@
     "route": "/api/canonical/obligations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 279,
+    "line": 289,
     "description": "GET /api/canonical/obligations. open personal obligations: tasks and commitments with an explicit non-work domain or an explicit link to a personal goal or date, with due, source, status and whether each needs Nick now. Keywords: personal tasks, life admin. Query: admin=1.",
     "params": [],
     "query": [
@@ -1291,7 +1323,7 @@
     "route": "/api/canonical/personal-admin",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 286,
+    "line": 296,
     "description": "GET /api/canonical/personal-admin. personal admin (MOT, renewals, bills, forms): the obligations whose explicit domain is admin, finance or transport, and an audit of which sources hold any. Keywords: personal admin, renewals.",
     "params": [],
     "query": [],
@@ -1323,7 +1355,7 @@
     "route": "/api/canonical/radar",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 269,
+    "line": 279,
     "description": "GET /api/canonical/radar. Future Radar: what is coming up in Nick's life over 7, 14 or 30 days and whether anything needs doing first; every item says why it is there. Keywords: coming up, upcoming, future radar, next two weeks. Query: days (7|14|30).",
     "params": [],
     "query": [
@@ -1341,7 +1373,7 @@
     "route": "/api/canonical/reminder-lists",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 303,
+    "line": 313,
     "description": "GET /api/canonical/reminder-lists. audit of every Apple Reminders list by stable id: name, app, classification, tracked and why, open/completed counts from the last push, duplicate names, source health. Keywords: reminder lists audit.",
     "params": [],
     "query": [],
@@ -4806,6 +4838,22 @@
     "stream": false
   },
   {
+    "id": "get_setup_capabilities",
+    "method": "GET",
+    "route": "/api/setup/capabilities",
+    "domain": "setup",
+    "source": "routes/setup.js",
+    "line": 35,
+    "description": "GET /api/setup/capabilities. capability gaps / self-learning suggestions: \"I could do X for you, but I need Y\" — features to build, sensors to fit, setup steps, purchases or integrations, each anchored to something Nick cares about (a goal, a profile fact, a health finding, a question he asked, a ti",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_setup_native",
     "method": "GET",
     "route": "/api/setup/native",
@@ -5951,7 +5999,7 @@
     "route": "/api/vehicle/:id",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 125,
+    "line": 133,
     "description": "GET /api/vehicle/:id. one vehicle: obligations, mileage, history, official checks, running costs, health evidence.",
     "params": [
       "id"
@@ -7311,7 +7359,7 @@
     "route": "/api/canonical/annotations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 467,
+    "line": 477,
     "description": "POST /api/canonical/annotations. Nick declares which life domains a thing belongs to and/or its personal importance. Body: entityId, domains (list, null clears), importance (critical-to-me|important-to-me|normal|restorative|optional|work-critical, null clears). Omitted fields are left alone.",
     "params": [],
     "query": [],
@@ -7331,7 +7379,7 @@
     "route": "/api/canonical/care/:id/cancel",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 376,
+    "line": 386,
     "description": "POST /api/canonical/care/:id/cancel. Nick cancels a companion care item (it is no longer needed). Keywords: cancel Ember care.",
     "params": [
       "id"
@@ -7349,7 +7397,7 @@
     "route": "/api/canonical/care/:id/done",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 366,
+    "line": 376,
     "description": "POST /api/canonical/care/:id/done. Nick marks a companion care item done (doneOn, default today). A repeat he set moves it to its next date counted from that day; otherwise it closes. Keywords: Ember care done.",
     "params": [
       "id"
@@ -7431,7 +7479,7 @@
     "route": "/api/canonical/companions",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 330,
+    "line": 340,
     "description": "POST /api/canonical/companions. create a companion (pet) by writing Companions/<name>.md with type: pet. Keywords: add pet, create companion, Ember. Body: name, species, breed, household. Never overwrites an existing note.",
     "params": [],
     "query": [],
@@ -7452,7 +7500,7 @@
     "route": "/api/canonical/companions/:id/care",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 355,
+    "line": 365,
     "description": "POST /api/canonical/companions/:id/care. Nick adds a care item for a companion: kind (walk|vet|vaccination|flea|worm|medication|grooming|insurance|other), title, dueDate, dueTime, recurrence {every, unit day|week|month|year} only as he states it, note. Keywords: add Ember care, vet appointment.",
     "params": [
       "id"
@@ -7477,7 +7525,7 @@
     "route": "/api/canonical/companions/:id/links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 385,
+    "line": 395,
     "description": "POST /api/canonical/companions/:id/links. Nick links an existing task, reminder, calendar entry (meeting:…), commitment or personal date (pd:…) to a companion's care. Explicit only; a title mentioning Ember is not a link. Body: entityId, careKind, label. Keywords: link to Ember.",
     "params": [
       "id"
@@ -7499,7 +7547,7 @@
     "route": "/api/canonical/companions/:id/links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 396,
+    "line": 406,
     "description": "POST /api/canonical/companions/:id/links/remove. take an explicit care link off a companion. Body: entityId, label. Keywords: unlink Ember.",
     "params": [
       "id"
@@ -7520,7 +7568,7 @@
     "route": "/api/canonical/companions/:id/walks",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 407,
+    "line": 417,
     "description": "POST /api/canonical/companions/:id/walks. Nick's own word about a day's walk for a companion: mark walked|not-applicable, day (default today; never a future day). Nick's own walking is never read as the dog's. Keywords: Ember walked, dog walk.",
     "params": [
       "id"
@@ -7541,7 +7589,7 @@
     "route": "/api/canonical/companions/:id/walks/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 418,
+    "line": 428,
     "description": "POST /api/canonical/companions/:id/walks/remove. take back a walk mark for a day. Body: day.",
     "params": [
       "id"
@@ -7561,8 +7609,8 @@
     "route": "/api/canonical/goals",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 225,
-    "description": "POST /api/canonical/goals. store a goal or intention Nick states (hike more, finish the degree). Body: title, description, domains, importance, startDate, reviewDate, links. Creates nothing else: no task, no nudge.",
+    "line": 235,
+    "description": "POST /api/canonical/goals. store a goal or intention Nick states (hike more, finish the degree). Body: title, description, domains, importance, startDate, reviewDate, links, measure ({kind, target, period?, projectId?, by?} or null). Creates nothing else: no task, no nudge.",
     "params": [],
     "query": [],
     "body": [
@@ -7570,6 +7618,7 @@
       "domains",
       "importance",
       "links",
+      "measure",
       "note",
       "reviewDate",
       "startDate",
@@ -7586,8 +7635,8 @@
     "route": "/api/canonical/goals/:id",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 236,
-    "description": "POST /api/canonical/goals/:id. update a stored goal: title, description, domains, importance, status (active|paused|achieved|dropped), startDate, reviewDate, links (replaces), reviewed (stamps last reviewed).",
+    "line": 246,
+    "description": "POST /api/canonical/goals/:id. update a stored goal: title, description, domains, importance, status (active|paused|achieved|dropped), startDate, reviewDate, links (replaces), reviewed (stamps last reviewed), measure (null clears).",
     "params": [
       "id"
     ],
@@ -7597,6 +7646,7 @@
       "domains",
       "importance",
       "links",
+      "measure",
       "note",
       "reviewDate",
       "reviewed",
@@ -7615,7 +7665,7 @@
     "route": "/api/canonical/goals/:id/links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 247,
+    "line": 257,
     "description": "POST /api/canonical/goals/:id/links. link ONE item to an active goal (explicit only; gives context, never urgency). Keywords: link task to goal, goal link. Body: entityId (task:/commitment:/meeting:/pd:/person:/companion:), relation, label.",
     "params": [
       "id"
@@ -7637,7 +7687,7 @@
     "route": "/api/canonical/goals/:id/links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 258,
+    "line": 268,
     "description": "POST /api/canonical/goals/:id/links/remove. take one explicit link off a goal. Keywords: unlink goal. Body: entityId, label.",
     "params": [
       "id"
@@ -7658,7 +7708,7 @@
     "route": "/api/canonical/lead-reminders",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 456,
+    "line": 466,
     "description": "POST /api/canonical/lead-reminders. Nick sets the lead reminders for a kind of personal date: first step is Radar context, middle steps a stronger prompt, the last step Needs You and the only push (skipped when linked prep is done). Body: kind (birthday|anniversary|other), offsets (days before, e.g.",
     "params": [],
     "query": [],
@@ -7740,7 +7790,7 @@
     "route": "/api/canonical/personal-admin/annotations",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 294,
+    "line": 304,
     "description": "POST /api/canonical/personal-admin/annotations. Nick marks a personal-admin item waiting, blocked (with a reason) or routine, corrects its kind, or sets a lead time. Body: entityId, kind, state, note, leadDays. Keywords: admin waiting, blocked, lead time.",
     "params": [],
     "query": [],
@@ -7762,7 +7812,7 @@
     "route": "/api/canonical/prep-links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 308,
+    "line": 318,
     "description": "POST /api/canonical/prep-links. Nick links a task or commitment as PREPARATION for a personal date (pd:…), calendar entry (meeting:…), person or companion. Explicit only. Keywords: link prep, preparation. Body: subjectId, entityId, label.",
     "params": [],
     "query": [],
@@ -7782,7 +7832,7 @@
     "route": "/api/canonical/prep-links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 319,
+    "line": 329,
     "description": "POST /api/canonical/prep-links/remove. take an explicit preparation link away. Keywords: unlink prep. Body: subjectId, entityId, label.",
     "params": [],
     "query": [],
@@ -7802,7 +7852,7 @@
     "route": "/api/canonical/vehicle-links",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 429,
+    "line": 439,
     "description": "POST /api/canonical/vehicle-links. Nick links a personal-admin task or commitment to a vehicle he names (e.g. MOT → car): transport context only. Body: vehicle, entityId, label. Keywords: car, MOT, vehicle admin.",
     "params": [],
     "query": [],
@@ -7822,7 +7872,7 @@
     "route": "/api/canonical/vehicle-links/remove",
     "domain": "canonical",
     "source": "routes/canonical.js",
-    "line": 440,
+    "line": 450,
     "description": "POST /api/canonical/vehicle-links/remove. take a vehicle link off a task or commitment. Body: vehicle, entityId, label.",
     "params": [],
     "query": [],
@@ -9414,7 +9464,7 @@
     "route": "/api/leisure/correct",
     "domain": "leisure",
     "source": "routes/leisure.js",
-    "line": 40,
+    "line": 45,
     "description": "POST /api/leisure/correct. Nick's correction on an item or listening record: liked, disliked, completed, dropped, not mine, this was me.",
     "params": [],
     "query": [],
@@ -9424,6 +9474,22 @@
     ],
     "queryOpen": false,
     "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_leisure_discovery_refresh",
+    "method": "POST",
+    "route": "/api/leisure/discovery/refresh",
+    "domain": "leisure",
+    "source": "routes/leisure.js",
+    "line": 40,
+    "description": "POST /api/leisure/discovery/refresh. ask Deezer again now for \"you might like\" artists (normally every 12 h).",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
     "multipart": false,
     "stream": false
   },
@@ -11900,12 +11966,49 @@
     "stream": false
   },
   {
+    "id": "post_setup_capabilities_by_id_decide",
+    "method": "POST",
+    "route": "/api/setup/capabilities/:id/decide",
+    "domain": "setup",
+    "source": "routes/setup.js",
+    "line": 45,
+    "description": "POST /api/setup/capabilities/:id/decide. Nick's verdict on a capability suggestion: decision accept (a build goes into the Feature Tracker, anything else becomes a NEURO task) | reject (reason is remembered and taught back) | done | reopen.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "decision",
+      "reason"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_setup_capabilities_refresh",
+    "method": "POST",
+    "route": "/api/setup/capabilities/refresh",
+    "domain": "setup",
+    "source": "routes/setup.js",
+    "line": 40,
+    "description": "POST /api/setup/capabilities/refresh. think again: gather everything NEURO knows about Nick, ask a cloud model for capability suggestions, keep only those that pass the usefulness test (real evidence, a personal anchor, what it unlocks, what would change). Costs one cloud AI call.",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_setup_report",
     "method": "POST",
     "route": "/api/setup/report",
     "domain": "setup",
     "source": "routes/setup.js",
-    "line": 35,
+    "line": 53,
     "description": "POST /api/setup/report. a device's own local set-up checks (setup.ps1 on Windows, the iOS Setup screen): platform (windows|ios|mac|watchos), app, host, checks[{id, ok, detail}].",
     "params": [],
     "query": [],
@@ -11926,7 +12029,7 @@
     "route": "/api/setup/skip/:id",
     "domain": "setup",
     "source": "routes/setup.js",
-    "line": 43,
+    "line": 61,
     "description": "POST /api/setup/skip/:id. mark a set-up item \"not needed\" (reversible; never marks it done).",
     "params": [
       "id"
@@ -13301,7 +13404,7 @@
     "route": "/api/vehicle/:id",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 133,
+    "line": 141,
     "description": "POST /api/vehicle/:id. Nick fills in what he knows about a vehicle. Body: plateDescriptor, registration, variant, fuelType, ownershipState, vin, firstRegistered, ownershipStart.",
     "params": [
       "id"
@@ -13328,7 +13431,7 @@
     "route": "/api/vehicle/:id/events",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 158,
+    "line": 166,
     "description": "POST /api/vehicle/:id/events. Nick records a service, repair, tyre or other maintenance event. Body: type, date, mileage, description, costRef (tally:<id>; amounts live in Tally), action, axle, position, brand, model, count, outcome.",
     "params": [
       "id"
@@ -13360,7 +13463,7 @@
     "route": "/api/vehicle/:id/events/:eventId/withdraw",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 167,
+    "line": 175,
     "description": "POST /api/vehicle/:id/events/:eventId/withdraw. take back a history entry recorded in error.",
     "params": [
       "id",
@@ -13379,7 +13482,7 @@
     "route": "/api/vehicle/:id/fuel",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 172,
+    "line": 180,
     "description": "POST /api/vehicle/:id/fuel. Nick records a fuel fill for MPG. Body: filledOn, litres, odometer, odometerUnit (mi|km), fullTank, note. Never an amount — that is Tally's.",
     "params": [
       "id"
@@ -13406,7 +13509,7 @@
     "route": "/api/vehicle/:id/fuel/:fillId/withdraw",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 181,
+    "line": 189,
     "description": "POST /api/vehicle/:id/fuel/:fillId/withdraw. take back a fuel fill recorded in error.",
     "params": [
       "id",
@@ -13425,7 +13528,7 @@
     "route": "/api/vehicle/:id/mileage",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 144,
+    "line": 152,
     "description": "POST /api/vehicle/:id/mileage. Nick records an odometer reading. Body: value, unit (mi|km), observedOn, source, confidence, correction, note. Implausible readings are kept and flagged.",
     "params": [
       "id"
@@ -13452,7 +13555,7 @@
     "route": "/api/vehicle/:id/mileage/:readingId/withdraw",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 153,
+    "line": 161,
     "description": "POST /api/vehicle/:id/mileage/:readingId/withdraw. take back an odometer reading entered in error.",
     "params": [
       "id",
@@ -13471,7 +13574,7 @@
     "route": "/api/vehicle/:id/obligations",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 186,
+    "line": 194,
     "description": "POST /api/vehicle/:id/obligations. Nick records an MOT, insurance, service, warranty, breakdown cover or tax date. Body: type, dueDate, dueMileage, intervalMonths, intervalMiles, intervalBasis, linkedTaskRef, linkedReminderRef, note.",
     "params": [
       "id"
@@ -13500,7 +13603,7 @@
     "route": "/api/vehicle/:id/official-by-hand",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 200,
+    "line": 208,
     "description": "POST /api/vehicle/:id/official-by-hand. Nick records what gov.uk showed (Check MOT history / Check if a vehicle is taxed). Body: motStatus, motExpiryDate, taxStatus, taxDueDate.",
     "params": [
       "id"
@@ -13523,7 +13626,7 @@
     "route": "/api/vehicle/:id/official-check",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 195,
+    "line": 203,
     "description": "POST /api/vehicle/:id/official-check. ask DVLA (Vehicle Enquiry Service) for MOT and tax status. Needs DVLA_VES_API_KEY and the registration; records 'unavailable' otherwise.",
     "params": [
       "id"
@@ -13656,7 +13759,7 @@
     "route": "/api/vehicle/journeys/:journeyId/reopen",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 100,
+    "line": 108,
     "description": "POST /api/vehicle/journeys/:journeyId/reopen. undo an approval or rejection; the journey is pending again.",
     "params": [
       "journeyId"
@@ -13693,7 +13796,7 @@
     "route": "/api/vehicle/obligations/:obligationId",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 105,
+    "line": 113,
     "description": "POST /api/vehicle/obligations/:obligationId. edit an open vehicle obligation's due date, due mileage or linked task/reminder. Body: dueDate, dueMileage, linkedTaskRef, linkedReminderRef.",
     "params": [
       "obligationId"
@@ -13716,7 +13819,7 @@
     "route": "/api/vehicle/obligations/:obligationId/resolve",
     "domain": "vehicle",
     "source": "routes/vehicle.js",
-    "line": 116,
+    "line": 124,
     "description": "POST /api/vehicle/obligations/:obligationId/resolve. Nick says an MOT/insurance/service/tax is actually done (evidence required — a ticked task is not evidence). Body: outcome, evidence, completedOn, nextDueDate, nextDueMileage.",
     "params": [
       "obligationId"

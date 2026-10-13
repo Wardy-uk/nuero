@@ -221,23 +221,33 @@ router.get('/goals', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
-// POST /api/canonical/goals — store a goal or intention Nick states (hike more, finish the degree). Body: title, description, domains, importance, startDate, reviewDate, links. Creates nothing else: no task, no nudge.
+// GET /api/canonical/goals/progress — how each active goal is moving by the measure Nick chose (hikes a week, blood-pressure average, weight, steps, sleep, resting heart, a project finished), with levers: other things NEURO can see that bear on it, each with an action. Keywords: goal progress, goal insights, am I on track.
+router.get('/goals/progress', (req, res) => {
+  try { res.json(require('../services/goal-measures').read()); } catch (e) { fail(res, e); }
+});
+
+// GET /api/canonical/goals/measures — the closed catalogue of things a goal can be measured by, with units and target shape. Keywords: goal measure types.
+router.get('/goals/measures', (req, res) => {
+  try { res.json({ ok: true, measures: require('../services/goal-measures').catalogue() }); } catch (e) { fail(res, e); }
+});
+
+// POST /api/canonical/goals — store a goal or intention Nick states (hike more, finish the degree). Body: title, description, domains, importance, startDate, reviewDate, links, measure ({kind, target, period?, projectId?, by?} or null). Creates nothing else: no task, no nudge.
 router.post('/goals', (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
-    const { title, description, domains: goalDomains, note, importance, startDate, reviewDate, links } = req.body;
-    const out = canonical.saveGoal({ title, description, domains: goalDomains, note, importance, startDate, reviewDate, links });
+    const { title, description, domains: goalDomains, note, importance, startDate, reviewDate, links, measure } = req.body;
+    const out = canonical.saveGoal({ title, description, domains: goalDomains, note, importance, startDate, reviewDate, links, measure });
     if (!out.ok) return res.status(out.status || 400).json(out);
     res.json(out);
   } catch (e) { fail(res, e); }
 });
 
-// POST /api/canonical/goals/:id — update a stored goal: title, description, domains, importance, status (active|paused|achieved|dropped), startDate, reviewDate, links (replaces), reviewed (stamps last reviewed).
+// POST /api/canonical/goals/:id — update a stored goal: title, description, domains, importance, status (active|paused|achieved|dropped), startDate, reviewDate, links (replaces), reviewed (stamps last reviewed), measure (null clears).
 router.post('/goals/:id', (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') return res.status(400).json({ ok: false, error: 'a JSON body is required' });
-    const { title, description, domains: goalDomains, note, status, importance, startDate, reviewDate, links, reviewed } = req.body;
-    const out = canonical.saveGoal({ id: req.params.id, title, description, domains: goalDomains, note, status, importance, startDate, reviewDate, links, reviewed });
+    const { title, description, domains: goalDomains, note, status, importance, startDate, reviewDate, links, reviewed, measure } = req.body;
+    const out = canonical.saveGoal({ id: req.params.id, title, description, domains: goalDomains, note, status, importance, startDate, reviewDate, links, reviewed, measure });
     if (!out.ok) return res.status(out.status || 400).json(out);
     res.json(out);
   } catch (e) { fail(res, e); }

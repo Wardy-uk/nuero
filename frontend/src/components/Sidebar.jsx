@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
 import './Sidebar.css';
+import { VIEW_GROUPS, groupOfView } from './ViewTabs';
 
 const PRIMARY_ITEMS = [
   // ── Build 10P: Nick-first navigation ───────────────────────────────────────
@@ -23,23 +24,25 @@ const PRIMARY_ITEMS = [
 // ⚠ Retired ids (briefing, focus, qa, strava, kpi-tracker) are NOT here; they
 // still route via viewIds.canonicalView so old links land somewhere real.
 const GROUPS = [
+  // The Life overhaul (13 Oct 2026): Life is an overview; each part of life
+  // has a page. An entry with `group` is the first tab of a ViewTabs group and
+  // stays lit for every tab in it (Health: My Health / Apple Health / JC Ring /
+  // Medical; Home: Home / Catalogues; Outdoor: Outdoor / Hike safety /
+  // Weather). Those tab ids are still views of their own — deep links work.
   { id: 'life', label: 'LIFE', items: [
     { id: 'life',       label: 'Life',       icon: '◍' },
     // Tasks span every domain (work | personal), so they sit under Life.
     { id: 'todos',      label: 'Tasks',      icon: '☑' },
-    // My Health is the whole picture across every source; Apple Health is the
-    // deep view over the Watch + HiLo data (its view id stays 'health' so deep
-    // links keep working).
-    { id: 'my-health',  label: 'My Health',    icon: '♥' },
-    { id: 'health',     label: 'Apple Health', icon: '♡' },
-    { id: 'jc-ring',    label: 'JC Ring',    icon: '◌' },
-    { id: 'medical',    label: 'Medical',    icon: '✚' },
-    { id: 'hike-safety', label: 'Hike safety', icon: '⛰' },
+    { id: 'my-health',  label: 'Health',     icon: '♥', group: 'health' },
+    { id: 'home',       label: 'Home',       icon: '⌂', group: 'home' },
+    // Not "People": PEOPLE & MEETINGS already has the work one.
+    { id: 'family',     label: 'Family & friends', icon: '❦' },
+    { id: 'outdoor',    label: 'Outdoor',    icon: '⛰', group: 'outdoor' },
+    { id: 'money',      label: 'Money & car', icon: '£' },
+    { id: 'leisure',    label: 'Leisure & projects', icon: '♪' },
     // nick@ / contact@ newest first — separate from the work Inbox (12 Oct 2026).
     { id: 'personal-inbox', label: 'Personal inbox', icon: '✉' },
-    { id: 'weather',    label: 'Weather',    icon: '☁' },
     { id: 'journal',    label: 'Journal',    icon: '>' },
-    { id: 'catalogues', label: 'Catalogues', icon: '▤' },
     { id: 'about-me',   label: 'About me',   icon: '◍' },
   ] },
   { id: 'people', label: 'PEOPLE & MEETINGS', items: [
@@ -81,6 +84,8 @@ const GROUPS = [
     { id: 'activity',     label: 'Activity',      icon: '≡' },
     { id: 'setup',        label: 'Set up',        icon: '✓' },
     { id: 'sources',      label: 'Sources',       icon: '◎' },
+    // Reminder lists, calendar classifications, coverage — moved off Life.
+    { id: 'life-sources', label: 'Life sources',  icon: '◎' },
     { id: 'findings',     label: 'Findings',      icon: '◇' },
     { id: 'state',        label: 'State of Play', icon: '◈' },
     // Label only — the view id stays pi-health so deep links keep working.
@@ -92,7 +97,10 @@ const GROUPS = [
   ] },
 ];
 
-const GROUP_OF = new Map(GROUPS.flatMap((g) => g.items.map((i) => [i.id, g.id])));
+const GROUP_OF = new Map(GROUPS.flatMap((g) => g.items.flatMap((i) => [
+  [i.id, g.id],
+  ...(i.group ? VIEW_GROUPS[i.group].map((t) => [t.id, g.id]) : []),
+])));
 
 function readOpenGroups() {
   try { return JSON.parse(localStorage.getItem('sidebar_groups_open') || '{}') || {}; } catch { return {}; }
@@ -166,7 +174,7 @@ export default function Sidebar({ activeView, onNavigate, open }) {
       className={[
         'sidebar-item',
         item.primary ? 'sidebar-item-primary' : '',
-        activeView === item.id ? 'active' : '',
+        activeView === item.id || (item.group && groupOfView(activeView) === item.group) ? 'active' : '',
       ].filter(Boolean).join(' ')}
       onClick={() => onNavigate(item.id)}
     >

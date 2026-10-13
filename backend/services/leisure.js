@@ -62,7 +62,7 @@ function listObservations() { return _db().all('SELECT * FROM leisure_observatio
 /**
  * Fold a now-playing report into the per-day aggregates. Called by
  * now-playing.record AFTER it stored the report. Only a `playing` report with
- * an artist is a sighting; the track title is never kept here.
+ * an artist is a sighting. The song is kept as its own aggregate (13 Oct 2026).
  */
 function observeNowPlaying(report, { now = Date.now() } = {}) {
   if (!M.isSighting(report)) return { ok: true, folded: 0, why: 'not a sighting (only a playing report with an artist counts)' };
@@ -291,6 +291,7 @@ function read({ now = Date.now(), asked = false, haStates } = {}) {
   const sortListen = (a, b) => (rank[a.affinity.state] - rank[b.affinity.state]) || (b.daysLast30 - a.daysLast30) || String(b.lastSeen).localeCompare(String(a.lastSeen));
   const artists = listen.filter((o) => o.kind === 'artist').sort(sortListen);
   const albums = listen.filter((o) => o.kind === 'album').sort(sortListen);
+  const tracks = listen.filter((o) => o.kind === 'music_track').sort(sortListen);
   const household = observations.filter((o) => o.ownership === 'household' && !(byRef.get(o.ref) && byRef.get(o.ref).ownership === 'nick'))
     .map((o) => ({ ref: o.ref, title: o.title, source: o.source, lastSeen: o.lastSeen, progress: o.progress, why: 'a shared screen — household viewing, not counted as yours until you say "this was me"' }));
 
@@ -309,6 +310,9 @@ function read({ now = Date.now(), asked = false, haStates } = {}) {
   const cont = M.continueList({ items: nonHobby, albums, today, nowPlaying: np.current });
   const enjoyed = M.recentlyEnjoyed({ items: nonHobby, today });
   const sugg = M.suggestions({ items: nonHobby, today, asked });
+  // "You might like" — new artists from Deezer, cached by the personal-ops job.
+  let discovery = { known: false, why: 'not read', items: [], seeds: [] };
+  try { discovery = require('./leisure-discovery').read({ now: nowMs, inputs: { observations, items, today } }); } catch (e) { gaps.push({ input: 'discovery', why: e.message }); }
 
   const comingUp = [
     ...cal.events.map((e) => ({ ref: e.meetingId, title: e.title, date: e.day, time: e.time, kind: e.leisure, source: 'calendar', why: `in your "${e.calendarName || 'phone'}" calendar; its title says ${e.leisure}` })),
@@ -343,13 +347,17 @@ function read({ now = Date.now(), asked = false, haStates } = {}) {
     quiet,
     listening: {
       artists: artists.slice(0, 12).map((o) => _listenOut(o)), albums: albums.slice(0, 12).map((o) => _listenOut(o)),
-      counts: { artists: artists.length, albums: albums.length },
+      tracks: tracks.slice(0, 20).map((o) => _listenOut(o)),
+      counts: { artists: artists.length, albums: albums.length, tracks: tracks.length },
+      // Songs began being kept 13 Oct 2026; older days hold artist/album only.
+      tracksSince: tracks.length ? tracks.reduce((m, o) => (o.firstSeen < m ? o.firstSeen : m), tracks[0].firstSeen) : null,
       since: observations.length ? observations.reduce((m, o) => (o.firstSeen < m ? o.firstSeen : m), observations[0].firstSeen) : null,
     },
     household,
     preferences,
     profile: { known: !!profile.ok, interests: profile.ok ? M.profileInterests(profile.profile) : [], why: profile.ok ? null : profile.why },
     suggestions: sugg,
+    discovery,
     sources,
     gaps,
     rule: 'Playback is evidence, not preference. Only what you said, or what a source can actually identify, is shown; listening on its own never becomes "you love it", shared screens are never your taste, and nothing here interrupts you.',
@@ -364,7 +372,7 @@ function _listenOut(o) {
 /** One item or aggregate with only its relevant fields and why NEURO believes its state. */
 function detail(ref, { now = Date.now() } = {}) {
   const v = read({ now });
-  const all = [...v.continue, ...v.recentlyEnjoyed, ...v.hobbies, ...v.saved, ...v.quiet, ...v.listening.artists, ...v.listening.albums, ...v.household];
+  const all = [...v.continue, ...v.recentlyEnjoyed, ...v.hobbies, ...v.saved, ...v.quiet, ...v.listening.artists, ...v.listening.albums, ...v.listening.tracks, ...v.household];
   const hit = all.find((x) => x.ref === ref);
   if (hit) return { ok: true, item: hit };
   const it = rowToItem(_db().get('SELECT * FROM leisure_items WHERE item_id = ?', [ref]));
@@ -415,6 +423,8 @@ function chatView({ now = Date.now() } = {}) {
     listeningInterest: v.listening.artists.filter((a) => a.affinity === 'interest' || a.affinity === 'strong_interest').map((a) => ({ title: a.title, affinity: a.affinity, why: a.why })),
     statedInProfile: v.profile.interests.map((i) => i.text),
     suggestionsFromHeldItems: v.suggestions,
+    // New artists Deezer relates to the ones he plays — each says which seeds.
+    youMightLike: (v.discovery.items || []).map((d) => ({ artist: d.name, why: d.why, songToTry: d.track ? d.track.title : null })),
     notAvailable: v.sources.filter((s) => s.state === 'unavailable').map((s) => s.label),
     rules: [
       'Explain every suggestion: which liked item, listening or profile line it rests on, and how confident it is.',

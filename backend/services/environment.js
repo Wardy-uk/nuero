@@ -258,6 +258,7 @@ function matchWorkouts(workouts, readings, { includeSeries = false } = {}) {
     const win = workoutWindow(w);
     const base = {
       id: w.source_uuid || String(w.id),
+      workoutId: w.id,
       activityType: w.activity_type,
       startedAt: w.started_at,
       endedAt: w.ended_at,
@@ -282,6 +283,37 @@ function matchWorkouts(workouts, readings, { includeSeries = false } = {}) {
       })) : undefined,
     };
   });
+}
+
+/**
+ * A walk's logger conditions as a surface shows them. PURE.
+ *
+ * ⚠ Numbers only when the logger was CARRIED — the rule above: an `unknown`
+ * verdict is not published, because a shelf's climate is not the weather the
+ * walk was done in. Anything else says why there is nothing to show.
+ */
+function walkConditions(h) {
+  if (!h) return null;
+  if (h.carried === 'likely' && h.conditions) {
+    const c = h.conditions;
+    return {
+      carried: true, readings: c.readings,
+      tempMinC: c.tempMinC, tempMaxC: c.tempMaxC, tempMeanC: c.tempMeanC,
+      humidityMeanPct: c.humidityMeanPct, dewPointMeanC: c.dewPointMeanC,
+      baroAscentM: c.baroAscentM, why: h.carriedWhy,
+    };
+  }
+  return { carried: false, state: h.carried || 'unknown', why: h.why || h.carriedWhy || null };
+}
+
+/** One workout's logger conditions, read on demand (a finished walk's page). */
+function conditionsForWorkout(workoutId) {
+  const db = require('../db/database');
+  const w = db.get('SELECT * FROM health_workouts WHERE id = ?', [workoutId]);
+  if (!w) return null;
+  const win = workoutWindow(w);
+  const readings = win ? readingsBetween(win.start - BASELINE_WINDOW_S, win.end, 5000) : [];
+  return walkConditions(matchWorkouts([w], readings)[0]);
 }
 
 // ── Storage and reads ────────────────────────────────────────────────────────
@@ -491,6 +523,8 @@ module.exports = {
   ROLES, HERE_FRESH_S, LIVE_WINDOW_S, setRole, roleOf, storePressure, here,
   MAX_READINGS_PER_REQUEST,
   HIKE_TYPES,
+  walkConditions,
+  conditionsForWorkout,
   validateReading,
   validateBatch,
   dewPoint,

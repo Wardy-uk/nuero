@@ -309,6 +309,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/leisure/items', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/leisure/items/:itemId', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/leisure/correct', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/leisure/discovery/refresh', 'internal.state', { machine: 'refuse' }),
   // Build 31: who someone is to Nick — relationship, sphere, household, a
   // merge, "not this person", a new People note — is his word, written into
   // his People notes. Machines read People; they never write it.

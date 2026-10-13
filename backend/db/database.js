@@ -148,6 +148,23 @@ async function init() {
   const schema = fs.readFileSync(schemaPath, 'utf-8');
   db.exec(schema);
 
+  // Migration (13 Oct 2026): leisure_observations gains the `music_track` kind
+  // (Nick: songs, not just artist/album). SQLite cannot widen a CHECK, so the
+  // table is rebuilt from schema.sql's own definition and every row copied.
+  try {
+    const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='leisure_observations'").get();
+    if (row && !row.sql.includes("'music_track'")) {
+      const def = schema.match(/CREATE TABLE IF NOT EXISTS leisure_observations \([\s\S]*?\n\);/)[0];
+      db.transaction(() => {
+        db.exec('ALTER TABLE leisure_observations RENAME TO leisure_observations_b30');
+        db.exec(def);
+        db.exec('INSERT INTO leisure_observations SELECT * FROM leisure_observations_b30');
+        db.exec('DROP TABLE leisure_observations_b30');
+      })();
+      console.log('[DB] leisure_observations rebuilt to accept music_track');
+    }
+  } catch (e) { console.warn('[DB] leisure_observations rebuild failed:', e.message); }
+
   // Migration: vault_embeddings multi-chunk support
   // If the old table has UNIQUE on relative_path alone, recreate with (relative_path, chunk_index)
   try {
@@ -598,6 +615,19 @@ async function init() {
   // governed calendar actions. Not swallowed: its indexes are the database
   // half of "one live invite per meeting".
   require('./migrate-build11').migrate(db);
+
+  // goals.measure_json (13 Oct 2026): the one thing a goal can be MEASURED by,
+  // as Nick chose it (services/goal-measures.js). NULL = not measured — the
+  // goal is still a goal; NEURO just has no number for it.
+  try {
+    const goalCols = db.prepare('PRAGMA table_info(goals)').all().map((r) => r.name);
+    if (goalCols.length && !goalCols.includes('measure_json')) {
+      db.exec('ALTER TABLE goals ADD COLUMN measure_json TEXT');
+      console.log('[DB] goals.measure_json added');
+    }
+  } catch (e) {
+    console.error('[DB] goals.measure_json migration failed:', e.message);
+  }
   // Build 31 — declared people fields (sphere, relationship detail, importance,
   // likes, merged-into). ADD COLUMN only; nothing is inferred into them.
   require('./migrate-build31').migrate(db);

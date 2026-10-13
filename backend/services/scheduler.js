@@ -472,6 +472,24 @@ function start() {
     } catch (e) { console.error('[Scheduler] Nightly sweep failed:', e.message); }
   });
 
+  // Monday 8:20am — capability suggestions: "I could do X, but I need Y". One
+  // cloud call a week. Pushes ONCE, and only when something new passed the
+  // usefulness test — a weekly "nothing new" is noise.
+  scheduleWeekly('capability-suggestions', '20 8 * * 1', 1, 8, 20, async () => {
+    try {
+      const r = await require('./capability-gaps').refresh();
+      if (r.ok && r.added > 0) {
+        require('./webpush').sendToAll(
+          'SAiM — Things I could do for you',
+          `${r.added} new idea${r.added === 1 ? '' : 's'} for what I could do, and what I'd need for it.`,
+          { type: 'capability_suggestions', url: '/?view=setup' }
+        ).catch(() => {});
+      } else if (!r.ok) {
+        console.warn(`[Scheduler] Capability suggestions: ${r.why}`);
+      }
+    } catch (e) { console.error('[Scheduler] Capability suggestions failed:', e.message); }
+  });
+
   // Monday 8:10am — generate a knowledge reflection brief for the week ahead
   scheduleWeekly('knowledge-reflection', '10 8 * * 1', 1, 8, 10, () => {
     try {
@@ -1585,7 +1603,10 @@ function registerDurableJobs() {
       // does today), aggregate pruning, and source changes; Activity on change only.
       let leisure = null;
       try { leisure = await require('./leisure').refresh(); } catch (e) { leisure = { ok: false, error: e.message }; }
-      return { ...radar, nags, home, admin, outdoor, leisure };
+      // "You might like": Deezer's related artists, at most every 12 h (sooner if the seeds changed).
+      let discovery = null;
+      try { discovery = await require('./leisure-discovery').refresh(); } catch (e) { discovery = { ok: false, error: e.message }; }
+      return { ...radar, nags, home, admin, outdoor, leisure, discovery };
     },
   });
 

@@ -1012,6 +1012,8 @@ function _shapeGoalRow(r) {
     importance: r.importance ? domainsLib.normaliseImportance(r.importance) : null,
     startDate: r.start_date || null, reviewDate: r.review_date || null, lastReviewedAt: r.last_reviewed_at || null,
     links: _goalLinks(r.goal_id),
+    // What Nick chose to measure it by (goal-measures). null = not measured.
+    measure: parseJson(r.measure_json, null) || null,
     // A goal is only ever Nick's statement. Nothing in NEURO writes this table
     // except the route he calls (and its tests).
     provenance: { kind: 'fact', declaredBy: 'nick', via: r.provenance || 'neuro' },
@@ -1036,7 +1038,7 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
  * `links`, when given, REPLACES the goal's explicit links. `reviewed: true`
  * stamps lastReviewedAt. Publishes the goal to the event spine afterwards.
  */
-function saveGoal({ id = null, title, domains, status, note, description, importance, startDate, reviewDate, links, reviewed } = {}, { now = Date.now() } = {}) {
+function saveGoal({ id = null, title, domains, status, note, description, importance, startDate, reviewDate, links, reviewed, measure } = {}, { now = Date.now() } = {}) {
   const db = _db();
   const iso = new Date(now).toISOString();
   const st = status === undefined ? undefined : (GOAL_STATUS_ALIASES[status] || status);
@@ -1065,6 +1067,13 @@ function saveGoal({ id = null, title, domains, status, note, description, import
     if (bad.length) return { ok: false, error: 'a link must name a world-model id (task:…, commitment:…, person:…, companion:…, meeting:…)' };
   }
   const desc = description !== undefined ? description : note;
+  // OMITTED leaves the measure, null clears it, an invalid one is REFUSED.
+  let measureJson;
+  if (measure !== undefined) {
+    const v = require('./goal-measures').validateMeasure(measure);
+    if (!v.ok) return { ok: false, error: v.error };
+    measureJson = v.measure ? JSON.stringify(v.measure) : null;
+  }
 
   let gid = id;
   const write = () => db.batchSaves(() => {
@@ -1073,9 +1082,9 @@ function saveGoal({ id = null, title, domains, status, note, description, import
       if (!t) throw Object.assign(new Error('title is required'), { status: 400 });
       gid = `goal:${require('crypto').randomUUID()}`;
       db.run(`INSERT INTO goals (goal_id, title, domains_json, status, note, description, importance, start_date, review_date,
-                last_reviewed_at, provenance, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'neuro', ?, ?)`,
+                last_reviewed_at, provenance, created_at, updated_at, measure_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'neuro', ?, ?, ?)`,
       [gid, t.slice(0, 300), domainsJson || null, st || 'active', null, desc ? String(desc).slice(0, 2000) : null,
-        imp || null, startDate || null, reviewDate || null, reviewed ? iso : null, iso, iso]);
+        imp || null, startDate || null, reviewDate || null, reviewed ? iso : null, iso, iso, measureJson || null]);
     } else {
       const held = db.get('SELECT * FROM goals WHERE goal_id = ?', [gid]);
       if (!held) throw Object.assign(new Error('no such goal'), { status: 404 });
@@ -1090,6 +1099,7 @@ function saveGoal({ id = null, title, domains, status, note, description, import
         reviewDate !== undefined ? reviewDate : held.review_date,
         reviewed ? iso : held.last_reviewed_at,
         iso, gid]);
+      if (measureJson !== undefined) db.run('UPDATE goals SET measure_json = ? WHERE goal_id = ?', [measureJson, gid]);
     }
     if (links !== undefined) {
       db.run('DELETE FROM goal_links WHERE goal_id = ?', [gid]);

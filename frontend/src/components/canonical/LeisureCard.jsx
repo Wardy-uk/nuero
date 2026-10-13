@@ -59,21 +59,31 @@ function Listening({ rows, act, busy }) {
   if (!rows.length) return <p className="cn-muted cn-small">Nothing heard on the phone's Music app since NEURO started keeping count.</p>;
   return (
     <ul className="cn-list">
-      {rows.map((o) => (
+      {rows.map((o) => {
+        // Nick's own word on it — shown once, as the chip; the `why` repeats it.
+        const said = o.affinity === 'strong_interest' || o.affinity === 'disliked';
+        return (
         <li key={o.ref} data-testid="leisure-listening">
           <strong>{o.title}</strong>{o.creator && <span className="cn-muted"> — {o.creator}</span>}
           <span className="cn-chip">{AFF[o.affinity] || o.affinity}</span>
-          <div className="cn-muted cn-small">{o.why}</div>
+          {!said && <div className="cn-muted cn-small">{o.why}</div>}
           {act && (
             <div className="cn-row-actions">
-              <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'liked' })}>I like this</Btn>
-              <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'not-for-me' })}>Not for me</Btn>
+              {/* Once you have said, the word you said becomes the way back —
+                  not a third copy of "you like this". */}
+              {said
+                ? <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'clear-preference' })} title="Forget what you said about this">Undo</Btn>
+                : <>
+                    <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'liked' })}>I like this</Btn>
+                    <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'not-for-me' })}>Not for me</Btn>
+                  </>}
               <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'not-mine' })} title="Someone else was playing it">Not mine</Btn>
               <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'remove-basis' })} title="Keep it, but never base a suggestion on it">Don’t use for suggestions</Btn>
             </div>
           )}
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }
@@ -121,10 +131,66 @@ function AddForm({ act, busy }) {
   );
 }
 
+/**
+ * "You might like" — new artists Deezer relates to the ones Nick plays. Each
+ * says which of his it came from, offers one song (with Deezer's 30 s
+ * preview), and two answers: save it, or not for me (which also stops it
+ * being suggested again). The server never re-ranks here; neither does this.
+ */
+function Discovery({ d, act, busy }) {
+  if (!d) return null;
+  const save = (x) => act && act('/api/leisure/items', { kind: 'artist', title: x.name, state: 'saved', notes: x.why || null });
+  const nope = (x) => act && act('/api/leisure/items', { kind: 'artist', title: x.name, preference: 'not-for-me' });
+  const again = () => act && act('/api/leisure/discovery/refresh', {});
+  const meta = d.known && d.asOf ? `from ${d.seeds.length} artist${d.seeds.length === 1 ? '' : 's'} you play` : '';
+  return (
+    <>
+      <h4>You might like <span className="cn-muted cn-small">{meta}</span></h4>
+      {!d.known && <p className="cn-muted cn-small">{d.why}</p>}
+      {d.known && !d.seeds.length && (
+        <p className="cn-muted cn-small">Nothing to go on yet. Say you like a song or artist below, or play one on a few days across two weeks.</p>
+      )}
+      {d.known && d.seeds.length > 0 && !d.items.length && !d.lastError && (
+        <p className="cn-muted cn-small">No new artists right now — everything Deezer relates to yours you have already heard or answered.</p>
+      )}
+      {d.lastError && <p className="cn-error cn-small">Couldn’t ask Deezer last time ({d.lastError}){d.items.length ? ' — this is the last list it gave.' : '.'}</p>}
+      {d.items.length > 0 && (
+        <ul className="cn-list">
+          {d.items.map((x) => (
+            <li key={x.name} data-testid="leisure-discovery">
+              <strong>{x.link ? <a href={x.link} target="_blank" rel="noreferrer">{x.name}</a> : x.name}</strong>
+              {x.why && <span className="cn-muted cn-small"> — {x.why}</span>}
+              {x.track && (
+                <div className="cn-small">
+                  Try {x.track.link ? <a href={x.track.link} target="_blank" rel="noreferrer">“{x.track.title}”</a> : `“${x.track.title}”`}
+                  {x.track.preview && <audio controls preload="none" src={x.track.preview} style={{ height: 28, verticalAlign: 'middle', marginLeft: 8 }} />}
+                </div>
+              )}
+              {act && (
+                <div className="cn-row-actions">
+                  <Btn busy={busy} onClick={() => save(x)} title="Keep it in Saved for later">Save for later</Btn>
+                  <Btn busy={busy} onClick={() => nope(x)} title="Never suggest this artist again">Not for me</Btn>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {d.known && (
+        <p className="cn-muted cn-small">
+          From {d.source}{d.ageHours != null ? `, ${d.ageHours < 1 ? 'just now' : `${d.ageHours} h ago`}` : ''}.
+          {d.unmatched && d.unmatched.length > 0 && ` Deezer didn’t recognise ${d.unmatched.join(', ')}.`}
+          {act && <> <Btn busy={busy} onClick={again}>Ask again</Btn></>}
+        </p>
+      )}
+    </>
+  );
+}
+
 export function LeisureView({ data, act = null, busy = false, msg = null }) {
   if (!data) return null;
-  const { now, comingUp = [], continue: cont = [], recentlyEnjoyed = [], hobbies = [], saved = [], quiet = [], listening = { artists: [], albums: [] },
-    household = [], preferences = { liked: [], disliked: [] }, profile = { interests: [] }, suggestions = [], sources = [] } = data;
+  const { now, comingUp = [], continue: cont = [], recentlyEnjoyed = [], hobbies = [], saved = [], quiet = [], listening = { artists: [], albums: [], tracks: [] },
+    household = [], preferences = { liked: [], disliked: [] }, profile = { interests: [] }, suggestions = [], discovery = null, sources = [] } = data;
   return (
     <section className="cn-section" data-testid="leisure-card">
       <h3>Leisure</h3>
@@ -156,6 +222,8 @@ export function LeisureView({ data, act = null, busy = false, msg = null }) {
         </>
       )}
 
+      <Discovery d={discovery} act={act} busy={busy} />
+
       {recentlyEnjoyed.length > 0 && (
         <>
           <h4>Recently enjoyed</h4>
@@ -174,7 +242,9 @@ export function LeisureView({ data, act = null, busy = false, msg = null }) {
       )}
 
       <Fold title="What the phone has heard" meta={listening.since ? `since ${listening.since}` : 'nothing yet'}>
-        <p className="cn-muted cn-small">Days each artist or album was playing on the iPhone Music app. One play is never interest; listening alone never becomes "you like it".</p>
+        <p className="cn-muted cn-small">Days each song, artist or album was playing on the iPhone Music app. One play is never interest; listening alone never becomes "you like it".</p>
+        <h5>Songs{listening.tracksSince && <span className="cn-muted cn-small"> · kept since {listening.tracksSince}</span>}</h5>
+        <Listening rows={listening.tracks || []} act={act} busy={busy} />
         <h5>Artists</h5>
         <Listening rows={listening.artists} act={act} busy={busy} />
         <h5>Albums</h5>

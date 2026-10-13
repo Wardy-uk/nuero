@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, Fold, HowItWorks } from './canonicalUi';
+import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions } from './canonicalUi';
 import HikingLoopCard from './HikingLoopCard';
 
 /**
@@ -40,6 +40,7 @@ function ActivityRow({ a, routes, companions, act, busy }) {
       {facts(a) && <span className="cn-muted"> · {facts(a)}</span>}
       {a.route && <span className="cn-chip" title="you linked it">route: {a.route.name || a.route.routeId}</span>}
       <div className="cn-muted cn-small">{a.kind === 'hike' ? a.evidence.join(' · ') : a.hike ? `Not a hike — ${a.hike.why}.` : a.evidence.join(' · ')}</div>
+      <LoggerConditions c={a.conditions} quietIfUnknown={a.kind !== 'hike'} />
       {act && (
         <div className="cn-row-actions">
           {ember && (hasEmber

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../api';
-import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, IMPORTANCE_IDS, IMPORTANCE_LABELS, ImportanceChip, when, Fold } from './canonicalUi';
+import { useCanonical, postCanonical, DOMAIN_IDS, DOMAIN_LABELS, when, Fold } from './canonicalUi';
+import GoalsCard from './GoalsCard';
 import OutdoorCard from './OutdoorCard';
 import LeisureCard from './LeisureCard';
 import PeopleCard from './PeopleCard';
@@ -37,130 +38,112 @@ const fetchHouseholdPhoto = async (id, version) => {
   return r.ok ? URL.createObjectURL(await r.blob()) : null;
 };
 
-export default function LifePanel({ onNavigate = null } = {}) {
+// One page shell for every Life page. `withLife` reads /api/canonical/life —
+// only the pages that render Goals, Companions or the setup cards need it, so
+// the area pages fire no request beyond their own cards'.
+function useLifeData() {
   const { data, error, loading, reload } = useCanonical('/api/canonical/life');
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState(null);
-
   const act = async (fn) => {
     setBusy(true); setSaveError(null);
     try { await fn(); await reload(); } catch (err) { setSaveError(err.message); }
     setBusy(false);
   };
+  return { data, error, loading, reload, busy, saveError, act };
+}
 
+function LifePage({ title, sub, life, children }) {
   return (
     <div className="cn-panel">
       <div className="cn-head">
-        <h2 className="cn-title">Life</h2>
-        <button type="button" className="cn-btn" onClick={reload}>Refresh</button>
+        <h2 className="cn-title">{title}</h2>
+        {life && <button type="button" className="cn-btn" onClick={life.reload}>Refresh</button>}
       </div>
-      <p className="cn-sub">Work is one part of this. What NEURO can see across the rest, and what you have said you want.</p>
-      {loading && !data && <div className="cn-muted">Reading…</div>}
-      {error && <div className="cn-error">Couldn’t read this — {error}</div>}
-      {saveError && <div className="cn-error">Not saved — {saveError}</div>}
-
-      <div className="cn-section"><HouseholdCard fetchJson={fetchHousehold} fetchPhoto={fetchHouseholdPhoto} /></div>
-      <HomeCard />
-      {/* Build 31: who people are to Nick — only as he has said. */}
-      <PeopleCard />
-      <FutureRadarCard />
-      <Goals data={data} busy={busy} act={act} />
-      {/* Build 29: Outdoor carries the Hike weekly loop (its confirm / not-a-hike controls). */}
-      <OutdoorCard />
-      {/* Build 30: Leisure — what Nick is into; no feed, no history wall. */}
-      <LeisureCard />
-      <PersonalAdminCard />
-      <TransportCard />
-      <FinanceCard />
-      <ProjectsCard />
-      <ReminderListsCard />
-      <Classifications data={data} busy={busy} act={act} />
-      <Companions data={data} busy={busy} act={act} />
-      <Coverage data={data} onNavigate={onNavigate} />
+      {sub && <p className="cn-sub">{sub}</p>}
+      {life && life.loading && !life.data && <div className="cn-muted">Reading…</div>}
+      {life && life.error && <div className="cn-error">Couldn’t read this — {life.error}</div>}
+      {life && life.saveError && <div className="cn-error">Not saved — {life.saveError}</div>}
+      {children}
     </div>
   );
 }
 
-const STATUS_WORDS = { active: 'Active', paused: 'Paused', achieved: 'Achieved', dropped: 'Dropped' };
-
-function Goals({ data, busy, act }) {
-  const [title, setTitle] = useState('');
-  const [domain, setDomain] = useState('');
-  const [importance, setImportance] = useState('');
-  const [reviewDate, setReviewDate] = useState('');
-  const goals = data ? data.goals || [] : [];
-  const live = goals.filter((g) => g.status === 'active' || g.status === 'paused');
-  const done = goals.filter((g) => g.status === 'achieved' || g.status === 'dropped');
-
-  const add = (e) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    act(async () => {
-      await postCanonical('/api/canonical/goals', {
-        title, domains: domain ? [domain] : null, importance: importance || null, reviewDate: reviewDate || null,
-      });
-      setTitle(''); setDomain(''); setImportance(''); setReviewDate('');
-    });
-  };
-  const update = (g, body) => act(() => postCanonical(`/api/canonical/goals/${encodeURIComponent(g.id)}`, body));
-
+/**
+ * The Life overhaul (13 Oct 2026). Life was seventeen cards in one scroll —
+ * four kinds of thing at once. It is now an OVERVIEW (who is in, what is
+ * coming, what you intend) and each area of life has its own page. The
+ * plumbing (reminder lists, calendar classifications, coverage) lives in
+ * SYSTEM → Life sources. Every card is unchanged; only where it mounts moved.
+ */
+export default function LifePanel() {
+  const life = useLifeData();
   return (
-    <section className="cn-section">
-      <h3 className="cn-h3">Goals and intentions</h3>
-      {data && !goals.length && <div className="cn-empty">None stored. NEURO only shows goals you write down here — it never makes them up, and a goal never becomes a reminder by itself.</div>}
-      <ul className="cn-list">
-        {live.map((g) => (
-          <li key={g.id} className={`cn-row cn-goal${g.status === 'paused' ? ' cn-goal--paused' : ''}`}>
-            <span className="cn-rowtitle">{g.title}</span>
-            {g.domains.map((d) => <span key={d.domain} className="cn-chip cn-chip--firm">{DOMAIN_LABELS[d.domain] || d.domain}</span>)}
-            <ImportanceChip value={g.importance} basis="declared" />
-            {g.status === 'paused' && <span className="cn-chip cn-chip--soft">paused — lends nothing to anything</span>}
-            {g.reviewDate && <span className="cn-muted">review {g.reviewDate}</span>}
-            {g.lastReviewedAt && <span className="cn-muted">reviewed {when(g.lastReviewedAt)}</span>}
-            {g.links && g.links.length > 0 && <span className="cn-muted">{g.links.length} linked</span>}
-            <span className="cn-goal-actions">
-              <select value={g.importance || ''} disabled={busy} aria-label="How much it matters to you"
-                onChange={(e) => update(g, { importance: e.target.value || null })}>
-                <option value="">importance not said</option>
-                {IMPORTANCE_IDS.filter((i) => i !== 'work-critical').map((i) => <option key={i} value={i}>{IMPORTANCE_LABELS[i]}</option>)}
-              </select>
-              <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { reviewed: true })}>Reviewed</button>
-              {g.status === 'active'
-                ? <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'paused' })}>Pause</button>
-                : <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'active' })}>Resume</button>}
-              <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'achieved' })}>Achieved</button>
-              <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'dropped' })}>Drop</button>
-            </span>
-            {g.description && <div className="cn-muted cn-goal-desc">{g.description}</div>}
-          </li>
-        ))}
-      </ul>
-      <PersonalDatesCard />
-      <form className="cn-goalform" onSubmit={add}>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. hike once a fortnight" maxLength={300} aria-label="Goal" />
-        <select value={domain} onChange={(e) => setDomain(e.target.value)} aria-label="Life domain">
-          <option value="">no domain</option>
-          {DOMAIN_IDS.map((d) => <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>)}
-        </select>
-        <select value={importance} onChange={(e) => setImportance(e.target.value)} aria-label="Importance">
-          <option value="">importance not said</option>
-          {IMPORTANCE_IDS.filter((i) => i !== 'work-critical').map((i) => <option key={i} value={i}>{IMPORTANCE_LABELS[i]}</option>)}
-        </select>
-        <input type="date" value={reviewDate} onChange={(e) => setReviewDate(e.target.value)} aria-label="Review date" title="Review date (optional)" />
-        <button type="submit" className="cn-btn" disabled={busy || !title.trim()}>Add</button>
-      </form>
-      {done.length > 0 && (
-        <details className="cn-details">
-          <summary>{done.length} achieved or dropped</summary>
-          <ul className="cn-list">
-            {done.map((g) => (
-              <li key={g.id} className="cn-row"><span className="cn-rowtitle">{g.title}</span> <span className="cn-muted">{STATUS_WORDS[g.status]}</span>
-                <button type="button" className="cn-btn" disabled={busy} onClick={() => update(g, { status: 'active' })}>Make active again</button></li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </section>
+    <LifePage title="Life" life={life} sub="Who’s in, what’s coming, and what you’ve said you want. Each part of life has its own page in the menu.">
+      <div className="cn-section"><HouseholdCard fetchJson={fetchHousehold} fetchPhoto={fetchHouseholdPhoto} /></div>
+      <FutureRadarCard />
+      <GoalsCard data={life.data} busy={life.busy} act={life.act} />
+    </LifePage>
+  );
+}
+
+export function LifeHomePage() {
+  return (
+    <LifePage title="Home" sub="The house — rooms, heating, devices and what needs doing.">
+      <HomeCard />
+    </LifePage>
+  );
+}
+
+export function LifeFamilyPage() {
+  const life = useLifeData();
+  return (
+    <LifePage title="Family & friends" life={life} sub="Who people are to you — only as you have said — their dates, and Ember.">
+      {/* Build 31: who people are to Nick — only as he has said. */}
+      <PeopleCard />
+      <section className="cn-section"><PersonalDatesCard /></section>
+      <Companions data={life.data} busy={life.busy} act={life.act} />
+    </LifePage>
+  );
+}
+
+export function LifeOutdoorPage() {
+  return (
+    <LifePage title="Outdoor" sub="Whether you really got outside, and the walks you plan.">
+      {/* Build 29: Outdoor carries the Hike weekly loop (its confirm / not-a-hike controls). */}
+      <OutdoorCard />
+    </LifePage>
+  );
+}
+
+export function LifeMoneyPage() {
+  return (
+    <LifePage title="Money & car" sub="Personal admin, money (Tally works it out), and the car.">
+      <PersonalAdminCard />
+      <FinanceCard />
+      <TransportCard />
+    </LifePage>
+  );
+}
+
+export function LifeLeisurePage() {
+  return (
+    <LifePage title="Leisure & projects" sub="What you’re into, and the things you’re building.">
+      {/* Build 30: Leisure — what Nick is into; no feed, no history wall. */}
+      <LeisureCard />
+      <ProjectsCard />
+    </LifePage>
+  );
+}
+
+export function LifeSourcesPage({ onNavigate = null } = {}) {
+  const life = useLifeData();
+  return (
+    <LifePage title="Life sources" life={life} sub="Which reminder lists NEURO reads, what each calendar is for, and what it can see by part of life. Set once; rarely visited.">
+      <ReminderListsCard />
+      <Classifications data={life.data} busy={life.busy} act={life.act} />
+      <Coverage data={life.data} onNavigate={onNavigate} />
+    </LifePage>
   );
 }
 

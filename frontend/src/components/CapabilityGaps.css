@@ -1,0 +1,50 @@
+.capgap { margin: 0 0 1.75rem; }
+.capgap button { font: inherit; cursor: pointer; }
+.capgap__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.75rem; }
+.capgap__h { margin: 0 0 0.25rem; font-size: 1.15rem; }
+.capgap__muted { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+.capgap__warn { color: var(--warning); font-size: 0.9rem; margin: 0.4rem 0; }
+.capgap__note { color: var(--text-primary); font-size: 0.9rem; margin: 0.4rem 0; }
+.capgap__foot { margin-top: 0.6rem; font-size: 0.82rem; }
+
+.capgap__again {
+  background: var(--accent); color: var(--bg-primary); border: 0; border-radius: var(--radius-sm);
+  padding: 0.5rem 0.9rem; min-height: 38px; font-weight: 600; white-space: nowrap;
+}
+.capgap__quiet {
+  background: none; border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: var(--radius-sm); padding: 0.45rem 0.8rem; min-height: 38px;
+}
+.capgap__link { background: none; border: 0; color: var(--accent); padding: 0 0.2rem; }
+
+.capgap__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+.capgap__card {
+  background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg); padding: 0.95rem 1.1rem;
+}
+.capgap__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin-bottom: 0.45rem; }
+.capgap__title { margin: 0; font-size: 1.05rem; flex: 1 1 16rem; }
+.capgap__kind, .capgap__effort, .capgap__status {
+  font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; border-radius: 999px;
+  padding: 0.1rem 0.55rem; border: 1px solid var(--border); color: var(--text-secondary);
+}
+.capgap__kind { color: var(--text-primary); border-color: var(--accent); }
+.capgap__line { margin: 0 0 0.3rem; line-height: 1.5; }
+.capgap__anchors { list-style: none; margin: 0.5rem 0 0.6rem; padding: 0.5rem 0.7rem; background: var(--bg-tertiary); border-radius: var(--radius-sm); font-size: 0.86rem; color: var(--text-secondary); }
+.capgap__anchors li + li { margin-top: 0.25rem; }
+.capgap__anchorkind { color: var(--text-primary); font-weight: 600; margin-right: 0.3rem; }
+.capgap__actions, .capgap__reject { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.capgap__actions > button:first-child, .capgap__reject > button:first-of-type {
+  background: var(--accent); color: var(--bg-primary); border: 0; border-radius: var(--radius-sm);
+  padding: 0.45rem 0.85rem; min-height: 38px; font-weight: 600;
+}
+.capgap__reject input {
+  flex: 1 1 14rem; min-height: 38px; padding: 0.4rem 0.6rem; background: var(--bg-secondary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font: inherit;
+}
+.capgap__decided { margin-top: 0.75rem; font-size: 0.88rem; color: var(--text-secondary); }
+.capgap__decided ul { margin: 0.4rem 0 0; padding-left: 1.1rem; line-height: 1.6; }
+
+@media (max-width: 600px) {
+  .capgap__top { flex-direction: column; }
+}

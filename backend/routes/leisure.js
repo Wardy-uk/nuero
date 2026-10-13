@@ -36,6 +36,11 @@ router.post('/items/:itemId', (req, res) => {
   try { send(res, leisure.updateItem(req.params.itemId, { kind, title, creator, state, preference, progress, eventDate, eventKind, projectId, notes })); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// POST /api/leisure/discovery/refresh — ask Deezer again now for "you might like" artists (normally every 12 h).
+router.post('/discovery/refresh', async (req, res) => {
+  try { const r = await require('../services/leisure-discovery').refresh({ force: true }); res.status(r.ok ? 200 : 502).json(r); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // POST /api/leisure/correct — Nick's correction on an item or listening record: liked, disliked, completed, dropped, not mine, this was me.
 router.post('/correct', (req, res) => {
   const { ref, action } = req.body || {};

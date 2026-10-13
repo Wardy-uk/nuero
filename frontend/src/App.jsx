@@ -73,8 +73,18 @@ const SourcesPanel = lazy(() => import('./components/canonical/SourcesPanel'));
 const FindingsPanel = lazy(() => import('./components/canonical/FindingsPanel'));
 const ActivityPanel = lazy(() => import('./components/canonical/ActivityPanel'));
 const LifePanel = lazy(() => import('./components/canonical/LifePanel'));
+// The Life overhaul (13 Oct 2026): each part of life is its own page. Named
+// exports of one module — lazy() wants a default, so each is lifted.
+const lifePage = (name) => lazy(() => import('./components/canonical/LifePanel').then((m) => ({ default: m[name] })));
+const LifeHomePage = lifePage('LifeHomePage');
+const LifeFamilyPage = lifePage('LifeFamilyPage');
+const LifeOutdoorPage = lifePage('LifeOutdoorPage');
+const LifeMoneyPage = lifePage('LifeMoneyPage');
+const LifeLeisurePage = lifePage('LifeLeisurePage');
+const LifeSourcesPage = lifePage('LifeSourcesPage');
 
 import { canonicalView, VANTAGE_URL } from './viewIds';
+import ViewTabs from './components/ViewTabs';
 
 /** KPI Tracker moved to VANTAGE (Build 10L) — departmental, not personal. */
 function MovedToVantage() {
@@ -388,7 +398,13 @@ function AuthenticatedApp() {
       case 'sources': return <SourcesPanel onNavigate={handleNavigate} />;
       case 'findings': return <FindingsPanel />;
       case 'activity': return <ActivityPanel />;
-      case 'life': return <LifePanel onNavigate={handleNavigate} />;
+      case 'life': return <LifePanel />;
+      case 'home': return <LifeHomePage />;
+      case 'family': return <LifeFamilyPage />;
+      case 'outdoor': return <LifeOutdoorPage />;
+      case 'money': return <LifeMoneyPage />;
+      case 'leisure': return <LifeLeisurePage />;
+      case 'life-sources': return <LifeSourcesPage onNavigate={handleNavigate} />;
       case 'management-log': return <ManagementLogPanel onNavigate={handleNavigate} />;
       case 'journal': return <JournalPanel />;
       case 'standups': return <StandupsPanel />;
@@ -428,6 +444,10 @@ function AuthenticatedApp() {
                 is caught and named by the same mechanism that catches a panel
                 throwing — a lazy panel must not be able to take the shell down
                 any more than an eager one can. */}
+            {/* Views grouped under one sidebar entry switch by tab (Health,
+                Home, Outdoor). Outside Suspense, so the tabs stay put while a
+                lazy tab loads. */}
+            <ViewTabs active={activeView} onNavigate={handleNavigate} />
             <Suspense fallback={<div className="app-view-loading">Loading&hellip;</div>}>
               {renderView()}
             </Suspense>

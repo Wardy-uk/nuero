@@ -63,6 +63,7 @@ export const interactive = {
   post_leisure_items: 'What Nick is watching, reading, playing or into is his own statement. He adds it in NEURO → Life → Leisure.',
   post_leisure_items_by_itemId: 'Editing a leisure item is Nick\'s statement. He does it in NEURO → Life → Leisure.',
   post_leisure_correct: 'Liked, disliked, finished, dropped, not mine — every leisure correction is Nick\'s own word. He makes it in NEURO → Life → Leisure.',
+  post_leisure_discovery_refresh: 'Asking Deezer again for "you might like" artists is a Leisure write (it replaces the cached list). Nick presses it in NEURO → Leisure & projects.',
   // Build 31: who someone is to Nick is his statement, never an agent's guess.
   post_people: 'Creating a People note is Nick\'s statement about who exists in his life. He does it in NEURO → Life → People.',
   post_people_duplicates_decide: 'Whether two records are one person is Nick\'s call. He merges or keeps them separate in NEURO → Life → People.',

@@ -31,6 +31,24 @@ router.get('/native', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// GET /api/setup/capabilities — capability gaps / self-learning suggestions: "I could do X for you, but I need Y" — features to build, sensors to fit, setup steps, purchases or integrations, each anchored to something Nick cares about (a goal, a profile fact, a health finding, a question he asked, a time NEURO could not answer), with what it unlocks and what he would do differently. Keywords: what could NEURO do, what do you need, suggestions, capability gaps, self learning.
+router.get('/capabilities', (req, res) => {
+  try { res.json(require('../services/capability-gaps').list()); } catch (e) { fail(res, e); }
+});
+
+// POST /api/setup/capabilities/refresh — think again: gather everything NEURO knows about Nick, ask a cloud model for capability suggestions, keep only those that pass the usefulness test (real evidence, a personal anchor, what it unlocks, what would change). Costs one cloud AI call.
+router.post('/capabilities/refresh', async (req, res) => {
+  try { res.json(await require('../services/capability-gaps').refresh()); } catch (e) { fail(res, e); }
+});
+
+// POST /api/setup/capabilities/:id/decide — Nick's verdict on a capability suggestion: decision accept (a build goes into the Feature Tracker, anything else becomes a NEURO task) | reject (reason is remembered and taught back) | done | reopen.
+router.post('/capabilities/:id/decide', (req, res) => {
+  try {
+    const { decision, reason } = req.body || {};
+    res.json(require('../services/capability-gaps').decide(String(req.params.id).slice(0, 40), { decision, reason }));
+  } catch (e) { fail(res, e); }
+});
+
 // POST /api/setup/report — a device's own local set-up checks (setup.ps1 on Windows, the iOS Setup screen): platform (windows|ios|mac|watchos), app, host, checks[{id, ok, detail}].
 router.post('/report', (req, res) => {
   try {

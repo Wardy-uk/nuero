@@ -131,10 +131,29 @@ function buildCandidate(m, text) {
   };
 }
 
+/**
+ * Mail addressed to nobody but Nick (13 Oct 2026). A promise needs someone to
+ * be promised to, and everything NEURO mails him — the 08:00 daily briefing,
+ * the weekly-risk [TEST] copy — lands in his Sent Items addressed to himself.
+ * Read as his own words, the briefing's task list came back as "You said you
+ * would". A rule rather than another subject in AUTOMATED, so the next thing
+ * NEURO mails him is covered without anyone remembering to add it. No
+ * recipients at all is NOT self-only (cannot tell) and is still asked about.
+ */
+function selfOnly(m, own) {
+  const addrs = [...(m.to || []), ...(m.cc || [])].map((r) => String((r && r.email) || '').trim().toLowerCase());
+  return addrs.length > 0 && addrs.every((a) => a && own.has(a));
+}
+
+function ownAddresses() {
+  return new Set([String(require('./mail-identity').WORK_ADDRESS).toLowerCase()]);
+}
+
 /** Pure: which messages are worth asking about. */
-function eligible(messages, ledger) {
+function eligible(messages, ledger, own = ownAddresses()) {
   return (messages || []).filter((m) => m && m.id && !ledger[String(m.id)]
-    && String(m.text || '').trim().length >= 12 && !AUTOMATED.test(String(m.subject || '')));
+    && String(m.text || '').trim().length >= 12 && !AUTOMATED.test(String(m.subject || ''))
+    && !selfOnly(m, own));
 }
 
 async function scan({ now = Date.now(), limit = MAX_PER_RUN } = {}) {
@@ -190,4 +209,4 @@ async function scan({ now = Date.now(), limit = MAX_PER_RUN } = {}) {
   return result;
 }
 
-module.exports = { scan, eligible, buildPrompt, parseAnswer, buildCandidate, pruneLedger, AUTOMATED, CONFIDENCE, LEDGER_KEY };
+module.exports = { scan, eligible, selfOnly, buildPrompt, parseAnswer, buildCandidate, pruneLedger, AUTOMATED, CONFIDENCE, LEDGER_KEY };

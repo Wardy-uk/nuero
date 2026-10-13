@@ -168,3 +168,27 @@ export function Fold({ title, meta = null, open = false, children }) {
     </details>
   );
 }
+
+/**
+ * What the carried environment logger measured on a walk (server-shaped by
+ * environment.walkConditions). Numbers only when the logger was carried;
+ * otherwise one quiet line saying why there are none. `quietIfUnknown` hides
+ * that line, for lists where most walks never had the logger.
+ */
+export function LoggerConditions({ c, quietIfUnknown = false }) {
+  if (!c) return null;
+  if (!c.carried) {
+    if (quietIfUnknown && c.state !== 'not-carried') return null;
+    return <div className="cn-muted cn-small" data-testid="logger-conditions">Logger: no conditions — {c.why || 'it does not look carried'}.</div>;
+  }
+  const temp = c.tempMinC === c.tempMaxC ? `${c.tempMinC} °C` : `${c.tempMinC}–${c.tempMaxC} °C (mean ${c.tempMeanC})`;
+  const parts = [temp,
+    c.humidityMeanPct != null ? `humidity ${Math.round(c.humidityMeanPct)}%` : null,
+    c.dewPointMeanC != null ? `dew point ${c.dewPointMeanC} °C` : null,
+    c.baroAscentM != null ? `~${c.baroAscentM} m climb by pressure` : null].filter(Boolean);
+  return (
+    <div className="cn-small" data-testid="logger-conditions" title={`${c.readings} readings · carried: ${c.why}`}>
+      Logger: {parts.join(' · ')}
+    </div>
+  );
+}

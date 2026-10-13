@@ -1,0 +1,19 @@
+/* Goals: measure, progress and levers (13 Oct 2026). Layout rides on Canonical.css's .cn-goal. */
+.cn-goal-progress { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.cn-goal-measure { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.cn-goal-src { flex-basis: 100%; font-size: 0.85em; }
+.cn-goal-state { font-size: 0.8em; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.cn-goal-state--met, .cn-goal-state--on-track { border-color: var(--success); color: var(--success); }
+.cn-goal-state--behind, .cn-goal-state--moving-away { border-color: var(--danger); color: var(--danger); }
+.cn-goal-state--not-moving { border-color: var(--warning); color: var(--warning); }
+.cn-goal-state--unknown { border-style: dotted; color: var(--text-muted); }
+.cn-goal-levers > summary { cursor: pointer; color: var(--text-secondary, var(--text-muted)); }
+.cn-goal-levers ul { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cn-lever { border-left: 3px solid var(--border); padding: 4px 10px; }
+.cn-lever--act { border-left-color: var(--danger); }
+.cn-lever--watch { border-left-color: var(--warning); }
+.cn-lever--gap { border-left-color: var(--text-muted); border-left-style: dashed; }
+.cn-lever-title { font-weight: 600; }
+.cn-lever-action { margin-top: 2px; }
+.cn-measureform { flex-basis: 100%; }
+.cn-goal-add { display: flex; flex-direction: column; gap: 4px; }

@@ -759,7 +759,7 @@ function _mapData(trip, nowMs, { trimEnd = false } = {}) {
     route: _thin(route, MAX_ROUTE_PTS),
     trail: track ? _thin(track.points.map((p) => [r5(p[0]), r5(p[1])]), MAX_TRACK_DRAW) : _thin(nick.points.map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
     trailSource: track ? 'watch' : 'trackers',
-    track: track ? { points: track.pointCount, type: track.type, from: model.msToLocal(track.points[0][3] * 1000), to: model.msToLocal(track.points[track.points.length - 1][3] * 1000) } : null,
+    track: track ? { points: track.pointCount, type: track.type, workoutId: track.workoutId, from: model.msToLocal(track.points[0][3] * 1000), to: model.msToLocal(track.points[track.points.length - 1][3] * 1000) } : null,
     emberTrail: _thin(ember.points.map((c) => [r5(c.lat), r5(c.lon)]), MAX_TRAIL_PTS),
     driveTrimmed: nick.trimmed,
     positions: [...latest.values()].sort((a, b) => (a.role === b.role ? b.observedMs - a.observedMs : a.role === 'nick' ? -1 : 1)).map((c) => ({
@@ -843,8 +843,16 @@ function walkMap(tripId, { now = Date.now() } = {}) {
     lastFix: map.track ? map.track.to : nick.length ? model.msToLocal(nick[nick.length - 1].observedMs) : null,
     points: map.track ? map.track.points : nick.length, modes: map.track ? null : modes,
     party: trip.party, ember: trip.ember,
+    // The carried logger's reading of the walk, from the watch workout the
+    // track came from. Nick's own page only — householdView never carries it.
+    conditions: _conditions(map.track),
     ...map,
   };
+}
+
+function _conditions(track) {
+  if (!track || track.workoutId == null) return null;
+  try { return require('./environment').conditionsForWorkout(track.workoutId); } catch { return null; }
 }
 
 const TABLES = ['hike_trips', 'hike_breadcrumbs'];

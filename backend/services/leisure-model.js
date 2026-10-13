@@ -105,13 +105,20 @@ function isoWeek(day) {
 
 // ── observations (aggregates) ────────────────────────────────────────────────
 
-/** The aggregate keys a now-playing report touches. Track titles never key anything. */
-function musicKeys({ artist, album } = {}) {
+/**
+ * The aggregate keys a now-playing report touches: the artist, the album, and
+ * (since 13 Oct 2026, Nick's call — Build 30 kept titles out) the SONG. A song
+ * is keyed on artist + title, never the album: the same song on a single, the
+ * album and a compilation is one song.
+ */
+function musicKeys({ artist, album, title } = {}) {
   const a = norm(artist);
   if (!a) return [];
   const out = [{ key: `music:artist:${a}`, kind: 'artist', title: clip(artist, 200), creator: null }];
   const al = norm(album);
   if (al) out.push({ key: `music:album:${a}|${al}`, kind: 'album', title: clip(album, 200), creator: clip(artist, 200) });
+  const t = norm(title);
+  if (t) out.push({ key: `music:track:${a}|${t}`, kind: 'music_track', title: clip(title, 200), creator: clip(artist, 200) });
   return out;
 }
 
@@ -447,6 +454,9 @@ function correctionFits(kind, action) {
   if (action === 'next-episode' && !EPISODIC.has(kind)) return 'next-episode only applies to a TV series or podcast';
   if (kind === 'artist' && ['completed', 'paused', 'dropped', 'resume', 'save'].includes(action)) {
     return 'an artist is not something you finish or pause — say how you feel about them instead';
+  }
+  if (kind === 'music_track' && ['completed', 'paused', 'dropped', 'resume'].includes(action)) {
+    return 'a song is not something you finish or pause — say how you feel about it instead';
   }
   return null;
 }

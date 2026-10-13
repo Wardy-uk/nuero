@@ -200,6 +200,14 @@ function read({ now = Date.now(), weeks = 4 } = {}) {
     }
   }
   activities.sort((a, b) => (b.day + (b.startTime || '')).localeCompare(a.day + (a.startTime || '')));
+  // What the carried logger measured on each walk. A failed read is a named gap,
+  // never "no conditions": the logger may well have been in the pack.
+  try {
+    const env = require('./environment');
+    const days = Math.ceil((nowMs - Date.parse(`${first}T00:00:00Z`)) / 86400000) + 1;
+    const byWorkout = new Map(env.hikes({ days, now: new Date(nowMs) }).hikes.map((h) => [`workout:${h.workoutId}`, h]));
+    for (const a of activities) { const h = byWorkout.get(a.activityId); if (h) a.conditions = env.walkConditions(h); }
+  } catch (e) { gaps.push({ input: 'environment-logger', why: e.message }); }
   const byId = new Map(activities.map((a) => [a.activityId, a]));
 
   // Route plans, each with what Nick linked to it.

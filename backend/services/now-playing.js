@@ -39,7 +39,7 @@ function record(body = {}, { now = Date.now() } = {}) {
   if (held && Date.parse(held.at) > at) return { ok: true, stored: false, reason: 'an equal or newer report is already held' };
   db.setState(KEY, JSON.stringify(item));
   // Build 30: a PLAYING report adds its day to the artist/album aggregates.
-  // Never allowed to fail the report; the track title is not kept there.
+  // Never allowed to fail the report. Since 13 Oct 2026 the song is kept too.
   try { require('./leisure').observeNowPlaying(item, { now }); } catch (e) { console.warn('[Leisure] now-playing not folded:', e.message); }
   return { ok: true, stored: true, item };
 }

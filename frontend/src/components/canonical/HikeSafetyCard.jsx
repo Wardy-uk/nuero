@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCanonical, postCanonical, Fold, HowItWorks } from './canonicalUi';
+import { useCanonical, postCanonical, Fold, HowItWorks, LoggerConditions } from './canonicalUi';
 import './HikeSafetyCard.css';
 import WalkMap from '../WalkMap';
 
@@ -37,6 +37,7 @@ function PastWalk({ tripId }) {
           : data.points ? `${data.points} tracker fixes from ${String(data.firstFix).slice(11)} to ${String(data.lastFix).slice(11)} — the watch’s own track hasn’t reached NEURO` : 'No position reached NEURO on this walk'}
         {modes ? ` · ${modes}` : ''}{data.checkedInAt ? ` · checked in ${String(data.checkedInAt).slice(11)}` : ''}
       </div>
+      <LoggerConditions c={data.conditions} />
     </div>
   );
 }

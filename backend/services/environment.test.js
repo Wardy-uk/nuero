@@ -114,3 +114,33 @@ test('a climb the pressure agrees with is carried', () => {
 test('one reading is not enough to say', () => {
   assert.equal(env.carriedVerdict([rd(0, 10)], [], {}).carried, 'unknown');
 });
+
+// ── What a surface is shown (walkConditions) ────────────────────────────────
+
+test('a carried walk shows its numbers, with why it counts as carried', () => {
+  const w = { id: 7, activity_type: 'Hiking', started_at: '2026-10-11 09:58:49', ended_at: '2026-10-11 14:01:31', elevation_m: 314 };
+  const start = Date.parse('2026-10-11T09:58:49Z') / 1000;
+  const readings = [0, 1, 2, 3].map((i) => ({ t: start + 600 + i * 900, temperature_c: 11, humidity_pct: 64, pressure_hpa: 988 - i * 10, timing_error_s: 3 }));
+  const c = env.walkConditions(env.matchWorkouts([w], readings)[0]);
+  assert.equal(c.carried, true);
+  assert.equal(c.tempMeanC, 11);
+  assert.equal(c.readings, 4);
+  assert.match(c.why, /pressure shows/);
+});
+
+test('a walk the logger may have sat out publishes NO numbers — only why', () => {
+  const w = { id: 8, activity_type: 'Walking', started_at: '2026-10-06 16:00:00', ended_at: '2026-10-06 17:00:00' };
+  const start = Date.parse('2026-10-06T16:00:00Z') / 1000;
+  const shelf = [-3600, -1800, 600, 1800, 2700].map((d) => ({ t: start + d, temperature_c: 21, humidity_pct: 50, pressure_hpa: 1000, timing_error_s: 0 }));
+  const c = env.walkConditions(env.matchWorkouts([w], shelf)[0]);
+  assert.equal(c.carried, false);
+  assert.equal(c.state, 'unknown');
+  assert.equal(c.tempMeanC, undefined, 'a shelf’s 21 °C must never read as the walk’s weather');
+  assert.ok(c.why);
+});
+
+test('matchWorkouts carries the workout row id, so a surface can join on it', () => {
+  const [h] = env.matchWorkouts([{ id: 42, source_uuid: 'U', activity_type: 'Hiking', started_at: '2026-10-11 09:00:00', ended_at: '2026-10-11 10:00:00' }], []);
+  assert.equal(h.workoutId, 42);
+  assert.equal(h.id, 'U');
+});

@@ -52,6 +52,9 @@ const SUPPRESSIBLE = new Set([
   // Car journeys waiting for approval — once an evening; a breakfast problem
   // if quiet hours eat it, never a reason to interrupt.
   'journeys',
+  // "Things I could do for you" — weekly, only when something new passed the
+  // usefulness test. An idea, never urgent.
+  'capability_suggestions',
 ]);
 
 const ROOTS = ['services', 'routes'];

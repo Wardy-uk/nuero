@@ -104,7 +104,11 @@ function entryDay(startTime, isAllDay) {
 
 /** Pure. The active goal this loop serves, or null — no goal, no loop. */
 function findGoal(goals) {
-  return (goals || []).find((g) => g && (g.status === 'active') && HIKE_WORDS.test(g.title || '') && WEEKLY_WORDS.test(g.title || '')) || null;
+  // A goal Nick MEASURED in hikes (goal-measures) is the hike goal outright;
+  // otherwise the title rule ("hike weekly") still finds it.
+  const active = (goals || []).filter((g) => g && g.status === 'active');
+  return active.find((g) => g.measureKind === 'hikes')
+    || active.find((g) => HIKE_WORDS.test(g.title || '') && WEEKLY_WORDS.test(g.title || '')) || null;
 }
 
 // ── the judgement (pure) ────────────────────────────────────────────────────
@@ -437,7 +441,9 @@ function _reliability(today) {
 }
 
 function _goals() {
-  try { return db.all(`SELECT goal_id, title, status, importance FROM goals`).map((g) => ({ goalId: g.goal_id, title: g.title, status: g.status, importance: g.importance })); } catch { return []; }
+  // SELECT * so a DB without goals.measure_json still reads (the column is optional here).
+  const kindOf = (j) => { try { const m = JSON.parse(j || 'null'); return m && m.kind ? m.kind : null; } catch { return null; } };
+  try { return db.all(`SELECT * FROM goals`).map((g) => ({ goalId: g.goal_id, title: g.title, status: g.status, importance: g.importance, measureKind: kindOf(g.measure_json) })); } catch { return []; }
 }
 
 /**

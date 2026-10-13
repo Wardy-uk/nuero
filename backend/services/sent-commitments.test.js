@@ -20,6 +20,22 @@ test('only his own words are asked about; automated mail in his name and seen ma
   assert.deepEqual(out.map((m) => m.id), ['AAMk1']);
 });
 
+test('mail to nobody but Nick (the daily briefing) is never read as his promise; mail that includes someone else still is', () => {
+  const own = new Set(['nickw@nurtur.tech']);
+  const me = { name: 'Nick Ward', email: 'NickW@nurtur.tech' };
+  const out = sc.eligible([
+    msg({ id: 'brief', subject: 'Daily briefing — Tuesday 13 October', to: [me], text: "Create a new ticket based on Philippa's email" }),
+    msg({ id: 'cc-me', to: [{ name: 'Dan Short', email: 'dan.short@nurtur.tech' }], cc: [me] }),
+    msg({ id: 'nobody', to: [], cc: [] }),
+  ], {}, own);
+  assert.deepEqual(out.map((m) => m.id), ['cc-me', 'nobody']);
+});
+
+test('by default the own-address set is the work mailbox NEURO reads Sent Items from', () => {
+  const out = sc.eligible([msg({ id: 'brief', to: [{ email: 'nickw@nurtur.tech' }] })], {});
+  assert.deepEqual(out, []);
+});
+
 test('the prompt asks for his promises, not his requests of others', () => {
   const p = sc.buildPrompt([msg()]);
   assert.match(p, /NICK HIMSELF said he will do/);
