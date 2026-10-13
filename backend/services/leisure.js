@@ -364,9 +364,16 @@ function read({ now = Date.now(), asked = false, haStates } = {}) {
   };
 }
 
+function _rating(explicit) {
+  if (!explicit) return null;
+  return ({ loved: 'love', liked: 'like', neutral: 'background', disliked: 'not-for-me', 'not-for-me': 'not-for-me' })[explicit.preference] || null;
+}
+
 function _listenOut(o) {
   return { ref: o.ref, kind: o.kind, title: o.title, creator: o.creator, daysHeard: o.daysHeard, daysLast30: o.daysLast30, lastSeen: o.lastSeen,
-    affinity: o.affinity.state, affinityBasis: o.affinity.basis, why: o.affinity.why, itemRef: o.explicit ? o.explicit.itemId : null };
+    affinity: o.affinity.state, affinityBasis: o.affinity.basis, why: o.affinity.why, itemRef: o.explicit ? o.explicit.itemId : null,
+    // Nick's rating, as he gave it: love / like / background / not-for-me, or null.
+    rating: _rating(o.explicit) };
 }
 
 /** One item or aggregate with only its relevant fields and why NEURO believes its state. */

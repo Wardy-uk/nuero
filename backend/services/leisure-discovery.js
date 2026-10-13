@@ -8,10 +8,10 @@
  * preview. Checked live from pi5 before building.
  *
  * Rules:
- *   • Seeds are what NEURO already believes, never re-judged here: an artist
- *     (or a song's / album's artist) Nick said he likes weighs 3; one he has
- *     merely listened to a lot (`interest`) weighs 1. Disliked, not-mine and
- *     "don't use for suggestions" are never seeds.
+ *   • Seeds are what NEURO already believes, never re-judged here. Nick's
+ *     rating sets the weight: LOVE 5, like 3, merely played a lot (`interest`)
+ *     1. "Just background", disliked, not-mine and "don't use for suggestions"
+ *     are never seeds. A loved song lends its artist the love weight.
  *   • Never suggest the familiar: anything already heard, or already an item
  *     (saved, liked, disliked) is out — and that is re-checked at READ time,
  *     so a "Not for me" pressed a minute ago removes it at once.
@@ -55,15 +55,18 @@ function seedsFrom({ observations = [], items = [], today }) {
     const artist = o.kind === 'artist' ? o.title : o.creator;
     if (!artist) continue;
     const what = o.kind === 'artist' ? 'you' : `“${o.title}”`;
-    if (a.state === 'strong_interest') add(artist, 3, o.kind === 'artist' ? 'you like them' : `you like ${what}`);
+    const loved = explicit && explicit.preference === 'loved';
+    if (a.state === 'strong_interest') add(artist, loved ? 5 : 3, o.kind === 'artist' ? (loved ? 'you love them' : 'you like them') : `you ${loved ? 'love' : 'like'} ${what}`);
     else if (a.state === 'interest') add(artist, 1, o.kind === 'artist' ? 'you play them a lot' : `you play ${what} a lot`);
   }
   // Things Nick added himself (not from listening) that he likes.
   for (const i of items) {
     if (i.sourceRef || i.notBasis || i.ownership !== 'nick') continue;
     if (!['liked', 'loved'].includes(i.preference) && !i.wantMore) continue;
-    if (i.kind === 'artist') add(i.title, 3, 'you like them');
-    else if (['album', 'music_track'].includes(i.kind) && i.creator) add(i.creator, 3, `you like “${i.title}”`);
+    const w = i.preference === 'loved' ? 5 : 3;
+    const verb = i.preference === 'loved' ? 'love' : 'like';
+    if (i.kind === 'artist') add(i.title, w, `you ${verb} them`);
+    else if (['album', 'music_track'].includes(i.kind) && i.creator) add(i.creator, w, `you ${verb} “${i.title}”`);
   }
   return [...seeds.values()].sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name)).slice(0, MAX_SEEDS);
 }
@@ -103,12 +106,20 @@ function rank({ seeds = [], related = {}, known = new Set(), limit = SHOW * 2 })
   return [...out.values()].sort((a, b) => b.score - a.score || b.fans - a.fans || a.name.localeCompare(b.name)).slice(0, limit);
 }
 
-function becauseLine(because = []) {
+const _and = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+
+/** "because you love M83 and listen to Dire Straits" — the loved ones named as loved. */
+function becauseLine(because = [], seeds = []) {
   if (!because.length) return null;
-  if (because.length === 1) return `because you listen to ${because[0]}`;
+  const loved = new Set(seeds.filter((s) => s.weight >= 5).map((s) => M.norm(s.name)));
   const shown = because.slice(0, 3);
   const rest = because.length - shown.length;
-  return `because you listen to ${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}${rest > 0 ? ` (+${rest} more)` : ''}`;
+  const love = shown.filter((n) => loved.has(M.norm(n)));
+  const other = shown.filter((n) => !loved.has(M.norm(n)));
+  const parts = [];
+  if (love.length) parts.push(`love ${_and(love)}`);
+  if (other.length) parts.push(`listen to ${_and(other)}`);
+  return `because you ${parts.join(' and ')}${rest > 0 ? ` (+${rest} more)` : ''}`;
 }
 
 // ── io ──────────────────────────────────────────────────────────────────────
@@ -185,7 +196,7 @@ function read({ now = Date.now(), inputs } = {}) {
   let known = new Set();
   try { known = knownArtists(inputs || _inputs()); } catch { /* unread: show the stored list */ }
   const items = (held.items || []).filter((i) => !known.has(M.norm(i.name))).slice(0, SHOW)
-    .map((i) => ({ name: i.name, link: i.link, picture: i.picture, because: i.because, why: becauseLine(i.because), track: i.track }));
+    .map((i) => ({ name: i.name, link: i.link, picture: i.picture, because: i.because, why: becauseLine(i.because, held.seeds || []), track: i.track }));
   const ageMs = held.asOf ? now - Date.parse(held.asOf) : null;
   return {
     known: true, asOf: held.asOf, stale: !!held.lastError, lastError: held.lastError || null,

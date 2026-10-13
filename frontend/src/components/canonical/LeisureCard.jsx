@@ -55,30 +55,38 @@ function ItemRow({ it, act, busy, extra = null }) {
   );
 }
 
+// Nick's rating of what he listens to (13 Oct 2026): what he LOVES versus what
+// is just playing. Love counts most when NEURO looks for new music; background
+// never counts. The chosen rating stays lit; pressing it again clears it.
+const RATINGS = [
+  { id: 'love', action: 'loved', label: '♥ Love', title: 'Really love it — suggestions lean on this most' },
+  { id: 'like', action: 'liked', label: 'Like', title: 'You like it' },
+  { id: 'background', action: 'neutral', label: 'Just background', title: 'It was just playing — never used for suggestions' },
+  { id: 'not-for-me', action: 'not-for-me', label: 'Not for me', title: 'Never suggest more like it' },
+];
+const RATING_CHIP = { love: '♥ love', like: 'you like this', background: 'background', 'not-for-me': 'not for you' };
+
 function Listening({ rows, act, busy }) {
   if (!rows.length) return <p className="cn-muted cn-small">Nothing heard on the phone's Music app since NEURO started keeping count.</p>;
   return (
     <ul className="cn-list">
       {rows.map((o) => {
-        // Nick's own word on it — shown once, as the chip; the `why` repeats it.
-        const said = o.affinity === 'strong_interest' || o.affinity === 'disliked';
+        const rated = o.rating || null;
         return (
         <li key={o.ref} data-testid="leisure-listening">
           <strong>{o.title}</strong>{o.creator && <span className="cn-muted"> — {o.creator}</span>}
-          <span className="cn-chip">{AFF[o.affinity] || o.affinity}</span>
-          {!said && <div className="cn-muted cn-small">{o.why}</div>}
+          <span className={`cn-chip${rated === 'love' ? ' cn-chip--love' : ''}`}>{rated ? RATING_CHIP[rated] : (AFF[o.affinity] || o.affinity)}</span>
+          {!rated && <div className="cn-muted cn-small">{o.why}</div>}
           {act && (
-            <div className="cn-row-actions">
-              {/* Once you have said, the word you said becomes the way back —
-                  not a third copy of "you like this". */}
-              {said
-                ? <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'clear-preference' })} title="Forget what you said about this">Undo</Btn>
-                : <>
-                    <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'liked' })}>I like this</Btn>
-                    <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'not-for-me' })}>Not for me</Btn>
-                  </>}
+            <div className="cn-row-actions cn-rate" role="group" aria-label={`Rate ${o.title}`}>
+              {RATINGS.map((r) => (
+                <button key={r.id} type="button" disabled={busy} title={r.title} aria-pressed={rated === r.id}
+                  className={`cn-btn cn-btn--tiny cn-rate-btn${rated === r.id ? ' cn-rate-btn--on' : ''}${r.id === 'love' ? ' cn-rate-btn--love' : ''}`}
+                  onClick={() => act('/api/leisure/correct', { ref: o.ref, action: rated === r.id ? 'clear-preference' : r.action })}>
+                  {r.label}
+                </button>
+              ))}
               <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'not-mine' })} title="Someone else was playing it">Not mine</Btn>
-              <Btn busy={busy} onClick={() => act('/api/leisure/correct', { ref: o.ref, action: 'remove-basis' })} title="Keep it, but never base a suggestion on it">Don’t use for suggestions</Btn>
             </div>
           )}
         </li>
@@ -269,7 +277,7 @@ export function LeisureView({ data, act = null, busy = false, msg = null }) {
       )}
 
       <Fold title="What the phone has heard" meta={listening.since ? `since ${listening.since}` : 'nothing yet'}>
-        <p className="cn-muted cn-small">Days each song, artist or album was playing on the iPhone Music app. One play is never interest; listening alone never becomes "you like it".</p>
+        <p className="cn-muted cn-small">Days each song, artist or album was playing on the iPhone Music app. Rate them: what you <strong>love</strong> counts most when NEURO looks for new music, and “just background” never counts. Listening alone never becomes “you like it”.</p>
         <h5>Songs{listening.tracksSince && <span className="cn-muted cn-small"> · kept since {listening.tracksSince}</span>}</h5>
         <Listening rows={listening.tracks || []} act={act} busy={busy} />
         <h5>Artists</h5>

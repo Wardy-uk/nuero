@@ -197,13 +197,16 @@ function affinity({ explicit = null, days = [], today } = {}) {
   if (pref === 'loved' || pref === 'liked' || (explicit && explicit.wantMore)) {
     return { state: 'strong_interest', basis: 'you', why: pref === 'loved' ? 'you said you love it' : pref === 'liked' ? 'you said you like it' : 'you asked for more like it' };
   }
+  // "Just background" (13 Oct 2026): Nick's word that it is merely playing.
+  // It beats any amount of listening — explicit over passive — so background
+  // music never becomes "interest" and never seeds a suggestion.
+  if (pref === 'neutral') return { state: 'unknown', basis: 'you', why: 'you said it’s just background' };
   const recent = (days || []).filter((d) => isDay(d) && today && daysBetween(d, today) >= 0 && daysBetween(d, today) < 30);
   const weeks = new Set(recent.map(isoWeek));
   const total = (days || []).filter(isDay).length;
   if (recent.length >= INTEREST_MIN_DAYS && weeks.size >= INTEREST_MIN_WEEKS) {
     return { state: 'interest', basis: 'repeated-listening', why: `heard on ${recent.length} days across ${weeks.size} weeks in the last 30 days — interest, not proof you like it` };
   }
-  if (pref === 'neutral') return { state: 'unknown', basis: 'you', why: 'you said you are neutral on it' };
   if (total === 0) return { state: 'unknown', basis: 'none', why: 'never heard on a source NEURO can read' };
   return { state: 'unknown', basis: 'too-little', why: total === 1 ? 'heard on one day — one play is not interest' : `heard on ${recent.length || total} day${(recent.length || total) === 1 ? '' : 's'} — not yet repeated over time` };
 }

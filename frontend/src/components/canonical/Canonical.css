@@ -352,3 +352,6 @@
 .cn-panel .cn-journey { padding: 10px 0; }
 .cn-journey-miles { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); }
 .cn-journey-miles input { width: 5.5em; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); padding: 3px 6px; font-size: 12px; color-scheme: dark; }
+.cn-rate-btn--on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-card)); }
+.cn-rate-btn--love.cn-rate-btn--on, .cn-chip--love { color: #f07ca0; border-color: #f07ca0; }
+.cn-rate-btn--love.cn-rate-btn--on { background: color-mix(in srgb, #f07ca0 12%, var(--bg-card)); }

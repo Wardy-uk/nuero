@@ -141,3 +141,31 @@ test('the refresh route is refused to machine clients', () => {
   if (rule) assert.equal(rule.machine, 'refuse');
   else assert.ok(fs.readFileSync(path.join(__dirname, 'authority-matrix.js'), 'utf8').includes("R('POST', '/api/leisure/discovery/refresh', 'internal.state', { machine: 'refuse' })"));
 });
+
+// ── Love vs just background (13 Oct 2026) ──────────────────────────────────
+// Nick: "rate what I listen to as stuff I really love, vs stuff that's just
+// playing, so recommendations favour those."
+
+test('love outweighs like as a seed, and a loved song lends its artist the love weight', () => {
+  reset();
+  heard('M83', 'Midnight City'); heard('Dire Straits', 'Sultans Of Swing');
+  leisure.correct(refOf('tracks', 'Midnight City'), 'loved', { now: NOW });
+  leisure.correct(refOf('artists', 'Dire Straits'), 'liked', { now: NOW });
+  const seeds = D.seedsFrom({ observations: leisure.listObservations(), items: leisure.listItems(), today: '2026-10-13' });
+  assert.deepEqual(seeds.map((s) => [s.name, s.weight]), [['M83', 5], ['Dire Straits', 3]], 'loved first and heavier');
+  const r = D.rank({ seeds, related: { m83: [{ id: 1, name: 'Metronomy', fans: 10 }], 'dire straits': [{ id: 5, name: 'Mark Knopfler', fans: 900000 }] }, known: new Set() });
+  assert.equal(r[0].name, 'Metronomy', 'related to something loved beats a far more popular one related to something liked');
+  assert.equal(D.becauseLine(['M83', 'Dire Straits'], seeds), 'because you love M83 and listen to Dire Straits');
+});
+
+test('"just background" beats any amount of listening — never interest, never a seed', () => {
+  reset();
+  const M = require('./leisure-model');
+  const days = ['2026-09-20', '2026-09-28', '2026-10-05', '2026-10-12'];
+  assert.equal(M.affinity({ days, today: '2026-10-13' }).state, 'interest', 'positive control: that much listening IS interest');
+  assert.equal(M.affinity({ explicit: { preference: 'neutral', ownership: 'nick' }, days, today: '2026-10-13' }).state, 'unknown');
+  heard('Coldplay', 'Yellow');
+  leisure.correct(refOf('artists', 'Coldplay'), 'neutral', { now: NOW });
+  assert.equal(leisure.read({ now: NOW, haStates: [] }).listening.artists.find((a) => a.title === 'Coldplay').rating, 'background');
+  assert.deepEqual(D.seedsFrom({ observations: leisure.listObservations(), items: leisure.listItems(), today: '2026-10-13' }), []);
+});
