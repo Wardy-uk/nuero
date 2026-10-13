@@ -98,27 +98,81 @@ export function appName(app) {
 }
 
 /**
- * Presence: `Nick · Office|Home|Work|location unknown`, plus what SAiM is
- * doing (the operation phase, lower-case, beside it — never a badge).
- *
- * ⚠ The place comes from NEURO's place read (a named place) or its life read
- *   (home / work). A ROOM is never used here: the room comes from a sensor that
- *   hears a DEVICE, and is reported in the evidence trail as exactly that.
+ * How long a touch of THIS page counts as "Nick is at this desk now". A
+ * memory-only signal, never stored: see `useLocalActivity` in SaimHome.jsx.
  */
-export function presence(d) {
+export const LOCAL_ACTIVE_MS = 2 * 60 * 1000;
+export function isLocallyActive(localActiveAt, now = Date.now()) {
+  const t = typeof localActiveAt === 'number' ? localActiveAt : null;
+  return t !== null && now - t >= 0 && now - t < LOCAL_ACTIVE_MS;
+}
+
+const AWAY_PLACES = new Set(['out', 'away', 'elsewhere']);
+
+/**
+ * Presence, by an explicit EVIDENCE PRIORITY:
+ *   1. Recent interaction with this page — direct evidence he is at this desk.
+ *   2. The desk agent — which app is in front on that machine.
+ *   3. A room / watch signal — supporting only. It never overrides 1 or 2, and
+ *      it never places Nick in a room: it is the WATCH that was heard.
+ *
+ *   line1    `Nick · Home` / `Nick · Office` / `Nick · location unknown`
+ *   desk     `desk active · VS Code open` / `desk active` / `away from the laptop`
+ *            / `laptop not seen` — "away" ONLY when nothing says he is here.
+ *   disagree a compact qualifier when the signals contradict each other:
+ *            `Signals disagree — desk active; watch last heard in the living room.`
+ *   room     the supporting watch line, for the evidence rail.
+ */
+export function presence(d, { localActiveAt = null, now = Date.now() } = {}) {
   const ctx = (d && d.context) || {};
   const place = ctx.place || null;
   const life = (d && d.life) || null;
+  const work = (d && d.work) || null;
+  const local = isLocallyActive(localActiveAt, now);
 
   let where = null;
   if (place && place.known === true && place.name && place.name !== 'unknown') where = String(place.name);
   else if (life && life.place && life.place.kind === 'home') where = 'Home';
   else if (life && life.place && life.place.kind === 'work') where = 'Work';
 
+  const agentSees = Boolean(work && work.deskKnown !== false && work.atDesk);
+  const deskActive = local || agentSees;
+  const app = agentSees && work.app ? appName(work.app) : null;
+
+  let desk;
+  if (deskActive) desk = app ? `desk active · ${app} open` : 'desk active';
+  else if (!work || work.deskKnown === false) desk = 'laptop not seen';
+  else desk = 'away from the laptop';
+
+  const room = place && place.room
+    ? `${place.roomSubject ? String(place.roomSubject) : 'a device'} last heard in the ${prettyRoom(place.room)}`
+    : null;
+
+  // Disagreement is only claimed when two signals genuinely contradict: this
+  // page is being used, but the agent or the place read says otherwise.
+  let disagree = null;
+  if (local) {
+    const agentDisagrees = work && (work.deskKnown === false || work.atDesk === false);
+    const placeDisagrees = life && life.place && AWAY_PLACES.has(life.place.kind);
+    if (agentDisagrees || placeDisagrees) {
+      const other = room
+        || (work && work.deskKnown === false ? 'the laptop agent can’t be seen' : null)
+        || (work && work.atDesk === false ? 'the laptop agent reports no activity' : null)
+        || 'the place read says you’re out';
+      disagree = `Signals disagree — desk active; ${other}.`;
+    }
+  }
+
   const op = (d && d.operation) || null;
   return {
     line1: `Nick · ${where || 'location unknown'}`,
     whereKnown: Boolean(where),
+    desk,
+    deskActive,
+    local,
+    app,
+    disagree,
+    room: room ? cap(room) + '.' : null,
     operation: op && op.label ? String(op.label).toLowerCase() : null,
     operationDetail: op && op.detail ? op.detail : null,
   };
@@ -141,118 +195,86 @@ export function silence(d) {
 /** The utterance kinds that are lifecycle actions on the thing in hand. */
 const LIFECYCLE_KINDS = new Set(['act', 'session', 'meeting']);
 
-export const UNKNOWN_THREAD = Object.freeze({
-  title: 'I can’t recover the thread from what I can see.',
-  prompt: 'Tell me what you were doing, or capture the next thing.',
-});
-
 /** Is work being held back right now because of what he is doing? NEURO's word. */
 const workHeld = (d) => Boolean(d && d.life && d.life.showWork === false);
+// NEURO life reads that cannot be true of someone using this desk right now.
+const NON_DESK_DOING = new Set(['watching-tv', 'sleeping', 'driving', 'walking', 'exercising', 'out', 'in-meeting-room']);
 // How NEURO's life read is said in the held line. Unknown kinds say nothing.
 const LIFE_PHRASE = Object.freeze({ hobby: 'on your own project' });
 
 /**
- * The current thread, and which of the two page modes it calls for.
+ * The current thread. The work surface is ALWAYS rendered; uncertainty only
+ * changes the wording inside it.
  *
- * `mode`:
- *   'thread' — there IS a thread: an attention ITEM (NEURO's say/title
- *              verbatim), a focus session or live task block current-work
- *              names, or a step he has named. The compact card renders.
- *   'quiet'  — no thread and no named step (his own time, or a context NEURO
- *              cannot read). Uncertainty is a QUIET state: no card, no
- *              questions, the field dominant — see `statement`.
+ * `state`:
+ *   'item'    — an attention ITEM (NEURO's say/title verbatim);
+ *   'work'    — a focus session or live task block current-work names;
+ *   'context' — NEURO's context read (his own project, a meeting…) by its
+ *               title, verbatim;
+ *   'unknown' — NEURO cannot read the context, or there is nothing at all.
  *
- * `nextStep` is the step HE named on the session — never invented, never asked
- * for unprompted. `actions` are the server's lifecycle utterances, verbatim.
+ * `uncertain` is the ONE compact line saying what is not known, written from
+ * what IS observed — never a request that he reconstruct the system's state.
+ * `nextStep` is the step HE named — never invented, never asked for.
  */
-export function currentThread(d, session = null) {
+export function currentThread(d, session = null, { localActiveAt = null, now = Date.now() } = {}) {
   const primary = (d && d.primary) || null;
   const work = (d && d.work) || null;
+  const activity = d && d.context ? d.context.activity : null;
   const s = session && session.session ? session.session : null;
   const nextStep = s && s.nextStep ? { known: true, text: s.nextStep } : { known: false, text: null };
   const actions = ((d && d.utterances) || [])
     .filter((u) => u && u.intent && LIFECYCLE_KINDS.has(u.intent.kind) && u.say);
 
+  let state;
   let item = null;
   if (primary && primary.kind === 'item') {
+    state = 'item';
     item = {
-      kind: 'item',
       type: primary.type || null,
       title: primary.say || primary.title || null,
       sub: primary.say && primary.title && primary.title !== primary.say ? primary.title : null,
       reason: primary.reason && primary.reason !== primary.say ? primary.reason : null,
     };
   } else if (work && work.known && work.task) {
-    item = { kind: 'work', type: null, title: work.task, sub: null, reason: work.why || null };
-  } else if (nextStep.known) {
-    // A named step on his own time: the context title is NEURO's, verbatim.
-    item = { kind: 'context', type: null, title: (primary && primary.title) || (d && d.life && d.life.label) || null, sub: null, reason: null };
+    state = 'work';
+    item = { type: null, title: work.task, sub: null, reason: work.why || null };
+  } else if (primary && primary.kind === 'context' && activity && activity !== 'unknown'
+    && !(isLocallyActive(localActiveAt, now) && d.life && NON_DESK_DOING.has(d.life.doing))) {
+    // The context card's `say` repeats the place ("… · living-room"); only its
+    // title is NEURO's description of the situation.
+    state = 'context';
+    item = { type: null, title: primary.title || null, sub: null, reason: null };
+  } else if (primary && primary.kind === 'context' && activity && activity !== 'unknown') {
+    // NEURO reads him as doing something away from a desk (watching TV, out…)
+    // while he is USING this desk. The read is contradicted, so it is not the
+    // thread: say what is not known, and name NEURO's read as a read.
+    state = 'unknown';
+    item = {
+      type: null,
+      title: 'I can’t tell what you’re working on from what I can see.',
+      sub: null,
+      reason: primary.title ? `NEURO last read you as “${primary.title}”.` : null,
+    };
+  } else {
+    state = 'unknown';
+    item = { type: null, title: 'I can’t tell what you’re working on from what I can see.', sub: null, reason: null };
+  }
+
+  let uncertain = null;
+  if (!nextStep.known && (state === 'context' || state === 'unknown')) {
+    const p = presence(d, { localActiveAt, now });
+    uncertain = p.app ? `${p.app} is open — I don’t know the next step yet.` : 'I don’t know the next step yet.';
   }
 
   return {
-    mode: item ? 'thread' : 'quiet',
+    state,
     item,
+    uncertain,
     nextStep,
     actions,
+    canBringWork: workHeld(d),
   };
-}
-
-/**
- * The quiet statement — what SAiM says over her field when there is no thread.
- * Short, honest, and asks nothing of him.
- *
- *   lines      — `You’re home. VS Code is open.` / `I’m holding work for now.`
- *   qualifiers — small, honest caveats: a room heard via a DEVICE (never Nick
- *                placed in it), and anything NEURO could not read.
- *   actions    — at most two quiet links: tell her what you're doing; bring
- *                work back (only while work is actually held).
- */
-export function statement(d) {
-  const p = presence(d);
-  const work = (d && d.work) || null;
-  const place = d && d.context && d.context.place;
-  const where = p.whereKnown ? p.line1.replace(/^Nick · /, '') : null;
-
-  let placeSay;
-  if (!where) placeSay = 'I can’t place you right now.';
-  else if (where === 'Home') placeSay = 'You’re home.';
-  else if (where === 'Work') placeSay = 'You’re at work.';
-  else placeSay = `You’re at ${where}.`;
-
-  let deskSay = null;
-  if (!work || work.deskKnown === false) deskSay = 'I can’t see the laptop.';
-  else if (work.atDesk && work.app) deskSay = `${appName(work.app)} is open.`;
-  else if (!work.atDesk) deskSay = 'You’re away from the laptop.';
-
-  const lines = [[placeSay, deskSay].filter(Boolean).join(' ')];
-  const blind = silence(d);
-  if (blind && blind.kind === 'blind') lines.push(blind.text);
-  else if (workHeld(d)) lines.push('I’m holding work for now.');
-  else if (d && d.context && d.context.activity === 'unknown') lines.push('I’m not sure what you’re doing.');
-
-  const qualifiers = [];
-  if (place && place.room) {
-    const what = place.roomSubject ? cap(String(place.roomSubject)) : 'A device';
-    qualifiers.push(`${what} heard in the ${prettyRoom(place.room)}.`);
-  }
-  const gaps = gapsOf(d);
-  if (gaps.length) qualifiers.push(`Can’t read: ${gaps.join('; ')}.`);
-
-  const actions = [{ id: 'tell', label: 'Tell me what you’re doing' }];
-  if (workHeld(d)) actions.push({ id: 'bring', label: 'Bring work back' });
-
-  return { lines, qualifiers, actions, operation: p.operation };
-}
-
-/** Every input NEURO says it could not read, named. */
-function gapsOf(d) {
-  const ctx = (d && d.context) || {};
-  const gaps = [];
-  const add = (g) => { if (g && !gaps.includes(g)) gaps.push(g); };
-  if (Array.isArray(ctx.unknowns)) ctx.unknowns.forEach((u) => add(typeof u === 'string' ? u : (u && (u.input || u.why)) || null));
-  if (Array.isArray(ctx.cannotSee)) ctx.cannotSee.forEach((u) => add(typeof u === 'string' ? u : (u && (u.label || u.input || u.why)) || null));
-  if (Array.isArray(d && d.gaps)) d.gaps.forEach((g) => add(g && (g.input ? `${g.input}${g.why ? ` — ${g.why}` : ''}` : g.why)));
-  return gaps;
 }
 
 // ── Tool handoff ────────────────────────────────────────────────────────────
@@ -460,13 +482,42 @@ export function judgement(d) {
   const a = d && d.approvals;
   if (!a || a.known !== true) return { known: false, count: null, text: 'I couldn’t check what’s waiting for approval.' };
   const count = (a.needsApproval || 0) + (a.needsReview || 0);
-  if (count === 0) return { known: true, count: 0, text: 'Nothing waiting for your judgement.' };
+  // Nothing waiting is not content: no text, and the rail renders nothing.
+  if (count === 0) return { known: true, count: 0, text: null };
   return {
     known: true,
     count,
     text: a.say || `${count} waiting for your judgement.`,
     where: a.where || 'NEURO',
   };
+}
+
+// ── Context for the rail ────────────────────────────────────────────────────
+
+/**
+ * Concise evidence, shown ONLY when it helps resolve uncertainty: the thread is
+ * not known, the signals disagree, or NEURO could not read something. A settled
+ * state with a known thread gets nothing — absence of a problem is not content.
+ *
+ * Each line is a different KIND of fact, never merged into a claim about Nick.
+ */
+export function evidence(d, thread, p) {
+  const gaps = [];
+  const add = (g) => { if (g && !gaps.includes(g)) gaps.push(g); };
+  const ctx = (d && d.context) || {};
+  if (Array.isArray(ctx.unknowns)) ctx.unknowns.forEach((u) => add(typeof u === 'string' ? u : (u && (u.input || u.why)) || null));
+  if (Array.isArray(ctx.cannotSee)) ctx.cannotSee.forEach((u) => add(typeof u === 'string' ? u : (u && (u.label || u.input || u.why)) || null));
+  if (Array.isArray(d && d.gaps)) d.gaps.forEach((g) => add(g && (g.input ? `${g.input}${g.why ? ` — ${g.why}` : ''}` : g.why)));
+
+  const useful = Boolean(p.disagree) || gaps.length > 0 || (thread && (thread.state === 'context' || thread.state === 'unknown'));
+  if (!useful) return null;
+
+  const lines = [];
+  lines.push(cap(p.desk) + '.');
+  if (p.room && !p.disagree) lines.push(p.room);
+  if (!p.whereKnown) lines.push('Location unknown.');
+  if (workHeld(d)) lines.push('Work context held.');
+  return { lines, gaps };
 }
 
 // ── Field drive ─────────────────────────────────────────────────────────────

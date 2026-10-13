@@ -3,28 +3,29 @@ import { apiFetch, chatStream } from '../src/api';
 import { enqueue, flush, outcomeFor } from '../src/mobile/outbox';
 import { matchSaid } from '../../../shared/heard.cjs';
 import {
-  presence, silence, currentThread, statement, toolHandoff, nextChange, heldWork, judgement,
+  presence, silence, currentThread, toolHandoff, nextChange, heldWork, judgement, evidence,
   neuroLink, deskStateText, deskStateSettled, deskStateBusy,
 } from './model.mjs';
 import './SaimHome.css';
 
 // SAiM Alt — the desktop companion page.
 //
-// TWO MODES, decided by `currentThread`:
-//   quiet  — no thread and no named step. Uncertainty is a QUIET state and a
-//            successful one: her field fills the screen and only a small
-//            statement sits over it ("You’re home. VS Code is open. / I’m
-//            holding work for now."), with at most two quiet links. No card, no
-//            app chooser, no empty rail, no form, nothing asking him to decide.
-//   thread — there is a thread. A compact card: NEURO's wording verbatim, the
-//            step HE named, the server's lifecycle sentences, and a tool ONLY
-//            when a named step supports one.
+// SAiM's field is her presence; it is not the whole product. This page ALWAYS
+// has a work surface: the field gives presence, the foreground gives
+// orientation and agency. Uncertainty changes the wording inside the surface —
+// it never removes it.
 //
-// ⚠ Nothing here approves or sends; approvals are a statement and a link.
-// ⚠ A request sent is not an action completed: desk opens report the server's
-//   own lifecycle (waiting → claimed → opened | failed | expired).
-// ⚠ An app the laptop did not offer is never a button, and an app already in
-//   front is never offered to be opened.
+//   main — the current thread (NEURO's words verbatim), the step HE named, the
+//          server's lifecycle sentences, a tool only when a named step supports
+//          one, and a compact contextual Ask/Save line.
+//   rail — only what holds something: a waiting approval, a relevant
+//          transition, held work (count + Show), and evidence only when it helps
+//          resolve uncertainty.
+//
+// ⚠ Presence follows an evidence priority (model.mjs → presence): recent use of
+//   THIS page beats the desk agent, which beats a watch heard in a room. It
+//   never says "away from the laptop" while he is using the desk.
+// ⚠ Nothing here approves or sends. Desk opens report the server's lifecycle.
 
 const POLL_MS = 60_000;
 
@@ -47,187 +48,191 @@ function ToolButton({ app, onDeskOpen, deskStates, primary = false }) {
   );
 }
 
-/** Held work as a compact count + link; the list only on request. Reranks nothing. */
-function Held({ held, open, onToggle }) {
-  if (!held.count) return null;
-  return (
-    <div className="alt-held">
-      {onToggle && (
-        <button type="button" className="alt-link" aria-expanded={open} onClick={onToggle}>
-          {open ? 'Hide what’s held' : `Show what’s held (${held.count})`}
-        </button>
-      )}
-      {open && (
-        <ul className="alt-held__list">
-          {held.items.map((it, i) => (
-            <li key={i}>{it.label}{it.why ? <span className="alt-held__why"> — {it.why}</span> : null}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-/** Only what is actually there: a waiting approval, a relevant transition. */
-function Notices({ judge, change, actionsLink }) {
-  const items = [];
-  if (judge.count > 0) {
-    items.push(
-      <p key="judge" className="alt-notice alt-notice--judge">
-        {judge.text}{' '}
-        {actionsLink && <a className="alt-link" href={actionsLink} target="_blank" rel="noopener noreferrer">Review in NEURO →</a>}
-      </p>,
-    );
-  }
-  if (change) {
-    items.push(
-      <p key="next" className="alt-notice">
-        <span className="alt-label">Next</span>{change.text}{change.question ? <span className="alt-notice__sub"> {change.question}</span> : null}
-      </p>,
-    );
-  }
-  return items.length ? <div className="alt-notices" aria-label="Needs your attention">{items}</div> : null;
-}
-
 /**
  * Pure presentational half, exported so it renders under test with no fetch.
  * Every handler is optional; a missing one means the control is not offered.
  */
 export function SaimHomeView({
   data, session = null, error = null, neuroUrl = null,
+  localActiveAt = null, now = Date.now(),
   deskStates = {}, onDeskOpen = null, onAct = null, busy = false,
   heldOpen = false, onToggleHeld = null,
   helpOpen = false, onToggleHelp = null,
-  askOpen = false, onQuiet = null,
+  moreOpen = false, onToggleMore = null,
+  onBringWork = null,
   dock = null,
 }) {
   if (!data) {
     return (
-      <div className="alt-home alt-home--quiet">
-        <div className="alt-quiet">
-          <p className="alt-quiet__line">{error ? `I can’t reach NEURO — ${error}.` : 'Reading the room…'}</p>
+      <div className="alt-home">
+        <div className="alt-grid alt-grid--solo">
+          <section className="alt-thread" aria-label="The current thread">
+            <p className="alt-thread__title alt-thread__title--small">{error ? `I can’t reach NEURO — ${error}.` : 'Reading the room…'}</p>
+            <div className="alt-thread__dock">{dock}</div>
+          </section>
         </div>
       </div>
     );
   }
 
-  const thread = currentThread(data, session);
+  const opts = { localActiveAt, now };
+  const p = presence(data, opts);
+  const blind = silence(data);
+  const thread = currentThread(data, session, opts);
+  const tools = toolHandoff(data, thread);
+  const change = nextChange(data);
   const held = heldWork(data);
   const judge = judgement(data);
-  const change = nextChange(data);
+  const ev = evidence(data, thread, p);
   const actionsLink = neuroLink(neuroUrl, 'actions');
-  const stale = error ? <p className="alt-home__stale" role="status">Couldn’t refresh — {error}. Showing the last read.</p> : null;
+  const showOthers = tools.mode !== 'blocked' && (Boolean(tools.top) || helpOpen);
 
-  // ── Quiet: the field is the content ─────────────────────────────────────
-  if (thread.mode === 'quiet') {
-    const st = statement(data);
-    return (
-      <div className="alt-home alt-home--quiet">
-        {stale}
-        <div className="alt-quiet" aria-label="SAiM">
-          {st.lines.map((l, i) => <p key={i} className={i === 0 ? 'alt-quiet__line' : 'alt-quiet__sub'}>{l}</p>)}
-          {(st.qualifiers.length > 0 || st.operation) && (
-            <p className="alt-quiet__qual">
-              {st.qualifiers.join(' ')}
-              {st.operation ? <span className="alt-quiet__op">{st.qualifiers.length ? ' · ' : ''}{st.operation}</span> : null}
-            </p>
-          )}
-          <div className="alt-quiet__actions">
-            {st.actions.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                className="alt-quietlink"
-                aria-expanded={a.id === 'tell' ? askOpen : undefined}
-                disabled={!onQuiet || busy}
-                onClick={() => onQuiet && onQuiet(a)}
-              >{a.label}</button>
+  const rail = [];
+  if (judge.count > 0 || !judge.known) {
+    rail.push(
+      <section key="judge" className="alt-rail__block" aria-label="Needs your judgement">
+        <h2 className="alt-rail__head">Needs your judgement</h2>
+        <p className={`alt-rail__text${judge.count > 0 ? ' is-strong' : ' is-unknown'}`}>{judge.text}</p>
+        {judge.count > 0 && actionsLink && (
+          <a className="alt-link" href={actionsLink} target="_blank" rel="noopener noreferrer">Review in NEURO →</a>
+        )}
+      </section>,
+    );
+  }
+  if (change) {
+    rail.push(
+      <section key="next" className="alt-rail__block" aria-label="Next transition">
+        <h2 className="alt-rail__head">Next</h2>
+        <p className="alt-rail__text">{change.text}</p>
+        {change.question && <p className="alt-rail__sub">{change.question}</p>}
+      </section>,
+    );
+  }
+  if (held.count > 0) {
+    rail.push(
+      <section key="held" className="alt-rail__block" aria-label="Holding the day">
+        <h2 className="alt-rail__head">Holding the day</h2>
+        <p className="alt-rail__text">{held.line}</p>
+        {onToggleHeld && (
+          <button type="button" className="alt-link" aria-expanded={heldOpen} onClick={onToggleHeld}>
+            {heldOpen ? 'Hide held work' : 'Show held work'}
+          </button>
+        )}
+        {heldOpen && (
+          <ul className="alt-held__list">
+            {held.items.map((it, i) => (
+              <li key={i}>{it.label}{it.why ? <span className="alt-rail__sub"> — {it.why}</span> : null}</li>
             ))}
-            <Held held={held} open={heldOpen} onToggle={onToggleHeld} />
-          </div>
-          {askOpen && dock && <div className="alt-quiet__dock">{dock}</div>}
-          <Notices judge={judge} change={change} actionsLink={actionsLink} />
-        </div>
-      </div>
+          </ul>
+        )}
+      </section>,
+    );
+  }
+  if (ev) {
+    rail.push(
+      <section key="ev" className="alt-rail__block" aria-label="Context">
+        <h2 className="alt-rail__head">Context</h2>
+        <ul className="alt-trail">
+          {ev.lines.map((l, i) => <li key={i}>{l}</li>)}
+          {ev.gaps.length > 0 && <li className="alt-trail__gap">Can’t read: {ev.gaps.join('; ')}.</li>}
+        </ul>
+      </section>,
     );
   }
 
-  // ── Thread: one compact card ────────────────────────────────────────────
-  const p = presence(data);
-  const blind = silence(data);
-  const tools = toolHandoff(data, thread);
-  const showOthers = Boolean(tools.top) || helpOpen;
   return (
     <div className="alt-home">
+      {/* ── Presence ─────────────────────────────────────────────────────── */}
       <header className="alt-presence" aria-label="Presence">
         <p className={`alt-presence__who${p.whereKnown ? '' : ' is-unknown'}`}>{p.line1}</p>
-        {p.operation && <p className="alt-presence__op">{p.operation}{p.operationDetail ? ` — ${p.operationDetail}` : ''}</p>}
+        <p className="alt-presence__desk">
+          {p.desk}
+          {p.operation ? <span className="alt-presence__op"> · {p.operation}{p.operationDetail ? ` — ${p.operationDetail}` : ''}</span> : null}
+        </p>
+        {p.disagree && <p className="alt-presence__disagree">{p.disagree}</p>}
       </header>
-      {stale}
 
-      <section className="alt-thread" aria-label="The current thread">
-        <p className="alt-thread__title">{thread.item.title}</p>
-        {thread.item.sub && <p className="alt-thread__sub">{thread.item.sub}</p>}
-        {thread.item.reason && <p className="alt-thread__why">{thread.item.reason}</p>}
-        {blind && blind.kind === 'blind' && <p className="alt-warn">{blind.text}</p>}
-        {thread.nextStep.known && <p className="alt-thread__next"><span className="alt-label">Next</span>{thread.nextStep.text}</p>}
+      {error && <p className="alt-home__stale" role="status">Couldn’t refresh — {error}. Showing the last read.</p>}
 
-        {tools.mode === 'step' && tools.top && (
-          <div className="alt-place__best">
-            <span className="alt-label">Best next place</span>
-            <span className="alt-place__name">{tools.top.label}</span>
-            <ToolButton app={tools.top} onDeskOpen={onDeskOpen} deskStates={deskStates} primary />
-          </div>
-        )}
-        {tools.mode === 'step' && tools.already && <p className="alt-place__already">{tools.already.because}</p>}
+      <div className={`alt-grid${rail.length ? '' : ' alt-grid--solo'}`}>
+        {/* ── Main work area: always present ──────────────────────────── */}
+        <section className={`alt-thread alt-thread--${thread.state}`} aria-label="The current thread">
+          <p className={`alt-thread__title${thread.state === 'unknown' ? ' alt-thread__title--small' : ''}`}>{thread.item.title}</p>
+          {thread.item.sub && <p className="alt-thread__sub">{thread.item.sub}</p>}
+          {thread.item.reason && <p className="alt-thread__why">{thread.item.reason}</p>}
+          {blind && blind.kind === 'blind' && <p className="alt-warn">{blind.text}</p>}
 
-        {thread.actions.length > 0 && (
-          <div className="alt-thread__actions">
-            {thread.actions.map((u) => (
-              <button
-                key={`${u.intent.kind}:${u.intent.action || ''}:${u.say}`}
-                type="button"
-                className="alt-pill"
-                disabled={!onAct || busy}
-                onClick={() => onAct && onAct(u)}
-              >{u.say}</button>
-            ))}
-          </div>
-        )}
+          {thread.nextStep.known
+            ? <p className="alt-thread__next"><span className="alt-label">Next</span>{thread.nextStep.text}</p>
+            : thread.uncertain && <p className="alt-thread__uncertain">{thread.uncertain}</p>}
 
-        {tools.mode === 'blocked' && tools.top === null && thread.nextStep.known && (
-          <p className="alt-place__none">Nothing to open — {tools.blockedWhy}.</p>
-        )}
-        {tools.top && !onDeskOpen && <p className="alt-tool__why">This screen can’t reach the laptop, so nothing here can open.</p>}
-
-        <div className="alt-thread__foot">
-          {tools.mode !== 'blocked' && !showOthers && onToggleHelp && (
-            <button type="button" className="alt-quietlink" onClick={onToggleHelp}>Help me move this forward</button>
-          )}
-          {onQuiet && (
-            <button type="button" className="alt-quietlink" aria-expanded={askOpen} onClick={() => onQuiet({ id: 'tell' })}>Ask about this</button>
-          )}
-          <Held held={held} open={heldOpen} onToggle={onToggleHeld} />
-        </div>
-
-        {showOthers && tools.mode !== 'blocked' && tools.row.length > 0 && (
-          <div className="alt-ways" aria-label="Other ways in">
-            <span className="alt-label">Other ways in</span>
-            <div className="alt-ways__row">
-              {tools.row.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
+          {tools.mode === 'step' && tools.top && (
+            <div className="alt-place__best">
+              <span className="alt-label">Best next place</span>
+              <span className="alt-place__name">{tools.top.label}</span>
+              <ToolButton app={tools.top} onDeskOpen={onDeskOpen} deskStates={deskStates} primary />
             </div>
-          </div>
-        )}
-        {askOpen && dock && <div className="alt-thread__dock">{dock}</div>}
-      </section>
+          )}
+          {tools.mode === 'step' && tools.already && <p className="alt-place__already">{tools.already.because} Carry on there.</p>}
+          {tools.mode === 'blocked' && thread.nextStep.known && <p className="alt-place__none">Nothing to open — {tools.blockedWhy}.</p>}
+          {tools.top && !onDeskOpen && <p className="alt-tool__why">This screen can’t reach the laptop, so nothing here can open.</p>}
 
-      <Notices judge={judge} change={change} actionsLink={actionsLink} />
+          {thread.actions.length > 0 && (
+            <div className="alt-thread__actions">
+              {thread.actions.map((u) => (
+                <button
+                  key={`${u.intent.kind}:${u.intent.action || ''}:${u.say}`}
+                  type="button"
+                  className="alt-pill"
+                  disabled={!onAct || busy}
+                  onClick={() => onAct && onAct(u)}
+                >{u.say}</button>
+              ))}
+            </div>
+          )}
+
+          {showOthers && tools.row.length > 0 && (
+            <div className="alt-ways" aria-label="Other ways in">
+              <span className="alt-label">{tools.top ? 'Other ways in' : 'Ways in'}</span>
+              <div className="alt-ways__row">
+                {tools.row.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
+                {tools.more.length > 0 && onToggleMore && (
+                  <button type="button" className="alt-link" aria-expanded={moreOpen} onClick={onToggleMore}>
+                    {moreOpen ? 'Fewer' : `More available apps (${tools.more.length})`}
+                  </button>
+                )}
+              </div>
+              {moreOpen && tools.more.length > 0 && (
+                <div className="alt-ways__row">
+                  {tools.more.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {((!showOthers && tools.mode !== 'blocked' && onToggleHelp) || (thread.canBringWork && onBringWork)) && (
+            <div className="alt-thread__links">
+              {!showOthers && tools.mode !== 'blocked' && onToggleHelp && (
+                <button type="button" className="alt-quietlink" onClick={onToggleHelp}>Help me move this forward</button>
+              )}
+              {thread.canBringWork && onBringWork && (
+                <button type="button" className="alt-quietlink" disabled={busy} onClick={onBringWork}>Bring work back</button>
+              )}
+            </div>
+          )}
+
+          <div className="alt-thread__dock">{dock}</div>
+        </section>
+
+        {rail.length > 0 && <aside className="alt-rail" aria-label="Supporting">{rail}</aside>}
+      </div>
     </div>
   );
 }
 
+
 /**
- * A compact contextual input, opened on request. Two clearly different verbs:
+ * The compact contextual input, always on the work surface. Two different verbs:
  *   Ask  (Enter) — an offered sentence is acted on, else a chat question.
  *   Save         — a capture, through the SAME outbox as the Capture tab: on
  *                  disk first, then sent; the box clears only once it is queued.
@@ -315,7 +320,6 @@ export function Dock({ utterances, onSay, placeholder = 'Ask SAiM or capture any
           onChange={(e) => setText(e.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}
-          autoFocus
         />
         <button type="submit" className="alt-quietlink" disabled={busy || !text.trim()} title="Ask SAiM (Enter)">Ask</button>
         <button type="button" className="alt-quietlink" disabled={busy || !text.trim()} onClick={capture} title="Save as a capture in NEURO">Save</button>
@@ -326,16 +330,53 @@ export function Dock({ utterances, onSay, placeholder = 'Ask SAiM or capture any
 }
 
 /** The live container: polls the canonical read and owns every write. */
+/**
+ * Recent use of THIS page, as direct evidence he is at this desk now.
+ *
+ * ⚠ Narrow on purpose: memory only (a timestamp in React state — never
+ *   localStorage, never sent anywhere, gone on reload), only real input
+ *   (pointer, key, wheel, focus) while the page is visible, and coarse (one
+ *   update per 15s at most). It is not a second state engine; it answers one
+ *   question — "is someone using this screen?" — so presence never says "away
+ *   from the laptop" to the person using it.
+ */
+function useLocalActivity() {
+  const [at, setAt] = useState(null);
+  const last = useRef(0);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mark = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      const t = Date.now();
+      if (t - last.current < 15_000) return;
+      last.current = t;
+      setAt(t);
+    };
+    const events = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'focus'];
+    events.forEach((e) => window.addEventListener(e, mark, { passive: true }));
+    return () => events.forEach((e) => window.removeEventListener(e, mark));
+  }, []);
+  // A clock tick so "recent" can lapse without another event.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  return { at, now: Math.max(now, at || 0) };
+}
+
+/** The live container: polls the canonical read and owns every write. */
 export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
   const [state, setState] = useState({ data: null, error: null });
   const [session, setSession] = useState(null);
   const [busy, setBusy] = useState(false);
   const [heldOpen, setHeldOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [askOpen, setAskOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [deskStates, setDeskStates] = useState({});
   const [deskReachable, setDeskReachable] = useState(true);
   const [actNote, setActNote] = useState(null);
+  const local = useLocalActivity();
   const alive = useRef(true);
   const hadData = useRef(false);
 
@@ -441,21 +482,16 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
     }
   }
 
-  // The two quiet links. Neither queues a desktop intent.
-  //   tell — opens the compact contextual input (Ask / Save).
-  //   bring — tells NEURO he is working, which releases held work; the page
-  //           then re-reads and shows whatever thread NEURO surfaces. No step
-  //           is invented: if NEURO has nothing, that is said.
-  async function onQuiet(action) {
-    if (!action) return;
-    if (action.id === 'tell') { setAskOpen((o) => !o); return; }
-    if (action.id !== 'bring') return;
+  // "Bring work back": tells NEURO he is working (its existing life-declare
+  // route), which releases held work; the page re-reads and shows whatever
+  // thread NEURO surfaces. No desktop intent, no step invented.
+  async function bringWork() {
     setBusy(true);
     setActNote(null);
     try {
       await apiFetch('/api/signals/life/declare', { method: 'POST', body: JSON.stringify({ doing: 'working' }) });
       const d = await load();
-      if (d && !currentThread(d, null).item) setActNote((d.situation && d.situation.calmSay) || 'Work is back — nothing needs you right now.');
+      if (d && currentThread(d, null).state !== 'item') setActNote((d.situation && d.situation.calmSay) || 'Work is back — nothing needs you right now.');
     } catch (e) {
       setActNote(e.message || 'That didn’t go through.');
     } finally { setBusy(false); }
@@ -469,6 +505,8 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
         session={session}
         error={state.error}
         neuroUrl={neuroUrl}
+        localActiveAt={local.at}
+        now={local.now}
         deskStates={deskStates}
         onDeskOpen={deskReachable ? deskOpen : null}
         onAct={onSay}
@@ -477,9 +515,10 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
         onToggleHeld={() => setHeldOpen((o) => !o)}
         helpOpen={helpOpen}
         onToggleHelp={() => setHelpOpen((o) => !o)}
-        askOpen={askOpen}
-        onQuiet={onQuiet}
-        dock={<Dock utterances={state.data?.utterances} onSay={onSay} placeholder={askOpen ? 'What are you doing? Ask, or save a note…' : undefined} />}
+        moreOpen={moreOpen}
+        onToggleMore={() => setMoreOpen((o) => !o)}
+        onBringWork={bringWork}
+        dock={<Dock utterances={state.data?.utterances} onSay={onSay} />}
       />
     </>
   );

@@ -29,20 +29,23 @@ Frame (`AltShell.jsx`, pure): the unchanged `Field` full-screen; a discreet corn
 marker, Control/NEURO links, lock); a persistent bottom bar — tagline left, the five icon buttons
 centre, "Updated HH:MM" (the read on screen) right.
 
-The SAiM page (`SaimHome.jsx`) has two modes (`model.mjs → currentThread`):
-- **Quiet** — no thread and no named step (his own time, or a context NEURO can't read). The
-  field is the content: a small statement low on the left ("You're home. VS Code is open." /
-  "I'm holding work for now."), a compact qualifier ("Watch heard in the living room." — a device,
-  never Nick placed in a room; anything NEURO couldn't read), and at most two quiet links: **Tell
-  me what you're doing** (opens a compact Ask/Save input) and **Bring work back** (only while work
-  is held; tells NEURO he is working and re-reads — no step invented). No card, no app chooser, no
-  rail, no form, no prompts to decide. A waiting approval or a relevant transition appears only
-  when there is one; held work is a "Show what's held (n)" link.
-- **Thread** — an attention item, a focus session / task block, or a step he named. A compact
-  card: NEURO's wording verbatim, "Next: <step>", the server's lifecycle sentences, and **Best
-  next place + Open** only when a named step points at a declared app that is NOT already in front
-  (if it is: "You're already in X.", no button). Other apps appear only after a genuine
-  recommendation or when he presses "Help me move this forward".
+The SAiM page (`SaimHome.jsx`) ALWAYS has a work surface — the field gives presence, the foreground
+gives orientation. (A "quiet uncertainty" variant that removed the surface, e309755f, was reverted
+on 13 Oct 2026: it read as an empty screensaver and said "away from the laptop" while the page was
+in use.)
+- **Presence** follows an evidence priority (`model.mjs → presence`): recent use of THIS page
+  (memory-only, 2 min) > the desk agent (which app is in front) > a watch heard in a room (support
+  only, never places Nick). It never says "away from the laptop" while the page is in use; when
+  signals contradict, a compact qualifier: "Signals disagree — desk active; watch last heard in the
+  living room." A NEURO activity read that cannot be true at a desk (watching TV, driving…) is not
+  presented as the thread while the page is in use — it is named as "NEURO last read you as …".
+- **Main work area**: NEURO's thread wording verbatim, or one compact uncertainty line; the step HE
+  named; the server's lifecycle sentences; Best next place + Open only when a named step points at
+  a declared app that is not already in front ("You're already in X. Carry on there." otherwise);
+  "Help me move this forward" reveals the app row on request; "Bring work back" when work is held;
+  and an always-present one-line Ask / Save.
+- **Rail** only when it holds something: a waiting approval, a relevant transition, held work
+  (count + Show held work), and context only when it helps resolve uncertainty.
 
 ### Tool handoff rules (`model.mjs → toolHandoff`)
 - Only apps in `work.deskOffer.apps` (the agent's declared `canOpen`, intersected server-side with
