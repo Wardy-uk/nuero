@@ -393,7 +393,7 @@ export function Journeys({ j, est, busy, act }) {
         </details>
       )}
       <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical('/api/vehicle/journeys/sync', {}))}>Check now</button>
-      <HowItWorks>Detected from Life360 in Home Assistant every 15 minutes. A journey counts for nothing until you approve it, and then only towards an estimate on top of your last odometer reading — it is never written as a reading. Your next real reading shows how far the estimate had drifted. Each end is named from a Home Assistant zone, a place you named here, a meeting in your diary you arrived for, or the nearest town — worked out on the Pi, nothing sent anywhere ({j.places && j.places.file === 'loaded' ? 'Place names © GeoNames, CC BY 4.0' : 'town names not loaded yet'}).</HowItWorks>
+      <HowItWorks>Detected from Life360 in Home Assistant every 15 minutes. A journey counts for nothing until you approve it, and then only towards an estimate on top of your last odometer reading — it is never written as a reading. Your next real reading shows how far the estimate had drifted. Each end is named from a Home Assistant zone, a place you named here, a meeting in your diary you arrived for, the shop or venue you stopped at, or the nearest town — worked out on the Pi from maps of the whole country downloaded in advance, so where you stopped is never sent anywhere ({[j.places && j.places.businesses === 'loaded' ? 'businesses © OpenStreetMap contributors' : 'business map not loaded yet', j.places && j.places.file === 'loaded' ? 'town names © GeoNames, CC BY 4.0' : 'town names not loaded yet'].join('; ')}).</HowItWorks>
     </>
   );
 }

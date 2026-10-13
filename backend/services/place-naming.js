@@ -10,6 +10,9 @@
  *   saved     a place Nick saved in NEURO, within its own radius
  *   diary     a calendar event (not free, not all-day) under way, or starting
  *             within 45 min, when he arrived — a client visit names itself
+ *   business  the shop / car park / venue he stopped at, from OpenStreetMap
+ *             downloaded for ALL of Great Britain once and kept on the Pi
+ *             (backend/scripts/fetch-uk-pois.js) — the stop never leaves the Pi
  *   locality  the nearest town/village from GeoNames' UK file, kept ON THE PI
  *             (Nick's call: nothing leaves the Pi; no online lookup). Within
  *             5 km it is "near X"; further, NO name rather than a misleading one
@@ -107,7 +110,7 @@ function diaryEventAt(arrivalMs, events = []) {
  *   end: { lat, lon, place }   at: ms of the arrival/departure   arrival: bool
  * Returns { name, source, distanceM? } — name null when nothing applies.
  */
-function nameFor(end, { at, arrival = false, saved = [], events = [], index = null } = {}) {
+function nameFor(end, { at, arrival = false, saved = [], events = [], index = null, pois = null } = {}) {
   if (!end) return { name: null, source: 'none' };
   if (end.place) return { name: end.place.charAt(0).toUpperCase() + end.place.slice(1), source: 'zone' };
   if (Number.isFinite(end.lat) && Number.isFinite(end.lon)) {
@@ -117,11 +120,115 @@ function nameFor(end, { at, arrival = false, saved = [], events = [], index = nu
       const ev = diaryEventAt(at, events);
       if (ev) return { name: ev.subject.trim(), source: 'diary' };
     }
+    const poi = pois ? pickPoi(end, pois) : null;
+    if (poi) return { name: poi.name, source: 'business', distanceM: poi.distanceM };
     const loc = nearestLocality(end, index);
     if (loc) return { name: `near ${loc.name}`, source: 'locality', distanceM: Math.round(loc.d) };
   }
   return { name: null, source: 'none' };
 }
+
+// ── the business the car stopped at (OpenStreetMap, kept on the Pi) ──────────
+//
+// Measured on 13 Oct against real stops: "near Breadsall Hilltop" was INSIDE the
+// Morrisons store outline at The Meteor Centre; "near Breadsall" was inside
+// Derby Garden Centre's car park. Three rules came out of that:
+//   · measure to a feature's OUTLINE (0 inside), not its centre point;
+//   · group by BRAND, so pharmacy + cafe + petrol station all vote "Morrisons";
+//   · an outline wider than LARGE_M (a university campus, a whole industrial
+//     estate) is never the place — inside it says almost nothing. A retail park
+//     the car is inside is added as context ("Morrisons, The Meteor Centre").
+const POI_MAX_M = 150;              // further than this from anything named: not "at" it
+const LARGE_M = 600;                // an outline bigger than this is an area, not a place
+const NOISE = new Set(['parcel_locker', 'atm', 'post_box', 'bicycle_parking', 'telephone', 'vending_machine', 'waste_basket',
+  'recycling', 'bench', 'charging_station', 'bus_station', 'taxi', 'motorcycle_parking', 'shelter', 'toilets', 'drinking_water']);
+const MAJOR_SHOPS = new Set(['supermarket', 'department_store', 'mall', 'doityourself', 'garden_centre', 'furniture', 'hardware',
+  'trade', 'electronics', 'car', 'car_repair', 'tyres', 'wholesale', 'variety_store', 'outdoor', 'sports']);
+const MAJOR_AMENITY = new Set(['fuel', 'hospital', 'school', 'college', 'university', 'cinema', 'theatre', 'library', 'townhall',
+  'community_centre', 'place_of_worship', 'car_wash', 'veterinary', 'dentist', 'doctors', 'clinic', 'pub', 'restaurant']);
+
+/** How much a feature counts as "where he went". 0 = never. PURE. */
+function poiWeight(p) {
+  const [key, val] = String(p.kind || '').split('=');
+  if (key === 'amenity' && NOISE.has(val)) return 0;
+  if (key === 'shop') return MAJOR_SHOPS.has(val) ? 5 : 2;
+  if (key === 'amenity') return val === 'parking' ? 3 : MAJOR_AMENITY.has(val) ? 4 : 2;
+  if (key === 'leisure' || key === 'tourism') return 4;
+  if (key === 'office') return 2;
+  if (key === 'building') return 1;
+  if (key === 'landuse') return 0; // context only (see pickPoi)
+  return 1;
+}
+
+function _extentM(p) {
+  if (!Number.isFinite(p.minlat)) return 0;
+  return haversineM({ lat: p.minlat, lon: p.minlon }, { lat: p.maxlat, lon: p.maxlon });
+}
+function _distTo(pt, p) {
+  if (Number.isFinite(p.minlat)) {
+    const lat = Math.min(Math.max(pt.lat, p.minlat), p.maxlat);
+    const lon = Math.min(Math.max(pt.lon, p.minlon), p.maxlon);
+    return haversineM(pt, { lat, lon });
+  }
+  return haversineM(pt, p);
+}
+
+/**
+ * The named place a stop was at, from nearby OSM features. PURE.
+ *   pois: [{ name, brand, kind:'shop=supermarket', lat, lon, minlat?, maxlat?, minlon?, maxlon? }]
+ * Returns { name, distanceM } or null.
+ */
+function pickPoi(point, pois = []) {
+  const votes = new Map();
+  let context = null;
+  for (const p of pois) {
+    if (!p || !p.name) continue;
+    const d = _distTo(point, p);
+    const ext = _extentM(p);
+    if (ext > LARGE_M * 3) continue;
+    // A retail park he is inside is context for whatever wins, not the answer.
+    if (String(p.kind).startsWith('landuse=retail')) { if (d === 0) context = p.name; continue; }
+    if (ext > LARGE_M) continue;
+    if (d > POI_MAX_M) continue;
+    const w = poiWeight(p);
+    if (!w) continue;
+    const key = (p.brand || p.name).trim();
+    const v = votes.get(key) || { name: key, score: 0, d: Infinity, parking: true };
+    v.score += w / (d + 15);
+    v.d = Math.min(v.d, d);
+    if (p.kind !== 'amenity=parking') v.parking = false;
+    votes.set(key, v);
+  }
+  const best = [...votes.values()].sort((a, b) => b.score - a.score)[0];
+  if (!best) return null;
+  let name = best.name;
+  if (best.parking && !/\b(car ?park|parking)\b/i.test(name)) name = `${name} car park`;
+  if (context && context.toLowerCase() !== name.toLowerCase()) name = `${name}, ${context}`;
+  return { name, distanceM: Math.round(best.d) };
+}
+
+function poisFile() {
+  return process.env.NEURO_POIS_DB || path.join(__dirname, '..', 'data', 'pois-gb.db');
+}
+let _poiDb = null; // a read-only connection | false when there is no file
+function poisNear(point, radiusM = LARGE_M) {
+  if (_poiDb === null) {
+    try {
+      if (!fs.existsSync(poisFile())) { _poiDb = false; } else {
+        const Database = require('better-sqlite3');
+        _poiDb = new Database(poisFile(), { readonly: true, fileMustExist: true });
+      }
+    } catch { _poiDb = false; }
+  }
+  if (!_poiDb || !point || !Number.isFinite(point.lat)) return null;
+  const dLat = radiusM / 111320;
+  const dLon = radiusM / (111320 * Math.cos((point.lat * Math.PI) / 180));
+  try {
+    return _poiDb.prepare('SELECT name, brand, kind, lat, lon, minlat, maxlat, minlon, maxlon FROM poi WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?')
+      .all(point.lat - dLat, point.lat + dLat, point.lon - dLon, point.lon + dLon);
+  } catch { return null; }
+}
+function _resetPois() { if (_poiDb) { try { _poiDb.close(); } catch { /* */ } } _poiDb = null; }
 
 // ── readers ──────────────────────────────────────────────────────────────────
 
@@ -159,18 +266,20 @@ function labelJourneys(journeys = []) {
   const events = eventsBetween(from, to);
   return journeys.map((j) => ({
     ...j,
-    startLabel: nameFor(j.start, { at: j.startedAt, arrival: false, saved, index }),
-    endLabel: nameFor(j.end, { at: j.endedAt, arrival: true, saved, events, index }),
+    startLabel: nameFor(j.start, { at: j.startedAt, arrival: false, saved, index, pois: j.start && !j.start.place ? poisNear(j.start) : null }),
+    endLabel: nameFor(j.end, { at: j.endedAt, arrival: true, saved, events, index, pois: j.end && !j.end.place ? poisNear(j.end) : null }),
   }));
 }
 
 function status() {
   const idx = localityIndex();
-  return { localities: idx ? idx.count : 0, file: idx ? 'loaded' : 'missing', attribution: 'Place names © GeoNames (CC BY 4.0)' };
+  poisNear({ lat: 54, lon: -2 }, 1); // opens the business file if it exists
+  return { localities: idx ? idx.count : 0, file: idx ? 'loaded' : 'missing', businesses: _poiDb ? 'loaded' : 'missing',
+    attribution: 'Place names © GeoNames (CC BY 4.0); businesses © OpenStreetMap contributors (ODbL)' };
 }
 
 module.exports = {
   DIARY_LEAD_MS, LOCALITY_MAX_M,
-  nameFor, nearestLocality, savedPlaceAt, diaryEventAt, labelJourneys, status, savedPlaces,
-  localityIndex, _resetIndex, _parseWall,
+  nameFor, nearestLocality, savedPlaceAt, diaryEventAt, labelJourneys, status, savedPlaces, pickPoi, poiWeight,
+  localityIndex, _resetIndex, _resetPois, _parseWall,
 };

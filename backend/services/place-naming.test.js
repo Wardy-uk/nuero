@@ -18,6 +18,7 @@ process.env.NEURO_PIN = 'pin-place';
 process.env.NEURO_API_TOKEN = 'machine-token-place';
 process.env.OBSIDIAN_VAULT_PATH = path.join(tmp, 'vault');
 process.env.NEURO_PLACES_FILE = path.join(tmp, 'places.tsv');
+process.env.NEURO_POIS_DB = path.join(tmp, 'pois.db');
 delete process.env.HA_URL;
 process.env.HA_TOKEN = '';
 fs.mkdirSync(path.join(tmp, 'vault'), { recursive: true });
@@ -113,4 +114,70 @@ test('naming refuses a geofence place it would move, a blank name, and a machine
   assert.equal(JSON.parse(db.getState('saved_places')).find((p) => p.name === 'Office').lat, 52.96, 'Office did not move');
   assert.equal((await call('POST', `/api/vehicle/journeys/${encodeURIComponent(JID)}/name-place`, { which: 'end', name: '  ' })).status, 400);
   assert.equal((await call('POST', `/api/vehicle/journeys/${encodeURIComponent(JID)}/name-place`, { which: 'end', name: 'X' }, MACHINE)).status, 403);
+});
+
+// ── businesses: shapes copied from the real OpenStreetMap features at Nick's stops ──
+const STOP = { lat: 52.94496, lon: -1.46229 };          // Mon 16:36 end — inside the Morrisons store outline
+const DERBY = [
+  { name: 'Morrisons', brand: 'Morrisons', kind: 'shop=supermarket', lat: 52.9447, lon: -1.4620, minlat: 52.9443, maxlat: 52.9452, minlon: -1.4630, maxlon: -1.4612 },
+  { name: 'Morrisons Pharmacy', brand: 'Morrisons', kind: 'amenity=pharmacy', lat: 52.9452, lon: -1.4625 },
+  { name: 'Morrisons', brand: 'Morrisons', kind: 'amenity=fuel', lat: 52.9459, lon: -1.4613 },
+  { name: 'Vets4Pets', brand: null, kind: 'amenity=veterinary', lat: 52.9463, lon: -1.4618 },
+  { name: 'antique', brand: null, kind: 'amenity=parcel_locker', lat: 52.94505, lon: -1.46225 },
+  { name: 'The Meteor Centre', brand: null, kind: 'landuse=retail', lat: 52.9450, lon: -1.4610, minlat: 52.9425, maxlat: 52.9475, minlon: -1.4660, maxlon: -1.4570 },
+  { name: 'University of Derby', brand: null, kind: 'amenity=university', lat: 52.94, lon: -1.49, minlat: 52.90, maxlat: 52.98, minlon: -1.55, maxlon: -1.40 },
+];
+
+test('the business he stopped at: grouped by brand, retail park as context, huge outlines and noise ignored', () => {
+  assert.deepEqual(N.pickPoi(STOP, DERBY), { name: 'Morrisons, The Meteor Centre', distanceM: 0 });
+  // Without the store and the park, the university campus he is "inside" must not win.
+  assert.equal(N.pickPoi(STOP, DERBY.filter((p) => p.name === 'University of Derby')), null);
+  // A parcel locker 10 m away is not a destination.
+  assert.equal(N.pickPoi(STOP, DERBY.filter((p) => p.kind === 'amenity=parcel_locker')), null);
+  // A named car park on its own says so.
+  assert.equal(N.pickPoi({ lat: 52.95927, lon: -1.45858 }, [{ name: 'Derby Garden Centre', kind: 'amenity=parking', lat: 52.95928, lon: -1.45858 }]).name, 'Derby Garden Centre car park');
+  // Nothing within 150 m: no business name.
+  assert.equal(N.pickPoi({ lat: 52.95, lon: -1.40 }, DERBY.filter((p) => !p.minlat)), null);
+});
+
+test('order: zone > saved > diary > business > nearest town', () => {
+  const saved = [{ name: 'Big shop', lat: STOP.lat, lng: STOP.lon, radius: 200 }];
+  const meeting = { subject: 'Supplier visit', start: T + 600000, end: T + 3600000, showAs: 'busy', withOthers: true };
+  assert.equal(N.nameFor({ ...STOP, place: null }, { pois: DERBY, saved, index: index() }).source, 'saved');
+  assert.equal(N.nameFor({ ...STOP, place: null }, { at: T, arrival: true, events: [meeting], pois: DERBY, index: index() }).source, 'diary');
+  assert.deepEqual(N.nameFor({ ...STOP, place: null }, { pois: DERBY, index: index() }), { name: 'Morrisons, The Meteor Centre', source: 'business', distanceM: 0 });
+  assert.equal(N.nameFor({ ...STOP, place: 'Office' }, { pois: DERBY }).source, 'zone');
+});
+
+test('the business file is read from SQLite on the Pi: a journey ending at Morrisons is labelled from it', () => {
+  const Database = require('better-sqlite3');
+  const pdb = new Database(process.env.NEURO_POIS_DB);
+  pdb.exec('CREATE TABLE poi (id TEXT PRIMARY KEY, name TEXT, brand TEXT, kind TEXT, lat REAL, lon REAL, minlat REAL, maxlat REAL, minlon REAL, maxlon REAL)');
+  const ins = pdb.prepare('INSERT INTO poi VALUES (?,?,?,?,?,?,?,?,?,?)');
+  DERBY.forEach((p, i) => ins.run(`n${i}`, p.name, p.brand, p.kind, p.lat, p.lon, p.minlat ?? null, p.maxlat ?? null, p.minlon ?? null, p.maxlon ?? null));
+  pdb.close();
+  N._resetPois();
+  const [j] = N.labelJourneys([{ startedAt: T, endedAt: T + 1800000, start: { lat: 52.7370, lon: -1.3499, place: 'home' }, end: { ...STOP, place: null } }]);
+  assert.equal(j.endLabel.name, 'Morrisons, The Meteor Centre');
+  assert.equal(j.startLabel.name, 'Home');
+  assert.equal(N.status().businesses, 'loaded');
+});
+
+// Metres → a point offset from STOP (north, east).
+const at = (n, e) => ({ lat: STOP.lat + n / 111320, lon: STOP.lon + e / (111320 * Math.cos((STOP.lat * Math.PI) / 180)) });
+
+test('brand votes add up: three small Morrisons features outvote one nearer trade counter (store outline not mapped)', () => {
+  const pois = [
+    { name: 'Morrisons Pharmacy', brand: 'Morrisons', kind: 'amenity=pharmacy', ...at(35, 0) },
+    { name: 'Morrisons Cafe', brand: 'Morrisons', kind: 'amenity=cafe', ...at(0, 56) },
+    { name: 'Morrisons', brand: 'Morrisons', kind: 'amenity=fuel', ...at(-112, 0) },
+    { name: 'Huws Gray', brand: null, kind: 'shop=trade', ...at(0, -93) },
+  ];
+  assert.equal(N.pickPoi(STOP, pois).name, 'Morrisons');
+});
+
+test('an area about 1 km across (a business park) is not the place, even when the car is inside it', () => {
+  const park = { name: 'Meteor Business Park', kind: 'office=company', lat: STOP.lat, lon: STOP.lon,
+    minlat: at(-400, 0).lat, maxlat: at(400, 0).lat, minlon: at(0, -400).lon, maxlon: at(0, 400).lon };
+  assert.equal(N.pickPoi(STOP, [park]), null);
 });

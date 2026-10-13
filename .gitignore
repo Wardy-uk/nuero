@@ -53,3 +53,6 @@ plaud_sync_state.backup.*.json
 # GeoNames UK places for journey naming (backend/scripts/fetch-uk-places.js) — data, not code.
 backend/data/places-gb.tsv
 backend/data/places-gb.tsv.tmp
+backend/data/pois-gb.db
+backend/data/pois-gb.db.tmp
+backend/data/pois-gb.db.progress.json
