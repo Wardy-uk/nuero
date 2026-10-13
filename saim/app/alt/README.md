@@ -40,11 +40,15 @@ else chat).
   the server's reason shown.
 - Top candidate: the app already in front → a tool the work text names (marked uncertain) → the
   first offered app (marked "not sure"). Never an unoffered app.
-- Alternatives in fixed order: AI (always), Music (always), then Browser / VS Code / Terminal.
-- ⚠ **There is no `ai` key in `desk-intents.APPS` yet**, so the AI slot is always shown disabled
-  with "no AI tool is set up on the desk agent yet". To light it: add `ai` to `APPS` and
-  `BUTTON_LABELS` in `backend/services/desk-intents.js` (deploy NEURO) AND map `ai` to a command in
-  the laptop's `%LOCALAPPDATA%\neuro-agent\apps.json` + `canOpen`. Two edits, two machines.
+- Alternatives in fixed order: AI tools (Claude, ChatGPT — or one disabled "AI assistant" if
+  neither is offered), Music (always), then Outlook, Teams, Obsidian, Excel, Word, NOVA, VANTAGE,
+  NEURO, Plaud, Browser, VS Code, Terminal, SSMS, Postman — whichever the laptop offers.
+- Evidence for the top pick, in order: the app already in front (certain) → the card's kind
+  (email → Outlook) → a word in the work text (both marked "not certain") → first offered (a guess).
+- Adding an app takes two edits on two machines: `APPS` + `BUTTON_LABELS` in
+  `backend/services/desk-intents.js` (deploy NEURO), and the id → `shell:AppsFolder\<AUMID>` line in
+  the laptop's `%LOCALAPPDATA%\neuro-agent\apps.json` (restart the agent). `Get-StartApps` lists
+  the AUMIDs. NEURO keeps up to 32 declared apps per machine.
 - Presses use the existing `/api/desktop/intents` queue and report the server's lifecycle:
   waiting → claimed → opened | failed | expired. Never "done".
 - The tool choice is a client-side rule (it picks a TOOL, never which work matters). If the
