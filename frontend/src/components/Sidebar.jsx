@@ -108,7 +108,7 @@ function readOpenGroups() {
 }
 
 export default function Sidebar({ activeView, onNavigate, open }) {
-  const [workOnly, setWorkOnly] = useWorkOnly();
+  const [workOnly] = useWorkOnly();
   const [importsCount, setImportsCount] = useState(0);
   const [actionsCount, setActionsCount] = useState(0);
   const [actionsTitle, setActionsTitle] = useState('');
@@ -203,12 +203,6 @@ export default function Sidebar({ activeView, onNavigate, open }) {
         <div className="sidebar-group sidebar-group-primary">
           {PRIMARY_ITEMS.map(item => renderItem({ ...item, primary: true }))}
         </div>
-
-        {/* Work only (13 Oct 2026): hides LIFE and anything personal on this device. */}
-        <label className={`sidebar-workonly${workOnly ? ' sidebar-workonly-on' : ''}`} title="Hide everything that isn't work — on this device">
-          <input type="checkbox" checked={workOnly} onChange={(e) => setWorkOnly(e.target.checked)} />
-          <span>Work only</span>
-        </label>
 
         {GROUPS.filter((g) => !(workOnly && WORK_ONLY_HIDDEN_GROUPS.has(g.id))).map(group => (
           <div className="sidebar-group" key={group.id}>

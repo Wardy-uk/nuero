@@ -479,7 +479,7 @@ function AuthenticatedApp() {
           <ChatPanel location={location} />
         </aside>
       </div>
-      <StatusBar />
+      <StatusBar status={status} />
       <NudgeBanner onGoToStandup={() => { setActiveView('standup'); setSidebarOpen(false); }} onGoToTodos={(target) => { setNavContext(target || null); setActiveView('todos'); setSidebarOpen(false); }} onGoToJournal={() => { setActiveView('journal'); setSidebarOpen(false); }} onGoToPeople={() => { setActiveView('people'); setSidebarOpen(false); }} onGoToBriefing={() => { setActiveView('today'); setSidebarOpen(false); }} onGoToInbox={() => { setActiveView('inbox'); setSidebarOpen(false); }} />
       <InstallBanner />
       {/* Mobile bottom nav */}

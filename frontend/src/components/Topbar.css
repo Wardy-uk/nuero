@@ -335,3 +335,12 @@
   border: 1px solid rgba(127, 209, 255, 0.22);
   white-space: nowrap;
 }
+
+/* Work only (13 Oct 2026) — a toggle beside the room chip. */
+.topbar-workonly {
+  font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem; margin-left: 6px; border-radius: 4px; cursor: pointer; white-space: nowrap;
+  color: var(--text-secondary); background: transparent; border: 1px solid var(--border);
+}
+.topbar-workonly:hover { color: var(--text-primary); border-color: var(--accent); }
+.topbar-workonly--on { color: #f0a040; border-color: rgba(240, 160, 64, 0.55); background: rgba(240, 160, 64, 0.12); }

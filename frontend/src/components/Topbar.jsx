@@ -1,3 +1,4 @@
+import { useWorkOnly } from '../workOnly';
 import React from 'react';
 import { apiUrl, getPin } from '../api';
 import { assessWorker } from '../../../shared/worker-health.cjs';
@@ -139,10 +140,12 @@ function QuickAdd({ apiUrl: apiUrlFn }) {
   );
 }
 
-export default function Topbar({ status, onMenuToggle, onChatToggle, chatOpen, weekend, onWeekendOverride, weekendOverride, children }) {
-  const itIsWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
-  const roomHere = useRoom(apiUrl);
 
+/**
+ * The AI / Vault / Microsoft lights (13 Oct 2026: moved from the top bar to the
+ * footer, beside pi5 and the build — Nick). Same verdicts as before.
+ */
+export function SystemIndicators({ status }) {
   // AI provider status
   const ai = status?.ai || {};
   const ollamaOk = status?.ollamaReachable;
@@ -212,6 +215,39 @@ export default function Topbar({ status, onMenuToggle, onChatToggle, chatOpen, w
   );
 
   return (
+    <>
+        <div className="topbar-indicator" title={aiTitle}>
+        <span className={`status-dot ollama-${aiLevel}`} />
+        <span className="topbar-label">
+          AI
+          <span className="topbar-sublabel">{servingLabel}</span>
+          {aiIssues.length > 0 && <span className="topbar-issue-count">{aiIssues.length}</span>}
+        </span>
+      </div>
+      <div className="topbar-indicator">
+        {statusDot(status?.obsidian?.configured)}
+        <span className="topbar-label">Vault</span>
+      </div>
+      <div className="topbar-indicator">
+        {statusDot(status?.microsoft?.authenticated || status?.microsoft?.bridgeConnected)}
+        <span className="topbar-label">Microsoft{
+          status?.microsoft?.authenticated ? '' :
+          status?.microsoft?.bridgeConnected ? ' (via NOVA)' :
+          status?.microsoft?.bridgeConfigured ? ' (bridge offline)' :
+          status?.microsoft?.configured ? ' (not signed in)' :
+          ' (not configured)'
+        }</span>
+      </div>
+    </>
+  );
+}
+
+export default function Topbar({ status, onMenuToggle, onChatToggle, chatOpen, weekend, onWeekendOverride, weekendOverride, children }) {
+  const itIsWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
+  const roomHere = useRoom(apiUrl);
+  const [workOnly, setWorkOnly] = useWorkOnly();
+
+  return (
     <header className="topbar">
       <div className="topbar-left">
         <button className="topbar-menu-btn" onClick={onMenuToggle} aria-label="Menu">
@@ -221,6 +257,11 @@ export default function Topbar({ status, onMenuToggle, onChatToggle, chatOpen, w
         {roomHere
           ? <span className="topbar-room" title="Where your watch was last picked up">{roomHere}</span>
           : <span className="topbar-version">v1.0</span>}
+        {/* Work only (13 Oct 2026): beside where you are, because it is about this screen, here. */}
+        <button type="button" className={`topbar-workonly${workOnly ? ' topbar-workonly--on' : ''}`} aria-pressed={workOnly}
+          onClick={() => setWorkOnly(!workOnly)} title={workOnly ? 'Work only is on — click to show your life again (this device)' : 'Hide everything that isn’t work (this device)'}>
+          {workOnly ? 'Work only' : 'All'}
+        </button>
       </div>
       <div className="topbar-center">
         {weekend && (
@@ -233,28 +274,6 @@ export default function Topbar({ status, onMenuToggle, onChatToggle, chatOpen, w
             💼 Work mode
           </button>
         )}
-        <div className="topbar-indicator" title={aiTitle}>
-          <span className={`status-dot ollama-${aiLevel}`} />
-          <span className="topbar-label">
-            AI
-            <span className="topbar-sublabel">{servingLabel}</span>
-            {aiIssues.length > 0 && <span className="topbar-issue-count">{aiIssues.length}</span>}
-          </span>
-        </div>
-        <div className="topbar-indicator">
-          {statusDot(status?.obsidian?.configured)}
-          <span className="topbar-label">Vault</span>
-        </div>
-        <div className="topbar-indicator">
-          {statusDot(status?.microsoft?.authenticated || status?.microsoft?.bridgeConnected)}
-          <span className="topbar-label">Microsoft{
-            status?.microsoft?.authenticated ? '' :
-            status?.microsoft?.bridgeConnected ? ' (via NOVA)' :
-            status?.microsoft?.bridgeConfigured ? ' (bridge offline)' :
-            status?.microsoft?.configured ? ' (not signed in)' :
-            ' (not configured)'
-          }</span>
-        </div>
       </div>
       <div className="topbar-right">
         {children}

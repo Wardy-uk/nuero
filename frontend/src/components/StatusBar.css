@@ -39,3 +39,9 @@
     z-index: 50;
   }
 }
+
+/* AI / Vault / Microsoft, moved down from the top bar (13 Oct 2026). */
+.statusbar-systems { display: inline-flex; align-items: center; gap: 12px; }
+.statusbar-systems .topbar-indicator { gap: 5px; }
+.statusbar-systems .status-dot { width: 7px; height: 7px; }
+.statusbar-systems .topbar-label { color: var(--text-muted); }
