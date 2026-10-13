@@ -100,6 +100,7 @@ export const interactive = {
   post_vehicle_journeys_by_journeyId_approve: 'Whether a detected journey was the car is Nick\'s to say — it moves his mileage estimate. He approves it in NEURO → Life → Transport → Journeys.',
   post_vehicle_journeys_by_journeyId_reject: 'Rejecting a detected journey is Nick\'s decision. He does it in NEURO → Life → Transport → Journeys.',
   post_vehicle_journeys_by_journeyId_reopen: 'Undoing a journey decision is Nick\'s. He does it in NEURO → Life → Transport → Journeys.',
+  post_vehicle_journeys_by_journeyId_name_place: 'Naming a place is Nick's word about where he went. He does it in NEURO → Life → Transport → Journeys.',
   post_vehicle_journeys_sync: 'Journey detection runs every 15 minutes on the Pi; a manual check is pressed by Nick in NEURO → Life → Transport.',
   post_vehicle_by_id_events: 'Service, repair and tyre history is Nick\'s own record — never created from a payment. He adds it in NEURO → Life → Vehicle.',
   post_vehicle_by_id_events_by_eventId_withdraw: 'Taking back a history entry is Nick\'s choice. He does it in NEURO → Life → Vehicle.',

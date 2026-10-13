@@ -96,6 +96,14 @@ router.post('/journeys/:journeyId/reject', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// POST /api/vehicle/journeys/:journeyId/name-place — Nick names where a journey started or ended. Body: which (start|end), name. Saved from the journey's own position; every later drive there carries the name. Keywords: name place, label, location, journey.
+router.post('/journeys/:journeyId/name-place', (req, res) => {
+  try {
+    const { which, name } = req.body;
+    send(res, jr().namePlace(req.params.journeyId, { which, name }));
+  } catch (e) { fail(res, e); }
+});
+
 // POST /api/vehicle/journeys/:journeyId/reopen — undo an approval or rejection; the journey is pending again.
 router.post('/journeys/:journeyId/reopen', (req, res) => {
   try { send(res, jr().reopen(req.params.journeyId)); } catch (e) { fail(res, e); }

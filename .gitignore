@@ -49,3 +49,7 @@ core.[0-9]*
 # Ledger backups written by backend/scripts/migrate-plaud-id-canonical.js. They live
 # beside the database; an untracked file in the working tree blocks --ff-only on the Pi.
 plaud_sync_state.backup.*.json
+
+# GeoNames UK places for journey naming (backend/scripts/fetch-uk-places.js) — data, not code.
+backend/data/places-gb.tsv
+backend/data/places-gb.tsv.tmp

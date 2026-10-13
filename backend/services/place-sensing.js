@@ -307,6 +307,8 @@ function placeAt(places, lat, lng) {
 function monitorablePlaces(places = []) {
   const valid = (places || [])
     .filter((p) => p && typeof p.name === 'string' && p.name.trim() && isFiniteNumber(p.lat) && isFiniteNumber(p.lng))
+    // A place named from a car journey labels drives; it is not a geofence (13 Oct 2026).
+    .filter((p) => p.geofence !== false)
     .map((p) => {
       const asked = isFiniteNumber(p.radius) ? p.radius : DEFAULT_RADIUS_M;
       const radius = Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, asked));

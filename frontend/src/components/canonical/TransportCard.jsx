@@ -330,9 +330,27 @@ function Official({ r, base, busy, act }) {
 }
 
 const PLACE = (p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : null);
+// The server names each end (zone → saved place → diary → nearest town); this only renders it.
+const endName = (label, fallback) => (label && label.name) || PLACE(fallback) || 'unnamed place';
 const when = (ms) => new Date(ms).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const hhmm = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-const route = (j) => [PLACE(j.start.place), PLACE(j.end.place)].some(Boolean) ? `${PLACE(j.start.place) || 'somewhere'} → ${PLACE(j.end.place) || 'somewhere'}` : null;
+const route = (j) => `${endName(j.startLabel, j.start.place)} → ${endName(j.endLabel, j.end.place)}`;
+const nameable = (label) => !label || label.source === 'none' || label.source === 'locality';
+
+function NamePlace({ j, which, busy, act }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const label = which === 'start' ? j.startLabel : j.endLabel;
+  if (!nameable(label)) return null;
+  if (!open) return <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => setOpen(true)}>Name {which === 'start' ? 'start' : 'destination'}</button>;
+  return (
+    <form className="cn-hike-form" onSubmit={(e) => { e.preventDefault(); act(async () => { await postCanonical(`/api/vehicle/journeys/${encodeURIComponent(j.id)}/name-place`, { which, name }); setOpen(false); setName(''); }); }}>
+      <input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder={which === 'start' ? 'Where did this start?' : 'Where was this?'} aria-label="Place name" />
+      <button type="submit" className="cn-btn cn-btn--tiny" disabled={busy || !name.trim()}>Save</button>
+      <button type="button" className="cn-btn cn-btn--tiny" onClick={() => setOpen(false)}>Cancel</button>
+    </form>
+  );
+}
 
 function journeysMeta(j) {
   const failed = j.lastSync && j.lastSync.ok === false ? 'last check couldn’t read Life360' : null;
@@ -353,7 +371,9 @@ export function Journeys({ j, est, busy, act }) {
         <ul className="cn-list">
           {j.pending.map((x) => (
             <li key={x.id} className="cn-hike-form">
-              <span>{when(x.startedAt)}–{hhmm(x.endedAt)}{route(x) ? ` · ${route(x)}` : ''} · {x.measuredMiles} mi measured</span>
+              <span>{when(x.startedAt)}–{hhmm(x.endedAt)} · {route(x)} · {x.measuredMiles} mi measured</span>
+              <NamePlace j={x} which="start" busy={busy} act={act} />
+              <NamePlace j={x} which="end" busy={busy} act={act} />
               <span className="cn-muted cn-small">{x.movingMinutes} min moving · top {x.peakKmh} km/h{x.gapMinutes ? ` · ${x.gapMinutes} min with no fix (distance across it is a straight line)` : ''}</span>
               <input className="cn-input--tiny" type="number" min="0.1" step="0.1" value={miles[x.id] ?? x.measuredMiles} onChange={(e) => setMiles({ ...miles, [x.id]: e.target.value })} aria-label="Miles to count" />
               <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !(Number(miles[x.id] ?? x.measuredMiles) > 0)} onClick={() => go(x.id, 'approve', { miles: Number(miles[x.id] ?? x.measuredMiles) })}>Approve</button>
@@ -367,13 +387,13 @@ export function Journeys({ j, est, busy, act }) {
       {j.recent.length > 0 && (
         <details className="cn-details"><summary>Decided ({j.recent.length})</summary>
           <ul className="cn-act-lines">{j.recent.map((x) => (
-            <li key={x.id}>{when(x.startedAt)}{route(x) ? ` · ${route(x)}` : ''} — {x.status === 'approved' ? `${x.miles} mi${x.edited ? ` (measured ${x.measuredMiles})` : ''}` : x.rejectReason === 'not-the-car' ? 'not the car' : 'not a journey'}
+            <li key={x.id}>{when(x.startedAt)} · {route(x)} — {x.status === 'approved' ? `${x.miles} mi${x.edited ? ` (measured ${x.measuredMiles})` : ''}` : x.rejectReason === 'not-the-car' ? 'not the car' : 'not a journey'}
               {' '}<button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reopen')}>Undo</button></li>
           ))}</ul>
         </details>
       )}
       <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical('/api/vehicle/journeys/sync', {}))}>Check now</button>
-      <HowItWorks>Detected from Life360 in Home Assistant every 15 minutes. A journey counts for nothing until you approve it, and then only towards an estimate on top of your last odometer reading — it is never written as a reading. Your next real reading shows how far the estimate had drifted.</HowItWorks>
+      <HowItWorks>Detected from Life360 in Home Assistant every 15 minutes. A journey counts for nothing until you approve it, and then only towards an estimate on top of your last odometer reading — it is never written as a reading. Your next real reading shows how far the estimate had drifted. Each end is named from a Home Assistant zone, a place you named here, a meeting in your diary you arrived for, or the nearest town — worked out on the Pi, nothing sent anywhere ({j.places && j.places.file === 'loaded' ? 'Place names © GeoNames, CC BY 4.0' : 'town names not loaded yet'}).</HowItWorks>
     </>
   );
 }

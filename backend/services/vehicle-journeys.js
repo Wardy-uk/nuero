@@ -218,8 +218,9 @@ function forVehicle(vehicleId) {
     lastSync: last ? { at: last.at, ok: last.ok, error: last.error || null, detected: last.detectedCount || 0 } : null,
     estimate: model.estimate(current, rows, { endOfLocalDay }),
     reconciliation: model.reconcile(accepted, rows, { trackingSince: since, endOfLocalDay }).slice(0, 3),
-    pending: rows.filter((j) => j.status === 'pending').reverse(),
-    recent: rows.filter((j) => j.status !== 'pending').slice(0, 10),
+    pending: _label(rows.filter((j) => j.status === 'pending').reverse()),
+    recent: _label(rows.filter((j) => j.status !== 'pending').slice(0, 10)),
+    places: require('./place-naming').status(),
   };
 }
 
@@ -243,4 +244,39 @@ async function nudge({ now = Date.now(), push } = {}) {
   return { sent: true, count: n, miles };
 }
 
-module.exports = { SOURCE, REJECT_REASONS, sync, approve, reject, reopen, list, forVehicle, nudge, endOfLocalDay, _fetchHistory };
+function _label(rows) {
+  try { return require('./place-naming').labelJourneys(rows); } catch (e) { console.warn(`[Journeys] place naming failed: ${e.message}`); return rows; }
+}
+
+/**
+ * Name where a journey started or ended (which = 'start' | 'end'). Saved into
+ * NEURO's saved places from the journey's OWN stored coordinates — the client
+ * sends a name, never a position. Marked geofence:false: saved places also
+ * become phone geofences, capped and kept in name order, so a stream of named
+ * car parks would push Office off the phone (place-sensing.monitorablePlaces).
+ */
+function namePlace(id, body = {}, { now = Date.now() } = {}) {
+  const r = _get(id);
+  if (!r) return { ok: false, status: 404, error: 'no such journey' };
+  const which = body.which === 'start' ? 'start' : body.which === 'end' ? 'end' : null;
+  if (!which) return { ok: false, status: 400, error: 'which must be start or end' };
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
+  if (!name) return { ok: false, status: 400, error: 'a name is required' };
+  const lat = r[`${which}_lat`]; const lng = r[`${which}_lon`];
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { ok: false, status: 409, error: 'this journey has no position recorded for that end' };
+  const db = _db();
+  let places = [];
+  try { const raw = db.getState('saved_places'); places = raw ? JSON.parse(raw) : []; } catch { return { ok: false, status: 500, error: 'saved places could not be read — nothing was changed' }; }
+  const existing = places.find((p) => String(p.name).toLowerCase() === name.toLowerCase());
+  if (existing && existing.geofence !== false) {
+    // A place he set up as a geofence is not moved by naming a car park after it.
+    return { ok: false, status: 409, error: `"${existing.name}" is already a saved place — pick another name` };
+  }
+  if (existing) { existing.lat = lat; existing.lng = lng; existing.updatedAt = new Date(now).toISOString(); }
+  else places.push({ name, lat, lng, radius: 200, geofence: false, source: 'journey', createdAt: new Date(now).toISOString() });
+  db.setState('saved_places', JSON.stringify(places));
+  _log('vehicle-journey-place-named', { which }, id, now);
+  return { ok: true, name };
+}
+
+module.exports = { SOURCE, REJECT_REASONS, sync, approve, reject, reopen, list, forVehicle, nudge, namePlace, endOfLocalDay, _fetchHistory };

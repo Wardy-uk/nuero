@@ -13610,6 +13610,27 @@
     "stream": false
   },
   {
+    "id": "post_vehicle_journeys_by_journeyId_name_place",
+    "method": "POST",
+    "route": "/api/vehicle/journeys/:journeyId/name-place",
+    "domain": "vehicle",
+    "source": "routes/vehicle.js",
+    "line": 100,
+    "description": "POST /api/vehicle/journeys/:journeyId/name-place. Nick names where a journey started or ended. Body: which (start|end), name. Saved from the journey's own position; every later drive there carries the name. Keywords: name place, label, location, journey.",
+    "params": [
+      "journeyId"
+    ],
+    "query": [],
+    "body": [
+      "name",
+      "which"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "post_vehicle_journeys_by_journeyId_reject",
     "method": "POST",
     "route": "/api/vehicle/journeys/:journeyId/reject",
