@@ -320,3 +320,15 @@ test('the long-run memory is per machine', () => {
   db.setState(desk.STATE_KEY, JSON.stringify(state));
   assert.ok(desk.longRunObservation(NOW), 'the second machine gets its own mention');
 });
+
+test('a machine can declare more than 16 apps: none is silently cut (13 Oct 2026, `word`)', () => {
+  const ids = ['browser', 'chatgpt', 'claude', 'code', 'excel', 'music', 'neuro', 'nova', 'obsidian',
+    'outlook', 'plaud', 'postman', 'ssms', 'teams', 'terminal', 'vantage', 'word'];
+  desk.record({ app: 'Code', host: 'CAP-HOST', canOpen: ids });
+  assert.deepEqual(desk.capabilities()['CAP-HOST'], ids, 'the 17th, alphabetically last, survives');
+  assert.ok(desk.MAX_CAN_OPEN >= ids.length);
+  // Still bounded against a runaway reporter.
+  const flood = Array.from({ length: 200 }, (_, i) => `app${i}`);
+  desk.record({ app: 'Code', host: 'CAP-FLOOD', canOpen: flood });
+  assert.equal(desk.capabilities()['CAP-FLOOD'].length, desk.MAX_CAN_OPEN);
+});

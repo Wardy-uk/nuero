@@ -456,6 +456,8 @@ function _buckets(state) {
  * sanitiser agreed with it — a reporter that thinks it sent an app name and had
  * it stripped should be able to tell.
  */
+const MAX_CAN_OPEN = 32;
+
 function record({ app = null, idleSeconds = 0, locked = false, host = null, at = null, canOpen = null } = {}) {
   const state = _load();
   const key = _hostKey(host);
@@ -494,7 +496,10 @@ function record({ app = null, idleSeconds = 0, locked = false, host = null, at =
       .filter(a => typeof a === 'string')
       .map(a => a.trim().toLowerCase())
       .filter(Boolean)
-      .slice(0, 16);
+      // A bound against a runaway reporter, not a product limit. It was 16
+      // and silently cut the 17th app (13 Oct 2026, `word`): the agent sends
+      // its list SORTED, so whichever id falls last alphabetically vanished.
+      .slice(0, MAX_CAN_OPEN);
     bucket.canOpen = Array.from(new Set(clean)).sort();
     bucket.canOpenAt = stamp;
   }
@@ -589,6 +594,7 @@ function longRunObservation(now = new Date()) {
 
 module.exports = {
   capabilities,
+  MAX_CAN_OPEN,
   // pure
   sanitiseApp,
   labelFor,
