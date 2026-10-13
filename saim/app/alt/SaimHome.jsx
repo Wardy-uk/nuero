@@ -3,7 +3,7 @@ import { apiFetch, chatStream } from '../src/api';
 import { enqueue, flush, outcomeFor } from '../src/mobile/outbox';
 import { matchSaid } from '../../../shared/heard.cjs';
 import {
-  presence, silence, currentThread, toolHandoff, nextChange, heldWork, judgement, evidence,
+  presence, silence, currentThread, toolHandoff, nextChange, heldWork, judgement, evidence, leadOf,
   neuroLink, deskStateText, deskStateSettled, deskStateBusy,
 } from './model.mjs';
 import './SaimHome.css';
@@ -28,6 +28,7 @@ import './SaimHome.css';
 // ⚠ Nothing here approves or sends. Desk opens report the server's lifecycle.
 
 const POLL_MS = 60_000;
+const SCENARIO_NOTE = 'Scenario mode — nothing was sent to NEURO or the laptop.';
 
 /** A desk app as a button — or, when it can't be pressed, as plain text. */
 function ToolButton({ app, onDeskOpen, deskStates, primary = false }) {
@@ -85,10 +86,14 @@ export function SaimHomeView({
   const judge = judgement(data);
   const ev = evidence(data, thread, p);
   const actionsLink = neuroLink(neuroUrl, 'actions');
-  const showOthers = tools.mode !== 'blocked' && (Boolean(tools.top) || helpOpen);
+  const lead = leadOf(data, thread);
+  const prepLink = neuroLink(neuroUrl, 'meeting-prep');
+  // Tools belong to a thread. On his own time (off duty) nothing work-shaped is offered.
+  const showOthers = (lead === 'thread' || lead === 'context') && !thread.offDuty && tools.mode !== 'blocked' && (Boolean(tools.top) || helpOpen);
+  const offerHelp = (lead === 'thread' || lead === 'context') && !thread.offDuty && !showOthers && tools.mode !== 'blocked' && Boolean(onToggleHelp);
 
   const rail = [];
-  if (judge.count > 0 || !judge.known) {
+  if ((judge.count > 0 || !judge.known) && lead !== 'judgement') {
     rail.push(
       <section key="judge" className="alt-rail__block" aria-label="Needs your judgement">
         <h2 className="alt-rail__head">Needs your judgement</h2>
@@ -99,7 +104,7 @@ export function SaimHomeView({
       </section>,
     );
   }
-  if (change) {
+  if (change && lead !== 'transition') {
     rail.push(
       <section key="next" className="alt-rail__block" aria-label="Next transition">
         <h2 className="alt-rail__head">Next</h2>
@@ -128,7 +133,7 @@ export function SaimHomeView({
       </section>,
     );
   }
-  if (ev) {
+  if (ev && (lead === 'thread' || lead === 'context')) {
     rail.push(
       <section key="ev" className="alt-rail__block" aria-label="Context">
         <h2 className="alt-rail__head">Context</h2>
@@ -156,69 +161,102 @@ export function SaimHomeView({
 
       <div className={`alt-grid${rail.length ? '' : ' alt-grid--solo'}`}>
         {/* ── Main work area: always present ──────────────────────────── */}
-        <section className={`alt-thread alt-thread--${thread.state}`} aria-label="The current thread">
-          <p className={`alt-thread__title${thread.state === 'unknown' ? ' alt-thread__title--small' : ''}`}>{thread.item.title}</p>
-          {thread.item.sub && <p className="alt-thread__sub">{thread.item.sub}</p>}
-          {thread.item.reason && <p className="alt-thread__why">{thread.item.reason}</p>}
-          {blind && blind.kind === 'blind' && <p className="alt-warn">{blind.text}</p>}
-
-          {thread.nextStep.known
-            ? <p className="alt-thread__next"><span className="alt-label">Next</span>{thread.nextStep.text}</p>
-            : thread.uncertain && <p className="alt-thread__uncertain">{thread.uncertain}</p>}
-
-          {tools.mode === 'step' && tools.top && (
-            <div className="alt-place__best">
-              <span className="alt-label">Best next place</span>
-              <span className="alt-place__name">{tools.top.label}</span>
-              <ToolButton app={tools.top} onDeskOpen={onDeskOpen} deskStates={deskStates} primary />
-            </div>
-          )}
-          {tools.mode === 'step' && tools.already && <p className="alt-place__already">{tools.already.because} Carry on there.</p>}
-          {tools.mode === 'blocked' && thread.nextStep.known && <p className="alt-place__none">Nothing to open — {tools.blockedWhy}.</p>}
-          {tools.top && !onDeskOpen && <p className="alt-tool__why">This screen can’t reach the laptop, so nothing here can open.</p>}
-
-          {thread.actions.length > 0 && (
-            <div className="alt-thread__actions">
-              {thread.actions.map((u) => (
-                <button
-                  key={`${u.intent.kind}:${u.intent.action || ''}:${u.say}`}
-                  type="button"
-                  className="alt-pill"
-                  disabled={!onAct || busy}
-                  onClick={() => onAct && onAct(u)}
-                >{u.say}</button>
-              ))}
-            </div>
-          )}
-
-          {showOthers && tools.row.length > 0 && (
-            <div className="alt-ways" aria-label="Other ways in">
-              <span className="alt-label">{tools.top ? 'Other ways in' : 'Ways in'}</span>
-              <div className="alt-ways__row">
-                {tools.row.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
-                {tools.more.length > 0 && onToggleMore && (
-                  <button type="button" className="alt-link" aria-expanded={moreOpen} onClick={onToggleMore}>
-                    {moreOpen ? 'Fewer' : `More available apps (${tools.more.length})`}
-                  </button>
-                )}
+        <section className={`alt-thread alt-thread--${lead}`} aria-label="The current thread">
+          {lead === 'transition' && (
+            <>
+              <p className="alt-label alt-thread__eyebrow">Coming up</p>
+              <p className="alt-thread__title">{data.transition.prompt}</p>
+              {data.transition.question && <p className="alt-thread__sub">{data.transition.question}</p>}
+              <div className="alt-thread__links">
+                {prepLink && <a className="alt-quietlink" href={prepLink} target="_blank" rel="noopener noreferrer">Open the prep in NEURO →</a>}
               </div>
-              {moreOpen && tools.more.length > 0 && (
-                <div className="alt-ways__row">
-                  {tools.more.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
+              {(thread.state === 'item' || thread.state === 'work') && (
+                <p className="alt-thread__held"><span className="alt-label">Holding</span>{thread.item.title}</p>
+              )}
+            </>
+          )}
+
+          {lead === 'judgement' && (
+            <>
+              <p className="alt-label alt-thread__eyebrow">Needs your judgement</p>
+              <p className="alt-thread__title alt-thread__title--small">{judge.text}</p>
+              <div className="alt-thread__links">
+                {actionsLink && <a className="alt-quietlink" href={actionsLink} target="_blank" rel="noopener noreferrer">Review in NEURO →</a>}
+              </div>
+              <p className="alt-thread__uncertain">Approve or send in NEURO — nothing is sent from here.</p>
+            </>
+          )}
+
+          {lead === 'calm' && (
+            <p className="alt-thread__title alt-thread__title--small">{data.situation.calmSay || 'Nothing needs you right now.'}</p>
+          )}
+
+          {(lead === 'thread' || lead === 'context') && (
+            <>
+              <p className={`alt-thread__title${thread.state === 'unknown' ? ' alt-thread__title--small' : ''}`}>{thread.item.title}</p>
+              {thread.item.sub && <p className="alt-thread__sub">{thread.item.sub}</p>}
+              {thread.item.reason && <p className="alt-thread__why">{thread.item.reason}</p>}
+              {blind && blind.kind === 'blind' && <p className="alt-warn">{blind.text}</p>}
+
+              {thread.nextStep.known
+                ? <p className="alt-thread__next"><span className="alt-label">Next</span>{thread.nextStep.text}</p>
+                : thread.uncertain && <p className="alt-thread__uncertain">{thread.uncertain}</p>}
+
+              {tools.mode === 'step' && tools.top && (
+                <div className="alt-place__best">
+                  <span className="alt-label">Best next place</span>
+                  <span className="alt-place__name">{tools.top.label}</span>
+                  <ToolButton app={tools.top} onDeskOpen={onDeskOpen} deskStates={deskStates} primary />
                 </div>
               )}
-            </div>
-          )}
+              {tools.mode === 'step' && tools.already && <p className="alt-place__already">{tools.already.because} Carry on there.</p>}
+              {tools.mode === 'blocked' && thread.nextStep.known && <p className="alt-place__none">Nothing to open — {tools.blockedWhy}.</p>}
+              {tools.top && !onDeskOpen && <p className="alt-tool__why">This screen can’t reach the laptop, so nothing here can open.</p>}
 
-          {((!showOthers && tools.mode !== 'blocked' && onToggleHelp) || (thread.canBringWork && onBringWork)) && (
-            <div className="alt-thread__links">
-              {!showOthers && tools.mode !== 'blocked' && onToggleHelp && (
-                <button type="button" className="alt-quietlink" onClick={onToggleHelp}>Help me move this forward</button>
+              {thread.actions.length > 0 && (
+                <div className="alt-thread__actions">
+                  {thread.actions.map((u) => (
+                    <button
+                      key={`${u.intent.kind}:${u.intent.action || ''}:${u.say}`}
+                      type="button"
+                      className="alt-pill"
+                      disabled={!onAct || busy}
+                      onClick={() => onAct && onAct(u)}
+                    >{u.say}</button>
+                  ))}
+                </div>
               )}
-              {thread.canBringWork && onBringWork && (
-                <button type="button" className="alt-quietlink" disabled={busy} onClick={onBringWork}>Bring work back</button>
+
+              {showOthers && tools.row.length > 0 && (
+                <div className="alt-ways" aria-label="Other ways in">
+                  <span className="alt-label">{tools.top ? 'Other ways in' : 'Ways in'}</span>
+                  <div className="alt-ways__row">
+                    {tools.row.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
+                    {tools.more.length > 0 && onToggleMore && (
+                      <button type="button" className="alt-link" aria-expanded={moreOpen} onClick={onToggleMore}>
+                        {moreOpen ? 'Fewer' : `More available apps (${tools.more.length})`}
+                      </button>
+                    )}
+                  </div>
+                  {moreOpen && tools.more.length > 0 && (
+                    <div className="alt-ways__row">
+                      {tools.more.map((a) => <ToolButton key={a.id} app={a} onDeskOpen={onDeskOpen} deskStates={deskStates} />)}
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
+
+              {(offerHelp || (thread.canBringWork && onBringWork)) && (
+                <div className="alt-thread__links">
+                  {offerHelp && (
+                    <button type="button" className="alt-quietlink" onClick={onToggleHelp}>Help me move this forward</button>
+                  )}
+                  {thread.canBringWork && onBringWork && (
+                    <button type="button" className="alt-quietlink" disabled={busy} onClick={onBringWork}>Bring work back</button>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           <div className="alt-thread__dock">{dock}</div>
@@ -237,13 +275,14 @@ export function SaimHomeView({
  *   Save         — a capture, through the SAME outbox as the Capture tab: on
  *                  disk first, then sent; the box clears only once it is queued.
  */
-export function Dock({ utterances, onSay, placeholder = 'Ask SAiM or capture anything…' }) {
+export function Dock({ utterances, onSay, placeholder = 'Ask SAiM or capture anything…', scenario = false }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);       // { ok, msg }
   const [answer, setAnswer] = useState(null);   // { question, text, thinking, error }
 
   async function capture() {
+    if (scenario) { setNote({ ok: true, msg: SCENARIO_NOTE }); return; }
     const content = text.trim();
     if (!content || busy) return;
     setBusy(true);
@@ -272,6 +311,7 @@ export function Dock({ utterances, onSay, placeholder = 'Ask SAiM or capture any
   }
 
   async function ask() {
+    if (scenario) { setNote({ ok: true, msg: SCENARIO_NOTE }); return; }
     const question = text.trim();
     if (!question || busy) return;
     setNote(null);
@@ -365,8 +405,14 @@ function useLocalActivity() {
   return { at, now: Math.max(now, at || 0) };
 }
 
-/** The live container: polls the canonical read and owns every write. */
-export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
+/**
+ * The live container: polls the canonical read and owns every write.
+ *
+ * `scenario` (development only, SAiM Alt only — see scenarios.mjs): a fixture
+ * replaces the read. In that mode NOTHING is fetched, polled or written — every
+ * write path below begins with the same guard and says so instead.
+ */
+export default function SaimHome({ onPayload, onNavigate, neuroUrl, scenario = null }) {
   const [state, setState] = useState({ data: null, error: null });
   const [session, setSession] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -381,6 +427,12 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
   const hadData = useRef(false);
 
   const load = useCallback(async () => {
+    if (scenario) {
+      setState({ data: scenario.data, error: null });
+      setSession(scenario.session || null);
+      onPayload && onPayload(scenario.data);
+      return scenario.data;
+    }
     try {
       const [data, sess] = await Promise.all([
         apiFetch('/api/canonical/now'),
@@ -398,11 +450,12 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
       if (!hadData.current) onPayload && onPayload(null);
       return null;
     }
-  }, [onPayload]);
+  }, [onPayload, scenario]);
 
   useEffect(() => {
     alive.current = true;
     load();
+    if (scenario) return () => { alive.current = false; };   // a fixture is never polled
     const t = setInterval(load, POLL_MS);
     const onVisible = () => { if (document.visibilityState === 'visible') load(); };
     document.addEventListener('visibilitychange', onVisible);
@@ -410,6 +463,7 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
   }, [load]);
 
   async function deskOpen(app) {
+    if (scenario) { setActNote(SCENARIO_NOTE); return; }
     setDeskStates((s) => ({ ...s, [app]: 'waiting' }));
     let id;
     try {
@@ -440,6 +494,7 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
   // The server's structured intents, dispatched to the API each belongs to —
   // the same closed set the control Surface honours. An unknown kind does nothing.
   async function onSay(u) {
+    if (scenario) { setActNote(SCENARIO_NOTE); return; }
     const intent = u && u.intent;
     if (!intent) return;
     setBusy(true);
@@ -486,6 +541,7 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
   // route), which releases held work; the page re-reads and shows whatever
   // thread NEURO surfaces. No desktop intent, no step invented.
   async function bringWork() {
+    if (scenario) { setActNote(SCENARIO_NOTE); return; }
     setBusy(true);
     setActNote(null);
     try {
@@ -505,7 +561,7 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
         session={session}
         error={state.error}
         neuroUrl={neuroUrl}
-        localActiveAt={local.at}
+        localActiveAt={scenario ? (scenario.localActive ? local.now : null) : local.at}
         now={local.now}
         deskStates={deskStates}
         onDeskOpen={deskReachable ? deskOpen : null}
@@ -518,7 +574,7 @@ export default function SaimHome({ onPayload, onNavigate, neuroUrl }) {
         moreOpen={moreOpen}
         onToggleMore={() => setMoreOpen((o) => !o)}
         onBringWork={bringWork}
-        dock={<Dock utterances={state.data?.utterances} onSay={onSay} />}
+        dock={<Dock utterances={state.data?.utterances} onSay={onSay} scenario={Boolean(scenario)} />}
       />
     </>
   );

@@ -19,7 +19,9 @@
 
 /* ── Two columns, balanced ──────────────────────────────────────────────── */
 .alt-grid { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 1.8rem; align-items: start; }
-.alt-grid--solo { grid-template-columns: minmax(0, 680px); justify-content: center; }
+/* No rail: keep the SAME columns so the work surface never jumps between
+   states — the rail's space simply stays field. */
+.alt-grid--solo { grid-template-columns: minmax(0, 1fr) 270px; }
 
 /* ── Main work area ─────────────────────────────────────────────────────── */
 .alt-thread {

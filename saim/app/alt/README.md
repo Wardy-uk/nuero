@@ -47,6 +47,27 @@ in use.)
 - **Rail** only when it holds something: a waiting approval, a relevant transition, held work
   (count + Show held work), and context only when it helps resolve uncertainty.
 
+### Development scenarios (`scenarios.mjs`)
+
+For design review against stable states rather than whatever the live day is doing:
+`https://saim-alt.nickward.co.uk/?scenario=<id>` with `working` (the primary design target),
+`stuck`, `transition`, `judgement`, `calm`, `home`, `conflict`. Anything else — or no parameter —
+is live data.
+- **Alt only.** The control never imports `alt/`; the fixtures are a separate chunk loaded by a
+  dynamic import only when `?scenario=` names a known id. Pinned by `saim-alt-scenarios.test.js`
+  and checked against the control `dist/` (no fixture string, no scenario code).
+- **Real payload shape, real renderer.** Fixtures are `/api/canonical/now` + `/api/session` +
+  the page-activity flag; the live renderer draws them. Each is validated by
+  `model.checkCoherence`.
+- **No side effects.** Nothing is fetched or polled for the SAiM page; every write path (desk
+  open, lifecycle, Bring work back, Ask, Save) returns "Scenario mode — nothing was sent to NEURO or
+  the laptop." The other four tabs remain the live control screens.
+- A dashed `scenario: <id> · live data` marker sits beside the SAiM Alt marker; "live data" drops
+  the parameter.
+- `model.leadOf` decides the ONE state that leads (transition > judgement > thread > calm >
+  context), so contradictions such as "Nothing needs you right now" + "EOD outstanding" cannot
+  render together.
+
 ### Tool handoff rules (`model.mjs → toolHandoff`)
 - Only apps in `work.deskOffer.apps` (the agent's declared `canOpen`, intersected server-side with
   `desk-intents.APPS`) are pressable. Not at the desk / desk unseen / undeclared → nothing pressable,

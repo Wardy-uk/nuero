@@ -13,7 +13,7 @@ import { useFieldDrive, isPressing } from '../../shared-ui/useFieldDrive';
 import '../../shared-ui/Lit.css';
 import AltShell from './AltShell';
 import SaimHome from './SaimHome';
-import { ALT_DEFAULT_TAB, resolveAltTab, neuroLink, driveFrom } from './model.mjs';
+import { ALT_DEFAULT_TAB, resolveAltTab, neuroLink, driveFrom, scenarioFromUrl } from './model.mjs';
 import '../src/App.css';
 import './AltApp.css';
 
@@ -42,6 +42,17 @@ export default function AltApp() {
   const [handoff, setHandoff] = useState(null);
   const [homeDrive, setHomeDrive] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
+  // DEVELOPMENT SCENARIOS — SAiM Alt only, only by an explicit ?scenario=<id>.
+  // The fixtures are a separate chunk, loaded only when asked for; with no
+  // parameter this is null and everything below is the live path.
+  const scenarioId = useMemo(() => (typeof window === 'undefined' ? null : scenarioFromUrl(window.location.search)), []);
+  const [scenario, setScenario] = useState(null);
+  useEffect(() => {
+    if (!scenarioId) return undefined;
+    let alive = true;
+    import('./scenarios.mjs').then((m) => { if (alive) setScenario(m.getScenario(scenarioId)); });
+    return () => { alive = false; };
+  }, [scenarioId]);
 
   useEffect(() => {
     if (!authed) return undefined;
@@ -76,6 +87,7 @@ export default function AltApp() {
 
   if (runtime.deploymentIssue) return <DeploymentGuard />;
   if (!authed) return <LockScreen onUnlock={() => setAuthed(true)} />;
+  if (scenarioId && !scenario) return null; // a moment while the fixture loads — never the live read under its marker
 
   return (
     <AltShell
@@ -89,9 +101,10 @@ export default function AltApp() {
       onLock={() => { clearPin(); setAuthed(false); }}
       handoff={handoff}
       onClearHandoff={() => setHandoff(null)}
+      scenario={scenario ? { id: scenario.id, label: scenario.label, liveHref: typeof window === 'undefined' ? '/' : window.location.pathname } : null}
     >
       {active === 'saim'
-        ? <SaimHome onPayload={onPayload} onNavigate={go} neuroUrl={NEURO_URL} />
+        ? <SaimHome onPayload={onPayload} onNavigate={go} neuroUrl={NEURO_URL} scenario={scenario} />
         : ActiveView && <div className="alt-app__column"><ActiveView key={active} onNavigate={go} onShowAll={() => go('saim')} /></div>}
     </AltShell>
   );

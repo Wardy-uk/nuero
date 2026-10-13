@@ -25,6 +25,9 @@
 .alt-corner > :not(.alt-marker) { opacity: 0.3; transition: opacity 0.15s; }
 .alt-corner:hover > *, .alt-corner:focus-within > * { opacity: 1; }
 .alt-marker { opacity: 0.7; }
+/* Development scenario marker: subtle, and always beside a way back to live. */
+.alt-scenario { opacity: 0.75 !important; font-size: 0.62rem; letter-spacing: 0.06em; color: #c9a4f5; border: 1px dashed rgba(201, 164, 245, 0.45); border-radius: 4px; padding: 0.08rem 0.4rem; }
+.alt-scenario__live { color: inherit; text-decoration: underline; }
 .alt-marker {
   font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700;
   padding: 0.1rem 0.4rem; border-radius: 4px;

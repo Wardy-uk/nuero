@@ -15,6 +15,7 @@ export default function AltShell({
   active, onGo, drive, updatedAt = null,
   controlUrl = null, neuroUrl = null, buildLabel = null, onLock = null,
   handoff = null, onClearHandoff = null,
+  scenario = null,
   children,
 }) {
   const updated = updatedLabel(updatedAt);
@@ -24,6 +25,11 @@ export default function AltShell({
 
       <div className="alt-corner">
         <span className="alt-marker" title="Experimental treatment — not the everyday SAiM">SAiM Alt</span>
+        {scenario && (
+          <span className="alt-scenario" title="Development scenario — fixture data, nothing is sent">
+            scenario: {scenario.id} · <a className="alt-scenario__live" href={scenario.liveHref}>live data</a>
+          </span>
+        )}
         {buildLabel && <span className="alt-corner__build">{buildLabel}</span>}
         {controlUrl && <a className="alt-corner__link" href={controlUrl}>Control SAiM ↗</a>}
         {neuroUrl && <a className="alt-corner__link" href={neuroUrl} target="_blank" rel="noopener noreferrer">NEURO ↗</a>}

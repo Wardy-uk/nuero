@@ -198,6 +198,8 @@ const LIFECYCLE_KINDS = new Set(['act', 'session', 'meeting']);
 /** Is work being held back right now because of what he is doing? NEURO's word. */
 const workHeld = (d) => Boolean(d && d.life && d.life.showWork === false);
 // NEURO life reads that cannot be true of someone using this desk right now.
+// Life reads that are his own time, when work is held.
+const OFF_DUTY_DOING = new Set(['relaxing', 'winding-down', 'off', 'watching-tv', 'out']);
 const NON_DESK_DOING = new Set(['watching-tv', 'sleeping', 'driving', 'walking', 'exercising', 'out', 'in-meeting-room']);
 // How NEURO's life read is said in the held line. Unknown kinds say nothing.
 const LIFE_PHRASE = Object.freeze({ hobby: 'on your own project' });
@@ -238,7 +240,8 @@ export function currentThread(d, session = null, { localActiveAt = null, now = D
     };
   } else if (work && work.known && work.task) {
     state = 'work';
-    item = { type: null, title: work.task, sub: null, reason: work.why || null };
+    // `work.why` is provenance (how NEURO knows), not part of the thread.
+    item = { type: null, title: work.task, sub: null, reason: null };
   } else if (primary && primary.kind === 'context' && activity && activity !== 'unknown'
     && !(isLocallyActive(localActiveAt, now) && d.life && NON_DESK_DOING.has(d.life.doing))) {
     // The context card's `say` repeats the place ("… · living-room"); only its
@@ -261,8 +264,11 @@ export function currentThread(d, session = null, { localActiveAt = null, now = D
     item = { type: null, title: 'I can’t tell what you’re working on from what I can see.', sub: null, reason: null };
   }
 
+  // His own time (home, off duty): work is held, and "I don't know the next
+  // step" would be a work question asked at the wrong moment.
+  const offDuty = state === 'context' && workHeld(d) && Boolean(d.life && OFF_DUTY_DOING.has(d.life.doing));
   let uncertain = null;
-  if (!nextStep.known && (state === 'context' || state === 'unknown')) {
+  if (!offDuty && !nextStep.known && (state === 'context' || state === 'unknown')) {
     const p = presence(d, { localActiveAt, now });
     uncertain = p.app ? `${p.app} is open — I don’t know the next step yet.` : 'I don’t know the next step yet.';
   }
@@ -274,6 +280,7 @@ export function currentThread(d, session = null, { localActiveAt = null, now = D
     nextStep,
     actions,
     canBringWork: workHeld(d),
+    offDuty,
   };
 }
 
@@ -492,6 +499,77 @@ export function judgement(d) {
   };
 }
 
+// ── What leads the main area ────────────────────────────────────────────────
+
+/**
+ * ONE coherent state leads the work surface; everything else is subordinate.
+ *
+ *   'transition' — a genuine transition NEURO composed (a meeting about to
+ *                  start, one just ended): it leads; the thread is held below.
+ *   'judgement'  — something waits on his judgement and there is no item or
+ *                  live work thread competing with it.
+ *   'thread'     — an attention item, live work, or a named step.
+ *   'calm'       — NEURO says nothing needs him, there is no thread, and no
+ *                  work is held: a compact line, never a big empty card.
+ *   'context'    — his context (own project, evening at home) or an honest
+ *                  "I can't tell".
+ *
+ * ⚠ Ordered so contradictions cannot render: an item (EOD outstanding, say)
+ *   always outranks `calm`, so "Nothing needs you right now" can never head a
+ *   surface that has something needing him.
+ */
+export function leadOf(d, thread) {
+  if (d && d.transition && d.transition.prompt) return 'transition';
+  const j = judgement(d);
+  const hasThread = thread && (thread.state === 'item' || thread.state === 'work');
+  if (j.count > 0 && !hasThread) return 'judgement';
+  if (hasThread || (thread && thread.nextStep && thread.nextStep.known)) return 'thread';
+  const calm = Boolean(d && d.situation && d.situation.calm === true);
+  if (calm && thread && thread.state === 'unknown' && !workHeld(d) && heldWork(d).count === 0) return 'calm';
+  return 'context';
+}
+
+/**
+ * Contradictions a payload must not carry together — used to validate the
+ * scenario fixtures, and the reason `leadOf` is ordered as it is. Returns a
+ * list of named problems; empty means coherent.
+ */
+export function checkCoherence(d, session = null, { localActiveAt = null, now = Date.now() } = {}) {
+  const problems = [];
+  const calm = Boolean(d && d.situation && d.situation.calm === true);
+  const primary = d && d.primary;
+  if (calm && primary && primary.kind === 'item') problems.push('calm while an item needs him');
+  const j = judgement(d);
+  if (calm && j.count > 0) problems.push('calm while something waits on his judgement');
+  if (calm && d && d.transition && d.transition.prompt) problems.push('calm while a transition leads');
+  const work = d && d.work;
+  if (work && work.deskOffer && work.deskOffer.known && work.atDesk === false && (work.deskOffer.apps || []).length) {
+    problems.push('the laptop offers apps while it says he is not at it');
+  }
+  const t = currentThread(d, session, { localActiveAt, now });
+  const tools = toolHandoff(d, t);
+  if (tools.top && tools.top.id === foregroundId(d)) problems.push('recommends opening the app already in front');
+  if (tools.top && !t.nextStep.known) problems.push('recommends a tool without a named step');
+  const p = presence(d, { localActiveAt, now });
+  if (p.local && p.desk === 'away from the laptop') problems.push('says away while the page is in use');
+  return problems;
+}
+
+// ── Development scenarios ───────────────────────────────────────────────────
+
+export const SCENARIO_IDS = Object.freeze(['working', 'stuck', 'transition', 'judgement', 'calm', 'home', 'conflict']);
+
+/**
+ * `?scenario=<id>` → the id, or null. Only an exact, known id is accepted; an
+ * unknown or empty value means LIVE data, never a guess.
+ */
+export function scenarioFromUrl(search) {
+  if (typeof search !== 'string' || !search) return null;
+  let v = null;
+  try { v = new URLSearchParams(search).get('scenario'); } catch { return null; }
+  return v && SCENARIO_IDS.includes(v) ? v : null;
+}
+
 // ── Context for the rail ────────────────────────────────────────────────────
 
 /**
@@ -527,22 +605,33 @@ export function evidence(d, thread, p) {
  * page already holds. The field, the drive function and the colour ramp are
  * the control's, UNCHANGED.
  *
- * ⚠ THE ONE TREATMENT DIFFERENCE (13 Oct 2026, Nick): the shared drive maps a
- *   confident, non-quiet read to intensity 0.60 — ORANGE — so a calm evening on
- *   his own project rendered in the colour reserved for pressure. NEURO already
- *   says when nothing needs him: `situation.calm`. When that is true and
- *   nothing is pressing, the drive is told `quiet`, which is its own existing
- *   low-intensity BLUE. Degraded and pressing still win exactly as before, so
- *   orange and red stay reserved for real pressure. No new colour is defined.
+ * ⚠ THE ONE TREATMENT DIFFERENCE (Nick, 13 Oct 2026: "orange or red must remain
+ *   reserved for real pressure, uncertainty that needs attention, or an
+ *   approaching demand"). The shared drive maps any confident, non-quiet read to
+ *   intensity 0.60 — ORANGE — so a calm evening or ordinary focused work
+ *   rendered in the colour of pressure. Here, a read with nothing pressing, no
+ *   approaching transition/firefighting and nothing waiting on his judgement is
+ *   told `quiet`, which is the drive's own low-intensity BLUE. Pressing (red),
+ *   an approaching demand or a waiting approval (orange) and degraded (grey)
+ *   are exactly as before. No new colour is defined. Trade-off: `quiet` also
+ *   gives the drive's gentler settle, so a restful read settles less deeply
+ *   than the control would draw it.
  */
 export function driveFrom(d, isPressing) {
   if (!d) return { activity: undefined, confidenceLevel: 'low', quiet: false, degraded: true, pressing: false };
   const pressing = typeof isPressing === 'function' ? Boolean(isPressing(d.primary)) : false;
-  const calm = Boolean(d.situation && d.situation.calm === true) && !pressing;
+  const ctx = d.context || {};
+  const a = d.approvals || {};
+  const approaching = Boolean(d.transition && d.transition.prompt) || ctx.activity === 'pre-meeting' || ctx.activity === 'firefighting';
+  const waiting = a.known === true && ((a.needsApproval || 0) + (a.needsReview || 0)) > 0;
+  // Orange and red are reserved for pressure, an approaching demand, or
+  // something waiting on his judgement. Anything else is restful → the drive's
+  // own low-intensity blue.
+  const restful = !pressing && !approaching && !waiting;
   return {
-    activity: d.context && d.context.activity,
-    confidenceLevel: (d.context && d.context.confidence && d.context.confidence.level) || 'low',
-    quiet: d.quiet === true || calm,
+    activity: ctx.activity,
+    confidenceLevel: (ctx.confidence && ctx.confidence.level) || 'low',
+    quiet: d.quiet === true || restful,
     degraded: d.poolAvailable === false || d.available === false,
     pressing,
   };
