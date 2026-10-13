@@ -56,12 +56,22 @@ export function HomeView({ data }) {
   const s = data.safety;
   const intel = !!data.intelligence && data.known !== false;
   const dh = data.deviceHealth;
+  const key = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const shown = new Set((data.needsYou || []).flatMap((n) => [n.id, key(n.title)]));
+  const tasks = (data.obligations || []).filter((t) => !shown.has(t.id) && !shown.has(key(t.what)));
+  for (const t of data.obligations || []) shown.add(key(t.what));
+  const upcoming = (data.upcoming || []).filter((u) => !shown.has(u.id) && !shown.has(key(u.title)));
   return (
     <section className="cn-section" data-testid="home-card">
       <h3>Home <span className="cn-chip">{OCCUPANCY_WORDS[o.state] || o.state}</span></h3>
       <div className="cn-muted">{o.why}{o.visitorsHome && o.visitorsHome.length ? ` · visiting: ${o.visitorsHome.join(', ')}` : ''}</div>
       {intel && data.heating && <div data-testid="home-heating">{data.heating.summary}{data.weather && data.weather.line ? <span className="cn-muted"> {data.weather.line}</span> : null}</div>}
 
+      {/* ⚠ ONE task, ONE line (13 Oct 2026: "apparently I need to book my MOT…
+          3 times"). The same open task is legitimately a Needs-you item, a
+          household task and a Radar item; the card says it once — in the
+          highest section — and the lower sections skip it. Matched by id and
+          by normalised wording, since the Radar names it with its own id. */}
       {data.needsYou.length > 0 && (
         <div className="cn-details" data-testid="home-needs-you">
           <div className="cn-subhead">Needs you</div>
@@ -91,13 +101,15 @@ export function HomeView({ data }) {
         <div className="cn-subhead">Household tasks</div>
         {data.obligations.length === 0
           ? <div className="cn-muted">Nothing classified as Home is open. Only reminders and tasks you classified as Home count here.</div>
-          : <ul className="cn-list">{data.obligations.map((t) => <li key={t.id}>{t.what}{t.due ? <span className="cn-muted"> — {t.due.label}</span> : <span className="cn-muted"> — no date</span>}</li>)}</ul>}
+          : tasks.length === 0
+            ? <div className="cn-muted">Only what is under Needs you, above.</div>
+            : <ul className="cn-list">{tasks.map((t) => <li key={t.id}>{t.what}{t.due ? <span className="cn-muted"> — {t.due.label}</span> : <span className="cn-muted"> — no date</span>}</li>)}</ul>}
       </div>
 
-      {data.upcoming.length > 0 && (
+      {upcoming.length > 0 && (
         <div className="cn-details">
           <div className="cn-subhead">Coming up at home</div>
-          <ul className="cn-list">{data.upcoming.map((u) => <li key={u.id}>{u.when ? `${u.when} — ` : ''}{u.title}</li>)}</ul>
+          <ul className="cn-list">{upcoming.map((u) => <li key={u.id}>{u.when ? `${u.when} — ` : ''}{u.title}</li>)}</ul>
         </div>
       )}
 

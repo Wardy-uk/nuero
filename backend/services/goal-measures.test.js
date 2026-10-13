@@ -187,3 +187,34 @@ test('a goal measured in hikes drives the hiking loop whatever its title', async
   assert.equal(loop.active, true);
   assert.equal(loop.goal.title, 'Get out on the hills');
 });
+
+// ── Caffeine (13 Oct 2026) ─────────────────────────────────────────────────
+test('caffeine reads LOGGED, finished days only — an unlogged day is unknown, never 0 mg', () => {
+  const G = require('./goal-measures');
+  const nut = { days: [
+    { day: '2026-10-13', today: true, logged: true, totals: { dietary_caffeine: 900 } },   // today: still being logged
+    { day: '2026-10-12', today: false, logged: true, totals: { dietary_caffeine: 300 } },
+    { day: '2026-10-11', today: false, logged: false, totals: {} },                         // nothing logged
+    { day: '2026-10-10', today: false, logged: true, totals: { dietary_caffeine: 200 } },
+    { day: '2026-10-09', today: false, logged: true, totals: { dietary_caffeine: 100 } },
+  ] };
+  const rows = G.nutritionDays(nut);
+  assert.deepEqual(rows.map((r) => r.day), ['2026-10-12', '2026-10-10', '2026-10-09']);
+  const v = G.healthValue('caffeine', rows, '2026-10-13');
+  assert.equal(v.value, 200, 'mean of the three logged days, not of seven');
+  assert.equal(v.n, 3);
+  assert.equal(G.healthValue('caffeine', rows.slice(0, 2), '2026-10-13').value, null, 'two logged days is not enough to say');
+});
+
+test('a caffeine goal judges against the target, aiming down', () => {
+  const G = require('./goal-measures');
+  assert.equal(G.validateMeasure({ kind: 'caffeine', target: 200 }).ok, true);
+  assert.equal(G.validateMeasure({ kind: 'caffeine', target: 5000 }).ok, false, 'refused, never clamped');
+  const nutritionDays = ['2026-10-12', '2026-10-11', '2026-10-10'].map((day) => ({ day, complete: true, caffeineMg: 350 }));
+  const p = G.evaluate({ measure: { kind: 'caffeine', target: 200 }, startDate: '2026-10-13' }, { today: '2026-10-13', nutritionDays });
+  assert.equal(p.currentText, '350 mg/day');
+  assert.notEqual(p.state, 'met');
+  const ok = G.evaluate({ measure: { kind: 'caffeine', target: 400 }, startDate: '2026-10-13' }, { today: '2026-10-13', nutritionDays });
+  assert.equal(ok.state, 'met');
+  assert.equal(G.evaluate({ measure: { kind: 'caffeine', target: 200 } }, { today: '2026-10-13', nutritionDays: null }).state, 'unknown');
+});
