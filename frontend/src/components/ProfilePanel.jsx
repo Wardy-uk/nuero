@@ -56,7 +56,12 @@ export default function ProfilePanel() {
   }, []);
 
   useEffect(() => { loadProfile(); loadInterview(); }, [loadProfile, loadInterview]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [session?.messages?.length]);
+  // Scroll the CONVERSATION, never the page: scrollIntoView moves every
+  // scrollable ancestor too, so opening About me jumped the page to the chat.
+  useEffect(() => {
+    const box = endRef.current?.parentElement;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [session?.messages?.length]);
 
   async function post(path, body) {
     setBusy(true);

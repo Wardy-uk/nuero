@@ -303,6 +303,27 @@ router.post('/meeting/finished', async (req, res) => {
  * it is already resumed, and an error would send him looking for a problem that
  * does not exist.
  */
+// POST /api/attention/meeting/not-attending — "I'm not in it": a meeting Nick missed or is not going to (running now or later today) leaves SAiM's view of his day; resume brings it back.
+//
+// Same rules as /meeting/finished: the event comes from the live feed by KEY,
+// never from the body; only a real meeting (other people in it) qualifies;
+// nothing is written to the calendar or sent to anyone.
+router.post('/meeting/not-attending', async (req, res) => {
+  try {
+    const { key } = req.body || {};
+    if (!key || typeof key !== 'string') return res.status(400).json({ ok: false, error: 'key required' });
+    const now = new Date();
+    const ev = attention.meetingEventByKey(key, now);
+    if (!ev) return res.status(409).json({ ok: false, error: 'no meeting with that key running now or later today' });
+    const result = require('../services/meeting-finish').finish(ev, now, { notAttending: true });
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.reason });
+    try { require('../services/working-memory').invalidate('attention: meeting not attended'); } catch { /* best effort */ }
+    res.json({ ok: true, key: result.key, subject: result.entry.subject });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 router.post('/meeting/resume', (req, res) => {
   try {
     const { key } = req.body || {};

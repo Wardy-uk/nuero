@@ -370,15 +370,19 @@ export function Journeys({ j, est, busy, act }) {
       {j.pending.length > 0 && (
         <ul className="cn-list">
           {j.pending.map((x) => (
-            <li key={x.id} className="cn-hike-form">
-              <span>{when(x.startedAt)}–{hhmm(x.endedAt)} · {route(x)} · {x.measuredMiles} mi measured</span>
+            <li key={x.id} className="cn-journey">
+              <div><strong>{route(x)}</strong> · {x.measuredMiles} mi measured</div>
+              <div className="cn-muted cn-small">{when(x.startedAt)}–{hhmm(x.endedAt)} · {x.movingMinutes} min moving · top {x.peakKmh} km/h{x.gapMinutes ? ` · ${x.gapMinutes} min with no fix (distance across it is a straight line)` : ''}</div>
               <NamePlace j={x} which="start" busy={busy} act={act} />
               <NamePlace j={x} which="end" busy={busy} act={act} />
-              <span className="cn-muted cn-small">{x.movingMinutes} min moving · top {x.peakKmh} km/h{x.gapMinutes ? ` · ${x.gapMinutes} min with no fix (distance across it is a straight line)` : ''}</span>
-              <input className="cn-input--tiny" type="number" min="0.1" step="0.1" value={miles[x.id] ?? x.measuredMiles} onChange={(e) => setMiles({ ...miles, [x.id]: e.target.value })} aria-label="Miles to count" />
-              <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !(Number(miles[x.id] ?? x.measuredMiles) > 0)} onClick={() => go(x.id, 'approve', { miles: Number(miles[x.id] ?? x.measuredMiles) })}>Approve</button>
-              <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reject', { reason: 'not-the-car' })}>Not the car</button>
-              <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reject', { reason: 'not-a-journey' })}>Not a journey</button>
+              <div className="cn-row-actions">
+                <label className="cn-journey-miles">
+                  <input type="number" min="0.1" step="0.1" value={miles[x.id] ?? x.measuredMiles} onChange={(e) => setMiles({ ...miles, [x.id]: e.target.value })} aria-label="Miles to count" /> mi
+                </label>
+                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !(Number(miles[x.id] ?? x.measuredMiles) > 0)} onClick={() => go(x.id, 'approve', { miles: Number(miles[x.id] ?? x.measuredMiles) })}>Approve</button>
+                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reject', { reason: 'not-the-car' })}>Not the car</button>
+                <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reject', { reason: 'not-a-journey' })}>Not a journey</button>
+              </div>
             </li>
           ))}
         </ul>
@@ -392,7 +396,7 @@ export function Journeys({ j, est, busy, act }) {
           ))}</ul>
         </details>
       )}
-      <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical('/api/vehicle/journeys/sync', {}))}>Check now</button>
+      <div className="cn-row-actions"><button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => act(() => postCanonical('/api/vehicle/journeys/sync', {}))}>Check now</button></div>
       <HowItWorks>Detected from Life360 in Home Assistant every 15 minutes. A journey counts for nothing until you approve it, and then only towards an estimate on top of your last odometer reading — it is never written as a reading. Your next real reading shows how far the estimate had drifted. Each end is named from a Home Assistant zone, a place you named here, a meeting in your diary you arrived for, the shop or venue you stopped at, or the nearest town — worked out on the Pi from maps of the whole country downloaded in advance, so where you stopped is never sent anywhere ({[j.places && j.places.businesses === 'loaded' ? 'businesses © OpenStreetMap contributors' : 'business map not loaded yet', j.places && j.places.file === 'loaded' ? 'town names © GeoNames, CC BY 4.0' : 'town names not loaded yet'].join('; ')}).</HowItWorks>
     </>
   );

@@ -129,27 +129,31 @@ function applyTo(calendar, entries, now = new Date()) {
   if (!isObj(calendar) || calendar.known !== true || !Array.isArray(calendar.events)) return calendar;
   if (!isObj(entries) || !Object.keys(entries).length) return calendar;
 
-  const events = calendar.events.map((ev) => {
+  const events = calendar.events.flatMap((ev) => {
     const key = keyFor(ev);
     const hit = key ? entries[key] : null;
-    if (!isObj(hit)) return ev;
+    if (!isObj(hit)) return [ev];
+    // "I'm not in it" (13 Oct 2026): he missed it or is not going. The
+    // occurrence leaves NEURO's view of his day entirely — not "in a meeting",
+    // not "next", not "pre-meeting". The diary is untouched; resume brings it back.
+    if (hit.notAttending === true) return [];
 
     const startMs = toMs(ev.start);
     const endMs = toMs(ev.end);
     const atMs = toMs(hit.at);
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(atMs)) return ev;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(atMs)) return [ev];
     // Already over by the diary's own reckoning — nothing to override.
-    if (endMs <= atMs) return ev;
+    if (endMs <= atMs) return [ev];
 
     const effective = new Date(Math.max(startMs, Math.min(atMs, endMs)));
-    return {
+    return [{
       ...ev,
       end: effective.toISOString(),
       // What the diary says, kept. Anything wanting the meeting's own shape —
       // rather than where Nick was — reads this.
       scheduledEnd: ev.end,
       finishedEarly: true,
-    };
+    }];
   });
 
   return { ...calendar, events };
@@ -193,7 +197,7 @@ function _write(entries) {
  * `context-state.isRealMeeting` makes, because releasing a state that was never
  * set is a button that appears to do something and does not.
  */
-function finish(event, now = new Date()) {
+function finish(event, now = new Date(), { notAttending = false } = {}) {
   const key = keyFor(event);
   if (!key) return { ok: false, reason: 'unidentifiable' };
   if (!isObj(event) || event.attendeesOther !== true) return { ok: false, reason: 'not-a-meeting' };
@@ -204,12 +208,14 @@ function finish(event, now = new Date()) {
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(nowMs)) {
     return { ok: false, reason: 'unreadable-times' };
   }
-  if (nowMs < startMs) return { ok: false, reason: 'not-started' };
+  // A meeting not yet started can be skipped, never "finished".
+  if (nowMs < startMs && !notAttending) return { ok: false, reason: 'not-started' };
   if (nowMs >= endMs) return { ok: false, reason: 'already-over' };
 
   const entries = prune(list(now), now);
   entries[key] = {
-    at: new Date(nowMs).toISOString(),
+    ...(notAttending ? { notAttending: true } : {}),
+    at: new Date(notAttending ? startMs : nowMs).toISOString(),
     scheduledEnd: new Date(endMs).toISOString(),
     subject: typeof event.subject === 'string' ? event.subject.trim() : null,
   };

@@ -74,6 +74,8 @@ shows what that gave you and which areas are still empty.
   confirm it in passing if it is worth confirming, and move on.
 - Call record_facts as you go, not in one lump at the end. If he stops halfway
   through, everything up to that point is already saved.
+- Record SILENTLY. Never write "let me record that" or apologise for a retry —
+  whatever you write before a tool call is shown to him as part of your reply.
 - Say roughly where you are up to now and then. He should never feel he has
   signed up for something with no end.
 - When it has run its course, or he says he has had enough, call finish_interview
@@ -214,7 +216,11 @@ async function _turn(session) {
         session.messages,
         TOOLS.map(({ name, description, input_schema }) => ({ name, description, input_schema })),
         (name, input) => _executeTool(session, name, input),
-        { maxTokens: 500, maxRounds: 4 },
+        // ⚠ A TOOL-BLOCK budget, not a prose one (the standup's 11 Sep lesson):
+        // at 500 a turn recording several facts was cut off mid-call, refused,
+        // and retried out loud ("Sorry, let me do that properly"). Reply length
+        // is the prompt's job.
+        { maxTokens: 1200, maxRounds: 4 },
       );
       reply = result.text || '';
       session.degraded = false;

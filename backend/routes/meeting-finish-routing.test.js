@@ -168,3 +168,43 @@ test('⚠ the literal /meeting paths are not swallowed by /records/:id/act', asy
   assert.ok(!/unknown action|invalid action/i.test(json.error || ''),
     'it reached the meeting handler, not the lifecycle act handler');
 });
+
+// ── "I'm not in it" (13 Oct 2026) ──────────────────────────────────────────
+// Nick: "If I miss a meeting, I need to be able to say I'm not in it."
+
+test('"I\'m not in it" takes a running meeting out of his day, and resume puts it back', async () => {
+  seedRunningMeeting();
+  const key = meetingFinish.keyFor(attention.currentMeetingEvent(new Date()));
+  const before = db.getCalendarEvents('2000-01-01T00:00', '2100-01-01T00:00');
+  const res = await post('meeting/not-attending', { key });
+  assert.equal(res.status, 200);
+  assert.equal(attention.currentMeetingEvent(new Date()), null, 'no longer "in a meeting"');
+  assert.deepEqual(db.getCalendarEvents('2000-01-01T00:00', '2100-01-01T00:00'), before, 'the diary is untouched');
+  assert.equal((await post('meeting/resume', { key })).status, 200);
+  assert.ok(attention.currentMeetingEvent(new Date()), 'resume brings it back');
+});
+
+test('"I\'m not going" works BEFORE it starts — and the meeting is never "next" after', async () => {
+  const now = Date.now();
+  seedRunningMeeting({ id: 'evt-later', subject: 'Naomi Check In', start: iso(now + 20 * 60000), end: iso(now + 50 * 60000) });
+  const ev = attention.meetingEventByKey(meetingFinish.keyFor({ id: 'evt-later', start: iso(now + 20 * 60000) }), new Date());
+  assert.ok(ev, 'positive control: the later meeting is found by its key');
+  const key = meetingFinish.keyFor(ev);
+  assert.equal((await post('meeting/not-attending', { key })).status, 200);
+  assert.equal(attention.meetingEventByKey(key, new Date()), null, 'gone from his day');
+  assert.equal((await post('meeting/not-attending', { key })).status, 409, 'a second press is refused, not re-stored');
+});
+
+test('"not in it" refuses a solo block, an unknown key, and a missing key', async () => {
+  seedRunningMeeting({ attendeesOther: false });
+  const key = meetingFinish.keyFor({ id: 'evt-live', start: iso(Date.now() - 10 * 60000) });
+  assert.equal((await post('meeting/not-attending', { key })).status, 409);
+  assert.equal((await post('meeting/not-attending', { key: 'id:nope::x' })).status, 409);
+  assert.equal((await post('meeting/not-attending', {})).status, 400);
+});
+
+test('finished still refuses a meeting that has not started (only skipping may)', () => {
+  const now = new Date();
+  const ev = { id: 'x', subject: 'Later', start: iso(now.getTime() + 600000), end: iso(now.getTime() + 1800000), attendeesOther: true };
+  assert.equal(meetingFinish.finish(ev, now).reason, 'not-started');
+});

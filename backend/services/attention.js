@@ -508,6 +508,47 @@ function _currentMeeting(calendar, now) {
 }
 
 /**
+ * The next real meeting still to START today, addressable — so "I'm not going"
+ * can name it before it begins (13 Oct 2026). Same `isRealMeeting` test as the
+ * running one: a solo block is never offered, there is nothing to skip.
+ */
+function _nextMeeting(calendar, now) {
+  if (!calendar || calendar.known !== true || !Array.isArray(calendar.events)) return null;
+  const nowMs = now.getTime();
+  const end = new Date(now); end.setHours(23, 59, 59, 999);
+  let next = null;
+  for (const ev of calendar.events) {
+    if (!isRealMeeting(ev)) continue;
+    const startMs = new Date(ev.start).getTime();
+    if (!Number.isFinite(startMs) || startMs <= nowMs || startMs > end.getTime()) continue;
+    if (!next || startMs < new Date(next.start).getTime()) next = ev;
+  }
+  if (!next) return null;
+  const key = require('./meeting-finish').keyFor(next);
+  if (!key) return null;
+  return {
+    key,
+    subject: typeof next.subject === 'string' ? next.subject.trim() : null,
+    // Sliced, never parsed: Graph already gave Europe/London wall-clock time.
+    time: typeof next.start === 'string' ? next.start.slice(11, 16) : null,
+  };
+}
+
+/**
+ * A real meeting by its key — running now or still to start today — read
+ * FRESH. The skip route uses this instead of anything the client sends, for the
+ * same reason the finish route uses `currentMeetingEvent`.
+ */
+function meetingEventByKey(key, now = new Date()) {
+  if (typeof key !== 'string' || !key) return null;
+  const cal = _calendarInput([]);
+  if (!cal || cal.known !== true || !Array.isArray(cal.events)) return null;
+  const mf = require('./meeting-finish');
+  return cal.events.find((ev) => isRealMeeting(ev) && mf.keyFor(ev) === key
+    && new Date(ev.end).getTime() > now.getTime()) || null;
+}
+
+/**
  * The running meeting as a whole EVENT, read fresh.
  *
  * ⚠ The route uses this INSTEAD OF the request body. A client posting its own
@@ -1480,6 +1521,7 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
       transition,
       // The meeting he is in, addressable — see `_currentMeeting`.
       meeting: _currentMeeting(inputs.calendar, now),
+      nextMeeting: _nextMeeting(inputs.calendar, now),
     };
     framed = require('./saim-surface').compose(draft, {
       session: inputs.focusSession && inputs.focusSession.active ? inputs.focusSession.active : null,
@@ -1665,6 +1707,8 @@ async function build({ now = new Date(), view = null, ask = null } = {}) {
     // is not in one, which is what stops the button existing where it would do
     // nothing.
     meeting: _currentMeeting(inputs.calendar, now),
+    // The next meeting today, so "I'm not going" can name it before it starts.
+    nextMeeting: _nextMeeting(inputs.calendar, now),
     // The lifecycle view of the same decision. Additive: every field this
     // payload returned before is unchanged and still means the same thing, which
     // is what lets the widget and the kiosk be migrated separately.
@@ -1754,4 +1798,4 @@ function sessionMatchesCard(session, card) {
   }
 }
 
-module.exports = { build, gather, gate, sayLine, agendaFor, currentMeetingEvent, sessionMatchesCard, presenceFromRoom, SECONDARY_MAX };
+module.exports = { build, gather, gate, sayLine, agendaFor, currentMeetingEvent, meetingEventByKey, sessionMatchesCard, presenceFromRoom, SECONDARY_MAX };

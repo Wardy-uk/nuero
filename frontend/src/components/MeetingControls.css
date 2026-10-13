@@ -1,0 +1,27 @@
+.mtg-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  font-size: 13px;
+}
+.mtg-text { color: var(--text-secondary); margin-right: auto; }
+.mtg-text strong { color: var(--text-primary); font-weight: 600; }
+.mtg-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.mtg-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--accent); }
+.mtg-btn:disabled { opacity: 0.5; cursor: default; }
+.mtg-err { color: var(--danger); font-size: 12px; width: 100%; }

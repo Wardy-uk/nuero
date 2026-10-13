@@ -33,49 +33,67 @@ import StateOfPlay from './components/StateOfPlay';
 // are all specialist screens reached deliberately from the menu, where a short
 // load is unremarkable — and each one is inside the SAME `ErrorBoundary`, so a
 // chunk that fails to load is caught and named exactly like a panel that throws.
-const Dashboard = lazy(() => import('./components/Dashboard'));
-const PeopleBoard = lazy(() => import('./components/PeopleBoard'));
-const StandupEditor = lazy(() => import('./components/StandupEditor'));
-const TodoPanel = lazy(() => import('./components/TodoPanel'));
-const CalendarView = lazy(() => import('./components/CalendarView'));
-const InboxPanel = lazy(() => import('./components/InboxPanel'));
-const AdminPanel = lazy(() => import('./components/AdminPanel'));
-const EscalationPanel = lazy(() => import('./components/EscalationPanel'));
-const ActionsPanel = lazy(() => import('./components/ActionsPanel'));
-const DecisionsPanel = lazy(() => import('./components/DecisionsPanel'));
-const WeeklyRiskPanel = lazy(() => import('./components/WeeklyRiskPanel'));
-const ManagementLogPanel = lazy(() => import('./components/ManagementLogPanel'));
-const ImportsPanel = lazy(() => import('./components/ImportsPanel'));
-const RecentPanel = lazy(() => import('./components/RecentPanel'));
-const VaultBrowser = lazy(() => import('./components/VaultBrowser'));
-const BrainHealthPanel = lazy(() => import('./components/BrainHealthPanel'));
-const WeatherPanel = lazy(() => import('./components/WeatherPanel'));
-const PersonalInboxPanel = lazy(() => import('./components/PersonalInboxPanel'));
-const HikeSafetyPanel = lazy(() => import('./components/HikeSafetyPanel'));
-const BriefingsPanel = lazy(() => import('./components/BriefingsPanel'));
-const MedicalPanel = lazy(() => import('./components/MedicalPanel'));
-const SetupWizard = lazy(() => import('./components/SetupWizard'));
-const InsightsPanel = lazy(() => import('./components/InsightsPanel'));
-const StandupsPanel = lazy(() => import('./components/StandupsPanel'));
-const JournalPanel = lazy(() => import('./components/JournalPanel'));
-const PiHealthPanel = lazy(() => import('./components/PiHealthPanel'));
-const ScreenUsagePanel = lazy(() => import('./components/ScreenUsagePanel'));
-const NotionSyncPanel = lazy(() => import('./components/NotionSyncPanel'));
-const CataloguesPanel = lazy(() => import('./components/CataloguesPanel'));
-const ProfilePanel = lazy(() => import('./components/ProfilePanel'));
-const HealthPanel = lazy(() => import('./components/HealthPanel'));
-const MyHealthPanel = lazy(() => import('./components/MyHealthPanel'));
-const JCRingPanel = lazy(() => import('./components/JCRingPanel'));
-const MeetingPrep = lazy(() => import('./components/MeetingPrep'));
+// ⚠ A tab left open across a deploy still holds the OLD index, which names
+// chunk files the new build deleted — so the first visit to any lazy page after
+// a deploy failed to load ("Journal doesn't load", 13 Oct 2026). On that one
+// failure, reload once to pick up the new build; a second failure in the same
+// session is a real error and reaches the ErrorBoundary.
+const CHUNK_RELOAD_KEY = 'neuro_chunk_reload';
+const lazyLoad = (load) => lazy(() => load().then((m) => {
+  // A chunk that loads clears the guard, so the NEXT deploy can reload too.
+  try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* private mode */ }
+  return m;
+}).catch((err) => {
+  const KEY = CHUNK_RELOAD_KEY;
+  let tried = false;
+  try { tried = sessionStorage.getItem(KEY) === '1'; sessionStorage.setItem(KEY, '1'); } catch { tried = true; }
+  if (!tried) { window.location.reload(); return new Promise(() => {}); }
+  throw err;
+}));
+
+const Dashboard = lazyLoad(() => import('./components/Dashboard'));
+const PeopleBoard = lazyLoad(() => import('./components/PeopleBoard'));
+const StandupEditor = lazyLoad(() => import('./components/StandupEditor'));
+const TodoPanel = lazyLoad(() => import('./components/TodoPanel'));
+const CalendarView = lazyLoad(() => import('./components/CalendarView'));
+const InboxPanel = lazyLoad(() => import('./components/InboxPanel'));
+const AdminPanel = lazyLoad(() => import('./components/AdminPanel'));
+const EscalationPanel = lazyLoad(() => import('./components/EscalationPanel'));
+const ActionsPanel = lazyLoad(() => import('./components/ActionsPanel'));
+const DecisionsPanel = lazyLoad(() => import('./components/DecisionsPanel'));
+const WeeklyRiskPanel = lazyLoad(() => import('./components/WeeklyRiskPanel'));
+const ManagementLogPanel = lazyLoad(() => import('./components/ManagementLogPanel'));
+const ImportsPanel = lazyLoad(() => import('./components/ImportsPanel'));
+const RecentPanel = lazyLoad(() => import('./components/RecentPanel'));
+const VaultBrowser = lazyLoad(() => import('./components/VaultBrowser'));
+const BrainHealthPanel = lazyLoad(() => import('./components/BrainHealthPanel'));
+const WeatherPanel = lazyLoad(() => import('./components/WeatherPanel'));
+const PersonalInboxPanel = lazyLoad(() => import('./components/PersonalInboxPanel'));
+const HikeSafetyPanel = lazyLoad(() => import('./components/HikeSafetyPanel'));
+const BriefingsPanel = lazyLoad(() => import('./components/BriefingsPanel'));
+const MedicalPanel = lazyLoad(() => import('./components/MedicalPanel'));
+const SetupWizard = lazyLoad(() => import('./components/SetupWizard'));
+const InsightsPanel = lazyLoad(() => import('./components/InsightsPanel'));
+const StandupsPanel = lazyLoad(() => import('./components/StandupsPanel'));
+const JournalPanel = lazyLoad(() => import('./components/JournalPanel'));
+const PiHealthPanel = lazyLoad(() => import('./components/PiHealthPanel'));
+const ScreenUsagePanel = lazyLoad(() => import('./components/ScreenUsagePanel'));
+const NotionSyncPanel = lazyLoad(() => import('./components/NotionSyncPanel'));
+const CataloguesPanel = lazyLoad(() => import('./components/CataloguesPanel'));
+const ProfilePanel = lazyLoad(() => import('./components/ProfilePanel'));
+const HealthPanel = lazyLoad(() => import('./components/HealthPanel'));
+const MyHealthPanel = lazyLoad(() => import('./components/MyHealthPanel'));
+const JCRingPanel = lazyLoad(() => import('./components/JCRingPanel'));
+const MeetingPrep = lazyLoad(() => import('./components/MeetingPrep'));
 // Build 10: the first screens that read the canonical world model.
-const CommitmentsPanel = lazy(() => import('./components/canonical/CommitmentsPanel'));
-const SourcesPanel = lazy(() => import('./components/canonical/SourcesPanel'));
-const FindingsPanel = lazy(() => import('./components/canonical/FindingsPanel'));
-const ActivityPanel = lazy(() => import('./components/canonical/ActivityPanel'));
-const LifePanel = lazy(() => import('./components/canonical/LifePanel'));
+const CommitmentsPanel = lazyLoad(() => import('./components/canonical/CommitmentsPanel'));
+const SourcesPanel = lazyLoad(() => import('./components/canonical/SourcesPanel'));
+const FindingsPanel = lazyLoad(() => import('./components/canonical/FindingsPanel'));
+const ActivityPanel = lazyLoad(() => import('./components/canonical/ActivityPanel'));
+const LifePanel = lazyLoad(() => import('./components/canonical/LifePanel'));
 // The Life overhaul (13 Oct 2026): each part of life is its own page. Named
 // exports of one module — lazy() wants a default, so each is lifted.
-const lifePage = (name) => lazy(() => import('./components/canonical/LifePanel').then((m) => ({ default: m[name] })));
+const lifePage = (name) => lazyLoad(() => import('./components/canonical/LifePanel').then((m) => ({ default: m[name] })));
 const LifeHomePage = lifePage('LifeHomePage');
 const LifeFamilyPage = lifePage('LifeFamilyPage');
 const LifeOutdoorPage = lifePage('LifeOutdoorPage');
@@ -447,10 +465,14 @@ function AuthenticatedApp() {
             {/* Views grouped under one sidebar entry switch by tab (Health,
                 Home, Outdoor). Outside Suspense, so the tabs stay put while a
                 lazy tab loads. */}
-            <ViewTabs active={activeView} onNavigate={handleNavigate} />
-            <Suspense fallback={<div className="app-view-loading">Loading&hellip;</div>}>
-              {renderView()}
-            </Suspense>
+            {/* ONE child of .main-panel (a centring flex ROW): unwrapped, the
+                tabs and the page sat side by side as two columns. */}
+            <div className="main-view">
+              <ViewTabs active={activeView} onNavigate={handleNavigate} />
+              <Suspense fallback={<div className="app-view-loading">Loading&hellip;</div>}>
+                {renderView()}
+              </Suspense>
+            </div>
           </ErrorBoundary>
         </main>
         <aside className={`chat-panel ${chatOpen ? 'chat-open' : ''}`}>
@@ -468,6 +490,10 @@ function AuthenticatedApp() {
         <button className={activeView === 'today' ? 'active' : ''} onClick={() => handleNavigate('today')}>
           <span className="bottom-nav-icon">&#x25D0;</span>
           <span>Now</span>
+        </button>
+        <button className={activeView === 'todos' ? 'active' : ''} onClick={() => handleNavigate('todos')}>
+          <span className="bottom-nav-icon">&#x2611;</span>
+          <span>Tasks</span>
         </button>
         <button className={chatOpen ? 'active' : ''} onClick={() => handleNavigate('chat')}>
           <span className="bottom-nav-icon">&#x203A;</span>

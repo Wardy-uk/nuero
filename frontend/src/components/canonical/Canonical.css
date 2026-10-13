@@ -268,3 +268,87 @@
 
 /* Build 25 — Personal admin sections */
 .cn-h4 { font-size: 12px; font-weight: 600; margin: 12px 0 4px; color: var(--text-secondary); }
+
+/* ── Life pages: card surfaces and rhythm (13 Oct 2026) ─────────────────────
+   Each Life page mounts self-contained cards (Home, Outdoor, Leisure, Finance,
+   Transport…). They shipped as bare <h3>/<h4>/<h5> and unpadded lists straight
+   on the page background, so a page read as one undifferentiated wall. A card
+   is now a surface; its title, sections and rows have a fixed rhythm. Scoped to
+   DIRECT children of a page so nested sections inside a card are untouched. */
+.cn-panel > .cn-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px 20px;
+  margin-top: 16px;
+}
+.cn-panel > .cn-head + .cn-sub + .cn-section,
+.cn-panel > .cn-sub + .cn-section { margin-top: 4px; }
+
+/* Card title */
+.cn-panel > .cn-section > h3:not(.cn-h3) {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+/* Sections inside a card: a quiet rule and a small label, never a second title */
+.cn-panel > .cn-section h4:not(.cn-h4) {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 18px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.cn-panel > .cn-section > h3 + h4:not(.cn-h4),
+.cn-panel > .cn-section > h3 + p + h4:not(.cn-h4) { border-top: none; padding-top: 0; margin-top: 6px; }
+.cn-panel > .cn-section h5 {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  margin: 14px 0 6px;
+}
+.cn-panel > .cn-section h4 .cn-muted,
+.cn-panel > .cn-section h5 .cn-muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* Plain list rows (not the bordered .cn-row kind): separated, breathing */
+.cn-panel > .cn-section .cn-list:has(> li:not(.cn-row)) { gap: 0; }
+.cn-panel > .cn-section .cn-list > li:not(.cn-row) {
+  padding: 9px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  line-height: 1.45;
+}
+.cn-panel > .cn-section .cn-list > li:not(.cn-row):last-child { border-bottom: none; }
+.cn-panel > .cn-section .cn-list > li .cn-muted.cn-small { display: block; margin-top: 2px; }
+
+.cn-panel .cn-chip { margin-left: 6px; vertical-align: 1px; }
+.cn-panel .cn-row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cn-panel .cn-row-actions .cn-btn--tiny { margin-left: 0; }
+.cn-panel .cn-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.cn-panel .cn-form input, .cn-panel .cn-form select {
+  background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-primary); padding: 5px 8px; font-size: 12px; color-scheme: dark;
+}
+.cn-panel > .cn-section a { color: var(--accent); text-decoration: none; }
+.cn-panel > .cn-section a:hover { text-decoration: underline; }
+.cn-panel > .cn-section .cn-fold:first-of-type { margin-top: 8px; }
+
+/* "You might like": a preview control that belongs on a dark page, in place of
+   the browser's white audio bar. */
+.cn-preview {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 999px;
+  color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px;
+  padding: 2px 10px 2px 8px; margin-left: 8px; cursor: pointer; vertical-align: 1px;
+}
+.cn-preview:hover { color: var(--text-primary); border-color: var(--accent); }
+.cn-preview--on { color: var(--accent); border-color: var(--accent); }
+.cn-discovery { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: start; }
+.cn-discovery .cn-row-actions { margin-top: 0; justify-content: flex-end; }
+.cn-panel > .cn-section:first-child { margin-top: 0; }
+.cn-panel .cn-journey { padding: 10px 0; }
+.cn-journey-miles { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.cn-journey-miles input { width: 5.5em; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); padding: 3px 6px; font-size: 12px; color-scheme: dark; }

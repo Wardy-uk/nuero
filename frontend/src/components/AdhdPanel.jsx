@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import useAttention from '../useAttention';
 import AttentionCard from './AttentionCard';
+import MeetingControls from './MeetingControls';
 import FrictionSection from './FrictionSection';
 import AmbientSection from './AmbientSection';
 import NowSituation from './canonical/NowSituation';
@@ -751,6 +752,12 @@ export default function AdhdPanel({ onNavigate }) {
           Canonical attention, rendered by the shared card so the five actions
           mean exactly what they mean on every other surface. Nothing here
           reranks, rewords or decides urgency. */}
+      {/* The meeting he is in (or the next one): "It's over" / "I'm not in it".
+          Above the card, on every layout — the diary is a plan, and only he
+          knows he missed it (13 Oct 2026). */}
+      {attention.data && (
+        <MeetingControls meeting={attention.data.meeting} nextMeeting={attention.data.nextMeeting} onChanged={attention.refresh} />
+      )}
       {attention.data?.presentation && attention.data.presentation.contract === 'presentation-v1' ? (
         <section className="adhd__now adhd__now--situation">
           {attention.error && <p className="adhd__now-warn">Couldn&rsquo;t refresh — this is the last read.</p>}

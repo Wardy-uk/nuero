@@ -84,6 +84,18 @@ async function buildJournalContext() {
 // This is one of the three places SAiM talks to Nick about his day, and it was
 // the one with no voice at all — a task description that could have been written
 // for any assistant. The questions are hers, so she writes them as herself.
+// A model line as Nick should read it: no "1.", "- ", "**Prompt 1:**" or
+// wrapping quotes/bold. Small local models label their output whatever the
+// instructions say, and the label was rendered verbatim (13 Oct 2026).
+function cleanPromptLine(line) {
+  return String(line || '')
+    .replace(/\*\*/g, '')
+    .replace(/^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?/, '')
+    .replace(/^\s*(?:prompt|question)\s*\d*\s*[:.)-]\s*/i, '')
+    .replace(/^["“'‘]+|["”'’]+$/g, '')
+    .trim();
+}
+
 async function generatePrompts(contextSummary) {
   const journalPromptText = `${VOICE_COMPACT}
 
@@ -92,11 +104,11 @@ Nick journals in the evening to process his day. Write exactly 3 prompts for ton
 Rules:
 - Each prompt is a single question, max 15 words. Never stack two.
 - Be specific to today's context — a question he could only be asked tonight beats a good generic one.
-- If Strava/health data is present, reference his physical state in one.
+- If today's workout or health data is present, reference his physical state in one. Never mention an app or source by name.
 - If location data shows somewhere unusual, ask about it.
 - Vary the focus: one on the work, one on how he's doing, one on what's next.
 - Ask, don't counsel. No "take a moment to reflect on", no gratitude exercises.
-- Output ONLY the 3 questions, one per line, nothing else.
+- Output ONLY the 3 questions, one per line — no numbers, labels, bold or quotes.
 
 Today's context:
 ${contextSummary}`;
@@ -111,7 +123,7 @@ ${contextSummary}`;
     const result = await aiProvider.generateJournalPrompts(journalPromptText);
     if (result?.text) {
       const prompts = result.text.split('\n')
-        .map(l => l.replace(/^\d+[\.\)]\s*/, '').trim())
+        .map(cleanPromptLine)
         .filter(l => l.length > 5 && l.endsWith('?'))
         .slice(0, 3);
       if (prompts.length === 3) {
@@ -264,3 +276,4 @@ router.post('/settings', (req, res) => {
 });
 
 module.exports = router;
+module.exports.cleanPromptLine = cleanPromptLine;

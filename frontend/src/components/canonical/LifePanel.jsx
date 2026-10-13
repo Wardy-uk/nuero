@@ -56,10 +56,14 @@ function useLifeData() {
 function LifePage({ title, sub, life, children }) {
   return (
     <div className="cn-panel">
-      <div className="cn-head">
-        <h2 className="cn-title">{title}</h2>
-        {life && <button type="button" className="cn-btn" onClick={life.reload}>Refresh</button>}
-      </div>
+      {/* A tabbed page (Home, Outdoor) has no heading of its own: the tab names
+          it and the card under it is titled, so a third "Home" is noise. */}
+      {title && (
+        <div className="cn-head">
+          <h2 className="cn-title">{title}</h2>
+          {life && <button type="button" className="cn-btn" onClick={life.reload}>Refresh</button>}
+        </div>
+      )}
       {sub && <p className="cn-sub">{sub}</p>}
       {life && life.loading && !life.data && <div className="cn-muted">Reading…</div>}
       {life && life.error && <div className="cn-error">Couldn’t read this — {life.error}</div>}
@@ -89,7 +93,7 @@ export default function LifePanel() {
 
 export function LifeHomePage() {
   return (
-    <LifePage title="Home" sub="The house — rooms, heating, devices and what needs doing.">
+    <LifePage>
       <HomeCard />
     </LifePage>
   );
@@ -109,7 +113,7 @@ export function LifeFamilyPage() {
 
 export function LifeOutdoorPage() {
   return (
-    <LifePage title="Outdoor" sub="Whether you really got outside, and the walks you plan.">
+    <LifePage>
       {/* Build 29: Outdoor carries the Hike weekly loop (its confirm / not-a-hike controls). */}
       <OutdoorCard />
     </LifePage>

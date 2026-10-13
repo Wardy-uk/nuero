@@ -514,7 +514,7 @@ export default function Surface({ onNavigate, onShowAll, arrivedFrom, onClearArr
         // polled screen can be holding the one before this.
         setBusy(true);
         try {
-          await apiFetch(`/api/attention/meeting/${intent.action === 'finished' ? 'finished' : 'resume'}`, {
+          await apiFetch(`/api/attention/meeting/${({ finished: 'finished', 'not-attending': 'not-attending' })[intent.action] || 'resume'}`, {
             method: 'POST',
             body: JSON.stringify({ key: intent.key }),
           });

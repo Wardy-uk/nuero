@@ -335,7 +335,8 @@ export default function PersonalInboxPanel() {
       {current && current.key === 'gmail' && cleanup && <GmailCleanup onChanged={load} />}
       {error && <div className="pi-warn">{error}</div>}
       {composing && <ComposeForm options={options} suggestion={suggestion} onRecipients={recipients} onSend={sendNew} onCancel={() => setComposing(false)} busy={busy} outcome={outcome} initialFrom={current && !current.watchedOnly && current.configured ? current.key : null} />}
-      <div className="pi-split">
+      {/* Nothing open: the list takes the whole width rather than leaving half the page empty. */}
+      <div className={`pi-split${view ? '' : ' pi-split--solo'}`}>
         <div className="pi-listcol">
           <BulkBar count={selected.size} total={items.length} onAll={() => setSelected(new Set(items.map((m) => m.id)))} onNone={() => setSelected(new Set())} onRead={() => runBulk('read')} onDelete={() => runBulk('delete')} onHideSenders={tab === 'gmail' ? hideSenders : null} busy={busy} />
           <MessageList items={items} onOpen={open} openId={openId} selected={selected} onToggle={current && current.watchedOnly ? null : toggle} />

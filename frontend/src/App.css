@@ -44,6 +44,22 @@
   min-width: 0;
 }
 
+/* .main-view is the ONE child of .main-panel (tabs + the page). The 960px cap
+   and the min-width fix move down a level, so every page and the tab bar keep
+   exactly the width they had, and a page that sets its own max-width (About me)
+   still wins the same way it did — its own stylesheet loads after this one. */
+.main-panel > .main-view {
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.main-view > * {
+  width: 100%;
+  max-width: 960px;
+  min-width: 0;
+}
+
 /* The other half of the same problem: let long strings wrap rather than
    demanding width. `anywhere` (not `break-word`) so it also shrinks the
    intrinsic minimum, which is what actually stops the overflow. */

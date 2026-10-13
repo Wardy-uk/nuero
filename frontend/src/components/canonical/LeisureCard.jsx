@@ -137,6 +137,31 @@ function AddForm({ act, busy }) {
  * preview), and two answers: save it, or not for me (which also stops it
  * being suggested again). The server never re-ranks here; neither does this.
  */
+// One shared player for every preview: starting one stops the other, and
+// leaving the page stops it (React unmounts the button, the effect pauses it).
+let _player = null;
+let _current = null; // the setter of the button that is playing now
+function Preview({ src }) {
+  const [on, setOn] = React.useState(false);
+  React.useEffect(() => () => { if (_current === setOn && _player) { _player.pause(); _current = null; } }, []);
+  const toggle = () => {
+    if (!_player) _player = new Audio();
+    if (on) { _player.pause(); _current = null; setOn(false); return; }
+    if (_current) _current(false);
+    _player.pause();
+    _player.src = src;
+    _current = setOn;
+    _player.onended = () => { if (_current === setOn) { _current = null; setOn(false); } };
+    setOn(true);
+    _player.play().catch(() => { if (_current === setOn) { _current = null; setOn(false); } });
+  };
+  return (
+    <button type="button" className={`cn-preview${on ? ' cn-preview--on' : ''}`} onClick={toggle} title="30-second preview from Deezer">
+      {on ? '❚❚ playing' : '▶ preview'}
+    </button>
+  );
+}
+
 function Discovery({ d, act, busy }) {
   if (!d) return null;
   const save = (x) => act && act('/api/leisure/items', { kind: 'artist', title: x.name, state: 'saved', notes: x.why || null });
@@ -157,18 +182,20 @@ function Discovery({ d, act, busy }) {
       {d.items.length > 0 && (
         <ul className="cn-list">
           {d.items.map((x) => (
-            <li key={x.name} data-testid="leisure-discovery">
-              <strong>{x.link ? <a href={x.link} target="_blank" rel="noreferrer">{x.name}</a> : x.name}</strong>
-              {x.why && <span className="cn-muted cn-small"> — {x.why}</span>}
-              {x.track && (
-                <div className="cn-small">
-                  Try {x.track.link ? <a href={x.track.link} target="_blank" rel="noreferrer">“{x.track.title}”</a> : `“${x.track.title}”`}
-                  {x.track.preview && <audio controls preload="none" src={x.track.preview} style={{ height: 28, verticalAlign: 'middle', marginLeft: 8 }} />}
-                </div>
-              )}
+            <li key={x.name} data-testid="leisure-discovery" className="cn-discovery">
+              <div>
+                <strong>{x.link ? <a href={x.link} target="_blank" rel="noreferrer">{x.name}</a> : x.name}</strong>
+                {x.track && (
+                  <span className="cn-small">
+                    {' '}· try {x.track.link ? <a href={x.track.link} target="_blank" rel="noreferrer">“{x.track.title}”</a> : `“${x.track.title}”`}
+                    {x.track.preview && <Preview src={x.track.preview} />}
+                  </span>
+                )}
+                {x.why && <span className="cn-muted cn-small">{x.why}</span>}
+              </div>
               {act && (
                 <div className="cn-row-actions">
-                  <Btn busy={busy} onClick={() => save(x)} title="Keep it in Saved for later">Save for later</Btn>
+                  <Btn busy={busy} onClick={() => save(x)} title="Keep it in Saved for later">Save</Btn>
                   <Btn busy={busy} onClick={() => nope(x)} title="Never suggest this artist again">Not for me</Btn>
                 </div>
               )}

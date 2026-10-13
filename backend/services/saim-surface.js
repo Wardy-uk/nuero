@@ -1069,6 +1069,9 @@ function utterancesFor(payload, surface, session) {
     // the same reason `shrink` / `step-away` / `finish` are `session` intents.
     if (isObj(payload.meeting) && payload.meeting.key) {
       out.push(say('That’s finished', { kind: 'meeting', action: 'finished', key: payload.meeting.key }));
+      // Missed it, or never went (13 Oct 2026): the occurrence leaves her view
+      // of the day — the diary is untouched and "resume" brings it back.
+      out.push(say('I’m not in it', { kind: 'meeting', action: 'not-attending', key: payload.meeting.key }));
     }
     // Capture is the one thing that is never an interruption — it is him
     // putting something down, not her picking something up.

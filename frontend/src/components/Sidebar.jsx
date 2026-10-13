@@ -14,6 +14,8 @@ const PRIMARY_ITEMS = [
   // collapsed group, or its badge is invisible) and Commitments (both
   // directions, from the world model).
   { id: 'today',       label: 'Now',         icon: '◐' },
+  // The list Nick works from every day — primary, beside the promises behind it (13 Oct 2026).
+  { id: 'todos',       label: 'Tasks',       icon: '☑' },
   { id: 'capture',     label: 'Capture',     icon: '+' },
   { id: 'chat',        label: 'Ask',         icon: '›' },
   { id: 'actions',     label: 'Actions',     icon: '✓' },
@@ -31,8 +33,6 @@ const GROUPS = [
   // Weather). Those tab ids are still views of their own — deep links work.
   { id: 'life', label: 'LIFE', items: [
     { id: 'life',       label: 'Life',       icon: '◍' },
-    // Tasks span every domain (work | personal), so they sit under Life.
-    { id: 'todos',      label: 'Tasks',      icon: '☑' },
     { id: 'my-health',  label: 'Health',     icon: '♥', group: 'health' },
     { id: 'home',       label: 'Home',       icon: '⌂', group: 'home' },
     // Not "People": PEOPLE & MEETINGS already has the work one.
