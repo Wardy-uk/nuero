@@ -56,6 +56,7 @@ const CAPABILITIES = Object.freeze({
   'calendar-window-60d': { since: 18, what: 'pushes 60 days of the phone diary ahead, not 14' },
   'calendar-types': { since: 18, what: 'reports each calendar\'s kind (local, subscribed, birthdays…)' },
   'route-permission-report': { since: 18, what: 'reports whether workout-route access was ever asked for' },
+  'food-names': { since: 18, what: 'sends each food item’s name (HKMetadataKeyFoodType) and item id with its nutrient samples' },
 });
 
 /**

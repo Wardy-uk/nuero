@@ -950,6 +950,8 @@ CREATE TABLE IF NOT EXISTS nutrition_entries (
   value REAL NOT NULL,
   recorded_at DATETIME NOT NULL,
   source_uuid TEXT NOT NULL UNIQUE,
+  food_type TEXT,   -- the item's name as its app wrote it (13 Oct 2026)
+  food_item TEXT,   -- the id one item's nutrient samples share
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_nutrition_entries_time ON nutrition_entries(recorded_at);

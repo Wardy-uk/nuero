@@ -569,6 +569,17 @@ router.get('/nutrition', (req, res) => {
   }
 });
 
+// GET /api/health/drinks — drinks and UK alcohol units, read by each drink's NAME
+// from a food app that names its items (Foodnoms), with the calories as a check.
+// Keywords: alcohol, units, drinks, wine, whisky, beer.
+router.get('/drinks', (req, res) => {
+  try {
+    res.json(require('../services/drinks').read({ days: 30 }));
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // GET /api/health/readiness — how much this body has to give today, and why.
 router.get('/readiness', (req, res) => {
   try {

@@ -131,7 +131,7 @@
     "route": "/api/health/signals/:id/ack",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 611,
+    "line": 622,
     "description": "DELETE /api/health/signals/:id/ack.",
     "params": [
       "id"
@@ -2495,6 +2495,22 @@
     "stream": false
   },
   {
+    "id": "get_health_drinks",
+    "method": "GET",
+    "route": "/api/health/drinks",
+    "domain": "health",
+    "source": "routes/health.js",
+    "line": 575,
+    "description": "GET /api/health/drinks. drinks and UK alcohol units, read by each drink's NAME",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_health_history",
     "method": "GET",
     "route": "/api/health/history",
@@ -2518,7 +2534,7 @@
     "route": "/api/health/metrics",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 672,
+    "line": 683,
     "description": "GET /api/health/metrics. what is actually in the series, per metric (#40).",
     "params": [],
     "query": [
@@ -2570,7 +2586,7 @@
     "route": "/api/health/readiness",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 573,
+    "line": 584,
     "description": "GET /api/health/readiness. how much this body has to give today, and why.",
     "params": [],
     "query": [],
@@ -2666,7 +2682,7 @@
     "route": "/api/health/samples",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 731,
+    "line": 742,
     "description": "GET /api/health/samples.",
     "params": [],
     "query": [
@@ -2685,7 +2701,7 @@
     "route": "/api/health/signals",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 585,
+    "line": 596,
     "description": "GET /api/health/signals. what has CHANGED, ranked. Trends, not today's",
     "params": [],
     "query": [],
@@ -2701,7 +2717,7 @@
     "route": "/api/health/sleep",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 785,
+    "line": 796,
     "description": "GET /api/health/sleep. per-night totals from the per-segment rows (#40).",
     "params": [],
     "query": [
@@ -2719,7 +2735,7 @@
     "route": "/api/health/status",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 647,
+    "line": 658,
     "description": "GET /api/health/status. is health data available and fresh?",
     "params": [],
     "query": [],
@@ -2735,7 +2751,7 @@
     "route": "/api/health/stress",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 634,
+    "line": 645,
     "description": "GET /api/health/stress. current stress score against a rolling personal baseline.",
     "params": [],
     "query": [],
@@ -8994,7 +9010,7 @@
     "route": "/api/health/rollup",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 623,
+    "line": 634,
     "description": "POST /api/health/rollup. recompute the daily rollup now. Idempotent (every",
     "params": [],
     "query": [],
@@ -9012,7 +9028,7 @@
     "route": "/api/health/signals/:id/ack",
     "domain": "health",
     "source": "routes/health.js",
-    "line": 601,
+    "line": 612,
     "description": "POST /api/health/signals/:id/ack. \"I've read it\".",
     "params": [
       "id"

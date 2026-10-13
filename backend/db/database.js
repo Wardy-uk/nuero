@@ -517,6 +517,17 @@ async function init() {
     console.error('[DB] health_samples migration check failed:', e.message);
   }
 
+  // Migration (13 Oct 2026): nutrition_entries.food_type / food_item — the item's
+  // NAME as its food app wrote it (HKMetadataKeyFoodType, "Wine (White)") and the
+  // id all of one item's nutrient samples share, so a drink can be read by name.
+  try {
+    const cols = db.prepare('PRAGMA table_info(nutrition_entries)').all().map((r) => r.name);
+    if (cols.length && !cols.includes('food_type')) db.exec('ALTER TABLE nutrition_entries ADD COLUMN food_type TEXT');
+    if (cols.length && !cols.includes('food_item')) db.exec('ALTER TABLE nutrition_entries ADD COLUMN food_item TEXT');
+  } catch (e) {
+    console.error('[DB] nutrition_entries food-name migration failed:', e.message);
+  }
+
   // Migration: source_health.last_observed_at (Build 2 — push sources). Build 1
   // shipped the table without it, and CREATE TABLE IF NOT EXISTS never adds a
   // column to a table that already exists, so the live DB needs this. NULL on
@@ -1698,18 +1709,24 @@ function insertHealthSampleWithUuid(metric, value, recordedAt, source, sourceUui
 
 // One row per HealthKit food sample, keyed on its UUID (see schema.sql: a food
 // log legitimately has several entries at the same instant).
-function insertNutritionEntry(metric, value, recordedAt, sourceUuid) {
+function insertNutritionEntry(metric, value, recordedAt, sourceUuid, foodType = null, foodItem = null) {
   if (!sourceUuid) return false;
   const r = run(
-    `INSERT OR IGNORE INTO nutrition_entries (metric, value, recorded_at, source_uuid) VALUES (?, ?, ?, ?)`,
-    [metric, value, recordedAt, sourceUuid]
+    `INSERT OR IGNORE INTO nutrition_entries (metric, value, recorded_at, source_uuid, food_type, food_item) VALUES (?, ?, ?, ?, ?, ?)`,
+    [metric, value, recordedAt, sourceUuid, foodType, foodItem]
   );
+  // A re-send of an entry stored before names were sent fills the name in —
+  // never overwrites one, never changes the value.
+  if (r.changes === 0 && (foodType || foodItem)) {
+    run(`UPDATE nutrition_entries SET food_type = COALESCE(food_type, ?), food_item = COALESCE(food_item, ?)
+         WHERE source_uuid = ? AND (food_type IS NULL OR food_item IS NULL)`, [foodType, foodItem, sourceUuid]);
+  }
   return r.changes > 0;
 }
 
 function getNutritionEntriesSince(sinceIso) {
   return all(
-    `SELECT metric, value, recorded_at FROM nutrition_entries WHERE recorded_at >= ? ORDER BY recorded_at`,
+    `SELECT metric, value, recorded_at, food_type, food_item FROM nutrition_entries WHERE recorded_at >= ? ORDER BY recorded_at`,
     [sinceIso]
   );
 }

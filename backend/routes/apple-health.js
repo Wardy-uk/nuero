@@ -142,7 +142,7 @@ router.post('/ingest', (req, res) => {
     for (const s of parsed.samples) {
       if (!/^dietary_/.test(s.metric) || !s.sourceUuid) continue;
       try {
-        if (db.insertNutritionEntry(s.metric, s.value, s.recordedAt, s.sourceUuid)) nutritionNew++;
+        if (db.insertNutritionEntry(s.metric, s.value, s.recordedAt, s.sourceUuid, s.foodType, s.foodItem)) nutritionNew++;
       } catch (e) {
         parsed.rejected.push({ metric: s.metric, reason: `nutrition entry: ${e.message}` });
       }

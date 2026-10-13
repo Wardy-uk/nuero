@@ -17,6 +17,7 @@
  *   sleep       average sleep, last 7 nights         health_daily (Watch)
  *   resting-hr  resting heart rate, 14-day median    health_daily (Watch)
  *   caffeine    mg per day, 7 logged days            nutrition (MyFitnessPal via Apple Health)
+ *   alcohol     UK units per week                    drinks (named items from Foodnoms via Apple Health)
  *   project     a personal project reaching done     projects (vault + GitHub)
  *
  * No measure = the goal is judged by explicitly linked items, as before
@@ -60,6 +61,11 @@ const MEASURES = Object.freeze({
   // the figure is a floor. NHS: up to 400 mg a day for most adults.
   caffeine: { kind: 'caffeine', label: 'Caffeine', unit: 'mg/day', direction: 'down', domain: 'health', target: 'number', min: 0, max: 2000,
     source: 'MyFitnessPal via Apple Health — average over the last 7 logged days (a floor: a drink logged without caffeine adds 0)', levers: ['sleep'] },
+  // 13 Oct 2026. Units by the drink's NAME (strength) and its own water (volume),
+  // with its calories as a cross-check — services/drinks.js. Only drinks logged
+  // in an app that sends names (Foodnoms); MyFitnessPal sends none.
+  alcohol: { kind: 'alcohol', label: 'Alcohol', unit: 'units/week', direction: 'down', domain: 'health', target: 'number', min: 0, max: 100,
+    source: 'Drinks you log in Foodnoms, via Apple Health — strength from the drink’s name, volume from its own figures, the calories as a check. A day with food logged and no drink counts as none.', levers: ['sleep', 'bp'] },
   project: { kind: 'project', label: 'Finish a personal project', unit: null, direction: 'up', domain: 'projects', target: 'project',
     source: 'Personal projects — the hub note, linked tasks and GitHub progress', levers: [] },
 });
@@ -68,7 +74,7 @@ const KINDS = Object.freeze(Object.keys(MEASURES));
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 // How much movement counts as movement (below this it is "holding steady").
-const NOISE = { bp: 2, weight: 0.5, steps: 300, exercise: 15, sleep: 0.15, 'resting-hr': 1, caffeine: 20 };
+const NOISE = { bp: 2, weight: 0.5, steps: 300, exercise: 15, sleep: 0.15, 'resting-hr': 1, caffeine: 20, alcohol: 1 };
 // A project with no meaningful progress for this long has gone quiet.
 const PROJECT_QUIET_DAYS = 21;
 
@@ -160,6 +166,8 @@ const HEALTH_READ = {
   'resting-hr': { field: 'rhrMedian', span: 14, how: 'median', minDays: 5, dp: 0 },
   // Rows from `nutritionDays` (logged days only), not health_daily.
   caffeine: { field: 'caffeineMg', span: 7, how: 'mean', minDays: 3, dp: 0 },
+  // Rows from drinks.dailyUnits. A week is the SUM, scaled up from the logged days.
+  alcohol: { field: 'alcoholUnits', span: 7, how: 'sum', minDays: 4, dp: 1 },
 };
 
 /**
@@ -197,7 +205,7 @@ const fmt = (kind, v) => {
   if (kind === 'bp') return `${v.sys}/${v.dia}`;
   const def = MEASURES[kind];
   if (kind === 'steps') return `${Math.round(v).toLocaleString('en-GB')}`;
-  return `${v}${def.unit === 'kg' ? 'kg' : def.unit === 'bpm' ? ' bpm' : def.unit === 'h/night' ? 'h' : def.unit === 'min/week' ? ' min' : def.unit === 'mg/day' ? ' mg/day' : ''}`;
+  return `${v}${def.unit === 'kg' ? 'kg' : def.unit === 'bpm' ? ' bpm' : def.unit === 'h/night' ? 'h' : def.unit === 'min/week' ? ' min' : def.unit === 'mg/day' ? ' mg/day' : def.unit === 'units/week' ? ' units/week' : ''}`;
 };
 
 /** A scalar for distance-to-target. BP uses systolic and diastolic, whichever is further off. */
@@ -326,8 +334,8 @@ function evaluate(goal, inputs) {
   const start = goal.startDate || (goal.createdAt ? String(goal.createdAt).slice(0, 10) : null);
   if (m.kind === 'hikes') return judgeHikes(m, { hiking: inputs.hiking, today });
   if (m.kind === 'project') return judgeProject(m, { project: (inputs.projects || []).find((p) => p.projectId === m.projectId) || null, today });
-  const days = m.kind === 'caffeine' ? inputs.nutritionDays : inputs.days;
-  if (!days) return { kind: m.kind, label: MEASURES[m.kind].label, state: 'unknown', line: m.kind === 'caffeine' ? 'Food logs could not be read.' : 'Health data could not be read.' };
+  const days = m.kind === 'caffeine' ? inputs.nutritionDays : m.kind === 'alcohol' ? inputs.alcoholDays : inputs.days;
+  if (!days) return { kind: m.kind, label: MEASURES[m.kind].label, state: 'unknown', line: m.kind === 'caffeine' || m.kind === 'alcohol' ? 'Food logs could not be read.' : 'Health data could not be read.' };
   const current = healthValue(m.kind, days, today); // the last full days — today is still accruing
   // Baseline: the window ending the day after the goal started — so a goal set
   // today has a baseline equal to "now", and movement is measured from there on.
@@ -402,10 +410,11 @@ function read({ now = Date.now() } = {}) {
   const goals = attempt('goals', () => require('./canonical-read').listGoals({ status: 'all' }), [])
     .filter((g) => g.status === 'active' || g.status === 'paused');
   const kinds = new Set(goals.filter((g) => g.measure).map((g) => g.measure.kind));
-  const needsHealth = [...kinds].some((k) => HEALTH_READ[k] && k !== 'caffeine');
+  const needsHealth = [...kinds].some((k) => HEALTH_READ[k] && k !== 'caffeine' && k !== 'alcohol');
   const inputs = { today };
   if (needsHealth) inputs.days = attempt('health', () => require('./health-daily').recentDays(400), null);
   if (kinds.has('caffeine')) inputs.nutritionDays = attempt('nutrition', () => nutritionDays(require('./nutrition').read({ now: new Date(nowMs), days: 400 })), null);
+  if (kinds.has('alcohol')) inputs.alcoholDays = attempt('drinks', () => require('./drinks').read({ now: new Date(nowMs), days: 60 }).days, null);
   if (kinds.has('hikes')) inputs.hiking = attempt('hiking', () => require('./hiking-loop').read({ now: nowMs, weeks: 6 }), null);
   if (kinds.has('project')) inputs.projects = attempt('projects', () => require('./projects').read({ now: nowMs }).projects, []);
   const picture = needsHealth || kinds.has('hikes') ? attempt('my-health', () => require('./health-picture').read({ now: new Date(nowMs) }), null) : null;

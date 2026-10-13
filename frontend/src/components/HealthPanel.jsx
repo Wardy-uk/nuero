@@ -3,6 +3,7 @@ import { apiUrl, apiFetch } from '../api';
 import './HealthPanel.css';
 import PerformanceSection from './PerformanceSection';
 import NutritionSection from './NutritionSection';
+import DrinksSection from './DrinksSection';
 
 /**
  * Apple Health — the deep view over two years of Apple Health (Watch + HiLo).
@@ -971,6 +972,7 @@ export default function HealthPanel() {
       {/* ── Nutrition ── MyFitnessPal via Apple Health; its own range control,
           because a food log is read by the week, not by the chart window. */}
       <NutritionSection />
+      <DrinksSection />
 
       {/* ── What is arriving ───────────────────────────────────────
           The diagnostic half. Freshness, not volume, is what says a feed has

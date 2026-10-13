@@ -228,6 +228,9 @@ function parseMetrics(metrics, out, excluded) {
         recordedAt,
         sourceUuid: point.source_uuid || null,
         units: metric.units || null,
+        // Food apps that name their items (Foodnoms): what it was, and which item.
+        foodType: typeof point.food_type === 'string' && point.food_type.trim() ? point.food_type.trim().slice(0, 200) : null,
+        foodItem: typeof point.food_item === 'string' && point.food_item.trim() ? point.food_item.trim().slice(0, 100) : null,
       });
     }
   }
