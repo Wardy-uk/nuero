@@ -106,7 +106,17 @@ function _shape(row) {
  * `getPendingSaimActions`'s silent default of 10 reported a queue of 930 as 10,
  * so no count returned here is allowed to be the capped one.
  */
-function list({ limit = 50, offset = 0 } = {}) {
+// Which inbox a reply belongs to (13 Oct 2026). Personal mailbox ids are
+// `pmail:` (nick@/contact@) or `gmail:`; anything else is work. The work and
+// personal REPLIED sections must never show each other's replies.
+const PERSONAL_WHERE = "(email_id LIKE 'pmail:%' OR email_id LIKE 'gmail:%')";
+function _scopeWhere(scope) {
+  if (scope === 'personal') return `WHERE ${PERSONAL_WHERE}`;
+  if (scope === 'work') return `WHERE NOT ${PERSONAL_WHERE}`;
+  return '';
+}
+
+function list({ limit = 50, offset = 0, scope = 'all' } = {}) {
   // Nonsense input falls back to the DEFAULT, not to the nearest legal value —
   // clamping limit=-5 to 1 answers with one row and looks like the truth.
   const n = parseInt(limit, 10);
@@ -114,19 +124,19 @@ function list({ limit = 50, offset = 0 } = {}) {
   const off = parseInt(offset, 10);
   const skip = Number.isFinite(off) && off > 0 ? off : 0;
   const rows = db.all(
-    'SELECT * FROM sent_replies ORDER BY sent_at DESC, id DESC LIMIT ? OFFSET ?',
+    `SELECT * FROM sent_replies ${_scopeWhere(scope)} ORDER BY sent_at DESC, id DESC LIMIT ? OFFSET ?`,
     [cap, skip]
   ) || [];
   return {
     replies: rows.map(_shape),
-    total: count(),
+    total: count(scope),
     limit: cap,
     offset: skip,
   };
 }
 
-function count() {
-  const row = db.get('SELECT COUNT(*) AS n FROM sent_replies');
+function count(scope = 'all') {
+  const row = db.get(`SELECT COUNT(*) AS n FROM sent_replies ${_scopeWhere(scope)}`);
   return row ? row.n : 0;
 }
 

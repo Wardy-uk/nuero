@@ -203,6 +203,16 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/personal-inbox/gmail/cleanup', 'gmail.unsubscribe'),
   R('POST', '/api/personal-inbox/gmail/cleanup/bulk', 'gmail.unsubscribe'),
   R('POST', '/api/personal-inbox/gmail/backfill', 'internal.state', { machine: 'refuse' }),
+  // Personal triage (13 Oct 2026): the work Inbox's verdicts for personal mail.
+  // Every one is Nick's — a machine may read the sorted list, never sort it,
+  // dismiss, mute, draft or reply from here.
+  R('POST', '/api/personal-inbox/triage/muted/unmute', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/personal-inbox/triage/clear-fyi', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/personal-inbox/triage/dismiss/:id', 'mail.read-state', { machine: 'refuse' }),
+  R('POST', '/api/personal-inbox/triage/promote/:id', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/personal-inbox/triage/:id/summary', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/personal-inbox/triage/:id/draft', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/personal-inbox/triage/:id/reply', 'email.send', { machine: 'refuse' }),
   // Build 15: Nick's own statements about his goal — never a machine's.
   R('POST', '/api/loops/hiking/confirm', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/loops/hiking/plan', 'internal.state', { machine: 'refuse' }),

@@ -97,10 +97,10 @@ test('approving a personal candidate makes a PERSONAL task, carrying who it came
 test('the personal-inbox refresh runs the scan and never fails because of it', async () => {
   const inbox = require('./personal-inbox');
   const seen = [];
-  let s = await inbox.refresh({ only: ['nick'], deps: { extractTasks: async (rows, opts) => { seen.push(opts.own); return { created: 2, asked: 3 }; } } });
+  let s = await inbox.refresh({ only: ['nick'], deps: { classifyBatch: async () => [], extractTasks: async (rows, opts) => { seen.push(opts.own); return { created: 2, asked: 3 }; } } });
   assert.deepEqual(s.tasks, { created: 2, asked: 3 });
   assert.ok(seen[0].includes('nickw@nurtur.tech'), 'his work address counts as his own');
-  s = await inbox.refresh({ only: ['nick'], deps: { extractTasks: async () => { throw new Error('model down'); } } });
+  s = await inbox.refresh({ only: ['nick'], deps: { classifyBatch: async () => [], extractTasks: async () => { throw new Error('model down'); } } });
   assert.deepEqual(s.tasks, { error: 'model down' });
   s = await inbox.refresh({ only: ['saim'], deps: { extractTasks: async () => { throw new Error('should not run'); } } });
   assert.equal(s.tasks, undefined, 'a saim@-only pass does not scan');

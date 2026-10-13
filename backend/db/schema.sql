@@ -3406,6 +3406,7 @@ CREATE TABLE IF NOT EXISTS personal_inbox (
   bounce_of     TEXT,                      -- the Message-ID a bounce is about
   hike_trip_id  TEXT,                      -- a bounced hike alert
   ext_json      TEXT,                      -- Gmail: { uid, uidValidity, path, threadId, messageId, emailId }
+  triage_json   TEXT,                      -- personal triage (13 Oct 2026): AI category/lane + Nick's verdicts; never the work store
   fetched_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_personal_inbox_mailbox ON personal_inbox(mailbox, received);

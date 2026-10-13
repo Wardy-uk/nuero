@@ -57,7 +57,18 @@ ${emailList}`;
 // rules. Two batches of 20 each fit, and a batch that fails costs only itself.
 const CLASSIFY_BATCH = 20;
 
-async function classifyBatch(batch) {
+// The work question. `buildPrompt` lets the personal inbox (personal-triage.js)
+// ask its OWN question through the same batching, parsing and failure rules —
+// one classifier, two prompts, never a second copy of the parser.
+function workPrompt(batch, emailList) {
+  return `You are classifying emails for Nick Ward, Head of Technical Support at Nurtur.
+Classify each email into exactly one category: ACTION, FYI, DELEGATE, or IGNORE.
+Respond with ONLY a JSON array. Format: [{"index": 0, "category": "ACTION", "reason": "brief reason max 8 words"}, ...]
+
+Classify these ${batch.length} emails:\n\n${emailList}`;
+}
+
+async function classifyBatch(batch, { buildPrompt = workPrompt, shadow = true } = {}) {
   const emailList = batch.map((e, i) =>
     `[${i}] From: ${e.from} <${e.fromEmail}>\nSubject: ${e.subject}\nPreview: ${e.preview?.substring(0, 150) || '(no preview)'}`
   ).join('\n\n');
@@ -68,11 +79,7 @@ async function classifyBatch(batch) {
   // Built once and shared with the shadow comparison below, so the candidate
   // model is asked the IDENTICAL question — rebuilding it there would let the
   // comparison drift from what production actually sends.
-  const prompt = `You are classifying emails for Nick Ward, Head of Technical Support at Nurtur.
-Classify each email into exactly one category: ACTION, FYI, DELEGATE, or IGNORE.
-Respond with ONLY a JSON array. Format: [{"index": 0, "category": "ACTION", "reason": "brief reason max 8 words"}, ...]
-
-Classify these ${batch.length} emails:\n\n${emailList}`;
+  const prompt = buildPrompt(batch, emailList);
   const result = await aiProvider.triageEmails(prompt);
   // Both of these used to return an EMPTY ARRAY, which is the silent failure
   // this file keeps having to relearn: no answer and "the model read them and
@@ -105,9 +112,12 @@ Classify these ${batch.length} emails:\n\n${emailList}`;
 
   // Deliberately NOT awaited: the shadow comparison must never delay triage,
   // and must never change its answer. Off unless TRIAGE_SHADOW_ENABLED=true.
-  try {
-    require('./triage-shadow').compare(batch, mapped, prompt);
-  } catch { /* a comparison harness may never cost the thing it measures */ }
+  // Work only: personal mail never enters the work harness's records.
+  if (shadow) {
+    try {
+      require('./triage-shadow').compare(batch, mapped, prompt);
+    } catch { /* a comparison harness may never cost the thing it measures */ }
+  }
 
   return mapped;
 }
@@ -1323,6 +1333,6 @@ module.exports = {
     clearInformational, SECTION_CLEARED, isInformational,
     applySenderMute, normaliseSender, readSenderRules, SENDER_MUTED, LOOKBACK_DAYS,
     applyMutes, normaliseSubject, subjectRuleKey, readSubjectRules, SUBJECT_MUTED,
-    classifyEmails, DISMISSED_FIELDS,
+    classifyEmails, DISMISSED_FIELDS, classifyBatch, workPrompt, DISMISS_REASONS,
   },
 };

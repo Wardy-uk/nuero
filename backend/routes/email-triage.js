@@ -102,7 +102,7 @@ async function loadEmail(emailId) {
 // so no count on screen is the limit.
 router.get('/replies', (req, res) => {
   try {
-    res.json({ ok: true, ...sentReplies.list({ limit: req.query.limit, offset: req.query.offset }) });
+    res.json({ ok: true, ...sentReplies.list({ limit: req.query.limit, offset: req.query.offset, scope: 'work' }) });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

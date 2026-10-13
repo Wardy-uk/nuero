@@ -99,8 +99,9 @@ test('the page approves with a fresh challenge, the DISPLAYED payload hash and t
   // Send is a one-use intent grant (directAction.js). Neither has an old door.
   const weekly = fs.readFileSync(path.resolve(FILE, '..', 'WeeklyRiskPanel.jsx'), 'utf8');
   assert.match(weekly, /approveWithCode\(/, 'WeeklyRiskPanel approves through the shared helper');
-  const inbox = fs.readFileSync(path.resolve(FILE, '..', 'InboxPanel.jsx'), 'utf8');
-  assert.match(inbox, /executeDirect\(/, 'InboxPanel sends with a one-use intent grant');
+  // The reply composer moved into the shared EmailCard (13 Oct 2026) — both inboxes render it.
+  const inbox = fs.readFileSync(path.resolve(FILE, '..', 'EmailCard.jsx'), 'utf8');
+  assert.match(inbox, /executeDirect\(/, 'the Inbox card sends with a one-use intent grant');
   for (const s2 of [weekly, inbox]) assert.doesNotMatch(s2, /\/api\/actions\/\$\{[^}]+\}\/approve/, 'no old-queue approve door');
   // The CODE is never stored, and since 9 Oct 2026 nothing is: the trusted-
   // device token is retired, so this page writes NO browser storage at all.

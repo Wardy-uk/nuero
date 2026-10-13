@@ -350,7 +350,8 @@ test('11b. no surface still approves with a trusted browser', () => {
     const src = fs.readFileSync(path.join(ui, f), 'utf8');
     assert.doesNotMatch(src, /approveWithDevice|trustThisDevice|checkTrustedDevice|X-NEURO-SEND-DEVICE/, `${f} still uses the retired trusted-device approval`);
   }
-  const inbox = fs.readFileSync(path.join(ui, 'InboxPanel.jsx'), 'utf8');
+  // The Inbox composer lives in the shared card since 13 Oct 2026 (both inboxes render it).
+  const inbox = fs.readFileSync(path.join(ui, 'EmailCard.jsx'), 'utf8');
   assert.match(inbox, /executeDirect\(/, 'the Inbox composer sends on a grant');
   const chat = fs.readFileSync(path.join(ui, 'ChatPanel.jsx'), 'utf8');
   assert.match(chat, /executeDirect\(/, 'chat proposals send on a grant');

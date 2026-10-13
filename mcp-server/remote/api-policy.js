@@ -176,6 +176,10 @@ export const interactive = {
     'post_personal_inbox_gmail_backfill',
     'post_personal_inbox_bulk',
     'post_personal_inbox_gmail_cleanup', 'post_personal_inbox_gmail_cleanup_scan', 'post_personal_inbox_gmail_cleanup_bulk',
+    // Personal triage (13 Oct 2026): sorting verdicts, drafts and replies on personal mail are Nick's, in NEURO → Personal inbox.
+    'post_personal_inbox_triage_muted_unmute', 'post_personal_inbox_triage_clear_fyi',
+    'post_personal_inbox_triage_dismiss_by_id', 'post_personal_inbox_triage_promote_by_id',
+    'post_personal_inbox_triage_by_id_summary', 'post_personal_inbox_triage_by_id_draft', 'post_personal_inbox_triage_by_id_reply',
   ].map(id => [id, 'Credentials, switches, accounts, trusted devices and push endpoints are Nick\'s to change, in NEURO → Settings. An agent cannot.'])),
 };
 // Path params the backend accepts only from a closed set. The inventory is

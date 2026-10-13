@@ -4298,6 +4298,77 @@
     "stream": false
   },
   {
+    "id": "get_personal_inbox_replies",
+    "method": "GET",
+    "route": "/api/personal-inbox/replies",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 237,
+    "description": "GET /api/personal-inbox/replies. replies sent from the personal mailboxes (never work replies).",
+    "params": [],
+    "query": [
+      "limit",
+      "offset"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_personal_inbox_triage",
+    "method": "GET",
+    "route": "/api/personal-inbox/triage",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 211,
+    "description": "GET /api/personal-inbox/triage. the personal inbox sorted like the work Inbox (Action, Delegate, FYI, not yet sorted), never including work mail. Query: mailbox (all | nick | contact | gmail). Keywords: personal triage, sorted personal email.",
+    "params": [],
+    "query": [
+      "mailbox"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_personal_inbox_triage_by_id",
+    "method": "GET",
+    "route": "/api/personal-inbox/triage/:id",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 258,
+    "description": "GET /api/personal-inbox/triage/:id. one personal email in the work card's shape: body, recipients, reply defaults and the address a reply goes from. Opening never marks it read.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "get_personal_inbox_triage_muted",
+    "method": "GET",
+    "route": "/api/personal-inbox/triage/muted",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 218,
+    "description": "GET /api/personal-inbox/triage/muted. personal muted senders and subjects (separate from the work Inbox's).",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_pi_health",
     "method": "GET",
     "route": "/api/pi-health",
@@ -10997,6 +11068,130 @@
     "line": 28,
     "description": "POST /api/personal-inbox/refresh. read the personal mailboxes now (it also runs every 5 minutes). Sends nothing.",
     "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_triage_by_id_draft",
+    "method": "POST",
+    "route": "/api/personal-inbox/triage/:id/draft",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 314,
+    "description": "POST /api/personal-inbox/triage/:id/draft. AI-drafted reply to a personal email (shown for Nick to edit; sends nothing). Nick only. Body: { instruction }",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [
+      "instruction"
+    ],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_triage_by_id_reply",
+    "method": "POST",
+    "route": "/api/personal-inbox/triage/:id/reply",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 339,
+    "description": "POST /api/personal-inbox/triage/:id/reply. prepare a reply from the SAME personal mailbox with the recipients chosen on the card (governed reply_email; nothing is sent here — it goes on Nick's click). Nick only. Body: { body, to, cc }",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_triage_by_id_summary",
+    "method": "POST",
+    "route": "/api/personal-inbox/triage/:id/summary",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 291,
+    "description": "POST /api/personal-inbox/triage/:id/summary. AI summary of a personal email (falls back to its preview). Nick only.",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_triage_clear_fyi",
+    "method": "POST",
+    "route": "/api/personal-inbox/triage/clear-fyi",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 230,
+    "description": "POST /api/personal-inbox/triage/clear-fyi. clear the personal FYI section (nothing owed is touched). Nick only. Body: { mailbox, dryRun }",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_triage_dismiss_by_id",
+    "method": "POST",
+    "route": "/api/personal-inbox/triage/dismiss/:id",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 242,
+    "description": "POST /api/personal-inbox/triage/dismiss/:id. Done / Read & dismiss / Subject not relevant / Mute sender on a personal email. Nick only. Body: { reason: done|not-relevant, markRead, mute: subject|sender }",
+    "params": [
+      "id"
+    ],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_triage_muted_unmute",
+    "method": "POST",
+    "route": "/api/personal-inbox/triage/muted/unmute",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 223,
+    "description": "POST /api/personal-inbox/triage/muted/unmute. un-mute a personal sender (address) or subject (key). Nick only. Body: { address } or { key }",
+    "params": [],
+    "query": [],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": true,
+    "multipart": false,
+    "stream": false
+  },
+  {
+    "id": "post_personal_inbox_triage_promote_by_id",
+    "method": "POST",
+    "route": "/api/personal-inbox/triage/promote/:id",
+    "domain": "personal-inbox",
+    "source": "routes/personal-inbox.js",
+    "line": 252,
+    "description": "POST /api/personal-inbox/triage/promote/:id. \"Needs action\": move a personal email to Action and keep it there. Nick only.",
+    "params": [
+      "id"
+    ],
     "query": [],
     "body": [],
     "queryOpen": false,

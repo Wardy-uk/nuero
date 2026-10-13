@@ -110,7 +110,13 @@ const DEFAULT_DEPS = {
       recipients: [...(a.draft.to || []), ...(a.draft.cc || [])], recipientsSource: 'explicit',
       replyAll: a.draft.mode === 'replyAll', body: a.draft.body,
     });
-    try { require('./email-triage').dismissEmail(a.target.emailId, 'replied'); } catch { /* triage bookkeeping only */ }
+    // A reply from a personal mailbox closes it in the PERSONAL triage; work mail
+    // in the work triage. Neither store ever sees the other's ids (13 Oct 2026).
+    const box = a.target && a.target.mailbox;
+    try {
+      if (box && box !== 'work') require('./personal-triage').recordDismissal(a.target.emailId, 'replied');
+      else require('./email-triage').dismissEmail(a.target.emailId, 'replied');
+    } catch { /* triage bookkeeping only */ }
   },
   recordReport: (a) => {
     require('./weekly-risk').markSent(a.target.week, {
@@ -1029,4 +1035,6 @@ module.exports = {
   attemptsFor, verificationsFor,
   EXECUTORS, STALE_EXECUTING_MS, SETTLE_MS, VERIFY_GIVE_UP_MS,
   _bootId: () => BOOT_ID,
+  // Tests: what a verified send leaves behind (recordReply's work/personal split).
+  _defaultDeps: DEFAULT_DEPS,
 };

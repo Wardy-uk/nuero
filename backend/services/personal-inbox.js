@@ -1,8 +1,9 @@
 'use strict';
 
 /**
- * The personal inbox (12 Oct 2026) — nick@ and contact@, newest first, NO AI
- * (Nick's call: a plain list for now). SEPARATE from the work triage: its own
+ * The personal inbox (12 Oct 2026) — nick@, contact@ and Gmail. Sorted since
+ * 13 Oct 2026 by personal-triage.js (the work Inbox's classifier, a personal
+ * prompt, state on the row). SEPARATE from the work triage: its own
  * store (`personal_inbox`), its own screen. Plus saim@, watched ONLY for bounces
  * and auto-replies — a bounced hike alert must be noticed.
  *
@@ -464,6 +465,16 @@ async function refresh({ deps, only = null } = {}) {
       if (a && (a.archived || a.error)) archived = { archived: a.archived || 0, ...(a.error ? { error: a.error } : {}), ...(a.more ? { more: true } : {}) };
     } catch (e) { archived = { error: e.message }; }
   }
+  // Personal triage (13 Oct 2026): sort what has no model answer yet — the
+  // work Inbox's classifier with a personal question, stored on the row, never
+  // in the work store. Never allowed to fail the refresh.
+  let sorted = null;
+  if (!only || only.some((k) => INBOXES.includes(k))) {
+    try {
+      const r = await require('./personal-triage').classifyPending({ deps: { ...(deps && deps.classifyBatch ? { classifyBatch: deps.classifyBatch } : {}) } });
+      sorted = { classified: r.classified, unanswered: r.unanswered, ...(r.failedBatches ? { failedBatches: r.failedBatches } : {}), ...(r.deferred ? { deferred: r.deferred } : {}) };
+    } catch (e) { sorted = { error: e.message }; console.warn('[PersonalInbox] sorting failed:', e.message); }
+  }
   // Personal tasks out of personal mail (12 Oct 2026) — the same review-only
   // extractor the work inbox uses; it buys each email's answer once, so a pass
   // with no new mail costs nothing. Never allowed to fail the refresh.
@@ -477,7 +488,7 @@ async function refresh({ deps, only = null } = {}) {
       tasks = { created: r.created || 0, asked: r.asked || 0, ...(r.failedBatches ? { failedBatches: r.failedBatches } : {}), ...(r.skipped ? { skipped: r.skipped } : {}) };
     } catch (e) { tasks = { error: e.message }; console.warn('[PersonalInbox] task scan failed:', e.message); }
   }
-  const status = { at: new Date().toISOString(), results: results.map(({ addedIds, ...r }) => r), hikeBounces: bounced.length, ...(tasks ? { tasks } : {}), ...(archived ? { cleanup: archived } : {}) };
+  const status = { at: new Date().toISOString(), results: results.map(({ addedIds, ...r }) => r), hikeBounces: bounced.length, ...(sorted ? { sorted } : {}), ...(tasks ? { tasks } : {}), ...(archived ? { cleanup: archived } : {}) };
   _db().setState(STATUS_KEY, JSON.stringify(status));
   return status;
 }
@@ -503,7 +514,7 @@ function overview() {
       };
     }),
     lastRefresh: status ? status.at : null,
-    rule: 'Newest first, no AI sorting. Opening a message does not mark it read; Mark read does. Replies go from the same mailbox, prepared and sent on your click like an Inbox reply.',
+    rule: 'Sorted like the work Inbox (Action, Delegate, FYI) by its own personal question — separate from work mail. Opening a message does not mark it read; Read & dismiss does. Replies go from the same mailbox, prepared and sent on your click.',
   };
 }
 

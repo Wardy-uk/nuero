@@ -2,16 +2,23 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '../api';
 import { executeDirect, directOutcome } from '../directAction';
 import GmailCleanup from './GmailCleanup';
+import EmailCard, { timeAgo } from './EmailCard';
 import './PersonalInboxPanel.css';
 
 /**
- * Life → Personal inbox (12 Oct 2026): nick@ and contact@, newest first, no AI
- * sorting (Nick's call), separate from the work Inbox. saim@ is shown only for
- * what lands there: bounces and auto-replies (a bounced hike alert is flagged).
+ * Life → Personal inbox. nick@, contact@ and Gmail, sorted and worked exactly
+ * like the work Inbox (13 Oct 2026, Nick: "it's not the same as work inbox —
+ * both how it looks and functionally"): the SAME card component (EmailCard),
+ * the same Action / Delegate / FYI sections, the same buttons — against its own
+ * store and its own API (/api/personal-inbox/triage). Work and personal never
+ * share a list, a count, a mute rule or a nudge.
  *
- * Opening a message does NOT mark it read — Mark read does. A reply prepares
- * the same governed reply the work Inbox uses and sends on the click, from the
- * SAME mailbox; the "From" line is the server's answer, never composed here.
+ * saim@ is shown only for what lands there: bounces and auto-replies (a bounced
+ * hike alert is flagged) — the plain list below is kept for that tab.
+ *
+ * Opening a message does NOT mark it read — Read & dismiss does. A reply
+ * prepares the same governed reply the work Inbox uses and sends on the click,
+ * from the SAME mailbox; the "From" line is the server's answer.
  */
 
 async function call(path, method = 'GET', body) {
@@ -190,10 +197,110 @@ export function MessageView({ data, onRead, onReply, onDelete, busy, outcome, ca
   );
 }
 
+
+// ── the sorted view, on the shared card ─────────────────────────────────────
+
+export const personalEndpoint = (id) => `/api/personal-inbox/triage/${encodeURIComponent(id)}`;
+const BOX_LABEL = { nick: 'nick@', contact: 'contact@', gmail: 'Gmail' };
+
+/** Which mailbox it came from (on All), and for Gmail why it is here. */
+export function SourceChip({ email, showBox }) {
+  if (!showBox && !email.why) return null;
+  const label = [showBox ? (BOX_LABEL[email.mailbox] || email.mailbox) : null, email.why].filter(Boolean).join(' · ');
+  return (
+    <span className={`inbox-item-source inbox-item-source-${email.mailbox}`} title={email.why ? `Why it is here: ${email.why}` : `From ${BOX_LABEL[email.mailbox] || email.mailbox}`}>
+      {label}
+    </span>
+  );
+}
+
+/** The personal-only buttons that sit after the shared ones: Delete (asks first), and Gmail's sender rules. */
+export function CardExtras({ email, onDelete, onSender, busy }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <>
+      {confirm
+        ? <>
+            <span className="pi-confirm">Move to the mailbox’s Bin? (recoverable there)</span>
+            <button type="button" className="inbox-action-btn inbox-action-ignore" disabled={busy} onClick={() => { setConfirm(false); onDelete(email.id); }}>Delete</button>
+            <button type="button" className="inbox-action-btn" disabled={busy} onClick={() => setConfirm(false)}>Keep</button>
+          </>
+        : <button type="button" className="inbox-action-btn inbox-action-ignore" disabled={busy} onClick={() => setConfirm(true)} title="Moves it to that mailbox’s Bin — recoverable there">Delete</button>}
+      {onSender && email.mailbox === 'gmail' && email.fromEmail && <>
+        <button type="button" className="inbox-action-btn" disabled={busy} onClick={() => onSender(email.fromEmail, 'keep')} data-testid="pi-keep" title="Always show this sender here">Always show</button>
+        <button type="button" className="inbox-action-btn inbox-action-ignore" disabled={busy} onClick={() => onSender(email.fromEmail, 'hide')} data-testid="pi-hide" title="Hide this sender here; Gmail is not changed">Stop showing</button>
+      </>}
+    </>
+  );
+}
+
+/**
+ * The sections, in the work Inbox's order: ACTION, NOT SORTED YET, DELEGATE,
+ * FYI (collapsed). Every row is the shared EmailCard. `fyiTools` is the
+ * section's Clear-all control, rendered by the panel.
+ */
+export function PersonalLanes({ triage, showBox, selected, onSelect, onDismiss, onPromote, onReplied, dismissing, onDelete, onSender, busy, fyiOpen, onToggleFyi, fyiTools = null }) {
+  if (!triage) return <div className="inbox-empty">Loading...</div>;
+  const action = triage.action || [];
+  const unsorted = triage.unsorted || [];
+  const delegate = triage.delegate || [];
+  const fyi = [...(triage.fyi || []), ...(triage.ignore || [])];
+  const card = (e, borderClass) => (
+    <EmailCard
+      key={e.id} email={e} borderClass={borderClass} endpoint={personalEndpoint} readWhere="the mailbox"
+      onDismiss={onDismiss} onPromote={onPromote} onReplied={onReplied} dismissing={dismissing}
+      sourceChip={<SourceChip email={e} showBox={showBox} />}
+      selected={selected ? selected.has(e.id) : false} onSelect={onSelect}
+      extraActions={<CardExtras email={e} onDelete={onDelete} onSender={onSender} busy={busy || dismissing === e.id} />}
+    />
+  );
+  if (!action.length && !unsorted.length && !delegate.length && !fyi.length) {
+    return (
+      <div className="inbox-empty">
+        {triage.lastRun ? 'Nothing waiting — your personal inbox is clear.' : 'Not sorted yet. Press Check now to read and sort your personal mail.'}
+      </div>
+    );
+  }
+  return (
+    <>
+      {action.length > 0 && (
+        <div className="inbox-section">
+          <div className="inbox-section-label inbox-section-action">ACTION ({action.length})</div>
+          {action.map((e) => card(e, 'urgency-high'))}
+        </div>
+      )}
+      {unsorted.length > 0 && (
+        <div className="inbox-section">
+          <div className="inbox-section-label inbox-section-unsorted">NOT SORTED YET ({unsorted.length})</div>
+          <p className="inbox-section-note">The sorting could not reach these yet — it tries again on the next check. Nothing here has been filed as FYI.</p>
+          {unsorted.map((e) => card(e, 'urgency-medium'))}
+        </div>
+      )}
+      {delegate.length > 0 && (
+        <div className="inbox-section">
+          <div className="inbox-section-label inbox-section-delegate">DELEGATE ({delegate.length})</div>
+          {delegate.map((e) => card(e, 'urgency-medium'))}
+        </div>
+      )}
+      {fyi.length > 0 && (
+        <div className="inbox-section">
+          <button className="inbox-section-toggle" onClick={onToggleFyi}>{fyiOpen ? '▾' : '▸'} FYI ({fyi.length})</button>
+          {fyiTools}
+          {fyiOpen && triage.fyiAgeOutDays > 0 && (
+            <p className="inbox-section-note">Cleared automatically after {triage.fyiAgeOutDays} days — nothing here is waiting on you.</p>
+          )}
+          {fyiOpen && fyi.map((e) => card(e, 'urgency-low'))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function PersonalInboxPanel() {
   const [overview, setOverview] = useState(null);
-  const [tab, setTab] = useState('nick');
-  const [items, setItems] = useState([]);
+  const [tab, setTab] = useState('all');
+  const [triage, setTriage] = useState(null);
+  const [items, setItems] = useState([]); // saim@ tab only
   const [openId, setOpenId] = useState(null);
   const [view, setView] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -205,7 +312,45 @@ export default function PersonalInboxPanel() {
   const [rules, setRules] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const [cleanup, setCleanup] = useState(false);
+  const [dismissing, setDismissing] = useState(null);
+  const [note, setNote] = useState('');
+  const [fyiOpen, setFyiOpen] = useState(false);
+  const [confirmClearFyi, setConfirmClearFyi] = useState(null);
+  const [clearingFyi, setClearingFyi] = useState(false);
+  const [muted, setMuted] = useState(undefined);
+  const [mutedOpen, setMutedOpen] = useState(false);
+  const [replies, setReplies] = useState(null);
+  const [repliesOpen, setRepliesOpen] = useState(false);
 
+  const watched = tab === 'saim';
+
+  const load = useCallback(async () => {
+    const o = await call('/api/personal-inbox');
+    if (o && o.ok) setOverview(o); else setError((o && o.error) || 'Could not read the personal inbox.');
+    if (watched) {
+      const l = await call('/api/personal-inbox/mail/saim');
+      setItems(l && l.ok ? l.items : []);
+    } else {
+      const t = await call(`/api/personal-inbox/triage?mailbox=${tab}`);
+      setTriage(t && t.ok ? t : { action: [], delegate: [], fyi: [], ignore: [], unsorted: [], lastRun: null, failed: true });
+      if (!(t && t.ok)) setError((t && t.error) || 'Could not read the sorted inbox.');
+    }
+    if (tab === 'gmail') { const r = await call('/api/personal-inbox/gmail/rules'); setRules(r && r.ok ? r : null); }
+    const m = await call('/api/personal-inbox/triage/muted');
+    // null = the read FAILED, which is said plainly rather than shown as "no rules".
+    setMuted(m && m.ok ? { senders: m.senders || [], subjects: m.subjects || [] } : null);
+    const rp = await call('/api/personal-inbox/replies?limit=20');
+    setReplies(rp && rp.ok ? rp : null);
+  }, [tab, watched]);
+
+  useEffect(() => { setOpenId(null); setView(null); setOutcome(null); setSelected(new Set()); setTriage(null); setNote(''); setConfirmClearFyi(null); load(); }, [load]);
+
+  const live = triage ? [...(triage.action || []), ...(triage.unsorted || []), ...(triage.delegate || []), ...(fyiOpen ? [...(triage.fyi || []), ...(triage.ignore || [])] : [])] : [];
+  // A selection only ever names cards still on the screen.
+  useEffect(() => { setSelected((s) => { const ids = new Set(live.map((e) => e.id)); const keep = new Set([...s].filter((id) => ids.has(id))); return keep.size === s.size ? s : keep; }); }, [triage, fyiOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggle = (id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  // ── compose ──
   const startCompose = async () => {
     setComposing(true); setOutcome(null); setSuggestion(null);
     const d = await call('/api/personal-inbox/compose/options');
@@ -226,22 +371,62 @@ export default function PersonalInboxPanel() {
       return x.ok;
     } finally { setBusy(false); }
   };
-  const remove = async () => {
+
+  // ── the card's verdicts: same words and notes as the work Inbox ──
+  const dismiss = async (id, { markRead = false, reason = 'done', mute = null } = {}) => {
+    setDismissing(id); setNote('');
+    try {
+      const d = await call(`/api/personal-inbox/triage/dismiss/${encodeURIComponent(id)}`, 'POST', { markRead, reason, mute });
+      if (!d || !d.ok) setNote(`Could not dismiss it${d && d.error ? `: ${d.error}` : ''}.`);
+      else if (d.readError) setNote(d.readError);
+      else if (d.muted && d.muted.ok && d.muted.kind === 'subject') setNote(`Muted "${d.muted.subject}" from ${d.muted.address}. Their other mail still comes through.`);
+      else if (d.muted && d.muted.ok) setNote(d.muted.alreadyMuted ? `${d.muted.muted} was already muted.` : `Muted ${d.muted.muted}. Future personal mail from this sender is filed automatically.`);
+      else if (d.muted && !d.muted.ok) setNote(`Dismissed, but nothing was muted — ${d.muted.reason}.`);
+      await load();
+    } finally { setDismissing(null); }
+  };
+  const promote = async (id) => {
+    setDismissing(id); setNote('');
+    try {
+      const d = await call(`/api/personal-inbox/triage/promote/${encodeURIComponent(id)}`, 'POST', {});
+      if (!d || !d.ok) setNote(`Could not move it${d && d.error ? `: ${d.error}` : ''}.`);
+      await load();
+    } finally { setDismissing(null); }
+  };
+  const removeOne = async (id) => {
     setBusy(true); setError(null);
     try {
-      const d = await call(`/api/personal-inbox/message/${encodeURIComponent(openId)}/delete`, 'POST', {});
+      const d = await call(`/api/personal-inbox/message/${encodeURIComponent(id)}/delete`, 'POST', {});
       if (!d.ok) { setError(`Could not delete it (${d.reason || 'error'}).`); return; }
-      setOpenId(null); setView(null);
+      if (openId === id) { setOpenId(null); setView(null); }
       await load();
     } finally { setBusy(false); }
   };
+  const unmute = async (body, label) => {
+    const d = await call('/api/personal-inbox/triage/muted/unmute', 'POST', body);
+    setNote(d && d.ok ? `${label} will show up again from now on. Mail already filed stays filed.` : `Could not un-mute${d && d.error ? `: ${d.error}` : ''}.`);
+    await load();
+  };
+  const askClearFyi = async () => {
+    setNote(''); setClearingFyi(true);
+    try {
+      const d = await call('/api/personal-inbox/triage/clear-fyi', 'POST', { mailbox: tab, dryRun: true });
+      if (!d || !d.ok) setNote('Could not work out what would be cleared.');
+      else if (!d.cleared) setNote('Nothing in the FYI section to clear.');
+      else setConfirmClearFyi(d.cleared);
+    } finally { setClearingFyi(false); }
+  };
+  const clearFyi = async () => {
+    setClearingFyi(true);
+    try {
+      const d = await call('/api/personal-inbox/triage/clear-fyi', 'POST', { mailbox: tab });
+      setNote(d && d.ok ? `Cleared ${d.cleared} from the FYI section. Nothing owed was touched.` : 'Could not clear the section.');
+      setConfirmClearFyi(null);
+      await load();
+    } finally { setClearingFyi(false); }
+  };
 
-  const load = useCallback(async () => {
-    const [o, l] = await Promise.all([call('/api/personal-inbox'), call(`/api/personal-inbox/mail/${tab}`)]);
-    if (o && o.ok) setOverview(o); else setError((o && o.error) || 'Could not read the personal inbox.');
-    if (l && l.ok) setItems(l.items); else setItems([]);
-    if (tab === 'gmail') { const r = await call('/api/personal-inbox/gmail/rules'); setRules(r && r.ok ? r : null); }
-  }, [tab]);
+  // ── Gmail rules, bulk, refresh (unchanged behaviour) ──
   const setSender = async (sender, list) => {
     setBusy(true); setError(null);
     try {
@@ -253,10 +438,6 @@ export default function PersonalInboxPanel() {
       await load();
     } finally { setBusy(false); }
   };
-  useEffect(() => { setOpenId(null); setView(null); setOutcome(null); setSelected(new Set()); load(); }, [load]);
-  // A selection only ever names messages still in the list.
-  useEffect(() => { setSelected((s) => { const keep = new Set([...s].filter((id) => items.some((m) => m.id === id))); return keep.size === s.size ? s : keep; }); }, [items]);
-  const toggle = (id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const runBulk = async (action) => {
     setBusy(true); setError(null); setOutcome(null);
     try {
@@ -265,13 +446,12 @@ export default function PersonalInboxPanel() {
       if (d && d.error) { setError(d.error); return; }
       const failed = (d && d.failed) || [];
       setOutcome({ tone: failed.length ? 'warn' : 'ok', text: `${action === 'read' ? 'Marked read' : 'Moved to the Bin'}: ${d.done || 0}${failed.length ? ` — ${failed.length} could not be (${[...new Set(failed.map((f) => f.reason))].join(', ')})` : ''}.` });
-      if (action === 'delete' && openId && ids.includes(openId)) { setOpenId(null); setView(null); }
       setSelected(new Set(failed.map((f) => f.id)));
       await load();
     } finally { setBusy(false); }
   };
   const hideSenders = async () => {
-    const senders = [...new Set(items.filter((m) => selected.has(m.id)).map((m) => m.fromEmail).filter(Boolean))];
+    const senders = [...new Set(live.filter((m) => selected.has(m.id) && m.mailbox === 'gmail').map((m) => m.fromEmail).filter(Boolean))];
     if (!senders.length) return;
     setBusy(true); setError(null);
     try {
@@ -282,13 +462,14 @@ export default function PersonalInboxPanel() {
       await load();
     } finally { setBusy(false); }
   };
+  const refresh = async () => { setBusy(true); setError(null); try { await call('/api/personal-inbox/refresh', 'POST', {}); await load(); } finally { setBusy(false); } };
 
+  // saim@ tab (bounces): the plain list and message view.
   const open = async (id) => {
     setOpenId(id); setView(null); setOutcome(null); setError(null);
     const d = await call(`/api/personal-inbox/message/${encodeURIComponent(id)}`);
     if (d && d.ok) setView(d); else setError((d && d.error) || 'Could not open it.');
   };
-  const refresh = async () => { setBusy(true); setError(null); try { await call('/api/personal-inbox/refresh', 'POST', {}); await load(); } finally { setBusy(false); } };
   const markRead = async () => {
     setBusy(true);
     try {
@@ -297,52 +478,119 @@ export default function PersonalInboxPanel() {
       await load();
     } finally { setBusy(false); }
   };
-  const reply = async (text, replyAll) => {
-    setBusy(true); setOutcome(null); setError(null);
-    try {
-      const p = await call(`/api/personal-inbox/message/${encodeURIComponent(openId)}/reply`, 'POST', { body: text, replyAll });
-      if (!p.ok) { setError(p.error || 'Could not prepare the reply.'); return false; }
-      const x = await executeDirect(p.action);
-      setOutcome(directOutcome(x));
-      return x.ok;
-    } finally { setBusy(false); }
-  };
 
   const boxes = overview ? overview.mailboxes : [];
   const current = boxes.find((b) => b.key === tab);
+  const sortable = boxes.filter((b) => !b.watchedOnly);
+  const allUnread = sortable.reduce((n, b) => n + (b.unread || 0), 0);
+  const gmailSelected = live.some((m) => selected.has(m.id) && m.mailbox === 'gmail');
+  const mutedCount = muted ? muted.senders.length + muted.subjects.length : 0;
+
   return (
-    <div className="pi" data-testid="personal-inbox">
-      <div className="pi-head">
-        <h1 className="pi-title">Personal inbox</h1>
-        <div className="pi-actions">
-          <button type="button" className="pi-btn pi-btn-primary" disabled={busy} onClick={startCompose}>Compose</button>
-          <button type="button" className="pi-btn" disabled={busy} onClick={refresh}>{busy ? 'Checking…' : 'Check now'}</button>
+    <div className="pi inbox-container" data-testid="personal-inbox">
+      <div className="inbox-header">
+        <h2 className="inbox-title">Personal inbox</h2>
+        <div className="inbox-actions">
+          {triage && triage.lastRun && <span className="inbox-last-scan">Last sorted: {timeAgo(triage.lastRun)}</span>}
+          <button type="button" className="inbox-scan-btn" disabled={busy} onClick={startCompose}>Compose</button>
+          <button type="button" className="inbox-scan-btn" disabled={busy} onClick={refresh}>{busy ? 'Checking…' : 'Check now'}</button>
         </div>
       </div>
       <p className="pi-lede">{overview ? overview.rule : 'Loading…'}</p>
       <div className="pi-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === 'all'} className={`pi-tab${tab === 'all' ? ' pi-tab-on' : ''}`} onClick={() => setTab('all')}>
+          All personal{allUnread ? <span className="pi-badge">{allUnread}</span> : null}
+        </button>
         {boxes.map((b) => (
           <button key={b.key} type="button" role="tab" aria-selected={tab === b.key} className={`pi-tab${tab === b.key ? ' pi-tab-on' : ''}`} onClick={() => setTab(b.key)}>
             {b.address || b.key}{b.watchedOnly ? ' (bounces)' : ''}{b.unread ? <span className="pi-badge">{b.unread}</span> : null}
           </button>
         ))}
       </div>
+      {tab === 'all' && sortable.filter((b) => !b.configured).map((b) => <div key={`nc-${b.key}`} className="pi-warn">No password saved for {b.address || b.key} — add it in Settings → Personal email.</div>)}
+      {tab === 'all' && sortable.filter((b) => b.last && b.last.ok === false).map((b) => <div key={`lf-${b.key}`} className="pi-warn">Last check could not read {b.address || b.key}: {b.last.why}</div>)}
       {current && !current.configured && <div className="pi-warn">No password saved for {current.address} — add it in Settings → Personal email.</div>}
       {current && current.last && current.last.ok === false && <div className="pi-warn">Last check could not read {current.address}: {current.last.why}</div>}
       {current && current.watchedOnly && <div className="pi-note">SAiM sends from here with replies going to nick@, so what lands here is mostly machinery. A bounced hike alert is flagged and pushed to you.</div>}
-      {current && current.key === 'gmail' && <GmailRules rules={rules} onSet={setSender} busy={busy} />}
-      {current && current.key === 'gmail' && current.configured && <div className="pi-actions"><button type="button" className="pi-btn" onClick={() => setCleanup((v) => !v)}>{cleanup ? 'Close clean-up' : 'Clean up senders'}</button></div>}
-      {current && current.key === 'gmail' && cleanup && <GmailCleanup onChanged={load} />}
+      {tab === 'gmail' && <GmailRules rules={rules} onSet={setSender} busy={busy} />}
+      {tab === 'gmail' && current && current.configured && <div className="pi-actions"><button type="button" className="pi-btn" onClick={() => setCleanup((v) => !v)}>{cleanup ? 'Close clean-up' : 'Clean up senders'}</button></div>}
+      {tab === 'gmail' && cleanup && <GmailCleanup onChanged={load} />}
       {error && <div className="pi-warn">{error}</div>}
       {composing && <ComposeForm options={options} suggestion={suggestion} onRecipients={recipients} onSend={sendNew} onCancel={() => setComposing(false)} busy={busy} outcome={outcome} initialFrom={current && !current.watchedOnly && current.configured ? current.key : null} />}
-      {/* Nothing open: the list takes the whole width rather than leaving half the page empty. */}
-      <div className={`pi-split${view ? '' : ' pi-split--solo'}`}>
-        <div className="pi-listcol">
-          <BulkBar count={selected.size} total={items.length} onAll={() => setSelected(new Set(items.map((m) => m.id)))} onNone={() => setSelected(new Set())} onRead={() => runBulk('read')} onDelete={() => runBulk('delete')} onHideSenders={tab === 'gmail' ? hideSenders : null} busy={busy} />
-          <MessageList items={items} onOpen={open} openId={openId} selected={selected} onToggle={current && current.watchedOnly ? null : toggle} />
+
+      {!watched && muted === null && <div className="inbox-dismiss-note"><span>Could not read your personal muted senders and subjects — this is not confirmation there are none.</span></div>}
+      {!watched && muted && mutedCount > 0 && (
+        <div className="inbox-muted">
+          <button className="inbox-muted-toggle" onClick={() => setMutedOpen((o) => !o)}>
+            {mutedOpen ? '▾' : '▸'} {muted.subjects.length} muted subject{muted.subjects.length === 1 ? '' : 's'} · {muted.senders.length} muted sender{muted.senders.length === 1 ? '' : 's'} (personal)
+          </button>
+          {mutedOpen && (
+            <ul className="inbox-muted-list">
+              {muted.subjects.map((m) => (
+                <li key={m.key}>
+                  <span className="inbox-muted-addr">"{m.subject}"</span>
+                  <span className="inbox-muted-sample">from {m.name ? `${m.name} <${m.address}>` : m.address}</span>
+                  <button className="inbox-muted-undo" onClick={() => unmute({ key: m.key }, `"${m.subject}" from ${m.address}`)}>Un-mute</button>
+                </li>
+              ))}
+              {muted.senders.map((m) => (
+                <li key={m.address}>
+                  <span className="inbox-muted-addr">Everything from {m.name ? `${m.name} <${m.address}>` : m.address}</span>
+                  {m.sampleSubject && <span className="inbox-muted-sample">muted on "{m.sampleSubject}"</span>}
+                  <button className="inbox-muted-undo" onClick={() => unmute({ address: m.address }, m.address)}>Un-mute</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        <MessageView data={view} onRead={markRead} onReply={reply} onDelete={remove} busy={busy} outcome={composing ? null : outcome} canReply={!!(current && !current.watchedOnly)} onSender={tab === 'gmail' ? setSender : null} />
-      </div>
+      )}
+      {note && (
+        <div className="inbox-dismiss-note">
+          <span>{note}</span>
+          <button className="inbox-dismiss-note-x" onClick={() => setNote('')}>×</button>
+        </div>
+      )}
+      {!composing && outcome && <div className={`pi-outcome pi-outcome-${outcome.tone}`}>{outcome.text}</div>}
+
+      {watched ? (
+        <div className={`pi-split${view ? '' : ' pi-split--solo'}`}>
+          <div className="pi-listcol"><MessageList items={items} onOpen={open} openId={openId} /></div>
+          <MessageView data={view} onRead={markRead} onReply={async () => false} busy={busy} outcome={null} canReply={false} />
+        </div>
+      ) : (
+        <div className="pi-lanes">
+          <BulkBar count={selected.size} total={live.length} onAll={() => setSelected(new Set(live.map((m) => m.id)))} onNone={() => setSelected(new Set())}
+            onRead={() => runBulk('read')} onDelete={() => runBulk('delete')} onHideSenders={gmailSelected ? hideSenders : null} busy={busy} />
+          <PersonalLanes
+            triage={triage} showBox={tab === 'all'} selected={selected} onSelect={toggle}
+            onDismiss={dismiss} onPromote={promote} onReplied={() => load()} dismissing={dismissing}
+            onDelete={removeOne} onSender={setSender} busy={busy}
+            fyiOpen={fyiOpen} onToggleFyi={() => setFyiOpen((o) => !o)}
+            fyiTools={confirmClearFyi == null
+              ? <button className="inbox-section-clear" onClick={askClearFyi} disabled={clearingFyi}>{clearingFyi ? 'Checking…' : 'Clear all'}</button>
+              : <span className="inbox-section-confirm">
+                  Clear {confirmClearFyi}? Nothing in Action, Delegate, not-yet-sorted or promoted is touched.
+                  <button className="inbox-section-clear danger" onClick={clearFyi} disabled={clearingFyi}>{clearingFyi ? 'Clearing…' : 'Yes, clear'}</button>
+                  <button className="inbox-section-clear" onClick={() => setConfirmClearFyi(null)}>Cancel</button>
+                </span>}
+          />
+          {replies && replies.total > 0 && (
+            <div className="inbox-section">
+              <button className="inbox-section-toggle" onClick={() => setRepliesOpen((o) => !o)}>{repliesOpen ? '▾' : '▸'} REPLIED ({replies.total})</button>
+              {repliesOpen && replies.replies.map((r) => (
+                <div className="inbox-reply" key={r.id}>
+                  <div className="inbox-reply-head">
+                    <span className="inbox-reply-subject">{r.subject || '(no subject)'}</span>
+                    <span className="inbox-reply-when">{timeAgo(Date.parse(r.sentAt))}</span>
+                  </div>
+                  <div className="inbox-reply-to">{r.recipients.length ? `To ${r.recipients.map((p) => p.name || p.email).join(', ')}` : 'Recipients not recorded'}</div>
+                  <div className="inbox-reply-body">{r.body}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
