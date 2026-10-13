@@ -7,7 +7,7 @@ untouched**: no control file was changed, and the control build is byte-identica
 
 | | Control | Alt (treatment) |
 |---|---|---|
-| URL | https://saim.nickward.co.uk | https://saim-alt.nickward.co.uk (pending DNS) · https://saim-alt-nickward.netlify.app |
+| URL | https://saim.nickward.co.uk | https://saim-alt.nickward.co.uk (attached 13 Oct 2026) · https://saim-alt-nickward.netlify.app |
 | Netlify site | `saim-nickward` (repo-linked, autodeploys) | `saim-alt-nickward`, id `2f83b58d-8636-444f-82ac-cb1751072a1e` — **NOT repo-linked, manual deploys only** |
 | Entry | `index.html` → `src/main.jsx` | `alt/index.html` → `alt/main.jsx` |
 | Config | `vite.config.js`, `.env.production` | `vite.config.alt.js`, `.env.alt` (`--mode alt`) |
@@ -68,7 +68,7 @@ Verify: `curl -s https://saim-alt-nickward.netlify.app/ | grep -o 'assets/index-
 To try it in the desktop Electron shell: `SAIM_URL=https://saim-alt.nickward.co.uk` before
 launching `saim/desktop-electron` (the default launcher is unchanged).
 
-## DNS / domain (requires authorisation — not yet applied)
+## DNS / domain (APPLIED 13 Oct 2026, authorised by Nick)
 
 nickward.co.uk is Netlify DNS (zone `6138dd04f49697e5a7cd4377`). One call attaches the domain and
 Netlify creates the `saim-alt` NETLIFY record and the certificate itself:
