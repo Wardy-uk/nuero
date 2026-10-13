@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../api';
 import './Sidebar.css';
 import { VIEW_GROUPS, groupOfView } from './ViewTabs';
+import { useWorkOnly, WORK_ONLY_HIDDEN_GROUPS, WORK_ONLY_HIDDEN_ITEMS } from '../workOnly';
 
 const PRIMARY_ITEMS = [
   // ── Build 10P: Nick-first navigation ───────────────────────────────────────
@@ -107,6 +108,7 @@ function readOpenGroups() {
 }
 
 export default function Sidebar({ activeView, onNavigate, open }) {
+  const [workOnly, setWorkOnly] = useWorkOnly();
   const [importsCount, setImportsCount] = useState(0);
   const [actionsCount, setActionsCount] = useState(0);
   const [actionsTitle, setActionsTitle] = useState('');
@@ -202,7 +204,13 @@ export default function Sidebar({ activeView, onNavigate, open }) {
           {PRIMARY_ITEMS.map(item => renderItem({ ...item, primary: true }))}
         </div>
 
-        {GROUPS.map(group => (
+        {/* Work only (13 Oct 2026): hides LIFE and anything personal on this device. */}
+        <label className={`sidebar-workonly${workOnly ? ' sidebar-workonly-on' : ''}`} title="Hide everything that isn't work — on this device">
+          <input type="checkbox" checked={workOnly} onChange={(e) => setWorkOnly(e.target.checked)} />
+          <span>Work only</span>
+        </label>
+
+        {GROUPS.filter((g) => !(workOnly && WORK_ONLY_HIDDEN_GROUPS.has(g.id))).map(group => (
           <div className="sidebar-group" key={group.id}>
             <button
               className="sidebar-group-header sidebar-group-toggle"
@@ -212,7 +220,7 @@ export default function Sidebar({ activeView, onNavigate, open }) {
               <span className="sidebar-group-label">{group.label}</span>
               <span className="sidebar-group-chevron">{openGroups[group.id] ? '▾' : '▸'}</span>
             </button>
-            {openGroups[group.id] && group.items.map(item => renderItem(item))}
+            {openGroups[group.id] && group.items.filter((item) => !(workOnly && WORK_ONLY_HIDDEN_ITEMS.has(item.id))).map(item => renderItem(item))}
           </div>
         ))}
       </div>

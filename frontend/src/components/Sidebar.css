@@ -176,3 +176,9 @@
     font-size: 15px;
   }
 }
+
+/* Work only (13 Oct 2026) — a quiet switch under the primary items. */
+.sidebar-workonly { display: flex; align-items: center; gap: 8px; margin: 6px 12px 4px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+.sidebar-workonly input { accent-color: var(--accent); margin: 0; }
+.sidebar-workonly-on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }

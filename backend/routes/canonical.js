@@ -19,14 +19,16 @@ function fail(res, e) {
   res.status(500).json({ ok: false, error: e && e.message ? e.message : String(e) });
 }
 
-// GET /api/canonical/now — Nick-first Now: the attention decision verbatim plus world-model situation (next meaningful event, needs you, commitments becoming relevant, source blindness that matters, crowded-out, goals). Cross-domain; calm when nothing matters.
+// GET /api/canonical/now (?workOnly=1 hides personal life) — Nick-first Now: the attention decision verbatim plus world-model situation (next meaningful event, needs you, commitments becoming relevant, source blindness that matters, crowded-out, goals). Cross-domain; calm when nothing matters.
 router.get('/now', async (req, res) => {
   try {
     const view = typeof req.query.view === 'string' ? req.query.view : null;
     // `ask` moves the dashboard to what was asked about (bounded as /api/attention bounds it).
     const ask = typeof req.query.ask === 'string' && req.query.ask.trim() ? req.query.ask.trim().slice(0, 200) : null;
     const decision = view || ask ? await require('../services/attention').build({ view, ask }) : null;
-    res.json({ ok: true, ...(await canonical.now({ decision })) });
+    // `workOnly=1` (13 Oct 2026): Nick's work-only switch — personal blocks absent, known-personal items held and counted.
+    const workOnly = req.query.workOnly === '1' || req.query.workOnly === 'true';
+    res.json({ ok: true, ...(await canonical.now({ decision, workOnly })) });
   } catch (e) { fail(res, e); }
 });
 

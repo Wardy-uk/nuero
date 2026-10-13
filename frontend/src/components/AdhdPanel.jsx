@@ -6,6 +6,7 @@ import MeetingControls from './MeetingControls';
 import FrictionSection from './FrictionSection';
 import AmbientSection from './AmbientSection';
 import NowSituation from './canonical/NowSituation';
+import { useWorkOnly } from '../workOnly';
 // Build 12M: the same adaptive composition the phone and the kiosk draw, in the
 // DESKTOP profile — richer, but one presentation from NEURO, never re-ranked.
 import Situation from '../../../saim/shared-ui/presentation/Situation.jsx';
@@ -240,7 +241,9 @@ export default function AdhdPanel({ onNavigate }) {
   // Build 10E: Now reads the canonical Now model — the attention decision
   // verbatim plus the world-model situation — in ONE payload, so the decision
   // and the world it sits in come from the same moment.
-  const attention = useAttention({ interval: 30000, path: '/api/canonical/now' });
+  // Work only (13 Oct 2026): the server leaves personal life out of Now.
+  const [workOnly] = useWorkOnly();
+  const attention = useAttention({ interval: 30000, path: workOnly ? '/api/canonical/now?workOnly=1' : '/api/canonical/now' });
   const [busy, setBusy] = useState({});
   const [win, setWin] = useState('');
 
@@ -761,6 +764,7 @@ export default function AdhdPanel({ onNavigate }) {
       {attention.data?.presentation && attention.data.presentation.contract === 'presentation-v1' ? (
         <section className="adhd__now adhd__now--situation">
           {attention.error && <p className="adhd__now-warn">Couldn&rsquo;t refresh — this is the last read.</p>}
+          {workOnly && <p className="adhd__now-workonly">Work only{attention.data.situation?.personalHeld?.say ? ` — ${attention.data.situation.personalHeld.say}` : ' — personal life is hidden.'}</p>}
           <Situation
             presentation={attention.data.presentation}
             profile="desktop"
@@ -867,7 +871,7 @@ export default function AdhdPanel({ onNavigate }) {
           desktop had no mention of it at all, so the screen he sits in front of
           all day was the one that could not see his body. Passive and below the
           work: a sitting-down prompt must never outrank a breaching escalation. */}
-      <AmbientSection />
+      {!workOnly && <AmbientSection />}
 
       {/*
         Momentum is full width and alone. It used to share a two-column grid

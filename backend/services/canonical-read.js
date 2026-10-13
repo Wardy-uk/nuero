@@ -553,6 +553,11 @@ function isKnownWorkOnly(domains) {
   return !!domains && domains.domains.length > 0 && domains.domains.every((d) => d.domain === 'work');
 }
 
+/** Known NOT to be work: has domains and none is work. Unknown is never this — work-only mode never hides a guess. */
+function isKnownNonWork(domains) {
+  return !!domains && domains.domains.length > 0 && domains.domains.every((d) => d.domain !== 'work');
+}
+
 // Build 11J. Off duty, an event of UNKNOWN domain may lead Now only when it is
 // near: today, or within this many minutes. Further out it is de-emphasised —
 // listed, never hidden — because "UAT Testing" on Wednesday is not what
@@ -589,7 +594,7 @@ function taskIsNowRelevant(t) {
   return commitmentIsNowRelevant({ state: 'open', due: t.due });
 }
 
-function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitments = [], tasks = [], sources = [], approvals = null, goals = [], crowd = null, gaps = [], nowLocal = null }) {
+function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitments = [], tasks = [], sources = [], approvals = null, goals = [], crowd = null, gaps = [], nowLocal = null, workOnly = false }) {
   const shownTitles = new Set();
   const take = (t) => { if (t) shownTitles.add(String(t).trim().toLowerCase()); };
   take(decision.primary && decision.primary.title);
@@ -599,9 +604,14 @@ function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitme
   // Off duty is life-state's DECISION (decision.life.showWork), honoured here,
   // never re-derived. It holds back only what is KNOWN to be work; an item of
   // unknown domain is shown, because hiding it on a guess hides real things.
-  const showWork = !(decision.life && decision.life.showWork === false);
-  const held = { work: 0 };
-  const candidates = nextEvents.length ? nextEvents : (nextEvent ? [nextEvent] : []);
+  // Work-only mode (13 Oct 2026) is Nick's switch and beats off duty: he has
+  // asked to see work. It holds back only what is KNOWN not to be work; an
+  // unknown-domain item stays, for the same reason off duty keeps it.
+  const showWork = workOnly || !(decision.life && decision.life.showWork === false);
+  const held = { work: 0, personal: 0 };
+  const keepForMode = (domains) => { if (workOnly && isKnownNonWork(domains)) { held.personal += 1; return false; } return true; };
+  const candidates = (nextEvents.length ? nextEvents : (nextEvent ? [nextEvent] : [])).filter((e) => keepForMode(e.domains));
+  if (workOnly) { goals = []; crowd = null; }
   const notWork = candidates.filter((e) => showWork || !isKnownWorkOnly(e.domains));
   // One event held, not every work meeting this week: the count says what Now
   // WOULD have led with, not how full the calendar is.
@@ -618,6 +628,7 @@ function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitme
   const first = eligible[0] || null;
   const next = first && !shownTitles.has(String(first.title || '').trim().toLowerCase()) ? first : null;
   const due = rankNowCommitments(commitments.filter(commitmentIsNowRelevant))
+    .filter((c) => keepForMode(c.domains))
     .filter((c) => {
       if (!showWork && isKnownWorkOnly(c.domains)) { held.work += 1; return false; }
       return true;
@@ -627,6 +638,7 @@ function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitme
   // Build 11D/P: tasks the attention pool cannot see (reminders — NEURO's own
   // tasks are already the decision's), domain-blind, by when then importance.
   const dueTasks = rankNowCommitments(tasks.filter(taskIsNowRelevant))
+    .filter((t) => keepForMode(t.domains))
     .filter((t) => {
       if (!showWork && isKnownWorkOnly(t.domains)) { held.work += 1; return false; }
       return true;
@@ -661,8 +673,28 @@ function composeNow({ decision = {}, nextEvents = [], nextEvent = null, commitme
       ? (unreadable ? 'Nothing is asking for you — but some of what NEURO looks at could not be read, so this is not an all-clear.' : 'Nothing needs you right now.')
       : null,
     uncertainty: { unreadable, gaps },
+    personalHeld: workOnly ? { count: held.personal, say: held.personal ? `${held.personal} personal item${held.personal === 1 ? '' : 's'} hidden — work only is on.` : null } : null,
     workHeld: showWork ? null : { count: held.work, say: held.work ? `${held.work} work item${held.work === 1 ? '' : 's'} held back while you're off duty.` : null },
   };
+}
+
+// Work-only mode (13 Oct 2026): the personal blocks Now carries, and the
+// presentation kinds that only ever describe home and life.
+const WORK_ONLY_DROPPED = ['personalDates', 'radar', 'home', 'outdoor', 'leisure', 'nowPlaying', 'environmentHere'];
+const PERSONAL_KINDS = new Set(['household', 'leisure', 'outdoor', 'music', 'sleep', 'offer']);
+const PERSONAL_THEMES = new Set(['recovery', 'presence']);
+/** PURE. Removes personal-only kinds from a presentation, leaving everything else as composed. */
+function workOnlyPresentation(p) {
+  const out = { ...p };
+  for (const k of Object.keys(out)) {
+    if (Array.isArray(out[k])) out[k] = out[k].filter((it) => !(it && PERSONAL_KINDS.has(it.kind)));
+  }
+  if (out.primary && PERSONAL_KINDS.has(out.primary.kind)) out.primary = null;
+  if (out.synthesis && Array.isArray(out.synthesis.themes)) {
+    out.synthesis = { ...out.synthesis, themes: out.synthesis.themes.filter((t) => !PERSONAL_THEMES.has(t.type)) };
+  }
+  out.workOnly = true;
+  return out;
 }
 
 // ── readers (DB) ────────────────────────────────────────────────────────────
@@ -1268,7 +1300,7 @@ let _radarMemo = null;
 let _homeMemo = null;
 let _outdoorMemo = null;
 let _leisureMemo = null;
-async function now({ now: nowMs = Date.now(), decision = null } = {}) {
+async function now({ now: nowMs = Date.now(), decision = null, workOnly = false } = {}) {
   const gaps = [];
   let dec = decision;
   if (!dec) {
@@ -1306,7 +1338,7 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
   } catch (e) { gaps.push({ input: 'work-balance', why: e.message }); }
   const allGaps = [...(dec.gaps || []), ...gaps];
   const composed = composeNow({ decision: dec, nextEvents, commitments: commitmentItems, tasks: taskItems, sources: sourceItems,
-    approvals: dec.approvals || null, goals, crowd, gaps: allGaps, nowLocal: require('./world-model').localMinute(nowMs) });
+    approvals: dec.approvals || null, goals, crowd, gaps: allGaps, nowLocal: require('./world-model').localMinute(nowMs), workOnly });
   const payload = { ...dec, contract: CONTRACT, situation: composed };
   // 5 Oct 2026: the air where Nick is (roaming logger / phone barometer) and
   // what the phone's Music app is playing. Read-only, never allowed to fail Now.
@@ -1369,8 +1401,14 @@ async function now({ now: nowMs = Date.now(), decision = null } = {}) {
   // Build 12A: what this MEANS, ranked, with no layout in it. Composed here and
   // nowhere else, so every surface reading Now renders one presentation. Never
   // allowed to fail the feed: null means "render the way you did before".
+  if (workOnly) {
+    // Life's own blocks never reach a work-only Now — not hidden by a renderer, absent.
+    for (const k of WORK_ONLY_DROPPED) payload[k] = null;
+    payload.workOnly = true;
+  }
   try {
     payload.presentation = require('./presentation-intent').composePresentation(payload, { now: nowMs });
+    if (workOnly && payload.presentation) payload.presentation = workOnlyPresentation(payload.presentation);
   } catch (e) {
     console.warn('[Canonical] presentation composition failed:', e.message);
     payload.presentation = null;
@@ -1384,7 +1422,7 @@ module.exports = {
   daysBetween, localDate, dueContext, personWorkEvidence, personRelationshipEvidence, commitmentDomains, taskDomains, meetingDomains,
   worldTaskDomains, importanceFor, shapeWorldTask, minutesFrom, unknownEventRelevance, taskIsNowRelevant, UNKNOWN_NEAR_MINUTES,
   shapeCommitment, summariseCommitments, sourceVerdict, shapeSource, sourceMatters, attentionVerdict, shapeFinding,
-  commitmentIsNowRelevant, rankNowCommitments, crowdedOut, composeNow, noteTitle, coverageByDomain, isKnownWorkOnly,
+  commitmentIsNowRelevant, rankNowCommitments, crowdedOut, composeNow, noteTitle, coverageByDomain, isKnownWorkOnly, isKnownNonWork, workOnlyPresentation,
   // readers / writers
   commitments, commitmentDetail, tasks, sources, findings, now, life, getAnnotations, setAnnotation, listGoals, saveGoal,
   addGoalLink, removeGoalLink, GOAL_LINK_PREFIXES,

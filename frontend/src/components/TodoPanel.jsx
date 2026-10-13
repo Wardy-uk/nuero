@@ -12,6 +12,7 @@ import { pinFromContext, findPinned } from '../taskPin';
 import TaskDedupe from './TaskDedupe';
 import TaskBlocks, { BlockTimeControl } from './TaskBlocks';
 import './TodoPanel.css';
+import { useWorkOnly } from '../workOnly';
 
 // Beside a source badge. A file-backed mirror's badge already reads "MS Planner"
 // / "MS ToDo", so the plan badge drops the system there; a LINKED NEURO row's
@@ -2036,7 +2037,10 @@ export default function TodoPanel({ focusContext, onClearContext }) {
     return localDone[key] ? { ...merged, done: 1 } : merged;
   };
 
-  const todos = (fullData?.todos || []).map(applyLocal);
+  // Work only (13 Oct 2026): a task marked personal is not on this screen. An
+  // unset domain is the work default, so nothing unknown is hidden.
+  const [workOnly] = useWorkOnly();
+  const todos = (fullData?.todos || []).map(applyLocal).filter((t) => !(workOnly && t.domain === 'personal'));
   const suggestedTodos = (fullData?.suggested || []).filter(s => !resolvedSuggestions.includes(s.id));
   const todayLane = fullData?.todayLane || [];
 

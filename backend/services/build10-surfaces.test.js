@@ -47,7 +47,8 @@ test('10. Briefing, Focus and Today converge on ONE Now read model', () => {
   }
   // NEURO Now reads the canonical Now model — one payload.
   const now = read('frontend/src/components/AdhdPanel.jsx');
-  assert.match(now, /useAttention\(\{ interval: 30000, path: '\/api\/canonical\/now' \}\)/);
+  // Work only (13 Oct 2026) adds ?workOnly=1 to the SAME read model; it is still one Now.
+  assert.match(now, /useAttention\(\{ interval: 30000, path: workOnly \? '\/api\/canonical\/now\?workOnly=1' : '\/api\/canonical\/now' \}\)/);
   assert.match(now, /<NowSituation situation=\{attention\.situation\}/);
   // Old ids still land on Now.
   const ids = read('frontend/src/viewIds.js');
