@@ -310,6 +310,21 @@ function syncChecklistInNote(raw, tasks) {
  * is STORED on the block row and the write-up sweep looks the file up by it, so
  * renaming those would orphan every outcome note already on disk.
  */
+/**
+ * The event body. ONE wording for every writer (create, add, remove). The note
+ * is OPTIONAL: the hold that kept tasks open until it was written was removed
+ * on 15 Sep 2026, and three copies of the old sentence went on saying it
+ * (found in Outlook on 13 Oct).
+ */
+function eventBody(lines, notePath) {
+  return [
+    ...lines,
+    '',
+    'Outcome note (optional — a line or two on what came of it):',
+    `  ${notePath}`,
+  ].join('\n');
+}
+
 function blockSubject(tasks = []) {
   const list = Array.isArray(tasks) ? tasks : [];
   const subject = list.length === 1
@@ -378,11 +393,8 @@ function renderStub(tasks, block) {
     '',
     STUB_OPEN,
     `> Blocked ${block.start_time}–${block.end_time} on ${block.date_key}.`,
-    many
-      ? '> These tasks stay open in NEURO until there is a real summary below —'
-      : '> This task stays open in NEURO until there is a real summary below —',
-    '> a couple of lines on what came of it is enough. Nothing to write up?',
-    '> Release it from the task list and say why.',
+    '> Optional: a couple of lines below on what came of it. Ticking the',
+    `> ${many ? 'tasks' : 'task'} in NEURO does not wait for this note.`,
     STUB_CLOSE,
     '',
     // Inside the fence would be wrong: the checklist is a record of what the
@@ -914,16 +926,8 @@ async function schedule(taskIds, {
     // building, which is what lets this create on a confirm instead of going
     // through the approve gate outbound actions need.
     attendees: [],
-    body: [
-      ...tasks.map(t => `• ${t.text}  (NEURO #${t.id})`),
-      '',
-      'This block is not finished until the outcome note has something in it:',
-      `  ${stub.written || stub.reason === 'note already exists' ? notePath : '(stub not written — ' + stub.reason + ')'}`,
-      '',
-      tasks.length === 1
-        ? 'The task stays open in NEURO until then.'
-        : 'These tasks stay open in NEURO until then.',
-    ].join('\n'),
+    body: eventBody(tasks.map(t => `• ${t.text}  (NEURO #${t.id})`),
+      stub.written || stub.reason === 'note already exists' ? notePath : '(stub not written — ' + stub.reason + ')'),
   });
 
   if (!result.created) {
@@ -1672,12 +1676,7 @@ async function addTask(blockId, taskId, { extend = true, saveDue = true, now = n
         subject: blockSubject(remaining),
         start: `${block.date_key}T${block.start_time}:00`,
         end: `${block.date_key}T${extension.endTime}:00`,
-        body: [
-          ...remaining.map(i => `- ${i.text}  (NEURO #${i.task_id})`),
-          '',
-          'This block is not finished until the outcome note has something in it:',
-          `  ${block.note_path}`,
-        ].join('\n'),
+        body: eventBody(remaining.map(i => `• ${i.text}  (NEURO #${i.task_id})`), block.note_path),
       });
     } catch (e) {
       eventUpdate = { updated: false, reason: 'error', detail: e.message };
@@ -1742,12 +1741,7 @@ async function removeTask(blockId, taskId) {
       const microsoft = require('./microsoft');
       eventUpdate = await microsoft.updateCalendarEvent(block.event_id, {
         subject: blockSubject(remaining),
-        body: [
-          ...remaining.map(i => `• ${i.text}  (NEURO #${i.task_id})`),
-          '',
-          'This block is not finished until the outcome note has something in it:',
-          `  ${block.note_path}`,
-        ].join('\n'),
+        body: eventBody(remaining.map(i => `• ${i.text}  (NEURO #${i.task_id})`), block.note_path),
       });
     } catch (e) {
       eventUpdate = { updated: false, reason: 'error', detail: e.message };
@@ -2022,6 +2016,55 @@ async function scheduleMoving(taskIds, { date = null, startTime = null, minutes 
  * ticked, and a `complete` one earned its note; reversing either means deciding
  * to un-finish work, which is a different act and not one to fold into an undo.
  */
+/**
+ * Where Nick has MOVED a block in Outlook. PURE. (13 Oct 2026: the Philippa
+ * block was moved 11:35 → 15:05 and the podcast block 13:00 → 10:00, and NEURO
+ * went on saying "your 11:35 block is running" — its row never heard. Worse,
+ * adding a task to a block rewrites the event's times FROM the row, which would
+ * have dragged the event back.)
+ *
+ * blocks: open task_blocks rows; events: the Graph window just synced, whose
+ * start/end are Europe/London wall-clock strings — SLICED, never parsed (the
+ * BST rule). Only a block whose event is IN this pass and whose time differs
+ * moves; an event absent from the pass says nothing (it may be outside the
+ * window, or the read was partial) and nothing is concluded from it.
+ */
+function blockMoves(blocks = [], events = []) {
+  const byId = new Map((events || []).filter((e) => e && e.id).map((e) => [e.id, e]));
+  const out = [];
+  for (const b of blocks || []) {
+    if (!b || !b.event_id || !['scheduled', 'awaiting-writeup'].includes(b.status)) continue;
+    const ev = byId.get(b.event_id);
+    if (!ev || typeof ev.start !== 'string' || typeof ev.end !== 'string' || ev.isAllDay) continue;
+    const date = ev.start.slice(0, 10);
+    const start = ev.start.slice(11, 16);
+    const end = ev.end.slice(11, 16);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) continue;
+    if (ev.end.slice(0, 10) !== date) continue; // crosses midnight: not a block shape NEURO makes
+    const minutes = toMin(end) - toMin(start);
+    if (!(minutes > 0)) continue;
+    if (b.date_key === date && b.start_time === start && b.end_time === end) continue;
+    out.push({ id: b.id, date_key: date, start_time: start, end_time: end, minutes,
+      from: `${b.date_key} ${b.start_time}–${b.end_time}` });
+  }
+  return out;
+}
+
+/** Apply `blockMoves` to the stored rows. Never throws; returns what moved. */
+function followCalendar(events = []) {
+  try {
+    const moves = blockMoves(db.listTaskBlockRows({ openOnly: true }), events);
+    for (const m of moves) {
+      db.updateTaskBlockRow(m.id, { date_key: m.date_key, start_time: m.start_time, end_time: m.end_time, minutes: m.minutes });
+      console.log(`[TaskBlocks] block #${m.id} moved in Outlook: ${m.from} → ${m.date_key} ${m.start_time}–${m.end_time}`);
+    }
+    return { ok: true, moved: moves.length, moves };
+  } catch (e) {
+    console.warn('[TaskBlocks] could not follow the calendar:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
 function restore(blockId) {
   const block = db.getTaskBlockRow(blockId);
   if (!block) return { ok: false, error: `No block #${blockId}` };
@@ -2353,6 +2396,8 @@ function liveBlock(rows = [], now = new Date(), { leadMinutes = BLOCK_LEAD_MINUT
 
 module.exports = {
   BLOCK_LEAD_MINUTES,
+  blockMoves,
+  followCalendar,
   liveBlock,
   MIN_OUTCOME_CHARS,
   OUTCOMES_DIR,

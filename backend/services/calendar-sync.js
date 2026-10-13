@@ -179,6 +179,12 @@ async function sync({ days = 14, checkArrivals = true } = {}) {
 
   try { require('./working-memory').invalidate('calendar synced'); } catch {}
 
+  // A task block Nick MOVED in Outlook takes its new time (13 Oct 2026). Real
+  // Graph ids only — a synthesised id matches no block, but say nothing either.
+  if (!events.some((e) => e && typeof e.id === 'string' && e.id.startsWith('graph-'))) {
+    require('./task-blocks').followCalendar(events);
+  }
+
   // The cache write has committed: that is what success means for this source.
   // Recorded here, before the Plaud and triage hooks, because those are other
   // features hanging off a fresh calendar, not part of ingesting it.

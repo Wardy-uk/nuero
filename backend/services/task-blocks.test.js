@@ -690,3 +690,37 @@ test('an unreadable window is NOT stale — expiring on a guess closes a live bl
     assert.equal(isStale(bad, onDay(12)), false, `aged out ${JSON.stringify(bad)}`);
   }
 });
+
+// ── A block moved in Outlook follows (13 Oct 2026) ─────────────────────────
+// Live: the Philippa block was moved 11:35 → 15:05 and the podcast block
+// 13:00 → 10:00 in Outlook; NEURO's rows never heard, so Now said "your 11:35
+// block is running".
+test('a block Nick moved in Outlook takes the event’s new time', () => {
+  const tb = require('./task-blocks');
+  const blocks = [
+    { id: 109, event_id: 'E-PHIL', status: 'scheduled', date_key: '2026-10-13', start_time: '11:35', end_time: '13:00' },
+    { id: 110, event_id: 'E-POD', status: 'scheduled', date_key: '2026-10-13', start_time: '13:00', end_time: '15:00' },
+    { id: 108, event_id: 'E-HEIDI', status: 'scheduled', date_key: '2026-10-13', start_time: '09:00', end_time: '09:55' },
+    { id: 111, event_id: 'E-GONE', status: 'scheduled', date_key: '2026-10-13', start_time: '16:00', end_time: '16:30' },
+    { id: 112, event_id: 'E-DONE', status: 'complete', date_key: '2026-10-13', start_time: '08:00', end_time: '08:30' },
+  ];
+  const events = [
+    { id: 'E-PHIL', start: '2026-10-13T15:05:00.0000000', end: '2026-10-13T16:30:00.0000000' },
+    { id: 'E-POD', start: '2026-10-13T10:00:00.0000000', end: '2026-10-13T12:00:00.0000000' },
+    { id: 'E-HEIDI', start: '2026-10-13T09:00:00.0000000', end: '2026-10-13T09:55:00.0000000' },
+    { id: 'E-DONE', start: '2026-10-13T09:00:00.0000000', end: '2026-10-13T09:30:00.0000000' },
+  ];
+  const moves = tb.blockMoves(blocks, events);
+  assert.deepEqual(moves.map((m) => [m.id, m.date_key, m.start_time, m.end_time, m.minutes]), [
+    [109, '2026-10-13', '15:05', '16:30', 85],
+    [110, '2026-10-13', '10:00', '12:00', 120],
+  ], 'unmoved, absent and finished blocks are left alone — an absent event concludes nothing');
+});
+
+test('the block’s event body no longer claims the note gates the tasks', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'task-blocks.js'), 'utf8');
+  assert.doesNotMatch(src, /not finished until the outcome note|stays? open in NEURO until/);
+  assert.match(src, /Outcome note \(optional/, 'positive control: the new wording is there');
+  const cs = require('fs').readFileSync(require('path').join(__dirname, 'calendar-sync.js'), 'utf8');
+  assert.match(cs, /followCalendar\(events\)/, 'the calendar sync applies the moves');
+});
