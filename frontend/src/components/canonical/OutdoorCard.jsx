@@ -23,9 +23,26 @@ const km = (v) => (v === null || v === undefined ? null : `${v} km`);
 const mins = (v) => (v === null || v === undefined ? null : v >= 60 ? `${Math.floor(v / 60)} h ${v % 60} min` : `${v} min`);
 const facts = (a) => [a.durationMin != null ? mins(a.durationMin) : null, km(a.distanceKm), a.elevationM != null ? `${a.elevationM} m up` : null].filter(Boolean).join(' · ');
 
+const GOAL_PILL = { achieved: 'cn-pill--good', planned: 'cn-pill--plan', recording_gap: 'cn-pill--warn' };
+const WEATHER_PILL = { favourable: 'cn-pill--good', mixed: 'cn-pill--warn', poor: 'cn-pill--bad' };
+
+function Stat({ v, l, title }) {
+  return <div className="cn-stattile" title={title}><div className="cn-stattile-v">{v}</div><div className="cn-stattile-l">{l}</div></div>;
+}
+
+// The forecast as its verdict plus each input it rests on — the same facts the
+// server's sentence carries, laid out so they can be read at a glance.
 function Weather({ w }) {
   if (!w) return null;
-  return <div className={`cn-small ${w.severe ? 'cn-error' : 'cn-muted'}`}>Weather {WEATHER_WORDS[w.state] || w.state}: {w.line}</div>;
+  const pill = <span className={`cn-pill ${w.severe ? 'cn-pill--bad' : WEATHER_PILL[w.state] || ''}`}>{w.severe ? 'severe weather' : `weather ${WEATHER_WORDS[w.state] || w.state}`}</span>;
+  if (!w.inputs || !w.inputs.length) return <div className="cn-tile-foot">{pill}<span>{w.line}</span></div>;
+  return (
+    <div className="cn-tile-foot" title={w.line}>
+      {pill}
+      {w.inputs.map((i) => <span key={i.input} className={`cn-chip${i.level !== 'favourable' ? ' cn-stat--warn' : ''}`}>{i.input === 'condition' ? i.said.replace(/^Home Assistant says "(.*)"$/, '$1') : i.said}</span>)}
+      {w.missing && w.missing.length > 0 && <span>not known: {w.missing.join(', ')}</span>}
+    </div>
+  );
 }
 
 function ActivityRow({ a, routes, companions, act, busy }) {
@@ -106,19 +123,27 @@ export function OutdoorView({ data, act = null, busy = false, hikeLoop = null })
   return (
     <section className="cn-section" data-testid="outdoor-card">
       <h3>Outdoor</h3>
-      <div className="cn-hike-line" data-testid="outdoor-week">
-        {g ? <>This week: <strong>{GOAL_WORDS[g.state] || g.state}</strong> — {g.line}</> : 'No active Hike weekly goal.'}
-      </div>
-      <div className="cn-muted cn-small">
-        {[`${s.confirmedHikes} confirmed hike${s.confirmedHikes === 1 ? '' : 's'}`, `${s.meaningfulWalks} walk${s.meaningfulWalks === 1 ? '' : 's'}`,
-          s.knownDurationMin != null ? `${mins(s.knownDurationMin)} outside on those` : null,
-          s.daylight && s.daylight.known ? s.daylight.line : null].filter(Boolean).join(' · ')}
+      <div className="cn-headline" data-testid="outdoor-week">
+        {g && <span className={`cn-pill ${GOAL_PILL[g.state] || ''}`}>{GOAL_WORDS[g.state] || g.state}</span>}
+        <span className="cn-headline-text">{g ? <>This week: <strong>{g.line}</strong></> : 'No active Hike weekly goal.'}</span>
       </div>
       {data.atRisk && data.atRisk.atRisk && <div className="cn-muted" data-testid="outdoor-at-risk">{data.atRisk.why}.</div>}
+
+      <div className="cn-tiles-stat">
+        <Stat v={s.confirmedHikes} l={`confirmed hike${s.confirmedHikes === 1 ? '' : 's'} this week`} />
+        <Stat v={s.meaningfulWalks} l={`walk${s.meaningfulWalks === 1 ? '' : 's'} this week`} />
+        {s.knownDurationMin != null && <Stat v={mins(s.knownDurationMin)} l="outside on those" />}
+        {s.daylight && s.daylight.known && (
+          <Stat v={mins(s.daylight.minutes)} title={s.daylight.line}
+            l={`in daylight · ${s.daylight.daysWithReading} of ${s.daylight.daysElapsed} day${s.daylight.daysElapsed === 1 ? '' : 's'}${s.daylight.covered ? '' : ', today partial'}`} />
+        )}
+      </div>
+
       {data.nextPlan && (
-        <div data-testid="outdoor-next">
-          Next: <strong>{data.nextPlan.label}</strong> {data.nextPlan.when}
-          {data.nextPlan.routes.some((r) => r.emberPlanned) && <span className="cn-chip">with Ember</span>}
+        <div className="cn-tile cn-tile--next" data-testid="outdoor-next">
+          <span className="cn-tile-foot" style={{ paddingTop: 0, marginTop: 0 }}>Next</span>
+          <span className="cn-tile-big">{data.nextPlan.label} · {data.nextPlan.when}
+            {data.nextPlan.routes.some((r) => r.emberPlanned) && <span className="cn-chip" style={{ marginLeft: 8 }}>with Ember</span>}</span>
           <Weather w={data.nextPlan.weather} />
         </div>
       )}

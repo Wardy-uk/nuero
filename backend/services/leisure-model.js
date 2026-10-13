@@ -354,7 +354,7 @@ function continueList({ items = [], albums = [], today, nowPlaying = null, limit
     if (week.length < THREAD_MIN_DAYS) continue;
     if (out.some((o) => o.ref === al.ref || (al.explicit && o.ref === al.explicit.itemId))) continue;
     out.push({ ref: al.ref, kind: 'album', title: al.title, creator: al.creator, state: 'active', progress: null, lastSeen: al.lastSeen,
-      why: `heard on the phone on ${week.length} of the last 7 days`, basis: 'listening' });
+      why: `heard on the phone on ${week.length} of the last 7 days`, basis: 'listening', daysThisWeek: week.length });
   }
   // Rank: what is playing right now first, then most recently touched.
   const playingAlbum = nowPlaying && nowPlaying.album ? norm(nowPlaying.album) : null;

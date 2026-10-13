@@ -55,6 +55,37 @@ function ItemRow({ it, act, busy, extra = null }) {
   );
 }
 
+// A date key shown as "Sat 21 Nov" — built from its parts, never parsed as UTC.
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dayLabel(key) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+  if (!m) return key;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return `${DOW[d.getDay()]} ${Number(m[3])} ${MON[Number(m[2]) - 1]}`;
+}
+
+// One thing in progress, as a tile: what it is, by whom, and one short fact.
+// The full reason rides on hover; a reason every tile shares is said once in
+// the heading instead (13 Oct 2026 — the card was a wall of repeated sentences).
+function ContinueTile({ it, act, busy }) {
+  const phone = it.basis === 'listening';
+  return (
+    <li className="cn-tile" data-testid="leisure-item" title={it.why || it.stateWhy || ''}>
+      <span className="cn-tile-title">{it.title}</span>
+      {it.creator && <span className="cn-tile-sub">{it.creator}</span>}
+      <span className="cn-tile-foot">
+        <span className="cn-chip">{KIND[it.kind] || it.kind}</span>
+        {phone && it.daysThisWeek != null ? <span>{it.daysThisWeek} of 7 days</span>
+          : it.state && <span className="cn-chip">{STATE[it.state] || it.state}</span>}
+        {it.progress && <span>{it.progress}</span>}
+        {(it.preference === 'liked' || it.preference === 'loved') && <span className="cn-chip">{it.preference}</span>}
+      </span>
+      {!phone && <ItemActions it={it} act={act} busy={busy} />}
+    </li>
+  );
+}
+
 // Nick's rating of what he listens to (13 Oct 2026): what he LOVES versus what
 // is just playing. Love counts most when NEURO looks for new music; background
 // never counts. The chosen rating stays lit; pressing it again clears it.
@@ -172,6 +203,13 @@ function Preview({ src }) {
   );
 }
 
+// Keep first-seen order; group items that share a reason so it is said once.
+function groupBy(xs, key) {
+  const m = new Map();
+  for (const x of xs) { const k = key(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+  return [...m.entries()];
+}
+
 function Discovery({ d, act, busy }) {
   if (!d) return null;
   const save = (x) => act && act('/api/leisure/items', { kind: 'artist', title: x.name, state: 'saved', notes: x.why || null });
@@ -189,30 +227,28 @@ function Discovery({ d, act, busy }) {
         <p className="cn-muted cn-small">No new artists right now — everything Deezer relates to yours you have already heard or answered.</p>
       )}
       {d.lastError && <p className="cn-error cn-small">Couldn’t ask Deezer last time ({d.lastError}){d.items.length ? ' — this is the last list it gave.' : '.'}</p>}
-      {d.items.length > 0 && (
-        <ul className="cn-list">
-          {d.items.map((x) => (
-            <li key={x.name} data-testid="leisure-discovery" className="cn-discovery">
-              <div>
-                <strong>{x.link ? <a href={x.link} target="_blank" rel="noreferrer">{x.name}</a> : x.name}</strong>
+      {d.items.length > 0 && groupBy(d.items, (x) => x.why || '').map(([why, xs]) => (
+        <React.Fragment key={why || '-'}>
+          {why && <div className="cn-group-why">{why.charAt(0).toUpperCase() + why.slice(1)}</div>}
+          <ul className="cn-tiles">
+            {xs.map((x) => (
+              <li key={x.name} data-testid="leisure-discovery" className="cn-tile">
+                <span className="cn-tile-title">{x.link ? <a href={x.link} target="_blank" rel="noreferrer">{x.name}</a> : x.name}</span>
                 {x.track && (
-                  <span className="cn-small">
-                    {' '}· try {x.track.link ? <a href={x.track.link} target="_blank" rel="noreferrer">“{x.track.title}”</a> : `“${x.track.title}”`}
-                    {x.track.preview && <Preview src={x.track.preview} />}
+                  <span className="cn-tile-sub">
+                    try {x.track.link ? <a href={x.track.link} target="_blank" rel="noreferrer">“{x.track.title}”</a> : `“${x.track.title}”`}
                   </span>
                 )}
-                {x.why && <span className="cn-muted cn-small">{x.why}</span>}
-              </div>
-              {act && (
-                <div className="cn-row-actions">
-                  <Btn busy={busy} onClick={() => save(x)} title="Keep it in Saved for later">Save</Btn>
-                  <Btn busy={busy} onClick={() => nope(x)} title="Never suggest this artist again">Not for me</Btn>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+                <span className="cn-tile-foot">
+                  {x.track && x.track.preview && <Preview src={x.track.preview} />}
+                  {act && <Btn busy={busy} onClick={() => save(x)} title="Keep it in Saved for later">Save</Btn>}
+                  {act && <Btn busy={busy} onClick={() => nope(x)} title="Never suggest this artist again">Not for me</Btn>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </React.Fragment>
+      ))}
       {d.known && (
         <p className="cn-muted cn-small">
           From {d.source}{d.ageHours != null ? `, ${d.ageHours < 1 ? 'just now' : `${d.ageHours} h ago`}` : ''}.
@@ -233,23 +269,32 @@ export function LeisureView({ data, act = null, busy = false, msg = null }) {
       <h3>Leisure</h3>
       {msg && <p className="cn-error cn-small">{msg}</p>}
 
-      {now && now.playing && (
-        <p data-testid="leisure-now">Playing <strong>{now.playing.title}</strong>{now.playing.artist ? ` — ${now.playing.artist}` : ''}
-          <span className="cn-muted cn-small"> · on your phone{now.playing.ageMinutes ? `, reported ${now.playing.ageMinutes} min ago` : ''}</span></p>
-      )}
-      {now && (now.tv || []).length > 0 && (
-        <p className="cn-muted cn-small">{now.tv.map((t) => `${t.name} is ${t.state}${t.title ? ` (${t.title})` : ''}`).join(' · ')} — household, not counted as yours.</p>
+      {now && ((now.playing) || (now.tv || []).length > 0) && (
+        <div className="cn-nowstrip">
+          {now.playing && (
+            <span data-testid="leisure-now">Playing <strong>{now.playing.title}</strong>{now.playing.artist ? ` — ${now.playing.artist}` : ''}
+              <span className="cn-muted cn-small"> · on your phone{now.playing.ageMinutes ? `, ${now.playing.ageMinutes} min ago` : ''}</span></span>
+          )}
+          {(now.tv || []).length > 0 && (
+            <span className="cn-muted cn-small">{now.tv.map((t) => `${t.name} is ${t.state}${t.title ? ` (${t.title})` : ''}`).join(' · ')} — household, not counted as yours.</span>
+          )}
+        </div>
       )}
 
       {comingUp.length > 0 && (
         <>
           <h4>Coming up</h4>
-          <ul className="cn-list">{comingUp.map((c) => <li key={`${c.ref}|${c.date}`}><strong>{c.date}</strong>{c.time ? ` ${c.time}` : ''} {c.title} <span className="cn-muted cn-small">— {c.why}</span></li>)}</ul>
+          <ul className="cn-tiles">{comingUp.map((c) => (
+            <li key={`${c.ref}|${c.date}`} className="cn-tile cn-tile--next" title={c.why}>
+              <span className="cn-tile-big">{dayLabel(c.date)}{c.time ? ` · ${c.time}` : ''}</span>
+              <span className="cn-tile-sub">{c.title}</span>
+            </li>))}
+          </ul>
         </>
       )}
 
-      <h4>Continue</h4>
-      {cont.length ? <ul className="cn-list">{cont.map((it) => <ItemRow key={it.ref} it={it} act={it.basis === 'you' ? act : null} busy={busy} />)}</ul>
+      <h4>Continue{cont.some((it) => it.basis === 'listening') && <span className="cn-muted cn-small"> · albums are what the phone played this week</span>}</h4>
+      {cont.length ? <ul className="cn-tiles">{cont.map((it) => <ContinueTile key={it.ref} it={it} act={it.basis === 'you' ? act : null} busy={busy} />)}</ul>
         : <p className="cn-muted cn-small">Nothing in progress that NEURO knows of. Add what you're watching, reading or playing below — NEURO can't see your TV or books.</p>}
 
       {suggestions.length > 0 && (
