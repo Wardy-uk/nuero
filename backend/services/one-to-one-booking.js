@@ -86,28 +86,48 @@ function countOneToOnes(day, events) {
   return events.filter(e =>
     e.date === dateStr(day) &&
     !['cancelled'].includes(String(e.showAs || 'busy').toLowerCase()) &&
-    ONE_TO_ONE_SUBJECT.test(String(e.subject || ''))
+    ONE_TO_ONE_SUBJECT.test(String(e.subject || '')) &&
+    // "Plaud admin — 1-2-1 — Nick / X" is the 5-minute write-up block after a 1-2-1,
+    // not a second one; counted, every 1-2-1 used up both of the day's places.
+    !/^plaud admin/i.test(String(e.subject || ''))
   ).length;
 }
 
 /**
  * First gap of `duration` minutes inside `window` on `day` that doesn't collide
- * with a busy event. Events marked free or cancelled don't block. The slot must
- * finish inside the window, which is what enforces "never after 4.30pm".
+ * with a meeting. The slot must finish inside the window, which is what enforces
+ * "never after 4.30pm".
+ *
+ * Nick's rules (14 Oct 2026), all enforced here rather than by each caller:
+ *   - starts on the hour or half past, never quarter past (30-minute steps from
+ *     windows that themselves start on the hour);
+ *   - never over another meeting — INCLUDING ones marked free: his 10:00 Team
+ *     Standup is a free-marked event every day, and the old rule booked straight
+ *     over it. Only cancelled events and all-day FREE markers (a birthday, a
+ *     hiking day) do not block;
+ *   - at least an hour between one 1-2-1 ending and the next starting.
  */
+const GAP_BETWEEN_121_MIN = 60;
+
 function findGapInWindow(day, events, window, duration) {
-  const busy = events
-    .filter(e => e.date === dateStr(day))
-    .filter(e => !['free', 'cancelled'].includes(String(e.showAs || 'busy').toLowerCase()))
+  const today = events.filter(e => e.date === dateStr(day));
+  const walls = today
+    .filter(e => String(e.showAs || 'busy').toLowerCase() !== 'cancelled')
+    .filter(e => !(e.isAllDay && String(e.showAs || '').toLowerCase() === 'free'))
     .map(e => (e.isAllDay
       ? { start: 0, end: 24 * 60 }
       : { start: toMinutes(e.start), end: toMinutes(e.end) }))
     .sort((a, b) => a.start - b.start);
+  const ones = today
+    .filter(e => !e.isAllDay && String(e.showAs || 'busy').toLowerCase() !== 'cancelled')
+    .filter(e => ONE_TO_ONE_SUBJECT.test(String(e.subject || '')) && !/^plaud admin/i.test(String(e.subject || '')))
+    .map(e => ({ start: toMinutes(e.start), end: toMinutes(e.end) }));
 
-  for (let start = window.from; start + duration <= window.to; start += 15) {
+  for (let start = window.from; start + duration <= window.to; start += 30) {
     const end = start + duration;
-    const clash = busy.some(b => start < b.end && end > b.start);
-    if (!clash) return { start, end };
+    if (walls.some(b => start < b.end && end > b.start)) continue;
+    if (ones.some(o => start < o.end + GAP_BETWEEN_121_MIN && end + GAP_BETWEEN_121_MIN > o.start)) continue;
+    return { start, end };
   }
   return null;
 }
@@ -162,6 +182,7 @@ function findSlot(events, from, durationMinutes, personOff = null) {
   for (let i = 0; i <= SEARCH_DAYS; i++) {
     const day = addDays(from, i);
     if (!isWorkingDay(day, events)) continue;
+    if (day.getDay() === 5) continue; // no 1-2-1s on a Friday (Nick, 14 Oct 2026)
     if (personOff && personOff.has(dateStr(day))) continue;
     if (countOneToOnes(day, events) >= MAX_PER_DAY) continue;
     for (const window of [PM_WINDOW, AM_WINDOW]) {

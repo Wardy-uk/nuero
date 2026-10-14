@@ -113,12 +113,32 @@ test('returns null when the window is full', () => {
   assert.equal(findGapInWindow(DAY, [ev('14:00', '16:30')], PM_WINDOW, 30), null);
 });
 
-test('events marked free or cancelled do not block', () => {
-  const gap = findGapInWindow(DAY, [
-    ev('14:00', '15:00', { showAs: 'free' }),
-    ev('14:00', '15:00', { showAs: 'cancelled' }),
-  ], PM_WINDOW, 30);
+test('a cancelled event does not block', () => {
+  const gap = findGapInWindow(DAY, [ev('14:00', '15:00', { showAs: 'cancelled' })], PM_WINDOW, 30);
   assert.equal(gap.start, 14 * 60);
+});
+
+test('a meeting marked FREE still blocks — the 10:00 standup is free-marked (Nick, 14 Oct 2026)', () => {
+  const gap = findGapInWindow(DAY, [ev('14:00', '14:25', { showAs: 'free' })], PM_WINDOW, 30);
+  assert.equal(gap.start, 14 * 60 + 30);
+});
+
+test('an all-day FREE marker (a birthday, a hiking day) does not block', () => {
+  const gap = findGapInWindow(DAY, [{ date: D, isAllDay: true, showAs: 'free', subject: 'hiking' }], PM_WINDOW, 30);
+  assert.equal(gap.start, 14 * 60);
+});
+
+test('slots start on the hour or half past, never quarter past', () => {
+  const gap = findGapInWindow(DAY, [ev('14:00', '14:05')], PM_WINDOW, 30);
+  assert.equal(gap.start, 14 * 60 + 30);
+});
+
+test('an hour between one 1-2-1 ending and the next starting; its Plaud admin block is not a 1-2-1', () => {
+  const gap = findGapInWindow(DAY, [
+    ev('14:00', '14:30', { subject: '1-2-1 — Nick / Zoe' }),
+    ev('14:30', '14:35', { subject: 'Plaud admin — 1-2-1 — Nick / Zoe' }),
+  ], PM_WINDOW, 30);
+  assert.equal(gap.start, 15 * 60 + 30);
 });
 
 test('a tentative meeting still blocks — it is not a free slot', () => {
@@ -246,4 +266,11 @@ test('the subject names the person, so the cap recognises it later', () => {
 test('dateStr uses local getters, not UTC', () => {
   // A BST evening: toISOString() would roll this to the 18th.
   assert.equal(dateStr(new Date(2026, 7, 17, 23, 30)), '2026-08-17');
+});
+
+test('no 1-2-1 is offered on a Friday (Nick, 14 Oct 2026)', () => {
+  const friday = new Date('2026-10-16T12:00:00');
+  const slot = findSlot([], friday, 30);
+  assert.notEqual(new Date(`${slot.date}T12:00:00`).getDay(), 5);
+  assert.equal(slot.date, '2026-10-19');
 });
