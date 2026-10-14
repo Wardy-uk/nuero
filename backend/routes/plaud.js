@@ -78,6 +78,45 @@ router.post('/repull-stubs', async (req, res) => {
   }
 });
 
+// ── Transcripts manager (14 Oct 2026) ──────────────────────────────────────
+// One row per PLAUD transcript in the vault, whether it has a summary, and two
+// actions: refresh in place (picks up speakers named in PLAUD later) and archive.
+// Literal paths only, and none is a parameter, so nothing here can shadow another.
+
+// GET /api/plaud/transcripts — list every plaud transcript, its summary status and unnamed speakers. Read-only.
+router.get('/transcripts', (req, res) => {
+  try {
+    res.json(require('../services/plaud-transcripts').list());
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// POST /api/plaud/transcripts/refresh — repull / refresh one plaud transcript in place from PLAUD (speaker names); pulls a summary only if it has none.
+router.post('/transcripts/refresh', async (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'path is required' });
+  const { path: notePath, pullSummary } = req.body;
+  if (!notePath) return res.status(400).json({ error: 'path is required' });
+  try {
+    res.json(await require('../services/plaud-transcripts').refresh(notePath, { pullSummary: pullSummary === true }));
+  } catch (error) {
+    if (!error.status) console.error('[PlaudTranscripts] refresh failed:', error.message);
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// POST /api/plaud/transcripts/archive — delete / archive a plaud transcript (moves it, and optionally its summaries, under Archive/; nothing is unlinked).
+router.post('/transcripts/archive', (req, res) => {
+  if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'path is required' });
+  const { path: notePath, withSummaries } = req.body;
+  if (!notePath) return res.status(400).json({ error: 'path is required' });
+  try {
+    res.json(require('../services/plaud-transcripts').archive(notePath, { withSummaries: withSummaries === true }));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 // ── Admin blocks ────────────────────────────────────────────────────────────
 // The 5-minute "process and update Plaud meeting for X" block after every real
 // meeting. Lives here rather than in a router of its own because server.js is

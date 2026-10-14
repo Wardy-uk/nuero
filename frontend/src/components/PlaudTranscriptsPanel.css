@@ -1,0 +1,71 @@
+/* PLAUD transcripts — same compact language as BrainHealthPanel. */
+
+.pt { padding: 16px; max-width: 980px; }
+.pt__head { margin-bottom: 14px; }
+.pt__title { font-family: var(--font-mono); font-size: 15px; font-weight: 500; color: var(--text-primary); margin: 0 0 4px; }
+.pt__lede { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 0; max-width: 70ch; }
+.pt__lede strong { color: var(--text-secondary); font-weight: 500; }
+
+.pt__error, .pt__notice, .pt__loading, .pt__empty {
+  font-family: var(--font-mono); font-size: 12px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); margin-bottom: 10px;
+}
+.pt__error { border-color: var(--danger); color: var(--danger); }
+.pt__notice { border-color: var(--accent-dim); }
+
+.pt__counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 6px; }
+.pt-count {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+}
+.pt-count span { font-size: 18px; color: var(--text-primary); }
+.pt__aside { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin: 0 0 12px; }
+
+.pt__tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.pt__filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.pt-filter {
+  font-family: var(--font-mono); font-size: 11px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+}
+.pt-filter--on { border-color: var(--accent); color: var(--accent); }
+.pt__search {
+  font-family: var(--font-mono); font-size: 12px; padding: 6px 10px; min-width: 220px; flex: 0 1 280px;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary);
+}
+
+.pt__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pt-row {
+  display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 10px 12px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.pt-row__main { min-width: 0; flex: 1; }
+.pt-row__title { display: flex; gap: 10px; align-items: baseline; }
+.pt-row__date { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); flex: none; }
+.pt-row__name { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-row__meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pt-row__outcome { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); margin-top: 6px; word-break: break-word; }
+.pt-row__outcome--bad { color: var(--danger); }
+
+.pt-chip { font-family: var(--font-mono); font-size: 10.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); }
+.pt-chip--ok { border-color: rgba(64, 201, 122, 0.4); color: var(--success); }
+.pt-chip--warn { border-color: rgba(240, 160, 64, 0.45); color: var(--warning); }
+.pt-chip--muted { color: var(--text-muted); }
+
+.pt-row__actions { display: flex; gap: 6px; align-items: center; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.pt-confirm { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.pt-check { display: inline-flex; gap: 4px; align-items: center; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+
+.pt-btn {
+  font-family: var(--font-mono); font-size: 11px; padding: 5px 10px; border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary);
+}
+.pt-btn:disabled { opacity: 0.5; cursor: default; }
+.pt-btn--quiet { background: transparent; color: var(--text-secondary); }
+.pt-btn--danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+
+@media (max-width: 640px) {
+  .pt-row { flex-direction: column; }
+  .pt-row__actions { justify-content: flex-start; }
+  .pt__search { flex: 1 1 100%; min-width: 0; }
+}

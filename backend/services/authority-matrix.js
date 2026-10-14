@@ -151,6 +151,8 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/task-blocks/sweep', 'calendar.solo'),
   R('POST', '/api/day-plan/apply', 'calendar.solo'),
   R('POST', '/api/plaud/admin-blocks/apply', 'calendar.solo'),
+  // Archiving a transcript moves Nick's notes out of the way — his decision, never a machine's.
+  R('POST', '/api/plaud/transcripts/archive', 'vault.write', { machine: 'refuse' }),
 
   // Jira.
   R('POST', '/api/escalation', 'jira.escalate'),

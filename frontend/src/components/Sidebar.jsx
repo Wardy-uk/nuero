@@ -72,6 +72,7 @@ const GROUPS = [
   { id: 'knowledge', label: 'KNOWLEDGE', items: [
     { id: 'vault',        label: 'Vault',        icon: '>' },
     { id: 'brain-health', label: 'Brain Health', icon: '⋈' },
+    { id: 'plaud-transcripts', label: 'PLAUD transcripts', icon: '≋' },
     { id: 'insights',     label: 'Insights',     icon: '◈' },
     { id: 'decisions',    label: 'Decisions',    icon: '>' },
     { id: 'imports',      label: 'Imports',      icon: '>' },
