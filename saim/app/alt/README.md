@@ -25,48 +25,14 @@ Five destinations only: **SAiM · Now · Review · Capture · Controls**. Now/Re
 are the control's own views, mounted unchanged. Any route they ask for that is not one of the five
 (Tasks, Chat, Prep, Ritual, Who's in) opens NEURO in a new tab with a note — never a sixth screen.
 
-Frame (`AltShell.jsx`, pure): the unchanged `Field` full-screen; a discreet corner (SAiM Alt
-marker, Control/NEURO links, lock); a persistent bottom bar — tagline left, the five icon buttons
-centre, "Updated HH:MM" (the read on screen) right.
-
-The SAiM page (`SaimHome.jsx`) ALWAYS has a work surface — the field gives presence, the foreground
-gives orientation. (A "quiet uncertainty" variant that removed the surface, e309755f, was reverted
-on 13 Oct 2026: it read as an empty screensaver and said "away from the laptop" while the page was
-in use.)
-- **Presence** follows an evidence priority (`model.mjs → presence`): recent use of THIS page
-  (memory-only, 2 min) > the desk agent (which app is in front) > a watch heard in a room (support
-  only, never places Nick). It never says "away from the laptop" while the page is in use; when
-  signals contradict, a compact qualifier: "Signals disagree — desk active; watch last heard in the
-  living room." A NEURO activity read that cannot be true at a desk (watching TV, driving…) is not
-  presented as the thread while the page is in use — it is named as "NEURO last read you as …".
-- **Main work area**: NEURO's thread wording verbatim, or one compact uncertainty line; the step HE
-  named; the server's lifecycle sentences; Best next place + Open only when a named step points at
-  a declared app that is not already in front ("You're already in X. Carry on there." otherwise);
-  "Help me move this forward" reveals the app row on request; "Bring work back" when work is held;
-  and an always-present one-line Ask / Save.
-- **Rail** only when it holds something: a waiting approval, a relevant transition, held work
-  (count + Show held work), and context only when it helps resolve uncertainty.
-
-### Development scenarios (`scenarios.mjs`)
-
-For design review against stable states rather than whatever the live day is doing:
-`https://saim-alt.nickward.co.uk/?scenario=<id>` with `working` (the primary design target),
-`stuck`, `transition`, `judgement`, `calm`, `home`, `conflict`. Anything else — or no parameter —
-is live data.
-- **Alt only.** The control never imports `alt/`; the fixtures are a separate chunk loaded by a
-  dynamic import only when `?scenario=` names a known id. Pinned by `saim-alt-scenarios.test.js`
-  and checked against the control `dist/` (no fixture string, no scenario code).
-- **Real payload shape, real renderer.** Fixtures are `/api/canonical/now` + `/api/session` +
-  the page-activity flag; the live renderer draws them. Each is validated by
-  `model.checkCoherence`.
-- **No side effects.** Nothing is fetched or polled for the SAiM page; every write path (desk
-  open, lifecycle, Bring work back, Ask, Save) returns "Scenario mode — nothing was sent to NEURO or
-  the laptop." The other four tabs remain the live control screens.
-- A dashed `scenario: <id> · live data` marker sits beside the SAiM Alt marker; "live data" drops
-  the parameter.
-- `model.leadOf` decides the ONE state that leads (transition > judgement > thread > calm >
-  context), so contradictions such as "Nothing needs you right now" + "EOD outstanding" cannot
-  render together.
+The SAiM page (`SaimHome.jsx`) over the unchanged `Field`:
+presence (place, desk, operation phase, each with an honest unknown) · the current thread
+(NEURO's primary/current-work wording verbatim, the next step **he** named on the session or
+"No next step named.", lifecycle sentences from the server's utterances) · tool handoff · next
+context change (server transition, else next real meeting) · "Holding N back" with a local
+Show/Hide disclosure · needs-your-judgement (a statement + "Review in NEURO", no approve) ·
+"Ask SAiM or capture anything" (capture through the same outbox; ask matches offered sentences,
+else chat).
 
 ### Tool handoff rules (`model.mjs → toolHandoff`)
 - Only apps in `work.deskOffer.apps` (the agent's declared `canOpen`, intersected server-side with
@@ -74,15 +40,11 @@ is live data.
   the server's reason shown.
 - Top candidate: the app already in front → a tool the work text names (marked uncertain) → the
   first offered app (marked "not sure"). Never an unoffered app.
-- Alternatives in fixed order: AI tools (Claude, ChatGPT — or one disabled "AI assistant" if
-  neither is offered), Music (always), then Outlook, Teams, Obsidian, Excel, Word, NOVA, VANTAGE,
-  NEURO, Plaud, Browser, VS Code, Terminal, SSMS, Postman — whichever the laptop offers.
-- Evidence for the top pick, in order: the app already in front (certain) → the card's kind
-  (email → Outlook) → a word in the work text (both marked "not certain") → first offered (a guess).
-- Adding an app takes two edits on two machines: `APPS` + `BUTTON_LABELS` in
-  `backend/services/desk-intents.js` (deploy NEURO), and the id → `shell:AppsFolder\<AUMID>` line in
-  the laptop's `%LOCALAPPDATA%\neuro-agent\apps.json` (restart the agent). `Get-StartApps` lists
-  the AUMIDs. NEURO keeps up to 32 declared apps per machine.
+- Alternatives in fixed order: AI (always), Music (always), then Browser / VS Code / Terminal.
+- ⚠ **There is no `ai` key in `desk-intents.APPS` yet**, so the AI slot is always shown disabled
+  with "no AI tool is set up on the desk agent yet". To light it: add `ai` to `APPS` and
+  `BUTTON_LABELS` in `backend/services/desk-intents.js` (deploy NEURO) AND map `ai` to a command in
+  the laptop's `%LOCALAPPDATA%\neuro-agent\apps.json` + `canOpen`. Two edits, two machines.
 - Presses use the existing `/api/desktop/intents` queue and report the server's lifecycle:
   waiting → claimed → opened | failed | expired. Never "done".
 - The tool choice is a client-side rule (it picks a TOOL, never which work matters). If the
