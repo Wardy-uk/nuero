@@ -487,13 +487,18 @@ const HELD_WORD = Object.freeze({
   nudge: 'Reminder', approval: 'Approval', 'source-blind': 'A sense', commitment: 'Commitment',
 });
 
+// While a block runs, these resting/ritual readings are not what he is doing —
+// the block is (rule 1). A focus session, a meeting or firefighting still say so.
+const BLOCK_OUTRANKS = new Set(['ritual', 'steady', 'working']);
+
 /** `SAiM · desk active · working` — only the parts that are known. */
-export function presenceLine(canonical) {
+export function presenceLine(canonical, { blockActive = false } = {}) {
   const parts = ['SAiM'];
   const w = canonical && canonical.work;
   if (w && w.deskKnown !== false && typeof w.atDesk === 'boolean') parts.push(w.atDesk ? 'desk active' : 'away from the desk');
   const act = canonical && canonical.context && canonical.context.activity;
-  if (act && DOING[act]) parts.push(DOING[act]);
+  if (blockActive && (!act || BLOCK_OUTRANKS.has(act))) parts.push('in a task block');
+  else if (act && DOING[act]) parts.push(DOING[act]);
   return parts.join(' · ');
 }
 
@@ -505,6 +510,25 @@ export function untilText(minutes) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m ? `In ${h} h ${m} min` : `In ${h} h`;
+}
+
+const TASK_BLOCK_EVENT = /^task block:\s*/i;
+const blocksRead = (taskBlocks) => Array.isArray(taskBlocks && taskBlocks.blocks);
+
+/**
+ * A diary entry as an upcoming transition (rule 3). A solo task block IS a
+ * transition — having no other attendees never removes it. When the block list
+ * was read, a task block's own diary event is skipped (the block is shown from
+ * the block list, by its task); when it was not, the diary entry stands in.
+ */
+function agendaEntry(e, haveBlocks) {
+  const subject = String(e.subject || '');
+  if (TASK_BLOCK_EVENT.test(subject)) {
+    if (haveBlocks) return null;
+    const task = subject.replace(TASK_BLOCK_EVENT, '');
+    return { title: displayTaskTitle(task), fullTitle: task, kind: 'block' };
+  }
+  return { title: subject || 'Meeting', kind: e.attendeesOther === true ? 'meeting' : 'protected' };
 }
 
 const runningMeeting = (canonical) => {
@@ -533,8 +557,9 @@ export function nextUp(canonical, taskBlocks, { now = Date.now(), currentBlockId
     for (const e of a.events || []) {
       const s = sliceTime(e.start);
       if (!s || e.allDay || e.running || toMin(s) <= nowMin) continue;
-      if (starts.has(s) || /^task block:/i.test(String(e.subject || ''))) continue;
-      items.push({ start: s, title: e.subject || 'Meeting', kind: e.attendeesOther === true ? 'meeting' : 'protected' });
+      const ae = agendaEntry(e, blocksRead(taskBlocks));
+      if (starts.has(s) || !ae) continue;
+      items.push({ start: s, ...ae });
     }
   }
   if (!items.length) return null;
@@ -550,8 +575,13 @@ export function workingView({ canonical = null, adhd = null, taskBlocks = null, 
   const sessionLive = Boolean(s && !['done', 'abandoned'].includes(s.status));
   const meeting = runningMeeting(canonical);
 
-  // The current slot: the room he is in, else the block, else protected time,
-  // else the one thing NEURO is raising. Otherwise none — said in one line.
+  // The current slot — explicit precedence (Nick, 14 Oct 2026):
+  //   1. a running meeting (other people are in the room);
+  //   2. the task block — a RUNNING block wins over a ritual (EOD/standup)
+  //      and over due-today work, which are held instead (rule 2);
+  //   3. protected diary time with no block;
+  //   4. the one thing NEURO is raising.
+  // Otherwise none — said in one line.
   let current = null;
   let note = null;
   if (meeting) current = { label: 'In a meeting', start: meeting.start, end: meeting.end, title: meeting.title, kind: 'meeting' };
@@ -581,9 +611,28 @@ export function workingView({ canonical = null, adhd = null, taskBlocks = null, 
     ? { recommended: t.recommended, already: t.already, others: t.others, why: `For “${step}”` }
     : null;
 
-  const held = Array.isArray(canonical && canonical.dropped)
-    ? { count: canonical.dropped.length, items: canonical.dropped.map((d) => ({ title: HELD_WORD[d.type] || d.type || 'Item', why: d.why || null })) }
-    : null;
+  // Rule 4: the block's own wording, checked against its planned date.
+  if (current && current.kind === 'block' && b && b.task) {
+    const due = dueFor(canonical, b.task.taskId);
+    const stale = due ? staleWording(b.task.text, due.date, now) : null;
+    if (stale) { current.stale = { taskId: b.task.taskId, reason: stale }; current.fullTitle = null; }
+  }
+
+  // Rule 2: what the current slot holds with him is the slot; everything else
+  // NEURO is raising — a displaced ritual, overdue and due-today work, and the
+  // items the gate held back — is held, never the main situation.
+  const blockTaskIds = new Set(b ? b.tasks.map((t) => t.taskId) : []);
+  const displaced = current && current.kind !== 'item' ? displacedPrimary(canonical) : null;
+  const owed = current && current.kind !== 'item' ? owedToday(canonical, { now, exclude: blockTaskIds }) : null;
+  const dropped = Array.isArray(canonical && canonical.dropped) ? canonical.dropped : null;
+  let held = null;
+  if (dropped || displaced || (owed && owed.length)) {
+    const items = [];
+    if (displaced) items.push({ title: displaced.title, why: displaced.why, kind: 'ritual' });
+    for (const o of owed || []) items.push(o);
+    for (const d of dropped || []) items.push({ title: HELD_WORD[d.type] || d.type || 'Item', why: d.why || null, kind: d.type || 'other' });
+    held = { count: items.length, items };
+  }
 
   const ap = canonical && canonical.approvals;
   const judgement = ap && ap.known
@@ -591,11 +640,14 @@ export function workingView({ canonical = null, adhd = null, taskBlocks = null, 
     : null;
 
   const moment = current && current.kind === 'meeting' ? meetingMoment(meeting, canonical, taskBlocks, { now }) : null;
-  const phrase = heldPhrase(canonical && canonical.dropped);
-  if (held) held.summary = phrase ? `${moment ? 'Held until you’re out' : 'Held for now'}: ${phrase}.` : 'Nothing held back.';
+  if (held) {
+    const phrase = holdPhrase(displaced, owed, dropped);
+    const lead = moment ? 'Held until you’re out' : current && current.kind === 'block' && b && b.state === 'active' ? 'Held while this block runs' : 'Held for now';
+    held.summary = phrase ? `${lead}: ${phrase}.` : 'Nothing held back.';
+  }
 
   return {
-    presence: presenceLine(canonical),
+    presence: presenceLine(canonical, { blockActive: Boolean(current && current.kind === 'block' && b && b.state === 'active') }),
     current,
     meeting: moment,
     note,
@@ -629,8 +681,9 @@ export function upcoming(canonical, taskBlocks, { now = Date.now(), currentBlock
     for (const e of a.events || []) {
       const s = sliceTime(e.start);
       if (!s || e.allDay || e.running || toMin(s) <= nowMin) continue;
-      if (starts.has(s) || /^task block:/i.test(String(e.subject || ''))) continue;
-      items.push({ start: s, end: sliceTime(e.end), title: e.subject || 'Meeting', kind: e.attendeesOther === true ? 'meeting' : 'protected' });
+      const ae = agendaEntry(e, blocksRead(taskBlocks));
+      if (starts.has(s) || !ae) continue;
+      items.push({ start: s, end: sliceTime(e.end), ...ae });
     }
   }
   return items.sort((x, y) => toMin(x.start) - toMin(y.start));
@@ -711,4 +764,113 @@ export function displayTaskTitle(text) {
   t = t.replace(TRAILING_WHEN, '').trim();
   t = t.replace(/[\s,;:–—-]+$/, '').trim();
   return t.length >= 8 ? t : raw;
+}
+
+// ── Precedence helpers: what is held, and stale task wording (14 Oct 2026) ───
+
+const commitmentsOf = (canonical) => {
+  const s = canonical && canonical.situation && canonical.situation.sections;
+  return Array.isArray(s && s.commitments) ? s.commitments : [];
+};
+const neuroTaskId = (c) => {
+  const m = /^task:neuro:(\d+)$/.exec(String((c && c.taskId) || ''));
+  return m ? Number(m[1]) : null;
+};
+const keyDays = (key) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+  return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86400000 : null;
+};
+
+/** The planned date NEURO holds for a task, from the canonical commitments. */
+export function dueFor(canonical, taskId) {
+  const c = commitmentsOf(canonical).find((x) => neuroTaskId(x) === Number(taskId));
+  return c && c.due && c.due.date ? { date: c.due.date, kind: c.due.kind || null } : null;
+}
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const FULL_DATE = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})\b|\b(\d{4})-(\d{2})-(\d{2})\b/gi;
+const RELATIVE = /\b(tomorrow|tonight|today)\b/i;
+const longDate = (key) => { const [y, m, d] = key.split('-').map(Number); return `${d} ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][m - 1]} ${y}`; };
+
+/**
+ * Does a task's wording contradict its CURRENT planned date? (rule 4)
+ * Only two things are judged, both conservatively: a relative day ("tomorrow",
+ * "today", "tonight") that no longer matches, and a FULL date (with a year) that
+ * differs. A bare "September 30" is left alone — it may be a deadline the task
+ * is about, not when it was planned. Returns the reason, or null.
+ */
+export function staleWording(text, dueDate, now = Date.now()) {
+  const due = keyDays(dueDate);
+  const today = keyDays(dayKeyOf(now));
+  if (due == null || today == null) return null;
+  const t = String(text || '');
+  const rel = RELATIVE.exec(t);
+  const dueWord = due === today ? 'today' : due === today + 1 ? 'tomorrow' : `on ${longDate(dueDate)}`;
+  if (rel) {
+    const word = rel[1].toLowerCase();
+    const says = word === 'tomorrow' ? today + 1 : today;
+    if (says !== due) return `says “${word}” but it’s planned for ${dueWord}`;
+  }
+  FULL_DATE.lastIndex = 0;
+  let m;
+  while ((m = FULL_DATE.exec(t))) {
+    const key = m[4]
+      ? `${m[4]}-${m[5]}-${m[6]}`
+      : `${m[3]}-${String(MONTHS.indexOf(m[2].toLowerCase().slice(0, 3)) + 1).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
+    if (keyDays(key) != null && keyDays(key) !== due) return `names ${longDate(key)} but it’s planned for ${dueWord}`;
+  }
+  return null;
+}
+
+const RITUAL_WORD = (title) => (/\beod\b|end.of.day/i.test(title) ? 'the end-of-day wrap' : /standup|stand-up/i.test(title) ? 'the morning standup' : null);
+
+/** NEURO's top item when the current slot has displaced it (a ritual, a card). */
+export function displacedPrimary(canonical) {
+  const p = canonical && canonical.primary;
+  if (!p || !p.title) return null;
+  if (p.kind === 'context') {
+    const word = RITUAL_WORD(p.title);
+    if (!word) return null; // "In a meeting" and the like describe the slot itself
+    return { title: word.replace(/^the /, '').replace(/^./, (c) => c.toUpperCase()), why: p.reason || p.say || null, phrase: word };
+  }
+  if (p.kind === 'item' && p.type !== 'meeting') return { title: p.title, why: p.reason || null, phrase: 'the top prompt' };
+  return null;
+}
+
+/** Overdue and due-today work NEURO holds, minus what the current block is for. */
+export function owedToday(canonical, { now = Date.now(), exclude = new Set() } = {}) {
+  const today = keyDays(dayKeyOf(now));
+  const out = [];
+  for (const c of commitmentsOf(canonical)) {
+    if (!c || c.state !== 'open' || c.direction !== 'i-owe' || !c.due || !c.due.date) continue;
+    const id = neuroTaskId(c);
+    if (id != null && exclude.has(id)) continue;
+    const d = keyDays(c.due.date);
+    if (d == null || d > today) continue;
+    const days = today - d;
+    const stale = staleWording(c.description, c.due.date, now);
+    out.push({
+      title: displayTaskTitle(c.description),
+      fullTitle: stale ? null : c.description,
+      why: days === 0 ? 'due today' : `${days} day${days === 1 ? '' : 's'} overdue`,
+      kind: days === 0 ? 'due-today' : 'overdue',
+      taskId: id,
+      stale: stale ? { taskId: id, reason: stale } : null,
+    });
+  }
+  return out.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'overdue' ? -1 : 1));
+}
+
+/** "the end-of-day wrap, 1 overdue task and 4 tasks due today and a capacity check" — what is held, by kind. */
+export function holdPhrase(displaced, owed, dropped) {
+  const parts = [];
+  if (displaced) parts.push(displaced.phrase);
+  const over = (owed || []).filter((o) => o.kind === 'overdue').length;
+  const todayN = (owed || []).filter((o) => o.kind === 'due-today').length;
+  if (over) parts.push(over === 1 ? '1 overdue task' : `${over} overdue tasks`);
+  if (todayN) parts.push(todayN === 1 ? '1 task due today' : `${todayN} tasks due today`);
+  const rest = heldPhrase(dropped);
+  if (rest) parts.push(rest);
+  if (!parts.length) return null;
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }

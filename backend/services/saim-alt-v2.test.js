@@ -550,3 +550,110 @@ test('display title: the rail and the current block show the tidy title, with th
   const out = html(h(UI.WorkingView, { v }));
   assert.match(out, /title="Reply to the supplier tomorrow \(15 October 2026\)\. Must do tomorrow\.">Reply to the supplier</);
 });
+
+// ── Precedence: a running block holds the moment (Nick, 14 Oct 2026) ───────
+// Fixture shaped on the live 16:10 read: block 115 running, the EOD ritual as
+// NEURO's primary, five tasks due today (one is the block's own).
+
+function blockOverRitual({ blockText = 'NT-24162: Survey West Hants Responses not showing on CSV and Being recorded', taskBlocks = undefined } = {}) {
+  const now = F.at(16, 10);
+  const commit = (id, description, date) => ({ id: `commitment:task:${id}`, kind: 'commitment', direction: 'i-owe', state: 'open', description, taskId: `task:neuro:${id}`, due: { date, kind: 'set', label: 'today · planned date' } });
+  return {
+    now,
+    session: { session: null },
+    adhd: { blockNow: { blockId: 115, running: true, startTime: '16:00', endTime: '17:30', tasks: [{ taskId: 345, text: blockText }] } },
+    taskBlocks: taskBlocks !== undefined ? taskBlocks : { ok: true, blocks: [
+      { blockId: 115, dateKey: '2026-10-14', startTime: '16:00', endTime: '17:30', status: 'scheduled', passed: false, tasks: [{ taskId: 345, text: blockText }] },
+      { blockId: 118, dateKey: '2026-10-14', startTime: '17:30', endTime: '17:45', status: 'scheduled', passed: false, tasks: [{ taskId: 400, text: 'File the expenses' }] },
+    ] },
+    canonical: {
+      context: { activity: 'ritual' },
+      work: { atDesk: true, deskKnown: true },
+      primary: { kind: 'context', id: 'context-ritual', title: 'EOD outstanding', reason: 'The end-of-day wrap hasn’t been done yet.' },
+      agenda: { known: true, scope: 'today', events: [
+        { start: '2026-10-14T16:00:00.0000000', end: '2026-10-14T17:30:00.0000000', subject: `Task block: ${blockText}`, attendeesOther: false, allDay: false, running: true },
+        { start: '2026-10-14T17:30:00.0000000', end: '2026-10-14T17:45:00.0000000', subject: 'Task block: File the expenses', attendeesOther: false, allDay: false, running: false },
+      ] },
+      dropped: [],
+      utterances: [],
+      approvals: { known: true, needsApproval: 0, needsReview: 0 },
+      situation: { sections: { commitments: [
+        commit(283, 'Nick Ward to send breakdown of Parsons contacts', '2026-10-14'),
+        commit(345, blockText, '2026-10-14'),
+        commit(344, 'Set and confirm Heidi’s end date before September 30; consider short retention into the Christmas period', '2026-10-14'),
+        commit(375, 'West Hants Tennis Club: resolve the outstanding ticket tomorrow (8 October 2026). Must do tomorrow.', '2026-10-14'),
+        commit(200, 'Old overdue thing', '2026-10-10'),
+        commit(500, 'Not yet due', '2026-10-20'),
+      ] } },
+    },
+  };
+}
+
+test('precedence 1: a running block wins over the EOD ritual for the headline and the presence line', () => {
+  const v = M.workingView(blockOverRitual());
+  assert.equal(v.current.kind, 'block');
+  assert.equal(v.current.label, 'Active');
+  assert.equal(v.current.title, 'NT-24162: Survey West Hants Responses not showing on CSV and Being recorded');
+  assert.equal(v.presence, 'SAiM · desk active · in a task block');
+  assert.ok(!/ritual/.test(v.presence));
+  assert.equal(v.actions[0].say, 'I’m on it');
+});
+
+test('precedence 1: a focus session or a meeting still says so beside a running block', () => {
+  const s = blockOverRitual();
+  assert.match(M.workingView({ ...s, canonical: { ...s.canonical, context: { activity: 'in-focus-session' } } }).presence, /focused$/);
+  assert.match(M.presenceLine({ context: { activity: 'ritual' } }), /ritual time$/, 'no block → the ritual is what is happening');
+});
+
+test('precedence 2: the ritual and overdue/due-today work are held, never the main situation; the block’s own task is not', () => {
+  const v = M.workingView(blockOverRitual());
+  const titles = v.held.items.map((i) => i.title);
+  assert.equal(titles[0], 'End-of-day wrap');
+  assert.ok(titles.includes('Nick Ward to send breakdown of Parsons contacts'));
+  assert.ok(titles.includes('Old overdue thing'));
+  assert.ok(!titles.some((t) => /NT-24162/.test(t)), 'the block’s own task is the slot, not held');
+  assert.ok(!titles.includes('Not yet due'));
+  assert.equal(v.held.count, 5);
+  assert.equal(v.held.summary, 'Held while this block runs: the end-of-day wrap, 1 overdue task and 3 tasks due today.');
+});
+
+test('precedence 3: a solo task block is the next transition — and still is when the block list was not read', () => {
+  const v = M.workingView(blockOverRitual());
+  assert.equal(v.next.title, 'File the expenses');
+  assert.equal(v.next.time, '17:30');
+  assert.equal(v.next.kind, 'block');
+  const unread = M.workingView(blockOverRitual({ taskBlocks: null }));
+  assert.equal(unread.next && unread.next.title, 'File the expenses', 'no attendees never removes a transition');
+  assert.equal(unread.next.kind, 'block');
+});
+
+test('precedence 4: wording that contradicts the planned date is flagged and shown neutrally', () => {
+  const v = M.workingView(blockOverRitual());
+  const wh = v.held.items.find((i) => /West Hants Tennis/.test(i.title));
+  assert.equal(wh.title, 'West Hants Tennis Club: resolve the outstanding ticket');
+  assert.equal(wh.stale.taskId, 375);
+  assert.match(wh.stale.reason, /“tomorrow” but it’s planned for today/);
+  const heidi = v.held.items.find((i) => /Heidi/.test(i.title));
+  assert.equal(heidi.stale, null, 'a bare deadline with no year is not judged');
+  assert.equal(M.staleWording('Do it on 14 October 2026', '2026-10-14', F.at(16, 10)), null);
+  assert.match(M.staleWording('Send it (2026-10-08)', '2026-10-14', F.at(16, 10)), /names 8 October 2026/);
+  assert.equal(M.staleWording('Do it tomorrow', '2026-10-15', F.at(16, 10)), null);
+});
+
+test('precedence 4: a stale CURRENT block is flagged under its neutral title, with a route to fix it in NEURO', () => {
+  const v = M.workingView(blockOverRitual({ blockText: 'West Hants Tennis Club: resolve the outstanding ticket tomorrow (8 October 2026). Must do tomorrow.' }));
+  assert.equal(v.current.title, 'West Hants Tennis Club: resolve the outstanding ticket');
+  assert.equal(v.current.stale.taskId, 345);
+  const out = html(h(UI.WorkingView, { v, neuroUrl: 'https://neuro.example' }));
+  assert.match(out, /wording is out of date/);
+  assert.match(out, /\?view=todos/);
+  assert.doesNotMatch(out.split('wk__title')[1].split('</h1>')[0], /tomorrow/);
+});
+
+test('precedence 2: rendered — Holding the day names what it holds and counts out-of-date wording', () => {
+  const v = M.workingView(blockOverRitual());
+  const out = html(h(UI.WorkingView, { v, neuroUrl: 'https://neuro.example', onToggleHeld: () => {}, heldOpen: true }));
+  assert.match(out, /Held while this block runs: the end-of-day wrap/);
+  assert.match(out, /1 held task has out-of-date wording/);
+  assert.match(out, /wording out of date/);
+});

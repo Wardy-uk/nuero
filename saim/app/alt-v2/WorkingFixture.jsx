@@ -49,6 +49,7 @@ export function WorkingView({
                 {c.label.toUpperCase()}{c.start && c.end ? ` · ${c.start}–${c.end}` : ''}
               </p>
               {c.title && <h1 className="wk__title" title={c.fullTitle && c.fullTitle !== c.title ? c.fullTitle : undefined}>{c.title}</h1>}
+              {c.stale && <StaleFlag stale={c.stale} neuroUrl={neuroUrl} />}
               {v.meeting && v.meeting.remaining && <p className="wk__remaining">{v.meeting.remaining}</p>}
               {v.meeting && <p className="wk__holding">SAiM is holding everything else.</p>}
             </div>
@@ -141,11 +142,23 @@ export function WorkingView({
                 <p className="wk__railsub">
                   {v.held.summary || (v.held.count === 0 ? 'Nothing held back.' : `${v.held.count} ${v.held.count === 1 ? 'item' : 'items'} held while this block is live.`)}
                 </p>
+                {staleHeld(v.held) > 0 && (
+                  <p className="wk__railstale">
+                    {staleHeld(v.held) === 1 ? '1 held task has' : `${staleHeld(v.held)} held tasks have`} out-of-date wording
+                    {neuroUrl ? <> — <a className="wk__link wk__link--inline" href={tasksHref(neuroUrl)} target="_blank" rel="noopener noreferrer">fix in NEURO</a></> : null}
+                  </p>
+                )}
                 {v.held.count > 0 && v.held.items.length > 0 && onToggleHeld && (
                   <button type="button" className="wk__link" aria-expanded={heldOpen} onClick={onToggleHeld}>{heldOpen ? 'Hide held work' : 'Show held work'}</button>
                 )}
                 {heldOpen && (
-                  <ul className="wk__held">{v.held.items.map((h, i) => <li key={i}>{h.title}{h.why ? <span className="wk__muted"> — {h.why}</span> : null}</li>)}</ul>
+                  <ul className="wk__held">{v.held.items.map((h, i) => (
+                    <li key={i}>
+                      <span title={h.fullTitle && h.fullTitle !== h.title ? h.fullTitle : undefined}>{h.title}</span>
+                      {h.why ? <span className="wk__muted"> — {h.why}</span> : null}
+                      {h.stale ? <span className="wk__stalemark" title={h.stale.reason}> · wording out of date</span> : null}
+                    </li>
+                  ))}</ul>
                 )}
               </div>
             )}
@@ -166,6 +179,19 @@ export function WorkingView({
         )}
       </div>
     </div>
+  );
+}
+
+const tasksHref = (neuroUrl) => `${String(neuroUrl).replace(/\/+$/, '')}/?view=todos`;
+const staleHeld = (held) => (held && Array.isArray(held.items) ? held.items.filter((h) => h.stale).length : 0);
+
+/** Rule 4: the record's wording contradicts its planned date — said, and routed to NEURO to fix. */
+function StaleFlag({ stale, neuroUrl }) {
+  return (
+    <p className="wk__stale-wording" role="note">
+      The task’s wording is out of date — it {stale.reason}. Showing a neutral title.
+      {neuroUrl ? <> <a className="wk__link wk__link--inline" href={tasksHref(neuroUrl)} target="_blank" rel="noopener noreferrer">Fix the wording in NEURO</a></> : null}
+    </p>
   );
 }
 

@@ -107,3 +107,9 @@
 .wk__cue { margin: 0.6em 0 0; font-size: 0.88em; color: var(--text); opacity: 0.72; }
 .wk__railtitle { overflow-wrap: anywhere; }
 .wk__railmeta { margin: 0.2em 0 0; font-size: 0.86em; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Rule 4 — a task record whose wording contradicts its planned date */
+.wk__stale-wording { margin: 0.5em 0 0; font-size: 0.82em; color: var(--muted); }
+.wk__stalemark { color: var(--warning, #d9a441); }
+.wk__railstale { margin: 0.45em 0 0; font-size: 0.8em; color: var(--muted); }
+.wk__link--inline { margin: 0; font-size: inherit; }
