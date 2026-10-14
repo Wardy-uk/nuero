@@ -1,0 +1,109 @@
+/* SAiM Alt v2 — `working` desktop composition. Scoped under .wk. */
+
+.wk {
+  max-width: 74em; margin: 0 auto;
+  font-size: clamp(16px, 1.05vw, 20px);
+  padding: 6vh 1em 0;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+.wk__presence {
+  margin: 0 0 1.1em; font-size: 0.78em; letter-spacing: 0.04em; color: var(--muted);
+}
+
+.wk__grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); gap: 1.4em; align-items: start; }
+
+.wk__main {
+  background: rgba(10, 14, 20, 0.80); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 16px;
+  padding: 2em 2.2em 1.6em;
+}
+
+.wk__state { display: flex; align-items: center; gap: 0.5em; margin: 0 0 0.7em; font-size: 0.74em; letter-spacing: 0.12em; color: var(--v2-accent); font-weight: 600; }
+.wk__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--v2-accent); box-shadow: 0 0 10px var(--v2-accent); }
+.wk__title { margin: 0; font-family: 'Newsreader', Georgia, serif; font-weight: 400; font-size: 2.3em; line-height: 1.18; color: var(--text); }
+
+.wk__next { margin-top: 1.7em; }
+.wk__k { display: inline-block; margin-right: 0.7em; font-size: 0.7em; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.wk__step { margin: 0; font-size: 1.15em; color: var(--text); }
+.wk__acts { display: flex; flex-wrap: wrap; gap: 0.5em; margin-top: 0.95em; }
+.wk__act {
+  font: inherit; font-size: 0.86em; cursor: pointer; padding: 0.42em 0.95em; border-radius: 999px;
+  color: var(--text); background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.wk__act--lead { border-color: var(--v2-edge); background: rgba(var(--saim-rgb, 114, 150, 211), 0.16); }
+
+.wk__place {
+  margin-top: 1.6em; padding: 1em 1.15em; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03); border-left: 2px solid var(--v2-edge);
+}
+.wk__label { margin: 0 0 0.45em; font-size: 0.68em; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.wk__placerow { display: flex; align-items: center; justify-content: space-between; gap: 1.2em; }
+.wk__app { margin: 0 0 0.2em; font-size: 1.05em; font-weight: 600; color: var(--text); }
+.wk__why { margin: 0; font-size: 0.9em; color: var(--text); opacity: 0.78; }
+.wk__open {
+  flex: none; font: inherit; font-size: 0.9em; cursor: pointer; padding: 0.5em 1.1em; border-radius: 8px;
+  color: var(--text); border: 1px solid var(--v2-edge); background: rgba(var(--saim-rgb, 114, 150, 211), 0.2);
+}
+.wk__already { flex: none; font-size: 0.82em; color: var(--muted); }
+.wk__others { margin: 0.8em 0 0; font-size: 0.86em; color: var(--text); opacity: 0.85; }
+
+.wk__dock { display: flex; gap: 0.45em; margin-top: 1.7em; padding-top: 1.2em; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.wk__ask {
+  flex: 1; min-width: 0; font: inherit; font-size: 0.9em; padding: 0.5em 0.8em; border-radius: 8px;
+  color: var(--text); background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.wk__dockbtn {
+  font: inherit; font-size: 0.84em; cursor: pointer; padding: 0.45em 0.95em; border-radius: 8px;
+  color: var(--text); background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.wk__dockbtn--ask { border-color: var(--v2-edge); }
+
+.wk__rail { display: flex; flex-direction: column; gap: 0.8em; }
+.wk__railitem {
+  background: rgba(10, 14, 20, 0.66); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 0.95em 1.1em;
+}
+.wk__railitem--quiet { background: rgba(10, 14, 20, 0.45); }
+.wk__railitem--quiet .wk__railsub { color: var(--muted); }
+.wk__railtitle { margin: 0 0 0.2em; font-size: 1em; color: var(--text); }
+.wk__railsub { margin: 0; font-size: 0.86em; color: var(--text); opacity: 0.85; }
+.wk__link { margin-top: 0.5em; padding: 0; font: inherit; font-size: 0.82em; cursor: pointer; background: none; border: none; color: var(--v2-accent); }
+
+@media (max-width: 900px) {
+  .wk__grid { grid-template-columns: 1fr; }
+  .wk__title { font-size: 1.8em; }
+  .wk__placerow { flex-direction: column; align-items: flex-start; }
+}
+
+/* Wired states (same composition) */
+.wk__grid--solo { grid-template-columns: minmax(0, 1fr); }
+.wk__stale { margin: 0 0 0.8em; font-size: 0.8em; color: #f5c66b; }
+.wk__note { margin: 0.6em 0 0; font-size: 0.95em; color: var(--muted); }
+.wk__note--lead { margin: 0; font-family: 'Newsreader', Georgia, serif; font-size: 1.35em; color: var(--text); opacity: 0.8; }
+.wk__openwrap { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3em; }
+.wk__desk { font-size: 0.78em; color: var(--muted); }
+.wk__otherbtn { font: inherit; padding: 0; background: none; border: none; cursor: pointer; color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.25); text-underline-offset: 3px; }
+.wk__otherbtn:hover { color: var(--v2-accent); }
+.wk__act:disabled, .wk__open:disabled, .wk__otherbtn:disabled { opacity: 0.5; cursor: default; }
+.wk__held { margin: 0.5em 0 0; padding-left: 1.1em; font-size: 0.82em; }
+.wk__held li { margin: 0.2em 0; }
+.wk__muted { color: var(--muted); }
+.wk__dockwrap { margin-top: 1.7em; padding-top: 1.2em; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.wk__dockwrap .wk__dock { margin-top: 0; padding-top: 0; border-top: none; }
+.wk__docknote { margin: 0.5em 0 0; font-size: 0.8em; color: var(--muted); }
+.wk__docknote.is-bad { color: #f5c66b; }
+.wk__answer { margin-bottom: 0.7em; padding: 0.7em 0.85em; border-radius: 8px; background: rgba(0, 0, 0, 0.3); font-size: 0.9em; }
+
+/* In a meeting — the same geometry, holding the moment */
+.wk__remaining { margin: 0.55em 0 0; font-size: 1.15em; color: var(--text); }
+.wk__holding { margin: 0.35em 0 0; font-size: 0.92em; color: var(--muted); }
+.wk__after {
+  margin-top: 1.6em; padding: 1em 1.15em; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03); border-left: 2px solid var(--v2-edge);
+}
+.wk__afterrow { margin: 0; display: flex; gap: 1em; align-items: baseline; }
+.wk__aftertime { flex: none; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.95em; }
+.wk__aftertitle { font-size: 1.05em; color: var(--text); }
+.wk__cue { margin: 0.6em 0 0; font-size: 0.88em; color: var(--text); opacity: 0.72; }
+.wk__railtitle { overflow-wrap: anywhere; }
+.wk__railmeta { margin: 0.2em 0 0; font-size: 0.86em; color: var(--muted); font-variant-numeric: tabular-nums; }

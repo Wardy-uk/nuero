@@ -10,12 +10,12 @@ import { isPressing } from '../../shared-ui/useFieldDrive';
 import '../../shared-ui/Lit.css';
 import Shell from './Shell';
 import Dock from './Dock';
-import { SaimPageView } from './SaimPage';
+import { WorkingView } from './WorkingFixture';
 import { NowPageView } from './NowPage';
 import { BriefingPageView } from './BriefingPage';
 import { ControlsPageView } from './ControlsPage';
 import {
-  DEFAULT_TAB, resolveTab, parseDeepLink, neuroLink, driveFrom, deskStateSettled, hhmmOf,
+  DEFAULT_TAB, resolveTab, parseDeepLink, neuroLink, driveFrom, deskStateSettled, hhmmOf, workingView,
 } from './model.mjs';
 import '../src/App.css';
 import './v2.css';
@@ -145,6 +145,14 @@ export default function App() {
   const onAct = (u) => run(async () => {
     const intent = u && u.intent;
     if (!intent) return;
+    if (intent.kind === 'start-block') {
+      await apiFetch('/api/session/start', {
+        method: 'POST', body: JSON.stringify({ taskId: intent.taskId, text: intent.text, source: 'task-block' }),
+      }).catch((e) => refused(e, (m) => (/session-active/.test(m)
+        ? 'Something else is already running — finish or pause it first. Nothing was started.'
+        : `Not started — ${m}`)));
+      return;
+    }
     if (intent.kind === 'act') {
       if (!intent.recordId) { setActNote('That card has no record to act on — nothing was changed.'); return; }
       const res = await apiFetch(`/api/attention/records/${encodeURIComponent(intent.recordId)}/act`, {
@@ -174,19 +182,6 @@ export default function App() {
 
   // A refusal comes back as an HTTP error; say what NEURO meant, not the status line.
   const refused = (e, plain) => { throw new Error(plain(String((e && e.message) || ''))); };
-
-  const onStartBlock = (task, step) => run(async () => {
-    await apiFetch('/api/session/start', {
-      method: 'POST', body: JSON.stringify({ taskId: task.taskId, text: task.text, source: 'task-block', nextStep: step || null }),
-    }).catch((e) => refused(e, (m) => (/session-active/.test(m)
-      ? 'Something else is already running — finish or pause it first. Nothing was started.'
-      : `Not started — ${m}`)));
-  });
-
-  const onNameStep = (step) => run(async () => {
-    await apiFetch('/api/session/next-step', { method: 'POST', body: JSON.stringify({ step }) })
-      .catch((e) => refused(e, (m) => (/no-session/.test(m) ? 'The step wasn’t saved — no session is running.' : `The step wasn’t saved — ${m}`)));
-  });
 
   async function deskOpen(app) {
     setDeskStates((s) => ({ ...s, [app]: 'waiting' }));
@@ -220,12 +215,27 @@ export default function App() {
 
   let page;
   if (route.tab === 'saim') {
+    // Nothing read yet: the same composition, saying so — never a guess about the day.
+    const v = (day.canonical || day.adhd)
+      ? workingView({ ...day, now: Date.now() })
+      : {
+        presence: 'SAiM', current: null, step: null, actions: [], tools: null, next: null, held: null, judgement: null,
+        note: day.error ? `I can’t reach NEURO — ${day.error}.` : 'Reading the day…',
+      };
+    // A deep link names a block or a record: say plainly when it has moved on.
+    let focusNote = null;
+    if (route.focus && route.focus.blockId && !(v.current && v.current.blockId === route.focus.blockId)) {
+      focusNote = 'That block isn’t the current one any more.';
+    } else if (route.focus && route.focus.recordId && !v.actions.some((a) => a.intent && a.intent.recordId === route.focus.recordId)) {
+      focusNote = 'That item isn’t current any more — NEURO has moved on.';
+    }
     page = (
-      <SaimPageView
-        {...day} focus={route.focus} busy={busy}
-        onAct={onAct} onStartBlock={onStartBlock} onNameStep={onNameStep}
-        onDeskOpen={deskReachable ? deskOpen : null} deskStates={deskStates}
-        dock={<Dock utterances={day.canonical?.utterances} onSay={onAct} />}
+      <WorkingView
+        v={v} busy={busy} error={(day.canonical || day.adhd) ? day.error : null}
+        focus={focusNote ? { note: focusNote } : null}
+        onAct={onAct} heldOpen={heldOpen} onToggleHeld={() => setHeldOpen((o) => !o)}
+        onDeskOpen={deskReachable ? deskOpen : null} deskStates={deskStates} neuroUrl={NEURO_URL}
+        dock={<Dock variant="wk" utterances={day.canonical?.utterances} onSay={onAct} />}
       />
     );
   } else if (route.tab === 'now') {
@@ -245,6 +255,7 @@ export default function App() {
       onGo={go}
       drive={drive}
       updated={updated}
+      footer="SAiM Alt · comparison build"
       onLock={() => { clearPin(); setAuthed(false); }}
       marker={<a className="v2__ctl" href={CONTROL_URL}>Control ↗</a>}
     >

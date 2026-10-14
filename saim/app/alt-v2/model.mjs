@@ -471,3 +471,219 @@ export function driveFrom(d, isPressing) {
     pressing: typeof isPressing === 'function' ? Boolean(isPressing(d.primary)) : false,
   };
 }
+
+// ── The `working` desktop composition (approved layout, 14 Oct 2026) ────────
+//
+// One view-model for the whole SAiM page. Each part is FROM canonical data or
+// is ABSENT — a missing part hides that part only; the surface never falls
+// back to a generic card, and nothing is invented to fill a slot.
+
+const DOING = Object.freeze({
+  working: 'working', steady: 'working', 'in-focus-session': 'focused', firefighting: 'firefighting',
+  'in-meeting': 'in a meeting', 'pre-meeting': 'meeting soon', ritual: 'ritual time', off: 'off duty', away: 'away',
+});
+const HELD_WORD = Object.freeze({
+  todo: 'Tasks', capacity: 'Capacity', email: 'Email', escalation: 'Escalation', meeting: 'Meeting',
+  nudge: 'Reminder', approval: 'Approval', 'source-blind': 'A sense', commitment: 'Commitment',
+});
+
+/** `SAiM · desk active · working` — only the parts that are known. */
+export function presenceLine(canonical) {
+  const parts = ['SAiM'];
+  const w = canonical && canonical.work;
+  if (w && w.deskKnown !== false && typeof w.atDesk === 'boolean') parts.push(w.atDesk ? 'desk active' : 'away from the desk');
+  const act = canonical && canonical.context && canonical.context.activity;
+  if (act && DOING[act]) parts.push(DOING[act]);
+  return parts.join(' · ');
+}
+
+/** "In 49 minutes", "In 1 h 12 min", "Now". Minutes from wall-clock HH:MM. */
+export function untilText(minutes) {
+  if (minutes == null || !Number.isFinite(minutes)) return null;
+  if (minutes <= 0) return 'Now';
+  if (minutes < 60) return `In ${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `In ${h} h ${m} min` : `In ${h} h`;
+}
+
+const runningMeeting = (canonical) => {
+  const a = canonical && canonical.agenda;
+  if (!a || !a.known || a.scope !== 'today') return null;
+  const e = (a.events || []).find((x) => x && x.running && !x.allDay && x.attendeesOther === true);
+  return e ? { start: sliceTime(e.start), end: sliceTime(e.end), title: e.subject || 'Meeting' } : null;
+};
+
+/**
+ * What is next TODAY after now: a meeting, a task block or protected diary
+ * time — whichever starts first. A task block's own event is shown by its
+ * task, never twice. Null when nothing is left or the diary was not read.
+ */
+export function nextUp(canonical, taskBlocks, { now = Date.now(), currentBlockId = null } = {}) {
+  const nowMin = toMin(hhmmOf(now));
+  const items = [];
+  const blocks = todaysOpenBlocks(taskBlocks, { now, currentId: currentBlockId });
+  for (const b of blocks) {
+    if (b.current || b.blockId === currentBlockId) continue;
+    if (toMin(b.startTime) > nowMin) items.push({ start: b.startTime, title: b.tasks.length === 1 ? b.tasks[0].text : `${b.tasks.length} tasks`, kind: 'block' });
+  }
+  const starts = new Set(items.map((i) => i.start));
+  const a = canonical && canonical.agenda;
+  if (a && a.known && a.scope === 'today') {
+    for (const e of a.events || []) {
+      const s = sliceTime(e.start);
+      if (!s || e.allDay || e.running || toMin(s) <= nowMin) continue;
+      if (starts.has(s) || /^task block:/i.test(String(e.subject || ''))) continue;
+      items.push({ start: s, title: e.subject || 'Meeting', kind: e.attendeesOther === true ? 'meeting' : 'protected' });
+    }
+  }
+  if (!items.length) return null;
+  items.sort((x, y) => toMin(x.start) - toMin(y.start));
+  const n = items[0];
+  return { label: 'Next', title: n.title, time: n.start, kind: n.kind, inText: untilText(toMin(n.start) - nowMin) };
+}
+
+export function workingView({ canonical = null, adhd = null, taskBlocks = null, session = null, now = Date.now() } = {}) {
+  const base = saimView({ canonical, adhd, taskBlocks, session, now });
+  const b = base.block;
+  const s = session && session.session;
+  const sessionLive = Boolean(s && !['done', 'abandoned'].includes(s.status));
+  const meeting = runningMeeting(canonical);
+
+  // The current slot: the room he is in, else the block, else protected time,
+  // else the one thing NEURO is raising. Otherwise none — said in one line.
+  let current = null;
+  let note = null;
+  if (meeting) current = { label: 'In a meeting', start: meeting.start, end: meeting.end, title: meeting.title, kind: 'meeting' };
+  else if (b) {
+    const word = { active: 'Active', upcoming: 'Up next', interrupted: 'Interrupted', complete: 'Complete' }[b.state];
+    current = { label: word, start: b.startTime, end: b.endTime, title: b.task ? b.task.text : null, kind: 'block', blockId: b.blockId };
+    if (!b.task) note = base.uncertain;
+  } else if (base.protectedTime) {
+    current = { label: 'Protected', start: base.protectedTime.start, end: base.protectedTime.end, title: base.protectedTime.title, kind: 'protected' };
+    note = 'No task block names what this time is for.';
+  } else if (base.item) {
+    current = { label: 'Now', start: null, end: null, title: base.item.title, kind: 'item' };
+  } else note = base.uncertain;
+  if (current && current.title == null && !note) note = base.uncertain;
+
+  // Actions: NEURO's own lifecycle sentences; plus starting the block's named
+  // task, which is the one way to say "I'm on it" to NEURO.
+  const actions = [];
+  if (!meeting && b && b.task && !sessionLive && (b.state === 'active' || b.state === 'upcoming')) {
+    actions.push({ say: 'I’m on it', intent: { kind: 'start-block', taskId: b.task.taskId, text: b.task.text } });
+  }
+  for (const u of [...base.actions, ...base.transitionActions]) actions.push({ say: u.say, intent: u.intent });
+
+  const step = base.step || null;
+  const t = tools(canonical, base);
+  const toolsView = step && (t.recommended || t.already || t.others.length)
+    ? { recommended: t.recommended, already: t.already, others: t.others, why: `For “${step}”` }
+    : null;
+
+  const held = Array.isArray(canonical && canonical.dropped)
+    ? { count: canonical.dropped.length, items: canonical.dropped.map((d) => ({ title: HELD_WORD[d.type] || d.type || 'Item', why: d.why || null })) }
+    : null;
+
+  const ap = canonical && canonical.approvals;
+  const judgement = ap && ap.known
+    ? { count: (ap.needsApproval || 0) + (ap.needsReview || 0), say: ap.say || null, where: ap.where || null }
+    : null;
+
+  const moment = current && current.kind === 'meeting' ? meetingMoment(meeting, canonical, taskBlocks, { now }) : null;
+  const phrase = heldPhrase(canonical && canonical.dropped);
+  if (held) held.summary = phrase ? `${moment ? 'Held until you’re out' : 'Held for now'}: ${phrase}.` : 'Nothing held back.';
+
+  return {
+    presence: presenceLine(canonical),
+    current,
+    meeting: moment,
+    note,
+    step,
+    actions,
+    tools: toolsView,
+    next: moment ? moment.then : nextUp(canonical, taskBlocks, { now, currentBlockId: b && b.blockId }),
+    held: held && held.count ? held : (held ? { count: 0, items: [] } : null),
+    judgement,
+    blind: base.blind,
+  };
+}
+
+// ── In a meeting: SAiM holding the moment (14 Oct 2026) ─────────────────────
+
+// NEURO's own Plaud admin block (plaud-admin-blocks.SUBJECT_PREFIX) — booked to
+// process the recording of the meeting it is named after.
+const WRITE_UP_PREFIX = 'Plaud admin — ';
+
+/** Everything still to start today, in clock order, each with its end. */
+export function upcoming(canonical, taskBlocks, { now = Date.now(), currentBlockId = null } = {}) {
+  const nowMin = toMin(hhmmOf(now));
+  const items = [];
+  for (const b of todaysOpenBlocks(taskBlocks, { now, currentId: currentBlockId })) {
+    if (b.current || b.blockId === currentBlockId || toMin(b.startTime) <= nowMin) continue;
+    items.push({ start: b.startTime, end: b.endTime, title: b.tasks.length === 1 ? b.tasks[0].text : `${b.tasks.length} tasks`, kind: 'block' });
+  }
+  const starts = new Set(items.map((i) => i.start));
+  const a = canonical && canonical.agenda;
+  if (a && a.known && a.scope === 'today') {
+    for (const e of a.events || []) {
+      const s = sliceTime(e.start);
+      if (!s || e.allDay || e.running || toMin(s) <= nowMin) continue;
+      if (starts.has(s) || /^task block:/i.test(String(e.subject || ''))) continue;
+      items.push({ start: s, end: sliceTime(e.end), title: e.subject || 'Meeting', kind: e.attendeesOther === true ? 'meeting' : 'protected' });
+    }
+  }
+  return items.sort((x, y) => toMin(x.start) - toMin(y.start));
+}
+
+/** "21 minutes left", "1 h 5 min left", "Due to end now". */
+export function remainingText(endHHMM, now = Date.now()) {
+  const left = toMin(endHHMM) - toMin(hhmmOf(now));
+  if (!Number.isFinite(left)) return null;
+  if (left <= 0) return 'Due to end now';
+  const t = untilText(left);
+  return t ? `${t.replace(/^In /, '')} left` : null;
+}
+
+/**
+ * The meeting state's extra parts: time remaining, the immediate transition
+ * after it, a continuity cue ONLY when NEURO has booked write-up time for this
+ * very meeting, and what comes after that (the rail's card).
+ */
+export function meetingMoment(meeting, canonical, taskBlocks, { now = Date.now() } = {}) {
+  const items = upcoming(canonical, taskBlocks, { now });
+  const after = items.find((i) => toMin(i.start) >= toMin(meeting.end)) || null;
+  let cue = null;
+  if (after && after.kind === 'protected' && after.title === `${WRITE_UP_PREFIX}${meeting.title}`) {
+    after.title = 'Write-up time for this meeting';
+    after.writeUp = true;
+    cue = 'Already in the diary, so nothing from this meeting needs holding in your head.';
+  }
+  const thenItem = after ? items[items.indexOf(after) + 1] || null : null;
+  return {
+    remaining: remainingText(meeting.end, now),
+    after,
+    cue,
+    then: thenItem ? { label: 'Then', title: thenItem.title, time: thenItem.start, inText: untilText(toMin(thenItem.start) - toMin(hhmmOf(now))) } : null,
+  };
+}
+
+const HELD_PHRASE = Object.freeze({
+  todo: (n) => (n === 1 ? 'overdue tasks' : `${n} task prompts`),
+  capacity: (n) => (n === 1 ? 'a capacity check' : `${n} capacity checks`),
+  meeting: (n) => (n === 1 ? 'a diary reminder' : `${n} diary reminders`),
+  email: (n) => (n === 1 ? 'an email' : `${n} emails`),
+  escalation: (n) => (n === 1 ? 'an escalation' : `${n} escalations`),
+  nudge: (n) => (n === 1 ? 'a reminder' : `${n} reminders`),
+  approval: (n) => (n === 1 ? 'an approval' : `${n} approvals`),
+  commitment: (n) => (n === 1 ? 'a commitment' : `${n} commitments`),
+});
+
+/** "overdue tasks, 2 capacity checks and 2 diary reminders" — what is protected, by kind. */
+export function heldPhrase(dropped) {
+  if (!Array.isArray(dropped) || !dropped.length) return null;
+  const counts = new Map();
+  for (const d of dropped) counts.set(d.type || 'other', (counts.get(d.type || 'other') || 0) + 1);
+  const parts = [...counts].map(([t, n]) => (HELD_PHRASE[t] ? HELD_PHRASE[t](n) : `${n} ${t}`));
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}

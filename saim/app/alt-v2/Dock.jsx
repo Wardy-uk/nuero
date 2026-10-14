@@ -40,7 +40,8 @@ export async function runCapture(content, io) {
   }
 }
 
-export default function Dock({ utterances, onSay, deps = null }) {
+export default function Dock({ utterances, onSay, deps = null, variant = null }) {
+  const wk = variant === 'wk';
   const io = deps || { enqueue, flush, outcomeFor, chatStream, apiFetch };
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -95,25 +96,25 @@ export default function Dock({ utterances, onSay, deps = null }) {
   return (
     <div className="v2-dockbox" aria-label="Ask SAiM or capture">
       {answer && (
-        <div className="v2-answer">
+        <div className={wk ? 'wk__answer' : 'v2-answer'}>
           <p className="v2-answer__q">{answer.question}</p>
           <p className="v2-answer__a">{answer.error ? `I couldn’t answer — ${answer.error}` : (answer.text || (answer.thinking ? '…' : ''))}</p>
           <button type="button" className="v2-link" onClick={() => setAnswer(null)}>Clear</button>
         </div>
       )}
-      <div className="v2-dockrow">
+      <div className={wk ? 'wk__dock' : 'v2-dockrow'}>
         <input
-          className="v2-input"
+          className={wk ? 'wk__ask' : 'v2-input'}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ask(); } }}
-          placeholder="Ask SAiM, or capture a thought"
+          placeholder={wk ? 'Ask SAiM or capture anything…' : 'Ask SAiM, or capture a thought'}
           aria-label="Ask SAiM, or capture a thought"
         />
-        <button type="button" className="v2-pill v2-pill--strong" disabled={busy || !text.trim()} onClick={ask}>Ask</button>
-        <button type="button" className="v2-pill" disabled={busy || !text.trim()} onClick={capture}>Capture</button>
+        <button type="button" className={wk ? 'wk__dockbtn wk__dockbtn--ask' : 'v2-pill v2-pill--strong'} disabled={busy || !text.trim()} onClick={ask}>Ask</button>
+        <button type="button" className={wk ? 'wk__dockbtn' : 'v2-pill'} disabled={busy || !text.trim()} onClick={capture}>Capture</button>
       </div>
-      {note && <p className={`v2-docknote${note.ok ? '' : ' is-bad'}`} role="status">{note.msg}</p>}
+      {note && <p className={`${wk ? 'wk__docknote' : 'v2-docknote'}${note.ok ? '' : ' is-bad'}`} role="status">{note.msg}</p>}
     </div>
   );
 }

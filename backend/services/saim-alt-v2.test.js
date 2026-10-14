@@ -42,6 +42,7 @@ test.before(async () => {
     "export { BriefingPageView } from './BriefingPage.jsx';",
     "export { ControlsPageView } from './ControlsPage.jsx';",
     "export { default as Shell } from './Shell.jsx';",
+    "export { WorkingView, default as WorkingFixture } from './WorkingFixture.jsx';",
     "export { runCapture, captureNote } from './Dock.jsx';",
   ].join('\n');
   const out = await esbuild.build({
@@ -400,4 +401,122 @@ test('the v2 env carries no secret and only the treatment’s hosts', () => {
   const hosts = lines.find((l) => l.startsWith('VITE_ALLOWED_HOSTS=')).split('=')[1].split(',');
   assert.ok(hosts.includes('saim-alt.nickward.co.uk'));
   assert.ok(!hosts.some((x) => /^(saim|sara|saim-alt-v1)\.nickward\.co\.uk$|^saim-nickward\.netlify\.app$/.test(x)), 'never the control’s or v1’s hosts');
+});
+
+// ── The `working` composition, wired (14 Oct 2026) ──────────────────────────
+
+test('working: an active block with a named step carries the block, NEURO’s actions, tools and the rail', () => {
+  const s = sc('active-block');
+  const v = M.workingView(s);
+  assert.equal(v.current.kind, 'block');
+  assert.equal(v.current.title, 'Build the Q4 cover rota spreadsheet');
+  assert.equal(v.step, 'Fill in the week-1 shift breakdown');
+  assert.deepEqual(v.actions.map((a) => a.say), ['That’s done', 'I got pulled away'], 'a live session: no second "I’m on it"');
+  assert.equal(v.tools.recommended.id, 'excel');
+  assert.equal(v.next.title, 'Weekly support leads');
+  assert.equal(v.next.inText, 'In 1 h 8 min');
+});
+
+test('working: a running meeting is the current slot, with its own sentences, and no tools without a step', () => {
+  const s = sc('active-block');
+  const meetingNow = F.at(11, 10);
+  const v = M.workingView({ ...s, now: meetingNow, canonical: { ...s.canonical, agenda: { ...s.canonical.agenda, events: s.canonical.agenda.events.map((e) => ({ ...e, running: e.subject === 'Weekly support leads' })) } }, session: { session: null }, adhd: { blockNow: null } });
+  assert.equal(v.current.kind, 'meeting');
+  assert.equal(v.current.label, 'In a meeting');
+  assert.equal(v.tools, null);
+  assert.ok(!v.actions.some((a) => a.intent && a.intent.kind === 'start-block'));
+});
+
+test('working: a block with no session offers "I’m on it" as a real session start', () => {
+  const s = sc('active-block');
+  const v = M.workingView({ ...s, session: { session: null } });
+  assert.equal(v.actions[0].say, 'I’m on it');
+  assert.equal(v.actions[0].intent.kind, 'start-block');
+  assert.equal(v.actions[0].intent.taskId, s.adhd.blockNow.tasks[0].taskId);
+  assert.equal(v.tools, null, 'no named step yet → no tools');
+});
+
+test('working: an absent part is hidden, never invented — and nothing replaces the surface', () => {
+  const v = M.workingView({ canonical: { context: { activity: 'steady' }, agenda: { known: false } }, adhd: { blockNow: null }, taskBlocks: null, session: null });
+  assert.equal(v.current, null);
+  assert.ok(v.note, 'one honest line instead');
+  assert.equal(v.next, null);
+  assert.equal(v.held, null, 'no held list read → no held card');
+  assert.equal(v.judgement, null, 'approvals not read → no judgement card');
+  const out = html(h(UI.WorkingView, { v }));
+  assert.doesNotMatch(out, /Holding the day|Needs your judgement|Best next place|>Next</);
+  assert.match(out, /wk__main/);
+});
+
+test('working: an unknown approvals read hides the card; a known zero says nothing is waiting', () => {
+  const s = sc('active-block');
+  assert.equal(M.workingView({ ...s, canonical: { ...s.canonical, approvals: { known: false } } }).judgement, null);
+  const v = M.workingView({ ...s, canonical: { ...s.canonical, approvals: { known: true, needsApproval: 0, needsReview: 0 } } });
+  assert.equal(v.judgement.count, 0);
+  assert.match(html(h(UI.WorkingView, { v })), /Nothing waiting for your judgement/);
+});
+
+test('working: the approved fixture still renders the approved layout', () => {
+  const out = html(h(UI.WorkingFixture));
+  for (const s of ['ACTIVE · 14:00–15:00', 'Customer Care training plan and refreshers', 'Best next place', 'Open Claude', 'Holding the day', 'Needs your judgement']) assert.ok(out.includes(s), s);
+});
+
+// ── In a meeting: holding the moment ────────────────────────────────────────
+
+function inMeeting({ writeUp = true } = {}) {
+  const now = F.at(15, 9);
+  const ev = (sh, sm, eh, em, subject, attendeesOther) => ({
+    start: `2026-10-14T${String(sh).padStart(2, '0')}:${String(sm).padStart(2, '0')}:00.0000000`,
+    end: `2026-10-14T${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}:00.0000000`,
+    subject, attendeesOther, allDay: false, running: F.at(sh, sm) <= now && now < F.at(eh, em),
+  });
+  const events = [ev(15, 0, 15, 30, 'Weekly support leads', true)];
+  if (writeUp) events.push(ev(15, 30, 15, 35, 'Plaud admin — Weekly support leads', false));
+  events.push(ev(15, 35, 15, 55, 'Task block: Reply to the supplier', false));
+  const s = sc('upcoming-meeting');
+  return {
+    now,
+    adhd: { blockNow: null },
+    session: { session: null },
+    taskBlocks: { ok: true, blocks: [{ blockId: 9, tasks: [{ taskId: 90, text: 'Reply to the supplier' }], dateKey: '2026-10-14', startTime: '15:35', endTime: '15:55', status: 'scheduled', passed: false }] },
+    canonical: {
+      ...s.canonical, primary: { kind: 'context', title: 'In a meeting' }, context: { activity: 'in-meeting' },
+      agenda: { known: true, scope: 'today', events },
+      utterances: [
+        { say: 'That’s finished', intent: { kind: 'meeting', action: 'finished', key: 'k' } },
+        { say: 'I’m not in it', intent: { kind: 'meeting', action: 'not-attending', key: 'k' } },
+      ],
+      dropped: [{ id: 'a', type: 'todo' }, { id: 'b', type: 'capacity' }, { id: 'c', type: 'capacity' }, { id: 'd', type: 'meeting' }],
+      approvals: { known: true, needsApproval: 0, needsReview: 0 },
+    },
+  };
+}
+
+test('in a meeting: time left, the transition after it, the write-up cue, and the rail moves on to what follows', () => {
+  const v = M.workingView(inMeeting());
+  assert.equal(v.current.kind, 'meeting');
+  assert.equal(v.meeting.remaining, '21 minutes left');
+  assert.equal(v.meeting.after.start, '15:30');
+  assert.equal(v.meeting.after.title, 'Write-up time for this meeting');
+  assert.ok(v.meeting.cue);
+  assert.equal(v.next.label, 'Then');
+  assert.equal(v.next.title, 'Reply to the supplier', 'the rail does not repeat the transition');
+  assert.equal(v.held.summary, 'Held until you’re out: overdue tasks, 2 capacity checks and a diary reminder.');
+  assert.deepEqual(v.actions.map((a) => a.say), ['That’s finished', 'I’m not in it']);
+  const out = html(h(UI.WorkingView, { v, onAct: () => {} }));
+  for (const s2 of ['21 minutes left', 'SAiM is holding everything else.', 'After this', 'Write-up time for this meeting', 'Held until you’re out']) assert.ok(out.includes(s2.replace(/’/g, '’')), s2);
+  assert.match(out, /wk__railtitle">Reply to the supplier<\/p><p class="wk__railmeta">15:35 · In 26 minutes/, 'title and time on separate lines');
+});
+
+test('in a meeting: no write-up booked means no continuity cue — never an invented one', () => {
+  const v = M.workingView(inMeeting({ writeUp: false }));
+  assert.equal(v.meeting.cue, null);
+  assert.equal(v.meeting.after.title, 'Reply to the supplier');
+  assert.equal(v.next, null, 'nothing after the transition → no rail card');
+});
+
+test('in a meeting: a write-up block for a DIFFERENT meeting is not this one’s', () => {
+  const s = inMeeting();
+  s.canonical.agenda.events[1].subject = 'Plaud admin — Some other meeting';
+  assert.equal(M.workingView(s).meeting.cue, null);
 });
