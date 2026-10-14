@@ -9,6 +9,8 @@
     "build": "vite build",
     "build:alt": "vite build --config vite.config.alt.js --mode alt",
     "dev:alt": "vite --config vite.config.alt.js --mode alt",
+    "build:alt2": "vite build --config vite.config.alt2.js --mode alt2",
+    "dev:alt2": "vite --config vite.config.alt2.js --mode alt2",
     "preview": "vite preview"
   },
   "dependencies": {

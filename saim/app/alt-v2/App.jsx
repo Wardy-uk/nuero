@@ -1,0 +1,261 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { getPin, clearPin, apiFetch } from '../src/api';
+import LockScreen from '../src/components/LockScreen';
+import DeploymentGuard from '../src/components/DeploymentGuard';
+import { readRuntime } from '../src/runtime';
+import { startAutoFlush } from '../src/mobile/outbox';
+import Review from '../src/views/Review';
+import Capture from '../src/views/Capture';
+import { isPressing } from '../../shared-ui/useFieldDrive';
+import '../../shared-ui/Lit.css';
+import Shell from './Shell';
+import Dock from './Dock';
+import { SaimPageView } from './SaimPage';
+import { NowPageView } from './NowPage';
+import { BriefingPageView } from './BriefingPage';
+import { ControlsPageView } from './ControlsPage';
+import {
+  DEFAULT_TAB, resolveTab, parseDeepLink, neuroLink, driveFrom, deskStateSettled, hhmmOf,
+} from './model.mjs';
+import '../src/App.css';
+import './v2.css';
+
+// SAiM Alt v2 — the actionable daily front door, over her unchanged field.
+//
+// Six destinations: SAiM · Now · Briefing · Review · Capture · Controls.
+// Review and Capture are the control's own views, mounted unchanged (Capture
+// keeps its offline queue). Controls is this build's own page: the control's
+// offers "Turn notifications on", which would subscribe THIS origin to push and
+// double every notification during the A/B run.
+// Anything else a view asks for is NEURO's control room and opens there.
+//
+// ⚠ Isolation, so the A/B run cannot touch the control: no service worker (so
+//   no push subscription — push stays on the control), no screen-usage
+//   reporting, its own origin (own PIN, own capture outbox).
+// ⚠ One read, every surface: SAiM and Now render the SAME polled payloads, and
+//   the field is driven from that same canonical read.
+
+const ENV = import.meta.env || {};
+const NEURO_URL = ENV.VITE_NEURO_URL || ENV.VITE_API_URL || '';
+const CONTROL_URL = ENV.VITE_CONTROL_URL || 'https://saim.nickward.co.uk';
+const POLL_MS = 60_000;
+
+function initialRoute() {
+  if (typeof window === 'undefined') return { tab: DEFAULT_TAB, focus: null };
+  const d = parseDeepLink(window.location.search);
+  return d ? { tab: d.tab, focus: (d.recordId || d.blockId) ? { recordId: d.recordId, blockId: d.blockId } : null } : { tab: DEFAULT_TAB, focus: null };
+}
+
+export default function App() {
+  const runtime = readRuntime();
+  const [authed, setAuthed] = useState(() => !!getPin());
+  const [route, setRoute] = useState(initialRoute);
+  const [handoff, setHandoff] = useState(null);
+  const [day, setDay] = useState({ canonical: null, adhd: null, taskBlocks: null, session: null, error: null, at: null });
+  const [briefing, setBriefing] = useState({ resp: null, error: null });
+  const [controls, setControls] = useState({ resp: null, error: null, busy: false });
+  const [busy, setBusy] = useState(false);
+  const [actNote, setActNote] = useState(null);
+  const [heldOpen, setHeldOpen] = useState(false);
+  const [deskStates, setDeskStates] = useState({});
+  const [deskReachable, setDeskReachable] = useState(true);
+  const alive = useRef(true);
+
+  useEffect(() => { if (authed) return startAutoFlush(); return undefined; }, [authed]);
+
+  const load = useCallback(async () => {
+    // Each source fails on its own: one unreadable source is a named gap on its
+    // section, never a blank app.
+    const get = (p) => apiFetch(p).then((v) => ({ v }), (e) => ({ e: e.message || 'unreachable' }));
+    const [c, a, t, s] = await Promise.all([get('/api/canonical/now'), get('/api/adhd'), get('/api/task-blocks'), get('/api/session')]);
+    if (!alive.current) return;
+    setDay((prev) => ({
+      canonical: c.v || prev.canonical,
+      adhd: a.v || prev.adhd,
+      taskBlocks: t.v || prev.taskBlocks,
+      session: s.v || (s.e ? prev.session : null),
+      error: c.e || a.e || t.e || null,
+      at: (c.v || a.v) ? Date.now() : prev.at,
+    }));
+  }, []);
+
+  const loadBriefing = useCallback(async () => {
+    try {
+      const resp = await apiFetch('/api/briefings/latest?kind=daily');
+      if (alive.current) setBriefing({ resp, error: null });
+    } catch (e) {
+      if (alive.current) setBriefing((b) => ({ resp: b.resp, error: e.message }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authed) return undefined;
+    alive.current = true;
+    load();
+    const t = setInterval(load, POLL_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { alive.current = false; clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
+  }, [authed, load]);
+
+  useEffect(() => { if (authed && route.tab === 'briefing') loadBriefing(); }, [authed, route.tab, loadBriefing]);
+
+  const loadControls = useCallback(async () => {
+    try {
+      const resp = await apiFetch('/api/attention/settings');
+      if (alive.current) setControls({ resp, error: null, busy: false });
+    } catch (e) {
+      if (alive.current) setControls((c) => ({ ...c, error: e.message, busy: false }));
+    }
+  }, []);
+  useEffect(() => { if (authed && route.tab === 'controls') loadControls(); }, [authed, route.tab, loadControls]);
+
+  // A settings write shows what NEURO SAVED (its answer), never the value sent.
+  async function patchControls(p) {
+    setControls((c) => ({ ...c, busy: true, error: null }));
+    try {
+      const r = await apiFetch('/api/attention/settings', { method: 'PATCH', body: JSON.stringify(p) });
+      if (!r || r.ok === false || !r.settings) throw new Error((r && r.error) || 'NEURO didn’t confirm it');
+      setControls((c) => ({ resp: { ...(c.resp || {}), settings: r.settings }, error: null, busy: false }));
+    } catch (e) {
+      setControls((c) => ({ ...c, error: e.message, busy: false }));
+    }
+  }
+
+  const go = useCallback((id) => {
+    const r = resolveTab(id);
+    if (r.tab) {
+      setRoute({ tab: r.tab, focus: null });
+      setHandoff(null);
+      if (typeof window !== 'undefined') window.history.replaceState(null, '', `/?tab=${r.tab}`);
+      return;
+    }
+    setHandoff(r.requested || 'that');
+    const href = neuroLink(NEURO_URL, null);
+    if (href && typeof window !== 'undefined') window.open(href, '_blank', 'noopener');
+  }, []);
+
+  // ── Writes: every one is NEURO's route, reported as NEURO answered it. ──
+  async function run(fn) {
+    setBusy(true);
+    setActNote(null);
+    try { await fn(); await load(); } catch (e) { setActNote(e.message || 'That didn’t go through.'); } finally { setBusy(false); }
+  }
+
+  const onAct = (u) => run(async () => {
+    const intent = u && u.intent;
+    if (!intent) return;
+    if (intent.kind === 'act') {
+      if (!intent.recordId) { setActNote('That card has no record to act on — nothing was changed.'); return; }
+      const res = await apiFetch(`/api/attention/records/${encodeURIComponent(intent.recordId)}/act`, {
+        method: 'POST', body: JSON.stringify({ action: intent.action, minutes: intent.minutes, reason: intent.reason }),
+      });
+      if (res && res.ok === false) setActNote(res.error || 'NEURO refused that.');
+      else if (intent.action === 'complete' && res && res.taskHeld) setActNote('The tick is held — NEURO didn’t close it yet.');
+      else if (intent.action === 'complete' && res && res.taskCompleted === false && res.taskWhy) setActNote(res.taskWhy);
+    } else if (intent.kind === 'session') {
+      if (intent.action === 'start') {
+        await apiFetch('/api/session/start', { method: 'POST', body: JSON.stringify({ text: intent.text, source: 'attention' }) });
+        if (intent.recordId) await apiFetch(`/api/attention/records/${encodeURIComponent(intent.recordId)}/act`, { method: 'POST', body: JSON.stringify({ action: 'start' }) }).catch(() => {});
+      } else {
+        await apiFetch(`/api/session/${intent.action}`, { method: 'POST', body: JSON.stringify({}) });
+        if (intent.action === 'finish' && intent.recordId) {
+          await apiFetch(`/api/attention/records/${encodeURIComponent(intent.recordId)}/act`, { method: 'POST', body: JSON.stringify({ action: 'complete' }) });
+        }
+      }
+    } else if (intent.kind === 'meeting') {
+      const path = ({ finished: 'finished', 'not-attending': 'not-attending' })[intent.action] || 'resume';
+      const res = await apiFetch(`/api/attention/meeting/${path}`, { method: 'POST', body: JSON.stringify({ key: intent.key }) });
+      if (res && res.ok === false) setActNote(res.error || 'NEURO refused that.');
+    } else if (intent.kind === 'navigate' && intent.tab) {
+      go(intent.tab);
+    }
+  });
+
+  // A refusal comes back as an HTTP error; say what NEURO meant, not the status line.
+  const refused = (e, plain) => { throw new Error(plain(String((e && e.message) || ''))); };
+
+  const onStartBlock = (task, step) => run(async () => {
+    await apiFetch('/api/session/start', {
+      method: 'POST', body: JSON.stringify({ taskId: task.taskId, text: task.text, source: 'task-block', nextStep: step || null }),
+    }).catch((e) => refused(e, (m) => (/session-active/.test(m)
+      ? 'Something else is already running — finish or pause it first. Nothing was started.'
+      : `Not started — ${m}`)));
+  });
+
+  const onNameStep = (step) => run(async () => {
+    await apiFetch('/api/session/next-step', { method: 'POST', body: JSON.stringify({ step }) })
+      .catch((e) => refused(e, (m) => (/no-session/.test(m) ? 'The step wasn’t saved — no session is running.' : `The step wasn’t saved — ${m}`)));
+  });
+
+  async function deskOpen(app) {
+    setDeskStates((s) => ({ ...s, [app]: 'waiting' }));
+    let id;
+    try {
+      const r = await apiFetch('/api/desktop/intents', { method: 'POST', body: JSON.stringify({ app, host: day.canonical?.work?.host || null }) });
+      if (!r || !r.ok) throw new Error((r && r.reason) || 'refused');
+      id = r.intent.id;
+    } catch (e) {
+      if (e && /not found|404|unreachable|failed to fetch/i.test(e.message || '')) setDeskReachable(false);
+      setDeskStates((s) => ({ ...s, [app]: 'failed' }));
+      return;
+    }
+    // Watched past the server's own deadline, so `expired` is always seen.
+    for (let i = 0; i < 45; i++) {
+      await new Promise((r) => setTimeout(r, i < 15 ? 2000 : 10000));
+      if (!alive.current) return;
+      try {
+        const st = await apiFetch(`/api/desktop/intents/${encodeURIComponent(id)}`);
+        setDeskStates((s) => ({ ...s, [app]: st.state }));
+        if (deskStateSettled(st.state)) return;
+      } catch { /* a failed poll is not an outcome */ }
+    }
+  }
+
+  if (runtime.deploymentIssue) return <DeploymentGuard />;
+  if (!authed) return <LockScreen onUnlock={() => setAuthed(true)} />;
+
+  const drive = driveFrom(day.canonical, isPressing);
+  const updated = day.at ? `Read ${hhmmOf(day.at)}${day.error ? ' · last refresh failed' : ''}` : (day.error ? 'Can’t reach NEURO' : null);
+
+  let page;
+  if (route.tab === 'saim') {
+    page = (
+      <SaimPageView
+        {...day} focus={route.focus} busy={busy}
+        onAct={onAct} onStartBlock={onStartBlock} onNameStep={onNameStep}
+        onDeskOpen={deskReachable ? deskOpen : null} deskStates={deskStates}
+        dock={<Dock utterances={day.canonical?.utterances} onSay={onAct} />}
+      />
+    );
+  } else if (route.tab === 'now') {
+    page = <NowPageView {...day} heldOpen={heldOpen} onToggleHeld={() => setHeldOpen((o) => !o)} />;
+  } else if (route.tab === 'controls') {
+    page = <ControlsPageView resp={controls.resp} error={controls.error} busy={controls.busy} onPatch={patchControls} notificationsHref={CONTROL_URL ? `${CONTROL_URL.replace(/\/+$/, '')}/?tab=controls` : null} />;
+  } else if (route.tab === 'briefing') {
+    page = <BriefingPageView resp={briefing.resp} error={briefing.error} neuroUrl={NEURO_URL} />;
+  } else {
+    const V = { review: Review, capture: Capture }[route.tab];
+    page = V ? <div className="v2-control"><V key={route.tab} onNavigate={go} onShowAll={() => go('saim')} /></div> : null;
+  }
+
+  return (
+    <Shell
+      active={route.tab}
+      onGo={go}
+      drive={drive}
+      updated={updated}
+      onLock={() => { clearPin(); setAuthed(false); }}
+      marker={<a className="v2__ctl" href={CONTROL_URL}>Control ↗</a>}
+    >
+      {handoff && (
+        <p className="v2-note" role="status">
+          “{handoff}” lives in NEURO — opened it in a new tab.
+          <button type="button" className="v2-link" onClick={() => setHandoff(null)}>OK</button>
+        </p>
+      )}
+      {actNote && <p className="v2-note v2-note--bad" role="status">{actNote}</p>}
+      {page}
+    </Shell>
+  );
+}
