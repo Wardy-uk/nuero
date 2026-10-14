@@ -19,6 +19,9 @@
   background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);
   font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
 }
+.pt-count { cursor: pointer; text-align: left; }
+.pt-count:hover { border-color: var(--accent-dim); }
+.pt-count--on { border-color: var(--accent); }
 .pt-count span { font-size: 18px; color: var(--text-primary); }
 .pt__aside { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin: 0 0 12px; }
 

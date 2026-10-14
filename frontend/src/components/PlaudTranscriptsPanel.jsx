@@ -28,6 +28,7 @@ const post = (path, body) => callJson(path, {
 
 const FILTERS = [
   { id: 'all', label: 'All' },
+  { id: 'present', label: 'With summary' },
   { id: 'unnamed', label: 'Unnamed speakers' },
   { id: 'none', label: 'No summary' },
   { id: 'archived', label: 'Summary archived' },
@@ -52,6 +53,7 @@ export function summaryLine(row) {
 
 export function matchesFilter(row, filter) {
   if (filter === 'unnamed') return row.unnamed.length > 0;
+  if (filter === 'present') return row.summaryStatus === 'present';
   if (filter === 'none') return row.summaryStatus === 'none';
   if (filter === 'archived') return row.summaryStatus === 'archived';
   if (filter === 'problem') return row.stub || row.repeated;
@@ -237,14 +239,23 @@ export default function PlaudTranscriptsPanel() {
 
       {data && (
         <>
+          {/* The three summary cards always add up to the transcript total; each card is
+              also its filter, so a number and the list it describes cannot disagree. */}
           <div className="pt__counts">
-            <div className="pt-count"><span>{data.counts.transcripts}</span>transcripts</div>
-            <div className="pt-count"><span>{data.counts.withSummary}</span>with a summary</div>
-            <div className="pt-count"><span>{data.counts.noSummary}</span>no summary</div>
-            <div className="pt-count"><span>{data.counts.unnamedSpeakers}</span>unnamed speakers</div>
+            {[
+              ['all', data.counts.transcripts, 'transcripts'],
+              ['present', data.counts.withSummary, 'with a summary'],
+              ['archived', data.counts.summaryArchived, 'summary archived'],
+              ['none', data.counts.noSummary, 'no summary'],
+              ['unnamed', data.counts.unnamedSpeakers, 'unnamed speakers'],
+            ].map(([id, n, label]) => (
+              <button key={id} className={`pt-count ${filter === id ? 'pt-count--on' : ''}`} onClick={() => setFilter(id)}>
+                <span>{n}</span>{label}
+              </button>
+            ))}
           </div>
           <p className="pt__aside">
-            {data.counts.summaryArchived} with an archived summary · {data.counts.archivedTranscripts} transcripts already archived
+            {data.counts.archivedTranscripts} transcripts already archived
             · {data.counts.summariesWithoutTranscript} recordings with a summary and no transcript
             {data.busy && ' · a PLAUD sync is running, so Repull will wait'}
           </p>

@@ -67,3 +67,9 @@ test('a row renders its speakers and summary state', () => {
   assert.match(html, /1 of 2 named/);
   assert.match(html, /Repull/);
 });
+
+test('summary filters partition the list: present + archived + none = all', () => {
+  const rows = [row('2026-10-01'), row('2026-10-02', { summaryStatus: 'archived', summaries: [] }), row('2026-10-03', { summaryStatus: 'none', summaries: [] })];
+  const n = (f) => rows.filter((r) => mod.matchesFilter(r, f)).length;
+  assert.equal(n('present') + n('archived') + n('none'), n('all'));
+});
