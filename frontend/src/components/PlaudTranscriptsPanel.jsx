@@ -58,6 +58,38 @@ export function matchesFilter(row, filter) {
   return true;
 }
 
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** Rows grouped by YYYY-MM, in the order the rows came (newest first). Sliced from the
+ *  date string, never parsed, so a month cannot shift a day across a zone. */
+export function groupByMonth(rows) {
+  const groups = [];
+  const byKey = new Map();
+  for (const row of rows) {
+    const m = /^(\d{4})-(\d{2})/.exec(row.date || '');
+    const key = m ? `${m[1]}-${m[2]}` : 'undated';
+    if (!byKey.has(key)) {
+      const label = m ? `${MONTHS[Number(m[2]) - 1] || m[2]} ${m[1]}` : 'Undated';
+      const g = { key, label, rows: [], unnamed: 0, noSummary: 0 };
+      byKey.set(key, g);
+      groups.push(g);
+    }
+    const g = byKey.get(key);
+    g.rows.push(row);
+    if (row.unnamed.length) g.unnamed += 1;
+    if (row.summaryStatus !== 'present') g.noSummary += 1;
+  }
+  return groups;
+}
+
+const OPEN_KEY = 'neuro_plaud_tx_open';
+function readOpen() {
+  try { return JSON.parse(localStorage.getItem(OPEN_KEY) || 'null') || {}; } catch { return {}; }
+}
+function writeOpen(v) {
+  try { localStorage.setItem(OPEN_KEY, JSON.stringify(v)); } catch {}
+}
+
 export function TranscriptRow({ row, busy, outcome, onRefresh, onArchive }) {
   const [confirming, setConfirming] = useState(false);
   const [withSummaries, setWithSummaries] = useState(false);
@@ -120,6 +152,8 @@ export default function PlaudTranscriptsPanel() {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(null);
   const [outcomes, setOutcomes] = useState({});
+  // Only months Nick has toggled are stored; the rest default to: newest open, older shut.
+  const [openMap, setOpenMap] = useState(readOpen);
 
   const load = useCallback(async () => {
     try {
@@ -172,6 +206,21 @@ export default function PlaudTranscriptsPanel() {
       && (!q || r.title.toLowerCase().includes(q) || r.path.toLowerCase().includes(q) || (r.date || '').includes(q)));
   }, [data, filter, query]);
 
+  const groups = useMemo(() => groupByMonth(rows), [rows]);
+  const searching = query.trim() !== '';
+  // A search opens every month, or a match inside a shut one would be invisible.
+  const isOpen = (g, i) => searching || (g.key in openMap ? openMap[g.key] : i === 0);
+  const setAll = (value) => {
+    const next = Object.fromEntries(groups.map((g) => [g.key, value]));
+    setOpenMap(next);
+    writeOpen(next);
+  };
+  const toggle = (g, i) => {
+    const next = { ...openMap, [g.key]: !isOpen(g, i) };
+    setOpenMap(next);
+    writeOpen(next);
+  };
+
   return (
     <div className="pt">
       <header className="pt__head">
@@ -213,11 +262,37 @@ export default function PlaudTranscriptsPanel() {
           {rows.length === 0
             ? <div className="pt__empty">Nothing matches.</div>
             : (
-              <ul className="pt__list">
-                {rows.map((row) => (
-                  <TranscriptRow key={row.path} row={row} busy={busy} outcome={outcomes[row.path]} onRefresh={refresh} onArchive={archive} />
-                ))}
-              </ul>
+              <>
+                {!searching && groups.length > 1 && (
+                  <div className="pt__fold-all">
+                    <button className="pt-btn pt-btn--quiet" onClick={() => setAll(true)}>Expand all</button>
+                    <button className="pt-btn pt-btn--quiet" onClick={() => setAll(false)}>Collapse all</button>
+                  </div>
+                )}
+                {groups.map((g, i) => {
+                  const open = isOpen(g, i);
+                  return (
+                    <section key={g.key} className="pt-month">
+                      <button className="pt-month__head" aria-expanded={open} onClick={() => !searching && toggle(g, i)}>
+                        <span className="pt-month__caret">{open ? '▾' : '▸'}</span>
+                        <span className="pt-month__label">{g.label}</span>
+                        <span className="pt-month__meta">
+                          {g.rows.length} transcript{g.rows.length === 1 ? '' : 's'}
+                          {g.unnamed > 0 && <> · <span className="pt-month__warn">{g.unnamed} unnamed</span></>}
+                          {g.noSummary > 0 && <> · {g.noSummary} without a summary</>}
+                        </span>
+                      </button>
+                      {open && (
+                        <ul className="pt__list">
+                          {g.rows.map((row) => (
+                            <TranscriptRow key={row.path} row={row} busy={busy} outcome={outcomes[row.path]} onRefresh={refresh} onArchive={archive} />
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  );
+                })}
+              </>
             )}
         </>
       )}

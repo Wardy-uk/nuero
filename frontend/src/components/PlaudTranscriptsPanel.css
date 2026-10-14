@@ -69,3 +69,17 @@
   .pt-row__actions { justify-content: flex-start; }
   .pt__search { flex: 1 1 100%; min-width: 0; }
 }
+
+/* ── Months ───────────────────────────────────────────────────────────── */
+.pt__fold-all { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; }
+.pt-month { margin-bottom: 10px; }
+.pt-month__head {
+  width: 100%; display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; margin-bottom: 6px;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-primary); cursor: pointer; text-align: left; font-family: var(--font-mono);
+}
+.pt-month__head:hover { border-color: var(--accent-dim); }
+.pt-month__caret { width: 12px; color: var(--text-muted); font-size: 11px; }
+.pt-month__label { font-size: 13px; }
+.pt-month__meta { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+.pt-month__warn { color: var(--warning); }
