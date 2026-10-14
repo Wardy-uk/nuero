@@ -45,6 +45,15 @@ export function speakerLine(row) {
   return `${named} of ${row.speakers.length} named · ${row.unnamed.join(', ')}`;
 }
 
+/** Hover text for the speaker chip: who is named, and who is still "Speaker N". */
+export function speakerTitle(row) {
+  const named = row.speakers.filter((s) => !row.unnamed.includes(s));
+  const lines = [];
+  if (named.length) lines.push(`Named: ${named.join(', ')}`);
+  if (row.unnamed.length) lines.push(`Unnamed: ${row.unnamed.join(', ')}`);
+  return lines.join('\n');
+}
+
 export function summaryLine(row) {
   if (row.summaryStatus === 'present') return row.summaries.length > 1 ? `${row.summaries.length} summaries` : basename(row.summaries[0]);
   if (row.summaryStatus === 'archived') return 'Summary archived';
@@ -105,7 +114,7 @@ export function TranscriptRow({ row, busy, outcome, onRefresh, onArchive }) {
           <span className="pt-row__name" title={row.path}>{row.title}</span>
         </div>
         <div className="pt-row__meta">
-          <span className={`pt-chip ${row.unnamed.length || row.stub ? 'pt-chip--warn' : 'pt-chip--ok'}`}>{speakerLine(row)}</span>
+          <span className={`pt-chip ${row.unnamed.length || row.stub ? 'pt-chip--warn' : 'pt-chip--ok'}`} title={speakerTitle(row) || undefined}>{speakerLine(row)}</span>
           <span className={`pt-chip ${row.summaryStatus === 'present' ? 'pt-chip--ok' : 'pt-chip--muted'}`} title={row.summaries.join('\n') || row.archivedSummaries.join('\n')}>
             {summaryLine(row)}
           </span>

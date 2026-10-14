@@ -73,3 +73,10 @@ test('summary filters partition the list: present + archived + none = all', () =
   const n = (f) => rows.filter((r) => mod.matchesFilter(r, f)).length;
   assert.equal(n('present') + n('archived') + n('none'), n('all'));
 });
+
+test('hovering the speaker chip names who is named and who is not', () => {
+  const r = row('2026-09-08', { speakers: ['Nick Ward', 'Speaker 2', 'Hope Goodall'], unnamed: ['Speaker 2'] });
+  assert.equal(mod.speakerTitle(r), 'Named: Nick Ward, Hope Goodall\nUnnamed: Speaker 2');
+  const html = renderToString(React.createElement(mod.TranscriptRow, { row: r, busy: null, outcome: null, onRefresh() {}, onArchive() {} }));
+  assert.match(html, /title="Named: Nick Ward, Hope Goodall/);
+});
