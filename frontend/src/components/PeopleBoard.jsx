@@ -3,6 +3,7 @@ import { apiUrl } from '../api';
 import { executeDirect, directOutcome } from '../directAction';
 import PersonDetail from './PersonDetail';
 import WaitingOn from './WaitingOn';
+import PreparedActions from './PreparedActions';
 import SuggestedPeople from './SuggestedPeople';
 import './PeopleBoard.css';
 
@@ -112,7 +113,10 @@ function get121Status(frontmatter, detectedLast) {
   // correct as trusting a number nothing maintains.
   const ahead = detected && (!stamped || detected >= stamped);
   const last = ahead ? detected : stamped;
-  const due = ahead
+  // The due date follows whichever last date WON — a NOVA-stamped `last-1-2-1` is
+  // newer than any note on disk and the stored due date was never moved with it
+  // (Luke Scaife, 14 Oct 2026: "overdue by 42d" the day before he was due).
+  const due = last
     ? addDays(last, cadenceDays(frontmatter?.cadence))
     : isoDateOrNull(frontmatter?.['next-1-2-1-due']);
   const booked = isoDateOrNull(frontmatter?.['1-2-1-booked']);
@@ -1139,6 +1143,15 @@ export default function PeopleBoard() {
       {/* What the team owes Nick. Grouped by person, worst offender first — and
           deliberately above the roster, because it is the thing you act on.
           Covers everyone the meeting notes mention, not just direct reports. */}
+      {/* 1-2-1s NOVA asked NEURO to book (and any "Book now" not yet sent). One tap
+          sends the invite; NOVA is told the real date and event once it is sent. */}
+      <PreparedActions
+        title="1-2-1s to book"
+        blurb={false}
+        showLegacy={false}
+        filter={a => a.actionType === 'create_calendar_event' && a.origin === '1to1-book'}
+      />
+
       <WaitingOn />
 
       {/* Names NEURO keeps meeting that have no People note. Deliberately here

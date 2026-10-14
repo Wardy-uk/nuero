@@ -169,6 +169,10 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/desktop/intents', 'desktop.launch'),
   R('POST', '/api/catalogues/:slug/shared', 'vesta.share'),
   R('POST', '/api/1to1/nova-sync', 'nova.121'),
+  // NOVA asking for a booking only PREPARES the invite (machine: prepare); sending it
+  // needs Nick's tap. Deliberately not 'nova.121', which refuses machines — NOVA is one.
+  R('POST', '/api/1to1/booking-request', 'calendar.attendee.create'),
+  R('POST', '/api/1to1/booking-sweep', 'calendar.attendee.create'),
   R('POST', '/api/1to1/nova-transcripts', 'nova.121'),
   R('POST', '/api/notion-sync/run', 'notion.publish'),
   R('POST', '/api/notion-sync/auto', 'notion.publish'),

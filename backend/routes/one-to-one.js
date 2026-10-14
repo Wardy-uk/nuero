@@ -170,6 +170,31 @@ router.post('/nova-sync', async (req, res) => {
   }
 });
 
+// POST /api/1to1/booking-request — NOVA asks NEURO to book an agent's next 1-2-1 (book 1-2-1, schedule one to one, nova session, find slot).
+// Prepares the governed invite and pushes Nick a one-tap card; it NEVER sends one.
+// Called by NOVA the moment it creates the next session (machine token).
+router.post('/booking-request', async (req, res) => {
+  const { agentName, date, sessionId } = req.body || {};
+  try {
+    const r = await require('../services/one-to-one-requests').handleRequest({ agentName, date, sessionId });
+    res.status(r.ok ? 200 : (r.unknownAgent ? 404 : 409)).json(r);
+  } catch (e) {
+    console.error('[1to1/booking-request]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/1to1/booking-sweep — answer every open NOVA session with no calendar event (book 1-2-1s NOVA is waiting on).
+router.post('/booking-sweep', async (req, res) => {
+  try {
+    const r = await require('../services/one-to-one-requests').sweep();
+    res.status(r.ok ? 200 : 502).json(r);
+  } catch (e) {
+    console.error('[1to1/booking-sweep]', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 /**
  * POST /api/1to1/nova-writeback { apply?, since? } — pull completed 1-2-1s from NOVA
  * into the People cards, then regenerate the tracker.

@@ -307,6 +307,23 @@ function start() {
     }
   });
 
+  // 06:35 and 12:35 — the backstop for NOVA's booking requests (one-to-one-requests).
+  // NOVA asks the moment it creates a session; this answers any request that was
+  // missed. It only PREPARES invites and pushes once per prepared booking.
+  cron.schedule('35 6,12 * * *', async () => {
+    try {
+      const r = await require('./one-to-one-requests').sweep();
+      if (!r.ok) { console.warn(`[Scheduler] 1-2-1 booking sweep: ${r.error}`); return; }
+      for (const x of r.results) {
+        if (!x.ok || x.action === 'prepared' || x.action === 'already-in-diary') {
+          console.log(`[Scheduler] 1-2-1 request ${x.person}: ${x.action || 'failed'}${x.start ? ` ${x.start}` : ''}${x.error ? ` — ${x.error}` : ''}`);
+        }
+      }
+    } catch (e) {
+      console.warn('[Scheduler] 1-2-1 booking sweep threw:', e.message);
+    }
+  });
+
   // 6:20am daily — push bookings + cadence into NOVA, ahead of its 07:00 prep job.
   //
   // DAILY, not weekdays: a 1-2-1 booked on a Friday for the Monday has to reach NOVA

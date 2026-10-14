@@ -243,7 +243,7 @@ async function describe(name, slot, { durationMinutes, fmDue, latest }) {
 /**
  * Propose a slot. Reads only — creates nothing.
  */
-async function propose(name, { durationMinutes = DEFAULT_DURATION_MIN } = {}) {
+async function propose(name, { durationMinutes = DEFAULT_DURATION_MIN, notBefore = null } = {}) {
   const index = detect.getIndex();
   const person = index.people?.find(p => p.name === name);
   if (!person) return { ok: false, error: `${name} is not an active direct report` };
@@ -255,7 +255,10 @@ async function propose(name, { durationMinutes = DEFAULT_DURATION_MIN } = {}) {
 
   // Read the due date straight from the person note so a manual edit is honoured.
   const fmDue = readNextDue(name);
-  const from = earliestDate({ nextDue: fmDue });
+  // `notBefore` is the date NOVA asked for (one-to-one-requests). It replaces the
+  // card's due date as the earliest day offered — never today or a past day, which
+  // earliestDate still refuses.
+  const from = earliestDate({ nextDue: /^\d{4}-\d{2}-\d{2}$/.test(String(notBefore || '')) ? notBefore : fmDue });
 
   let events = [];
   try {
@@ -461,6 +464,16 @@ async function book({ person, start, end, email, subject, durationMinutes, skipC
  * (called by the executor on `executed`, and again — a no-op — on `verified`).
  * Never allowed to fail: the change already went to other people.
  */
+function createdEventIdFor(actionId) {
+  if (!actionId) return null;
+  try {
+    const row = require('../db/database').get(
+      `SELECT draft_id FROM action_attempts WHERE action_id = ? AND draft_id IS NOT NULL
+        ORDER BY attempt DESC LIMIT 1`, [actionId]);
+    return row ? row.draft_id : null;
+  } catch { return null; }
+}
+
 function afterGovernedCalendar(a) {
   const t = (a && a.target) || {};
   const person = t.person;
@@ -480,8 +493,14 @@ function afterGovernedCalendar(a) {
   }
   // NOVA preps the day before, for a session it holds. Fire and forget: the
   // morning reconciliation re-sends anything that fails here.
+  //
+  // ⚠ A CREATE has no `target.eventId` — the event did not exist when it was
+  // prepared. Its Graph id is on the executor's attempt row (`draft_id`), so read
+  // it from there, or NOVA is told the date of a 1-2-1 with no event behind it,
+  // which is exactly what its prep job now refuses to prep (14 Oct 2026).
+  const eventId = t.eventId || createdEventIdFor(a.actionId);
   Promise.resolve()
-    .then(() => require('./nova-121-sync').pushBooking(person, start.slice(0, 10), { outlookEventId: t.eventId || null }))
+    .then(() => require('./nova-121-sync').pushBooking(person, start.slice(0, 10), { outlookEventId: eventId || null }))
     .catch((e) => console.warn('[1-2-1] NOVA push after the governed change failed:', e.message));
 }
 

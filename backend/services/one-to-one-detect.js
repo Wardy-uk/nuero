@@ -597,7 +597,14 @@ function foldDetected(fm = {}, detected = null) {
   // by 20d" the week after the meeting). Recomputing from last + cadence is always at
   // least as correct as trusting a number nothing maintains.
   if (!detectedIso || (stamped && detectedIso < stamped)) {
-    return { lastHeld: stamped, nextDue: isoDateOrNull(fm['next-1-2-1-due']), booked };
+    // ⚠ The STAMP can be the newer date too: nova-121-writeback stamps `last-1-2-1`
+    // from a completed NOVA session (no vault note) and leaves `next-1-2-1-due`
+    // alone. Live on 14 Oct 2026, Luke Scaife: last 18 Sep (NOVA), stored due
+    // 2 Sep, card read "overdue by 42d" the day before he was actually due. The
+    // due date follows whichever last date wins; the stored one is used only when
+    // there is no usable stamp to derive from.
+    const nextDue = stamped ? addDays(stamped, cadenceDays(fm.cadence)) : isoDateOrNull(fm['next-1-2-1-due']);
+    return { lastHeld: stamped, nextDue, booked };
   }
   return { lastHeld: detectedIso, nextDue: addDays(detectedIso, cadenceDays(fm.cadence)), booked };
 }
@@ -638,9 +645,15 @@ function syncPeopleNotes({ apply = false } = {}) {
       // note that was off-cadence and came back on it (Maria returning from
       // maternity) has nothing to schedule against, so she would never appear
       // as due and would silently stop being booked. Backfill it.
-      if (person.bookable && !person.recordedNextDue) {
+      //
+      // Same for a due date that predates the last 1-2-1: nova-121-writeback moves
+      // `last-1-2-1` without touching `next-1-2-1-due`, so it is left pointing at the
+      // cycle before (Luke Scaife: last 18 Sep, due 2 Sep). A due date can never
+      // legitimately precede the meeting it follows.
+      const staleDue = person.recordedNextDue && String(person.recordedNextDue) <= String(person.recordedLast);
+      if (person.bookable && (!person.recordedNextDue || staleDue)) {
         const nextDue = addDays(person.recordedLast, cadenceDays(person.cadence));
-        changes.push({ person: person.name, action: 'due-date-backfilled', recorded: person.recordedLast, nextDue });
+        changes.push({ person: person.name, action: staleDue ? 'due-date-corrected' : 'due-date-backfilled', recorded: person.recordedLast, nextDue });
         if (apply) obsidian.updatePersonNote(person.name, { next121Due: nextDue });
         continue;
       }

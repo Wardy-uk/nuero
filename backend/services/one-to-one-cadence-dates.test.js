@@ -75,8 +75,19 @@ test('a stamp genuinely NEWER than the detector still wins', () => {
 });
 
 test('an unparseable stored due is null, never passed through', () => {
-  const f = foldDetected({ 'last-1-2-1': '2026-08-30', 'next-1-2-1-due': 'Thu Sep 27' }, null);
+  // No usable stamp to derive from, so the stored value is all there is — and it is junk.
+  const f = foldDetected({ 'last-1-2-1': 'Thu Aug 30', 'next-1-2-1-due': 'Thu Sep 27' }, null);
   assert.equal(f.nextDue, null);
+});
+
+test('a NOVA-stamped last 1-2-1 moves the due date with it (Luke Scaife, live 14 Oct)', () => {
+  // nova-121-writeback stamped last 18 Sep with no vault note; the stored due stayed at
+  // 2 Sep and the card read "overdue by 42d" the day before he was actually due.
+  const fm = { 'last-1-2-1': '2026-09-18', 'next-1-2-1-due': '2026-09-02', cadence: 'monthly' };
+  const f = foldDetected(fm, '2026-05-27');
+  assert.equal(f.lastHeld, '2026-09-18');
+  assert.equal(f.nextDue, '2026-10-16');
+  assert.notEqual(cadenceState(f, '2026-10-14').state, 'overdue');
 });
 
 // ── six-weekly ───────────────────────────────────────────────────────────────
