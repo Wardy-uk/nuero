@@ -48,7 +48,7 @@ export function WorkingView({
                 <span className="wk__dot" aria-hidden="true" />
                 {c.label.toUpperCase()}{c.start && c.end ? ` · ${c.start}–${c.end}` : ''}
               </p>
-              {c.title && <h1 className="wk__title">{c.title}</h1>}
+              {c.title && <h1 className="wk__title" title={c.fullTitle && c.fullTitle !== c.title ? c.fullTitle : undefined}>{c.title}</h1>}
               {v.meeting && v.meeting.remaining && <p className="wk__remaining">{v.meeting.remaining}</p>}
               {v.meeting && <p className="wk__holding">SAiM is holding everything else.</p>}
             </div>
@@ -79,7 +79,7 @@ export function WorkingView({
               <p className="wk__label">After this</p>
               <p className="wk__afterrow">
                 <span className="wk__aftertime">{v.meeting.after.start}{v.meeting.after.end ? `–${v.meeting.after.end}` : ''}</span>
-                <span className="wk__aftertitle">{v.meeting.after.title}</span>
+                <span className="wk__aftertitle" title={v.meeting.after.fullTitle && v.meeting.after.fullTitle !== v.meeting.after.title ? v.meeting.after.fullTitle : undefined}>{v.meeting.after.title}</span>
               </p>
               {v.meeting.cue && <p className="wk__cue">{v.meeting.cue}</p>}
             </div>
@@ -131,7 +131,7 @@ export function WorkingView({
             {v.next && (
               <div className="wk__railitem">
                 <p className="wk__label">{v.next.label || 'Next'}</p>
-                <p className="wk__railtitle">{v.next.title}</p>
+                <p className="wk__railtitle" title={v.next.fullTitle && v.next.fullTitle !== v.next.title ? v.next.fullTitle : undefined}>{v.next.title}</p>
                 <p className="wk__railmeta">{v.next.time}{v.next.inText ? ` · ${v.next.inText}` : ''}</p>
               </div>
             )}

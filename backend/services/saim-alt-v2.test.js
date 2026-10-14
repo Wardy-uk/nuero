@@ -520,3 +520,33 @@ test('in a meeting: a write-up block for a DIFFERENT meeting is not this one’s
   s.canonical.agenda.events[1].subject = 'Plaud admin — Some other meeting';
   assert.equal(M.workingView(s).meeting.cue, null);
 });
+
+// ── Task titles for a time-labelled slot (display only) ─────────────────────
+
+test('display title: the scheduling talk of the moment it was said is dropped, the task is kept', () => {
+  // The real title from Nick's diary, 14 Oct 2026.
+  assert.equal(
+    M.displayTaskTitle('West Hants Tennis Club: resolve the outstanding ticket tomorrow (8 October 2026). Must do tomorrow.'),
+    'West Hants Tennis Club: resolve the outstanding ticket',
+  );
+  assert.equal(M.displayTaskTitle('Nick to reply formally to Stephen’s flexible working request. Due Friday.'), 'Nick to reply formally to Stephen’s flexible working request');
+  assert.equal(M.displayTaskTitle('Send the report (2026-10-20) to Chris'), 'Send the report to Chris');
+  assert.equal(M.displayTaskTitle('Call Bob today'), 'Call Bob');
+});
+
+test('display title: a bracket that is not a date, a plain title and a title that would be gutted are left alone', () => {
+  assert.equal(M.displayTaskTitle('Review phase plan (phase 2)'), 'Review phase plan (phase 2)');
+  assert.equal(M.displayTaskTitle('NT-24162: Survey West Hants Responses not showing on CSV and Being recorded'), 'NT-24162: Survey West Hants Responses not showing on CSV and Being recorded');
+  assert.equal(M.displayTaskTitle('Tidy today'), 'Tidy today');
+  assert.equal(M.displayTaskTitle(''), '');
+});
+
+test('display title: the rail and the current block show the tidy title, with the full wording kept for hover', () => {
+  const s = inMeeting();
+  s.taskBlocks.blocks[0].tasks[0].text = 'Reply to the supplier tomorrow (15 October 2026). Must do tomorrow.';
+  const v = M.workingView(s);
+  assert.equal(v.next.title, 'Reply to the supplier');
+  assert.equal(v.next.fullTitle, 'Reply to the supplier tomorrow (15 October 2026). Must do tomorrow.');
+  const out = html(h(UI.WorkingView, { v }));
+  assert.match(out, /title="Reply to the supplier tomorrow \(15 October 2026\)\. Must do tomorrow\.">Reply to the supplier</);
+});

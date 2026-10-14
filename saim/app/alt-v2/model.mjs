@@ -525,7 +525,7 @@ export function nextUp(canonical, taskBlocks, { now = Date.now(), currentBlockId
   const blocks = todaysOpenBlocks(taskBlocks, { now, currentId: currentBlockId });
   for (const b of blocks) {
     if (b.current || b.blockId === currentBlockId) continue;
-    if (toMin(b.startTime) > nowMin) items.push({ start: b.startTime, title: b.tasks.length === 1 ? b.tasks[0].text : `${b.tasks.length} tasks`, kind: 'block' });
+    if (toMin(b.startTime) > nowMin) items.push({ start: b.startTime, title: b.tasks.length === 1 ? displayTaskTitle(b.tasks[0].text) : `${b.tasks.length} tasks`, fullTitle: b.tasks.length === 1 ? b.tasks[0].text : null, kind: 'block' });
   }
   const starts = new Set(items.map((i) => i.start));
   const a = canonical && canonical.agenda;
@@ -540,7 +540,7 @@ export function nextUp(canonical, taskBlocks, { now = Date.now(), currentBlockId
   if (!items.length) return null;
   items.sort((x, y) => toMin(x.start) - toMin(y.start));
   const n = items[0];
-  return { label: 'Next', title: n.title, time: n.start, kind: n.kind, inText: untilText(toMin(n.start) - nowMin) };
+  return { label: 'Next', title: n.title, fullTitle: n.fullTitle || null, time: n.start, kind: n.kind, inText: untilText(toMin(n.start) - nowMin) };
 }
 
 export function workingView({ canonical = null, adhd = null, taskBlocks = null, session = null, now = Date.now() } = {}) {
@@ -557,7 +557,7 @@ export function workingView({ canonical = null, adhd = null, taskBlocks = null, 
   if (meeting) current = { label: 'In a meeting', start: meeting.start, end: meeting.end, title: meeting.title, kind: 'meeting' };
   else if (b) {
     const word = { active: 'Active', upcoming: 'Up next', interrupted: 'Interrupted', complete: 'Complete' }[b.state];
-    current = { label: word, start: b.startTime, end: b.endTime, title: b.task ? b.task.text : null, kind: 'block', blockId: b.blockId };
+    current = { label: word, start: b.startTime, end: b.endTime, title: b.task ? displayTaskTitle(b.task.text) : null, fullTitle: b.task ? b.task.text : null, kind: 'block', blockId: b.blockId };
     if (!b.task) note = base.uncertain;
   } else if (base.protectedTime) {
     current = { label: 'Protected', start: base.protectedTime.start, end: base.protectedTime.end, title: base.protectedTime.title, kind: 'protected' };
@@ -621,7 +621,7 @@ export function upcoming(canonical, taskBlocks, { now = Date.now(), currentBlock
   const items = [];
   for (const b of todaysOpenBlocks(taskBlocks, { now, currentId: currentBlockId })) {
     if (b.current || b.blockId === currentBlockId || toMin(b.startTime) <= nowMin) continue;
-    items.push({ start: b.startTime, end: b.endTime, title: b.tasks.length === 1 ? b.tasks[0].text : `${b.tasks.length} tasks`, kind: 'block' });
+    items.push({ start: b.startTime, end: b.endTime, title: b.tasks.length === 1 ? displayTaskTitle(b.tasks[0].text) : `${b.tasks.length} tasks`, fullTitle: b.tasks.length === 1 ? b.tasks[0].text : null, kind: 'block' });
   }
   const starts = new Set(items.map((i) => i.start));
   const a = canonical && canonical.agenda;
@@ -664,7 +664,7 @@ export function meetingMoment(meeting, canonical, taskBlocks, { now = Date.now()
     remaining: remainingText(meeting.end, now),
     after,
     cue,
-    then: thenItem ? { label: 'Then', title: thenItem.title, time: thenItem.start, inText: untilText(toMin(thenItem.start) - toMin(hhmmOf(now))) } : null,
+    then: thenItem ? { label: 'Then', title: thenItem.title, fullTitle: thenItem.fullTitle || null, time: thenItem.start, inText: untilText(toMin(thenItem.start) - toMin(hhmmOf(now))) } : null,
   };
 }
 
@@ -686,4 +686,29 @@ export function heldPhrase(dropped) {
   for (const d of dropped) counts.set(d.type || 'other', (counts.get(d.type || 'other') || 0) + 1);
   const parts = [...counts].map(([t, n]) => (HELD_PHRASE[t] ? HELD_PHRASE[t](n) : `${n} ${t}`));
   return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+// ── Task titles for display (14 Oct 2026) ───────────────────────────────────
+
+// A bracket holding only a date: "(8 October 2026)", "(October 8)", "(2026-10-08)", "(8/10)".
+const BRACKET_DATE = /\s*\((?:\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(?:\s+\d{4})?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\)/gi;
+const TRAILING_WHEN = /\s+(?:tomorrow|today|tonight|this (?:morning|afternoon|evening|week))\s*$/i;
+
+/**
+ * A task's wording, tidied for a time-labelled slot — DISPLAY ONLY, never
+ * stored. A task captured from a meeting carries the scheduling talk of the
+ * moment it was said ("…tomorrow (8 October 2026). Must do tomorrow."), which
+ * reads as a contradiction beside the slot's own time. Keeps the first
+ * sentence, drops a bracketed date and a trailing relative day. If tidying
+ * would leave too little, the original is kept.
+ */
+export function displayTaskTitle(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return raw;
+  let t = raw.split(/(?<=[.!?])\s+(?=[A-Z])/)[0];
+  t = t.replace(BRACKET_DATE, '');
+  t = t.replace(/[.!?]+$/, '').trim();
+  t = t.replace(TRAILING_WHEN, '').trim();
+  t = t.replace(/[\s,;:–—-]+$/, '').trim();
+  return t.length >= 8 ? t : raw;
 }
