@@ -1406,6 +1406,18 @@ async function now({ now: nowMs = Date.now(), decision = null, workOnly = false 
     for (const k of WORK_ONLY_DROPPED) payload[k] = null;
     payload.workOnly = true;
   }
+  // 14 Oct 2026: ONE answer to what SAiM leads with (attention-decision-v1).
+  // Every surface is to render this rather than choose its own primary.
+  // Additive; never allowed to fail Now.
+  try {
+    const ad = require('./attention-decision');
+    const live = ad.gather({ now: nowMs });
+    payload.decision = ad.decide(payload, live, { now: nowMs });
+    if (live.gaps.length) payload.decision.gaps = live.gaps;
+  } catch (e) {
+    console.warn('[Canonical] attention decision failed:', e.message);
+    payload.decision = null;
+  }
   try {
     payload.presentation = require('./presentation-intent').composePresentation(payload, { now: nowMs });
     if (workOnly && payload.presentation) payload.presentation = workOnlyPresentation(payload.presentation);

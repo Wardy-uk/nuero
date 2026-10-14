@@ -272,7 +272,7 @@ function needsYou() {
   const summary = require('./approval-summary');
   try {
     const rows = db.all(
-      `SELECT action_type, status, retry_safe, created_at FROM prepared_actions
+      `SELECT action_type, status, retry_safe, created_at, expires_at FROM prepared_actions
         WHERE status IN ('prepared','execution_uncertain') OR (status = 'failed' AND retry_safe = 1)`,
     );
     let sendingEnabled = null;
@@ -283,7 +283,12 @@ function needsYou() {
     // Build 12.3: the newest waiting row, so a P0 notification can be keyed on
     // "a new draft arrived" rather than re-firing on every poll.
     const newestAt = rows.reduce((m, r) => (r.created_at && (!m || r.created_at > m) ? r.created_at : m), null);
-    return { ...out, calendarEnabled, newestAt };
+    // 14 Oct 2026: when the earliest waiting approval stops being any use — the
+    // one fact attention-decision needs to decide whether it may interrupt a
+    // protected task block (only within the hour).
+    const soonestExpiresAt = rows.filter((r) => r.status === 'prepared' && r.expires_at)
+      .reduce((m, r) => (!m || r.expires_at < m ? r.expires_at : m), null);
+    return { ...out, calendarEnabled, newestAt, soonestExpiresAt };
   } catch (e) {
     return summary.unknown(e.message);
   }

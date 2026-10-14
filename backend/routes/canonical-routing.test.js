@@ -240,3 +240,13 @@ test('Now composition over real projection rows: cross-domain, decision verbatim
   assert.ok(offIds.includes('commitment:task:ember'), 'off duty still shows a personal commitment');
   assert.ok(!offIds.includes('commitment:task:figs'), 'off duty holds the management-log (work) one');
 });
+
+test('14 Oct 2026: /now carries ONE attention decision (attention-decision-v1) with a primary, context and a trace', async () => {
+  const { status, json } = await get('/api/canonical/now');
+  assert.equal(status, 200);
+  assert.ok(json.decision, 'decision present — null would mean the composition threw');
+  assert.equal(json.decision.contract, 'attention-decision-v1');
+  assert.ok(json.decision.primary && json.decision.primary.rule, 'the rule that chose the primary is named');
+  assert.ok(Array.isArray(json.decision.trace) && json.decision.trace.length >= 1);
+  assert.ok(json.decision.context && 'block' in json.decision.context);
+});
