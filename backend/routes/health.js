@@ -82,6 +82,34 @@ function calibratedJCRingBloodPressure(sample, offset) {
 // The raw capture remains available for protocol work, but confirmed readings
 // are also made durable here. They use their own table so nothing from a
 // consumer ring is blended into Apple Health or a HiLo measurement.
+// Keep every raw PPG run (see jc_ring_ppg_runs in schema.sql). A capture often
+// re-sends runs from earlier syncs, so a run is keyed on its own time, first
+// sequence and length and a repeat folds. Never fails the upload it rides on.
+const PPG_RETAIN_DAYS = 30;
+function persistJCRingPpgRuns(packets, receivedAt) {
+  try {
+    const runs = jcRingProtocol.metabolicPpgRuns(packets, { fullSamples: true });
+    let stored = 0;
+    for (const run of runs) {
+      if (!run.receivedAt || !Array.isArray(run.samples) || run.samples.length < 500) continue;
+      const key = `${run.receivedAt}|${run.firstSequence}|${run.sampleCount}`;
+      const r = db.run(
+        `INSERT OR IGNORE INTO jc_ring_ppg_runs (run_key, captured_at, first_sequence, sample_count, sample_rate_hz,
+           signal_quality, candidate_pulse_bpm, perfusion_index_percent, missing_frames, clipped_samples, samples_json, stored_at)
+         VALUES (?, ?, ?, ?, 50, ?, ?, ?, ?, ?, ?, ?)`,
+        [key, run.receivedAt, run.firstSequence, run.sampleCount, run.signalQuality, run.candidatePulseBpm,
+          run.perfusionIndexPercent, run.missingFrames, run.clippedSamples, JSON.stringify(run.samples), receivedAt]);
+      stored += r.changes || 0;
+    }
+    const cutoff = new Date(Date.parse(receivedAt) - PPG_RETAIN_DAYS * 86400000).toISOString();
+    db.run('DELETE FROM jc_ring_ppg_runs WHERE captured_at < ?', [cutoff]);
+    return stored;
+  } catch (e) {
+    console.warn('[JCRing] PPG runs not stored:', e.message);
+    return 0;
+  }
+}
+
 function persistJCRingReadings(packets, receivedAt) {
   const decoded = jcRingProtocol.inspect(packets);
   let stored = 0;
@@ -199,8 +227,9 @@ function ringDiagnostic(body, client) {
   timeline.unshift({ receivedAt: capture.receivedAt, capturedAt: capture.capturedAt, source: capture.syncSource, packets: capture.packets.length });
   db.setState(RING_SYNC_TIMELINE_STATE_KEY, JSON.stringify(timeline.slice(0, 100)));
   const persisted = persistJCRingReadings(packets, capture.receivedAt);
+  const ppgRunsStored = persistJCRingPpgRuns(packets, capture.receivedAt);
   return { ok: true, packetsStored: packets.length, characteristicsStored: characteristics.length,
-    probesStored: probes.length, readingsStored: persisted.stored, receivedAt: capture.receivedAt };
+    probesStored: probes.length, readingsStored: persisted.stored, ppgRunsStored, receivedAt: capture.receivedAt };
 }
 
 // POST /api/health/ring-diagnostic — an explicit, one-off protocol capture.

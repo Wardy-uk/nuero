@@ -140,3 +140,25 @@ test('an upload stores its readings, and an explicit backfill of the same captur
   const again = await (await fetch(`${base}/api/health/ring-readings/backfill`, { method: 'POST' })).json();
   assert.equal(again.readingsStored, 5);
 });
+
+test('every raw 90-second PPG run is kept, and a run re-sent by a later sync is stored once', async () => {
+  // Twelve full frames (50 samples each) = 600 samples, a sine-ish waveform.
+  const frame = (seq) => {
+    const bytes = [0x3A, (seq >> 8) & 0xff, seq & 0xff];
+    for (let i = 0; i < 50; i++) {
+      const v = 4000000 + Math.round(100000 * Math.sin(((seq * 50 + i) / 50) * 2 * Math.PI * 1.2));
+      bytes.push((v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff);
+    }
+    return { receivedAt: '2026-10-15T19:00:34Z', kind: 'notification', service: 'FFF0', characteristic: 'FFF7',
+      hex: bytes.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ') };
+  };
+  const packets = Array.from({ length: 12 }, (_, i) => frame(i));
+  const first = await (await post({ ...capture, packets })).json();
+  assert.equal(first.ppgRunsStored, 1);
+  const again = await (await post({ ...capture, packets })).json();
+  assert.equal(again.ppgRunsStored, 0, 'the same run from a later sync folds');
+  const row = db.get('SELECT sample_count, samples_json, captured_at FROM jc_ring_ppg_runs');
+  assert.equal(row.sample_count, 600);
+  assert.equal(JSON.parse(row.samples_json).length, 600, 'every sample kept, not the 300-point preview');
+  assert.equal(row.captured_at, '2026-10-15T19:00:34Z');
+});

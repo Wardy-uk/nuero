@@ -106,7 +106,7 @@ function ppgFeatures(values, sampleRateHz = 50) {
 // number, then reads the remaining bytes as 24-bit big-endian samples. A full
 // 153-byte packet holds 50 samples. This is raw optical data;
 // the ring does not return a glucose number with it.
-function metabolicPpgRuns(packets) {
+function metabolicPpgRuns(packets, { fullSamples = false } = {}) {
   const runs = [];
   let current = null;
   let previousSequence = null;
@@ -153,6 +153,9 @@ function metabolicPpgRuns(packets) {
         ? 'usable pulse pattern' : 'raw signal captured; pulse pattern needs review',
       ...features,
       waveform,
+      // Every sample, for the stored research copy (jc_ring_ppg_runs). Off by
+      // default so API payloads stay bounded.
+      ...(fullSamples ? { samples: values } : {}),
     };
   }).filter(run => run.sampleCount > 0);
 }

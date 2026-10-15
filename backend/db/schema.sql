@@ -990,6 +990,27 @@ CREATE TABLE IF NOT EXISTS jc_ring_samples (
 CREATE INDEX IF NOT EXISTS idx_jc_ring_samples_metric_time
   ON jc_ring_samples(metric, recorded_at_local DESC);
 
+-- Every raw 90-second optical (PPG) capture from the ring, kept so its pulse
+-- shape can be tested against HiLo blood pressure (15 Oct 2026). Before this
+-- only the latest sync's packets survived, overwritten each time. Research
+-- data, not a measurement: nothing reads it as blood pressure. Pruned after
+-- 30 days. `captured_at` is the PHONE's receive time (UTC), not the ring clock.
+CREATE TABLE IF NOT EXISTS jc_ring_ppg_runs (
+  run_key TEXT PRIMARY KEY,              -- captured_at|first_sequence|sample_count
+  captured_at TEXT NOT NULL,
+  first_sequence INTEGER,
+  sample_count INTEGER NOT NULL,
+  sample_rate_hz REAL NOT NULL DEFAULT 50,
+  signal_quality TEXT,
+  candidate_pulse_bpm INTEGER,
+  perfusion_index_percent REAL,
+  missing_frames INTEGER,
+  clipped_samples INTEGER,
+  samples_json TEXT NOT NULL,
+  stored_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_jc_ring_ppg_runs_time ON jc_ring_ppg_runs(captured_at);
+
 -- One row per day, derived from health_samples.
 --
 -- health_samples holds ~1.1M rows across 66 metrics and two years, which is the
