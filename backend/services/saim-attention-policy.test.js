@@ -1,6 +1,6 @@
 'use strict';
 
-// The attention contract end to end, pure: NEURO candidates (neuro-candidates-v1)
+// The attention contract end to end, pure: NEURO candidates (neuro-candidates-v2)
 // → SAiM Attention Policy (saim-attention-v1). Fixture = the live 17:11 read on
 // 14 Oct 2026 that put the control and Alt at odds.
 
@@ -66,7 +66,7 @@ const decide = (s, surface) => POL.decide(s.candidates, { surface, now: s.now })
 
 test('candidates: facts with provenance and sphere — and no lead, rule or recommendation', () => {
   const { candidates } = scenario();
-  assert.equal(candidates.contract, 'neuro-candidates-v1');
+  assert.equal(candidates.contract, 'neuro-candidates-v2');
   const kinds = candidates.candidates.map((c) => c.kind);
   for (const k of ['block', 'approval', 'attention-item', 'ritual', 'commitment']) assert.ok(kinds.includes(k), k);
   for (const c of candidates.candidates) {

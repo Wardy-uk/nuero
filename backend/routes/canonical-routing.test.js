@@ -244,7 +244,7 @@ test('Now composition over real projection rows: cross-domain, decision verbatim
 test('15 Oct 2026: /now carries NEURO candidates and SAiM’s decision as SEPARATE fields, scoped by surface', async () => {
   const { status, json } = await get('/api/canonical/now');
   assert.equal(status, 200);
-  assert.equal(json.candidates && json.candidates.contract, 'neuro-candidates-v1', 'null would mean composition threw');
+  assert.equal(json.candidates && json.candidates.contract, 'neuro-candidates-v2', 'null would mean composition threw');
   assert.ok(Array.isArray(json.candidates.candidates));
   assert.equal(json.saim && json.saim.contract, 'saim-attention-v1');
   assert.equal(json.saim.owner, 'saim');

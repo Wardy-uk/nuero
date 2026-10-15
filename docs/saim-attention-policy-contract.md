@@ -16,7 +16,7 @@ output as a fact.
 
 ## 1. Inputs: NEURO candidates and the facts each one carries
 
-NEURO hands the policy one object, `neuro-candidates-v1`. Every candidate carries
+NEURO hands the policy one object, `neuro-candidates-v2` (§6b). Every candidate carries
 `provenance` (source, read time), `known` (whether it was read) and `sphere` (work / personal / home / family / unknown) with its basis. A missing read is
 `known:false`, never an empty list.
 
@@ -173,10 +173,24 @@ S1 is judged on what the surface's scope depends on:
 - **`attention.gate` is a current NEURO-side gate that feeds candidates. It is not SAiM policy.** Today the gate re-ranks, holds back (`dropped`) and quietens items before the policy sees them. In v1 its output is treated as input: its `primary`/`secondary` arrive as attention-item candidates, and its `dropped` arrive as held candidates with NEURO's reason. Whether that judgement moves under SAiM is a later decision.
 - **Notifications.** The P0 digest and push policy are unchanged.
 
+## 6b. Contract versions (C6, 15 Oct 2026)
+
+- **One name, one shape.** The first composer shipped as `neuro-candidates-v1`, without the risk/urgency split (`facts.risk`, `riskBasis`, `urgency`). The branch's composer carries the split, so it is **`neuro-candidates-v2`**. A breaking change is always a new name, never an edit to what an existing name means.
+- **The registry:** `shared/attention-contracts.cjs` (pure). It holds the supported versions per family (`neuro-candidates`: v2; `saim-attention`: v1), the shape each promises, and `checkCandidates` / `checkAttention`.
+- **Refusal:**
+  - The policy checks its input before reading anything. An unsupported name, a v1 shape under any label, or a missing or wrong-typed required field is **refused**.
+  - The decision is then an honest **S1 blind** ("I can't read NEURO's candidates right now — this isn't an all-clear") carrying `refused: { family, reason, got, supported }`. There is no lead ref, no protected context, no judgement and no recommended action.
+  - A refusal is never S11 "nothing", and never a partial read.
+- **Forward compatibility:** unknown extra fields are ignored and change nothing.
+- **Still a caller error:** an unknown surface throws.
+- **`saim-attention-v1` gains an optional `refused`** (additive). `checkAttention` validates decisions for later consumers (the hand-off resolver and the Alt adapter, not built). `saim-handoff-v1` is reserved.
+- **Policy version:** `2026-10-15.6`.
+- **Tests:** `backend/services/attention-contracts.test.js` (10), with 6 mutations caught: the skipped check, any name accepted, the v1 shape undetected, the refusal as S11, `poolReadable` not required, and any rule accepted.
+
 ## 7. Placement (if approved)
 
 - **Policy code:** `saim/policy/attention-policy.cjs`, pure. `require`d and executed by NEURO's backend for parity.
-- **Candidates:** NEURO exposes `neuro-candidates-v1` on `/api/canonical/now`.
+- **Candidates:** NEURO exposes `neuro-candidates-v2` on `/api/canonical/now`.
 - **Policy output:** published alongside the candidates as `saim` (`saim-attention-v1`), never merged into NEURO's own fields.
 - **Surfaces:** the control's presentation and SAiM Alt both render `saim.lead` / `protected` / `held` / `judgement` / `recommended`. Neither picks its own lead.
 - **Superseded code:** `attention-decision-v1` (`59836e22`) is replaced, not shipped.

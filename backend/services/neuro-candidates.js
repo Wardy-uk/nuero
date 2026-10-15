@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * NEURO's half of the attention contract — `neuro-candidates-v1` (15 Oct 2026).
+ * NEURO's half of the attention contract — `neuro-candidates-v2` (15 Oct 2026; v2 = the risk/urgency
+ * split on attention-item and home facts — a different shape from v1, so a different name, C6).
  * Contract: docs/saim-attention-policy-contract.md.
  *
  * NEURO owns FACTS and CONSTRAINTS. This module says what is true right now —
@@ -27,7 +28,7 @@
  * `compose()` is PURE. `gather()` does the reads and never throws.
  */
 
-const CONTRACT = 'neuro-candidates-v1';
+const CONTRACT = require('../../shared/attention-contracts.cjs').NEURO_CANDIDATES;
 
 const pad = (n) => String(n).padStart(2, '0');
 const dayKey = (ms) => { const t = new Date(ms); return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`; };

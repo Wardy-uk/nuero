@@ -5,7 +5,7 @@
  * Contract: docs/saim-attention-policy-contract.md (approved in principle 14 Oct,
  * §3 scope amendment 15 Oct).
  *
- * NEURO owns facts (`neuro-candidates-v1`); SAiM owns attention judgement: what
+ * NEURO owns facts (`neuro-candidates-v2`, checked by shared/attention-contracts.cjs); SAiM owns attention judgement: what
  * she leads with, what she asks Nick to do now, what she protects, and how that
  * shows on each surface. This file is that judgement. NEURO's backend EXECUTES
  * it so every surface receives one answer, but nothing here is a NEURO fact and
@@ -14,14 +14,22 @@
  * PURE: candidates in, decision out. No I/O, no clock (`now` is passed), no
  * require of anything in backend/.
  *
+ * CONTRACTS (C6, 15 Oct 2026): the input is checked against the supported
+ * `neuro-candidates` versions BEFORE anything is read. An unsupported name, a
+ * v1 shape under any label, or a missing required field is REFUSED: the
+ * decision is an honest S1 blind ("this isn't an all-clear") carrying
+ * `refused`, never a partial read and never S11 "nothing".
+ *
  * ORDER OF WORK
  *   1. SCOPE filters the candidates (work / home / all) — before any choice.
  *   2. The RULES (S1–S11) pick the lead from what is left.
  *   3. MANIFESTATION shapes the output for the surface — never the lead.
  */
 
-const CONTRACT = 'saim-attention-v1';
-const POLICY_VERSION = '2026-10-15.5';
+const CONTRACTS = require('../../shared/attention-contracts.cjs');
+
+const CONTRACT = CONTRACTS.SAIM_ATTENTION;
+const POLICY_VERSION = '2026-10-15.6';
 
 /** How long before a block's end an approval deadline must fall to interrupt it. */
 const BLOCK_END_MARGIN_MINUTES = 15;
@@ -111,12 +119,14 @@ const dayWord = (iso, now) => {
 // ── The decision ────────────────────────────────────────────────────────────
 
 /**
- * @param {object} input   neuro-candidates-v1
+ * @param {object} input   neuro-candidates-v2 (anything else is refused)
  * @param {{surface?: string, now?: number}} opts
  */
 function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
   const sf = SURFACES[surface];
   if (!sf) throw new Error(`unknown surface "${surface}" — one of ${Object.keys(SURFACES).join(', ')}`);
+  const check = CONTRACTS.checkCandidates(input);
+  if (!check.ok) return refusedDecision(check, surface, sf, now);
   const all = (input && Array.isArray(input.candidates)) ? input.candidates : [];
   const k = (input && input.constraints) || {};
   const ww = k.workingWindow || null;
@@ -311,6 +321,35 @@ function decide(input, { surface = 'work-desktop', now = Date.now() } = {}) {
     corrections,
     review,
     trace,
+  };
+}
+
+/**
+ * The decision for input SAiM will not read. Same shape as any decision, so no
+ * consumer needs a special case; it leads S1 blind because "I couldn't read it"
+ * is never "nothing".
+ */
+function refusedDecision(check, surface, sf, now) {
+  const why = 'I can’t read NEURO’s candidates right now — this isn’t an all-clear.';
+  const reason = `${check.reason}${check.got ? ` (got ${check.got})` : ''}`;
+  return {
+    contract: CONTRACT,
+    owner: 'saim',
+    policyVersion: POLICY_VERSION,
+    decidedAt: new Date(now).toISOString(),
+    surface: { id: surface, scope: sf.scope, manifestation: sf.manifestation },
+    scope: { id: sf.scope, excluded: {} },
+    lead: { ref: null, kind: 'blind', title: null, rule: 'S1 blind', why, deciding: [`contract refused: ${reason}`] },
+    protected: null,
+    held: sf.manifestation.held === 'count' ? { count: 0 } : [],
+    judgement: [],
+    next: null,
+    recommended: null,
+    alternatives: [],
+    corrections: [],
+    review: { unclassified: [], action: null },
+    refused: { family: check.family, reason: check.reason, got: check.got, supported: check.supported },
+    trace: [{ rule: 'contract', applies: true, why: `refused: ${reason}; supported ${check.supported.join(', ')}` }],
   };
 }
 
