@@ -111,8 +111,8 @@ test('a door/window sensor is not a hazard; smoke / leak are', () => {
   const leak = { entity_id: 'binary_sensor.boiler_leak', state: 'unavailable', attributes: { device_class: 'moisture', friendly_name: 'Boiler leak' } };
   const s = home.safetyFrom(watchdog([], [], [smoke, leak]));
   assert.equal(s.capability, 'present');
-  assert.deepEqual(s.active, [{ label: 'Landing smoke', hazard: 'smoke' }]);
-  assert.deepEqual(s.unavailable, [{ label: 'Boiler leak', hazard: 'water leak' }]);
+  assert.deepEqual(s.active, [{ label: 'Landing smoke', hazard: 'smoke', entityId: 'binary_sensor.landing_smoke' }]);
+  assert.deepEqual(s.unavailable, [{ label: 'Boiler leak', hazard: 'water leak', entityId: 'binary_sensor.boiler_leak' }]);
 });
 
 // ── 22C obligations: explicit domain only ───────────────────────────────────

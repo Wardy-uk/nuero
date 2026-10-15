@@ -161,23 +161,54 @@ test('a top email: S7 work step "email" → SAiM recommends the declared mail ap
   assert.equal(out.handoff.primary.label, 'Open Outlook');
 });
 
-test('a task block, an approval and a meeting: no usable hand-off today, each with NEURO’s stated gaps', () => {
+test('a task block, an approval and a meeting: exact links where NEURO holds the id; no hand-off only for what is still missing', () => {
   const block = SC.SCENARIOS.find((s) => s.id === '1').build();
+  const blockCand = block.candidates.candidates.find((c) => c.id === 'block:130');
+  assert.deepEqual(blockCand.targets, [{ role: 'canonical', href: 'neuro:?item=task%3A600', label: 'This task in NEURO' }], 'one task in the block → its exact task link');
   const b = H.resolveHandoff({ decision: block.decision, candidates: block.candidates, device: device(Date.parse(block.decision.decidedAt)), now: Date.parse(block.decision.decidedAt) });
   assert.equal(b.rule, 'S5 protected block');
-  assert.equal(b.handoff, null);
+  assert.equal(b.handoff, null, 'still no app: NEURO states no activity for a task');
   assert.match(b.reason, /didn’t say what kind of work/);
-  assert.deepEqual(b.neuroGaps.sort(), ['activity', 'canonical']);
+  assert.deepEqual(b.neuroGaps, ['activity']);
   const ap = SC.SCENARIOS.find((s) => s.id === '2b').build();
   const a = H.resolveHandoff({ decision: ap.decision, candidates: ap.candidates, device: device(Date.parse(ap.decision.decidedAt)), now: Date.parse(ap.decision.decidedAt) });
   assert.equal(a.rule, 'S4 deadline inside the block');
-  assert.equal(a.handoff, null);
+  assert.equal(a.handoff, null, 'the fixture id pa_3 is not a real action id, so NEURO gives no link (see the next test for a real one)');
   assert.deepEqual(a.neuroGaps, ['canonical']);
   const mt = SC.SCENARIOS.find((s) => s.id === '9a').build();
   const m = H.resolveHandoff({ decision: mt.decision, candidates: mt.candidates, device: device(Date.parse(mt.decision.decidedAt)), now: Date.parse(mt.decision.decidedAt) });
   assert.equal(m.rule, 'S3 meeting');
-  assert.equal(m.handoff, null);
+  assert.equal(m.handoff, null, 'the scenario’s event id ("Nick Catch Up") is not a valid diary id, so no prep link');
   assert.deepEqual(m.neuroGaps.sort(), ['join', 'prep', 'provider']);
+});
+
+test('approval: the exact action link; a meeting with a real diary id: Open meeting prep', () => {
+  const ap = SC.SCENARIOS.find((s) => s.id === '2b').build();
+  const apCand = ap.candidates.candidates.find((c) => c.kind === 'approval');
+  assert.equal(apCand.id, 'approval:pa_3', 'the scenario approval id');
+  // pa_3 is a fixture id, not a real pa_<16 hex>: so NEURO refuses to link it.
+  assert.deepEqual(apCand.targets, []);
+  assert.deepEqual(gapFields(apCand), ['canonical']);
+  const real = NH.handoffFor({ kind: 'approval', id: 'approval:pa_0123456789abcdef', facts: {} });
+  assert.deepEqual(real.targets, [{ role: 'canonical', href: 'neuro:?item=action%3Apa_0123456789abcdef', label: 'This action in NEURO' }]);
+  const meeting = NH.handoffFor({ kind: 'meeting', id: 'meeting:14:30:x', eventId: 'AAMkAGI2THVSAAA=', facts: {} });
+  assert.deepEqual(meeting.targets, [{ role: 'prep', href: 'neuro:?item=meeting-prep%3AAAMkAGI2THVSAAA%3D', label: 'Meeting prep' }]);
+  assert.deepEqual(gapFields(meeting), ['join', 'provider']);
+  // End to end with a real-shaped event id: S3 offers the prep.
+  const mt = SC.SCENARIOS.find((s) => s.id === '9a').build();
+  const cands = clone(mt.candidates);
+  const mc = cands.candidates.find((c) => c.kind === 'meeting');
+  Object.assign(mc, NH.handoffFor({ ...mc, eventId: 'AAMkAGI2THVSAAA=' }));
+  const now = Date.parse(mt.decision.decidedAt);
+  const out = H.resolveHandoff({ decision: POL.decide(cands, { surface: 'work-desktop', now }), candidates: cands, device: device(now), now });
+  assert.deepEqual(out.handoff.primary, { label: 'Open meeting prep', target: { type: 'link', href: 'neuro:?item=meeting-prep%3AAAMkAGI2THVSAAA%3D', role: 'prep' } });
+  // Email items: the exact email link.
+  const em = NH.handoffFor({ kind: 'attention-item', id: 'item:e', facts: { type: 'email' } }, { emailId: 'AAMkAGEmailId0000000001=' });
+  assert.equal(em.targets[0].href, 'neuro:?item=email%3AAAMkAGEmailId0000000001%3D');
+  // Hazard with a sensor id: the exact hazard link; control (HA) still a gap.
+  const hz = NH.handoffFor({ kind: 'home', id: 'home:hazard:Kitchen', facts: { homeKind: 'hazard', entityId: 'binary_sensor.kitchen_leak' } });
+  assert.equal(hz.targets[0].href, 'neuro:?item=hazard%3Abinary_sensor.kitchen_leak');
+  assert.deepEqual(gapFields(hz), ['control']);
 });
 
 test('degrade rule preserved on real composed data: a corrupted intent/link on the lead degrades, the decision stands', () => {

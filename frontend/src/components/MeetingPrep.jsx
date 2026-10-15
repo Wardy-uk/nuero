@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import useCachedFetch from '../useCachedFetch';
 import { apiUrl } from '../api';
 import './MeetingPrep.css';
 
-export default function MeetingPrep() {
-  const [mode, setMode] = useState('next'); // next | week | detail
+// `eventId` (15 Oct 2026): opened from an exact-item link — go straight to that meeting's prep.
+export default function MeetingPrep({ eventId: linkedEventId = null } = {}) {
+  const [mode, setMode] = useState(linkedEventId ? 'detail' : 'next'); // next | week | detail
   const [selectedId, setSelectedId] = useState(null);
 
   // Next meeting
@@ -36,6 +37,9 @@ export default function MeetingPrep() {
     }
     setDetailLoading(false);
   };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (linkedEventId) openDetail(linkedEventId); }, [linkedEventId]);
 
   const meeting = mode === 'detail' ? detailData : nextData?.meeting;
   const laterToday = nextData?.laterToday || [];

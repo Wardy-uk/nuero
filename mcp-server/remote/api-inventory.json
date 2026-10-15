@@ -3197,6 +3197,24 @@
     "stream": false
   },
   {
+    "id": "get_links_resolve",
+    "method": "GET",
+    "route": "/api/links/resolve",
+    "domain": "links",
+    "source": "routes/links.js",
+    "line": 10,
+    "description": "GET /api/links/resolve. open an exact-item deep link (neuro:?item=<kind>:<id>) for a task, approval/action, email, hazard or meeting prep: resolve link, deep link, open item, canonical link. Answers open (200) with the one record, or explicitly invalid (400) / missing (404) / stale (410, with the cu",
+    "params": [],
+    "query": [
+      "item"
+    ],
+    "body": [],
+    "queryOpen": false,
+    "bodyOpen": false,
+    "multipart": false,
+    "stream": false
+  },
+  {
     "id": "get_location_dwell_check",
     "method": "GET",
     "route": "/api/location/dwell-check",

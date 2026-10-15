@@ -75,6 +75,11 @@ function targetProblem(t, at) {
   if (!TARGET_ROLES.includes(t.role)) return `${at}.role "${t.role}" is not a target role`;
   if (typeof t.href !== 'string' || !HREF.test(t.href)) return `${at}.href is not an http(s), saim: or neuro: link`;
   if (/\/approve\b/i.test(t.href)) return `${at}.href is an approve link — a hand-off never approves`;
+  if (t.href.startsWith('neuro:')) {
+    const n = LINKS.parseNeuroHref(t.href);
+    if (!n) return `${at}.href is not a valid neuro: link (a view, or one exact item)`;
+    if (t.role === 'prep' && !(n.item && n.item.kind === 'meeting-prep')) return `${at} is a prep target that is not a meeting-prep link`;
+  }
   if (t.label != null && !isStr(t.label)) return `${at}.label is not text`;
   if (t.provider != null && !isStr(t.provider)) return `${at}.provider is not text`;
   return null;
@@ -101,6 +106,7 @@ const ATTENTION_RULES = Object.freeze([
   'S9 block about to start', 'S10 ritual', 'S11 nothing',
 ]);
 
+const LINKS = require('./neuro-links.cjs');
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 const isStr = (x) => typeof x === 'string' && x.length > 0;
 const refuse = (family, reason, got) => ({ ok: false, family, reason, got: got === undefined ? null : got, supported: SUPPORTED[family] });

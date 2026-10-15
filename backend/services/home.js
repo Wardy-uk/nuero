@@ -105,8 +105,9 @@ function safetyFrom(states) {
     return { capability: 'none', sensors: 0, active: [], unavailable: [], why: 'Home Assistant has no smoke, gas, carbon monoxide or water-leak sensor, so NEURO cannot see household hazards' };
   }
   const label = (s) => (s.attributes && s.attributes.friendly_name) || s.entity_id.replace(/^binary_sensor\./, '').replace(/_/g, ' ');
-  const active = hazard.filter((s) => s.state === 'on').map((s) => ({ label: label(s), hazard: HAZARD_WORDS[s.attributes.device_class] }));
-  const unavailable = hazard.filter((s) => ['unavailable', 'unknown'].includes(s.state)).map((s) => ({ label: label(s), hazard: HAZARD_WORDS[s.attributes.device_class] }));
+  // entityId (15 Oct 2026): the sensor's stable id, for an exact deep link — the label can change.
+  const active = hazard.filter((s) => s.state === 'on').map((s) => ({ label: label(s), hazard: HAZARD_WORDS[s.attributes.device_class], entityId: s.entity_id }));
+  const unavailable = hazard.filter((s) => ['unavailable', 'unknown'].includes(s.state)).map((s) => ({ label: label(s), hazard: HAZARD_WORDS[s.attributes.device_class], entityId: s.entity_id }));
   return { capability: 'present', sensors: hazard.length, active, unavailable, why: null };
 }
 
@@ -170,7 +171,7 @@ function sourcesFrom({ household, devices, safety, remindersHealth = [] } = {}) 
 function needsYouFrom({ obligations = [], safety } = {}) {
   const out = [];
   for (const o of obligations) if (o.needsNow) out.push({ kind: 'obligation', id: o.id, title: o.what, why: o.why || (o.due && o.due.label) || 'due now' });
-  for (const a of (safety && safety.active) || []) out.push({ kind: 'hazard', id: `hazard:${a.label}`, title: `${a.label}: ${a.hazard} detected`, why: 'a household hazard sensor is reporting' });
+  for (const a of (safety && safety.active) || []) out.push({ kind: 'hazard', id: `hazard:${a.label}`, entityId: a.entityId || null, title: `${a.label}: ${a.hazard} detected`, why: 'a household hazard sensor is reporting' });
   for (const u of (safety && safety.unavailable) || []) out.push({ kind: 'hazard-blind', id: `hazard-blind:${u.label}`, title: `Can't reach ${u.label}`, why: `NEURO cannot see the ${u.hazard} sensor` });
   return out;
 }

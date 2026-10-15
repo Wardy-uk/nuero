@@ -321,6 +321,52 @@ The live lead was S7 on a **capacity** item, which has no hand-off defined.
 
 **Tests:** `neuro-handoff.test.js` (11): the shape over every scenario, mapping by kind and by type, wording independence, links are valid and never approve, end-to-end hand-offs, and the degrade rule on real data. `saim-handoff.test.js` was adjusted for real composer data. Mutations: 10 of 10 on NEURO's side caught; all 24 earlier ones (resolver, cap, degrade, C6) still caught. Full backend suite: 6,617 pass, 0 fail.
 
+## 6e. Exact-item deep links (15 Oct 2026; not wired to SAiM)
+
+**Form:** `neuro:?item=<kind>:<id>`, a single typed parameter, relative to wherever the client knows NEURO lives (the same scheme as `neuro:?view=…`). Contract: `shared/neuro-links.cjs`. Each id is the record's own primary key:
+
+| Kind | Id | Pattern |
+|---|---|---|
+| `task` | NEURO task row id | `^[1-9]\d{0,8}$` |
+| `action` | prepared-action id | `pa_` + 16 hex |
+| `email` | work triage Graph id, or `pmail:<mailbox>:<uidvalidity>:<uid>` / `gmail:<id>` | — |
+| `hazard` | Home Assistant `binary_sensor.*` entity id; the display label is not stable, so home now carries `entityId` | — |
+| `meeting-prep` | `calendar_cache.event_id`: Graph, or Apple `apple:<uid>:<start>` (iCloud UIDs carry `@`; none of the live ids carry spaces) | — |
+
+**Resolution:** `GET /api/links/resolve?item=…` (`backend/services/neuro-links.js`, `routes/links.js`) is read-only and behind the PIN. It answers exactly one status:
+
+| Status | HTTP | Meaning |
+|---|---|---|
+| **open** | 200 | the record, as a summary: no email body, no draft text |
+| **invalid** | 400 | a bad kind or id |
+| **missing** | 404 | no record by that id. Also: a non-hazard sensor; a solo diary entry (no prep); a meeting more than a week out (prep is built for the coming week) |
+| **stale** | 410 | the record exists but isn't live. A done task; a dropped task (`current` = the task it was merged into); a superseded action (`current` = its newest version); a rejected, expired or cancelled action; a dismissed or departed email; a cleared hazard; an ended meeting. Each says `why` |
+| **unreadable** | 503 | no Home Assistant reading yet, or no triage store |
+
+No PIN or a wrong PIN gives **401**. **There is no fallback to a page or list.**
+
+**NEURO web app:**
+- `?item=<kind>:<id>` opens the `item` view (`components/ItemLink.jsx`). The param is kept in the URL only while on that view.
+- **An action** renders `PreparedActions` filtered to exactly that action, so its real controls are there. **A meeting** renders `MeetingPrep` opened at that event (a new `eventId` prop).
+- **A task, email or hazard** shows the record itself, with a way on labelled "Show it in Tasks" / "Find it in Inbox" / "Find it on Home", never "Open".
+- **Every failure** names itself, gives the why, offers "Open the current one" when there is a successor, and says *"Nothing else was opened in its place."*
+
+**Hand-off data now emits exact links:**
+- a block with exactly one task → that task;
+- a commitment or home obligation with a task id → that task;
+- an approval → `action:<id>`;
+- an email item → `email:<emailId>`;
+- a home hazard → `hazard:<entityId>`;
+- a diary meeting, or a decision-engine `cal-<id>` item → `meeting-prep:<eventId>`, with role `prep`.
+
+An invalid id produces no link: the gap is said instead (fixture ids like `pa_3` stay gapped). The registry validates every `neuro:` href through `parseNeuroHref`, and a `prep` target must be a `meeting-prep` item.
+
+**Tests:**
+- `routes/neuro-links-routing.test.js` (8, real HTTP and auth): valid, missing, stale (with successors), invalid (16 malformed forms), unauthorised (401 ×3; a valid machine token is allowed), unreadable, read-only, and the contract.
+- `item-link-render.test.js` (6, a real render): action scoping, meeting prep, record cards, every failure state, the stale successor, and App routing.
+- `neuro-handoff.test.js` (12).
+- 17 of 17 mutations caught. The full backend suite is 6,632 pass / 0 fail, and the MCP inventory is refreshed (NEURO only; VANTAGE reverted).
+
 ## 7. Placement (if approved)
 
 - **Policy code:** `saim/policy/attention-policy.cjs`, pure. `require`d and executed by NEURO's backend for parity.

@@ -27,7 +27,11 @@
  * public address and no host leaks into the payload.
  */
 
+const LINKS = require('../../shared/neuro-links.cjs');
+
 const neuro = (view) => `neuro:?view=${view}`;
+/** An exact-item link target, or null when the id is not a valid one for the kind. */
+const exact = (role, kind, id, label) => { const href = id == null ? null : LINKS.linkFor(kind, String(id)); return href ? { role, href, label } : null; };
 const gap = (field, why) => ({ field, why });
 const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
 
@@ -36,10 +40,11 @@ const SOURCES = Object.freeze({ role: 'source', href: neuro('sources'), label: '
 function constraintTargets() { return [{ ...SOURCES }]; }
 
 const NO_TASK_ACTIVITY = 'NEURO holds no structured activity for a task (no field states what kind of work it is)';
-const NO_TASK_LINK = 'NEURO’s web app can’t open a single task from a link (nearest page: neuro:?view=todos)';
-const NO_ACTION_LINK = 'NEURO’s web app can’t open a single approval from a link yet (nearest page: neuro:?view=actions)';
+const NO_TASK_LINK = 'the card carries no NEURO task id to link to';
+const NO_BLOCK_TASK = 'a block of several tasks (or none) has no single task record to link to';
+const NO_ACTION_LINK = 'the approval carries no valid action id';
 const NO_JOIN = 'the diary cache keeps no meeting join link';
-const NO_PREP = 'NEURO’s meeting prep can’t be opened at one meeting from a link (nearest page: neuro:?view=meeting-prep)';
+const NO_PREP = 'the meeting carries no diary event id to open its prep at';
 const NO_PROVIDER = 'the diary cache doesn’t record which meeting app hosts it';
 
 /** Jira's own page for a ticket, from the configured base and a STRUCTURED key — never a parsed title. */
@@ -50,7 +55,18 @@ function jiraBrowse(jiraBase, key, given) {
   return key && TICKET_KEY.test(String(key)) ? `${base}/browse/${key}` : null;
 }
 
-const workStep = (activity, basis, gaps) => ({ handoffIntent: { kind: 'work-step', activity, ...(basis ? { basis } : {}) }, targets: [], handoffGaps: gaps });
+const workStep = (activity, basis, gaps, targets = []) => ({ handoffIntent: { kind: 'work-step', activity, ...(basis ? { basis } : {}) }, targets: targets.filter(Boolean), handoffGaps: gaps });
+/** A task work step: the exact task link when there is one task id, else the gap. */
+const taskStep = (taskId, noLinkWhy, activity = null, basis = null) => {
+  const t = exact('canonical', 'task', taskId, 'This task in NEURO');
+  const gaps = activity ? [] : [gap('activity', NO_TASK_ACTIVITY)];
+  return workStep(activity, basis, t ? gaps : [...gaps, gap('canonical', noLinkWhy)], [t]);
+};
+/** A meeting: prep at the exact diary event when NEURO holds its id. */
+const meetingStep = (eventId) => {
+  const prep = exact('prep', 'meeting-prep', eventId, 'Meeting prep');
+  return { handoffIntent: { kind: 'meeting', provider: null }, targets: prep ? [prep] : [], handoffGaps: [gap('join', NO_JOIN), ...(prep ? [] : [gap('prep', NO_PREP)]), gap('provider', NO_PROVIDER)] };
+};
 
 /**
  * The hand-off fields for one candidate.
@@ -62,27 +78,32 @@ const workStep = (activity, basis, gaps) => ({ handoffIntent: { kind: 'work-step
 function handoffFor(c, meta = null, { jiraBase = null } = {}) {
   const m = meta || {};
   switch (c.kind) {
-    case 'block':
-      return workStep(null, null, [gap('activity', NO_TASK_ACTIVITY), gap('canonical', NO_TASK_LINK)]);
+    case 'block': {
+      const tasks = (c.facts && Array.isArray(c.facts.tasks)) ? c.facts.tasks : [];
+      return taskStep(tasks.length === 1 ? tasks[0].taskId : null, NO_BLOCK_TASK);
+    }
     case 'commitment':
-      return workStep(null, null, [gap('activity', NO_TASK_ACTIVITY), gap('canonical', NO_TASK_LINK)]);
+      return taskStep(c.taskId, NO_TASK_LINK);
     case 'meeting':
-      return { handoffIntent: { kind: 'meeting', provider: null }, targets: [], handoffGaps: [gap('join', NO_JOIN), gap('prep', NO_PREP), gap('provider', NO_PROVIDER)] };
+      return meetingStep(c.eventId);
     case 'protected-time':
       return { handoffIntent: null, targets: [], handoffGaps: [gap('intent', 'a solo diary entry states no purpose — no task block says what it’s for')] };
-    case 'approval':
-      return { handoffIntent: { kind: 'approval' }, targets: [], handoffGaps: [gap('canonical', NO_ACTION_LINK)] };
+    case 'approval': {
+      const t = exact('canonical', 'action', String(c.id || '').replace(/^approval:/, ''), 'This action in NEURO');
+      return { handoffIntent: { kind: 'approval' }, targets: t ? [t] : [], handoffGaps: t ? [] : [gap('canonical', NO_ACTION_LINK)] };
+    }
     case 'ritual':
       return { handoffIntent: { kind: 'none', basis: 'the ritual happens in SAiM' }, targets: [], handoffGaps: [] };
     case 'home': {
       const k = c.facts && c.facts.homeKind;
       if (k === 'hazard') {
-        return { handoffIntent: { kind: 'risk' }, targets: [], handoffGaps: [
+        const t = exact('canonical', 'hazard', c.facts.entityId, 'This hazard in NEURO');
+        return { handoffIntent: { kind: 'risk' }, targets: t ? [t] : [], handoffGaps: [
           gap('control', 'no browser address for Home Assistant is configured for NEURO to link to'),
-          gap('canonical', 'NEURO’s Home page lists hazards but can’t open one from a link (nearest page: neuro:?view=home)'),
+          ...(t ? [] : [gap('canonical', 'the hazard carries no sensor id to link to')]),
         ] };
       }
-      if (k === 'obligation') return workStep(null, null, [gap('activity', NO_TASK_ACTIVITY), gap('canonical', NO_TASK_LINK)]);
+      if (k === 'obligation') return taskStep(c.taskId, NO_TASK_LINK);
       return { handoffIntent: null, targets: [], handoffGaps: [gap('intent', `no hand-off is defined for a household ${k || 'item'}`)] };
     }
     case 'attention-item':
@@ -120,12 +141,16 @@ function itemHandoff(type, m, jiraBase) {
       return { handoffIntent: { kind: 'risk' }, targets: [{ role: 'canonical', href: neuro('weekly-risk'), label: 'Weekly risk in NEURO' }], handoffGaps: [] };
     case 'source-blind':
       return { handoffIntent: { kind: 'risk' }, targets: [{ role: 'canonical', href: neuro('sources'), label: 'Sources in NEURO' }], handoffGaps: [] };
-    case 'email':
-      return workStep('email', 'item-type', [gap('canonical', 'NEURO’s web app can’t open a single email from a link (nearest page: neuro:?view=inbox)')]);
+    case 'email': {
+      const t = exact('canonical', 'email', m.emailId, 'This email in NEURO');
+      return workStep('email', 'item-type', t ? [] : [gap('canonical', 'the card carries no email id to link to')], [t]);
+    }
     case 'todo':
-      return workStep(null, null, [gap('activity', NO_TASK_ACTIVITY), gap('canonical', NO_TASK_LINK)]);
+      // decision-engine's todo cards carry a slug, not a task id.
+      return taskStep(m.taskId, NO_TASK_LINK);
     case 'meeting':
-      return { handoffIntent: { kind: 'meeting', provider: null }, targets: [], handoffGaps: [gap('join', NO_JOIN), gap('prep', NO_PREP), gap('provider', NO_PROVIDER)] };
+      // decision-engine names a meeting item `cal-<event id>` — a structured id, not wording.
+      return meetingStep(typeof m.engineId === 'string' && m.engineId.startsWith('cal-') ? m.engineId.slice(4) : null);
     default:
       return { handoffIntent: null, targets: [], handoffGaps: [gap('intent', `no hand-off is defined for a "${type || 'unknown'}" item`)] };
   }

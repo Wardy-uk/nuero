@@ -212,7 +212,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     if (blockStarts.has(start)) continue;
     const isMeeting = e.attendeesOther === true;
     candidates.push({
-      kind: isMeeting ? 'meeting' : 'protected-time', id: `${isMeeting ? 'meeting' : 'protected'}:${start}:${subject}`, title: subject || (isMeeting ? 'Meeting' : 'Protected time'),
+      kind: isMeeting ? 'meeting' : 'protected-time', id: `${isMeeting ? 'meeting' : 'protected'}:${start}:${subject}`, eventId: e.eventId || null, title: subject || (isMeeting ? 'Meeting' : 'Protected time'),
       time: { start, end, startAt: e.startAt || null, endAt: e.endAt || null },
       facts: { running, othersAttending: e.attendeesOther === true ? true : e.attendeesOther === false ? false : null, showAs: e.showAs || null },
       sphere: e.sphere || sphere(null),
@@ -242,7 +242,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     const raw = String(it.urgency || 'normal').toLowerCase();
     const notRisk = URGENCY_NOT_RISK[it.type] || null;
     const meta = it.meta || {};
-    itemMeta.set(`item:${it.recordId || it.id}`, meta);
+    itemMeta.set(`item:${it.recordId || it.id}`, { ...meta, engineId: it.id || null });
     candidates.push({
       kind: 'attention-item', id: `item:${it.recordId || it.id}`, recordId: it.recordId || null, title: it.title || it.say || null,
       time: it.type === 'meeting' && meta.start ? { start: slice(meta.start), startAt: localInstant(meta.start), minutesAway: Number.isFinite(meta.minutesAway) ? meta.minutesAway : null } : undefined,
@@ -309,7 +309,7 @@ function compose(payload, live = {}, facts = {}, { now = Date.now() } = {}) {
     const tid = tm ? Number(tm[1]) : null;
     const due = tid != null ? taskDue.get(tid) || null : null;
     candidates.push({ kind: 'home', id: `home:${n.id || n.title}`, taskId: tid, title: n.title || n.what || 'Home', time: due ? { due } : undefined,
-      facts: { needsNow: true, homeKind: n.kind || null, risk: HOME_RISK[n.kind] || 'unknown', riskBasis: HOME_RISK[n.kind] ? 'classified' : 'unclassified', why: n.why || null, wordingConflict: due ? wordingConflict(n.title, due, now) : null },
+      facts: { needsNow: true, homeKind: n.kind || null, entityId: n.entityId || null, risk: HOME_RISK[n.kind] || 'unknown', riskBasis: HOME_RISK[n.kind] ? 'classified' : 'unclassified', why: n.why || null, wordingConflict: due ? wordingConflict(n.title, due, now) : null },
       sphere: sphere('home', 'source', 'from the household model'), actions: [], provenance: { source: 'home', readAt }, known: true });
   }
   for (const e of (home && home.exceptions) || []) {

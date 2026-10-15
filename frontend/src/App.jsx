@@ -87,6 +87,7 @@ const HealthPanel = lazyLoad(() => import('./components/HealthPanel'));
 const MyHealthPanel = lazyLoad(() => import('./components/MyHealthPanel'));
 const JCRingPanel = lazyLoad(() => import('./components/JCRingPanel'));
 const MeetingPrep = lazyLoad(() => import('./components/MeetingPrep'));
+const ItemLink = lazyLoad(() => import('./components/ItemLink'));
 // Build 10: the first screens that read the canonical world model.
 const CommitmentsPanel = lazyLoad(() => import('./components/canonical/CommitmentsPanel'));
 const SourcesPanel = lazyLoad(() => import('./components/canonical/SourcesPanel'));
@@ -121,6 +122,10 @@ function readNueroLaunchIntent() {
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
   const filter = params.get('filter');
+  // `?item=<kind>:<id>` (15 Oct 2026): an exact-item deep link (neuro:?item=…).
+  // It opens THAT record or says why not — never a broad page standing in for it.
+  const item = params.get('item');
+  if (item) return { view: 'item', context: { item } };
   // `today` is the `Now` execution surface — the default landing view. A launch
   // intent from a notification still wins, so tapping a card lands on the thing
   // that pinged him rather than on the general screen.
@@ -136,6 +141,8 @@ function syncNueroLaunchIntent(view, context = null) {
   next.searchParams.set('view', view);
   if (context?.filter) next.searchParams.set('filter', context.filter);
   else next.searchParams.delete('filter');
+  if (view === 'item' && context?.item) next.searchParams.set('item', context.item);
+  else next.searchParams.delete('item');
   window.history.replaceState({}, '', `${next.pathname}${next.search}${next.hash}`);
 }
 
@@ -397,6 +404,7 @@ function AuthenticatedApp() {
       case 'todos': return <TodoPanel focusContext={navContext} onClearContext={() => setNavContext(null)} />;
       case 'calendar': return <CalendarView />;
       case 'meeting-prep': return <MeetingPrep />;
+      case 'item': return <ItemLink item={navContext && navContext.item} onNavigate={handleNavigate} />;
       case 'capture': return <CapturePanel />;
       case 'recent': return <RecentPanel onOpenFile={(path) => { setVaultOpenPath(path); setActiveView('vault'); }} />;
       case 'imports': return <ImportsPanel />;
