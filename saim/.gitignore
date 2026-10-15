@@ -2,4 +2,6 @@ node_modules/
 dist/
 dist-alt/
 dist-alt2/
+dist-alt3/
 .env
+app/alt-v2-manifest/public/fixtures/local-*.json

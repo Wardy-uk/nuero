@@ -46,7 +46,10 @@ function initialRoute() {
   return d ? { tab: d.tab, focus: (d.recordId || d.blockId) ? { recordId: d.recordId, blockId: d.blockId } : null } : { tab: DEFAULT_TAB, focus: null };
 }
 
-export default function App() {
+// `renderSaim` (16 Oct 2026): a build may supply its own SAiM page (the alt-v3
+// policy-driven desktop). It gets the same read and the same write paths — this
+// App stays the one place that talks to NEURO. Omitted, v2 renders as before.
+export default function App({ renderSaim = null, driveFor = null, footer = 'SAiM Alt · comparison build' } = {}) {
   const runtime = readRuntime();
   const [authed, setAuthed] = useState(() => !!getPin());
   const [route, setRoute] = useState(initialRoute);
@@ -210,11 +213,16 @@ export default function App() {
   if (runtime.deploymentIssue) return <DeploymentGuard />;
   if (!authed) return <LockScreen onUnlock={() => setAuthed(true)} />;
 
-  const drive = driveFrom(day.canonical, isPressing);
+  const drive = driveFor ? driveFor(day.canonical) : driveFrom(day.canonical, isPressing);
   const updated = day.at ? `Read ${hhmmOf(day.at)}${day.error ? ' · last refresh failed' : ''}` : (day.error ? 'Can’t reach NEURO' : null);
 
   let page;
-  if (route.tab === 'saim') {
+  if (route.tab === 'saim' && renderSaim) {
+    page = renderSaim({
+      canonical: day.canonical, error: day.error, at: day.at, busy, focus: route.focus,
+      onAct, run, onDeskOpen: deskReachable ? deskOpen : null, deskStates, neuroUrl: NEURO_URL,
+    });
+  } else if (route.tab === 'saim') {
     // Nothing read yet: the same composition, saying so — never a guess about the day.
     const v = (day.canonical || day.adhd)
       ? workingView({ ...day, now: Date.now() })
@@ -255,7 +263,7 @@ export default function App() {
       onGo={go}
       drive={drive}
       updated={updated}
-      footer="SAiM Alt · comparison build"
+      footer={footer}
       onLock={() => { clearPin(); setAuthed(false); }}
       marker={<a className="v2__ctl" href={CONTROL_URL}>Control ↗</a>}
     >

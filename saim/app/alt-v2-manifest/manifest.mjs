@@ -114,7 +114,8 @@ export function manifest(payload) {
   // screen never shows two answers to "where do I go" (the policy already holds them out; this is the guard).
   const isRoute = (x) => Boolean(x && x.intent && x.intent.kind === 'navigate' && (x.intent.action === 'open' || x.intent.recordId != null || x.intent.view || x.intent.href));
   const acts = d.recommended && !d.recommended.handOff ? [d.recommended, ...(d.alternatives || [])] : [];
-  const actions = acts.filter((x) => !isRoute(x)).map((x) => shown(x && x.say)).filter(Boolean).map((say) => ({ say }));
+  // Each action keeps SAiM's own intent: the shell carries out only the kinds it knows (ACTABLE); any other stays inert.
+  const actions = acts.filter((x) => !isRoute(x)).map((x) => ({ say: shown(x && x.say), intent: (x && x.intent) || null })).filter((x) => x.say);
 
   // Hand-off box (resolver labels only) — or its honest absence.
   let handoff = null; let ask = null; let handoffNote = null;
@@ -126,7 +127,8 @@ export function manifest(payload) {
     if (ho.ask) {
       ask = {
         question: shown(ho.ask.question) || 'What will you use?',
-        options: ho.ask.options.map((o) => ({ label: shown(o.label), suggested: Boolean(o.suggested), basis: o.basis === 'source' ? 'from where it came from' : o.basis === 'observed' ? 'from what you used before' : null })).filter((o) => o.label),
+        taskId: Number.isInteger(ho.ask.taskId) ? ho.ask.taskId : null,
+        options: ho.ask.options.map((o) => ({ choice: typeof o.choice === 'string' ? o.choice : null, label: shown(o.label), suggested: Boolean(o.suggested), basis: o.basis === 'source' ? 'from where it came from' : o.basis === 'observed' ? 'from what you used before' : null })).filter((o) => o.label),
         deviceSpecific: Boolean(ho.ask.deviceSpecific),
       };
     }
@@ -170,13 +172,28 @@ export function manifest(payload) {
   };
 }
 
+/** The intent kinds the Alt shell can carry out (App.onAct). Anything else is shown but never pressable. */
+export const ACTABLE = Object.freeze(['start-block', 'act', 'session', 'meeting', 'navigate']);
+export const actable = (a) => Boolean(a && a.intent && ACTABLE.includes(a.intent.kind));
+
+/**
+ * A resolver link as a real URL, or null. `neuro:?item=…` / `neuro:?view=…` open in NEURO's web app
+ * (which shows that exact record or says why not); an https link is used as given; anything else is not a link.
+ */
+export function linkHref(neuroBase, href) {
+  const h = String(href || '');
+  const m = /^neuro:\?(.+)$/.exec(h);
+  if (m) return neuroBase ? `${String(neuroBase).replace(/\/+$/, '')}/?${m[1]}` : null;
+  return /^https:\/\/\S+$/.test(h) ? h : null;
+}
+
 /** Every string the view-model would put on screen — for the safety tests. */
 export function visibleStrings(vm) {
   const out = [];
   const walk = (x) => {
     if (typeof x === 'string') out.push(x);
     else if (Array.isArray(x)) x.forEach(walk);
-    else if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) if (!['href', 'app', 'type', 'tone', 'rule', 'drive', 'problem', 'kind'].includes(k)) walk(v);
+    else if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) if (!['href', 'app', 'type', 'tone', 'rule', 'drive', 'problem', 'kind', 'intent', 'choice', 'taskId'].includes(k)) walk(v);
   };
   walk(vm);
   return out;

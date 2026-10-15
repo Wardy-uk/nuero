@@ -11,7 +11,13 @@
   "unreadLead": null,
   "actions": [
     {
-      "say": "I’m on it"
+      "say": "I’m on it",
+      "intent": {
+        "kind": "start-block",
+        "taskId": 600,
+        "text": "Customer Care training plan and refreshers",
+        "blockId": 130
+      }
     }
   ],
   "handoff": {

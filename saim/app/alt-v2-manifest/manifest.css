@@ -38,3 +38,7 @@
 .mf__more > summary::-webkit-details-marker { display: none; }
 .mf__more > summary::before { content: '+ '; }
 .mf__more[open] > summary::before { content: '− '; }
+.mf__altbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--text); text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.35); text-underline-offset: 3px; cursor: pointer; }
+.mf__altbtn:disabled { cursor: default; opacity: 0.6; }
+.mf__alt { color: var(--text); text-decoration-color: rgba(255, 255, 255, 0.35); text-underline-offset: 3px; }
+a.wk__open { text-decoration: none; display: inline-block; }

@@ -1,9 +1,50 @@
-// The approved `working` desktop composition (wk__* geometry, unchanged) showing
-// ONE adapter view-model. Read-only: nothing here writes — buttons are inert in
-// this local build and say so. It renders the view-model and decides nothing.
+import { actable } from './manifest.mjs';
+import { deskStateText, deskStateBusy } from '../alt-v2/model.mjs';
 
-export default function ManifestView({ v }) {
+// The approved `working` desktop composition (wk__* geometry, unchanged) showing
+// ONE adapter view-model. It renders the view-model and decides nothing.
+//
+// Two modes, and the difference is only WHO carries out a press:
+//   live = null   the local preview: every control is inert and says so.
+//   live = {...}  the SAiM Alt A/B release (16 Oct 2026): each control calls the
+//                 shell's existing write path, and ONLY for what the payload
+//                 offers — an action whose intent kind the shell cannot carry
+//                 out, a destination with no app or no link, an ask with no task
+//                 id, all stay inert. Nothing is invented to fill a gap.
+//
+//   live.onAct(utterance)        SAiM's own intent → the shell's onAct (NEURO's routes)
+//   live.onDeskOpen(appId)       open/switch an app the laptop declared
+//   live.linkFor(href)           a resolver link as a real URL, or null
+//   live.onChoose(taskId, choice) Nick's one-tap activity answer — only on his press
+//   live.deskStates, live.busy, live.dock, live.choiceNote
+
+const INERT = 'Read-only preview';
+
+function Dest({ d, live, primary = false }) {
+  if (d.type === 'already') return <span className="wk__already">Already in front — no launch needed</span>;
+  const href = live && d.type === 'link' ? live.linkFor(d.href) : null;
+  const canDesk = Boolean(live && d.type === 'desk' && d.app && live.onDeskOpen);
+  const st = canDesk ? (live.deskStates || {})[d.app] : null;
+  if (!primary) {
+    if (href) return <a className="mf__alt" href={href} target="_blank" rel="noopener noreferrer">{d.name}</a>;
+    if (canDesk) return <button type="button" className="mf__altbtn" disabled={deskStateBusy(st)} onClick={() => live.onDeskOpen(d.app)}>{d.name}{st ? ` · ${deskStateText(st)}` : ''}</button>;
+    return <span className="mf__inert" title={d.label}>{d.name}</span>;
+  }
+  return (
+    <span className="wk__openwrap">
+      {href
+        ? <a className="wk__open" href={href} target="_blank" rel="noopener noreferrer">{d.label}</a>
+        : canDesk
+          ? <button type="button" className="wk__open" disabled={deskStateBusy(st)} onClick={() => live.onDeskOpen(d.app)}>{d.label}</button>
+          : <button type="button" className="wk__open" disabled title={live ? 'This screen can’t open that' : INERT}>{d.label}</button>}
+      {st ? <span className={`wk__desk v2-desk--${st}`}>{deskStateText(st)}</span> : (d.where && <span className="wk__desk">{d.where}</span>)}
+    </span>
+  );
+}
+
+export default function ManifestView({ v, live = null }) {
   const r = v.rail;
+  const busy = Boolean(live && live.busy);
   return (
     <div className={`wk mf mf--${v.tone}`}>
       <p className="wk__presence">{v.presence}</p>
@@ -41,7 +82,14 @@ export default function ManifestView({ v }) {
           {v.actions.length > 0 && (
             <div className="wk__next">
               <div className="wk__acts" aria-label="Tell SAiM where you are">
-                {v.actions.map((a, i) => <button key={a.say} type="button" disabled className={`wk__act${i === 0 ? ' wk__act--lead' : ''}`} title="Read-only preview">{a.say}</button>)}
+                {v.actions.map((a, i) => {
+                  const on = Boolean(live && live.onAct && actable(a));
+                  return (
+                    <button key={a.say} type="button" disabled={!on || busy} className={`wk__act${i === 0 ? ' wk__act--lead' : ''}`}
+                      title={on ? undefined : (live ? 'This screen can’t do that' : INERT)}
+                      onClick={on ? () => live.onAct(a) : undefined}>{a.say}</button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -54,17 +102,10 @@ export default function ManifestView({ v }) {
                   <p className="wk__app">{v.handoff.primary.name}</p>
                   {v.handoff.why && <p className="wk__why">{v.handoff.why}</p>}
                 </div>
-                {v.handoff.primary.type === 'already'
-                  ? <span className="wk__already">Already in front — no launch needed</span>
-                  : (
-                    <span className="wk__openwrap">
-                      <button type="button" className="wk__open" disabled title="Read-only preview">{v.handoff.primary.label}</button>
-                      {v.handoff.primary.where && <span className="wk__desk">{v.handoff.primary.where}</span>}
-                    </span>
-                  )}
+                <Dest d={v.handoff.primary} live={live} primary />
               </div>
               {v.handoff.alternatives.length > 0 && (
-                <p className="wk__others"><span className="wk__k">Other ways in</span>{v.handoff.alternatives.map((o, i) => <span key={o.label}>{i > 0 && ' · '}<span className="mf__inert" title={o.label}>{o.name}</span></span>)}</p>
+                <p className="wk__others"><span className="wk__k">Other ways in</span>{v.handoff.alternatives.map((o, i) => <span key={o.label}>{i > 0 && ' · '}<Dest d={o} live={live} /></span>)}</p>
               )}
             </div>
           )}
@@ -75,23 +116,34 @@ export default function ManifestView({ v }) {
             <div className="wk__place mf__ask">
               <p className="wk__label">{v.ask.question}</p>
               <div className="wk__acts">
-                {v.ask.options.map((o) => (
-                  <button key={o.label} type="button" disabled className={`wk__act${o.suggested ? ' wk__act--lead' : ''}`} title={o.basis ? `Suggested ${o.basis}` : 'Read-only preview'}>
-                    {o.label}{o.suggested ? ' · suggested' : ''}
-                  </button>
-                ))}
+                {v.ask.options.map((o) => {
+                  const on = Boolean(live && live.onChoose && v.ask.taskId != null && o.choice);
+                  return (
+                    <button key={o.label} type="button" disabled={!on || busy} className={`wk__act${o.suggested ? ' wk__act--lead' : ''}`}
+                      title={o.basis ? `Suggested ${o.basis}` : (on ? undefined : INERT)}
+                      onClick={on ? () => live.onChoose(v.ask.taskId, o.choice) : undefined}>
+                      {o.label}{o.suggested ? ' · suggested' : ''}
+                    </button>
+                  );
+                })}
               </div>
-              <p className="wk__why">{v.ask.deviceSpecific ? 'Your answer is saved for this task; SAiM picks the app on each device.' : 'The laptop’s report is out of date, so these are kinds of work, not apps.'} (Answers aren’t saved in this read-only preview.)</p>
+              <p className="wk__why">
+                {v.ask.deviceSpecific ? 'Your answer is saved for this task; SAiM picks the app on each device.' : 'The laptop’s report is out of date, so these are kinds of work, not apps.'}
+                {live ? ' Nothing is saved until you choose.' : ' (Answers aren’t saved in this read-only preview.)'}
+              </p>
+              {live && live.choiceNote && <p className="wk__docknote" role="status">{live.choiceNote}</p>}
             </div>
           )}
           {!v.handoff && !v.ask && v.handoffNote && <p className="mf__noaction">{v.handoffNote}</p>}
 
           <div className="wk__dockwrap">
-            <div className="wk__dock">
-              <input className="wk__ask" placeholder="Ask SAiM or capture anything… (read-only preview)" readOnly />
-              <button type="button" className="wk__dockbtn wk__dockbtn--ask" disabled>Ask</button>
-              <button type="button" className="wk__dockbtn" disabled>Capture</button>
-            </div>
+            {live ? (live.dock || null) : (
+              <div className="wk__dock">
+                <input className="wk__ask" placeholder="Ask SAiM or capture anything… (read-only preview)" readOnly />
+                <button type="button" className="wk__dockbtn wk__dockbtn--ask" disabled>Ask</button>
+                <button type="button" className="wk__dockbtn" disabled>Capture</button>
+              </div>
+            )}
           </div>
         </section>
 
