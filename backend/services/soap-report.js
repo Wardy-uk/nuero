@@ -54,7 +54,7 @@ const AMBER_BAND = 20; // weekly-risk's rule: within 20 points of target is ambe
 const STAR_LIMIT_SUCCESS = 6;
 const WORST_CUSTOMERS = 5;
 const RECIPIENTS_KEY = 'soap_recipients';
-const DEFAULT_RECIPIENTS = Object.freeze(['Chris Middleton', 'Ricky']);
+const DEFAULT_RECIPIENTS = Object.freeze(['Chris Middleton', 'Ricky Bostock']);
 const MANUAL_PREFIX = 'soap_manual:';
 const SEND_AT_HOUR = 8; // Monday 08:00
 
