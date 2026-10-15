@@ -399,7 +399,11 @@ export function Journeys({ j, est, busy, act }) {
       {!j.pending.length && <div className="cn-muted">{j.tracking ? 'No journeys waiting.' : 'Tracking starts on its first pass (every 15 minutes), from your latest odometer reading.'}</div>}
       {j.pending.length > 0 && (
         <ul className="cn-list">
-          {j.pending.map((x) => (
+          {j.pending.map((x, i) => {
+            // One drive detection split in two (a crawl through traffic): offered when the next waiting journey starts within the hour.
+            const next = j.pending[i + 1];
+            const gapMin = next ? Math.round((next.startedAt - x.endedAt) / 60000) : null;
+            return (
             <li key={x.id} className="cn-journey">
               <div><strong>{route(x)}</strong> · {x.measuredMiles} mi measured</div>
               <div className="cn-muted cn-small">{when(x.startedAt)}–{hhmm(x.endedAt)} · {x.movingMinutes} min moving · top {x.peakKmh} km/h{x.gapMinutes ? ` · ${x.gapMinutes} min with no fix (distance across it is a straight line)` : ''}</div>
@@ -412,9 +416,14 @@ export function Journeys({ j, est, busy, act }) {
                 <button type="button" className="cn-btn cn-btn--tiny" disabled={busy || !(Number(miles[x.id] ?? x.measuredMiles) > 0)} onClick={() => go(x.id, 'approve', { miles: Number(miles[x.id] ?? x.measuredMiles) })}>Approve</button>
                 <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reject', { reason: 'not-the-car' })}>Not the car</button>
                 <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} onClick={() => go(x.id, 'reject', { reason: 'not-a-journey' })}>Not a journey</button>
+                {next && gapMin !== null && gapMin <= 60 && (
+                  <button type="button" className="cn-btn cn-btn--tiny" disabled={busy} title="One drive split in two — joins this with the next journey"
+                    onClick={() => go(x.id, 'merge-next')}>Merge with next ({gapMin} min gap)</button>
+                )}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
       {rec && <div className="cn-small cn-muted">Between your readings on {rec.from} and {rec.to} the odometer went up {rec.odometerMiles} mi; approved journeys account for {rec.journeyMiles} mi{rec.coverage != null ? ` (${rec.coverage}%)` : ''}. The rest is driving that wasn’t detected, rejected, or someone else at the wheel.</div>}

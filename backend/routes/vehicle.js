@@ -104,6 +104,11 @@ router.post('/journeys/:journeyId/name-place', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// POST /api/vehicle/journeys/:journeyId/merge-next — join this pending journey with the next one (one drive that detection split, e.g. a crawl through traffic). Both must be pending, under an hour apart and within 2 km. Keywords: merge, join, combine journeys.
+router.post('/journeys/:journeyId/merge-next', (req, res) => {
+  try { send(res, jr().mergeWithNext(req.params.journeyId)); } catch (e) { fail(res, e); }
+});
+
 // POST /api/vehicle/journeys/:journeyId/reopen — undo an approval or rejection; the journey is pending again.
 router.post('/journeys/:journeyId/reopen', (req, res) => {
   try { send(res, jr().reopen(req.params.journeyId)); } catch (e) { fail(res, e); }

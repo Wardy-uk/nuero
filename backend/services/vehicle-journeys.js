@@ -196,6 +196,42 @@ function reopen(id, { now = Date.now() } = {}) {
   return { ok: true, journey: _row(_get(id)) };
 }
 
+const MERGE_MAX_GAP_MS = 60 * 60000;  // more than an hour apart is two trips
+const MERGE_MAX_JUMP_M = 2000;        // the second must start near where the first ended
+
+/**
+ * Join a pending journey with the NEXT one — one drive that detection split
+ * (14 Oct 2026: a crawl through traffic read as a stop). Both must still be
+ * pending: a decision already taken is undone first, never merged over. The
+ * first row is extended to the second's end and the second is removed; it was a
+ * detection nobody had decided on, and a later sync cannot re-create it because
+ * the extended row now covers its time.
+ */
+function mergeWithNext(id, { now = Date.now() } = {}) {
+  const a = _get(id);
+  if (!a) return { ok: false, status: 404, error: 'no such journey' };
+  const b = _db().get('SELECT * FROM vehicle_journeys WHERE source = ? AND started_at > ? ORDER BY started_at LIMIT 1', [a.source, a.started_at]);
+  if (!b) return { ok: false, status: 409, error: 'there is no later journey to merge with' };
+  if (a.status !== 'pending' || b.status !== 'pending') return { ok: false, status: 409, error: 'both journeys must be waiting for approval — undo a decision first' };
+  const gap = b.started_at - a.ended_at;
+  if (gap > MERGE_MAX_GAP_MS) return { ok: false, status: 409, error: `they are ${Math.round(gap / 60000)} minutes apart — that is two trips` };
+  const jump = model.haversineM({ lat: a.end_lat, lon: a.end_lon }, { lat: b.start_lat, lon: b.start_lon });
+  if (Number.isFinite(jump) && jump > MERGE_MAX_JUMP_M) return { ok: false, status: 409, error: `the second starts ${(jump / 1000).toFixed(1)} km from where the first ended` };
+  const miles = Math.round((a.measured_miles + b.measured_miles + (Number.isFinite(jump) ? jump : 0) / model.MILE_M) * 10) / 10;
+  const db = _db();
+  db.getDb().transaction(() => {
+    db.run(`UPDATE vehicle_journeys SET ended_at = ?, end_lat = ?, end_lon = ?, end_place = ?, measured_miles = ?,
+              moving_minutes = ?, peak_kmh = ?, fix_count = ?, gap_minutes = ?, note = ? WHERE journey_id = ?`,
+    [b.ended_at, b.end_lat, b.end_lon, b.end_place, miles,
+      (a.moving_minutes || 0) + (b.moving_minutes || 0) + Math.max(0, Math.round(gap / 60000)),
+      Math.max(a.peak_kmh || 0, b.peak_kmh || 0), (a.fix_count || 0) + (b.fix_count || 0), (a.gap_minutes || 0) + (b.gap_minutes || 0),
+      `merged with the detection starting ${new Date(b.started_at).toISOString()}`, a.journey_id]);
+    db.run('DELETE FROM vehicle_journeys WHERE journey_id = ? AND status = ?', [b.journey_id, 'pending']);
+  })();
+  _log('vehicle-journey-merged', { merged: b.journey_id, miles }, a.journey_id, now);
+  return { ok: true, journey: _row(_get(a.journey_id)) };
+}
+
 function list({ status = 'pending', limit = 50 } = {}) {
   const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const rows = status === 'all'
@@ -279,4 +315,4 @@ function namePlace(id, body = {}, { now = Date.now() } = {}) {
   return { ok: true, name };
 }
 
-module.exports = { SOURCE, REJECT_REASONS, sync, approve, reject, reopen, list, forVehicle, nudge, namePlace, endOfLocalDay, _fetchHistory };
+module.exports = { SOURCE, REJECT_REASONS, sync, approve, reject, reopen, list, forVehicle, nudge, namePlace, mergeWithNext, endOfLocalDay, _fetchHistory };

@@ -25,7 +25,8 @@ const MILE_M = 1609.344;
 const MOVING_KMH = 15;             // a fix (or the leg into it) at or above this is moving
 const STOP_GAP_MS = 6 * 60000;     // no moving fix for 6 min ends a journey (traffic waits are shorter)
 const ATTACH_MS = 10 * 60000;      // the fix just before/after a journey is its start/end only within 10 min
-const MIN_MILES = 0.5;             // shorter is not a car journey worth asking about
+const STILL_NET_M = 250;           // a stop starts and ends within this of itself; further is a queue, not a stop
+const MIN_MILES = 0.5;            // shorter is not a car journey worth asking about
 const MIN_PEAK_KMH = 30;           // a journey that never reached 30 km/h was on foot or a bike
 const JITTER_M = 25;               // a slow leg shorter than this is GPS noise, not distance
 const MAX_LEG_KMH = 220;           // faster than this is a bad fix, not driving
@@ -101,7 +102,21 @@ function segment(fixes = [], { readEndMs = null } = {}) {
   const stoppedBetween = (a, b) => {
     const still = [];
     for (let k = a + 1; k < b; k++) if (!moving[k]) still.push(k);
-    if (still.length) return fixes[still[still.length - 1]].t - fixes[a].t >= STOP_GAP_MS || fixes[b].t - fixes[still[0]].t >= STOP_GAP_MS;
+    if (still.length) {
+      const long = fixes[still[still.length - 1]].t - fixes[a].t >= STOP_GAP_MS || fixes[b].t - fixes[still[0]].t >= STOP_GAP_MS;
+      if (!long) return false;
+      // Slow is not stopped: a queue crawls somewhere, a parked car does not.
+      // 14 Oct 2026: ten minutes at 5–12 km/h moved the car ~690 m and split one
+      // commute in two. The slow stretch's own first and last fixes must be
+      // within STILL_NET_M — a phone walked round a shop comes back to the car.
+      // ...but only a CONTINUOUS slow stretch is a crawl: a queue reports every
+      // minute or two, while a silence over STOP_GAP inside it is the car parked
+      // (and, across days, two separate trips that merely start and end apart).
+      let maxSilence = 0;
+      for (let k = a + 1; k <= b; k++) maxSilence = Math.max(maxSilence, fixes[k].t - fixes[k - 1].t);
+      if (maxSilence <= STOP_GAP_MS && still.length >= 2 && haversineM(fixes[still[0]], fixes[still[still.length - 1]]) > STILL_NET_M) return false;
+      return true;
+    }
     const dt = fixes[b].t - fixes[a].t;
     if (dt <= STOP_GAP_MS) return false;
     return haversineM(fixes[a], fixes[b]) / 1000 / (dt / 3600000) < MOVING_KMH / 2;

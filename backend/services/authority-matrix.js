@@ -270,6 +270,7 @@ const ROUTE_RULES = Object.freeze([
   R('POST', '/api/vehicle/journeys/:journeyId/reject', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/journeys/:journeyId/reopen', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/journeys/:journeyId/name-place', 'internal.state', { machine: 'refuse' }),
+  R('POST', '/api/vehicle/journeys/:journeyId/merge-next', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/obligations/:obligationId/resolve', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/finance/sync', 'internal.state', { machine: 'refuse' }),
   R('POST', '/api/vehicle/finance/transactions/:txnId/decide', 'internal.state', { machine: 'refuse' }),

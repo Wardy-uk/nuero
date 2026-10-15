@@ -77,7 +77,7 @@ test('Life360 going quiet mid-drive does not split the journey; a seen 10-minute
   const quiet = M.segment(M.fixesFromHistory(drive(localNoon(2), { minutes: 30, gapFrom: 10, gapMin: 9 })), { readEndMs: NOW });
   assert.equal(quiet.length, 1, 'a data gap with the car far along is a continuation');
   const t2 = localNoon(2) + 60 * 60000;
-  const stopped = M.segment(M.fixesFromHistory([...drive(localNoon(2), { to: 'shop' }), ...drive(t2, { lat0: 53.1, from: 'shop' })]), { readEndMs: NOW });
+  const stopped = M.segment(M.fixesFromHistory([...drive(localNoon(2), { to: 'shop' }), ...drive(t2, { lat0: 52.9 + 20 * KM_LAT, from: 'shop' })]), { readEndMs: NOW });
   assert.equal(stopped.length, 2, 'standing still for 10 minutes ends it');
 });
 
@@ -333,4 +333,50 @@ test('a quiet Life360 before the drive still names the start: the nearest zone f
   // Negative: a zone fix 2 km from where the drive began is not where it began.
   const far = [row(t0 - 69 * 60000, 52.7190, -1.3499, 0, 'home'), ...rows.slice(1)];
   assert.equal(M.segment(M.fixesFromHistory(far), { readEndMs: NOW })[0].start.place, null);
+});
+
+test('a crawl through traffic is not a stop: ten slow minutes that move ~700 m stay one journey (14 Oct 2026)', () => {
+  const t0 = localNoon(5);
+  const rows = [];
+  let lat = 52.9;
+  for (let i = 0; i < 20; i++) { rows.push(row(t0 + i * 45000, lat, -1.46, 50, 'driving')); lat += 0.45 * KM_LAT; }
+  // 08:36–08:47: fixes every ~80 s at 5–12 km/h, ~70 m apart — a queue, not a car park.
+  let t = t0 + 20 * 45000;
+  for (let k = 0; k < 9; k++) { t += 80000; lat += 0.07 * KM_LAT; rows.push(row(t, lat, -1.46, 8, 'driving')); }
+  for (let i = 1; i <= 15; i++) { lat += 0.5 * KM_LAT; rows.push(row(t + i * 45000, lat, -1.46, 60, 'driving')); }
+  for (let k = 1; k <= 8; k++) rows.push(row(t + 15 * 45000 + k * 60000, lat, -1.46, 0, 'Office'));
+  const segs = M.segment(M.fixesFromHistory(rows), { readEndMs: NOW });
+  assert.equal(segs.length, 1, 'the queue joined the drive');
+});
+
+test('merge: two waiting halves become one; refused when a decision exists, too far apart, or for a machine; a re-sync does not split it again', async () => {
+  const t0 = localNoon(6);
+  const ins = (id, s, e, sLat, eLat, miles) => db.run(`INSERT INTO vehicle_journeys (journey_id, vehicle_id, status, source, started_at, ended_at,
+      start_lat, start_lon, end_lat, end_lon, start_place, end_place, measured_miles, moving_minutes, peak_kmh, fix_count, gap_minutes, detected_at)
+      VALUES (?, ?, 'pending', 'life360', ?, ?, ?, -1.46, ?, -1.46, NULL, NULL, ?, 30, 99, 40, 0, ?)`, [id, CAPTUR, s, e, sLat, eLat, miles, new Date().toISOString()]);
+  const A = `vj:life360:${t0}`; const B = `vj:life360:${t0 + 52 * 60000}`;
+  ins(A, t0, t0 + 41 * 60000, 52.75, 52.94, 19.2);
+  ins(B, t0 + 52 * 60000, t0 + 60 * 60000, 52.9405, 52.9644, 2);
+  // A machine may not.
+  assert.equal((await call('POST', `/api/vehicle/journeys/${encodeURIComponent(A)}/merge-next`, {}, MACHINE)).status, 403);
+  // A decision on either half blocks it.
+  J.approve(B, {});
+  assert.equal((await call('POST', `/api/vehicle/journeys/${encodeURIComponent(A)}/merge-next`, {})).status, 409);
+  J.reopen(B);
+  const r = await call('POST', `/api/vehicle/journeys/${encodeURIComponent(A)}/merge-next`, {});
+  assert.equal(r.status, 200);
+  assert.equal(r.json.journey.endedAt, t0 + 60 * 60000);
+  assert.ok(Math.abs(r.json.journey.measuredMiles - (19.2 + 2 + 0.04)) < 0.15, `miles ${r.json.journey.measuredMiles}`);
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM vehicle_journeys WHERE journey_id = ?', [B]).n, 0);
+  // Re-detecting the second half: the merged row covers its time, so nothing new is stored.
+  const before = J.list({ status: 'all', limit: 200 }).length;
+  process.env.HA_URL = 'http://ha.test'; process.env.HA_TOKEN = 'fake';
+  await J.sync({ now: NOW, from: t0 - 3600000, fetchImpl: fakeFetch(drive(t0 + 52 * 60000, { lat0: 52.9405, minutes: 8 })) });
+  delete process.env.HA_URL; process.env.HA_TOKEN = '';
+  assert.equal(J.list({ status: 'all', limit: 200 }).length, before);
+  // Over an hour apart is two trips.
+  const C = `vj:life360:${t0 + 300 * 60000}`; const D = `vj:life360:${t0 + 400 * 60000}`;
+  ins(C, t0 + 300 * 60000, t0 + 320 * 60000, 52.8, 52.85, 5);
+  ins(D, t0 + 400 * 60000, t0 + 420 * 60000, 52.85, 52.9, 5);
+  assert.equal((await call('POST', `/api/vehicle/journeys/${encodeURIComponent(C)}/merge-next`, {})).status, 409);
 });
